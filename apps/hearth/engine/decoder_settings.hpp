@@ -64,8 +64,16 @@ struct DecoderSettings {
     // part of the decoder configuration.
     std::optional<int> programme = std::nullopt;
     render::ObjectsPolicy objects = render::ObjectsPolicy::kAuto;
+    // Which domain a reconstruction runs the JOC matrix in (joc.hpp): kQmf,
+    // TS 103 420's own domain, or the cheaper kMdctBand, which also lags the
+    // bed less (256 samples against 576). Only reaches anything when objects
+    // are reconstructed at all.
+    oba::joc::Domain joc_domain = oba::joc::Domain::kQmf;
     // §7.10. A player keeps a stream continuous through a damaged frame.
     ConcealmentPolicy concealment = ConcealmentPolicy::kRepeatFade;
+    // Passed straight to DecoderConfig::fast_imdct: the FFT evaluation of
+    // §7.9.4 step 3's inverse transform, against its reference direct form.
+    bool fast_inverse_transform = true;
 
     friend bool operator==(const DecoderSettings&, const DecoderSettings&) = default;
 };

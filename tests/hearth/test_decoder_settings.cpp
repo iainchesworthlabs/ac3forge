@@ -40,7 +40,9 @@ TEST_CASE("decoder settings: the defaults are line mode, a Lo/Ro fold for two sp
     CHECK(stereo.config.output.mix_override == ac3::MixLevelOverride{});
     CHECK(stereo.config.skip_object_reconstruction);
     CHECK_FALSE(stereo.config.programme.has_value());
+    CHECK(stereo.config.joc_domain == ac3::oba::joc::Domain::kQmf);
     CHECK(stereo.config.concealment == ac3::ConcealmentPolicy::kRepeatFade);
+    CHECK(stereo.config.fast_imdct);
 
     // A wider layout is rendered, not folded; objects are reconstructed only
     // where there is height to place them in.
@@ -67,7 +69,9 @@ TEST_CASE("decoder settings: every control reaches the configuration", "[hearth]
     settings.mix_levels.lfe_mix_level_db = 3.0;
     settings.programme = 2;
     settings.objects = ac3::render::ObjectsPolicy::kNever;
+    settings.joc_domain = ac3::oba::joc::Domain::kMdctBand;
     settings.concealment = ac3::ConcealmentPolicy::kMute;
+    settings.fast_inverse_transform = false;
 
     const auto setup = decoder_setup(settings, layout("2.0"));
     const ac3::DecoderConfig& config = setup.config;
@@ -92,6 +96,8 @@ TEST_CASE("decoder settings: every control reaches the configuration", "[hearth]
     CHECK_FALSE(config.programme.has_value());
     CHECK(config.concealment == ac3::ConcealmentPolicy::kMute);
     CHECK(config.skip_object_reconstruction);
+    CHECK(config.joc_domain == ac3::oba::joc::Domain::kMdctBand);
+    CHECK_FALSE(config.fast_imdct);
 }
 
 TEST_CASE("decoder settings: shares outside 0 to 1 are held to it", "[hearth][decoder-settings]") {
@@ -174,10 +180,12 @@ TEST_CASE("decoder settings: a transcode decodes the programme as coded, whateve
     listener.mix_lfe = true;
     listener.mix_levels.loro_clev = 0.5;
     listener.objects = ac3::render::ObjectsPolicy::kAlways;
+    listener.joc_domain = ac3::oba::joc::Domain::kMdctBand;
     // What a receiver cannot choose for itself is kept.
     listener.dual_mono = ac3::hearth::DualMonoChoice::kSecond;
     listener.concealment = ac3::ConcealmentPolicy::kMute;
     listener.programme = 3;
+    listener.fast_inverse_transform = false;
 
     const DecoderSettings neutral = ac3::hearth::transcode_settings(listener);
     CHECK(neutral.rf_ceiling_db == 0.0);
@@ -186,6 +194,14 @@ TEST_CASE("decoder settings: a transcode decodes the programme as coded, whateve
     CHECK(neutral.programme == std::optional<int>{3});
     CHECK(neutral.mix_levels == ac3::MixLevelOverride{});
     CHECK_FALSE(neutral.mix_lfe);
+    // Objects are off in a transcode, so the domain choice would reach
+    // nothing; it resets with the rest of the object controls rather than
+    // following the listener across.
+    CHECK(neutral.joc_domain == ac3::oba::joc::Domain::kQmf);
+    // Not a listener's choice to keep: the transform never reaches the
+    // encoded bits (decoder.hpp's own fast_imdct doc comment), so a
+    // transcode always takes the fast default, whatever the listener chose.
+    CHECK(neutral.fast_inverse_transform);
 
     const auto setup = decoder_setup(neutral, layout("5.1"));
     const ac3::DecoderConfig& config = setup.config;
@@ -199,4 +215,5 @@ TEST_CASE("decoder settings: a transcode decodes the programme as coded, whateve
     CHECK_FALSE(setup.serving.fold.has_value());
     CHECK(config.skip_object_reconstruction);
     CHECK(config.concealment == ac3::ConcealmentPolicy::kMute);
+    CHECK(config.fast_imdct);
 }

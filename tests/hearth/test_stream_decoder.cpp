@@ -16,6 +16,7 @@
 #include "ac3/encoder/plan.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/render/layout.hpp"
 #include "decoder_settings.hpp"
 #include "stream_decoder.hpp"
@@ -226,6 +227,58 @@ TEST_CASE("stream decoder: a reset starts the next stream clean", "[hearth][stre
     // finish() leaves the decoder ready for another stream, of another
     // codec and another layout.
     CHECK(play(decoder, second).frames == 4 * ac3::kSamplesPerFrame);
+}
+
+TEST_CASE("stream decoder: the JOC domain setting reaches the renderer's LFE lag, "
+          "construction and reset alike",
+          "[hearth][stream-decoder]") {
+    const auto layout = ac3::render::OutputLayout::parse("5.1.2");
+    REQUIRE(layout.has_value());
+    using ac3::oba::joc::Domain;
+    using ac3::oba::joc::reconstruction_delay;
+
+    // The default is kQmf, which is also a freshly built LayoutRenderer's own
+    // default lag (render.hpp) - so a decoder that never touches the setting
+    // agrees with one that asks for kQmf explicitly, checked below.
+    StreamDecoder default_decoder{*layout, 48000};
+    CHECK(default_decoder.object_lag() == static_cast<std::size_t>(reconstruction_delay(Domain::kQmf)));
+
+    ac3::hearth::DecoderSettings settings;
+    settings.joc_domain = Domain::kMdctBand;
+    StreamDecoder decoder{*layout, 48000, settings};
+    CHECK(decoder.object_lag() == static_cast<std::size_t>(reconstruction_delay(Domain::kMdctBand)));
+
+    // reset() is what a seek does (Session::start_at()) and rebuilds the
+    // renderer from scratch, which on its own would silently swap the LFE's
+    // delay back to kQmf's lag under an unchanged decoder configuration - the
+    // setting has to be reapplied for a seek to keep the domain it decodes
+    // objects in and the domain the renderer times the LFE against agreeing.
+    decoder.reset();
+    CHECK(decoder.object_lag() == static_cast<std::size_t>(reconstruction_delay(Domain::kMdctBand)));
+}
+
+TEST_CASE("stream decoder: a reset (a seek) keeps the crossover corner set before it",
+          "[hearth][stream-decoder]") {
+    // A layout with a small speaker, so the corner is not just stored but has
+    // a filter to move (render.hpp's LayoutRenderer) - the list form, since
+    // ":small" is not a recognised modifier on a name like "5.1".
+    const auto layout = ac3::render::OutputLayout::parse("L:small,C,R,Ls,Rs,LFE");
+    REQUIRE(layout.has_value());
+    StreamDecoder decoder{*layout, 48000};
+
+    REQUIRE(decoder.set_crossover_hz(120.0));
+    REQUIRE(decoder.crossover_hz() == 120.0);
+
+    // reset() is what Session::start_at()/seek() call on every seek within
+    // the same item (session.cpp) - a fresh LayoutRenderer built inside it
+    // must not silently hand the corner back to kDefaultCrossoverHz.
+    decoder.reset();
+    CHECK(decoder.crossover_hz() == 120.0);
+
+    // And decoding after the reset still works, at the kept corner.
+    const Played played = play(decoder, eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 3));
+    CHECK(played.frames == 3 * ac3::kSamplesPerFrame);
+    CHECK(decoder.crossover_hz() == 120.0);
 }
 
 TEST_CASE("stream decoder: a unit that is not a stream is reported, not played",
@@ -475,6 +528,53 @@ TEST_CASE("stream decoder: dual mono plays the programme the settings choose",
         CHECK(std::ranges::equal(second_left, both_right));
         CHECK(std::ranges::equal(second_right, both_right));
     }
+}
+
+TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely matching the "
+          "reference transform",
+          "[hearth][stream-decoder]") {
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    const auto units = eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 8);
+
+    const auto heard = [&](bool fast) {
+        ac3::hearth::DecoderSettings settings;
+        settings.fast_inverse_transform = fast;
+        StreamDecoder decoder{*layout, 48000, settings};
+        std::vector<float> left;
+        const auto deliver = [&left](std::span<const std::span<const float>> slots,
+                                     std::size_t frames) {
+            REQUIRE_FALSE(slots.empty());
+            left.insert(left.end(), slots[0].begin(),
+                       slots[0].begin() + static_cast<std::ptrdiff_t>(frames));
+        };
+        for (const auto& unit : units) {
+            REQUIRE(decoder.decode(unit, deliver).has_value());
+        }
+        decoder.finish(deliver);
+        return left;
+    };
+
+    const std::vector<float> fast = heard(true);
+    const std::vector<float> reference = heard(false);
+    REQUIRE(fast.size() == reference.size());
+    REQUIRE(fast.size() == 8 * ac3::kSamplesPerFrame);
+
+    // The setting must reach DecoderConfig::fast_imdct rather than the same
+    // path running twice (decoder_settings.cpp's decoder_setup()) - but both
+    // remain a correct decode of the same signal: tests/decoder/test_decoder.cpp's
+    // own fast_imdct test pins the two transform paths' agreement above 200 dB SNR.
+    CHECK_FALSE(std::ranges::equal(fast, reference));
+    double squared_diff = 0.0;
+    double squared_signal = 0.0;
+    for (std::size_t n = 0; n < fast.size(); ++n) {
+        const double diff = static_cast<double>(fast[n]) - static_cast<double>(reference[n]);
+        squared_diff += diff * diff;
+        squared_signal += static_cast<double>(reference[n]) * static_cast<double>(reference[n]);
+    }
+    REQUIRE(squared_diff > 0.0);
+    const double snr_db = 10.0 * std::log10(squared_signal / squared_diff);
+    CHECK(snr_db > 100.0);
 }
 
 TEST_CASE("stream decoder: an independent-only decoder plays a unit's first substream alone",
