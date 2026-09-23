@@ -176,6 +176,15 @@ const char* chip_name(esp_chip_model_t model) {
 // runs, unlike everything /status reports. CONFIG_IDF_TARGET and
 // CONFIG_SOC_CPU_HAS_FPU are this build's own, always-defined macros;
 // esp_chip_info and esp_psram_get_size read the silicon actually under it.
+//
+// esp_psram_get_size is guarded because the esp_psram component only BUILDS
+// its sources when CONFIG_SPIRAM is on - the header is always there, so an
+// unguarded call compiles and then fails at link with an undefined reference
+// on every part without PSRAM (the C6 sink is the one in CI). Leaving
+// psram_bytes at its 0 default there is what HardwareFacts already documents
+// for that case, and the silicon read is kept where it can actually run
+// rather than swapped for the heap's own MALLOC_CAP_SPIRAM total, which
+// answers a different question (what was registered, not what is fitted).
 HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
     HardwareFacts facts;
     facts.target = CONFIG_IDF_TARGET;
@@ -188,7 +197,9 @@ HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
 #if CONFIG_SOC_CPU_HAS_FPU
     facts.fpu = true;
 #endif
+#if CONFIG_SPIRAM
     facts.psram_bytes = esp_psram_get_size();
+#endif
     if (handlers.sink_max_slots) {
         facts.sink_max_slots = handlers.sink_max_slots();
     }
