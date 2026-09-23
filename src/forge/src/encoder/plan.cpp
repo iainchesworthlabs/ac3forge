@@ -61,7 +61,7 @@ using Location = eac3::chanmap::Location;
     for (const auto mask : plan.dependents) {
         const auto expanded = eac3::chanmap::expand(mask);
         for (const auto location : expanded) {
-            if (std::ranges::find(out, location) == out.end()) {
+            if (!std::ranges::contains(out, location)) {
                 out.push_back(location);
             }
         }
@@ -323,7 +323,7 @@ std::optional<std::uint16_t> parse_channels(std::string_view text) {
     for (const auto bit : kBits) {
         const auto expanded = eac3::chanmap::expand(bit);
         const auto present = static_cast<int>(std::ranges::count_if(
-            expanded, [&](Location loc) { return std::ranges::find(wanted, loc) != wanted.end(); }));
+            expanded, [&](Location loc) { return std::ranges::contains(wanted, loc); }));
         if (present == 0) {
             continue;
         }
@@ -1226,10 +1226,8 @@ std::optional<Routing> route(const ChannelPlan& target, std::size_t wav_channels
 
     std::vector<double> bed_gains(bed.directions.size());
     std::vector<double> rendered_gains(rendered.directions.size());
-    const bool source_has_rears =
-        std::ranges::find(source, Location::kLrs) != source.end();
-    const bool source_has_side_discrete =
-        std::ranges::find(source, Location::kLsd) != source.end();
+    const bool source_has_rears = std::ranges::contains(source, Location::kLrs);
+    const bool source_has_side_discrete = std::ranges::contains(source, Location::kLsd);
 
     for (std::size_t s = 0; s < source.size(); ++s) {
         if (is_lfe(source[s])) {

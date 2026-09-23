@@ -418,7 +418,7 @@ struct Engine::Impl {
         std::optional<AppId> fullscreen;
         if (const auto pid = fullscreen_pid) {
             for (const auto& [id, app] : known) {
-                if (id == *pid || std::ranges::find(app.session_pids, *pid) != app.session_pids.end()) {
+                if (id == *pid || std::ranges::contains(app.session_pids, *pid)) {
                     fullscreen = id;
                     break;
                 }

@@ -39,7 +39,7 @@ constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "
         return false;
     }
     const std::string_view type{reinterpret_cast<const char*>(head.data()) + 4, 4};
-    return std::ranges::find(kIsobmffLeadingTypes, type) != kIsobmffLeadingTypes.end();
+    return std::ranges::contains(kIsobmffLeadingTypes, type);
 }
 
 // A transport stream has no header at all - it is a bare repeating grid of
