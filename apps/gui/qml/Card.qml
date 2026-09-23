@@ -27,6 +27,8 @@ Rectangle {
     property alias summary: header.summary
     // "01", "02"... drawn in accent ink beside the title, not folded into it.
     property alias ordinal: header.ordinal
+    // Off for a card nested inside a section that already drew one.
+    property alias rule: header.rule
     // Drops the outer fill/border so the header and content sit flat on
     // whatever panel this Card is placed on, keeping only the title/rule
     // header. Off by default so every existing boxed Card is unaffected.

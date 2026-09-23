@@ -21,6 +21,11 @@ RowLayout {
     property alias summary: summaryText.text
     // "01", "02"... Empty for a section the design does not number.
     property string ordinal: ""
+    // The rule is the page-level header's; a card nested INSIDE one of those
+    // sections carries a bare label instead (network-sink-decoder.png's
+    // "DYNAMIC RANGE"). The spacer stays either way, so the summary keeps its
+    // right edge and nothing else moves.
+    property bool rule: true
 
     Layout.fillWidth: true
     spacing: Theme.gap
@@ -51,7 +56,7 @@ RowLayout {
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 2
-        color: Theme.divider
+        color: root.rule ? Theme.divider : "transparent"
     }
 
     Text {
