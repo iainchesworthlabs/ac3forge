@@ -60,10 +60,10 @@ cores are under *ac3forge hearth sink* in `idf.py menuconfig`.
 
 | Source | Sink |
 | --- | --- |
-| `partition` — flash (default) | `i2s` — an I2S DAC (default); standard mode or TDM, reconfigured to whatever the layout needs |
-| `sd` — SD card over SDMMC | `capture` — converts and checks; what CI runs |
-| `fatfs` — a FAT volume in flash | `null` — counts blocks |
-| `http` — an HTTP body over WiFi | |
+| `partition` — flash (default) | `i2s` — an I2S DAC (default); standard mode or TDM, reconfigured to whatever the layout needs, on up to two of a part's I2S lines (the ESP32-S3, the ESP32-C6) |
+| `sd` — SD card over SDMMC | `i2s_wide` — the same arithmetic, one line, for a part whose one controller reaches the product's full channel target alone at a wider frame (the ESP32-P4) |
+| `fatfs` — a FAT volume in flash | `capture` — converts and checks; what CI runs |
+| `http` — an HTTP body over WiFi | `null` — counts blocks |
 
 Chosen in `idf.py menuconfig` under *ac3forge hearth sink*, with the output
 layout the stream is rendered onto.
@@ -827,6 +827,59 @@ play - the counter the test server's own "found invalid chunks" failure
 reads. Only 2.0 and 5.1 were tried; a layout between them may or may not
 fit, since the decoder's own scratch scales with its channel count and
 5.1's alone is 36,864 bytes.
+
+### On the ESP32-P4
+
+The "best" tier of `planning/esp32-sink-tiers.md`: one I2S controller whose TDM frame
+holds 512 bits, four times the S3/C6's 128, is meant to reach this product's full
+sixteen-channel target alone (`sink/i2s_wide/audio_sink.cpp`) rather than needing a
+second line. WiFi reaches a P4 board over `esp_hosted`/SDIO to an onboard ESP32-C6
+co-processor - this part has no radio of its own - and needs nothing extra in
+`SDKCONFIG_DEFAULTS`: `main/idf_component.yml` gates the two managed components
+(`espressif/esp_wifi_remote`, `espressif/esp_hosted`) to `esp32p4`/`esp32h2` by target,
+so they are resolved and linked automatically, unused everywhere else this example
+already builds for.
+
+Brought up on a DFRobot FireBeetle 2 ESP32-P4, pre-production silicon (chip revision
+v1.3 - see [ESP32-P4](../../../../docs/platforms/bare-metal/esp32-p4.md) for that
+board's own chip-revision and clock findings from the bare-metal probe). Three more
+board-only boot crashes found bringing this example itself up, all fixed in
+`sdkconfig.p4` and none hit by the smaller probe:
+
+- **`CONFIG_PM_SLEEP_CLK_ICG_ENABLE=n`.** A Light Sleep feature this build never
+  reaches (`CONFIG_PM_ENABLE` is off) still ran at boot and aborted reaching into a
+  memory pool that, on this chip revision, overlaps the app's own `.data`/`.bss` - a
+  bigger image leaves less of it free, which the tiny probe never came close to.
+- **PSRAM on.** Without it, FreeRTOS could not create its own startup task under
+  WiFi, lwIP, mbedtls and FAT's combined footprint - a crash before `app_main` ever
+  ran. This board has 32 MB, unused by the minimum-footprint probe on purpose; this
+  example has no such goal and needs the room.
+- **`CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y`.** Even with PSRAM on, `esp_hosted`'s
+  own SDIO transport buffers still defaulted to internal RAM; the component's own
+  changelog names this option for exactly this chip.
+
+With those three, a clean boot, WiFi join and Sendspin session, built with
+`SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin"`
+plus real `AC3FORGE_EXAMPLE_WIFI_SSID`/`_PASSWORD`: SDIO up, the ESP32-C6 identified,
+a real access point joined and a DHCP lease taken, mDNS advertising
+`_sendspin._tcp`, the REST control surface up on port 80, and the Sendspin player
+itself accepting a connection from another device already on the network within
+seconds of coming up - all through this example's own code, not a standalone test.
+
+**TDM mode - any layout of three channels or more - could not be verified on this
+exact board.** Only 1-2 channel standard I2S (this player's own default 2.0 layout)
+opened; `7.1.4` and `9.1.6` both failed identically
+(`sample rate is too large`/`could not start I2S in TDM mode`). The reason is a real
+limit of this pre-production chip revision, not a bug: TDM always opens the sink's
+full configured line width regardless of how many channels a layout actually needs
+(the same rule this section's own S3/C6 sinks already follow), and this chip revision
+has no PLL clock source for I2S at all - only a 40 MHz crystal or an audio PLL capped
+at 125 MHz, both short of the roughly 147 MHz a 512-bit frame needs at 48 kHz. The
+practical ceiling this leaves, on this exact silicon, is about 13 slots at 32-bit -
+under the sink's full sixteen, so TDM stays unreachable here at any width past two
+channels. A `>=v3.0` chip's 160 MHz PLL clears this with room to spare; the sink
+design and its clock-source choice (`I2S_CLK_SRC_APLL`, itself needed - the default
+source cannot open TDM at all on this revision) are otherwise unchanged and correct.
 
 ### Under QEMU
 
