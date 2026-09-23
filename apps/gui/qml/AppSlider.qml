@@ -21,6 +21,11 @@ import Ac3Forge
 QQC.Slider {
     id: control
 
+    // Basic dims nothing when a control with replaced delegates is
+    // disabled, so the same 0.45 every other hand-drawn control in
+    // this family uses.
+    opacity: enabled ? 1.0 : 0.45
+
     background: Rectangle {
         x: control.leftPadding
         y: control.topPadding + control.availableHeight / 2 - height / 2
