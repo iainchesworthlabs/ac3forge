@@ -24,6 +24,11 @@ Row {
     signal selected(string value)
 
     spacing: 0
+    // Input is already blocked while disabled (enabled: false cascades to
+    // Keys.onPressed and the delegates' own MouseAreas) - this is the only
+    // thing missing, the same dimming CrucibleCheck/CrucibleButton give a
+    // disabled custom control elsewhere in the family.
+    opacity: enabled ? 1.0 : 0.45
 
     Accessible.role: Accessible.Grouping
     Accessible.name: root.accessibleName
