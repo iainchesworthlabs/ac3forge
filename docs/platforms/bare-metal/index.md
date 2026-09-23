@@ -27,6 +27,9 @@ C6 / S3 / P4 sink modules on one dual-ES9080 PCB, are on
   fixed-point tier and what has and hasn't been measured on it.
 - **Have an ESP32-C6?** [ESP32-C6](esp32-c6.md) has the fixed-point and float tiers timed on a
   board, with and without WiFi and a stream arriving, and which streams fit.
+- **Have an ESP32-P4?** [ESP32-P4](esp32-p4.md) is the "best" tier of the shared sink family,
+  real time on every fixture with no network yet — and, if the board is pre-production silicon
+  like the one this was measured on, a chip-revision trap worth reading before flashing anything.
 - **Building with ESPHome instead of raw ESP-IDF?** [ESPHome](esphome.md) is the external
   component, and where it stops short of a `media_player` or `speaker` source today.
 

@@ -730,6 +730,24 @@ the rest of internal RAM is full.
 
 ### On the ESP32-C6
 
+Building and flashing the Sendspin player, in that order - `sdkconfig.hw` puts the console (and
+Improv) on the USB-Serial-JTAG port, `sdkconfig.c6` is the part's own overlay (flash mode, clock,
+partition table), and `sdkconfig.sendspin-c6` sizes the player for a part with no PSRAM; this is
+the same combination each of those three files' own header comments name:
+
+```bash
+. $IDF_PATH/export.sh
+idf.py -DIDF_TARGET=esp32c6 \
+  "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6" \
+  build
+idf.py -p <PORT> flash monitor
+```
+
+CI builds this combination (not the network-loaded baremetal probe two directories over) but does
+not run it - `idf.py qemu` refuses `esp32c6` outright, so nothing shorter than a board proves it
+still plays. [Joining a network](#joining-a-network) and [Pairing](#pairing) above are unchanged
+on this part; only what follows in this section is C6-specific.
+
 The C6 has one core, which the Sendspin server task and the decode task
 (priority 5 and 6) share. A clock reply used to be dated by when the server
 task read it, and a burst's decode holds that task off the CPU for up to

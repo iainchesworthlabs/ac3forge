@@ -59,14 +59,21 @@ class NetworkController : public QObject {
     // selection is gone.
     Q_PROPERTY(QVariantMap selectedSink READ selectedSink NOTIFY sinksChanged)
     Q_PROPERTY(int discoveredCount READ discoveredCount NOTIFY sinksChanged)
-    // Always 0 in this slice - see canCreateGroups.
     Q_PROPERTY(int groupCount READ groupCount NOTIFY sinksChanged)
-    // False until groups exist to create (a later A6 slice): NetworkSinks
-    // never starts a ServerHost::Group, so "+ New group..." has nothing to
-    // do yet - see network_sinks.hpp's own comment on what A6 still needs.
     Q_PROPERTY(bool canCreateGroups READ canCreateGroups CONSTANT)
     Q_PROPERTY(int pairingDigitCount READ pairingDigitCount CONSTANT)
     Q_PROPERTY(QString pairingError READ pairingError NOTIFY sinksChanged)
+
+    // Every group, in NetworkSinkList.qml's own row shape: id, name, icon,
+    // subtitle, badge, badgeText - shown above `sinks` in the same list.
+    Q_PROPERTY(QVariantList groups READ groups NOTIFY sinksChanged)
+    Q_PROPERTY(QString selectedGroupId READ selectedGroupId NOTIFY sinksChanged)
+    // The selected group's own editor rows (NetworkGroupEdit.qml): name,
+    // members (each with id/name/getsText/volume/muted/volumeSupported/
+    // muteSupported/connected), groupVolume, groupMuted,
+    // membersConnectedText, leadTimeText. Empty map while nothing is
+    // selected or the selection is gone.
+    Q_PROPERTY(QVariantMap selectedGroup READ selectedGroup NOTIFY sinksChanged)
 
 public:
     explicit NetworkController(QObject* parent = nullptr);
@@ -82,15 +89,29 @@ public:
     [[nodiscard]] QString selectedId() const { return selected_id_; }
     [[nodiscard]] QVariantMap selectedSink() const { return selected_sink_; }
     [[nodiscard]] int discoveredCount() const { return static_cast<int>(sinks_.size()); }
-    [[nodiscard]] int groupCount() const { return 0; }
-    [[nodiscard]] bool canCreateGroups() const { return false; }
+    [[nodiscard]] int groupCount() const { return static_cast<int>(groups_.size()); }
+    [[nodiscard]] bool canCreateGroups() const { return true; }
     [[nodiscard]] int pairingDigitCount() const { return 6; }
     [[nodiscard]] QString pairingError() const { return pairing_error_; }
+    [[nodiscard]] QVariantList groups() const { return groups_; }
+    [[nodiscard]] QString selectedGroupId() const { return selected_group_id_; }
+    [[nodiscard]] QVariantMap selectedGroup() const { return selected_group_; }
 
     Q_INVOKABLE void rescan();
     Q_INVOKABLE void selectSink(const QString& id);
     Q_INVOKABLE void submitPairingCode(const QString& id, const QString& code);
     Q_INVOKABLE void cancelPairing(const QString& id);
+
+    Q_INVOKABLE QString createGroup(const QString& name);
+    Q_INVOKABLE void renameGroup(const QString& groupId, const QString& name);
+    Q_INVOKABLE void deleteGroup(const QString& groupId);
+    Q_INVOKABLE void selectGroup(const QString& groupId);
+    Q_INVOKABLE void addGroupMember(const QString& groupId, const QString& sinkId);
+    Q_INVOKABLE void removeGroupMember(const QString& groupId, const QString& sinkId);
+    Q_INVOKABLE void setGroupVolume(const QString& groupId, int volume);
+    Q_INVOKABLE void setGroupMuted(const QString& groupId, bool muted);
+    Q_INVOKABLE void setMemberVolume(const QString& groupId, const QString& sinkId, int volume);
+    Q_INVOKABLE void setMemberMuted(const QString& groupId, const QString& sinkId, bool muted);
 
 signals:
     void sinksChanged();
@@ -112,6 +133,9 @@ private:
     QString selected_id_;
     QVariantMap selected_sink_;
     QString pairing_error_;
+    QVariantList groups_;
+    QString selected_group_id_;
+    QVariantMap selected_group_;
 };
 
 }  // namespace ac3::hearth::ui

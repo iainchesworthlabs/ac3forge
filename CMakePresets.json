@@ -10,13 +10,14 @@
     {
       "name": "core",
       "hidden": true,
-      "description": "Shared configuration for every platform/compiler preset. NOTE: VCPKG_CHAINLOAD_TOOLCHAIN_FILE is the single source of truth for the chainloaded compiler toolchain and is set per concrete preset; the vcpkg overlay triplets must NOT also set it.",
+      "description": "Shared configuration for every platform/compiler preset. NOTE: VCPKG_CHAINLOAD_TOOLCHAIN_FILE is the single source of truth for the chainloaded compiler toolchain and is set per concrete preset; the vcpkg overlay triplets must NOT also set it. VCPKG_MANIFEST_FEATURES defaults to Hearth's \"hearth\" feature (vcpkg.json) so AC3FORGE_BUILD_HEARTH's own ON default (root CMakeLists.txt) resolves everywhere without a hand-passed -D; a preset that cannot or should not build Hearth sets AC3FORGE_BUILD_HEARTH back to OFF itself - minimal-decoder and minimal-encoder also clear this string back to empty (turning AC3FORGE_BUILD_HEARTH off alone leaves vcpkg still installing cpp-httplib/mbedTLS/mdns/libFLAC/Opus for nothing, since vcpkg's own feature resolution runs independently of which CMake option ends up consuming the result), wasm-emscripten does not inherit core at all so the question does not arise, and config-windows-llvm-coverage already clears it for its own Crucible-only reason. config-linux-gcc-coverage instead overrides this string to add its own \"adm\" feature alongside \"hearth\".",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
         "AC3FORGE_BUILD_CLI": "ON",
         "AC3FORGE_BUILD_TESTS": "ON",
+        "VCPKG_MANIFEST_FEATURES": "hearth",
         "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/cmake/vcpkg/triplets",
         "VCPKG_OVERLAY_PORTS": "${sourceDir}/cmake/vcpkg/ports"
       }
@@ -176,6 +177,7 @@
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/toolchains/wasm.emscripten.toolchain.cmake",
       "cacheVariables": {
+        "AC3FORGE_BUILD_HEARTH": "OFF",
         "AC3FORGE_BUILD_CLI": "OFF",
         "AC3FORGE_BUILD_GUI": "OFF",
         "AC3FORGE_BUILD_TESTS": "OFF",
@@ -221,6 +223,8 @@
       "description": "minimum-footprint decoder profile's minimum-footprint decoder profile: ONE decode-only static library (ac3::forge_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_DECODER": "ON",
+        "AC3FORGE_BUILD_HEARTH": "OFF",
+        "VCPKG_MANIFEST_FEATURES": "",
         "AC3FORGE_BUILD_CLI": "OFF",
         "AC3FORGE_BUILD_GUI": "OFF",
         "AC3FORGE_BUILD_TESTS": "OFF",
@@ -278,10 +282,11 @@
       "name": "config-windows-llvm-coverage",
       "inherits": [ "release", "windows-llvm", "coverage", "core" ],
       "displayName": "Windows LLVM coverage (clang-cl, llvm-cov)",
-      "description": "The Windows counterpart of config-linux-gcc-coverage, for AC3Forge Crucible's Windows half (apps/crucible, docs/crucible/index.md) and the GUI as built here. clang-cl's -fprofile-instr-generate/-fcoverage-mapping rather than gcov, read with tools/checks/coverage_crucible.ps1, which is how Crucible gets line AND branch figures. Inherits the RELEASE base, not debug, on purpose: LLVM ships clang_rt.profile against the release CRT, and an instrumented /MDd binary runs to completion and then dies in the profile writer at exit (access violation, no profile written); cmake/Coverage.cmake's clang-cl arm turns optimisation off again (/Od /Ob0) so line and branch attribution stays exact. ADM stays off: vcpkg's adm feature is a Linux-leg concern and this preset exists for apps/crucible.",
+      "description": "The Windows counterpart of config-linux-gcc-coverage, for AC3Forge Crucible's Windows half (apps/crucible, docs/crucible/index.md) and the GUI as built here. clang-cl's -fprofile-instr-generate/-fcoverage-mapping rather than gcov, read with tools/checks/coverage_crucible.ps1, which is how Crucible gets line AND branch figures. Inherits the RELEASE base, not debug, on purpose: LLVM ships clang_rt.profile against the release CRT, and an instrumented /MDd binary runs to completion and then dies in the profile writer at exit (access violation, no profile written); cmake/Coverage.cmake's clang-cl arm turns optimisation off again (/Od /Ob0) so line and branch attribution stays exact. ADM and Hearth both stay off: vcpkg's adm and hearth features are Linux-leg concerns (Hearth's own floor lives on config-linux-gcc-coverage, see tools/checks/coverage_report.sh) and this preset exists for apps/crucible.",
       "cacheVariables": {
         "AC3FORGE_BUILD_CRUCIBLE": "ON",
         "AC3FORGE_BUILD_ADM": "OFF",
+        "AC3FORGE_BUILD_HEARTH": "OFF",
         "VCPKG_MANIFEST_FEATURES": ""
       }
     },
@@ -363,7 +368,12 @@
     {
       "name": "config-linux-gcc-coverage",
       "inherits": [ "debug", "linux-gcc", "coverage", "core" ],
-      "displayName": "Linux GCC Coverage"
+      "displayName": "Linux GCC Coverage",
+      "description": "AC3FORGE_BUILD_HEARTH is ON here (like everywhere else, via the root CMakeLists.txt default) with VCPKG_MANIFEST_FEATURES overridden to carry both opt-in features this leg wants (\"adm\" from the coverage fragment, plus \"hearth\") rather than just the one - src/sendspin and apps/hearth/engine link ac3::coverage the same way apps/cli does, so ac3::sendspin and apps/hearth get their own gated rows in tools/checks/coverage_report.sh alongside ac3adm/admbridge.",
+      "cacheVariables": {
+        "AC3FORGE_BUILD_HEARTH": "ON",
+        "VCPKG_MANIFEST_FEATURES": "adm;hearth"
+      }
     },
     {
       "name": "minimal-encoder",
@@ -371,6 +381,8 @@
       "description": "minimum-footprint decoder profile's minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (ac3::forge_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/forge/minimal.cmake and docs/building.md.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_ENCODER": "ON",
+        "AC3FORGE_BUILD_HEARTH": "OFF",
+        "VCPKG_MANIFEST_FEATURES": "",
         "AC3FORGE_BUILD_CLI": "OFF",
         "AC3FORGE_BUILD_GUI": "OFF",
         "AC3FORGE_BUILD_TESTS": "OFF",
