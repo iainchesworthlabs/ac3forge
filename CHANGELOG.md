@@ -970,6 +970,11 @@ The sections below contain the complete change list and fixes.
   `with_realization()`, structural mutators for a settings page that has a slot index or a
   Heights choice rather than text to re-parse. The Speakers page's layout picker, "As text"
   field, Heights control and per-speaker Size toggle are wired to it.
+- **The Speakers page's setup survives a restart.** Trim, delay, crossover, routing and the
+  layout itself are now kept through `SettingsStore` and reapplied at the next start, the same
+  way playback settings and the resumed queue already are - previously every restart reset the
+  whole page to stereo defaults. One setup today, not one per output device, despite the page's
+  own "a setup for each output" wording.
 
 ### Changed
 

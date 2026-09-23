@@ -803,9 +803,16 @@ void HearthController::start() {
     if (engine_) {
         return;
     }
-    // "2.0" until the Speakers page makes the layout a setting; a literal
-    // this application writes always parses.
-    const std::optional<ac3::render::OutputLayout> layout = ac3::render::OutputLayout::parse("2.0");
+    // The layout save_on_quit() last kept (issue #885), or "2.0" the first
+    // time Hearth runs or when what was saved no longer parses - a literal
+    // this application writes always parses, so the fallback only matters
+    // for a hand-edited or damaged settings file. OutputLayout::parse()
+    // already returns std::nullopt for an empty string, which is what an
+    // unset saved.layout reads as, so nothing extra is needed for "nothing
+    // saved yet" versus "what was saved is damaged" - both fall back alike.
+    const ac3::hearth::SavedSpeakerSetup saved_speakers = ac3::hearth::load_speaker_setup(*store_);
+    const ac3::render::OutputLayout layout =
+        ac3::render::OutputLayout::parse(saved_speakers.layout).value_or(*ac3::render::OutputLayout::parse("2.0"));
     // EngineOutputs, not a bare PcmSink: given every render endpoint
     // (device_endpoints(), output_selector.hpp), the engine decides each
     // item's output itself and set_output_preferences() - the output
@@ -822,7 +829,7 @@ void HearthController::start() {
                                        .endpoints = ac3::hearth::device_endpoints()};
     const ac3::hearth::EngineSettings loaded = current_settings(*store_);
     engine_ = std::make_unique<ac3::hearth::Engine>(
-        std::move(outputs), ac3::hearth::ui::make_file_item_loader(), *layout,
+        std::move(outputs), ac3::hearth::ui::make_file_item_loader(), layout,
         ac3::hearth::DecoderSettings{}, ac3::hearth::EngineTiming{}, &log_);
     // Each reads with its own loader instance (make_file_item_loader()
     // builds a fresh std::function every call, same as the engine's own
@@ -839,6 +846,24 @@ void HearthController::start() {
         if (!saved.items.empty()) {
             engine_->restore(saved.items, saved.current, saved.position);
         }
+    }
+    // The rest of the saved speaker setup: each is a posted command, exactly
+    // like the Speakers page's own setters, and refused (silently, on the
+    // engine thread) rather than applied for a slot the layout just opened
+    // with does not have, or a routing whose own output count does not
+    // match the device that actually opens - the same "refused, so nothing
+    // changes" contract set_trim_db() and friends already document, which
+    // is also why this needs no separate validation against `layout` here.
+    for (std::size_t slot = 0; slot < saved_speakers.trim_db.size(); ++slot) {
+        engine_->set_trim_db(slot, saved_speakers.trim_db[slot]);
+    }
+    for (std::size_t slot = 0; slot < saved_speakers.delay_ms.size(); ++slot) {
+        engine_->set_delay_ms(slot, saved_speakers.delay_ms[slot]);
+    }
+    engine_->set_crossover_hz(saved_speakers.crossover_hz);
+    if (const auto routing =
+            ac3::render::Routing::parse(saved_speakers.routing, saved_speakers.routing_outputs)) {
+        engine_->set_routing(*routing);
     }
     poll_timer_.start();
     poll();
@@ -1658,10 +1683,15 @@ void HearthController::save_on_quit() {
     if (!engine_) {
         return;
     }
+    const ac3::hearth::EngineStatus status = engine_->status();
     const ac3::hearth::EngineSettings settings = current_settings(*store_);
     if (settings.playback.resume_queue) {
-        ac3::hearth::save_queue(ac3::hearth::saved_queue(engine_->status(), engine_->position()), *store_);
+        ac3::hearth::save_queue(ac3::hearth::saved_queue(status, engine_->position()), *store_);
     }
+    // Unconditional, unlike the queue above: there is no setting to gate it
+    // on, the same way trim/delay/crossover/routing have never needed one to
+    // take effect for the running engine's whole life (issue #885).
+    ac3::hearth::save_speaker_setup(ac3::hearth::saved_speaker_setup(status), *store_);
     sync_store(*store_, log_);
 }
 

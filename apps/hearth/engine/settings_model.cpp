@@ -3,6 +3,7 @@
 #include <fmt/format.h>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -13,6 +14,9 @@
 #include <system_error>
 #include <utility>
 #include <vector>
+
+#include "ac3/render/layout.hpp"
+#include "ac3/render/routing.hpp"
 
 // See settings_model.hpp.
 
@@ -36,12 +40,27 @@ constexpr std::string_view kQueueSize = "queue/size";
 constexpr std::string_view kQueueCurrent = "queue/current";
 constexpr std::string_view kQueuePosition = "queue/positionMs";
 
+constexpr std::string_view kSpeakers = "speakers";
+constexpr std::string_view kSpeakersLayout = "speakers/layout";
+constexpr std::string_view kSpeakersSlots = "speakers/slots";
+constexpr std::string_view kSpeakersCrossoverHz = "speakers/crossoverHz";
+constexpr std::string_view kSpeakersRouting = "speakers/routing";
+constexpr std::string_view kSpeakersRoutingOutputs = "speakers/routingOutputs";
+
 [[nodiscard]] std::string_view text_of(bool on) {
     return on ? "true" : "false";
 }
 
 [[nodiscard]] std::string_view text_of(FailurePolicy policy) {
     return policy == FailurePolicy::kStop ? "stop" : "skip";
+}
+
+// {fmt}'s default float formatting is locale-independent (CONTRIBUTING.md:
+// "{fmt} only formats out") and round-trips exactly through double_of()
+// below, the same pairing item_key()'s neighbours already trust for every
+// other typed value here.
+[[nodiscard]] std::string text_of(double value) {
+    return fmt::format("{}", value);
 }
 
 [[nodiscard]] std::optional<bool> bool_of(const std::optional<std::string>& text) {
@@ -78,9 +97,38 @@ constexpr std::string_view kQueuePosition = "queue/positionMs";
     return value;
 }
 
-// QSettings' array layout: counted from 1.
+// A signed decimal number, read the same locale-independent way as
+// number_of() above - not strtod, whose result depends on the process
+// locale, which Qt sets from the user's (ac3::sendspin::json's own header
+// comment). std::from_chars for floating point is unavailable only on
+// Android and at the macOS wheel's deployment target (CONTRIBUTING.md) -
+// neither is a target apps/hearth's CMakeLists.txt builds for (WIN32 OR
+// APPLE OR LINUX, desktop only), the same platform set apps/cli/support.cpp
+// already relies on this for.
+[[nodiscard]] std::optional<double> double_of(const std::optional<std::string>& text) {
+    if (!text || text->empty()) {
+        return std::nullopt;
+    }
+    double value = 0.0;
+    const char* const end = text->data() + text->size();
+    const auto [at, error] = std::from_chars(text->data(), end, value);
+    if (error != std::errc{} || at != end) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+// QSettings' own array layout: counted from 1.
 [[nodiscard]] std::string item_key(std::size_t index, std::string_view field) {
     return fmt::format("{}/{}/{}", kQueue, index + 1, field);
+}
+
+// The same array layout for the speaker setup's own two flat lists -
+// "speakers/trimDb/1", not the queue's "queue/1/path", since a slot has no
+// second field to group it with the way a queue item's path and title
+// share one index for.
+[[nodiscard]] std::string speaker_key(std::string_view field, std::size_t index) {
+    return fmt::format("{}/{}/{}", kSpeakers, field, index + 1);
 }
 
 // What the queue shows for an item until metadata has been read: the file's
@@ -262,6 +310,60 @@ SavedQueue load_queue(const SettingsStore& store) {
     const auto most = static_cast<std::uint64_t>(std::numeric_limits<std::chrono::milliseconds::rep>::max());
     if (out.current != Queue::kNone && ms && *ms <= most) {
         out.position = std::chrono::milliseconds{static_cast<std::chrono::milliseconds::rep>(*ms)};
+    }
+    return out;
+}
+
+// --- the saved speaker setup ------------------------------------------
+
+SavedSpeakerSetup saved_speaker_setup(const EngineStatus& status) {
+    SavedSpeakerSetup out;
+    out.layout = std::string(status.layout.text());
+    out.trim_db = status.trim_db;
+    out.delay_ms = status.delay_ms;
+    out.crossover_hz = status.crossover_hz;
+    std::array<char, ac3::render::Routing::kTextBytes> routing_text{};
+    const std::size_t written = status.routing.format(routing_text);
+    out.routing.assign(routing_text.data(), written);
+    out.routing_outputs = status.routing.outputs();
+    return out;
+}
+
+void save_speaker_setup(const SavedSpeakerSetup& saved, SettingsStore& store) {
+    store.remove_group(kSpeakers);
+    store.set_value(kSpeakersLayout, saved.layout);
+    // trim_db and delay_ms are always the same length (SavedSpeakerSetup's
+    // own header comment) - one count covers both.
+    store.set_value(kSpeakersSlots, std::to_string(saved.trim_db.size()));
+    for (std::size_t i = 0; i < saved.trim_db.size(); ++i) {
+        store.set_value(speaker_key("trimDb", i), text_of(saved.trim_db[i]));
+        store.set_value(speaker_key("delayMs", i), text_of(saved.delay_ms[i]));
+    }
+    store.set_value(kSpeakersCrossoverHz, text_of(saved.crossover_hz));
+    if (!saved.routing.empty()) {
+        store.set_value(kSpeakersRouting, saved.routing);
+        store.set_value(kSpeakersRoutingOutputs, std::to_string(saved.routing_outputs));
+    }
+}
+
+SavedSpeakerSetup load_speaker_setup(const SettingsStore& store) {
+    SavedSpeakerSetup out;
+    out.layout = store.value(kSpeakersLayout).value_or(std::string{});
+    if (const auto slots = number_of(store.value(kSpeakersSlots))) {
+        const std::uint64_t count =
+            std::min(*slots, static_cast<std::uint64_t>(ac3::render::OutputLayout::kMaxSlots));
+        out.trim_db.reserve(count);
+        out.delay_ms.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            out.trim_db.push_back(double_of(store.value(speaker_key("trimDb", i))).value_or(0.0));
+            out.delay_ms.push_back(double_of(store.value(speaker_key("delayMs", i))).value_or(0.0));
+        }
+    }
+    out.crossover_hz = double_of(store.value(kSpeakersCrossoverHz)).value_or(out.crossover_hz);
+    out.routing = store.value(kSpeakersRouting).value_or(std::string{});
+    if (!out.routing.empty()) {
+        out.routing_outputs =
+            static_cast<std::size_t>(number_of(store.value(kSpeakersRoutingOutputs)).value_or(0));
     }
     return out;
 }
