@@ -153,6 +153,7 @@ void answer(const improv::Rpc& rpc) {
             const char* family = chip.model == CHIP_ESP32S3   ? "ESP32-S3"
                                  : chip.model == CHIP_ESP32C6 ? "ESP32-C6"
                                  : chip.model == CHIP_ESP32C3 ? "ESP32-C3"
+                                 : chip.model == CHIP_ESP32P4 ? "ESP32-P4"
                                                               : "ESP32";
             const std::array<std::string_view, 4> strings{
                 "AC3Forge Hearth sink",
