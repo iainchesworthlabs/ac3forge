@@ -16,6 +16,7 @@
 #include "ac3/encoder/plan.hpp"
 #include "ac3/meta/mixing.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac3/oba/joc.hpp"
 #include "ac3/render/layout.hpp"
 #include "decoder_settings.hpp"
 #include "stream_decoder.hpp"
@@ -226,6 +227,34 @@ TEST_CASE("stream decoder: a reset starts the next stream clean", "[hearth][stre
     // finish() leaves the decoder ready for another stream, of another
     // codec and another layout.
     CHECK(play(decoder, second).frames == 4 * ac3::kSamplesPerFrame);
+}
+
+TEST_CASE("stream decoder: the JOC domain setting reaches the renderer's LFE lag, "
+          "construction and reset alike",
+          "[hearth][stream-decoder]") {
+    const auto layout = ac3::render::OutputLayout::parse("5.1.2");
+    REQUIRE(layout.has_value());
+    using ac3::oba::joc::Domain;
+    using ac3::oba::joc::reconstruction_delay;
+
+    // The default is kQmf, which is also a freshly built LayoutRenderer's own
+    // default lag (render.hpp) - so a decoder that never touches the setting
+    // agrees with one that asks for kQmf explicitly, checked below.
+    StreamDecoder default_decoder{*layout, 48000};
+    CHECK(default_decoder.object_lag() == static_cast<std::size_t>(reconstruction_delay(Domain::kQmf)));
+
+    ac3::hearth::DecoderSettings settings;
+    settings.joc_domain = Domain::kMdctBand;
+    StreamDecoder decoder{*layout, 48000, settings};
+    CHECK(decoder.object_lag() == static_cast<std::size_t>(reconstruction_delay(Domain::kMdctBand)));
+
+    // reset() is what a seek does (Session::start_at()) and rebuilds the
+    // renderer from scratch, which on its own would silently swap the LFE's
+    // delay back to kQmf's lag under an unchanged decoder configuration - the
+    // setting has to be reapplied for a seek to keep the domain it decodes
+    // objects in and the domain the renderer times the LFE against agreeing.
+    decoder.reset();
+    CHECK(decoder.object_lag() == static_cast<std::size_t>(reconstruction_delay(Domain::kMdctBand)));
 }
 
 TEST_CASE("stream decoder: a reset (a seek) keeps the crossover corner set before it",

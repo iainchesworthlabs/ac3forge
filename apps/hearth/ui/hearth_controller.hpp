@@ -81,10 +81,8 @@ class HearthController : public QObject {
     // --- decoder settings (the Decoder page, AC-3 and E-AC-3) ------------
     // The whole of DecoderSettings, as one map QML reads field by field and
     // writes back through setDecoderSettings() - see that method's own
-    // comment for the field names. Not every control the design shows has a
-    // field here yet: the JOC domain/fast-inverse-transform switches are
-    // library-level settings this app does not carry a knob for yet, so the
-    // page shows them inactive.
+    // comment for the field names. Every control the design shows now has a
+    // field here.
     Q_PROPERTY(QVariantMap decoderSettings READ decoderSettings NOTIFY decoderSettingsChanged)
 
     // --- speaker setup (the Speakers page) -------------------------------
