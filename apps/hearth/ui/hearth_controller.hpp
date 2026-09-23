@@ -5,6 +5,7 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantList>
 #include <QtQmlIntegration>
 
@@ -14,6 +15,8 @@
 
 namespace ac3::hearth {
 class Engine;
+class MediaInspector;
+struct MediaInfo;
 class SettingsStore;
 class PairingStore;
 }
@@ -77,6 +80,26 @@ class HearthController : public QObject {
     // current to play.
     Q_PROPERTY(qlonglong positionMs READ positionMs NOTIFY positionChanged)
     Q_PROPERTY(qlonglong durationMs READ durationMs NOTIFY positionChanged)
+
+    // --- media information (the Media page; also the Decoder page's "This
+    // stream"/"Programme" cards and the Play page's "Now playing" line) ----
+    // What the playing item's own file says about itself (media_info.hpp),
+    // read once off the GUI thread and kept for as long as it stays the item
+    // asked about - never from status(), which only ever carries what a
+    // probe read at queue-add time. Both maps follow media_info_json()'s own
+    // document shape (see that function's comment), turned into nested
+    // QVariantMaps/QVariantLists field by field rather than left as text, so
+    // QML can bind to a field directly; `json` on each carries the document
+    // whole, for Copy/Export JSON.
+    //
+    // currentMedia always follows the item playing now, empty when nothing
+    // is. inspectedMedia follows whichever queue item inspectItem() last
+    // asked for - the Media page's own "Showing" picker - and defaults to
+    // mirroring currentMedia until a different item is asked for; an AC-4
+    // item, never playing in this build, is reachable only through it.
+    Q_PROPERTY(QVariantMap currentMedia READ currentMedia NOTIFY currentMediaChanged)
+    Q_PROPERTY(QVariantMap inspectedMedia READ inspectedMedia NOTIFY inspectedMediaChanged)
+    Q_PROPERTY(int inspectedIndex READ inspectedIndex NOTIFY inspectedMediaChanged)
 
     // --- decoder settings (the Decoder page, AC-3 and E-AC-3) ------------
     // The whole of DecoderSettings, as one map QML reads field by field and
@@ -220,6 +243,18 @@ public:
     [[nodiscard]] qlonglong positionMs() const { return position_ms_; }
     [[nodiscard]] qlonglong durationMs() const { return duration_ms_; }
 
+    [[nodiscard]] QVariantMap currentMedia() const { return current_media_; }
+    [[nodiscard]] QVariantMap inspectedMedia() const { return inspected_media_; }
+    [[nodiscard]] int inspectedIndex() const { return inspected_index_; }
+    // Points the Media page at queue item `index`; -1 (the default) follows
+    // whatever is playing now, the same item currentMedia describes. Out of
+    // range for the current queue is ignored.
+    Q_INVOKABLE void inspectItem(int index);
+    // Writes inspectedMedia's own JSON export to `fileUrl` (the Media page's
+    // "Export JSON..." dialog, a local file the user picked). False when
+    // there is nothing to export yet or the file could not be written.
+    Q_INVOKABLE bool exportInspectedMedia(const QUrl& fileUrl);
+
     Q_INVOKABLE void play();
     Q_INVOKABLE void pause();
     Q_INVOKABLE void stop();
@@ -340,6 +375,8 @@ public:
 signals:
     void queueChanged();
     void stateChanged();
+    void currentMediaChanged();
+    void inspectedMediaChanged();
     void positionChanged();
     void decoderSettingsChanged();
     void speakerSetupChanged();
@@ -389,6 +426,19 @@ private:
     QString output_reason_;
     QString note_;
     QString error_;
+
+    // Each on its own thread (media_inspector.hpp), so the Media page's own
+    // pick never has to wait for whatever currentMedia is mid-reading, and
+    // vice versa.
+    std::unique_ptr<ac3::hearth::MediaInspector> now_playing_inspector_;
+    std::unique_ptr<ac3::hearth::MediaInspector> inspected_item_inspector_;
+    QVariantMap current_media_;
+    QVariantMap inspected_media_;
+    QString now_playing_path_;
+    QString inspected_path_;
+    // -1 until inspectItem() is called with a real index: "follow
+    // currentIndex", which also covers the queue being empty.
+    int inspected_index_ = -1;
 
     qlonglong position_ms_ = 0;
     qlonglong duration_ms_ = 0;
