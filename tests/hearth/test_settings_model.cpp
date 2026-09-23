@@ -6,6 +6,8 @@
 #include <utility>
 #include <vector>
 
+#include "ac3/render/layout.hpp"
+#include "ac3/render/routing.hpp"
 #include "engine_thread.hpp"
 #include "queue.hpp"
 #include "settings_model.hpp"
@@ -13,8 +15,9 @@
 
 // The engine's settings model (apps/hearth/engine/settings_model.hpp): what
 // each Playback and Network setting reads as, with its default for anything
-// missing or damaged; the network name as the network carries it; and the
-// queue kept for the next start, as QSettings' array layout holds it.
+// missing or damaged; the network name as the network carries it; the queue
+// kept for the next start; and the speaker setup kept for the next start
+// (issue #885) - all as QSettings' array layout holds them.
 
 using namespace std::chrono_literals;
 
@@ -26,6 +29,7 @@ using ac3::hearth::PlayPosition;
 using ac3::hearth::Queue;
 using ac3::hearth::QueueItem;
 using ac3::hearth::SavedQueue;
+using ac3::hearth::SavedSpeakerSetup;
 
 namespace {
 
@@ -245,4 +249,112 @@ TEST_CASE("settings: a damaged saved queue reads as far as it can", "[hearth][se
                                     {"queue/1/path", "/a"}}};
     CHECK(ac3::hearth::load_queue(huge).items.size() == 1);
     CHECK(ac3::hearth::load_queue(MemorySettingsStore{}).items.empty());
+}
+
+TEST_CASE("settings: the speaker setup kept for the next start round-trips through the store",
+          "[hearth][settings-model]") {
+    EngineStatus status;
+    status.layout = *ac3::render::OutputLayout::parse("5.1");
+    status.trim_db = {1.5, -2.0, 0.0, 3.25, -6.0, 0.0};
+    status.delay_ms = {0.0, 5.0, 10.0, 0.0, 2.5, 0.0};
+    status.crossover_hz = 100.0;
+    status.routing = *ac3::render::Routing::identity(6, 8);
+
+    const SavedSpeakerSetup saved = ac3::hearth::saved_speaker_setup(status);
+    CHECK(saved.layout == "5.1");
+    CHECK(saved.trim_db == status.trim_db);
+    CHECK(saved.delay_ms == status.delay_ms);
+    CHECK(saved.crossover_hz == 100.0);
+    CHECK(saved.routing_outputs == 8);  // identity(6, 8): 6 channels onto 8 device outputs
+
+    MemorySettingsStore store;
+    ac3::hearth::save_speaker_setup(saved, store);
+    CHECK(store.value("speakers/layout") == std::optional<std::string>{"5.1"});
+    CHECK(store.value("speakers/slots") == std::optional<std::string>{"6"});
+    CHECK(store.value("speakers/routing").has_value());
+    CHECK(store.value("speakers/routingOutputs") == std::optional<std::string>{"8"});
+
+    // What is saved reads back exactly, doubles included - text_of()/
+    // double_of()'s own round trip, not any particular on-disk spelling.
+    const SavedSpeakerSetup read = ac3::hearth::load_speaker_setup(store);
+    CHECK(read.layout == saved.layout);
+    CHECK(read.trim_db == saved.trim_db);
+    CHECK(read.delay_ms == saved.delay_ms);
+    CHECK(read.crossover_hz == saved.crossover_hz);
+    CHECK(read.routing == saved.routing);
+    CHECK(read.routing_outputs == saved.routing_outputs);
+
+    // Nothing open to capture a routing patch from: format() gives "", and
+    // that empty text is not saved as if it were a real (if degenerate)
+    // patch - load_speaker_setup() then has nothing to try to apply.
+    EngineStatus closed;
+    closed.layout = *ac3::render::OutputLayout::parse("2.0");
+    const SavedSpeakerSetup no_routing = ac3::hearth::saved_speaker_setup(closed);
+    CHECK(no_routing.routing.empty());
+    MemorySettingsStore store2;
+    ac3::hearth::save_speaker_setup(no_routing, store2);
+    CHECK_FALSE(store2.value("speakers/routing").has_value());
+    CHECK_FALSE(store2.value("speakers/routingOutputs").has_value());
+
+    // A shorter setup replaces the group rather than overlaying it.
+    ac3::hearth::save_speaker_setup(
+        SavedSpeakerSetup{.layout = "2.0", .trim_db = {0.0, 0.0}, .delay_ms = {0.0, 0.0}}, store);
+    CHECK_FALSE(store.value("speakers/trimDb/3").has_value());
+    CHECK_FALSE(store.value("speakers/routing").has_value());
+    const SavedSpeakerSetup shorter = ac3::hearth::load_speaker_setup(store);
+    CHECK(shorter.trim_db.size() == 2);
+}
+
+TEST_CASE("settings: a damaged saved speaker setup reads as far as it can", "[hearth][settings-model]") {
+    const SavedSpeakerSetup defaults = ac3::hearth::load_speaker_setup(MemorySettingsStore{});
+    CHECK(defaults.layout.empty());
+    CHECK(defaults.trim_db.empty());
+    CHECK(defaults.delay_ms.empty());
+    CHECK(defaults.crossover_hz == ac3::render::LayoutRenderer::kDefaultCrossoverHz);
+    CHECK(defaults.routing.empty());
+    CHECK(defaults.routing_outputs == 0);
+
+    // A missing entry within the claimed slot count reads as 0 (no
+    // adjustment) rather than stopping the whole read, the same as a queue
+    // item with no title falling back rather than failing the whole queue;
+    // a crossoverHz or routingOutputs that does not read keeps the struct's
+    // own default instead.
+    const MemorySettingsStore gaps{{{"speakers/layout", "5.1"},
+                                    {"speakers/slots", "3"},
+                                    {"speakers/trimDb/1", "2.5"},
+                                    {"speakers/trimDb/3", "-1.5"},
+                                    {"speakers/delayMs/2", "4"},
+                                    {"speakers/crossoverHz", "not a number"},
+                                    {"speakers/routing", "0,1"},
+                                    {"speakers/routingOutputs", "nope"}}};
+    const SavedSpeakerSetup read = ac3::hearth::load_speaker_setup(gaps);
+    CHECK(read.layout == "5.1");
+    REQUIRE(read.trim_db.size() == 3);
+    CHECK(read.trim_db[0] == 2.5);
+    CHECK(read.trim_db[1] == 0.0);
+    CHECK(read.trim_db[2] == -1.5);
+    REQUIRE(read.delay_ms.size() == 3);
+    CHECK(read.delay_ms[0] == 0.0);
+    CHECK(read.delay_ms[1] == 4.0);
+    CHECK(read.delay_ms[2] == 0.0);
+    CHECK(read.crossover_hz == ac3::render::LayoutRenderer::kDefaultCrossoverHz);
+    CHECK(read.routing == "0,1");
+    CHECK(read.routing_outputs == 0);
+
+    // A slot count far past anything written stops at OutputLayout::kMaxSlots
+    // rather than walking for ever - load_queue()'s own kMaxSavedItems bound,
+    // for the same reason.
+    const MemorySettingsStore huge{{{"speakers/slots", "18446744073709551615"},
+                                    {"speakers/trimDb/1", "1"},
+                                    {"speakers/delayMs/1", "2"}}};
+    const SavedSpeakerSetup capped = ac3::hearth::load_speaker_setup(huge);
+    CHECK(capped.trim_db.size() == ac3::render::OutputLayout::kMaxSlots);
+    CHECK(capped.delay_ms.size() == ac3::render::OutputLayout::kMaxSlots);
+
+    // Numbers that do not read at all.
+    for (const char* slots : {"", "-1", "two", "3 ", "0x3"}) {
+        INFO(slots);
+        const MemorySettingsStore bad{{{"speakers/slots", slots}, {"speakers/trimDb/1", "1"}}};
+        CHECK(ac3::hearth::load_speaker_setup(bad).trim_db.empty());
+    }
 }

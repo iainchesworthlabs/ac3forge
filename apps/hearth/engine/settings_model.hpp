@@ -31,11 +31,14 @@
 //   network/name           how sinks and players show this computer
 //   network/discover       true or false
 //   queue/...              the queue kept for the next start
+//   speakers/...           the speaker setup kept for the next start
 //   pairing/...            the pairing records (pairing_store.hpp)
 // Lists use QSettings' own array layout ("queue/size", then "queue/1/path"
 // and so on, counted from 1), so the window can read them with its array
 // functions as well. The diagnostics file withholds everything under
-// "queue/" and "pairing/" (diagnostics_report.hpp).
+// "queue/" and "pairing/" (diagnostics_report.hpp) - "speakers/" holds
+// nothing a person typed (numbers and a layout/routing description), so it
+// is not withheld.
 
 namespace ac3::hearth {
 
@@ -155,5 +158,45 @@ void save_queue(const SavedQueue& saved, SettingsStore& store);
 // out, and the current item's place follows; a count, a current item or a
 // position that does not read is none.
 [[nodiscard]] SavedQueue load_queue(const SettingsStore& store);
+
+// The speaker setup kept for the next start (the Speakers page: layout,
+// trim, delay, crossover and routing). One setup today, not one per output
+// device, despite FirstRunDialog.qml's own promise of "a setup for each
+// output": which device is about to open is not known until the engine (and
+// its PcmSink) already has, so keying this earlier would mean probing
+// outputs before there is an engine to open one for - a cost issue #885
+// this exists for does not ask for. HearthController::start()'s own comment
+// says the same.
+struct SavedSpeakerSetup {
+    // OutputLayout::text(): a name ("7.1.4") or the list form, with any
+    // ':small'/realization suffix already folded in - OutputLayout::parse()
+    // restores both from this one string (layout.hpp's own header comment),
+    // so nothing here needs a separate key for heights or per-speaker size.
+    // Empty when nothing has been saved.
+    std::string layout{};
+    // One entry per layout slot; always the same length as each other, and
+    // that length is how many slots were saved.
+    std::vector<double> trim_db{};
+    std::vector<double> delay_ms{};
+    double crossover_hz = ac3::render::LayoutRenderer::kDefaultCrossoverHz;
+    // Routing::format()'s text form, and the device output count it was
+    // captured against - Routing::parse() needs both to rebuild the same
+    // patch. Empty when nothing has been saved, or when nothing was open to
+    // capture a patch from.
+    std::string routing{};
+    std::size_t routing_outputs = 0;
+};
+
+// The speaker setup in `status`, ready to save.
+[[nodiscard]] SavedSpeakerSetup saved_speaker_setup(const EngineStatus& status);
+
+// Replaces what the store holds under "speakers" with `saved`.
+void save_speaker_setup(const SavedSpeakerSetup& saved, SettingsStore& store);
+
+// The speaker setup in `store`, as far as it reads: layout is empty and
+// every other field keeps SavedSpeakerSetup{}'s own default for whatever
+// individually does not read - the same "as far as it can" reading
+// load_queue() gives a damaged queue.
+[[nodiscard]] SavedSpeakerSetup load_speaker_setup(const SettingsStore& store);
 
 }  // namespace ac3::hearth

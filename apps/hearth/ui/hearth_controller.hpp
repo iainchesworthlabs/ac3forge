@@ -37,9 +37,14 @@ class PairingStore;
 // output picker's "Play here" can name an endpoint - no passthrough sink is
 // given yet, so every item still decodes to PCM, on the platform's default
 // device until a picker row is chosen. The layout is no longer fixed either:
-// start() opens at "2.0" and the Speakers page's setLayoutText()/
-// setHeights()/setSpeakerSmall() can change it from there for the engine's
-// whole life (Player::set_layout()).
+// start() opens at whatever settings_model.hpp's SavedSpeakerSetup last
+// kept ("2.0" the first time, or when that no longer parses), and the
+// Speakers page's setLayoutText()/setHeights()/setSpeakerSmall() can change
+// it from there for the engine's whole life (Player::set_layout()) -
+// save_on_quit() keeps whatever it last settled on, with trim/delay/
+// crossover/routing, for the next start() to reopen at (issue #885). One
+// setup today, not one per output device - SavedSpeakerSetup's own comment
+// says why.
 
 namespace ac3::hearth::ui {
 
@@ -489,12 +494,13 @@ signals:
 
 private:
     void poll();
-    // Saves the settings and, while resumeQueue is on, the queue and its
-    // play position - connected to QCoreApplication::aboutToQuit, since a
-    // play position changes on every pump and has nowhere sensible to save
-    // from on every one of them. A hard kill loses whatever this would have
-    // written, the same trade every setting here already makes by calling
-    // sync() only on a change rather than continuously.
+    // Saves the settings; while resumeQueue is on, the queue and its play
+    // position; and the speaker setup (trim/delay/crossover/routing/layout)
+    // unconditionally - connected to QCoreApplication::aboutToQuit, since a
+    // play position (and a trim or delay slider mid-drag) changes too often
+    // to save from on every one of them. A hard kill loses whatever this
+    // would have written, the same trade every setting here already makes by
+    // calling sync() only on a change rather than continuously.
     void save_on_quit();
 
     std::unique_ptr<ac3::hearth::Engine> engine_;
