@@ -49,7 +49,22 @@ NetworkSinks::NetworkSinks(ss::noise::KeyPair identity, std::string name, Pairin
     browser_ = ss::discovery::mdns::browse(std::string(ss::discovery::kPlayerService), *this);
 }
 
-NetworkSinks::~NetworkSinks() = default;
+NetworkSinks::~NetworkSinks() {
+    // browser_ and host_ each dispatch events (on_found()/on_lost()/
+    // on_client()/...) back into this object from their own background
+    // thread until their destructor actually stops that thread (Browser's
+    // joins its mdns thread; ServerHost's joins its worker). A defaulted
+    // destructor destroys members in reverse declaration order, which would
+    // tear down sinks_/instance_by_url_/instance_by_client_id_ first, while
+    // either thread can still be running - confirmed by a real crash: the
+    // mdns browse thread received a genuine packet mid-teardown and faulted
+    // inside sinks_'s std::map internals while the main thread was blocked
+    // in browser_'s own destructor, joining that same thread. Stopping both
+    // explicitly here, before any other member's destructor runs, closes
+    // that window regardless of member declaration order.
+    browser_.reset();
+    host_.reset();
+}
 
 void NetworkSinks::rescan() {
     if (browser_) {
@@ -232,6 +247,7 @@ void NetworkSinks::on_lost(const std::string& instance) {
     // is still answering.
     auto it = sinks_.find(instance);
     if (it != sinks_.end() && !it->second.client.has_value()) {
+        instance_by_url_.erase(it->second.service.url().value_or(std::string()));
         sinks_.erase(it);
         publish_locked();
     }
@@ -272,7 +288,11 @@ void NetworkSinks::on_client_gone(const std::string& client_id) {
     if (id_it == instance_by_client_id_.end()) {
         return;
     }
-    sinks_.erase(id_it->second);
+    auto sink_it = sinks_.find(id_it->second);
+    if (sink_it != sinks_.end()) {
+        instance_by_url_.erase(sink_it->second.service.url().value_or(std::string()));
+        sinks_.erase(sink_it);
+    }
     instance_by_client_id_.erase(id_it);
     publish_locked();
 }

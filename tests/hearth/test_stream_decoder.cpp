@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/decoder/output.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
@@ -599,6 +600,50 @@ TEST_CASE("stream decoder: fast inverse transform reaches the decoder, closely m
     REQUIRE(squared_diff > 0.0);
     const double snr_db = 10.0 * std::log10(squared_signal / squared_diff);
     CHECK(snr_db > 100.0);
+}
+
+TEST_CASE("stream decoder: RF mode's ceiling holds a fold's peak under it, where the same "
+          "audio decoded without it does not",
+          "[hearth][stream-decoder]") {
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+    // Three full-bandwidth channels folded to Lo/Ro comfortably clear a tight
+    // ceiling on their own, so the limiter has real work to do - the ceiling
+    // holding is not just silence trivially satisfying it.
+    const auto units = eac3_frames(ac3::Acmod::k3_2, /*lfe=*/true, 8);
+
+    const auto peak = [&](const ac3::hearth::DecoderSettings& settings) {
+        StreamDecoder decoder{*layout, 48000, settings};
+        float found = 0.0F;
+        const auto deliver = [&found](std::span<const std::span<const float>> slots,
+                                      std::size_t frames) {
+            for (const auto slot : slots) {
+                for (std::size_t n = 0; n < frames; ++n) {
+                    found = std::max(found, std::abs(slot[n]));
+                }
+            }
+        };
+        for (const auto& unit : units) {
+            REQUIRE(decoder.decode(unit, deliver).has_value());
+        }
+        decoder.finish(deliver);
+        return found;
+    };
+
+    const double line_peak = static_cast<double>(peak(ac3::hearth::DecoderSettings{}));
+    // -20 dBFS, converted the way decoder_setup() converts rf_ceiling_db
+    // (test_decoder_settings.cpp already pins 10^(-20/20) == 0.1 there).
+    constexpr double kCeiling = 0.1;
+    REQUIRE(line_peak > kCeiling);
+
+    ac3::hearth::DecoderSettings rf;
+    rf.mode = ac3::OperatingMode::kRf;
+    rf.rf_ceiling_db = -20.0;
+    const double rf_peak = static_cast<double>(peak(rf));
+    // limit_frame()'s clamp is exact, not a smoothed approach to the ceiling -
+    // so even the first frame already holds to it.
+    CHECK(rf_peak <= kCeiling + 1e-6);
+    CHECK(rf_peak < line_peak);
 }
 
 TEST_CASE("stream decoder: an independent-only decoder plays a unit's first substream alone",

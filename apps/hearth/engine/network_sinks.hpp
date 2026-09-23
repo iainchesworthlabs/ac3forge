@@ -73,6 +73,9 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // it has somewhere durable to keep the private key, which this slice
     // does not yet (see the Settings page's own QSettings-backed store).
     NetworkSinks(sendspin::noise::KeyPair identity, std::string name, PairingStore& store);
+    // Explicit, not defaulted: stops host_/browser_'s own background
+    // threads before any other member they call back into (sinks_ and the
+    // rest) is torn down - see the .cpp for why that order matters.
     ~NetworkSinks() override;
     NetworkSinks(const NetworkSinks&) = delete;
     NetworkSinks& operator=(const NetworkSinks&) = delete;

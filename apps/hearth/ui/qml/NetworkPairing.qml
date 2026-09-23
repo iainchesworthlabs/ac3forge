@@ -24,19 +24,9 @@ RowLayout {
         Layout.preferredWidth: 2
         spacing: Theme.gap
 
-        Text {
-            Layout.fillWidth: true
-            // See NetworkSinkList.qml's own comment: elide alone does not
-            // stop this growing the column past its allocated width.
-            Layout.minimumWidth: 0
-            text: qsTr("02 PAIR %1").arg(root.sink.name ?? "").toUpperCase()
-            color: Theme.textMuted
-            font.pixelSize: Theme.fontSmall
-            font.bold: true
-            elide: Text.ElideRight
-        }
-
         Card {
+            title: qsTr("02 PAIR %1").arg(root.sink.name ?? "").toUpperCase()
+
             Text {
                 Layout.fillWidth: true
                 // Every wrapped or elided Text in a fillWidth Layout needs

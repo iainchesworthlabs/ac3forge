@@ -751,6 +751,25 @@ MediaInfo describe_media(const std::string& path, const LoadedItem& loaded) {
     // As ac3cli probe walks a stream, over the same units the player plays:
     // the lead programme's.
     io::ProbeOptions options;
+    // Needed for info.objects below: without detail/on_access_unit, a
+    // syncframe's own object layer never leaves the walk (io::Prober only
+    // keeps it long enough to fold into report.program's bed/count summary).
+    options.detail = true;
+    options.on_access_unit = [&info](const io::ProbeAccessUnit& unit) {
+        // The first OAMD payload, matching report.program's own "first OAMD
+        // payload described" rule - so the summary (objectCount,
+        // complexityIndex) and the table (this) always describe the same
+        // payload.
+        if (info.objects) {
+            return;
+        }
+        for (const io::ProbeSyncframe& frame : unit.syncframes) {
+            if (frame.objects) {
+                info.objects = frame.objects;
+                return;
+            }
+        }
+    };
     options.authenticity = [](std::span<const std::byte> frame) {
         return signing::has_authenticity_tag(frame);
     };
