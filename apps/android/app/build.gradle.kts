@@ -246,7 +246,7 @@ configurations.all {
             "io.netty:netty-resolver:4.1.138.Final",
             "io.netty:netty-transport:4.1.138.Final",
             "io.netty:netty-transport-native-unix-common:4.1.138.Final",
-            "com.google.protobuf:protobuf-java:3.25.8",
+            "com.google.protobuf:protobuf-java:4.36.1",
             "commons-io:commons-io:2.22.0"
         )
     }
