@@ -676,6 +676,8 @@ TEST_CASE("engine: the speaker setup commands reach EngineStatus, and a refused 
     engine->set_trim_db(0, -3.0);
     engine->set_delay_ms(0, 5.0);
     engine->set_crossover_hz(100.0);
+    engine->identify_start(1);
+    engine->set_identify_level_db(-30.0);
     engine->sync();
 
     const EngineStatus applied = engine->status();
@@ -683,6 +685,8 @@ TEST_CASE("engine: the speaker setup commands reach EngineStatus, and a refused 
     CHECK(applied.trim_db[0] == 3.0 * -1.0);
     CHECK(applied.delay_ms[0] == 5.0);
     CHECK(applied.crossover_hz == 100.0);
+    CHECK(applied.identify_slot == 1);
+    CHECK(applied.identify_level_db == -30.0);
 
     // No slot 2 on a 2.0 layout: refused, noted, and nothing changes.
     engine->set_trim_db(2, -1.0);
@@ -691,6 +695,17 @@ TEST_CASE("engine: the speaker setup commands reach EngineStatus, and a refused 
     CHECK(after_refusal.note.find("refused") != std::string::npos);
     CHECK(after_refusal.trim_db[0] == -3.0);
     CHECK(after_refusal.trim_db.size() == 2);
+
+    // Same rule for identify: an out-of-range slot is refused, noted, and
+    // changes nothing, but identify_stop() always succeeds.
+    engine->identify_start(2);
+    engine->sync();
+    const EngineStatus identify_refused = engine->status();
+    CHECK(identify_refused.note.find("refused") != std::string::npos);
+    CHECK(identify_refused.identify_slot == 1);
+    engine->identify_stop();
+    engine->sync();
+    CHECK(engine->status().identify_slot == ac3::hearth::Queue::kNone);
 
     // No PCM sink here supports routing (ClockedDevice, like FakeDevice,
     // takes PcmSink's own inert defaults): refused, and EngineStatus's

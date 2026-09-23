@@ -73,6 +73,8 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaceholderPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/ShortcutsDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/TransportBar.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/AboutDialog.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/LicencesDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/FirstRunDialog.qml"
         ${AC3HEARTH_SHARED_OUT})
     foreach(qml_file IN LISTS AC3HEARTH_QML_FILES)
@@ -103,6 +105,19 @@ else()
         FILES
             "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-32.png"
             "${CMAKE_SOURCE_DIR}/apps/gui/icons/ac3forge-256.png")
+    # The package's own NOTICES.txt, so the Licences dialog (About > Licences)
+    # shows exactly what this build ships - the same qt_add_resources call
+    # apps/crucible/CMakeLists.txt makes for ac3crucible_notices. A
+    # placeholder file exists here already (../CMakeLists.txt writes it
+    # before add_subdirectory(ui), right where AC3HEARTH_NOTICES_FILE is
+    # set); notices/notices.cmake overwrites it with the real content once
+    # this file's own Qt detection above has run, still well before ninja's
+    # rcc step reads it at build time.
+    get_filename_component(AC3HEARTH_NOTICES_OUT_DIR "${AC3HEARTH_NOTICES_FILE}" DIRECTORY)
+    qt_add_resources(ac3hearth "ac3hearth_notices"
+        PREFIX "/notices"
+        BASE "${AC3HEARTH_NOTICES_OUT_DIR}"
+        FILES "${AC3HEARTH_NOTICES_FILE}")
 
     set_target_properties(ac3hearth PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
     if(WIN32)

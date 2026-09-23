@@ -233,6 +233,11 @@ The sections below contain the complete change list and fixes.
 
 **Hearth**
 
+- **`ac3hearth` gets an About dialog and a Licences view of the generated notices.** About
+  states what the player does, its version and build provenance, and the GPL/Dolby-trademark
+  line, with a Licences… button that opens the full third-party `NOTICES.txt` this build
+  embeds. A new "?" button in the header opens About; `--page about`/`--page licences` open
+  either one directly, for a capture.
 - **`ac3hearth` packages, as `ac3forge-hearth`, on Windows (NSIS and ZIP), macOS (DMG) and
   Linux (DEB, RPM and TGZ).** Its own CPack component follows `apps/crucible`'s own pattern -
   notices and licence beside the executable, Qt's runtime deployed into the package - except
