@@ -98,6 +98,10 @@ std::expected<Session, std::string> Session::open(const std::string& path,
     if (session.units_.empty()) {
         return std::unexpected(fmt::format("\"{}\" holds no audio.", path));
     }
+    std::uint64_t programme_bytes = 0;
+    for (const auto unit : session.units_) {
+        programme_bytes += unit.size();
+    }
     session.starts_.assign(1, 0);
     session.starts_.reserve(lengths.size() + 1);
     for (const std::uint32_t length : lengths) {
@@ -125,6 +129,14 @@ std::expected<Session, std::string> Session::open(const std::string& path,
     if (rate != 0) {
         session.facts_.duration =
             std::chrono::milliseconds{static_cast<std::int64_t>(session.total_samples() * 1000 / rate)};
+        if (stream_samples != 0) {
+            // The whole programme's rate, not just the part this item plays -
+            // io::ProbeReport::bitrate_kbps's own "measured over the whole
+            // stream" definition, so a queue row and a probe agree on what
+            // "bitrate" means for the same file.
+            const double seconds = static_cast<double>(stream_samples) / static_cast<double>(rate);
+            session.facts_.bitrate_kbps = static_cast<double>(programme_bytes) * 8.0 / 1000.0 / seconds;
+        }
     }
     session.facts_.note = std::move(note);
     return session;
