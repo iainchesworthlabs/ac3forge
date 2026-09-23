@@ -58,7 +58,9 @@ class HearthController : public QObject {
     // --- queue and transport --------------------------------------------
     // Each entry: path, title, playable (bool), note (why not, or a
     // decode-time remark), durationMs, channels, sampleRate, hasObjects,
-    // streamKind ("AC-3", "E-AC-3" or "" before the item has been probed).
+    // streamKind ("AC-3", "E-AC-3" or "" before the item has been probed),
+    // codecBadge ("A3"/"E3", "" before probed or for an item a probe will
+    // never reach - AC-4, today), bitrateKbps (absent until probed).
     Q_PROPERTY(QVariantList queue READ queue NOTIFY queueChanged)
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY queueChanged)
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)

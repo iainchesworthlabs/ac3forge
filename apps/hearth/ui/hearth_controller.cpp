@@ -86,6 +86,19 @@ constexpr int kPollMs = 60;
     return facts.has_objects ? QStringLiteral("E-AC-3 JOC") : QStringLiteral("AC-3/E-AC-3");
 }
 
+// The queue row's own codec chip (main-play.png, "01 QUEUE"): "A3"/"E3" from
+// what a probe already found (ItemFacts.stream), or "" before that - an AC-4
+// item never gets this far (item_loader.cpp accepts .ac4 for reading, but
+// io::scan() still refuses it, so ItemFacts.stream stays unset); PlayPage.qml
+// falls back to the file's own extension for that one case, a presentation
+// question this controller does not need to answer twice.
+[[nodiscard]] QString codec_badge(const ac3::hearth::ItemFacts& facts) {
+    if (!facts.stream.has_value()) {
+        return QString();
+    }
+    return *facts.stream == audio::BitstreamFormat::kAc3 ? QStringLiteral("A3") : QStringLiteral("E3");
+}
+
 // --- MediaInfo -> QVariantMap, field by field (media_info.hpp) -------------
 // Follows media_info_json()'s own document shape (see that function's
 // comment) so a field here and the same field in "Export JSON..." never say
@@ -640,6 +653,10 @@ constexpr int kPollMs = 60;
     row[QStringLiteral("sampleRate")] = item.facts.sample_rate;
     row[QStringLiteral("hasObjects")] = item.facts.has_objects;
     row[QStringLiteral("streamKind")] = stream_kind_name(item.facts);
+    row[QStringLiteral("codecBadge")] = codec_badge(item.facts);
+    if (item.facts.bitrate_kbps) {
+        row[QStringLiteral("bitrateKbps")] = *item.facts.bitrate_kbps;
+    }
     row[QStringLiteral("current")] = current;
     return row;
 }

@@ -10,8 +10,9 @@ import Ac3ForgeHearth
 // settings-only form.
 //
 // Every control the design shows now has a field to bind to. "This stream"
-// and "Programme" need the current item's own media information, which this
-// controller does not read yet - left for the Media page's own slice.
+// and "Programme" read HearthController.currentMedia - the playing item's
+// own file, off a thread of its own (media_inspector.hpp) - the same source
+// the Media page reads for any queue item, not just this one.
 ScrollView {
     id: root
     clip: true
@@ -22,6 +23,14 @@ ScrollView {
         const next = Object.assign({}, settings);
         next[key] = value;
         HearthController.setDecoderSettings(next);
+    }
+
+    readonly property var media: HearthController.currentMedia
+    readonly property var probe: root.media.probe ?? ({})
+    readonly property var bitstream: root.media.bitstream ?? ({})
+    function modeLabel() {
+        const mode = root.settings.mode ?? "line";
+        return mode === "rf" ? qsTr("RF") : (mode === "custom" ? qsTr("Custom") : qsTr("Line"));
     }
 
     ColumnLayout {
@@ -220,10 +229,129 @@ ScrollView {
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("03 Dual mono")
+                    title: qsTr("03 This stream")
 
                     Text {
                         Layout.fillWidth: true
+                        visible: Object.keys(root.media).length === 0
+                        text: qsTr("Nothing playing.")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                    }
+
+                    GridLayout {
+                        Layout.fillWidth: true
+                        visible: Object.keys(root.media).length > 0
+                        columns: 2
+                        columnSpacing: Theme.gap
+                        rowSpacing: 4
+
+                        Text { text: qsTr("Dialogue level"); color: Theme.textMuted; Layout.preferredWidth: 110 }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.probe.dialnormDb !== undefined
+                                  ? qsTr("dialnorm %1 dB, %2 dB down").arg(root.probe.dialnormDb)
+                                                                      .arg(31 + root.probe.dialnormDb)
+                                  : qsTr("not carried")
+                            color: Theme.text
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text { text: qsTr("Dynamic range"); color: Theme.textMuted }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.probe.dynrngSeen
+                                  ? qsTr("carried, applied in full in %1 mode").arg(root.modeLabel())
+                                  : qsTr("not carried")
+                            color: Theme.text
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text { text: qsTr("Heavy compression"); color: Theme.textMuted }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.probe.comprSeen
+                                  ? (root.settings.mode === "rf"
+                                     ? qsTr("carried, used in RF mode")
+                                     : qsTr("carried, not used in %1 mode").arg(root.modeLabel()))
+                                  : qsTr("not carried")
+                            color: Theme.text
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text { text: qsTr("Mix levels"); color: Theme.textMuted }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.bitstream.mixLevels !== undefined
+                                  ? qsTr("centre %1 dB · surround %2 dB%3")
+                                        .arg(Number(root.bitstream.mixLevels.centreDb).toFixed(1))
+                                        .arg(Number(root.bitstream.mixLevels.surroundDb).toFixed(1))
+                                        .arg(root.bitstream.mixLevels.lfeDb !== undefined
+                                             ? qsTr(" · LFE %1 dB").arg(Number(root.bitstream.mixLevels.lfeDb).toFixed(1))
+                                             : "")
+                                  : qsTr("not carried")
+                            color: Theme.text
+                            wrapMode: Text.WordWrap
+                        }
+
+                        Text { text: qsTr("Objects"); color: Theme.textMuted }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.probe.objectCount === undefined
+                                  ? qsTr("none")
+                                  : (root.probe.joc && root.probe.objectCount === 0
+                                     ? qsTr("reconstructed by JOC from the %1").arg(root.probe.bedLabel ?? "")
+                                     : qsTr("%1 · %2").arg(root.probe.objectCount).arg(root.probe.bedLabel ?? ""))
+                            color: Theme.text
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                }
+
+                Card {
+                    title: qsTr("04 Programme")
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: (root.media.programmes ?? []).length === 0
+                        text: qsTr("Nothing playing.")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: (root.media.programmes ?? []).length > 0
+                        spacing: 2
+
+                        // Read-only: Session::open()'s own comment says why -
+                        // the first programme always plays; picking a
+                        // different one is Session's own choice of units, not
+                        // part of DecoderSettings, and has no setter here yet.
+                        ComboBox {
+                            Layout.fillWidth: true
+                            enabled: false
+                            model: (root.media.programmes ?? []).map(function(p) {
+                                return qsTr("%1 · %2 · %3").arg(p.substreamId).arg(p.layoutLabel).arg(p.bsmodLabel);
+                            })
+                            currentIndex: 0
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: (root.media.programmes ?? []).length > 1
+                                  ? qsTr("This stream carries %1 programmes. Not adjustable from this "
+                                        + "build yet; the first one always plays.")
+                                        .arg(root.media.programmes.length)
+                                  : qsTr("This stream carries one programme.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Theme.gap / 2
                         text: qsTr("For a 1+1 stream: which of its two unrelated programmes plays, or both, one to each side.")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
@@ -242,7 +370,7 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("04 Objects")
+                    title: qsTr("05 Objects")
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -291,7 +419,7 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("05 Errors and transform")
+                    title: qsTr("06 Errors and transform")
 
                     RowLayout {
                         Layout.fillWidth: true
