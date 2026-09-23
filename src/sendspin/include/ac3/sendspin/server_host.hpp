@@ -78,6 +78,9 @@ struct ClientView {
     // Fallback): it needs pairing again.
     bool credential_mismatch = false;
     bool hello = false;
+    // Empty until hello arrives; DeviceInfo's own fields are empty in turn
+    // when the client did not send them (DeviceInfo's own comment).
+    messages::DeviceInfo device_info;
     bool offers_unpaired_access = false;
     std::vector<messages::PairMethod> pair_methods;
     bool pairing = false;

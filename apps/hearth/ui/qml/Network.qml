@@ -9,17 +9,21 @@ import Ac3ForgeHearth
 // state; which view fills the rest of the page follows the selected sink's
 // own pair state, the same switch DecoderPage.qml makes on stream format.
 //
-// A sink already in use by another server and a group's reported levels
-// (beside a live stream) are the rest of A6 and are not built here - the plan
-// splits A6 into slices. Groups (create, add, remove, volume, mute) are
-// issue #874's own slice: real membership and volume/mute, backed by an
-// actual ac3::sendspin::Group, but not yet a live programme - Player has no
-// network-group output seam yet (issue #874's own follow-up), so the group
-// editor's "State"/"Late chunks" rows say so honestly rather than showing
-// numbers this slice cannot make true. "In use elsewhere" needs ac3::sendspin
-// to grow a way to learn that (network_sinks.hpp's own comment says why it
-// cannot today), so it is not a UI gap this slice left behind - there is
-// nothing yet for the page to show.
+// A sink's own speaker and decoder settings pages (NetworkSinkSettings.qml,
+// issue #875) show once NetworkController.selectedSinkSettable is true (a
+// paired, connected Hearth sink), replacing the plain "paired" card below.
+// Groups (NetworkGroupEdit.qml, issue #874: create, add, remove, volume,
+// mute) are real, backed by an actual ac3::sendspin::Group, but not yet a
+// live programme - Player has no network-group output seam yet (#874's own
+// follow-up), so the group editor's "State"/"Late chunks" rows say so
+// honestly rather than showing numbers this slice cannot make true.
+//
+// Still the rest of A6, not built here: a sink already in use by another
+// server needs ac3::sendspin to grow a way to learn that
+// (network_sinks.hpp's own comment says why it cannot today); a group's
+// reported levels needs that same network-group output seam #874's own
+// follow-up would add. Neither is a UI gap this slice left behind - there is
+// nothing yet for the page to show for either.
 Item {
     id: root
 
@@ -54,7 +58,10 @@ Item {
                 if (!sink || sink.id === undefined) {
                     return emptyState;
                 }
-                return sink.badge === "paired" ? pairedState : pairingState;
+                if (sink.badge !== "paired") {
+                    return pairingState;
+                }
+                return NetworkController.selectedSinkSettable ? settingsState : pairedState;
             }
         }
     }
@@ -85,9 +92,15 @@ Item {
         NetworkPairing { }
     }
 
-    // A sink already paired and idle: nothing to decide yet (grouping and the
-    // sink's own settings pages are later slices), so this just confirms what
-    // pairing means for it. Small enough, and specific enough to this state,
+    Component {
+        id: settingsState
+        NetworkSinkSettings { }
+    }
+
+    // A sink already paired and idle, but not offering _ac3forge_player@v1
+    // (a standard Sendspin player, e.g. "Kitchen speaker" in the mockups) -
+    // nothing to decide for it: it takes stereo only, and has no settings
+    // command to speak of. Small enough, and specific enough to this state,
     // that it does not earn its own file the way NetworkPairing.qml does
     // (DecoderEac3.qml's and DecoderAc4.qml's own reason for existing).
     Component {
@@ -120,8 +133,9 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         Layout.minimumWidth: 0
-                        text: qsTr("Add it to a group from the list on the left, or make a new one. Its "
-                                  + "own speaker and decoder settings are not built in this version yet.")
+                        text: qsTr("A standard Sendspin player: it takes stereo only, with no speaker "
+                                  + "or decoder settings of its own to show here. Add it to a group "
+                                  + "from the list on the left, or make a new one.")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
