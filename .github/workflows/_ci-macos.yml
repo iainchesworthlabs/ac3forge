@@ -70,7 +70,6 @@ jobs:
           - name: "macOS LLVM (Homebrew)"
             runner: '["macos-latest"]'
             preset: macos-llvm
-            hearth: true
             # Crucible compiles here and cannot be run here; see the Configure
             # step's note.
             crucible: true
@@ -107,7 +106,6 @@ jobs:
           - name: "macOS LLVM x64 (Homebrew, Intel)"
             runner: '["macos-15-intel"]'
             preset: macos-llvm-x64
-            hearth: true
             crucible: true
             mac_arch: x64
             llvm: true
@@ -222,7 +220,6 @@ jobs:
           preset: ${{ matrix.preset }}
           gui: ${{ matrix.gui }}
           crucible: ${{ matrix.crucible }}
-          hearth: ${{ matrix.hearth }}
           version-tag: ${{ inputs.version_tag }}
           # No macOS leg needs a GCC version to assert - see build-leg's
           # own toolchain-assert step, which only reads this inside its
@@ -436,15 +433,11 @@ jobs:
       # apps/hearth/ui/CMakeLists.txt's install rules, phase A7). Same cpack
       # pass as Package above, same reasoning as the Crucible assert just
       # above it - this just asserts a second component of that one pass.
-      # matrix.hearth && matrix.packageable rather than matrix.packageable
-      # alone (which is all the Crucible assert needed, hearth and
-      # packageable tracking the same two entries on this file): explicit
-      # about which flag is actually load-bearing here, the same reason
-      # _ci-windows.yml's own Hearth assert names matrix.hearth rather than
-      # reusing Crucible's matrix.crucible.
+      # matrix.packageable alone is enough now: Hearth builds by default on
+      # every leg (AC3FORGE_BUILD_HEARTH, root CMakeLists.txt), the same
+      # condition the Crucible assert just above already uses.
       - name: Assert the AC3Forge Hearth was packaged (macOS)
         if: >-
-          matrix.hearth &&
           matrix.packageable &&
           (matrix.preset == 'windows-msvc' ||
            (inputs.do_package && matrix.release_package) ||
