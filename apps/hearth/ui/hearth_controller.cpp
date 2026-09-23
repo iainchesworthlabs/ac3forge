@@ -1,5 +1,7 @@
 #include "hearth_controller.hpp"
 
+#include "ac3/internal/profiling.hpp"
+
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QDate>
@@ -1033,6 +1035,7 @@ bool HearthController::exportInspectedMedia(const QUrl& fileUrl) {
 }
 
 void HearthController::poll() {
+    AC3_ZONE_SCOPED_N("hearth poll");
     if (!engine_) {
         return;
     }

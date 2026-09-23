@@ -21,6 +21,7 @@
 #include <mdns.h>
 
 #include "ac3/sendspin/discovery.hpp"
+#include "ac3/sendspin/firewall.hpp"
 #include "packets.hpp"
 #include "platform.hpp"
 
@@ -100,6 +101,14 @@ class Sockets {
                 });
                 links.push_back(match != known.end() ? *match : platform::Interface{.address = *address});
             }
+        }
+        // mDNS is never loopback-only (ipv4_interfaces() already excludes loopback), so a link to
+        // bind means a real, LAN-reachable socket - the one Windows' own firewall prompt gates.
+        // Skipped when there is nothing to bind, so a build box with no active interface does not
+        // ask for an exception it will never use.
+        if (!links.empty()) {
+            firewall::ensure_inbound_rule(
+                {.name = "Sendspin - mDNS Discovery", .protocol = firewall::Protocol::kUdp, .port = packets::kPort});
         }
         for (const platform::Interface& link : links) {
             sockaddr_in address{};

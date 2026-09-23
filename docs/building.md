@@ -161,7 +161,12 @@ instrumentation; other compilers just warn and skip it), `AC3FORGE_BUILD_ADM=ON`
 always-on seven) and `AC3FORGE_BUILD_CLI=ON`, since `apps/cli` is gated too. Only
 `AC3FORGE_BUILD_EXAMPLES` stays off, as a build-time saving: `examples/` is documentation that
 happens to compile, over an API surface `tests/` already covers, and each one is its own `ctest`
-process.
+process. `config-linux-gcc-coverage` itself (not the shared `coverage` fragment, since
+`config-windows-llvm-coverage` also inherits that fragment and stays Crucible-scoped) extends
+`VCPKG_MANIFEST_FEATURES` to `adm;hearth` so `src/sendspin` and `apps/hearth`'s engine and test
+sink — on by default like everywhere else — are measured too; see
+[`tools/checks/coverage_report.sh`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/coverage_report.sh)
+for their floors, which start deliberately low pending a first real calibration run.
 
 Note that `ac3cli` has to link `ac3::coverage` itself (`apps/cli/CMakeLists.txt`) and not merely
 link an instrumented library. The gcov *runtime* propagates to consumers automatically, but
@@ -257,7 +262,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_PYTHON` | `OFF` | Build the pybind11 extension module (`python/`). Off by default for the same reason as `AC3FORGE_BUILD_ADM`: nothing under `src/`, `apps/`, `tests/` or `examples/` links it, so a normal C++ build is unaffected either way. `python/pyproject.toml` turns it on itself via scikit-build-core when `pip install`/cibuildwheel drives the configure. |
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |
 | `AC3FORGE_BUILD_CRUCIBLE` | `OFF` | Build the Crucible engine, console runner, and desktop window. Linux requires PipeWire; see [Crucible installation](crucible/install.md#linux). |
-| `AC3FORGE_BUILD_HEARTH` | `OFF` | Build `ac3::sendspin`, the Hearth engine, `ac3hearth-testsink`, `ac3hearth-testserver`, and — on Windows, Linux, and macOS, when Qt6 6.8 or newer is found — the `ac3hearth` desktop window. Qt not found skips `ac3hearth` with a configure warning rather than failing; the engine and its tests still build. With vcpkg, also select the root manifest's `hearth` feature (`-DVCPKG_MANIFEST_FEATURES=hearth`) for its network, pairing, FLAC, and Opus dependencies. See [Hearth](hearth/index.md). |
+| `AC3FORGE_BUILD_HEARTH` | `ON` | Build `ac3::sendspin`, the Hearth engine, `ac3hearth` (the desktop window, Windows/macOS/Linux with a Qt 6.8+ kit), `ac3hearth-testsink`, and `ac3hearth-testserver`. Qt not found skips just `ac3hearth` with a configure warning rather than failing; the engine and its tests still build. Every CI leg has built and tested it since A7, so this defaults on the same way — a plain preset configure needs no extra flag any more. The vcpkg side follows: `CMakePresets.json`'s `core` fragment selects the root manifest's `hearth` feature by default too, for its network, pairing, FLAC, and Opus dependencies. A few presets that cannot build Hearth turn both back off explicitly — the minimum-footprint decoder/encoder profiles (no OS), the Emscripten/WASM demo (no vcpkg toolchain), and the Windows LLVM coverage leg (deliberately Crucible-only) — see their own entries in `CMakePresets.json`. See [Hearth](hearth/index.md). |
 | `AC3FORGE_WITH_ALSA` | `AUTO` | Linux only. `AUTO` builds the ALSA audio backend when libasound's headers are present; `ON` requires them; `OFF` never builds it. Takes precedence over `AC3FORGE_WITH_PIPEWIRE` when both are found — see [Linux audio](#linux-audio). |
 | `AC3FORGE_WITH_PIPEWIRE` | `AUTO` | Linux only. `AUTO` builds the PipeWire audio backend when libpipewire-0.3's headers are present *and* ALSA was not selected; `ON` requires the headers (independently of ALSA); `OFF` never builds it. See [Linux audio](#linux-audio). |
 | `AC3FORGE_CRUCIBLE_X11` | `AUTO` | Linux only, with `AC3FORGE_BUILD_CRUCIBLE`. `AUTO` compiles Crucible's X11 full-screen check over libxcb when `libxcb1-dev` is present; `ON` requires it; `OFF` never builds it. Without it the rule is off at runtime and the Room page says so. The configure summary prints `Crucible X11   : xcb` or `none`. |
@@ -269,15 +274,17 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_FUZZERS` | `OFF` | Build the libFuzzer harnesses under `fuzz/`. Clang only (GCC and MSVC ship no libFuzzer); use `fuzz/run.sh` rather than this option directly — it configures a dedicated `build/fuzz` with the right compiler. See [`fuzz/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md). |
 | `AC3FORGE_MINIMAL_DECODER` | `OFF` | Build **only** `ac3::forge_minimal`: one decode-only static library with no exceptions, no RTTI and no direct-form transform tables, for a target with a few hundred kilobytes of RAM and no operating system. Not a "build X too" option — it replaces what `src/forge` builds, and configure fails with a list if any component that needs the full library is still on. GCC/Clang only. See [Minimum-footprint decoder profile](#minimum-footprint-decoder-profile). |
 
-Building the library and CLI alone, with neither Qt nor vcpkg involved:
+Building the library and CLI alone, with neither Qt nor vcpkg's extra features involved:
 
 ```bash
-cmake --preset config-windows-msvc-debug -DAC3FORGE_BUILD_GUI=OFF -DAC3FORGE_BUILD_TESTS=OFF
+cmake --preset config-windows-msvc-debug -DAC3FORGE_BUILD_GUI=OFF -DAC3FORGE_BUILD_TESTS=OFF -DAC3FORGE_BUILD_HEARTH=OFF
 ```
 
 The vcpkg toolchain file is still referenced by the preset, so `VCPKG_ROOT` must still point
-at a checkout — it simply has nothing to install. To build with no vcpkg at all, configure
-without the preset and pass the generator and build type by hand.
+at a checkout — it simply has nothing to install once `AC3FORGE_BUILD_HEARTH` is also off (the
+preset's own `VCPKG_MANIFEST_FEATURES=hearth` default otherwise still asks vcpkg to build
+Hearth's network/FLAC/Opus dependencies even with the library and CLI alone). To build with no
+vcpkg at all, configure without the preset and pass the generator and build type by hand.
 
 ## Minimum-footprint decoder profile
 

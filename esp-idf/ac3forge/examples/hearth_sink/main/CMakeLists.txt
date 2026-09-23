@@ -3,8 +3,15 @@
 # main/audio_sink.hpp.
 #
 #   i2s      the I2S peripheral, standard mode or TDM depending on what the
-#            active layout needs (ac3forge/sink_plan.hpp) - reconfigures
-#            itself, not a build-time width; the default
+#            active layout needs (ac3forge/sink_plan.hpp), on up to two of a
+#            part's I2S lines sharing one bit clock - the default, correct on
+#            any part whose own I2S_LL_SLOT_FRAME_BIT_MAX is 128 (ESP32-S3,
+#            ESP32-C6)
+#   i2s_wide the same arithmetic, one line, for a part whose controller alone
+#            reaches the product's full channel target at a wider TDM frame
+#            (512 bits on the ESP32-P4) - see that directory's own top-of-file
+#            comment for why this is a fork of sink/i2s rather than a second
+#            line's worth of branching inside it
 #   capture  the conversion code the i2s sink uses, checked, with no
 #            peripheral behind it: what CI runs, because qemu-system-xtensa has
 #            no I2S and the real sink's first write would never return
@@ -16,6 +23,8 @@ if(CONFIG_AC3FORGE_EXAMPLE_SINK_NULL)
     set(AC3FORGE_SINK_DIR "sink/null")
 elseif(CONFIG_AC3FORGE_EXAMPLE_SINK_CAPTURE)
     set(AC3FORGE_SINK_DIR "sink/capture")
+elseif(CONFIG_AC3FORGE_EXAMPLE_SINK_I2S_WIDE)
+    set(AC3FORGE_SINK_DIR "sink/i2s_wide")
 else()
     set(AC3FORGE_SINK_DIR "sink/i2s")
 endif()

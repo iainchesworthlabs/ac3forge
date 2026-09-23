@@ -107,9 +107,11 @@ constexpr ac3forge::SinkFrame kFrame = CONFIG_AC3FORGE_EXAMPLE_I2S_FIXED_FRAME !
 // The combined ceiling both lines together could carry at that width - what
 // sink_slots() reports, and what accept_layout() (hearth_sink.cpp) checks
 // a requested layout against before any of this runs. Eight at 32 bits with a
-// second line wired, sixteen at 16.
+// second line wired, sixteen at 16 - I2S_LL_SLOT_FRAME_BIT_MAX (128 on this
+// part) passed explicitly, since sink_plan.hpp no longer assumes any one
+// target's frame width; see esp-idf/ac3forge/include/ac3forge/sink_plan.hpp.
 [[nodiscard]] std::size_t ceiling() {
-    return ac3forge::sink_ceiling(g_slot_bits, second_line_wired());
+    return ac3forge::sink_ceiling(g_slot_bits, second_line_wired(), I2S_LL_SLOT_FRAME_BIT_MAX);
 }
 
 // One line's hardware state. GPIO numbers and role are fixed for the run
@@ -398,7 +400,7 @@ bool sink_open(std::uint32_t sample_rate, int channels) {
         return false;
     }
     const auto plan = ac3forge::plan_sink(static_cast<std::size_t>(channels), g_slot_bits,
-                                          second_line_wired(), kFrame);
+                                          second_line_wired(), kFrame, I2S_LL_SLOT_FRAME_BIT_MAX);
     if (!plan.has_value()) {
         std::printf("error: %d channels do not fit this sink's %u-slot ceiling (%d-bit slots, "
                     "%s line)\n",
@@ -499,8 +501,9 @@ const char* sink_name() { return "i2s"; }
 int sink_slots() { return static_cast<int>(ceiling()); }
 
 int sink_max_slots() {
-    return static_cast<int>(std::max(ac3forge::sink_ceiling(16, kSecondController),
-                                     ac3forge::sink_ceiling(32, kSecondController)));
+    return static_cast<int>(std::max(
+        ac3forge::sink_ceiling(16, kSecondController, I2S_LL_SLOT_FRAME_BIT_MAX),
+        ac3forge::sink_ceiling(32, kSecondController, I2S_LL_SLOT_FRAME_BIT_MAX)));
 }
 
 bool sink_second_line_possible() { return kSecondController; }
