@@ -269,6 +269,13 @@ jobs:
   # before landing (see the PR that introduced it, branch feature/adm-bw64-parser: Windows MSVC,
   # WSL2 gcc-15, WSL2 clang++-21, all green).
   #
+  # -DAC3FORGE_BUILD_HEARTH=OFF: that option now defaults ON (CMakeLists.txt's own comment),
+  # and without this override this job's plain "adm" manifest feature never installs mbedTLS/
+  # cpp-httplib/libFLAC/Opus/mdns, so add_subdirectory(src/sendspin) failed configuring at
+  # find_package(MbedTLS) - a real regression this job hit on main, not something this job's
+  # own change caused; the root CMakeLists.txt's own comment on AC3FORGE_BUILD_HEARTH's default
+  # named three legs that needed this same override and missed this one.
+  #
   # AC3FORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): ADM BWF reader phase 3 (the
   # 'atmos-adm' ac3cli command, apps/cli/main.cpp's run_atmos_adm, and examples/encode_adm.cpp) is
   # the first code outside tests/ to link ac3adm::ac3adm/ac3::admbridge at all, so unlike phases 1
@@ -331,7 +338,8 @@ jobs:
           for attempt in 1 2 3; do
             if cmake --preset config-linux-gcc \
                  -DVCPKG_MANIFEST_FEATURES=adm \
-                 -DAC3FORGE_BUILD_ADM=ON; then
+                 -DAC3FORGE_BUILD_ADM=ON \
+                 -DAC3FORGE_BUILD_HEARTH=OFF; then
               exit 0
             fi
             rm -rf build/config-linux-gcc/CMakeCache.txt
