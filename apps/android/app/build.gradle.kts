@@ -196,7 +196,7 @@ android {
 }
 
 dependencies {
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
 
     // WASM/mobile headless coverage(b): device-free instrumented coverage for
