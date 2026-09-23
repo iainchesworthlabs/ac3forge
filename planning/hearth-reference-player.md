@@ -131,6 +131,7 @@ What the controls map to, and what each needs:
 | Programme | `DecoderConfig::programme` (`decoder.hpp:239`); `io::scan` lists programmes | none |
 | Objects | `skip_object_reconstruction`, `joc_domain`; objects are reconstructed only when the JOC downmix is five channels | the ESP32 player's auto, never, always policy moves up with the renderer |
 | Concealment | `concealment`: none, repeat and fade, mute | none |
+| Fast inverse transform | `DecoderConfig::fast_imdct` (`decoder.hpp:170`) | none |
 
 The AC-4 controls are designed in [A0](#a0-design-rounds) and disabled until the decoder exists:
 presentation (from the table of contents: presentations, language, channel mode), main and

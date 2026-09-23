@@ -43,6 +43,7 @@ DecoderSetup decoder_setup(const DecoderSettings& settings, const render::Output
     config.drc_scale = std::clamp(settings.drc_cut, 0.0, 1.0);
     config.drc_boost_scale = std::clamp(settings.drc_boost, 0.0, 1.0);
     config.heavy_compression = settings.heavy_compression;
+    config.fast_imdct = settings.fast_inverse_transform;
     config.output.mode = settings.mode;
     // dB to the linear magnitude OutputConfig wants, held to full scale: a
     // ceiling above it would let kRf's fold clip, which is the one thing
@@ -118,6 +119,8 @@ std::string describe(const DecoderSettings& settings) {
         case ConcealmentPolicy::kRepeatFade: parts.emplace_back("concealment: repeat and fade"); break;
         case ConcealmentPolicy::kMute: parts.emplace_back("concealment: mute"); break;
     }
+    parts.emplace_back(settings.fast_inverse_transform ? "fast inverse transform"
+                                                        : "reference inverse transform");
     return joined(parts);
 }
 

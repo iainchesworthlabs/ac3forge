@@ -55,6 +55,8 @@ else()
         hearth_controller.hpp
         item_loader.cpp
         item_loader.hpp
+        network_controller.cpp
+        network_controller.hpp
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
     target_include_directories(ac3hearth PRIVATE
@@ -81,6 +83,10 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderEac3.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderAc4.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/Network.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkList.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkPairing.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkInfo.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaceholderPage.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/ShortcutsDialog.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/TransportBar.qml"
