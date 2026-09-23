@@ -78,7 +78,12 @@ idf_component_register(
     INCLUDE_DIRS "include"
     PRIV_INCLUDE_DIRS "src" "lwip_hooks"
     REQUIRES freertos esp_timer heap esp_http_server mbedtls nvs_flash
-    PRIV_REQUIRES lwip
+    # esp_psram: control.cpp's GET /hardware calls esp_psram_get_size() to
+    # report whether this build actually brought PSRAM up, not just whether
+    # Kconfig asked for it. esp_chip_info() (the same handler's chip model
+    # and revision) needs no entry here: esp_hw_support is already pulled in
+    # by everything above, the same way provision.cpp's own call to it is.
+    PRIV_REQUIRES lwip esp_psram
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
 # ac3forge_lwip_ip4_input (src/tcp_arrivals.cpp) is called only from lwIP's own
