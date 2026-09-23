@@ -10,9 +10,13 @@
 // (about) or its Licences view (licences) over the Play page, the same
 // special values apps/crucible/ui/main.cpp's own `--page` accepts. A
 // `--shot` run never shows the first-run dialog unless `--page firstrun`
-// asked for it, so a capture against a fresh settings store is clean
-// (Crucible's own main.cpp carries the identical shape for the identical
-// reason). `--open-output-picker` opens the output picker dialog
+// asked for it (Crucible's own main.cpp carries the identical shape for the
+// identical reason), and now also runs HearthController against a scratch
+// settings store instead of the real per-user one (registry key
+// HKCU\Software\ac3forge\Hearth on Windows) - apps/gui/main.cpp's `--smoke`
+// uses the identical recipe - so repeated captures on a shared machine
+// neither inherit nor pollute anyone's real queue/device/pairing state
+// (issue #884). `--open-output-picker` opens the output picker dialog
 // (OutputPicker.qml) before the grab, since nothing else drives its mouse
 // click headlessly. `--decoder-format ac4` switches the Decoder page's own
 // AC-3/E-AC-3 vs AC-4 sub-tab (DecoderPage.qml's `format` property) before
@@ -30,8 +34,12 @@
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
+#include <QSettings>
+#include <QTemporaryDir>
 #include <QTimer>
 #include <QUrl>
+
+#include <optional>
 
 namespace {
 
@@ -97,6 +105,23 @@ int main(int argc, char** argv) {
             // "eac3" or "ac4" - DecoderPage.qml's own `format` values.
             decoder_format = args[i + 1];
         }
+    }
+
+    // A --shot capture must not touch the real, persistent per-user settings
+    // store (issue #884): HearthController builds settings_ from
+    // QSettings::defaultFormat() rather than a fixed native format
+    // (hearth_controller.hpp's own comment explains why), so overriding the
+    // process-wide default here - before the engine, and so
+    // HearthController's QML singleton, exists - reaches it with no change
+    // to HearthController itself, the same recipe apps/gui/main.cpp's
+    // --smoke already uses. shot_settings_scratch has to outlive the run, so
+    // it is kept in scope here rather than left as a temporary whose
+    // directory would vanish immediately.
+    std::optional<QTemporaryDir> shot_settings_scratch;
+    if (!shot_path.isEmpty()) {
+        shot_settings_scratch.emplace();
+        QSettings::setDefaultFormat(QSettings::IniFormat);
+        QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, shot_settings_scratch->path());
     }
 
     QQmlApplicationEngine engine;

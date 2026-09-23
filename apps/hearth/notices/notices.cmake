@@ -91,6 +91,14 @@ if(AC3HEARTH_UI_QT_FOUND AND (WIN32 OR APPLE))
             "they are loaded from inside the\napplication bundle, by the install names each Mach-O file records.")
     endif()
 endif()
+# {fmt}'s version, from its package or the pinned FetchContent fallback
+# (cmake/Fmt.cmake) - the same fmt_VERSION/AC3FORGE_FMT_VERSION choice
+# apps/crucible/notices/notices.cmake makes for the identical shared fragment.
+if(fmt_VERSION)
+    set(AC3HEARTH_FMT_VERSION "${fmt_VERSION}")
+else()
+    set(AC3HEARTH_FMT_VERSION "${AC3FORGE_FMT_VERSION}")
+endif()
 string(REGEX MATCH "^[0-9]+\\.[0-9]+" AC3HEARTH_QT_SERIES "${AC3HEARTH_UI_QT_VERSION}")
 
 set(AC3HEARTH_NOTICE_TOKENS "VERSION=${PROJECT_VERSION_FULL}")
@@ -110,17 +118,27 @@ if(EXISTS "${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
     list(APPEND AC3HEARTH_NOTICE_TOKENS "LIBOGG_VERSION=${version}")
     list(APPEND AC3HEARTH_NOTICE_FILES "LIBOGG_COPYRIGHT=${AC3HEARTH_VCPKG_SHARE}/libogg/copyright")
 endif()
-list(APPEND AC3HEARTH_NOTICE_FRAGMENTS opus time-filter trademarks)
+list(APPEND AC3HEARTH_NOTICE_FRAGMENTS opus time-filter fmt fonts trademarks)
 list(APPEND AC3HEARTH_NOTICE_TOKENS
     "QT_VERSION=${AC3HEARTH_UI_QT_VERSION}"
     "QT_SERIES=${AC3HEARTH_QT_SERIES}"
     "QT_PAYLOAD=${AC3HEARTH_QT_PAYLOAD}"
-    "QT_LOOKUP=${AC3HEARTH_QT_LOOKUP}")
-# Read only when qt-bundled is actually in the fragment list above
-# (ac3_generate_notices ignores a {{FILE:...}} marker no fragment mentions),
-# so this is safe to pass unconditionally even on Linux or a no-Qt build.
+    "QT_LOOKUP=${AC3HEARTH_QT_LOOKUP}"
+    # fmt and fonts are apps/crucible/notices/fragments/ fragments shared
+    # verbatim across applications (like qt-bundled above) - these are
+    # Hearth's own values for the two tokens they leave for each app to fill.
+    "FMT_VERSION=${AC3HEARTH_FMT_VERSION}"
+    "FMT_USERS=Hearth's programs"
+    "FONT_USER=Hearth")
+# LGPL3 is read only when qt-bundled is actually in the fragment list above;
+# FMT_MIT and OFL are read by the unconditional fmt/fonts fragments just
+# added. ac3_generate_notices ignores a {{FILE:...}} marker no fragment
+# mentions, so passing all three here unconditionally is safe regardless of
+# platform or Qt-bundling.
 list(APPEND AC3HEARTH_NOTICE_FILES
-    "LGPL3=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/LGPL-3.0.txt")
+    "LGPL3=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/LGPL-3.0.txt"
+    "FMT_MIT=${CMAKE_SOURCE_DIR}/apps/crucible/notices/licences/MIT-fmt.txt"
+    "OFL=${CMAKE_SOURCE_DIR}/apps/gui/fonts/OFL.txt")
 
 if(NOT AC3HEARTH_NOTICES_FILE)
     message(FATAL_ERROR

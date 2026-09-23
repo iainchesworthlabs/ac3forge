@@ -22,6 +22,42 @@ ApplicationWindow {
     title: qsTr("Hearth")
     color: Theme.bg
 
+    // Basic draws every native control - CheckBox, ComboBox, Button, TextField
+    // - from these palette roles, never from a literal. Left unset, Basic
+    // falls back to its own default palette regardless of Theme: fine in
+    // light mode by accident, but in dark mode it leaves a native control's
+    // own text at Basic's fixed near-black default against Theme's dark
+    // background - almost unreadable, and identical on every such control, so
+    // nothing in the QML itself (colour, enabled, opacity) shows why. Same
+    // root cause and same fix apps/gui/qml/Main.qml's own comment describes
+    // ("pale pink on every switch and slider") for Fusion.
+    //
+    // palette.button is neutral300, not Theme.surface: Basic's own
+    // Button.qml background is a flat, borderless Rectangle (border.width:
+    // 0 unless focused) - unlike TextField/ComboBox, which always draw a
+    // palette.mid border regardless of fill. A Button filled with
+    // Theme.surface sitting on a Card (also Theme.surface, Card.qml) is
+    // fill-on-identical-fill: no border to fall back on, so the button
+    // itself disappears rather than just reading muted.
+    palette.window: Theme.bg
+    palette.windowText: Theme.text
+    palette.base: Theme.surface
+    palette.alternateBase: Theme.neutral100
+    palette.text: Theme.text
+    palette.button: Theme.neutral300
+    palette.buttonText: Theme.text
+    palette.brightText: Theme.text
+    palette.highlight: Theme.accent
+    palette.highlightedText: Theme.bg
+    palette.light: Theme.neutral100
+    palette.midlight: Theme.neutral200
+    palette.mid: Theme.neutral400
+    palette.dark: Theme.neutral600
+    palette.shadow: Theme.neutral900
+    palette.toolTipBase: Theme.surface
+    palette.toolTipText: Theme.text
+    palette.placeholderText: Theme.textMuted
+
     // apps/gui/qml/Main.qml carries the same root; see its own comment for
     // what padding still has to do on its own.
     LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
@@ -60,6 +96,7 @@ ApplicationWindow {
         Theme.paletteChoice = HearthController.palette;
         window.applyTextScale();
         HearthController.start();
+        NetworkController.start();
         // One turn later, so main.cpp's setProperty("suppressFirstRun", ...)
         // - which runs after this handler and before the event loop starts -
         // has already landed (Crucible's own Main.qml carries the identical

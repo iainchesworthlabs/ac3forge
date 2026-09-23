@@ -30,16 +30,9 @@ ColumnLayout {
         ];
     }
 
-    Text {
-        Layout.fillWidth: true
-        text: qsTr("03 THIS SINK")
-        color: Theme.textMuted
-        font.pixelSize: Theme.fontSmall
-        font.bold: true
-    }
-
     Card {
         Layout.fillWidth: true
+        title: qsTr("03 THIS SINK")
 
         GridLayout {
             Layout.fillWidth: true

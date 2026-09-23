@@ -260,7 +260,7 @@ ScrollView {
 
                 Card {
                     title: qsTr("03 This stream")
-                    subtitle: root.fileNameOf(root.media.path)
+                    summary: root.fileNameOf(root.media.path)
 
                     Text {
                         Layout.fillWidth: true

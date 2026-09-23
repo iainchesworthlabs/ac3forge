@@ -8,11 +8,11 @@ Rectangle {
     id: root
 
     property alias title: heading.text
-    // An optional secondary title, right of the main one - e.g. Hearth's
-    // Decoder page names the playing file here (DecoderEac3.qml's "03 This
-    // stream" card). Empty and invisible by default, the same as an unset
-    // title.
-    property alias subtitle: subheading.text
+    // A short right-aligned caption on the title's own row, e.g. "Onkyo
+    // receiver · 8 outputs" - the handoff draws a rule between it and the
+    // title on every card, whether or not a summary is set (an untitled
+    // summary just leaves the rule running to the card's edge).
+    property alias summary: summaryLabel.text
     default property alias content: column.data
 
     color: Theme.surface
@@ -39,31 +39,30 @@ Rectangle {
         spacing: Theme.gap
 
         RowLayout {
+            id: headingRow
             Layout.fillWidth: true
             spacing: Theme.gap
-            // heading.text/subheading.text, not heading.visible/subheading.visible:
-            // reading a child's effective .visible from here would depend on
-            // this row's own .visible, which depends on the children's
-            // effective .visible in turn - a binding loop that (observed via
-            // a real --page decoder capture) silently collapses this row to
-            // invisible everywhere, not just where it truly loops.
-            visible: heading.text.length > 0 || subheading.text.length > 0
+            visible: heading.text.length > 0
 
             Text {
                 id: heading
-                Layout.fillWidth: true
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall
                 font.bold: true
                 font.capitalization: Font.AllUppercase
-                visible: text.length > 0
             }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.divider
+            }
+
             Text {
-                id: subheading
+                id: summaryLabel
+                visible: text.length > 0
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall
-                font.family: Theme.monoFamily
-                visible: text.length > 0
             }
         }
 
