@@ -858,13 +858,17 @@ board-only boot crashes found bringing this example itself up, all fixed in
   own SDIO transport buffers still defaulted to internal RAM; the component's own
   changelog names this option for exactly this chip.
 
-With those three, a clean boot, WiFi join and Sendspin session, built with
+With those three, a clean boot, WiFi join and a full paired Sendspin play, built with
 `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin"`
-plus real `AC3FORGE_EXAMPLE_WIFI_SSID`/`_PASSWORD`: SDIO up, the ESP32-C6 identified,
-a real access point joined and a DHCP lease taken, mDNS advertising
-`_sendspin._tcp`, the REST control surface up on port 80, and the Sendspin player
-itself accepting a connection from another device already on the network within
-seconds of coming up - all through this example's own code, not a standalone test.
+plus real `AC3FORGE_EXAMPLE_WIFI_SSID`/`_PASSWORD`: SDIO up, the ESP32-C6 identified, a
+real access point joined and a DHCP lease taken, mDNS advertising `_sendspin._tcp`, the
+REST control surface up on port 80 - all through this example's own code, not a
+standalone test. `ac3hearth-testserver` then paired by token and played an Atmos/JOC
+E-AC-3 fixture (`tests/golden/object-fixture/dee_joc_514.ec3`, acmod=7, 11 objects) five
+times through over ten seconds onto the 2.0 layout: 315 of 315 bursts played, 0
+underruns, 0 late, 0 dropped, 0 invalid, `/status` polled throughout with a worst
+timing error of 419 µs, result `pass` - the decode, the burst player and the WiFi/
+Sendspin path all exercised together for the first time on this part.
 
 **TDM mode - any layout of three channels or more - could not be verified on this
 exact board.** Only 1-2 channel standard I2S (this player's own default 2.0 layout)
