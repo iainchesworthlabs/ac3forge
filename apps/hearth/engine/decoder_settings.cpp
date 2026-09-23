@@ -43,6 +43,7 @@ DecoderSetup decoder_setup(const DecoderSettings& settings, const render::Output
     config.drc_scale = std::clamp(settings.drc_cut, 0.0, 1.0);
     config.drc_boost_scale = std::clamp(settings.drc_boost, 0.0, 1.0);
     config.heavy_compression = settings.heavy_compression;
+    config.fast_imdct = settings.fast_inverse_transform;
     config.output.mode = settings.mode;
     // dB to the linear magnitude OutputConfig wants, held to full scale: a
     // ceiling above it would let kRf's fold clip, which is the one thing
@@ -52,6 +53,7 @@ DecoderSetup decoder_setup(const DecoderSettings& settings, const render::Output
     config.output.ltrt_phase_shift = settings.ltrt_phase_shift;
     config.output.mix_lfe = settings.mix_lfe;
     config.output.mix_override = settings.mix_levels;
+    config.joc_domain = settings.joc_domain;
     // Not settings.programme: which programme plays is which units a session
     // feeds (Session::open), and a decoder told to skip every other
     // programme would skip the whole of an item still playing the old one
@@ -113,11 +115,19 @@ std::string describe(const DecoderSettings& settings) {
         case render::ObjectsPolicy::kNever: parts.emplace_back("objects never"); break;
         case render::ObjectsPolicy::kAlways: parts.emplace_back("objects always"); break;
     }
+    switch (settings.joc_domain) {
+        case oba::joc::Domain::kQmf: parts.emplace_back("objects reconstructed in the QMF domain"); break;
+        case oba::joc::Domain::kMdctBand:
+            parts.emplace_back("objects reconstructed in the MDCT-band domain");
+            break;
+    }
     switch (settings.concealment) {
         case ConcealmentPolicy::kNone: parts.emplace_back("no concealment"); break;
         case ConcealmentPolicy::kRepeatFade: parts.emplace_back("concealment: repeat and fade"); break;
         case ConcealmentPolicy::kMute: parts.emplace_back("concealment: mute"); break;
     }
+    parts.emplace_back(settings.fast_inverse_transform ? "fast inverse transform"
+                                                        : "reference inverse transform");
     return joined(parts);
 }
 

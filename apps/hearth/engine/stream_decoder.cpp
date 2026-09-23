@@ -140,7 +140,9 @@ StreamDecoder::StreamDecoder(const render::OutputLayout& layout, std::uint32_t s
       substreams_(substreams),
       serving_(decoder_setup(settings, layout).serving),
       config_(decoder_setup(settings, layout).config),
-      renderer_(layout, sample_rate) {}
+      renderer_(layout, sample_rate) {
+    renderer_.set_joc_domain(config_.joc_domain);
+}
 
 void StreamDecoder::reset() {
     ac3_decoder_.reset();
@@ -149,7 +151,21 @@ void StreamDecoder::reset() {
     beds_.clear();
     renderer_bed_.reset();
     dual_mono_ = false;
-    renderer_ = render::LayoutRenderer{layout_, sample_rate_};
+    renderer_ = render::LayoutRenderer{layout_, sample_rate_, crossover_hz_};
+    // A fresh LayoutRenderer starts at kQmf's own lag (render.hpp) whatever
+    // config_ says, so a seek (what reset() is for) needs this reapplied or
+    // the LFE would fall out of step with the objects beside it from the
+    // seek point on - the same reason crossover_hz_ above has to be handed
+    // back in rather than left to the class's own default.
+    renderer_.set_joc_domain(config_.joc_domain);
+}
+
+bool StreamDecoder::set_crossover_hz(double hz) {
+    if (!renderer_.set_crossover_hz(hz)) {
+        return false;
+    }
+    crossover_hz_ = hz;
+    return true;
 }
 
 std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const std::byte> whole,
