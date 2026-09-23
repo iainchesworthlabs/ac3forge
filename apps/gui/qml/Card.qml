@@ -41,7 +41,13 @@ Rectangle {
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.gap
-            visible: heading.visible || subheading.visible
+            // heading.text/subheading.text, not heading.visible/subheading.visible:
+            // reading a child's effective .visible from here would depend on
+            // this row's own .visible, which depends on the children's
+            // effective .visible in turn - a binding loop that (observed via
+            // a real --page decoder capture) silently collapses this row to
+            // invisible everywhere, not just where it truly loops.
+            visible: heading.text.length > 0 || subheading.text.length > 0
 
             Text {
                 id: heading
