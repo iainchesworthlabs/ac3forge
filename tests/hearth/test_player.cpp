@@ -2205,6 +2205,106 @@ TEST_CASE("player: set_crossover_hz refuses outside LayoutRenderer's own range, 
     CHECK(player->crossover_hz() == 100.0);
 }
 
+TEST_CASE("player: set_layout refuses an empty layout, and is a no-op for the same one",
+          "[hearth][player][speakers]") {
+    Library library;
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "5.1");
+
+    CHECK_FALSE(player->set_layout(ac3::render::OutputLayout{}));  // no slots at all
+    CHECK(player->layout().text() == "5.1");
+    CHECK(log->opens == 0);
+
+    const auto same = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(same.has_value());
+    CHECK(player->set_layout(*same));  // accepted, but there is nothing to do
+    CHECK(player->layout().text() == "5.1");
+    CHECK(log->opens == 0);  // nothing was open to reopen, and this was not a change anyway
+}
+
+TEST_CASE("player: set_layout with nothing playing takes effect for the next item, and "
+          "resets the per-slot speaker setup",
+          "[hearth][player][speakers]") {
+    Library library;
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "5.1");
+    REQUIRE(player->set_trim_db(0, -6.0));
+    REQUIRE(player->set_delay_ms(1, 5.0));
+
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+    CHECK(player->set_layout(*layout));
+    CHECK(player->layout().text() == "2.0");
+    CHECK(player->layout().slots() == 2);
+    // A slot index means a different speaker under a different layout, so
+    // last layout's settings do not carry over.
+    CHECK(player->trim_db(0) == 0.0);
+    CHECK(player->delay_ms(1) == 0.0);
+    CHECK(log->opens == 0);  // nothing was playing; there was nothing to reopen
+}
+
+TEST_CASE("player: set_layout while playing reopens the output at the new width and "
+          "resumes the same item where it had got to, not from the beginning",
+          "[hearth][player][speakers]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(40);
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "5.1");  // 6 slots
+    const std::uint64_t item_total = 40 * 1536;
+
+    player->queue().add(item("a.ec3"));
+    player->play();
+    for (int step = 0; step < 10; ++step) {
+        player->pump();
+        advance(*log, 480);
+    }
+    const auto before = player->position();
+    REQUIRE(before.item == 0);
+    REQUIRE(before.heard > std::chrono::milliseconds{0});
+    REQUIRE(before.heard < before.duration);  // genuinely partway through, not finished
+    const auto before_heard_samples =
+        static_cast<std::uint64_t>(before.heard.count()) * 48000 / 1000;
+
+    REQUIRE(player->set_trim_db(0, -6.0));  // the old layout's own speaker setup
+
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+    CHECK(player->set_layout(*layout));
+    CHECK(player->layout().slots() == 2);
+    CHECK(log->opens == 2);            // closed the 5.1 output, opened a fresh 2.0 one
+    CHECK(player->trim_db(0) == 0.0);  // reset: slot 0 of 2.0 is not slot 0 of 5.1
+
+    REQUIRE(play_out(*player, *log));
+    // FakeDevice::submit() itself REQUIREs every block it is handed to have
+    // exactly layout().slots() spans, so playing out at all here already
+    // proves every block after the reopen was rendered at the new width.
+    CHECK(log->rates == std::vector<std::uint32_t>{48000, 48000});
+
+    // Reopened, not restarted: still the one item, but the output opened
+    // twice for it.
+    REQUIRE(player->history().size() == 2);
+    CHECK(player->history()[0].queue_index == 0);
+    CHECK(player->history()[1].queue_index == 0);
+    CHECK(player->history()[1].output_opens == 2);
+    // The first leg stopped early, at roughly where the reopen was asked
+    // for - a plain "played to the end, then the next item started" would
+    // have delivered the item's total on the first leg alone. (Its own
+    // total can run a little past what before.heard says, since the device
+    // can hold several submitted-but-not-yet-heard blocks that close_output()
+    // simply drops when the reopen happens - "frames" counts what was
+    // submitted, not what a listener actually heard before the output
+    // closed.)
+    CHECK(player->history()[0].frames < item_total);
+    // The second leg picked up close to where the old output had last
+    // actually been HEARD, and finished the item from there: a bug that
+    // resumed from sample 0 instead would show the item's whole length here.
+    REQUIRE(player->history()[1].frames < item_total);
+    const std::uint64_t expected_second_leg =
+        item_total > before_heard_samples ? item_total - before_heard_samples : item_total;
+    CHECK(player->history()[1].frames > expected_second_leg - 4800);
+    CHECK(player->history()[1].frames < expected_second_leg + 4800);
+}
+
 TEST_CASE("player: routing and device facts are PcmSink's own, and default to its inert answers",
           "[hearth][player][speakers]") {
     // FakeDevice (this file) takes PcmSink's defaults for these rather than

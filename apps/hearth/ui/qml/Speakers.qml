@@ -5,19 +5,19 @@ import QtQuick.Layouts
 import Ac3ForgeHearth
 
 // The Speakers page (planning/hearth-design.md, "Speaker setup"): routing,
-// trim, delay, the bass-management crossover and the identify tone, all
-// real and posted straight to the engine through HearthController. One
-// thing the design shows is not built here: the layout picker (the layout
-// is fixed for this slice - HearthController.speakerLabels' own comment
-// says why), named rather than left silently missing.
+// trim, delay, the bass-management crossover, the identify tone, the plan
+// diagram, and the speaker layout itself - the picker, the "As text" field,
+// the Heights control and each speaker's own Size toggle (HearthController.
+// setLayoutText()/setHeights()/setSpeakerSmall(), backed by the engine's own
+// live Player::set_layout()) - all real and posted straight to the engine
+// through HearthController.
 //
-// The "01 Speaker layout" plan diagram IS built here, even though the
-// engine exposes no per-slot angle (same comment) - only the label and the
-// small-speaker flag. Rather than extend the engine for one diagram, this
-// file keeps its own label-to-angle/elevation table, ported by hand from
-// ac3::spatial::direction_of (src/forge/src/spatial/spatial.cpp) - see
-// speakerAngles/directionOf below. Keep the two in sync if that table ever
-// changes.
+// The plan diagram has no per-slot angle from the engine to draw with -
+// only the label and the small-speaker flag. Rather than extend the engine
+// for one diagram, this file keeps its own label-to-angle/elevation table,
+// ported by hand from ac3::spatial::direction_of
+// (src/forge/src/spatial/spatial.cpp) - see speakerAngles/directionOf
+// below. Keep the two in sync if that table ever changes.
 ScrollView {
     id: root
     clip: true
@@ -25,6 +25,7 @@ ScrollView {
 
     readonly property var labels: HearthController.speakerLabels
     readonly property var smallFlags: HearthController.speakerSmall
+    readonly property var isLfeFlags: HearthController.speakerIsLfe
     readonly property var routingList: HearthController.routing
     readonly property int outputs: HearthController.routingOutputs
     readonly property var outputNames: HearthController.outputNames
@@ -39,6 +40,17 @@ ScrollView {
         return name ? qsTr("%1\n%2").arg(index + 1).arg(name) : String(index + 1);
     }
 
+    // The layout picker's own preset names - a plain "5.1.2" etc. is what
+    // the picker's own SegmentedControl offers, and also what its currently-
+    // selected segment is computed against (falling back to "List" once a
+    // Heights or Size change has moved layoutText off any of these, exactly
+    // as the mockup's own example does for a 5.1.2 room with small fronts).
+    readonly property var layoutPresets: ["2.0", "5.1", "7.1", "5.1.2", "5.1.4", "7.1.4"]
+
+    // speakerSmall() no longer decorates the name here - the Levels table's
+    // own SIZE column shows it as a control now, not a suffix - but this
+    // stays for anything else on the page that still wants a speaker
+    // described by name and size together (the identify status line does).
     function speakerName(index) {
         const small = root.smallFlags[index] === true;
         return small ? qsTr("%1 (small)").arg(root.labels[index]) : root.labels[index];
@@ -154,21 +166,82 @@ ScrollView {
         Card {
             title: qsTr("01 Speaker layout")
 
-            Text {
+            RowLayout {
                 Layout.fillWidth: true
-                text: root.labels.length > 0 ? root.labels.join(qsTr(", ")) : qsTr("Unknown")
-                color: Theme.text
-                font.family: Theme.monoFamily
-                wrapMode: Text.WordWrap
+                spacing: Theme.gap
+                Text { text: qsTr("Layout"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                SegmentedControl {
+                    objectName: "speakersLayoutPreset"
+                    accessibleName: qsTr("Speaker layout")
+                    currentValue: root.layoutPresets.includes(HearthController.layoutText)
+                                  ? HearthController.layoutText : "list"
+                    model: [
+                        { value: "2.0", label: qsTr("2.0") },
+                        { value: "5.1", label: qsTr("5.1") },
+                        { value: "7.1", label: qsTr("7.1") },
+                        { value: "5.1.2", label: qsTr("5.1.2") },
+                        { value: "5.1.4", label: qsTr("5.1.4") },
+                        { value: "7.1.4", label: qsTr("7.1.4") },
+                        { value: "list", label: qsTr("List") }
+                    ]
+                    // "List" has no preset of its own to switch to - it is
+                    // only ever the picker's OWN read-out of a layout that
+                    // does not match any of the other six (a custom list, or
+                    // one with a small speaker or a re-tiered height, which
+                    // the named form cannot express); use "As text" for that.
+                    onSelected: function(value) {
+                        if (value !== "list") {
+                            HearthController.setLayoutText(value);
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gap
+                Text { text: qsTr("As text"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                TextField {
+                    objectName: "speakersLayoutText"
+                    Layout.fillWidth: true
+                    font.family: Theme.monoFamily
+                    text: HearthController.layoutText
+                    Accessible.name: qsTr("Layout, as text")
+                    // Unparseable text is simply dropped, the same as an
+                    // out-of-range trim or delay elsewhere on this page -
+                    // setLayoutText() parses before it ever reaches the
+                    // engine, so there is no round trip to fail against, and
+                    // the field falls back to showing the layout still in
+                    // effect.
+                    onEditingFinished: HearthController.setLayoutText(text)
+                }
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Fixed for this build; choosing a different layout is a later slice. A "
-                          + "speaker marked small sends its bass to the LFE output below the crossover "
-                          + "instead of reproducing it.")
+                text: qsTr("A name such as 7.1.4, or one token per output: a location, an angle such as "
+                          + "30/0, or a dash for an output with no speaker. A speaker marked small sends "
+                          + "its bass to the LFE output below the crossover instead of reproducing it.")
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall
                 wrapMode: Text.WordWrap
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gap
+                Text { text: qsTr("Heights"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                SegmentedControl {
+                    objectName: "speakersHeights"
+                    accessibleName: qsTr("Height speaker realization")
+                    enabled: HearthController.layoutHasHeight
+                    currentValue: HearthController.heightsRealization
+                    model: [
+                        { value: "wall", label: qsTr("On the wall") },
+                        { value: "ceiling", label: qsTr("In the ceiling") },
+                        { value: "upfiring", label: qsTr("Up-firing") }
+                    ]
+                    onSelected: function(value) { HearthController.setHeights(value); }
+                }
             }
 
             RowLayout {
@@ -598,6 +671,7 @@ ScrollView {
                     spacing: Theme.gap / 2
 
                     readonly property int labelWidth: 96
+                    readonly property int sizeWidth: 120
                     readonly property int fieldWidth: 64
                     readonly property int unitWidth: 24
 
@@ -606,6 +680,10 @@ ScrollView {
                         Text {
                             width: levels.labelWidth
                             text: qsTr("SPEAKER"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                        }
+                        Text {
+                            width: levels.sizeWidth
+                            text: qsTr("SIZE"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
                         }
                         Text {
                             width: levels.fieldWidth
@@ -638,8 +716,51 @@ ScrollView {
                                 width: levels.labelWidth
                                 height: trimField.implicitHeight
                                 verticalAlignment: Text.AlignVCenter
-                                text: root.speakerName(row.index)
+                                text: root.labels[row.index]
                                 color: Theme.text
+                            }
+
+                            // A fixed-width cell so TRIM/DELAY still line up
+                            // down the table regardless of which of the two
+                            // children below is showing. Not a Row child
+                            // itself with its own anchors - a positioner sets
+                            // its children's x/y itself, so an anchor on a
+                            // direct child of `row` would fight it; anchoring
+                            // within this plain Item instead is safe.
+                            Item {
+                                width: levels.sizeWidth
+                                height: trimField.implicitHeight
+
+                                // LFE has no size to set - render::Speaker::
+                                // small only means anything on a full-
+                                // bandwidth speaker (layout.hpp's own header
+                                // comment).
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: root.isLfeFlags[row.index] === true
+                                    text: "—"
+                                    color: Theme.textMuted
+                                }
+                                SegmentedControl {
+                                    objectName: "speakersSize-" + row.index
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: root.isLfeFlags[row.index] !== true
+                                    // Nowhere for a small speaker's bass to go
+                                    // without an LFE feed - OutputLayout::
+                                    // with_small() itself would refuse
+                                    // turning this on then.
+                                    enabled: HearthController.layoutHasLfe
+                                    segHeight: trimField.implicitHeight
+                                    accessibleName: qsTr("Size for %1").arg(row.modelData)
+                                    currentValue: root.smallFlags[row.index] === true ? "small" : "large"
+                                    model: [
+                                        { value: "large", label: qsTr("Large") },
+                                        { value: "small", label: qsTr("Small") }
+                                    ]
+                                    onSelected: function(value) {
+                                        HearthController.setSpeakerSmall(row.index, value === "small");
+                                    }
+                                }
                             }
 
                             TextField {

@@ -424,6 +424,67 @@ class OutputLayout {
         return n;
     }
 
+    // This layout with one slot's ':small' changed - the structural form of
+    // toggling the header comment's ":small" suffix, for a caller that has a
+    // slot index rather than text to re-parse (a settings page's per-speaker
+    // Large/Small control). std::nullopt, changing nothing, for a slot out
+    // of range, a slot that is not a speaker (kSpeaker), or turning small ON
+    // when this layout has no LFE feed to send its bass to - the same rule
+    // listed() itself enforces. Turning small off always succeeds.
+    [[nodiscard]] std::optional<OutputLayout> with_small(std::size_t slot, bool small) const {
+        if (slot >= count_ || speakers_[slot].kind != Speaker::Kind::kSpeaker) {
+            return std::nullopt;
+        }
+        if (small && lfe_count() == 0) {
+            return std::nullopt;
+        }
+        OutputLayout out = *this;
+        out.speakers_[slot].small = small;
+        out.set_text_from_slots();
+        return out;
+    }
+
+    // This layout with every re-tierable height slot (is_realizable_height())
+    // set to `realization` - the structural form of the header comment's
+    // ":height"/":top"/":upfiring" suffix, or the named form's own trailing
+    // modifier, for a caller that has a layout already rather than text to
+    // re-parse (a settings page's Heights control). Never refused: a layout
+    // with no such slot comes back unchanged, the same way a bare "5.1" has
+    // nothing for the suffix to apply to.
+    [[nodiscard]] OutputLayout with_realization(Speaker::Realization realization) const {
+        OutputLayout out = *this;
+        bool touched_any = false;
+        for (std::size_t i = 0; i < out.count_; ++i) {
+            Speaker& speaker = out.speakers_[i];
+            if (speaker.location.has_value() && is_realizable_height(*speaker.location)) {
+                speaker.realization = realization;
+                touched_any = true;
+            }
+        }
+        if (!touched_any) {
+            return out;  // nothing to re-tier; the original text still holds
+        }
+        out.resolve_directions();  // re-applies elevation with the realization set
+        out.set_text_from_slots();
+        return out;
+    }
+
+    // The five Dolby-style height locations a ":height"/":top"/":upfiring"
+    // suffix, or with_realization(), may re-tier - see the header comment. Ts
+    // (a true overhead centre-rear, already at 90 degrees) is deliberately
+    // not among them: it has no "which physical thing realizes it" question
+    // to answer.
+    [[nodiscard]] static bool is_realizable_height(Location location) {
+        switch (location) {
+            case Location::kVhl:
+            case Location::kVhr:
+            case Location::kVhc:
+            case Location::kLts:
+            case Location::kRts: return true;
+            default: return false;
+        }
+    }
+
     // The names of the slots in `slots` (bit n for slot n), comma-separated,
     // into `out`, NUL-terminated. A name that would not fit whole is left out,
     // with every one after it.
@@ -455,21 +516,6 @@ class OutputLayout {
    private:
     static bool is_lfe(Location location) {
         return location == Location::kLfe || location == Location::kLfe2;
-    }
-
-    // The five Dolby-style height locations a ":height"/":top"/":upfiring"
-    // suffix may re-tier - see the header comment. Ts (a true overhead
-    // centre-rear, already at 90 degrees) is deliberately not among them:
-    // it has no "which physical thing realizes it" question to answer.
-    static bool is_realizable_height(Location location) {
-        switch (location) {
-            case Location::kVhl:
-            case Location::kVhr:
-            case Location::kVhc:
-            case Location::kLts:
-            case Location::kRts: return true;
-            default: return false;
-        }
     }
 
     static std::optional<Speaker::Realization> realization_named(std::string_view token) {
@@ -671,8 +717,12 @@ class OutputLayout {
         text_[n] = '\0';
     }
 
-    // The list form of what the slots hold, for a layout built from locations
-    // rather than parsed.
+    // The list form of what the slots hold: one token per slot, comma-
+    // separated, with any ':small' and realization suffix that applies - what
+    // with_small()/with_realization() need after changing one slot in place,
+    // and what from_locations() already produced before there was a suffix to
+    // add (its own slots never set small or a realization, so this is
+    // unchanged behaviour for that caller).
     void set_text_from_slots() {
         std::size_t used = 0;
         for (std::size_t i = 0; i < count_; ++i) {
@@ -683,13 +733,31 @@ class OutputLayout {
             } else if (speaker.kind == Speaker::Kind::kLfe) {
                 token = "lfe";
             }
-            if (used + token.size() + 2 >= kTextBytes) {
+            std::string_view suffix{};
+            switch (speaker.realization) {
+                case Speaker::Realization::kHeight: suffix = ":height"; break;
+                case Speaker::Realization::kTop: suffix = ":top"; break;
+                case Speaker::Realization::kUpFiring: suffix = ":upfiring"; break;
+                case Speaker::Realization::kDefault: default: break;
+            }
+            constexpr std::string_view kSmallSuffix = ":small";
+            const std::size_t needed =
+                token.size() + (speaker.small ? kSmallSuffix.size() : 0) + suffix.size() + 2;
+            if (used + needed >= kTextBytes) {
                 break;
             }
             if (i > 0) {
                 text_[used++] = ',';
             }
             for (const char c : token) {
+                text_[used++] = c;
+            }
+            if (speaker.small) {
+                for (const char c : kSmallSuffix) {
+                    text_[used++] = c;
+                }
+            }
+            for (const char c : suffix) {
                 text_[used++] = c;
             }
         }
