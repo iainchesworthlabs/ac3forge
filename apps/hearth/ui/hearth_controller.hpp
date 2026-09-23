@@ -258,6 +258,13 @@ class HearthController : public QObject {
     // mode - read here, not acted on: no passthrough sink is wired into this
     // engine yet).
     Q_PROPERTY(QVariantList outputDevices READ outputDevices NOTIFY outputDevicesChanged)
+    // The network group pinned as output (selectOutputGroup()'s own id),
+    // or empty for none/a local device - what the output picker compares
+    // NetworkController's own group rows' id against, the same way
+    // currentDeviceId says which outputDevices() row is "playing here".
+    // Empty does not mean nothing plays: it is also the state while a local
+    // device is pinned instead (selectOutputDevice() clears it).
+    Q_PROPERTY(QString outputGroupName READ outputGroupName NOTIFY stateChanged)
 
     // --- settings (the Settings page) ------------------------------------
     // Playback and network are ac3::hearth::EngineSettings, kept through a
@@ -431,6 +438,22 @@ public:
     // what changed, or why nothing did, shows up in noteText().
     Q_INVOKABLE void selectOutputDevice(const QString& deviceId);
 
+    [[nodiscard]] QString outputGroupName() const { return output_group_name_; }
+    // Pins playback to the network group named `groupId` (one of
+    // NetworkController's own group rows' "id" fields - a stable id, not the
+    // group's editable display name: network_sinks.hpp's own group()
+    // comment says why one resolves unambiguously and the other cannot) -
+    // the picker's "Play here" on a group row, once it grows one. Readiness
+    // is read fresh from NetworkOutputStatus at the moment of the call and
+    // again every poll() tick after (network_output_status.hpp's own
+    // comment on why this cannot be captured once), so a sink connecting or
+    // dropping after this call still reaches Engine::set_output_preferences
+    // without the person having to reselect the group. An empty `groupId`
+    // clears the pin, the same as selectOutputDevice("") would if it
+    // allowed one - selectOutputDevice() itself remains how playback moves
+    // back to a local device.
+    Q_INVOKABLE void selectOutputGroup(const QString& groupId);
+
     // A name ("7.1.4") or a list (ac3::render::OutputLayout::parse()'s own
     // grammar - the layout picker's presets and the "As text" field both call
     // this directly), parsed here so an unparseable edit is simply refused
@@ -578,6 +601,13 @@ private:
     QVariantList speaker_small_;
 
     QVariantList output_devices_;
+    // The network group pinned as output, empty for none - selectOutputGroup()'s
+    // own store, refreshed against NetworkOutputStatus every poll() tick
+    // (outputGroupName()'s own comment says why). output_group_ready_ is
+    // the readiness last posted for it, so poll() only posts again when
+    // NetworkOutputStatus disagrees rather than every tick regardless.
+    QString output_group_name_;
+    bool output_group_ready_ = false;
     QVariantList speaker_is_lfe_;
     QString layout_text_;
     bool layout_has_height_ = false;

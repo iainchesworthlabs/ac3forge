@@ -51,6 +51,7 @@
 #include "engine_thread.hpp"
 #include "item_loader.hpp"
 #include "media_inspector.hpp"
+#include "network_output_status.hpp"
 #include "output_decision.hpp"
 #include "output_selector.hpp"
 #include "pairing_store.hpp"
@@ -863,9 +864,17 @@ void HearthController::start() {
     // the old bare-PcmSink construction gave, on the same default device
     // (best_for_pcm() picks it the same way DeviceSink::open() did with an
     // empty device id), until a dialog row pins a different one.
-    ac3::hearth::EngineOutputs outputs{.pcm = ac3::hearth::make_device_sink(std::string()),
-                                       .bitstream = {},
-                                       .endpoints = ac3::hearth::device_endpoints()};
+    // The resolver reads NetworkOutputStatus at each open(), never a value
+    // captured here - NetworkController may not even have start()ed yet at
+    // this point, let alone made the group a person later pins
+    // (network_output_status.hpp's own header comment).
+    ac3::hearth::EngineOutputs outputs{
+        .pcm = ac3::hearth::make_device_sink(std::string()),
+        .bitstream = {},
+        .group = ac3::hearth::make_group_sink([](const std::string& group_id) {
+            return ac3::hearth::ui::NetworkOutputStatus::instance().group(group_id);
+        }),
+        .endpoints = ac3::hearth::device_endpoints()};
     const ac3::hearth::EngineSettings loaded = current_settings(*store_);
     engine_ = std::make_unique<ac3::hearth::Engine>(
         std::move(outputs), ac3::hearth::ui::make_file_item_loader(), layout,
@@ -1038,6 +1047,26 @@ void HearthController::poll() {
     AC3_ZONE_SCOPED_N("hearth poll");
     if (!engine_) {
         return;
+    }
+    // A pinned group's readiness is live (a member can connect or drop at
+    // any time, independently of anything this controller's own commands
+    // do), so it is checked every tick here rather than only when
+    // selectOutputGroup() was last called - see that method's own comment.
+    // Posted only on a real change: set_output_preferences() is a command,
+    // and Player::refollow() already no-ops cheaply when nothing about the
+    // choice actually differs, but there is still no reason to cross the
+    // engine thread's queue every tick when it would.
+    if (!output_group_name_.isEmpty()) {
+        const std::string id = output_group_name_.toStdString();
+        const bool ready = ac3::hearth::ui::NetworkOutputStatus::instance().ready(id);
+        if (ready != output_group_ready_) {
+            output_group_ready_ = ready;
+            engine_->set_output_preferences(ac3::hearth::OutputPreferences{
+                .pinned = ac3::hearth::OutputMode::kNetworkGroup,
+                .follow_sink = true,
+                .group_name = id,
+                .group_ready = ready});
+        }
     }
     const ac3::hearth::EngineStatus status = engine_->status();
 
@@ -1417,10 +1446,39 @@ void HearthController::selectOutputDevice(const QString& deviceId) {
     if (!engine_ || deviceId.isEmpty()) {
         return;
     }
+    if (!output_group_name_.isEmpty()) {
+        output_group_name_.clear();
+        output_group_ready_ = false;
+        emit stateChanged();
+    }
     engine_->set_output_preferences(
         ac3::hearth::OutputPreferences{.pinned = ac3::hearth::OutputMode::kLocalPcm,
                                        .endpoint_id = deviceId.toStdString(),
                                        .follow_sink = true});
+}
+
+void HearthController::selectOutputGroup(const QString& groupId) {
+    if (!engine_) {
+        return;
+    }
+    output_group_name_ = groupId;
+    if (groupId.isEmpty()) {
+        output_group_ready_ = false;
+        emit stateChanged();
+        // Falls back to whatever set_output_preferences's own default
+        // (automatic) would otherwise choose - the same "pin nothing" state
+        // selectOutputDevice() has no way to reach today.
+        engine_->set_output_preferences(ac3::hearth::OutputPreferences{});
+        return;
+    }
+    const std::string id = groupId.toStdString();
+    output_group_ready_ = ac3::hearth::ui::NetworkOutputStatus::instance().ready(id);
+    emit stateChanged();
+    engine_->set_output_preferences(ac3::hearth::OutputPreferences{
+        .pinned = ac3::hearth::OutputMode::kNetworkGroup,
+        .follow_sink = true,
+        .group_name = id,
+        .group_ready = output_group_ready_});
 }
 
 void HearthController::setLayoutText(const QString& text) {
