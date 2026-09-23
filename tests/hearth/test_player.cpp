@@ -21,6 +21,7 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/io/dec3.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac3/render/identify.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3/render/render.hpp"
 #include "ac3/render/routing.hpp"
@@ -2318,4 +2319,122 @@ TEST_CASE("player: routing and device facts are PcmSink's own, and default to it
     CHECK(player->routing().channels() == 0);
     CHECK(player->device_name().empty());
     CHECK(player->speaker_mask() == 0);
+}
+
+// The identify tone (ac3/render/identify.hpp): pink noise on one render
+// layout slot at a time, in place of the item playing there. The generator
+// itself is tested in tests/render/test_identify.cpp; these prove the
+// wiring - that take_block() actually substitutes it, silences every other
+// slot, picks the low band for an LFE slot, and leaves trim_delay_ out of
+// it - against "5.1" (L C R Ls Rs LFE), so slot 0 is a full-bandwidth
+// speaker and slot 5 is the LFE feed.
+
+TEST_CASE("player: the identify tone replaces a slot's output with pink noise and silences the rest",
+          "[hearth][player][speakers]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(4);
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log, 8192, "5.1");
+    REQUIRE(player->identify_start(0));
+    player->queue().add(item("a.ec3"));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+
+    REQUIRE_FALSE(log->kept[0].empty());
+    for (std::size_t slot = 1; slot < log->kept.size(); ++slot) {
+        CHECK(log->kept[slot] == std::vector<float>(log->kept[slot].size(), 0.0F));
+    }
+    // Exactly a fresh generator's own sequence at the default level - the
+    // same determinism identify_start() relies on (its own comment says
+    // why), reset() the same way build_decoder()'s reconfigure_identify()
+    // leaves it before the first block.
+    ac3::render::IdentifyTone reference(48000);
+    std::vector<float> expected(log->kept[0].size());
+    reference.generate(expected, ac3::render::IdentifyTone::Band::kFull);
+    CHECK(log->kept[0] == expected);
+}
+
+TEST_CASE("player: an LFE slot's identify tone is the low band, not the full band",
+          "[hearth][player][speakers]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(4);
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log, 8192, "5.1");
+    REQUIRE(player->identify_start(5));  // LFE
+    player->queue().add(item("a.ec3"));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+
+    ac3::render::IdentifyTone reference(48000);
+    std::vector<float> expected(log->kept[5].size());
+    reference.generate(expected, ac3::render::IdentifyTone::Band::kLow);
+    CHECK(log->kept[5] == expected);
+}
+
+TEST_CASE("player: the identify tone ignores that slot's own trim", "[hearth][player][speakers]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(4);
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log, 8192, "5.1");
+    REQUIRE(player->set_trim_db(0, -6.0));
+    REQUIRE(player->identify_start(0));
+    player->queue().add(item("a.ec3"));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+
+    ac3::render::IdentifyTone reference(48000);
+    std::vector<float> expected(log->kept[0].size());
+    reference.generate(expected, ac3::render::IdentifyTone::Band::kFull);
+    CHECK(log->kept[0] == expected);  // the -6 dB trim never applied
+}
+
+TEST_CASE("player: identify_start and set_identify_level_db refuse an out-of-range slot or level",
+          "[hearth][player][speakers]") {
+    Library library;
+    auto log = std::make_shared<FakeDevice::Log>();
+    const auto player = make_player(library, log, 8192, "2.0");  // two slots: L, R
+
+    CHECK(player->identify_start(1));
+    CHECK(player->identify_slot() == 1);
+    CHECK_FALSE(player->identify_start(2));  // no slot 2 on 2.0
+    CHECK(player->identify_slot() == 1);     // the refused call changed nothing
+    player->identify_stop();
+    CHECK(player->identify_slot() == ac3::hearth::Queue::kNone);
+
+    CHECK(player->identify_level_db() == ac3::render::IdentifyTone::kDefaultLevelDb);
+    CHECK(player->set_identify_level_db(-30.0));
+    CHECK(player->identify_level_db() == -30.0);
+    CHECK_FALSE(player->set_identify_level_db(ac3::render::IdentifyTone::kMinLevelDb - 1.0));
+    CHECK_FALSE(player->set_identify_level_db(ac3::render::IdentifyTone::kMaxLevelDb + 1.0));
+    CHECK(player->identify_level_db() == -30.0);  // unchanged by the refused calls
+}
+
+TEST_CASE("player: identify_stop before anything plays leaves the render exactly as it was",
+          "[hearth][player][speakers]") {
+    Library library;
+    library.files["a.ec3"] = eac3_stream(4);
+
+    auto log = std::make_shared<FakeDevice::Log>();
+    log->keep = true;
+    const auto player = make_player(library, log, 8192, "5.1");
+    REQUIRE(player->identify_start(0));
+    player->identify_stop();
+    player->queue().add(item("a.ec3"));
+    player->play();
+    REQUIRE(play_out(*player, *log));
+
+    auto plain_log = std::make_shared<FakeDevice::Log>();
+    plain_log->keep = true;
+    const auto plain = make_player(library, plain_log, 8192, "5.1");
+    plain->queue().add(item("a.ec3"));
+    plain->play();
+    REQUIRE(play_out(*plain, *plain_log));
+
+    CHECK(log->kept == plain_log->kept);
 }

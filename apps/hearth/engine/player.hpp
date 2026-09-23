@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "ac3/iec61937/iec61937.hpp"
+#include "ac3/render/identify.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3/render/routing.hpp"
 #include "ac3/render/trim_delay.hpp"
@@ -253,6 +254,29 @@ public:
     [[nodiscard]] double delay_ms(std::size_t slot) const;
     bool set_crossover_hz(double hz);
     [[nodiscard]] double crossover_hz() const { return crossover_hz_; }
+
+    // The identify tone (planning/hearth-reference-player.md, A5's Speakers
+    // page): pink noise on one render layout slot at a time, in place of
+    // whatever the item playing would put there - take_block() overwrites
+    // the block entirely (render::IdentifyTone::fill()'s own behaviour:
+    // silence on every other slot too), ahead of trim_delay_, which does
+    // not apply to it - the level here is the identify tone's own, not the
+    // room's speaker trim. A slot of Speaker::Kind::kLfe gets the low band
+    // (30-80 Hz) automatically, never the full band, the way a subwoofer
+    // feed's own test tone needs. The level is a setting, like crossover_hz,
+    // and survives a rate change (reapplied to the rebuilt generator by
+    // reconfigure_identify()); which slot is sounding it is a bare index
+    // with nothing rate-dependent to rebuild, so it needs no such handling.
+    // False, changing nothing:
+    // identify_start() for a slot at or past layout().slots(),
+    // set_identify_level_db() for a level outside render::IdentifyTone's own
+    // [kMinLevelDb, kMaxLevelDb].
+    bool identify_start(std::size_t slot);
+    void identify_stop();
+    // Queue::kNone while nothing is sounding the tone.
+    [[nodiscard]] std::size_t identify_slot() const { return identify_slot_; }
+    bool set_identify_level_db(double db);
+    [[nodiscard]] double identify_level_db() const { return identify_level_db_; }
 
     // The routing patch, and what the local device is: PcmSink's own
     // (pcm_sink.hpp), forwarded - sink_ is this player's PCM sink whether or
@@ -522,6 +546,23 @@ private:
     // Reconfigures trim_delay_ for `rate` if it is not already, then
     // reapplies trim_db_/delay_ms_ converted to that rate's sample counts.
     void reconfigure_trim_delay(std::uint32_t rate);
+
+    // The identify tone: source-of-truth level (survives a rate change) and
+    // the generator build_decoder() reconfigures whenever the LOCAL
+    // decoder's rate changes - render::IdentifyTone takes its sample rate
+    // at construction, with no setter, so a rate change rebuilds it rather
+    // than adjusting it in place, the same reason decoder_ itself is
+    // rebuilt rather than retuned. identify_slot_ is Queue::kNone while
+    // nothing is being identified; a bare index with no rate-dependent
+    // state of its own, so unlike the level it needs no rebuild logic to
+    // survive one - take_block() just reads it fresh every block.
+    double identify_level_db_ = render::IdentifyTone::kDefaultLevelDb;
+    render::IdentifyTone identify_tone_;
+    std::uint32_t identify_rate_ = 0;
+    std::size_t identify_slot_ = Queue::kNone;
+    // Reconfigures identify_tone_ for `rate` if it is not already, then
+    // reapplies identify_level_db_.
+    void reconfigure_identify(std::uint32_t rate);
     Queue queue_;
     Transport transport_{queue_};
 

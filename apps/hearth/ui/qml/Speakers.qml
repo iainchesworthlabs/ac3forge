@@ -5,14 +5,12 @@ import QtQuick.Layouts
 import Ac3ForgeHearth
 
 // The Speakers page (planning/hearth-design.md, "Speaker setup"): routing,
-// trim, delay, the bass-management crossover, the plan diagram, and the
-// speaker layout itself - the picker, the "As text" field, the Heights
-// control and each speaker's own Size toggle (HearthController.
+// trim, delay, the bass-management crossover, the identify tone, the plan
+// diagram, and the speaker layout itself - the picker, the "As text" field,
+// the Heights control and each speaker's own Size toggle (HearthController.
 // setLayoutText()/setHeights()/setSpeakerSmall(), backed by the engine's own
 // live Player::set_layout()) - all real and posted straight to the engine
-// through HearthController. One thing the design shows is not built here:
-// the identify tone (render::IdentifyTone is not wired into the engine
-// yet), named rather than left silently missing.
+// through HearthController.
 //
 // The plan diagram has no per-slot angle from the engine to draw with -
 // only the label and the small-speaker flag. Rather than extend the engine
@@ -125,6 +123,19 @@ ScrollView {
             text += " " + qsTr("Plus %1 low-frequency, no direction.").arg(root.planEntries.lfe.length);
         }
         return text;
+    }
+
+    function identifyStatusText() {
+        const slot = HearthController.identifySlot;
+        if (slot < 0) {
+            return qsTr("Nothing playing.");
+        }
+        const name = root.speakerName(slot);
+        const output = HearthController.routing[slot] ?? -1;
+        return output >= 0
+            ? qsTr("Noise on %1, output %2. Escape stops it.").arg(name).arg(output + 1)
+            : qsTr("Noise on %1, which reaches no output, so nothing will be heard. Escape stops it.")
+                  .arg(name);
     }
 
     ColumnLayout {
@@ -670,6 +681,10 @@ ScrollView {
                             text: qsTr("DELAY"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
                         }
                         Item { width: levels.unitWidth; height: 1 }
+                        Item { width: Theme.gap; height: 1 }
+                        Text {
+                            text: qsTr("IDENTIFY"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                        }
                     }
 
                     Repeater {
@@ -776,6 +791,35 @@ ScrollView {
                                 verticalAlignment: Text.AlignVCenter
                                 text: qsTr("ms"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
                             }
+
+                            Item { width: Theme.gap; height: 1 }
+
+                            // While this row's slot is the one sounding the
+                            // tone: "noise" beside a "Stop" button, as the
+                            // design shows it - see docs/hearth/design/
+                            // screenshots/speakers-setup.png's "Ls" row.
+                            // Otherwise, an "Identify" button alone.
+                            Text {
+                                visible: HearthController.identifySlot === row.index
+                                height: identifyButton.implicitHeight
+                                verticalAlignment: Text.AlignVCenter
+                                text: qsTr("noise")
+                                color: Theme.textMuted
+                                font.family: Theme.monoFamily
+                                font.pixelSize: Theme.fontMicro
+                            }
+                            Button {
+                                id: identifyButton
+                                objectName: "speakersIdentify-" + row.index
+                                text: HearthController.identifySlot === row.index
+                                      ? qsTr("Stop") : qsTr("Identify")
+                                onClicked: HearthController.identifySlot === row.index
+                                           ? HearthController.stopIdentify()
+                                           : HearthController.startIdentify(row.index)
+                                Accessible.name: HearthController.identifySlot === row.index
+                                                 ? qsTr("Stop the identify tone on %1").arg(row.modelData)
+                                                 : qsTr("Identify %1, pink noise").arg(row.modelData)
+                            }
                         }
                     }
                 }
@@ -838,14 +882,38 @@ ScrollView {
 
                 Card {
                     title: qsTr("05 Identify")
-                    enabled: false
 
                     Text {
                         Layout.fillWidth: true
-                        text: qsTr("Not wired in this build yet: playing a tone from one output at a time, "
-                                  + "to hear where each speaker actually is, needs render::IdentifyTone, "
-                                  + "which this engine does not run.")
+                        text: qsTr("Pink noise on one output at a time, to hear where it comes out. "
+                                  + "An LFE output gets 30 to 80 Hz.")
                         color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Text { text: qsTr("Level"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        SegmentedControl {
+                            accessibleName: qsTr("Identify level")
+                            currentValue: [-30, -20, -12].includes(HearthController.identifyLevelDb)
+                                          ? String(HearthController.identifyLevelDb) : ""
+                            model: [
+                                { value: "-30", label: qsTr("-30 dB") },
+                                { value: "-20", label: qsTr("-20 dB") },
+                                { value: "-12", label: qsTr("-12 dB") }
+                            ]
+                            onSelected: function(value) { HearthController.setIdentifyLevelDb(Number(value)); }
+                        }
+                    }
+
+                    Text {
+                        objectName: "speakersIdentifyStatus"
+                        Layout.fillWidth: true
+                        text: root.identifyStatusText()
+                        color: HearthController.identifySlot >= 0 ? Theme.bad : Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
                     }

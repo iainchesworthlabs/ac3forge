@@ -1,5 +1,6 @@
 #include "hearth_controller.hpp"
 
+#include <QFile>
 #include <QFileInfo>
 
 #include <chrono>
@@ -19,6 +20,7 @@
 #undef slots
 
 #include "ac3/render/layout.hpp"
+#include "ac3/version.hpp"
 #include "decoder_settings.hpp"
 #include "engine_thread.hpp"
 #include "item_loader.hpp"
@@ -248,6 +250,13 @@ constexpr int kPollMs = 60;
     return ac3::render::Speaker::Realization::kDefault;
 }
 
+[[nodiscard]] ac3::hearth::QueueItem queue_item_from_path(const QString& path) {
+    ac3::hearth::QueueItem item;
+    item.path = path.toStdString();
+    item.title = QFileInfo(path).fileName().toStdString();
+    return item;
+}
+
 [[nodiscard]] QVariantMap queue_row(const ac3::hearth::QueueItem& item, bool current) {
     QVariantMap row;
     row[QStringLiteral("path")] = QString::fromStdString(item.path);
@@ -273,6 +282,26 @@ HearthController::HearthController(QObject* parent) : QObject(parent) {
 }
 
 HearthController::~HearthController() = default;
+
+QString HearthController::versionDetails() const {
+    return QString::fromStdString(ac3::version_details());
+}
+
+QString HearthController::licenceNotices() const {
+    // The same file the package installs, embedded by
+    // apps/hearth/notices/notices.cmake once ac3hearth exists for it to
+    // embed into, so the dialog cannot say something the package does not.
+    // A binary built without the embedding gets a sentence that says so
+    // rather than an empty view - the same fallback
+    // CrucibleController::licenceNotices() uses.
+    QFile file(QStringLiteral(":/notices/NOTICES.txt"));
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return tr("This build carries no embedded notices file (:/notices/NOTICES.txt was not "
+                  "compiled in); the NOTICES.txt beside the application and the repository's "
+                  "LICENSE say what it ships.");
+    }
+    return QString::fromUtf8(file.readAll());
+}
 
 void HearthController::start() {
     if (engine_) {
@@ -354,10 +383,23 @@ void HearthController::addFiles(const QStringList& paths) {
     std::vector<ac3::hearth::QueueItem> items;
     items.reserve(static_cast<std::size_t>(paths.size()));
     for (const QString& path : paths) {
-        ac3::hearth::QueueItem item;
-        item.path = path.toStdString();
-        item.title = QFileInfo(path).fileName().toStdString();
-        items.push_back(std::move(item));
+        items.push_back(queue_item_from_path(path));
+    }
+    engine_->add(std::move(items));
+}
+
+void HearthController::addFolder(const QString& path) {
+    if (!engine_ || path.isEmpty()) {
+        return;
+    }
+    const std::vector<std::string> found = ac3::hearth::ui::list_folder_items(path.toStdString());
+    if (found.empty()) {
+        return;
+    }
+    std::vector<ac3::hearth::QueueItem> items;
+    items.reserve(found.size());
+    for (const std::string& item_path : found) {
+        items.push_back(queue_item_from_path(QString::fromStdString(item_path)));
     }
     engine_->add(std::move(items));
 }
@@ -473,10 +515,14 @@ void HearthController::poll() {
     }
     const QString new_device_name = QString::fromStdString(status.device_name);
     const bool new_has_lfe = status.layout.lfe_count() > 0;
+    const int new_identify_slot = status.identify_slot == ac3::hearth::Queue::kNone
+                                      ? -1
+                                      : static_cast<int>(status.identify_slot);
     if (layout_changed || new_trim_db != trim_db_ || new_delay_ms != delay_ms_ ||
         status.crossover_hz != crossover_hz_ || new_routing != routing_ ||
         static_cast<int>(status.routing.outputs()) != routing_outputs_ ||
-        new_device_name != device_name_ || new_has_lfe != layout_has_lfe_) {
+        new_device_name != device_name_ || new_has_lfe != layout_has_lfe_ ||
+        status.identify_level_db != identify_level_db_ || new_identify_slot != identify_slot_) {
         trim_db_ = std::move(new_trim_db);
         delay_ms_ = std::move(new_delay_ms);
         crossover_hz_ = status.crossover_hz;
@@ -492,6 +538,8 @@ void HearthController::poll() {
             layout_has_height_ = new_has_height;
             heights_realization_ = new_heights;
         }
+        identify_level_db_ = status.identify_level_db;
+        identify_slot_ = new_identify_slot;
         emit speakerSetupChanged();
     }
 }
@@ -590,6 +638,24 @@ void HearthController::setSpeakerSmall(int slot, bool small) {
     const auto changed = layout.with_small(static_cast<std::size_t>(slot), small);
     if (changed) {
         engine_->set_layout(*changed);
+    }
+}
+
+void HearthController::setIdentifyLevelDb(double db) {
+    if (engine_) {
+        engine_->set_identify_level_db(db);
+    }
+}
+
+void HearthController::startIdentify(int slot) {
+    if (engine_ && slot >= 0) {
+        engine_->identify_start(static_cast<std::size_t>(slot));
+    }
+}
+
+void HearthController::stopIdentify() {
+    if (engine_) {
+        engine_->identify_stop();
     }
 }
 
