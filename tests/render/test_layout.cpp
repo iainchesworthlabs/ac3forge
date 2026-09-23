@@ -26,6 +26,7 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/render/layout.hpp"
+#include "speaker_abi.hpp"
 #include "ac3/render/render.hpp"
 
 namespace {
@@ -35,23 +36,6 @@ using ac3::render::OutputLayout;
 using ac3::render::Speaker;
 using Location = ac3::eac3::chanmap::Location;
 using Catch::Approx;
-
-// A host-only regression guard for a fault a QEMU boot check found but a
-// host build cannot see directly: Speaker::small/Speaker::realization were
-// added deliberately placed to land in Speaker's existing alignment padding
-// rather than grow it (see the fields' own comment in layout.hpp) - kMaxSlots
-// copies of a bigger Speaker, inside an OutputLayout PlayerConfig holds by
-// value, is what boot-looped the ESP32 example on a FreeRTOS stack overflow
-// when kTextBytes grew instead. This can't prove the same holds on the
-// Xtensa/GCC target this component actually ships on, only on whichever ABI
-// compiles this test - MSVC here, where the sizes are known. That is still
-// worth having: it turns "someone reorders a field and the board boot-loops"
-// into "MSVC fails the build", the same trade the kTextBytes comment records.
-#if defined(_MSC_VER)
-static_assert(sizeof(Speaker) == 32, "Speaker grew - see its field ordering comment in layout.hpp");
-static_assert(sizeof(OutputLayout) == 616,
-              "OutputLayout grew - kMaxSlots copies of this live on tight ESP32 stacks");
-#endif
 
 std::vector<Location> locations_of(const OutputLayout& layout) {
     std::vector<Location> out;

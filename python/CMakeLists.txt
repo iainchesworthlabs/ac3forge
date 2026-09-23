@@ -22,18 +22,36 @@ pybind11_add_module(_ac3forge src/ac3forge_ext/bindings.cpp)
 # that kind of consumer, just an in-tree one.
 target_link_libraries(_ac3forge PRIVATE ac3::forge)
 
+# The extension's own include root, so its translation units reach each other
+# by plain filename (binding_support.hpp, optional_modules.hpp) regardless of
+# which {present,absent} directory they were selected from.
+target_include_directories(_ac3forge PRIVATE src/ac3forge_ext)
+
 # Python bindings completeness's completeness surface. Both groups are conditional on the same
 # configure that built (or skipped) the libraries, so a trimmed dev build -
 # codec only - still produces a working extension without them; the wheel
 # build (python/pyproject.toml) turns every one of these targets ON, so a
 # published wheel always carries the full surface.
+#
+# Each group used to be a compile definition (AC3FORGE_PY_HAVE_CONTAINERS /
+# AC3FORGE_PY_HAVE_SIGNING) that bindings.cpp asked about with an #ifdef around
+# three hundred lines of its module body. It is now a directory-selected
+# translation unit per group, on exactly the same condition - the shape every
+# other either/or in this tree uses (src/core/transform/{reference,stub}/,
+# src/internal/avx2/none/, tests/core/avx2/{present,absent}/) and the one
+# tools/checks/check_platform_macros.ps1 exists to keep. See
+# src/ac3forge_ext/optional_modules.hpp for the seam itself.
 if(TARGET matroska::matroska AND TARGET mp4::mp4 AND TARGET mpegts::mpegts)
     target_link_libraries(_ac3forge PRIVATE matroska::matroska mp4::mp4 mpegts::mpegts)
-    target_compile_definitions(_ac3forge PRIVATE AC3FORGE_PY_HAVE_CONTAINERS)
+    target_sources(_ac3forge PRIVATE src/ac3forge_ext/containers/present/containers_module.cpp)
+else()
+    target_sources(_ac3forge PRIVATE src/ac3forge_ext/containers/absent/containers_module.cpp)
 endif()
 if(TARGET ac3::signing)
     target_link_libraries(_ac3forge PRIVATE ac3::signing)
-    target_compile_definitions(_ac3forge PRIVATE AC3FORGE_PY_HAVE_SIGNING)
+    target_sources(_ac3forge PRIVATE src/ac3forge_ext/signing/present/signing_module.cpp)
+else()
+    target_sources(_ac3forge PRIVATE src/ac3forge_ext/signing/absent/signing_module.cpp)
 endif()
 
 # scikit-build-core's wheel.install-dir (see python/pyproject.toml) is the

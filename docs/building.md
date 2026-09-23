@@ -1123,7 +1123,7 @@ core resolves to it and no translation unit ever asks what it is being compiled 
 same mechanism `src/forge/src/internal/profiling/tracy_{enabled,disabled}/` uses for the
 profiling seam and `src/audio/src/backend/<backend>/` uses for the operating system, and it is what
 `tools/checks/check_platform_macros.ps1` exists to keep true (no preprocessor conditional anywhere
-under `src/` or `apps/`).
+in `src/`, `apps/`, `tests/`, `fuzz/`, `examples/`, `tools/` or `python/`).
 
 `AC3FORGE_SIMD` forces a directory; `auto` (the default) resolves `x86_64` on x86-64, `aarch64` on
 arm64, and `generic` on everything else — 32-bit x86, WebAssembly, anything unrecognised.

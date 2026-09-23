@@ -14,7 +14,7 @@
 // profiling seam, and src/audio's backend tree uses for the operating
 // system. No translation unit ever asks which architecture it is being
 // compiled for, which is what tools/checks/check_platform_macros.ps1
-// enforces (no preprocessor conditional anywhere under src/ or apps/).
+// enforces (no preprocessor conditional anywhere in the first-party trees).
 //
 // WHAT THE SEAM IS. Two vector types, both 128 bits wide - two doubles or
 // four 32-bit integers. 128 bits is not a compromise width picked to keep
