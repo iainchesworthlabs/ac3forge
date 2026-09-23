@@ -1,9 +1,13 @@
 #include "item_loader.hpp"
 
+#include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
+#include <string_view>
+#include <system_error>
 
 namespace ac3::hearth::ui {
 
@@ -15,6 +19,19 @@ namespace {
         c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
     return extension;
+}
+
+// list_folder_items()'s recognised set: the two make_file_item_loader() can
+// actually decode, plus the container formats the design's own drop-zone
+// wording names (docs/hearth/design/screenshots/first-run.png) - not read
+// yet, but real enough as files that a folder scan leaving them out would
+// look like it had missed something.
+constexpr std::array<std::string_view, 5> kFolderMediaExtensions{
+    ".ac3", ".ec3", ".mp4", ".mkv", ".ts"};
+
+[[nodiscard]] bool is_folder_media_extension(const std::string& extension) {
+    return std::find(kFolderMediaExtensions.begin(), kFolderMediaExtensions.end(), extension) !=
+           kFolderMediaExtensions.end();
 }
 
 }  // namespace
@@ -46,6 +63,24 @@ ac3::hearth::ItemLoader make_file_item_loader() {
         }
         return LoadedItem{.bytes = std::move(bytes)};
     };
+}
+
+std::vector<std::string> list_folder_items(const std::string& folder) {
+    std::vector<std::string> paths;
+    std::error_code walk_error;
+    std::filesystem::recursive_directory_iterator it(
+        folder, std::filesystem::directory_options::skip_permission_denied, walk_error);
+    const std::filesystem::recursive_directory_iterator end;
+    while (!walk_error && it != end) {
+        std::error_code type_error;
+        if (it->is_regular_file(type_error) && !type_error &&
+            is_folder_media_extension(lowercase_extension(it->path().string()))) {
+            paths.push_back(it->path().string());
+        }
+        it.increment(walk_error);
+    }
+    std::sort(paths.begin(), paths.end());
+    return paths;
 }
 
 }  // namespace ac3::hearth::ui

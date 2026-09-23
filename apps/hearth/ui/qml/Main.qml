@@ -29,8 +29,23 @@ ApplicationWindow {
 
     readonly property var pageOrder: ["play", "media", "speakers", "decoder", "network", "settings"]
     property string page: "play"
+    // A capture run (main.cpp, --shot) sets this before the first event-loop
+    // turn, so the first-run dialog never lands in a screenshot that did not
+    // ask for it.
+    property bool suppressFirstRun: false
 
-    Component.onCompleted: HearthController.start()
+    Component.onCompleted: {
+        HearthController.start();
+        // One turn later, so main.cpp's setProperty("suppressFirstRun", ...)
+        // - which runs after this handler and before the event loop starts -
+        // has already landed (Crucible's own Main.qml carries the identical
+        // comment for the identical reason).
+        Qt.callLater(function() {
+            if (!HearthController.firstRunSeen && !window.suppressFirstRun) {
+                firstRun.open();
+            }
+        });
+    }
 
     Shortcut { sequence: "Ctrl+1"; onActivated: window.page = "play" }
     Shortcut { sequence: "Ctrl+2"; onActivated: window.page = "media" }
@@ -38,6 +53,10 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+4"; onActivated: window.page = "decoder" }
     Shortcut { sequence: "Ctrl+5"; onActivated: window.page = "network" }
     Shortcut { sequence: "Ctrl+6"; onActivated: window.page = "settings" }
+    // The Speakers page's IDENTIFY card says this stops it. A harmless no-op
+    // when nothing is sounding the tone, so this needs no guard on which
+    // page is showing.
+    Shortcut { sequence: "Escape"; onActivated: HearthController.stopIdentify() }
     Shortcut { sequence: StandardKey.HelpContents; onActivated: shortcuts.open() }
 
     header: Rectangle {
@@ -94,10 +113,20 @@ ApplicationWindow {
         }
     }
 
-    ShortcutsDialog { id: shortcuts }
-    // For `--page shortcuts` (main.cpp): a screenshot with the dialog open.
+    // Reached from the header's "?" button and F1; ShortcutsDialog's own
+    // About… chains to AboutDialog, whose own Licences… chains to
+    // LicencesDialog one hop further ("? -> Shortcuts -> About ->
+    // Licences") - agreed between the #830 and #854 sessions rather than a
+    // second header control. `--page shortcuts`/`about`/`licences`
+    // (main.cpp) open any of the three directly, for a capture.
+    ShortcutsDialog { id: shortcuts; onShowAbout: about.open() }
     function openShortcuts() { shortcuts.open(); }
     property alias shortcutsDialog: shortcuts
+
+    AboutDialog { id: about; onShowLicences: licences.open() }
+    function openAbout() { about.open(); }
+    LicencesDialog { id: licences }
+    function openLicences() { licences.open(); }
 
     StackLayout {
         anchors.fill: parent
@@ -112,4 +141,7 @@ ApplicationWindow {
     }
 
     footer: TransportBar { }
+
+    FirstRunDialog { id: firstRun; onOpenSpeakers: window.page = "speakers" }
+    function openFirstRun() { firstRun.open(); }
 }
