@@ -39,9 +39,19 @@
 // itself must outlive that, or a sink dropping off Wi-Fi for a few seconds
 // would silently evict it from every group it was in.
 //
+// A sink's own settings pages (issue #875, push_sink_settings()/
+// push_sink_identify() below) do not share that "needs a live programme"
+// dependency either, despite an earlier note here having said groups,
+// settings and levels all did: ServerHost::ac3forge_command() resolves by
+// client_id alone (server_host.cpp), and ClientView carries ac3forge_support/
+// ac3forge_state as soon as a client offering the role connects, neither
+// Group-gated - confirmed by reading server_host.cpp directly rather than
+// trusting this comment's own earlier claim.
+//
 // What A6 still asks for and is NOT here, and why:
-//   * A sink's own settings pages and reported levels are issues #875/#876's
-//     own slices, not this one.
+//   * A group's reported levels needs a live programme actually playing to
+//     one (Player's own network-group output seam, issue #874, still to
+//     come) - there is nothing yet to hang that on.
 //   * "A sink in use elsewhere, with an explicit takeover action"
 //     (network-in-use.png), in full, is still not buildable (issue #876):
 //     pairing is not exclusive (a sink may hold long-term PSKs for several
@@ -131,6 +141,28 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // code (ServerHost::unpair(), which also asks the store to forget it).
     void forget_pairing(const std::string& id);
 
+    // Sends `settings` to sink `id` as a complete replacement - Settings
+    // "replaces the sink's settings whole" (ac3forge_player.hpp's own
+    // comment), so this is never a sparse patch: NetworkController reads
+    // status()'s own intended_settings first and merges a page edit onto it
+    // before calling this, the same "whole struct, apply what changed"
+    // shape HearthController::setDecoderSettings() already uses locally.
+    // `settings.revision` is overwritten with this sink's own next number -
+    // the caller does not choose it. False, nothing sent, for a sink that is
+    // not connected or does not offer _ac3forge_player@v1; true updates
+    // status()'s intended_settings to `settings` (with the assigned
+    // revision) so the page shows it as "current" at once, optimistically -
+    // there is no read-back to confirm it with (see SinkFacts::
+    // intended_settings's own comment). Whether the sink actually applied it
+    // shows up later, separately, in status()'s ac3forge_state.
+    bool push_sink_settings(const std::string& id, sendspin::ac3forge::Settings settings);
+    // Starts the identify tone on `output`, moving it there if another
+    // output was already sounding it, or stops it with std::nullopt - same
+    // connectedness and return-value terms as push_sink_settings(). Tracked
+    // optimistically the same way, in status()'s identify_slot, since the
+    // wire has no "identify state" to read back either.
+    bool push_sink_identify(const std::string& id, std::optional<sendspin::ac3forge::Identify> identify);
+
     // Makes a new, empty group (ServerHost::make_group()) and selects it;
     // empty string if the host never started. Not persisted across a run -
     // see this file's own header comment on what A6 still needs.
@@ -197,6 +229,15 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
         // select_sink() asked to pair before hello arrived; on_client()
         // starts the attempt the moment it can and clears this.
         bool pairing_requested = false;
+
+        // This app's own intent for this sink - see SinkFacts::
+        // intended_settings/identify_slot's own comments. Neither is reset
+        // when the sink's connection drops and reconnects (on_client()
+        // keeps the same Entry, keyed by mDNS instance, not by client_id),
+        // so a brief reconnect does not forget what was last pushed.
+        std::optional<sendspin::ac3forge::Settings> intended_settings{};
+        std::int64_t next_settings_revision = 1;
+        std::optional<std::int32_t> identify_slot{};
     };
 
     struct GroupEntry {

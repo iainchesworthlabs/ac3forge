@@ -706,24 +706,69 @@ jobs:
       # warning when it is absent, so without these the packaged window would
       # quietly ship with a 2D-only room and the ctest suite would exercise
       # the skipped path instead of the real one.
-      # install-qt-action needs a python on PATH BEFORE its own setup-python
-      # can run: the first step of its composite action.yml is a guard written
-      # in `shell: python` ("Check the existence of built JavaScript action"),
-      # so on an image without python it dies there and skips its own Setup
-      # Python step entirely - `setup-python: false` would not avoid it either,
-      # that input only governs the later step. Hosted Windows images ship
-      # python, the fleet's does not (`ci-runners`
-      # scripts/windows/05-choco-packages.ps1 installs nsis/7zip/ccache/gh/
-      # winget and no python), which is the same "the fleet image does not
-      # ship it, so the workflow provides it" case docs/ci-self-hosted-
-      # runners.md already records for pwsh on Linux and pip for the wheels.
-      # Pinned inside install-qt-action v4.4.0's own supported range
-      # (>=3.9.0 <=3.13.3) so this and its Setup Python agree on one install.
+      # install-qt-action v4.4.0 (bumped from v4.3.1 by #952) added its own
+      # "is this action built" bootstrap check ahead of anything else the
+      # composite action does, including its own internal setup-python sub-
+      # step (see the "Install Qt (prebuilt)" step below) - that check shells
+      # out to a bare `python` unconditionally. This fleet's self-hosted
+      # Windows runners never put a bare `python` on PATH the way a
+      # GitHub-hosted runner's own image does (confirmed against a real CI
+      # run: "python: command not found", nothing to do with the MSVC
+      # environment loaded just above - the same failure hits both the MSVC
+      # and clang-cl legs identically). Providing one explicitly here, before
+      # install-qt-action ever runs, is the fix; setup-python: false below
+      # then skips that action's own internal, now-redundant copy of this
+      # same step, mirroring _build.yml's identical fix for the same
+      # v4.4.0 change on the Linux AppImage leg (see its own "Install Qt
+      # (prebuilt)" step's comment).
+      #
+      # Neither actions/setup-python nor choco's own python package can be
+      # trusted here: this fleet's runners are persistent, reused machines,
+      # not fresh-per-job GitHub-hosted images, and BOTH installers have now
+      # failed outright on one with an "already there in some form the
+      # installer does not like" signature - actions/setup-python's "Error
+      # happened during Python installation" after cleaning up a previous
+      # run's leftover registry entries, then choco's own MSI error 1603
+      # ("the same version is already installed") on the very next attempt,
+      # STILL failing identically a third time even behind a probe for an
+      # existing python.exe on disk (there was none - the stale state choco
+      # trips on lives in the Windows Installer database, not anywhere a
+      # filesystem probe would find it). The one thing that actually avoids
+      # an installer-database conflict on a reused machine is not touching
+      # an installer at all: python.org's own embeddable package is a plain
+      # zip, extracted fresh into $RUNNER_TEMP (job-scoped, never reused
+      # across runs unlike Program Files or the registry) every time - same
+      # download-and-extract shape as the ARM64 ffmpeg step above, for the
+      # identical reason (no installer on this leg's PATH to run one with).
+      # This bootstrap check only ever needs a python capable of running a
+      # few lines of pathlib - nothing here needs pip or the full install.
       - name: Setup Python (for install-qt-action)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version: '3.13'
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+          $zip = Join-Path $env:RUNNER_TEMP 'python-embed.zip'
+          $dest = Join-Path $env:RUNNER_TEMP 'python-embed'
+          Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.7/python-3.12.7-embed-amd64.zip' -OutFile $zip
+          Expand-Archive -Path $zip -DestinationPath $dest
+          $exe = Get-ChildItem -Path $dest -Filter 'python.exe' | Select-Object -First 1
+          if (-not $exe) {
+              throw "python.exe not found anywhere under $dest after extracting $zip"
+          }
+          # The embeddable package ships with `import site` commented out in
+          # its own ._pth file, for a smaller/faster default - confirmed
+          # against a real CI run: install-qt-action's own bootstrap check
+          # calls the bare `exit()` builtin (not sys.exit()), which only
+          # exists once the site module has actually run. Uncommenting is
+          # the documented way to turn that back on.
+          $pth = Get-ChildItem -Path $dest -Filter '*._pth' | Select-Object -First 1
+          if (-not $pth) {
+              throw "no *._pth file found under $dest to enable the site module in"
+          }
+          (Get-Content $pth.FullName) -replace '^#import site$', 'import site' | Set-Content $pth.FullName
+          Write-Host "Found python.exe at $($exe.FullName)"
+          $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
       - name: Install Qt (prebuilt)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
@@ -732,6 +777,7 @@ jobs:
           version: ${{ inputs.qt_version }}
           modules: qtquick3d qtshadertools
           cache: true
+          setup-python: false
 
       # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
       # this asserts the RUNNER actually meets it rather than letting a stale image
@@ -986,7 +1032,22 @@ jobs:
            (inputs.do_package && matrix.release_package) ||
            ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
-        run: cpack --preset pack-${{ matrix.preset }}
+        # CPack's own NSIS generator writes makensis's real error to
+        # NSISOutput.log rather than this step's own stdout/stderr (its own
+        # "Please check ... for errors" message is the only trace here
+        # otherwise) - same reasoning as setup-msvc-env's "re-run unsuppressed
+        # so the banner/error reaches the log" for vcvars64.bat.
+        run: |
+          cpack --preset pack-${{ matrix.preset }} || {
+            status=$?
+            log="packages/_CPack_Packages/win64/NSIS/NSISOutput.log"
+            if [ -f "$log" ]; then
+              echo "::group::NSISOutput.log"
+              cat "$log"
+              echo "::endgroup::"
+            fi
+            exit "$status"
+          }
 
       # DR7: the whole point of installing makensis above is that its
       # absence stops being silent. cmake/Packaging.cmake's find_program()

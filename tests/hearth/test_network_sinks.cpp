@@ -169,6 +169,32 @@ TEST_CASE("network sinks: commands on an id nothing has ever found are quietly r
     CHECK(sinks.status().sinks.empty());
 }
 
+TEST_CASE("network sinks: push_sink_settings refuses a sink with no _ac3forge_player@v1 support",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store};
+
+    const ss::discovery::Service service = test_service("kitchen-speaker", 1);
+    sinks.on_found(service);
+    ss::ClientView client;
+    client.client_id = "client-jkl";
+    client.url = *service.url();
+    client.hello = true;
+    // No ac3forge_support: a standard Sendspin player, not a Hearth sink -
+    // there is no settings command for it to take at all.
+    sinks.on_client(client);
+
+    ss::ac3forge::Settings out;
+    out.layout = "2.0";
+    CHECK_FALSE(sinks.push_sink_settings("kitchen-speaker", out));
+    CHECK_FALSE(sinks.push_sink_identify("kitchen-speaker", ss::ac3forge::Identify{.output = 0}));
+    CHECK_FALSE(sinks.status().sinks.front().intended_settings.has_value());
+    CHECK_FALSE(sinks.status().sinks.front().identify_slot.has_value());
+}
+
 TEST_CASE("network sinks: creating a group selects it and clears a sink selection",
           "[hearth][network-sinks]") {
     MemorySettingsStore settings;
@@ -303,6 +329,60 @@ TEST_CASE("network sinks: selecting a group clears a sink selection and back aga
     sinks.select_group(group_id);
     CHECK(sinks.status().selected_group_id == group_id);
     CHECK(sinks.status().selected_id.empty());
+}
+
+TEST_CASE("network sinks: push_sink_settings reaches ac3forge_command for a sink that offers the role",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store};
+
+    const ss::discovery::Service service = test_service("hearth-s3-kitchen", 1);
+    sinks.on_found(service);
+    ss::ClientView client;
+    client.client_id = "client-mno";
+    client.url = *service.url();
+    client.hello = true;
+    ss::ac3forge::Support support;
+    support.data_types = {ss::ac3forge::DataType::kEac3};
+    support.outputs = {.count = 2, .bit_depth = 24, .bit_depths = {24}};
+    client.ac3forge_support = support;
+    sinks.on_client(client);
+
+    ss::ac3forge::Settings out;
+    out.layout = "2.0";
+    out.trim_db = {0.0, 0.0};
+    out.delay_ms = {0.0, 0.0};
+    // "client-mno" was never a real accepted connection (this slice's
+    // ServerHost never listens - this file's own header comment), so
+    // ServerHost::ac3forge_command() finds no session to send through and
+    // this returns false. What this proves is that push_sink_settings()
+    // reaches that call, past its own capability gate, for a sink that DOES
+    // offer the role - not that a real sink applies it, which test_group.cpp
+    // covers end to end. The cache stays empty either way: it only reflects
+    // a send that actually succeeded (SinkFacts::intended_settings's own
+    // comment).
+    CHECK_FALSE(sinks.push_sink_settings("hearth-s3-kitchen", out));
+    CHECK_FALSE(sinks.status().sinks.front().intended_settings.has_value());
+
+    CHECK_FALSE(sinks.push_sink_identify("hearth-s3-kitchen", ss::ac3forge::Identify{.output = 0}));
+    CHECK_FALSE(sinks.status().sinks.front().identify_slot.has_value());
+}
+
+TEST_CASE("network sinks: push_sink_settings and push_sink_identify on an id nothing has ever found are quietly "
+          "refused",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store};
+
+    CHECK_FALSE(sinks.push_sink_settings("no-such-sink", ss::ac3forge::Settings{}));
+    CHECK_FALSE(sinks.push_sink_identify("no-such-sink", std::nullopt));
+    CHECK(sinks.status().sinks.empty());
 }
 
 TEST_CASE("network sinks: deleting the selected group clears the selection",

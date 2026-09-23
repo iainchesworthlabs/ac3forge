@@ -23,8 +23,14 @@
 # network_controller.cpp/.hpp and apps/common/container_input.cpp/.hpp - this
 # target embeds the same controller/loader sources (main.cpp is excluded: it
 # is ac3hearth's own entry point, and qml_test_main.cpp is this target's).
-# network_controller.cpp is excluded too - no tst_*.qml here drives the
-# Network page yet, and hearth_controller.cpp does not depend on it.
+# network_controller.cpp/.hpp are included from tst_network_sink_settings.qml
+# onwards (issue #875): NetworkController is a second QML_SINGLETON, and
+# without its own sources here QML fails at runtime with "NetworkController
+# is not defined" rather than at configure or compile time - moc/qmltyperegistrar
+# only register a QML_ELEMENT class that is actually part of the target it runs
+# against. apps/gui/language_manager.cpp/.hpp is the third, for the same
+# reason: Settings.qml imports Ac3ForgeHearthLanguage, whose LanguageManager
+# main.cpp registers as a singleton instance.
 # ---------------------------------------------------------------------------
 find_package(Qt6 6.8 REQUIRED COMPONENTS QuickTest)
 
@@ -34,8 +40,11 @@ qt_add_executable(ac3hearth_qmltests
     hearth_controller.hpp
     item_loader.cpp
     item_loader.hpp
+    network_controller.cpp
+    network_controller.hpp
     # Settings.qml imports Ac3ForgeHearthLanguage now, so the suite needs the
-    # same LanguageManager ac3hearth itself compiles in.
+    # same LanguageManager ac3hearth itself compiles in - a third singleton,
+    # registered the same way and failing the same way without its sources.
     "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.cpp"
     "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.hpp"
     "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
