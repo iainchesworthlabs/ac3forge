@@ -329,9 +329,19 @@ jobs:
         run: |
           set -uo pipefail
           for attempt in 1 2 3; do
+            # -DAC3FORGE_BUILD_HEARTH=OFF is required here, not optional: AC3FORGE_BUILD_HEARTH
+            # defaults ON now (root CMakeLists.txt), but -DVCPKG_MANIFEST_FEATURES=adm above
+            # REPLACES CMakePresets.json's own default ("hearth") rather than extending it, so
+            # vcpkg never installs Hearth's ports here while CMakeLists.txt would still try to
+            # configure against them - src/sendspin/CMakeLists.txt's find_package(MbedTLS)
+            # failing outright. This job has nothing to do with Hearth either way (see this
+            # file's own header comment above ADM Module), so turning it off is also just
+            # correct scope, the same way minimal-decoder/minimal-encoder/wasm-emscripten/
+            # config-windows-llvm-coverage each turn it off in CMakePresets.json.
             if cmake --preset config-linux-gcc \
                  -DVCPKG_MANIFEST_FEATURES=adm \
-                 -DAC3FORGE_BUILD_ADM=ON; then
+                 -DAC3FORGE_BUILD_ADM=ON \
+                 -DAC3FORGE_BUILD_HEARTH=OFF; then
               exit 0
             fi
             rm -rf build/config-linux-gcc/CMakeCache.txt
