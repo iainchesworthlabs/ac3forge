@@ -66,6 +66,7 @@ RowLayout {
                 Text { Layout.preferredWidth: 160; text: qsTr("MEMBER"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true }
                 Text { Layout.preferredWidth: 140; text: qsTr("GETS"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true }
                 Text { Layout.fillWidth: true; text: qsTr("VOLUME"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true }
+                Item { Layout.preferredWidth: 28 }
                 Text { Layout.preferredWidth: 48; text: qsTr("MUTE"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true }
                 Item { Layout.preferredWidth: 32 }
             }
@@ -81,7 +82,14 @@ RowLayout {
                     spacing: Theme.gap
 
                     ColumnLayout {
+                        // Layout.preferredWidth alone does not stop this
+                        // column growing past 160px to its content's
+                        // implicit width when the row has room - the same
+                        // trap NetworkSinkList.qml's own comment documents -
+                        // so it needs maximumWidth too, not just the inner
+                        // Text's minimumWidth: 0.
                         Layout.preferredWidth: 160
+                        Layout.maximumWidth: 160
                         spacing: 0
                         Text {
                             Layout.fillWidth: true
@@ -99,6 +107,7 @@ RowLayout {
                     }
                     Text {
                         Layout.preferredWidth: 140
+                        Layout.maximumWidth: 140
                         Layout.minimumWidth: 0
                         text: memberRow.modelData.getsText
                         color: Theme.textMuted
