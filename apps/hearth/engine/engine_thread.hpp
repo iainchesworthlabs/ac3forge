@@ -22,6 +22,7 @@
 #include "bitstream_sink.hpp"
 #include "decoder_settings.hpp"
 #include "diagnostic_log.hpp"
+#include "network_group_sink.hpp"
 #include "output_selector.hpp"
 #include "pcm_sink.hpp"
 #include "play_meters.hpp"
@@ -62,9 +63,14 @@ namespace ac3::hearth {
 // A local output and a passthrough output, and where the endpoints each item
 // is decided against are read from: device_endpoints() for this machine's
 // own. The engine decides every item through an OutputSelector of its own.
+// The network group output, if any, is not read from anywhere here the way
+// the local endpoints are - OutputSelector only ever forwards
+// OutputPreferences::group_name/group_ready (set from outside, since they
+// come from the Network page, not this machine's own device enumeration).
 struct EngineOutputs {
     std::unique_ptr<PcmSink> pcm{};
     std::unique_ptr<BitstreamSink> bitstream{};
+    std::unique_ptr<NetworkGroupSink> group{};
     EndpointSource endpoints{};
 };
 

@@ -93,6 +93,7 @@ test('every request the page makes is to a route the firmware registers', () => 
     // No POST /play, /stop or /volume: a server owns playback from B2 on, and
     // the page is what the board itself is.
     expect(made.sort((a, b) => a.localeCompare(b))).toEqual([
+        'GET /hardware',
         'GET /status',
         'POST /pairing',
         'POST /pairing',
@@ -143,6 +144,27 @@ test("the stand-in writes GET /status's keys in the firmware's order", async () 
             );
             expect(keys).toEqual(firmware);
         }
+    } finally {
+        await stub.close();
+    }
+});
+
+test("the stand-in writes GET /hardware's keys in the firmware's order", async () => {
+    // build_hardware_json, not on_hardware itself: on_hardware only sends
+    // what Control::start built once, and control.hpp's own comment says why
+    // this is a route of its own rather than part of /status - nothing here
+    // depends on a play, unlike every field on_status writes.
+    const firmware = [
+        ...CONTROL.slice(
+            CONTROL.indexOf('std::string build_hardware_json'),
+            CONTROL.indexOf('void append_sendspin'),
+        ).matchAll(/append_\w+\(out, "([a-z_]+)"/g),
+    ].map((m) => m[1]);
+    expect(firmware.length).toBeGreaterThan(5);
+    const stub = await startStub();
+    try {
+        const body = JSON.parse(await (await fetch(`${stub.url}hardware`)).text());
+        expect(Object.keys(body)).toEqual(firmware);
     } finally {
         await stub.close();
     }

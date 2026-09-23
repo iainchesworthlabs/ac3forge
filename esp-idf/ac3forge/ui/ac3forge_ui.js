@@ -23,6 +23,9 @@
   const count = (v) => (num(v) ? v.toLocaleString('en-US') : undefined);
   const bytes = (v) => (num(v) ? count(v) + ' bytes' : undefined);
   const slots = (n) => count(n) + (n === 1 ? ' slot' : ' slots');
+  // A byte count no one would want to read as itself: GET /hardware's PSRAM
+  // size, which is either 0 (none fitted or brought up) or tens of millions.
+  const mib = (v) => (num(v) && v > 0 ? (v / (1024 * 1024)).toLocaleString('en-US', { maximumFractionDigits: 1 }) + ' MiB' : 'None');
   const names = (v) => v.split(',').join(' ');
   // The slots a layout needs, where the page can count them: a name's three
   // figures added, as OutputLayout reads F.L.H, or a list's tokens. The
@@ -54,6 +57,7 @@
   let shown = '';
   let filled = false;
   let code = '';
+  let hardwareShown = false;
 
   async function call(method, path, body) {
     const abort = new AbortController();
@@ -97,6 +101,7 @@
       failing = 0;
       put('link', 'Status read at ' + clock(Date.now()) + '.');
       render(s);
+      if (!hardwareShown) loadHardware();
     } catch (e) {
       delay = RETRY_MS;
       if (!failing) say('No status: ' + e.message + '.', true);
@@ -213,6 +218,40 @@
     }));
     $('ss-cancel').hidden = !c;
     $('ss-reset').hidden = p.pairing_held !== true;
+  }
+
+  // What this board is: fetched once, since nothing in it changes while the
+  // board runs (unlike everything else this page polls). Tried again at the
+  // next successful status poll if it failed the first time - a board whose
+  // network comes up slowly should still end up showing this.
+  function renderHardware(hw) {
+    $('hw-note').hidden = true;
+    row('hw-chip', str(hw.chip) && hw.chip + (str(hw.revision) ? ', revision ' + hw.revision : ''));
+    row('hw-cores', num(hw.cores) ? String(hw.cores) : undefined);
+    row('hw-arithmetic', hw.fpu === true ? 'Hardware floating point' : hw.fpu === false ? 'Fixed-point (no floating-point unit)' : undefined);
+    row('hw-psram', mib(hw.psram_bytes));
+    row('hw-sink', num(hw.sink_max_slots) ? slots(hw.sink_max_slots) : undefined);
+    const notices = Array.isArray(hw.notices) ? hw.notices : [];
+    $('hw-notices').hidden = !notices.length;
+    $('hw-notices').replaceChildren(...notices.map((text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      return li;
+    }));
+  }
+
+  async function loadHardware() {
+    try {
+      const r = await call('GET', 'hardware');
+      if (r.status !== 200) throw new Error('GET /hardware answered ' + r.status);
+      const hw = JSON.parse(r.text);
+      if (!hw || typeof hw !== 'object' || Array.isArray(hw)) throw new Error('GET /hardware sent no JSON object');
+      renderHardware(hw);
+      hardwareShown = true;
+    } catch {
+      // Left as "Reading what this board is."; tried again at the next
+      // successful status poll, the same board this page is already reading.
+    }
   }
 
   function render(s) {

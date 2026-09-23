@@ -3,6 +3,10 @@
 #include <QDate>
 #include <QSysInfo>
 
+#include <algorithm>
+#include <map>
+#include <utility>
+
 // Qt's <QObject> headers define `slots` as a macro unless QT_NO_KEYWORDS is
 // set, which this project's Qt targets do not
 // (hearth-ui-qt-slots-macro-collides-with-render-layout): ac3::render::
@@ -14,6 +18,7 @@
 // for whichever future include first makes the two meet here too.
 #undef slots
 
+#include "network_output_status.hpp"
 #include "network_sinks.hpp"
 #include "network_view.hpp"
 #include "pairing_store.hpp"
@@ -34,6 +39,7 @@ constexpr int kPollMs = 60;
     map[QStringLiteral("subtitle")] = QString::fromStdString(row.subtitle);
     map[QStringLiteral("badge")] = QString::fromStdString(row.badge);
     map[QStringLiteral("badgeText")] = QString::fromStdString(row.badge_text);
+    map[QStringLiteral("notice")] = QString::fromStdString(row.notice);
     return map;
 }
 
@@ -50,7 +56,15 @@ constexpr int kPollMs = 60;
     map[QStringLiteral("latencyText")] = QString::fromStdString(detail.latency_text);
     map[QStringLiteral("clockText")] = QString::fromStdString(detail.clock_text);
     map[QStringLiteral("pairedOnText")] = QString::fromStdString(detail.paired_on_text);
+    map[QStringLiteral("notice")] = QString::fromStdString(detail.notice);
     return map;
+}
+
+// At least one member connected right now - NetworkOutputStatus::Entry::ready's
+// own comment says why this does not require every member.
+[[nodiscard]] bool group_ready(const ac3::hearth::GroupFacts& facts) {
+    return std::any_of(facts.members.begin(), facts.members.end(),
+                       [](const ac3::hearth::GroupMemberFacts& member) { return member.connected; });
 }
 
 [[nodiscard]] QVariantMap group_row_to_variant(const ac3::hearth::GroupRow& row) {
@@ -235,12 +249,23 @@ void NetworkController::poll() {
     QVariantList group_rows;
     group_rows.reserve(static_cast<qsizetype>(status.groups.size()));
     QVariantMap selected_group;
+    // Published whether or not anything below actually changed (unlike
+    // sinks_/groups_ and friends, which only emit sinksChanged() on a real
+    // difference): NetworkOutputStatus::Entry::ready is live, per-member
+    // state (connected can flip without the group's own row text changing),
+    // and HearthController's own poll() needs to see that promptly rather
+    // than only when this controller's own UI-facing fields happen to.
+    std::map<std::string, ac3::hearth::ui::NetworkOutputStatus::Entry> output_status;
     for (const ac3::hearth::GroupFacts& facts : status.groups) {
         group_rows.push_back(group_row_to_variant(ac3::hearth::to_group_row(facts)));
         if (facts.id == status.selected_group_id) {
             selected_group = group_detail_to_variant(ac3::hearth::to_group_detail(facts));
         }
+        output_status.emplace(facts.id, ac3::hearth::ui::NetworkOutputStatus::Entry{
+                                            .ready = group_ready(facts),
+                                            .group = sinks_engine_->group(facts.id)});
     }
+    ac3::hearth::ui::NetworkOutputStatus::instance().set_groups(std::move(output_status));
 
     const QString new_selected_id = QString::fromStdString(status.selected_id);
     const QString new_pairing_error = QString::fromStdString(status.pairing_error);

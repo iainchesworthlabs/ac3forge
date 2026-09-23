@@ -51,7 +51,7 @@ class NetworkController : public QObject {
     QML_SINGLETON
 
     // Every discovered sink, in NetworkSinkList.qml's own row shape: id,
-    // name, icon, subtitle, badge, badgeText.
+    // name, icon, subtitle, badge, badgeText, notice.
     Q_PROPERTY(QVariantList sinks READ sinks NOTIFY sinksChanged)
     Q_PROPERTY(QString selectedId READ selectedId NOTIFY sinksChanged)
     // The selected sink's own detail rows (NetworkSinkInfo.qml) plus its
