@@ -405,16 +405,10 @@ Item {
 
                 Card {
                     title: qsTr("03 Levels · at play time")
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: HearthController.deviceName.length > 0
-                              ? qsTr("%1 · %2 outputs").arg(HearthController.deviceName)
-                                                        .arg(HearthController.routingOutputs)
-                              : qsTr("No output device chosen yet")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                    }
+                    summary: HearthController.deviceName.length > 0
+                             ? qsTr("%1 · %2 outputs").arg(HearthController.deviceName)
+                                                       .arg(HearthController.routingOutputs)
+                             : qsTr("No output device chosen yet")
 
                     Text {
                         Layout.fillWidth: true
@@ -531,15 +525,9 @@ Item {
 
                 Card {
                     title: qsTr("04 Loudness · BS.1770-4")
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: Object.keys(HearthController.loudness).length > 0
-                              ? qsTr("Integrated since this item started")
-                              : qsTr("Nothing playing.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                    }
+                    summary: Object.keys(HearthController.loudness).length > 0
+                             ? qsTr("Integrated since this item started")
+                             : qsTr("Nothing playing.")
 
                     // Objects and signal path are further down this same
                     // scroll, not off in their own column, once the window
@@ -597,15 +585,9 @@ Item {
 
                 Card {
                     title: qsTr("05 This frame")
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: Object.keys(HearthController.thisFrame).length > 0
-                              ? qsTr("At play time")
-                              : qsTr("Nothing playing.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                    }
+                    summary: Object.keys(HearthController.thisFrame).length > 0
+                             ? qsTr("At play time")
+                             : qsTr("Nothing playing.")
 
                     GridLayout {
                         Layout.fillWidth: true

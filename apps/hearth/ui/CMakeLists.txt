@@ -16,7 +16,23 @@
 # entered by a board configure, and needs no guard of its own for that - see
 # this change's PR for the WSL configure-only check that confirmed it.
 # ---------------------------------------------------------------------------
-find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2 LinguistTools)
+# LinguistTools is deliberately NOT requested here, unlike apps/gui and
+# apps/crucible's own find_package(Qt6 ...) lines: this file has no
+# qt_add_translations() call, no translations/ directory and no .ts files -
+# Hearth's window has no localisation pipeline yet - so the component was
+# pure copy-paste ballast that only made Qt6_FOUND more fragile than it
+# needed to be. That cost real build coverage (issue #890): a WSL image with
+# qt6-base-dev and qt6-declarative-dev installed, but not qt6-tools-dev (the
+# package that actually ships Qt6LinguistToolsConfig.cmake - see
+# .github/workflows/_ci-linux.yml's "Install Qt6 (Linux GUI)" step comment
+# for the full qt6-l10n-tools/qt6-tools-dev split), left Qt6_FOUND false for
+# no reason a syntax-only build cares about, which silently dropped the
+# entire ac3hearth target - and every apps/hearth/ui/*.cpp compile_commands.json
+# entry along with it - behind the message(WARNING) below, with nothing
+# louder to catch it. Add LinguistTools back to this call, mirroring
+# apps/crucible/CMakeLists.txt's own find_package line, in the same commit
+# that gives Hearth its first qt_add_translations() call.
+find_package(Qt6 6.8 QUIET COMPONENTS Core Gui Qml Quick QuickControls2)
 
 # Exported so apps/hearth/notices/notices.cmake (include()d from
 # apps/hearth/CMakeLists.txt, one directory up) can tell whether the hearth
@@ -57,6 +73,7 @@ else()
         item_loader.hpp
         network_controller.cpp
         network_controller.hpp
+        qsettings_store.hpp
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
         "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
     target_include_directories(ac3hearth PRIVATE
@@ -203,10 +220,10 @@ else()
     # everything" run). ac3hearth's single pass joins the end of that chain -
     # add_dependencies is transitive for ordering, so chaining after the
     # deepest target that exists is enough; nothing needs re-checking against
-    # every earlier link. When ac3hearth gains its own Qt Quick Test suite
-    # (A5's exit) that pass chains after THIS target the same way
-    # ac3crucible_qmltests chains after ac3crucible, extending the chain by
-    # one more link rather than starting a second one.
+    # every earlier link. ac3hearth_qmltests (issue #886, tests/CMakeLists.txt's
+    # own add_dependencies(ac3hearth_qmltests ac3hearth), included below) now
+    # extends that same chain one more link the same way ac3crucible_qmltests
+    # chains after ac3crucible, rather than starting a second one.
     if(WIN32 AND AC3HEARTH_WINDEPLOYQT)
         if(TARGET ac3crucible_qmltests)
             add_dependencies(ac3hearth ac3crucible_qmltests)
@@ -217,6 +234,16 @@ else()
         elseif(TARGET ac3gui)
             add_dependencies(ac3hearth ac3gui)
         endif()
+    endif()
+
+    # ac3hearth's own Qt Quick Test suite (issue #886, A5's exit): tests/CMakeLists.txt,
+    # include()d rather than add_subdirectory()'d so it sees AC3HEARTH_QML_FILES and
+    # AC3HEARTH_SHARED_DIR as this scope set them, and so its own qt_add_executable()/
+    # qt_add_qml_module() pair runs in THIS directory's scope rather than a nested one -
+    # apps/gui/CMakeLists.txt's own comment on its identical include() explains why that
+    # distinction is load-bearing for AUTOMOC's metatypes JSON handoff to qmltyperegistrar.
+    if(AC3FORGE_BUILD_TESTS)
+        include(tests/CMakeLists.txt)
     endif()
 
     # ---------------------------------------------------------------------
@@ -240,14 +267,24 @@ else()
             OUTPUT_SCRIPT AC3HEARTH_DEPLOY_SCRIPT
             NO_UNSUPPORTED_PLATFORM_ERROR)
         install(SCRIPT "${AC3HEARTH_DEPLOY_SCRIPT}" COMPONENT hearth)
-        # No StripQtTestDeployment pass yet, unlike ac3crucible's: that
-        # script strips a Qt Quick Test module the deploy script pulls in
-        # only because a *_qmltests binary sits in the same directory tree,
-        # and ac3hearth has no such sibling target yet (A5's later slices
-        # add one, per the windeployqt chain comment above - the same
-        # commit that adds ac3hearth_qmltests should add this app's own
-        # StripQtTestDeployment pass too, immediately after the SCRIPT
-        # install above, the same order apps/crucible/CMakeLists.txt uses).
+        # Immediately after it, and only after it: that script deploys Qt's
+        # test module into the package, because Qt scans this whole
+        # directory for QML imports and tests/qml/tst_*.qml all `import
+        # QtTest` - now that ac3hearth_qmltests exists (the include() above),
+        # ac3hearth is no longer the exception apps/crucible/CMakeLists.txt's
+        # own comment on this exact measurement described. Nothing a user
+        # runs loads qml/QtTest, Qt6Test.dll, Qt6QuickTest.dll or (macOS)
+        # Contents/PlugIns/libquicktestplugin.dylib - only ac3hearth_qmltests
+        # does, and that binary is never installed. cmake/StripQtTestDeployment.cmake
+        # carries the whole measurement; that script needs this bundle's name
+        # set in the same install pass it runs in - hence install(CODE) with
+        # the SAME COMPONENT immediately before it, only on APPLE since the
+        # Windows shape needs no such variable.
+        if(APPLE)
+            install(CODE "set(_ac3_macos_bundle_name \"ac3hearth\")" COMPONENT hearth)
+        endif()
+        install(SCRIPT "${CMAKE_SOURCE_DIR}/cmake/StripQtTestDeployment.cmake"
+            COMPONENT hearth)
     endif()
 
     if(WIN32)
