@@ -8,6 +8,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QIODevice>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSysInfo>
@@ -16,6 +17,9 @@
 #include "ac3/version.hpp"
 
 #include <chrono>
+#include <cmath>
+#include <optional>
+#include <vector>
 
 // hearth_controller.hpp's Qt headers define `slots` as a macro for the
 // classic SIGNAL/SLOT syntax (unless QT_NO_KEYWORDS is set, which this
@@ -31,6 +35,7 @@
 // needs no access-specifier keyword at all.
 #undef slots
 
+#include "ac3/analysis/levels.hpp"
 #include "ac3/audio/passthrough.hpp"
 #include "ac3/audio/speakers.hpp"
 #include "ac3/render/layout.hpp"
@@ -39,10 +44,12 @@
 #include "diagnostics_report.hpp"
 #include "engine_thread.hpp"
 #include "item_loader.hpp"
+#include "media_inspector.hpp"
 #include "output_decision.hpp"
 #include "output_selector.hpp"
 #include "pairing_store.hpp"
 #include "pcm_sink.hpp"
+#include "probe_json.hpp"
 #include "queue.hpp"
 #include "settings_model.hpp"
 #include "transport.hpp"
@@ -73,6 +80,270 @@ constexpr int kPollMs = 60;
         return QString();
     }
     return facts.has_objects ? QStringLiteral("E-AC-3 JOC") : QStringLiteral("AC-3/E-AC-3");
+}
+
+// --- MediaInfo -> QVariantMap, field by field (media_info.hpp) -------------
+// Follows media_info_json()'s own document shape (see that function's
+// comment) so a field here and the same field in "Export JSON..." never say
+// two different things; `json` on the top-level map carries that document
+// whole. Deliberately short of every field ac3forge.hearth.media/1 carries -
+// the deep per-object OAMD table and the per-frame EMDF/CRC dumps are "at
+// play time" or "detail" questions (planning/hearth-reference-player.md,
+// Media information) the Play page's own monitor and a future slice answer,
+// not the Media page's summary.
+
+[[nodiscard]] QString to_qstring(std::string_view text) {
+    return QString::fromUtf8(text.data(), static_cast<qsizetype>(text.size()));
+}
+
+[[nodiscard]] QVariantMap media_container_to_map(const apps::ContainerFacts& facts) {
+    QVariantMap map;
+    if (facts.kind == apps::ContainerKind::kUnknown) {
+        // Empty reads as "no container: an elementary stream" in QML -
+        // Object.keys(inspectedMedia.container).length === 0.
+        return map;
+    }
+    map[QStringLiteral("format")] = to_qstring(apps::container_token(facts.kind));
+    map[QStringLiteral("track")] = static_cast<int>(facts.track);
+    map[QStringLiteral("language")] = QString::fromStdString(facts.language);
+    if (facts.sample_rate != 0) {
+        map[QStringLiteral("sampleRate")] = facts.sample_rate;
+    }
+    if (facts.channels != 0) {
+        map[QStringLiteral("channels")] = facts.channels;
+    }
+    if (facts.kind == apps::ContainerKind::kMp4) {
+        map[QStringLiteral("edits")] = static_cast<qlonglong>(facts.edits);
+        if (facts.codec_box) {
+            const apps::CodecBox& box = *facts.codec_box;
+            QVariantMap codec_box;
+            codec_box[QStringLiteral("bsid")] = box.bsid;
+            codec_box[QStringLiteral("bsmod")] = box.bsmod;
+            codec_box[QStringLiteral("bsmodLabel")] =
+                to_qstring(apps::probe_json::bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));
+            codec_box[QStringLiteral("lfeon")] = box.lfeon;
+            codec_box[QStringLiteral("dataRateKbps")] = box.data_rate_kbps;
+            codec_box[QStringLiteral("independentSubstreams")] = box.independent_substreams;
+            codec_box[QStringLiteral("numDepSub")] = box.num_dep_sub;
+            if (box.complexity_index) {
+                codec_box[QStringLiteral("complexityIndex")] = *box.complexity_index;
+            }
+            map[QStringLiteral("codecBox")] = codec_box;
+        }
+    } else if (facts.kind == apps::ContainerKind::kMpegTs) {
+        QVariantMap ts;
+        ts[QStringLiteral("programNumber")] = static_cast<int>(facts.program_number);
+        ts[QStringLiteral("pmtPid")] = static_cast<int>(facts.pmt_pid);
+        ts[QStringLiteral("streamType")] = static_cast<int>(facts.stream_type);
+        map[QStringLiteral("mpegts")] = ts;
+    }
+    return map;
+}
+
+[[nodiscard]] QVariantList media_programmes_to_list(
+    const std::vector<ac3::hearth::MediaProgramme>& programmes) {
+    QVariantList list;
+    for (const ac3::hearth::MediaProgramme& programme : programmes) {
+        QVariantMap row;
+        row[QStringLiteral("substreamId")] = programme.substreamid;
+        row[QStringLiteral("layoutLabel")] =
+            to_qstring(analysis::layout_name(programme.acmod, programme.lfe));
+        row[QStringLiteral("channels")] = programme.channels;
+        row[QStringLiteral("bsid")] = programme.bsid;
+        row[QStringLiteral("bsmodLabel")] =
+            to_qstring(apps::probe_json::bsmod_label(programme.bsmod, programme.acmod));
+        row[QStringLiteral("accessUnits")] = static_cast<qlonglong>(programme.access_units);
+        if (programme.complexity_index) {
+            row[QStringLiteral("complexityIndex")] = *programme.complexity_index;
+        }
+        list.push_back(row);
+    }
+    return list;
+}
+
+[[nodiscard]] QVariantMap media_bitstream_to_map(const ac3::hearth::MediaBitstream& bits) {
+    QVariantMap map;
+    if (bits.info) {
+        const meta::BsiInfo& info = *bits.info;
+        map[QStringLiteral("bsmodLabel")] =
+            to_qstring(apps::probe_json::bsmod_label(static_cast<int>(info.bsmod), bits.acmod));
+        map[QStringLiteral("dsurmodLabel")] = to_qstring(meta::describe(info.dsurmod));
+        map[QStringLiteral("copyright")] = info.copyrightb;
+        map[QStringLiteral("original")] = info.origbs;
+        if (info.audprod) {
+            map[QStringLiteral("mixLevelDbSpl")] = meta::mix_level_db_spl(info.audprod->mixlevel);
+            map[QStringLiteral("roomTypeLabel")] = to_qstring(meta::describe(info.audprod->roomtyp));
+        }
+    }
+    const MixLevels& levels = bits.levels;
+    QVariantMap mix;
+    mix[QStringLiteral("centreDb")] = 20.0 * std::log10(levels.loro_clev);
+    mix[QStringLiteral("surroundDb")] = 20.0 * std::log10(levels.loro_slev);
+    if (levels.lfe_mix_level_db) {
+        mix[QStringLiteral("lfeDb")] = *levels.lfe_mix_level_db;
+    }
+    mix[QStringLiteral("preferredDownmixLabel")] = to_qstring(meta::describe(levels.preferred));
+    map[QStringLiteral("mixLevels")] = mix;
+    return map;
+}
+
+// dynrng/compr are carried as raw §7.7 words, not linear in dB across their
+// full range (ac3::meta::dynrng_gain()'s own comment shows the sign-magnitude
+// wrap at 0x80) - the same reason apps/common/probe_json.cpp's write_range()
+// writes "compr"/"dynrng" as a raw word MinMax rather than a "_db" one the
+// way it does for dialnorm. This follows that precedent rather than
+// inventing its own dB range over a MinMax that may span the wrap.
+[[nodiscard]] QVariantMap media_probe_to_map(const io::ProbeReport& report) {
+    QVariantMap map;
+    map[QStringLiteral("measuredBitrateKbps")] = report.bitrate_kbps;
+    if (report.nominal_bitrate_kbps) {
+        map[QStringLiteral("nominalBitrateKbps")] = static_cast<int>(*report.nominal_bitrate_kbps);
+    }
+    map[QStringLiteral("variableBitrate")] = report.variable_bitrate;
+    map[QStringLiteral("accessUnits")] = static_cast<qlonglong>(report.access_units);
+    map[QStringLiteral("syncframes")] = static_cast<qlonglong>(report.syncframes);
+    map[QStringLiteral("crcFailures")] = static_cast<qlonglong>(report.crc_failures);
+    map[QStringLiteral("parseFailures")] = static_cast<qlonglong>(report.parse_failures);
+
+    if (report.dialnorm.seen) {
+        map[QStringLiteral("dialnormDb")] = apps::probe_json::dialnorm_db(report.dialnorm.min);
+        map[QStringLiteral("dialnormConstant")] = report.dialnorm.constant();
+        if (!report.dialnorm.constant()) {
+            map[QStringLiteral("dialnormMaxDb")] = apps::probe_json::dialnorm_db(report.dialnorm.max);
+        }
+    }
+    map[QStringLiteral("comprSeen")] = report.compr.seen;
+    map[QStringLiteral("dynrngSeen")] = report.dynrng.seen;
+
+    map[QStringLiteral("blocksParsed")] = static_cast<qlonglong>(report.tools.blocks);
+    map[QStringLiteral("blockSwitchBlocks")] = static_cast<qlonglong>(report.tools.block_switch);
+    map[QStringLiteral("couplingBlocks")] = static_cast<qlonglong>(report.tools.coupling);
+    map[QStringLiteral("ahtFrames")] = static_cast<qlonglong>(report.tools.aht_frames);
+
+    map[QStringLiteral("oamd")] = report.oamd;
+    map[QStringLiteral("joc")] = report.joc;
+    if (report.oba_complexity_index) {
+        map[QStringLiteral("complexityIndex")] = *report.oba_complexity_index;
+    }
+    if (report.program) {
+        map[QStringLiteral("objectCount")] = report.program->dynamic_objects;
+        map[QStringLiteral("bedLabel")] =
+            QString::fromStdString(apps::probe_json::bed_label(*report.program));
+    }
+    map[QStringLiteral("authenticityTaggedFrames")] =
+        static_cast<qlonglong>(report.authenticity_tagged_frames);
+
+    QVariantList payload_ids;
+    for (const int id : report.emdf_payload_ids) {
+        payload_ids.push_back(id);
+    }
+    map[QStringLiteral("emdfPayloadIds")] = payload_ids;
+    return map;
+}
+
+[[nodiscard]] QVariantMap media_ac4_to_map(const apps::probe_json::Ac4Summary& summary) {
+    QVariantMap map;
+    map[QStringLiteral("syncFrames")] = static_cast<qlonglong>(summary.sync_frames);
+    map[QStringLiteral("bytes")] = static_cast<qlonglong>(summary.bytes);
+    map[QStringLiteral("crcFailures")] = static_cast<qlonglong>(summary.crc_failures);
+    if (summary.parse_error) {
+        map[QStringLiteral("parseError")] = to_qstring(apps::probe_json::ac4_error_token(*summary.parse_error));
+    }
+    if (!summary.first_frame) {
+        return map;
+    }
+    const ac4::Toc& toc = summary.first_frame->toc;
+    map[QStringLiteral("bitstreamVersion")] = toc.bitstream_version;
+    map[QStringLiteral("sampleRate")] = toc.sample_rate_hz;
+    map[QStringLiteral("presentationCount")] = toc.n_presentations;
+    map[QStringLiteral("substreamCount")] = toc.n_substreams;
+
+    QVariantList presentations;
+    if (!toc.presentations_v0.empty()) {
+        int index = 0;
+        for (const ac4::PresentationInfoV0& presentation : toc.presentations_v0) {
+            QVariantMap row;
+            row[QStringLiteral("index")] = index++;
+            if (presentation.presentation_id) {
+                row[QStringLiteral("id")] = *presentation.presentation_id;
+            }
+            QVariantList substreams;
+            for (const auto& role_and_info : presentation.substreams) {
+                QVariantMap sub;
+                sub[QStringLiteral("role")] = QString::fromStdString(role_and_info.first);
+                sub[QStringLiteral("channelMode")] =
+                    QString::fromStdString(role_and_info.second.channel_mode_name);
+                substreams.push_back(sub);
+            }
+            row[QStringLiteral("substreams")] = substreams;
+            presentations.push_back(row);
+        }
+    } else {
+        int index = 0;
+        for (const ac4::PresentationInfoV1& presentation : toc.presentations_v1) {
+            QVariantMap row;
+            row[QStringLiteral("index")] = index++;
+            if (presentation.presentation_id) {
+                row[QStringLiteral("id")] = *presentation.presentation_id;
+            }
+            QVariantList group_refs;
+            for (const int ref : presentation.group_refs) {
+                group_refs.push_back(ref);
+            }
+            row[QStringLiteral("groupRefs")] = group_refs;
+            presentations.push_back(row);
+        }
+    }
+    map[QStringLiteral("presentations")] = presentations;
+
+    QVariantList groups;
+    int group_index = 0;
+    for (const ac4::SubstreamGroupInfo& group : toc.substream_groups) {
+        QVariantMap row;
+        row[QStringLiteral("index")] = group_index++;
+        row[QStringLiteral("channelCoded")] = group.b_channel_coded;
+        QVariantList substreams;
+        for (const ac4::GroupSubstream& sub : group.substreams) {
+            substreams.push_back(QString::fromStdString(apps::probe_json::describe_group_substream(sub)));
+        }
+        row[QStringLiteral("substreams")] = substreams;
+        groups.push_back(row);
+    }
+    map[QStringLiteral("substreamGroups")] = groups;
+    return map;
+}
+
+[[nodiscard]] QVariantMap media_info_to_map(const ac3::hearth::MediaInfo& info) {
+    QVariantMap map;
+    map[QStringLiteral("path")] = QString::fromStdString(info.path);
+    if (info.codec) {
+        map[QStringLiteral("codec")] = to_qstring(ac3::hearth::codec_token(*info.codec));
+    }
+    if (!info.error.empty()) {
+        map[QStringLiteral("error")] = QString::fromStdString(info.error);
+    }
+    if (!info.note.empty()) {
+        map[QStringLiteral("note")] = QString::fromStdString(info.note);
+    }
+    map[QStringLiteral("container")] = media_container_to_map(info.container);
+    if (info.sample_rate != 0) {
+        map[QStringLiteral("sampleRate")] = info.sample_rate;
+        map[QStringLiteral("durationSeconds")] =
+            static_cast<double>(info.played_samples()) / static_cast<double>(info.sample_rate);
+    }
+    map[QStringLiteral("streamSamples")] = static_cast<qlonglong>(info.stream_samples);
+    map[QStringLiteral("programmes")] = media_programmes_to_list(info.programmes);
+    if (info.bitstream) {
+        map[QStringLiteral("bitstream")] = media_bitstream_to_map(*info.bitstream);
+    }
+    if (info.probe) {
+        map[QStringLiteral("probe")] = media_probe_to_map(*info.probe);
+    }
+    if (info.ac4) {
+        map[QStringLiteral("ac4")] = media_ac4_to_map(*info.ac4);
+    }
+    map[QStringLiteral("json")] = QString::fromStdString(media_info_json(info));
+    return map;
 }
 
 // --- DecoderSettings <-> QVariantMap, field by field (decoder_settings.hpp) ---
@@ -473,6 +744,14 @@ void HearthController::start() {
     engine_ = std::make_unique<ac3::hearth::Engine>(
         std::move(outputs), ac3::hearth::ui::make_file_item_loader(), *layout,
         ac3::hearth::DecoderSettings{}, ac3::hearth::EngineTiming{}, &log_);
+    // Each reads with its own loader instance (make_file_item_loader()
+    // builds a fresh std::function every call, same as the engine's own
+    // above) so the Media page's own pick never blocks on whatever
+    // currentMedia is mid-reading, and vice versa (media_inspector.hpp).
+    now_playing_inspector_ =
+        std::make_unique<ac3::hearth::MediaInspector>(ac3::hearth::ui::make_file_item_loader());
+    inspected_item_inspector_ =
+        std::make_unique<ac3::hearth::MediaInspector>(ac3::hearth::ui::make_file_item_loader());
     engine_->set_gapless(loaded.playback.gapless);
     engine_->set_on_failure(loaded.playback.on_failure);
     if (loaded.playback.resume_queue) {
@@ -576,6 +855,35 @@ void HearthController::addFolder(const QString& path) {
     engine_->add(std::move(items));
 }
 
+void HearthController::inspectItem(int index) {
+    if (index == inspected_index_) {
+        return;
+    }
+    if (index >= 0 && index >= queue_.size()) {
+        return;
+    }
+    inspected_index_ = index;
+    // poll(), the next tick, sees inspected_index_ changed and issues the
+    // request - the same "only act on a change" shape as everything else
+    // here, so a page bound to inspectedIndex settles on the same tick
+    // whether the pick came from inspectItem() or from currentIndex moving
+    // under a "follow now playing" pick (index == -1).
+    emit inspectedMediaChanged();
+}
+
+bool HearthController::exportInspectedMedia(const QUrl& fileUrl) {
+    if (!inspected_media_.contains(QStringLiteral("json"))) {
+        return false;
+    }
+    const QString path = fileUrl.isLocalFile() ? fileUrl.toLocalFile() : fileUrl.toString();
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return false;
+    }
+    const QByteArray json = inspected_media_[QStringLiteral("json")].toString().toUtf8();
+    return file.write(json) == json.size();
+}
+
 void HearthController::poll() {
     if (!engine_) {
         return;
@@ -608,6 +916,56 @@ void HearthController::poll() {
         note_ = new_note;
         error_ = new_error;
         emit stateChanged();
+    }
+
+    // --- media information ------------------------------------------------
+    // currentMedia follows the item playing now.
+    QString new_now_playing_path;
+    if (status.current != ac3::hearth::Queue::kNone && status.current < status.queue.size()) {
+        new_now_playing_path = QString::fromStdString(status.queue[status.current].path);
+    }
+    if (new_now_playing_path != now_playing_path_) {
+        now_playing_path_ = new_now_playing_path;
+        current_media_.clear();
+        emit currentMediaChanged();
+        if (!now_playing_path_.isEmpty()) {
+            now_playing_inspector_->request(now_playing_path_.toStdString());
+        }
+    }
+    if (const std::optional<ac3::hearth::MediaInfo> latest = now_playing_inspector_->latest();
+        latest && QString::fromStdString(latest->path) == now_playing_path_ &&
+        current_media_.value(QStringLiteral("path")).toString() != now_playing_path_) {
+        current_media_ = media_info_to_map(*latest);
+        emit currentMediaChanged();
+    }
+
+    // inspectedMedia follows inspectItem()'s pick (the Media page's own
+    // "Showing" picker), defaulting to currentMedia's own item - the only
+    // way an AC-4 item, never playing in this build, is ever reached.
+    if (inspected_index_ >= 0 &&
+        static_cast<std::size_t>(inspected_index_) >= status.queue.size()) {
+        // The queue shrank under the picked index: follow now playing again
+        // rather than keep pointing at nothing.
+        inspected_index_ = -1;
+    }
+    const QString new_inspected_path =
+        inspected_index_ < 0
+            ? new_now_playing_path
+            : QString::fromStdString(
+                  status.queue[static_cast<std::size_t>(inspected_index_)].path);
+    if (new_inspected_path != inspected_path_) {
+        inspected_path_ = new_inspected_path;
+        inspected_media_.clear();
+        emit inspectedMediaChanged();
+        if (!inspected_path_.isEmpty()) {
+            inspected_item_inspector_->request(inspected_path_.toStdString());
+        }
+    }
+    if (const std::optional<ac3::hearth::MediaInfo> latest = inspected_item_inspector_->latest();
+        latest && QString::fromStdString(latest->path) == inspected_path_ &&
+        inspected_media_.value(QStringLiteral("path")).toString() != inspected_path_) {
+        inspected_media_ = media_info_to_map(*latest);
+        emit inspectedMediaChanged();
     }
 
     // Read apart from status() - Engine::position()'s own comment says why -
