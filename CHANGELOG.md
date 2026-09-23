@@ -756,6 +756,14 @@ The sections below contain the complete change list and fixes.
   `member_player` for this. Not in this slice: actually streaming a programme to a group, which
   needs a network-group output seam in `Player` — the editor says so rather than showing a
   number it cannot yet make true.
+- **`ac3hearth` and `ac3hearth-testsink` register their own Windows Firewall exception before
+  their first mDNS or Sendspin socket binds**, rather than leaving it to Windows' own "these
+  features have been blocked" prompt. `ac3::sendspin::firewall::ensure_inbound_rule()`
+  (`src/sendspin/include/ac3/sendspin/firewall.hpp`, Windows only) adds a rule scoped to the
+  calling executable, the one port being bound, and the private/domain network profiles — never
+  public — the first time it finds none there, elevating once through a UAC prompt if the process
+  is not already elevated; every later run finds the rule already in place. A loopback-only bind
+  needs none of this and skips it; Linux and macOS do nothing at all.
 
 **Audio outputs**
 

@@ -50,13 +50,14 @@ constexpr std::size_t kInitialPendingBlocks = 32;
 
 Player::Player(std::unique_ptr<PcmSink> sink, ItemLoader loader, const render::OutputLayout& layout,
                const DecoderSettings& settings, DiagnosticLog* diagnostics)
-    : Player(PlayerOutputs{.pcm = std::move(sink), .bitstream = {}, .choose = {}},
+    : Player(PlayerOutputs{.pcm = std::move(sink), .bitstream = {}, .group = {}, .choose = {}},
              std::move(loader), layout, settings, diagnostics) {}
 
 Player::Player(PlayerOutputs outputs, ItemLoader loader, const render::OutputLayout& layout,
                const DecoderSettings& settings, DiagnosticLog* diagnostics)
     : sink_(std::move(outputs.pcm)),
       bitstream_(std::move(outputs.bitstream)),
+      group_(std::move(outputs.group)),
       choose_(std::move(outputs.choose)),
       loader_(std::move(loader)),
       layout_(layout),
@@ -67,6 +68,9 @@ bool Player::output_open() const {
     if (bitstreaming()) {
         return bitstream_ && bitstream_->is_open();
     }
+    if (mode_ == OutputMode::kNetworkGroup) {
+        return group_ && group_->is_open();
+    }
     return sink_ && sink_->is_open();
 }
 
@@ -74,7 +78,40 @@ std::optional<audio::MonitorPosition> Player::output_position() const {
     if (bitstreaming()) {
         return bitstream_ ? bitstream_->position() : std::nullopt;
     }
+    if (mode_ == OutputMode::kNetworkGroup) {
+        return group_ ? group_->position() : std::nullopt;
+    }
     return sink_ ? sink_->position() : std::nullopt;
+}
+
+bool Player::pause_output() {
+    if (bitstreaming()) {
+        return bitstream_->pause();
+    }
+    if (mode_ == OutputMode::kNetworkGroup) {
+        return group_->pause();
+    }
+    return sink_->pause();
+}
+
+bool Player::resume_output() {
+    if (bitstreaming()) {
+        return bitstream_->resume();
+    }
+    if (mode_ == OutputMode::kNetworkGroup) {
+        return group_->resume();
+    }
+    return sink_->resume();
+}
+
+void Player::flush_output() {
+    if (bitstreaming()) {
+        bitstream_->flush();
+    } else if (mode_ == OutputMode::kNetworkGroup) {
+        group_->flush();
+    } else {
+        sink_->flush();
+    }
 }
 
 std::uint64_t Player::heard_frames() const {
@@ -154,6 +191,15 @@ std::string Player::join_blocked(const OutputChoice& next, std::string_view titl
         return fmt::format("\"{}\" plays on \"{}\", so the output reopens there - there is a gap.",
                            title, next.endpoint_name);
     }
+    if (next.group_name != choice_.group_name) {
+        // endpoint_id alone cannot see this: a network group carries none
+        // (refollow()'s own comment says why), so two different groups
+        // would otherwise compare equal here and the next item would join
+        // the WRONG one silently open.
+        return fmt::format("\"{}\" plays to the group \"{}\", so the output reopens there - "
+                           "there is a gap.",
+                           title, next.group_name);
+    }
     if (transcoder_ && prepared_ &&
         Ac3Transcoder::fold_levels(prepared_->first_unit()) != transcoder_->fold()) {
         return fmt::format("\"{}\" folds to stereo at other levels, which an AC-3 encoder sets "
@@ -196,10 +242,16 @@ void Player::reset_packer() {
     packer_.reset();
     packed_frames_ = 0;
     packed_spans_.clear();
+    group_payload_.clear();
+    group_burst_start_frame_ = 0;
 }
 
 void Player::send_unit(std::span<const std::byte> unit, std::uint32_t samples) {
     if (history_.empty() || segments_.empty()) {
+        return;
+    }
+    if (mode_ == OutputMode::kNetworkGroup) {
+        send_unit_to_group(unit);
         return;
     }
     const std::size_t record = history_.size() - 1;
@@ -253,6 +305,74 @@ void Player::send_unit(std::span<const std::byte> unit, std::uint32_t samples) {
     pending_frames_ += block.frames;
     packed_frames_ = 0;
     packed_spans_.clear();
+}
+
+void Player::send_unit_to_group(std::span<const std::byte> unit) {
+    // The programme frame the burst this unit joins will start at, latched
+    // the first time group_payload_ is empty - the PCM this unit's own
+    // frames belong to has not been queued yet (take_block() for this same
+    // unit runs after send_unit(), inside the decoder.decode() call
+    // session.cpp's render() makes right after calling `sent` - session.cpp
+    // itself is the source for that order, not assumed here), so
+    // submitted_since_open_ + pending_frames_ is exactly "everything before
+    // this unit" at this point.
+    if (group_payload_.empty()) {
+        group_burst_start_frame_ = static_cast<std::int64_t>(submitted_since_open_ + pending_frames_);
+    }
+    group_payload_.insert(group_payload_.end(), unit.begin(), unit.end());
+
+    // The same packer AC-3/E-AC-3 bitstreaming uses, purely for its "is a
+    // burst whole yet" state machine and its Pc/Pd - group_payload_ above,
+    // not this wrapped output, is what becomes the burst's payload
+    // (network_group_sink.hpp's own comment on submit_burst() says why: a
+    // group's members are not S/PDIF, so there is nothing here to
+    // word-swizzle or zero-pad).
+    std::expected<std::optional<std::vector<std::byte>>, iec61937::WrapError> packed;
+    if (transport_.open_format().stream == audio::BitstreamFormat::kEac3) {
+        if (!packer_) {
+            packer_.emplace();
+        }
+        packed = packer_->push(unit);
+    } else {
+        auto wrapped = iec61937::wrap_frame(unit);
+        if (wrapped) {
+            packed = std::optional<std::vector<std::byte>>{std::move(*wrapped)};
+        } else {
+            packed = std::unexpected(wrapped.error());
+        }
+    }
+    if (!packed) {
+        // Not sent to the group; what had accumulated toward it goes with
+        // it. Unlike send_unit()'s own bitstream case, nothing here adjusts
+        // segments_.back().unsent - that only feeds decoded_end(), which
+        // bitstreaming() gates and a network group never reads (this
+        // player's PCM timeline, which a group's own members-with-PCM play
+        // from, is untouched by a burst failing to pack).
+        group_payload_.clear();
+        note_unit_error(fmt::format("a unit could not be sent to the group, as {}",
+                                    describe(packed.error())));
+        return;
+    }
+    if (!packed->has_value()) {
+        return;  // E-AC-3: more units still wanted before this burst is whole
+    }
+    // Pc and Pd, read back from the wrap rather than recomputed: the
+    // preamble's four words are emitted plainly (iec61937.hpp's own header
+    // comment - only the FRAME bytes after them are word-swizzled for the
+    // S/PDIF carrier), so bytes 4..7 are exactly Pc and Pd, little-endian,
+    // regardless of AC-3's single-unit wrap_frame() or E-AC-3's accumulating
+    // packer_ above.
+    const std::vector<std::byte>& wrapped = **packed;
+    if (wrapped.size() < 8) {
+        group_payload_.clear();
+        return;  // cannot happen for a real wrap_frame()/Eac3BurstPacker output
+    }
+    const auto byte_at = [&wrapped](std::size_t i) { return std::to_integer<unsigned>(wrapped[i]); };
+    const auto pc = static_cast<std::uint16_t>(byte_at(4) | (byte_at(5) << 8U));
+    const auto pd = static_cast<std::uint16_t>(byte_at(6) | (byte_at(7) << 8U));
+    pending_group_bursts_.push_back(PendingGroupBurst{
+        .pc = pc, .pd = pd, .payload = std::move(group_payload_), .frame = group_burst_start_frame_});
+    group_payload_.clear();
 }
 
 void Player::encode_transcoded(bool last) {
@@ -539,7 +659,7 @@ bool Player::set_layout(const render::OutputLayout& layout) {
         open_failed(item, failure, nullptr);
         return true;  // the layout still changed; the item just could not resume
     }
-    if (paused && !(bitstreaming() ? bitstream_->pause() : sink_->pause())) {
+    if (paused && !pause_output()) {
         note("the output would not pause");
     }
     return true;
@@ -841,12 +961,12 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
             break;
         }
         case TransportAction::kPauseOutput:
-            if (output_open() && !(bitstreaming() ? bitstream_->pause() : sink_->pause())) {
+            if (output_open() && !pause_output()) {
                 note("the output would not pause");
             }
             break;
         case TransportAction::kResumeOutput:
-            if (output_open() && !(bitstreaming() ? bitstream_->resume() : sink_->resume())) {
+            if (output_open() && !resume_output()) {
                 note("the output would not resume");
             }
             break;
@@ -881,11 +1001,7 @@ void Player::perform(const TransportOutcome& outcome, PumpReport* report) {
                 drain_target_.reset();
                 tail_waiting_ = false;
                 if (output_open()) {
-                    if (bitstreaming()) {
-                        bitstream_->flush();
-                    } else {
-                        sink_->flush();
-                    }
+                    flush_output();
                 }
                 submitted_since_open_ = 0;
                 if (!history_.empty()) {
@@ -953,7 +1069,12 @@ std::string Player::refollow() {
     }
     refollow_pending_ = false;
     const OutputChoice choice = decide(*session_);
-    if (choice.mode == mode_ && choice.endpoint_id == choice_.endpoint_id) {
+    // group_name too: a network group carries no endpoint_id
+    // (output_decision.cpp's own choose_output() leaves it empty, a group
+    // being no endpoint of this machine), so endpoint_id alone cannot tell
+    // one group the user has switched to from another already open.
+    if (choice.mode == mode_ && choice.endpoint_id == choice_.endpoint_id &&
+        choice.group_name == choice_.group_name) {
         // Still right; the reason may read differently now.
         choice_ = choice;
         return {};
@@ -974,7 +1095,7 @@ std::string Player::refollow() {
         }
         return fmt::format("The output changed, and the item could not follow: {}", why);
     }
-    if (paused && !(bitstreaming() ? bitstream_->pause() : sink_->pause())) {
+    if (paused && !pause_output()) {
         note("the output would not pause");
     }
     return fmt::format("The output changed: {}", choice_.reason);
@@ -1082,10 +1203,20 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
             // item by item.
             return refuse(OpenFailure::kOutput, choice_.reason, "could not start");
         case OutputMode::kNetworkGroup:
-            return refuse(OpenFailure::kOutput,
-                          fmt::format("Playing as {} is not part of this engine yet.",
-                                      describe(choice_.mode)),
-                          "could not start");
+            if (!group_) {
+                return refuse(OpenFailure::kOutput, "This player has no network group output.",
+                              "could not start");
+            }
+            if (facts.stream) {
+                // Only whole units make a whole burst, the same reason
+                // kBitstream needs this below - a group offers bursts
+                // whenever the item has any, alongside the PCM every member
+                // can take, so this is unconditional on the mode rather than
+                // gated on whether any member actually wants bursts (the
+                // group itself routes each form to the members that do).
+                session_->play_whole_units();
+            }
+            break;
     }
 
     const bool transcode = choice_.mode == OutputMode::kBitstreamAsAc3;
@@ -1098,13 +1229,18 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
     // What the link carries: the item's own stream, or the transcode's AC-3.
     const std::optional<audio::BitstreamFormat> link =
         transcode ? std::optional{audio::BitstreamFormat::kAc3} : facts.stream;
-    const auto opened =
-        bitstream ? bitstream_->open(BitstreamSink::Format{.format = *link,
-                                                           .sample_rate = rate,
-                                                           .endpoint_id = choice_.endpoint_id})
-                  : sink_->open(PcmSink::Format{.sample_rate = rate,
-                                                .layout = layout_,
-                                                .endpoint_id = choice_.endpoint_id});
+    std::expected<OpenOutputFormat, std::string> opened;
+    if (bitstream) {
+        opened = bitstream_->open(BitstreamSink::Format{
+            .format = *link, .sample_rate = rate, .endpoint_id = choice_.endpoint_id});
+    } else if (choice_.mode == OutputMode::kNetworkGroup) {
+        opened = group_->open(choice_.group_name, NetworkGroupSink::Format{.sample_rate = rate,
+                                                                           .layout = layout_,
+                                                                           .stream = facts.stream});
+    } else {
+        opened = sink_->open(
+            PcmSink::Format{.sample_rate = rate, .layout = layout_, .endpoint_id = choice_.endpoint_id});
+    }
     if (!opened) {
         return refuse(OpenFailure::kOutput, opened.error(),
                       "could not start: the output would not open");
@@ -1173,6 +1309,8 @@ void Player::close_output() {
     if (output_open() || output_lost()) {
         if (bitstreaming()) {
             bitstream_->close();
+        } else if (mode_ == OutputMode::kNetworkGroup) {
+            group_->close();
         } else {
             sink_->close();
         }
@@ -1215,6 +1353,8 @@ void Player::clear_pending() {
     pending_head_ = 0;
     pending_count_ = 0;
     pending_frames_ = 0;
+    group_pcm_offset_ = 0;
+    pending_group_bursts_.clear();
 }
 
 void Player::take_block(std::span<const std::span<const float>> rendered, std::size_t n) {
@@ -1310,9 +1450,10 @@ void Player::fill(std::size_t frames) {
     const Session::ReportFn reported = [this](const UnitReport& report, std::size_t count) {
         take_report(report, count);
     };
-    // A bitstream output is sent each unit as it is decoded.
+    // A bitstream output, or a network group (both PCM and bursts, from a
+    // group's own members), is sent each unit as it is decoded.
     const Session::SentFn sent =
-        mode_ == OutputMode::kBitstream
+        mode_ == OutputMode::kBitstream || mode_ == OutputMode::kNetworkGroup
             ? Session::SentFn{[this](std::span<const std::byte> unit, std::uint32_t samples) {
                   send_unit(unit, samples);
               }}
@@ -1332,6 +1473,9 @@ void Player::fill(std::size_t frames) {
 }
 
 std::size_t Player::drain(std::size_t budget) {
+    if (mode_ == OutputMode::kNetworkGroup) {
+        return drain_group(budget);
+    }
     const std::size_t slots = layout_.slots();
     std::array<std::span<const float>, render::OutputLayout::kMaxSlots> views{};
     std::size_t submitted = 0;
@@ -1382,12 +1526,71 @@ std::size_t Player::drain(std::size_t budget) {
     return submitted;
 }
 
+std::size_t Player::drain_group(std::size_t budget) {
+    // Bursts first: an unrelated channel to the same group, paced by its own
+    // backpressure, not this budget - see PendingGroupBurst's own comment on
+    // why they are not counted here or in pending_frames_.
+    while (!pending_group_bursts_.empty()) {
+        const PendingGroupBurst& burst = pending_group_bursts_.front();
+        if (!group_->submit_burst(burst.pc, burst.pd, burst.payload, burst.frame)) {
+            break;
+        }
+        pending_group_bursts_.pop_front();
+    }
+
+    const std::size_t slots = layout_.slots();
+    std::array<std::span<const float>, render::OutputLayout::kMaxSlots> views{};
+    std::size_t submitted = 0;
+    while (pending_count_ != 0 && submitted < budget) {
+        const Pending& block = pending_[pending_head_];
+        // Group::push() can take part of what is offered - unlike
+        // sink_/bitstream_'s all-or-nothing submit(), group_pcm_offset_
+        // tracks how far into this block's own frames the group has already
+        // taken, so a partial take leaves the rest at the ring's head for
+        // the next drain() rather than being re-offered or dropped.
+        const std::size_t offered = block.frames - group_pcm_offset_;
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            views[slot] = std::span<const float>(block.samples)
+                              .subspan((slot * block.frames) + group_pcm_offset_, offered);
+        }
+        const std::size_t taken =
+            group_->submit_pcm(std::span<const std::span<const float>>(views.data(), slots), offered);
+        if (taken == 0) {
+            break;
+        }
+        if (block.record < history_.size()) {
+            PlayedItem& played = history_[block.record];
+            if (played.frames == 0) {
+                played.first_frame = submitted_since_open_;
+            }
+            played.frames += taken;
+        }
+        submitted += taken;
+        submitted_since_open_ += taken;
+        pending_frames_ -= taken;
+        group_pcm_offset_ += taken;
+        if (group_pcm_offset_ < block.frames) {
+            break;  // the rest of this block waits for the next drain()
+        }
+        group_pcm_offset_ = 0;
+        pending_head_ = (pending_head_ + 1) % pending_.size();
+        --pending_count_;
+    }
+    return submitted;
+}
+
 bool Player::played_out() {
-    if (pending_count_ != 0) {
+    if (pending_count_ != 0 || !pending_group_bursts_.empty()) {
         return false;
     }
     // A bitstream's last units short of a burst are never sent: a burst
-    // is six blocks or nothing.
+    // is six blocks or nothing. A network group's own pending bursts are
+    // the same idea, checked above rather than here: pending_count_ alone
+    // does not see them (PendingGroupBurst's own comment says why they are
+    // not pending_'s own entries), and unlike a bitstream's leftover
+    // partial burst they are already whole and only waiting on room, so
+    // they belong with pending_count_'s "still have something to submit"
+    // check, not this position-based one.
     const auto position = output_position();
     if (!position) {
         // Closed, or a sink with no clock to wait on.

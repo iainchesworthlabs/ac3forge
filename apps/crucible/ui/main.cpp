@@ -20,6 +20,8 @@
 #include <QVariant>
 #include <QVariantMap>
 
+#include "ac3/internal/profiling.hpp"
+
 #include "crucible_controller.hpp"
 #include "diagnostics.hpp"
 #include <QQmlApplicationEngine>
@@ -101,6 +103,21 @@ void forward_to_diagnostics(QtMsgType type, const QMessageLogContext& context, c
     if (g_previous_handler != nullptr) {
         g_previous_handler(type, context, message);
     }
+}
+
+// Ties Tracy's frame view to real Qt Quick presentation - "UI", not the bare
+// AC3_FRAME_MARK(), because the engine loop (engine.cpp) already marks the
+// default frame set once per captured/encoded audio frame; two unrelated
+// cadences on one frame set would interleave into a single meaningless graph.
+// Direct, not queued: frameSwapped can fire on the scene graph's own render
+// thread (the default "threaded" loop, though this window forces "basic"
+// below), and the mark should timestamp the swap itself, not whenever the
+// window's own GUI thread later gets around to a queued call - Tracy's
+// FrameMark is documented safe to call from whichever thread produces the
+// frame, matching how the engine loop already calls it off the GUI thread.
+void mark_frames_for_tracy(QQuickWindow* window) {
+    QObject::connect(window, &QQuickWindow::frameSwapped, window,
+                     [] { AC3_FRAME_MARK_NAMED("UI"); }, Qt::DirectConnection);
 }
 
 }  // namespace
@@ -204,6 +221,9 @@ int main(int argc, char** argv) {
     engine.loadFromModule("Ac3ForgeCrucible", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
+    }
+    if (auto* root_window = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
+        mark_frames_for_tracy(root_window);
     }
     // A capture never shows the first-run dialog it did not ask for:
     // Main.qml reads this one event-loop turn later, after main() has had

@@ -169,17 +169,26 @@ choice AC3FORGE_EXAMPLE_SINK
         slot count to whatever a layout needs, standard I2S for one or two
         speakers or TDM beyond that, or TDM for every layout with
         AC3FORGE_EXAMPLE_I2S_FIXED_FRAME (ac3forge/sink_plan.hpp), so a layout
-        change over the control surface never needs a rebuild. The capture
-        sink is what CI runs: qemu-system-xtensa has no I2S peripheral, so a
-        real write blocks on a DMA that never drains. It converts with the
-        same code (ac3forge/interleave.hpp) and checks the result, with no
-        peripheral behind it and no hardware ceiling to refuse against, so
-        the source, the access-unit framing and the decode run as they do on
-        a board for layouts a real line could never carry (a rendered
-        7.1.4's twelve slots, say). CI builds the other two and runs neither.
+        change over the control surface never needs a rebuild, on up to two
+        of a part's I2S lines - correct on a part whose own TDM frame is 128
+        bits (ESP32-S3, ESP32-C6). I2S DAC, wide TDM is the same arithmetic
+        for a part whose one controller reaches the product's full channel
+        target alone at a wider frame (512 bits on the ESP32-P4) - never a
+        second line, see esp-idf/ac3forge/examples/hearth_sink/main/sink/i2s_wide/audio_sink.cpp.
+        The capture sink is what CI runs: qemu-system-xtensa has no I2S
+        peripheral, so a real write blocks on a DMA that never drains. It
+        converts with the same code (ac3forge/interleave.hpp) and checks the
+        result, with no peripheral behind it and no hardware ceiling to
+        refuse against, so the source, the access-unit framing and the
+        decode run as they do on a board for layouts a real line could never
+        carry (a rendered 7.1.4's twelve slots, say). CI builds the other
+        sinks and runs none of them.
 
 config AC3FORGE_EXAMPLE_SINK_I2S
     bool "I2S DAC (standard or TDM, reconfigured dynamically)"
+
+config AC3FORGE_EXAMPLE_SINK_I2S_WIDE
+    bool "I2S DAC, wide TDM (one controller at the part's full frame width)"
 
 config AC3FORGE_EXAMPLE_SINK_CAPTURE
     bool "Capture (convert and check, no peripheral)"

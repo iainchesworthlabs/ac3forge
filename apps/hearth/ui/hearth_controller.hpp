@@ -350,6 +350,14 @@ public:
     Q_INVOKABLE void seek(qlonglong ms);
     Q_INVOKABLE void playItem(int index);
     Q_INVOKABLE void removeAt(int index);
+    // A FileDialog/FolderDialog result or a DropArea drop.urls entry has no
+    // toLocalFile() of its own once QML hands it to JavaScript - only a real
+    // C++ QUrl does, which is what marshalling it through this invokable's
+    // own QUrl parameter produces. exportInspectedMedia() below already
+    // relies on the same marshalling for its own fileUrl parameter.
+    Q_INVOKABLE QString urlToLocalFile(const QUrl& url) const {
+        return url.isLocalFile() ? url.toLocalFile() : url.toString();
+    }
     // Each path becomes one queue item, titled by its file name.
     Q_INVOKABLE void addFiles(const QStringList& paths);
     // Every media file item_loader.hpp's list_folder_items() finds under
