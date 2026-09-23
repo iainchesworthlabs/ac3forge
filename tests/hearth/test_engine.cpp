@@ -715,7 +715,53 @@ TEST_CASE("engine: the speaker setup commands reach EngineStatus, and a refused 
     const EngineStatus routing_status = engine->status();
     CHECK(routing_status.note.find("refused") != std::string::npos);
     CHECK(routing_status.device_name.empty());
+    CHECK(routing_status.device_id.empty());
     CHECK(routing_status.speaker_mask == 0);
+}
+
+namespace {
+
+// A sink that only answers device_name()/device_id(), with fixed values -
+// enough to prove EngineStatus carries both through from PcmSink without a
+// queue or a clock thread to drive it.
+class NamedDevice final : public PcmSink {
+public:
+    std::expected<OpenOutputFormat, std::string> open(const Format& /*format*/) override {
+        return std::unexpected(std::string{"NamedDevice never opens"});
+    }
+    void close() override {}
+    [[nodiscard]] bool is_open() const override { return false; }
+    bool submit(std::span<const std::span<const float>> /*slots*/, std::size_t /*frames*/) override {
+        return false;
+    }
+    [[nodiscard]] std::optional<ac3::audio::MonitorPosition> position() const override {
+        return std::nullopt;
+    }
+    void flush() override {}
+    bool pause() override { return false; }
+    bool resume() override { return false; }
+    [[nodiscard]] std::string device_name() const override { return "Test Receiver"; }
+    [[nodiscard]] std::string device_id() const override { return "test-receiver-1"; }
+};
+
+}  // namespace
+
+TEST_CASE("engine: EngineStatus carries the open sink's device name and id",
+          "[hearth][engine]") {
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+    const Library library;
+    auto engine = std::make_unique<Engine>(std::make_unique<NamedDevice>(), library.loader(), *layout);
+    // sync() waits for published_ to reach posted_ (Engine::sync()'s own
+    // comment) - with nothing posted, both start at 0 and the wait is
+    // trivially satisfied before the engine thread's own startup publish()
+    // has necessarily run. A harmless command forces a real round trip.
+    engine->set_gapless(true);
+    engine->sync();
+
+    const EngineStatus status = engine->status();
+    CHECK(status.device_name == "Test Receiver");
+    CHECK(status.device_id == "test-receiver-1");
 }
 
 TEST_CASE("engine: set_layout changes EngineStatus's layout and resets the speaker setup, "

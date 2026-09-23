@@ -36,6 +36,8 @@
 #undef slots
 
 #include "ac3/analysis/levels.hpp"
+#include "ac3/audio/passthrough.hpp"
+#include "ac3/audio/speakers.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3/sendspin/crypto.hpp"
 #include "decoder_settings.hpp"
@@ -43,6 +45,8 @@
 #include "engine_thread.hpp"
 #include "item_loader.hpp"
 #include "media_inspector.hpp"
+#include "output_decision.hpp"
+#include "output_selector.hpp"
 #include "pairing_store.hpp"
 #include "pcm_sink.hpp"
 #include "probe_json.hpp"
@@ -577,6 +581,32 @@ constexpr int kPollMs = 60;
     return row;
 }
 
+// One row of the output picker's "this computer" list: OutputPicker.qml
+// reads channels/speakers/sampleRates for the PCM section and
+// supportsAc3/supportsEac3 for the passthrough section, from the one
+// enumeration both come from - a device that cannot bitstream simply has
+// both flags false, which is why the passthrough section shows only some of
+// these rows rather than needing a second list.
+[[nodiscard]] QVariantMap output_device_row(const ac3::audio::RenderDeviceInfo& device) {
+    QVariantMap row;
+    row[QStringLiteral("id")] = QString::fromStdString(device.id);
+    row[QStringLiteral("name")] = QString::fromStdString(device.name);
+    row[QStringLiteral("isDefault")] = device.is_default;
+    // 0 is "not reported", not "no channels" (RenderDeviceInfo's own
+    // comment) - QML reads a zero channel count that way too.
+    row[QStringLiteral("channels")] = device.channels;
+    row[QStringLiteral("speakers")] = QString::fromStdString(ac3::audio::describe_speakers(device.speakers));
+    QVariantList rates;
+    rates.reserve(static_cast<qsizetype>(device.sample_rates.size()));
+    for (const std::uint32_t rate : device.sample_rates) {
+        rates.push_back(static_cast<uint>(rate));
+    }
+    row[QStringLiteral("sampleRates")] = rates;
+    row[QStringLiteral("supportsAc3")] = device.supports_ac3_passthrough;
+    row[QStringLiteral("supportsEac3")] = device.supports_eac3_passthrough;
+    return row;
+}
+
 // --- settings (the Settings page) ------------------------------------------
 
 // ac3::hearth::SettingsStore over QSettings (planning/hearth-reference-
@@ -693,12 +723,26 @@ void HearthController::start() {
     if (engine_) {
         return;
     }
-    // "2.0" until the Speakers page (A5, following this slice) makes the
-    // layout a setting; a literal this application writes always parses.
+    // "2.0" until the Speakers page makes the layout a setting; a literal
+    // this application writes always parses.
     const std::optional<ac3::render::OutputLayout> layout = ac3::render::OutputLayout::parse("2.0");
+    // EngineOutputs, not a bare PcmSink: given every render endpoint
+    // (device_endpoints(), output_selector.hpp), the engine decides each
+    // item's output itself and set_output_preferences() - the output
+    // picker's "Play here" - has something to act on. No bitstream sink yet,
+    // so OutputSelector::endpoints() reads every endpoint's passthrough
+    // flags as false regardless of what the device reports
+    // (bitstream_output=false in engine_thread.cpp's EngineOutputs
+    // constructor) and every item still decodes to PCM - the same outcome
+    // the old bare-PcmSink construction gave, on the same default device
+    // (best_for_pcm() picks it the same way DeviceSink::open() did with an
+    // empty device id), until a dialog row pins a different one.
+    ac3::hearth::EngineOutputs outputs{.pcm = ac3::hearth::make_device_sink(std::string()),
+                                       .bitstream = {},
+                                       .endpoints = ac3::hearth::device_endpoints()};
     const ac3::hearth::EngineSettings loaded = current_settings(*store_);
     engine_ = std::make_unique<ac3::hearth::Engine>(
-        ac3::hearth::make_device_sink(std::string()), ac3::hearth::ui::make_file_item_loader(), *layout,
+        std::move(outputs), ac3::hearth::ui::make_file_item_loader(), *layout,
         ac3::hearth::DecoderSettings{}, ac3::hearth::EngineTiming{}, &log_);
     // Each reads with its own loader instance (make_file_item_loader()
     // builds a fresh std::function every call, same as the engine's own
@@ -1000,6 +1044,7 @@ void HearthController::poll() {
         new_routing.push_back(status.routing.output_of(slot));
     }
     const QString new_device_name = QString::fromStdString(status.device_name);
+    const QString new_device_id = QString::fromStdString(status.device_id);
     const bool new_has_lfe = status.layout.lfe_count() > 0;
     const int new_identify_slot = status.identify_slot == ac3::hearth::Queue::kNone
                                       ? -1
@@ -1007,7 +1052,7 @@ void HearthController::poll() {
     if (layout_changed || new_trim_db != trim_db_ || new_delay_ms != delay_ms_ ||
         status.crossover_hz != crossover_hz_ || new_routing != routing_ ||
         static_cast<int>(status.routing.outputs()) != routing_outputs_ ||
-        new_device_name != device_name_ || new_has_lfe != layout_has_lfe_ ||
+        new_device_name != device_name_ || new_device_id != device_id_ || new_has_lfe != layout_has_lfe_ ||
         status.identify_level_db != identify_level_db_ || new_identify_slot != identify_slot_) {
         trim_db_ = std::move(new_trim_db);
         delay_ms_ = std::move(new_delay_ms);
@@ -1015,6 +1060,7 @@ void HearthController::poll() {
         routing_ = std::move(new_routing);
         routing_outputs_ = static_cast<int>(status.routing.outputs());
         device_name_ = new_device_name;
+        device_id_ = new_device_id;
         layout_has_lfe_ = new_has_lfe;
         if (layout_changed) {
             layout_text_ = new_layout_text;
@@ -1094,6 +1140,33 @@ void HearthController::useDeviceOrder() {
     if (patch) {
         engine_->set_routing(*patch);
     }
+}
+
+void HearthController::refreshOutputDevices() {
+    QVariantList rows;
+    const auto devices = ac3::audio::enumerate_render_devices();
+    if (devices.has_value()) {
+        rows.reserve(static_cast<qsizetype>(devices->size()));
+        for (const auto& device : *devices) {
+            rows.push_back(output_device_row(device));
+        }
+    }
+    // A failed enumeration (kNoBackend, say) empties the list rather than
+    // keeping whatever an earlier, working refresh found - a row from a
+    // probe this machine can no longer repeat should not sit there
+    // clickable as if it still could.
+    output_devices_ = std::move(rows);
+    emit outputDevicesChanged();
+}
+
+void HearthController::selectOutputDevice(const QString& deviceId) {
+    if (!engine_ || deviceId.isEmpty()) {
+        return;
+    }
+    engine_->set_output_preferences(
+        ac3::hearth::OutputPreferences{.pinned = ac3::hearth::OutputMode::kLocalPcm,
+                                       .endpoint_id = deviceId.toStdString(),
+                                       .follow_sink = true});
 }
 
 void HearthController::setLayoutText(const QString& text) {
