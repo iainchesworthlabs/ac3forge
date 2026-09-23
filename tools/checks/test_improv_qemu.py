@@ -207,7 +207,7 @@ class ConsoleParser(unittest.TestCase):
         parser = improv.ConsoleParser()
         events = parser.feed(b"x" * (improv.ConsoleParser.MAX_LINE + 100) + b"IMPR")
         self.assertEqual(len(events), 1)
-        self.assertTrue(set(events[0]) <= {"x"})
+        self.assertLessEqual(set(events[0]), {"x"})
         # The start of a header is kept for the bytes that complete it.
         self.assertEqual(parser.feed(STATE_READY[4:])[-1], improv.Answer("current_state", "ready"))
 
