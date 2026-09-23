@@ -79,6 +79,8 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Main.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/OutputPicker.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlayPage.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlayObjectsCard.qml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/qml/PlaySignalPathCard.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Media.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/Speakers.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/DecoderPage.qml"

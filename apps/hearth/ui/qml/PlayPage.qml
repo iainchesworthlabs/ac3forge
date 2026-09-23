@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
-import QtQuick.Window
 
 import Ac3ForgeHearth
 
@@ -11,9 +10,19 @@ import Ac3ForgeHearth
 // it - levels, loudness, this frame's detail, object placement and signal
 // path - all read from HearthController.levels/loudness/thisFrame/objects/
 // outputFormat, which poll Engine::meters() and Engine::unit_report() the
-// same tick as status() (hearth_controller.cpp's own poll()).
+// same tick as status() (hearth_controller.cpp's own poll()). Objects and
+// signal path hold their own sidebar column when the window is wide enough,
+// and fold into the monitor column's own scroll when it is not (root.narrow).
 Item {
     id: root
+
+    // Below this, the fixed queue (340) and Objects/Signal-path sidebar
+    // (300) columns leave too little room for the monitor column's grids
+    // (issue #888) - PlayObjectsCard/PlaySignalPathCard fold into the
+    // monitor column's own scroll instead of holding a dedicated sidebar,
+    // matching play-minimum-size.png's collapse at the enforced 960x620
+    // minimum (Main.qml's minimumWidth/minimumHeight).
+    readonly property bool narrow: root.width < 1100
 
     // The meter's own axis (-60,-48,-36,-24,-12,-6,0 dB): six EQUAL-WIDTH
     // segments over unequal dB spans, giving more resolution near 0 dB -
@@ -532,6 +541,17 @@ Item {
                         font.pixelSize: Theme.fontSmall
                     }
 
+                    // Objects and signal path are further down this same
+                    // scroll, not off in their own column, once the window
+                    // is this narrow (play-minimum-size.png).
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.narrow
+                        text: qsTr("Scroll for this frame, objects and signal path.")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                    }
+
                     GridLayout {
                         Layout.fillWidth: true
                         visible: Object.keys(HearthController.loudness).length > 0
@@ -660,12 +680,24 @@ Item {
                         }
                     }
                 }
+
+                // Objects and signal path fold in here, right after This
+                // frame, once the window is too narrow for their own sidebar
+                // column below (root.narrow) - play-minimum-size.png's own
+                // collapse. Same two cards sidebarScroll holds, just
+                // relocated; each is only ever shown in one place at a time.
+                PlayObjectsCard { visible: root.narrow }
+                PlaySignalPathCard { visible: root.narrow }
             }
         }
 
         // --- objects and signal path --------------------------------------
+        // Their own column when there is room for one; folded into
+        // monitorScroll's own scroll above instead when there is not
+        // (root.narrow).
         ScrollView {
             id: sidebarScroll
+            visible: !root.narrow
             Layout.preferredWidth: 300
             Layout.fillHeight: true
             clip: true
@@ -675,296 +707,8 @@ Item {
                 width: sidebarScroll.availableWidth
                 spacing: Theme.gap * 2
 
-                Card {
-                    title: qsTr("06 Objects")
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: HearthController.hasObjectMetadata
-                              ? qsTr("%1 placed").arg(HearthController.objectsPlaced)
-                              : (HearthController.playing ? qsTr("No object metadata in this stream")
-                                                           : qsTr("Nothing playing"))
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                    }
-
-                    Item {
-                        id: room
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: width
-                        visible: HearthController.hasObjectMetadata
-
-                        Rectangle {
-                            anchors.fill: parent
-                            color: Theme.neutral100
-                            border.color: Theme.border
-                            border.width: 1
-                        }
-                        // A stand-in for the design's dashed room circle - a
-                        // plain ring, since a Rectangle border has no dash
-                        // pattern without pulling in QtQuick.Shapes for one
-                        // decorative line.
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: Math.min(room.width, room.height) * 0.85
-                            height: width
-                            radius: width / 2
-                            color: "transparent"
-                            border.color: Theme.neutral400
-                            border.width: 1
-                        }
-
-                        Repeater {
-                            model: HearthController.objects
-
-                            // oba::Position's own room cuboid (x: 0 left
-                            // wall to 1 right wall, y: 0 front to 1 back) -
-                            // the same frame apps/gui's ObjectInspectorDialog
-                            // plan view places its markers in
-                            // (object_decode_controller.cpp), placed here
-                            // directly with no reprojection. label
-                            // distinguishes a bed/speaker entry (named) from
-                            // a dynamic object (unnamed); raised is
-                            // position.z above the bed plane.
-                            delegate: Rectangle {
-                                id: marker
-                                required property var modelData
-                                readonly property bool isSpeaker: marker.modelData.label.length > 0
-                                readonly property color markerColor:
-                                    marker.isSpeaker ? Theme.neutral800 : Theme.bad
-                                width: 10
-                                height: 10
-                                color: marker.modelData.raised ? "transparent" : marker.markerColor
-                                border.width: marker.modelData.raised ? 2 : 0
-                                border.color: marker.markerColor
-                                x: marker.modelData.x * room.width - width / 2
-                                y: marker.modelData.y * room.height - height / 2
-
-                                Text {
-                                    visible: marker.isSpeaker
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    anchors.bottom: parent.top
-                                    text: marker.modelData.label
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.fontFine
-                                }
-                            }
-                        }
-                    }
-
-                    Flow {
-                        Layout.fillWidth: true
-                        visible: HearthController.hasObjectMetadata
-                        spacing: Theme.gap
-
-                        Row {
-                            spacing: 4
-                            Rectangle { width: 8; height: 8; anchors.verticalCenter: parent.verticalCenter; color: Theme.bad }
-                            Text { text: qsTr("object"); color: Theme.textMuted; font.pixelSize: Theme.fontFine }
-                        }
-                        Row {
-                            spacing: 4
-                            Rectangle {
-                                width: 8; height: 8; anchors.verticalCenter: parent.verticalCenter
-                                color: "transparent"; border.color: Theme.bad; border.width: 1
-                            }
-                            Text { text: qsTr("raised"); color: Theme.textMuted; font.pixelSize: Theme.fontFine }
-                        }
-                        Row {
-                            spacing: 4
-                            Rectangle {
-                                width: 8; height: 8; anchors.verticalCenter: parent.verticalCenter
-                                color: Theme.neutral800
-                            }
-                            Text { text: qsTr("speaker"); color: Theme.textMuted; font.pixelSize: Theme.fontFine }
-                        }
-                        Row {
-                            spacing: 4
-                            Rectangle {
-                                width: 8; height: 8; anchors.verticalCenter: parent.verticalCenter
-                                color: "transparent"; border.color: Theme.neutral800; border.width: 1
-                            }
-                            Text { text: qsTr("height"); color: Theme.textMuted; font.pixelSize: Theme.fontFine }
-                        }
-                    }
-                }
-
-                Card {
-                    title: qsTr("07 Signal path")
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: decodeCol.implicitHeight + Theme.pad * 2
-                        color: Theme.neutral100
-                        border.color: Theme.border
-                        border.width: 1
-
-                        ColumnLayout {
-                            id: decodeCol
-                            anchors.fill: parent
-                            anchors.margins: Theme.pad
-                            spacing: 2
-
-                            Text {
-                                text: qsTr("1 · DECODE")
-                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: {
-                                    if (HearthController.currentIndex < 0) return qsTr("Nothing playing");
-                                    var kind = HearthController.queue[HearthController.currentIndex].streamKind;
-                                    var modeName = HearthController.decoderSettings.mode;
-                                    var mode = modeName === "rf" ? qsTr("RF mode")
-                                             : modeName === "custom" ? qsTr("custom mode") : qsTr("line mode");
-                                    return (kind.length > 0 ? kind : qsTr("stream")) + " · " + mode;
-                                }
-                                color: Theme.text
-                                font.bold: true
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                visible: HearthController.thisFrame.dialnorm !== undefined
-                                text: qsTr("dialnorm −%1: %2 dB down%3")
-                                          .arg(HearthController.thisFrame.dialnorm)
-                                          .arg((31 - HearthController.thisFrame.dialnorm).toFixed(1))
-                                          .arg(HearthController.hasObjectMetadata
-                                               ? qsTr(" · %1 objects").arg(HearthController.objectsPlaced) : "")
-                                color: Theme.textMuted
-                                font.pixelSize: Theme.fontSmall
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: "↓"
-                        color: Theme.textMuted
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: renderCol.implicitHeight + Theme.pad * 2
-                        color: Theme.neutral100
-                        border.color: Theme.border
-                        border.width: 1
-
-                        ColumnLayout {
-                            id: renderCol
-                            anchors.fill: parent
-                            anchors.margins: Theme.pad
-                            spacing: 2
-
-                            Text {
-                                text: qsTr("2 · RENDER")
-                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: HearthController.layoutText.length > 0
-                                      ? qsTr("%1 onto %2 outputs").arg(HearthController.layoutText)
-                                                                   .arg(HearthController.routingOutputs)
-                                      : qsTr("Not rendering")
-                                color: Theme.text
-                                font.bold: true
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: {
-                                    var small = [];
-                                    for (var i = 0; i < HearthController.speakerSmall.length; i++) {
-                                        if (HearthController.speakerSmall[i]) {
-                                            small.push(HearthController.speakerLabels[i]);
-                                        }
-                                    }
-                                    var lede = small.length > 0
-                                        ? qsTr("%1 small at %2 Hz").arg(small.join(qsTr(" and ")))
-                                                                    .arg(HearthController.crossoverHz)
-                                        : qsTr("no small speakers");
-                                    return lede + qsTr(" · trims and delays");
-                                }
-                                color: Theme.textMuted
-                                font.pixelSize: Theme.fontSmall
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
-
-                    Text {
-                        Layout.alignment: Qt.AlignHCenter
-                        text: "↓"
-                        color: Theme.textMuted
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: hearCol.implicitHeight + Theme.pad * 2
-                        color: Theme.neutral100
-                        border.color: Theme.border
-                        border.width: 1
-
-                        ColumnLayout {
-                            id: hearCol
-                            anchors.fill: parent
-                            anchors.margins: Theme.pad
-                            spacing: 2
-
-                            Text {
-                                text: qsTr("3 · YOU HEAR IT ON")
-                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: HearthController.deviceName.length > 0
-                                      ? HearthController.deviceName : qsTr("No output chosen")
-                                color: Theme.text
-                                font.bold: true
-                                font.pixelSize: Theme.fontBody
-                                wrapMode: Text.WordWrap
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                visible: HearthController.outputFormat.channels > 0
-                                text: qsTr("%1 ch %2 at %3 kHz")
-                                          .arg(HearthController.outputFormat.channels)
-                                          .arg(HearthController.outputFormat.mode === "pcm"
-                                               ? qsTr("PCM") : qsTr("bitstream"))
-                                          .arg(Number(HearthController.outputFormat.sampleRate / 1000).toFixed(1))
-                                color: Theme.textMuted
-                                font.pixelSize: Theme.fontSmall
-                            }
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                Layout.topMargin: Theme.gap / 2
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: qsTr("output: your choice")
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.fontSmall
-                                }
-                                Button {
-                                    objectName: "playChooseOutput"
-                                    text: qsTr("Choose…")
-                                    // The enclosing ApplicationWindow, reached
-                                    // through the Window attached property -
-                                    // root.parent does not reliably chain up
-                                    // to it (GuidedWizard.qml's own
-                                    // requestWindow() comment explains why) -
-                                    // opened the same way the header's own
-                                    // output pill does (Main.qml's
-                                    // openOutputPicker()).
-                                    onClicked: root.Window.window.openOutputPicker()
-                                }
-                            }
-                        }
-                    }
-                }
+                PlayObjectsCard { }
+                PlaySignalPathCard { }
             }
         }
     }
