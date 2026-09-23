@@ -81,6 +81,7 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/AppButton.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/AppCheckBox.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/IconButton.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/AppSlider.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/ChannelMeter.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/SoundfieldView.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/SegmentedControl.qml"

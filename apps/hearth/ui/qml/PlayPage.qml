@@ -176,7 +176,8 @@ Item {
             spacing: Theme.gap
 
             SectionHeader {
-                label: qsTr("01 Queue")
+                ordinal: "01"
+                label: qsTr("Queue")
                 summary: root.queueSummary()
             }
 
@@ -184,56 +185,19 @@ Item {
                 Layout.fillWidth: true
                 spacing: Theme.gap
 
-                Button {
+                AppButton {
                     objectName: "addFiles"
+                    glyph: Theme.iconAdd
                     text: qsTr("Add files…")
                     Layout.fillWidth: true
                     onClicked: addFilesDialog.open()
-                    Accessible.name: qsTr("Add files…")
-                    // A separate icon Text beside the label, not a single
-                    // rich-text string with an embedded <font> tag - that
-                    // read as a completely different (wrong) glyph, since
-                    // Basic style's default Label doesn't switch the inline
-                    // span's family the way plain HTML would.
-                    contentItem: RowLayout {
-                        spacing: Theme.gap / 2
-                        Text {
-                            text: Theme.iconAdd
-                            font.family: Theme.iconFamily
-                            font.pixelSize: Theme.iconSize
-                            color: Theme.text
-                        }
-                        Text {
-                            text: qsTr("Add files…")
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-                    }
                 }
-                Button {
+                AppButton {
                     objectName: "addFolder"
+                    glyph: Theme.iconCreateNewFolder
                     text: qsTr("Add folder…")
                     Layout.fillWidth: true
                     onClicked: addFolderDialog.open()
-                    Accessible.name: qsTr("Add folder…")
-                    contentItem: RowLayout {
-                        spacing: Theme.gap / 2
-                        Text {
-                            text: Theme.iconCreateNewFolder
-                            font.family: Theme.iconFamily
-                            font.pixelSize: Theme.iconSize
-                            color: Theme.text
-                        }
-                        Text {
-                            text: qsTr("Add folder…")
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-                    }
                 }
             }
 
@@ -442,7 +406,8 @@ Item {
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("02 Now playing")
+                    ordinal: "02"
+                    title: qsTr("Now playing")
                     flat: true
 
                     Text {
@@ -472,7 +437,8 @@ Item {
                 }
 
                 Card {
-                    title: qsTr("03 Levels · at play time")
+                    ordinal: "03"
+                    title: qsTr("Levels · at play time")
                     flat: true
                     summary: HearthController.deviceName.length > 0
                              ? qsTr("%1 · %2 outputs").arg(HearthController.deviceName)
@@ -624,7 +590,8 @@ Item {
                 }
 
                 Card {
-                    title: qsTr("04 Loudness · BS.1770-4")
+                    ordinal: "04"
+                    title: qsTr("Loudness · BS.1770-4")
                     flat: true
                     summary: Object.keys(HearthController.loudness).length > 0
                              ? qsTr("Integrated since this item started")
@@ -671,7 +638,8 @@ Item {
                 }
 
                 Card {
-                    title: qsTr("05 This frame")
+                    ordinal: "05"
+                    title: qsTr("This frame")
                     flat: true
                     summary: Object.keys(HearthController.thisFrame).length > 0
                              ? qsTr("At play time · access unit %1")
