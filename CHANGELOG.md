@@ -699,6 +699,17 @@ The sections below contain the complete change list and fixes.
   - `Transport::would_join()` answers the join question without deciding anything.
   - In `ac3tests`: pause, seek, an added item, and the stop, in the last moment of the queue,
     for a PCM output, a link and a transcode.
+- **Hearth's Network page: discovery and pairing** (A6, its first slice). `ac3hearth` browses
+  `_sendspin._tcp` and lists every player it finds, live: a Hearth sink's roles, the codecs and
+  data types it takes, its output slot count and width; a standard Sendspin player's codecs.
+  Selecting an unpaired sink starts a dynamic pairing code attempt at once — the sink shows a
+  six-digit code on its own console or page, entered here — and a wrong or expired code says so
+  without losing the attempt. `apps/hearth/engine/network_sinks.hpp` wraps `ac3::sendspin::
+  ServerHost` and its own `_sendspin._tcp` browse (kept apart from `ServerHost`'s own, so
+  `NetworkController`'s "Look again" is a real re-query); `network_view.hpp` turns what it learns
+  into the page's rows and labels, tested the way `output_decision.hpp` is. Groups, a sink's own
+  settings pages and reported levels are later slices — a sink already in use by another server
+  needs `ac3::sendspin` to grow a way to learn that at all, which pairing alone does not give it.
 
 **Audio outputs**
 

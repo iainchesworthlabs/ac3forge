@@ -7,8 +7,9 @@ import Ac3ForgeHearth
 // The window (planning/hearth-reference-player.md, A5): a header with the
 // six-page switch, one page at a time in the body, and the transport bar
 // pinned to the bottom on every page, the way planning/hearth-design.md's
-// artboards show it. Play, Speakers and Decoder are built to the design;
-// Media information, Network and Settings are placeholders their own
+// artboards show it. Play, Speakers, Decoder and Network (A6's first slice:
+// discovery and pairing, not yet groups or a sink's own settings) are built
+// to the design; Media information and Settings are placeholders their own
 // slices replace.
 ApplicationWindow {
     id: window
@@ -136,7 +137,7 @@ ApplicationWindow {
         PlaceholderPage { pageName: qsTr("Media information") }
         Speakers { }
         DecoderPage { }
-        PlaceholderPage { pageName: qsTr("Network") }
+        Network { }
         PlaceholderPage { pageName: qsTr("Settings") }
     }
 
