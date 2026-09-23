@@ -740,3 +740,72 @@ TEST_CASE("engine: the volume command reaches EngineStatus, and a refused one le
     CHECK(after_refusal.note.find("refused") != std::string::npos);
     CHECK(after_refusal.volume_db == -9.0);
 }
+
+TEST_CASE("engine: set_layout changes EngineStatus's layout and resets the speaker setup, "
+          "and a refused layout leaves it alone",
+          "[hearth][engine]") {
+    Library library;
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);  // "2.0"
+
+    engine->set_trim_db(0, -3.0);
+    engine->sync();
+    REQUIRE(engine->status().trim_db[0] == -3.0);
+
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    engine->set_layout(*layout);
+    engine->sync();
+    const EngineStatus after = engine->status();
+    CHECK(after.layout.text() == "5.1");
+    CHECK(after.trim_db.size() == 6);  // "5.1" is L C R Ls Rs LFE
+    CHECK(after.trim_db[0] == 0.0);  // reset: a different speaker under the new layout
+    CHECK(after.note.find("refused") == std::string::npos);
+
+    // No slots at all: refused, noted, and the layout stays "5.1".
+    engine->set_layout(ac3::render::OutputLayout{});
+    engine->sync();
+    const EngineStatus refused = engine->status();
+    CHECK(refused.note.find("refused") != std::string::npos);
+    CHECK(refused.layout.text() == "5.1");
+}
+
+TEST_CASE("engine: set_layout while playing reopens the output at the new width, on the "
+          "engine's own thread",
+          "[hearth][concurrency]") {
+    Library library;
+    library.files["long"] = eac3_stream(200);
+    auto state = std::make_shared<ClockedDevice::State>();
+    const auto engine = make_engine(library, state);  // "2.0"
+    // Ten times real time, not the default hundred: the item still has to be
+    // mid-play by the time this test reads status() well after the reopen -
+    // real work (posting the command, sync()'s wait) happens between the
+    // eventually() below and that read, and a hundred-times clock could race
+    // a short item to its end inside that gap, especially with TSan's own
+    // overhead slowing this thread down. Same reasoning as "engine: commands
+    // from several threads..." above.
+    const ClockThread clock{state, 480};
+
+    engine->add({item("long")});
+    engine->play();
+    REQUIRE(eventually([&] { return engine->position().heard > 50ms; }));
+
+    const auto layout = ac3::render::OutputLayout::parse("5.1");
+    REQUIRE(layout.has_value());
+    engine->set_layout(*layout);
+    engine->sync();
+
+    const EngineStatus status = engine->status();
+    CHECK(status.layout.text() == "5.1");
+    CHECK(status.output.channels == 6);
+    CHECK(state->opens == 2);
+    // Still playing the one item, through an output that reopened - not
+    // stopped, and not a fresh queue position.
+    CHECK(status.state == TransportState::kPlaying);
+    CHECK(status.current == 0);
+
+    REQUIRE(eventually([&] {
+        const EngineStatus final_status = engine->status();
+        return final_status.state == TransportState::kStopped && !state->is_open();
+    }));
+}

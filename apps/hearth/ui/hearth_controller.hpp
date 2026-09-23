@@ -10,8 +10,12 @@
 
 #include <memory>
 
+#include "diagnostic_log.hpp"
+
 namespace ac3::hearth {
 class Engine;
+class SettingsStore;
+class PairingStore;
 }
 
 // The one object QML talks to for the queue and the transport
@@ -24,10 +28,11 @@ class Engine;
 //
 // This first slice owns the engine directly, with a device PCM sink
 // (apps/hearth/engine/pcm_sink.hpp) and a loader that reads raw
-// `.ac3`/`.ec3` files (item_loader.hpp). The output picker, the speaker
-// layout and the decoder settings pages are not built yet, so the sink is
-// the platform's default device and the layout is a fixed "2.0" until they
-// are.
+// `.ac3`/`.ec3` files (item_loader.hpp). The output picker and the decoder
+// settings pages are not built yet, so the sink is the platform's default
+// device - but the layout is no longer fixed: start() opens at "2.0" and
+// the Speakers page's setLayoutText()/setHeights()/setSpeakerSmall() can
+// change it from there for the engine's whole life (Player::set_layout()).
 
 namespace ac3::hearth::ui {
 
@@ -82,10 +87,8 @@ class HearthController : public QObject {
     // --- decoder settings (the Decoder page, AC-3 and E-AC-3) ------------
     // The whole of DecoderSettings, as one map QML reads field by field and
     // writes back through setDecoderSettings() - see that method's own
-    // comment for the field names. Not every control the design shows has a
-    // field here yet: the JOC domain/fast-inverse-transform switches are
-    // library-level settings this app does not carry a knob for yet, so the
-    // page shows them inactive.
+    // comment for the field names. Every control the design shows now has a
+    // field here.
     Q_PROPERTY(QVariantMap decoderSettings READ decoderSettings NOTIFY decoderSettingsChanged)
 
     // --- speaker setup (the Speakers page) -------------------------------
@@ -101,22 +104,45 @@ class HearthController : public QObject {
     Q_PROPERTY(QVariantList routing READ routing NOTIFY speakerSetupChanged)
     Q_PROPERTY(int routingOutputs READ routingOutputs NOTIFY speakerSetupChanged)
     Q_PROPERTY(QString deviceName READ deviceName NOTIFY speakerSetupChanged)
-    // Each render layout slot's own speaker name ("L", "C", "LFE", ...),
-    // from the layout this engine was built with - fixed for this slice
-    // (Player::layout()'s own comment says why there is no live layout
-    // change yet). NOTIFY, not CONSTANT, despite being fixed once set:
-    // QML reads this property while building the page tree, which happens
-    // before start() has posted anything to the engine thread, let alone
-    // before its first status has come back - CONSTANT would tell the
-    // binding engine to cache that first, empty read forever.
+    // Each render layout slot's own speaker name ("L", "C", "LFE", ...), from
+    // the layout currently in effect - recomputed whenever layoutText
+    // changes, since setLayout()/setLayoutText() can change what a slot index
+    // even means. NOTIFY, not CONSTANT: QML reads this property while
+    // building the page tree, before start() has posted anything to the
+    // engine thread, let alone before its first status has come back -
+    // CONSTANT would tell the binding engine to cache that first, empty read
+    // forever, and this can then go on changing for the engine's whole life.
     Q_PROPERTY(QStringList speakerLabels READ speakerLabels NOTIFY speakerSetupChanged)
     // Each slot's own render::Speaker::small - whether its bass is
-    // redirected to the LFE feed rather than reproduced there. Baked into
-    // the fixed layout the same as speakerLabels, so read-only here: there
-    // is no per-speaker size control in this slice, only the crossover
-    // corner those small speakers share (crossoverHz). Same NOTIFY, same
-    // reason as speakerLabels.
+    // redirected to the LFE feed rather than reproduced there. Read-write:
+    // setSpeakerSmall() is the Size column's Large/Small control. Same
+    // NOTIFY, same recompute-on-layout-change reason as speakerLabels.
     Q_PROPERTY(QVariantList speakerSmall READ speakerSmall NOTIFY speakerSetupChanged)
+    // Each slot's own kind - true where render() never places anything but
+    // the bed's LFE (render::Speaker::Kind::kLfe) - what the Size column
+    // shows "-" for instead of a Large/Small control, and what setHeights()
+    // and the size toggle both need to leave alone.
+    Q_PROPERTY(QVariantList speakerIsLfe READ speakerIsLfe NOTIFY speakerSetupChanged)
+
+    // --- speaker layout (the Speakers page's "01 Speaker layout" card) ---
+    // The layout in effect, as OutputLayout::text() gives it back: a name
+    // ("7.1.4") when it was chosen as one and nothing since has needed the
+    // list form, or the list form (with any ':small'/realization suffixes)
+    // once it has. The "As text" field reads and writes this directly;
+    // the layout picker's own "selected" segment is computed in QML by
+    // comparing this against its six preset names, falling back to "List".
+    Q_PROPERTY(QString layoutText READ layoutText NOTIFY speakerSetupChanged)
+    // Whether the current layout has any slot the Heights control can act on
+    // (OutputLayout::is_realizable_height()) - what gates that control.
+    Q_PROPERTY(bool layoutHasHeight READ layoutHasHeight NOTIFY speakerSetupChanged)
+    // Whether the current layout has an LFE feed at all - what gates the
+    // Size column's controls (render::Speaker::small needs one to redirect a
+    // small speaker's bass to; see OutputLayout::with_small()).
+    Q_PROPERTY(bool layoutHasLfe READ layoutHasLfe NOTIFY speakerSetupChanged)
+    // "wall"/"ceiling"/"upfiring" when every re-tierable height slot agrees,
+    // "" when they do not (or there is none) - the Heights SegmentedControl's
+    // currentValue, matching the values setHeights() takes.
+    Q_PROPERTY(QString heightsRealization READ heightsRealization NOTIFY speakerSetupChanged)
     // The identify tone's IDENTIFY card: the pink-noise level every session
     // plays at (the design offers -30/-20/-12 dB; render::IdentifyTone's
     // own range is wider) and which speakerLabels slot is currently
@@ -124,6 +150,46 @@ class HearthController : public QObject {
     // speakerLabels, not a device output.
     Q_PROPERTY(double identifyLevelDb READ identifyLevelDb NOTIFY speakerSetupChanged)
     Q_PROPERTY(int identifySlot READ identifySlot NOTIFY speakerSetupChanged)
+
+    // --- settings (the Settings page) ------------------------------------
+    // Playback and network are ac3::hearth::EngineSettings, kept through a
+    // SettingsStore this controller implements over QSettings
+    // (hearth_controller.cpp's own QSettingsStore) - the way
+    // apps/hearth/engine/settings_model.hpp says the window has to. Read
+    // fresh from the store on every call rather than cached here as
+    // EngineSettings by value, for the same reason decoderSettings() above
+    // takes a fresh read rather than a cached DecoderSettings: caching the
+    // type by value would need settings_model.hpp in this header, which
+    // pulls in engine_thread.hpp and so ac3::render::OutputLayout, ahead of
+    // this header's own Qt includes - see hearth_controller.cpp's #undef
+    // slots for what that collision does.
+    Q_PROPERTY(bool resumeQueue READ resumeQueue WRITE setResumeQueue NOTIFY settingsChanged)
+    // "skip" or "stop" (ac3::hearth::FailurePolicy).
+    Q_PROPERTY(QString onFailure READ onFailure WRITE setOnFailure NOTIFY settingsChanged)
+    Q_PROPERTY(QString networkName READ networkName WRITE setNetworkName NOTIFY settingsChanged)
+    Q_PROPERTY(bool networkDiscover READ networkDiscover WRITE setNetworkDiscover NOTIFY settingsChanged)
+    // Each entry: id (the pairing record's client key, in hex - what
+    // forgetPairing() takes back), name, pairedOn. Empty until a Sendspin
+    // server actually pairs a client (A6); the store and this page are real
+    // now, so nothing here has to change when that server lands.
+    Q_PROPERTY(QVariantList pairingRecords READ pairingRecords NOTIFY pairingChanged)
+
+    // --- appearance --------------------------------------------------------
+    // Window-level, not part of EngineSettings: kept through the same
+    // QSettings this controller already opens, under "appearance/" rather
+    // than through the engine's SettingsStore. "system"/"light"/"dark",
+    // the palette name, and "100"/"125"/"150"/"175"/"system" - Main.qml
+    // writes these straight into Theme.preference/Theme.paletteChoice/
+    // Theme.fontScale, the same trio apps/crucible/ui/crucible_controller.hpp
+    // exposes for the same reason, so the two windows' Settings pages behave
+    // alike.
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY settingsChanged)
+    Q_PROPERTY(QString palette READ palette WRITE setPalette NOTIFY settingsChanged)
+    Q_PROPERTY(QString textScale READ textScale WRITE setTextScale NOTIFY settingsChanged)
+
+    // The outcome of the last diagnostics export (the Settings page's "Save
+    // diagnostics").
+    Q_PROPERTY(QString diagnosticsMessage READ diagnosticsMessage NOTIFY diagnosticsChanged)
 
 public:
     explicit HearthController(QObject* parent = nullptr);
@@ -190,6 +256,11 @@ public:
     [[nodiscard]] QString deviceName() const { return device_name_; }
     [[nodiscard]] QStringList speakerLabels() const { return speaker_labels_; }
     [[nodiscard]] QVariantList speakerSmall() const { return speaker_small_; }
+    [[nodiscard]] QVariantList speakerIsLfe() const { return speaker_is_lfe_; }
+    [[nodiscard]] QString layoutText() const { return layout_text_; }
+    [[nodiscard]] bool layoutHasHeight() const { return layout_has_height_; }
+    [[nodiscard]] bool layoutHasLfe() const { return layout_has_lfe_; }
+    [[nodiscard]] QString heightsRealization() const { return heights_realization_; }
     [[nodiscard]] double identifyLevelDb() const { return identify_level_db_; }
     [[nodiscard]] int identifySlot() const { return identify_slot_; }
 
@@ -207,11 +278,63 @@ public:
     // order" button.
     Q_INVOKABLE void useDeviceOrder();
 
+    // A name ("7.1.4") or a list (ac3::render::OutputLayout::parse()'s own
+    // grammar - the layout picker's presets and the "As text" field both call
+    // this directly), parsed here so an unparseable edit is simply refused
+    // with nothing posted to the engine, the same way an out-of-range trim or
+    // delay is dropped by the double-parsing TextFields elsewhere on this
+    // page - there is no engine round trip to fail against.
+    Q_INVOKABLE void setLayoutText(const QString& text);
+    // Every re-tierable height slot set to `realization` ("wall"/"ceiling"/
+    // "upfiring" - see heightsRealization()), keeping everything else about
+    // the current layout - built from a fresh engine_->status().layout()
+    // rather than the (possibly one poll stale) layoutText property, the way
+    // setDecoderSettings() already reads a fresh snapshot rather than a
+    // cached one for the same reason.
+    Q_INVOKABLE void setHeights(const QString& realization);
+    // One slot's ':small' flipped, keeping everything else - same fresh-read
+    // reasoning as setHeights(). A no-op when the engine refuses it (out of
+    // range, or no LFE feed to redirect a newly-small speaker's bass to).
+    Q_INVOKABLE void setSpeakerSmall(int slot, bool small);
+
     Q_INVOKABLE void setIdentifyLevelDb(double db);
     // Starts the identify tone on `slot`, moving it there if another slot
     // was already sounding it. No-op for slot < 0.
     Q_INVOKABLE void startIdentify(int slot);
     Q_INVOKABLE void stopIdentify();
+
+    [[nodiscard]] bool resumeQueue() const;
+    void setResumeQueue(bool on);
+    [[nodiscard]] QString onFailure() const;
+    void setOnFailure(const QString& policy);
+    [[nodiscard]] QString networkName() const;
+    void setNetworkName(const QString& name);
+    [[nodiscard]] bool networkDiscover() const;
+    void setNetworkDiscover(bool on);
+    [[nodiscard]] QVariantList pairingRecords() const;
+    // Forgets the pairing record whose id is `id` (pairingRecords()' own
+    // "id" field): the sink or player has to pair again, with a new code.
+    // Silently does nothing for an id that is not a well-formed record key,
+    // which covers a stale id from a row the list has already dropped.
+    Q_INVOKABLE void forgetPairing(const QString& id);
+
+    [[nodiscard]] QString theme() const;
+    void setTheme(const QString& theme);
+    [[nodiscard]] QString palette() const;
+    void setPalette(const QString& palette);
+    [[nodiscard]] QString textScale() const;
+    void setTextScale(const QString& scale);
+
+    // The diagnostics file: the report as text, composed from named facts
+    // and never from a pairing key, a pairing code or a queued item's path
+    // (diagnostics_report.hpp says how that is held); a suggested file: URL
+    // in the Documents folder; and the export itself, which writes UTF-8
+    // with LF line endings and reports through diagnosticsMessage - the same
+    // three-invokable shape apps/crucible/ui/crucible_controller.hpp uses.
+    [[nodiscard]] QString diagnosticsMessage() const { return diagnostics_message_; }
+    Q_INVOKABLE QString diagnosticsReport() const;
+    Q_INVOKABLE QString suggestedDiagnosticsFile() const;
+    Q_INVOKABLE bool exportDiagnostics(const QString& fileUrl);
 
 signals:
     void queueChanged();
@@ -220,13 +343,43 @@ signals:
     void decoderSettingsChanged();
     void speakerSetupChanged();
     void firstRunSeenChanged();
+    void settingsChanged();
+    void pairingChanged();
+    void diagnosticsChanged();
 
 private:
     void poll();
+    // Saves the settings and, while resumeQueue is on, the queue and its
+    // play position - connected to QCoreApplication::aboutToQuit, since a
+    // play position changes on every pump and has nowhere sensible to save
+    // from on every one of them. A hard kill loses whatever this would have
+    // written, the same trade every setting here already makes by calling
+    // sync() only on a change rather than continuously.
+    void save_on_quit();
 
     std::unique_ptr<ac3::hearth::Engine> engine_;
     QTimer poll_timer_;
+
+    // The process-wide note ring the engine and this controller share -
+    // given to the engine in start() so a diagnostics export carries what it
+    // did, not just what this controller did. Declared before the settings
+    // members below: it does not depend on them, and the constructor's
+    // initialiser list has to follow this declaration order regardless.
+    ac3::hearth::DiagnosticLog& log_;
+    // The four-argument constructor: the two-argument one always uses the
+    // native store (the registry here) whatever QSettings::setDefaultFormat
+    // says, which would let a QML test suite read and write the developer's
+    // own settings - apps/crucible/ui/crucible_controller.cpp's own
+    // constructor carries the identical comment for the identical reason.
     QSettings settings_;
+    // Implements ac3::hearth::SettingsStore over settings_
+    // (hearth_controller.cpp's QSettingsStore); held through the base class
+    // so this header never needs settings_model.hpp's full definition.
+    // Declared after settings_ and before pairing_: both depend on the one
+    // before them, in this order.
+    std::unique_ptr<ac3::hearth::SettingsStore> store_;
+    std::unique_ptr<ac3::hearth::PairingStore> pairing_;
+    QString diagnostics_message_;
 
     QVariantList queue_;
     int current_index_ = -1;
@@ -250,6 +403,11 @@ private:
     QString device_name_;
     QStringList speaker_labels_;
     QVariantList speaker_small_;
+    QVariantList speaker_is_lfe_;
+    QString layout_text_;
+    bool layout_has_height_ = false;
+    bool layout_has_lfe_ = false;
+    QString heights_realization_;
     // -20.0 here mirrors render::IdentifyTone::kDefaultLevelDb without this
     // header needing that include - see setDecoderSettings()'s own comment
     // on why ac3::render stays out of this file. Overwritten by the first

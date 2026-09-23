@@ -490,6 +490,61 @@ bool Player::set_crossover_hz(double hz) {
     return true;
 }
 
+bool Player::set_layout(const render::OutputLayout& layout) {
+    if (layout.slots() == 0) {
+        return false;
+    }
+    if (layout.text() == layout_.text()) {
+        return true;  // already this layout; not a reopen
+    }
+    // Read where a playing item has got to BEFORE anything below touches
+    // decoder_rate_: position() reads decoder_rate_ itself as its own "is
+    // there anything to report" guard, so asking after the reset always
+    // reads back zero - the reopen would silently restart the item from
+    // its beginning instead of resuming it.
+    const bool was_open = output_open() && session_.has_value();
+    const std::size_t item = was_open ? queue_.current_index() : Queue::kNone;
+    const PlayPosition at = was_open ? position() : PlayPosition{};
+    const bool paused = transport_.state() == TransportState::kPaused;
+
+    layout_ = layout;
+    // A slot index means a different speaker under a different layout, so
+    // last layout's trim/delay would silently land on the wrong one carried
+    // over as-is - reset, the way an AVR's own speaker-configuration screen
+    // does when the speaker count changes. crossover_hz_ is not per-slot and
+    // is left alone; build_decoder() reapplies it to whatever is small under
+    // the new layout, if anything is.
+    trim_db_.fill(0.0);
+    delay_ms_.fill(0.0);
+    trim_delay_rate_ = 0;  // reconfigure_trim_delay() rebuilds at the new width, next used
+    decoder_.reset();      // built against the old layout_; decoder_fits() cannot see that
+    decoder_rate_ = 0;
+    if (!was_open) {
+        return true;  // nothing playing through this layout yet
+    }
+    if (item == Queue::kNone) {
+        close_output();
+        return true;
+    }
+    // Reopen at the new width, continuing this item from where it had got
+    // to - refollow()'s own shape, for a different reason.
+    note(fmt::format("layout changed: {} ({} slots) - the output reopens, there is a gap",
+                     layout_.text(), layout_.slots()));
+    after_drain_.reset();  // a pending drain-then-X is superseded by this reopen
+    close_output();
+    session_.reset();
+    seek_on_start_ = SeekOnStart{.item = item, .to = at.heard};
+    const OpenFailure failure = open_output_for(item, nullptr);
+    if (failure != OpenFailure::kNone) {
+        open_failed(item, failure, nullptr);
+        return true;  // the layout still changed; the item just could not resume
+    }
+    if (paused && !(bitstreaming() ? bitstream_->pause() : sink_->pause())) {
+        note("the output would not pause");
+    }
+    return true;
+}
+
 void Player::reconfigure_identify(std::uint32_t rate) {
     if (identify_rate_ == rate) {
         return;

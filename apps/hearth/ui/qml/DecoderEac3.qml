@@ -9,12 +9,9 @@ import Ac3ForgeHearth
 // HearthController.decoderSettings - a real, working decoder, not a
 // settings-only form.
 //
-// Two controls the design shows have no field to bind yet, and are shown
-// inactive with a short reason rather than silently dropped: the JOC domain
-// and fast-inverse-transform switches (library-level choices this app does
-// not carry a setting for). "This stream" and "Programme" need the current
-// item's own media information, which this controller does not read yet -
-// left for the Media page's own slice.
+// Every control the design shows now has a field to bind to. "This stream"
+// and "Programme" need the current item's own media information, which this
+// controller does not read yet - left for the Media page's own slice.
 ScrollView {
     id: root
     clip: true
@@ -274,18 +271,19 @@ ScrollView {
                         spacing: Theme.gap
                         Text { text: qsTr("Domain"); color: Theme.textMuted; Layout.preferredWidth: 90 }
                         SegmentedControl {
-                            enabled: false
                             accessibleName: qsTr("Domain")
-                            currentValue: "qmf"
+                            currentValue: root.settings.jocDomain ?? "qmf"
                             model: [
                                 { value: "qmf", label: qsTr("QMF") },
                                 { value: "mdct", label: qsTr("MDCT band") }
                             ]
+                            onSelected: function(value) { root.set("jocDomain", value); }
                         }
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: qsTr("Not adjustable from this build yet; objects reconstruct in the QMF domain, TS 103 420's own default.")
+                        text: qsTr("QMF is the domain TS 103 420 specifies. MDCT band costs less, and its "
+                                  + "objects lag the bed by 256 samples rather than 576.")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
@@ -310,17 +308,22 @@ ScrollView {
                             onSelected: function(value) { root.set("concealment", value); }
                         }
                     }
-                    CheckBox {
-                        text: qsTr("Fast inverse transform")
-                        enabled: false
-                        checked: true
-                    }
-                    Text {
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        text: qsTr("Not adjustable from this build yet; the FFT form is always used.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.WordWrap
+                        spacing: 0
+                        CheckBox {
+                            text: qsTr("Fast inverse transform")
+                            checked: root.settings.fastInverseTransform ?? true
+                            onToggled: root.set("fastInverseTransform", checked)
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 32
+                            text: qsTr("The FFT form. Off uses the reference form, to compare the two.")
+                            color: Theme.textMuted
+                            font.pixelSize: Theme.fontSmall
+                            wrapMode: Text.WordWrap
+                        }
                     }
                 }
             }

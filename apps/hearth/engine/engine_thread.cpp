@@ -247,6 +247,16 @@ void Engine::set_crossover_hz(double hz) {
     });
 }
 
+void Engine::set_layout(const render::OutputLayout& layout) {
+    post([this, layout](Player& player) {
+        if (!player.set_layout(layout)) {
+            return fmt::format("layout refused: {}", layout.text());
+        }
+        note(fmt::format("layout: {}", layout.text()));
+        return std::string{};
+    });
+}
+
 void Engine::set_routing(const render::Routing& routing) {
     post([this, routing](Player& player) {
         std::array<char, render::Routing::kTextBytes> text{};

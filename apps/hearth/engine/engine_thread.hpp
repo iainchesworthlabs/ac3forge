@@ -127,10 +127,10 @@ struct EngineStatus {
     // reason as PlayPosition::item.
     double identify_level_db = render::IdentifyTone::kDefaultLevelDb;
     std::size_t identify_slot = Queue::kNone;
-    // What every item is rendered onto (Player::layout()) - fixed for this
-    // engine's lifetime. A settings page reads each slot's own name
-    // (OutputLayout::slot_name()) to label the routing grid and the
-    // trim/delay table by speaker rather than by bare slot number.
+    // What every item is rendered onto (Player::layout()/set_layout()). A
+    // settings page reads each slot's own name (OutputLayout::slot_name()) to
+    // label the routing grid and the trim/delay table by speaker rather than
+    // by bare slot number.
     render::OutputLayout layout{};
 };
 
@@ -181,6 +181,10 @@ public:
     void set_trim_db(std::size_t slot, double db);
     void set_delay_ms(std::size_t slot, double ms);
     void set_crossover_hz(double hz);
+    // What every item is rendered onto (Player::set_layout()'s own comment
+    // says what changing it while playing does). Refused only for a layout
+    // with no slots at all, which nothing valid ever parses to.
+    void set_layout(const render::OutputLayout& layout);
     // Refused when this engine has no PCM sink (PlayerOutputs::pcm unset) -
     // there is nothing to route.
     void set_routing(const render::Routing& routing);
