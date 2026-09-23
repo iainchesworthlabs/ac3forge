@@ -8,6 +8,11 @@ Rectangle {
     id: root
 
     property alias title: heading.text
+    // An optional secondary title, right of the main one - e.g. Hearth's
+    // Decoder page names the playing file here (DecoderEac3.qml's "03 This
+    // stream" card). Empty and invisible by default, the same as an unset
+    // title.
+    property alias subtitle: subheading.text
     default property alias content: column.data
 
     color: Theme.surface
@@ -33,13 +38,27 @@ Rectangle {
         anchors.margins: Theme.pad
         spacing: Theme.gap
 
-        Text {
-            id: heading
-            color: Theme.textMuted
-            font.pixelSize: Theme.fontSmall
-            font.bold: true
-            font.capitalization: Font.AllUppercase
-            visible: text.length > 0
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.gap
+            visible: heading.visible || subheading.visible
+
+            Text {
+                id: heading
+                Layout.fillWidth: true
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                font.bold: true
+                font.capitalization: Font.AllUppercase
+                visible: text.length > 0
+            }
+            Text {
+                id: subheading
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                font.family: Theme.monoFamily
+                visible: text.length > 0
+            }
         }
 
         ColumnLayout {

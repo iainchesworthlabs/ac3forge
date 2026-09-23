@@ -33,6 +33,36 @@ ScrollView {
         return mode === "rf" ? qsTr("RF") : (mode === "custom" ? qsTr("Custom") : qsTr("Line"));
     }
 
+    // The playing file's own name, for "03 This stream"'s card header - the
+    // path itself (root.media.path) is a full path, on whichever platform's
+    // own separator.
+    function fileNameOf(path) {
+        if (!path) {
+            return "";
+        }
+        const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+        return cut >= 0 ? path.substring(cut + 1) : path;
+    }
+
+    // "Dialogue level"'s own row: dialnorm is a single dB value in most
+    // streams, but not constant in every one (dialnormConstant, from
+    // io::DialnormRange::constant()) - a stream whose dialnorm changes over
+    // time gets a range rather than a single "so N dB down" reading.
+    function dialogueLevelText() {
+        if (root.probe.dialnormDb === undefined) {
+            return qsTr("not carried");
+        }
+        if (root.probe.dialnormConstant === false) {
+            const lo = Math.min(root.probe.dialnormDb, root.probe.dialnormMaxDb);
+            const hi = Math.max(root.probe.dialnormDb, root.probe.dialnormMaxDb);
+            return qsTr("dialnorm %1 to %2, so %3 to %4 dB down")
+                       .arg(lo).arg(hi)
+                       .arg(Number(31 + lo).toFixed(1)).arg(Number(31 + hi).toFixed(1));
+        }
+        return qsTr("dialnorm %1, so %2 dB down").arg(root.probe.dialnormDb)
+                   .arg(Number(31 + root.probe.dialnormDb).toFixed(1));
+    }
+
     ColumnLayout {
         width: root.availableWidth
         implicitWidth: root.availableWidth
@@ -230,6 +260,7 @@ ScrollView {
 
                 Card {
                     title: qsTr("03 This stream")
+                    subtitle: root.fileNameOf(root.media.path)
 
                     Text {
                         Layout.fillWidth: true
@@ -249,10 +280,7 @@ ScrollView {
                         Text { text: qsTr("Dialogue level"); color: Theme.textMuted; Layout.preferredWidth: 110 }
                         Text {
                             Layout.fillWidth: true
-                            text: root.probe.dialnormDb !== undefined
-                                  ? qsTr("dialnorm %1 dB, %2 dB down").arg(root.probe.dialnormDb)
-                                                                      .arg(31 + root.probe.dialnormDb)
-                                  : qsTr("not carried")
+                            text: root.dialogueLevelText()
                             color: Theme.text
                             wrapMode: Text.WordWrap
                         }
@@ -300,7 +328,8 @@ ScrollView {
                             text: root.probe.objectCount === undefined
                                   ? qsTr("none")
                                   : (root.probe.joc && root.probe.objectCount === 0
-                                     ? qsTr("reconstructed by JOC from the %1").arg(root.probe.bedLabel ?? "")
+                                     ? qsTr("%1 reconstructed from the %2, placed by position")
+                                           .arg(root.probe.jocReconstructedCount ?? 0).arg(root.probe.bedLabel ?? "")
                                      : qsTr("%1 · %2").arg(root.probe.objectCount).arg(root.probe.bedLabel ?? ""))
                             color: Theme.text
                             wrapMode: Text.WordWrap
@@ -328,13 +357,19 @@ ScrollView {
                         // the first programme always plays; picking a
                         // different one is Session's own choice of units, not
                         // part of DecoderSettings, and has no setter here yet.
-                        ComboBox {
+                        RowLayout {
                             Layout.fillWidth: true
-                            enabled: false
-                            model: (root.media.programmes ?? []).map(function(p) {
-                                return qsTr("%1 · %2 · %3").arg(p.substreamId).arg(p.layoutLabel).arg(p.bsmodLabel);
-                            })
-                            currentIndex: 0
+                            spacing: Theme.gap
+                            Text { text: qsTr("Programme"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                            ComboBox {
+                                Layout.fillWidth: true
+                                enabled: false
+                                model: (root.media.programmes ?? []).map(function(p) {
+                                    return qsTr("%1 · %2 · %3").arg(p.substreamId).arg(p.layoutLabel).arg(p.bsmodLabel);
+                                })
+                                currentIndex: 0
+                                Accessible.name: qsTr("Programme")
+                            }
                         }
                         Text {
                             Layout.fillWidth: true
@@ -357,15 +392,20 @@ ScrollView {
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
                     }
-                    SegmentedControl {
-                        accessibleName: qsTr("Dual mono")
-                        currentValue: root.settings.dualMono ?? "both"
-                        model: [
-                            { value: "first", label: qsTr("Channel 1") },
-                            { value: "second", label: qsTr("Channel 2") },
-                            { value: "both", label: qsTr("Both") }
-                        ]
-                        onSelected: function(value) { root.set("dualMono", value); }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Text { text: qsTr("Dual mono"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        SegmentedControl {
+                            accessibleName: qsTr("Dual mono")
+                            currentValue: root.settings.dualMono ?? "both"
+                            model: [
+                                { value: "first", label: qsTr("Channel 1") },
+                                { value: "second", label: qsTr("Channel 2") },
+                                { value: "both", label: qsTr("Both") }
+                            ]
+                            onSelected: function(value) { root.set("dualMono", value); }
+                        }
                     }
                 }
 
