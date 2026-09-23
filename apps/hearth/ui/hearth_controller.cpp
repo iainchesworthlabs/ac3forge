@@ -1,7 +1,19 @@
 #include "hearth_controller.hpp"
 
+#include <QByteArray>
+#include <QCoreApplication>
+#include <QDate>
+#include <QDateTime>
+#include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QGuiApplication>
+#include <QSaveFile>
+#include <QStandardPaths>
+#include <QSysInfo>
+#include <QUrl>
+
+#include "ac3/version.hpp"
 
 #include <chrono>
 
@@ -20,12 +32,15 @@
 #undef slots
 
 #include "ac3/render/layout.hpp"
-#include "ac3/version.hpp"
+#include "ac3/sendspin/crypto.hpp"
 #include "decoder_settings.hpp"
+#include "diagnostics_report.hpp"
 #include "engine_thread.hpp"
 #include "item_loader.hpp"
+#include "pairing_store.hpp"
 #include "pcm_sink.hpp"
 #include "queue.hpp"
+#include "settings_model.hpp"
 #include "transport.hpp"
 
 namespace ac3::hearth::ui {
@@ -250,11 +265,94 @@ constexpr int kPollMs = 60;
     return row;
 }
 
+// --- settings (the Settings page) ------------------------------------------
+
+// ac3::hearth::SettingsStore over QSettings (planning/hearth-reference-
+// player.md, A5: "it stores its settings through QSettings"). The key
+// strings settings_model.cpp and pairing_store.cpp already compose
+// ("playback/gapless", "queue/1/path", "pairing/1/client", ...) are plain
+// QSettings keys, so this is a thin pass-through that does not have to know
+// what any of them mean - MemorySettingsStore (settings_model.cpp) is the
+// test suites' own version of the same three methods.
+class QSettingsStore final : public ac3::hearth::SettingsStore {
+public:
+    explicit QSettingsStore(QSettings& settings) : settings_(settings) {}
+
+    [[nodiscard]] std::optional<std::string> value(std::string_view key) const override {
+        const QVariant found =
+            settings_.value(QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size())));
+        if (!found.isValid()) {
+            return std::nullopt;
+        }
+        return found.toString().toStdString();
+    }
+
+    void set_value(std::string_view key, std::string_view value) override {
+        settings_.setValue(QString::fromUtf8(key.data(), static_cast<qsizetype>(key.size())),
+                           QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size())));
+    }
+
+    void remove_group(std::string_view group) override {
+        // QSettings::remove() already removes the key itself and everything
+        // under it; MemorySettingsStore::remove_group() only says so in a
+        // comment because it has to do that walk by hand.
+        settings_.remove(QString::fromUtf8(group.data(), static_cast<qsizetype>(group.size())));
+    }
+
+    [[nodiscard]] bool sync() override {
+        settings_.sync();
+        return settings_.status() == QSettings::NoError;
+    }
+
+private:
+    QSettings& settings_;
+};
+
+[[nodiscard]] QString failure_policy_name(ac3::hearth::FailurePolicy policy) {
+    return policy == ac3::hearth::FailurePolicy::kStop ? QStringLiteral("stop") : QStringLiteral("skip");
+}
+
+[[nodiscard]] ac3::hearth::FailurePolicy failure_policy_from_name(const QString& name) {
+    return name == QLatin1String("stop") ? ac3::hearth::FailurePolicy::kStop
+                                         : ac3::hearth::FailurePolicy::kSkip;
+}
+
+// Read fresh rather than cached, every time - hearth_controller.hpp's own
+// comment on why EngineSettings is never a member here applies the same way
+// to a local variable that would outlive one call.
+[[nodiscard]] ac3::hearth::EngineSettings current_settings(const ac3::hearth::SettingsStore& store) {
+    return ac3::hearth::load_settings(store, QSysInfo::machineHostName().toStdString());
+}
+
+// sync() is [[nodiscard]] (settings_model.hpp: "False when that failed: what
+// was kept before is what a later start reads") - noted rather than silently
+// dropped, since a full disk or a read-only settings folder is exactly the
+// kind of thing a diagnostics export exists to have caught.
+void sync_store(ac3::hearth::SettingsStore& store, ac3::hearth::DiagnosticLog& log) {
+    if (!store.sync()) {
+        log.note("settings: could not save to disk");
+    }
+}
+
 }  // namespace
 
-HearthController::HearthController(QObject* parent) : QObject(parent) {
+HearthController::HearthController(QObject* parent)
+    : QObject(parent),
+      log_(ac3::hearth::process_diagnostics()),
+      settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
+               QStringLiteral("Hearth")),
+      store_(std::make_unique<QSettingsStore>(settings_)),
+      pairing_(std::make_unique<ac3::hearth::PairingStore>(
+          *store_, [] { return QDate::currentDate().toString(Qt::ISODate).toStdString(); })) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &HearthController::poll);
+    // A window close runs this; a session logout or a killed process does
+    // not, which is the same trade every setter below already makes by
+    // syncing only on a change rather than continuously (save_on_quit()'s
+    // own comment in the header).
+    if (auto* application = QCoreApplication::instance()) {
+        connect(application, &QCoreApplication::aboutToQuit, this, &HearthController::save_on_quit);
+    }
 }
 
 HearthController::~HearthController() = default;
@@ -286,9 +384,18 @@ void HearthController::start() {
     // "2.0" until the Speakers page (A5, following this slice) makes the
     // layout a setting; a literal this application writes always parses.
     const std::optional<ac3::render::OutputLayout> layout = ac3::render::OutputLayout::parse("2.0");
+    const ac3::hearth::EngineSettings loaded = current_settings(*store_);
     engine_ = std::make_unique<ac3::hearth::Engine>(
         ac3::hearth::make_device_sink(std::string()), ac3::hearth::ui::make_file_item_loader(), *layout,
-        ac3::hearth::DecoderSettings{});
+        ac3::hearth::DecoderSettings{}, ac3::hearth::EngineTiming{}, &log_);
+    engine_->set_gapless(loaded.playback.gapless);
+    engine_->set_on_failure(loaded.playback.on_failure);
+    if (loaded.playback.resume_queue) {
+        const ac3::hearth::SavedQueue saved = ac3::hearth::load_queue(*store_);
+        if (!saved.items.empty()) {
+            engine_->restore(saved.items, saved.current, saved.position);
+        }
+    }
     poll_timer_.start();
     poll();
 }
@@ -301,6 +408,10 @@ void HearthController::setGapless(bool on) {
     if (engine_) {
         engine_->set_gapless(on);
     }
+    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    settings.playback.gapless = on;
+    ac3::hearth::save_settings(settings, *store_);
+    sync_store(*store_, log_);
     emit stateChanged();
 }
 
@@ -572,6 +683,8 @@ void HearthController::stopIdentify() {
     }
 }
 
+// --- first run ---------------------------------------------------------
+
 bool HearthController::firstRunSeen() const {
     return settings_.value(QStringLiteral("firstRun/seen"), false).toBool();
 }
@@ -587,6 +700,249 @@ void HearthController::setFirstRunSeen(bool seen) {
     }
     settings_.sync();  // survive a hard exit
     emit firstRunSeenChanged();
+}
+
+// --- settings (the Settings page) ------------------------------------------
+
+bool HearthController::resumeQueue() const {
+    return current_settings(*store_).playback.resume_queue;
+}
+
+void HearthController::setResumeQueue(bool on) {
+    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    if (settings.playback.resume_queue == on) {
+        return;
+    }
+    settings.playback.resume_queue = on;
+    ac3::hearth::save_settings(settings, *store_);
+    sync_store(*store_, log_);
+    emit settingsChanged();
+}
+
+QString HearthController::onFailure() const {
+    return failure_policy_name(current_settings(*store_).playback.on_failure);
+}
+
+void HearthController::setOnFailure(const QString& policy) {
+    const ac3::hearth::FailurePolicy wanted = failure_policy_from_name(policy);
+    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    if (settings.playback.on_failure == wanted) {
+        return;
+    }
+    settings.playback.on_failure = wanted;
+    ac3::hearth::save_settings(settings, *store_);
+    sync_store(*store_, log_);
+    if (engine_) {
+        engine_->set_on_failure(wanted);
+    }
+    emit settingsChanged();
+}
+
+QString HearthController::networkName() const {
+    return QString::fromStdString(current_settings(*store_).network.name);
+}
+
+void HearthController::setNetworkName(const QString& name) {
+    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    const std::string wanted = name.toStdString();
+    if (settings.network.name == wanted) {
+        return;
+    }
+    settings.network.name = wanted;
+    // settings_rows() (called from save_settings()) runs this through
+    // ac3::hearth::network_name() itself before it is written, so a name
+    // typed with leading/trailing spaces or past the 63-byte mDNS label
+    // limit is stored trimmed either way; load_settings() re-derives the
+    // same trim on every read, so the round trip agrees with what is shown.
+    ac3::hearth::save_settings(settings, *store_);
+    sync_store(*store_, log_);
+    emit settingsChanged();
+}
+
+bool HearthController::networkDiscover() const {
+    return current_settings(*store_).network.discover;
+}
+
+void HearthController::setNetworkDiscover(bool on) {
+    ac3::hearth::EngineSettings settings = current_settings(*store_);
+    if (settings.network.discover == on) {
+        return;
+    }
+    settings.network.discover = on;
+    ac3::hearth::save_settings(settings, *store_);
+    sync_store(*store_, log_);
+    emit settingsChanged();
+}
+
+QVariantList HearthController::pairingRecords() const {
+    QVariantList rows;
+    if (!pairing_) {
+        return rows;
+    }
+    for (const ac3::hearth::PairingRecordView& record : pairing_->records()) {
+        QVariantMap row;
+        row[QStringLiteral("id")] =
+            QString::fromLatin1(QByteArray(reinterpret_cast<const char*>(record.client_key.data()),
+                                           static_cast<qsizetype>(record.client_key.size()))
+                                    .toHex());
+        row[QStringLiteral("name")] = QString::fromStdString(record.name);
+        row[QStringLiteral("pairedOn")] = QString::fromStdString(record.paired_on);
+        rows.push_back(row);
+    }
+    return rows;
+}
+
+void HearthController::forgetPairing(const QString& id) {
+    if (!pairing_) {
+        return;
+    }
+    const QByteArray bytes = QByteArray::fromHex(id.toLatin1());
+    ac3::sendspin::crypto::Key32 key{};
+    if (static_cast<std::size_t>(bytes.size()) != key.size()) {
+        return;
+    }
+    for (std::size_t i = 0; i < key.size(); ++i) {
+        key[i] = static_cast<std::uint8_t>(bytes[static_cast<qsizetype>(i)]);
+    }
+    pairing_->forget(key);
+    emit pairingChanged();
+}
+
+// --- appearance --------------------------------------------------------
+
+QString HearthController::theme() const {
+    return settings_.value(QStringLiteral("appearance/theme"), QStringLiteral("system")).toString();
+}
+
+void HearthController::setTheme(const QString& theme) {
+    if (theme == this->theme()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("appearance/theme"), theme);
+    settings_.sync();  // survive a hard exit
+    emit settingsChanged();
+}
+
+QString HearthController::palette() const {
+    return settings_.value(QStringLiteral("appearance/palette"), QStringLiteral("signal")).toString();
+}
+
+void HearthController::setPalette(const QString& palette) {
+    if (palette == this->palette()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("appearance/palette"), palette);
+    settings_.sync();  // survive a hard exit
+    emit settingsChanged();
+}
+
+QString HearthController::textScale() const {
+    const auto stored = settings_.value(QStringLiteral("appearance/textScale"), QStringLiteral("100")).toString();
+    static const QStringList known{QStringLiteral("system"), QStringLiteral("100"), QStringLiteral("125"),
+                                   QStringLiteral("150"), QStringLiteral("175")};
+    return known.contains(stored) ? stored : QStringLiteral("100");
+}
+
+void HearthController::setTextScale(const QString& scale) {
+    if (scale == textScale()) {
+        return;
+    }
+    settings_.setValue(QStringLiteral("appearance/textScale"), scale);
+    settings_.sync();  // survive a hard exit
+    emit settingsChanged();
+}
+
+// --- diagnostics -------------------------------------------------------
+
+QString HearthController::diagnosticsReport() const {
+    const ac3::hearth::EngineStatus status = engine_ ? engine_->status() : ac3::hearth::EngineStatus{};
+
+    ac3::hearth::ReportFacts facts;
+    facts.written_at = QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toStdString();
+    const auto started_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 log_.started_at().time_since_epoch())
+                                .count();
+    facts.log_started_at =
+        QDateTime::fromMSecsSinceEpoch(static_cast<qint64>(started_ms)).toString(Qt::ISODateWithMs).toStdString();
+    facts.version = ac3::version_details();
+
+    auto platform_row = [&facts](const char* name, const QString& value) {
+        facts.platform.emplace_back(name, value.toStdString());
+    };
+    platform_row("os", QSysInfo::prettyProductName());
+    platform_row("kernel", QSysInfo::kernelType() + QLatin1Char(' ') + QSysInfo::kernelVersion());
+    platform_row("cpu", QSysInfo::currentCpuArchitecture());
+    platform_row("qt", QString::fromLatin1(qVersion()) + QStringLiteral(" (built against ") +
+                           QString::fromLatin1(QT_VERSION_STR) + QLatin1Char(')'));
+    platform_row("qpa", QGuiApplication::platformName());
+
+    facts.output_name = status.device_name;
+    facts.output_reason = status.output_reason;
+    facts.settings = ac3::hearth::settings_rows(current_settings(*store_));
+
+    // The caller's own secrets, beyond what render_report() already knows to
+    // withhold from the engine snapshot (an item's path, kWithheldSettings):
+    // where this computer's settings live, and the person's own home folder,
+    // each in every spelling withhold_path()/scrub() might meet.
+    ac3::hearth::Secrets secrets;
+    auto add_secret = [&secrets](const QString& path) {
+        if (path.isEmpty()) {
+            return;
+        }
+        secrets.strings.push_back(path.toStdString());
+        secrets.strings.push_back(QDir::fromNativeSeparators(path).toStdString());
+        secrets.strings.push_back(QDir::toNativeSeparators(path).toStdString());
+    };
+    add_secret(QFileInfo(settings_.fileName()).absolutePath());
+    add_secret(QStandardPaths::writableLocation(QStandardPaths::HomeLocation));
+
+    return QString::fromStdString(ac3::hearth::render_report(facts, status, log_, secrets));
+}
+
+QString HearthController::suggestedDiagnosticsFile() const {
+    QString folder = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (folder.isEmpty()) {
+        folder = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    }
+    const QString name = QStringLiteral("hearth-diagnostics-") +
+                         QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss")) +
+                         QStringLiteral(".txt");
+    return QUrl::fromLocalFile(QDir(folder).filePath(name)).toString();
+}
+
+bool HearthController::exportDiagnostics(const QString& fileUrl) {
+    // The GUI's rule for a dialog's answer: a file: URL becomes a local
+    // path, anything else is taken as one already.
+    const QUrl url(fileUrl);
+    const QString path = url.isLocalFile() ? url.toLocalFile() : fileUrl;
+    const QString shown = QDir::toNativeSeparators(path);
+    // UTF-8 with LF line endings on every platform: written as bytes, not
+    // through a text-mode translation.
+    const QByteArray report = diagnosticsReport().toUtf8();
+    QSaveFile file(path);
+    bool ok = file.open(QIODevice::WriteOnly);
+    if (ok) {
+        ok = file.write(report) == static_cast<qint64>(report.size()) && file.commit();
+    }
+    if (ok) {
+        diagnostics_message_ = tr("saved to %1").arg(shown);
+        log_.note("diagnostics saved");
+    } else {
+        diagnostics_message_ = tr("could not write %1: %2").arg(shown, file.errorString());
+    }
+    emit diagnosticsChanged();
+    return ok;
+}
+
+void HearthController::save_on_quit() {
+    if (!engine_) {
+        return;
+    }
+    const ac3::hearth::EngineSettings settings = current_settings(*store_);
+    if (settings.playback.resume_queue) {
+        ac3::hearth::save_queue(ac3::hearth::saved_queue(engine_->status(), engine_->position()), *store_);
+    }
+    sync_store(*store_, log_);
 }
 
 }  // namespace ac3::hearth::ui
