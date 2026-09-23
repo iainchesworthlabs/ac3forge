@@ -137,6 +137,26 @@ ScrollView {
         return text;
     }
 
+    // The "01 Speaker layout" card's own read-out of whether the Decoder's
+    // object-reconstruction policy (DecoderEac3.qml's "05 Objects" card,
+    // HearthController.decoderSettings.objects) actually places objects for
+    // the layout set up here. "auto" is the only policy where that depends
+    // on this page's own Heights state (render::Serving::compute, serving.hpp) -
+    // "always"/"never" place regardless of it, so those two phrasings don't
+    // reference height at all.
+    function objectsStatusText() {
+        const policy = HearthController.decoderSettings.objects ?? "auto";
+        if (policy === "always") {
+            return qsTr("✓ Objects are always placed, regardless of height (Decoder: Always).");
+        }
+        if (policy === "never") {
+            return qsTr("Objects are never placed (Decoder: Never).");
+        }
+        return HearthController.layoutHasHeight
+            ? qsTr("✓ The layout has heights, so objects are placed (Decoder: Auto).")
+            : qsTr("The layout has no heights, so objects are not placed (Decoder: Auto).");
+    }
+
     function identifyStatusText() {
         const slot = HearthController.identifySlot;
         if (slot < 0) {
@@ -241,6 +261,19 @@ ScrollView {
                         { value: "upfiring", label: qsTr("Up-firing") }
                     ]
                     onSelected: function(value) { HearthController.setHeights(value); }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gap
+                Text { text: qsTr("Objects"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                Text {
+                    Layout.fillWidth: true
+                    text: root.objectsStatusText()
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
                 }
             }
 
@@ -448,6 +481,22 @@ ScrollView {
                 id: grid
                 spacing: 1
 
+                // The grid's own single Tab stop (matching SegmentedControl's
+                // group-is-the-stop idiom, apps/gui/qml/SegmentedControl.qml) -
+                // individual cells no longer declare activeFocusOnTab
+                // themselves. Landing here from Tab hands real focus straight
+                // to a cell below, so the focus ring and Space/Enter both work
+                // immediately, with no arrow press needed first.
+                activeFocusOnTab: true
+                onActiveFocusChanged: {
+                    if (grid.activeFocus) {
+                        const target = grid.cellAt(0, 0);
+                        if (target) {
+                            target.forceActiveFocus();
+                        }
+                    }
+                }
+
                 readonly property int cellSize: 32
                 readonly property int labelWidth: 72
                 readonly property int noneWidth: 56
@@ -560,7 +609,6 @@ ScrollView {
                                 Accessible.onPressAction:
                                     HearthController.setRoutingAssignment(rowItem.index, cell.index)
 
-                                activeFocusOnTab: true
                                 Keys.onPressed: function(event) { grid.moveFocus(rowItem.index, cell.index, event); }
                                 Keys.onSpacePressed: HearthController.setRoutingAssignment(rowItem.index, cell.index)
                                 Keys.onReturnPressed: HearthController.setRoutingAssignment(rowItem.index, cell.index)
@@ -577,7 +625,10 @@ ScrollView {
 
                                 MouseArea {
                                     anchors.fill: parent
-                                    onClicked: HearthController.setRoutingAssignment(rowItem.index, cell.index)
+                                    onClicked: {
+                                        cell.forceActiveFocus();
+                                        HearthController.setRoutingAssignment(rowItem.index, cell.index);
+                                    }
                                 }
                             }
                         }
@@ -598,7 +649,6 @@ ScrollView {
                             Accessible.checked: noneCell.assigned
                             Accessible.onPressAction: HearthController.setRoutingAssignment(rowItem.index, -1)
 
-                            activeFocusOnTab: true
                             Keys.onPressed: function(event) { grid.moveFocus(rowItem.index, root.outputs, event); }
                             Keys.onSpacePressed: HearthController.setRoutingAssignment(rowItem.index, -1)
                             Keys.onReturnPressed: HearthController.setRoutingAssignment(rowItem.index, -1)
@@ -615,7 +665,10 @@ ScrollView {
 
                             MouseArea {
                                 anchors.fill: parent
-                                onClicked: HearthController.setRoutingAssignment(rowItem.index, -1)
+                                onClicked: {
+                                    noneCell.forceActiveFocus();
+                                    HearthController.setRoutingAssignment(rowItem.index, -1);
+                                }
                             }
                         }
                     }
@@ -824,17 +877,68 @@ ScrollView {
                                 font.family: Theme.monoFamily
                                 font.pixelSize: Theme.fontMicro
                             }
-                            Button {
+                            // A plain Rectangle + MouseArea, not a native
+                            // Button: this Repeater-backed delegate carries
+                            // real, non-empty speaker data, and a native QQC2
+                            // Button in that position has hung the offscreen
+                            // Qt Quick Test binary on Windows elsewhere in
+                            // this family (qml-native-button-repeater-
+                            // offscreen-hang) - the routing grid's own cells
+                            // above use the same shape for the same reason.
+                            Rectangle {
                                 id: identifyButton
                                 objectName: "speakersIdentify-" + row.index
-                                text: HearthController.identifySlot === row.index
-                                      ? qsTr("Stop") : qsTr("Identify")
-                                onClicked: HearthController.identifySlot === row.index
-                                           ? HearthController.stopIdentify()
-                                           : HearthController.startIdentify(row.index)
-                                Accessible.name: HearthController.identifySlot === row.index
+                                readonly property bool active: HearthController.identifySlot === row.index
+
+                                implicitWidth: identifyLabel.implicitWidth + Theme.gap * 2
+                                implicitHeight: identifyLabel.implicitHeight + Theme.gap
+                                color: identifyArea.containsMouse ? Theme.neutral200 : Theme.bg
+                                border.color: Theme.border
+                                border.width: 1
+                                radius: Theme.radius
+
+                                Accessible.role: Accessible.Button
+                                Accessible.name: identifyButton.active
                                                  ? qsTr("Stop the identify tone on %1").arg(row.modelData)
                                                  : qsTr("Identify %1, pink noise").arg(row.modelData)
+                                Accessible.onPressAction: identifyButton.active
+                                                           ? HearthController.stopIdentify()
+                                                           : HearthController.startIdentify(row.index)
+
+                                activeFocusOnTab: true
+                                Keys.onSpacePressed: identifyButton.active
+                                                      ? HearthController.stopIdentify()
+                                                      : HearthController.startIdentify(row.index)
+                                Keys.onReturnPressed: identifyButton.active
+                                                       ? HearthController.stopIdentify()
+                                                       : HearthController.startIdentify(row.index)
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: -Theme.focusRingOffset
+                                    visible: identifyButton.activeFocus
+                                    color: "transparent"
+                                    border.color: Theme.focusRing
+                                    border.width: Theme.focusRingWidth
+                                    z: 100
+                                }
+
+                                Text {
+                                    id: identifyLabel
+                                    anchors.centerIn: parent
+                                    text: identifyButton.active ? qsTr("Stop") : qsTr("Identify")
+                                    color: Theme.text
+                                }
+
+                                MouseArea {
+                                    id: identifyArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: identifyButton.active
+                                               ? HearthController.stopIdentify()
+                                               : HearthController.startIdentify(row.index)
+                                }
                             }
                         }
                     }

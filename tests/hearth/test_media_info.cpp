@@ -180,6 +180,9 @@ TEST_CASE("media info: an AC-3 stream's bitstream information and probe", "[hear
     CHECK(info.probe->nominal_bitrate_kbps == 192);
     CHECK(info.probe->dialnorm.constant());
     CHECK(info.probe->dialnorm.min == 24);
+    // Plain AC-3 carries no OAMD payload, so the Media page's own OAMD table
+    // (issue #891) has nothing to show.
+    CHECK_FALSE(info.objects.has_value());
 
     REQUIRE(info.bitstream.has_value());
     REQUIRE(info.bitstream->info.has_value());
@@ -472,6 +475,23 @@ TEST_CASE("media info: objects, and whether they are signed", "[hearth][media-in
     CHECK(unsigned_info.probe->joc);
     REQUIRE(unsigned_info.probe->program.has_value());
     CHECK(unsigned_info.probe->authenticity_tagged_frames == 0);
+
+    // The Media page's own OAMD table (issue #891): the first OAMD payload's
+    // full per-object detail, describe_objects()-ready - the same "first
+    // payload" this stream's probe->program above already summarises.
+    REQUIRE(unsigned_info.objects.has_value());
+    CHECK(unsigned_info.objects->program.dynamic_objects == 1);
+    const std::vector<ac3::oba::DisplayObject> displayed = ac3::oba::describe_objects(*unsigned_info.objects);
+    // One JOC output: the placed object. Its LFE send, if the program's bed
+    // carries one, is bypassed from JOC's own object count (§6.3.2.2) either
+    // way.
+    REQUIRE(displayed.size() == 1);
+    CHECK(displayed[0].label.empty());
+    CHECK(displayed[0].active);
+    CHECK(displayed[0].position.x == Catch::Approx(0.5));
+    CHECK(displayed[0].position.y == Catch::Approx(0.5));
+    CHECK(displayed[0].position.z == Catch::Approx(0.0));
+    CHECK(displayed[0].gain_db == Catch::Approx(0.0));
 
     const ac3::signing::SigningKey key{std::vector<std::byte>(32, std::byte{0x5A})};
     REQUIRE(ac3::signing::sign_atmos_stream(stream, key) == 4);

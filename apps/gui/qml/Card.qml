@@ -8,6 +8,11 @@ Rectangle {
     id: root
 
     property alias title: heading.text
+    // A short right-aligned caption on the title's own row, e.g. "Onkyo
+    // receiver · 8 outputs" - the handoff draws a rule between it and the
+    // title on every card, whether or not a summary is set (an untitled
+    // summary just leaves the rule running to the card's edge).
+    property alias summary: summaryLabel.text
     default property alias content: column.data
 
     color: Theme.surface
@@ -33,13 +38,32 @@ Rectangle {
         anchors.margins: Theme.pad
         spacing: Theme.gap
 
-        Text {
-            id: heading
-            color: Theme.textMuted
-            font.pixelSize: Theme.fontSmall
-            font.bold: true
-            font.capitalization: Font.AllUppercase
-            visible: text.length > 0
+        RowLayout {
+            id: headingRow
+            Layout.fillWidth: true
+            spacing: Theme.gap
+            visible: heading.text.length > 0
+
+            Text {
+                id: heading
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                font.bold: true
+                font.capitalization: Font.AllUppercase
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Theme.divider
+            }
+
+            Text {
+                id: summaryLabel
+                visible: text.length > 0
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+            }
         }
 
         ColumnLayout {

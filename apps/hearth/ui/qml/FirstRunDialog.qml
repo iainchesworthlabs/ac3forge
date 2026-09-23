@@ -110,8 +110,9 @@ Dialog {
             heading: HearthController.deviceName.length > 0
                 ? qsTr("It plays to %1").arg(HearthController.deviceName)
                 : qsTr("It plays to your default output")
-            body: qsTr("That's this computer's default output. Hearth opens it the moment you "
-                      + "press play, until you choose another one on the Speakers page.")
+            body: qsTr("That is this computer's default output. The output name at the top "
+                      + "right opens the list of receivers, passthrough devices and network "
+                      + "sinks.")
         }
 
         // 02. Where per-output setup lives - real, on the Speakers page

@@ -45,6 +45,34 @@ Dialog {
         onLinkActivated: function(link) { Qt.openUrlExternally(link); }
     }
 
+    // HearthController.versionDetails is a multi-line diagnostics dump -
+    // release, commit, branch, target, kernels and (when the build has
+    // uncommitted changes) a dirty-state line - meant for the diagnostics
+    // export (apps/hearth/engine/diagnostic_log.hpp), not a real user
+    // glancing at About. Collapses it to the build target and a short
+    // commit on one line, matching docs/hearth/design/screenshots/about.png,
+    // and never shows the dirty-state line here; the export still reads
+    // ac3::version_details() itself, untouched by this.
+    function compactVersion(details) {
+        const lines = details.split("\n").map(line => line.trim()).filter(line => line.length > 0);
+        const headline = lines.shift() || "";
+        const fields = {};
+        for (const line of lines) {
+            const match = line.match(/^(\w+):\s*(.*)$/);
+            if (match) {
+                fields[match[1]] = match[2];
+            }
+        }
+        const parts = [headline];
+        if (fields.target) {
+            parts.push(fields.target);
+        }
+        if (fields.commit) {
+            parts.push(qsTr("built from %1").arg(fields.commit.substring(0, 8)));
+        }
+        return parts.join("  ·  ");
+    }
+
     contentItem: ColumnLayout {
         spacing: Theme.space2
         // On the content, not the dialog: a Popup is not an Item.
@@ -80,7 +108,7 @@ Dialog {
         Kicker { text: qsTr("VERSION") }
         Body {
             font.family: Theme.monoFamily
-            text: HearthController.versionDetails
+            text: compactVersion(HearthController.versionDetails)
         }
 
         Kicker { text: qsTr("LICENCES") }

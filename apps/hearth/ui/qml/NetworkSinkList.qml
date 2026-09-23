@@ -123,7 +123,7 @@ ColumnLayout {
                         Rectangle {
                             implicitWidth: 32
                             implicitHeight: 32
-                            color: Theme.neutral700
+                            color: row.current ? Theme.accent : Theme.neutral700
                             Text {
                                 anchors.centerIn: parent
                                 text: row.modelData.icon

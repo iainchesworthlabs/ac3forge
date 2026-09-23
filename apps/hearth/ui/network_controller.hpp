@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSettings>
 #include <QString>
 #include <QTimer>
 #include <QVariantList>
@@ -9,8 +10,8 @@
 
 #include <memory>
 
-// Forward-declared, not included: PairingStore and MemorySettingsStore both
-// reach ac3::render transitively (settings_model.hpp includes engine_thread.hpp),
+// Forward-declared, not included: PairingStore and QSettingsStore both reach
+// ac3::render transitively (settings_model.hpp includes engine_thread.hpp),
 // and this header is a Qt one - hearth_controller.hpp keeps the same distance
 // from ac3::hearth's own headers for the same reason
 // (hearth-ui-qt-slots-macro-collides-with-render-layout). Unlike that class's
@@ -21,7 +22,6 @@
 namespace ac3::hearth {
 class NetworkSinks;
 class PairingStore;
-class MemorySettingsStore;
 }
 
 // The one object the Network page talks to (planning/hearth-reference-player.md,
@@ -32,15 +32,18 @@ class MemorySettingsStore;
 // two unrelated engine-side objects, on the same timer rhythm for the same
 // reason CrucibleController's rate is reused throughout this application.
 //
-// Pairing records live in a MemorySettingsStore for this slice, not the
-// window's real settings file: nothing in apps/hearth/ui implements
-// SettingsStore over QSettings yet (that is the Settings page's own slice),
-// so a record made here does not outlive the process. Once that store
-// exists, constructing PairingStore over it instead of MemorySettingsStore is
-// the whole change - everything else here is unaffected, since it only ever
-// sees PairingStore's own interface.
+// Pairing records live in a QSettingsStore (qsettings_store.hpp) over this
+// class's own QSettings, under the same "ac3forge"/"Hearth" identity
+// HearthController's own settings file uses - a record made here outlives
+// the process. This class owns and constructs its QSettingsStore itself
+// rather than sharing HearthController's C++ instance: the two controllers
+// are independent QML singletons with no natural owner to hand a reference
+// between them, and QSettings instances that share an org/app identity
+// already read and write the same underlying store without one.
 
 namespace ac3::hearth::ui {
+
+class QSettingsStore;
 
 class NetworkController : public QObject {
     Q_OBJECT
@@ -96,7 +99,12 @@ private:
     void poll();
 
     std::unique_ptr<ac3::hearth::NetworkSinks> sinks_engine_;
-    std::unique_ptr<ac3::hearth::MemorySettingsStore> settings_store_;
+    // The four-argument constructor, network_controller.cpp's own comment
+    // says why - hearth_controller.hpp carries the identical comment for
+    // the identical reason. Declared before settings_store_ and pairing_
+    // store_, both of which depend on the one before them in this order.
+    QSettings settings_;
+    std::unique_ptr<ac3::hearth::ui::QSettingsStore> settings_store_;
     std::unique_ptr<ac3::hearth::PairingStore> pairing_store_;
     QTimer poll_timer_;
 
