@@ -31,46 +31,40 @@ Rectangle {
         anchors.rightMargin: Theme.pad
         spacing: Theme.gap
 
-        // Icon-only, the way every round-1 artboard shows the transport
-        // (planning/hearth-design.md) - each needs its own Accessible.name
-        // now that `text` is a glyph rather than a word a screen reader
-        // could read directly.
-        Button {
+        // The design system's own transport row (components.png, "TRANSPORT"):
+        // square icon buttons, the play/pause one accent-filled as the
+        // primary action and the rest drawn as plain outlines. IconButton
+        // rather than a native Button, which Basic draws as a wide flat fill
+        // with no border and sized to a word rather than a glyph.
+        IconButton {
             objectName: "transportPrevious"
-            text: Theme.iconSkipPrevious
-            font.family: Theme.iconFamily
-            font.pixelSize: Theme.iconSize
+            glyph: Theme.iconSkipPrevious
             enabled: HearthController.currentIndex > 0
             onClicked: HearthController.previous()
-            Accessible.name: qsTr("Previous")
+            accessibleName: qsTr("Previous")
         }
-        Button {
+        IconButton {
             objectName: "transportPlayPause"
-            text: HearthController.playing ? Theme.iconPause : Theme.iconPlayArrow
-            font.family: Theme.iconFamily
-            font.pixelSize: Theme.iconSize
+            glyph: HearthController.playing ? Theme.iconPause : Theme.iconPlayArrow
+            primary: true
             enabled: HearthController.queue.length > 0
             onClicked: HearthController.playing ? HearthController.pause() : HearthController.play()
-            Accessible.name: HearthController.playing ? qsTr("Pause") : qsTr("Play")
+            accessibleName: HearthController.playing ? qsTr("Pause") : qsTr("Play")
         }
-        Button {
+        IconButton {
             objectName: "transportStop"
-            text: Theme.iconStop
-            font.family: Theme.iconFamily
-            font.pixelSize: Theme.iconSize
+            glyph: Theme.iconStop
             enabled: HearthController.state !== "stopped"
             onClicked: HearthController.stop()
-            Accessible.name: qsTr("Stop")
+            accessibleName: qsTr("Stop")
         }
-        Button {
+        IconButton {
             objectName: "transportNext"
-            text: Theme.iconSkipNext
-            font.family: Theme.iconFamily
-            font.pixelSize: Theme.iconSize
+            glyph: Theme.iconSkipNext
             enabled: HearthController.currentIndex >= 0 &&
                      HearthController.currentIndex + 1 < HearthController.queue.length
             onClicked: HearthController.next()
-            Accessible.name: qsTr("Next")
+            accessibleName: qsTr("Next")
         }
 
         Text {
@@ -155,31 +149,78 @@ Rectangle {
             function onPositionChanged() { scrubber.value = HearthController.positionMs; }
         }
 
+        // The item's whole length, not what is left of it - the design's
+        // footer reads "03:12 ... 12:14" against a 12:14 item
+        // (main-play.png), elapsed beside total, the pair every transport
+        // shows.
         Text {
-            objectName: "transportRemaining"
-            text: formatMs(Math.max(0, HearthController.durationMs - HearthController.positionMs))
+            objectName: "transportDuration"
+            text: formatMs(HearthController.durationMs)
             color: Theme.textMuted
             font.family: Theme.monoFamily
             font.pixelSize: Theme.fontSmall
         }
 
+        // Only when there is something to say. The design's footer carries no
+        // running state word at all (main-play.png), and "playing" beside a
+        // pause button that already shows the same thing is noise - but an
+        // error or a note still needs somewhere to land, so this keeps those
+        // and drops only the idle state.
         Text {
             objectName: "transportState"
-            Layout.preferredWidth: 180
+            visible: text.length > 0
+            Layout.preferredWidth: visible ? 180 : 0
             text: HearthController.errorText.length > 0 ? HearthController.errorText
-                  : HearthController.noteText.length > 0 ? HearthController.noteText
-                  : HearthController.state
+                  : HearthController.noteText
             color: HearthController.errorText.length > 0 ? Theme.bad : Theme.textMuted
             font.pixelSize: Theme.fontSmall
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
         }
 
-        CheckBox {
+        // The design draws gapless as a small outlined chip, not a ticked
+        // check box (main-play.png) - the box was reading as a stray Windows
+        // control next to the icons. Still a real toggle, and still announced
+        // as one; "off" dims it the same way every other disabled or
+        // unchosen control in this design system dims.
+        Rectangle {
             objectName: "transportGapless"
-            text: qsTr("Gapless")
-            checked: HearthController.gapless
-            onToggled: HearthController.gapless = checked
+            implicitWidth: gaplessLabel.implicitWidth + 16
+            implicitHeight: Math.max(18, gaplessLabel.implicitHeight + 6)
+            color: "transparent"
+            border.color: Theme.divider
+            border.width: 1
+            opacity: HearthController.gapless ? 1.0 : 0.45
+
+            Accessible.role: Accessible.CheckBox
+            Accessible.name: qsTr("Gapless")
+            Accessible.checked: HearthController.gapless
+            Accessible.focusable: true
+            Accessible.onPressAction: HearthController.gapless = !HearthController.gapless
+
+            activeFocusOnTab: true
+            Keys.onPressed: function(event) {
+                if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    HearthController.gapless = !HearthController.gapless;
+                    event.accepted = true;
+                }
+            }
+
+            Text {
+                id: gaplessLabel
+                anchors.centerIn: parent
+                text: qsTr("Gapless")
+                color: Theme.textMuted
+                font.family: Theme.monoFamily
+                font.pixelSize: Theme.fontMicro
+                font.capitalization: Font.AllUppercase
+            }
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: Qt.PointingHandCursor
+                onClicked: HearthController.gapless = !HearthController.gapless
+            }
+            FocusRing {}
         }
 
         // The transport bar's master volume - one gain applied after
