@@ -989,7 +989,22 @@ jobs:
            (inputs.do_package && matrix.release_package) ||
            ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
-        run: cpack --preset pack-${{ matrix.preset }}
+        # CPack's own NSIS generator writes makensis's real error to
+        # NSISOutput.log rather than this step's own stdout/stderr (its own
+        # "Please check ... for errors" message is the only trace here
+        # otherwise) - same reasoning as setup-msvc-env's "re-run unsuppressed
+        # so the banner/error reaches the log" for vcvars64.bat.
+        run: |
+          cpack --preset pack-${{ matrix.preset }} || {
+            status=$?
+            log="packages/_CPack_Packages/win64/NSIS/NSISOutput.log"
+            if [ -f "$log" ]; then
+              echo "::group::NSISOutput.log"
+              cat "$log"
+              echo "::endgroup::"
+            fi
+            exit "$status"
+          }
 
       # DR7: the whole point of installing makensis above is that its
       # absence stops being silent. cmake/Packaging.cmake's find_program()
