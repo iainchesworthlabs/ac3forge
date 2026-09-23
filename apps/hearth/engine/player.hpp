@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -19,6 +20,7 @@
 #include "bitstream_sink.hpp"
 #include "decoder_settings.hpp"
 #include "diagnostic_log.hpp"
+#include "network_group_sink.hpp"
 #include "output_decision.hpp"
 #include "pcm_sink.hpp"
 #include "play_meters.hpp"
@@ -77,6 +79,19 @@
 // so the item plays exactly its part and a join is seamless through the one
 // encoder. What the encoder still holds when the output plays out or reopens
 // is padded out and sent first.
+//
+// A network group (A6) takes both at once, from the one decode: rendered PCM
+// for a member playing player@v1, and the item's own units, packed into
+// bursts the same way a bitstream output's are, for a member playing
+// _ac3forge_player@v1 - network_group_sink.hpp's own comment has the shape.
+// The two are unrelated deliveries of the same audio rather than one split
+// between two outputs, so this player's usual per-session bookkeeping
+// (submitted_since_open_, the history, position()) follows the PCM side only,
+// exactly as it would for a local device - the bursts are a second, entirely
+// independent channel to the same members (send_unit_to_group(),
+// drain_group()). A seek is consequently not click-free here the way a local
+// device's is: NetworkGroupSink::flush() cannot recall bytes already sent
+// over the wire, only reset what this player itself still holds.
 
 namespace ac3::hearth {
 
@@ -90,6 +105,8 @@ struct PlayerOutputs {
     std::unique_ptr<PcmSink> pcm{};
     // The passthrough output; with none, nothing is bitstreamed.
     std::unique_ptr<BitstreamSink> bitstream{};
+    // The network group output; with none, kNetworkGroup is refused.
+    std::unique_ptr<NetworkGroupSink> group{};
     // Unset, every item is decoded to `pcm`.
     OutputChooser choose{};
 };
@@ -375,6 +392,22 @@ private:
         std::size_t record = 0;
     };
 
+    // One burst waiting for room in a network group, kept apart from Pending
+    // above: a mixed group's PCM and bursts are two independent deliveries
+    // of the same audio (NetworkGroupSink::submit_pcm() and submit_burst()),
+    // not two halves of one, so they do not share pending_frames_'s count -
+    // see network_group_sink.hpp's own comment on why the two are paced
+    // separately. `frame` is the absolute programme frame this burst starts
+    // at (NetworkGroupSink::submit_burst()'s own `frame`), not a queue
+    // position - a burst is not dropped and retried from the front the way
+    // a Pending PCM block's own offset is; it is popped only once taken.
+    struct PendingGroupBurst {
+        std::uint16_t pc = 0;
+        std::uint16_t pd = 0;
+        std::vector<std::byte> payload{};
+        std::int64_t frame = 0;
+    };
+
     // Why an item could not be started: the item itself, which is then
     // skipped, or the output, which stops playback - an item is not
     // unplayable because the device refused to open.
@@ -412,6 +445,17 @@ private:
     void apply_seek_on_start(std::size_t item);
     void close_output();
 
+    // Pauses, resumes or flushes whichever of bitstream_/group_/sink_ is the
+    // open output - the same three-way choice open_chosen()'s own open()
+    // call makes, gathered here since these three (unlike open()) are each
+    // called from several places (set_layout(), refollow(), a seek, the
+    // transport's own pause/resume). A group has no wire-level pause or
+    // flush (NetworkGroupSink's own comment says why); bitstream_/sink_ are
+    // unchanged from before this existed.
+    bool pause_output();
+    bool resume_output();
+    void flush_output();
+
     // The open output, whichever sink it is.
     [[nodiscard]] bool bitstreaming() const {
         return mode_ == OutputMode::kBitstream || mode_ == OutputMode::kBitstreamAsAc3;
@@ -446,6 +490,16 @@ private:
     // A unit the session sent, into the packer and, once it completes one,
     // the pending ring as a burst.
     void send_unit(std::span<const std::byte> unit, std::uint32_t samples);
+    // A unit the session sent, for a network group: the same packer, into
+    // group_payload_ instead of the pending ring, and pending_group_bursts_
+    // once a burst is whole (send_unit()'s own kNetworkGroup case). No
+    // sample count: unlike send_unit()'s own bitstream case, nothing here
+    // feeds pending_frames_/submitted_since_open_ (Pending's own comment on
+    // PendingGroupBurst says why), and Group::Burst carries no count of its
+    // own for the receiver to check against - a receiver derives it from
+    // the payload the same way a real IEC 61937 receiver derives a burst's
+    // frame count from the syncframe inside it.
+    void send_unit_to_group(std::span<const std::byte> unit);
     // Forgets what the packer holds: a flush, or a new output.
     void reset_packer();
     // A transcode's whole frames into the pending ring as bursts, or with
@@ -476,6 +530,13 @@ private:
     void fill(std::size_t frames);
     // Submits pending blocks while the sink takes them.
     std::size_t drain(std::size_t budget);
+    // drain()'s own job for kNetworkGroup: pending_group_bursts_, paced by
+    // their own backpressure and not counted in what this returns, then
+    // pending_ as PCM through group_ - unlike sink_/bitstream_'s submit(),
+    // NetworkGroupSink::submit_pcm() can take part of a block
+    // (Group::push()'s own partial take), so a block not fully taken stays
+    // at the ring's head, offset by group_pcm_offset_, for the next call.
+    std::size_t drain_group(std::size_t budget);
     // Whether everything submitted since the output opened has been heard.
     [[nodiscard]] bool played_out();
     // Opens the item after the current one ahead of its join decision,
@@ -522,18 +583,34 @@ private:
 
     std::unique_ptr<PcmSink> sink_;
     std::unique_ptr<BitstreamSink> bitstream_;
+    std::unique_ptr<NetworkGroupSink> group_;
     OutputChooser choose_;
     // The open output's mode, kNone while closed, and the decision behind it.
     OutputMode mode_ = OutputMode::kNone;
     OutputChoice choice_;
     // A decision to take again once a join has been heard (refollow()).
     bool refollow_pending_ = false;
-    // A bitstream output's packing: E-AC-3 units wait here until they make
-    // six blocks. `packed_frames_` is how many content frames they code, and
-    // `packed_spans_` whose they are.
+    // A bitstream or a network group's packing: E-AC-3 units wait here until
+    // they make six blocks. `packed_frames_` is how many content frames they
+    // code, and `packed_spans_` whose they are - a bitstream's own; a
+    // network group's burst carries no span (send_unit_to_group()'s own
+    // comment says why it does not need one).
     std::optional<iec61937::Eac3BurstPacker> packer_;
     std::uint64_t packed_frames_ = 0;
     std::vector<Span> packed_spans_;
+    // A network group's own burst-in-progress: the raw (unwrapped)
+    // elementary-stream bytes accumulating alongside packer_ - Group::Burst
+    // wants those, not the IEC 61937 carrier bytes packer_ produces
+    // (network_group_sink.hpp's own comment on submit_burst() says why) -
+    // and the programme frame the FIRST of them starts at, latched when
+    // group_payload_ was last empty (send_unit_to_group()).
+    std::vector<std::byte> group_payload_;
+    std::int64_t group_burst_start_frame_ = 0;
+    // Bursts complete and waiting for room in the group, and how far into
+    // the PCM ring's head block drain_group() has got (Pending's own
+    // comment on why bursts are not pending_'s own entries).
+    std::deque<PendingGroupBurst> pending_group_bursts_;
+    std::size_t group_pcm_offset_ = 0;
     // A transcoding output's encoder, and why it failed, if it did.
     std::optional<Ac3Transcoder> transcoder_;
     std::optional<std::string> transcode_error_;

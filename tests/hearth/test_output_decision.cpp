@@ -261,6 +261,11 @@ TEST_CASE("output decision: a selected group is played to, and a group that is n
     to_group.group_ready = true;
     const auto playing = choose_output(to_group);
     CHECK(playing.mode == OutputMode::kNetworkGroup);
+    // Player's own open_chosen() resolves the group to open by this field
+    // (player.cpp) - it is not an endpoint of this machine, so unlike a
+    // local choice it carries no endpoint_id/endpoint_name.
+    CHECK(playing.group_name == "Kitchen");
+    CHECK(playing.endpoint_id.empty());
     CHECK(mentions(playing.reason, "Kitchen"));
     // What travels to a sink is the stream, not PCM - that is the whole point
     // of the extension role, and the screen should say it.

@@ -31,9 +31,10 @@ target_compile_features(ac3hearth_engine PUBLIC cxx_std_23)
 # The pairing records are a key ring for src/sendspin's server sessions, which
 # a core-only build leaves out, so they are left out with them. NetworkSinks
 # (discovery and pairing, A6) needs the same server half - ServerHost and the
-# computer's own mdns backend - plus PairingStore itself.
+# computer's own mdns backend - plus PairingStore itself. network_group_sink.cpp
+# is the same reason: it wraps ac3::sendspin::Group.
 if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
-    target_sources(ac3hearth_engine PRIVATE pairing_store.cpp network_sinks.cpp)
+    target_sources(ac3hearth_engine PRIVATE pairing_store.cpp network_sinks.cpp network_group_sink.cpp)
 endif()
 
 # From apps/common, which has no library target: the container facts an item's
@@ -47,10 +48,10 @@ target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/apps/c
 # records the output decision reads), ac3::forge for the decoder and the
 # renderer, ac4::ac4 for an AC-4 item's table of contents, and ac3::sendspin
 # for the JSON writer the media information is written with, the key ring the
-# pairing records implement (pairing_store.hpp), and discovery and pairing
-# themselves (network_sinks.hpp) - Group and the burst/PCM streaming path
-# join when the network OUTPUT lands (kNetworkGroup is still refused in
-# player.cpp). ac3::signing asks whether frames carry an authenticity tag.
+# pairing records implement (pairing_store.hpp), discovery and pairing
+# themselves (network_sinks.hpp), and Group, the burst/PCM streaming path a
+# network output plays through (network_group_sink.hpp). ac3::signing asks
+# whether frames carry an authenticity tag.
 target_link_libraries(ac3hearth_engine PUBLIC ac3::audio ac3::forge ac4::ac4 ac3::sendspin)
 # ac3::coverage (coverage floors, tools/checks/coverage_report.sh's "apps/hearth" row) instruments
 # this target's OWN sources - apps/cli's own comment on its matching link explains why the
