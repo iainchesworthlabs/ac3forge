@@ -44,6 +44,22 @@ updates:
     commit-message:
       prefix: "build"
 
+  # Sendspin Python reference/test harness (aiosendspin + its transitive deps).
+  # Not caught by the /requirements entry above - different directory - which
+  # is how aiohttp/idna drifted to CVE-laden versions unnoticed; osv-scanner.yml
+  # is what actually surfaced it (see code-scanning alert history, 2026-09).
+  - package-ecosystem: "pip"
+    directory: "/tools/sendspin"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "build"
+
   # WASM demo TypeScript toolchain (js/) and browser test deps (apps/wasm/tests/).
   - package-ecosystem: "npm"
     directory: "/js"
@@ -72,6 +88,21 @@ updates:
   # Rust bindings build tooling (bindgen, etc.) - not a shipped artifact.
   - package-ecosystem: "cargo"
     directory: "/rust"
+    target-branch: "main"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    open-pull-requests-limit: 5
+    rebase-strategy: "auto"
+    commit-message:
+      prefix: "build"
+
+  # Shield Android app. Previously untracked by Dependabot entirely - the
+  # gap that let apps/android/app/gradle.lockfile carry a CVE-flagged
+  # protobuf-kotlin unnoticed (osv-scanner.yml is what actually caught it).
+  - package-ecosystem: "gradle"
+    directory: "/apps/android"
     target-branch: "main"
     schedule:
       interval: "weekly"
