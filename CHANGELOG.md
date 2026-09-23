@@ -233,6 +233,17 @@ The sections below contain the complete change list and fixes.
 
 **Hearth**
 
+- **The Play page's queue rows and "Now playing" line, and the Decoder page's "This stream" and
+  "Programme" cards, read the same per-item media information the Media page does.** A queue row
+  carries its own codec chip (`A3`/`E3`, or `A4` from the file's own extension for an AC-4 item a
+  probe never reaches), a "playing"/"not playable" pill, a metadata line (stream kind, channels,
+  sample rate, measured bitrate, duration) and, under the item playing now, a progress bar
+  (`HearthController.positionMs`/`durationMs`). "Now playing" gains its own metadata line - codec,
+  layout and objects, sample rate, bitrate, container, and a "next: <item>, gapless" hint. The
+  Decoder page's new "03 This stream" card reads dialogue level, dynamic range, heavy compression,
+  mix levels and objects off `HearthController.currentMedia`; "04 Programme" (renamed from "Dual
+  mono", which moves into it) adds a read-only picker over the stream's own programme list -
+  `Session::open()`'s own comment says why picking a different one has no setter yet.
 - **The Media page reads a queue item's own file** (`Media.qml`;
   `HearthController.currentMedia`/`inspectedMedia`, backed by `apps/hearth/engine/media_info.hpp`'s
   already-built `MediaInfo` and `MediaInspector`, off a thread of their own): codec, sample rate,

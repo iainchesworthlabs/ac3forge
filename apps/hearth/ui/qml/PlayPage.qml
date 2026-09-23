@@ -34,6 +34,99 @@ Item {
         return 1.0;
     }
 
+    // "0:02", or "" for an item nothing has probed yet.
+    function formatDuration(ms) {
+        if (!ms) {
+            return "";
+        }
+        var total = Math.round(ms / 1000);
+        var mm = Math.floor(total / 60);
+        var ss = total % 60;
+        return mm + ":" + (ss < 10 ? "0" : "") + ss;
+    }
+
+    // The queue row's own metadata line (main-play.png, "01 QUEUE"): whatever
+    // a probe has found so far, joined with " · " and skipping anything not
+    // known yet - HearthController.queue's own fields fill in progressively,
+    // the first time an item is about to play or is read ahead
+    // (apps/hearth/engine/player.cpp's start_session()/prepare_next()), not
+    // at addFiles() time.
+    function queueMetadataLine(item) {
+        var parts = [];
+        if (item.streamKind.length > 0) {
+            parts.push(item.streamKind);
+        }
+        if (item.channels > 0) {
+            parts.push(qsTr("%1 ch").arg(item.channels) + (item.hasObjects ? qsTr(" + objects") : ""));
+        }
+        if (item.sampleRate > 0) {
+            parts.push(qsTr("%1 kHz").arg(item.sampleRate / 1000));
+        }
+        if (item.bitrateKbps !== undefined) {
+            parts.push(qsTr("%1 kbit/s").arg(Math.round(item.bitrateKbps)));
+        }
+        var duration = root.formatDuration(item.durationMs);
+        if (duration.length > 0) {
+            parts.push(duration);
+        }
+        return parts.join(" · ");
+    }
+
+    // "02 Now playing"'s own metadata line (main-play.png): the real facts
+    // HearthController.currentMedia reads off the file itself, once its own
+    // MediaInspector has read it - richer than the queue row's own line
+    // (queueMetadataLine above), which only ever has what a probe at
+    // queue-add time found.
+    function nowPlayingMetadataLine() {
+        var media = HearthController.currentMedia;
+        if (Object.keys(media).length === 0) {
+            return "";
+        }
+        var parts = [];
+        var codec = { "ac3": qsTr("AC-3"), "eac3": qsTr("E-AC-3"), "ac3+eac3": qsTr("AC-3 core + E-AC-3"),
+                      "ac4": qsTr("AC-4") }[media.codec];
+        if (codec !== undefined) {
+            parts.push(codec);
+        }
+        var programme = (media.programmes ?? [])[0];
+        var objectCount = media.probe?.objectCount;
+        if (programme !== undefined) {
+            parts.push(programme.layoutLabel + (objectCount !== undefined
+                        ? qsTr(" bed + %1 objects").arg(objectCount) : ""));
+        }
+        if (media.sampleRate) {
+            parts.push(qsTr("%1 kHz").arg(media.sampleRate / 1000));
+        }
+        if (media.probe?.measuredBitrateKbps !== undefined) {
+            parts.push(qsTr("%1 kbit/s").arg(Math.round(media.probe.measuredBitrateKbps)));
+        }
+        parts.push(media.container?.format ?? qsTr("elementary stream"));
+        const next = root.nextItemHint();
+        if (next.length > 0) {
+            parts.push(next);
+        }
+        return parts.join(" · ");
+    }
+
+    // The next PLAYABLE item after the one playing now, skipping any the
+    // queue itself marks unplayable - positionally, not wrapping (whether
+    // the queue repeats is Queue/Transport's own setting, not one this page
+    // reads yet). "" once nothing playable is left.
+    function nextItemHint() {
+        var queue = HearthController.queue;
+        var current = HearthController.currentIndex;
+        if (current < 0) {
+            return "";
+        }
+        for (var i = current + 1; i < queue.length; i++) {
+            if (queue[i].playable) {
+                return qsTr("next: %1%2").arg(queue[i].title)
+                                          .arg(HearthController.gapless ? qsTr(", gapless") : "");
+            }
+        }
+        return "";
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: Theme.pad
@@ -102,37 +195,109 @@ Item {
                     required property var modelData
                     required property int index
                     width: queueList.width
-                    height: label.implicitHeight + note.implicitHeight + Theme.pad
+                    height: content.implicitHeight + Theme.pad
                     color: modelData.current ? Theme.accent100 : Theme.surface
                     border.color: modelData.current ? Theme.accent : Theme.border
                     border.width: modelData.current ? 2 : 1
                     radius: Theme.radius
+
+                    // codecBadge answers "" for an item nothing has probed
+                    // yet, and always for AC-4: io::scan() refuses those
+                    // bytes at Session::open(), so ItemFacts.stream never
+                    // gets set (apps/hearth/ui/item_loader.cpp's own
+                    // comment). The extension is a presentation fallback
+                    // only, for this one row - the Media page's "Showing"
+                    // picker reads the real table of contents instead.
+                    readonly property string badge: modelData.codecBadge.length > 0 ? modelData.codecBadge
+                                                     : (/\.ac4$/i.test(modelData.path) ? "A4" : "")
 
                     Accessible.role: Accessible.ListItem
                     Accessible.name: modelData.title
                     Accessible.selected: modelData.current
 
                     ColumnLayout {
+                        id: content
                         anchors.fill: parent
                         anchors.margins: Theme.pad / 2
                         spacing: 2
 
-                        Text {
-                            id: label
+                        RowLayout {
                             Layout.fillWidth: true
-                            text: (modelData.current && HearthController.playing ? "▶ " : "") + modelData.title
-                            color: modelData.playable ? Theme.text : Theme.textMuted
-                            font.pixelSize: Theme.fontBody
-                            elide: Text.ElideRight
+                            spacing: Theme.gap / 2
+
+                            Rectangle {
+                                visible: row.badge.length > 0
+                                Layout.preferredWidth: badgeLabel.implicitWidth + 8
+                                Layout.preferredHeight: badgeLabel.implicitHeight + 2
+                                color: modelData.playable ? Theme.accent : Theme.neutral400
+                                radius: 2
+                                Text {
+                                    id: badgeLabel
+                                    anchors.centerIn: parent
+                                    text: row.badge
+                                    color: Theme.accentText
+                                    font.bold: true
+                                    font.pixelSize: Theme.fontMicro
+                                }
+                            }
+                            Text {
+                                id: label
+                                Layout.fillWidth: true
+                                text: (modelData.current && HearthController.playing ? "▶ " : "") + modelData.title
+                                color: modelData.playable ? Theme.text : Theme.textMuted
+                                font.pixelSize: Theme.fontBody
+                                elide: Text.ElideRight
+                            }
+                            Rectangle {
+                                // "playing" only while it actually is - a
+                                // merely-current-but-paused/stopped item
+                                // shows no pill, matching the design's own
+                                // one-pill-means-one-state reading.
+                                visible: (modelData.current && HearthController.playing) || !modelData.playable
+                                Layout.preferredWidth: pillLabel.implicitWidth + 10
+                                Layout.preferredHeight: pillLabel.implicitHeight + 2
+                                color: "transparent"
+                                border.color: modelData.playable ? Theme.border : Theme.bad
+                                border.width: 1
+                                radius: Theme.radius
+                                Text {
+                                    id: pillLabel
+                                    anchors.centerIn: parent
+                                    text: modelData.playable ? qsTr("playing") : qsTr("not playable")
+                                    color: modelData.playable ? Theme.textMuted : Theme.bad
+                                    font.pixelSize: Theme.fontFine
+                                }
+                            }
                         }
                         Text {
                             id: note
                             Layout.fillWidth: true
                             visible: text.length > 0
-                            text: modelData.playable ? modelData.streamKind : modelData.note
+                            text: modelData.playable ? root.queueMetadataLine(modelData) : modelData.note
                             color: modelData.playable ? Theme.textMuted : Theme.bad
                             font.pixelSize: Theme.fontSmall
                             elide: Text.ElideRight
+                        }
+                        // The currently-playing item's own progress, under
+                        // its row (main-play.png, "01 QUEUE") - invisible and
+                        // sizeless for every other row, HearthController.
+                        // positionMs/durationMs being about the item playing
+                        // now, not each row's own item.
+                        Item {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 3
+                            visible: modelData.current
+
+                            Rectangle { anchors.fill: parent; color: Theme.neutral200 }
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.top: parent.top
+                                anchors.bottom: parent.bottom
+                                width: HearthController.durationMs > 0
+                                       ? parent.width * Math.min(1, HearthController.positionMs / HearthController.durationMs)
+                                       : 0
+                                color: Theme.accent
+                            }
                         }
                     }
 
@@ -215,11 +380,17 @@ Item {
                     }
                     Text {
                         Layout.fillWidth: true
-                        visible: HearthController.currentIndex >= 0
-                        text: HearthController.currentIndex >= 0
-                              ? HearthController.queue[HearthController.currentIndex].streamKind : ""
+                        visible: text.length > 0
+                        // The richer line once currentMedia has read the
+                        // file; the bare stream kind straight away, since a
+                        // MediaInspector read takes "a noticeable part of a
+                        // second" (media_info.hpp) and the queue's own probe
+                        // already knows this much immediately.
+                        text: root.nowPlayingMetadataLine() || (HearthController.currentIndex >= 0
+                              ? HearthController.queue[HearthController.currentIndex].streamKind : "")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
                     }
                 }
 
