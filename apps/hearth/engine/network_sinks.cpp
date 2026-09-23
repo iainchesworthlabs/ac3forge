@@ -1,5 +1,7 @@
 #include "network_sinks.hpp"
 
+#include <algorithm>
+
 #include "ac3/sendspin/mdns.hpp"
 
 namespace ac3::hearth {
@@ -77,6 +79,7 @@ void NetworkSinks::select_sink(const std::string& id) {
     {
         std::lock_guard<std::mutex> lock(mutex_);
         selected_id_ = id;
+        selected_group_id_.clear();
         pairing_error_.clear();
         auto it = sinks_.find(id);
         if (it != sinks_.end()) {
@@ -140,6 +143,163 @@ void NetworkSinks::forget_pairing(const std::string& id) {
     }
 }
 
+std::string NetworkSinks::create_group(const std::string& name) {
+    if (!host_) {
+        return {};
+    }
+    std::shared_ptr<ss::Group> group = host_->make_group(name);
+    const std::string id = group->id();
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        GroupEntry entry;
+        entry.name = name;
+        entry.group = std::move(group);
+        groups_[id] = std::move(entry);
+        selected_group_id_ = id;
+        selected_id_.clear();
+        publish_locked();
+    }
+    return id;
+}
+
+void NetworkSinks::rename_group(const std::string& group_id, const std::string& name) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = groups_.find(group_id);
+    if (it != groups_.end()) {
+        it->second.name = name;
+        publish_locked();
+    }
+}
+
+void NetworkSinks::delete_group(const std::string& group_id) {
+    std::shared_ptr<ss::Group> group;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = groups_.find(group_id);
+        if (it == groups_.end()) {
+            return;
+        }
+        group = std::move(it->second.group);
+        groups_.erase(it);
+        if (selected_group_id_ == group_id) {
+            selected_group_id_.clear();
+        }
+        publish_locked();
+    }
+    // group's own destructor (stop(), then every member leaves) runs here,
+    // outside mutex_ - this class never holds its own lock across a call
+    // into ac3::sendspin, on either side of it.
+}
+
+void NetworkSinks::select_group(const std::string& group_id) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    selected_group_id_ = group_id;
+    selected_id_.clear();
+    publish_locked();
+}
+
+void NetworkSinks::add_group_member(const std::string& group_id, const std::string& sink_id) {
+    std::shared_ptr<ss::Group> group;
+    std::string client_id;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = groups_.find(group_id);
+        if (it == groups_.end()) {
+            return;
+        }
+        client_id = member_client_id_locked(sink_id);
+        if (client_id.empty()) {
+            return;
+        }
+        if (std::find(it->second.member_sink_ids.begin(), it->second.member_sink_ids.end(), sink_id) ==
+            it->second.member_sink_ids.end()) {
+            it->second.member_sink_ids.push_back(sink_id);
+        }
+        group = it->second.group;
+        publish_locked();
+    }
+    group->add(client_id);
+}
+
+void NetworkSinks::remove_group_member(const std::string& group_id, const std::string& sink_id) {
+    std::shared_ptr<ss::Group> group;
+    std::string client_id;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = groups_.find(group_id);
+        if (it == groups_.end()) {
+            return;
+        }
+        std::erase(it->second.member_sink_ids, sink_id);
+        client_id = member_client_id_locked(sink_id);
+        group = it->second.group;
+        publish_locked();
+    }
+    if (!client_id.empty()) {
+        group->remove(client_id);
+    }
+}
+
+void NetworkSinks::set_group_volume(const std::string& group_id, std::int32_t volume) {
+    std::shared_ptr<ss::Group> group;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = groups_.find(group_id);
+        if (it != groups_.end()) {
+            group = it->second.group;
+        }
+    }
+    if (group) {
+        group->set_group_volume(volume);
+    }
+}
+
+void NetworkSinks::set_group_muted(const std::string& group_id, bool muted) {
+    std::shared_ptr<ss::Group> group;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = groups_.find(group_id);
+        if (it != groups_.end()) {
+            group = it->second.group;
+        }
+    }
+    if (group) {
+        group->set_group_muted(muted);
+    }
+}
+
+void NetworkSinks::set_member_volume(const std::string& group_id, const std::string& sink_id, std::int32_t volume) {
+    std::shared_ptr<ss::Group> group;
+    std::string client_id;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = groups_.find(group_id);
+        if (it != groups_.end()) {
+            group = it->second.group;
+            client_id = member_client_id_locked(sink_id);
+        }
+    }
+    if (group && !client_id.empty()) {
+        group->set_member_volume(client_id, volume);
+    }
+}
+
+void NetworkSinks::set_member_muted(const std::string& group_id, const std::string& sink_id, bool muted) {
+    std::shared_ptr<ss::Group> group;
+    std::string client_id;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = groups_.find(group_id);
+        if (it != groups_.end()) {
+            group = it->second.group;
+            client_id = member_client_id_locked(sink_id);
+        }
+    }
+    if (group && !client_id.empty()) {
+        group->set_member_muted(client_id, muted);
+    }
+}
+
 NetworkStatus NetworkSinks::status() const {
     std::lock_guard<std::mutex> lock(mutex_);
     NetworkStatus status;
@@ -149,6 +309,11 @@ NetworkStatus NetworkSinks::status() const {
     status.sinks.reserve(sinks_.size());
     for (const auto& [instance, entry] : sinks_) {
         status.sinks.push_back(facts_locked(instance, entry));
+    }
+    status.selected_group_id = selected_group_id_;
+    status.groups.reserve(groups_.size());
+    for (const auto& [id, entry] : groups_) {
+        status.groups.push_back(group_facts_locked(id, entry));
     }
     return status;
 }
@@ -215,6 +380,50 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
         }
     }
 
+    return facts;
+}
+
+std::string NetworkSinks::member_client_id_locked(const std::string& sink_id) const {
+    auto it = sinks_.find(sink_id);
+    if (it == sinks_.end() || !it->second.client.has_value()) {
+        return {};
+    }
+    return it->second.client_id;
+}
+
+GroupFacts NetworkSinks::group_facts_locked(const std::string& group_id, const GroupEntry& entry) const {
+    GroupFacts facts;
+    facts.id = group_id;
+    facts.name = entry.name;
+    facts.members.reserve(entry.member_sink_ids.size());
+    for (const std::string& sink_id : entry.member_sink_ids) {
+        GroupMemberFacts member;
+        member.sink_id = sink_id;
+        auto sink_it = sinks_.find(sink_id);
+        if (sink_it == sinks_.end()) {
+            // Disconnected long enough that on_client_gone() erased its row
+            // entirely (sinks_'s own churn, not this class's group
+            // bookkeeping) - still a member, shown by its bare id.
+            member.name = sink_id;
+            facts.members.push_back(std::move(member));
+            continue;
+        }
+        const SinkFacts sink_facts = facts_locked(sink_id, sink_it->second);
+        member.name = sink_facts.name;
+        member.kind = sink_facts.kind;
+        member.required_lead_time_ms = sink_facts.required_lead_time_ms;
+        member.connected = sink_it->second.client.has_value();
+        if (member.connected && !sink_it->second.client_id.empty()) {
+            if (const std::optional<ss::controller::Player> player =
+                    entry.group->member_player(sink_it->second.client_id)) {
+                member.volume = player->volume;
+                member.muted = player->muted;
+                member.volume_supported = player->volume_supported;
+                member.mute_supported = player->mute_supported;
+            }
+        }
+        facts.members.push_back(std::move(member));
+    }
     return facts;
 }
 

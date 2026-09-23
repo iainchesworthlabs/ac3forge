@@ -269,6 +269,13 @@ jobs:
   # before landing (see the PR that introduced it, branch feature/adm-bw64-parser: Windows MSVC,
   # WSL2 gcc-15, WSL2 clang++-21, all green).
   #
+  # -DAC3FORGE_BUILD_HEARTH=OFF: that option now defaults ON (CMakeLists.txt's own comment),
+  # and without this override this job's plain "adm" manifest feature never installs mbedTLS/
+  # cpp-httplib/libFLAC/Opus/mdns, so add_subdirectory(src/sendspin) failed configuring at
+  # find_package(MbedTLS) - a real regression this job hit on main, not something this job's
+  # own change caused; the root CMakeLists.txt's own comment on AC3FORGE_BUILD_HEARTH's default
+  # named three legs that needed this same override and missed this one.
+  #
   # AC3FORGE_BUILD_CLI/EXAMPLES stay at their preset default (ON): ADM BWF reader phase 3 (the
   # 'atmos-adm' ac3cli command, apps/cli/main.cpp's run_atmos_adm, and examples/encode_adm.cpp) is
   # the first code outside tests/ to link ac3adm::ac3adm/ac3::admbridge at all, so unlike phases 1
@@ -329,9 +336,19 @@ jobs:
         run: |
           set -uo pipefail
           for attempt in 1 2 3; do
+            # -DAC3FORGE_BUILD_HEARTH=OFF is required here, not optional: AC3FORGE_BUILD_HEARTH
+            # defaults ON now (root CMakeLists.txt), but -DVCPKG_MANIFEST_FEATURES=adm above
+            # REPLACES CMakePresets.json's own default ("hearth") rather than extending it, so
+            # vcpkg never installs Hearth's ports here while CMakeLists.txt would still try to
+            # configure against them - src/sendspin/CMakeLists.txt's find_package(MbedTLS)
+            # failing outright. This job has nothing to do with Hearth either way (see this
+            # file's own header comment above ADM Module), so turning it off is also just
+            # correct scope, the same way minimal-decoder/minimal-encoder/wasm-emscripten/
+            # config-windows-llvm-coverage each turn it off in CMakePresets.json.
             if cmake --preset config-linux-gcc \
                  -DVCPKG_MANIFEST_FEATURES=adm \
-                 -DAC3FORGE_BUILD_ADM=ON; then
+                 -DAC3FORGE_BUILD_ADM=ON \
+                 -DAC3FORGE_BUILD_HEARTH=OFF; then
               exit 0
             fi
             rm -rf build/config-linux-gcc/CMakeCache.txt
@@ -383,10 +400,10 @@ jobs:
         env:
           STATUS: ${{ job.status }}
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
-  # ac3::sendspin (src/sendspin, planning/hearth-reference-player.md A4) is opt-in:
-  # AC3FORGE_BUILD_HEARTH defaults OFF like AC3FORGE_BUILD_ADM, because the library's later
-  # parts take cpp-httplib, mdns, mbedTLS, libFLAC and Opus from vcpkg's "hearth" feature.
-  # A7 has since put that feature on every build-and-test leg, so the [sendspin] and [hearth]
+  # ac3::sendspin (src/sendspin, planning/hearth-reference-player.md A4): AC3FORGE_BUILD_HEARTH
+  # defaults ON (root CMakeLists.txt), with vcpkg's "hearth" feature - cpp-httplib, mdns, mbedTLS,
+  # libFLAC and Opus - selected by default too, via CMakePresets.json's "core" fragment. Every
+  # build-and-test leg builds and tests it without being asked, so the [sendspin] and [hearth]
   # cases run everywhere and this job is no longer where they are proved. What is only here is
   # A4's exit: the test sink against aiosendspin 9.1.1, scripted as a player and as Music
   # Assistant's server, which needs a Python environment no build leg carries. The short

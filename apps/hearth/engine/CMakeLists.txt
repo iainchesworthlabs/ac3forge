@@ -52,7 +52,12 @@ target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/apps/c
 # join when the network OUTPUT lands (kNetworkGroup is still refused in
 # player.cpp). ac3::signing asks whether frames carry an authenticity tag.
 target_link_libraries(ac3hearth_engine PUBLIC ac3::audio ac3::forge ac4::ac4 ac3::sendspin)
-target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt ac3::signing)
+# ac3::coverage (coverage floors, tools/checks/coverage_report.sh's "apps/hearth" row) instruments
+# this target's OWN sources - apps/cli's own comment on its matching link explains why the
+# instrumented EXECUTABLE that eventually links this library is not enough on its own: --coverage
+# is a compile-time flag, so without this a coverage build's .cpp files here would produce no
+# .gcno at all and read as no data rather than as low coverage.
+target_link_libraries(ac3hearth_engine PRIVATE ac3::warnings ac3::fmt ac3::signing ac3::coverage)
 # The engine thread (engine_thread.cpp).
 find_package(Threads REQUIRED)
 target_link_libraries(ac3hearth_engine PUBLIC Threads::Threads)
