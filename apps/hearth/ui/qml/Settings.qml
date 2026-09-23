@@ -4,6 +4,7 @@ import QtQuick.Dialogs
 import QtQuick.Layouts
 
 import Ac3ForgeHearth
+import Ac3ForgeHearthLanguage
 
 // The Settings page (planning/hearth-design.md; issue #853): playback,
 // network (with the pairing records A6's Sendspin server will start filling
@@ -406,10 +407,34 @@ ScrollView {
                             Layout.preferredWidth: root.labelWidth
                         }
                         AppComboBox {
-                            enabled: false
+                            id: languageBox
+                            objectName: "settingsLanguage"
                             Layout.preferredWidth: Math.round(320 * Theme.fontScale)
-                            model: [qsTr("English · the system language")]
+                            // "System" first, then every language this build
+                            // ships a catalogue for.
+                            model: [{ code: "", name: qsTr("System") }]
+                                   .concat(LanguageManager.availableLanguages())
+                            textRole: "name"
+                            valueRole: "code"
                             Accessible.name: qsTr("Language")
+                            // Re-chosen from the manager's own state whenever
+                            // the model is rebuilt (every retranslate rebuilds
+                            // it) or the language changes, so a chosen
+                            // language stays chosen - apps/crucible/ui/qml/
+                            // SettingsPage.qml's own box does the same.
+                            function sync() {
+                                currentIndex = LanguageManager.hasOverride()
+                                    ? Math.max(0, indexOfValue(LanguageManager.currentLanguage)) : 0;
+                            }
+                            Component.onCompleted: sync()
+                            onModelChanged: sync()
+                            Connections {
+                                target: LanguageManager
+                                function onCurrentLanguageChanged() { languageBox.sync(); }
+                            }
+                            onActivated: currentValue === ""
+                                         ? LanguageManager.useSystemLanguage()
+                                         : LanguageManager.setLanguage(currentValue)
                         }
                         Item { Layout.fillWidth: true }
                     }
@@ -419,10 +444,10 @@ ScrollView {
                         Item { Layout.preferredWidth: root.labelWidth }
                         Text {
                             Layout.fillWidth: true
-                            text: qsTr("Not adjustable from this build yet: Hearth has no translation catalogues "
-                                      + "wired in, so every page reads in English regardless of the desktop's own "
-                                      + "language. A later slice adds the six languages ac3gui and Crucible already "
-                                      + "offer.")
+                            text: qsTr("System follows the language the desktop is set to. Applies at once. "
+                                      + "Hearth's catalogues carry every string but none are translated yet, "
+                                      + "so the words stay in English while the layout direction and the "
+                                      + "typeface follow the language chosen.")
                             color: Theme.textMuted
                             font.pixelSize: Theme.fontSmall
                             wrapMode: Text.WordWrap

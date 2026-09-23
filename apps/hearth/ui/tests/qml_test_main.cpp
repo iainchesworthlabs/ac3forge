@@ -8,7 +8,10 @@
 #include <QSettings>
 #include <QTemporaryDir>
 
+#include <memory>
 #include <optional>
+
+#include "language_manager.hpp"
 
 // Qt Quick Test entry point for the Hearth window: runs every tst_*.qml under
 // QUICK_TEST_SOURCE_DIR against the REAL HearthController the embedded
@@ -19,12 +22,13 @@
 // qmlRegisterSingletonInstance() is needed here to reach it - the embedded
 // module registers it itself, the same as Main.qml gets it.
 //
-// Hearth has no tray, no icon provider and no translations yet (main.cpp's
-// own header comment: "Translations are not wired up yet"), so this file is
-// shorter than apps/crucible/ui/tests/qml_test_main.cpp's own - nothing here
-// needs a LanguageManager singleton, an AppIconProvider or a scripted-machine
-// TestServices double. If a later slice adds any of those to Hearth, this
-// file is where its own test-time registration would go too.
+// Hearth has no tray, no icon provider and no scripted-machine TestServices
+// double, so this file is still shorter than apps/crucible/ui/tests/
+// qml_test_main.cpp's own. It DOES need a LanguageManager now: Settings.qml
+// imports Ac3ForgeHearthLanguage, and unlike HearthController that singleton
+// is not QML_SINGLETON-registered by the module - main.cpp registers the
+// instance by hand, so the suite has to as well or Settings.qml will not
+// load here.
 
 namespace {
 
@@ -50,10 +54,19 @@ public slots:
         QSettings::setPath(QSettings::IniFormat, QSettings::UserScope, scratch_->path());
     }
 
-    void qmlEngineAvailable(QQmlEngine* /*engine*/) {}
+    void qmlEngineAvailable(QQmlEngine* engine) {
+        // Same URI and reasoning as main.cpp's own registration: its own,
+        // not the module's, so registering a type by hand cannot mark
+        // Ac3ForgeHearth registered and stop HearthController registering.
+        language_manager_ = std::make_unique<LanguageManager>(
+            *qGuiApp, *engine, QStringLiteral("ac3hearth"));
+        qmlRegisterSingletonInstance("Ac3ForgeHearthLanguage", 1, 0, "LanguageManager",
+                                     language_manager_.get());
+    }
 
 private:
     std::optional<QTemporaryDir> scratch_;
+    std::unique_ptr<LanguageManager> language_manager_;
 };
 
 }  // namespace

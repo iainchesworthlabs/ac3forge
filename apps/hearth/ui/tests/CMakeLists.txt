@@ -34,6 +34,10 @@ qt_add_executable(ac3hearth_qmltests
     hearth_controller.hpp
     item_loader.cpp
     item_loader.hpp
+    # Settings.qml imports Ac3ForgeHearthLanguage now, so the suite needs the
+    # same LanguageManager ac3hearth itself compiles in.
+    "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.cpp"
+    "${PROJECT_SOURCE_DIR}/apps/gui/language_manager.hpp"
     "${PROJECT_SOURCE_DIR}/apps/common/container_input.cpp"
     "${PROJECT_SOURCE_DIR}/apps/common/container_input.hpp")
 
@@ -56,6 +60,7 @@ add_dependencies(ac3hearth_qmltests ac3hearth)
 
 target_include_directories(ac3hearth_qmltests PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${CMAKE_SOURCE_DIR}/apps/gui"
     "${CMAKE_SOURCE_DIR}/apps/common")
 target_compile_definitions(ac3hearth_qmltests PRIVATE
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
