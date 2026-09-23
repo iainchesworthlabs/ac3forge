@@ -1,0 +1,9 @@
+Typefaces
+---------
+
+{{FONT_USER}} embeds the Archivo typeface (Regular, Medium, SemiBold and
+ExtraBold), Copyright 2020 The Archivo Project Authors
+(https://github.com/Omnibus-Type/Archivo). It is licensed under the SIL
+Open Font License, Version 1.1, reproduced below.
+
+{{FILE:OFL}}
