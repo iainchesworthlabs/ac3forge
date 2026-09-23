@@ -25,7 +25,8 @@ RowLayout {
         spacing: Theme.gap
 
         Card {
-            title: qsTr("02 PAIR %1").arg(root.sink.name ?? "").toUpperCase()
+            ordinal: "02"
+            title: qsTr("Pair %1").arg(root.sink.name ?? "")
 
             Text {
                 Layout.fillWidth: true
@@ -111,13 +112,13 @@ RowLayout {
             RowLayout {
                 spacing: Theme.gap
 
-                Button {
+                AppButton {
                     objectName: "networkPairingPair"
                     text: qsTr("Pair")
                     enabled: root.codeComplete()
                     onClicked: NetworkController.submitPairingCode(root.sink.id, root.currentCode())
                 }
-                Button {
+                AppButton {
                     objectName: "networkPairingCancel"
                     text: qsTr("Cancel")
                     onClicked: NetworkController.cancelPairing(root.sink.id)

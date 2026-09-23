@@ -36,7 +36,8 @@ ColumnLayout {
 
     Card {
         Layout.fillWidth: true
-        title: qsTr("03 THIS SINK")
+        ordinal: "03"
+        title: qsTr("This sink")
 
         GridLayout {
             Layout.fillWidth: true
