@@ -39,6 +39,8 @@
 #include <QTimer>
 #include <QUrl>
 
+#include "ac3/internal/profiling.hpp"
+
 #include <optional>
 
 namespace {
@@ -53,6 +55,15 @@ bool save_window(QQmlApplicationEngine& engine, const QString& path) {
     }
     const QImage shot = window->grabWindow();
     return !shot.isNull() && shot.save(path);
+}
+
+// Ties Tracy's frame view to real Qt Quick presentation instead of leaving it
+// empty - see apps/crucible/ui/main.cpp's identical helper for why this is a
+// NAMED ("UI") frame mark rather than the bare AC3_FRAME_MARK(), and why the
+// connection is direct rather than queued.
+void mark_frames_for_tracy(QQuickWindow* window) {
+    QObject::connect(window, &QQuickWindow::frameSwapped, window,
+                     [] { AC3_FRAME_MARK_NAMED("UI"); }, Qt::DirectConnection);
 }
 
 }  // namespace
@@ -130,6 +141,9 @@ int main(int argc, char** argv) {
     engine.loadFromModule("Ac3ForgeHearth", "Main");
     if (engine.rootObjects().isEmpty()) {
         return 1;
+    }
+    if (auto* root_window = qobject_cast<QQuickWindow*>(engine.rootObjects().first())) {
+        mark_frames_for_tracy(root_window);
     }
     // A capture never shows the first-run dialog it did not ask for:
     // Main.qml reads this one event-loop turn later, after main() has had

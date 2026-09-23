@@ -1,5 +1,7 @@
 #include "stream_player_controller.hpp"
 
+#include "ac3/internal/profiling.hpp"
+
 #include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
@@ -309,6 +311,7 @@ double StreamPlayerController::meterFloorDb() const { return kMeterFloorDb; }
 
 void StreamPlayerController::publishLevels(const splayer_detail::RawResult& source,
                                            std::span<const ac3::analysis::ChannelLevel> levels) {
+    AC3_ZONE_SCOPED_N("stream player publish");
     clip_latched_.resize(levels.size(), false);
 
     QVariantList entries;
