@@ -825,6 +825,124 @@ TEST_CASE("group: test sinks' other roles get the group's metadata, colours, tra
     host->reset();
 }
 
+TEST_CASE("group: a mixed group delivers PCM and bursts to their own members at once",
+          "[hearth][group][websocket]") {
+    // Every other group test in this file gives a group either all PCM/FLAC
+    // members or all extension-role members, never both - this is the one
+    // that proves server_host.hpp's own Programme comment for real ("a
+    // member playing player@v1 gets the programme's PCM... and a member
+    // playing _ac3forge_player@v1 gets the coded stream's bursts, all on
+    // one timeline"), ahead of Player growing a network-group output seam
+    // that will need to feed both at once (issue #874's own follow-up).
+    namespace ss = ac3::sendspin;
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_mixed_" + scratch_pid_suffix());
+    fs::remove_all(scratch);
+    QuietLog log;
+    const std::unique_ptr<testsink::Sink> kitchen = start_sink(scratch / "kitchen", "Kitchen", m::Codec::kPcm, log, false);
+    const std::unique_ptr<testsink::Sink> lounge = start_sink(scratch / "lounge", "Lounge", m::Codec::kPcm, log);
+
+    std::optional<ss::noise::KeyPair> identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    ss::MemoryServerStore store;
+    HostEvents events;
+    auto host = ss::ServerHost::start(
+        {.identity = *identity, .name = "Test host", .languages = {"en"}, .address = "127.0.0.1", .port = std::nullopt,
+         .advertise = false, .browse = false, .mdns_interfaces = {}},
+        store, events);
+    REQUIRE(host.has_value());
+    REQUIRE((*host)->enter_pairing_token(kitchen->pairing_token()));
+    (*host)->dial("ws://127.0.0.1:" + std::to_string(kitchen->port()) + "/sendspin");
+    (*host)->dial("ws://127.0.0.1:" + std::to_string(lounge->port()) + "/sendspin");
+    REQUIRE(events.wait([&](const auto& clients) { return clients.contains(lounge->client_id()); }, 15s));
+    REQUIRE((*host)->approve(lounge->client_id(), true));
+    REQUIRE(events.wait(
+        [](const auto& clients) {
+            return clients.size() == 2 && std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
+                       return entry.second.playing && entry.second.available;
+                   });
+        },
+        30s));
+
+    // The burst feed: a real E-AC-3 stream, packed exactly as the JOC test's
+    // own helper does.
+    const std::vector<std::byte> fixture = read_bytes(AC3FORGE_GOLDEN_OBJECT_DIR "/dee_joc_514.ec3");
+    const std::expected<ac3::io::ScannedStream, ac3::io::ScanError> stream = ac3::io::scan(fixture);
+    REQUIRE(stream.has_value());
+    const std::vector<PackedBurst> bursts = pack_bursts(*stream, 1);
+    REQUIRE_FALSE(bursts.empty());
+
+    // The PCM feed: two seconds of a tone, exactly the shape the PCM/FLAC
+    // test above uses - deliberately unrelated content to the bursts: this
+    // test is about the plumbing carrying both at once, not about the two
+    // members hearing "the same" programme (Player, once it has a
+    // network-group seam, is what will make that true).
+    std::vector<std::int32_t> programme;
+    for (int frame = 0; frame < 96000; ++frame) {
+        programme.push_back(static_cast<std::int32_t>(std::lround(9000.0 * std::sin(frame * 0.0575))));
+        programme.push_back(static_cast<std::int32_t>(std::lround(9000.0 * std::sin(frame * 0.131))));
+    }
+
+    std::shared_ptr<ss::Group> group = (*host)->make_group("Mixed");
+    group->add(kitchen->client_id());
+    group->add(lounge->client_id());
+    const m::AudioFormat pcm_format{.codec = m::Codec::kPcm, .channels = 2, .sample_rate = 48000, .bit_depth = 16};
+    REQUIRE(group->start({.pcm = pcm_format,
+                          .bursts = ss::ac3forge::StreamStart{.data_type = ss::ac3forge::DataType::kEac3, .sample_rate = 48000},
+                          .buffered = true}));
+
+    std::size_t next_burst = 0;
+    std::size_t pcm_offset = 0;
+    const auto deadline = std::chrono::steady_clock::now() + 30s;
+    while ((next_burst < bursts.size() || pcm_offset < programme.size()) && std::chrono::steady_clock::now() < deadline) {
+        bool made_progress = false;
+        if (next_burst < bursts.size()) {
+            const PackedBurst& burst = bursts[next_burst];
+            if (group->push_burst({.pc = burst.pc, .pd = burst.pd, .payload = burst.payload, .frame = burst.frame})) {
+                ++next_burst;
+                made_progress = true;
+            }
+        }
+        if (pcm_offset < programme.size()) {
+            const std::size_t block = std::min<std::size_t>(4800 * 2, programme.size() - pcm_offset);
+            const std::size_t taken = group->push(std::span<const std::int32_t>(programme).subspan(pcm_offset, block));
+            if (taken > 0) {
+                pcm_offset += taken * 2;
+                made_progress = true;
+            }
+        }
+        if (!made_progress) {
+            std::this_thread::sleep_for(5ms);
+        }
+    }
+    REQUIRE(next_burst == bursts.size());
+    REQUIRE(pcm_offset == programme.size());
+    CHECK(group->members_playing() == 2);
+    group->stop();
+
+    // Both sinks have everything - kitchen its bursts, lounge its frames -
+    // neither starved by the other sharing the same group.
+    const auto until = std::chrono::steady_clock::now() + 15s;
+    while ((kitchen->totals().bursts < bursts.size() || lounge->totals().frames < 96000) &&
+           std::chrono::steady_clock::now() < until) {
+        std::this_thread::sleep_for(20ms);
+    }
+    REQUIRE(kitchen->totals().bursts == bursts.size());
+    REQUIRE(lounge->totals().frames == 96000);
+    group.reset();
+    host->reset();
+
+    // Every chunk on both sinks puts its first frame at the same local
+    // time, within 1 ms - the group's one shared timeline, proven across
+    // both representations at once rather than only within one.
+    std::vector<double> kitchen_times = first_frame_times(only_file(scratch / "kitchen" / "out", "bursts-", ".times.csv"));
+    const std::vector<double> lounge_times = first_frame_times(scratch / "lounge" / "out" / "stream-1-1.times.csv");
+    REQUIRE_FALSE(kitchen_times.empty());
+    REQUIRE_FALSE(lounge_times.empty());
+    kitchen_times.insert(kitchen_times.end(), lounge_times.begin(), lounge_times.end());
+    const auto [earliest, latest] = std::minmax_element(kitchen_times.begin(), kitchen_times.end());
+    CHECK(*latest - *earliest < 1000.0);
+}
+
 TEST_CASE("group: two paired test sinks play E-AC-3 JOC in step over the extension role",
           "[hearth][group][websocket][ac3forge]") {
     play_joc_programme(fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_joc_" + scratch_pid_suffix()), "7.1.4", 2);
