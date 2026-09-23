@@ -97,6 +97,12 @@ public:
     // settings page; empty where there is none to show. Never used to decide
     // anything, only to say what is set up.
     [[nodiscard]] virtual std::string device_name() const { return {}; }
+    // The open device's own endpoint id, the same string
+    // ac3::audio::RenderDeviceInfo::id and OutputPreferences::endpoint_id
+    // use - what an output picker compares against to say which row is the
+    // one actually playing, rather than matching on the name two distinct
+    // endpoints can share. Empty where there is none to show.
+    [[nodiscard]] virtual std::string device_id() const { return {}; }
     // The open device's own speaker mask, 0 where it has none
     // (ac3::audio::speakers.hpp) - what speaker_routing() built the default
     // patch from, and what a settings page reads to label the routing grid's

@@ -454,6 +454,7 @@ void Engine::publish(const std::string& note, std::uint64_t carried) {
     next.crossover_hz = player_.crossover_hz();
     next.routing = player_.routing();
     next.device_name = player_.device_name();
+    next.device_id = player_.device_id();
     next.speaker_mask = player_.speaker_mask();
     next.identify_level_db = player_.identify_level_db();
     next.identify_slot = player_.identify_slot();
