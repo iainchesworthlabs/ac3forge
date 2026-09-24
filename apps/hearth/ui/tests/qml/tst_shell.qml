@@ -89,9 +89,15 @@ TestCase {
         key(win, Qt.Key_3, Qt.ControlModifier);
         tryCompare(win, "page", "speakers", 2000);
         // A Repeater delegate on the Speakers page: found through the visual
-        // tree, which findChild() on a Window does not walk.
-        const identify = H.find(win.contentItem, function(item) { return item.objectName === "speakersIdentify-0"; });
-        verify(identify !== null, "no identify button for the first speaker");
+        // tree, which findChild() on a Window does not walk. Waited for, not
+        // just looked up: the page switch completes before the Repeater has
+        // necessarily built its rows, and on a slow runner (the hosted arm64
+        // leg) a single look straight after it found none.
+        let identify = null;
+        tryVerify(function() {
+            identify = H.find(win.contentItem, function(item) { return item.objectName === "speakersIdentify-0"; });
+            return identify !== null;
+        }, 5000, "no identify button for the first speaker");
         // The button may sit below the fold of this 800-pixel window, where a
         // click cannot reach it; Space on the focused button starts it the
         // same way (Speakers.qml's own Keys.onSpacePressed).
