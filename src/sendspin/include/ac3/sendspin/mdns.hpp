@@ -30,6 +30,16 @@ struct Options {
     std::vector<std::string> interfaces;
     // The host name the SRV record names, without .local; empty for the computer's own.
     std::string host;
+    // Whether opening this socket should also make sure Windows' firewall allows inbound
+    // traffic to it (firewall::ensure_inbound_rule(), ac3/sendspin/firewall.hpp) - on an
+    // unelevated interactive session, that means relaunching this same process once for a UAC
+    // prompt. True by default: a real advertiser or browser needs replies from other machines
+    // to actually arrive. False for a caller whose socket never needs one, such as a test that
+    // drives its BrowseListener with synthetic on_found()/on_lost() calls instead of real mDNS
+    // traffic - left true, a binary with no main() of its own to answer the relaunch's
+    // `--ac3-sendspin-firewall-helper` handshake (Catch2's, for instance) would just re-prompt
+    // for elevation on every run, for a rule it can never actually finish adding.
+    bool request_firewall_exception = true;
 };
 
 // Starts advertising. Nothing when no interface's socket could be opened.

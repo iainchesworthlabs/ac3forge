@@ -107,7 +107,15 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // server_id still matches, connection.md's E8) is the caller's job once
     // it has somewhere durable to keep the private key, which this slice
     // does not yet (see the Settings page's own QSettings-backed store).
-    NetworkSinks(sendspin::noise::KeyPair identity, std::string name, PairingStore& store);
+    // `request_firewall_exception` reaches the mDNS browser this starts
+    // (sendspin::discovery::mdns::Options::request_firewall_exception, whose
+    // own comment says why) - true, the default, for a real window that
+    // needs other machines' replies to actually arrive; a test driving
+    // on_found()/on_lost() synthetically has no use for them and passes
+    // false so it is never asked to relaunch elevated for a rule it could
+    // not finish adding anyway.
+    NetworkSinks(sendspin::noise::KeyPair identity, std::string name, PairingStore& store,
+                 bool request_firewall_exception = true);
     // Explicit, not defaulted: stops host_/browser_'s own background
     // threads before any other member they call back into (sinks_ and the
     // rest) is torn down - see the .cpp for why that order matters.

@@ -284,7 +284,13 @@ TEST_CASE("mdns: an advertiser and a browser find each other on the loopback int
     const std::string instance = "Hearth test " + std::to_string(random() % 1'000'000);
     Advertisement advertisement = kKitchen;
     advertisement.instance = instance;
-    const mdns::Options loopback{.interfaces = {"127.0.0.1"}, .host = "hearth-test"};
+    // request_firewall_exception=false: "127.0.0.1" is not one of
+    // platform::ipv4_interfaces()'s own entries (mdns.cpp's Sockets excludes loopback there
+    // deliberately), so this falls into its synthesized-interface fallback and would otherwise
+    // still be treated as a real, non-loopback link worth an inbound rule - despite binding to
+    // loopback, which Windows never gates in the first place (see websocket.cpp's own comment).
+    const mdns::Options loopback{
+        .interfaces = {"127.0.0.1"}, .host = "hearth-test", .request_firewall_exception = false};
 
     Found found;
     std::unique_ptr<ac3::sendspin::discovery::Advertiser> advertiser = mdns::advertise(advertisement, loopback);
