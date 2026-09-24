@@ -1464,6 +1464,114 @@ TEST_CASE("C encode entry points surface the encoder's own error codes", "[capi]
     ac3forge_atmos_encoder_destroy(atmos);
 }
 
+TEST_CASE("the C API refuses configs and payloads the codec core would assert on",
+          "[capi][eac3][atmos]") {
+    // Each of these used to reach an assert() in the codec core (undefined
+    // behaviour in a release build) instead of coming back as a status code,
+    // so a caller of any binding - the Rust crate's safe API included - could
+    // abort the process by filling in one field wrong.
+    std::vector<float> samples(AC3FORGE_SAMPLES_PER_FRAME);
+    fill_tone(samples.data(), 1000.0, 0, 48000.0);
+    const float* stereo[2] = {samples.data(), samples.data()};
+    ac3forge_bytes_t* out = nullptr;
+
+    // chbwcod's legal codes stop at 60 (§5.4.3.24; 61-63 fit its six bits
+    // but are reserved). Negative is "auto", as documented.
+    ac3forge_encoder_config_t ac3_config;
+    ac3forge_encoder_config_init(&ac3_config);
+    ac3forge_encoder_t* ac3_encoder = nullptr;
+    for (const int bad : {61, 63, 1000}) {
+        ac3_config.chbwcod = bad;
+        CHECK(ac3forge_encoder_create(&ac3_config, &ac3_encoder) ==
+              AC3FORGE_ERROR_INVALID_ARGUMENT);
+        CHECK(ac3_encoder == nullptr);
+    }
+    ac3_config.chbwcod = 60;
+    REQUIRE(ac3forge_encoder_create(&ac3_config, &ac3_encoder) == AC3FORGE_OK);
+    CHECK(ac3forge_encoder_encode_frame(ac3_encoder, stereo, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                        &out) == AC3FORGE_OK);
+    ac3forge_bytes_destroy(out);
+    out = nullptr;
+    ac3forge_encoder_destroy(ac3_encoder);
+
+    // E-AC-3 aux data rides block 0's skip field, whose length (skipl) is 9
+    // bits of bytes: 511 fit, 512 do not.
+    ac3forge_eac3_frame_config_t eac3_config;
+    ac3forge_eac3_frame_config_init(&eac3_config);
+    eac3_config.acmod = AC3FORGE_ACMOD_2_0;
+    eac3_config.bitrate_kbps = 640;
+    ac3forge_eac3_encoder_t* eac3_encoder = nullptr;
+    REQUIRE(ac3forge_eac3_encoder_create(&eac3_config, &eac3_encoder) == AC3FORGE_OK);
+    const std::vector<std::uint8_t> aux(512, 0x5A);
+    CHECK(ac3forge_eac3_encoder_encode_frame(eac3_encoder, stereo, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                              nullptr, aux.data(), aux.size(),
+                                              &out) == AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO);
+    CHECK(out == nullptr);
+    CHECK(ac3forge_eac3_encoder_encode_frame(eac3_encoder, stereo, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                              nullptr, aux.data(), 511, &out) == AC3FORGE_OK);
+    ac3forge_bytes_destroy(out);
+    out = nullptr;
+    ac3forge_eac3_encoder_destroy(eac3_encoder);
+
+    // The access-unit path hands its aux to one substream's frame writer.
+    ac3forge_eac3_access_unit_encoder_t* au_encoder = nullptr;
+    REQUIRE(ac3forge_eac3_access_unit_encoder_create(&eac3_config, nullptr, 0, &au_encoder) ==
+            AC3FORGE_OK);
+    ac3forge_eac3_access_unit_t* unit = nullptr;
+    CHECK(ac3forge_eac3_access_unit_encoder_encode(
+              au_encoder, stereo, 2, AC3FORGE_SAMPLES_PER_FRAME, aux.data(), aux.size(),
+              &unit) == AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO);
+    CHECK(unit == nullptr);
+    ac3forge_eac3_access_unit_encoder_destroy(au_encoder);
+
+    // num_bands_idx indexes Table 50's eight entries.
+    ac3forge_atmos_config_t atmos_config;
+    ac3forge_atmos_config_init(&atmos_config);
+    ac3forge_atmos_encoder_t* atmos = nullptr;
+    for (const int bad : {-1, 8, 100}) {
+        atmos_config.num_bands_idx = bad;
+        CHECK(ac3forge_atmos_encoder_create(&atmos_config, 1, &atmos) ==
+              AC3FORGE_ERROR_INVALID_ARGUMENT);
+        CHECK(atmos == nullptr);
+    }
+    ac3forge_atmos_config_init(&atmos_config);
+
+    // With the object container on, the programme needs at least one object
+    // to reconstruct and at most sixteen in all (TS 103 420 §8.3.2.2; the
+    // bed's LFE counts). A count the container cannot carry comes back as
+    // AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO - the code sixteen objects
+    // already got - where 0, 17..30 and 31+ each used to hit an assert.
+    const ac3forge_object_placement_t placement{.x = 0.5, .y = 0.5, .z = 0.0, .gain = 1.0,
+                                                .lfe_send = 0.0};
+    for (const int count : {0, 16, 17, 30, 31, 40}) {
+        CAPTURE(count);
+        atmos = nullptr;
+        REQUIRE(ac3forge_atmos_encoder_create(&atmos_config, count, &atmos) == AC3FORGE_OK);
+        const std::vector<const float*> objects(static_cast<std::size_t>(count), samples.data());
+        const std::vector<ac3forge_object_placement_t> placements(static_cast<std::size_t>(count),
+                                                                  placement);
+        CHECK(ac3forge_atmos_encoder_encode_frame(
+                  atmos, objects.data(), objects.size(), AC3FORGE_SAMPLES_PER_FRAME,
+                  placements.data(), placements.size(),
+                  &out) == AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO);
+        CHECK(out == nullptr);
+        ac3forge_atmos_encoder_destroy(atmos);
+
+        // With the container off there is nothing to carry the count, and the
+        // same objects simply mix into a plain 5.1 bed.
+        ac3forge_atmos_config_t bed_only = atmos_config;
+        bed_only.emit_object_metadata = 0;
+        atmos = nullptr;
+        REQUIRE(ac3forge_atmos_encoder_create(&bed_only, count, &atmos) == AC3FORGE_OK);
+        CHECK(ac3forge_atmos_encoder_encode_frame(atmos, objects.data(), objects.size(),
+                                                  AC3FORGE_SAMPLES_PER_FRAME, placements.data(),
+                                                  placements.size(), &out) == AC3FORGE_OK);
+        ac3forge_bytes_destroy(out);
+        out = nullptr;
+        ac3forge_atmos_encoder_destroy(atmos);
+    }
+}
+
 TEST_CASE("AC-3 dual mono metadata crosses the C boundary per channel", "[capi]") {
     // The AC-3 sibling of the E-AC-3 dual mono test above, for the decoded
     // frame's own Ch2 accessors.

@@ -248,7 +248,7 @@ typedef struct ac3forge_encoder_config {
     int has_dialnorm2; /* dual mono (acmod == AC3FORGE_ACMOD_DUAL_MONO) only */
     int dialnorm2;
 
-    int chbwcod; /* 0..60, or -1 for auto-from-bitrate */
+    int chbwcod; /* 0..60, or -1 for auto-from-bitrate; above 60 fails _create */
     ac3forge_acmod_t acmod;
     int lfe;
     int coupling;
@@ -534,7 +534,9 @@ AC3FORGEC_EXPORT int ac3forge_eac3_encoder_latency_samples(const ac3forge_eac3_e
  * - the access-unit path needs this so every substream of one programme
  * agrees; NULL measures internally, matching a standalone stream. `aux`/
  * `aux_size` carry a caller-built EMDF container (ac3::emdf::build_container)
- * in the frame's aux data, or NULL/0 for none. On success, *out_frame
+ * in the frame's aux data, or NULL/0 for none - at most 511 bytes (it rides
+ * block 0's skip field, whose skipl is 9 bits); a larger payload fails with
+ * AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO. On success, *out_frame
  * receives one complete syncframe; the caller must destroy it. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_encoder_encode_frame(
     ac3forge_eac3_encoder_t* encoder, const float* const* channels, size_t channel_count,
@@ -1112,7 +1114,7 @@ typedef struct ac3forge_atmos_config {
     ac3forge_sample_rate_t sample_rate;
     uint32_t bitrate_kbps; /* default 448 */
     int dialnorm;
-    int num_bands_idx; /* index into ac3::oba::joc::kNumBands (Table 50); default 4 */
+    int num_bands_idx; /* index into ac3::oba::joc::kNumBands (Table 50), 0..7; default 4 */
     int fine_quant;
     int emit_object_metadata; /* default 1 — see AtmosConfig's own comment on turning this off */
     int fast_mdct;
@@ -1138,6 +1140,9 @@ typedef struct ac3forge_object_placement {
  * than its centre. */
 AC3FORGEC_EXPORT void ac3forge_object_placement_init(ac3forge_object_placement_t* placement);
 
+/* Fails with AC3FORGE_ERROR_INVALID_ARGUMENT for a negative object_count or a
+ * config.num_bands_idx outside 0..7. An object_count the object container
+ * cannot carry is reported by encode_frame() below instead. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_atmos_encoder_create(
     const ac3forge_atmos_config_t* config, int object_count,
     ac3forge_atmos_encoder_t** out_encoder);
@@ -1168,7 +1173,10 @@ AC3FORGEC_EXPORT void ac3forge_atmos_encoder_bed_latency(const ac3forge_atmos_en
  * object in the same order. On success, *out_unit receives one complete
  * E-AC-3 access unit (a single independent substream carrying the 5.1 bed,
  * with the EMDF object container in its aux data when
- * config.emit_object_metadata was set); the caller must destroy it. */
+ * config.emit_object_metadata was set); the caller must destroy it. With
+ * emit_object_metadata set, an encoder created with 0 objects or with more
+ * than 15 (the bed's LFE makes the 16th, TS 103 420 §8.3.2.2's cap) fails
+ * here with AC3FORGE_ERROR_ENCODE_INVALID_OBJECT_AUDIO. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_atmos_encoder_encode_frame(
     ac3forge_atmos_encoder_t* encoder, const float* const* objects, size_t object_count,
     size_t samples_per_object, const ac3forge_object_placement_t* placements,

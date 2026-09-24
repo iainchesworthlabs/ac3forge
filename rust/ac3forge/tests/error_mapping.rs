@@ -5,6 +5,7 @@
 mod common;
 
 use ac3forge::ac3;
+use ac3forge::atmos::{AtmosConfig, AtmosEncoder, ObjectPlacement};
 use ac3forge::eac3;
 use ac3forge::stream;
 use ac3forge::types::{Acmod, DecoderConfig};
@@ -231,4 +232,91 @@ fn scan_status_codes_surface_as_other_with_their_raw_value() {
         stream::scan(&frame[..frame.len() - 10]).err().unwrap(),
         Error::Other(54)
     );
+}
+
+/// Out-of-range config fields and payloads the codec core only `assert()`s on must come back
+/// as an `Err` through this crate's safe API. Before the C layer and core validated them, each
+/// of these aborted the whole test process (SIGABRT) instead of failing.
+#[test]
+fn out_of_range_inputs_are_errors_not_aborts() {
+    // AC-3 chbwcod: legal codes stop at 60 (61-63 are reserved in its six bits).
+    for chbwcod in [61, 63] {
+        let config = ac3::EncoderConfig {
+            chbwcod: Some(chbwcod),
+            ..Default::default()
+        };
+        assert_eq!(
+            ac3::Encoder::new(&config).err().unwrap(),
+            Error::InvalidArgument,
+            "chbwcod {chbwcod}"
+        );
+    }
+    let config = ac3::EncoderConfig {
+        chbwcod: Some(60),
+        ..Default::default()
+    };
+    assert!(stereo_frame(&config).is_ok());
+
+    // E-AC-3 aux data rides block 0's skip field: 9 bits of byte count, so 511 bytes at most.
+    let mut encoder = eac3::Eac3Encoder::new(&eac3::Eac3FrameConfig {
+        acmod: Acmod::Stereo,
+        bitrate_kbps: 640,
+        ..Default::default()
+    })
+    .unwrap();
+    let left = tone(440.0, 48_000.0, 0.3, 0);
+    let right = tone(660.0, 48_000.0, 0.3, 0);
+    let aux = vec![0x5Au8; 512];
+    assert_eq!(
+        encoder
+            .encode_frame(&[&left, &right], None, Some(&aux))
+            .err()
+            .unwrap(),
+        Error::EncodeInvalidObjectAudio
+    );
+    assert!(encoder
+        .encode_frame(&[&left, &right], None, Some(&aux[..511]))
+        .is_ok());
+    let mut unit_encoder = eac3::AccessUnitEncoder::new(
+        &eac3::Eac3FrameConfig {
+            bitrate_kbps: 640,
+            ..Default::default()
+        },
+        &[],
+    )
+    .unwrap();
+    assert_eq!(
+        unit_encoder
+            .encode(&[&left, &right], Some(&aux))
+            .err()
+            .unwrap(),
+        Error::EncodeInvalidObjectAudio
+    );
+
+    // Atmos num_bands_idx indexes Table 50's eight entries; refused at construction.
+    for num_bands_idx in [-1, 8] {
+        let config = AtmosConfig {
+            num_bands_idx,
+            ..Default::default()
+        };
+        assert_eq!(
+            AtmosEncoder::new(&config, 1).err().unwrap(),
+            Error::InvalidArgument,
+            "num_bands_idx {num_bands_idx}"
+        );
+    }
+
+    // With the object container on: at least one object, at most 15 (the LFE is the 16th).
+    // 0, 17..30 and 31+ each used to hit a different assert in the payload writers.
+    let object = tone(500.0, 48_000.0, 0.3, 0);
+    for count in [0usize, 16, 17, 31, 40] {
+        let mut encoder = AtmosEncoder::new(&AtmosConfig::default(), count).unwrap();
+        let objects = vec![object.as_slice(); count];
+        let placements = vec![ObjectPlacement::default(); count];
+        assert_eq!(
+            encoder.encode_frame(&objects, &placements).err().unwrap(),
+            Error::EncodeInvalidObjectAudio,
+            "{count} objects"
+        );
+    }
 }

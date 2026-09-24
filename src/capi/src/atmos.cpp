@@ -2,6 +2,7 @@
 #include <span>
 #include <vector>
 
+#include "ac3/oba/joc_tables.hpp"
 #include "internal.hpp"
 
 using ac3forge_c::guard;
@@ -52,6 +53,14 @@ ac3forge_status_t ac3forge_atmos_encoder_create(const ac3forge_atmos_config_t* c
                                                  int object_count,
                                                  ac3forge_atmos_encoder_t** out_encoder) {
     if (config == nullptr || out_encoder == nullptr || object_count < 0) {
+        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+    }
+    // num_bands_idx indexes joc::kNumBands (Table 50) and kSubbandToBand
+    // directly, starting in ac3::oba::AtmosEncoder's own constructor - which
+    // cannot report a failure - so an index outside the table is refused
+    // before the encoder is built, not after it has already read past it.
+    if (config->num_bands_idx < 0 ||
+        config->num_bands_idx >= static_cast<int>(ac3::oba::joc::kNumBands.size())) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
     return guard([&config, &object_count, &out_encoder] {

@@ -82,6 +82,14 @@ ac3forge_status_t ac3forge_encoder_create(const ac3forge_encoder_config_t* confi
     if (config == nullptr || out_encoder == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
+    // chbwcod's legal codes stop at 60 (§5.4.3.24: 61-63 fit its six bits but
+    // are reserved); any negative value means "auto". ac3::FrameEncoder only
+    // asserts the range - it has no FrameError for it - so a code past 60
+    // must be refused here, where the config is first seen, or it aborts the
+    // caller's process at the first encode_frame().
+    if (config->chbwcod > 60) {
+        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+    }
     return guard([&config, &out_encoder] {
         *out_encoder = new ac3forge_encoder(encoder_config_to_cpp(*config));
         return AC3FORGE_OK;

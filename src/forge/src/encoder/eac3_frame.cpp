@@ -3051,6 +3051,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     if (const auto ok = validate(impl_->config_); !ok) {
         return std::unexpected(ok.error());
     }
+    // The aux payload rides block 0's skip field, whose skipl is 9 bits.
+    // finish_frame() refuses an oversized one too, but step 8's side-info
+    // probe below emits the skip field long before finish_frame runs - and
+    // BitWriter::put asserts on a length that does not fit its field - so
+    // the refusal has to happen here, before any bits are written.
+    if (aux.size() > kMaxSkipBytes) {
+        return std::unexpected(FrameError::kInvalidObjectAudio);
+    }
     const int nfchans = fullbw_channel_count(impl_->config_.acmod);
     const int nchans = channel_count();
     // §E2.3.1.4: how many of the kBlocksPerFrame-capacity arrays below are

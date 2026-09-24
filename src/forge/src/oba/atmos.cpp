@@ -612,6 +612,20 @@ std::expected<eac3::AccessUnit, FrameError> AtmosEncoder::encode_frame(
     assert(static_cast<int>(objects.size()) == impl_->objects_);
     assert(static_cast<int>(placement.size()) == impl_->objects_);
 
+    // The object count is fixed at construction, which cannot fail, so this
+    // is the first place a count the container cannot carry can be refused.
+    // TS 103 420 §8.3.2.2 caps the programme (the bed's LFE included) at 16
+    // objects, and JOC needs at least one to reconstruct. The addbsi check in
+    // the frame writer already catches too many - but only after step 5 has
+    // built the OAMD and JOC payloads, whose own writers assert on 0 JOC
+    // objects, on more than joc::kMaxObjects, and on more than OAMD's 5-bit
+    // count holds. With the container off none of them runs, so any count
+    // (0 included) is still a plain 5.1 bed.
+    if (impl_->config_.emit_object_metadata &&
+        (impl_->params_.objects < 1 || object_count(impl_->program_) > 16)) {
+        return std::unexpected(FrameError::kInvalidObjectAudio);
+    }
+
     const auto count = static_cast<std::size_t>(impl_->objects_);
 
     // --- 1. Where each object ends the frame ------------------------------
