@@ -751,8 +751,19 @@ jobs:
       # across runs unlike Program Files or the registry) every time - same
       # download-and-extract shape as the ARM64 ffmpeg step above, for the
       # identical reason (no installer on this leg's PATH to run one with).
-      # This bootstrap check only ever needs a python capable of running a
-      # few lines of pathlib - nothing here needs pip or the full install.
+      #
+      # pip IS needed, despite what this comment said until the first run
+      # that got far enough to find out: `setup-python: false` on the Install
+      # Qt step below turns off the action's own setup-python, so the python
+      # this step provides is also the one its "Setup and run aqtinstall"
+      # step uses - and that runs `python -m pip install setuptools py7zr`.
+      # The embeddable package deliberately ships without pip AND without
+      # ensurepip, so the real CI failure was
+      #   D:\work\_temp\python-embed\python.exe: No module named pip
+      # get-pip.py is the documented way to put one into an embeddable
+      # install. It is pinned to a pypa/get-pip commit rather than fetched
+      # from bootstrap.pypa.io, whose URL is a rolling redirect - the same
+      # trap the ARM64 ffmpeg download above was just pinned out of.
       - name: Setup Python (for install-qt-action)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
         shell: powershell
@@ -778,6 +789,19 @@ jobs:
               throw "no *._pth file found under $dest to enable the site module in"
           }
           (Get-Content $pth.FullName) -replace '^#import site$', 'import site' | Set-Content $pth.FullName
+          # With the site module back on, get-pip.py can install into this
+          # extracted copy's own Lib\site-packages, which site then puts on
+          # sys.path - so `python -m pip` works for aqtinstall afterwards.
+          $getPip = Join-Path $dest 'get-pip.py'
+          Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/pypa/get-pip/f6f644156f23dfe9acc06e7b9ca75eee311f2e37/public/get-pip.py' -OutFile $getPip
+          & $exe.FullName $getPip --no-warn-script-location
+          if ($LASTEXITCODE -ne 0) {
+              throw "bootstrapping pip into the embeddable python failed ($LASTEXITCODE)"
+          }
+          & $exe.FullName -m pip --version
+          if ($LASTEXITCODE -ne 0) {
+              throw "pip is still not importable after get-pip.py ran"
+          }
           Write-Host "Found python.exe at $($exe.FullName)"
           $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
