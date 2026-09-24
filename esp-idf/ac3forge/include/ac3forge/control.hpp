@@ -173,6 +173,12 @@ struct ControlHandlers {
     // sink_open() and sink_slots() (main/audio_sink.hpp). Left empty reports
     // nothing, the same rule every optional handler here follows.
     std::function<int()> sink_max_slots;
+    // The slot width sink_max_slots's figure was reached at (16 or 32) -
+    // player::sink_max_slots_bit_width() beside it. Left empty (the default)
+    // reports the slot count alone, with no width qualifier - the right
+    // default for a sink whose ceiling is not a function of slot width at
+    // all (a capture/null sink has no TDM frame to divide).
+    std::function<int()> sink_max_slots_bits;
     // "playing", "stopped", "finished", "failed" - the owner knows.
     std::function<const char*()> state;
 

@@ -429,6 +429,16 @@ int sink_max_slots() {
         ac3forge::sink_ceiling(32, /*second_line=*/false, I2S_LL_SLOT_FRAME_BIT_MAX)));
 }
 
+// sink_ceiling()'s own arithmetic (sink_plan.hpp: slots = frame_bit_max /
+// slot_bits) means the max above always comes from the narrower width - see
+// sink/i2s's own copy of this comment. Not the whole story on this exact
+// part below chip revision v3.0 though: see ac3forge::HardwareFacts's
+// revision_hard_limit_below (control.cpp) for why the wide line cannot
+// reach ANY TDM channel count above 2 there regardless of what this number
+// says, a fact this sink has no way to know from here (it has no chip
+// revision to read).
+int sink_max_slots_bit_width() { return 16; }
+
 // Never a second line on this sink - see the top-of-file comment on why
 // I2S_LL_INST_NUM alone (3 on the ESP32-P4) is not a safe proxy here, unlike
 // sink/i2s's kSecondController.

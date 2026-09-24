@@ -58,6 +58,17 @@ struct HardwareFacts {
     // (an owner with no sink at all), which is left out of the report rather
     // than shown as a limit of zero.
     int sink_max_slots = 0;
+    // The slot width `sink_max_slots` is true at - 16 or 32, from the owner's
+    // own player::sink_max_slots_bit_width() (ControlHandlers::sink_max_slots_bits).
+    // 0 when the owner has nothing to say (no sink, or a sink whose ceiling
+    // is not a function of slot width at all, e.g. a capture/null sink),
+    // which reports the plain slot count with no width qualifier rather than
+    // guessing one. This header does not assume a sink's ceiling halves at
+    // 32-bit the way sink_plan.hpp's own line_ceiling() does for the two
+    // sinks that use it - that is a fact about their arithmetic, not
+    // something owed to every future sink, so the owner states its own
+    // width rather than this header inferring one.
+    int sink_max_slots_bits = 0;
     // The chip revision (esp_chip_info_t's own MXX encoding, major * 100 +
     // minor) at or above which a build that assumed newer silicon than this
     // one does could have behaved differently - 0 when there is no such
@@ -76,6 +87,18 @@ struct HardwareFacts {
     // default hidden inside it. Read together only when both are set.
     int revision_notice_at = 0;
     std::string revision_floor_cost;
+    // The opposite direction from `revision_notice_at`: the chip revision
+    // (same MXX encoding) BELOW which the caller's own hardware cannot do
+    // something at all, not merely slower - 0 when there is no such floor to
+    // speak of. Unlike revision_notice_at, this one needs no accompanying
+    // build-flag reasoning: a chip below this floor can only ever be running
+    // a build lenient enough to accept it in the first place (a stricter
+    // build's own bootloader refuses it before this code ever runs), so the
+    // comparison is unconditional on the detected revision alone. Paired
+    // with `revision_hard_limit_cost` the same way revision_notice_at pairs
+    // with revision_floor_cost - read together only when both are set.
+    int revision_hard_limit_below = 0;
+    std::string revision_hard_limit_cost;
 };
 
 struct HardwareReport {
@@ -154,9 +177,12 @@ namespace detail {
     }
 
     if (facts.sink_max_slots > 0) {
-        report.capabilities.push_back("This sink's bus reaches up to " +
-                                      std::to_string(facts.sink_max_slots) +
-                                      (facts.sink_max_slots == 1 ? " slot" : " slots"));
+        report.capabilities.push_back(
+            "This sink's bus reaches up to " + std::to_string(facts.sink_max_slots) +
+            (facts.sink_max_slots == 1 ? " slot" : " slots") +
+            (facts.sink_max_slots_bits > 0
+                 ? " at " + std::to_string(facts.sink_max_slots_bits) + "-bit"
+                 : ""));
     }
 
     if (facts.revision_notice_at != 0 && !facts.revision_floor_cost.empty()) {
@@ -167,6 +193,18 @@ namespace detail {
                 detail::describe_revision(facts.revision_major, facts.revision_minor) + ", v" +
                 detail::describe_revision(facts.revision_notice_at / 100, facts.revision_notice_at % 100) +
                 " or newer. " + facts.revision_floor_cost);
+        }
+    }
+
+    if (facts.revision_hard_limit_below != 0 && !facts.revision_hard_limit_cost.empty()) {
+        const int detected = facts.revision_major * 100 + facts.revision_minor;
+        if (detected < facts.revision_hard_limit_below) {
+            report.notices.push_back(
+                "The detected chip is v" +
+                detail::describe_revision(facts.revision_major, facts.revision_minor) + ", below v" +
+                detail::describe_revision(facts.revision_hard_limit_below / 100,
+                                          facts.revision_hard_limit_below % 100) +
+                ". " + facts.revision_hard_limit_cost);
         }
     }
 

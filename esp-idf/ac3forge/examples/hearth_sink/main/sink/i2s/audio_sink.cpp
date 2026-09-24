@@ -506,6 +506,14 @@ int sink_max_slots() {
         ac3forge::sink_ceiling(32, kSecondController, I2S_LL_SLOT_FRAME_BIT_MAX)));
 }
 
+// sink_ceiling()'s own arithmetic (sink_plan.hpp: slots = frame_bit_max /
+// slot_bits) means the max above always comes from the narrower width -
+// halving slot_bits doubles the slot count for the same fixed frame, so
+// 16-bit can never lose this comparison. Not a coincidence worth
+// re-deriving at every call site: sink_max_slots()'s own figure is always
+// the 16-bit one.
+int sink_max_slots_bit_width() { return 16; }
+
 bool sink_second_line_possible() { return kSecondController; }
 
 int sink_slot_bits() { return g_slot_bits; }

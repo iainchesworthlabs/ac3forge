@@ -274,20 +274,20 @@ the page loads rather than polled every second, since nothing in it changes whil
 | `cpu_freq_mhz` | The CPU clock this build actually runs at - not a peripheral's own clock, and not a ceiling the silicon could reach under a different build | `CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ` |
 | `psram_bytes` | PSRAM actually brought up, in bytes; 0 when none is fitted or this build never turned it on | `esp_psram_get_size()` |
 | `sink_max_slots` | This sink's own ceiling at any setting it takes, not just the one in force; left out when the owner has nothing to say | A new `ControlHandlers::sink_max_slots`; the example answers with `player::sink_max_slots()` |
-| `capabilities` | Plain sentences: cores and arithmetic, clock speed, PSRAM size, the sink's ceiling | `ac3forge::describe_hardware` (`ac3forge/hardware_info.hpp`) |
-| `notices` | Plain sentences: no FPU, no PSRAM, a firmware running on a different chip than it was built for, or (the ESP32-P4 only) a build accommodating pre-production silicon whose detected chip actually clears v3.0 | The same |
+| `sink_max_slots_bits` | The slot width `sink_max_slots`'s figure is true at (16 or 32); left out when the owner has no such width to give (a capture/null sink's ceiling is not a function of slot width) | `ControlHandlers::sink_max_slots_bits`; the example answers with `player::sink_max_slots_bit_width()` |
+| `capabilities` | Plain sentences: cores and arithmetic, clock speed, PSRAM size, the sink's ceiling (with its slot width, when known) | `ac3forge::describe_hardware` (`ac3forge/hardware_info.hpp`) |
+| `notices` | Plain sentences: no FPU, no PSRAM, a firmware running on a different chip than it was built for, (the ESP32-P4 only) a build accommodating pre-production silicon whose detected chip actually clears v3.0, or (the ESP32-P4 only, opposite direction) a detected chip itself below v3.0, which cannot open TDM at any channel count above 2 regardless of build | The same |
 
 For a P4 dev board built with `CONFIG_ESP32P4_SELECTS_REV_LESS_V3` (so the bootloader admits
 anything from v1.0 up), running genuinely v3.0+ silicon - the notice checks against v3.0
 specifically (where both `hal/i2s_ll.h`'s own clock-source choice and `esp32p4/Kconfig.cpu`'s own
-CPU-frequency choice change), not against this build's own lowered floor, since a v1.3 board under
-the same build has nothing to be noticed about:
+CPU-frequency choice change), not against this build's own lowered floor:
 
 ```json
 {"target":"esp32p4","chip":"ESP32-P4","revision":"3.0","cores":2,"fpu":true,"cpu_freq_mhz":360,
- "psram_bytes":33554432,"sink_max_slots":16,
+ "psram_bytes":33554432,"sink_max_slots":16,"sink_max_slots_bits":32,
  "capabilities":["2 cores, a hardware floating-point unit","Running at 360 MHz",
- "32 MiB of PSRAM","This sink's bus reaches up to 16 slots"],
+ "32 MiB of PSRAM","This sink's bus reaches up to 16 slots at 32-bit"],
  "notices":["The detected chip is v3.0, v3.0 or newer. This build was compiled to also accept
  older, pre-production silicon: it runs the CPU at 360 MHz rather than 400 (esp32p4/Kconfig.cpu),
  and falls back to the 40 MHz crystal for I2S rather than the 160 MHz PLL v3.0+ silicon supports
@@ -295,16 +295,44 @@ the same build has nothing to be noticed about:
  both."]}
 ```
 
+A v1.3 board under the same build has nothing to say about the notice above - but is not silent
+either, since it has the opposite problem: the chip itself, not the build, is what stops it short.
+`revision_hard_limit_below`/`revision_hard_limit_cost` (`hardware_info.hpp`) fire in the other
+direction, unconditionally on the detected revision (no build-flag reasoning needed - a chip this
+old can only be running a build lenient enough to accept it):
+
+```json
+{"target":"esp32p4","chip":"ESP32-P4","revision":"1.3","cores":2,"fpu":true,"cpu_freq_mhz":360,
+ "psram_bytes":33554432,"sink_max_slots":32,"sink_max_slots_bits":16,
+ "capabilities":["2 cores, a hardware floating-point unit","Running at 360 MHz",
+ "32 MiB of PSRAM","This sink's bus reaches up to 32 slots at 16-bit"],
+ "notices":["The detected chip is v1.3, below v3.0. This chip has no PLL clock source for I2S
+ (hal/i2s_ll.h), and the APLL fallback's own 125 MHz ceiling falls short of what a full-width TDM
+ frame needs: TDM output cannot open at any channel count above 2 on this board, regardless of
+ layout - only standard 1-2 channel I2S is reachable."]}
+```
+
+Note `sink_max_slots` (32) on this exact board: true of the sink's wiring at 16-bit slots, and
+still the right thing to report there (a build-time frame-width fact, unconditional on chip
+revision) - the notice above is what tells a reader that on THIS chip, nothing past 2 slots can
+actually open regardless of what the ceiling says. The two facts do not contradict each other; a
+board's own real ceiling is the lower of what its wiring allows and what its silicon allows, and
+this report gives both rather than silently picking the smaller one.
+
 The page's own **Hardware** section reads `chip`, `revision`, `cores`, `cpu_freq_mhz`, `fpu` and
 `psram_bytes` as its own rows (`hw-chip`, `hw-cores`, `hw-clock`, `hw-arithmetic`, `hw-psram`) and
-`sink_max_slots` as `hw-sink`; `notices` is shown as a plain list under them, verbatim, and
-`capabilities` is not re-rendered on the page at all - it says the same thing the rows above it
-already do, in words a `curl` of the route can read without a browser. `target` is not its own row
-either: a mismatch with `chip` is exactly what a `notices` entry already says, and showing both a
-build target and a chip name that almost always agree would read as two facts where there is one.
+`sink_max_slots`/`sink_max_slots_bits` together as `hw-sink`; `notices` is shown as a plain list
+under them, verbatim, and `capabilities` is not re-rendered on the page at all - it says the same
+thing the rows above it already do, in words a `curl` of the route can read without a browser.
+`target` is not its own row either: a mismatch with `chip` is exactly what a `notices` entry
+already says, and showing both a build target and a chip name that almost always agree would read
+as two facts where there is one.
 
-**What it costs**, measured on the two files together: 25,594 to 28,103 bytes, 2,509 more - within
-decision 18's 28,672-byte budget with 569 to spare, so nothing there was raised for this.
+**What it costs**: measured at 25,594 to 28,103 bytes (2,509 more) when this route first shipped,
+within decision 18's 28,672-byte budget with 569 to spare - `sink_max_slots_bits` and the second
+notice pair add a small, unmeasured amount on top (a handful of struct fields, one more JSON
+number, one more notice sentence); re-measure against decision 18's budget before relying on the
+old figure as still current.
 
 ## How the page updates
 
@@ -756,3 +784,33 @@ run as root, so Playwright can install Chromium's system libraries).
     triaging. Cost of (a): `ac3forge::describe_hardware` (`ac3forge/hardware_info.hpp`) decides
     which list a fact goes in, so a future fact's placement is a judgement call made once, in one
     place, rather than left to whoever reads the JSON. **Taken, (a).**
+
+21. **A sink ceiling that is real hardware wiring, but wrong for one specific chip revision.**
+    Found live against a real P4 board (revision 1.3): `sink_max_slots` reports 32 (the wide
+    sink's 512-bit frame at 16-bit slots), which is true of the LINE's wiring but not of what this
+    exact chip can actually reach - it has no PLL clock source for I2S below v3.0, and the APLL
+    fallback's own ceiling falls short of a full-width TDM frame either way, so TDM cannot open at
+    any channel count above 2 on this board at all (esp32p4-hearth-sink-tdm-clock-ceiling, proven
+    on real hardware). Two questions, not one: (a) **should `sink_max_slots` itself be revision-
+    aware, reporting the lower, chip-specific number**; (b) **should it stay a pure wiring fact,
+    with a separate notice explaining the gap when the chip cannot reach it**; (c) leave it as-is,
+    undocumented. **Recommend (b).** `sink_max_slots()` lives in `main/sink/*/audio_sink.cpp`,
+    free of any chip-revision awareness by design (the same discipline `hardware_info.hpp`'s own
+    header comment holds for itself), and has a second caller (`sendspin.cpp`) that wants the
+    line's true wiring ceiling regardless of what a specific chip's clock source can reach today -
+    threading revision logic into it for (a) would change what that caller receives too, for a
+    reason that has nothing to do with buffer sizing. (c) leaves the exact misleading number this
+    decision exists to fix. Cost of (b): `HardwareFacts` gains `revision_hard_limit_below`/
+    `revision_hard_limit_cost` (the mirror of decision 19's own `revision_notice_at` pair, firing
+    the opposite direction - `<` the threshold, not `>=`, and unconditional on any build flag,
+    since a chip below the threshold can only be running a build lenient enough to accept it in
+    the first place). **Taken, (b).**
+
+    A second, smaller gap surfaced alongside it: `sink_max_slots` collapses two widths
+    (`max(ceiling@16-bit, ceiling@32-bit)`) into one number with no way to tell which applies -
+    32 only holds at 16-bit; the same board reports 16 at 32-bit. Fixed by pairing it with
+    `sink_max_slots_bits`, the width the reported figure was reached at (`player::
+    sink_max_slots_bit_width()`, 0 for a sink like capture/null whose ceiling is not a function
+    of slot width at all - `hardware_info.hpp` does not assume the halves-at-32-bit relationship
+    itself, since that is a fact about `sink_plan.hpp`'s own arithmetic, not something owed to
+    every future sink).

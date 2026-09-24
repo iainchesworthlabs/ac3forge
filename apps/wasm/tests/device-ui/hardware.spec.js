@@ -21,11 +21,12 @@ test('a board with everything to report: chip, revision, cores, clock, arithmeti
         cpu_freq_mhz: 360,
         psram_bytes: 32 * 1024 * 1024,
         sink_max_slots: 16,
+        sink_max_slots_bits: 32,
         capabilities: [
             '2 cores, a hardware floating-point unit',
             'Running at 360 MHz',
             '32 MiB of PSRAM',
-            "This sink's bus reaches up to 16 slots",
+            "This sink's bus reaches up to 16 slots at 32-bit",
         ],
         notices: [
             'The detected chip is v3.0, v3.0 or newer. This build was compiled to also accept ' +
@@ -42,7 +43,7 @@ test('a board with everything to report: chip, revision, cores, clock, arithmeti
     await expect(page.locator('#hw-clock')).toHaveText('360 MHz');
     await expect(page.locator('#hw-arithmetic')).toHaveText('Hardware floating point');
     await expect(page.locator('#hw-psram')).toHaveText('32 MiB');
-    await expect(page.locator('#hw-sink')).toHaveText('16 slots');
+    await expect(page.locator('#hw-sink')).toHaveText('16 slots at 32-bit');
     await expect(page.locator('#hw-notices')).toBeVisible();
     await expect(page.locator('#hw-notices li')).toHaveText([
         'The detected chip is v3.0, v3.0 or newer. This build was compiled to also accept ' +
@@ -94,6 +95,57 @@ test('a firmware built for one target running on another shows the mismatch as a
     await page.goto(stub.url);
     await expect(page.locator('#hw-notices li')).toHaveText([
         'This firmware was built for esp32c6, but the chip it is running on identifies itself as ESP32-S3.',
+    ]);
+});
+
+test('a sink ceiling with no slot width to give shows the plain count', async ({ page, stub }) => {
+    stub.device.hardware = {
+        target: 'esp32s3',
+        chip: 'ESP32-S3',
+        revision: '0.2',
+        cores: 2,
+        fpu: true,
+        psram_bytes: 0,
+        sink_max_slots: 6,
+        capabilities: ['2 cores, a hardware floating-point unit', "This sink's bus reaches up to 6 slots"],
+        notices: [],
+    };
+    await page.goto(stub.url);
+    await expect(page.locator('#hw-sink')).toHaveText('6 slots');
+});
+
+test('a pre-production P4 below v3.0 shows both the clock notice and the TDM hard limit', async ({ page, stub }) => {
+    stub.device.hardware = {
+        target: 'esp32p4',
+        chip: 'ESP32-P4',
+        revision: '1.3',
+        cores: 2,
+        fpu: true,
+        cpu_freq_mhz: 360,
+        psram_bytes: 32 * 1024 * 1024,
+        sink_max_slots: 32,
+        sink_max_slots_bits: 16,
+        capabilities: [
+            '2 cores, a hardware floating-point unit',
+            'Running at 360 MHz',
+            '32 MiB of PSRAM',
+            "This sink's bus reaches up to 32 slots at 16-bit",
+        ],
+        notices: [
+            'The detected chip is v1.3, below v3.0. This chip has no PLL clock source for I2S ' +
+                "(hal/i2s_ll.h), and the APLL fallback's own 125 MHz ceiling falls short of what a " +
+                'full-width TDM frame needs: TDM output cannot open at any channel count above 2 on ' +
+                'this board, regardless of layout - only standard 1-2 channel I2S is reachable.',
+        ],
+    };
+    await page.goto(stub.url);
+    await expect(page.locator('#hw-chip')).toHaveText('ESP32-P4, revision 1.3');
+    await expect(page.locator('#hw-sink')).toHaveText('32 slots at 16-bit');
+    await expect(page.locator('#hw-notices li')).toHaveText([
+        'The detected chip is v1.3, below v3.0. This chip has no PLL clock source for I2S ' +
+            "(hal/i2s_ll.h), and the APLL fallback's own 125 MHz ceiling falls short of what a " +
+            'full-width TDM frame needs: TDM output cannot open at any channel count above 2 on ' +
+            'this board, regardless of layout - only standard 1-2 channel I2S is reachable.',
     ]);
 });
 

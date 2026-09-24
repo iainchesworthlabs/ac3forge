@@ -128,6 +128,13 @@ namespace player {
 // sizes its buffers for once, so that a later setting never outgrows them.
 [[nodiscard]] int sink_max_slots();
 
+// The slot width sink_max_slots()'s own figure is reached at - 16 or 32 - for
+// GET /hardware to report the two together rather than a bare count a reader
+// cannot place (ac3forge::HardwareFacts::sink_max_slots_bits). 0 for a sink
+// whose ceiling is not a function of slot width at all (capture, null): the
+// report then falls back to the plain count, no qualifier guessed.
+[[nodiscard]] int sink_max_slots_bit_width();
+
 // Whether this sink can have a second line at all: only the I2S sink, and only
 // on a part with a second I2S controller. On an ESP32-C6, which has one, a
 // stored setting saying a second line is wired is not acted on, and the
