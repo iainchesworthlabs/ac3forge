@@ -484,6 +484,11 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                 impl_->submitted.store(0, std::memory_order_relaxed);
                 impl_->flushes.fetch_add(1, std::memory_order_release);
                 if (device_paused) {
+                    // Dropped, so whatever kind of pause was in force the
+                    // stream is now PREPARED and a resume starts it by
+                    // writing - not with snd_pcm_pause(0), which a PREPARED
+                    // stream refuses. As PassthroughSink's ALSA backend does.
+                    dropped_to_pause = true;
                     continue;
                 }
             }
