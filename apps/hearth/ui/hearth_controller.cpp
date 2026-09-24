@@ -58,6 +58,7 @@
 #include "pcm_sink.hpp"
 #include "probe_json.hpp"
 #include "qsettings_store.hpp"
+#include "test_outputs.hpp"
 #include "queue.hpp"
 #include "settings_model.hpp"
 #include "transport.hpp"
@@ -869,12 +870,12 @@ void HearthController::start() {
     // this point, let alone made the group a person later pins
     // (network_output_status.hpp's own header comment).
     ac3::hearth::EngineOutputs outputs{
-        .pcm = ac3::hearth::make_device_sink(std::string()),
+        .pcm = test_outputs_ ? test_outputs_->make_pcm() : ac3::hearth::make_device_sink(std::string()),
         .bitstream = {},
         .group = ac3::hearth::make_group_sink([](const std::string& group_id) {
             return ac3::hearth::ui::NetworkOutputStatus::instance().group(group_id);
         }),
-        .endpoints = ac3::hearth::device_endpoints()};
+        .endpoints = test_outputs_ ? test_outputs_->endpoints : ac3::hearth::device_endpoints()};
     const ac3::hearth::EngineSettings loaded = current_settings(*store_);
     engine_ = std::make_unique<ac3::hearth::Engine>(
         std::move(outputs), ac3::hearth::ui::make_file_item_loader(), layout,
@@ -1453,7 +1454,7 @@ void HearthController::useDeviceOrder() {
 
 void HearthController::refreshOutputDevices() {
     QVariantList rows;
-    const auto devices = ac3::audio::enumerate_render_devices();
+    const auto devices = test_outputs_ ? test_outputs_->enumerate() : ac3::audio::enumerate_render_devices();
     if (devices.has_value()) {
         rows.reserve(static_cast<qsizetype>(devices->size()));
         for (const auto& device : *devices) {

@@ -21,6 +21,10 @@ class SettingsStore;
 class PairingStore;
 }
 
+namespace ac3::hearth::ui {
+struct TestOutputs;  // test_outputs.hpp
+}
+
 // The one object QML talks to for the queue and the transport
 // (planning/hearth-reference-player.md, A5: "a controller polling the
 // engine's snapshot"). Everything it shows comes from Engine::status(),
@@ -512,6 +516,16 @@ public:
     Q_INVOKABLE QString suggestedDiagnosticsFile() const;
     Q_INVOKABLE bool exportDiagnostics(const QString& fileUrl);
 
+    // For the Qt Quick suites alone (ui/tests/qml_test_main.cpp): the PCM
+    // sink, endpoint list and device enumeration start() and
+    // refreshOutputDevices() use instead of this machine's own
+    // (test_outputs.hpp says why). Deliberately neither Q_INVOKABLE nor a
+    // property, the same as CrucibleController::set_test_services(): nothing
+    // in QML and nothing in the shipped window can reach it. Only read by
+    // start() - set it before the first start(), which a suite does from its
+    // own initTestCase() - and by every refreshOutputDevices() after.
+    void set_test_outputs(std::shared_ptr<TestOutputs> outputs) { test_outputs_ = std::move(outputs); }
+
 signals:
     void queueChanged();
     void stateChanged();
@@ -540,6 +554,8 @@ private:
 
     std::unique_ptr<ac3::hearth::Engine> engine_;
     QTimer poll_timer_;
+    // Set only by set_test_outputs(); null in the shipped window.
+    std::shared_ptr<TestOutputs> test_outputs_;
 
     // The process-wide note ring the engine and this controller share -
     // given to the engine in start() so a diagnostics export carries what it

@@ -193,6 +193,15 @@ public:
     Q_INVOKABLE void setMemberVolume(const QString& groupId, const QString& sinkId, int volume);
     Q_INVOKABLE void setMemberMuted(const QString& groupId, const QString& sinkId, bool muted);
 
+    // For the Qt Quick suites alone (ui/tests/qml_test_main.cpp), the same
+    // kind of seam as HearthController::set_test_outputs(): the running
+    // NetworkSinks, or null before start(), so a suite can hand it an
+    // in-process test sink (apps/hearth/testsink) as a found service -
+    // NetworkSinks::on_found() is public for exactly this use (its own
+    // comment) - rather than depend on mDNS multicast, which a CI container
+    // does not carry. Not Q_INVOKABLE: nothing in QML can reach it.
+    [[nodiscard]] ac3::hearth::NetworkSinks* sinks_for_test() const { return sinks_engine_.get(); }
+
 signals:
     void sinksChanged();
 
