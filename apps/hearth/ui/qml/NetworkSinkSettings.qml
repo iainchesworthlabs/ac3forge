@@ -36,9 +36,18 @@ RowLayout {
         Layout.preferredWidth: 2
         spacing: Theme.gap
 
+        // Flat: the mockup boxes the tables further down the page, never this
+        // heading, the tab pair or the note beside it. The ordinal is its own
+        // accent-ink run rather than part of the title, which also keeps the
+        // bare "02" out of a translated string - the sink's name is still
+        // uppercased, by the header's own font, not by the string.
         Card {
-            title: qsTr("02 %1 · SETTINGS").arg(root.sink.name ?? "")
+            flat: true
+            ordinal: "02"
+            title: qsTr("%1 · settings").arg(root.sink.name ?? "")
 
+            // The note sits BESIDE the tabs, not under them, and takes the
+            // rest of the row.
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
@@ -52,18 +61,18 @@ RowLayout {
                     ]
                     onSelected: function(value) { root.activeTab = value; }
                 }
-                Item { Layout.fillWidth: true }
-            }
-            Text {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                text: root.activeTab === "speakers"
-                      ? qsTr("Changes reach the sink and take effect at its next burst.")
-                      : qsTr("The decoder settings this sink accepts, as it lists them. Changes take "
-                            + "effect at its next burst.")
-                color: Theme.textMuted
-                font.pixelSize: Theme.fontSmall
-                wrapMode: Text.WordWrap
+                Text {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    Layout.alignment: Qt.AlignVCenter
+                    text: root.activeTab === "speakers"
+                          ? qsTr("Changes reach the sink and take effect at its next burst.")
+                          : qsTr("The decoder settings this sink accepts, as it lists them. Changes take "
+                                + "effect at its next burst.")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
+                }
             }
         }
 

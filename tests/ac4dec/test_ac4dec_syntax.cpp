@@ -137,7 +137,7 @@ Golden read_golden(const fs::path& path) {
         }
         if (line.front() == '#') {
             const std::string tag = "# ac4-syntax-digest/1 ";
-            if (line.rfind(tag, 0) == 0) {
+            if (line.starts_with(tag)) {
                 golden.stream = line.substr(tag.size());
             }
             continue;

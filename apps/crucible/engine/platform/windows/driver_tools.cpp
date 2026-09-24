@@ -7,10 +7,13 @@
 #include <shellapi.h>
 #include <winternl.h>
 
+#include <algorithm>
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -131,6 +134,33 @@ std::optional<int> ElevatedProcess::poll() {
     return static_cast<int>(code);
 }
 
+// The header block Start-Transcript writes before the command's own output:
+// every line of it is boilerplate, and none of it belongs in a status line.
+// A table rather than a twenty-term boolean chain because the chain is what
+// this was, and at six wrapped lines it had stopped being readable as the
+// list of prefixes it actually is - adding one meant re-wrapping the lot.
+constexpr std::array<std::string_view, 19> kTranscriptPreamble{
+    "****",
+    "Windows PowerShell transcript",
+    "Start time:",
+    "End time:",
+    "Username:",
+    "RunAs User:",
+    "Configuration Name:",
+    "Machine:",
+    "Host Application:",
+    "Process ID:",
+    "PSVersion:",
+    "PSEdition:",
+    "PSCompatibleVersions:",
+    "BuildVersion:",
+    "CLRVersion:",
+    "WSManStackVersion:",
+    "PSRemotingProtocolVersion:",
+    "SerializationVersion:",
+    "Transcript started",
+};
+
 std::vector<std::string> transcript_tail(std::wstring_view path, std::size_t max_lines) {
     std::ifstream in(std::wstring(path), std::ios::binary);
     std::vector<std::string> kept;
@@ -148,19 +178,15 @@ std::vector<std::string> transcript_tail(std::wstring_view path, std::size_t max
                 clean.push_back(c);
             }
         }
-        if (clean.size() >= 3 && clean.compare(0, 3, "\xEF\xBB\xBF") == 0) {
+        if (clean.starts_with("\xEF\xBB\xBF")) {
             clean.erase(0, 3);
         }
-        if (clean.size() >= 2 && (clean.compare(0, 2, "\xFF\xFE") == 0)) {
+        if (clean.starts_with("\xFF\xFE")) {
             clean.erase(0, 2);
         }
-        if (clean.empty() || clean.find("****") == 0 || clean.find("Windows PowerShell transcript") == 0 ||
-            clean.find("Start time:") == 0 || clean.find("End time:") == 0 || clean.find("Username:") == 0 ||
-            clean.find("RunAs User:") == 0 || clean.find("Configuration Name:") == 0 || clean.find("Machine:") == 0 ||
-            clean.find("Host Application:") == 0 || clean.find("Process ID:") == 0 || clean.find("PSVersion:") == 0 ||
-            clean.find("PSEdition:") == 0 || clean.find("PSCompatibleVersions:") == 0 || clean.find("BuildVersion:") == 0 ||
-            clean.find("CLRVersion:") == 0 || clean.find("WSManStackVersion:") == 0 || clean.find("PSRemotingProtocolVersion:") == 0 ||
-            clean.find("SerializationVersion:") == 0 || clean.find("Transcript started") == 0) {
+        if (clean.empty() || std::ranges::any_of(kTranscriptPreamble, [&clean](std::string_view p) {
+                return clean.starts_with(p);
+            })) {
             continue;
         }
         kept.push_back(clean);

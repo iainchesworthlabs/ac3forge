@@ -392,7 +392,7 @@ std::vector<AppSession> WindowsSessionMonitor::refresh(const std::vector<std::ui
                 app.endpoint_name = endpoint_name;
             }
             app.active = app.active || state == AudioSessionStateActive;
-            if (std::ranges::find(app.session_pids, pid) == app.session_pids.end()) {
+            if (!std::ranges::contains(app.session_pids, pid)) {
                 app.session_pids.push_back(pid);
             }
         }

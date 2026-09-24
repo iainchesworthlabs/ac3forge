@@ -19,11 +19,7 @@
 #include <thread>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/render/layout.hpp"
@@ -65,13 +61,7 @@ using ac3::hearth::OutputPreferences;
 using ac3::hearth::QueueItem;
 using ac3::hearth::TransportState;
 
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
    public:

@@ -25,9 +25,13 @@ ColumnLayout {
         { label: qsTr("Problems"), value: root.report.problemsText ?? "" }
     ]
 
+    // Flat, ordinal its own run - see NetworkSinkOnlyOnSink.qml's own comment
+    // on this same column.
     Card {
         Layout.fillWidth: true
-        title: qsTr("03 WHAT THE SINK REPORTS")
+        flat: true
+        ordinal: "03"
+        title: qsTr("What the sink reports")
 
         GridLayout {
             Layout.fillWidth: true

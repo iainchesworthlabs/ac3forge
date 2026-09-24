@@ -16,11 +16,7 @@
 #include <thread>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/io/wav.hpp"
 #include "ac3/sendspin/base64url.hpp"
@@ -59,13 +55,7 @@ using namespace std::chrono_literals;
 // See tests/cli/test_cli.cpp's own scratch_dir comment for why the TEST_CASE
 // below folds this into its scratch leaf, on top of
 // AC3FORGE_TEST_SCRATCH_DIR's build-tree rooting.
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 class QuietLog final : public testsink::SinkLog {
    public:

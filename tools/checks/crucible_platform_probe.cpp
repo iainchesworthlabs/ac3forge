@@ -162,7 +162,7 @@ int main(int argc, char** argv) {
                     const auto now_apps = sessions->refresh();
                     const auto match = std::ranges::find_if(now_apps, [&pid](const auto& app) {
                         return app.app == *pid ||
-                               std::ranges::find(app.session_pids, *pid) != app.session_pids.end();
+                               std::ranges::contains(app.session_pids, *pid);
                     });
                     if (match == now_apps.end()) {
                         std::printf("  t=%.1fs  full-screen pid %u -> no session\n", t, *pid);

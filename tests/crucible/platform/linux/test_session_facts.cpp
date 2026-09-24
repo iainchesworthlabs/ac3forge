@@ -9,11 +9,7 @@
 #include <system_error>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "proc_facts.hpp"
 #include "session_monitor.hpp"
@@ -74,13 +70,7 @@ namespace {
 // the identical case (a concurrent re-run, or two sessions sharing a build
 // tree) would otherwise still share one directory, since `name` alone repeats
 // run to run.
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 fs::path fake_proc(const std::string& name) {
     const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_proc_" + name + "_" + scratch_pid_suffix());

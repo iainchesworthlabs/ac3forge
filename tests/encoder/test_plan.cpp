@@ -98,7 +98,7 @@ TEST_CASE("rendered channel counts match what a decoder gets back") {
         const auto coded = ac3::plan::coded_channels(info.id);
         std::vector<Location> distinct;
         for (const auto& channel : coded) {
-            if (std::ranges::find(distinct, channel.location) == distinct.end()) {
+            if (!std::ranges::contains(distinct, channel.location)) {
                 distinct.push_back(channel.location);
             }
         }
