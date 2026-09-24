@@ -11,11 +11,7 @@
 #include <string_view>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/io/metadata_edit.hpp"
@@ -53,13 +49,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_probe_" + scratch_pid_suffix());
@@ -70,12 +60,7 @@ fs::path scratch_dir() {
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-#ifdef _WIN32
-    const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
-#else
-    return std::system(command.c_str());
-#endif
+    return ac3::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {

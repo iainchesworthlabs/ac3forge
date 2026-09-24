@@ -121,7 +121,7 @@ std::optional<Routing> route(const ChannelPlan& target, std::span<const SourceSh
             if (dest.kind != DestinationKind::kLocation) {
                 continue;
             }
-            if (std::ranges::find(claimed, dest.location) != claimed.end()) {
+            if (std::ranges::contains(claimed, dest.location)) {
                 return std::nullopt;  // two rows targeting the same location
             }
             const auto flat = flat_index(sources, s, c);
@@ -403,7 +403,7 @@ bool parse_assignment(std::string_view text, std::span<const SourceShape> source
     }
 
     for (const auto& source_coverage : covered) {
-        if (std::ranges::find(source_coverage, false) != source_coverage.end()) {
+        if (std::ranges::contains(source_coverage, false)) {
             return false;  // a loaded channel with no token at all
         }
     }

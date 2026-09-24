@@ -7,11 +7,7 @@
 #include <string>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "desktop_entries.hpp"
 
@@ -40,13 +36,7 @@ namespace {
 // previous run's files cannot pass a case. The leaf also carries this
 // process's own PID - see tests/cli/test_cli.cpp's own scratch_dir comment
 // for why that is needed on top of the build-tree root.
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     const auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("crucible_icons_" + scratch_pid_suffix());

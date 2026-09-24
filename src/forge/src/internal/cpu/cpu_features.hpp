@@ -16,7 +16,7 @@
 // Always reachable, on every platform: a generic or aarch64 build still
 // needs has_avx2() to exist (and unconditionally return false) so call
 // sites never need their own preprocessor conditional, which
-// tools/checks/check_platform_macros.ps1 forbids under src/ and apps/
+// tools/checks/check_platform_macros.ps1 forbids in the first-party trees
 // outright. The one genuinely platform-specific piece - the raw hardware
 // probe itself, CPUID+XGETBV on real MSVC vs __builtin_cpu_supports
 // elsewhere - is the only part selected by directory (see this file's own

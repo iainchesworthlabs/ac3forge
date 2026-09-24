@@ -24,8 +24,12 @@ ColumnLayout {
     readonly property var groups: NetworkController.groups
     readonly property string selectedGroupId: NetworkController.selectedGroupId
 
-    Text {
-        Layout.fillWidth: true
+    // The column's own heading, drawn like every other numbered section in
+    // the app rather than as one uppercase sentence: the ordinal is its own
+    // accent-ink run, a rule fills the middle, and the counts sit right-
+    // aligned as the summary (network-sink-*.png). That also takes the bare
+    // "01" and the em dash out of a translated string.
+    SectionHeader {
         // Elided text still reports its full, unwrapped width as this
         // layout's PREFERRED (not just minimum) width unless told otherwise
         // - Layout.minimumWidth: 0 lets it actually shrink, but Network.qml's
@@ -37,15 +41,12 @@ ColumnLayout {
         // Every elided or wrapped Text in this file and NetworkPairing.qml
         // needs this same Layout.minimumWidth: 0.
         Layout.minimumWidth: 0
-        text: qsTr("01 ON THIS NETWORK — %1 found · %2 group%3")
-              .arg(NetworkController.discoveredCount)
-              .arg(NetworkController.groupCount)
-              .arg(NetworkController.groupCount === 1 ? "" : "s")
-        color: Theme.textMuted
-        font.pixelSize: Theme.fontSmall
-        font.bold: true
-        font.capitalization: Font.AllUppercase
-        elide: Text.ElideRight
+        ordinal: "01"
+        label: qsTr("On this network")
+        summary: qsTr("%1 found · %2 group%3")
+                 .arg(NetworkController.discoveredCount)
+                 .arg(NetworkController.groupCount)
+                 .arg(NetworkController.groupCount === 1 ? "" : "s")
     }
 
     RowLayout {

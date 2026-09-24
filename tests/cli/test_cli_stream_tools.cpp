@@ -15,11 +15,7 @@
 #include <string>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
@@ -55,13 +51,7 @@ namespace {
 // see tests/CMakeLists.txt's comment on that define for why. The leaf also
 // carries this process's own PID - see tests/cli/test_cli.cpp's own
 // scratch_dir comment for why that is needed on top of the build-tree root.
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_stream_tools_" + scratch_pid_suffix());
@@ -69,18 +59,13 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// Same subprocess plumbing (and the same Windows quoting workaround) as
-// tests/cli/test_cli.cpp's run_cli - see its comment for why the extra outer
-// quote pair is needed there and must not appear on POSIX.
+// Runs `ac3cli <args>` with both streams redirected to `log`. The platform
+// differences - cmd.exe's quoting and std::system()'s two return-value
+// shapes - live in tests/platform/process.hpp's run_shell, not here.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-#ifdef _WIN32
-    const std::string wrapped = "\"" + command + "\"";
-    return std::system(wrapped.c_str());
-#else
-    return std::system(command.c_str());
-#endif
+    return ac3::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {

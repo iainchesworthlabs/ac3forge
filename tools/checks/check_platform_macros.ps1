@@ -11,11 +11,31 @@
 # hence this check.
 #
 # The rule here is stricter than "no OS macros": NO preprocessor conditional of
-# any kind is allowed in src/. The codebase has none today, so the check costs
-# nothing to keep at zero, and zero is a far easier line to hold than "only the
-# justified ones". Header-configuration defines that a platform header genuinely
-# requires (WIN32_LEAN_AND_MEAN, NOMINMAX) belong in target_compile_definitions
-# -- see the WIN32 block in src/audio/CMakeLists.txt for the worked example.
+# any kind is allowed in the trees below. The codebase has none today, so the
+# check costs nothing to keep at zero, and zero is a far easier line to hold
+# than "only the justified ones". Header-configuration defines that a platform
+# header genuinely requires (WIN32_LEAN_AND_MEAN, NOMINMAX) belong in
+# target_compile_definitions -- see the WIN32 block in src/audio/CMakeLists.txt
+# for the worked example.
+#
+# The scan covered src/ and apps/ only until 2026-09-23, and tests/ had quietly
+# become where every violation lived: nineteen copies of a `#ifdef _WIN32`
+# getpid() branch, eight of a cmd.exe quoting one, eleven AVX2 cases whose
+# bodies a non-x86_64 leg never even parsed, and an MSVC-only pair of ABI size
+# assertions. Each is now the same directory-selected shape the rest of the
+# tree uses -- tests/platform/<os>/, tests/core/avx2/{present,absent}/,
+# tests/render/abi/{msvc,unknown}/ -- and python/ likewise
+# (python/src/ac3forge_ext/{signing,containers}/{present,absent}/), so every
+# tree here starts at zero rather than being grandfathered in with a waiver list.
+#
+# NOT scanned, deliberately: esp-idf/. That tree is an ESP-IDF component built
+# by idf.py, not by this repository's CMake, and its `#if CONFIG_*` guards are
+# Kconfig symbols -- the documented IDF idiom, and in the CONFIG_SPIRAM case
+# load-bearing in a way a directory split would not reproduce: on a target with
+# no PSRAM bus, esp_psram_get_size() is never exposed to the linker at all
+# (see esp-idf/ac3forge/src/control.cpp's own comment). Holding this rule over
+# somebody else's build system, with no toolchain here to verify against, would
+# be a change made blind.
 #
 # Include guards are not affected: the codebase uses #pragma once.
 #
@@ -59,9 +79,18 @@ if (-not (Test-Path $srcRoot)) {
 # consolidation (or a checkout of an older tag, before apps/ existed at all)
 # still has a valid src/ to scan even with no apps/ yet.
 $scanRoots = @($srcRoot)
-$appsRoot = Join-Path $Root 'apps'
-if (Test-Path $appsRoot) {
-    $scanRoots += $appsRoot
+
+# Every other first-party C++ tree, each optional in the same way and for the
+# same reason apps/ is: a checkout mid-way through a reorganisation, or of an
+# older tag from before one of these existed, still has a valid src/ to scan.
+# fuzz/, examples/ and tools/ were already clean when they were added here on
+# 2026-09-23 and cost nothing to hold; tests/ and python/ were cleaned to join
+# them.
+foreach ($name in @('apps', 'tests', 'fuzz', 'examples', 'tools', 'python')) {
+    $candidate = Join-Path $Root $name
+    if (Test-Path $candidate) {
+        $scanRoots += $candidate
+    }
 }
 
 # '*.mm' was added on 2026-09-06 with the first Objective-C++ in the tree:
@@ -83,7 +112,7 @@ $files = Get-ChildItem -Path $scanRoots -Recurse -File -Include '*.h', '*.hpp', 
 # cuts read as a diff. It is written the way Windows drivers are written,
 # include guards and all, and the rule this check holds is about ac3forge's
 # own code selecting platforms in CMake - so the sample is left out.
-$driverRoot = Join-Path $appsRoot 'windows\driver'
+$driverRoot = Join-Path (Join-Path $Root 'apps') 'windows\driver'
 $files = @($files | Where-Object { -not $_.FullName.StartsWith($driverRoot, [System.StringComparison]::OrdinalIgnoreCase) })
 
 # Build output is not source, and a build configured INSIDE the tree puts some
@@ -173,21 +202,21 @@ foreach ($file in $files) {
 
 if ($violations.Count -gt 0) {
     Write-Host ''
-    Write-Host 'Platform-isolation violation: preprocessor conditional in src/ or apps/.' -ForegroundColor Red
+    Write-Host 'Platform-isolation violation: preprocessor conditional in a scanned tree.' -ForegroundColor Red
     Write-Host 'Per-OS code is selected by CMake (see the WIN32 block in src/audio/CMakeLists.txt),'
     Write-Host 'so it belongs in its own translation unit, not behind an #ifdef.'
     Write-Host ''
     foreach ($v in $violations) {
         Write-Host ('  {0}:{1}: {2}' -f $v.Path, $v.Line, $v.Text)
         # GitHub Actions annotation; prints harmlessly when run locally.
-        Write-Host ('::error file={0},line={1}::Preprocessor conditional in src/ or apps/ - select the platform in CMake instead' -f $v.Path, $v.Line)
+        Write-Host ('::error file={0},line={1}::Preprocessor conditional - select the variant in CMake instead' -f $v.Path, $v.Line)
     }
     Write-Host ''
     Write-Host ('{0} violation(s) found.' -f $violations.Count) -ForegroundColor Red
     exit 1
 }
 
-$summary = "OK: no preprocessor conditionals in src/ or apps/ ($($files.Count) files scanned"
+$summary = "OK: no preprocessor conditionals in src/, apps/, tests/, fuzz/, examples/, tools/ or python/ ($($files.Count) files scanned"
 if ($excludedCount -gt 0) {
     # Printed rather than left implicit: this filter turning the check
     # green for the wrong reason - by excluding real source - is the one
