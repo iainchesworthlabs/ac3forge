@@ -62,6 +62,10 @@ int sink_slots() { return static_cast<int>(ac3::render::OutputLayout::kMaxSlots)
 
 int sink_max_slots() { return sink_slots(); }
 
+// A layout's own channel count, not frame_bit_max / slot_bits arithmetic -
+// there is no width for GET /hardware to name.
+int sink_max_slots_bit_width() { return 0; }
+
 bool sink_second_line_possible() { return false; }
 
 // Nothing here is interleaved into slots at all, so the width is only what a

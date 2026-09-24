@@ -554,6 +554,7 @@ ac3forge::ControlHandlers control_handlers() {
     h.sink_name = []() { return player::sink_name(); };
     h.sink_slots = []() { return player::sink_slots(); };
     h.sink_max_slots = []() { return player::sink_max_slots(); };
+    h.sink_max_slots_bits = []() { return player::sink_max_slots_bit_width(); };
     h.state = []() { return g_state.load(); };
     // A build with the player reports on it, as null until it runs; a build
     // without leaves the object out of /status.

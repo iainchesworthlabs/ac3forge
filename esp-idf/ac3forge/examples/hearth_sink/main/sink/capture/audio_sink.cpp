@@ -252,6 +252,10 @@ int sink_slots() {
 // Its slots are fixed by the build, and it has no second line to wire.
 int sink_max_slots() { return sink_slots(); }
 
+// sink_slots() here is a fixed build-time count, not frame_bit_max /
+// slot_bits arithmetic - there is no width for GET /hardware to name.
+int sink_max_slots_bit_width() { return 0; }
+
 bool sink_second_line_possible() { return false; }
 
 // Built for one width and checked against it (kWide above): this sink's whole
