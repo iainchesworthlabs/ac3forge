@@ -1437,7 +1437,14 @@ void HearthController::clearRouting() {
     if (!engine_) {
         return;
     }
-    const auto patch = ac3::render::Routing::identity(static_cast<std::size_t>(routing_.size()), 0);
+    // Every slot unpatched, for the device's OWN output count: a patch is
+    // refused whole by the sink unless its outputs() matches what is open
+    // (ac3::audio::PcmOutput::set_routing()), so the zero-output patch this
+    // used to post did nothing at all while a device was open. With nothing
+    // open routing_outputs_ is 0, which is that case's width anyway.
+    const std::vector<int> unpatched(static_cast<std::size_t>(routing_.size()), ac3::render::Routing::kUnassigned);
+    const auto patch =
+        ac3::render::Routing::from_outputs(unpatched, static_cast<std::size_t>(routing_outputs_));
     engine_->set_routing(patch.value_or(ac3::render::Routing{}));
 }
 

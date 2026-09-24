@@ -160,23 +160,22 @@ TestCase {
         }, 10000, "Use the device's order did not patch each slot to its own output");
     }
 
-    // KNOWN BUG (FEATURE_COVERAGE.md, "UI bugs found"): with a device open,
-    // "Clear" does nothing. HearthController::clearRouting() posts
-    // Routing::identity(slots, 0) - a patch for ZERO outputs - and every
-    // PcmSink refuses a patch whose output count is not the open device's
-    // (ac3::audio::PcmOutput::set_routing(), pcm_output.cpp; this fake
-    // follows the same PcmSink contract). It only ever "worked" in
-    // tst_speakers_routing.qml because that machine has no device open, so 0
-    // is the width. Marked expectFail so the suite stays green and turns red
-    // (XPASS) the day it is fixed.
+    // "Clear" unpatches every slot of the open device. Regression: it
+    // used to post a patch sized for zero outputs, which every PcmSink
+    // refuses while a device is open (ac3::audio::PcmOutput::set_routing()
+    // checks the output count), so it did nothing at all - it only looked
+    // right in tst_speakers_routing.qml, where nothing is open.
     function test_clearRoutingButtonUnpatchesEverySlot() {
         const page = makePage();
         click(findChild(page, "speakersUseDeviceOrder"), "Use the device's order");
         tryVerify(function() { return HearthController.routing[0] === 0; }, 10000);
         click(findChild(page, "speakersClearRouting"), "Clear");
-        expectFail("", "Clear posts a zero-output patch the open device refuses (hearth_controller.cpp clearRouting())");
-        tryVerify(function() { return HearthController.routing.every(function(o) { return o === -1; }); }, 1500,
+        tryVerify(function() { return HearthController.routing.every(function(o) { return o === -1; }); }, 10000,
                   "Clear left slots patched: " + HearthController.routing);
+        // Still a patch for the open device, so a slot can be patched again.
+        compare(HearthController.routingOutputs, 6);
+        clickUntil(function() { return H.byAccessibleName(page, "L to output 2"); },
+                   function() { return HearthController.routing[0] === 1; }, "L could not be patched after Clear");
     }
 
     function test_sizeTrimAndDelayPerSpeaker() {

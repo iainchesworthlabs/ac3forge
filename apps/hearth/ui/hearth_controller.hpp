@@ -421,6 +421,8 @@ public:
     // already has - swap or clear that one first, matching render::Routing::
     // assign()'s own rule.
     Q_INVOKABLE void setRoutingAssignment(int slot, int output);
+    // Unpatches every slot (the routing grid's "Clear"), keeping the open
+    // device's output count so the sink accepts the patch.
     Q_INVOKABLE void clearRouting();
     // Patches each slot to the device's own reported order (identity, one
     // slot per output in slot order) - the routing grid's "Use the device's
