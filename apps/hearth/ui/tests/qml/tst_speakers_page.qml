@@ -195,10 +195,19 @@ TestCase {
         typeInto(findChild(page, "speakersDelay-2"), "7.5");
         tryVerify(function() { return HearthController.delayMs[2] === 7.5; }, 10000,
                   "the delay field never reached the engine: " + HearthController.delayMs[2]);
-        // Out of the validator's range: Return does not commit it.
+        // Out of the validator's range: Return does not commit it, and once
+        // focus leaves the field shows the trim in effect again rather than
+        // the refused text (regression: it used to keep showing "99").
         typeInto(findChild(page, "speakersTrim-1"), "99");
         keyClick(Qt.Key_Tab);
+        tryVerify(function() { return findChild(page, "speakersTrim-1").text === "-3.5"; }, 5000,
+                  "the trim field still shows " + findChild(page, "speakersTrim-1").text + " after a refused edit");
         compare(HearthController.trimDb[1], -3.5);
+        typeInto(findChild(page, "speakersDelay-2"), "99");
+        keyClick(Qt.Key_Tab);
+        tryVerify(function() { return findChild(page, "speakersDelay-2").text === "7.5"; }, 5000,
+                  "the delay field still shows " + findChild(page, "speakersDelay-2").text + " after a refused edit");
+        compare(HearthController.delayMs[2], 7.5);
         typeInto(findChild(page, "speakersTrim-1"), "0");
         tryVerify(function() { return HearthController.trimDb[1] === 0; }, 10000);
         typeInto(findChild(page, "speakersDelay-2"), "0");
