@@ -599,12 +599,23 @@ jobs:
       # choco's ffmpeg package is x64-only (Chocolatey packages here are
       # typically x64 binaries) - there is no arm64 equivalent to install the
       # same way. BtbN/FFmpeg-Builds publishes static win-arm64 GPL builds
-      # instead (confirmed for real - see the release page's asset list under
-      # the "latest" tag); the n8.1 release build is used rather than the
-      # "master" one for the same reason choco's package tracks an actual
-      # FFmpeg release rather than a git snapshot. The zip's ffmpeg.exe is
-      # nested under a versioned subfolder that can drift between builds, so
-      # this searches for it instead of hardcoding that path.
+      # instead; the n8.1 release build is used rather than the "master" one
+      # for the same reason choco's package tracks an actual FFmpeg release
+      # rather than a git snapshot. The zip's ffmpeg.exe is nested under a
+      # versioned subfolder that drifts between builds, so this searches for
+      # it instead of hardcoding that path.
+      #
+      # PINNED to a dated autobuild tag, not the rolling "latest" one this
+      # used to fetch. BtbN republishes "latest" every day, so the binary
+      # underneath it changes with no commit here - which is exactly how this
+      # leg went red: main passed on 2026-09-21 and every run from 2026-09-23
+      # failed identically, on unrelated branches, with ac3cli's own 2,183
+      # tests all passing and the gate's FFmpeg step ([2] ac3: FFmpeg strict
+      # decode) dying on a segfault (exit 139). Nothing in this repository
+      # changed the download; the file behind the URL did. autobuild-2026-09-
+      # 20-13-11 is the build "latest" resolved to when this leg last passed.
+      # A dated tag's asset is immutable, so this can only change by editing
+      # this line - which is the point.
       - name: Install ffmpeg (Windows ARM64)
         if: matrix.gold_reference && matrix.preset == 'windows-msvc-arm64'
         shell: powershell
@@ -616,7 +627,7 @@ jobs:
           $ProgressPreference = 'SilentlyContinue'
           $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64.zip'
           $dest = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64'
-          Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-gpl-8.1.zip' -OutFile $zip
+          Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-20-13-11/ffmpeg-n8.1.2-267-gb2f422d306-winarm64-gpl-8.1.zip' -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $dest
           $exe = Get-ChildItem -Path $dest -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
           if (-not $exe) {
