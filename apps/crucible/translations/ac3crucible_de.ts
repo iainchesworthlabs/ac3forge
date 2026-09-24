@@ -1218,7 +1218,7 @@
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="489"/>
-        <location filename="../ui/qml/RoomPage.qml" line="507"/>
+        <location filename="../ui/qml/RoomPage.qml" line="512"/>
         <source>point</source>
         <extracomment>Object size readout: the object is a point source rather than a percentage of the room</extracomment>
         <translation>Punkt</translation>
@@ -1229,52 +1229,52 @@
         <translation>%1%</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="510"/>
+        <location filename="../ui/qml/RoomPage.qml" line="515"/>
         <source>extent the receiver&apos;s renderer spreads the object over; the bed hears a point</source>
         <translation>Ausdehnung, über die der Renderer des Receivers das Objekt verteilt; das Bett hört einen Punkt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="510"/>
+        <location filename="../ui/qml/RoomPage.qml" line="515"/>
         <source>object metadata: no effect while the stream is bed only</source>
         <translation>Objekt-Metadaten: ohne Wirkung, solange der Stream nur das Bett ist</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="521"/>
+        <location filename="../ui/qml/RoomPage.qml" line="526"/>
         <source>BED</source>
         <translation>BETT</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="523"/>
+        <location filename="../ui/qml/RoomPage.qml" line="528"/>
         <source>unplaced applications, mixed to the 5.1 bed</source>
         <translation>nicht platzierte Anwendungen, ins 5.1-Bett gemischt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="559"/>
+        <location filename="../ui/qml/RoomPage.qml" line="564"/>
         <source>every application is placed</source>
         <translation>jede Anwendung ist platziert</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="559"/>
+        <location filename="../ui/qml/RoomPage.qml" line="564"/>
         <source>drag one into the room to place it · drag a marker back here, or double-click it, to return it</source>
         <translation>eine in den Raum ziehen, um sie zu platzieren · eine Markierung hierher zurückziehen oder doppelklicken, um sie zurückzuholen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="598"/>
+        <location filename="../ui/qml/RoomPage.qml" line="603"/>
         <source>SIGNING</source>
         <translation>SIGNIERUNG</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="599"/>
+        <location filename="../ui/qml/RoomPage.qml" line="604"/>
         <source>key loaded · objects on</source>
         <translation>Schlüssel geladen · Objekte an</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="599"/>
+        <location filename="../ui/qml/RoomPage.qml" line="604"/>
         <source>no key · 5.1 bed only</source>
         <translation>kein Schlüssel · nur 5.1-Bett</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="600"/>
+        <location filename="../ui/qml/RoomPage.qml" line="605"/>
         <source>load one in Settings</source>
         <translation>einen in den Einstellungen laden</translation>
     </message>
@@ -1296,7 +1296,7 @@
     </message>
     <message>
         <location filename="../ui/qml/RoomPage.qml" line="144"/>
-        <location filename="../ui/qml/RoomPage.qml" line="550"/>
+        <location filename="../ui/qml/RoomPage.qml" line="555"/>
         <source>%1 placed in the centre of the room</source>
         <translation>%1 in der Mitte des Raums platziert</translation>
     </message>
@@ -1317,12 +1317,12 @@
         <translation>rechts</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="588"/>
+        <location filename="../ui/qml/RoomPage.qml" line="593"/>
         <source>SIGNAL PATH</source>
         <translation>SIGNALWEG</translation>
     </message>
     <message>
-        <location filename="../ui/qml/RoomPage.qml" line="591"/>
+        <location filename="../ui/qml/RoomPage.qml" line="596"/>
         <source>applications → this app → what you hear</source>
         <translation>Anwendungen → diese App → was Sie hören</translation>
     </message>
@@ -1489,436 +1489,436 @@
 <context>
     <name>SettingsPage</name>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="23"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="27"/>
         <source>Choose the signing key</source>
         <translation>Signaturschlüssel wählen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="30"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="35"/>
         <source>Save diagnostics</source>
         <translation>Diagnose speichern</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="33"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="38"/>
         <source>Text files (*.txt)</source>
         <translation>Textdateien (*.txt)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="33"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="38"/>
         <source>All files (*)</source>
         <translation>Alle Dateien (*)</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="116"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="121"/>
         <source>Sound takes two stages here. Applications play into the system default output; this app taps them there and sends the result to the endpoint you hear. For the first stage to be silent, the default must be a device that discards what it is given: &quot;%1&quot;. Until it is there, any silent endpoint whose name matches the filter under Advanced stands in.</source>
         <translation>Der Ton läuft hier über zwei Stufen. Anwendungen spielen in die Standardausgabe des Systems; diese Anwendung greift sie dort ab und sendet das Ergebnis an den Endpunkt, den Sie hören. Damit die erste Stufe still ist, muss die Standardausgabe ein Gerät sein, das verwirft, was es bekommt: &quot;%1&quot;. Solange es das nicht gibt, springt jeder stille Endpunkt ein, dessen Name auf den Filter unter Erweitert passt.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="140"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
         <source>Applications play to it: it is the system default output.</source>
         <translation>Anwendungen spielen darauf: Es ist die Standardausgabe des Systems.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="140"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
         <source>Applications do not play to it yet: the system default output is %1. Send them there from the Room or Signal path page.</source>
         <translation>Anwendungen spielen noch nicht darauf: Die Standardausgabe des Systems ist %1. Senden Sie sie von der Seite Raum oder Signalweg dorthin.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="152"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="157"/>
         <source>This machine can load the silent device.</source>
         <translation>Dieser Rechner kann das stille Gerät laden.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="176"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="181"/>
         <source>Nothing to install: this application makes the silent device itself. Create it now, or it is created when you send applications to it.</source>
         <translation>Nichts zu installieren: Diese Anwendung erstellt das stille Gerät selbst. Erstellen Sie es jetzt, oder es wird erstellt, wenn Sie Anwendungen an es senden.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="179"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="184"/>
         <source>No built driver package in the driver folder. No download carries the driver itself, only the scripts that install it: it is test-signed only, and shipping it waits on an EV certificate and attestation. Until then it has to be built from a source tree, with Advanced pointed at the folder holding the build.</source>
         <translation>Kein gebautes Treiberpaket im Treiberordner. Kein Download enthält den Treiber selbst, nur die Skripte, die ihn installieren: Er ist nur testsigniert, und seine Auslieferung wartet auf ein EV-Zertifikat und eine Attestierung. Bis dahin muss er aus einem Quellbaum gebaut werden, wobei Erweitert auf den Ordner mit dem Build zeigt.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="184"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="189"/>
         <source>Create device</source>
         <translation>Gerät erstellen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="185"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="190"/>
         <source>Check again</source>
         <translation>Erneut prüfen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="205"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="220"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="210"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="225"/>
         <source>Advanced</source>
         <translation>Erweitert</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="211"/>
         <source>expanded</source>
         <translation>ausgeklappt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="206"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="211"/>
         <source>collapsed</source>
         <translation>eingeklappt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="239"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="244"/>
         <source>A built package is there.</source>
         <translation>Ein gebautes Paket liegt dort.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="239"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="244"/>
         <source>No built package is there.</source>
         <translation>Dort liegt kein gebautes Paket.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="244"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="249"/>
         <source>Remove device</source>
         <translation>Gerät entfernen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="246"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="251"/>
         <source>Removes the device and the driver package this folder&apos;s remove.ps1 knows about; an installed copy of the application removes its own on uninstall.</source>
         <translation>Entfernt das Gerät und das Treiberpaket, das die remove.ps1 dieses Ordners kennt; eine installierte Kopie der Anwendung entfernt ihres beim Deinstallieren.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="246"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="251"/>
         <source>Removes this application&apos;s own silent device; it also goes when the application does.</source>
         <translation>Entfernt das eigene stille Gerät dieser Anwendung; es verschwindet auch, wenn die Anwendung beendet wird.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="257"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="262"/>
         <source>Any endpoint whose name contains this is treated as the silent device and is never chosen as an output.</source>
         <translation>Jeder Endpunkt, dessen Name dies enthält, gilt als stilles Gerät und wird nie als Ausgabe gewählt.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="265"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="270"/>
         <source>Objects need a signing key; without one the stream is the 5.1 bed only and placement pans within it. Only the path is remembered; the key stays in its file.</source>
         <translation>Objekte brauchen einen Signaturschlüssel; ohne ihn ist der Stream nur das 5.1-Bett und die Platzierung verteilt darin. Nur der Pfad wird gemerkt; der Schlüssel bleibt in seiner Datei.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="281"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="286"/>
         <source>no key file chosen</source>
         <translation>keine Schlüsseldatei gewählt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="296"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="301"/>
         <source>An unsigned object container would be refused outright by a validating decoder, so without a key no objects are sent.</source>
         <translation>Ein unsignierter Objektcontainer würde von einem prüfenden Decoder rundweg abgelehnt; ohne Schlüssel werden keine Objekte gesendet.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="297"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="302"/>
         <source>With no file chosen here, the environment is honoured: AC3FORGE_SIGNING_KEY_FILE names a key file and AC3FORGE_SIGNING_KEY carries the key itself.</source>
         <translation>Ist hier keine Datei gewählt, gilt die Umgebung: AC3FORGE_SIGNING_KEY_FILE nennt eine Schlüsseldatei und AC3FORGE_SIGNING_KEY trägt den Schlüssel selbst.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="311"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="316"/>
         <source>LATENCY</source>
         <translation>LATENZ</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="313"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="318"/>
         <source>Normal · 32 ms frames</source>
         <translation>Normal · 32-ms-Frames</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="313"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="318"/>
         <source>Low · 5.3 ms frames</source>
         <translation>Niedrig · 5,3-ms-Frames</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="315"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="320"/>
         <source>Latency</source>
         <translation>Latenz</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="318"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="323"/>
         <source>Low latency shortens the E-AC-3 frame to one block and raises the bitrate to about 1.5 Mb/s so fifteen objects&apos; metadata still fits. The receiver&apos;s own decode delay does not change. Changing this restarts the stream.</source>
         <translation>Niedrige Latenz verkürzt den E-AC-3-Frame auf einen Block und hebt die Bitrate auf etwa 1,5 Mb/s, damit die Metadaten von fünfzehn Objekten noch hineinpassen. Die Dekodierverzögerung des Receivers selbst ändert sich nicht. Eine Änderung startet den Stream neu.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="324"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="329"/>
         <source>CODEC</source>
         <translation>CODEC</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="326"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="332"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="331"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="337"/>
         <source>Bitrate</source>
         <translation>Bitrate</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="336"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="341"/>
         <source>automatic</source>
         <translation>automatisch</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="336"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="341"/>
         <source>256 kb/s</source>
         <translation>256 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="336"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="341"/>
         <source>384 kb/s</source>
         <translation>384 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="337"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="342"/>
         <source>448 kb/s</source>
         <translation>448 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="337"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="342"/>
         <source>640 kb/s</source>
         <translation>640 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="337"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="342"/>
         <source>1024 kb/s</source>
         <translation>1024 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="338"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="343"/>
         <source>1536 kb/s</source>
         <translation>1536 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="338"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="343"/>
         <source>2048 kb/s</source>
         <translation>2048 kb/s</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="363"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="368"/>
         <source>E-AC-3 · 5.1 bed + up to 15 objects · automatic is 448 kb/s, or 1536 kb/s in low latency</source>
         <translation>E-AC-3 · 5.1-Bett + bis zu 15 Objekte · automatisch ist 448 kb/s, oder 1536 kb/s bei niedriger Latenz</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="365"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="370"/>
         <source>Split stereo applications into two objects</source>
         <translation>Stereo-Anwendungen in zwei Objekte aufteilen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="438"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="443"/>
         <source>System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.</source>
         <translation>System folgt der Sprache, auf die der Desktop eingestellt ist. Die Übersetzungen sind maschinell erstellt und wurden nicht von einem Muttersprachler gelesen.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="441"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="448"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="446"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="453"/>
         <source>Text size</source>
         <translation>Textgröße</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="451"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="456"/>
         <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too.</source>
         <translation>Jede Größe im Fenster folgt diesem Wert; 100% ist die Größe, in der es gezeichnet wird. System übernimmt die Textgröße, die der Desktop meldet, und zählt 9 pt als 100%, sodass das Fenster auf einem Desktop mit größerer Grundgröße ebenfalls größer startet.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="491"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="496"/>
         <source>Show applications with no audio</source>
         <translation>Anwendungen ohne Ton anzeigen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="492"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="497"/>
         <source>Running applications with a window but no audio session, greyed until they play. Off hides them unless they are placed.</source>
         <translation>Laufende Anwendungen mit Fenster, aber ohne Audiositzung, ausgegraut bis sie spielen. Aus: ausgeblendet, sofern nicht platziert.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="498"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="503"/>
         <source>Show background processes in the room</source>
         <translation>Hintergrundprozesse im Raum anzeigen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="499"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="504"/>
         <source>Processes with sound but no window of their own (a virtual machine&apos;s backend, the text-input host). They stay in the bed either way.</source>
         <translation>Prozesse mit Ton, aber ohne eigenes Fenster (das Backend einer virtuellen Maschine, der Texteingabe-Host). Sie bleiben ohnehin im Bett.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="511"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="516"/>
         <source>DIAGNOSTICS</source>
         <translation>DIAGNOSE</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="512"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="517"/>
         <source>A text file for a bug report: the version and platform, the engine&apos;s counters, the endpoints the probe found, the two devices of the signal path, this app&apos;s settings and its recent messages. It does not carry the signing key, the path to it, or any environment variable&apos;s value; it does name your audio devices and running applications, so read it before you attach it.</source>
         <translation>Eine Textdatei für einen Fehlerbericht: Version und Plattform, die Zähler der Engine, die Endpunkte, die die Prüfung gefunden hat, die beiden Geräte des Signalwegs, die Einstellungen dieser Anwendung und ihre jüngsten Meldungen. Sie enthält weder den Signaturschlüssel noch den Pfad dorthin noch den Wert irgendeiner Umgebungsvariablen; sie nennt aber Ihre Audiogeräte und laufenden Anwendungen, lesen Sie sie also, bevor Sie sie anhängen.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="516"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="521"/>
         <source>Save diagnostics…</source>
         <translation>Diagnose speichern…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="365"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="370"/>
         <source>Costs two slots per application; the pair sits either side of the position you place, and an application that cannot get two free slots waits in the bed. Applies to applications the engine meets from now on; each application&apos;s row can override it.</source>
         <translation>Kostet zwei Plätze pro Anwendung; das Paar sitzt beiderseits der gesetzten Position, und eine Anwendung, die keine zwei freien Plätze bekommt, wartet im Bett. Gilt für Anwendungen, die die Engine ab jetzt antrifft; die Zeile jeder Anwendung kann es überschreiben.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="264"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="269"/>
         <source>SIGNING KEY</source>
         <translation>SIGNATURSCHLÜSSEL</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="288"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="293"/>
         <source>Browse…</source>
         <translation>Durchsuchen…</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="289"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="294"/>
         <source>Clear</source>
         <translation>Löschen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="184"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="189"/>
         <source>Install driver</source>
         <translation>Treiber installieren</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="244"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="249"/>
         <source>Remove driver</source>
         <translation>Treiber entfernen</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="231"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="234"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="236"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="239"/>
         <source>Driver folder</source>
         <translation>Treiberordner</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="249"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="252"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="254"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="257"/>
         <source>Silent device</source>
         <translation>Stummes Gerät</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="371"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="376"/>
         <source>APPEARANCE</source>
         <translation>ERSCHEINUNGSBILD</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="373"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="377"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="378"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="382"/>
         <source>Theme</source>
         <translation>Thema</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="375"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="384"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="405"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="446"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="380"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="389"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="410"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="451"/>
         <source>System</source>
         <translation>System</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="375"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="380"/>
         <source>Light</source>
         <translation>Hell</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="375"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="380"/>
         <source>Dark</source>
         <translation>Dunkel</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="397"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="401"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="402"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="406"/>
         <source>Language</source>
         <translation>Sprache</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="382"/>
-        <location filename="../ui/qml/SettingsPage.qml" line="392"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="387"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="397"/>
         <source>Palette</source>
         <translation>Palette</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="115"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="120"/>
         <source>SILENT DEVICE · WHERE APPLICATIONS PLAY</source>
         <translation>STILLES GERÄT · WO ANWENDUNGEN SPIELEN</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="136"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="141"/>
         <source>No silent device: nothing named like &quot;%1&quot; exists, so applications can only play to a real device and are heard directly.</source>
         <translation>Kein stilles Gerät: nichts mit einem Namen wie „%1“ existiert, also können Anwendungen nur auf ein echtes Gerät spielen und sind direkt hörbar.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="136"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="141"/>
         <source>The silent device is installed: an endpoint named like &quot;%1&quot;.</source>
         <translation>Das stille Gerät ist installiert: ein Endpunkt mit einem Namen wie „%1“.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="140"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="145"/>
         <source>not set</source>
         <translation>nicht gesetzt</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="178"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="183"/>
         <source>A built driver package is in the driver folder, ready to install.</source>
         <translation>Ein gebautes Treiberpaket liegt im Treiberordner, bereit zur Installation.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="239"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="244"/>
         <source>Where install.ps1, remove.ps1 and the built package live: beside this app by default, or apps/windows/driver in a source tree.</source>
         <translation>Wo install.ps1, remove.ps1 und das gebaute Paket liegen: standardmäßig neben dieser App, oder apps/windows/driver in einem Quellbaum.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="386"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="391"/>
         <source>Signal</source>
         <extracomment>Palette name. A product name: leave it as it is unless the language has an established rendering of its own.</extracomment>
         <translation>Signal</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="388"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="393"/>
         <source>Ink</source>
         <extracomment>Palette name, as &quot;Signal&quot; above.</extracomment>
         <translation>Tinte</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="390"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="395"/>
         <source>Console</source>
         <extracomment>Palette name, as &quot;Signal&quot; above.</extracomment>
         <translation>Konsole</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="454"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="459"/>
         <source>3D layout</source>
         <translation>3D-Anordnung</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="456"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="461"/>
         <source>Auto</source>
         <translation>Auto</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="458"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="463"/>
         <source>3D reference layout</source>
         <translation>3D-Referenzanordnung</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="461"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="466"/>
         <source>The speakers the 3D room draws for reference. Auto shows 5.1 while the stream is bed only and 7.1.4 once objects are on.</source>
         <translation>Die Lautsprecher, die der 3D-Raum zur Orientierung zeichnet. Auto zeigt 5.1, solange der Stream nur das Bett ist, und 7.1.4, sobald Objekte an sind.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="468"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="473"/>
         <source>BEHAVIOUR</source>
         <translation>VERHALTEN</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="471"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="476"/>
         <source>Move the default output to the silent device on launch</source>
         <translation>Standardausgabe beim Start auf das stumme Gerät verschieben</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="472"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="477"/>
         <source>Restored to the previous device on quit.</source>
         <translation>Beim Beenden auf das vorherige Gerät zurückgesetzt.</translation>
     </message>
     <message>
-        <location filename="../ui/qml/SettingsPage.qml" line="479"/>
+        <location filename="../ui/qml/SettingsPage.qml" line="484"/>
         <source>Keep running in the tray when the window is closed</source>
         <translation>Beim Schließen des Fensters im Infobereich weiterlaufen</translation>
     </message>
