@@ -14,7 +14,7 @@ TapPool::TapPool(std::shared_ptr<AudioDevices> devices, std::uint16_t channels,
 std::vector<AppId> TapPool::sync(std::span<const AppId> wanted) {
     std::vector<AppId> failed;
     for (auto it = taps_.begin(); it != taps_.end();) {
-        if (std::ranges::find(wanted, it->first) == wanted.end()) {
+        if (!std::ranges::contains(wanted, it->first)) {
             it->second.source->stop();
             it = taps_.erase(it);
         } else {

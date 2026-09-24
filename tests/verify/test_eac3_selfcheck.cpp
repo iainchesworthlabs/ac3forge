@@ -263,7 +263,7 @@ TEST_CASE("verify::compare names a coupling coordinate divergence", "[verify]") 
     // The text form names the channel rather than the internal index, and
     // prints a coordinate as a coordinate rather than as an integer.
     const auto text = ac3::verify::report(found, encoder);
-    CHECK(text.find("frame 3 substream 0 block 2 channel 1: cplco[6]") == 0);
+    CHECK(text.starts_with("frame 3 substream 0 block 2 channel 1: cplco[6]"));
     CHECK(text.find("0.5") != std::string::npos);
 }
 

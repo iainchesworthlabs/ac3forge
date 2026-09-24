@@ -19,12 +19,7 @@
 #include <string_view>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <sys/wait.h>
-#include <unistd.h>  // getpid()
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
@@ -68,13 +63,7 @@ namespace {
 // fs::remove_all/create_directories/file-open colliding with the other's
 // mid-test. Folding the PID on top keeps the build-tree rooting (still no
 // cross-worktree collision) while giving each process its own leaf under it.
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_" + scratch_pid_suffix());
@@ -82,55 +71,15 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// std::system()'s return value is the child's own exit code on Windows
-// (cmd.exe /c ... for a plain non-shell-builtin invocation), but on POSIX
-// it is the raw wait() status word: WIFEXITED/WEXITSTATUS have to unpack it,
-// or exit code 1 arrives here as 256 (1 << 8). Without this, every run_cli*
-// helper below would be a Windows-only exit-code check wearing a portable
-// face - exactly the trap the comment at this file's frmsiz assertion tests
-// used to route around case by case rather than fix once, here.
-int child_exit_code(int system_status) {
-#ifdef _WIN32
-    return system_status;
-#else
-    if (system_status == -1) {
-        return system_status;
-    }
-    // A signal-terminated child (crash, abort()) has no exit code to report;
-    // 128 + signal is the shell convention, and distinguishable from every
-    // real ac3cli exit code (0..7 - apps/cli/exit_codes.hpp).
-    return WIFEXITED(system_status) ? WEXITSTATUS(system_status)
-                                    : 128 + WTERMSIG(system_status);
-#endif
-}
-
 // Runs `ac3cli <args>`, both streams redirected to `log` so a failing
 // assertion can print exactly what the binary said. Returns ac3cli's own
 // exit code (apps/cli/exit_codes.hpp), portable across std::system()'s
-// platform-specific return-value shape - see child_exit_code above.
+// platform-specific return-value shape and quoting rules - see
+// tests/platform/process.hpp's run_shell, which owns both.
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-#ifdef _WIN32
-    // std::system() on Windows hands this to `cmd.exe /c <command>`; since
-    // `command` both contains spaces AND starts with its own quoted
-    // executable path, the CRT's own argument quoting backslash-escapes
-    // those embedded quotes (\") when it wraps `command` for the /c
-    // argument - and cmd.exe does not understand \" as an escaped quote, so
-    // the escaped command comes out corrupted ("The filename, directory
-    // name, or volume label syntax is incorrect", confirmed by reproducing
-    // this outside Catch2 too). Wrapping the whole thing in one more pair of
-    // quotes first is the standard workaround: cmd.exe's own "strip a
-    // matching outer quote pair" rule then removes exactly this pair,
-    // handing cmd the original, uncorrupted command line beneath it. POSIX's
-    // `sh -c` has no such rule - the same extra pair there would make `sh`
-    // read the entire command (redirections included) as one big quoted
-    // word, which is exactly the "not found" this guard avoids.
-    const std::string wrapped = "\"" + command + "\"";
-    return child_exit_code(std::system(wrapped.c_str()));
-#else
-    return child_exit_code(std::system(command.c_str()));
-#endif
+    return ac3::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -149,14 +98,7 @@ int run_cli_stdio(const std::string& args, const fs::path& in_file, const fs::pa
     const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + " < \"" +
                                 in_file.string() + "\" > \"" + out_file.string() + "\" 2> \"" +
                                 log.string() + "\"";
-#ifdef _WIN32
-    // Same double-quote-wrapping workaround run_cli uses above, and for the
-    // same reason - see its comment.
-    const std::string wrapped = "\"" + command + "\"";
-    return child_exit_code(std::system(wrapped.c_str()));
-#else
-    return child_exit_code(std::system(command.c_str()));
-#endif
+    return ac3::test::platform::run_shell(command);
 }
 
 // Same idea as run_cli_stdio above, but only out_path is "-" - for src=/map=
@@ -168,14 +110,7 @@ int run_cli_stdio(const std::string& args, const fs::path& in_file, const fs::pa
 int run_cli_stdout(const std::string& args, const fs::path& out_file, const fs::path& log) {
     const std::string command = "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" +
                                 out_file.string() + "\" 2> \"" + log.string() + "\"";
-#ifdef _WIN32
-    // Same double-quote-wrapping workaround run_cli uses above, and for the
-    // same reason - see its comment.
-    const std::string wrapped = "\"" + command + "\"";
-    return child_exit_code(std::system(wrapped.c_str()));
-#else
-    return child_exit_code(std::system(command.c_str()));
-#endif
+    return ac3::test::platform::run_shell(command);
 }
 
 // A short, genuinely non-silent multichannel WAV - per this project's own
@@ -1448,7 +1383,7 @@ TEST_CASE("verify-objects checks a decode against the signer's own tag",
         // Compared as a bool: on a mismatch Catch2 would otherwise print both
         // WAVs, a megabyte each, and take minutes over it.
         const auto piped = read_log(piped_wav);
-        CHECK(piped.substr(0, 4) == "RIFF");
+        CHECK(piped.starts_with("RIFF"));
         const bool same_wav = piped == read_log(file_wav);
         CHECK(same_wav);
     }

@@ -3038,7 +3038,7 @@ void EncoderController::addCaptureDevice(int deviceIndex) {
         return;
     }
     if (live_selected_devices_.size() >= 2 ||
-        std::ranges::find(live_selected_devices_, deviceIndex) != live_selected_devices_.end()) {
+        std::ranges::contains(live_selected_devices_, deviceIndex)) {
         return;
     }
     live_selected_devices_.push_back(deviceIndex);

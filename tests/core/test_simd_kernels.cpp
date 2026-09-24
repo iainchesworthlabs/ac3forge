@@ -19,10 +19,7 @@
 #include "ac3/internal/arch/simd.hpp"
 #include "cpu_features.hpp"
 
-#ifdef AC3FORGE_HAVE_AVX2_TIER
-#include "avx2_probe.hpp"
-#include "mdct_avx2.hpp"
-#endif
+#include "avx2_tier.hpp"
 
 // SIMD kernels's correctness gate.
 //
@@ -204,6 +201,48 @@ std::vector<float> adversarial_floats() {
         v.push_back(tiny(rng));
     }
     return v;
+}
+
+// The gate every [avx2] case below opens with, and the reason none of them
+// needs a preprocessor conditional any more.
+//
+// Two questions, in order. First, is the AVX2 tier in this binary at all?
+// ac3::test::avx2::kTierCompiled answers that at compile time
+// (core/avx2/{present,absent}/avx2_tier.hpp, selected by tests/CMakeLists.txt):
+// AC3FORGE_AVX2=OFF, or a target that is not x86_64, means there is nothing
+// here to run. Second, compile-everywhere/execute-if-capable
+// (docs/building.md): the AVX2 translation units in this same binary already
+// prove the code compiles and links on every x86_64 leg, MSVC/clang-cl/GCC/
+// Clang/AppleClang alike, with zero hardware dependency; whether it actually
+// EXECUTES correctly can only be checked on a machine that truly has AVX2. The
+// four x86_64 CI legs resolve to self-hosted-or-GitHub-hosted dynamically per
+// run and self-hosted CPU features are not documented anywhere in this repo,
+// so this must never assume the current host qualifies.
+//
+// Either way a loud, explicit skip - never a silent pass - unless
+// AC3FORGE_REQUIRE_AVX2=1 asks for a hard failure instead, which is what turns
+// "the AVX2 path ran and passed" into a guaranteed, rather than aspirational,
+// statement on whichever CI job sets it (see tools/ci/run_codec_matrix.sh and
+// docs/building.md). That knob speaks to the HARDWARE only: a build that
+// compiled no AVX2 tier has nothing for it to demand, and still skips.
+//
+// Catch2's SKIP/FAIL/INFO work from a helper called inside a case exactly as
+// they do written out in one, which is what lets eleven copies of this become
+// one - and the copies had already drifted, the first carrying a paragraph of
+// reasoning the other ten had dropped.
+void require_runnable_avx2() {
+    if constexpr (!ac3::test::avx2::kTierCompiled) {
+        SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
+    } else if (!ac3::internal::cpu::has_avx2()) {
+        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
+        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
+        INFO("this CPU does not report AVX2 support - nothing to execute here");
+        if (required) {
+            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
+                "it exists to prove - pin this job to hardware that actually has AVX2");
+        }
+        SKIP("AVX2 not available on this CPU");
+    }
 }
 
 }  // namespace
@@ -436,7 +475,6 @@ TEST_CASE("cpu::has_avx2 reports a stable answer for this process", "[simd][avx2
 
 TEST_CASE("AVX2 probe executes correctly where the CPU actually supports it",
          "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
     // Compile-everywhere, execute-if-capable (docs/building.md): the AVX2
     // TU above this test case in the same binary already proves the code
     // compiles and links on every x86_64 leg, MSVC/clang-cl/GCC/Clang/
@@ -446,40 +484,13 @@ TEST_CASE("AVX2 probe executes correctly where the CPU actually supports it",
     // resolve to self-hosted-or-GitHub-hosted dynamically per run and
     // self-hosted CPU features are not documented anywhere in this repo,
     // so this must never assume the current host qualifies.
-    if (!ac3::internal::cpu::has_avx2()) {
-        // A loud, explicit skip - never a silent pass - unless
-        // AC3FORGE_REQUIRE_AVX2=1 asks for a hard failure instead, which is
-        // what turns "the AVX2 path ran and passed" into a guaranteed,
-        // rather than aspirational, statement on whichever CI job sets it
-        // (see tools/ci/run_codec_matrix.sh and docs/building.md).
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
     CHECK(ac3::internal::avx2::avx2_probe_matches_expected());
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
 TEST_CASE("AVX2 apply_analysis_window agrees with the scalar form bit-for-bit",
          "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     // A deterministic pseudorandom 512-sample block, not the adversarial
     // corpus above: this is a single elementwise multiply against a fixed
@@ -509,12 +520,8 @@ TEST_CASE("AVX2 apply_analysis_window agrees with the scalar form bit-for-bit",
         }
     }
     CHECK(mismatches == 0);
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
-#ifdef AC3FORGE_HAVE_AVX2_TIER
 namespace {
 
 // dct4_scaled's / imdct512_windowed's twiddle-stage AVX2 kernels all share
@@ -558,20 +565,9 @@ bool all_bits_equal(std::span<const double> a, std::span<const double> b) {
 }
 
 }  // namespace
-#endif
 
 TEST_CASE("AVX2 dct4_pre_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     const auto u = deterministic_doubles(2 * kTestP, 0x64637434'70726574ULL);
     const auto pre_re = deterministic_doubles(kTestP, 0x64637434'70725245ULL);
@@ -592,23 +588,10 @@ TEST_CASE("AVX2 dct4_pre_twiddle agrees with the scalar form bit-for-bit", "[sim
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
 TEST_CASE("AVX2 dct4_post_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     const auto z_re = deterministic_doubles(kTestP, 0x706f7374'7a726530ULL);
     const auto z_im = deterministic_doubles(kTestP, 0x706f7374'7a696d30ULL);
@@ -629,23 +612,10 @@ TEST_CASE("AVX2 dct4_post_twiddle agrees with the scalar form bit-for-bit", "[si
     ac3::internal::avx2::dct4_post_twiddle(z_re, z_im, post_re, post_im, scale, avx2_out);
 
     CHECK(all_bits_equal(avx2_out, scalar_out));
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
 TEST_CASE("AVX2 imdct512_pre_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     const auto coeffs = deterministic_doubles(4 * kTestP, 0x696d6463'74636f65ULL);
     const auto cos1 = deterministic_doubles(kTestP, 0x696d6463'74636f73ULL);
@@ -666,23 +636,10 @@ TEST_CASE("AVX2 imdct512_pre_twiddle agrees with the scalar form bit-for-bit", "
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
 TEST_CASE("AVX2 imdct512_negate_copy agrees with the scalar form bit-for-bit", "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     const auto z_re = deterministic_doubles(kTestP, 0x6e656763'6f707930ULL);
     const auto z_im = deterministic_doubles(kTestP, 0x6e656763'6f707931ULL);
@@ -698,23 +655,10 @@ TEST_CASE("AVX2 imdct512_negate_copy agrees with the scalar form bit-for-bit", "
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
 TEST_CASE("AVX2 imdct512_post_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     const auto cos1 = deterministic_doubles(kTestP, 0x706f7374'636f7331ULL);
     const auto sin1 = deterministic_doubles(kTestP, 0x706f7374'73696e31ULL);
@@ -732,23 +676,10 @@ TEST_CASE("AVX2 imdct512_post_twiddle agrees with the scalar form bit-for-bit", 
 
     CHECK(all_bits_equal(avx2_re, scalar_re));
     CHECK(all_bits_equal(avx2_im, scalar_im));
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
 TEST_CASE("AVX2 imdct256_post_twiddle agrees with the scalar form bit-for-bit", "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     // kEighth = 64, not kTestP (128): the short pair's own real size, and a
     // different multiple-of-4 value than the other cases here exercise.
@@ -778,29 +709,16 @@ TEST_CASE("AVX2 imdct256_post_twiddle agrees with the scalar form bit-for-bit", 
     CHECK(all_bits_equal(avx2_y1_im, scalar_y1_im));
     CHECK(all_bits_equal(avx2_y2_re, scalar_y2_re));
     CHECK(all_bits_equal(avx2_y2_im, scalar_y2_im));
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
 TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit",
          "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
     // Same shape, and for the same reason, as the inverse case below: the
     // low-level AVX2 body needs FastMdctTables<512>, private to mdct.cpp,
     // so this goes through the PUBLIC ac3::mdct512_forward_batch4, which
     // only takes the AVX2 path when has_avx2() is true - guarded here
     // exactly like every other [avx2] case in this file.
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     std::mt19937_64 rng(0x6d646374'6634666dULL);
     std::uniform_real_distribution<double> dist(-1.5, 1.5);
@@ -827,14 +745,10 @@ TEST_CASE("AVX2 mdct512_forward_batch4 agrees with four scalar calls bit-for-bit
         }
     }
     CHECK(mismatches == 0);
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }
 
 TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-bit",
          "[simd][avx2]") {
-#ifdef AC3FORGE_HAVE_AVX2_TIER
     // Unlike the kernels above, this one is tested through the PUBLIC
     // ac3::imdct512_windowed_batch4 (mdct.hpp) rather than
     // ac3::internal::avx2:: directly: the low-level AVX2 body needs the
@@ -847,16 +761,7 @@ TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-b
     // of the batched AVX2 kernel specifically on a machine that has one -
     // guarded exactly like every other [avx2] case in this file, not run
     // unconditionally.
-    if (!ac3::internal::cpu::has_avx2()) {
-        const char* const require = std::getenv("AC3FORGE_REQUIRE_AVX2");
-        const bool required = require != nullptr && std::strcmp(require, "1") == 0;
-        INFO("this CPU does not report AVX2 support - nothing to execute here");
-        if (required) {
-            FAIL("AC3FORGE_REQUIRE_AVX2=1 was set, but this host cannot run the AVX2 path "
-                "it exists to prove - pin this job to hardware that actually has AVX2");
-        }
-        SKIP("AVX2 not available on this CPU");
-    }
+    require_runnable_avx2();
 
     std::mt19937_64 rng(0x62617463'6834696dULL);
     std::uniform_real_distribution<double> dist(-2.0e7, 2.0e7);
@@ -883,7 +788,4 @@ TEST_CASE("AVX2 imdct512_windowed_batch4 agrees with four scalar calls bit-for-b
         }
     }
     CHECK(mismatches == 0);
-#else
-    SKIP("AC3FORGE_AVX2=OFF, or this is not an x86_64 build - no AVX2 tier was compiled");
-#endif
 }

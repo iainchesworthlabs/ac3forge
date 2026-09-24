@@ -271,16 +271,28 @@ endif()
 # as cpu_features.cpp just above. AC3FORGE_AVX2_INCLUDE_DIR is empty (falsy)
 # whenever src/forge/CMakeLists.txt did not build the AVX2 tier at all
 # (AC3FORGE_AVX2=OFF, or a non-x86_64 target) - the test sources are
-# conditional on the exact same condition the library used, and
-# AC3FORGE_HAVE_AVX2_TIER tells the test file itself whether to reference
-# them (a #ifdef is fine in tests/ - tools/checks/check_platform_macros.ps1
-# scans src/ and apps/ only).
+# conditional on the exact same condition the library used.
+#
+# Which of those two worlds the test file is in used to be an
+# AC3FORGE_HAVE_AVX2_TIER compile definition it asked about with an #ifdef,
+# on the reasoning that tools/checks/check_platform_macros.ps1 scanned src/
+# and apps/ only. That check now covers tests/ as well, and the #ifdef was
+# costing more than the rule: eleven AVX2 case bodies were not PARSED at all
+# on a non-x86_64 leg, so a renamed kernel or a changed signature could only
+# be caught by an x86_64 run. So the answer arrives the way every other
+# either/or in this repository does - core/avx2/{present,absent}/ each ship
+# an avx2_tier.hpp, CMake puts the matching one on the include path, and
+# ac3::test::avx2::kTierCompiled is a constexpr bool the test branches on
+# with a plain `if`. The absent variant declares the same eight entry points
+# and defines them as unreachable stubs (see its own header), so both arms
+# compile everywhere.
 if(AC3FORGE_AVX2_INCLUDE_DIR)
     target_sources(ac3tests PRIVATE
         "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
         "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp")
-    target_include_directories(ac3tests PRIVATE "${AC3FORGE_AVX2_INCLUDE_DIR}")
-    target_compile_definitions(ac3tests PRIVATE AC3FORGE_HAVE_AVX2_TIER)
+    target_include_directories(ac3tests PRIVATE
+        "${AC3FORGE_AVX2_INCLUDE_DIR}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/core/avx2/present")
     if(AC3FORGE_IS_MSVC_LIKE)
         set_source_files_properties(
             "${AC3FORGE_AVX2_INCLUDE_DIR}/avx2_probe.cpp"
@@ -292,6 +304,18 @@ if(AC3FORGE_AVX2_INCLUDE_DIR)
             "${AC3FORGE_AVX2_INCLUDE_DIR}/mdct_avx2.cpp" PROPERTIES
             COMPILE_OPTIONS "-mavx2")
     endif()
+else()
+    # mdct_avx2.hpp too: src/forge/src/internal/avx2/none/mdct_avx2.cpp already
+    # gives every kernel it declares a std::unreachable() body inside
+    # forge_objects in exactly this configuration, so the absent variant reuses
+    # those rather than defining a second set (which is a duplicate-symbol link
+    # error, not a harmless overlap). Reaching into src/ by path is the same
+    # white-box arrangement this file already uses for src/signing/src and
+    # src/forge/src/{encoder,core,decoder} above.
+    target_include_directories(ac3tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/core/avx2/absent"
+        "${CMAKE_SOURCE_DIR}/src/forge/src/internal/avx2")
+    target_sources(ac3tests PRIVATE core/avx2/absent/avx2_tier.cpp)
 endif()
 
 # core/test_simd_kernels.cpp's own AVX2_REQUIRE knob reads std::getenv too -
@@ -300,6 +324,52 @@ endif()
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
         PROPERTIES COMPILE_OPTIONS "/wd4996")
+endif()
+
+# decoder/test_decoder.cpp's patch_bits: GCC's -O3 VRP mis-derives, only once
+# that function is inlined into one specific one-bit call site (count == 1),
+# that `frame`'s backing store is null ("source object is likely at address
+# zero"), and fails the build under -Werror=array-bounds. `frame` is always a
+# real, previously REQUIRE()'d encoded syncframe, dozens of bytes long, at
+# every call site - GCC's own known false-positive class for std::vector
+# subscripting after aggressive inlining, not a real bounds issue, and the
+# same family as the two GCC suppressions cmake/CompilerWarnings.cmake already
+# carries (see its -Wnull-dereference and -Warray-bounds entries, which state
+# the general shape: post-inlining analysis misattributing an
+# optimizer-introduced "impossible" path as a real access).
+#
+# This was a [[gnu::noinline]] on the function, behind
+# `#if defined(__GNUC__) && !defined(__clang__)` - guarded rather than bare
+# because MSVC's /W4 /WX treats an unrecognized attribute (C5030) as a hard
+# error rather than ignoring it, confirmed in CI. Blocking inlining did remove
+# the interprocedural constant-propagation path that triggers the warning, but
+# it answered a compiler question in the preprocessor, which is the one thing
+# this tree does not do (tools/checks/check_platform_macros.ps1, which now
+# covers tests/). Naming the diagnostic here instead says the same thing more
+# directly - this warning is a known false positive in this file - and says it
+# where the /wd4996 entry above and every other compiler-specific flag in this
+# project already live. Clang does not warn here and needs no entry.
+#
+# Deliberately per-source rather than on the whole target: ac3::warnings
+# already turns -Warray-bounds off tree-wide for GCC >= 16, but ac3tests is
+# also built by the local development loop's older GCC, where it is still on.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set_source_files_properties(decoder/test_decoder.cpp
+        PROPERTIES COMPILE_OPTIONS "-Wno-array-bounds")
+endif()
+
+# render/test_layout.cpp's Speaker/OutputLayout size assertions: the numbers
+# are an ABI fact, written down for MSVC's ABI (which clang-cl shares) and not
+# measured anywhere else, so render/abi/{msvc,unknown}/ each ship a
+# speaker_abi.hpp and this puts the matching one on the include path. It was a
+# `#if defined(_MSC_VER)` in the test file; see either header for what the
+# guard protects and why one ABI's numbers are worth asserting at all.
+if(AC3FORGE_IS_MSVC_LIKE)
+    target_include_directories(ac3tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/render/abi/msvc")
+else()
+    target_include_directories(ac3tests PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/render/abi/unknown")
 endif()
 
 # core/test_crc_mutator.cpp includes fuzz/crc_mutator.hpp - the re-stamping
@@ -386,6 +456,30 @@ if(MSVC)
     target_sources(ac3tests PRIVATE crt/msvc/crt_report.cpp)
 else()
     target_sources(ac3tests PRIVATE crt/stub/crt_report.cpp)
+endif()
+
+# ---------------------------------------------------------------------------
+# The test suite's own platform seam - the same shape as the CRT hook above,
+# and as src/audio/src/backend/<backend>/ and apps/cli/platform/<os>/.
+#
+# Two things a test needs that the standard library does not portably give it:
+# this process's id (for the per-process scratch leaf every writing test takes)
+# and running a command with its real exit code back (std::system() returns the
+# child's exit code on Windows but a raw wait() status word on POSIX, and
+# cmd.exe needs a quote-wrapping that sh must not get). Both used to be written
+# inline behind `#ifdef _WIN32` in nineteen and eight test files respectively.
+#
+# Each directory holds the same filename; CMake compiles the one for the
+# target, so no test source has to ask which platform it is on - which is what
+# lets tools/checks/check_platform_macros.ps1 cover tests/ as it already covers
+# src/ and apps/. The axis is the OS, not the CRT, so this branches on WIN32
+# rather than on MSVC: a MinGW build wants <process.h>'s _getpid() and cmd.exe's
+# quoting just as much as an MSVC one does.
+# ---------------------------------------------------------------------------
+if(WIN32)
+    target_sources(ac3tests PRIVATE platform/windows/process.cpp)
+else()
+    target_sources(ac3tests PRIVATE platform/posix/process.cpp)
 endif()
 
 # ---------------------------------------------------------------------------

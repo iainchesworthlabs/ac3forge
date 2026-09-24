@@ -271,7 +271,7 @@ std::expected<std::vector<const ac3adm::AudioObject*>, BridgeError> collect_leaf
 
     const std::function<std::expected<void, BridgeError>(const std::string&)> visit =
         [&](const std::string& object_id) -> std::expected<void, BridgeError> {
-        if (std::ranges::find(visiting, object_id) != visiting.end()) {
+        if (std::ranges::contains(visiting, object_id)) {
             return std::unexpected(BridgeError::kObjectReferenceCycle);
         }
         const auto* object = find_by_id(model.objects, object_id);
