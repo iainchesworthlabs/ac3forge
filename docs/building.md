@@ -166,7 +166,7 @@ process. `config-linux-gcc-coverage` itself (not the shared `coverage` fragment,
 `VCPKG_MANIFEST_FEATURES` to `adm;hearth` so `src/sendspin` and `apps/hearth`'s engine and test
 sink — on by default like everywhere else — are measured too; see
 [`tools/checks/coverage_report.sh`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/coverage_report.sh)
-for their floors, which start deliberately low pending a first real calibration run.
+for their floors.
 
 Note that `ac3cli` has to link `ac3::coverage` itself (`apps/cli/CMakeLists.txt`) and not merely
 link an instrumented library. The gcov *runtime* propagates to consumers automatically, but
@@ -176,7 +176,8 @@ than as low coverage. The same applies to any other executable added to the repo
 
 After `ctest`, `tools/checks/coverage_report.sh` (the same script `.github/workflows/ci.yml`'s
 `coverage` job runs) makes one `gcovr` extraction pass and then gates line *and* branch coverage
-per component — the nine `src/` library components plus `apps/cli` — and prints a per-command
+per component — the `src/` library components, `apps/cli`, `apps/common`, Crucible's platform-free
+engine and Hearth's engine and test sink — and prints a per-command
 breakdown of `apps/cli` below the gate, reported but not gated, so a thin command module shows as
 thin instead of averaging away inside the aggregate. See the script's own floor table for the
 current thresholds and the measured baseline each was calibrated against:
@@ -1027,9 +1028,9 @@ One leg, `windows-msvc-arm64`, is still marked experimental, and still packages 
 
 The coverage job gates line and branch coverage per component, not as one blended
 number, using the same GCC 16 pin as the other Linux legs; the floor table, the measurement each
-floor was calibrated against, and why three components (`src/audio`'s device paths, `src/capi`'s
-E-AC-3 surface, `apps/cli`'s device-dependent command modules) are floored low all live
-in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
+floor was calibrated against, and why `src/audio` and `apps/common` sit on a hardware-class floor
+(their device paths run headless against alsa-lib's software devices, but card enumeration
+needs a real card) all live in `tools/checks/coverage_report.sh`, with the calibration history in the coverage job's own
 comment in `ci.yml`.
 
 On `pull_request` only, a `performance-compare` job builds `ac3bench`/`ac3kernelbench` at the
