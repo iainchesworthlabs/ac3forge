@@ -215,8 +215,9 @@ evidence for that reading.
     cannot write AC-4 into MP4; and its raw muxer's `write_crc` option writes a CRC that differs
     from DEE's in every frame of `ac4-stereo-64`, which the inspector checks against Annex G.
   - librempeg, a fork of FFmpeg, gained an experimental AC-4 decoder on 2025-06-02, under the GPL
-    version 3 or later and partly derived from Emby's code. It publishes no releases or binaries;
-    its repository (`github.com/librempeg/librempeg`, about 159 MB packed) has tags up to v0.6.1.
+    version 3 or later and partly derived from Emby's code. It publishes no releases or binaries,
+    and the tags in its repository (`github.com/librempeg/librempeg`, about 159 MB packed) are
+    FFmpeg's from 2010, so a build pins a commit.
     Emby's, Kodi's and NextPVR's AC-4 decoding come from the same code. It is not built here.
   - The Dolby Reference Player's `dlbac4dec` returned no samples for any frame when it was tried
     for IM4 (`docs/verification.md`, AC-4 section). Dolby's release notes for the player say an
@@ -914,15 +915,18 @@ find every sync frame the encoder writes, at the size written, and its mov demux
 AC-4 track of the encoder's MP4 output. Its raw muxer's CRC is not a reference.
 
 **librempeg is the second decoder** ([decision 6](#decisions), confirmed in decision 13). It is
-built in WSL under `D:\ac3bld\librempeg` from a pinned tag, with the compiler, `make` and
-`pkg-config` already there; `nasm` is not, so its assembly is disabled (`--disable-x86asm`), which
-costs speed and nothing else. Its binary is also named `ffmpeg`, and the gold gate,
-`quality_race.py`, `fuzz/differential_oracle.hpp` and most other scripts call FFmpeg by name from
-`PATH`, so it is only ever called by its full path, never put on `PATH`, where it would replace the
-pinned FFmpeg 8.0.1. Before its output counts as evidence for a tool, it decodes the committed and
-census DEE streams and is scored against their sources as the decoder is; that measurement says
-which tools it is a second decoder for. Its source is never read, its tag and commit are recorded
-with each comparison, agreement with it is evidence, and a disagreement is settled from the text.
+built in WSL under `D:\ac3bld\librempeg` from a pinned commit, with the compiler, `make` and
+`pkg-config` already there; `nasm` is not, so it is built without assembly for a generic
+architecture, which costs speed and nothing else (its x86 build without assembly does not link). Its
+`ffmpeg` program builds only with `--enable-agpl`, which puts that program under the AGPL; it runs
+here as a separate tool and is never linked or distributed. Its binary is named `ffmpeg`, and the
+gold gate, `quality_race.py`, `fuzz/differential_oracle.hpp` and most other scripts call FFmpeg by
+name from `PATH`, so it is only ever called by its full path, never put on `PATH`, where it would
+replace the pinned FFmpeg 8.0.1. Before its output counts as evidence for a tool, it decodes the
+committed and census DEE streams and is scored against their sources as the decoder is; that
+measurement says which tools it is a second decoder for. Its source is never read, its tag and
+commit are recorded with each comparison, agreement with it is evidence, and a disagreement is
+settled from the text.
 
 **MediaInfo's trace is a third reader.** A script compares MediaInfo's `--Details=1` values, frame
 by frame, with the decoder's trace of the same elements. On DEE's streams that checks the decoder's
@@ -1922,13 +1926,13 @@ stand. Each lists its options, the recommendation, what each costs, and what was
     **Recommend (a)**, and (b) if such a device is at hand. The user asked for FFmpeg as the
     parallel decoder, as for AC-3 and E-AC-3; FFmpeg has no AC-4 decoder, and librempeg, a fork of
     FFmpeg with an experimental one, is the nearest program that can take the role. Cost of (a): a
-    shallow clone of one tag (the whole repository is about 159 MB packed), fetched with the user's
-    go-ahead, and a build tree under 1 GB on `D:`, in the WSL distribution that has the compiler,
-    with nothing installed; a GPL program kept outside the tree; and an experimental decoder,
-    measured on DEE's streams before its output counts. Cost of (b): a device, a small Android app,
-    and the device's own processing (DRC, loudness, virtualisation) switched off or measured;
-    nothing is attached here and `adb` is not on `PATH`. Cost of (c): the encoder's syntax outside
-    DEE's set, and every decode above SIMPLE, get no second opinion.
+    shallow clone of one commit (the whole repository is about 159 MB packed), fetched with the
+    user's go-ahead, and a build tree under 1 GB on `D:`, in the WSL distribution that has the
+    compiler, with nothing installed; a GPL and AGPL program kept outside the tree; and an
+    experimental decoder, measured on DEE's streams before its output counts. Cost of (b): a device,
+    a small Android app, and the device's own processing (DRC, loudness, virtualisation) switched
+    off or measured; nothing is attached here and `adb` is not on `PATH`. Cost of (c): the encoder's
+    syntax outside DEE's set, and every decode above SIMPLE, get no second opinion.
 
     **Taken: (a)**, in the user's answer of 2026-09-24.
 
