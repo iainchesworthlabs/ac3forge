@@ -28,6 +28,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "hearth_controller.hpp"
 #include "language_manager.hpp"
@@ -187,9 +188,12 @@ public:
     // Starts an in-process Hearth test sink (apps/hearth/testsink) named
     // `name` on loopback and hands it to NetworkController's own
     // NetworkSinks as a found service - starting NetworkController first if
-    // no suite code has yet. Returns the empty string on success, otherwise
-    // why not.
-    Q_INVOKABLE QString startTestSink(const QString& name) {
+    // no suite code has yet. `acceptSettings`: the sink lists the Settings
+    // command and applies one (SinkOptions::accept_settings). Every sink
+    // started stays up for the process; the code/log calls below read the
+    // most recent one. Returns the empty string on success, otherwise why
+    // not.
+    Q_INVOKABLE QString startTestSink(const QString& name, bool acceptSettings = false) {
         auto* network = this->network();
         if (network == nullptr) {
             return QStringLiteral("NetworkController is not registered");
@@ -199,13 +203,15 @@ public:
             return QStringLiteral("NetworkController did not start its Sendspin host");
         }
         std::string error;
-        sink_ = ac3::hearth::uitest::start_test_sink(name.toStdString(),
-                                                     QDir(scratch_.path()).filePath(QStringLiteral("sink")).toStdString(),
-                                                     &error);
-        if (!sink_) {
+        auto sink = ac3::hearth::uitest::start_test_sink(
+            name.toStdString(),
+            QDir(scratch_.path()).filePath(QStringLiteral("sink-%1").arg(sinks_.size())).toStdString(),
+            acceptSettings, &error);
+        if (!sink) {
             return QString::fromStdString(error);
         }
-        ac3::hearth::uitest::announce(*network->sinks_for_test(), *sink_);
+        ac3::hearth::uitest::announce(*network->sinks_for_test(), *sink);
+        sinks_.push_back(std::move(sink));
         return {};
     }
 
@@ -213,13 +219,14 @@ public:
     // what a person would read off the sink's console and type into the
     // Network page's code boxes. Empty until the sink has printed one.
     Q_INVOKABLE QString testSinkCode() const {
-        return sink_ ? QString::fromStdString(ac3::hearth::uitest::pairing_code(*sink_)) : QString();
+        return sinks_.empty() ? QString()
+                              : QString::fromStdString(ac3::hearth::uitest::pairing_code(*sinks_.back()));
     }
 
     Q_INVOKABLE QStringList testSinkLog() const {
         QStringList lines;
-        if (sink_) {
-            for (const std::string& line : ac3::hearth::uitest::log_lines(*sink_)) {
+        if (!sinks_.empty()) {
+            for (const std::string& line : ac3::hearth::uitest::log_lines(*sinks_.back())) {
                 lines.push_back(QString::fromStdString(line));
             }
         }
@@ -312,7 +319,7 @@ private:
     QQmlEngine* engine_ = nullptr;
     QTemporaryDir scratch_;
     std::shared_ptr<ac3::hearth::uitest::FakeRoom> room_;
-    std::shared_ptr<ac3::hearth::uitest::TestSinkHost> sink_;
+    std::vector<std::shared_ptr<ac3::hearth::uitest::TestSinkHost>> sinks_;
 };
 
 // Mirrors DeskIsolation (apps/crucible/ui/tests/qml_test_main.cpp) and

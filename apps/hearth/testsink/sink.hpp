@@ -61,6 +61,11 @@ struct SinkOptions {
                                                   sendspin::messages::Codec::kOpus};
     // Offer _ac3forge_player@v1 before player@v1, as a Hearth sink does.
     bool extension_role = true;
+    // Lists the Settings command in the extension role's state and applies
+    // a settings command by reporting its revision (logged "settings N
+    // applied") - for a server-side test of a sink that takes settings.
+    // Off by default: the sink manages nothing (see Sink's config).
+    bool accept_settings = false;
     // The speaker layout the extension role's streams are rendered to, in ac3::render::OutputLayout's
     // grammar.
     std::string layout = "7.1.4";

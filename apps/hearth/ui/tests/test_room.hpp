@@ -67,8 +67,10 @@ void set_speed(FakeRoom& room, double speed);
 // `directory`.
 class TestSinkHost;
 
+// `accept_settings`: the sink lists the Settings command and applies one
+// (SinkOptions::accept_settings).
 [[nodiscard]] std::shared_ptr<TestSinkHost> start_test_sink(const std::string& name, const std::string& directory,
-                                                            std::string* error);
+                                                            bool accept_settings, std::string* error);
 // Hands `host` to `sinks` as a found `_sendspin._tcp` service (instance
 // `host`'s name), which dials it.
 void announce(ac3::hearth::NetworkSinks& sinks, const TestSinkHost& host);

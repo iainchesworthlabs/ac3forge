@@ -343,7 +343,7 @@ public:
 };
 
 std::shared_ptr<TestSinkHost> start_test_sink(const std::string& name, const std::string& directory,
-                                              std::string* error) {
+                                              bool accept_settings, std::string* error) {
     auto host = std::make_shared<TestSinkHost>();
     host->name = name;
     testsink::SinkOptions options;
@@ -358,6 +358,7 @@ std::shared_ptr<TestSinkHost> start_test_sink(const std::string& name, const std
     // route and trim - the default 7.1.4 would do too, but twelve rows is
     // more page than a fast test needs to draw.
     options.layout = "5.1";
+    options.accept_settings = accept_settings;
     auto started = testsink::Sink::start(options, host->log);
     if (!started.has_value()) {
         if (error != nullptr) {

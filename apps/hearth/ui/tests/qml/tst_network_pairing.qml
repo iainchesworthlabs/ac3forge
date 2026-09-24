@@ -19,12 +19,10 @@ import "HearthTestHelpers.js" as H
 // decoder settings it lists - none, for this sink - and its playback
 // report), a group made on the page takes it as a member, and a member
 // volume set from the page's slider is heard by the sink as a player
-// command. Editing the sink's speaker settings is offered but cannot reach
-// this sink (it does not list the Settings command); that case is an
-// expectFail recorded as a UI bug in FEATURE_COVERAGE.md.
-//
-// Runs with QML_DISABLE_DISK_CACHE=1 (tests/CMakeLists.txt): Network.qml's
-// AOT-compiled bindings crash under Qt 6.9.3, see tst_network_page_aot.qml.
+// command. The first sink does not list the Settings command, so its
+// Speakers tab is disabled and says why; a second sink started in the
+// test sink's accept-settings mode takes an edit made on the tab and
+// reports the revision applied.
 //
 // NetworkController is one singleton for the whole file and test_* run in
 // alphabetical order, so every case calls ensureSink()/ensurePaired() for
@@ -87,9 +85,12 @@ TestCase {
         const printedBefore = codesPrinted();
         // Selecting the row is what asks the sink to pair - even when it is
         // already the selected one (a cancelled attempt leaves it selected).
+        // Exactly one click: each selection of an unpaired sink queues a
+        // pairing attempt, so a second click would start another attempt
+        // once this one has paired.
         mouseClick(rowItem(page));
-        clickUntil(function() { return rowItem(page); },
-                   function() { return NetworkController.selectedId === sinkRow().id; }, "the sink row never selected");
+        tryVerify(function() { return NetworkController.selectedId === sinkRow().id; }, 10000,
+                  "the sink row never selected");
         let first = null;
         tryVerify(function() { first = findChild(page, "networkPairingDigit-0"); return first !== null; }, 10000,
                   "selecting an unpaired sink did not show the pairing view");
@@ -262,32 +263,90 @@ TestCase {
     }
 
     // The Speakers tab reads the sink's own facts: its 5.1 test layout's six
-    // outputs, its crossover range. What it cannot do against this sink is
-    // change anything - see the expectFail below.
-    function test_pairedSinkSpeakersTabShowsTheSinkAndEditsReachIt() {
+    // outputs, its crossover range. This sink's state does not list the
+    // Settings command, so nothing on the tab can reach it: the controls are
+    // disabled and the tab says why. Regression: they used to be enabled,
+    // and an edit was silently dropped (ServerSession::ac3forge_command()
+    // refuses a command the sink does not list) with the report still
+    // saying "Nothing sent yet.".
+    function test_pairedSinkSpeakersTabIsDisabledWhenTheSinkTakesNoSettings() {
         const page = makePage();
         ensurePaired(page);
         tryVerify(function() { return NetworkController.sinkSpeakerSettings.outputs === 6; }, 10000,
                   "the Speakers tab does not show the sink's six outputs");
         compare(NetworkController.sinkSpeakerSettings.management.crossoverMinHz, 40);
         compare(NetworkController.sinkSpeakerSettings.management.crossoverMaxHz, 250);
-        verify(findChild(page, "networkSinkTrim-0") !== null, "no trim field for the sink's first speaker");
-        const layout = NetworkController.sinkSpeakerSettings.layoutText === "7.1" ? "5.1" : "7.1";
-        const preset = H.segment(page, "Speaker layout", layout);
+        compare(NetworkController.sinkSpeakerSettings.settingsAccepted, false);
+        const preset = H.segment(page, "Speaker layout", "7.1");
         verify(preset !== null);
-        // KNOWN BUG (FEATURE_COVERAGE.md, "UI bugs found"): the tab's
-        // controls are enabled and clickable, but the edit is silently
-        // dropped. NetworkSinks::push_sink_settings() is refused by
-        // ServerSession::ac3forge_command() because the sink's state does
-        // not list the Settings command (apps/hearth/testsink lists only
-        // volume and mute), and nothing on the page says so - the report
-        // stays "Nothing sent yet." and the layout does not change. Marked
-        // expectFail so the suite stays green and turns red (XPASS) the day
-        // either the page honours supported_commands or the edit lands.
-        mouseClick(preset);
-        expectFail("", "the sink does not list the Settings command and the page offers the edit anyway");
-        tryVerify(function() { return NetworkController.sinkSpeakerSettings.layoutText === layout; }, 1500,
-                  "the sink layout never changed to " + layout + " (" + NetworkController.sinkReport.settingsText + ")");
+        compare(preset.parent.enabled, false, "a layout preset is offered to a sink that takes no settings");
+        compare(findChild(page, "networkSinkTrim-0").enabled, false);
+        const why = findChild(page, "networkSinkSettingsBlocked");
+        verify(why !== null && why.visible, "the tab does not say why its controls are disabled");
+        verify(why.text.indexOf("does not take") >= 0, why.text);
+        // The report says so too, instead of "Nothing sent yet.".
+        verify(NetworkController.sinkReport.settingsText.indexOf("does not take") >= 0,
+               NetworkController.sinkReport.settingsText);
+        // A push attempted anyway (the page cannot, but the controller is
+        // public) is refused and reported, not dropped.
+        const before = NetworkController.sinkSpeakerSettings.layoutText;
+        NetworkController.setSinkLayoutText(before === "7.1" ? "5.1" : "7.1");
+        tryVerify(function() { return NetworkController.sinkReport.settingsText.indexOf("not sent") >= 0; }, 5000,
+                  "a refused push is not reported: " + NetworkController.sinkReport.settingsText);
+        compare(NetworkController.sinkSpeakerSettings.layoutText, before);
+    }
+
+    // A sink that does list Settings (the test sink's accept-settings mode)
+    // takes an edit made on the tab, and reports the revision applied.
+    function test_sinkThatTakesSettingsAppliesAnEditFromTheSpeakersTab() {
+        const page = makePage();
+        compare(TestServices.startTestSink("Settings sink", true), "", "the second test sink did not start");
+        let row = null;
+        tryVerify(function() {
+            row = NetworkController.sinks.find(function(r) { return r.name === "Settings sink"; });
+            return row !== undefined;
+        }, 15000, "the second test sink never appeared");
+        const printedBefore = codesPrinted();
+        // One click only - pairFromThePage()'s comment says why - and only
+        // once the sink has said hello, after which its row stops being
+        // rebuilt under the pointer.
+        tryVerify(function() {
+            return TestServices.testSinkLog().some(function(line) { return line.indexOf("activated for") >= 0; });
+        }, 15000, "the second sink never connected");
+        waitForRendering(page);
+        let rowDelegate = null;
+        tryVerify(function() {
+            rowDelegate = H.find(page, function(item) { return item.modelData !== undefined && item.modelData !== null
+                                                               && item.modelData.name === "Settings sink" && item.current !== undefined; });
+            return rowDelegate !== null;
+        }, 10000, "the second sink has no row on the page");
+        mouseClick(rowDelegate);
+        tryVerify(function() { return NetworkController.selectedId === row.id; }, 10000, "the second sink never selected");
+        let first = null;
+        tryVerify(function() { first = findChild(page, "networkPairingDigit-0"); return first !== null; }, 10000);
+        tryVerify(function() { return codesPrinted() > printedBefore && TestServices.testSinkCode().length === 6; }, 15000);
+        const code = TestServices.testSinkCode();
+        mouseClick(first);
+        for (let i = 0; i < code.length; ++i) {
+            keyClick(code.charAt(i));
+        }
+        const pair = findChild(page, "networkPairingPair");
+        tryVerify(function() { return pair.enabled; }, 5000, "Pair stayed disabled with every box filled");
+        mouseClick(pair);
+        tryVerify(function() { return NetworkController.selectedSinkSettable; }, 15000,
+                  "the second sink never paired: " + NetworkController.pairingError + " / "
+                  + TestServices.testSinkLog().join(" | "));
+        tryVerify(function() { return NetworkController.sinkSpeakerSettings.settingsAccepted === true; }, 10000);
+        let preset = null;
+        tryVerify(function() { preset = H.segment(page, "Speaker layout", "7.1"); return preset !== null && preset.parent.enabled; },
+                  10000, "the layout presets are not offered to a sink that takes settings");
+        verify(!findChild(page, "networkSinkSettingsBlocked").visible);
+        clickUntil(function() { return H.segment(page, "Speaker layout", "7.1"); },
+                   function() { return NetworkController.sinkSpeakerSettings.layoutText === "7.1"; }, "the layout never changed");
+        tryVerify(function() { return NetworkController.sinkReport.settingsText.indexOf("applied") >= 0; }, 15000,
+                  "the sink never reported the revision applied: " + NetworkController.sinkReport.settingsText);
+        verify(TestServices.testSinkLog().some(function(line) { return line.indexOf("settings 1 applied") >= 0; }),
+               "the sink does not say it applied the settings");
     }
 
     // The pairing Hearth made is a record in its settings: the Settings

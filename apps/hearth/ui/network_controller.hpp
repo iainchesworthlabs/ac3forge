@@ -9,6 +9,7 @@
 #include <QtQmlIntegration>
 
 #include <memory>
+#include <string>
 
 // Forward-declared, not included: PairingStore and QSettingsStore both reach
 // ac3::render transitively (settings_model.hpp includes engine_thread.hpp),
@@ -207,6 +208,10 @@ signals:
 
 private:
     void poll();
+    // Records whether a settings push to `sink_id` was actually sent
+    // (NetworkSinks::push_sink_settings()'s result) and republishes, so a
+    // refused one shows in that sink's report rather than vanishing.
+    void note_push(bool sent, const std::string& sink_id);
 
     std::unique_ptr<ac3::hearth::NetworkSinks> sinks_engine_;
     // The four-argument constructor, network_controller.cpp's own comment
@@ -228,6 +233,9 @@ private:
     QVariantMap sink_decoder_settings_;
     QVariantMap sink_report_;
     QVariantMap sink_only_on_sink_;
+    // The sink the last settings push was refused for, or empty - see
+    // note_push().
+    QString refused_push_sink_;
 
     QVariantList groups_;
     QString selected_group_id_;
