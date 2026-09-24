@@ -97,18 +97,19 @@ void write_raw(const fs::path& path, std::span<const char> bytes) {
 
 std::string quoted(const fs::path& path) { return "\"" + path.string() + "\""; }
 
-// `channels` channels of a 997 Hz tone at `amplitude`, `frames` long - 997
-// rather than 1000 so the samples do not repeat at a byte stride: `levels`
-// sniffs its input for a container first, and apps/common/container_input's
-// MPEG-TS grid test can take a strictly periodic float WAV for a transport
-// stream.
+// `channels` channels of a `hz` tone at `amplitude`, `frames` long. 1 kHz by
+// default; at 48 kHz that is exactly 48 samples a cycle, so the bytes repeat
+// at a fixed period - which once made apps/common/container_input's MPEG-TS
+// grid test take such a WAV for a transport stream; the regression test
+// below pins that down directly. The loudness tests pass 997 Hz, BS.1770's
+// own reference frequency, where K-weighting is exactly 0 dB.
 fs::path write_tone_wav(const fs::path& path, std::size_t channels, std::uint32_t rate,
-                        std::size_t frames, double amplitude) {
+                        std::size_t frames, double amplitude, double hz = 1000.0) {
     std::vector<std::vector<float>> data(channels, std::vector<float>(frames));
     for (auto& channel : data) {
         for (std::size_t n = 0; n < frames; ++n) {
             channel[n] = static_cast<float>(
-                amplitude * std::sin(2.0 * std::numbers::pi * 997.0 * static_cast<double>(n) /
+                amplitude * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n) /
                                      static_cast<double>(rate)));
         }
     }
@@ -168,12 +169,53 @@ TEST_CASE("levels refuses a WAV wider than 5.1 and an input it cannot read",
               .find("error: cannot read " + missing.string()) != std::string::npos);
 }
 
+// apps/common/container_input's own regression: sniff_container ran its
+// MPEG-TS packet-grid test on a WAV, and a valid float WAV `ac3cli decode`
+// wrote from a 1 kHz `sine` had five 0x47 bytes exactly 192 bytes apart, so
+// levels (and every command that sniffs its input) refused it as "a
+// Transport Stream this build cannot demux". This plants both grids the
+// sniff knows at their tightest - 0x47 every 188 bytes and every 192 bytes,
+// each starting inside the first stride where a real capture's would - into
+// a WAV's sample data, on each float's low mantissa byte so the audio stays
+// a -6 dBFS tone.
+TEST_CASE("levels and qc do not take a WAV with a 0x47 packet grid in it for MPEG-TS",
+          "[cli][analysis]") {
+    const auto dir = scratch_dir();
+    const auto wav = write_tone_wav(dir / "levels_ts_grid.wav", 2, 48000, 4800, 0.5);
+    auto bytes = read_raw(wav);
+    const std::string_view view{bytes.data(), bytes.size()};
+    const auto data_tag = view.find("data");
+    REQUIRE(data_tag != std::string_view::npos);
+    const std::size_t data_at = data_tag + 8;  // past the chunk id and size
+    REQUIRE(data_at < 188);
+    REQUIRE(data_at % 4 == 0);  // so every multiple-of-4 offset is a low byte
+    constexpr int kRuns = 8;    // past the sniff's own five
+    for (int i = 0; i < kRuns; ++i) {
+        bytes[data_at + (188 * static_cast<std::size_t>(i))] = static_cast<char>(0x47);
+        bytes[data_at + 8 + (192 * static_cast<std::size_t>(i))] = static_cast<char>(0x47);
+    }
+    write_raw(wav, bytes);
+
+    const auto log = dir / "levels_ts_grid.log";
+    const auto rc = run_cli("levels " + quoted(wav), log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc == 0);
+    CHECK(text.find("Transport Stream") == std::string::npos);
+    CHECK(text.find("  L       -6.02") != std::string::npos);
+
+    // qc measures a coded stream only, so a WAV is still refused - but as
+    // what it is (no syncframe), exit 2, never as an undemuxable container.
+    const auto qc_text = run_failing("qc " + quoted(wav), log, 2);
+    CHECK(qc_text.find("Transport Stream") == std::string::npos);
+}
+
 TEST_CASE("loudness turns a WAV's BS.1770 integrated loudness into the dialnorm it implies",
           "[cli][analysis]") {
     const auto dir = scratch_dir();
     const auto log = dir / "loudness.log";
 
-    const auto stereo = write_tone_wav(dir / "loudness_stereo.wav", 2, 48000, 48000, 0.5);
+    const auto stereo = write_tone_wav(dir / "loudness_stereo.wav", 2, 48000, 48000, 0.5, 997.0);
     REQUIRE(run_cli("loudness " + quoted(stereo), log) == 0);
     const auto text = read_log(log);
     INFO(text);
