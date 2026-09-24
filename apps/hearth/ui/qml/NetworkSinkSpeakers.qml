@@ -162,16 +162,14 @@ ScrollView {
             }
         }
 
-        // Boxed, and the two status lines sit OUTSIDE the box - the mockup
-        // draws the border around the grid alone and lets the ✓ sentences run
-        // on the page beneath it.
+        // Boxed, untitled, and the two status lines sit OUTSIDE the box: the
+        // mockup's border starts at the SPEAKER header row - there is no
+        // heading above it - and the ✓ sentences run on the page beneath.
         Card {
-            rule: false
-            title: qsTr("Routing · speaker to sink slot")
-
             Column {
                 id: grid
-                spacing: 1
+                spacing: 0
+                Layout.fillWidth: true
                 activeFocusOnTab: true
                 onActiveFocusChanged: {
                     if (grid.activeFocus) {
@@ -180,13 +178,16 @@ ScrollView {
                     }
                 }
 
-                // 28, and NONE the same square as the rest - measured off
-                // network-sink-speakers.png, where every cell in the grid
-                // including NONE is one size. Speakers.qml's own grid was
-                // corrected to the same numbers.
-                readonly property int cellSize: Math.round(28 * Theme.fontScale)
+                // Measured off network-sink-speakers.png: cells on a 26 px
+                // pitch (borders land on single lines there, so the cells abut
+                // - spacing 0, not 1, or every boundary draws twice), NONE the
+                // same square as the rest, a 30 px header row and 40 px rows,
+                // each closed by a full-width rule.
+                readonly property int cellSize: Math.round(26 * Theme.fontScale)
                 readonly property int labelWidth: Math.round(72 * Theme.fontScale)
                 readonly property int noneWidth: grid.cellSize
+                readonly property int headerHeight: Math.round(30 * Theme.fontScale)
+                readonly property int rowHeight: Math.round(40 * Theme.fontScale)
 
                 function cellAt(row, column) {
                     const rowCount = root.labels.length;
@@ -213,10 +214,10 @@ ScrollView {
                 }
 
                 Row {
-                    spacing: 1
+                    spacing: 0
                     Text {
                         width: grid.labelWidth
-                        height: grid.cellSize
+                        height: grid.headerHeight
                         verticalAlignment: Text.AlignVCenter
                         text: qsTr("SPEAKER")
                         color: Theme.textMuted
@@ -227,7 +228,7 @@ ScrollView {
                         delegate: Text {
                             required property int index
                             width: grid.cellSize
-                            height: grid.cellSize
+                            height: grid.headerHeight
                             horizontalAlignment: Text.AlignHCenter
                             verticalAlignment: Text.AlignVCenter
                             text: String(index + 1)
@@ -237,7 +238,7 @@ ScrollView {
                     }
                     Text {
                         width: grid.noneWidth
-                        height: grid.cellSize
+                        height: grid.headerHeight
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                         text: qsTr("NONE")
@@ -246,21 +247,30 @@ ScrollView {
                     }
                 }
 
+                Rectangle { width: grid.width; height: 1; color: Theme.divider }
+
                 Repeater {
                     id: rowsRepeater
                     model: root.labels
 
-                    delegate: Row {
+                    // A Column, not the Row itself, so each row can close with
+                    // its own rule - the id stays `rowItem` so everything
+                    // inside still reads its index and label from here.
+                    delegate: Column {
                         id: rowItem
                         required property int index
                         required property string modelData
-                        spacing: 1
+                        spacing: 0
                         property alias outputsRepeater: cellsRepeater
                         property alias noneOutputCell: noneCell
 
+                        Row {
+                        spacing: 0
+                        height: grid.rowHeight
+
                         Text {
                             width: grid.labelWidth
-                            height: grid.cellSize
+                            height: grid.rowHeight
                             verticalAlignment: Text.AlignVCenter
                             text: rowItem.modelData
                             color: Theme.text
@@ -276,6 +286,7 @@ ScrollView {
                                 required property int index
                                 readonly property bool assigned: root.outputOf(rowItem.index) === cell.index
 
+                                anchors.verticalCenter: parent.verticalCenter
                                 width: grid.cellSize
                                 height: grid.cellSize
                                 // A patched cell KEEPS its outline and fills a
@@ -328,6 +339,7 @@ ScrollView {
                             id: noneCell
                             readonly property bool assigned: root.outputOf(rowItem.index) < 0
 
+                            anchors.verticalCenter: parent.verticalCenter
                             width: grid.noneWidth
                             height: grid.cellSize
                             color: "transparent"
@@ -369,6 +381,15 @@ ScrollView {
                                 }
                             }
                         }
+                        }
+
+                        // The Card's own border closes the last row.
+                        Rectangle {
+                            width: grid.width
+                            height: 1
+                            color: Theme.divider
+                            visible: rowItem.index < root.labels.length - 1
+                        }
                     }
                 }
             }
@@ -392,14 +413,17 @@ ScrollView {
             wrapMode: Text.WordWrap
         }
 
+        // Untitled and ruled, like the routing grid above and for the same
+        // reason: the mockup's box starts at the SPK header row, and a
+        // full-width rule closes the header and every speaker after it
+        // (measured at a 47 px pitch).
         Card {
-            rule: false
-            title: qsTr("Levels and delays")
-
             Column {
                 id: levels
                 Layout.fillWidth: true
-                spacing: Theme.gap / 2
+                spacing: 0
+
+                readonly property int rowHeight: Math.round(47 * Theme.fontScale)
 
                 readonly property int labelWidth: Math.round(40 * Theme.fontScale)
                 readonly property int outWidth: Math.round(32 * Theme.fontScale)
@@ -411,41 +435,56 @@ ScrollView {
 
                 Row {
                     spacing: Theme.gap / 2
-                    Text { width: levels.labelWidth; text: qsTr("SPK"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
-                    Text { width: levels.outWidth; text: qsTr("OUT"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
-                    Text { width: levels.sizeWidth; text: qsTr("SIZE"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
+                    height: Math.round(28 * Theme.fontScale)
+                    Text { width: levels.labelWidth; height: parent.height; verticalAlignment: Text.AlignVCenter; text: qsTr("SPK"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
+                    Text { width: levels.outWidth; height: parent.height; verticalAlignment: Text.AlignVCenter; text: qsTr("OUT"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
+                    Text { width: levels.sizeWidth; height: parent.height; verticalAlignment: Text.AlignVCenter; text: qsTr("SIZE"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
                     Text {
-                        width: levels.fieldWidth; horizontalAlignment: Text.AlignRight
+                        width: levels.fieldWidth; height: parent.height
+                        horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter
                         text: qsTr("TRIM"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
                     }
                     Text {
-                        width: levels.fieldWidth; horizontalAlignment: Text.AlignRight
+                        width: levels.fieldWidth; height: parent.height
+                        horizontalAlignment: Text.AlignRight; verticalAlignment: Text.AlignVCenter
                         text: qsTr("DELAY"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
                     }
                     Item { width: Theme.gap; height: 1 }
-                    Text { text: qsTr("IDENTIFY"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
+                    Text {
+                        height: parent.height; verticalAlignment: Text.AlignVCenter
+                        text: qsTr("IDENTIFY"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                    }
                 }
+
+                Rectangle { width: levels.width; height: 1; color: Theme.divider }
 
                 Repeater {
                     model: root.labels
 
-                    delegate: Row {
+                    // A Column so the row can close with its own rule; the id
+                    // stays `row` so everything inside still reads its index,
+                    // label and output from here.
+                    delegate: Column {
                         id: row
                         required property int index
                         required property string modelData
-                        spacing: Theme.gap / 2
+                        spacing: 0
                         readonly property int output: root.outputOf(row.index)
+
+                        Row {
+                        spacing: Theme.gap / 2
+                        height: levels.rowHeight
 
                         Text {
                             width: levels.labelWidth
-                            height: trimField.implicitHeight
+                            height: parent.height
                             verticalAlignment: Text.AlignVCenter
                             text: row.modelData
                             color: Theme.text
                         }
                         Text {
                             width: levels.outWidth
-                            height: trimField.implicitHeight
+                            height: parent.height
                             verticalAlignment: Text.AlignVCenter
                             text: row.output >= 0 ? String(row.output + 1) : "—"
                             color: Theme.textMuted
@@ -453,7 +492,7 @@ ScrollView {
 
                         Item {
                             width: levels.sizeWidth
-                            height: trimField.implicitHeight
+                            height: parent.height
                             Text {
                                 anchors.verticalCenter: parent.verticalCenter
                                 visible: root.isLfeFlags[row.index] === true
@@ -485,6 +524,7 @@ ScrollView {
                         // again after the first keystroke.
                         AppTextField {
                             id: trimField
+                            anchors.verticalCenter: parent.verticalCenter
                             objectName: "networkSinkTrim-" + row.index
                             width: levels.fieldWidth
                             horizontalAlignment: Text.AlignRight
@@ -514,6 +554,7 @@ ScrollView {
 
                         AppTextField {
                             id: delayField
+                            anchors.verticalCenter: parent.verticalCenter
                             objectName: "networkSinkDelay-" + row.index
                             width: levels.fieldWidth
                             horizontalAlignment: Text.AlignRight
@@ -548,6 +589,7 @@ ScrollView {
                         // reason (qml-native-button-repeater-offscreen-hang).
                         Rectangle {
                             id: identifyButton
+                            anchors.verticalCenter: parent.verticalCenter
                             objectName: "networkSinkIdentify-" + row.index
                             readonly property bool active: (root.speakers.identifySlot ?? -1) === row.index
 
@@ -601,6 +643,15 @@ ScrollView {
                                            ? NetworkController.stopSinkIdentify()
                                            : NetworkController.startSinkIdentify(row.index)
                             }
+                        }
+                        }
+
+                        // The Card's own border closes the last row.
+                        Rectangle {
+                            width: levels.width
+                            height: 1
+                            color: Theme.divider
+                            visible: row.index < root.labels.length - 1
                         }
                     }
                 }
