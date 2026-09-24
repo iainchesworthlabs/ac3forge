@@ -308,11 +308,15 @@ def decode_librempeg(args, stream, out_wav):
 
 def decode_with_groups(cli, stream, out_wav):
     """ac3cli's decode of `stream`, and the low-resolution A-SPX subband groups its first
-    aspx_config() gives (score_ac4_decode.py's aspx_groups), or None for a SIMPLE stream."""
+    aspx_config() gives (score_ac4_decode.py's aspx_groups), or None for a SIMPLE stream. The
+    encoder writes mono and stereo, whose one aspx_data element carries every channel."""
     trace = Path(str(out_wav) + ".trace")
     decoded, rate = decoding.decode(cli, stream, out_wav, trace)
-    values = decoding.trace_values(trace)
-    return decoded, rate, None if values is None else decoding.aspx_groups(values)
+    found = decoding.trace_values(trace)
+    if found is None:
+        return decoded, rate, None
+    config, offsets = found
+    return decoded, rate, decoding.aspx_groups(config, offsets[0])
 
 
 @dataclass
