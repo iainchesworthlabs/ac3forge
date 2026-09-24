@@ -390,7 +390,24 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         fmt::println(stderr, "warning: {}: the sync frames stop at byte {} ({}); decoding the {} before it",
                      in_path, scan.stopped_at_offset, ac4::describe(*scan.stopped_at), scan.frames.size());
     }
-    ac4::Decoder decoder;
+    // syntax-trace=: every record the decoder reads, frame by frame, as
+    // ac4_syntax.py's `trace` writes what it reads.
+    std::ofstream trace_file;
+    std::size_t trace_frame = 0;
+    const auto trace = [&trace_file, &trace_frame](const ac4::SyntaxRecord& r) {
+        trace_file << trace_frame << '\t' << r.substream << '\t' << r.bit_offset << '\t' << r.bits << '\t'
+                   << r.value << '\t' << r.name << '\n';
+    };
+    ac4::DecoderConfig config;
+    if (!meta.syntax_trace_path.empty()) {
+        trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
+        if (!trace_file) {
+            fmt::println(stderr, "error: cannot open {} for writing", meta.syntax_trace_path);
+            return kExitOutput;
+        }
+        config.syntax = trace;
+    }
+    ac4::Decoder decoder(config);
     PlanarWavSink sink;
     std::optional<ac3::analysis::LevelMeter> meter;
     ac4::DecodedFrame first;
@@ -401,6 +418,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     std::uint64_t frames_done = 0;
     for (const ac4::SyncFrame& frame : scan.frames) {
         progress.tick(++frames_done);
+        trace_frame = static_cast<std::size_t>(frames_done - 1);
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         if (!decoded.has_value()) {
             fmt::println(stderr, "error: {}: frame {}: {}", in_path, frames_done, decoder.refusal_reason());
@@ -452,6 +470,13 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     if (!written.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
         return kExitOutput;
+    }
+    if (trace_file.is_open()) {
+        trace_file.close();
+        if (!trace_file) {
+            fmt::println(stderr, "error: cannot write {}", meta.syntax_trace_path);
+            return kExitOutput;
+        }
     }
     std::string layout;
     for (const ac4::Speaker speaker : first.speakers) {
@@ -943,6 +968,10 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     if (stream.size() >= 2 && std::to_integer<unsigned>(stream[0]) == 0xACU &&
         (std::to_integer<unsigned>(stream[1]) & 0xFEU) == 0x40U) {
         return run_decode_ac4(stream, in_path, out_path, requested, objects_dir, adm_out);
+    }
+    if (!requested.syntax_trace_path.empty()) {
+        fmt::println(stderr, "error: syntax-trace= records AC-4 syntax, and {} is AC-3 or E-AC-3", in_path);
+        return kExitUsage;
     }
     // downmix=auto becomes a concrete fold here, once, from what the stream
     // itself prefers; everything below sees only the fold it settled on.

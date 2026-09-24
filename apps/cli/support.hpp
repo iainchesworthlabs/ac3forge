@@ -117,6 +117,13 @@ struct Options {
     // pays one null pointer and no per-block work. See the header for why this
     // has to exist before any masked comparison does.
     std::string bap_census_path;
+    // 'ac4-encode' and 'decode' of AC-4 only: when non-empty, write the
+    // syntax trace to this path - one line per syntax element the encoder
+    // wrote or the decoder read, frame, substream, bit offset, width, value
+    // and name, tab-separated, in the shape tools/references/ac4_syntax.py's
+    // `trace` command writes, so the three can be compared line by line
+    // (planning/ac4.md, the encoder's ladder, item 1).
+    std::string syntax_trace_path;
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in

@@ -193,13 +193,13 @@ int run_help(const Args& x);
 int run_man();
 int run_completions(std::string_view shell);
 
-// 43 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
+// 44 commands, always - including atmos-adm and atmos-iab, whether or not AC3FORGE_BUILD_ADM
 // linked ac3adm::ac3adm/ac3::admbridge into this particular build (see Needs::kAdm/unmet() above
 // and run_atmos_adm's own comment): a command this build cannot run is listed with Needs gating
 // it, never sized out of the table entirely - the identical "listed, not hidden" treatment
 // kCapture/kPassthrough/kMonitor commands already get (see print_usage()'s own comment below on
 // why hiding would be a lie about a command that exists and would work elsewhere).
-constexpr std::array<Command, 43> kCommands{{
+constexpr std::array<Command, 44> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
      [](const Args& x) {
@@ -338,8 +338,18 @@ constexpr std::array<Command, 43> kCommands{{
          return run_eac3_encode(x.str(1), x.str(2), x.u32(3, 192), x.str(4, "none"), x.str(5),
                                 x.str(6, "off"), x.meta, x.str(7));
      }},
-    {"decode", 3, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out]",
-     "AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): "
+    {"ac4-encode", 3, "<in.wav> <out.ac4|out.mp4> [bitrate_kbps]",
+     "mono or stereo at 48 or 44.1 kHz, to AC-4 in the SIMPLE mode at frame_rate_index 13 and a "
+     "constant bit rate: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when "
+     "the output is .mp4/.m4a/.mov. dialnorm= sets the dialogue level (auto measures it); the "
+     "other metadata options are not written to AC-4 yet and are refused. syntax-trace=<file> "
+     "writes what the encoder writes",
+     topic::kStdio | topic::kMeta,
+     Needs::kNothing,
+     [](const Args& x) { return run_ac4_encode(x.str(1), x.str(2), x.u32(3, 192), x.meta); }},
+    {"decode", 3, "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out]",
+     "AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: SIMPLE mono and "
+     "stereo so far, and syntax-trace=<file> writes what the decoder reads. objects_dir (E-AC-3 Atmos only): "
      "export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 "
      "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "
      "Profile BW64 there (legacy item IM2) - bed LFE plus every dynamic object, positioned by its own "
