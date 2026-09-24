@@ -329,9 +329,16 @@ def main():
     with open(args.output, "w", encoding="utf-8") as handle:
         json.dump(sarif, handle, indent=2)
 
+    # Count what reached the file, not what was fetched: build_sarif drops
+    # locationless issues (and with them any rule only they used), so
+    # len(issues)/len(rule_names) would overstate the upload.
+    run = sarif["runs"][0]
+    written = len(run["results"])
+    dropped = len(issues) - written
     print(
-        f"Wrote {len(issues)} issues across {len(rule_names)} distinct rules "
-        f"to {args.output}"
+        f"Wrote {written} issues across {len(run['tool']['driver']['rules'])} "
+        f"distinct rules to {args.output}"
+        + (f" ({dropped} locationless issue(s) dropped)" if dropped else "")
     )
 
 

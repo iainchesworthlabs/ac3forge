@@ -154,6 +154,18 @@ class Main(unittest.TestCase):
                          {"One", "Two"})
         self.assertIn("Wrote 3 issues across 2 distinct rules", out)
 
+    def test_summary_counts_only_what_was_written(self):
+        """Regression: the "Wrote N issues across M rules" line counted every
+        fetched issue and rule, including the locationless ones build_sarif
+        drops, so it overstated what reached the SARIF file."""
+        fake = FakeSonar([[issue("r:1", line=1), issue("r:2"), issue("r:3")]],
+                         {"r:1": "One", "r:2": "Two", "r:3": "Three"})
+        out, _ = self.run_main(fake)
+        sarif = json.loads(self.out.read_text())
+        self.assertEqual(len(sarif["runs"][0]["results"]), 1)
+        self.assertIn("Wrote 1 issues across 1 distinct rules", out)
+        self.assertIn("2 locationless issue(s) dropped", out)
+
     def test_warns_above_the_elasticsearch_cap(self):
         fake = FakeSonar([[]], {}, total=s2s.ES_RESULT_CAP + 1)
         _, err = self.run_main(fake)
