@@ -2272,6 +2272,142 @@ TEST_CASE("ac3forge_scan rejects bad arguments and reports ScanError codes", "[c
     ac3forge_bytes_destroy(encoded);
 }
 
+TEST_CASE("each C++ error a C caller can provoke reaches it as its own status code",
+          "[capi][scan][eac3]") {
+    // The tests above deliberately accept any code in a family when the input
+    // is arbitrary garbage. This one builds inputs whose failure is fixed by
+    // the spec rather than by parser order - a reserved fscod, an unknown
+    // bsid, a dependent with no parent, an impossible frmsiz - so the exact
+    // code is pinned and every arm of internal.hpp's error translation a C
+    // caller can reach is held to the right answer, not merely to a range.
+    ac3forge_encoder_config_t config;
+    ac3forge_encoder_config_init(&config);
+    config.acmod = AC3FORGE_ACMOD_2_0;
+    ac3forge_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_encoder_create(&config, &encoder) == AC3FORGE_OK);
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+    fill_tone(left.data(), 1000.0, 0, 48000.0);
+    fill_tone(right.data(), 700.0, 0, 48000.0);
+    const float* channels[2] = {left.data(), right.data()};
+    ac3forge_bytes_t* encoded = nullptr;
+    REQUIRE(ac3forge_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                          &encoded) == AC3FORGE_OK);
+    ac3forge_encoder_destroy(encoder);
+    const std::vector<uint8_t> frame(ac3forge_bytes_data(encoded),
+                                     ac3forge_bytes_data(encoded) + ac3forge_bytes_size(encoded));
+    ac3forge_bytes_destroy(encoded);
+    REQUIRE(frame.size() > 6);
+
+    ac3forge_scanned_stream_t* scanned = nullptr;
+    ac3forge_decoder_config_t decoder_config;
+    ac3forge_decoder_config_init(&decoder_config);
+    ac3forge_decoder_t* decoder = nullptr;
+    REQUIRE(ac3forge_decoder_create(&decoder_config, &decoder) == AC3FORGE_OK);
+    ac3forge_decoded_frame_t* decoded = nullptr;
+
+    SECTION("fscod '11' is reserved (Table 5.6), for the scanner and the decoder alike") {
+        auto reserved = frame;
+        reserved[4] = static_cast<uint8_t>(reserved[4] | 0xC0U);
+        CHECK(ac3forge_scan(reserved.data(), reserved.size(), &scanned) ==
+              AC3FORGE_ERROR_SCAN_RESERVED_VALUE);
+        CHECK(ac3forge_decoder_decode_frame(decoder, reserved.data(), reserved.size(), &decoded) ==
+              AC3FORGE_ERROR_DECODE_RESERVED_VALUE);
+    }
+    SECTION("a bsid that is neither AC-3 (<= 10) nor E-AC-3 (16) is an unsupported bsid") {
+        auto foreign = frame;
+        foreign[5] = static_cast<uint8_t>((12U << 3) | (foreign[5] & 0x07U));
+        CHECK(ac3forge_scan(foreign.data(), foreign.size(), &scanned) ==
+              AC3FORGE_ERROR_SCAN_UNSUPPORTED_BSID);
+    }
+    SECTION("an E-AC-3 frmsiz too small to hold its own header is an invalid stream") {
+        // syncword, frmsiz = 0 (a 2-byte frame), bsid 16 at bit 40.
+        const std::vector<uint8_t> tiny = {0x0B, 0x77, 0x00, 0x00, 0x00, 16U << 3};
+        ac3forge_spans_t* spans = nullptr;
+        CHECK(ac3forge_split_access_units(tiny.data(), tiny.size(), &spans) ==
+              AC3FORGE_ERROR_DECODE_INVALID_STREAM);
+        CHECK(spans == nullptr);
+    }
+    CHECK(scanned == nullptr);
+    CHECK(decoded == nullptr);
+    ac3forge_decoder_destroy(decoder);
+}
+
+TEST_CASE("E-AC-3 structure and substream errors reach C as their own codes", "[capi][eac3]") {
+    // A dependent substream on its own: legal to encode, but a stream that
+    // opens with one has no independent substream for it to extend.
+    ac3forge_eac3_frame_config_t dependent;
+    ac3forge_eac3_frame_config_init(&dependent);
+    dependent.acmod = AC3FORGE_ACMOD_2_0;
+    dependent.bitrate_kbps = 192;
+    dependent.strmtyp = AC3FORGE_STREAM_TYPE_DEPENDENT;
+    ac3forge_eac3_encoder_t* encoder = nullptr;
+    REQUIRE(ac3forge_eac3_encoder_create(&dependent, &encoder) == AC3FORGE_OK);
+    std::vector<float> left(AC3FORGE_SAMPLES_PER_FRAME);
+    std::vector<float> right(AC3FORGE_SAMPLES_PER_FRAME);
+    fill_tone(left.data(), 1000.0, 0, 48000.0);
+    fill_tone(right.data(), 700.0, 0, 48000.0);
+    const float* channels[2] = {left.data(), right.data()};
+    ac3forge_bytes_t* encoded = nullptr;
+    REQUIRE(ac3forge_eac3_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                                nullptr, nullptr, 0, &encoded) == AC3FORGE_OK);
+    ac3forge_eac3_encoder_destroy(encoder);
+    ac3forge_scanned_stream_t* scanned = nullptr;
+    CHECK(ac3forge_scan(ac3forge_bytes_data(encoded), ac3forge_bytes_size(encoded), &scanned) ==
+          AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE);
+    CHECK(scanned == nullptr);
+    ac3forge_bytes_destroy(encoded);
+
+    // substreamid is three bits (Table E1.2): 8 cannot be written.
+    ac3forge_eac3_frame_config_t out_of_range;
+    ac3forge_eac3_frame_config_init(&out_of_range);
+    out_of_range.acmod = AC3FORGE_ACMOD_2_0;
+    out_of_range.bitrate_kbps = 192;
+    out_of_range.substreamid = 8;
+    REQUIRE(ac3forge_eac3_encoder_create(&out_of_range, &encoder) == AC3FORGE_OK);
+    encoded = nullptr;
+    CHECK(ac3forge_eac3_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PER_FRAME,
+                                              nullptr, nullptr, 0,
+                                              &encoded) == AC3FORGE_ERROR_ENCODE_INVALID_SUBSTREAM);
+    CHECK(encoded == nullptr);
+    ac3forge_eac3_encoder_destroy(encoder);
+
+    // Seventeen distinct rendered locations: the bed's six, two five-channel
+    // dependents and a lone Vhc - each substream self-consistent, only the
+    // §E3.8.2 sixteen-channel aggregate is broken (the same programme
+    // tests/encoder/test_eac3.cpp refuses through the C++ API).
+    ac3forge_eac3_frame_config_t independent;
+    ac3forge_eac3_frame_config_init(&independent);
+    independent.acmod = AC3FORGE_ACMOD_3_2;
+    independent.lfe = 1;
+    independent.bitrate_kbps = 448;
+    std::array<ac3forge_eac3_frame_config_t, 3> dependents{};
+    for (auto& d : dependents) {
+        ac3forge_eac3_frame_config_init(&d);
+        d.has_chanmap = 1;
+    }
+    namespace cm = ac3::eac3::chanmap;
+    dependents[0].acmod = AC3FORGE_ACMOD_3_2;
+    dependents[0].bitrate_kbps = 448;
+    dependents[0].chanmap = static_cast<uint16_t>(cm::kLcRcBit | cm::kLrsRrsBit | cm::kCsBit);
+    dependents[1].acmod = AC3FORGE_ACMOD_3_2;
+    dependents[1].bitrate_kbps = 448;
+    dependents[1].chanmap = static_cast<uint16_t>(cm::kLsdRsdBit | cm::kLwRwBit | cm::kTsBit);
+    dependents[2].acmod = AC3FORGE_ACMOD_1_0;
+    dependents[2].bitrate_kbps = 32;
+    dependents[2].chanmap = cm::kVhcBit;
+    ac3forge_eac3_access_unit_encoder_t* au_encoder = nullptr;
+    REQUIRE(ac3forge_eac3_access_unit_encoder_create(&independent, dependents.data(),
+                                                     dependents.size(), &au_encoder) == AC3FORGE_OK);
+    REQUIRE(ac3forge_eac3_access_unit_encoder_channel_count(au_encoder) == 0);
+    ac3forge_eac3_access_unit_t* unit = nullptr;
+    CHECK(ac3forge_eac3_access_unit_encoder_encode(au_encoder, nullptr, 0,
+                                                    AC3FORGE_SAMPLES_PER_FRAME, nullptr, 0,
+                                                    &unit) == AC3FORGE_ERROR_ENCODE_TOO_MANY_CHANNELS);
+    CHECK(unit == nullptr);
+    ac3forge_eac3_access_unit_encoder_destroy(au_encoder);
+}
+
 // --- Loudness / level / QC metering (legacy item AP5) -------------------------
 
 TEST_CASE("ac3forge_loudness_meter measures a stereo tone", "[capi][loudness]") {

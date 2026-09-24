@@ -325,7 +325,20 @@ TEST_CASE("a bundle nested past the depth cap is dropped whole, not descended in
     ac3::oba::OscParseStats stats;
     const auto updates = ac3::oba::parse_osc_packet(current, &stats);
     CHECK(updates.empty());
-    CHECK(stats.packets_rejected >= 1);
+    CHECK(stats.packets_rejected == 1);
+
+    // Exactly at the cap - the outermost bundle plus seven nested - the
+    // message is still reached, so the check above is the cap and not a walk
+    // that never descends at all.
+    std::vector<std::byte> at_cap = innermost;
+    for (int depth = 0; depth < 8; ++depth) {
+        at_cap = osc_bundle({at_cap});
+    }
+    ac3::oba::OscParseStats at_cap_stats;
+    const auto reached = ac3::oba::parse_osc_packet(at_cap, &at_cap_stats);
+    REQUIRE(reached.size() == 1);
+    CHECK(reached[0].gain.has_value());
+    CHECK(at_cap_stats.packets_rejected == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +356,134 @@ TEST_CASE("parse_osc_packet_into stops once the caller's storage is full", "[oba
     CHECK(count == 2);
     CHECK(out[0].object == 0);
     CHECK(out[1].object == 1);
+}
+
+TEST_CASE("parse_osc_packet_into reads, drops and rejects exactly what parse_osc_packet does",
+          "[oba][scene][osc]") {
+    // The allocation-free form is the one LivePositionSource drains on the
+    // network thread, and it is its own instantiation of the whole walk - so
+    // every shape the vector form is tested against above, good and bad, has
+    // to come out of it identically: the same updates in the same order, and
+    // the same two counters.
+    const auto bundle_header = [] {
+        std::vector<std::byte> out;
+        append_osc_string(out, "#bundle");
+        out.resize(out.size() + 8);  // time tag
+        return out;
+    };
+    const auto raw = [](std::string_view address, std::string_view tag) {
+        std::vector<std::byte> out;
+        append_osc_string(out, address);
+        append_osc_string(out, tag);
+        return out;
+    };
+    std::vector<std::vector<std::byte>> corpus = {
+        osc_message_f("/object/3/xyz", ",fff", {0.1F, 1.5F, -2.0F}),
+        osc_message_i("/object/1/gain", ",i", {1}),
+        osc_message_f("/object/2/lfe", ",f", {0.25F}),
+        raw("/object/4/release", ","),
+        // Dropped messages, one per reason.
+        osc_message_f("/mixer/1/level", ",f", {0.5F}),
+        osc_message_f("/object//gain", ",f", {0.5F}),
+        osc_message_f("/object/x1/gain", ",f", {0.5F}),
+        osc_message_f("/object/7", ",f", {0.5F}),
+        osc_message_f("/object/7/pan", ",f", {0.5F}),
+        osc_message_f("/object/99999/gain", ",f", {0.5F}),
+        osc_message_f("/object/0/xyz", ",ff", {0.1F, 0.2F}),
+        osc_message_f("/object/0/gain", ",ff", {0.1F, 0.2F}),
+        osc_message_f("/object/0/lfe", ",", {}),
+        osc_message_f("/object/0/release", ",f", {1.0F}),
+        osc_message_f("/object/0/xyz", ",ffff", {0.1F, 0.2F, 0.3F, 0.4F}),
+        osc_message_f("/object/0/gain", ",f", {std::numeric_limits<float>::infinity()}),
+        raw("/object/0/gain", ",s"),
+        raw("/object/0/gain", ",f"),  // promises a float it does not carry
+        raw("/object/0/gain", ",i"),  // promises an int it does not carry
+        raw("/object/0/gain", "f"),   // a type tag without its comma
+        [] {
+            std::vector<std::byte> bytes;
+            append_osc_string(bytes, "/object/0/gain");
+            return bytes;  // no type tag at all
+        }(),
+        // Rejected datagrams.
+        {},
+        {std::byte{'x'}, std::byte{'y'}, std::byte{'z'}, std::byte{0}},
+        bundle_header(),  // an empty bundle: nothing to reject, nothing to read
+    };
+    // A bundle carrying every one of the messages above, plus the element
+    // shapes only a bundle can hold.
+    std::vector<std::byte> mixed = bundle_header();
+    for (std::size_t i = 0; i < 20; ++i) {
+        append_i32(mixed, static_cast<std::int32_t>(corpus[i].size()));
+        mixed.insert(mixed.end(), corpus[i].begin(), corpus[i].end());
+    }
+    const auto header = bundle_header();
+    const std::vector<std::byte> short_bundle(header.begin(), header.begin() + 8);
+    append_i32(mixed, static_cast<std::int32_t>(short_bundle.size()));  // "#bundle\0", no time tag
+    mixed.insert(mixed.end(), short_bundle.begin(), short_bundle.end());
+    append_i32(mixed, 0);  // an empty element: neither a message nor a bundle
+    const std::vector<std::byte> junk{std::byte{'?'}, std::byte{0}, std::byte{0}, std::byte{0}};
+    append_i32(mixed, 4);
+    mixed.insert(mixed.end(), junk.begin(), junk.end());
+    mixed.insert(mixed.end(), {std::byte{0}, std::byte{0}});  // a size with only two bytes
+    corpus.push_back(mixed);
+    // Malformed framing and the depth cap, nested one level down.
+    for (const std::int32_t bad_size : {-4, 5, 4096}) {
+        auto inner = bundle_header();
+        const auto good = osc_message_f("/object/5/gain", ",f", {0.5F});
+        append_i32(inner, static_cast<std::int32_t>(good.size()));
+        inner.insert(inner.end(), good.begin(), good.end());
+        append_i32(inner, bad_size);
+        inner.resize(inner.size() + 8);
+        corpus.push_back(osc_bundle({inner, osc_message_f("/object/6/gain", ",f", {0.6F})}));
+    }
+    std::vector<std::byte> deep = osc_message_f("/object/0/gain", ",f", {0.5F});
+    for (int depth = 0; depth < 9; ++depth) {
+        deep = osc_bundle({deep, osc_message_f("/object/1/lfe", ",f", {0.1F})});
+    }
+    corpus.push_back(deep);
+
+    for (std::size_t n = 0; n < corpus.size(); ++n) {
+        CAPTURE(n);
+        ac3::oba::OscParseStats vector_stats;
+        const auto expected = ac3::oba::parse_osc_packet(corpus[n], &vector_stats);
+        ac3::oba::OscParseStats into_stats;
+        std::array<ac3::oba::SceneOscUpdate, 32> out{};
+        const auto count = ac3::oba::parse_osc_packet_into(corpus[n], out, &into_stats);
+        REQUIRE(count == expected.size());
+        CHECK(into_stats.messages_dropped == vector_stats.messages_dropped);
+        CHECK(into_stats.packets_rejected == vector_stats.packets_rejected);
+        for (std::size_t i = 0; i < count; ++i) {
+            CAPTURE(i);
+            CHECK(out[i].object == expected[i].object);
+            CHECK(out[i].release == expected[i].release);
+            CHECK(out[i].gain == expected[i].gain);
+            CHECK(out[i].lfe_send == expected[i].lfe_send);
+            REQUIRE(out[i].position.has_value() == expected[i].position.has_value());
+            if (out[i].position) {
+                CHECK(out[i].position->x == expected[i].position->x);
+                CHECK(out[i].position->y == expected[i].position->y);
+                CHECK(out[i].position->z == expected[i].position->z);
+            }
+        }
+    }
+
+    // And the corpus really does exercise both sides: the well-formed four
+    // arrive, and every malformed shape is counted somewhere.
+    ac3::oba::OscParseStats totals;
+    std::size_t delivered = 0;
+    for (const auto& packet : corpus) {
+        delivered += ac3::oba::parse_osc_packet(packet, &totals).size();
+    }
+    // 4 lone, the same 4 again inside the mixed bundle, (5, 6) from each of
+    // the three bad-framing bundles, and the lfe of the eight wrappers the
+    // cap lets the walk into - the ninth, and the gain inside it, never.
+    CHECK(delivered == 4 + 4 + 6 + 8);
+    // 17 lone drops (the typeless message included), 16 again in the bundle.
+    CHECK(totals.messages_dropped == 17 + 16);
+    // The two lone junk datagrams; the mixed bundle's short header, empty
+    // element, junk element and two-byte size; one per bad-framing bundle;
+    // the one wrapper past the cap.
+    CHECK(totals.packets_rejected == 2 + 4 + 3 + 1);
 }
 
 // ---------------------------------------------------------------------------

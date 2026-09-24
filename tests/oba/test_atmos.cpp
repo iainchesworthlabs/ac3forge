@@ -1172,9 +1172,15 @@ TEST_CASE("short syncframes carry the object layer end to end",
                 bed[static_cast<std::size_t>(jc)] = sub.channels[static_cast<std::size_t>(
                     kAc3FromJoc[static_cast<std::size_t>(jc)])];
             }
+            // The fast transforms Eac3Decoder itself defaults to: their
+            // agreement with the direct §7.9.4 forms is pinned by the JOC
+            // fast-vs-direct test above and the core transform tests, and
+            // the direct kMdctBand pair cost
+            // two thirds of this case's time without touching anything
+            // frame-length specific.
             const auto objects =
-                ac3::oba::joc::reconstruct(bed, *params, state, /*fast_mdct=*/false,
-                                           /*fast_imdct=*/false, domain);
+                ac3::oba::joc::reconstruct(bed, *params, state, /*fast_mdct=*/true,
+                                           /*fast_imdct=*/true, domain);
             REQUIRE(objects.size() == 4);
             for (std::size_t i = 0; i < 4; ++i) {
                 REQUIRE(objects[i].size() == frame_samples);

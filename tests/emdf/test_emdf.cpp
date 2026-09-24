@@ -1,14 +1,19 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
 #include "ac3/core/bitreader.hpp"
 #include "ac3/core/crc16.hpp"
 #include "ac3/emdf/emdf.hpp"
+#include "ac3/emdf/frame_layout.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/meta/bsi.hpp"
+#include "ac3/meta/mixing.hpp"
 
 namespace {
 
@@ -70,7 +75,6 @@ TEST_CASE("variable_bits spends the fewest groups it can", "[emdf]") {
     // Table H.2.1: one group covers [0, 2^n), two cover the next 2^2n values.
     // Getting the group_offset wrong makes the boundary values collide - two
     // encodings for one value, and a decoder one group out of step.
-    STATIC_CHECK(true);
     CHECK(ac3::emdf::variable_bits_size(0, 8) == 9);
     CHECK(ac3::emdf::variable_bits_size(255, 8) == 9);
     CHECK(ac3::emdf::variable_bits_size(256, 8) == 18);   // 2^8, first 2-group
@@ -342,4 +346,114 @@ TEST_CASE("addbsi announces object audio", "[emdf][eac3]") {
     // §8.3.2.2 caps the object count at 16.
     CHECK(ac3::eac3::build_silent_frame({.oba_complexity_index = 17}).error() ==
           ac3::FrameError::kInvalidObjectAudio);
+}
+
+TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[emdf][eac3]") {
+    // walk_frame maps only ac3forge's own Atmos shape, but the object-layer
+    // signals ahead of audfrm are read for ANY E-AC-3 syncframe - which means
+    // walking mixmdate and infomdate field for field to find addbsi. The
+    // complexity index sits in addbsi, so reading it back exactly is the
+    // proof each of these groups was walked at the right width: one bit off
+    // anywhere ahead of it and the marker is not found, or the index is
+    // wrong.
+    namespace cm = ac3::eac3::chanmap;
+    using ac3::eac3::FrameConfig;
+    ac3::meta::MixMetadata full;  // every level a 3/2+LFE bed carries
+    full.lfemixlevcod = 10;
+    full.pgmscl = 40;
+    full.extpgmscl = 41;
+    full.mixing.mixdef = ac3::meta::MixDefinition::kPremix;
+    ac3::meta::MixMetadata dual;  // 1+1: both channels' scale and pan
+    dual.pgmscl = 12;
+    dual.pgmscl2 = 13;
+    dual.mixing.mixdef = ac3::meta::MixDefinition::kReserved;
+    dual.pan = ac3::meta::PanInfo{.panmean = 30};
+    dual.pan2 = ac3::meta::PanInfo{.panmean = 200};
+    ac3::meta::MixMetadata per_block;  // blkmixcfginfo, one flag per block
+    per_block.blkmixcfginfo = std::array<std::optional<int>, ac3::kBlocksPerFrame>{3, {}};
+    ac3::meta::MixMetadata extended;  // mixdef 3, skipped whole by its length
+    extended.mixing.mixdef = ac3::meta::MixDefinition::kExtended;
+    extended.mixing.external = ac3::meta::ExternalScales{.left = 5, .dmixscl = 9};
+    const ac3::meta::BsiInfo info{.bsmod = ac3::meta::BitstreamMode::kVisuallyImpaired,
+                                  .dsurmod = ac3::meta::SurroundMode::kDolbySurround,
+                                  .dsurexmod = ac3::meta::SurroundExMode::kSurroundEx,
+                                  .audprod = ac3::meta::AudioProduction{.mixlevel = 20},
+                                  .audprod2 = ac3::meta::AudioProduction{.mixlevel = 21}};
+
+    struct Case {
+        const char* name;
+        FrameConfig config;
+        bool mapped;  // the one shape the full map covers
+    };
+    const std::vector<Case> cases = {
+        {"3/2+LFE, full mixmdate",
+         {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .mixing = full,
+          .oba_complexity_index = 7},
+         true},
+        {"1+1, both channels' pgmscl, pan and audprod, infomdate",
+         {.bitrate_kbps = 192, .acmod = ac3::Acmod::kDualMono, .dialnorm2 = 20, .mixing = dual,
+          .info = info, .oba_complexity_index = 3},
+         false},
+        {"1/0 one-block frames, blkmixcfginfo as one field",
+         {.bitrate_kbps = 192, .acmod = ac3::Acmod::k1_0, .numblkscod = 0,
+          .mixing = [] {
+              ac3::meta::MixMetadata m;
+              m.blkmixcfginfo = std::array<std::optional<int>, ac3::kBlocksPerFrame>{6, {}};
+              m.pan = ac3::meta::PanInfo{.panmean = 90};
+              return m;
+          }(),
+          .oba_complexity_index = 4},
+         false},
+        {"2/0 two-block frames with infomdate",
+         {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .numblkscod = 1, .info = info,
+          .oba_complexity_index = 9},
+         false},
+        {"3/2+LFE, per-block mix config",
+         {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .mixing = per_block,
+          .oba_complexity_index = 8},
+         true},
+        {"3/2+LFE, extended mixdef",
+         {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .mixing = extended,
+          .oba_complexity_index = 11},
+         true},
+        {"3/2 infomdate with dsurexmod",
+         {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .info = info,
+          .oba_complexity_index = 2},
+         false},
+    };
+    for (const auto& c : cases) {
+        CAPTURE(c.name);
+        const auto unit = ac3::eac3::build_silent_access_unit({.independent = c.config});
+        REQUIRE(unit.has_value());
+        const auto layout = ac3::emdf::walk_frame(unit->substream(0));
+        REQUIRE(layout.object_signals);
+        CHECK(layout.addbsi_object_extension);
+        CHECK(layout.oba_complexity_index == *c.config.oba_complexity_index);
+        CHECK(layout.frame_bits == unit->substream(0).size() * 8);
+        // Past the signals only the Atmos shape is mapped; anything else is
+        // handed back as signals alone, never a guessed map.
+        CHECK((layout.audio_end_bits != 0) == c.mapped);
+    }
+
+    // A dependent substream's chanmap sits ahead of mixmdate too.
+    const auto unit = ac3::eac3::build_silent_access_unit(
+        {.independent = {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true},
+         .dependents = {{.bitrate_kbps = 192,
+                         .acmod = ac3::Acmod::k2_0,
+                         .chanmap = cm::k512Height,
+                         .mixing = ac3::meta::MixMetadata{.ltrtsurmixlev =
+                                                              ac3::meta::MixLevel::kMinus3dB}}}});
+    REQUIRE(unit.has_value());
+    REQUIRE(unit->substream_count() == 2);
+    const auto dependent = ac3::emdf::walk_frame(unit->substream(1));
+    CHECK(dependent.object_signals);
+    CHECK_FALSE(dependent.addbsi_object_extension);
+    CHECK(dependent.audio_end_bits == 0);  // a dependent is out of the map's scope
+
+    // Reserved strmtyp: nothing past syncinfo has a defined layout at all.
+    std::vector<std::byte> reserved(unit->substream(0).begin(), unit->substream(0).end());
+    reserved[2] |= std::byte{0xC0};
+    CHECK_FALSE(ac3::emdf::walk_frame(reserved).object_signals);
+    // Too short to hold even bsid.
+    CHECK_FALSE(ac3::emdf::walk_frame(std::span{reserved}.first(5)).object_signals);
 }

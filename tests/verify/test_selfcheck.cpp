@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <span>
 #include <string>
@@ -165,6 +166,135 @@ TEST_CASE("verify::compare reports a block the decoder entered but never allocat
     REQUIRE_FALSE(found.empty());
     CHECK(found.front().block == 2);
     CHECK(found.front().field == Field::kAllocationReached);
+}
+
+TEST_CASE("verify::compare names which part of a delta correction the two sides disagree on",
+          "[verify]") {
+    // Both sides send one segment, so the count agrees and the comparison
+    // has to go segment by segment: each of the three fields is its own
+    // finding, indexed by the segment it sits in.
+    auto encoder = flat_trace(2, 2, 3, ac3::kBlocksPerFrame);
+    auto& sent = encoder.blocks[1].streams[0].delta;
+    sent.deltnseg = 2;
+    sent.deltoffst = {3, 6};
+    sent.deltlen = {2, 4};
+    sent.deltba = {1, 5};
+    auto decoder = encoder;
+    auto& read = decoder.blocks[1].streams[0].delta;
+    read.deltoffst[1] = 7;
+    read.deltlen[1] = 1;
+    read.deltba[1] = 6;
+
+    const auto found = ac3::verify::compare(encoder, decoder, 5);
+    REQUIRE(found.size() == 3);
+    for (const auto& mismatch : found) {
+        CHECK(mismatch.block == 1);
+        CHECK(mismatch.stream == 0);
+        CHECK(mismatch.index == 1);  // segment 0 agrees
+    }
+    CHECK(found[0].field == Field::kDeltaOffset);
+    CHECK(found[0].encoder == 6);
+    CHECK(found[0].decoder == 7);
+    CHECK(found[1].field == Field::kDeltaLength);
+    CHECK(found[2].field == Field::kDeltaValue);
+    CHECK(ac3::verify::describe(found[2], 2, 2) ==
+          "frame 5 block 1 channel 0: deltba[1] encoder=5 decoder=6");
+}
+
+TEST_CASE("verify::compare reports a disagreement about how much was coded, not what", "[verify]") {
+    SECTION("the coded bandwidth: one side has more exponents") {
+        const auto encoder = flat_trace(2, 3, 3, ac3::kBlocksPerFrame);
+        auto decoder = encoder;
+        decoder.blocks[0].streams[2].exponents.resize(40);
+        decoder.blocks[0].streams[2].bap.resize(40);
+        const auto found = ac3::verify::compare(encoder, decoder, 0);
+        // Counts, not the arrays: comparing bins past the shorter one's end
+        // would be comparing values one side never computed.
+        REQUIRE(found.size() == 2);
+        CHECK(found[0].field == Field::kExponentCount);
+        CHECK(found[0].encoder == 64);
+        CHECK(found[0].decoder == 40);
+        CHECK(found[1].field == Field::kBapCount);
+        // Stream 2 of a 2-fbw, 3-coded frame is the LFE.
+        CHECK(ac3::verify::describe(found[0], 2, 3) ==
+              "frame 0 block 0 LFE: exponent count encoder=64 decoder=40");
+    }
+    SECTION("the stream count: one side coded a coupling channel the other did not") {
+        const auto encoder = flat_trace(2, 2, 3, ac3::kBlocksPerFrame);
+        auto decoder = encoder;
+        decoder.blocks[3].streams.pop_back();
+        const auto found = ac3::verify::compare(encoder, decoder, 0);
+        REQUIRE(found.size() == 1);
+        CHECK(found[0].block == 3);
+        CHECK(found[0].stream == -1);
+        CHECK(found[0].field == Field::kStreamCount);
+        CHECK(found[0].encoder == 3);
+        CHECK(found[0].decoder == 2);
+        // A block-level finding names no stream and no index.
+        CHECK(ac3::verify::describe(found[0], 2, 2) ==
+              "frame 0 block 3: coded stream count encoder=3 decoder=2");
+    }
+    SECTION("the deltbaie gate bit itself") {
+        const auto encoder = flat_trace(1, 1, 1, ac3::kBlocksPerFrame);
+        auto decoder = encoder;
+        decoder.blocks[4].deltbaie = true;
+        const auto found = ac3::verify::compare(encoder, decoder, 0);
+        REQUIRE(found.size() == 1);
+        CHECK(found[0].block == 4);
+        CHECK(found[0].field == Field::kDeltbaie);
+        CHECK(found[0].encoder == 0);
+        CHECK(found[0].decoder == 1);
+    }
+}
+
+TEST_CASE("every mirror field describes itself, and a report is one line per mismatch",
+          "[verify]") {
+    // A switch that has fallen behind its enum still compiles; this is what
+    // notices. Every field gets its own name, and none of them is the
+    // fallback.
+    const std::vector<Field> fields = {
+        Field::kBlockReached,      Field::kBitOffset,   Field::kStreamCount,
+        Field::kDeltbaie,          Field::kDeltaSegmentCount, Field::kDeltaOffset,
+        Field::kDeltaLength,       Field::kDeltaValue,  Field::kAllocationReached,
+        Field::kExponentCount,     Field::kExponent,    Field::kBapCount,
+        Field::kBap};
+    std::vector<std::string> names;
+    for (const auto field : fields) {
+        const std::string name{ac3::verify::describe(field)};
+        CAPTURE(name);
+        CHECK_FALSE(name.empty());
+        CHECK(name != "unknown field");
+        names.push_back(name);
+    }
+    std::ranges::sort(names);
+    CHECK(std::ranges::adjacent_find(names) == names.end());
+
+    const std::vector<ac3::verify::Mismatch> mismatches = {
+        {.frame = 1, .block = 0, .field = Field::kBitOffset, .encoder = 10, .decoder = 11},
+        {.frame = 1, .block = -1, .stream = 0, .index = 2, .field = Field::kExponent,
+         .encoder = 4, .decoder = 5}};
+    CHECK(ac3::verify::report(mismatches, 1, 1) ==
+          "frame 1 block 0: bit offset at block start encoder=10 decoder=11\n"
+          "frame 1 channel 0: exponent[2] encoder=4 decoder=5");
+    CHECK(ac3::verify::report({}, 1, 1).empty());
+}
+
+TEST_CASE("a reset trace compares clean against an empty one", "[verify]") {
+    // The per-frame reuse MirrorEncoder relies on: after reset() nothing of
+    // the previous frame survives to be compared against the next.
+    auto used = flat_trace(2, 3, 4, ac3::kBlocksPerFrame);
+    used.blocks[0].deltbaie = true;
+    used.reset();
+    CHECK(used.fbw_channels == 0);
+    CHECK(used.coded_channels == 0);
+    for (const auto& block : used.blocks) {
+        CHECK_FALSE(block.entered);
+        CHECK_FALSE(block.allocated);
+        CHECK_FALSE(block.deltbaie);
+        CHECK(block.bit_offset == 0);
+        CHECK(block.streams.empty());
+    }
+    CHECK(ac3::verify::compare(used, ac3::verify::FrameTrace{}, 0).empty());
 }
 
 // --- end to end ------------------------------------------------------------

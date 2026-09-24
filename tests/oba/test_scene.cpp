@@ -693,6 +693,96 @@ TEST_CASE("the JSON reader accepts what it should", "[oba][scene]") {
     }
 }
 
+TEST_CASE("every string escape and every empty form reads as JSON defines it",
+          "[oba][scene]") {
+    // The writer's side first: a name carrying each character JSON has to
+    // escape - the two with a mandatory backslash, the three short control
+    // forms and the \u00XX-only rest of C0 - comes back byte for byte.
+    const std::string awkward_name = "back\\slash \"q\" \r\n\t\x01\x1f end";
+    const auto scene = must_create({{.name = awkward_name,
+                                     .automation = {{.time_s = 0.0,
+                                                     .position = {.x = 0.5, .y = 0.5, .z = 0.0}}}}});
+    const auto text = ac3::oba::to_json(scene);
+    CHECK(text.find(R"(back\\slash \"q\" \r\n\t\u0001\u001f end)") != std::string::npos);
+    const auto back = ac3::oba::scene_from_json(text);
+    REQUIRE(back.has_value());
+    CHECK(back->objects()[0].name == awkward_name);
+
+    // The reader's side: every escape RFC 8259 §7 lists, \u in each UTF-8
+    // width this format writes, and a lone surrogate replaced rather than
+    // passed through as ill-formed UTF-8.
+    const auto read = ac3::oba::scene_from_json(
+        R"({"ac3forge_scene":1,"orientation":{},"objects":[{"name":"\/\b\f\rAé€\ud800",)"
+        R"("bed":[],"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
+    REQUIRE(read.has_value());
+    CHECK(read->objects()[0].name == "/\b\f\rA\xc3\xa9\xe2\x82\xac\xef\xbf\xbd");
+    CHECK(read->objects()[0].bed == 0);
+    CHECK(read->orientation().yaw_rad == 0.0);
+
+    // Degrees are accepted for all three angles, not only yaw.
+    const auto turned = ac3::oba::scene_from_json(
+        R"({"ac3forge_scene":1,"orientation":{"pitch_deg":-90,"roll_deg":180},)"
+        R"("objects":[{"automation":[{"t":0,"x":0.5,"y":0.5,"z":0}]}]})");
+    REQUIRE(turned.has_value());
+    CHECK_THAT(turned->orientation().pitch_rad, WithinRel(-std::numbers::pi / 2.0, 1e-15));
+    CHECK_THAT(turned->orientation().roll_rad, WithinRel(std::numbers::pi, 1e-15));
+}
+
+TEST_CASE("the JSON reader refuses malformed escapes, numbers and empty members",
+          "[oba][scene]") {
+    const auto refuses = [](std::string_view text, ac3::oba::SceneErrorKind kind,
+                            std::string_view message) {
+        const auto scene = ac3::oba::scene_from_json(text);
+        REQUIRE_FALSE(scene.has_value());
+        INFO(scene.error().message);
+        CHECK(scene.error().kind == kind);
+        CHECK(scene.error().message.find(message) != std::string::npos);
+    };
+    using ac3::oba::SceneErrorKind;
+    const std::string head = R"({"ac3forge_scene":1,"objects":[{"name":)";
+    const std::string tail = R"(,"automation":[{"t":0,"x":0,"y":0,"z":0}]}]})";
+
+    refuses(head + R"("\q")" + tail, SceneErrorKind::kSyntax, "unknown string escape");
+    refuses(head + R"("\u00zz")" + tail, SceneErrorKind::kSyntax, "malformed \\u escape");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"name":"\u00)", SceneErrorKind::kSyntax,
+            "truncated \\u escape");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"name":"\)", SceneErrorKind::kSyntax,
+            "unterminated string");
+    // A number too large for a double is not a number this format carries:
+    // it is refused where it stands rather than read as infinity.
+    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":1e999,"x":0,"y":0,"z":0}]}]})",
+            SceneErrorKind::kSyntax, "expected a number");
+    refuses(R"({"ac3forge_scene":"1","objects":[]})", SceneErrorKind::kSyntax, "expected a number");
+    // Empty braces where members are required are diagnosed as the missing
+    // member, not as a syntax error somewhere after them.
+    refuses(R"({"ac3forge_scene":1,"objects":[{}]})", SceneErrorKind::kBadField,
+            "needs an 'automation' array");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{}]}]})", SceneErrorKind::kBadField,
+            "needs at least 't', 'x', 'y' and 'z'");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":{}}]})", SceneErrorKind::kSyntax,
+            "expected '['");
+    refuses(R"({"ac3forge_scene":1,"objects":{}})", SceneErrorKind::kSyntax, "expected '['");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"bed":"lr","automation":[]}]})",
+            SceneErrorKind::kSyntax, "expected '['");
+    refuses(R"({"ac3forge_scene":1,"orientation":[],"objects":[]})", SceneErrorKind::kSyntax,
+            "expected '{'");
+    refuses(R"({"ac3forge_scene":1,"orientation":{"roll_rad":1,"roll_rad":2},"objects":[]})",
+            SceneErrorKind::kBadField, "twice");
+    refuses(R"({"ac3forge_scene" 1,"objects":[]})", SceneErrorKind::kSyntax, "expected ':'");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0} {}]}]})",
+            SceneErrorKind::kSyntax, "expected ']'");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0 "x":0}]}]})",
+            SceneErrorKind::kSyntax, "expected '}'");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"name":"a" "automation":[]}]})",
+            SceneErrorKind::kSyntax, "expected '}'");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"automation":[{"t":0,"x":0,"y":0,"z":0}]} {}]})",
+            SceneErrorKind::kSyntax, "expected ']'");
+    refuses(R"({"ac3forge_scene":1,"objects":[{"name":7,"automation":[]}]})",
+            SceneErrorKind::kSyntax, "expected '\"'");
+    refuses(R"({"ac3forge_scene":1,"orientation":{"yaw_rad":x},"objects":[]})",
+            SceneErrorKind::kSyntax, "expected a number");
+}
+
 TEST_CASE("the JSON reader refuses what it should", "[oba][scene]") {
     const auto refuses = [](std::string_view text, ac3::oba::SceneErrorKind kind) {
         const auto scene = ac3::oba::scene_from_json(text);

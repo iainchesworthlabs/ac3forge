@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <span>
 #include <string>
 #include <utility>
@@ -319,6 +320,279 @@ TEST_CASE("every E-AC-3 mismatch field has a name", "[verify]") {
         CHECK(ac3::verify::describe(field) != "unknown field");
         CHECK_FALSE(ac3::verify::describe(field).empty());
     }
+}
+
+TEST_CASE("verify::compare names every E-AC-3 field a hand-planted divergence sits in",
+          "[verify]") {
+    // One planted difference per case, each in a trace otherwise identical on
+    // both sides, and the first finding has to name exactly that field - and
+    // the stream, channel or index it sits at. This is the E-AC-3 check's
+    // whole vocabulary: a field the comparison forgot would come back empty
+    // or as some downstream consequence instead.
+    using Trace = ac3::verify::Eac3SubstreamTrace;
+    struct Case {
+        const char* name;
+        std::function<void(Trace&, Trace&)> plant;
+        Eac3Field field;
+        int block;
+        int stream;
+        bool channel;
+        int index;
+    };
+    const std::vector<Case> cases = {
+        // audfrm: reported before, and instead of, any block.
+        {"strmtyp", [](Trace&, Trace& d) { d.strmtyp = ac3::eac3::StreamType::kDependent; },
+         Eac3Field::kStreamType, -1, -1, false, -1},
+        {"substreamid", [](Trace&, Trace& d) { d.substreamid = 3; }, Eac3Field::kSubstreamId,
+         -1, -1, false, -1},
+        {"numblkscod", [](Trace&, Trace& d) { d.blocks_coded = 3; }, Eac3Field::kBlockCount,
+         -1, -1, false, -1},
+        {"transproce", [](Trace&, Trace& d) { d.transproce = true; },
+         Eac3Field::kTransientProcInUse, -1, -1, false, -1},
+        {"chintransproc",
+         [](Trace& e, Trace& d) {
+             for (auto* t : {&e, &d}) {
+                 t->transproce = true;
+                 t->chintransproc = {false, false};
+                 t->transprocloc = {0, 0};
+                 t->transproclen = {0, 0};
+             }
+             d.chintransproc[1] = true;
+         },
+         Eac3Field::kTransientProcChannel, -1, -1, false, 1},
+        {"transproclen",
+         [](Trace& e, Trace& d) {
+             for (auto* t : {&e, &d}) {
+                 t->transproce = true;
+                 t->chintransproc = {false, true};
+                 t->transprocloc = {0, 128};
+                 t->transproclen = {0, 64};
+             }
+             d.transproclen[1] = 32;
+         },
+         Eac3Field::kTransientProcLength, -1, -1, false, 1},
+        // Block-level geometry.
+        {"block reached", [](Trace&, Trace& d) { d.blocks[0].entered = false; },
+         Eac3Field::kBlockReached, 0, -1, false, -1},
+        {"deltbaie", [](Trace&, Trace& d) { d.blocks[1].deltbaie = true; }, Eac3Field::kDeltbaie,
+         1, -1, false, -1},
+        {"cplinu", [](Trace&, Trace& d) { d.blocks[2].cplinu = false; },
+         Eac3Field::kCouplingInUse, 2, -1, false, -1},
+        {"ecplinu", [](Trace&, Trace& d) { d.blocks[2].ecplinu = true; },
+         Eac3Field::kEnhancedCouplingInUse, 2, -1, false, -1},
+        {"cplstrtmant", [](Trace&, Trace& d) { d.blocks[3].cplstrtmant = 37; },
+         Eac3Field::kCouplingStart, 3, -1, false, -1},
+        {"cplendmant", [](Trace&, Trace& d) { d.blocks[3].cplendmant = 229; },
+         Eac3Field::kCouplingEnd, 3, -1, false, -1},
+        {"spxinu", [](Trace&, Trace& d) { d.blocks[4].spxinu = true; }, Eac3Field::kSpxInUse, 4,
+         -1, false, -1},
+        {"spx start",
+         [](Trace& e, Trace& d) {
+             e.blocks[4].spxinu = d.blocks[4].spxinu = true;
+             d.blocks[4].spx_startmant = 133;
+         },
+         Eac3Field::kSpxStart, 4, -1, false, -1},
+        {"spx end",
+         [](Trace& e, Trace& d) {
+             e.blocks[4].spxinu = d.blocks[4].spxinu = true;
+             d.blocks[4].spx_endmant = 229;
+         },
+         Eac3Field::kSpxEnd, 4, -1, false, -1},
+        {"spx copy start",
+         [](Trace& e, Trace& d) {
+             e.blocks[4].spxinu = d.blocks[4].spxinu = true;
+             d.blocks[4].spx_copystart = 25;
+         },
+         Eac3Field::kSpxCopyStart, 4, -1, false, -1},
+        {"allocation", [](Trace&, Trace& d) { d.blocks[5].allocated = false; },
+         Eac3Field::kAllocationReached, 5, -1, false, -1},
+        {"stream count", [](Trace&, Trace& d) { d.blocks[0].streams.pop_back(); },
+         Eac3Field::kStreamCount, 0, -1, false, -1},
+        {"channel count", [](Trace&, Trace& d) { d.blocks[0].channels.pop_back(); },
+         Eac3Field::kChannelCount, 0, -1, false, -1},
+        // Per coded stream.
+        {"deltoffst",
+         [](Trace& e, Trace& d) {
+             for (auto* t : {&e, &d}) {
+                 auto& delta = t->blocks[1].streams[2].delta;
+                 delta.deltnseg = 1;
+                 delta.deltoffst[0] = 5;
+                 delta.deltlen[0] = 2;
+                 delta.deltba[0] = 4;
+             }
+             d.blocks[1].streams[2].delta.deltoffst[0] = 6;
+         },
+         Eac3Field::kDeltaOffset, 1, 2, false, 0},
+        {"deltlen",
+         [](Trace& e, Trace& d) {
+             e.blocks[1].streams[2].delta.deltnseg = d.blocks[1].streams[2].delta.deltnseg = 1;
+             d.blocks[1].streams[2].delta.deltlen[0] = 9;
+         },
+         Eac3Field::kDeltaLength, 1, 2, false, 0},
+        {"deltba",
+         [](Trace& e, Trace& d) {
+             e.blocks[1].streams[2].delta.deltnseg = d.blocks[1].streams[2].delta.deltnseg = 1;
+             d.blocks[1].streams[2].delta.deltba[0] = 7;
+         },
+         Eac3Field::kDeltaValue, 1, 2, false, 0},
+        {"stream start", [](Trace&, Trace& d) { d.blocks[2].streams[3].start = 37; },
+         Eac3Field::kStreamStart, 2, 3, false, -1},
+        {"endmant", [](Trace&, Trace& d) { d.blocks[2].streams[0].endmant = 63; },
+         Eac3Field::kStreamEnd, 2, 0, false, -1},
+        {"ahtinu", [](Trace&, Trace& d) { d.blocks[3].streams[1].aht = true; },
+         Eac3Field::kAhtInUse, 3, 1, false, -1},
+        {"chgaqmod",
+         [](Trace& e, Trace& d) {
+             e.blocks[3].streams[1].aht = d.blocks[3].streams[1].aht = true;
+             d.blocks[3].streams[1].gaqmod = 2;
+         },
+         Eac3Field::kGaqMode, 3, 1, false, -1},
+        {"exponent count", [](Trace&, Trace& d) { d.blocks[3].streams[1].exponents.resize(60); },
+         Eac3Field::kExponentCount, 3, 1, false, -1},
+        {"AHT gain count", [](Trace&, Trace& d) { d.blocks[3].streams[1].gain.assign(4, 1); },
+         Eac3Field::kAhtGainCount, 3, 1, false, -1},
+        // Per full-bandwidth channel.
+        {"blksw", [](Trace&, Trace& d) { d.blocks[4].channels[1].blksw = true; },
+         Eac3Field::kBlockSwitch, 4, 1, true, -1},
+        {"chincpl", [](Trace&, Trace& d) { d.blocks[4].channels[0].in_coupling = false; },
+         Eac3Field::kChannelInCoupling, 4, 0, true, -1},
+        {"cplco count", [](Trace&, Trace& d) { d.blocks[4].channels[0].cplco.resize(14); },
+         Eac3Field::kCouplingCoordinateCount, 4, 0, true, -1},
+        {"ecpltrans", [](Trace&, Trace& d) { d.blocks[4].channels[1].ecpltrans = true; },
+         Eac3Field::kEcplTransient, 4, 1, true, -1},
+        {"ecplamp",
+         [](Trace& e, Trace& d) {
+             for (auto* t : {&e, &d}) {
+                 auto& c = t->blocks[5].channels[1];
+                 c.ecplamp.assign(8, 3);
+                 c.ecplangle.assign(8, 0);
+                 c.ecplchaos.assign(8, 1);
+             }
+             d.blocks[5].channels[1].ecplamp[2] = 4;
+         },
+         Eac3Field::kEcplAmplitude, 5, 1, true, 2},
+        {"ecplangle",
+         [](Trace& e, Trace& d) {
+             e.blocks[5].channels[1].ecplangle.assign(8, 0);
+             d.blocks[5].channels[1].ecplangle.assign(8, 0);
+             d.blocks[5].channels[1].ecplangle[7] = 31;
+         },
+         Eac3Field::kEcplAngle, 5, 1, true, 7},
+        {"ecplchaos",
+         [](Trace& e, Trace& d) {
+             e.blocks[5].channels[0].ecplchaos.assign(8, 1);
+             d.blocks[5].channels[0].ecplchaos.assign(7, 1);
+         },
+         Eac3Field::kEcplCoordinateCount, 5, 0, true, -1},
+        {"chinspx", [](Trace&, Trace& d) { d.blocks[5].channels[0].in_spx = true; },
+         Eac3Field::kChannelInSpx, 5, 0, true, -1},
+        {"spxblnd",
+         [](Trace& e, Trace& d) {
+             e.blocks[5].channels[0].in_spx = d.blocks[5].channels[0].in_spx = true;
+             d.blocks[5].channels[0].spxblnd = 12;
+         },
+         Eac3Field::kSpxBlend, 5, 0, true, -1},
+        {"spxco",
+         [](Trace& e, Trace& d) {
+             for (auto* t : {&e, &d}) {
+                 t->blocks[5].channels[1].in_spx = true;
+                 t->blocks[5].channels[1].spxco.assign(4, 0.75);
+             }
+             d.blocks[5].channels[1].spxco[3] = 0.125;
+         },
+         Eac3Field::kSpxCoordinate, 5, 1, true, 3},
+        {"spxco count",
+         [](Trace& e, Trace& d) {
+             e.blocks[5].channels[1].in_spx = d.blocks[5].channels[1].in_spx = true;
+             e.blocks[5].channels[1].spxco.assign(4, 0.75);
+         },
+         Eac3Field::kSpxCoordinateCount, 5, 1, true, -1},
+    };
+    for (const auto& c : cases) {
+        CAPTURE(c.name);
+        auto encoder = flat_substream(2, 3, 4);
+        auto decoder = flat_substream(2, 3, 4);
+        c.plant(encoder, decoder);
+        const auto found = ac3::verify::compare(encoder, decoder, 7, 1);
+        REQUIRE_FALSE(found.empty());
+        const auto& first = found.front();
+        CHECK(first.field == c.field);
+        CHECK(first.frame == 7);
+        CHECK(first.substream == 1);
+        CHECK(first.block == c.block);
+        CHECK(first.stream == c.stream);
+        CHECK(first.channel == c.channel);
+        CHECK(first.index == c.index);
+        // Nothing past the first divergent block is ever reported.
+        for (const auto& mismatch : found) {
+            CHECK(mismatch.block == c.block);
+        }
+    }
+}
+
+TEST_CASE("an E-AC-3 report names the LFE and coupling streams and prints fractions as such",
+          "[verify]") {
+    auto encoder = flat_unit(0);
+    auto decoder = flat_unit(0);
+    // A 2/0+LFE bed: streams 0 and 1 are channels, 2 the LFE, 3 coupling.
+    for (auto* unit : {&encoder, &decoder}) {
+        auto& bed = unit->substream(0);
+        bed = flat_substream(2, 3, 4);
+    }
+    decoder.substream(0).blocks[1].streams[2].bap[5] = 6;
+    decoder.substream(0).blocks[1].streams[3].exponents[0] = 9;
+    const auto found = ac3::verify::compare(encoder, decoder, 4);
+    REQUIRE(found.size() == 2);
+    CHECK(ac3::verify::report(found, encoder) ==
+          "frame 4 substream 0 block 1 LFE: bap[5] encoder=3 decoder=6\n"
+          "frame 4 substream 0 block 1 coupling: exponent[0] encoder=7 decoder=9");
+
+    // A substream index the shape does not have still renders - with no
+    // channel counts to name streams by, everything past -1 reads as coupling
+    // rather than as a guessed channel.
+    const std::vector<ac3::verify::Eac3Mismatch> orphan = {
+        {.frame = 2, .substream = 5, .block = 0, .stream = 0, .index = 1,
+         .field = Eac3Field::kSpxCoordinate, .encoder = 0.25, .decoder = 1.0},
+        {.frame = 2, .field = Eac3Field::kSubstreamCount, .encoder = 2, .decoder = 1}};
+    CHECK(ac3::verify::report(orphan, encoder) ==
+          "frame 2 substream 5 block 0 coupling: spxco[1] encoder=0.250000 decoder=1\n"
+          "frame 2: substreams in the access unit encoder=2 decoder=1");
+}
+
+TEST_CASE("an access-unit trace reuses its substream slots without leaking the last unit",
+          "[verify]") {
+    ac3::verify::Eac3AccessUnitTrace trace;
+    trace.resize(2);
+    REQUIRE(trace.size() == 2);
+    trace.substream(1) = flat_substream(2, 2, 3);
+    trace.substream(1).transproce = true;
+    trace.substream(1).chintransproc = {true, true};
+
+    // Shrinking keeps the storage but not the contents: growing back hands
+    // out a slot in its unvisited state, not last unit's leftovers.
+    trace.resize(1);
+    CHECK(trace.substreams().size() == 1);
+    trace.resize(2);
+    const auto& reused = trace.substreams()[1];
+    CHECK_FALSE(reused.transproce);
+    CHECK(reused.chintransproc.empty());
+    CHECK(reused.fbw_channels == 0);
+    CHECK(reused.blocks_coded == ac3::kBlocksPerFrame);
+    for (const auto& block : reused.blocks) {
+        CHECK_FALSE(block.entered);
+        CHECK(block.streams.empty());
+        CHECK(block.channels.empty());
+    }
+    CHECK(ac3::verify::compare(trace, ac3::verify::Eac3AccessUnitTrace{}, 0).size() == 1);
+
+    // An independent substream starts the unit over; a dependent appends.
+    auto& bed = trace.begin_substream(true);
+    bed.fbw_channels = 5;
+    CHECK(trace.size() == 1);
+    (void)trace.begin_substream(false);
+    (void)trace.begin_substream(false);
+    CHECK(trace.size() == 3);
+    CHECK(trace.substreams()[0].fbw_channels == 5);
 }
 
 // --- end to end -------------------------------------------------------------

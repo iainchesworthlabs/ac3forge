@@ -12,6 +12,7 @@
 #include <limits>
 #include <numbers>
 #include <random>
+#include <vector>
 
 #include "ac3/core/coupling.hpp"
 #include "ac3/core/eac3_tools.hpp"
@@ -532,4 +533,124 @@ TEST_CASE("ecpl_channel_coefficients_fixed: zero amplitude silences a channel; "
             CHECK(mant_out[static_cast<std::size_t>(bin)].raw == 0);
         }
     }
+}
+
+TEST_CASE("the tier's ecpl amplitudes and angles are the double ones", "[fixed32]") {
+    // ecpl_amplitudes_fixed/ecpl_angles_fixed are what a Fixed32 decode runs
+    // for every enhanced-coupling channel, and a float or double build never
+    // calls them - so this comparison is the only thing that exercises them
+    // on such a build. Every band-to-bin path is covered: first channel and
+    // later, transient and not, and both the direct and the interpolated
+    // conversion.
+    const int begin = 0;
+    const int end = ac3::eac3::kEcplSubBands;
+    const auto layout =
+        ac3::eac3::ecpl_group_bands(begin, end, ac3::eac3::kDefaultEcplBandStructure);
+    REQUIRE(layout.count > 1);
+    const auto bands = static_cast<std::size_t>(layout.count);
+    std::vector<int> amp_codes(bands);
+    std::vector<int> angle_codes(bands);
+    std::vector<int> chaos_codes(bands);
+    std::mt19937 rng(0xec91);
+    for (std::size_t b = 0; b < bands; ++b) {
+        amp_codes[b] = static_cast<int>(rng() % 32);
+        angle_codes[b] = static_cast<int>(rng() % 64);
+        chaos_codes[b] = static_cast<int>(rng() % 8);
+    }
+    const auto bins = static_cast<std::size_t>(
+        ac3::eac3::kEcplSubBandTab[static_cast<std::size_t>(end)] -
+        ac3::eac3::kEcplSubBandTab[static_cast<std::size_t>(begin)]);
+
+    for (const bool first : {true, false}) {
+        for (const bool transient : {false, true}) {
+            CAPTURE(first, transient);
+            std::vector<double> amp(bins);
+            std::vector<Fixed32> amp_fixed(bins);
+            ac3::eac3::ecpl_amplitudes(amp_codes, chaos_codes, transient, first, begin, end,
+                                       ac3::eac3::kDefaultEcplBandStructure, amp);
+            ac3::eac3::ecpl_amplitudes_fixed(amp_codes, chaos_codes, transient, first, begin,
+                                             end, ac3::eac3::kDefaultEcplBandStructure,
+                                             amp_fixed);
+            for (std::size_t i = 0; i < bins; ++i) {
+                CAPTURE(i);
+                // One table read and at most one product and sum.
+                CHECK(std::abs(static_cast<double>(amp_fixed[i]) - amp[i]) <= 4.0 * kUlp);
+            }
+
+            for (const bool interpolate : {false, true}) {
+                CAPTURE(interpolate);
+                ac3::eac3::EcplNoise noise;
+                ac3::eac3::EcplNoise noise_fixed;
+                std::vector<double> angle(bins);
+                std::vector<Fixed32> angle_fixed(bins);
+                ac3::eac3::ecpl_angles(/*channel=*/1, angle_codes, chaos_codes, transient, first,
+                                       begin, end, ac3::eac3::kDefaultEcplBandStructure, noise,
+                                       angle, interpolate);
+                ac3::eac3::ecpl_angles_fixed(/*channel=*/1, angle_codes, chaos_codes, transient,
+                                             first, begin, end,
+                                             ac3::eac3::kDefaultEcplBandStructure, noise_fixed,
+                                             angle_fixed, interpolate);
+                // Through the rotation each names, not the number: a value at
+                // the wrap may land a whole turn apart between the two.
+                double worst = 0.0;
+                for (std::size_t i = 0; i < bins; ++i) {
+                    const double a = std::numbers::pi * angle[i];
+                    const double b = std::numbers::pi * static_cast<double>(angle_fixed[i]);
+                    worst = std::max({worst, std::abs(std::cos(a) - std::cos(b)),
+                                      std::abs(std::sin(a) - std::sin(b))});
+                }
+                INFO("worst angle error " << worst);
+                CHECK(worst <= 1e-5);
+                if (first) {
+                    // The first coupled channel's angles are zero by
+                    // definition in both tiers, whatever was sent.
+                    CHECK(std::ranges::all_of(angle_fixed, [](Fixed32 v) { return v.raw == 0; }));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("ecpl_channel_spectrum_fixed matches the double spectrum on real content",
+          "[fixed32]") {
+    // The all-zero case above only proves the tier writes zeros. Here three
+    // blocks of full-scale content go through its own DFT, whose per-stage
+    // shedding is what keeps a 512-point transform inside 32 bits; widened by
+    // the exponent it reports, the result has to be the double spectrum.
+    std::mt19937 rng(0x5bec);
+    std::uniform_real_distribution<double> dist(-0.99, 0.99);
+    std::array<double, 256> prev{};
+    std::array<double, 256> curr{};
+    std::array<double, 256> next{};
+    std::array<Fixed32, 256> prev_fixed{};
+    std::array<Fixed32, 256> curr_fixed{};
+    std::array<Fixed32, 256> next_fixed{};
+    for (std::size_t k = 0; k < 256; ++k) {
+        prev_fixed[k] = Fixed32{dist(rng)};
+        curr_fixed[k] = Fixed32{dist(rng)};
+        next_fixed[k] = Fixed32{dist(rng)};
+        prev[k] = static_cast<double>(prev_fixed[k]);
+        curr[k] = static_cast<double>(curr_fixed[k]);
+        next[k] = static_cast<double>(next_fixed[k]);
+    }
+    std::array<double, 256> real_out{};
+    std::array<double, 256> imag_out{};
+    ac3::eac3::ecpl_channel_spectrum(prev, curr, next, real_out, imag_out, /*fast=*/false);
+    std::array<Fixed32, 256> real_fixed{};
+    std::array<Fixed32, 256> imag_fixed{};
+    int out_norm = 0;
+    ac3::eac3::ecpl_channel_spectrum_fixed(prev_fixed, 0, curr_fixed, 0, next_fixed, 0,
+                                           real_fixed, imag_fixed, out_norm);
+
+    double peak = 0.0;
+    double worst = 0.0;
+    for (std::size_t k = 0; k < 256; ++k) {
+        peak = std::max({peak, std::abs(real_out[k]), std::abs(imag_out[k])});
+        worst = std::max(
+            {worst, std::abs(std::ldexp(static_cast<double>(real_fixed[k]), -out_norm) - real_out[k]),
+             std::abs(std::ldexp(static_cast<double>(imag_fixed[k]), -out_norm) - imag_out[k])});
+    }
+    INFO("peak " << peak << ", worst error " << worst << ", out_norm " << out_norm);
+    REQUIRE(peak > 0.1);  // real content, not a near-silent spectrum
+    CHECK(worst <= 1e-4 * peak);
 }
