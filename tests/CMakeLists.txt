@@ -508,7 +508,11 @@ endif()
 if(AC3FORGE_AUDIO_BACKEND STREQUAL "alsa")
     target_sources(ac3tests PRIVATE
         backend/alsa/test_alsa_device_names.cpp
-        backend/alsa/test_alsa_eld_parsing.cpp)
+        backend/alsa/test_alsa_eld_parsing.cpp
+        # Software ALSA devices (audio/alsa_null_device.hpp): the backend's
+        # classes and the device-facing ac3cli commands against alsa-lib's
+        # null/file/route plugins, so their success paths run without a card.
+        audio/test_alsa_null_backend.cpp)
     # The backend's internal header. Not part of the library's public
     # interface and deliberately not installed - it is on the include path for
     # this target only, and only in this configuration.
@@ -575,6 +579,11 @@ if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
         cli/test_cli.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
         cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp)
+    # The same device-facing commands with a device to find: software ALSA
+    # devices (audio/alsa_null_device.hpp), so only in the ALSA configuration.
+    if(AC3FORGE_AUDIO_BACKEND STREQUAL "alsa")
+        target_sources(ac3tests PRIVATE cli/test_cli_live_alsa.cpp)
+    endif()
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
     # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
     # well as this encoder's own output - they exercise syntax ac3forge never
