@@ -77,8 +77,9 @@ an installed static `ac3::` target with the C++ driver when it enables the CXX l
 program using `ac3::forge_c_static` needs `project(your_project LANGUAGES C CXX)`; that driver
 supplies libm as well. With only C enabled the link goes through the C driver and stops at C++
 runtime symbols such as `operator new`, although the exported target records that it holds C++
-objects (`IMPORTED_LINK_INTERFACE_LANGUAGES`). A build outside CMake adds the C++ runtime and libm
-to the link line itself (`-lstdc++ -lm` with libstdc++, `-lc++` with libc++).
+objects (`IMPORTED_LINK_INTERFACE_LANGUAGES`). A build outside CMake gets them from the `.pc`
+files (see pkg-config below), or adds them to the link line itself (`-lstdc++ -lm` with libstdc++,
+`-lc++ -lm` with libc++).
 
 `ac3adm::ac3adm`/`ac3::admbridge` are the exception: they PRIVATE-embed the third-party
 libbw64/libadm (Apache-2.0, FetchContent'd — see [ADM / BW64 reading](adm.md)), neither of which
@@ -150,6 +151,30 @@ links another (`ac3signing` requires `ac3forge`; `admbridge` requires both `ac3f
 `ac3adm`). The `prefix=` line resolves relative to wherever the `.pc` file itself ends up
 (`pkg-config`'s own `${pcfiledir}`), so it works the same whether that's a real system install or
 an unpacked `ac3forge-dev-*` archive.
+
+A `.pc` that names a static archive lists what the archive needs in `Requires.private` and
+`Libs.private`, and pkg-config puts those on the link line only when asked for `--static`. That is
+the mode for an install that holds only the static libraries, the shape a vcpkg or Conan package
+has:
+
+```bash
+cc consumer.c $(pkg-config --static --cflags --libs ac3forge_c)
+```
+
+`ac3forge_c.pc` requires `ac3forge` privately, because `libac3forge_c_static.a` calls into
+`libac3forge_static.a`. `ac3forge.pc`, `matroska.pc`, `mp4.pc`, `mpegts.pc`, `iamf.pc` and
+`ac3iab.pc` list the C++ runtime and libm in `Libs.private`. A C compiler does not link them by
+itself, and a C++ compiler does. The names are the ones CMake recorded for the compiler that built
+the archives: `-lstdc++ -lm` with libstdc++ and `-lc++ -lm` with libc++ on Linux. `ac3signing.pc`
+gets them through `ac3forge`. A `.pc` that names a shared library has neither field: the library
+records what it needs, and `libac3forge_c.so` holds its own copy of the codec, so it does not pull
+in `libac3forge.so`. An install with both linkages, such as the `ac3forge-dev-*` packages, names
+the shared libraries, and `--static` does not switch to the archives, so name them yourself:
+
+```bash
+cc consumer.c $(pkg-config --cflags --libs-only-L ac3forge_c) \
+    -lac3forge_c_static -lac3forge_static -lstdc++ -lm
+```
 
 Live audio — capture, monitor playback, IEC 61937 passthrough — is `ac3::audio`
 (`src/audio/`), a separate target `ac3cli`/`ac3gui` link alongside `ac3::forge` for their own
