@@ -23,9 +23,15 @@ ColumnLayout {
         { label: qsTr("Firmware"), value: root.sink.firmware ?? "" }
     ]
 
+    // Flat with its ordinal as its own run, like the other two columns: the
+    // mockup's right column is a heading and a list on the page background,
+    // not a box. The header uppercases the words itself, so the string does
+    // not have to - and the bare "03" stays out of it.
     Card {
         Layout.fillWidth: true
-        title: qsTr("03 ONLY ON THE SINK")
+        flat: true
+        ordinal: "03"
+        title: qsTr("Only on the sink")
 
         GridLayout {
             Layout.fillWidth: true
