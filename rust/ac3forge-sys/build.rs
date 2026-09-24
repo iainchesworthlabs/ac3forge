@@ -44,6 +44,10 @@ fn main() {
         .define("AC3FORGE_BUILD_MATROSKA", "OFF")
         .define("AC3FORGE_BUILD_MP4", "OFF")
         .define("AC3FORGE_BUILD_MPEGTS", "OFF")
+        // Defaults ON (root CMakeLists.txt), and this binding never asks for the "hearth" vcpkg
+        // feature that supplies sendspin's cpp-httplib/mbedTLS/libFLAC/Opus/mdns - left unset,
+        // configure fails resolving packages this build never installed.
+        .define("AC3FORGE_BUILD_HEARTH", "OFF")
         .build_target("forge_c_shared");
     // `dst` is cmake-rs's own OUT_DIR-rooted prefix; the actual CMake build tree (what a plain
     // `cmake -B <dir>` would call the binary dir) lives at `<dst>/build` by cmake-rs convention.

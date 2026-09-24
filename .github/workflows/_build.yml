@@ -747,17 +747,14 @@ jobs:
       # its JS action, src/main.ts) runs a plain actions/setup-python step
       # first, which re-prepends the hosted-cache Python's bin dir ahead of
       # this one via core.addPath() - see the "Install Qt (prebuilt)" step's
-      # own comment for that half of the fix (setup-python: false).
-      #
-      # python-is-python3 is not decoration. install-qt-action's composite
-      # opens with a guard step declared `shell: python`, and Debian/Ubuntu
-      # ship the interpreter only as `python3` - so python3 and python3-pip
-      # alone left this leg dying before the Qt install with
-      #   exec: "python": executable file not found in $PATH
-      #   ##[error]Process completed with exit code 127
-      # The alias package is the distribution's own answer to that, and it is
-      # the same v4.4.0 guard the two Windows legs needed their own python
-      # for (_ci-windows.yml's "Setup Python (for install-qt-action)").
+      # own comment for that half of the fix (setup-python: false). A third
+      # piece, found 2026-09-24: that same composite has its own guard step
+      # ("Check the existence of built JavaScript action") running under
+      # `shell: python` before setup-python ever runs, so it needs a plain
+      # `python` on PATH regardless of that input - Debian/Ubuntu's python3
+      # package deliberately does not provide one (see python-is-python3),
+      # so without it the whole job dies in seconds on "python: executable
+      # file not found" before even reaching Qt.
       - name: Bootstrap container
         run: |
           set -eu
@@ -765,8 +762,7 @@ jobs:
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends \
             build-essential ca-certificates curl file git gnupg \
-            libasound2-dev lsb-release ninja-build pkg-config python3 python3-pip \
-            python-is-python3 \
+            libasound2-dev lsb-release ninja-build pkg-config python3 python3-pip python-is-python3 \
             software-properties-common sudo tar unzip wget zip
           echo "/usr/bin" >> "$GITHUB_PATH"
 
