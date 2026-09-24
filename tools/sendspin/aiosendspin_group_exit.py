@@ -72,7 +72,8 @@ def check(directory: Path, received: Received) -> tuple[list[str], str]:
             min(len(decoded), len(programme)),
         )
         problems.append(
-            f"decoded {decoded_frames} frames against {frames}; first difference at sample {different}"
+            f"decoded {decoded_frames} frames against {frames}; first difference at sample "
+            f"{different}"
         )
 
     summary = f"{received.streams} stream, {len(received.chunks)} chunks, {decoded_frames} frames"
