@@ -1,0 +1,532 @@
+#include <catch2/catch_test_macros.hpp>
+
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <numbers>
+#include <span>
+#include <string>
+#include <string_view>
+#include <vector>
+
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
+
+#include "ac3/decoder/decoder.hpp"
+#include "ac3/io/wav.hpp"
+#include "ac3/meta/bsi.hpp"
+#include "ac3/meta/mixing.hpp"
+
+// parse_options (apps/cli/support.cpp) at the level a user meets it: the real
+// ac3cli binary, run as a subprocess, and what it says about a key=value
+// token it was handed.
+//
+// Every command parses its whole option tail BEFORE it opens a single file,
+// which is what makes most of this file cheap: a malformed token is refused
+// with exit code 1 (kExitUsage) and its own reason while the input path does
+// not even exist, and a well-formed one gets exactly as far as that missing
+// input - exit code 2 (kExitInput) and "cannot open file". The second half is
+// a genuine claim, not a formality: a value the parser rejected would have
+// stopped at 1, and a value it silently mistook for an unknown option would
+// have printed "unknown option" instead. Where the value has somewhere to be
+// SEEN once accepted (the bsi fields a decoder reports back), the cases at
+// the bottom encode for real and read it back off the stream.
+//
+// run_cli and the helpers below are trimmed copies of test_cli.cpp's own,
+// duplicated per this project's per-file test-helper convention (see
+// test_cli_probe.cpp, which does the same) - including the Windows
+// double-quote wrapping explained in test_cli.cpp's run_cli.
+
+namespace fs = std::filesystem;
+
+namespace {
+
+// See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
+// shares, including the PID fold; the leaf name below is this file's own.
+std::string scratch_pid_suffix() {
+#ifdef _WIN32
+    return std::to_string(_getpid());
+#else
+    return std::to_string(getpid());
+#endif
+}
+
+fs::path scratch_dir() {
+    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_options_" + scratch_pid_suffix());
+    fs::create_directories(dir);
+    return dir;
+}
+
+// See test_cli.cpp's child_exit_code: POSIX std::system() hands back a wait()
+// status word, not the exit code itself.
+int child_exit_code(int system_status) {
+#ifdef _WIN32
+    return system_status;
+#else
+    if (system_status == -1) {
+        return system_status;
+    }
+    return WIFEXITED(system_status) ? WEXITSTATUS(system_status)
+                                    : 128 + WTERMSIG(system_status);
+#endif
+}
+
+int run_cli(const std::string& args, const fs::path& log) {
+    const std::string command =
+        "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
+#ifdef _WIN32
+    const std::string wrapped = "\"" + command + "\"";
+    return child_exit_code(std::system(wrapped.c_str()));
+#else
+    return child_exit_code(std::system(command.c_str()));
+#endif
+}
+
+std::string read_log(const fs::path& log) {
+    std::ifstream in{log, std::ios::binary};
+    return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+}
+
+std::vector<std::byte> read_bytes(const fs::path& path) {
+    std::ifstream in{path, std::ios::binary};
+    const std::vector<char> raw{std::istreambuf_iterator<char>{in},
+                                std::istreambuf_iterator<char>{}};
+    std::vector<std::byte> out(raw.size());
+    for (std::size_t i = 0; i < raw.size(); ++i) {
+        out[i] = static_cast<std::byte>(raw[i]);
+    }
+    return out;
+}
+
+// A short, non-silent WAV: one tone per channel, a different pitch on each.
+// 0.1 s is three AC-3 frames' worth - enough for a decoder to read a bsi
+// back, and short enough that the encode costs nothing next to the process
+// start-up around it.
+fs::path write_tone_wav(const fs::path& path, std::size_t channels) {
+    constexpr std::uint32_t kRate = 48000;
+    constexpr std::size_t kFrames = 4800;
+    std::vector<std::vector<float>> data(channels, std::vector<float>(kFrames));
+    for (std::size_t c = 0; c < channels; ++c) {
+        const double hz = 330.0 + 110.0 * static_cast<double>(c);
+        for (std::size_t n = 0; n < kFrames; ++n) {
+            data[c][n] = static_cast<float>(0.4 * std::sin(2.0 * std::numbers::pi * hz *
+                                                           static_cast<double>(n) / kRate));
+        }
+    }
+    REQUIRE(ac3::io::write_wav_f32(path.string(), data, kRate).has_value());
+    return path;
+}
+
+// The first syncframe of an AC-3 file, decoded - its bsi is what the
+// metadata tokens under test were meant to reach.
+ac3::DecodedFrame first_frame(const fs::path& path) {
+    const auto bytes = read_bytes(path);
+    const auto frames = ac3::split_frames(bytes);
+    REQUIRE(frames.has_value());
+    REQUIRE_FALSE(frames->empty());
+    ac3::FrameDecoder decoder;
+    auto decoded = decoder.decode_frame(frames->front());
+    REQUIRE(decoded.has_value());
+    return std::move(*decoded);
+}
+
+struct Refusal {
+    std::string_view token;
+    // The whole of what follows "error: " on the first line, or a distinctive
+    // leading part of it where the rest is a long enumerated list.
+    std::string_view message;
+};
+
+// Runs `<command> <missing input> <output> <token>` once per row, and holds
+// each to the refusal contract: usage exit code, its own reason on stderr,
+// and no output file left behind.
+void check_refusals(std::string_view command, std::span<const Refusal> rows,
+                    std::string_view leaf) {
+    const auto dir = scratch_dir();
+    const auto missing = dir / (std::string{leaf} + "_missing.wav");
+    const auto out_path = dir / (std::string{leaf} + "_out.bin");
+    const auto log = dir / (std::string{leaf} + ".log");
+    for (const auto& row : rows) {
+        CAPTURE(row.token);
+        fs::remove(out_path);
+        const auto rc = run_cli(std::string{command} + " \"" + missing.string() + "\" \"" +
+                                    out_path.string() + "\" \"" + std::string{row.token} + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 1);
+        CHECK(text.find("error: " + std::string{row.message}) != std::string::npos);
+        CHECK_FALSE(fs::exists(out_path));
+    }
+}
+
+// The acceptance half: every token parses, so the run gets as far as the
+// missing input and stops there with the input exit code, not the usage one.
+// All of a table's tokens go on ONE command line - parse_options walks the
+// whole tail before the command looks at its input, so a single refused or
+// unrecognised token anywhere in it would stop the run at exit code 1 and
+// name itself, and one process per table keeps these cases cheap.
+void check_accepted(std::string_view command, std::span<const std::string_view> tokens,
+                    std::string_view leaf) {
+    const auto dir = scratch_dir();
+    const auto missing = dir / (std::string{leaf} + "_missing.wav");
+    const auto out_path = dir / (std::string{leaf} + "_out.bin");
+    const auto log = dir / (std::string{leaf} + ".log");
+    std::string args = std::string{command} + " \"" + missing.string() + "\" \"" +
+                       out_path.string() + "\"";
+    for (const auto token : tokens) {
+        args += " \"" + std::string{token} + "\"";
+    }
+    const auto rc = run_cli(args, log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc == 2);
+    CHECK(text.find("error: " + missing.string() + ": cannot open file") != std::string::npos);
+    CHECK(text.find("unknown option") == std::string::npos);
+    CHECK_FALSE(fs::exists(out_path));
+}
+
+}  // namespace
+
+TEST_CASE("a malformed metadata option is refused with its own reason before any input is read",
+          "[cli][options]") {
+    static constexpr Refusal kRows[] = {
+        {"dialnorm=0", "dialnorm must be auto or 1..31 (\xC2\xA7" "5.4.2.8)"},
+        {"dialnorm2=32", "dialnorm2 must be auto or 1..31 (\xC2\xA7" "5.4.2.16)"},
+        {"compr2=abc", "compr2 takes a gain in dB (got 'abc')"},
+        {"dsurmod=9", "dsurmod must be 0..3 (Table 5.11's Dolby Surround mode) or one of: "},
+        {"cmixlev=-2", "cmixlev must be -3, -4.5 or -6 (Table 5.9)"},
+        {"surmixlev=-4", "surmixlev must be -3, -6 or off (Table 5.10)"},
+        {"lfemix=40", "lfemix must be off or 0..31 (\xC2\xA7" "E2.3.1.11)"},
+        {"dmixmod=bogus", "dmixmod must be ltrt, loro or none (Table D2.2)"},
+        {"ltrtcmixlev=-2",
+         "ltrtcmixlev must be +3, +1.5, 0, -1.5, -3, -4.5, -6 or off (Tables D2.3-D2.6)"},
+        // Tables D2.4/D2.6 reserve the three loudest surround codes, so a
+        // level that is legal for a centre field is refused for a surround.
+        {"ltrtsurmixlev=+3", "ltrtsurmixlev must be -1.5, -3, -4.5, -6 or off - Tables "
+                             "D2.4/D2.6 reserve the three louder codes"},
+        {"lorosurmixlev=0", "lorosurmixlev must be -1.5, -3, -4.5, -6 or off"},
+        {"dheadphonmod=bogus", "dheadphonmod must be one of: none | off | on"},
+        {"dsurexmod=bogus", "dsurexmod must be one of: none | off | ex | pliiz"},
+        {"adconvtyp=bogus", "adconvtyp must be one of: standard | hdcd"},
+        {"origbs=maybe", "origbs must be on or off (\xC2\xA7" "5.4.2.25)"},
+        {"mixdef=bogus", "mixdef must be none, premix, reserved or ext (Table E2.6)"},
+        {"mixdata=5000",
+         "mixdata is the twelve bits mixdef=reserved reserves, 0..4095 (\xC2\xA7" "E2.3.1.23)"},
+        {"extmix=1,2,3", "extmix takes 6 Table E2.8 codes (0..15 or 'off'), optionally a "
+                         "seventh for the downmix scale"},
+        {"paninfo=240", "paninfo is <0..239>[:<0..63>] - 1.5 degree steps clockwise from "
+                        "centre (\xC2\xA7" "E2.3.1.54)"},
+        {"drc=bogus", "unknown DRC profile 'bogus' (film-standard | film-light | "
+                      "music-standard | music-light | speech)"},
+        {"drc2=film", "unknown DRC profile 'film' (film-standard | film-light | "
+                      "music-standard | music-light | speech)"},
+        {"ceiling=loud", "ceiling needs a level in dBFS"},
+        {"ceiling2=x", "ceiling2 needs a level in dBFS"},
+        {"dialogue2=", "dialogue2 needs a level in dBFS"},
+    };
+    check_refusals("eac3-encode", kRows, "refuse_meta");
+}
+
+TEST_CASE("a malformed coding, decoding or routing option is refused with its own reason",
+          "[cli][options]") {
+    static constexpr Refusal kRows[] = {
+        {"fast-imdct=on", "the fast IMDCT is the default; 'fast-imdct=off' forces the direct "
+                          "\xC2\xA7" "7.9.4 step-3 evaluation (got 'fast-imdct=on')"},
+        {"numblkscod=4", "numblkscod is 0-3 (1/2/3/6 blocks per syncframe, section E2.3.1.4) "
+                         "(got 'numblkscod=4')"},
+        {"numblkscod=x", "numblkscod is 0-3"},
+        {"joc-domain=fft", "joc-domain is 'qmf' (the default, \xC2\xA7" "7.1's complex "
+                           "filterbank) or 'mdct' (the 256-bin approximation) "
+                           "(got 'joc-domain=fft')"},
+        {"search=fast",
+         "search is 'off' (the default), 'distortion' or 'perceptual' (got 'search=fast')"},
+        {"delta=on", "delta bit allocation is on by default; 'delta=off' skips the "
+                     "corrections and the second fit that weighs them (got 'delta=on')"},
+        {"channels=3", "channels is '2' (\xC2\xA7" "7.8 stereo), '1' (mono) or 'as-coded' "
+                       "(the default - no downmix at all) (got 'channels=3')"},
+        {"ltrt-phase=on", "the Lt/Rt surround phase shift is the default; 'ltrt-phase=off' "
+                          "selects the sign-only matrix (got 'ltrt-phase=on')"},
+        {"drcmode=film", "drcmode is 'line' (\xC2\xA7" "7.7.1), 'rf' (\xC2\xA7" "7.7.2, with "
+                         "downmix overload protection) or 'none' (the default) "
+                         "(got 'drcmode=film')"},
+        {"conceal=hide", "conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
+                         "silence) or 'off' (the default) (got 'conceal=hide')"},
+        {"codec=mp3", "codec must be ac3 or eac3 (got 'codec=mp3')"},
+        {"src=", "src= needs a file path"},
+        {"map=", "map= needs a spec (<source>.<channel>"},
+        {"fmp4-window=x", "fmp4-window= needs a segment count (0 keeps every segment)"},
+        {"signing-key=", "signing-key= needs a key file path"},
+        {"programme=9", "programme= needs a substream id 0..7 (got 'programme=9')"},
+        {"mainid=9", "mainid must be 0-7 (got 'mainid=9')"},
+        {"asvc=1,9", "asvc main-service list must be comma-separated 0-7 (got 'asvc=1,9')"},
+        {"asvc=0x100", "asvc must be 0-255 or 0x00-0xFF (got 'asvc=0x100')"},
+        {"capture2=-1", "capture2= needs a non-negative device index"},
+        {"container=avi", "container must be raw, mkv, ts, spdif or fmp4 (got 'container=avi')"},
+        {"positions=osc", "positions= needs a scheme (positions=osc:<port>)"},
+        {"positions=midi:1", "positions= scheme must be 'osc' (got 'midi'; MIDI and a game "
+                             "controller are not implemented yet)"},
+        {"positions=osc:local:x",
+         "positions=osc:[local|any|<ipv4>:]<port> needs a port from 1 to 65535"},
+    };
+    check_refusals("eac3-encode", kRows, "refuse_tools");
+}
+
+TEST_CASE("qc's own layout= and objects= are refused with their own reasons", "[cli][options]") {
+    // layout= and objects= mean something else to every other command, so
+    // these two refusals are qc's alone - parse_options is told the command.
+    static constexpr Refusal kRows[] = {
+        {"layout=wide", "layout must be bed or rendered (got 'layout=wide')"},
+        {"objects=sideways", "objects layout 'sideways' not recognised (mono | stereo"},
+    };
+    const auto dir = scratch_dir();
+    const auto missing = dir / "qc_missing.ec3";
+    const auto log = dir / "qc_refuse.log";
+    for (const auto& row : kRows) {
+        CAPTURE(row.token);
+        const auto rc =
+            run_cli("qc \"" + missing.string() + "\" \"" + std::string{row.token} + "\"", log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 1);
+        CHECK(text.find("error: " + std::string{row.message}) != std::string::npos);
+    }
+}
+
+TEST_CASE("an unknown option names itself and prints the option summary", "[cli][options]") {
+    const auto dir = scratch_dir();
+    const auto missing = dir / "unknown_missing.wav";
+    const auto out_path = dir / "unknown_out.ec3";
+    const auto log = dir / "unknown.log";
+    // programme9= is past the eight independent substreams §E2.3.1.2 allows,
+    // and programme2-bogus= is a real programme with a field nobody defined:
+    // neither may be swallowed as an extra programme's option.
+    for (const std::string_view token : {"volume=11", "programme9=x", "programme2-bogus=1",
+                                         "programme2x=1"}) {
+        CAPTURE(token);
+        fs::remove(out_path);
+        const auto rc = run_cli("eac3-encode \"" + missing.string() + "\" \"" +
+                                    out_path.string() + "\" \"" + std::string{token} + "\"",
+                                log);
+        const auto text = read_log(log);
+        INFO(text);
+        CHECK(rc == 1);
+        CHECK(text.find("error: unknown option '" + std::string{token} + "'") !=
+              std::string::npos);
+        CHECK(text.find("metadata options (any order, after the positional arguments):") !=
+              std::string::npos);
+        CHECK_FALSE(fs::exists(out_path));
+    }
+}
+
+TEST_CASE("every documented spelling of a valued option gets past parsing to the input file",
+          "[cli][options]") {
+    static constexpr std::string_view kTokens[] = {
+        "search=off", "search=distortion", "search=perceptual", "delta=off",
+        "channels=2", "channels=1", "channels=as-coded", "mix-lfe",
+        "ltrt-phase=off", "drcmode=line", "drcmode=rf", "drcmode=none",
+        "conceal=repeat", "conceal=mute", "conceal=off", "drc=0.5",
+        "drc=film-light", "drc2=speech", "ceiling=-1", "dialogue=-20",
+        "ceiling2=-1.5", "dialogue2=-24", "dialnorm2=5", "dialnorm2=auto",
+        "compr2=-3", "dsurmod=3", "dsurmod=on", "dsurmod=1",
+        "cmixlev=-3", "cmixlev=-4.5", "cmixlev=-6", "surmixlev=-3",
+        "surmixlev=-6", "surmixlev=off", "lfemix=off", "lfemix=10",
+        "dmixmod=none", "dmixmod=ltrt", "dmixmod=loro", "lorocmixlev=+1.5",
+        "ltrtsurmixlev=-3", "lorosurmixlev=off", "dheadphonmod=on", "dsurexmod=ex",
+        "adconvtyp=hdcd", "codec=ec3", "codec=eac3", "codec=ac3",
+    };
+    check_accepted("eac3-encode", kTokens, "accept_a");
+}
+
+TEST_CASE("the remaining valued and bare option spellings get past parsing to the input file",
+          "[cli][options]") {
+    static constexpr std::string_view kTokens[] = {
+        "origbs=on", "origbs=off", "pgmscl=+3", "pgmscl2=mute",
+        "extpgmscl=-50", "mixdef=none", "mixdef=premix", "mixdef=reserved",
+        "mixdef=ext", "mixdata=100", "premixcmp=compr:local:7", "extmix=0,1,2,3,4,off",
+        "extmix=0,1,2,3,4,5,6", "auxmix=off,15", "speechmix=3,4:1,5:7", "paninfo=10",
+        "paninfo2=10:5", "blkmixcfg=1,-,3,-,5,31", "capture2=1", "fmp4-window=4",
+        "bed-only", "encinfo", "infomdat", "positions=osc:9000",
+        "positions=osc:any:9000", "positions=osc:10.0.0.1:9000", "numblkscod=1",
+        "joc-domain=qmf", "joc-domain=mdct", "fast-imdct", "fast-imdct=off",
+        "container=raw", "container=matroska", "container=mpegts", "container=spdif",
+        "container=cmaf", "asvc=0,2", "asvc=0x05", "mainid=3", "langcod2",
+    };
+    check_accepted("eac3-encode", kTokens, "accept_b");
+}
+
+TEST_CASE("a programmeN= token without its value, or naming a field no extra programme has, is "
+          "refused naming that programme's own key",
+          "[cli][options][programme2]") {
+    // Every message carries the ORIGINAL programmeN- spelling, so a user with
+    // three extra programmes can tell whose field was wrong.
+    static constexpr Refusal kRows[] = {
+        {"programme2=", "programme2= needs an input file path"},
+        {"programme3-layout=", "programme3-layout= needs a layout name (mono | stereo"},
+        {"programme2-bitrate=0",
+         "programme2-bitrate= needs a rate in kbit/s (got 'programme2-bitrate=0')"},
+        {"programme2-langcod", "programme2-langcod is an AC-3 Annex D field"},
+        {"programme2-timecode", "programme2-timecode is an AC-3 Annex D field"},
+        {"programme2-drc2=film-light", "programme2-drc2 is 1+1 dual-mono only"},
+        {"programme4-roomtyp2=large", "programme4-roomtyp2 is 1+1 dual-mono only"},
+    };
+    check_refusals("eac3-encode", kRows, "refuse_programme");
+}
+
+TEST_CASE("a malformed programmeN- metadata value is refused naming that programme's own key",
+          "[cli][options][programme2]") {
+    static constexpr Refusal kRows[] = {
+        {"programme2-drc=film", "unknown DRC profile 'film'"},
+        {"programme2-ceiling=x", "programme2-ceiling needs a level in dBFS"},
+        {"programme2-dialnorm=0", "programme2-dialnorm must be auto or 1..31"},
+        {"programme2-bsmod=9", "programme2-bsmod must be 0..7 (Table 5.5's service type)"},
+        {"programme2-dsurmod=loud", "programme2-dsurmod must be 0..3 (Table 5.11's Dolby "
+                                    "Surround mode)"},
+        {"programme2-cmixlev=-2", "programme2-cmixlev must be -3, -4.5 or -6 (Table 5.9)"},
+        {"programme2-surmixlev=-4", "programme2-surmixlev must be -3, -6 or off (Table 5.10)"},
+        {"programme2-lfemix=40", "programme2-lfemix must be off or 0..31"},
+        {"programme2-dmixmod=x", "programme2-dmixmod must be ltrt, loro or none (Table D2.2)"},
+        {"programme2-lorocmixlev=-2", "programme2-lorocmixlev must be +3, +1.5, 0, -1.5, -3, "
+                                      "-4.5, -6 or off (Tables D2.3-D2.6)"},
+        {"programme2-lorosurmixlev=+1.5", "programme2-lorosurmixlev must be -1.5, -3, -4.5, -6 "
+                                          "or off - Tables D2.4/D2.6 reserve the three louder "
+                                          "codes"},
+        {"programme2-dsurexmod=x", "programme2-dsurexmod must be one of: none | off | ex | pliiz"},
+        {"programme2-dheadphonmod=x", "programme2-dheadphonmod must be one of: none | off | on"},
+        {"programme2-adconvtyp=x", "programme2-adconvtyp must be one of: standard | hdcd"},
+        {"programme2-mixlevel=79", "programme2-mixlevel is a peak mixing level of 80..111 dB "
+                                   "SPL"},
+        {"programme2-roomtyp=cave", "programme2-roomtyp must be one of: "},
+        {"programme2-origbs=x", "programme2-origbs must be on or off"},
+        {"programme2-pgmscl=+13", "programme2-pgmscl is mute or a level in -50..+12 dB"},
+        {"programme2-extpgmscl=-51", "programme2-extpgmscl is mute or a level in -50..+12 dB"},
+        {"programme2-mixdef=x", "programme2-mixdef must be none, premix, reserved or ext"},
+        {"programme2-premixcmp=compr:far:1",
+         "programme2-premixcmp is <dynrng|compr>:<external|local>:<0..7>"},
+        {"programme2-mixdata=4096", "programme2-mixdata is the twelve bits mixdef=reserved "
+                                    "reserves, 0..4095"},
+        {"programme2-auxmix=1,2,3", "programme2-auxmix takes 2 Table E2.8 codes (0..15 or "
+                                    "'off')"},
+        {"programme2-speechmix=32", "programme2-speechmix is <0..31>[,<0..31>:<0..3>"},
+        {"programme2-paninfo=1:2:3", "programme2-paninfo is <0..239>[:<0..63>]"},
+        {"programme2-blkmixcfg=1,2", "programme2-blkmixcfg is six comma-separated 0..31 words"},
+    };
+    check_refusals("eac3-encode", kRows, "refuse_programme_values");
+}
+
+TEST_CASE("every programmeN- metadata field accepts each of its documented spellings",
+          "[cli][options][programme2]") {
+    static constexpr std::string_view kTokens[] = {
+        "programme8=extra.wav", "programme2-layout=51", "programme2-bitrate=96",
+        "programme2-heavy", "programme2-mixmeta", "programme2-infomdat",
+        "programme2-copyright", "programme2-sourcefscod", "programme2-drc=music-light",
+        "programme2-ceiling=-2", "programme2-dialogue=-27", "programme2-dialnorm=auto",
+        "programme2-dialnorm=24", "programme2-bsmod=emergency", "programme2-dsurmod=2",
+        "programme2-dsurmod=3", "programme2-dsurmod=off", "programme2-cmixlev=-3",
+        "programme2-cmixlev=-4.5", "programme2-cmixlev=-6", "programme2-surmixlev=-3",
+        "programme2-surmixlev=-6", "programme2-surmixlev=off", "programme2-lfemix=off",
+        "programme2-lfemix=7", "programme2-dmixmod=ltrt", "programme2-dmixmod=loro",
+        "programme2-dmixmod=none", "programme2-ltrtcmixlev=+3", "programme2-lorocmixlev=0",
+        "programme2-ltrtsurmixlev=-1.5", "programme2-lorosurmixlev=off",
+        "programme2-dsurexmod=pliiz", "programme2-dheadphonmod=off",
+        "programme2-adconvtyp=standard", "programme2-mixlevel=105", "programme2-roomtyp=small",
+        "programme2-origbs=on", "programme2-origbs=off", "programme2-pgmscl=mute",
+        "programme2-extpgmscl=+12", "programme2-mixdef=none", "programme2-mixdef=premix",
+        "programme2-mixdef=reserved", "programme2-mixdef=ext",
+        "programme2-premixcmp=dynrng:external:0", "programme2-mixdata=4095",
+        "programme2-extmix=1,2,3,4,5,6,7", "programme2-auxmix=off,3",
+        "programme2-speechmix=31,31:3,31:7", "programme2-speechmix=4",
+        "programme2-paninfo=239:63", "programme2-blkmixcfg=-,-,-,-,-,0",
+    };
+    check_accepted("eac3-encode", kTokens, "accept_programme");
+}
+
+TEST_CASE("AC-3 centre and surround downmix levels reach the bsi a decoder reads back",
+          "[cli][options][encode]") {
+    const auto dir = scratch_dir();
+    const auto wav = write_tone_wav(dir / "mixlev_51.wav", 6);
+    const auto out_path = dir / "mixlev_51.ac3";
+    const auto log = dir / "mixlev_51.log";
+
+    struct Case {
+        std::string_view tokens;
+        ac3::meta::CentreMixLevel cmixlev;
+        ac3::meta::SurroundMixLevel surmixlev;
+    };
+    for (const auto& c : {Case{"cmixlev=-4.5 surmixlev=-6", ac3::meta::CentreMixLevel::kMinus4_5dB,
+                               ac3::meta::SurroundMixLevel::kMinus6dB},
+                          Case{"cmixlev=-6 surmixlev=off", ac3::meta::CentreMixLevel::kMinus6dB,
+                               ac3::meta::SurroundMixLevel::kSilent}}) {
+        CAPTURE(c.tokens);
+        fs::remove(out_path);
+        const auto rc = run_cli("encode \"" + wav.string() + "\" \"" + out_path.string() +
+                                    "\" 384 51 quiet " + std::string{c.tokens},
+                                log);
+        INFO(read_log(log));
+        REQUIRE(rc == 0);
+        const auto frame = first_frame(out_path);
+        REQUIRE(frame.cmixlev.has_value());
+        REQUIRE(frame.surmixlev.has_value());
+        CHECK(*frame.cmixlev == c.cmixlev);
+        CHECK(*frame.surmixlev == c.surmixlev);
+    }
+}
+
+TEST_CASE("AC-3 dsurmod accepts its raw code and its names, reserved code 3 reading as not "
+          "indicated",
+          "[cli][options][encode]") {
+    const auto dir = scratch_dir();
+    const auto wav = write_tone_wav(dir / "dsurmod_stereo.wav", 2);
+    const auto out_path = dir / "dsurmod_stereo.ac3";
+    const auto log = dir / "dsurmod_stereo.log";
+
+    struct Case {
+        std::string_view token;
+        ac3::meta::SurroundMode mode;
+    };
+    for (const auto& c : {Case{"dsurmod=on", ac3::meta::SurroundMode::kDolbySurround},
+                          Case{"dsurmod=1", ac3::meta::SurroundMode::kNotDolbySurround},
+                          Case{"dsurmod=3", ac3::meta::SurroundMode::kNotIndicated}}) {
+        CAPTURE(c.token);
+        fs::remove(out_path);
+        const auto rc = run_cli("encode \"" + wav.string() + "\" \"" + out_path.string() +
+                                    "\" 192 stereo quiet " + std::string{c.token},
+                                log);
+        INFO(read_log(log));
+        REQUIRE(rc == 0);
+        CHECK(first_frame(out_path).info.dsurmod == c.mode);
+    }
+}
+
+TEST_CASE("AC-3 Annex D downmix preferences reach xbsi1 as asked", "[cli][options][encode]") {
+    const auto dir = scratch_dir();
+    const auto wav = write_tone_wav(dir / "annexd_51.wav", 6);
+    const auto out_path = dir / "annexd_51.ac3";
+    const auto log = dir / "annexd_51.log";
+    const auto rc = run_cli("encode \"" + wav.string() + "\" \"" + out_path.string() +
+                                "\" 384 51 quiet dmixmod=loro ltrtcmixlev=+1.5 lorocmixlev=-4.5 "
+                                "ltrtsurmixlev=-1.5 lorosurmixlev=off",
+                            log);
+    INFO(read_log(log));
+    REQUIRE(rc == 0);
+    const auto frame = first_frame(out_path);
+    // dmixmod= on AC-3 has nowhere to go but Annex D, so it switches the
+    // stream to the bsid-6 alternate syntax by itself.
+    CHECK(frame.bsid == 6);
+    REQUIRE(frame.alternate_bsi.has_value());
+    REQUIRE(frame.alternate_bsi->mix.has_value());
+    const auto& mix = *frame.alternate_bsi->mix;
+    CHECK(mix.dmixmod == ac3::meta::DownmixMode::kLoRo);
+    CHECK(mix.ltrtcmixlev == ac3::meta::MixLevel::kPlus1_5dB);
+    CHECK(mix.lorocmixlev == ac3::meta::MixLevel::kMinus4_5dB);
+    CHECK(mix.ltrtsurmixlev == ac3::meta::MixLevel::kMinus1_5dB);
+    CHECK(mix.lorosurmixlev == ac3::meta::MixLevel::kSilent);
+}

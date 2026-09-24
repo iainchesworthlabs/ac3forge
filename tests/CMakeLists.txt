@@ -578,7 +578,10 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
         cli/test_cli.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
-        cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp)
+        cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp
+        cli/test_cli_options.cpp cli/test_cli_synth.cpp cli/test_cli_analysis.cpp
+        cli/test_cli_encode_paths.cpp cli/test_cli_stream_edges.cpp
+        cli/test_cli_inspect_edges.cpp cli/test_cli_atmos_edges.cpp)
     # The same device-facing commands with a device to find: software ALSA
     # devices (audio/alsa_null_device.hpp), so only in the ALSA configuration.
     if(AC3FORGE_AUDIO_BACKEND STREQUAL "alsa")
