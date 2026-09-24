@@ -281,18 +281,25 @@ void NetworkSinks::submit_pairing_code(const std::string& id, const std::string&
     {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = sinks_.find(id);
-        if (it != sinks_.end() && it->second.client.has_value()) {
-            client_id = it->second.client_id;
+        if (it == sinks_.end() || !it->second.client.has_value()) {
+            return;
         }
+        client_id = it->second.client_id;
+        // Marked before the code goes, and with the request it answers: the
+        // sink can refuse it and ask again before enter_code() returns, and
+        // on_client() tells that request from this one by its count.
+        it->second.code_entered = true;
+        it->second.code_round = it->second.client->code_requests;
+        if (id == selected_id_) {
+            pairing_error_.clear();
+        }
+        publish_locked();
     }
-    if (!client_id.empty() && host_ && host_->enter_code(client_id, ss::pairing_flow::Code{code})) {
+    if (!host_ || !host_->enter_code(client_id, ss::pairing_flow::Code{code})) {
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = sinks_.find(id);
         if (it != sinks_.end()) {
-            it->second.code_entered = true;
-            if (id == selected_id_) {
-                pairing_error_.clear();
-            }
+            it->second.code_entered = false;
             publish_locked();
         }
     }
@@ -835,9 +842,10 @@ void NetworkSinks::on_client(const ss::ClientView& client) {
         // The attempt runs: what is left is the person's code.
         entry.pairing_requested = false;
     }
-    if (entry.code_entered && client.wants_code) {
+    if (entry.code_entered && client.wants_code && client.code_requests > entry.code_round) {
         // Asked for the code again after one was entered: it did not match, and the attempt goes
-        // on to another round under the same code (pairing.md, rounds).
+        // on to another round under the same code (pairing.md, rounds). A view that still wants
+        // the code this one answered is only older than the answer.
         entry.code_entered = false;
         if (instance == selected_id_) {
             pairing_error_ = "That code was not right. Type the code the sink shows.";

@@ -232,7 +232,10 @@ TEST_CASE("network sinks live: the sinks on this network are found, paired, play
     // 2. Paired, one at a time, by the code each shows on its own page.
     Unpair unpair(sinks);
     for (const std::string& id : wanted) {
-        const std::string address = row(sinks.status(), id)->address;
+        const ac3::hearth::NetworkStatus listed = sinks.status();
+        const ac3::hearth::SinkFacts* const found = row(listed, id);
+        REQUIRE(found != nullptr);
+        const std::string address = found->address;
         std::printf("pairing %s at %s\n", id.c_str(), address.c_str());
         // A board's page keeps showing the code of an attempt that ended with its connection;
         // this attempt's is a new one.

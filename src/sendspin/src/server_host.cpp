@@ -221,6 +221,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
             view.pairing = session.pairing();
             view.pairing_attempt = session.pairing_attempt_running();
             view.wants_code = session.pairing_wants_code();
+            view.code_requests = code_requests_;
             view.bursts = contains(session.active_roles(), ac3forge::kRole);
             view.playing = view.bursts || contains(session.active_roles(), kPlayerRole);
             view.active_roles = session.active_roles();
@@ -427,10 +428,11 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
     void on_pairing_held_back(const std::optional<std::string>& /*message*/) override { post_view(); }
 
     void on_pairing_code_wanted() override {
+        ++code_requests_;
         const std::string client_id = base64url::encode(session_->client_key());
         ServerHost::State* host = host_;
         host->post([host, client_id] { host->events->on_pairing_code_wanted(client_id); });
-        // ClientView::wants_code changed: what the host knows of the client did.
+        // ClientView::wants_code and code_requests changed: what the host knows of the client did.
         post_view();
     }
 
@@ -492,6 +494,9 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
     ServerKeyringAdapter keyring_{*host_->store};
     // Read and written on the host's thread, and cleared under the session lock by on_paired.
     std::string last_decision_;
+    // ClientView::code_requests: counted by on_pairing_code_wanted and read by view(), both
+    // under the session lock.
+    std::uint32_t code_requests_ = 0;
     std::optional<ServerSession> session_;
     std::unique_ptr<SessionDriver> driver_;
 };

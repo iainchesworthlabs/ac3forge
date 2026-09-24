@@ -285,6 +285,55 @@ TEST_CASE("server host: a pairing attempt cancelled can be asked for again on th
     host.reset();
 }
 
+TEST_CASE("server host: a code that does not match is asked for again, and the view counts each request",
+          "[hearth][server-host][websocket]") {
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("server_host_rounds_" + scratch_pid_suffix());
+    fs::remove_all(scratch);
+    CodeLog log;
+    const std::unique_ptr<testsink::Sink> sink = start_sink(scratch, log);
+    const std::string client_id = sink->client_id();
+    const std::string url = "ws://127.0.0.1:" + std::to_string(sink->port()) + "/sendspin";
+
+    ss::MemoryServerStore store;
+    Events events;
+    std::unique_ptr<ss::ServerHost> host = start_host(store, events, "Hearth");
+    host->dial(url);
+    REQUIRE(events.wait([&](const Events& e) { return e.clients_.contains(client_id); }, 15s));
+    CHECK(events.read([&](const Events& e) { return e.clients_.at(client_id).code_requests; }) == 0U);
+
+    const auto asked = [&](std::uint32_t requests) {
+        return [&, requests](const Events& e) {
+            const auto found = e.clients_.find(client_id);
+            return found != e.clients_.end() && found->second.wants_code && found->second.code_requests == requests;
+        };
+    };
+    REQUIRE(host->pair(client_id, m::PairMethod::kDynamicCode, m::CodeFormat::kDigits));
+    REQUIRE(events.wait(asked(1), 15s));
+    const auto until = std::chrono::steady_clock::now() + 15s;
+    while (!log.code() && std::chrono::steady_clock::now() < until) {
+        std::this_thread::sleep_for(20ms);
+    }
+    REQUIRE(log.code());
+    const std::string right = *log.code();
+    std::string wrong = right;
+    wrong[0] = wrong[0] == '9' ? '0' : static_cast<char>(wrong[0] + 1);
+
+    // Refused: the sink starts another round under the same code, and asks for it again - the
+    // second request, which is how a caller that entered the code tells it did not match.
+    REQUIRE(host->enter_code(client_id, wrong));
+    INFO("sink: " << log.all());
+    REQUIRE(events.wait(asked(2), 15s));
+    REQUIRE(host->enter_code(client_id, right));
+    REQUIRE(events.wait(
+        [&](const Events& e) {
+            const auto found = e.clients_.find(client_id);
+            return found != e.clients_.end() && found->second.playing &&
+                   found->second.psk == ss::handshake::PskCategory::kLongTerm;
+        },
+        20s));
+    host.reset();
+}
+
 TEST_CASE("server host: a sink another server holds refuses a waiting connection and admits a dial to pair",
           "[hearth][server-host][websocket]") {
     const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("server_host_held_" + scratch_pid_suffix());

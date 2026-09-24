@@ -273,9 +273,11 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
 
         // pair_sink() asked; cleared once the attempt runs, or is cancelled.
         bool pairing_requested = false;
-        // A code was entered and the attempt has not yet asked for another:
-        // asked again, the code did not match (on_client()).
+        // A code was entered, answering the attempt's code_round'th request
+        // for one (ClientView::code_requests), and the attempt has not asked
+        // for another: asked again, the code did not match (on_client()).
         bool code_entered = false;
+        std::uint32_t code_round = 0;
 
         // This app's own intent for this sink - see SinkFacts::
         // intended_settings/identify_slot's own comments. Neither is reset

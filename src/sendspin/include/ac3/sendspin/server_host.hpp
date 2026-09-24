@@ -88,6 +88,10 @@ struct ClientView {
     bool pairing = false;
     bool pairing_attempt = false;
     bool wants_code = false;
+    // How many times the attempts on this connection have asked for a code: once a round
+    // (pairing.md, rounds). A code entered and then another request means it did not match -
+    // whichever of the two a caller hears about first.
+    std::uint32_t code_requests = 0;
     // A playback role is active: player@v1, or _ac3forge_player@v1 when `bursts`.
     bool playing = false;
     bool bursts = false;
