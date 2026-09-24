@@ -3,12 +3,15 @@ import QtQuick.Controls
 import QtTest
 
 import Ac3ForgeCrucible
+import Ac3ForgeCrucibleTest
 
 // The first-run explanation: it opens once over a fresh settings store and
 // not again, says what it says in the platform seams' words, offers Send
 // only where the default output moves, and every way out counts as seen.
-// Nothing here presses Send: the harness isolates the settings store, not
-// the machine, and that button moves the developer's own default output.
+// Nothing here presses Send on the machine itself: the harness isolates the
+// settings store, not the machine, and that button moves the developer's own
+// default output. The last cases press it over the scripted machine
+// (ui/tests/qml_test_main.cpp), whose default device is a fake.
 TestCase {
     id: testCase
     name: "FirstRun"
@@ -28,6 +31,8 @@ TestCase {
     function cleanup() {
         CrucibleController.moveDefaultOnLaunch = false;
         CrucibleController.stop();
+        // The machine back after a scripted case; a no-op otherwise.
+        TestServices.clear();
     }
 
     // Main.qml defers the dialog one event-loop turn (so a capture run can
@@ -178,5 +183,79 @@ TestCase {
         tryVerify(function() { return !window.firstRunDialogRef.opened; });
         compare(CrucibleController.defaultIsNullSink, wasNullSink);
         compare(CrucibleController.moveDefaultOnLaunch, true);
+    }
+
+    // --- over the scripted machine ---------------------------------------------
+
+    function scripted() {
+        if (!TestServices.scriptSessions([{ app: 900, name: "chrome", active: true }])) {
+            skip("the scripted machine is not available in this harness");
+        }
+        CrucibleController.nullSinkName = "Desktop Atmos";
+    }
+
+    function test_sendMovesTheDefaultAndCountsAsSeen() {
+        scripted();
+        compare(CrucibleController.defaultIsNullSink, false);
+        const window = openDialog();
+        const dialog = window.firstRunDialogRef;
+        verify(dialog.movesDefault, "the scripted machine moves its default");
+        const status = child(window, "firstRunDeviceStatus");
+        verify(status.text.indexOf("is on this machine") >= 0, status.text);
+        const send = child(window, "firstRunSend");
+        compare(send.text, "Send applications to Desktop Atmos");
+        verify(send.enabled);
+        mouseClick(send);
+        tryVerify(function() { return !dialog.opened; });
+        tryCompare(CrucibleController, "defaultIsNullSink", true, 3000);
+        compare(CrucibleController.defaultOutputName, "Speakers (Desktop Atmos)");
+        compare(CrucibleController.previousDefaultName, "Speakers (Realtek)");
+        tryCompare(CrucibleController, "firstRunAcknowledged", true);
+    }
+
+    function test_theMoveOnLaunchCheckThenSendAreBothKept() {
+        scripted();
+        const window = openDialog();
+        mouseClick(child(window, "firstRunMoveOnLaunch"));
+        compare(CrucibleController.moveDefaultOnLaunch, true);
+        mouseClick(child(window, "firstRunSend"));
+        tryCompare(CrucibleController, "defaultIsNullSink", true, 3000);
+        compare(CrucibleController.moveDefaultOnLaunch, true);
+    }
+
+    function test_anAcknowledgedLaunchMovesTheDefaultWhenAsked() {
+        // The launch after the dialog was seen, with "every time" on: the
+        // window moves the default itself, one turn after it comes up.
+        scripted();
+        CrucibleController.firstRunAcknowledged = true;
+        CrucibleController.moveDefaultOnLaunch = true;
+        const window = openShell();
+        tryCompare(CrucibleController, "defaultIsNullSink", true, 3000);
+        compare(window.firstRunDialogRef.opened, false);
+    }
+
+    function test_anAcknowledgedLaunchLeavesTheDefaultAloneOtherwise() {
+        scripted();
+        CrucibleController.firstRunAcknowledged = true;
+        CrucibleController.moveDefaultOnLaunch = false;
+        openShell();
+        wait(300);
+        compare(CrucibleController.defaultIsNullSink, false);
+    }
+
+    function test_withNoSilentDeviceSendIsGreyedAndSaysWhy() {
+        scripted();
+        // A name no endpoint on the scripted machine carries.
+        CrucibleController.nullSinkName = "Nowhere";
+        const window = openDialog();
+        const send = child(window, "firstRunSend");
+        compare(send.enabled, false);
+        compare(send.text, "No silent device yet");
+        const status = child(window, "firstRunDeviceStatus");
+        verify(status.text.indexOf("There is no \"Nowhere\" yet") === 0, status.text);
+        verify(status.text.indexOf(CrucibleController.silentDeviceAdvice) >= 0, status.text);
+        child(window, "firstRunLater").clicked();
+        tryVerify(function() { return !window.firstRunDialogRef.opened; });
+        CrucibleController.nullSinkName = "Desktop Atmos";
     }
 }
