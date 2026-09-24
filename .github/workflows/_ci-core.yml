@@ -1433,6 +1433,14 @@ jobs:
           AC3CLI: build/config-linux-llvm/bin/ac3cli
         run: python3 tools/ci/quality_race.py ci
 
+      # FFmpeg has no AC-4 decoder, so the AC-4 decoder is scored against the
+      # sources DEE encoded the committed streams from, rebuilt from the
+      # committed FLAC fixtures (which is what needs this job's ffmpeg and
+      # numpy): the lag, the level, per-channel SNR floors and tone routing.
+      # planning/ac4.md, the decoder's ladder, item 3.
+      - name: AC-4 decode against DEE's sources (level, SNR floors, lag)
+        run: python3 tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
+
       - name: Matrix coverage (every CLI option is exercised somewhere)
         run: python3 tools/checks/check_matrix_coverage.py --cli build/config-linux-llvm/bin/ac3cli
 

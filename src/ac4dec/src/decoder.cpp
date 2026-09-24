@@ -14,6 +14,7 @@
 
 #include "ac4/ac4.hpp"
 #include "bit_reader.hpp"
+#include "pcm/substream_pcm.hpp"
 #include "syntax/context.hpp"
 #include "syntax/metadata.hpp"
 #include "syntax/presentation.hpp"
@@ -35,6 +36,18 @@ std::string_view describe(DecodeError error) {
             return "the frame needs configuration that no I-frame has sent";
     }
     return "unknown error";
+}
+
+std::string_view describe(Speaker speaker) {
+    switch (speaker) {
+        case Speaker::kLeft:
+            return "L";
+        case Speaker::kRight:
+            return "R";
+        case Speaker::kCentre:
+            return "C";
+    }
+    return "?";
 }
 
 namespace {
@@ -362,13 +375,70 @@ void assign_v0(const Toc& toc, std::map<int, Assignment>& out) {
         }
     }
 }
+// The substream decode() turns into PCM: the first channel-coded substream of
+// the first presentation that has one, in the order the table of contents
+// lists presentations and, within one, its substream groups.
+[[nodiscard]] std::optional<int> decode_target(const Toc& toc) {
+    if (toc.bitstream_version >= 2) {
+        for (const PresentationInfoV1& p : toc.presentations_v1) {
+            for (const int group_index : p.group_refs) {
+                if (group_index < 0 || static_cast<std::size_t>(group_index) >= toc.substream_groups.size()) {
+                    continue;
+                }
+                const SubstreamGroupInfo& group = toc.substream_groups[static_cast<std::size_t>(group_index)];
+                if (!group.b_substreams_present) {
+                    continue;
+                }
+                for (const GroupSubstream& sub : group.substreams) {
+                    if (sub.kind == GroupSubstream::Kind::kChan && sub.chan && sub.chan->substream_index) {
+                        return *sub.chan->substream_index;
+                    }
+                }
+            }
+        }
+        return std::nullopt;
+    }
+    for (const PresentationInfoV0& p : toc.presentations_v0) {
+        for (const auto& [role, chan] : p.substreams) {
+            if (chan.substream_index) {
+                return *chan.substream_index;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// What decode() keeps of the substream it decodes, from the walk parse()
+// makes of the whole frame.
+struct Capture {
+    std::optional<int> index;
+    int state_key = 0;
+    SubstreamContext context{};
+    AudioSubstream content{};
+    bool read = false;  // read to its end, with no refusal
+};
+
 }  // namespace
 
 struct Decoder::Impl {
     DecoderConfig config{};
     std::map<int, AudioSubstreamState> audio;
     std::map<int, PresentationSubstreamState> presentation;
+    // decode()'s reconstruction state, keyed as `audio` is.
+    std::map<int, detail::SubstreamPcm> pcm;
     std::optional<int> previous_sequence_counter;
+    std::string_view refusal;
+
+    void forget() {
+        audio.clear();
+        presentation.clear();
+        pcm.clear();
+    }
+
+    // Reads every substream of the frame; with `capture`, keeps the content of
+    // decode()'s substream as well.
+    [[nodiscard]] std::expected<FrameReport, DecodeError> read(std::span<const std::byte> raw_ac4_frame,
+                                                               Capture* capture);
 };
 
 Decoder::Decoder() : Decoder(DecoderConfig{}) {}
@@ -382,33 +452,81 @@ Decoder::Decoder(Decoder&&) noexcept = default;
 Decoder& Decoder::operator=(Decoder&&) noexcept = default;
 
 void Decoder::reset() {
-    impl_->audio.clear();
-    impl_->presentation.clear();
+    impl_->forget();
 }
 
 std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte> raw_ac4_frame) {
+    return impl_->read(raw_ac4_frame, nullptr);
+}
+
+std::string_view Decoder::refusal_reason() const noexcept {
+    return impl_->refusal;
+}
+
+std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::span<const std::byte> raw_ac4_frame) {
+    impl_->refusal = {};
+    Capture capture;
+    auto report = impl_->read(raw_ac4_frame, &capture);
+    if (!report) {
+        impl_->refusal = describe(report.error());
+        return std::unexpected(report.error());
+    }
+    if (!capture.index) {
+        impl_->refusal = "no presentation has a channel-coded substream";
+        return std::unexpected(DecodeError::kUnsupported);
+    }
+    const auto it = std::ranges::find(report->substreams, *capture.index, &SubstreamReport::index);
+    if (it != report->substreams.end() && it->refused) {
+        impl_->refusal = it->refused_reason;
+        if (*it->refused == DecodeError::kMissingIFrame) {
+            return std::optional<DecodedFrame>{};
+        }
+        return std::unexpected(*it->refused);
+    }
+    if (!capture.read) {
+        impl_->refusal = "the substream to decode is not in the frame";
+        return std::unexpected(DecodeError::kInvalidStream);
+    }
+    DecodedFrame frame;
+    frame.sample_rate_hz = capture.context.fs_index == 0 ? 44100 : 48000;
+    frame.sequence_counter = report->sequence_counter;
+    const detail::ParseResult decoded =
+        impl_->pcm[capture.state_key].decode(capture.context, capture.content, report->sequence_counter,
+                                             frame.channels, frame.speakers);
+    if (!decoded) {
+        impl_->refusal = decoded.error().reason;
+        return std::unexpected(decoded.error().error);
+    }
+    return std::optional<DecodedFrame>{std::move(frame)};
+}
+
+std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std::byte> raw_ac4_frame,
+                                                            Capture* capture) {
     auto frame = ac4::parse_raw_frame(raw_ac4_frame);
     if (!frame) {
         return std::unexpected(DecodeError::kInvalidToc);
     }
     apply_observed_stereo_rule(frame->toc);
     const Toc& toc = frame->toc;
+    if (capture != nullptr) {
+        capture->index = decode_target(toc);
+    }
 
     // Part 1 4.3.3.2.2: a frame continues the stream when its sequence_counter
     // is the previous one plus 1, wraps from 1020 to 1, or follows a 0 (the
     // splice mark). Anything else is a change of source, and nothing carried
     // from before it may be used; frames that need configuration wait for
     // the next I-frame.
-    if (impl_->previous_sequence_counter) {
-        const int previous = *impl_->previous_sequence_counter;
+    if (previous_sequence_counter) {
+        const int previous = *previous_sequence_counter;
         const int counter = toc.sequence_counter;
         const bool continues = counter == previous + 1 || (counter == 1 && previous == 1020) ||
                                (counter != 0 && previous == 0);
         if (!continues) {
-            reset();
+            forget();
         }
     }
-    impl_->previous_sequence_counter = toc.sequence_counter;
+    previous_sequence_counter = toc.sequence_counter;
 
     FrameReport report;
     report.sequence_counter = toc.sequence_counter;
@@ -497,9 +615,9 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
             continue;
         }
 
-        BitReader owner_reader(raw_ac4_frame.subspan(owner_loc.offset, owner_loc.size), index, impl_->config.syntax);
-        BitReader ext_reader(raw_ac4_frame.subspan(ext_loc.offset, ext_loc.size), ext_index, impl_->config.syntax);
-        AudioSubstreamState& state = impl_->audio[assignment.state_key];
+        BitReader owner_reader(raw_ac4_frame.subspan(owner_loc.offset, owner_loc.size), index, config.syntax);
+        BitReader ext_reader(raw_ac4_frame.subspan(ext_loc.offset, ext_loc.size), ext_index, config.syntax);
+        AudioSubstreamState& state = audio[assignment.state_key];
         if (state.ch_mode != assignment.audio.ch_mode || state.sus_ver != assignment.audio.sus_ver) {
             state = AudioSubstreamState{};
             state.ch_mode = assignment.audio.ch_mode;
@@ -533,6 +651,11 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
             if (!ext_result) {
                 ext_report.refused = ext_result.error().error;
                 ext_report.refused_reason = ext_result.error().reason;
+            } else if (capture != nullptr && capture->index == index) {
+                capture->state_key = assignment.state_key;
+                capture->context = assignment.audio;
+                capture->content = std::move(parsed);
+                capture->read = true;
             }
         }
         report.substreams.push_back(owner_report);
@@ -566,7 +689,7 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
             report.substreams.push_back(substream);
             continue;
         }
-        BitReader reader(raw_ac4_frame.subspan(located.offset, located.size), index, impl_->config.syntax);
+        BitReader reader(raw_ac4_frame.subspan(located.offset, located.size), index, config.syntax);
         ParseResult result;
         switch (assignment.kind) {
             case SubstreamReport::Kind::kAudio: {
@@ -575,7 +698,7 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
                 // either starts it afresh. The slot is the series' first
                 // index, which is this substream's own outside a frame-rate-
                 // multiplied series (assign_instances()).
-                AudioSubstreamState& state = impl_->audio[assignment.state_key];
+                AudioSubstreamState& state = audio[assignment.state_key];
                 if (state.ch_mode != assignment.audio.ch_mode || state.sus_ver != assignment.audio.sus_ver) {
                     state = AudioSubstreamState{};
                     state.ch_mode = assignment.audio.ch_mode;
@@ -583,12 +706,18 @@ std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte
                 }
                 AudioSubstream parsed;
                 result = detail::parse_audio_substream(reader, assignment.audio, state, parsed);
+                if (result && capture != nullptr && capture->index == index) {
+                    capture->state_key = assignment.state_key;
+                    capture->context = assignment.audio;
+                    capture->content = std::move(parsed);
+                    capture->read = true;
+                }
                 break;
             }
             case SubstreamReport::Kind::kPresentation: {
                 PresentationSubstream parsed;
                 result = detail::parse_presentation_substream(reader, *assignment.presentation,
-                                                              impl_->presentation[index], parsed);
+                                                              presentation[index], parsed);
                 break;
             }
             case SubstreamReport::Kind::kEmdfPayloads: {

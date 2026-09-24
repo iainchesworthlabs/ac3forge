@@ -5,7 +5,8 @@
 #include "ac4/ac4.hpp"
 #include "ac4dec/decoder.hpp"
 
-// ac4::Decoder::parse (src/ac4dec) - the AC-4 decoder's syntax layer.
+// ac4::Decoder::parse and ac4::Decoder::decode (src/ac4dec) - the AC-4
+// decoder's syntax layer, and the reconstruction to PCM behind decode().
 //
 // Below the table of contents that fuzz_ac4_parse presses, every substream is
 // a run of counts the stream chooses: section lengths and escapes, Huffman
@@ -22,7 +23,10 @@
 // whole input as one raw_ac4_frame, so a mutated table of contents reaches
 // the substreams without a well-formed sync frame having to be found first.
 // The framed decoder has a syntax sink attached, so the trace path is
-// pressed too.
+// pressed too. A second framed decoder, and the whole-input one, decode to
+// PCM: scale factors, band layouts and block lengths the stream chooses reach
+// the reconstruction and the transforms, with the overlap buffers carried
+// from frame to frame.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(data), size);
 
@@ -31,13 +35,15 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     ac4::DecoderConfig config;
     config.syntax = count;
     ac4::Decoder framed(config);
+    ac4::Decoder decoding;
     const ac4::ScanResult scan = ac4::scan(bytes);
     for (const ac4::SyncFrame& frame : scan.frames) {
         (void)framed.parse(frame.raw_ac4_frame);
+        (void)decoding.decode(frame.raw_ac4_frame);
     }
 
     ac4::Decoder raw;
-    (void)raw.parse(bytes);
+    (void)raw.decode(bytes);
     (void)records;
     return 0;
 }

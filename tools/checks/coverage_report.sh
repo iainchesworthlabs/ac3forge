@@ -151,6 +151,7 @@ src/admbridge         88 78
 src/sendspin          85 74
 src/ac4               93 88
 src/ac4dec            88 80
+src/ac4core           88 80
 src/ac3iab            90 87
 src/iamf              91 90
 apps/cli              80 71
@@ -199,7 +200,7 @@ html="$build_dir/coverage.html"
 # but it made the DSP-heavy cases 2-6x slower (the ten-minute playout case
 # 4.9 s -> 30.8 s), so the flag stays.
 gcovr --root . \
-    --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin|ac4|ac4dec|ac3iab|iamf)/.*' \
+    --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin|ac4|ac4core|ac4dec|ac3iab|iamf)/.*' \
     --filter 'apps/cli/.*' \
     --filter 'apps/common/.*' \
     --filter 'apps/crucible/engine/.*' \

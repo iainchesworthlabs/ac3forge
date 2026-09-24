@@ -49,11 +49,13 @@ add_executable(ac3tests
     ac4/test_ac4.cpp
     ac4/test_ac4_presentation_configs.cpp
     ac4/test_ac4_toc_syntax.cpp
+    ac4core/test_ac4core_dsp.cpp
     ac4dec/test_ac4dec_asf.cpp
     ac4dec/test_ac4dec_channel_elements.cpp
     ac4dec/test_ac4dec_decoder.cpp
     ac4dec/test_ac4dec_frames.cpp
     ac4dec/test_ac4dec_metadata.cpp
+    ac4dec/test_ac4dec_pcm.cpp
     ac4dec/test_ac4dec_presentation.cpp
     ac4dec/test_ac4dec_syntax.cpp
     analysis/test_analysis.cpp
@@ -229,7 +231,9 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/d
 # tests/ac4dec/test_ac4dec_{asf,metadata,presentation,channel_elements}.cpp reach the
 # AC-4 decoder's syntax functions (src/ac4dec/src/syntax/) to hold each branch of
 # the syntax to a hand-built bitstream - the committed streams reach only the
-# branches DEE writes. Same pattern as the forge headers above.
+# branches DEE writes. Same pattern as the forge headers above. The shared
+# core's headers (src/ac4core/src, for tests/ac4core/ and the tables) come
+# with linking ac4::core below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src")
 
 # test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
@@ -1040,6 +1044,7 @@ target_link_libraries(ac3tests
         mp4::mp4
         mpegts::mpegts
         ac4::ac4
+        ac4::core
         ac4::decoder
         ac3::warnings
         ac3::coverage

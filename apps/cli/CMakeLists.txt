@@ -99,6 +99,7 @@ target_link_libraries(ac3cli
         mp4::mp4
         mpegts::mpegts
         ac4::ac4
+        ac4::decoder
         ac3::warnings
         ac3::fmt
         ac3::coverage)

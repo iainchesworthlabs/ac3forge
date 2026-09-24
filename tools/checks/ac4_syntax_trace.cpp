@@ -18,21 +18,23 @@
 //   X  scan stopped                                  the sync frames stopped
 //
 // Not a CMake target: a development tool, built by hand against a build of
-// the two static libraries. With MSVC, from a developer prompt at the repo
-// root, against a build tree in <b>:
+// the static libraries: the decoder, the shared core it links (src/ac4core)
+// and the inspector. With MSVC, from a developer prompt at the repo root,
+// against a build tree in <b>:
 //
 //   cl /nologo /std:c++latest /EHsc /utf-8 /MD /O2 /DAC4_STATIC_DEFINE
 //      /DAC4DEC_STATIC_DEFINE /Isrc/ac4/include /Isrc/ac4dec/include
 //      /I<b>/src/ac4/generated /I<b>/src/ac4dec/generated
 //      tools/checks/ac4_syntax_trace.cpp /link <b>/src/ac4dec/ac4dec_static.lib
-//      <b>/src/ac4/ac4_static.lib
+//      <b>/src/ac4core/ac4core.lib <b>/src/ac4/ac4_static.lib
 //
 // With GCC or Clang:
 //
 //   g++ -std=c++23 -O2 -o ac4_syntax_trace tools/checks/ac4_syntax_trace.cpp
 //      -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE -Isrc/ac4/include
 //      -Isrc/ac4dec/include -I<b>/src/ac4/generated -I<b>/src/ac4dec/generated
-//      <b>/src/ac4dec/libac4dec_static.a <b>/src/ac4/libac4_static.a
+//      <b>/src/ac4dec/libac4dec_static.a <b>/src/ac4core/libac4core.a
+//      <b>/src/ac4/libac4_static.a
 
 #include <cstddef>
 #include <cstdio>

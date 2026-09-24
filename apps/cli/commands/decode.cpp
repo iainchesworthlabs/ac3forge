@@ -37,6 +37,8 @@
 #include "ac3/verify/bap_census.hpp"
 #include "ac3/verify/eac3_mirror.hpp"
 #include "ac3/verify/mirror.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
 #include "stream_playback.hpp"
 
 namespace ac3cli::commands {
@@ -361,6 +363,111 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
                            word.has_value() ? std::to_string(*word) : std::string{"-"});
         }
     }
+}
+
+// AC-4 (ETSI TS 103 190), through ac4::Decoder: the first presentation's
+// first channel-coded substream, written as its coded channels. What the
+// options change on AC-3 and E-AC-3 - a downmix, DRC, the dialogue level - is
+// output processing the AC-4 decoder does not do yet, and the object options
+// have no AC-4 counterpart yet either; each is reported rather than applied.
+int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
+                   const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
+    const auto status = status_stream(out_path);
+    if (meta.output.target != ac3::DownmixTarget::kAsCoded || meta.downmix_auto) {
+        fmt::println(stderr, "warning: {} is AC-4, whose downmixes are not decoded yet - writing its coded channels",
+                     in_path);
+    }
+    if (!objects_dir.empty() || !adm_out.empty()) {
+        fmt::println(stderr, "warning: {} is AC-4, whose objects are not decoded yet - the object options are ignored",
+                     in_path);
+    }
+    const ac4::ScanResult scan = ac4::scan(stream);
+    if (scan.frames.empty()) {
+        fmt::println(stderr, "error: {} holds no AC-4 sync frame", in_path);
+        return kExitInput;
+    }
+    if (scan.stopped_at.has_value()) {
+        fmt::println(stderr, "warning: {}: the sync frames stop at byte {} ({}); decoding the {} before it",
+                     in_path, scan.stopped_at_offset, ac4::describe(*scan.stopped_at), scan.frames.size());
+    }
+    ac4::Decoder decoder;
+    PlanarWavSink sink;
+    std::optional<ac3::analysis::LevelMeter> meter;
+    ac4::DecodedFrame first;
+    std::size_t decoded_frames = 0;
+    std::size_t waiting_frames = 0;
+    Progress progress;
+    progress.start("decoding", scan.frames.size());
+    std::uint64_t frames_done = 0;
+    for (const ac4::SyncFrame& frame : scan.frames) {
+        progress.tick(++frames_done);
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        if (!decoded.has_value()) {
+            fmt::println(stderr, "error: {}: frame {}: {}", in_path, frames_done, decoder.refusal_reason());
+            sink.abort();
+            return kExitInput;
+        }
+        if (!decoded->has_value()) {
+            // Before the stream's first I-frame: nothing to write yet.
+            ++waiting_frames;
+            continue;
+        }
+        const ac4::DecodedFrame& pcm = **decoded;
+        if (!sink.is_open()) {
+            first = pcm;
+            if (!sink.open(out_path, static_cast<std::uint32_t>(pcm.sample_rate_hz), pcm.channels.size(), {})) {
+                fmt::println(stderr, "error: cannot open {} for writing", out_path);
+                return kExitOutput;
+            }
+            meter.emplace(pcm.channels.size() == 1 ? ac3::Acmod::k1_0 : ac3::Acmod::k2_0, false,
+                          pcm.sample_rate_hz);
+        }
+        if (pcm.channels.size() != first.channels.size() || pcm.sample_rate_hz != first.sample_rate_hz) {
+            fmt::println(stderr, "error: {}: frame {}: the channel layout or sample rate changes mid-stream",
+                         in_path, frames_done);
+            sink.abort();
+            return kExitInput;
+        }
+        std::vector<std::span<const float>> views;
+        views.reserve(pcm.channels.size());
+        for (std::size_t ch = 0; ch < pcm.channels.size(); ++ch) {
+            if (!sink.append(ch, pcm.channels[ch])) {
+                fmt::println(stderr, "error: cannot write to {}", out_path);
+                sink.abort();
+                return kExitOutput;
+            }
+            views.emplace_back(pcm.channels[ch]);
+        }
+        // Emplaced with the sink's opening, a few lines up.
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        meter->process(views);
+        ++decoded_frames;
+    }
+    progress.finish();
+    if (decoded_frames == 0) {
+        fmt::println(stderr, "error: {}: no frame decoded; the stream sent no I-frame", in_path);
+        return kExitInput;
+    }
+    const auto written = sink.close();
+    if (!written.has_value()) {
+        fmt::println(stderr, "error: {}", ac3::io::describe(written.error()));
+        return kExitOutput;
+    }
+    std::string layout;
+    for (const ac4::Speaker speaker : first.speakers) {
+        layout += layout.empty() ? "" : " ";
+        layout += ac4::describe(speaker);
+    }
+    status_println(status, "decoded {} AC-4 frames -> {} ({}, {} Hz)", decoded_frames, out_path, layout,
+                   first.sample_rate_hz);
+    if (waiting_frames > 0) {
+        status_println(status, "          {} frames before the first I-frame produced no output", waiting_frames);
+    }
+    status_println(status, "          the coded channels, with no DRC, downmix or dialogue processing");
+    // Emplaced with the first decoded frame, and decoded_frames > 0 here.
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+    print_channel_summary(*meter, status);
+    return 0;
 }
 
 int run_decode_eac3(std::span<const std::byte> stream, std::string_view out_path,
@@ -829,6 +936,13 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
         return kExitInput;
+    }
+    // AC-4's sync words are 0xAC40 and 0xAC41 (TS 103 190-2 Annex G), where
+    // AC-3's and E-AC-3's is 0x0B77; the first two bytes decide which decoder
+    // reads the stream, before anything below reads it as AC-3.
+    if (stream.size() >= 2 && std::to_integer<unsigned>(stream[0]) == 0xACU &&
+        (std::to_integer<unsigned>(stream[1]) & 0xFEU) == 0x40U) {
+        return run_decode_ac4(stream, in_path, out_path, requested, objects_dir, adm_out);
     }
     // downmix=auto becomes a concrete fold here, once, from what the stream
     // itself prefers; everything below sees only the fold it settled on.

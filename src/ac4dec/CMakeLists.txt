@@ -32,8 +32,10 @@ target_sources(ac4dec_objects
     PRIVATE
         src/decoder.cpp
         src/huffman.cpp
-        src/tables/huffman_tables.cpp
-        src/tables/sfb_tables.cpp
+        src/pcm/asf_reconstruct.cpp
+        src/pcm/snf_random.cpp
+        src/pcm/stereo.cpp
+        src/pcm/substream_pcm.cpp
         src/syntax/asf.cpp
         src/syntax/aspx.cpp
         src/syntax/acpl.cpp
@@ -53,12 +55,16 @@ target_include_directories(ac4dec_objects
 target_compile_features(ac4dec_objects PUBLIC cxx_std_23)
 
 # ac4::ac4 is PUBLIC: the decoder's own headers name the inspector's Toc and
-# presentation types. $<BUILD_INTERFACE:...> on the rest for the reason
-# src/ac4/CMakeLists.txt gives.
+# presentation types. ac4::core (src/ac4core: the tables and transforms the
+# encoder shares) is PRIVATE, and reaches the static and shared wrappers'
+# link lines through this OBJECT library's link interface.
+# $<BUILD_INTERFACE:...> on the rest for the reason src/ac4/CMakeLists.txt
+# gives.
 target_link_libraries(ac4dec_objects
     PUBLIC
         ac4::ac4
     PRIVATE
+        ac4::core
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")
 

@@ -1,4 +1,4 @@
-"""Generate the AC-4 decoder's Huffman codebooks and scale factor band tables.
+"""Generate the AC-4 Huffman codebooks, scale factor band tables and noise table.
 
 ETSI TS 103 190-1 V1.4.1 prints its Huffman codebooks only by name. Annex
 A.0 says the lengths and codewords are in the accompanying
@@ -10,16 +10,20 @@ cb_mod3 values the decoding process uses, and Tables A.14 (CB_DIM) and A.15
 tables are read from the text.
 
 Reads, from --spec-dir (default spec/ in the repo root):
-  ts_10319001_attach/ts_103190_tables.c  every <name>_LEN and <name>_CW array.
+  ts_10319001_attach/ts_103190_tables.c  every <name>_LEN and <name>_CW array,
+                                         and RANDOM_NOISE_TABLE (Annex C.11).
   ts_10319001v010401p.txt                Annex A's codebook tables and Tables
                                          A.14 and A.15; Annex B's Table B.1,
                                          the 44.1/48 kHz columns of Tables B.4
                                          to B.7, and Tables B.8 to B.19; and
                                          Table 106, for n_side_bits.
 
-Writes src/ac4dec/src/tables/huffman_tables.hpp and .cpp (every Annex A
-codebook, its entries sorted by length and then codeword, as huffman.hpp's
-Codebook wants them) and sfb_tables.hpp and .cpp (Annex B at 44.1 and 48 kHz).
+Writes src/ac4core/src/tables/huffman_tables.hpp and .cpp (every Annex A
+codebook, its entries sorted by length and then codeword, as
+huffman_codebook.hpp's Codebook wants them), sfb_tables.hpp and .cpp (Annex
+B at 44.1 and 48 kHz) and noise_tables.hpp and .cpp (Annex C.11, which the
+spectral noise fill of clause 5.1.4 reads through Pseudocode 57). src/ac4core
+is what the AC-4 decoder and encoder share.
 
 Checks, all of them before anything is written, every one failing the run:
   Huffman  Annex A names the same codebooks as the attachment, with the
@@ -37,6 +41,9 @@ Checks, all of them before anything is written, every one failing the run:
            codebook_length; and cb_off agrees with A.15 - 0 for an unsigned
            codebook, (cb_mod - 1) / 2 for a signed one, whose values
            Pseudocode 19 then centres on zero.
+  Noise    RANDOM_NOISE_TABLE holds 256 float literals, and the negation of
+           every entry is also an entry, so the table's mean is exactly zero;
+           its mean square is printed.
   Annex B  Table B.1 lists the fifteen 44.1/48 kHz transform lengths, as
            Table 106 does; every row of Tables B.1 and B.4 to B.19 has
            exactly one reading (see read_row) with its sfb or max_sfb_master
@@ -66,11 +73,11 @@ from fractions import Fraction
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
-OUT_DIR = REPO / "src" / "ac4dec" / "src" / "tables"
+OUT_DIR = REPO / "src" / "ac4core" / "src" / "tables"
 SPEC_TXT = "ts_10319001v010401p.txt"
 TABLES_C = Path("ts_10319001_attach") / "ts_103190_tables.c"
 
-MAX_BITS = 32  # huffman.hpp's kMaxHuffBits
+MAX_BITS = 32  # huffman_codebook.hpp's kMaxHuffBits
 
 # Annex A's clauses, with the heading each has in the text and the label
 # huffman_tables.hpp's section comments give it.
@@ -106,6 +113,10 @@ SPECTRUM_ROW = re.compile(r"^\s*(Codebook number|CB_DIM|UNSIGNED_CB)((?:\s+\S+)+
 C_ARRAY = re.compile(
     r"\bconst\s+(?:unsigned\s+)?\w+\s+(\w+)_(LEN|CW)\s*\[\s*(\d+)\s*\]\s*=\s*\{([^{}]*)\}\s*;")
 C_VALUE = re.compile(r"0[xX][0-9a-fA-F]+|\d+")
+NOISE_TABLE = re.compile(
+    r"\bconst\s+float32\s+RANDOM_NOISE_TABLE\s*\[\s*(\d+)\s*\]\s*=\s*\{([^{}]*)\}\s*;")
+FLOAT_LITERAL = re.compile(r"-?\d+\.\d+f")
+NOISE_ENTRIES = 256
 # A printed number: its first group of digits, then any groups of three after
 # a single space.
 NUMBER = r"\d{1,3}(?: \d{3})*"
@@ -283,6 +294,26 @@ def parse_attachment(path):
     check(len(declared) == len(arrays),
           f"{len(declared)} _LEN/_CW arrays declared but {len(arrays)} parsed")
     return arrays
+
+
+def parse_noise_table(path):
+    """RANDOM_NOISE_TABLE's entries, as the float literals the attachment prints."""
+    source = path.read_text(encoding="utf-8")
+    check("Annex C.11 RANDOM_NOISE_TABLE" in source,
+          "the attachment has no 'Annex C.11 RANDOM_NOISE_TABLE' heading")
+    match = NOISE_TABLE.search(source)
+    check(match is not None, "the attachment has no RANDOM_NOISE_TABLE array")
+    size, body = match.groups()
+    literals = FLOAT_LITERAL.findall(body)
+    leftover = re.sub(r"[\s,]", "", FLOAT_LITERAL.sub("", body))
+    check(not leftover, f"RANDOM_NOISE_TABLE: unexpected {leftover[:20]!r} among its values")
+    check(int(size) == NOISE_ENTRIES and len(literals) == NOISE_ENTRIES,
+          f"RANDOM_NOISE_TABLE[{size}] holds {len(literals)} values, not {NOISE_ENTRIES}")
+    values = [Fraction(text[:-1]) for text in literals]
+    present = set(values)
+    unpaired = [text for text, value in zip(literals, values, strict=True) if -value not in present]
+    check(not unpaired, f"RANDOM_NOISE_TABLE: no negation of {unpaired[:4]}")
+    return literals
 
 
 def attach_codes(codebooks, arrays):
@@ -700,7 +731,7 @@ def emit_huffman_header(codebooks):
     column = max(len(f"extern const Codebook {cb.cxx};") for cb in codebooks
                  if cb.name in comments) + 2
 
-    out = ["#pragma once", "", "#include <array>", "", '#include "huffman.hpp"', "",
+    out = ["#pragma once", "", "#include <array>", "", '#include "huffman_codebook.hpp"', "",
            *HEADER_BANNER_HUFFMAN, "", "namespace ac4::detail::tables {", ""]
     for clause, (_, label) in CLAUSES.items():
         out.append(f"// A.{clause}: {label}.")
@@ -1006,6 +1037,35 @@ def emit_sfb_source(num_sfb, offsets, mappings, offset_tables, hsf):
 
 # ---------------------------------------------------------------------------
 
+NOISE_HEADER = [
+    "#pragma once",
+    "",
+    "#include <array>",
+    "",
+    "// ETSI TS 103 190-1 V1.4.1 Annex C.11, RANDOM_NOISE_TABLE. GENERATED by",
+    "// tools/generators/gen_ac4_tables.py from the attachment ts_103190_tables.c;",
+    "// do not edit by hand.",
+    "",
+    "namespace ac4::detail::tables {",
+    "",
+    "// What GetRandomNoiseValue() (Pseudocode 57) looks up, in the float32 the",
+    "// attachment declares: the speech spectral frontend's noise, and the audio",
+    "// spectral frontend's noise fill (clause 5.1.4.2).",
+    f"extern const std::array<float, {NOISE_ENTRIES}> kRandomNoiseTable;",
+    "",
+    "}  // namespace ac4::detail::tables",
+]
+
+
+def emit_noise_source(literals):
+    return ['#include "noise_tables.hpp"', "",
+            "namespace ac4::detail::tables {", "",
+            f"const std::array<float, {NOISE_ENTRIES}> kRandomNoiseTable = {{",
+            *wrap(literals, "   "),
+            "};", "",
+            "}  // namespace ac4::detail::tables"]
+
+
 def report_codebooks(codebooks):
     print(f"{'codebook':<28} {'table':>6} {'entries':>7} {'bits':>6}  Kraft sum")
     for cb in codebooks:
@@ -1039,7 +1099,12 @@ def main():
     num_sfb, offsets, offset_tables, mappings, hsf = parse_annex_b(annex(lines, "B", "C"),
                                                                    n_side_bits)
 
+    noise = parse_noise_table(tables_c)
+
     report_codebooks(codebooks)
+    mean_square = sum(Fraction(text[:-1]) ** 2 for text in noise) / len(noise)
+    print(f"\nRANDOM_NOISE_TABLE: {len(noise)} entries, mean 0, mean square "
+          f"{float(mean_square):.6f}")
     print(f"\nAnnex B: num_sfb and offsets for {len(offsets)} transform lengths at 48 kHz, "
           f"{len(hsf.offsets_96)} at 96 kHz, {len(hsf.offsets_192)} at 192 kHz, "
           f"{len(mappings)} max_sfb_master tables")
@@ -1049,6 +1114,8 @@ def main():
         "huffman_tables.cpp": emit_huffman_source(codebooks, cb_dim, unsigned_cb),
         "sfb_tables.hpp": SFB_HEADER,
         "sfb_tables.cpp": emit_sfb_source(num_sfb, offsets, mappings, offset_tables, hsf),
+        "noise_tables.hpp": NOISE_HEADER,
+        "noise_tables.cpp": emit_noise_source(noise),
     }
     for name, out in outputs.items():
         for number, text in enumerate(out, start=1):

@@ -198,7 +198,7 @@ jobs:
       # tools/checks/ac4_syntax_trace.cpp is deliberately not a CMake target
       # (see its own header) - a development tool, built here the same way its
       # header documents building it by hand, against the coverage build's own
-      # already-instrumented ac4dec_static/ac4_static. gcov accumulates a
+      # already-instrumented ac4dec_static/ac4core/ac4_static. gcov accumulates a
       # binary's hits into the same .gcda files across every process that
       # exercises those objects, the same way ctest's many separate test
       # binaries already do above, so this run's counts fold into Test's
@@ -234,7 +234,8 @@ jobs:
             -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE \
             -Isrc/ac4/include -Isrc/ac4dec/include \
             -I"${BUILD_DIR}/src/ac4/generated" -I"${BUILD_DIR}/src/ac4dec/generated" \
-            "${BUILD_DIR}/src/ac4dec/libac4dec_static.a" "${BUILD_DIR}/src/ac4/libac4_static.a"
+            "${BUILD_DIR}/src/ac4dec/libac4dec_static.a" "${BUILD_DIR}/src/ac4core/libac4core.a" \
+            "${BUILD_DIR}/src/ac4/libac4_static.a"
           python3 tools/checks/ac4_syntax_differential.py \
             --trace-tool "${BUILD_DIR}/ac4_syntax_trace" \
             --work-dir "${BUILD_DIR}/ac4-differential" \
