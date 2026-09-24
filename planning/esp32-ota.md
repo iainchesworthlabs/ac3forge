@@ -12,6 +12,10 @@ recommended and what each choice costs. The user took decisions 2, 5 and 9 on 20
 - The board decides when a new image is accepted.
 - The P4's co-processor firmware waits for a phase of its own.
 
+On 2026-09-25 the user added two final phases. CI builds the firmware for every board and
+publishes it, as it does the desktop packages ([Published images](#published-images), O8). A
+guide then tells a user how to use those images ([The user guide](#the-user-guide), O9).
+
 Today a `hearth_sink` board is updated over its USB connector:
 
 - a build on the PC;
@@ -88,7 +92,7 @@ The control surface ([control.hpp](../esp-idf/ac3forge/include/ac3forge/control.
  report: updated / rolled back (why) / did not come back (what to try)
 ```
 
-Five pieces:
+Six pieces:
 
 1. **An A/B flash layout.** Two app slots (`ota_0` and `ota_1`) and `otadata`. Each board gets it
    once, over USB, with NVS kept.
@@ -103,6 +107,9 @@ Five pieces:
 5. **A host tool.** `tools/hearth/ota.py` pushes a build to one board or to all of them, waits for
    each one to accept the new image, and reports what happened. `idf.py ota` wraps it. The web
    page and `ac3hearth` come later and use the same routes.
+6. **Published images and a guide.** CI builds each board's firmware and publishes it with the
+   desktop packages, and a user guide covers installing and updating from those images (O8 and
+   O9, the last phases).
 
 ## Flash layout
 
@@ -157,6 +164,16 @@ It still writes nothing at `0x9000`, so the board keeps its name, its network an
 The app finds `audio` and `storage` by label, not by offset. The first image written this way has
 to be able to take the next update over the network, so no board migrates until O1 is merged in
 full ([Phases](#phases)).
+
+**A network built into the image.** A board joins the network stored in its NVS, or failing
+that, the one compiled into its image from `CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID`
+(`net/wifi/network.cpp`). Nothing copies the built-in one into NVS. The board builds on the desk
+compile one in from a local fragment, so a board may never have had its network stored. A
+published image has no network built in (O8). A board whose network comes only from its image
+would boot a published image with no network, fail its trial and roll back. That is safe, but it
+would be confusing. So from O1 an image stores its built-in network in NVS the first time it
+boots and finds none stored. `GET /firmware` reports where the network came from, and `ota.py`
+refuses to push an image with no network to a board whose only network is built in.
 
 **The P4's bootloader.** It sits at `0x2000`, below the partition table at `0x8000`: a
 24,576-byte window. The "ESP32P4 firmware flash" session measured it on 2026-09-24 with
@@ -412,7 +429,7 @@ signed with its key. That includes one sent by a hostile web page ([Routes](#rou
 
 | Route | What it does | Replies |
 |---|---|---|
-| `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended; an upload's progress; slot size, flash size and the partition table as the board has it; the bootloader's version | `200`, JSON |
+| `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended; an upload's progress; slot size, flash size and the partition table as the board has it; the bootloader's version; whether the board's network is stored or built into its image | `200`, JSON |
 | `PUT /firmware` | Body: an app image (`ac3forge_hearth_sink.bin`, not the merged image), with an optional `Content-Digest`. Enters flash mode, writes the other slot, checks it, restarts into it | `200` then a restart; `400` not an app image, the wrong chip, a revision this chip does not meet, cut short, or damaged (a SHA-256 does not match, and the reply says which); `403` the `Host` is not one of the board's own names ([decision 13](#decisions)); `409` on trial, or an update already running; `411` no length; `413` larger than the slot; `415` not `application/octet-stream` |
 | `PUT /firmware/mode` | Body: `flash` enters flash mode; `normal` leaves it with a restart into the running image | `200`; `409` on trial |
 | `PUT /firmware/rollback` | Makes the other slot's image, if it is valid, the running one, and restarts | `200`; `409` nothing valid to roll back to |
@@ -472,6 +489,8 @@ ota.py cancel   --host H          # leave flash mode: restart into the running i
    - the image does not fit the slot;
    - the flash size differs;
    - the running image is on trial;
+   - the board's only network is built into its image, and the new image has none
+     ([Flash layout](#flash-layout));
    - the board already runs this image (skipped unless `--force`).
 
    A board that is playing is asked about first, and `--yes` answers for it.
@@ -520,6 +539,117 @@ panel:
 Shipping sink images inside the app's release packages, once they are signed (O7), would need a
 release key held by CI, which means a secret only the user can set. That is its own decision,
 taken when it comes up.
+
+## Published images
+
+CI builds the desktop packages for each platform, and `release.yml` publishes them. If boards are
+to be updated over the network, their firmware should come the same way, so that updating a board
+does not need an ESP-IDF install. That is O8.
+
+**What CI builds today.** In `_build.yml`, the S3's Sendspin board configuration and the C6's are
+compiled, then thrown away: the S3's with `rm -rf build`, and the C6's in `$RUNNER_TEMP`. Neither
+is uploaded. CI builds the P4's bare-metal probe, not `hearth_sink` for the P4. Every image CI
+runs under QEMU is a CI shape (`sdkconfig.ci-*`), not a board's.
+
+**What O8 builds.** One image for each board configuration the guides describe, from the same
+overlay lists the board recipes use:
+
+| Image | Overlays after `sdkconfig.defaults` | Table | For |
+|---|---|---|---|
+| `hearth-sink-esp32s3` | `hw`, `psram`, `sendspin` | 16 MB | an S3 with 16 MB of flash and 8 MB of octal PSRAM, such as the DevKitC-1 N16R8 |
+| `hearth-sink-esp32c6` | `hw`, `sendspin`, `c6`, `sendspin-c6` | 4 MB | any C6 module |
+| `hearth-sink-esp32c6-16mb` | the same, then `flash16mb` | 16 MB | a C6 with 16 MB of flash, such as the board on COM9 |
+| `hearth-sink-esp32p4-rev1` | `hw`, `p4`, `sendspin` | 16 MB | a P4 of silicon revision v1.x, such as the FireBeetle 2 on COM10 |
+
+A P4 of revision v3.x needs a build without `sdkconfig.p4`'s revision settings. It is left out
+until there is such a board to run it on ([decision 14](#decisions)).
+
+No published image has a network built in: a board gets its network from Improv or from the page,
+and keeps it in NVS. CI refuses to publish an image whose `sdkconfig` sets
+`CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID` or `_PASSWORD`.
+
+**What each image publishes:**
+
+- `<image>-<version>.bin`: the app image, for updates over the network.
+- `<image>-<version>-factory.bin`: bootloader, partition table, empty `otadata`, app, `audio` and
+  `storage` merged into one file, written at `0x0`. It is for a new board: it also overwrites NVS.
+- `<image>-<version>-parts.zip`: the same pieces as separate files, with a `flash_args` of
+  relative paths. This is how a board already in use moves to this layout with its NVS kept
+  ([Flash layout](#flash-layout)). The build directory's own `flash_args` names `audio`'s source
+  by absolute path, so it cannot be shipped as it is.
+- `<image>-<version>-elf.zip`: the ELF, so a backtrace or a core dump (O4) from a published image
+  can be read.
+- `hearth-sink-manifest.json`: every image of the release, with its chip, table, revision range
+  and SHA-256, which `ota.py` reads to choose an image for each board.
+
+**When.**
+
+- **On every CI run** that builds the ESP lane: the images are uploaded as a workflow artifact
+  kept for 14 days. `ota.py push --run <run id>` downloads one with `gh run download`, so a PR's
+  firmware can go onto a board with no local build.
+- **At a release:** `_build.yml` uploads them as `packages-esp32-firmware`, which the
+  `github-release` job already collects (`pattern: packages-*`). The images then get what every
+  release asset gets: `SHA512SUMS`, the GPG signature when the key is provisioned, the SBOM and
+  a build provenance attestation (`gh attestation verify`). The "Verify every documented package
+  was built" step gains a line for each image, and `docs/releasing.md`'s "What gets published"
+  lists them.
+
+A check beside the others (`tools/ci/check_firmware_package.py`, after
+`check_hearth_package.py`) opens each image before it is uploaded. It checks:
+
+- the chip ID and revision range are the right ones for its name;
+- `hash_appended` is set and the image's SHA-256 matches;
+- the image fits the smallest slot of its table;
+- the `parts.zip` flashes the same bytes as the factory image;
+- no network is built in.
+
+**Choosing the image for a board.** `ota.py push --release <tag|latest>` reads the release's
+manifest and each board's `/hardware` and `/firmware`: chip, revision, flash size, PSRAM and
+partition table. It downloads the image that matches and checks its SHA-256 against the
+manifest's and against `SHA512SUMS`. A board that no image fits is named and skipped.
+`--release latest --all` updates every board on the network to the newest release, one board at
+a time.
+
+**Signing, when O7 comes.** A published image has to be signed with the key the boards trust. That
+means a release key held by CI, a secret only the user can set, or signing on the maintainer's
+machine before upload. O7 decides which.
+
+## The user guide
+
+O9 writes `docs/hearth/sink-firmware.md`, for someone who has a board and a release, and no
+ESP-IDF install:
+
+1. **Which image.** The table above, and how to tell a board apart: `esptool chip-id` and
+   `esptool flash-id` over USB, or `/hardware` on a board already on the network.
+2. **Checking a download.** `SHA512SUMS`, `gh attestation verify`, and the GPG signature when
+   the release has one.
+3. **A new board.** The browser installer or `esptool write-flash 0x0 <image>-factory.bin`
+   ([decision 15](#decisions)), then joining a network over Improv, as the S3 guide already
+   describes.
+4. **A board running an older build.** The `parts.zip` and `write-flash @flash_args`, which keeps
+   the board's name, network and pairings.
+5. **Updating over the network.** `ota.py push --release latest --all`, the page's **Update
+   firmware…**, or `curl -T`.
+6. **What the board does** during an update: flash mode, the trial and a rollback, and what
+   `ota.py` and the page show for each.
+7. **Going back.** **Roll back** on the page, `ota.py rollback`, or an older release pushed as
+   any other.
+8. **When a board does not come back.** Cycle the power during a trial; failing that, USB with
+   the release's `parts.zip`. The ROM download mode is always there.
+
+O9 also brings the rest of the documentation into line:
+
+- `docs/hearth/sink-esp32-s3.md`'s "Build and flash" offers the published image first and
+  building it second;
+- `docs/hearth/index.md` links the guide, and `mkdocs.yml` lists it;
+- `docs/releasing.md` covers the firmware in its release checklist.
+
+**The browser installer** ([decision 15](#decisions)) is a page on the documentation site built
+on ESP Web Tools. In Chrome or Edge it flashes a new board over Web Serial, chooses the image by
+chip, and then offers Improv, which the boards already answer, to give the board its network. A
+first install then needs a browser and a USB cable and nothing else. The installer cannot fetch
+GitHub release assets, which carry no CORS headers, so `docs.yml` copies the latest release's
+factory images and manifest into the site when it deploys.
 
 ## What stays USB-only, and how a board is recovered
 
@@ -630,7 +760,8 @@ that image has to be able to take the next update.
     `check_esp_efuse_free.py`, with CI's QEMU shapes passing on the new table and the README's
     offsets updated;
   - (b) `ac3forge::Firmware` beside `Control` in the component, flash mode through the example's
-    hooks, the integrity checks, the `Host` check, the trial, and the host tests;
+    hooks, the integrity checks, the `Host` check, the trial, a built-in network stored in NVS at
+    first boot, and the host tests;
   - (c) the QEMU end-to-end tests;
   - (d) `ota.py`, its tests and `idf.py ota`.
 
@@ -657,6 +788,24 @@ that image has to be able to take the next update.
 - **O7, when the boards leave development.** Signed images, switched on over the network
   ([Signing, later](#signing-later)).
 
+The last two phases come once the ones above are done. O7 has no fixed place: it happens when the
+boards leave development, and if that is before O8, O8's images are published signed.
+
+- **O8, published images.** Everything in [Published images](#published-images):
+  - the four images built on every run of the ESP lane and kept for 14 days;
+  - the same images published with each release;
+  - `check_firmware_package.py`;
+  - `ota.py push --run` and `--release`.
+
+  **Exit:**
+  - `ota.py push --release` puts a release's images on each board on the desk over the network,
+    each board getting the image that fits it;
+  - a factory image installs a blank board;
+  - a dry run of `release.yml` finds every image it is documented to publish.
+- **O9, the user guide.** [The user guide](#the-user-guide), the browser installer if decision 15
+  takes it, and the other pages brought into line. **Exit:** someone with only the guide takes a
+  blank board to one that plays, then updates it over the network to a newer release.
+
 ## What cannot be verified
 
 - **Wi-Fi under CI.** QEMU has no Wi-Fi, so CI's uploads go over the emulated Ethernet. Wi-Fi
@@ -667,6 +816,11 @@ that image has to be able to take the next update.
   pulled by hand during an upload and during a trial, but not at a chosen microsecond.
 - **Every way an image can fail after it is accepted.** The trial covers 30 s of the board being
   healthy. A fault that takes longer to show is found in use, and rolled back by hand.
+- **Boards other than the ones on the desk.** A published image is checked on one board of its
+  kind. Another module with the same chip, flash and PSRAM should run it; one that differs in any
+  of them is what the guide's "Which image" section and `ota.py`'s choice exist to catch.
+- **The browser installer outside Chrome and Edge.** Web Serial is not in Firefox or Safari; the
+  guide's `esptool` commands are the way in there.
 
 ## Decisions
 
@@ -735,3 +889,14 @@ that image has to be able to take the next update.
     internet from flashing a board through the viewer's browser by DNS rebinding
     ([Routes](#routes)). Cost: the page's firmware upload works only when the page was opened by
     IP address or `.local` name. O7 makes the check unnecessary, and it can then go.
+14. **Which images CI publishes.** (a) **the four in [Published images](#published-images): the
+    S3, the C6 at 4 MB and at 16 MB, and the P4 of revision v1.x**; (b) those four and a P4 image
+    for revision v3.x as well. **Recommend (a).** Each of the four runs on a board on the desk and
+    is checked there in O8. A v3.x image would be published before anything had run it. Cost: a
+    v3.x P4 has no published image until someone has such a board.
+15. **How a new board gets its first image.** (a) **a browser installer on the documentation
+    site (ESP Web Tools), with the `esptool` commands beside it**; (b) the `esptool` commands
+    only. **Recommend (a).** A first install then needs only a browser and a cable, and it ends
+    in Improv, which gives the board its network in the same few minutes. Cost: a third-party
+    script on one page of the site, Chrome or Edge for Web Serial, and `docs.yml` copying each
+    release's factory images into the site, because a page cannot fetch release assets directly.
