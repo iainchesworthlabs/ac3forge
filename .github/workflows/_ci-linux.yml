@@ -1104,19 +1104,29 @@ jobs:
       # #included an ac3forge_c/version.h it never installed, and nothing here noticed. This
       # installs the two trees this leg has just built (linux-llvm: Release, both linkages
       # installed; the shared pass above: Debug, BUILD_SHARED_LIBS=ON) and builds and runs a C
-      # program against each prefix through find_package(ac3forge).
+      # program against each prefix through find_package(ac3forge), and again through pkg-config.
       #
       # A vcpkg or Conan package installs one linkage only (AC3FORGE_INSTALL_BOTH_LINKAGES=OFF),
-      # which neither tree here does. check_install_consumer.sh takes any build directory; that
-      # configuration was checked by hand rather than built a third time in this leg.
+      # which neither tree above does, and two defects showed only there: static archives that
+      # left {fmt} symbols undefined (cmake/Fmt.cmake) and a static ac3forge_c.pc that named neither
+      # libac3forge_static.a nor the C++ runtime (cmake/PkgConfig.cmake). The .pc files of both
+      # trees above name the shared library, so a third tree is configured with one linkage. It
+      # builds only what the install holds, so no tests, examples, CLI, Hearth or AC-4 (19 s to
+      # configure and 22 s to build on a 20-core machine).
       - name: Build a C consumer against the installed SDK
         if: matrix.preset == 'linux-llvm'
         shell: bash
         run: |
           set -euo pipefail
+          cmake --preset config-linux-llvm -B build/install-consumer-static \
+            -DAC3FORGE_BUILD_TESTS=OFF -DAC3FORGE_BUILD_CLI=OFF -DAC3FORGE_BUILD_EXAMPLES=OFF \
+            -DAC3FORGE_BUILD_HEARTH=OFF -DAC3FORGE_BUILD_AC4=OFF -DVCPKG_MANIFEST_FEATURES= \
+            -DAC3FORGE_INSTALL_BOTH_LINKAGES=OFF
+          cmake --build build/install-consumer-static
           bash tools/checks/check_install_consumer.sh \
             build/config-linux-llvm \
-            build/config-linux-llvm-shared
+            build/config-linux-llvm-shared \
+            build/install-consumer-static
 
       # Packaging. windows-msvc always packages, on every push, as a
       # continuous smoke test of the packaging path itself. For a real
