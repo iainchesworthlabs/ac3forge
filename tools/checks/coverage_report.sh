@@ -179,6 +179,11 @@ html="$build_dir/coverage.html"
 # suspicious-hit line elsewhere still shows up in the log instead of
 # vanishing silently.
 #
+# "$build_dir" as the search path: without one gcovr searches --root (the
+# whole checkout) for .gcda files, so a second instrumented tree under build/
+# - a GUI or PipeWire configuration beside this one - was folded into these
+# figures with its own copies of the same sources.
+#
 # --gcov-ignore-parse-errors=negative_hits.warn: the same gcov bug
 # (bugzilla#68080), a different symptom - a negative rather than suspicious
 # hit count. Confirmed independently at two unrelated sites, both the same
@@ -205,7 +210,8 @@ gcovr --root . \
     --gcov-ignore-parse-errors=suspicious_hits.warn \
     --gcov-ignore-parse-errors=negative_hits.warn \
     --object-directory "$build_dir" \
-    --json "$json" --html-details "$html" --html-self-contained --print-summary
+    --json "$json" --html-details "$html" --html-self-contained --print-summary \
+    "$build_dir"
 
 fail=0
 while read -r comp line_min branch_min; do
