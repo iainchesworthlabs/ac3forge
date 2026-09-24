@@ -83,7 +83,9 @@ idf_component_register(
     # Kconfig asked for it. esp_chip_info() (the same handler's chip model
     # and revision) needs no entry here: esp_hw_support is already pulled in
     # by everything above, the same way provision.cpp's own call to it is.
-    PRIV_REQUIRES lwip esp_psram
+    # esp_app_format: the same handler's firmware version, from
+    # esp_app_get_description().
+    PRIV_REQUIRES lwip esp_psram esp_app_format
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
 # ac3forge_lwip_ip4_input (src/tcp_arrivals.cpp) is called only from lwIP's own

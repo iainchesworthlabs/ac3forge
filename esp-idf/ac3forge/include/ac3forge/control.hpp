@@ -21,11 +21,12 @@
 //   GET  /api         the routes, as text
 //   GET  /status      what is playing and how it is going, as JSON
 //   GET  /hardware    what this board IS - the chip, its revision, whether it
-//                     has an FPU and PSRAM, and this sink's own ceiling - as
-//                     JSON, gathered once at startup rather than on every
-//                     request: unlike /status, nothing in it changes while
-//                     the board runs. planning/esp32-device-ui.md says why
-//                     this is a route of its own rather than part of /status.
+//                     has an FPU and PSRAM, this sink's own ceiling, and the
+//                     firmware running on it - as JSON, gathered once at
+//                     startup rather than on every request: unlike /status,
+//                     nothing in it changes while the board runs.
+//                     planning/esp32-device-ui.md says why this is a route of
+//                     its own rather than part of /status.
 //   POST /play        body: the location to play - a URL for the HTTP source,
 //                     a path for a file source. 202 when accepted (the owner
 //                     opens it on its own task; /status says how that went),
@@ -113,6 +114,22 @@ struct ControlSendspin {
     bool identifying = false;
 };
 
+// GET /status's "network" object: what the board is joined to, for a page
+// that offers to move it to another network and for someone asking why its
+// stream stutters. Plain values, which the owner fills in.
+struct ControlNetwork {
+    // "wifi", or "ethernet" for the MAC QEMU emulates.
+    std::string kind;
+    // The access point's SSID; empty on Ethernet and while the station is not
+    // associated.
+    std::string ssid;
+    // The access point's signal as the station last heard it, in dBm, while
+    // associated.
+    std::optional<int> rssi_dbm;
+    // The board's IPv4 address as text; empty while it holds none.
+    std::string address;
+};
+
 struct ControlHandlers {
     // POST /play. False means refused (the source cannot take a location, or
     // the location was not acceptable); the reply says so.
@@ -147,7 +164,9 @@ struct ControlHandlers {
 
     // GET and PUT /wiring: whether the second I2S line is connected to
     // anything. It moves sink_slots with it, the same way the slot width
-    // does, because two lines carry twice one line's slots.
+    // does, because two lines carry twice one line's slots. An owner whose
+    // sink can never have a second line leaves both empty, so that /status
+    // has no wiring to offer a choice about.
     std::function<bool()> second_line;
     std::function<bool(bool wired)> set_second_line;
 
@@ -190,6 +209,11 @@ struct ControlHandlers {
     // progress) or "forget" (every pairing, and a new identity). False for
     // anything else, or with no player.
     std::function<bool(std::string_view action)> pairing;
+
+    // GET /status's "network" object; null in the reply when this returns
+    // nothing (a build with no network), and left out when the handler is
+    // empty. Called for every GET /status, on the server's task.
+    std::function<std::optional<ControlNetwork>()> network;
 };
 
 class Control {

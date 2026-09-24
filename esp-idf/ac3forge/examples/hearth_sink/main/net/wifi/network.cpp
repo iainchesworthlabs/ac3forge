@@ -452,4 +452,20 @@ std::string network_address() {
     return std::string(text.data());
 }
 
+NetworkLink network_link() {
+    NetworkLink link;
+    link.kind = "wifi";
+    // The driver's record of the access point, SSID and signal together,
+    // rather than g_ssid, which the event task writes without a lock as the
+    // station joins. Asked only while the board holds an address: g_mutex,
+    // which says whether the driver is up, is held for as long as a join
+    // takes, and this is asked once a poll from the control surface's task.
+    wifi_ap_record_t ap{};
+    if (g_joined && esp_wifi_sta_get_ap_info(&ap) == ESP_OK) {
+        link.ssid = reinterpret_cast<const char*>(ap.ssid);
+        link.rssi_dbm = ap.rssi;
+    }
+    return link;
+}
+
 }  // namespace player

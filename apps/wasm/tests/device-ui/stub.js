@@ -63,6 +63,8 @@ const REPLIES = {
         "not a slot width this player's sink has: 16 or 32 on an I2S bus, and a sink with no hardware behind it keeps the one it was built for\n",
     wiringBad: 'PUT /wiring wants 1 (a second I2S line is wired) or 0\n',
     wiringRefused: 'the wiring could not be stored, or a play is running\n',
+    wiringFixed: "this player's wiring is fixed\n",
+    wiringNone: 'this player reports no wiring\n',
     networkEmpty: 'PUT /network wants an SSID, a newline, and a passphrase\n',
     nextPlay: 'ok; takes effect at the next play\n',
     nextBoot: 'ok; takes effect at the next boot\n',
@@ -238,6 +240,9 @@ function defaultHardware() {
         psram_bytes: 0,
         sink_max_slots: 8,
         sink_max_slots_bits: 16,
+        project: 'ac3forge_hearth_sink',
+        version: 'v0.10.0-beta.1-42-gee9cf4f',
+        idf_version: 'v6.1',
         capabilities: [
             '2 cores, a hardware floating-point unit',
             'Running at 240 MHz',
@@ -279,8 +284,16 @@ function playingSendspin() {
     };
 }
 
+// The board on a WiFi network, as the example's network_link() and
+// network_address() report it (esp-idf/ac3forge/examples/hearth_sink/main/
+// network.hpp).
+function wifiNetwork() {
+    return { kind: 'wifi', ssid: 'kitchen', rssi_dbm: -58, address: '192.168.1.23' };
+}
+
 // GET /status as control.cpp writes it: the same keys in the same order, the
-// volume to three places, and a newline at the end.
+// volume to three places, and a newline at the end. `second_line` is left out
+// for a sink with no second line to wire, as the example leaves it.
 function statusJson(d) {
     const stream = d.player ? d.player.stream : d.lastStream;
     const stats = d.player ? d.player.stats : d.lastStats;
@@ -291,7 +304,7 @@ function statusJson(d) {
         ['sink', JSON.stringify(d.sink)],
         ['sink_slots', String(d.sinkSlots)],
         ['slot_bits', String(d.slotBits)],
-        ['second_line', d.secondLine ? 'true' : 'false'],
+        ...(d.secondLine === undefined ? [] : [['second_line', d.secondLine ? 'true' : 'false']]),
         ['name', JSON.stringify(d.name)],
         ['layout', JSON.stringify(d.layout)],
         ['volume', d.volume.toFixed(3)],
@@ -302,6 +315,9 @@ function statusJson(d) {
     }
     if (d.sendspin !== undefined) {
         fields.push(['sendspin', JSON.stringify(d.sendspin)]);
+    }
+    if (d.network !== undefined) {
+        fields.push(['network', JSON.stringify(d.network)]);
     }
     return '{' + fields.map(([k, v]) => JSON.stringify(k) + ':' + v).join(',') + '}\n';
 }
@@ -314,6 +330,8 @@ async function startStub() {
         sink: 'capture-i2s',
         sinkSlots: 2,
         slotBits: 32,
+        // Whether a second I2S line is wired; undefined for a part that can
+        // have none (an ESP32-C6), whose /status leaves it out.
         secondLine: false,
         name: 'hearth-a1b2c3',
         // Stored rather than reported: /status does not carry a network, and
@@ -326,6 +344,9 @@ async function startStub() {
         // firmware with no player, whose /status has no "sendspin" key, and
         // null for one whose player did not start.
         sendspin: idleSendspin(),
+        // What /status says the board is joined to: undefined for a firmware
+        // that does not report it, null for a build with no network.
+        network: wifiNetwork(),
         hardware: defaultHardware(),
         player: null, // the play in progress: {stream, stats, total, fails}
         lastStats: idleStats(), // the last play that ended by itself, until another begins
@@ -485,10 +506,16 @@ async function startStub() {
                 return send(res, 200, REPLIES.nextPlay);
             }
             case 'GET /wiring':
+                if (device.secondLine === undefined) {
+                    return send(res, 404, REPLIES.wiringNone);
+                }
                 return send(res, 200, (device.secondLine ? '1' : '0') + '\n');
             case 'PUT /wiring': {
                 if (body !== '0' && body !== '1') {
                     return send(res, 400, REPLIES.wiringBad);
+                }
+                if (device.secondLine === undefined) {
+                    return send(res, 409, REPLIES.wiringFixed);
                 }
                 if (device.player) {
                     return send(res, 409, REPLIES.wiringRefused);
@@ -628,6 +655,7 @@ module.exports = {
     statusJson,
     idleSendspin,
     playingSendspin,
+    wifiNetwork,
     defaultHardware,
     REPLIES,
     ROUTES,

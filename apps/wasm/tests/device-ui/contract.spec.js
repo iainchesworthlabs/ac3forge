@@ -140,7 +140,7 @@ test("the stand-in writes GET /status's keys in the firmware's order", async () 
             stub.device.sendspin = sendspin;
             const body = JSON.parse(await (await fetch(`${stub.url}status`)).text());
             const keys = Object.keys(body).flatMap((key) =>
-                key === 'stream' || key === 'sendspin' ? [key, ...Object.keys(body[key])] : [key],
+                ['stream', 'sendspin', 'network'].includes(key) ? [key, ...Object.keys(body[key])] : [key],
             );
             expect(keys).toEqual(firmware);
         }
