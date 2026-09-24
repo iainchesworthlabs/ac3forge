@@ -474,7 +474,7 @@ void Capture::Impl::launch(ComPtr<IAudioClient> client, ComPtr<IAudioCaptureClie
                 } else {
                     convert(data, samples, format, scratch);
                 }
-                ring->write(scratch);
+                ring->write_frames(scratch, channel_count);
                 frames_captured.fetch_add(frames, std::memory_order_relaxed);
                 timeline_frames += frames;
                 capture->ReleaseBuffer(frames);
@@ -492,7 +492,7 @@ void Capture::Impl::launch(ComPtr<IAudioClient> client, ComPtr<IAudioCaptureClie
                     auto missing = elapsed_frames - timeline_frames;
                     missing = std::min<std::uint64_t>(missing, rate);  // cap a long stall
                     silence.assign(static_cast<std::size_t>(missing) * channel_count, 0.0f);
-                    ring->write(silence);
+                    ring->write_frames(silence, channel_count);
                     frames_silence.fetch_add(missing, std::memory_order_relaxed);
                     timeline_frames += missing;
                 }

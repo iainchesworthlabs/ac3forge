@@ -307,7 +307,7 @@ OSStatus Capture::Impl::io_proc(AudioObjectID /*object*/, const AudioTimeStamp* 
     auto* impl = static_cast<Impl*>(client_data);
     collect(input_data, impl->channels, impl->interleaved, impl->format, impl->scratch);
     if (!impl->scratch.empty() && impl->channels > 0) {
-        impl->ring->write(impl->scratch);
+        impl->ring->write_frames(impl->scratch, impl->channels);
         impl->frames_captured.fetch_add(impl->scratch.size() / impl->channels,
                                         std::memory_order_relaxed);
     }

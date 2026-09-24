@@ -216,6 +216,38 @@ TEST_CASE("alsa capture: a consumer that falls behind is told how much was dropp
     CHECK(stats.frames_silence_filled == 0);
 }
 
+TEST_CASE("alsa capture: an overrun drops whole frames, so every channel stays in its slot",
+          "[audio][alsa-null][concurrency]") {
+    // A ring of 4096 samples holds 4095, never read until it has overrun:
+    // the replay's periods are an even number of samples, so the write that
+    // meets the full ring could keep an odd number of them - half a frame -
+    // and every sample after it would arrive one channel late for the rest of
+    // the take. Only whole frames may go in, and what is dropped is a whole
+    // number of frames too.
+    const NullDevices devices;
+    ac3::audio::Capture capture;
+    REQUIRE(capture.start("replay_float", ac3::audio::DeviceKind::kInput, 4096).has_value());
+    REQUIRE(capture.channels() == 2);
+    REQUIRE(eventually([&] { return capture.stats().frames_dropped > 0; }));
+    CHECK(capture.buffer()->available() % 2 == 0);
+
+    // What the ring held, then what arrives once there is room again (the
+    // rest of the replay, or the silence after it): every left sample is the
+    // ramp or silence, and its right partner is its negation.
+    const auto samples = read_samples(capture, 4096 + 2048);
+    std::size_t misplaced = 0;
+    for (std::size_t i = 0; i + 1 < samples.size(); i += 2) {
+        misplaced += samples[i + 1] == -samples[i] ? 0U : 1U;
+    }
+    CHECK(misplaced == 0);
+    // The first frame is the replay's first, untouched.
+    CHECK(samples[0] == replay_float_sample(0));
+    CHECK(samples[1] == replay_float_sample(1));
+
+    capture.stop();
+    CHECK(capture.buffer()->dropped() % 2 == 0);
+}
+
 TEST_CASE("alsa capture: a device that is missing, or offers nothing readable, is refused by name",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;

@@ -161,7 +161,7 @@ struct Capture::Impl {
             const std::size_t frame_count = spa_buf->datas[0].chunk->size / stride;
             const std::size_t sample_count = frame_count * impl.channels;
 
-            impl.ring->write(std::span{samples, sample_count});
+            impl.ring->write_frames(std::span{samples, sample_count}, impl.channels);
             impl.frames_captured.fetch_add(frame_count, std::memory_order_relaxed);
             impl.timeline_frames += frame_count;
         }
@@ -181,7 +181,7 @@ struct Capture::Impl {
             auto missing = elapsed_frames - impl.timeline_frames;
             missing = std::min<std::uint64_t>(missing, impl.sample_rate);
             std::vector<float> silence(static_cast<std::size_t>(missing) * impl.channels, 0.0f);
-            impl.ring->write(silence);
+            impl.ring->write_frames(silence, impl.channels);
             impl.frames_silence.fetch_add(missing, std::memory_order_relaxed);
             impl.timeline_frames += missing;
         }
