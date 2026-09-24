@@ -70,7 +70,15 @@ class FakeSourceBuffer extends EventTarget {
       throw new DOMException("Cannot append while updating", "InvalidStateError");
     }
     this.updating = true;
-    const bytes = data instanceof Uint8Array ? data : new Uint8Array(ArrayBuffer.isView(data) ? data.buffer : data);
+    // A view (DataView, Uint16Array, ...) may cover only part of its buffer:
+    // take exactly its byteOffset/byteLength window, never the whole
+    // `data.buffer`, or onSegment would see bytes the caller never appended.
+    const bytes =
+      data instanceof Uint8Array
+        ? data
+        : ArrayBuffer.isView(data)
+          ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+          : new Uint8Array(data);
     queueMicrotask(() => {
       try {
         this.#onSegment(this.#mimeType, bytes, { markBuffered: (start, end) => this.#ranges.push({ start, end }) });

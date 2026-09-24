@@ -123,6 +123,24 @@ test("appendBuffer accepts a bare ArrayBuffer", () =>
     }
   }));
 
+test("appendBuffer passes only a view's own bytes, not its whole backing buffer", () =>
+  withFakeMediaSource(async () => {
+    // Regression: a non-Uint8Array view was widened to `data.buffer`, which
+    // ignored byteOffset/byteLength and handed onSegment the entire buffer.
+    let received = null;
+    const uninstall = installMediaSourceShim({ onSegment: (_type, data) => (received = data) });
+    try {
+      const backing = Uint8Array.of(0, 1, 2, 3, 4, 5, 6, 7, 8, 9).buffer;
+      const buffer = new MediaSource().addSourceBuffer(EC3);
+      await append(buffer, new DataView(backing, 3, 4));
+      assert.deepEqual(Array.from(received), [3, 4, 5, 6]);
+      await append(buffer, new Uint16Array(backing, 2, 3)); // bytes [2, 8)
+      assert.deepEqual(Array.from(received), [2, 3, 4, 5, 6, 7]);
+    } finally {
+      uninstall();
+    }
+  }));
+
 test("remove drops only the ranges inside the removed span, asynchronously", () =>
   withFakeMediaSource(async () => {
     let calls = 0;
