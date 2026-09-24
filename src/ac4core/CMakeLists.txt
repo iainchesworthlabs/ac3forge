@@ -19,13 +19,17 @@ add_library(ac4::core ALIAS ac4core)
 
 target_sources(ac4core
     PRIVATE
+        src/aspx/frequency_tables.cpp
+        src/aspx/hf_generator.cpp
         src/dsp/fft.cpp
         src/dsp/kbd.cpp
         src/dsp/mdct.cpp
+        src/dsp/qmf.cpp
         src/dsp/synthesis.cpp
         src/tables/huffman_codes.cpp
         src/tables/huffman_tables.cpp
         src/tables/noise_tables.cpp
+        src/tables/qmf_tables.cpp
         src/tables/sfb_tables.cpp)
 
 target_include_directories(ac4core

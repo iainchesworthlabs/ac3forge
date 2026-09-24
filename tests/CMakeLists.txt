@@ -49,6 +49,7 @@ add_executable(ac3tests
     ac4/test_ac4.cpp
     ac4/test_ac4_presentation_configs.cpp
     ac4/test_ac4_toc_syntax.cpp
+    ac4core/test_ac4core_aspx.cpp
     ac4core/test_ac4core_dsp.cpp
     ac4dec/test_ac4dec_asf.cpp
     ac4dec/test_ac4dec_channel_elements.cpp
