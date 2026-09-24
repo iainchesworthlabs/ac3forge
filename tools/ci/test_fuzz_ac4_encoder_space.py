@@ -102,6 +102,11 @@ class DrawCase(unittest.TestCase):
         self.assertEqual({c.sample_rate for c in cases}, set(fa4.SAMPLE_RATES))
         self.assertTrue(any(not c.in_range for c in cases))
         self.assertTrue(any(c.mp4 for c in cases))
+        # The codec mode the rate picks, and each forced, and the experimental tools.
+        options = {o for c in cases for o in c.options}
+        self.assertTrue({"codec-mode=simple", "codec-mode=aspx"} <= options)
+        self.assertTrue(any(o.startswith("experimental=") for o in options))
+        self.assertTrue(any(not any(o.startswith("codec-mode=") for o in c.options) for c in cases))
         for case in cases:
             samples = case.blocks * fa4.BLOCK
             self.assertGreaterEqual(samples, 2 * fa4.FRAME)
