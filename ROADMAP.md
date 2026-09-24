@@ -54,16 +54,20 @@ wide sink past its probe (tier study P2+: a networked shape onto TDM and the ES9
 **Done:** ESP32-P4 probe and board timing table, no network (tier study P1) — real time on every
 fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-p4.md).
 
-### Library — AC-4 audio decode (Partial)
+### Library — AC-4 decode and encode (Partial)
 
 | Layer | State |
 |---|---|
 | Container parse and inspect (`src/ac4`, CLI `probe`) | **Shipped** — see CHANGELOG and [Validation — AC-4](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/verification.md) |
 | Syntax transcription (`src/ac4dec`) | **In progress** — reads channel-coded substream syntax; [`decoder.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac4dec/include/ac4dec/decoder.hpp) states it produces no audio yet |
-| PCM decode, objects, speech frontend, immersive paths | **Not started** |
+| PCM decode, immersive paths, objects | **Not started** — plan phases D2 to D10; the speech frontend waits for a stream that uses it |
+| Encoder (`src/ac4enc`) | **Not started** — plan phases E1 to E9, each after the decoder phase that decodes it |
+| Applications (`ac3cli`, Hearth, Forge GUI, bindings) | **Not started** — plan phases I1 to I6, after the channel-based library |
 
-Hearth and Forge playback of AC-4 waits on PCM decode. Chip D in the Hearth plan; no separate
-`planning/ac4-decoder.md` yet.
+Hearth and Forge playback of AC-4 waits on PCM decode. Plan:
+[`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md). Its
+first phase makes the DEE reference streams the others need before the local DEE licence ends on
+2026-11-06.
 
 ### Library — API freeze → v1.0.0 (was AP1, L)
 

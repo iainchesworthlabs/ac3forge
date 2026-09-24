@@ -20,9 +20,9 @@
     - **[The ESP32-C6](#chip-c-the-esp32-c6).**
         - Merged: C1 (#677) and C2 (#678 and #701), with the C6's fixed-point speed-up in #694.
         - C2's exit on a TDM DAC waits for a board. C3 follows chip B.
-    - **[The AC-4 decoder](#chip-d-the-ac-4-decoder).** The plan is not in the repository yet.
-      Its first code has merged: the channel-coded substream syntax (#700), with #712, #715, #739
-      and #744.
+    - **[The AC-4 decoder](#chip-d-the-ac-4-decoder).** The plan is [`planning/ac4.md`](ac4.md),
+      which since 2026-09-24 covers an AC-4 encoder and the applications too. Its first code has
+      merged: the channel-coded substream syntax (#700), with #712, #715, #739, #744 and #786.
 
     Checks on the user's hardware are still to run for A2 and A3: the identify tone, and the
     passthrough and monitor position tests, on the Onkyo receiver and the Pi.
@@ -739,7 +739,7 @@ A follow-on. The app is designed for AC-4 from A0; playback waits for this chip.
 
 ### D0: the plan
 
-`planning/ac4-decoder.md`, in this repository's plan shape:
+[`planning/ac4.md`](ac4.md), in this repository's plan shape:
 
 - Scope by phase. For example: channel-based 2.0 and 5.1 first (the transform, the stereo and
   multichannel tools, A-SPX, A-CPL, DRC, dialogue enhancement, loudness, presentation selection,

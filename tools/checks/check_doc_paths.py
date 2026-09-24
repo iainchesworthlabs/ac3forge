@@ -158,6 +158,9 @@ PROSE_PATHS_UNCHECKED = {
     "planning/hearth-sendspin-extension.md": (
         "specification; names the Sendspin library and test tools it defines"
     ),
+    "planning/ac4.md": (
+        "plan; proposes decoder, encoder and core libraries and sources that do not exist yet"
+    ),
     "planning/roadmap-inventory.md": (
         "inventory; a dated snapshot (tree as of 2026-09-17) that names gaps against the "
         "tree, which go stale as work lands"
