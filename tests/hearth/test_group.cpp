@@ -120,6 +120,13 @@ class HostEvents final : public ac3::sendspin::ServerHostEvents {
         changed_.notify_all();
     }
     void on_client_gone(const std::string& /*client_id*/) override {}
+    void on_client_goodbye(const std::string& client_id, ac3::sendspin::messages::GoodbyeReason reason) override {
+        {
+            const std::lock_guard lock(mutex_);
+            goodbyes_[client_id] = reason;
+        }
+        changed_.notify_all();
+    }
     void on_pairing_code_wanted(const std::string& /*client_id*/) override {}
     void on_paired(const std::string& /*client_id*/) override {}
     void on_pairing_ended(const std::string& /*client_id*/,
@@ -149,11 +156,24 @@ class HostEvents final : public ac3::sendspin::ServerHostEvents {
         return commands_;
     }
 
+    // client/goodbye's own reason, once on_client_goodbye() has heard one for this client_id.
+    std::optional<ac3::sendspin::messages::GoodbyeReason> goodbye(const std::string& client_id) {
+        const std::lock_guard lock(mutex_);
+        const auto found = goodbyes_.find(client_id);
+        return found == goodbyes_.end() ? std::nullopt : std::optional(found->second);
+    }
+
+    bool wait_for_goodbye(const std::string& client_id, std::chrono::milliseconds timeout) {
+        std::unique_lock lock(mutex_);
+        return changed_.wait_for(lock, timeout, [&] { return goodbyes_.contains(client_id); });
+    }
+
    private:
     std::mutex mutex_;
     std::condition_variable changed_;
     std::map<std::string, ac3::sendspin::ClientView> clients_;
     std::vector<Command> commands_;
+    std::map<std::string, ac3::sendspin::messages::GoodbyeReason> goodbyes_;
 };
 
 // Polls `predicate` until it holds or `timeout` passes.
@@ -625,6 +645,49 @@ TEST_CASE("group: a host pairs one test sink by its token and another by a dynam
     }
     REQUIRE(entered);
     REQUIRE(events.wait(playing(by_code->client_id()), 20s));
+
+    host->reset();
+}
+
+TEST_CASE("group: unpairing a sink delivers client/goodbye's own reason to the host",
+          "[hearth][group][websocket]") {
+    // server/unpair (ServerHost::unpair()) makes a paired test sink drop its record and answer
+    // with client/goodbye kUnpaired (player_session.cpp's own "server/unpair" handler) - a real,
+    // encrypted round trip that proves ServerListener::on_goodbye() now reaches
+    // ServerHostEvents::on_client_goodbye() (HostConnection::on_goodbye(), server_host.cpp) rather
+    // than being discarded, as issue #876 found it. The reasons NetworkSinks actually reads
+    // meaning into (kAnotherServer, kConcurrentAttempt) are player_session.cpp's own admission
+    // outcomes, covered end to end already by tests/sendspin/test_sessions.cpp's "the owner
+    // rejects an activation, or another server displaces the connection" - this test is only
+    // for the plumbing between here and there, which kUnpaired reaches just as directly.
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_goodbye_" + scratch_pid_suffix());
+    fs::remove_all(scratch);
+    QuietLog log;
+    const std::unique_ptr<testsink::Sink> sink = start_sink(scratch, "Study", m::Codec::kPcm, log, false);
+
+    std::optional<ac3::sendspin::noise::KeyPair> identity = ac3::sendspin::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    ac3::sendspin::MemoryServerStore store;
+    HostEvents events;
+    auto host = ac3::sendspin::ServerHost::start(
+        {.identity = *identity, .name = "Test host", .languages = {"en"}, .address = "127.0.0.1", .port = std::nullopt,
+         .advertise = false, .browse = false, .mdns_interfaces = {}},
+        store, events);
+    REQUIRE(host.has_value());
+    REQUIRE((*host)->enter_pairing_token(sink->pairing_token()));
+    (*host)->dial("ws://127.0.0.1:" + std::to_string(sink->port()) + "/sendspin");
+
+    REQUIRE(events.wait(
+        [&](const auto& clients) {
+            const auto found = clients.find(sink->client_id());
+            return found != clients.end() && found->second.playing &&
+                   found->second.psk == ac3::sendspin::handshake::PskCategory::kLongTerm;
+        },
+        20s));
+
+    REQUIRE((*host)->unpair(sink->client_id()));
+    REQUIRE(events.wait_for_goodbye(sink->client_id(), 15s));
+    CHECK(events.goodbye(sink->client_id()) == m::GoodbyeReason::kUnpaired);
 
     host->reset();
 }

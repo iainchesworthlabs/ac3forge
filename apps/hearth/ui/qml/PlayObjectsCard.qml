@@ -9,7 +9,9 @@ import Ac3ForgeHearth
 // room, folded into the monitor column's scroll when there is not
 // (PlayPage.qml's `narrow`, matching play-minimum-size.png's own collapse).
 Card {
-    title: qsTr("06 Objects")
+    ordinal: "06"
+    title: qsTr("Objects")
+    flat: true
     summary: HearthController.hasObjectMetadata
              ? qsTr("%1 placed").arg(HearthController.objectsPlaced)
              : (HearthController.playing ? qsTr("No object metadata in this stream")

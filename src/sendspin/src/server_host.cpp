@@ -202,6 +202,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
             view.hello = session.hello().has_value();
             if (session.hello()) {
                 view.name = session.hello()->name;
+                view.device_info = session.hello()->device_info;
                 view.offers_unpaired_access = session.hello()->unpaired_access;
                 for (const m::PairMethodDescriptor& method : session.hello()->pair_methods) {
                     view.pair_methods.push_back(method.method);
@@ -366,7 +367,11 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
         ServerHost::State* host = host_;
         host->post([host, client_id] { host->member_changed(client_id); });
     }
-    void on_goodbye(m::GoodbyeReason /*reason*/) override {}
+    void on_goodbye(m::GoodbyeReason reason) override {
+        const std::string client_id = base64url::encode(session_->client_key());
+        ServerHost::State* host = host_;
+        host->post([host, client_id, reason] { host->events->on_client_goodbye(client_id, reason); });
+    }
     void on_leave() override {}
 
     void on_controller_command(const controller::CommandMessage& command) override {

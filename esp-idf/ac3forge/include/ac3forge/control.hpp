@@ -20,6 +20,12 @@
 //                     component embeds them (planning/esp32-device-ui.md).
 //   GET  /api         the routes, as text
 //   GET  /status      what is playing and how it is going, as JSON
+//   GET  /hardware    what this board IS - the chip, its revision, whether it
+//                     has an FPU and PSRAM, and this sink's own ceiling - as
+//                     JSON, gathered once at startup rather than on every
+//                     request: unlike /status, nothing in it changes while
+//                     the board runs. planning/esp32-device-ui.md says why
+//                     this is a route of its own rather than part of /status.
 //   POST /play        body: the location to play - a URL for the HTTP source,
 //                     a path for a file source. 202 when accepted (the owner
 //                     opens it on its own task; /status says how that went),
@@ -162,6 +168,11 @@ struct ControlHandlers {
     // The slots the sink's bus has, and so the widest layout set_layout can
     // accept; reported beside the sink's name.
     std::function<int()> sink_slots;
+    // GET /hardware's own slot count: this sink's ceiling at ANY setting it
+    // takes, not just the one in force - player::sink_max_slots() beside
+    // sink_open() and sink_slots() (main/audio_sink.hpp). Left empty reports
+    // nothing, the same rule every optional handler here follows.
+    std::function<int()> sink_max_slots;
     // "playing", "stopped", "finished", "failed" - the owner knows.
     std::function<const char*()> state;
 

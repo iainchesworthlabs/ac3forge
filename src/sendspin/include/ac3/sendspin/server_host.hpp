@@ -78,6 +78,9 @@ struct ClientView {
     // Fallback): it needs pairing again.
     bool credential_mismatch = false;
     bool hello = false;
+    // Empty until hello arrives; DeviceInfo's own fields are empty in turn
+    // when the client did not send them (DeviceInfo's own comment).
+    messages::DeviceInfo device_info;
     bool offers_unpaired_access = false;
     std::vector<messages::PairMethod> pair_methods;
     bool pairing = false;
@@ -113,6 +116,15 @@ class ServerHostEvents {
     // A client connected, or what the host knows of it changed.
     virtual void on_client(const ClientView& client) = 0;
     virtual void on_client_gone(const std::string& client_id) = 0;
+    // The client sent client/goodbye, its own reason for the disconnect that follows shortly as
+    // on_client_gone(): kAnotherServer when a connection of equal or higher rank displaced this
+    // one, kConcurrentAttempt when this one's own activation was rejected because another
+    // server's pairing attempt was already in progress on the client (Arbiter's own protection
+    // for an attempt underway, arbiter.hpp) - both readable as "something else is using this
+    // client" without this host ever seeing that rival connection itself (issue #876). The other
+    // reasons (shutdown, restart, user request, unauthorized, pairing required, unpaired) are the
+    // client's own choice or this host's, and already knowable from the call that caused them.
+    virtual void on_client_goodbye(const std::string& /*client_id*/, messages::GoodbyeReason /*reason*/) {}
     // The pairing attempt with a client waits for the operator's code: ServerHost::enter_code().
     virtual void on_pairing_code_wanted(const std::string& client_id) = 0;
     virtual void on_paired(const std::string& client_id) = 0;

@@ -1,6 +1,5 @@
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
 }
 
 // Object signing is no longer a build-variant toggle. The signer (ac3::signing)
@@ -190,12 +189,15 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-    kotlinOptions {
-        jvmTarget = "17"
-    }
 }
 
 dependencies {
+    // 1.17.0, not the newer 1.19.0: that one's AAR metadata requires compileSdk >= 37
+    // (androidx.core:core ships the same floor), and API 37 has no platform in the SDK
+    // repository yet - compileSdk = 36 above is the real ceiling today. The stale
+    // gradle.lockfile had quietly been holding this back to 1.17.0 already; removing the
+    // standalone Kotlin plugin (see build.gradle.kts's own plugins{} comment) let the
+    // unlocked resolution try to honor 1.19.0 for real and hit checkDebugAarMetadata.
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.appcompat:appcompat:1.8.0")
 
@@ -235,18 +237,18 @@ dependencyLocking {
 configurations.all {
     resolutionStrategy {
         force(
-            "io.netty:netty-buffer:4.1.138.Final",
-            "io.netty:netty-codec:4.1.138.Final",
-            "io.netty:netty-codec-http:4.1.138.Final",
-            "io.netty:netty-codec-http2:4.1.138.Final",
-            "io.netty:netty-codec-socks:4.1.138.Final",
-            "io.netty:netty-common:4.1.138.Final",
-            "io.netty:netty-handler:4.1.138.Final",
-            "io.netty:netty-handler-proxy:4.1.138.Final",
-            "io.netty:netty-resolver:4.1.138.Final",
-            "io.netty:netty-transport:4.1.138.Final",
-            "io.netty:netty-transport-native-unix-common:4.1.138.Final",
-            "com.google.protobuf:protobuf-java:3.25.8",
+            "io.netty:netty-buffer:4.2.18.Final",
+            "io.netty:netty-codec:4.2.18.Final",
+            "io.netty:netty-codec-http:4.2.18.Final",
+            "io.netty:netty-codec-http2:4.2.18.Final",
+            "io.netty:netty-codec-socks:4.2.18.Final",
+            "io.netty:netty-common:4.2.18.Final",
+            "io.netty:netty-handler:4.2.18.Final",
+            "io.netty:netty-handler-proxy:4.2.18.Final",
+            "io.netty:netty-resolver:4.2.18.Final",
+            "io.netty:netty-transport:4.2.18.Final",
+            "io.netty:netty-transport-native-unix-common:4.2.18.Final",
+            "com.google.protobuf:protobuf-java:4.36.1",
             "commons-io:commons-io:2.22.0"
         )
     }

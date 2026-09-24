@@ -49,8 +49,11 @@ Item {
     readonly property int nProbe: (root.hasOamdTable ? root.nOamd
                                    : (root.hasMultipleProgrammes ? root.nProgrammes : root.nBitstream)) + 1
 
-    function cardTitle(n, text) {
-        return (n < 10 ? "0" + n : "" + n) + " " + text;
+    // The ordinal is its own run in the design - accent ink, fixed-width -
+    // so it is handed to SectionHeader separately rather than folded into
+    // the title (and, incidentally, kept out of the translated string).
+    function cardOrdinal(n) {
+        return n < 10 ? "0" + n : "" + n;
     }
 
     // ac3::hearth::codec_token()'s lower-case wire tokens, spelled the way
@@ -146,33 +149,39 @@ Item {
                 Layout.fillWidth: true
                 spacing: Theme.gap
 
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-                    Text {
-                        text: qsTr("SHOWING")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                        font.bold: true
-                        font.capitalization: Font.AllUppercase
-                    }
-                    ComboBox {
-                        objectName: "showingCombo"
-                        Layout.fillWidth: true
-                        Layout.preferredWidth: 360
-                        model: root.showingLabels
-                        currentIndex: root.effectiveIndex
-                        enabled: count > 0
-                        onActivated: function(index) { HearthController.inspectItem(index); }
+                Text {
+                    text: qsTr("Showing")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontMicro
+                    font.letterSpacing: Theme.trackingWide
+                    font.capitalization: Font.AllUppercase
+                }
+                AppComboBox {
+                    id: showingCombo
+                    objectName: "showingCombo"
+                    Layout.preferredWidth: Math.round(420 * Theme.fontScale)
+                    model: root.showingLabels
+                    currentIndex: root.effectiveIndex
+                    enabled: count > 0
+                    Accessible.name: qsTr("Showing")
+                    onActivated: function(index) { HearthController.inspectItem(index); }
+                    // Activating a ComboBox writes currentIndex directly and
+                    // the binding above is gone, so it stops following
+                    // playback after the first manual pick; the model is also
+                    // rebuilt on every queue change, which resets it to 0.
+                    Binding on currentIndex {
+                        value: root.effectiveIndex
+                        when: !showingCombo.activeFocus && !showingCombo.popup.visible
+                        restoreMode: Binding.RestoreBindingOrValue
                     }
                 }
                 Item { Layout.fillWidth: true }
-                Button {
+                AppButton {
                     text: qsTr("Copy")
                     enabled: (root.media.json ?? "").length > 0
                     onClicked: root.copyJson()
                 }
-                Button {
+                AppButton {
                     text: qsTr("Export JSON…")
                     enabled: (root.media.json ?? "").length > 0
                     onClicked: exportDialog.open()
@@ -194,8 +203,8 @@ Item {
                 // the same fact apps/hearth/ui/item_loader.cpp's own
                 // unplayable reason states for the queue row.
                 visible: root.showingLabels.length > 0 && root.ac4 !== undefined
-                color: Theme.accent100
-                border.color: Theme.bad
+                color: Theme.neutral100
+                border.color: Theme.accentInk
                 border.width: 1
                 radius: Theme.radius
                 implicitHeight: notPlayableBanner.implicitHeight + Theme.pad * 2
@@ -207,9 +216,10 @@ Item {
                     spacing: Theme.gap / 2
                     Text {
                         text: qsTr("NOT PLAYABLE IN THIS BUILD")
-                        color: Theme.bad
+                        color: Theme.accentInk
                         font.pixelSize: Theme.fontSmall
                         font.bold: true
+                        font.letterSpacing: Theme.trackingWide
                         font.capitalization: Font.AllUppercase
                     }
                     Text {
@@ -234,8 +244,8 @@ Item {
                 // about playability rather than about whether the read
                 // itself succeeded.
                 visible: root.showingLabels.length > 0 && (root.media.error ?? "").length > 0
-                color: Theme.accent100
-                border.color: Theme.bad
+                color: Theme.neutral100
+                border.color: Theme.accentInk
                 border.width: 1
                 radius: Theme.radius
                 implicitHeight: errorBanner.implicitHeight + Theme.pad * 2
@@ -263,76 +273,9 @@ Item {
                     spacing: Theme.gap * 2
 
                     Card {
-                        title: root.cardTitle(root.nStream, qsTr("Stream"))
-                        // Pre-existing gap, fixed alongside this card's own
-                        // renumbering: nothing gated this out for an AC-4
-                        // item, which has its own "01 Stream" card in the
-                        // right column instead - this one has nothing of its
-                        // own to say for it (every field below reads
-                        // "unknown"/"none").
-                        visible: root.ac4 === undefined
-
-                        GridLayout {
-                            columns: 2
-                            columnSpacing: Theme.gap
-                            rowSpacing: 4
-                            Layout.fillWidth: true
-
-                            Text { text: qsTr("Codec"); color: Theme.textMuted }
-                            Text {
-                                Layout.fillWidth: true
-                                text: root.codecLabel(root.media.codec)
-                                color: Theme.text
-                            }
-                            Text { text: qsTr("Sample rate"); color: Theme.textMuted }
-                            Text {
-                                Layout.fillWidth: true
-                                text: root.media.sampleRate ? qsTr("%1 kHz").arg(root.media.sampleRate / 1000)
-                                                             : qsTr("unknown")
-                                color: Theme.text
-                            }
-                            Text { text: qsTr("Bitrate"); color: Theme.textMuted }
-                            Text {
-                                Layout.fillWidth: true
-                                text: root.probe.measuredBitrateKbps !== undefined
-                                      ? qsTr("%1 kbit/s measured").arg(root.probe.measuredBitrateKbps.toFixed(1))
-                                      : qsTr("unknown")
-                                color: Theme.text
-                            }
-                            Text { text: qsTr("Duration"); color: Theme.textMuted }
-                            Text {
-                                Layout.fillWidth: true
-                                text: root.formatDuration(root.media.durationSeconds)
-                                color: Theme.text
-                            }
-                            Text { text: qsTr("Objects"); color: Theme.textMuted }
-                            Text {
-                                Layout.fillWidth: true
-                                text: root.objectsSummary()
-                                color: Theme.text
-                            }
-                            // Only while there is no dedicated Container card
-                            // to show this instead (below) - a real container
-                            // moves this row there, matching how the design's
-                            // own raw-stream mockup shows no Container card
-                            // at all and its wrapped-stream mockup shows no
-                            // Container row here.
-                            Text {
-                                text: qsTr("Container"); color: Theme.textMuted
-                                visible: !root.hasContainer
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                visible: !root.hasContainer
-                                text: !root.mediaLoaded ? qsTr("reading…") : qsTr("none: an elementary stream")
-                                color: Theme.text
-                                wrapMode: Text.WordWrap
-                            }
-                        }
-                    }
-
-                    Card {
-                        title: root.cardTitle(root.nContainer, qsTr("Container"))
+                        ordinal: root.cardOrdinal(root.nContainer)
+                        title: qsTr("Container")
+                        framed: true
                         visible: root.ac4 === undefined && root.hasContainer
 
                         GridLayout {
@@ -419,9 +362,81 @@ Item {
                             }
                         }
                     }
+                    Card {
+                        ordinal: root.cardOrdinal(root.nStream)
+                        title: qsTr("Stream")
+                        framed: true
+                        // Pre-existing gap, fixed alongside this card's own
+                        // renumbering: nothing gated this out for an AC-4
+                        // item, which has its own "01 Stream" card in the
+                        // right column instead - this one has nothing of its
+                        // own to say for it (every field below reads
+                        // "unknown"/"none").
+                        visible: root.ac4 === undefined
+
+                        GridLayout {
+                            columns: 2
+                            columnSpacing: Theme.gap
+                            rowSpacing: 4
+                            Layout.fillWidth: true
+
+                            Text { text: qsTr("Codec"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.codecLabel(root.media.codec)
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Sample rate"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.media.sampleRate ? qsTr("%1 kHz").arg(root.media.sampleRate / 1000)
+                                                             : qsTr("unknown")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Bitrate"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.probe.measuredBitrateKbps !== undefined
+                                      ? qsTr("%1 kbit/s measured").arg(root.probe.measuredBitrateKbps.toFixed(1))
+                                      : qsTr("unknown")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Duration"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.formatDuration(root.media.durationSeconds)
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Objects"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.objectsSummary()
+                                color: Theme.text
+                            }
+                            // Only while there is no dedicated Container card
+                            // to show this instead (below) - a real container
+                            // moves this row there, matching how the design's
+                            // own raw-stream mockup shows no Container card
+                            // at all and its wrapped-stream mockup shows no
+                            // Container row here.
+                            Text {
+                                text: qsTr("Container"); color: Theme.textMuted
+                                visible: !root.hasContainer
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                visible: !root.hasContainer
+                                text: !root.mediaLoaded ? qsTr("reading…") : qsTr("none: an elementary stream")
+                                color: Theme.text
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
 
                     Card {
-                        title: root.cardTitle(root.nBitstream, qsTr("Bitstream information"))
+                        ordinal: root.cardOrdinal(root.nBitstream)
+                        title: qsTr("Bitstream information")
+                        framed: true
                         visible: root.ac4 === undefined && Object.keys(root.bitstream).length > 0
 
                         GridLayout {
@@ -483,43 +498,10 @@ Item {
                             }
                         }
                     }
-                }
-
-                // --- right column ----------------------------------------
-                ColumnLayout {
-                    Layout.preferredWidth: 1
-                    Layout.fillWidth: true
-                    spacing: Theme.gap * 2
-
                     Card {
-                        title: root.cardTitle(root.nProgrammes, qsTr("Programmes"))
-                        visible: root.ac4 === undefined && root.hasMultipleProgrammes
-
-                        Repeater {
-                            model: root.media.programmes ?? []
-                            delegate: RowLayout {
-                                required property var modelData
-                                Layout.fillWidth: true
-                                spacing: Theme.gap
-                                Text {
-                                    text: qsTr("%1").arg(modelData.substreamId)
-                                    color: Theme.textMuted
-                                    Layout.preferredWidth: 20
-                                }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: qsTr("%1 · %2 channels · %3")
-                                          .arg(modelData.layoutLabel).arg(modelData.channels)
-                                          .arg(modelData.bsmodLabel)
-                                    color: Theme.text
-                                    elide: Text.ElideRight
-                                }
-                            }
-                        }
-                    }
-
-                    Card {
-                        title: root.cardTitle(1, qsTr("Stream"))
+                        ordinal: root.cardOrdinal(1)
+                        title: qsTr("Stream")
+                        framed: true
                         visible: root.ac4 !== undefined
 
                         GridLayout {
@@ -543,9 +525,10 @@ Item {
                             Text { text: root.ac4 ? root.ac4.substreamCount : ""; color: Theme.text }
                         }
                     }
-
                     Card {
-                        title: root.cardTitle(2, qsTr("Presentations"))
+                        ordinal: root.cardOrdinal(2)
+                        title: qsTr("Presentations")
+                        framed: true
                         visible: root.ac4 !== undefined && (root.ac4?.presentations ?? []).length > 0
 
                         Repeater {
@@ -576,9 +559,49 @@ Item {
                             }
                         }
                     }
+                }
+
+                // --- right column ----------------------------------------
+                ColumnLayout {
+                    Layout.preferredWidth: 1
+                    Layout.fillWidth: true
+                    spacing: Theme.gap * 2
 
                     Card {
-                        title: root.cardTitle(3, qsTr("Substream groups"))
+                        ordinal: root.cardOrdinal(root.nProgrammes)
+                        title: qsTr("Programmes")
+                        framed: true
+                        visible: root.ac4 === undefined && root.hasMultipleProgrammes
+
+                        Repeater {
+                            model: root.media.programmes ?? []
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: Theme.gap
+                                Text {
+                                    text: qsTr("%1").arg(modelData.substreamId)
+                                    color: Theme.textMuted
+                                    Layout.preferredWidth: 20
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: qsTr("%1 · %2 channels · %3")
+                                          .arg(modelData.layoutLabel).arg(modelData.channels)
+                                          .arg(modelData.bsmodLabel)
+                                    color: Theme.text
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
+
+
+
+                    Card {
+                        ordinal: root.cardOrdinal(3)
+                        title: qsTr("Substream groups")
+                        framed: true
                         visible: root.ac4 !== undefined && (root.ac4?.substreamGroups ?? []).length > 0
 
                         Repeater {
@@ -610,7 +633,9 @@ Item {
                     }
 
                     Card {
-                        title: root.cardTitle(4, qsTr("Immersive"))
+                        ordinal: root.cardOrdinal(4)
+                        title: qsTr("Immersive")
+                        framed: true
                         visible: root.ac4 !== undefined && root.ac4?.hasAjoc === true
 
                         GridLayout {
@@ -636,7 +661,9 @@ Item {
                     }
 
                     Card {
-                        title: root.cardTitle(root.nOamd, qsTr("Objects · OAMD"))
+                        ordinal: root.cardOrdinal(root.nOamd)
+                        title: qsTr("Objects · OAMD")
+                        framed: true
                         visible: root.ac4 === undefined && root.hasOamdTable
 
                         ColumnLayout {
@@ -728,7 +755,9 @@ Item {
                     }
 
                     Card {
-                        title: root.cardTitle(root.nProbe, qsTr("Probe summary"))
+                        ordinal: root.cardOrdinal(root.nProbe)
+                        title: qsTr("Probe summary")
+                        framed: true
                         visible: root.ac4 === undefined && Object.keys(root.probe).length > 0
 
                         GridLayout {

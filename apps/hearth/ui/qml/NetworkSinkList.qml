@@ -52,13 +52,13 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.gap
 
-        Button {
+        AppButton {
             objectName: "networkNewGroup"
             text: qsTr("+ New group…")
             enabled: NetworkController.canCreateGroups
             onClicked: NetworkController.createGroup(qsTr("New group"))
         }
-        Button {
+        AppButton {
             objectName: "networkRescan"
             text: qsTr("↻ Look again")
             onClicked: NetworkController.rescan()
@@ -256,6 +256,15 @@ ColumnLayout {
                                 Layout.minimumWidth: 0
                                 text: row.modelData.subtitle
                                 color: Theme.textMuted
+                                font.pixelSize: Theme.fontSmall
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
+                                visible: row.modelData.notice.length > 0
+                                text: row.modelData.notice
+                                color: Theme.bad
                                 font.pixelSize: Theme.fontSmall
                                 elide: Text.ElideRight
                             }

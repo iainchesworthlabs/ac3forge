@@ -10,8 +10,13 @@
 #include <cstring>
 #include <iterator>
 #include <string>
+#include <vector>
 
+#include "esp_chip_info.h"
 #include "esp_http_server.h"
+#include "esp_psram.h"
+
+#include "ac3forge/hardware_info.hpp"
 
 // The web UI's two files. CMakeLists.txt embeds them (EMBED_FILES) and they stay
 // in flash. ESP-IDF names each symbol after the file's base name, which is why
@@ -110,6 +115,145 @@ void append_levels(std::string& out, const char* key, const std::vector<float>& 
     out += ']';
 }
 
+// A JSON array of strings: GET /hardware's "capabilities" and "notices".
+// Placed here, ABOVE the sendspin object's own appender (which follows
+// straight after) rather than below it or between on_status and on_play
+// further down: apps/wasm/tests/device-ui/contract.spec.js extracts each of
+// those two functions' own keys by searching this file's plain text between
+// their names, so anything of this feature's sitting inside either span
+// would read as one of THEIR fields. Everything GET /hardware writes stays
+// entirely above both spans instead.
+void append_strings(std::string& out, const char* key, const std::vector<std::string>& values) {
+    append_key(out, key);
+    out += '[';
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i > 0) {
+            out += ',';
+        }
+        append_json_string(out, values[i]);
+    }
+    out += ']';
+}
+
+// esp_chip_info()'s model, named - provision.cpp's own device_info answer
+// names four of these; this covers every model ESP-IDF v6.1 knows, since a
+// self-report is exactly the place a fifth one should not silently read
+// "unknown" for want of a case added there too.
+const char* chip_name(esp_chip_model_t model) {
+    switch (model) {
+        case CHIP_ESP32:
+            return "ESP32";
+        case CHIP_ESP32S2:
+            return "ESP32-S2";
+        case CHIP_ESP32S3:
+            return "ESP32-S3";
+        case CHIP_ESP32C3:
+            return "ESP32-C3";
+        case CHIP_ESP32C2:
+            return "ESP32-C2";
+        case CHIP_ESP32C6:
+            return "ESP32-C6";
+        case CHIP_ESP32H2:
+            return "ESP32-H2";
+        case CHIP_ESP32P4:
+            return "ESP32-P4";
+        case CHIP_ESP32C61:
+            return "ESP32-C61";
+        case CHIP_ESP32C5:
+            return "ESP32-C5";
+        case CHIP_ESP32H21:
+            return "ESP32-H21";
+        case CHIP_ESP32H4:
+            return "ESP32-H4";
+        case CHIP_ESP32S31:
+            return "ESP32-S31";
+        default:
+            return "unknown";
+    }
+}
+
+// Gathered once, in Control::start: nothing here changes while the board
+// runs, unlike everything /status reports. CONFIG_IDF_TARGET and
+// CONFIG_SOC_CPU_HAS_FPU are this build's own, always-defined macros;
+// esp_chip_info and esp_psram_get_size read the silicon actually under it.
+HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
+    HardwareFacts facts;
+    facts.target = CONFIG_IDF_TARGET;
+    esp_chip_info_t chip{};
+    esp_chip_info(&chip);
+    facts.chip = chip_name(chip.model);
+    facts.revision_major = chip.revision / 100;
+    facts.revision_minor = chip.revision % 100;
+    facts.cores = chip.cores;
+#if CONFIG_SOC_CPU_HAS_FPU
+    facts.fpu = true;
+#endif
+    facts.cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+    // Guarded on the Kconfig symbol, not just called unconditionally: a
+    // target with no PSRAM bus at all (the ESP32-C6 sink) never exposes
+    // esp_psram_get_size() to the linker in the first place, unlike a target
+    // where CONFIG_SPIRAM is merely off by choice - CONFIG_SPIRAM reads as
+    // unset either way, so this one guard covers both without needing to
+    // tell them apart. Still reports the real runtime figure, not just
+    // whether Kconfig asked for PSRAM, on every target where the option
+    // exists at all (this component's own CMakeLists.txt comment).
+#if CONFIG_SPIRAM
+    facts.psram_bytes = esp_psram_get_size();
+#endif
+    if (handlers.sink_max_slots) {
+        facts.sink_max_slots = handlers.sink_max_slots();
+    }
+// The ESP32-P4's own pre-production-silicon accommodation
+// (docs/platforms/bare-metal/esp32-p4.md, "The chip revision, and what it
+// blocks"): a build that lowers the bootloader's revision floor below the
+// default v3.1 to admit pre-production silicon can end up running on
+// silicon that actually reaches v3.0 - the one direction noticeable post-
+// boot, since anything genuinely below whatever floor THIS build set never
+// reaches this line at all, refused by the bootloader itself before
+// app_main runs. 300 (v3.0), not this build's own lowered floor, because
+// v3.0 is where TWO things this build's own Kconfig chose conservatively
+// both change: hal/i2s_ll.h's own I2S_LL_DEFAULT_CLK_SRC switches from
+// I2S_CLK_SRC_XTAL to I2S_CLK_SRC_PLL_160M, and esp_system's own
+// Kconfig.cpu only offers 400 MHz (esp32p4/Kconfig.cpu) once
+// ESP32P4_SELECTS_REV_LESS_V3 is unset - both facts worth a chip actually
+// there knowing about, which nothing below v3.0 (this board's own v1.3
+// included) unlocks regardless of how low this build's floor goes.
+#if CONFIG_IDF_TARGET_ESP32P4 && CONFIG_ESP32P4_SELECTS_REV_LESS_V3
+    facts.revision_notice_at = 300;  // v3.0
+    facts.revision_floor_cost =
+        "This build was compiled to also accept older, pre-production silicon: it runs the "
+        "CPU at " + std::to_string(facts.cpu_freq_mhz) + " MHz rather than 400 (esp32p4/"
+        "Kconfig.cpu), and falls back to the 40 MHz crystal for I2S rather than the 160 MHz "
+        "PLL v3.0+ silicon supports (I2S_CLK_SRC_XTAL/PLL_160M, hal/i2s_ll.h) - a build that "
+        "required v3.0 or newer could reach both.";
+#endif
+    return facts;
+}
+
+std::string build_hardware_json(const ControlHandlers& handlers) {
+    const HardwareFacts facts = gather_hardware_facts(handlers);
+    const HardwareReport report = describe_hardware(facts);
+    std::string out = "{";
+    append_key(out, "target");
+    append_json_string(out, facts.target);
+    append_key(out, "chip");
+    append_json_string(out, facts.chip);
+    append_key(out, "revision");
+    append_json_string(out, std::to_string(facts.revision_major) + "." +
+                                std::to_string(facts.revision_minor));
+    append_number(out, "cores", static_cast<unsigned long long>(facts.cores));
+    append_bool(out, "fpu", facts.fpu);
+    append_number(out, "cpu_freq_mhz", static_cast<unsigned long long>(facts.cpu_freq_mhz));
+    append_number(out, "psram_bytes", static_cast<unsigned long long>(facts.psram_bytes));
+    if (facts.sink_max_slots > 0) {
+        append_number(out, "sink_max_slots", static_cast<unsigned long long>(facts.sink_max_slots));
+    }
+    append_strings(out, "capabilities", report.capabilities);
+    append_strings(out, "notices", report.notices);
+    out += "}\n";
+    return out;
+}
+
 // The "sendspin" object: see ControlSendspin.
 void append_sendspin(std::string& out, const ControlSendspin& s) {
     out += '{';
@@ -191,6 +335,10 @@ esp_err_t send_file(httpd_req_t* req, const char* type, const char* begin, const
 struct Control::Impl {
     ControlHandlers handlers;
     httpd_handle_t server = nullptr;
+    // Built once in Control::start, from the handlers given then: nothing in
+    // it changes while the board runs, so on_hardware has nothing to compute
+    // and no player to read.
+    std::string hardware_json;
 
     static Impl* self(httpd_req_t* req) { return static_cast<Impl*>(req->user_ctx); }
 
@@ -206,12 +354,20 @@ struct Control::Impl {
                          ac3forge_ui_js_end);
     }
 
+    static esp_err_t on_hardware(httpd_req_t* req) {
+        httpd_resp_set_type(req, "application/json");
+        const std::string& body = self(req)->hardware_json;
+        return httpd_resp_send(req, body.c_str(), static_cast<ssize_t>(body.size()));
+    }
+
     static esp_err_t on_api(httpd_req_t* req) {
         return send_text(req, "200 OK",
                          "ac3forge player\n"
                          "GET  /              a web page that shows and drives the player\n"
                          "GET  /api           this list\n"
                          "GET  /status        what is playing, as JSON\n"
+                         "GET  /hardware      what this board is - chip, revision, FPU, PSRAM, "
+                         "and this sink's own ceiling - as JSON, once at startup\n"
                          "POST /play          body: a URL or path to play\n"
                          "POST /stop\n"
                          "POST /volume        body: 0.0 to 1.0\n"
@@ -533,6 +689,7 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::si
     }
     impl_ = new Impl{};
     impl_->handlers = handlers;
+    impl_->hardware_json = build_hardware_json(handlers);
 
     // Copied into value-initialised httpd_uri_t below: the SDK's struct has
     // WebSocket members when a project turns WebSocket support on, as the
@@ -547,6 +704,7 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::si
         {.uri = "/ui.js", .method = HTTP_GET, .handler = &Impl::on_script},
         {.uri = "/api", .method = HTTP_GET, .handler = &Impl::on_api},
         {.uri = "/status", .method = HTTP_GET, .handler = &Impl::on_status},
+        {.uri = "/hardware", .method = HTTP_GET, .handler = &Impl::on_hardware},
         {.uri = "/play", .method = HTTP_POST, .handler = &Impl::on_play},
         {.uri = "/stop", .method = HTTP_POST, .handler = &Impl::on_stop},
         {.uri = "/volume", .method = HTTP_POST, .handler = &Impl::on_volume},

@@ -298,6 +298,12 @@ QtObject {
     readonly property int fontMono: Math.round(11 * fontScale)
     readonly property int fontMicro: Math.round(10 * fontScale)
     readonly property int fontFine: Math.round(9 * fontScale)
+    // The tracking the design gives its small uppercase labels - section
+    // headers, table column heads, eyebrows. Measured off the mockups, where
+    // "NOW PLAYING" at fontSmall runs about a pixel per glyph wider than the
+    // same string set solid. In pixels, so it follows fontScale with the
+    // type it spaces.
+    readonly property real trackingWide: 1.2 * fontScale
 
     // The handoff's faces, resolved against what this machine actually has:
     // Archivo (weight 800 headings) with the platform UI face as the
@@ -331,6 +337,33 @@ QtObject {
         if (installed.indexOf("Consolas") >= 0) return "Consolas";
         return "monospace";
     }
+
+    // ---- icons --------------------------------------------------------
+    // Material Symbols Sharp (apps/gui/fonts/MaterialSymbolsSharp-Regular.ttf,
+    // Apache License 2.0), subset to the handful of glyphs Hearth's
+    // transport bar and queue controls use - only Hearth registers this
+    // face today (apps/hearth/ui/main.cpp), so the probe falls back to the
+    // platform font everywhere else, the same shape headingFamily/
+    // monoFamily above already use for a face that might not be installed.
+    // Named per Material Symbols' own icon name so a codepoint is never
+    // copied by hand twice; add another by looking it up at
+    // github.com/google/material-design-icons and re-subsetting the face
+    // (apps/hearth/ui/CMakeLists.txt's own comment on the font resource
+    // says how) rather than guessing a codepoint.
+    readonly property string iconFamily: {
+        const installed = Qt.fontFamilies();
+        return installed.indexOf("Material Symbols Sharp") >= 0
+               ? "Material Symbols Sharp" : Application.font.family;
+    }
+    readonly property int iconSize: Math.round(18 * fontScale)
+    readonly property string iconPlayArrow: ""
+    readonly property string iconPause: ""
+    readonly property string iconStop: ""
+    readonly property string iconSkipPrevious: ""
+    readonly property string iconSkipNext: ""
+    readonly property string iconCreateNewFolder: ""
+    readonly property string iconAdd: ""
+    readonly property string iconVolumeUp: ""
 
     // ---- legacy names --------------------------------------------------
     // Kept so Card.qml, ChannelMeter.qml, SoundfieldView.qml and the not-yet-

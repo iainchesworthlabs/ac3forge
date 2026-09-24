@@ -69,7 +69,8 @@ jobs:
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
-          pip install --disable-pip-version-check --upgrade "idf-component-manager~=3.1"
+          pip install --disable-pip-version-check --require-hashes \
+            -r "$GITHUB_WORKSPACE/requirements/requirements-esp-component.txt"
           compote version
 
       # The manifest's own schema. Cheap, and it fails on things the pack below
@@ -129,7 +130,9 @@ jobs:
           python-version: "3.13"
 
       - name: Install ESPHome
-        run: pip install --disable-pip-version-check esphome
+        run: |
+          pip install --disable-pip-version-check --require-hashes \
+            -r requirements/requirements-esphome.txt
 
       # The test config uses a LOCAL source pointing at the working tree, not
       # the git one the docs show - a git source would validate whatever is on
@@ -184,7 +187,8 @@ jobs:
           # Same pin as the pack job above, and for the same reason - this one
           # also runs `compote component pack`, and an upload is a worse place
           # to discover a flag has moved.
-          pip install --disable-pip-version-check --upgrade "idf-component-manager~=3.1"
+          pip install --disable-pip-version-check --require-hashes \
+            -r "$GITHUB_WORKSPACE/requirements/requirements-esp-component.txt"
           version="${GITHUB_REF_NAME#v}"
           python tools/packaging/pack_esp_component.py --version "$version" --verify
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -192,11 +196,16 @@ jobs:
       - name: Upload
         env:
           IDF_COMPONENT_API_TOKEN: ${{ secrets.IDF_COMPONENT_API_TOKEN }}
+          # Env, not spliced straight into the script (zizmor's
+          # template-injection check, alerts #336/#337): steps.pack.outputs.version
+          # is only ever a tag name today, but this is the same guard regardless
+          # of what a future step ever sets it from.
+          VERSION: ${{ steps.pack.outputs.version }}
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
           compote component upload \
             --namespace iainchesworthlabs \
             --name ac3forge \
-            --version "${{ steps.pack.outputs.version }}" \
-            --archive "dist/esp-component/ac3forge_${{ steps.pack.outputs.version }}.tgz"
+            --version "$VERSION" \
+            --archive "dist/esp-component/ac3forge_${VERSION}.tgz"

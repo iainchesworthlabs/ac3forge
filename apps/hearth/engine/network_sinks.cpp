@@ -65,6 +65,13 @@ NetworkSinks::~NetworkSinks() {
     // explicitly here, before any other member's destructor runs, closes
     // that window regardless of member declaration order.
     browser_.reset();
+    // groups_ holds shared_ptr<Group>, whose destructor (~Group -> Group::State::leave()/stop())
+    // calls back into host_'s ServerHost::State through Group::State::host, a non-owning pointer
+    // - the same hazard this destructor already guards against for browser_/host_ themselves, just
+    // in the opposite direction: groups_ must be torn down while host_ is still alive, not after.
+    // Confirmed by a real hang otherwise: ~Group -> leave() -> host->find() -> State::all()
+    // locking a mutex on a ServerHost::State host_.reset() below had already destroyed.
+    groups_.clear();
     host_.reset();
 }
 
@@ -141,6 +148,69 @@ void NetworkSinks::forget_pairing(const std::string& id) {
     if (!client_id.empty() && host_) {
         host_->unpair(client_id);
     }
+}
+
+bool NetworkSinks::push_sink_settings(const std::string& id, ss::ac3forge::Settings settings) {
+    std::string client_id;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = sinks_.find(id);
+        if (it == sinks_.end() || !it->second.client.has_value() ||
+            !it->second.client->ac3forge_support.has_value()) {
+            return false;
+        }
+        client_id = it->second.client_id;
+        // Incremented here, under the lock, whether or not the send below
+        // succeeds: a number spent on a failed attempt is harmless (the
+        // wire has no monotonicity rule to violate), while two calls racing
+        // to read the same number before either bumps it is not.
+        settings.revision = it->second.next_settings_revision++;
+    }
+    if (client_id.empty() || !host_) {
+        return false;
+    }
+    ss::ac3forge::CommandMessage message;
+    message.command = ss::ac3forge::Command::kSettings;
+    message.settings = settings;
+    const bool sent = host_->ac3forge_command(client_id, message);
+    if (sent) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = sinks_.find(id);
+        if (it != sinks_.end()) {
+            it->second.intended_settings = settings;
+            publish_locked();
+        }
+    }
+    return sent;
+}
+
+bool NetworkSinks::push_sink_identify(const std::string& id, std::optional<ss::ac3forge::Identify> identify) {
+    std::string client_id;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = sinks_.find(id);
+        if (it == sinks_.end() || !it->second.client.has_value() ||
+            !it->second.client->ac3forge_support.has_value()) {
+            return false;
+        }
+        client_id = it->second.client_id;
+    }
+    if (client_id.empty() || !host_) {
+        return false;
+    }
+    ss::ac3forge::CommandMessage message;
+    message.command = ss::ac3forge::Command::kIdentify;
+    message.identify = identify;
+    const bool sent = host_->ac3forge_command(client_id, message);
+    if (sent) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = sinks_.find(id);
+        if (it != sinks_.end()) {
+            it->second.identify_slot = identify.has_value() ? std::optional<std::int32_t>(identify->output) : std::nullopt;
+            publish_locked();
+        }
+    }
+    return sent;
 }
 
 std::string NetworkSinks::create_group(const std::string& name) {
@@ -318,6 +388,12 @@ NetworkStatus NetworkSinks::status() const {
     return status;
 }
 
+std::shared_ptr<sendspin::Group> NetworkSinks::group(const std::string& group_id) const {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    const auto found = groups_.find(group_id);
+    return found != groups_.end() ? found->second.group : nullptr;
+}
+
 SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& entry) const {
     SinkFacts facts;
     facts.id = instance;
@@ -332,6 +408,10 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
         facts.pair_state =
             client.psk == ss::handshake::PskCategory::kLongTerm ? PairState::kPaired : PairState::kNotPaired;
         facts.roles = client.supported_roles;
+        facts.hardware = client.device_info.product_name;
+        facts.firmware = client.device_info.software_version;
+        facts.ac3forge_support = client.ac3forge_support;
+        facts.ac3forge_state = client.ac3forge_state;
 
         if (client.ac3forge_support.has_value()) {
             facts.kind = SinkKind::kHearthSink;
@@ -360,6 +440,10 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
         facts.clock_converged = client.available;
     }
 
+    if (const auto notice = notice_by_instance_.find(instance); notice != notice_by_instance_.end()) {
+        facts.notice = notice->second;
+    }
+
     // ac3hearth-testsink names itself in DeviceInfo::product_name; nothing
     // else in client/hello says "this is a test double" more directly than
     // that, so this is a heuristic, not a protocol fact.
@@ -375,6 +459,9 @@ SinkFacts NetworkSinks::facts_locked(const std::string& instance, const Entry& e
             }
         }
     }
+
+    facts.intended_settings = entry.intended_settings;
+    facts.identify_slot = entry.identify_slot;
 
     return facts;
 }
@@ -458,6 +545,7 @@ void NetworkSinks::on_lost(const std::string& instance) {
     if (it != sinks_.end() && !it->second.client.has_value()) {
         instance_by_url_.erase(it->second.service.url().value_or(std::string()));
         sinks_.erase(it);
+        notice_by_instance_.erase(instance);
         publish_locked();
     }
 }
@@ -474,6 +562,9 @@ void NetworkSinks::on_client(const ss::ClientView& client) {
             return;
         }
         const std::string& instance = url_it->second;
+        // A connection reaching on_client() at all supersedes any notice left
+        // by a past disconnect on this instance.
+        notice_by_instance_.erase(instance);
         instance_by_client_id_[client.client_id] = instance;
         Entry& entry = sinks_[instance];
         entry.client = client;
@@ -503,6 +594,34 @@ void NetworkSinks::on_client_gone(const std::string& client_id) {
         sinks_.erase(sink_it);
     }
     instance_by_client_id_.erase(id_it);
+    publish_locked();
+}
+
+void NetworkSinks::on_client_goodbye(const std::string& client_id, ss::messages::GoodbyeReason reason) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    const auto id_it = instance_by_client_id_.find(client_id);
+    if (id_it == instance_by_client_id_.end()) {
+        return;
+    }
+    using ss::messages::GoodbyeReason;
+    switch (reason) {
+        case GoodbyeReason::kAnotherServer:
+            notice_by_instance_[id_it->second] = "In use by another server.";
+            break;
+        case GoodbyeReason::kConcurrentAttempt:
+            notice_by_instance_[id_it->second] = "Another server is pairing with this sink right now.";
+            break;
+        case GoodbyeReason::kShutdown:
+        case GoodbyeReason::kRestart:
+        case GoodbyeReason::kUserRequest:
+        case GoodbyeReason::kUnauthorized:
+        case GoodbyeReason::kPairingRequired:
+        case GoodbyeReason::kUnpaired:
+        default:
+            // Not "someone else is using this sink" - on_client() and
+            // on_client_gone() already cover what the row shows for these.
+            return;
+    }
     publish_locked();
 }
 

@@ -322,4 +322,13 @@ TEST_CASE("output selector: the Output screen's choices reach the decision",
     wav.sample_rate = 48000;
     wav.channels = 2;
     CHECK(selector.choose(wav).mode == OutputMode::kLocalPcm);
+
+    // A group, selected and ready: chosen ahead of any local endpoint (the
+    // same "never quietly replaced" ordering choose_output() itself
+    // documents), and its name reaches the choice - the Network page<->
+    // Player coupling (still to land) has this to poll.
+    selector.set_preferences(OutputPreferences{.group_name = "Kitchen", .group_ready = true});
+    choice = selector.choose(eac3_item());
+    CHECK(choice.mode == OutputMode::kNetworkGroup);
+    CHECK(choice.group_name == "Kitchen");
 }

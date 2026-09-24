@@ -30,6 +30,7 @@ const REPLIES = {
         'GET  /              a web page that shows and drives the player',
         'GET  /api           this list',
         'GET  /status        what is playing, as JSON',
+        "GET  /hardware      what this board is - chip, revision, FPU, PSRAM, and this sink's own ceiling - as JSON, once at startup",
         'POST /play          body: a URL or path to play',
         'POST /stop',
         'POST /volume        body: 0.0 to 1.0',
@@ -74,6 +75,7 @@ const ROUTES = [
     'GET /ui.js',
     'GET /api',
     'GET /status',
+    'GET /hardware',
     'POST /play',
     'POST /stop',
     'POST /volume',
@@ -222,6 +224,28 @@ function idleSendspin() {
     };
 }
 
+// GET /hardware's board, as append_hardware/build_hardware_json would write
+// it for an ESP32-S3 with no PSRAM fitted (the shipped Sendspin sink's own
+// default shape) - static for the run, unlike everything above.
+function defaultHardware() {
+    return {
+        target: 'esp32s3',
+        chip: 'ESP32-S3',
+        revision: '0.2',
+        cores: 2,
+        fpu: true,
+        cpu_freq_mhz: 240,
+        psram_bytes: 0,
+        sink_max_slots: 8,
+        capabilities: [
+            '2 cores, a hardware floating-point unit',
+            'Running at 240 MHz',
+            "This sink's bus reaches up to 8 slots",
+        ],
+        notices: ['No PSRAM in this build: a wide buffer ring, deep DMA queues or an object reconstruction buffer fall back to internal RAM, or may not fit at all.'],
+    };
+}
+
 // A paired server playing a 5.1 stream to the board in bursts.
 function playingSendspin() {
     return {
@@ -301,6 +325,7 @@ async function startStub() {
         // firmware with no player, whose /status has no "sendspin" key, and
         // null for one whose player did not start.
         sendspin: idleSendspin(),
+        hardware: defaultHardware(),
         player: null, // the play in progress: {stream, stats, total, fails}
         lastStats: idleStats(), // the last play that ended by itself, until another begins
         lastStream: null,
@@ -410,6 +435,8 @@ async function startStub() {
             case 'GET /status':
                 advance();
                 return send(res, 200, payload === null ? statusJson(device) : payload, 'application/json');
+            case 'GET /hardware':
+                return send(res, 200, JSON.stringify(device.hardware) + '\n', 'application/json');
             case 'POST /play':
                 if (!body) {
                     return send(res, 400, REPLIES.playEmpty);
@@ -600,6 +627,7 @@ module.exports = {
     statusJson,
     idleSendspin,
     playingSendspin,
+    defaultHardware,
     REPLIES,
     ROUTES,
     POLICY,

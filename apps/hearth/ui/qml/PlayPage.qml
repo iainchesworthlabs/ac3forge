@@ -54,6 +54,24 @@ Item {
         return mm + ":" + (ss < 10 ? "0" : "") + ss;
     }
 
+    // The queue panel's own header caption ("6 items · 31:22", main-play.png,
+    // "01 QUEUE"): total duration is the sum of every item's own durationMs
+    // once it has one, omitted (count only) until at least one item has been
+    // probed - the same progressive-fill reasoning queueMetadataLine() below
+    // already follows for a single row.
+    function queueSummary() {
+        var queue = HearthController.queue;
+        var totalMs = 0;
+        for (var i = 0; i < queue.length; i++) {
+            totalMs += queue[i].durationMs || 0;
+        }
+        var parts = [qsTr("%1 items").arg(queue.length)];
+        if (totalMs > 0) {
+            parts.push(root.formatDuration(totalMs));
+        }
+        return parts.join(" · ");
+    }
+
     // The queue row's own metadata line (main-play.png, "01 QUEUE"): whatever
     // a probe has found so far, joined with " · " and skipping anything not
     // known yet - HearthController.queue's own fields fill in progressively,
@@ -157,30 +175,26 @@ Item {
             Layout.fillHeight: true
             spacing: Theme.gap
 
-            RowLayout {
-                Layout.fillWidth: true
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("Queue · %1 items").arg(HearthController.queue.length)
-                    color: Theme.textMuted
-                    font.pixelSize: Theme.fontSmall
-                    font.bold: true
-                    font.capitalization: Font.AllUppercase
-                }
+            SectionHeader {
+                ordinal: "01"
+                label: qsTr("Queue")
+                summary: root.queueSummary()
             }
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
 
-                Button {
+                AppButton {
                     objectName: "addFiles"
+                    glyph: Theme.iconAdd
                     text: qsTr("Add files…")
                     Layout.fillWidth: true
                     onClicked: addFilesDialog.open()
                 }
-                Button {
+                AppButton {
                     objectName: "addFolder"
+                    glyph: Theme.iconCreateNewFolder
                     text: qsTr("Add folder…")
                     Layout.fillWidth: true
                     onClicked: addFolderDialog.open()
@@ -209,9 +223,14 @@ Item {
                     required property int index
                     width: queueList.width
                     height: content.implicitHeight + Theme.pad
-                    color: modelData.current ? Theme.accent100 : Theme.surface
-                    border.color: modelData.current ? Theme.accent : Theme.border
-                    border.width: modelData.current ? 2 : 1
+                    // A row at rest carries no box at all - only the item
+                    // playing now is drawn as one (components.png, "LIST
+                    // ROWS · REST, CHOSEN, FOCUSED"). Boxing every row made
+                    // the list read as a stack of cards and left the current
+                    // one barely distinguishable from its neighbours.
+                    color: modelData.current ? Theme.accent100 : "transparent"
+                    border.color: Theme.accent
+                    border.width: modelData.current ? 1 : 0
                     radius: Theme.radius
 
                     // codecBadge answers "" for an item nothing has probed
@@ -242,13 +261,21 @@ Item {
                                 visible: row.badge.length > 0
                                 Layout.preferredWidth: badgeLabel.implicitWidth + 8
                                 Layout.preferredHeight: badgeLabel.implicitHeight + 2
-                                color: modelData.playable ? Theme.accent : Theme.neutral400
+                                // Accent only on the item playing now; every
+                                // other row's badge is neutral, whether or
+                                // not that item is playable (components.png's
+                                // own list rows - the "not playable" pill on
+                                // the right is what says that, not the
+                                // badge). neutral800 is the far end of the
+                                // ramp in BOTH modes, so bg always reads on
+                                // it.
+                                color: modelData.current ? Theme.accent : Theme.neutral800
                                 radius: 2
                                 Text {
                                     id: badgeLabel
                                     anchors.centerIn: parent
                                     text: row.badge
-                                    color: Theme.accentText
+                                    color: modelData.current ? Theme.accentText : Theme.bg
                                     font.bold: true
                                     font.pixelSize: Theme.fontMicro
                                 }
@@ -379,7 +406,9 @@ Item {
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("02 Now playing")
+                    ordinal: "02"
+                    title: qsTr("Now playing")
+                    flat: true
 
                     Text {
                         Layout.fillWidth: true
@@ -387,7 +416,7 @@ Item {
                               ? HearthController.queue[HearthController.currentIndex].title
                               : qsTr("Nothing playing")
                         color: Theme.text
-                        font.pixelSize: Theme.fontHeading
+                        font.pixelSize: Theme.fontTitle
                         font.bold: true
                         elide: Text.ElideRight
                     }
@@ -408,7 +437,9 @@ Item {
                 }
 
                 Card {
-                    title: qsTr("03 Levels · at play time")
+                    ordinal: "03"
+                    title: qsTr("Levels · at play time")
+                    flat: true
                     summary: HearthController.deviceName.length > 0
                              ? qsTr("%1 · %2 outputs").arg(HearthController.deviceName)
                                                        .arg(HearthController.routingOutputs)
@@ -445,6 +476,14 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: Theme.gap / 2
                                 readonly property int routedTo: HearthController.routing[levelRow.index] ?? -1
+                                // Past -6 dBFS the bar turns accent, before
+                                // anything has actually clipped - the design
+                                // system's own "LEVEL, PAST -6 DBFS,
+                                // CLIPPED, NOT FED" meter states
+                                // (components.png). -6 is where its own axis
+                                // puts the last division too.
+                                readonly property bool hot: levelRow.modelData.clipped
+                                                            || levelRow.modelData.peakDb > -6.0
 
                                 Text {
                                     Layout.preferredWidth: 28
@@ -464,7 +503,7 @@ Item {
                                         anchors.top: parent.top
                                         anchors.bottom: parent.bottom
                                         width: parent.width * root.levelFraction(levelRow.modelData.rmsDb)
-                                        color: levelRow.modelData.clipped ? Theme.bad : Theme.neutral800
+                                        color: levelRow.hot ? Theme.bad : Theme.neutral800
                                     }
                                     Rectangle {
                                         x: Math.max(0, Math.min(parent.width - 2,
@@ -486,7 +525,12 @@ Item {
                                     Layout.preferredWidth: 44
                                     horizontalAlignment: Text.AlignRight
                                     text: Number(levelRow.modelData.peakDb).toFixed(1)
-                                    color: Theme.text
+                                    // The readout turns accent once the
+                                    // channel has actually clipped, not
+                                    // merely gone hot (components.png's
+                                    // CLIPPED row is the only one whose
+                                    // number is red).
+                                    color: levelRow.modelData.clipped ? Theme.bad : Theme.text
                                     font.family: Theme.monoFamily
                                     font.pixelSize: Theme.fontSmall
                                 }
@@ -509,9 +553,27 @@ Item {
 
                                 Text {
                                     Layout.preferredWidth: 68
-                                    text: levelRow.routedTo >= 0
-                                          ? qsTr("→ out %1").arg(levelRow.routedTo + 1) : qsTr("unrouted")
+                                    // "1 FL" - the output's own number and
+                                    // the name the device gives it, the same
+                                    // pair the design system's meters and
+                                    // the Speakers routing grid's column
+                                    // headers both show (components.png).
+                                    // The bare number when the device names
+                                    // no output, since outputNames is empty
+                                    // where even the standard arrangement
+                                    // cannot name one (HearthController's
+                                    // own comment).
+                                    text: {
+                                        if (levelRow.routedTo < 0) {
+                                            return qsTr("unrouted");
+                                        }
+                                        const name = HearthController.outputNames[levelRow.routedTo] ?? "";
+                                        return name.length > 0
+                                               ? qsTr("%1 %2").arg(levelRow.routedTo + 1).arg(name)
+                                               : String(levelRow.routedTo + 1);
+                                    }
                                     color: Theme.textMuted
+                                    font.family: Theme.monoFamily
                                     font.pixelSize: Theme.fontMicro
                                 }
                             }
@@ -528,7 +590,9 @@ Item {
                 }
 
                 Card {
-                    title: qsTr("04 Loudness · BS.1770-4")
+                    ordinal: "04"
+                    title: qsTr("Loudness · BS.1770-4")
+                    flat: true
                     summary: Object.keys(HearthController.loudness).length > 0
                              ? qsTr("Integrated since this item started")
                              : qsTr("Nothing playing.")
@@ -560,35 +624,23 @@ Item {
                                 { key: "truePeak", label: qsTr("TRUE PEAK"), unit: qsTr("dBTP") }
                             ]
 
-                            delegate: ColumnLayout {
+                            delegate: StatTile {
                                 id: loudnessTile
                                 required property var modelData
-                                Layout.fillWidth: true
-                                spacing: 2
-
-                                Text {
-                                    text: loudnessTile.modelData.label
-                                    color: Theme.textMuted
-                                    font.pixelSize: Theme.fontMicro
-                                    font.bold: true
-                                }
-                                Text {
-                                    text: HearthController.loudness[loudnessTile.modelData.key] !== undefined
-                                          ? Number(HearthController.loudness[loudnessTile.modelData.key]).toFixed(1)
-                                            + " " + loudnessTile.modelData.unit
-                                          : qsTr("—")
-                                    color: Theme.text
-                                    font.pixelSize: Theme.fontBody
-                                    font.bold: true
-                                    font.family: Theme.monoFamily
-                                }
+                                label: loudnessTile.modelData.label
+                                value: HearthController.loudness[loudnessTile.modelData.key] !== undefined
+                                       ? Number(HearthController.loudness[loudnessTile.modelData.key]).toFixed(1)
+                                         + " " + loudnessTile.modelData.unit
+                                       : qsTr("—")
                             }
                         }
                     }
                 }
 
                 Card {
-                    title: qsTr("05 This frame")
+                    ordinal: "05"
+                    title: qsTr("This frame")
+                    flat: true
                     summary: Object.keys(HearthController.thisFrame).length > 0
                              ? qsTr("At play time · access unit %1")
                                    .arg(Number(HearthController.thisFrame.sequence).toLocaleString())
@@ -601,87 +653,42 @@ Item {
                         columnSpacing: Theme.gap
                         rowSpacing: Theme.gap / 2
 
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                text: qsTr("DIALNORM")
-                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                            Text {
-                                text: HearthController.thisFrame.dialnorm !== undefined
-                                      ? qsTr("−%1 dB").arg(HearthController.thisFrame.dialnorm) : qsTr("—")
-                                color: Theme.text; font.pixelSize: Theme.fontBody; font.bold: true
-                                font.family: Theme.monoFamily
-                            }
+                        StatTile {
+                            label: qsTr("DIALNORM")
+                            value: HearthController.thisFrame.dialnorm !== undefined
+                                   ? qsTr("−%1 dB").arg(HearthController.thisFrame.dialnorm) : qsTr("—")
                         }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                text: qsTr("COMPR")
-                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                            Text {
-                                text: HearthController.thisFrame.comprDb !== undefined
-                                      ? qsTr("%1 dB").arg(Number(HearthController.thisFrame.comprDb).toFixed(1))
-                                      : qsTr("—")
-                                color: Theme.text; font.pixelSize: Theme.fontBody; font.bold: true
-                                font.family: Theme.monoFamily
-                            }
+                        StatTile {
+                            label: qsTr("COMPR")
+                            value: HearthController.thisFrame.comprDb !== undefined
+                                   ? qsTr("%1 dB").arg(Number(HearthController.thisFrame.comprDb).toFixed(1))
+                                   : qsTr("—")
                         }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                text: qsTr("DYNRNG")
-                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                            Text {
-                                text: HearthController.thisFrame.dynrngMinDb !== undefined
-                                      ? qsTr("%1…%2 dB")
-                                            .arg(Number(HearthController.thisFrame.dynrngMinDb).toFixed(1))
-                                            .arg(Number(HearthController.thisFrame.dynrngMaxDb).toFixed(1))
-                                      : qsTr("—")
-                                color: Theme.text; font.pixelSize: Theme.fontBody; font.bold: true
-                                font.family: Theme.monoFamily
-                            }
+                        StatTile {
+                            label: qsTr("DYNRNG")
+                            value: HearthController.thisFrame.dynrngMinDb !== undefined
+                                   ? qsTr("%1…%2 dB")
+                                         .arg(Number(HearthController.thisFrame.dynrngMinDb).toFixed(1))
+                                         .arg(Number(HearthController.thisFrame.dynrngMaxDb).toFixed(1))
+                                   : qsTr("—")
                         }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                text: qsTr("SHORT BLOCKS")
-                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                            Text {
-                                // AC-3 only - UnitReport::short_blocks' own
-                                // comment says why E-AC-3 leaves this unset.
-                                text: HearthController.thisFrame.shortBlocks !== undefined
-                                      ? qsTr("%1 of %2").arg(HearthController.thisFrame.shortBlocks)
-                                                         .arg(HearthController.thisFrame.blocks)
-                                      : qsTr("n/a")
-                                color: Theme.text; font.pixelSize: Theme.fontBody; font.bold: true
-                                font.family: Theme.monoFamily
-                            }
+                        StatTile {
+                            label: qsTr("SHORT BLOCKS")
+                            // AC-3 only - UnitReport::short_blocks' own
+                            // comment says why E-AC-3 leaves this unset.
+                            value: HearthController.thisFrame.shortBlocks !== undefined
+                                   ? qsTr("%1 of %2").arg(HearthController.thisFrame.shortBlocks)
+                                                      .arg(HearthController.thisFrame.blocks)
+                                   : qsTr("n/a")
                         }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 2
-                            Text {
-                                text: qsTr("BITRATE")
-                                color: Theme.textMuted; font.pixelSize: Theme.fontMicro; font.bold: true
-                            }
-                            Text {
-                                // Absent for the stream's last unit, released
-                                // by finish() - UnitReport::bitrate_kbps' own
-                                // comment says why.
-                                text: HearthController.thisFrame.bitrateKbps !== undefined
-                                      ? qsTr("%1 kbit/s").arg(Math.round(HearthController.thisFrame.bitrateKbps))
-                                      : qsTr("—")
-                                color: Theme.text; font.pixelSize: Theme.fontBody; font.bold: true
-                                font.family: Theme.monoFamily
-                            }
+                        StatTile {
+                            label: qsTr("BITRATE")
+                            // Absent for the stream's last unit, released by
+                            // finish() - UnitReport::bitrate_kbps' own
+                            // comment says why.
+                            value: HearthController.thisFrame.bitrateKbps !== undefined
+                                   ? qsTr("%1 kbit/s").arg(Math.round(HearthController.thisFrame.bitrateKbps))
+                                   : qsTr("—")
                         }
                     }
                 }
@@ -722,7 +729,7 @@ Item {
         anchors.fill: parent
         onDropped: function(drop) {
             if (drop.hasUrls) {
-                HearthController.addFiles(drop.urls.map(function(u) { return u.toLocalFile ? u.toLocalFile() : u; }));
+                HearthController.addFiles(drop.urls.map(function(u) { return HearthController.urlToLocalFile(u); }));
             }
         }
     }
@@ -732,12 +739,12 @@ Item {
         title: qsTr("Add files")
         fileMode: FileDialog.OpenFiles
         nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
-        onAccepted: HearthController.addFiles(selectedFiles.map(function(u) { return u.toLocalFile(); }))
+        onAccepted: HearthController.addFiles(selectedFiles.map(function(u) { return HearthController.urlToLocalFile(u); }))
     }
 
     FolderDialog {
         id: addFolderDialog
         title: qsTr("Add folder")
-        onAccepted: HearthController.addFolder(selectedFolder.toLocalFile())
+        onAccepted: HearthController.addFolder(HearthController.urlToLocalFile(selectedFolder))
     }
 }

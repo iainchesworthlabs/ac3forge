@@ -51,6 +51,7 @@
 #include "engine_thread.hpp"
 #include "item_loader.hpp"
 #include "media_inspector.hpp"
+#include "network_output_status.hpp"
 #include "output_decision.hpp"
 #include "output_selector.hpp"
 #include "pairing_store.hpp"
@@ -863,9 +864,17 @@ void HearthController::start() {
     // the old bare-PcmSink construction gave, on the same default device
     // (best_for_pcm() picks it the same way DeviceSink::open() did with an
     // empty device id), until a dialog row pins a different one.
-    ac3::hearth::EngineOutputs outputs{.pcm = ac3::hearth::make_device_sink(std::string()),
-                                       .bitstream = {},
-                                       .endpoints = ac3::hearth::device_endpoints()};
+    // The resolver reads NetworkOutputStatus at each open(), never a value
+    // captured here - NetworkController may not even have start()ed yet at
+    // this point, let alone made the group a person later pins
+    // (network_output_status.hpp's own header comment).
+    ac3::hearth::EngineOutputs outputs{
+        .pcm = ac3::hearth::make_device_sink(std::string()),
+        .bitstream = {},
+        .group = ac3::hearth::make_group_sink([](const std::string& group_id) {
+            return ac3::hearth::ui::NetworkOutputStatus::instance().group(group_id);
+        }),
+        .endpoints = ac3::hearth::device_endpoints()};
     const ac3::hearth::EngineSettings loaded = current_settings(*store_);
     engine_ = std::make_unique<ac3::hearth::Engine>(
         std::move(outputs), ac3::hearth::ui::make_file_item_loader(), layout,
@@ -1039,6 +1048,40 @@ void HearthController::poll() {
     if (!engine_) {
         return;
     }
+    // A pinned group's readiness is live (a member can connect or drop at
+    // any time, independently of anything this controller's own commands
+    // do), so it is checked every tick here rather than only when
+    // selectOutputGroup() was last called - see that method's own comment.
+    // Posted only on a real change: set_output_preferences() is a command,
+    // and Player::refollow() already no-ops cheaply when nothing about the
+    // choice actually differs, but there is still no reason to cross the
+    // engine thread's queue every tick when it would.
+    if (!output_group_name_.isEmpty()) {
+        const std::string id = output_group_name_.toStdString();
+        const bool ready = ac3::hearth::ui::NetworkOutputStatus::instance().ready(id);
+        if (ready != output_group_ready_) {
+            output_group_ready_ = ready;
+            engine_->set_output_preferences(ac3::hearth::OutputPreferences{
+                .pinned = ac3::hearth::OutputMode::kNetworkGroup,
+                .follow_sink = true,
+                .group_name = id,
+                .group_ready = ready});
+        }
+    }
+    // Named spans inside this one function rather than nested scopes: it
+    // runs sixteen times a second and does five unrelated jobs, and a
+    // capture that attributes them all to one "hearth poll" zone cannot say
+    // which of them costs anything. AC3_ZONE_BEGIN/END exists for exactly
+    // this (see profiling.hpp's own comment on marking a section of an
+    // already-large function).
+    //
+    // The queue span is the one worth watching: every tick rebuilds a
+    // QVariantMap per queue item purely to compare it against the last
+    // tick's and usually discover nothing changed. That is cheap for the
+    // handful of items a queue normally holds and much less so after an
+    // "Add folder" of several hundred, which is the shape a capture would
+    // show here first.
+    AC3_ZONE_BEGIN(poll_queue_zone, "poll: queue");
     const ac3::hearth::EngineStatus status = engine_->status();
 
     QVariantList rows;
@@ -1054,7 +1097,9 @@ void HearthController::poll() {
         current_index_ = new_current;
         emit queueChanged();
     }
+    AC3_ZONE_END(poll_queue_zone);
 
+    AC3_ZONE_BEGIN(poll_transport_zone, "poll: transport");
     const QString new_state = transport_state_name(status.state);
     const QString new_output_reason = QString::fromStdString(status.output_reason);
     const QString new_note = QString::fromStdString(status.note);
@@ -1073,8 +1118,11 @@ void HearthController::poll() {
         emit stateChanged();
     }
 
+    AC3_ZONE_END(poll_transport_zone);
+
     // --- media information ------------------------------------------------
     // currentMedia follows the item playing now.
+    AC3_ZONE_BEGIN(poll_media_zone, "poll: media");
     QString new_now_playing_path;
     if (status.current != ac3::hearth::Queue::kNone && status.current < status.queue.size()) {
         new_now_playing_path = QString::fromStdString(status.queue[status.current].path);
@@ -1123,6 +1171,8 @@ void HearthController::poll() {
         emit inspectedMediaChanged();
     }
 
+    AC3_ZONE_END(poll_media_zone);
+
     // Read apart from status() - Engine::position()'s own comment says why -
     // and on its own signal, so the scrubber does not have to sit through
     // queue-row rebuilding sixty times a second just to hear it move.
@@ -1141,6 +1191,7 @@ void HearthController::poll() {
         emit decoderSettingsChanged();
     }
 
+    AC3_ZONE_BEGIN(poll_speakers_zone, "poll: speakers");
     const std::size_t slots = status.layout.slots();
     // The layout can change now (setLayoutText()/setHeights()/
     // setSpeakerSmall()), not just appear once, so everything keyed by slot
@@ -1237,6 +1288,9 @@ void HearthController::poll() {
         emit speakerSetupChanged();
     }
 
+    AC3_ZONE_END(poll_speakers_zone);
+
+    AC3_ZONE_BEGIN(poll_monitor_zone, "poll: monitor");
     // --- the play monitor: Engine::meters() and Engine::unit_report(), ----
     // read every tick the same as status() above - both calls have existed
     // on Engine since A3 (slices 6 and 8); this is the first place in the
@@ -1328,6 +1382,7 @@ void HearthController::poll() {
     if (monitor_changed) {
         emit monitorChanged();
     }
+    AC3_ZONE_END(poll_monitor_zone);
 }
 
 void HearthController::setDecoderSettings(const QVariantMap& settings) {
@@ -1417,10 +1472,39 @@ void HearthController::selectOutputDevice(const QString& deviceId) {
     if (!engine_ || deviceId.isEmpty()) {
         return;
     }
+    if (!output_group_name_.isEmpty()) {
+        output_group_name_.clear();
+        output_group_ready_ = false;
+        emit stateChanged();
+    }
     engine_->set_output_preferences(
         ac3::hearth::OutputPreferences{.pinned = ac3::hearth::OutputMode::kLocalPcm,
                                        .endpoint_id = deviceId.toStdString(),
                                        .follow_sink = true});
+}
+
+void HearthController::selectOutputGroup(const QString& groupId) {
+    if (!engine_) {
+        return;
+    }
+    output_group_name_ = groupId;
+    if (groupId.isEmpty()) {
+        output_group_ready_ = false;
+        emit stateChanged();
+        // Falls back to whatever set_output_preferences's own default
+        // (automatic) would otherwise choose - the same "pin nothing" state
+        // selectOutputDevice() has no way to reach today.
+        engine_->set_output_preferences(ac3::hearth::OutputPreferences{});
+        return;
+    }
+    const std::string id = groupId.toStdString();
+    output_group_ready_ = ac3::hearth::ui::NetworkOutputStatus::instance().ready(id);
+    emit stateChanged();
+    engine_->set_output_preferences(ac3::hearth::OutputPreferences{
+        .pinned = ac3::hearth::OutputMode::kNetworkGroup,
+        .follow_sink = true,
+        .group_name = id,
+        .group_ready = output_group_ready_});
 }
 
 void HearthController::setLayoutText(const QString& text) {

@@ -1,7 +1,9 @@
 # Copies the family's shared QML components (apps/gui/qml/*.qml: Theme, Card,
-# RailBlock, SegmentedControl, FocusRing) into a Qt application's own
-# qml/shared/ directory, rewriting `import Ac3Forge` to that application's own
-# module URI - generated INTO the source tree (ignored by git) rather than the
+# SectionHeader, StatTile, AppButton, AppCheckBox, IconButton, AppSlider, AppTextField, AppComboBox, RailBlock,
+# SegmentedControl, FocusRing) into a Qt
+# application's own qml/shared/ directory, rewriting `import Ac3Forge` to that
+# application's own module URI - generated INTO the source tree (ignored by
+# git) rather than the
 # build tree, because the QML ahead-of-time compiler names its cache files
 # after the path relative to the source directory, and a build-tree path
 # produces an unusable name with a drive letter in the middle of it.
@@ -37,7 +39,8 @@
 # out_files_var: name of a variable (in the caller's scope) to receive the
 #                list of generated file paths
 function(ac3forge_stage_shared_qml module_uri out_dir out_files_var)
-    set(names Theme.qml Card.qml RailBlock.qml SegmentedControl.qml FocusRing.qml)
+    set(names Theme.qml Card.qml SectionHeader.qml StatTile.qml AppButton.qml AppCheckBox.qml
+              IconButton.qml AppSlider.qml AppTextField.qml AppComboBox.qml RailBlock.qml SegmentedControl.qml FocusRing.qml)
     file(MAKE_DIRECTORY "${out_dir}")
     get_property(tracked GLOBAL PROPERTY AC3FORGE_SHARED_QML_CONFIGURE_DEPENDS)
     set(generated)

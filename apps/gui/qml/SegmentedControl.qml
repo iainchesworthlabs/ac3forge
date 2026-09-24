@@ -91,7 +91,13 @@ Row {
             implicitWidth: label.implicitWidth + 18
             color: active ? Theme.accent : "transparent"
             border.color: Theme.divider
-            border.width: 1
+            // The chosen segment carries no outline of its own - the accent
+            // block runs edge to edge, and the rule you see beside it is its
+            // neighbour's border (scanned off components.png's SEGMENTS row,
+            // where the accent fill starts in the very first pixel inside
+            // the group and the divider only appears where an unchosen
+            // segment begins).
+            border.width: active ? 0 : 1
 
             // A radio button, not a plain button: exactly one segment in
             // the group is ever active, and which one is what the group

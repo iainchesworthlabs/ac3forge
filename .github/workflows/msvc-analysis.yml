@@ -110,14 +110,27 @@ jobs:
       - name: Setup MSVC environment
         uses: ./.github/actions/setup-msvc-env
 
+      # install-qt-action v4.4.0's own bootstrap check shells out to a bare
+      # python before its internal setup-python sub-step ever runs, and this
+      # fleet's self-hosted Windows runners never put one on PATH - see
+      # _ci-windows.yml's identical fix (same v4.4.0 change) for the full
+      # story; this job can land on that same fleet (its own decider above).
+      # choco, not actions/setup-python: its MSI installer fails outright on
+      # this fleet's persistent, reused runners - see _ci-windows.yml's own
+      # comment for the real CI failure this produced.
+      - name: Setup Python (for install-qt-action)
+        shell: bash
+        run: choco install python -y --no-progress --requirechecksums
+
       # windows-msvc defaults AC3FORGE_BUILD_GUI to ON (CMakePresets.json),
       # and Qt is a prebuilt dependency (cmake/FindQt6.cmake), never a vcpkg
       # port - see _build.yml's own precedent for this exact install step.
       - name: Install Qt (prebuilt)
-        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        uses: jurplel/install-qt-action@bcb88e3bed2e992f5f9e24c0f9e364a231d278eb # v4.4.0
         with:
           version: ${{ needs.toolchain-versions.outputs.qt_version }}
           cache: true
+          setup-python: false
 
       - uses: ./.github/actions/setup-vcpkg
         with:

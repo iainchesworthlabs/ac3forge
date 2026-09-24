@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "ac3/sendspin/discovery.hpp"
+#include "ac3/sendspin/messages.hpp"
 #include "ac3/sendspin/noise.hpp"
 #include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/server_host.hpp"
@@ -38,31 +39,48 @@
 // itself must outlive that, or a sink dropping off Wi-Fi for a few seconds
 // would silently evict it from every group it was in.
 //
+// A sink's own settings pages (issue #875, push_sink_settings()/
+// push_sink_identify() below) do not share that "needs a live programme"
+// dependency either, despite an earlier note here having said groups,
+// settings and levels all did: ServerHost::ac3forge_command() resolves by
+// client_id alone (server_host.cpp), and ClientView carries ac3forge_support/
+// ac3forge_state as soon as a client offering the role connects, neither
+// Group-gated - confirmed by reading server_host.cpp directly rather than
+// trusting this comment's own earlier claim.
+//
 // What A6 still asks for and is NOT here, and why:
-//   * A sink's own settings pages and reported levels are issues #875/#876's
-//     own slices, not this one.
+//   * A group's reported levels needs a live programme actually playing to
+//     one (Player's own network-group output seam, issue #874, still to
+//     come) - there is nothing yet to hang that on.
 //   * "A sink in use elsewhere, with an explicit takeover action"
-//     (network-in-use.png) needs the sink to say who else holds it, or at
-//     least that it is held. Nothing in ac3::sendspin reports this: pairing
-//     is not exclusive (a sink may hold long-term PSKs for several servers
-//     at once), only activated PLAYBACK is, and that is arbitrated on the
-//     SINK, not the server - ServerHost never sees a rival's connection, and
-//     even discards the wire signal that comes closest
-//     (messages::GoodbyeReason::kAnotherServer, read and dropped in
-//     ServerHost's own on_goodbye()). Given the design of dial()/pair(): a
-//     freshly-paired or reconnecting long-term-PSK client is given playback
-//     as soon as it connects (ServerHost's own class comment says so) - so
-//     with today's library, reconnecting to a sink this computer has paired
-//     with does not risk a surprise takeover, it simply IS one, every time,
-//     unconditionally. That is the right behaviour for "this is now one of
-///    Hearth's own sinks" (and it is why rescan()/on_found() dials
-//     everything found rather than waiting to be asked - a paired sink's row
-//     is only ever as reliable as Hearth's own hold on it), but it leaves no
-//     safe way to first ask "is someone else already using this" the way the
-//     design's artboard shows. That needs new library-level work
-//     (ServerHostEvents gaining a goodbye reason, and something in Group or
-//     ServerHost that connects without claiming playback), which belongs in
-//     src/sendspin, not here - filed as a follow-up rather than guessed at.
+//     (network-in-use.png), in full, is still not buildable (issue #876):
+//     pairing is not exclusive (a sink may hold long-term PSKs for several
+//     servers at once), only activated PLAYBACK is, and that is arbitrated on
+//     the SINK, not the server - ServerHost never sees a rival's connection
+//     directly. Given the design of dial()/pair(): a freshly-paired or
+//     reconnecting long-term-PSK client is given playback as soon as it
+//     connects (ServerHost's own class comment says so) - so with today's
+//     library, reconnecting to a sink this computer has paired with does not
+//     risk a surprise takeover, it simply IS one, every time, unconditionally.
+//     That is the right behaviour for "this is now one of Hearth's own sinks"
+//     (and it is why rescan()/on_found() dials everything found rather than
+//     waiting to be asked), but it leaves no safe way to first ask "is
+//     someone else already using this" BEFORE dialling, the way the design's
+//     artboard shows - that would need something in Group or ServerHost that
+//     connects without claiming playback, which is a genuine library-level
+//     question (does the wire protocol even have room for "ask without
+//     claiming"?) worth raising with the Sendspin project itself, not solved
+//     here.
+//     What IS here, since issue #876: ServerHostEvents::on_client_goodbye()
+//     now carries the one wire signal that comes close,
+//     messages::GoodbyeReason, which ServerHost used to read and discard
+//     (src/sendspin/src/server_host.cpp's on_goodbye()) - kAnotherServer when
+//     a connection of equal or higher rank displaces this one, kConcurrentAttempt
+//     when this one's own activation collided with another server's pairing
+//     attempt already under way on the sink. That is necessarily AFTER THE
+//     FACT, not a pre-connect peek: on_client_goodbye() below turns it into a
+//     notice (SinkFacts::notice) a row keeps showing for a while, not a
+//     warning shown before this computer would take the sink over.
 
 namespace ac3::hearth {
 
@@ -123,6 +141,28 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // code (ServerHost::unpair(), which also asks the store to forget it).
     void forget_pairing(const std::string& id);
 
+    // Sends `settings` to sink `id` as a complete replacement - Settings
+    // "replaces the sink's settings whole" (ac3forge_player.hpp's own
+    // comment), so this is never a sparse patch: NetworkController reads
+    // status()'s own intended_settings first and merges a page edit onto it
+    // before calling this, the same "whole struct, apply what changed"
+    // shape HearthController::setDecoderSettings() already uses locally.
+    // `settings.revision` is overwritten with this sink's own next number -
+    // the caller does not choose it. False, nothing sent, for a sink that is
+    // not connected or does not offer _ac3forge_player@v1; true updates
+    // status()'s intended_settings to `settings` (with the assigned
+    // revision) so the page shows it as "current" at once, optimistically -
+    // there is no read-back to confirm it with (see SinkFacts::
+    // intended_settings's own comment). Whether the sink actually applied it
+    // shows up later, separately, in status()'s ac3forge_state.
+    bool push_sink_settings(const std::string& id, sendspin::ac3forge::Settings settings);
+    // Starts the identify tone on `output`, moving it there if another
+    // output was already sounding it, or stops it with std::nullopt - same
+    // connectedness and return-value terms as push_sink_settings(). Tracked
+    // optimistically the same way, in status()'s identify_slot, since the
+    // wire has no "identify state" to read back either.
+    bool push_sink_identify(const std::string& id, std::optional<sendspin::ac3forge::Identify> identify);
+
     // Makes a new, empty group (ServerHost::make_group()) and selects it;
     // empty string if the host never started. Not persisted across a run -
     // see this file's own header comment on what A6 still needs.
@@ -144,6 +184,18 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
 
     [[nodiscard]] NetworkStatus status() const;
 
+    // The real Group behind `group_id` (a GroupFacts::id status() lists),
+    // for the app's own network output seam to resolve and stream to
+    // (issue #874's own exit) - this class's other methods only ever call
+    // add()/remove()/set_group_volume() and the like on it (this file's own
+    // header comment says why), never start()/push()/push_burst(), which is
+    // Player's job once handed the group itself. Null for an id this class
+    // does not know. By id, not by this class's own bookkeeping name
+    // (GroupEntry::name): rename_group() is bookkeeping only, with no
+    // uniqueness check, so a name cannot resolve one group unambiguously the
+    // way ac3::sendspin::Group::id() (unique per host) does.
+    [[nodiscard]] std::shared_ptr<sendspin::Group> group(const std::string& group_id) const;
+
     // discovery::BrowseListener and ServerHostEvents - public, rather than
     // the more usual private override, so a test can drive this class with a
     // synthetic Service or ClientView directly instead of standing up a real
@@ -156,6 +208,11 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     void on_lost(const std::string& instance) override;
     void on_client(const sendspin::ClientView& client) override;
     void on_client_gone(const std::string& client_id) override;
+    // kAnotherServer (another server took playback here) or kConcurrentAttempt
+    // (another server's pairing attempt was already under way) becomes the
+    // row's notice (see this file's own header comment); any other reason is
+    // left to on_client() and on_client_gone(), which already cover it.
+    void on_client_goodbye(const std::string& client_id, sendspin::messages::GoodbyeReason reason) override;
     void on_pairing_code_wanted(const std::string& client_id) override;
     void on_paired(const std::string& client_id) override;
     void on_pairing_ended(const std::string& client_id,
@@ -172,6 +229,15 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
         // select_sink() asked to pair before hello arrived; on_client()
         // starts the attempt the moment it can and clears this.
         bool pairing_requested = false;
+
+        // This app's own intent for this sink - see SinkFacts::
+        // intended_settings/identify_slot's own comments. Neither is reset
+        // when the sink's connection drops and reconnects (on_client()
+        // keeps the same Entry, keyed by mDNS instance, not by client_id),
+        // so a brief reconnect does not forget what was last pushed.
+        std::optional<sendspin::ac3forge::Settings> intended_settings{};
+        std::int64_t next_settings_revision = 1;
+        std::optional<std::int32_t> identify_slot{};
     };
 
     struct GroupEntry {
@@ -206,6 +272,12 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // The instance a client_id belongs to, once known - on_client_gone(),
     // on_paired() and on_pairing_ended() name only the client_id.
     std::map<std::string, std::string> instance_by_client_id_;
+    // An instance's current notice (on_client_goodbye()), kept independently
+    // of Entry so it survives the row's own removal in on_client_gone() and
+    // still shows once the instance is found again - cleared by on_client()
+    // (a fresh connection supersedes it) or on_lost() (nothing left to show it
+    // on).
+    std::map<std::string, std::string> notice_by_instance_;
 
     std::string selected_id_;
     std::string pairing_error_;

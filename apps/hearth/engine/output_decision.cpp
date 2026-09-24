@@ -197,6 +197,7 @@ OutputChoice choose_output(const OutputRequest& request) {
                 .mode = OutputMode::kNetworkGroup,
                 .endpoint_id = {},
                 .endpoint_name = {},
+                .group_name = request.group_name,
                 .reason = fmt::format("Playing to the group \"{}\". Each sink decodes for "
                                       "itself, so what travels is the stream, not PCM.",
                                       request.group_name)};

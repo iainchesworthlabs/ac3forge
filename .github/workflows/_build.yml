@@ -747,7 +747,14 @@ jobs:
       # its JS action, src/main.ts) runs a plain actions/setup-python step
       # first, which re-prepends the hosted-cache Python's bin dir ahead of
       # this one via core.addPath() - see the "Install Qt (prebuilt)" step's
-      # own comment for that half of the fix (setup-python: false).
+      # own comment for that half of the fix (setup-python: false). A third
+      # piece, found 2026-09-24: that same composite has its own guard step
+      # ("Check the existence of built JavaScript action") running under
+      # `shell: python` before setup-python ever runs, so it needs a plain
+      # `python` on PATH regardless of that input - Debian/Ubuntu's python3
+      # package deliberately does not provide one (see python-is-python3),
+      # so without it the whole job dies in seconds on "python: executable
+      # file not found" before even reaching Qt.
       - name: Bootstrap container
         run: |
           set -eu
@@ -755,7 +762,7 @@ jobs:
           apt-get update -qq
           apt-get install -y -qq --no-install-recommends \
             build-essential ca-certificates curl file git gnupg \
-            libasound2-dev lsb-release ninja-build pkg-config python3 python3-pip \
+            libasound2-dev lsb-release ninja-build pkg-config python3 python3-pip python-is-python3 \
             software-properties-common sudo tar unzip wget zip
           echo "/usr/bin" >> "$GITHUB_PATH"
 
@@ -827,7 +834,7 @@ jobs:
       # apt-installed, container-glibc-linked python3 "Bootstrap container"
       # already put ahead on PATH is the one that actually gets used.
       - name: Install Qt (prebuilt)
-        uses: jurplel/install-qt-action@48d3ad6db93f3627c8ee7a0454bc6f3744f7e730 # v4.3.1
+        uses: jurplel/install-qt-action@bcb88e3bed2e992f5f9e24c0f9e364a231d278eb # v4.4.0
         with:
           version: ${{ needs.toolchain-versions.outputs.qt_version }}
           cache: true

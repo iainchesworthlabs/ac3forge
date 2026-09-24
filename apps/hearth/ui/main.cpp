@@ -23,15 +23,20 @@
 // the grab - otherwise nothing reaches that sub-tab headlessly either
 // (issue #901).
 //
-// Translations are not wired up yet: this slice is the shell and the Play
-// page over the real engine, with the other five pages as placeholders, and
-// follows once there is more of the window for it to cover.
+// Translations run through the family's own LanguageManager
+// (apps/gui/language_manager.cpp, shared rather than copied), pointed at
+// this app's own ac3hearth_<code>.qm catalogues under :/i18n/. The six
+// languages are the same set ac3gui and Crucible ship. The catalogues carry
+// every source string and no translations yet, so what a language change
+// visibly does today is switch the layout direction and the typeface;
+// filling them is a translator's task, not a build one.
 
 #include <QFont>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QQmlApplicationEngine>
+#include <QQmlEngine>
 #include <QQuickStyle>
 #include <QQuickWindow>
 #include <QSettings>
@@ -42,6 +47,9 @@
 #include "ac3/internal/profiling.hpp"
 
 #include <optional>
+
+#include "ac3/sendspin/firewall.hpp"
+#include "language_manager.hpp"
 
 namespace {
 
@@ -69,6 +77,11 @@ void mark_frames_for_tracy(QQuickWindow* window) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    // Elevated relaunch for a Windows Firewall rule NetworkController's mDNS browsing is about
+    // to need (ac3/sendspin/firewall.hpp): std::exit()s before touching Qt when argv says this
+    // is that relaunch, so an ordinary launch is the only one that reaches the window below.
+    ac3::sendspin::firewall::maybe_run_as_firewall_helper_and_exit(argc, argv);
+
     // Render on the GUI thread, as Crucible's window does and for the same
     // reason: the threaded loop's render thread paints a frame behind a
     // window drag on Windows.
@@ -88,7 +101,10 @@ int main(int argc, char** argv) {
     // The family's own faces (apps/gui/fonts), registered before the engine
     // loads so the Theme's font probe finds them.
     for (const auto* face : {":/fonts/Archivo-Regular.ttf", ":/fonts/Archivo-Medium.ttf",
-                             ":/fonts/Archivo-SemiBold.ttf", ":/fonts/Archivo-ExtraBold.ttf"}) {
+                             ":/fonts/Archivo-SemiBold.ttf", ":/fonts/Archivo-ExtraBold.ttf",
+                             ":/fonts/MaterialSymbolsSharp-Regular.ttf",
+                             ":/fonts/NotoSansArabic.ttf",
+                             ":/fonts/NotoSansHebrew.ttf"}) {
         if (QFontDatabase::addApplicationFont(QLatin1String(face)) < 0) {
             qWarning("could not register bundled font %s", face);
         }
@@ -136,6 +152,22 @@ int main(int argc, char** argv) {
     }
 
     QQmlApplicationEngine engine;
+    // The family's own language manager, pointed at this app's catalogues:
+    // the system locale by default, a saved override once the person has
+    // chosen one (docs/forge/gui/localisation.md). Constructed and applied
+    // BEFORE the QML loads, so the first frame is already translated and
+    // already mirrored where the language is written right to left.
+    LanguageManager language_manager(app, engine, QStringLiteral("ac3hearth"));
+    language_manager.applyInitialLanguage();
+    // A singleton instance rather than a context property, and under its own
+    // URI rather than this module's: registering a type into Ac3ForgeHearth
+    // by hand marks that module registered, and its own types
+    // (HearthController, NetworkController) then never register at load.
+    // apps/crucible/ui/main.cpp carries the identical comment for the
+    // identical reason.
+    qmlRegisterSingletonInstance("Ac3ForgeHearthLanguage", 1, 0, "LanguageManager",
+                                 &language_manager);
+
     QObject::connect(&engine, &QQmlApplicationEngine::objectCreationFailed, &app,
                      [] { QCoreApplication::exit(1); }, Qt::QueuedConnection);
     engine.loadFromModule("Ac3ForgeHearth", "Main");
