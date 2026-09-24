@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 #include <adm/adm.hpp>
 #include <boost/variant.hpp>
@@ -377,8 +378,8 @@ adm::Time seconds_to_time(double seconds) {
 adm::AudioBlockFormatObjects to_libadm_block(const AudioBlockFormat& block) {
     // The Dolby Atmos Master ADM Profile - and this writer's only caller, ac3::admbridge's
     // write-side (bridge.cpp) - always produces cartesian blocks; a caller handing this writer a
-    // polar one is a bug in that caller, not a file this function was designed to accept (see
-    // ac3adm.hpp's own AdmWriteError::kInvalidDocument doc comment).
+    // polar one is a bug in that caller, which build_libadm_document() reports as
+    // AdmWriteError::kInvalidDocument before calling this, so `position` is cartesian here.
     const auto& cartesian = std::get<CartesianPosition>(block.position);
     adm::AudioBlockFormatObjects out{
         adm::CartesianPosition(adm::X(static_cast<float>(cartesian.x)), adm::Y(static_cast<float>(cartesian.y)),
@@ -415,7 +416,8 @@ adm::AudioBlockFormatDirectSpeakers to_libadm_direct_speakers_block(const AudioB
     // (Cartesian/Spherical) are read off the same `position`/`cartesian` fields
     // AudioBlockFormatObjects above reads, but AudioBlockFormatDirectSpeakers has no matching
     // constructor overload for either - see audio_block_format_direct_speakers.hpp's own
-    // set(CartesianSpeakerPosition)/set(SphericalSpeakerPosition).
+    // set(CartesianSpeakerPosition)/set(SphericalSpeakerPosition). Cartesian only, as for
+    // to_libadm_block() above: build_libadm_document() has already refused a polar block.
     const auto& cartesian = std::get<CartesianPosition>(block.position);
     out.set(adm::CartesianSpeakerPosition(adm::X(static_cast<float>(cartesian.x)), adm::Y(static_cast<float>(cartesian.y)),
                                           adm::Z(static_cast<float>(cartesian.z))));
@@ -458,6 +460,13 @@ std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel
         }
         auto libadm_channel = ::adm::AudioChannelFormat::create(::adm::AudioChannelFormatName(channel_format.name), type);
         for (const auto& block : channel_format.block_formats) {
+            // Both converters below read `position` as a CartesianPosition. A polar one - which a
+            // default-constructed AudioBlockFormat has, as `position` starts as PolarPosition{} -
+            // is outside this writer's scope, and std::get would throw std::bad_variant_access
+            // out of write_bw64() instead of reporting it.
+            if (!std::holds_alternative<CartesianPosition>(block.position)) {
+                return std::unexpected(AdmWriteError::kInvalidDocument);
+            }
             if (channel_format.type == TypeDefinition::kObjects) {
                 libadm_channel->add(to_libadm_block(block));
             } else {

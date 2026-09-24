@@ -5,12 +5,16 @@
 #include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
+
+#include "platform/process.hpp"
 
 #include "ac3adm/ac3adm.hpp"
 
@@ -25,7 +29,8 @@
 // project's own scope at all, ADM/BW64 masters are produced by third-party
 // production tools).
 //
-// Every test below goes through the public ac3adm::parse_bw64() API only -
+// Every test below goes through the public ac3adm API only (parse_bw64(), and
+// write_bw64() for the write tests) -
 // libadm and libbw64 already have their own upstream test suites for their
 // own internals (chunk-walking, XML/schema validation), so what is worth
 // re-testing here is this module's own boundary: does a real BW64 file
@@ -333,6 +338,94 @@ Bytes wrap_axml_only(std::string_view axml_xml) {
     const auto fmt = build_fmt_chunk(1, 48000, 16);
     const auto data = build_pcm16_data(2);
     return build_riff(fmt, Bytes{}, Bytes(axml_xml), data);
+}
+
+// A document write_bw64() accepts, for the write tests to break one thing in at a time: one
+// audioObject whose audioPackFormat and audioChannelFormat are both `type` (kObjects or
+// kDirectSpeakers, the two this writer supports), the channel carrying two cartesian blocks, one
+// <chna> row and four frames of mono PCM. The channel is reached through the full
+// audioStreamFormat -> audioTrackFormat chain ac3::admbridge::write() builds rather than
+// BS.2076-2's plain-PCM shortcut, which libadm's reassignIds() does not support (see bridge.cpp).
+ac3adm::AdmDocument writable_document(ac3adm::TypeDefinition type) {
+    ac3adm::AudioBlockFormat first;
+    first.cartesian = true;
+    first.position = ac3adm::CartesianPosition{.x = -0.5, .y = 1.0, .z = 0.0};
+    ac3adm::AudioBlockFormat second = first;
+    second.rtime_s = 0.5;
+    second.position = ac3adm::CartesianPosition{.x = 0.5, .y = 1.0, .z = 0.0};
+
+    ac3adm::AudioChannelFormat channel_format;
+    channel_format.id = "chan";
+    channel_format.name = "Channel";
+    channel_format.type = type;
+    channel_format.block_formats = {first, second};
+
+    ac3adm::AudioPackFormat pack_format;
+    pack_format.id = "pack";
+    pack_format.name = "Pack";
+    pack_format.type = type;
+    pack_format.channel_format_refs = {channel_format.id};
+
+    ac3adm::AudioStreamFormat stream_format;
+    stream_format.id = "stream";
+    stream_format.name = "Stream";
+    stream_format.channel_format_ref = channel_format.id;
+
+    ac3adm::AudioTrackFormat track_format;
+    track_format.id = "track";
+    track_format.name = "Track";
+    track_format.stream_format_ref = stream_format.id;
+
+    ac3adm::AudioTrackUid track_uid;
+    track_uid.uid = "atu";
+    track_uid.has_sample_rate = true;
+    track_uid.sample_rate = 48000;
+    track_uid.track_format_ref = track_format.id;
+    track_uid.pack_format_ref = pack_format.id;
+
+    ac3adm::AudioObject object;
+    object.id = "object";
+    object.name = "Object";
+    object.pack_format_refs = {pack_format.id};
+    object.track_uid_refs = {track_uid.uid};
+
+    ac3adm::AudioContent content;
+    content.id = "content";
+    content.name = "Content";
+    content.object_refs = {object.id};
+
+    ac3adm::AudioProgramme programme;
+    programme.id = "programme";
+    programme.name = "Programme";
+    programme.content_refs = {content.id};
+
+    ac3adm::AdmDocument document;
+    ac3adm::ChnaEntry chna_entry;
+    chna_entry.track_index = 1;
+    chna_entry.uid = track_uid.uid;
+    document.chna.push_back(std::move(chna_entry));
+    document.audio.sample_rate = 48000;
+    document.audio.channels.push_back({0.25F, -0.5F, 0.125F, 0.0F});
+
+    auto& model = document.model;
+    model.programmes.push_back(std::move(programme));
+    model.contents.push_back(std::move(content));
+    model.objects.push_back(std::move(object));
+    model.pack_formats.push_back(std::move(pack_format));
+    model.channel_formats.push_back(std::move(channel_format));
+    model.stream_formats.push_back(std::move(stream_format));
+    model.track_formats.push_back(std::move(track_format));
+    model.track_uids.push_back(std::move(track_uid));
+    return document;
+}
+
+// Where a write test puts its files: a directory of its own under AC3FORGE_TEST_SCRATCH_DIR, with
+// this process's id folded in (tests/platform/process.hpp says why).
+std::filesystem::path write_scratch_dir(std::string_view name) {
+    auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} /
+               (std::string(name) + "_" + ac3::test::platform::process_id());
+    std::filesystem::create_directories(dir);
+    return dir;
 }
 
 // libadm's own parseXml() always merges the file's own content into a document already
@@ -989,4 +1082,72 @@ TEST_CASE("describe() returns a non-empty string for every AdmError", "[adm]") {
                               AdmError::kMalformedAdm, AdmError::kOther}) {
         CHECK_FALSE(ac3adm::describe(error).empty());
     }
+}
+
+// AdmWriteError::kInvalidDocument's doc comment (ac3adm.hpp) names a block whose position is polar,
+// but the translator behind write_bw64() read every block's position with an unchecked
+// std::get<CartesianPosition>, so a polar block threw std::bad_variant_access out of a function
+// that returns std::expected - for both typeDefinitions the writer supports. A default-constructed
+// AudioBlockFormat is such a block: its position starts as PolarPosition{}. The channel's second
+// block is the one changed, so a check of each channel's first block alone would not pass.
+TEST_CASE("write_bw64 reports a polar block as kInvalidDocument without throwing", "[adm][write]") {
+    const auto type =
+        GENERATE(ac3adm::TypeDefinition::kObjects, ac3adm::TypeDefinition::kDirectSpeakers);
+    INFO("typeDefinition " << (type == ac3adm::TypeDefinition::kObjects ? "Objects"
+                                                                        : "DirectSpeakers"));
+    const auto dir = write_scratch_dir("adm_write_polar");
+    auto document = writable_document(type);
+
+    // Unchanged, the document writes, so what is refused below is refused for the block alone.
+    REQUIRE(ac3adm::write_bw64((dir / "cartesian.wav").string(), document).has_value());
+
+    auto& block = document.model.channel_formats.front().block_formats.back();
+    SECTION("a polar position") {
+        block.cartesian = false;
+        block.position =
+            ac3adm::PolarPosition{.azimuth_deg = 30.0, .elevation_deg = 0.0, .distance = 1.0};
+    }
+    SECTION("a default-constructed block") {
+        block = ac3adm::AudioBlockFormat{};
+    }
+
+    const auto path = dir / "polar.wav";
+    std::filesystem::remove(path);
+    const auto written = ac3adm::write_bw64(path.string(), document);
+    REQUIRE_FALSE(written.has_value());
+    CHECK(written.error() == ac3adm::AdmWriteError::kInvalidDocument);
+    CHECK_FALSE(std::filesystem::exists(path));
+}
+
+// What write_bw64() does with the libadm document once it is built - reassignIds(), formatting
+// the <chna> rows' IDs, writeXml() - ran outside any try block, so an exception from any of it
+// left write_bw64() the same way. adm::formatId() throws for a document the translator accepts:
+// it writes an audioTrackFormat's counter as two hex digits, and reassignIds() numbers the
+// audioTrackFormats on one audioStreamFormat from 01, so the 256th is 0x100, which does not fit.
+// With the <chna> row's audioTrackUID naming that track, the throw comes while the rows are
+// resolved; naming the first track, it comes from writeXml() instead.
+TEST_CASE("write_bw64 reports a libadm failure after the build as kOther without throwing",
+          "[adm][write]") {
+    const auto uid_names_last_track = GENERATE(false, true);
+    CAPTURE(uid_names_last_track);
+    auto document = writable_document(ac3adm::TypeDefinition::kObjects);
+    auto& model = document.model;
+    for (int i = 1; i < 256; ++i) {
+        ac3adm::AudioTrackFormat track_format;
+        track_format.id = "track" + std::to_string(i);
+        track_format.name = "Track";
+        track_format.stream_format_ref = model.stream_formats.front().id;
+        model.track_formats.push_back(std::move(track_format));
+    }
+    REQUIRE(model.track_formats.size() == 256);
+    if (uid_names_last_track) {
+        model.track_uids.front().track_format_ref = model.track_formats.back().id;
+    }
+
+    const auto path = write_scratch_dir("adm_write_id_overflow") / "overflow.wav";
+    std::filesystem::remove(path);
+    const auto written = ac3adm::write_bw64(path.string(), document);
+    REQUIRE_FALSE(written.has_value());
+    CHECK(written.error() == ac3adm::AdmWriteError::kOther);
+    CHECK_FALSE(std::filesystem::exists(path));
 }
