@@ -8,6 +8,8 @@
 #include <optional>
 #include <fstream>
 #include <functional>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -1555,54 +1557,55 @@ TEST_CASE("describe returns a distinct, non-empty string for every Error", "[ac4
 // Carriage helpers (AC-4 bitstream inspector): the 'dac4' box, per-frame timing and the
 // RFC 6381 string, all against the real DEE fixture's own parsed TOC.
 
-TEST_CASE("build_dac4 carries the TOC's stream-level facts", "[ac4][carriage]") {
-    const auto data = read_file(fixture_path());
-    const auto scanned = ac4::scan(data);
-    REQUIRE_FALSE(scanned.frames.empty());
-    const auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
-    REQUIRE(frame.has_value());
-
-    const auto dsi = ac4::build_dac4(frame->toc);
-    REQUIRE_FALSE(dsi.empty());
-
-    // Read the header back with an independent bit walk (this file's own
-    // pattern: neither the writer nor a shared reader validates itself).
-    std::size_t pos = 0;
-    const auto get = [&](int bits) {
-        std::uint32_t value = 0;
-        for (int i = 0; i < bits; ++i) {
-            const std::size_t byte_at = pos >> 3U;
-            REQUIRE(byte_at < dsi.size());
-            const auto bit = (std::to_integer<std::uint32_t>(dsi[byte_at]) >>
-                              (7U - (pos & 7U))) & 1U;
-            value = (value << 1U) | bit;
-            ++pos;
-        }
-        return value;
+TEST_CASE("build_dac4 writes the dac4 DEE's MP4 muxer writes for DEE's streams", "[ac4][carriage]") {
+    // What dee_mp4muxer (DEE 6.5.4) writes in the 'dac4' box when it muxes
+    // each committed stream: ac4_dsi_v1 with the average bit rate mode
+    // DEE's wait_frames imply, and one presentation of one channel-coded
+    // substream, described in full, dialogue enhancement indicated.
+    struct Leg {
+        const char* name;
+        const char* dac4;
     };
+    const std::vector<Leg> legs = {
+        {"ac4-stereo-64", "20ba01400000001fffffffe0010ff88000004200000250100000030080"},
+        {"ac4-20-music-192", "20ba01400000001fffffffe0010ff88000004200000250100000030080"},
+        {"ac4-20-tones-192", "20ba01400000001fffffffe0010ff88000004200000250100000030080"},
+        {"ac4-51-music-384", "20ba01400000001fffffffe0010ff98000004800008e501000008f0080"},
+        {"ac4-51-film-96", "20ba01400000001fffffffe0010ff98000004800008e501000008f0080"},
+        {"ac4-51-drc-ltrt-192", "20ba01400000001fffffffe0010ff98000004800008e501000008f0080"},
+    };
+    const auto hex = [](const std::vector<std::byte>& bytes) {
+        std::string out;
+        for (const std::byte b : bytes) {
+            constexpr std::string_view kDigits = "0123456789abcdef";
+            out += kDigits[std::to_integer<unsigned>(b) >> 4U];
+            out += kDigits[std::to_integer<unsigned>(b) & 15U];
+        }
+        return out;
+    };
+    for (const Leg& leg : legs) {
+        CAPTURE(leg.name);
+        const auto data =
+            read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg.name / "dee.ac4");
+        const auto scanned = ac4::scan(data);
+        REQUIRE_FALSE(scanned.frames.empty());
+        auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+        REQUIRE(frame.has_value());
+        REQUIRE(frame->toc.presentations_v1.size() == 1);
 
-    CHECK(get(3) == 1);  // ac4_dsi_version
-    CHECK(get(7) == static_cast<std::uint32_t>(frame->toc.bitstream_version));
-    CHECK(get(1) == (frame->toc.sample_rate_hz == 48000 ? 1U : 0U));  // fs_index
-    CHECK(get(4) == static_cast<std::uint32_t>(frame->toc.frame_rate_index));
-    CHECK(get(9) == static_cast<std::uint32_t>(frame->toc.n_presentations));
-    if (frame->toc.bitstream_version > 1) {
-        CHECK(get(1) == 0);  // b_program_id
-    }
-    CHECK(get(2) == 0);           // bit_rate_mode: unknown
-    CHECK(get(32) == 0xFFFFFFFF);  // bit_rate: unknown
-    CHECK(get(32) == 0xFFFFFFFF);  // bit_rate_precision: unknown
-    // byte_align, then one (version, pres_bytes=0) pair per presentation.
-    pos = (pos + 7U) & ~std::size_t{7};
-    for (int p = 0; p < frame->toc.n_presentations; ++p) {
-        (void)get(8);            // presentation_version - value checked for p=0 below
-        CHECK(get(8) == 0);      // pres_bytes: the slice's stated boundary
-    }
-    CHECK(pos == dsi.size() * 8);  // nothing after the last entry
+        // The indicators are no part of the table of contents: unset, the
+        // DSI closes before them, one byte short of the muxer's.
+        const std::string without = hex(ac4::build_dac4(frame->toc));
+        const std::string expected = leg.dac4;
+        CHECK(without.size() == expected.size() - 2);
+        CHECK(without.substr(0, 26) == expected.substr(0, 26));
+        CHECK(without.substr(26, 2) == "0e");  // pres_bytes, 15 less the byte
+        CHECK(without.substr(28) == expected.substr(28, without.size() - 28));
 
-    // The DEE fixture is bitstream_version 2 with one presentation.
-    CHECK(frame->toc.bitstream_version == 2);
-    CHECK(frame->toc.n_presentations == 1);
+        frame->toc.presentations_v1[0].de_indicator = true;
+        frame->toc.presentations_v1[0].immersive_audio_indicator = false;
+        CHECK(hex(ac4::build_dac4(frame->toc)) == expected);
+    }
 }
 
 TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",
