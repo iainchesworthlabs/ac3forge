@@ -238,7 +238,18 @@ def generate(streams, cases, n_mutations, n_synthetic, seed):
         path = rng.choice(streams)
         if path not in frames_of:
             data = path.read_bytes()
-            frames_of[path] = [raw for _, _, raw, _ in ac4_parse.iter_sync_frames(data)]
+            # iter_sync_frames raises rather than stopping where sync is lost
+            # (ValueError) or a header runs off the end (IndexError), so keep
+            # the frames it yielded before that: a file that is not AC-4 at
+            # all ends up with none and is skipped below instead of aborting
+            # the whole run.
+            frames = []
+            try:
+                for _, _, raw, _ in ac4_parse.iter_sync_frames(data):
+                    frames.append(raw)
+            except (ValueError, IndexError):
+                pass
+            frames_of[path] = frames
         frames = frames_of[path]
         if not frames:
             continue  # a file with no sync frame at all

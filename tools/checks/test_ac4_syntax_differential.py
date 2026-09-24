@@ -110,14 +110,11 @@ class Generators(unittest.TestCase):
             self.assertEqual(sum(1 for f in files if f.name.startswith("s")), 3)
             self.assertTrue(any("\tsynthetic\t" in line for line in index))
 
-    @unittest.expectedFailure
     def test_generate_skips_a_stream_that_is_not_ac4(self):
-        """SUSPECTED BUG (ac4_syntax_differential.py:241): generate()'s
-        `if not frames: continue  # a file with no sync frame at all` never
-        sees a non-AC-4 file, because ac4_parse.iter_sync_frames raises
-        ValueError("lost sync ...") rather than yielding nothing, and that
-        call is outside the try. One stray *.ac4 under --streams aborts the
-        whole run."""
+        """Regression: generate() called ac4_parse.iter_sync_frames outside
+        any try, and that raises ValueError("lost sync ...") on a non-AC-4
+        file rather than yielding nothing, so one stray *.ac4 under
+        --streams aborted the whole run instead of being skipped."""
         with tempfile.TemporaryDirectory() as tmp:
             junk = Path(tmp) / "junk.ac4"
             junk.write_bytes(b"not ac4 at all")
