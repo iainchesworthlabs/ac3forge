@@ -44,6 +44,15 @@
     page has no login ([Security](#security) has what that means). The budget
     was re-derived again: **28,672 bytes**, against 25,594 used. Decision 18 has the reasoning.
 
+    **The redesign, 2026-09-24.** The page takes the Hearth desktop app's signed-off look
+    ([hearth-design.md](hearth-design.md)) and is reorganised around what a person opens it for:
+    Sendspin first on a board that has it, a signal path in Now, the settings grouped as
+    Speakers and Network with segmented controls, level meters, a toast for the live region and
+    a dialog before forgetting every server. `/status` gains the network the board is on,
+    `/hardware` the firmware, and a sink with no second I2S line stops offering the wiring.
+    [The redesign](#the-redesign) has the detail; decisions 22 to 28 are its choices. The budget
+    was re-derived: **45,056 bytes**, against 42,846 used.
+
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
     a cost each, and [what cannot be verified](#what-cannot-be-verified).
@@ -275,6 +284,7 @@ the page loads rather than polled every second, since nothing in it changes whil
 | `psram_bytes` | PSRAM actually brought up, in bytes; 0 when none is fitted or this build never turned it on | `esp_psram_get_size()` |
 | `sink_max_slots` | This sink's own ceiling at any setting it takes, not just the one in force; left out when the owner has nothing to say | A new `ControlHandlers::sink_max_slots`; the example answers with `player::sink_max_slots()` |
 | `sink_max_slots_bits` | The slot width `sink_max_slots`'s figure is true at (16 or 32); left out when the owner has no such width to give (a capture/null sink's ceiling is not a function of slot width) | `ControlHandlers::sink_max_slots_bits`; the example answers with `player::sink_max_slots_bit_width()` |
+| `project`, `version`, `idf_version` | The firmware: the CMake project's name, its version (`PROJECT_VER`, or `git describe` of the tree it was built from) and the ESP-IDF it was built with | `esp_app_get_description()`, the description the build stamps into the image |
 | `capabilities` | Plain sentences: cores and arithmetic, clock speed, PSRAM size, the sink's ceiling (with its slot width, when known) | `ac3forge::describe_hardware` (`ac3forge/hardware_info.hpp`) |
 | `notices` | Plain sentences: no FPU, no PSRAM, a firmware running on a different chip than it was built for, (the ESP32-P4 only) a build accommodating pre-production silicon whose detected chip actually clears v3.0, or (the ESP32-P4 only, opposite direction) a detected chip itself below v3.0, which cannot open TDM at any channel count above 2 regardless of build | The same |
 
@@ -333,6 +343,63 @@ within decision 18's 28,672-byte budget with 569 to spare - `sink_max_slots_bits
 notice pair add a small, unmeasured amount on top (a handful of struct fields, one more JSON
 number, one more notice sentence); re-measure against decision 18's budget before relying on the
 old figure as still current.
+
+## The redesign
+
+What the page is since 2026-09-24. The polling, the one live region, the text-only rendering and
+the one-request-per-action rule are as the sections around this one say; the REST contract
+changes only by the additive fields below.
+
+**The look** is the Hearth desktop app's, from [its design's](hearth-design.md) components sheet,
+in both colour schemes: square panels, numbered section rules (`01 NOW ———`), monospace labels
+and figures, and the signal red for a chosen segment, a live mark and a peak past -6 dBFS. System
+fonts only. The icon is one pixel of the signal red, inline, so a browser still does not ask for
+`/favicon.ico`.
+
+**The order** is Sendspin, Now, Settings, Real time, Hardware, Counters. Now reports the board's
+own player, a location sent to `POST /play`, and on a Sendspin board that reads "Stopped" while a
+server plays to it. So Sendspin comes first when there is one, and Now says what it covers.
+
+| Section | What changed |
+|---|---|
+| Now | The state with a mark beside it, the time played, and a signal path of three blocks - Source, Decode, Output - holding the rows it had. A block with nothing to show is not shown |
+| Sendspin | The pairing code in large figures at the top; the admitted connection's server as Connected; each output's level as a meter (RMS filled, peak marked, -60 to 0 dBFS) drawn in the row header, the figures in their cells as before, so the table reads the same to a screen reader; a sentence on [several servers](#several-servers) |
+| Settings | Two groups, Speakers (wiring, slot width, output layout) and Network (where the board is connected, its name, the WiFi network to join). The slot width is a segmented control; the output layout is a segmented control of the named layouts, those wider than the sink disabled, above the field that takes any name or speaker list. A setting `/status` does not report is not offered |
+| Real time, Hardware, Counters | Figures as tiles; the hardware's notices as callouts; the firmware and its ESP-IDF version |
+
+**Sending a choice.** A choice - the wiring, a slot width, a preset - is sent as it is made; text
+is sent with Save or Apply. A choice keeps what the user chose while its request is out, and until
+a status read begun after the answer has rendered: a refused choice then goes back to what the
+board has, and a read that was already out when the choice was made cannot undo it.
+
+**The live region is a toast** at the bottom of the window, so what an action did shows wherever
+on the page the action was. A message leaves after six seconds and an error stays until something
+replaces it or it is clicked. It moves out of view rather than out of the document, so it is
+still the one polite live region.
+
+**Forget every server asks in a `<dialog>`**, which opens on Cancel. `confirm()` held the page's
+script, and with it the polling, for as long as it was open.
+
+**What the firmware adds.** All three additive; none changes an existing field.
+
+| Where | What | From |
+|---|---|---|
+| `GET /status` | `network`: `kind` (`wifi`, or `ethernet` for QEMU's MAC), `ssid`, `rssi_dbm` (null when not associated) and `address`; null in a build with no network | `ControlHandlers::network`; the example answers from `network_link()` and `network_address()` (`main/network.hpp`), on WiFi the driver's record of the access point |
+| `GET /hardware` | `project`, `version`, `idf_version` | [What `/hardware` adds](#what-hardware-adds) |
+| `GET /status` | `second_line` is left out where no second I2S line can exist - the ESP32-C6, the P4's `i2s_wide`, `capture`, `null` - so `GET /wiring` answers 404, and `PUT /wiring` 409 as before | The example sets `ControlHandlers::second_line` only where `sink_second_line_possible()` |
+
+On the emulated board, `/status` grows by 80 bytes with the network object and `/hardware` by 80
+with the firmware. The `/status` handler's deeper frame was not measured: the network object adds
+under 300 bytes to it, against 3,856 spare at the last measurement (decision 12).
+
+### Several servers
+
+Sendspin lets a player keep a pairing record for each server it pairs with (pairing.md, Pairing
+Records; `SendspinStore::kRecordCapacity` is eight) and admit one connection at a time: a server
+that starts playing displaces the one playing (connection.md, Multiple servers;
+`ac3::sendspin::Arbiter`). The page says so beside the count of paired servers. It cannot name the
+others or forget one of them: a record holds the server's key and PSK, not its name, and `POST
+/pairing` has one `forget`, for every server. [Decision 28](#decisions).
 
 ## How the page updates
 
@@ -427,7 +494,7 @@ mark after each handler, then reverted.
 
 | Item | Budget | Measured |
 |---|---|---|
-| Flash: the page and its script together, as stored | 28,672 bytes ([decision 18](#decisions)); 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 25,594 (9,018 + 16,576); 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
+| Flash: the page and its script together, as stored | 45,056 bytes ([decision 22](#decisions)); 28,672 before the redesign, 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 42,846 (19,677 + 23,169); 28,317 before the redesign, 25,594 at B3, 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
 | Internal heap held once the server is up: two more route registrations and handler slots | 256 bytes | 76, from the `heap:` line: 290,428 free against the base's 290,504 |
 | Internal heap held while a browser has the page open | - | 376, the keep-alive connection |
 | Internal heap at the peak of one `GET /status` | 3,072 bytes | 4,700 to 7,700 from the page's keep-alive connection; 5,100 from `curl`, a new connection each time |
@@ -517,7 +584,15 @@ WCAG 2.2 AA is the target.
 - Text at 4.5:1 contrast or better in both the light and the dark colour scheme
   (`prefers-color-scheme`).
 - One column on a narrow screen, nothing of fixed width, usable at 200% zoom; controls at least
-  44 CSS pixels tall; no animation, so there is nothing for `prefers-reduced-motion` to stop.
+  44 CSS pixels tall. The toast's slide is the one movement, and only without
+  `prefers-reduced-motion`.
+- Since the redesign: a segmented control is a group of native radios (`role="radiogroup"`,
+  named by its label), one tab stop moved with the arrow keys, its focus outline drawn on the
+  visible segment; a disabled preset keeps text contrast and shows a dashed edge. The dialog is a
+  modal `<dialog>` that opens on Cancel and gives focus back. The level meters are `aria-hidden`
+  beside figures that are text. `html`'s `scroll-padding-bottom` keeps a focused control clear of
+  the toast (WCAG 2.2's 2.4.11). In forced colours the meters, marks and chosen segment keep
+  their own colours or an outline.
 
 ## Security
 
@@ -545,7 +620,7 @@ server stands in for the device (`device-ui/stub.js`), one per test: it serves t
 script with the headers Control sends, and implements the REST contract - routes, methods, status
 codes, reply texts, content types, and the state a play goes through. `contract.spec.js` compares
 its reply texts, headers and routes with the literals in `control.cpp`, and checks that every
-request the script makes is to a route the firmware registers. Seventy-nine tests drive every action
+request the script makes is to a route the firmware registers. The host suite's 105 tests drive every action
 through the page and assert on the requests the stand-in received; every error path (`400` and
 `409` replies, a connection closed unanswered, a device that does not answer, a malformed or
 partial `/status`); the polling rules on Playwright's clock (one request in flight, none while
@@ -561,14 +636,18 @@ well (`sdkconfig.ci-http714`): a 7.1.4 stream playing and finished, a 5.1 one wi
 heights silent, a 7.1.4 one spread onto 5.1, a 5.1 one folded to 2.0, dual mono, objects played as
 their bed, the next play's layout beside this one's, and a stream refused for its sample rate;
 the field's suggestions and its explanation of a refusal; and a check that the stand-in writes
-`/status`'s keys in `control.cpp`'s order.
+`/status`'s keys in `control.cpp`'s order. Since the redesign: the presets, and a refused choice
+going back to the board's; a status read begun before a choice's answer leaving the choice alone,
+on Playwright's clock; the toast's six seconds and an error's staying; the dialog, Escape included;
+the passphrase's Show; the network line for WiFi, Ethernet, a kind the page has no word for and
+none; the firmware tiles; and a board with no second line offering no wiring.
 
 **Coverage.** Chromium's V8 coverage of the script, collected by Playwright per test, written in
 the form Node's own coverage takes, and reported by c8 (`npm run coverage:device-ui`), which fails
 below 98% of statements, lines and functions and 90% of branches. The suite reaches 100, 100, 100
-and 95.6.
+and 94.9.
 
-**Budget.** A host test sums the two files, fails above 28,672 bytes, and fails on a carriage
+**Budget.** A host test sums the two files, fails above 45,056 bytes, and fails on a carriage
 return.
 
 **On the target.** A step in the ESP32 job, after the HTTP step and without changing it, boots the
@@ -577,8 +656,9 @@ through it: the page loads from the firmware, byte for byte the files in the tre
 stream the boot play decoded; the volume set with the slider reads back through `GET /status`; a
 layout the capture sink cannot carry is refused with the firmware's own reply; a play started
 from the form finishes, and its levels on the console come out at a quarter of the boot play's;
-Stop reads back as `stopped`; `GET /api` lists the routes. Then the step checks the console for a
-panic or a second boot. A second step plays [the stream set](esp32-stream-set.md) onto 7.1.4 on a
+Stop reads back as `stopped`; `GET /api` lists the routes. Since the redesign it also reads what the
+firmware adds: the network as `Ethernet · 10.0.2.15`, the firmware tile, and no wiring on the
+capture sink. Then the step checks the console for a panic or a second boot. A second step plays [the stream set](esp32-stream-set.md) onto 7.1.4 on a
 twelve-slot image (`sdkconfig.ci-http714`) and runs `device-ui/board/layouts.spec.js` on it: the
 Output, Silent and Next play rows through a 5.1 stream on 7.1.4, a 7.1.4 stream on 5.1 and a 5.1
 stream folded to 2.0, a layout wider than the bus refused and explained, and a 44.1 kHz stream
@@ -814,3 +894,59 @@ run as root, so Playwright can install Chromium's system libraries).
     of slot width at all - `hardware_info.hpp` does not assume the halves-at-32-bit relationship
     itself, since that is a fact about `sink_plan.hpp`'s own arithmetic, not something owed to
     every future sink).
+
+22. **The flash budget, for the redesign.** (a) **45,056 bytes**; (b) 28,672 as now, paid for
+    by cutting the design back to the old page's; (c) gzip, decision 2's option (b). **Recommend
+    (a).** The page and script are 42,846 bytes: the stylesheet went from 2,534 bytes to 9,357
+    for Hearth's look in two schemes - segmented controls, meters, tiles, a toast, a dialog -
+    and the script gained the choices' guard, the presets and the network and firmware lines. What
+    the budget protects is unchanged since decision 18: the image with the page in it is
+    1,418,544 bytes of the S3 board's 1,572,864-byte factory partition (154,320 free), 1,580,224
+    of the C6's 2,097,152, and 905,888 of the P4's 4,194,304, measured on 2026-09-24. Gzip would
+    make the pair 13,957 bytes and stays the lever for when an image needs the room. Cost: 14,529
+    bytes more flash than the page before, in every firmware that mounts Control, and as much more
+    sent per page load. **Taken, (a).**
+
+23. **The output layout's control.** (a) **the named layouts as a segmented control, those wider
+    than the sink disabled, above the field**; (b) the field with its suggestion list, as before;
+    (c) the segmented control alone. **Recommend (a).** A `<datalist>` shows its suggestions only
+    once someone types or finds its arrow, and not at all in some mobile browsers; the segments
+    show what fits the sink at a glance, as the desktop app's speaker page does. (c) would drop
+    the speaker list a DAC wired in WAV order needs (decision 15's reason). Cost: one choice made
+    two ways, which the page keeps in step - a preset fills the field - and a preset is sent as
+    it is chosen, so arrowing across the group sends each one passed.
+
+24. **Where an action's outcome shows.** (a) **a toast at the bottom of the window, still the
+    one polite live region**; (b) a paragraph at the end of Settings, as before. **Recommend
+    (a).** The pairing actions are in Sendspin, and their outcome in (b) landed a screen away from
+    them. Cost: the toast covers the bottom of the window while it shows, which the page's bottom
+    padding and `scroll-padding-bottom` keep clear of what is focused, and a message that is not
+    an error leaves after six seconds.
+
+25. **Confirming Forget every server.** (a) **a `<dialog>` that opens on Cancel**; (b)
+    `confirm()`, as before. **Recommend (a).** `confirm()` stops the page's script while it is
+    open, so the status stops too, and a browser may suppress it. Cost: the dialog keeps the answer
+    it last closed with, which the page resets before each opening so that Escape is never taken
+    for the last time's Forget.
+
+26. **Where the board's network is reported.** (a) **an object in `/status`**; (b) `/hardware`;
+    (c) a route of its own. **Recommend (a).** The signal changes from one read to the next and the
+    address can, and nothing in `/hardware` may (decision 19). Cost: about 80 bytes on every
+    `/status`, and on WiFi one `esp_wifi_sta_get_ap_info()` per read, on the server's task.
+
+27. **A setting the board cannot change.** (a) **offered only when `/status` reports it, and the
+    example leaves the wiring out where there is no second line**; (b) a list of fixed settings in
+    `/status`; (c) offered always, as before. **Recommend (a).** It follows the page's own rule -
+    what the firmware does not report is not shown - and needs no new field. (c) offered the C6
+    and the P4 a checkbox that could only be refused. Cost: `GET /wiring` answers 404 where it
+    answered `0` on those parts, and a firmware that has a setter without a getter gets no control.
+
+28. **Several paired servers.** (a) **say how Sendspin treats them beside the count, and list
+    them once the board can**; (b) list them now by the key fingerprint `/status` could carry;
+    (c) nothing, as before. **Recommend (a).** The board keeps up to eight pairing records and
+    admits one connection at a time ([Several servers](#several-servers)), which the count alone
+    did not say. A useful list needs the server's name in each record, `/status` to carry the
+    records and `POST /pairing` to forget one; that is device work of its own, in
+    `SendspinStore`, `SendspinHost`, Control and the example, and (b) would show eight-character
+    fingerprints nobody can match to a server. Cost: until then a person can forget every server
+    or none from the page; forgetting one is done from that server, which unpairs it.

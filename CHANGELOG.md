@@ -147,6 +147,10 @@ The sections below contain the complete change list and fixes.
   codec, layout, volume, per-frame stage timing and ring depth, with
   play/stop/volume/layout controls over the existing REST routes. 16,190 bytes against a
   16,384-byte budget; tested in Chromium and on the emulated board.
+- **A Hearth sink reports its network and its firmware.** `GET /status` gains `network` - the
+  link (`wifi`, or `ethernet` under QEMU), the access point's SSID and signal in dBm, and the
+  board's address - from `ControlHandlers::network`, and `GET /hardware` gains `project`,
+  `version` and `idf_version` from the image's own description. The page shows both.
 - **The ESP32 web page explains the output layout**, showing this play's fold, each
   channel's speaker or object placement, and the speakers left silent; `GET /status`
   gains `sink_slots`, `stream.layout`, `render`, `coded` and `silent`. A 38-stream set
@@ -1012,6 +1016,16 @@ The sections below contain the complete change list and fixes.
 
 **Minimum-footprint / ESP32 decode and encode profile**
 
+- **A Hearth sink's page is redesigned in the Hearth desktop app's look** (`esp-idf/ac3forge/ui/`,
+  `planning/esp32-device-ui.md`): its palette in light and dark, numbered sections, Sendspin
+  first on a board that has it, a source, decode and output path for Now, level meters, and the
+  settings grouped as Speakers and Network. The slot width and the named output layouts are
+  segmented controls sent as they are chosen; a refused choice goes back to what the board has.
+  Outcomes show in a toast, and Forget every server asks in a dialog rather than `confirm()`,
+  which stopped the page's polling while open. The page offers only settings the board reports:
+  the ESP32-C6, the P4's wide sink and the capture and null sinks no longer show a wiring
+  checkbox that could only be refused, and there `GET /wiring` answers `404`. The page and its
+  script are 42,846 bytes against a re-derived budget of 45,056.
 - **A Hearth sink's built-in WiFi network is empty by default, not `my-network`.** With
   the placeholder set, a freshly flashed board spent its `CONFIG_AC3FORGE_EXAMPLE_WIFI_RETRIES`
   attempts and up to 30 s failing to join it before Improv started listening. Empty means

@@ -17,8 +17,7 @@ python3 -m http.server 8000 --bind 0.0.0.0 --directory esp-idf/ac3forge/examples
 ```
 
 then play `http://<host>:8000/714-walk.ec3` - from a board, the serving machine's LAN address;
-from QEMU's user-mode network, `10.0.2.2`. The web page's Play field takes the URL, and so
-does `POST /play`.
+from QEMU's user-mode network, `10.0.2.2`, with `POST /play`.
 
 ## What plays where
 

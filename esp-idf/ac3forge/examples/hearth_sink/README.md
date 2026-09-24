@@ -354,7 +354,7 @@ configurations set 80; the default is 0, none), the component's
 | --- | --- |
 | `GET /` | a web page that shows what the player is doing and drives it through the routes below and nothing else (below) |
 | `GET /api` | these routes, as text - what `GET /` answered before the page |
-| `GET /status` | what is playing and how it is going, as JSON |
+| `GET /status` | what is playing and how it is going, as JSON, and the network the board is on (`network`: its kind, the access point's SSID and signal, and the board's address) |
 | `POST /play` | body: a URL for the `http` source, a path for `fatfs` or `sd`. `202 Accepted` — the location is handed to the task that owns the player, and `/status` says how the open went. `409` from `partition`, which has one thing in it. |
 | `POST /stop` | |
 | `POST /volume` | body: `0.0` to `1.0`, a linear gain the decode task applies before the sink |
@@ -362,8 +362,8 @@ configurations set 80; the default is 0, none), the component's
 | `PUT /layout` | body: a name (`5.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`), the same grammar as `CONFIG_AC3FORGE_EXAMPLE_LAYOUT`. Takes effect at the next play - the `i2s` sink reconfigures its mode and slot count to match, so this never needs a rebuild. `400` for text that is not a layout, `409` for one with more slots than the sink's ceiling. |
 | `GET /name` | what the board calls itself, as text |
 | `PUT /name` | body: a name, up to 32 bytes. Stored on the board, so it survives a reflash; it is the mDNS instance name and what a server lists the sink under. `409` if it does not fit or NVS refused it. |
-| `GET /wiring` | `1` if a second I2S line is wired, `0` if not |
-| `PUT /wiring` | body: `1` or `0`. Moves the sink's ceiling with it - two lines carry twice one line's slots - and takes effect at the next play. `409` while a play is running. |
+| `GET /wiring` | `1` if a second I2S line is wired, `0` if not; `404` where there can be no second line - the ESP32-C6, the P4's `i2s_wide`, `capture` and `null` - and `/status` then has no `second_line` |
+| `PUT /wiring` | body: `1` or `0`. Moves the sink's ceiling with it - two lines carry twice one line's slots - and takes effect at the next play. `409` while a play is running, and where there can be no second line. |
 | `PUT /network` | body: an SSID, a newline, then the passphrase. Stored for the next boot; the station stays on the network it is already associated with. Improv over the serial port is the other way in, and the one a board with no network at all needs. |
 | `POST /pairing` | body: `reset`, `cancel` or `forget`, for a Sendspin player's pairing ([Pairing](#pairing)). `400` for any other body, `409` on a board with no Sendspin player. |
 | `GET /slot-width` | the slot width in bits, 16 or 32 |
