@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/7_1-322-simple-config2-sap.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	12	22	0x536e99c4
+0	1	audio	2049	14886	0x61ea8ef9
+1	0	presentation	12	22	0x536e99c4
+1	1	audio	2058	14958	0x4c8db95d
+2	0	presentation	12	22	0x536e99c4
+2	1	audio	2054	15102	0x23b5ad69
+3	0	presentation	12	22	0x536e99c4
+3	1	audio	2041	14974	0x64e1e3f5

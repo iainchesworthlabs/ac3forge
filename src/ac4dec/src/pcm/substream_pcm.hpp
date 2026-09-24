@@ -3,28 +3,34 @@
 #include <array>
 #include <deque>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "ac4dec/decoder.hpp"
 #include "dsp/qmf.hpp"
 #include "dsp/synthesis.hpp"
 #include "pcm/aspx.hpp"
+#include "pcm/routing.hpp"
+#include "pcm/stereo.hpp"
 #include "syntax/channel_elements.hpp"
 #include "syntax/context.hpp"
 #include "syntax/substream.hpp"
 
 // One audio substream's reconstruction, frame after frame, along Part 1
 // Figure 9 of ETSI TS 103 190-1 V1.4.1: the audio spectral frontend (clause
-// 5.1), stereo processing (5.3), the inverse transform with block switching
-// (5.5) and frame alignment (5.6), then the QMF domain (5.7): analysis,
-// companding, A-SPX and synthesis, for what this version decodes. What it
-// does not decode yet it refuses with DecodeError::kUnsupported and the phase
-// of planning/ac4.md that brings it.
+// 5.1), stereo and multichannel processing (5.3), the inverse transform with
+// block switching (5.5) and frame alignment (5.6), then the QMF domain (5.7):
+// analysis, companding, A-SPX and synthesis, for what this version decodes:
+// the mono, pair, 3.0, 5.X and 7.X elements in the SIMPLE and ASPX codec
+// modes. What it does not decode yet it refuses with
+// DecodeError::kUnsupported and the phase of planning/ac4.md that brings it.
 //
 // Every codec mode passes through the QMF banks, SIMPLE included, as Figure
 // 9 draws it, so the decoder's delay is one for all of them: d_pcm, the QMF
 // pair's 577 samples and the ts_offset_hfgen slots of history the synthesis
-// works behind (5.7.1), 352 + 577 + 384 samples at frame_rate_index 13.
+// works behind (5.7.1), 352 + 577 + 384 samples at frame_rate_index 13. The
+// LFE goes through the banks with the rest and nothing else touches it there:
+// companding and A-SPX leave it out (Tables 212 and 213).
 
 namespace ac4::detail {
 
@@ -32,9 +38,9 @@ class SubstreamPcm {
    public:
     // Decodes one frame of `substream`, read under `ctx`, to planar PCM in
     // `channels` (one vector per output channel, frame_len_base samples each,
-    // full scale 1.0) and names the channels in `speakers`. A substream whose
-    // channel mode or frame length differs from the last frame's starts from
-    // silence.
+    // full scale 1.0) and names the channels in `speakers`, in speakers_of()'s
+    // order. A substream whose channel mode or frame length differs from the
+    // last frame's starts from silence.
     [[nodiscard]] ParseResult decode(const SubstreamContext& ctx, const AudioSubstream& substream,
                                      int sequence_counter, std::vector<std::vector<float>>& channels,
                                      std::vector<Speaker>& speakers);
@@ -73,10 +79,23 @@ class SubstreamPcm {
         std::vector<AspxData2ch> aspx_2ch;
     };
 
-    [[nodiscard]] ParseResult configure(const SubstreamContext& ctx, std::size_t channel_count);
+    // One aspx_data element's frame parameters and its channels' data and
+    // matrices, for one of the units aspx_units() lists.
+    struct UnitIo {
+        AspxFrame frame;
+        std::array<AspxChannelIo, 2> io{};
+        std::array<int, 2> channels{};
+        std::size_t count = 1;
+    };
+
+    [[nodiscard]] ParseResult configure(const SubstreamContext& ctx);
     [[nodiscard]] ParseResult check_control(const SubstreamContext& ctx, const ChannelElement& element) const;
+    [[nodiscard]] UnitIo unit_io(const AspxUnit& unit, const Control& control, bool master_reset);
+    [[nodiscard]] int channel_of(Speaker speaker) const noexcept;
+    [[nodiscard]] ParseResult matrix(const SubstreamContext& ctx, const ChannelElement& element);
     void apply(const Control& control);
     void pass_through();
+    void pass_through(Channel& channel) const;
 
     int full_length_ = 0;
     int ch_mode_ = -1;
@@ -88,15 +107,21 @@ class SubstreamPcm {
     int ts_in_ats_ = 1;      // num_ts_in_ats
     int hfgen_ = 0;          // ts_offset_hfgen
     std::optional<dsp::TransformSet<double>> transforms_;
-    std::vector<Channel> channels_;
+    std::span<const Speaker> speakers_;  // the channel mode's, speakers_of()
+    std::vector<Channel> channels_;      // in speakers_'s order
+    std::vector<AspxUnit> units_;        // aspx_units() of the channel mode
+    std::vector<int> companded_;         // companded_speakers(), as channel indices
     std::deque<Control> held_;
     // aspx_master_freq_scale, aspx_start_freq and aspx_stop_freq of the last
     // configuration applied, for master_reset (5.7.6.3.1.1).
     std::optional<std::array<int, 3>> master_;
 
     // Scratch, kept to save an allocation per frame.
-    std::vector<std::vector<double>> scaled_;
-    std::vector<double> spectrum_;
+    ElementRoute route_;
+    std::vector<StereoParameters> parameters_;  // one channel data element's, 32 KiB each
+    std::vector<std::vector<double>> scaled_;   // per track, in bitstream order
+    std::vector<std::vector<double>> spectra_;  // per channel, in window order
+    std::vector<int> track_of_;                 // per channel, the track its lines are in
     std::vector<double> pcm_;
     std::vector<double> aligned_;
     std::vector<std::vector<int>> lengths_;  // per channel, its blocks' lengths

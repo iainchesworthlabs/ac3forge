@@ -2770,11 +2770,16 @@ def digest_lines(data: bytes, stream_name: str, ims_rule=True, diagnostics=None)
 
 
 def stream_label(path):
-    """Path relative to tests/golden/external-baseline/ when inside it, else the file name."""
+    """Path relative to tests/golden/external-baseline/, where the digest tests look for the
+    streams, when inside tests/golden/ (the constructed streams under tests/golden/ac4dec/ take
+    a leading ../); else the file name."""
     p = Path(path).resolve().as_posix()
     marker = '/tests/golden/external-baseline/'
     if marker in p:
         return p.split(marker, 1)[1]
+    golden = '/tests/golden/'
+    if golden in p:
+        return '../' + p.split(golden, 1)[1]
     return Path(path).name
 
 

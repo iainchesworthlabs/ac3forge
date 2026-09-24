@@ -560,6 +560,8 @@ Later phases add the readings their processing needs.
 - Part 1 Table B.2, p. 283, lists a 96 kHz transform length of 920 where the other tables have 960.
 - Part 1 Pseudocode 21, p. 142, lacks the brace that closes `if (first_scf_found == 1)` before its
   `else`.
+- Part 1 Table 213, p. 267, names the last pair of 7.X 3/2/2 (Lth, Rth); Table 88, p. 77, and Table 183,
+  p. 182, name it Tfl and Tfr, as the decoder does.
 - Part 1 5.1.4.2, p. 143, has the noise fill replace silent bands "if noise fill data is present as
   indicated when b_snf_data_exists is false", and the next sentence makes the tool inactive when it is
   false. It runs when `b_snf_data_exists` is true, the only case in which `asf_snf_data()` (Table 42,
@@ -664,6 +666,36 @@ clause's formula.
   every track of a frame the same sequence, since `sequence_counter` is the frame's, and the noise of the
   two channels of a pair would be the same noise at two levels.
 - **Evidence:** Text; no stream here sets `b_snf_data_exists`.
+
+### The LFE's track is not numbered in Tables 180 and 182
+
+- **Where:** Part 1 5.3.4.3.0 and 5.3.4.4.0, pp. 180 and 181: Tables 180 and 182 number the tracks "according
+  to the bitstream order of the channel data elements", five or seven of them, and name no LFE, though the
+  5_X and 7_X elements read the LFE's `mono_data(1)` before any channel data (Tables 25 and 33).
+- **Reading:** the tables count from the first track after the LFE's. The LFE's `mono_data(1)` gives the
+  LFE channel by 5.3.3.1 (O0 = I0), and the LFE goes through the QMF banks with the other channels,
+  untouched there: 6.2.10 leaves it out of A-SPX and Table 212 out of companding.
+- **Evidence:** Streams. DEE's 5.1 streams from 192 to 768 kbps decode with each channel's tone on its own
+  channel, the LFE's included, and agree with librempeg's decode to 83 dB channel by channel.
+
+### The 7.X element's additional channels
+
+- **Where:** Part 1 5.3.4.4.1, p. 181, and Table 183, p. 182: with `b_use_sap_add_ch`, a 2 x 2 matrix
+  makes two channels of an output of one channel data element (D or E, or A or B) and one of the
+  additional `two_channel_data()` (F or G), "after the creation of the preliminary outputs". The two come
+  from different elements, each with its own `sf_info()`, and nothing makes their time/frequency tiles
+  the same.
+- **Reading:** the matrix applies tile by tile under the framing its `chparam_info()` was read with, the
+  first input's ("b_use_sap_add_ch: the framing of its chparam_info()" above), to the two inputs' lines in
+  window order after ungrouping: in each window, the bands below that framing's `max_sfb` for the window's
+  group, at the window's own band offsets. The inputs must be transformed alike, window for window, and a
+  frame whose inputs are not is refused as invalid. Bands above `max_sfb` are left as they are.
+- **Why:** a tile of one input has no counterpart in the other unless their windows match, and window
+  order is where the two elements' lines meet: in bitstream order each keeps its own grouping and
+  `max_sfb`.
+- **Evidence:** Text, and the constructed 7.X streams of `tests/ac4dec/ac4dec_constructed.cpp`, whose
+  tracks are the channels through the inverse of Table 183's matrix and which decode with each tone on its
+  channel. No encoder here writes the element.
 
 ## The QMF domain
 

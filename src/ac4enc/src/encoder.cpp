@@ -272,7 +272,7 @@ struct Encoder::Impl {
         fields.iframe = frame % config.iframe_interval == 0;
         fields.fs_index = fs_index;
         fields.frame_rate_index = 13;
-        fields.stereo = config.channels == 2;
+        fields.ch_mode = config.channels == 2 ? 1 : 0;
         fields.dialnorm_bits = dialnorm_bits;
         return fields;
     }

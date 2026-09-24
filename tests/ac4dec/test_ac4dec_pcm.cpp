@@ -1,8 +1,8 @@
 // ac4::Decoder::decode() and the reconstruction behind it (src/ac4dec/src/pcm):
 // the noise fill's random number generator against the text's own closed
 // form, and the committed DEE streams decoded to PCM - each channel's tone on
-// its own channel, an ASPX stream's high band rebuilt, and the modes this
-// version refuses refused by name.
+// its own channel in stereo and 5.1, the LFE's included, an ASPX stream's high
+// band rebuilt, and the modes this version refuses refused by name.
 
 #include <algorithm>
 #include <array>
@@ -228,11 +228,70 @@ TEST_CASE("an ASPX stereo stream decodes every frame with its high band rebuilt"
     }
 }
 
+TEST_CASE("a SIMPLE 5.1 stream decodes each tone to its own channel, the LFE's included", "[ac4dec][pcm]") {
+    // tones_51: L R C LFE Ls Rs at 331, 457, 613, 47, 787 and 953 Hz, each at
+    // -20 dBFS (gen_ac4_baseline.py's TONE_HZ).
+    const Decoded decoded = decode_all("ac4-51-tones-384");
+    using S = ac4::Speaker;
+    REQUIRE(decoded.speakers ==
+            std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe, S::kLeftSurround, S::kRightSurround});
+    constexpr std::array<double, 6> kTone = {331.0, 457.0, 613.0, 47.0, 787.0, 953.0};
+    const std::size_t skip = 24000;
+    REQUIRE(decoded.channels[0].size() > 4 * skip);
+    for (std::size_t c = 0; c < 6; ++c) {
+        CAPTURE(c);
+        const auto middle =
+            std::span<const float>(decoded.channels[c]).subspan(skip, decoded.channels[c].size() - 2 * skip);
+        const double own = tone_power(middle, kTone[c], 48000);
+        for (std::size_t other = 0; other < 6; ++other) {
+            if (other != c) {
+                CAPTURE(other);
+                CHECK(own > 1e5 * tone_power(middle, kTone[other], 48000));
+            }
+        }
+        // DEE low-passes the LFE before coding it, which costs the 47 Hz tone
+        // 0.3 dB (tools/checks/score_ac4_decode.py, LFE_CHANNEL).
+        const double level_db = 20.0 * std::log10(std::sqrt(4.0 * own) / 0.1);
+        CHECK(std::abs(level_db) < (c == 3 ? 0.5 : 0.2));
+    }
+}
+
+TEST_CASE("an ASPX 5.1 stream rebuilds the high band of every channel but the LFE", "[ac4dec][pcm]") {
+    // DEE's 5.1 music at 192 kbps: A-SPX from QMF subband 32 (12 kHz) in the
+    // pairs (L, R) and (Ls, Rs) and in C (Part 1 Table 213). The source music
+    // is 25 to 40 dB quieter from 12 to 16 kHz than from 7.5 to 11.25 kHz; its
+    // LFE is low-passed at 120 Hz.
+    const Decoded decoded = decode_all("ac4-51-music-192");
+    REQUIRE(decoded.channels.size() == 6);
+    for (std::size_t c = 0; c < 6; ++c) {
+        CAPTURE(c);
+        REQUIRE(decoded.channels[c].size() == decoded.frames * 2048);
+        const std::vector<double> energy = subband_energy(decoded.channels[c]);
+        const auto band = [&](std::size_t first, std::size_t last) {
+            double sum = 0.0;
+            for (std::size_t sb = first; sb < last; ++sb) {
+                sum += energy[sb];
+            }
+            return 10.0 * std::log10(sum / static_cast<double>(last - first) + 1e-30);
+        };
+        const double waveform = band(20, 30);   // 7.5 to 11.25 kHz
+        const double extension = band(33, 43);  // 12.4 to 16.1 kHz, A-SPX's
+        const double lowest = band(0, 1);       // below 375 Hz
+        CAPTURE(waveform, extension, lowest);
+        if (c == 3) {
+            CHECK(extension < lowest - 100.0);
+        } else {
+            CHECK(extension < waveform);
+            CHECK(extension > waveform - 45.0);
+        }
+    }
+}
+
 TEST_CASE("decode refuses by name what it does not turn into PCM yet", "[ac4dec][pcm]") {
     {
-        const auto [error, reason] = first_refusal("ac4-51-music-384");  // SIMPLE 5.1
+        const auto [error, reason] = first_refusal("ac4-51-music-128");  // ASPX_ACPL_2 5.1
         CHECK(error == ac4::DecodeError::kUnsupported);
-        CHECK(reason.find("mono and stereo") != std::string::npos);
+        CHECK(reason.find("A-CPL") != std::string::npos);
     }
     {
         const auto [error, reason] = first_refusal("ac4-ims-music-128-25");  // frame_rate_index 2

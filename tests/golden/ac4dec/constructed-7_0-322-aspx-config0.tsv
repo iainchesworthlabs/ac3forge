@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/7_0-322-aspx-config0.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	12	22	0x536e99c4
+0	1	audio	2234	15598	0xa241fdbc
+1	0	presentation	12	22	0x536e99c4
+1	1	audio	2221	15558	0x3a205f3f
+2	0	presentation	12	22	0x536e99c4
+2	1	audio	2223	15910	0x0748bd54
+3	0	presentation	12	22	0x536e99c4
+3	1	audio	2220	15646	0x54711563
