@@ -47,21 +47,17 @@ class Rewrite(unittest.TestCase):
         self.assertEqual(rrc.rewrite("# ROADMAP PF5 phase 4c kernel"),
                          "# batched MDCT (four blocks) kernel")
 
-    @unittest.expectedFailure
     def test_slash_pair_names_both_ids(self):
-        """SUSPECTED BUG (rewrite_roadmap_comments.py:234-241): the dedicated
-        "roadmap X/Y" substitution can never fire - the case-insensitive
-        bare-id pass just above it has already consumed "roadmap DC1",
-        leaving "decoder output stage/DC2"."""
+        """Regression: the dedicated "roadmap X/Y" substitution used to run
+        after the case-insensitive bare-id pass, which had already consumed
+        "roadmap DC1", leaving "decoder output stage/DC2"."""
         self.assertEqual(rrc.replace_bare_roadmap_ids("roadmap DC1/DC2"),
                          "decoder output stage/decoder concealment")
 
-    @unittest.expectedFailure
     def test_parenthesised_see_roadmap_is_removed_whole(self):
-        """SUSPECTED BUG (REPLACEMENTS order, rewrite_roadmap_comments.py:
-        188-189): "see ROADMAP.md)" -> ")" runs before the
-        " (see ROADMAP.md)" -> "" rule, so the latter is unreachable and the
-        text is left with an empty "()"."""
+        """Regression: in REPLACEMENTS, "see ROADMAP.md)" -> ")" used to run
+        before the " (see ROADMAP.md)" -> "" rule, so the latter was
+        unreachable and the text was left with an empty "()"."""
         self.assertEqual(rrc.rewrite("// C API wrapper (see ROADMAP.md)"),
                          "// C API wrapper")
 
