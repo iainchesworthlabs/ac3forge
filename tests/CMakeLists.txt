@@ -58,6 +58,8 @@ add_executable(ac3tests
     ac4dec/test_ac4dec_pcm.cpp
     ac4dec/test_ac4dec_presentation.cpp
     ac4dec/test_ac4dec_syntax.cpp
+    ac4enc/test_ac4enc_encoder.cpp
+    ac4enc/test_ac4enc_writer.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
@@ -235,6 +237,10 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/d
 # core's headers (src/ac4core/src, for tests/ac4core/ and the tables) come
 # with linking ac4::core below.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src")
+# tests/ac4enc/ reach the encoder's writer (src/ac4enc/src/) the same way; the
+# two libraries' internal headers keep distinct names (bit_reader.hpp and
+# syntax/ against bit_writer.hpp, asf/ and frame/).
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4enc/src")
 
 # test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the
@@ -1046,6 +1052,7 @@ target_link_libraries(ac3tests
         ac4::ac4
         ac4::core
         ac4::decoder
+        ac4::encoder
         ac3::warnings
         ac3::coverage
         ac3::fmt

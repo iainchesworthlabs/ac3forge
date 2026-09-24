@@ -1,0 +1,42 @@
+#pragma once
+
+#include <cstddef>
+#include <optional>
+#include <vector>
+
+#include "ac4/syntax.hpp"
+#include "bit_writer.hpp"
+
+// One raw_ac4_frame() (ETSI TS 103 190-2 V1.3.1 clause 6.2.1, Part 1 clause
+// 4.2.1): the table of contents at bitstream_version 2 with one version 1
+// presentation over one substream group of one channel-coded substream, then
+// the substreams it indexes: the presentation substream (index 0) and the audio
+// substream (index 1). What this version of the encoder writes, and no more.
+
+namespace ac4::detail {
+
+struct FrameFields {
+    int sequence_counter = 0;   // 0 to 1020
+    bool iframe = true;         // b_iframe_global, b_pres_ndot and b_audio_ndot
+    int fs_index = 1;           // Part 1 Table 82: 1 = 48 kHz, 0 = 44.1 kHz
+    int frame_rate_index = 13;
+    bool stereo = true;         // channel_mode stereo, or mono
+    int dialnorm_bits = 124;    // Part 1 clause 4.3.12.2.1: -dialnorm_bits / 4 dBFS
+};
+
+// The bits the frame spends on everything but the channel element and its
+// fill, with the audio substream at `audio_substream_bytes`: the table of
+// contents, the presentation substream, the audio substream's header,
+// metadata() and the alignment after both. An upper bound over the alignment.
+[[nodiscard]] std::size_t frame_overhead_bits(const FrameFields& fields, std::size_t audio_substream_bytes);
+
+// Writes the frame. `audio` is a buffered writer holding audio_data_chan(): the
+// channel element and nothing after it. With `frame_bytes` above zero, the
+// audio substream takes fill_bits so that the frame is exactly that long, and
+// nothing is returned when the content alone is longer; with zero, the frame
+// is as long as its content. The substreams' records go to `sink`, the audio
+// data's offset by where it lands.
+[[nodiscard]] std::optional<std::vector<std::byte>> write_frame(const FrameFields& fields, const BitWriter& audio,
+                                                                std::size_t frame_bytes, SyntaxSink sink);
+
+}  // namespace ac4::detail
