@@ -1784,6 +1784,32 @@ The sections below contain the complete change list and fixes.
   the build tree, so neither saw it. The generated header is now installed beside `export.h`. The
   linux-llvm leg also installs its default and `BUILD_SHARED_LIBS=ON` build trees and builds a C
   program against each (`tools/checks/check_install_consumer.sh`).
+- **An installed static library left {fmt} unresolved.** `ac3::forge_static`, `ac3::forge_c_static`
+  and `mp4::mp4_static` use {fmt}, and `forge_objects` and `mp4_objects` linked it PRIVATE inside
+  `$<BUILD_INTERFACE:...>`, so the exported targets named it nowhere and each archive kept
+  undefined `fmt::v12::vformat` and `fmt::v12::vprint` references (from seven objects in
+  `libac3forge_static.a` and two in `libmp4_static.a`). A shared library takes {fmt} in at its own
+  link step, which is why only the static variants showed it: a program linking
+  `ac3::forge_c_static` from an installed prefix stopped at
+  `undefined reference to fmt::v12::vprint`. The libraries now compile a private copy of {fmt} in
+  (`FMT_HEADER_ONLY`, in its own inline namespace `fmt::ac3_private`, through a new
+  `ac3::fmt_private` target in `cmake/Fmt.cmake`) and link no {fmt} library, so a consumer needs no
+  {fmt}, and no particular version of it, however the build found {fmt} itself. Exporting the
+  dependency instead fails both ways: the `FetchContent` copy is in no export set, so
+  `install(EXPORT)` stops the configure step, and a system {fmt} of another major version, such as
+  Ubuntu 26.04's `libfmt-dev` 10.1.1, satisfies `find_dependency(fmt)` and then fails to link. The
+  private namespace is needed inside the tree too: with `FMT_HEADER_ONLY` alone, the archive's
+  weak `fmt::v12::vprint` satisfied a reference from `ac3tests`' own copy of `cpu_features.cpp` and
+  pulled the archive's copy of that file in beside it, and the link stopped at a duplicate
+  `has_avx2`. The cost is about 1.9 s more compile time in each of the nine translation units that
+  use {fmt} (17 s of CPU per build), `libac3forge_static.a` growing from 2.2 MB to 3.8 MB and
+  `libmp4_static.a` from 0.2 MB to 0.7 MB, while `libac3forge.so` is 0.6% smaller and `libmp4.so`
+  5% smaller. `tools/checks/check_install_consumer.sh` now links every installed static archive
+  whole and fails on any symbol that neither the package nor the C++ runtime supplies, which finds
+  an unresolved {fmt} in members no single consumer reaches, and it links and runs the static C
+  API targets as well as the shared ones. A C project that links a static C API target must still
+  enable the CXX language in CMake so that the C++ runtime is linked; `docs/library/index.md` and
+  `docs/library/c-api.md` say so.
 
 **Audio backend and object signing**
 
