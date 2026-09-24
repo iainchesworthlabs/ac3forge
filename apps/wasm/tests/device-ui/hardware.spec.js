@@ -22,6 +22,9 @@ test('a board with everything to report: chip, revision, cores, clock, arithmeti
         psram_bytes: 32 * 1024 * 1024,
         sink_max_slots: 16,
         sink_max_slots_bits: 32,
+        project: 'ac3forge_hearth_sink',
+        version: 'v0.10.0-beta.1-42-gee9cf4f',
+        idf_version: 'v6.1',
         capabilities: [
             '2 cores, a hardware floating-point unit',
             'Running at 360 MHz',
@@ -44,6 +47,8 @@ test('a board with everything to report: chip, revision, cores, clock, arithmeti
     await expect(page.locator('#hw-arithmetic')).toHaveText('Hardware floating point');
     await expect(page.locator('#hw-psram')).toHaveText('32 MiB');
     await expect(page.locator('#hw-sink')).toHaveText('16 slots at 32-bit');
+    await expect(page.locator('#hw-firmware')).toHaveText('ac3forge_hearth_sink v0.10.0-beta.1-42-gee9cf4f');
+    await expect(page.locator('#hw-idf')).toHaveText('v6.1');
     await expect(page.locator('#hw-notices')).toBeVisible();
     await expect(page.locator('#hw-notices li')).toHaveText([
         'The detected chip is v3.0, v3.0 or newer. This build was compiled to also accept ' +
@@ -79,6 +84,15 @@ test('a board with nothing extra to report: no PSRAM, no FPU, no sink ceiling to
     await expect(page.locator('#hw-clock')).toBeHidden();
     await expect(page.locator('#hw-sink')).toBeHidden();
     await expect(page.locator('#hw-notices')).toBeHidden();
+    // A firmware from before it reported itself.
+    await expect(page.locator('#hw-firmware')).toBeHidden();
+    await expect(page.locator('#hw-idf')).toBeHidden();
+});
+
+test('a firmware that reports its project but no version', async ({ page, stub }) => {
+    stub.device.hardware = { ...stub.device.hardware, version: '' };
+    await page.goto(stub.url);
+    await expect(page.locator('#hw-firmware')).toHaveText('ac3forge_hearth_sink');
 });
 
 test('a firmware built for one target running on another shows the mismatch as a notice', async ({ page, stub }) => {

@@ -129,4 +129,10 @@ std::string network_address() {
     return std::string(text.data());
 }
 
+NetworkLink network_link() {
+    NetworkLink link;
+    link.kind = "ethernet";
+    return link;
+}
+
 }  // namespace player

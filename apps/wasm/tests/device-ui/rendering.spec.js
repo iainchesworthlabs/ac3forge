@@ -15,9 +15,9 @@ const recorded = (name) => fs.readFileSync(path.join(__dirname, 'payloads', name
 const parsed = (name) => JSON.parse(recorded(name));
 const ms = (us) => (us / 1000).toFixed(1) + ' ms';
 const TIMING = ['#t-decoder', '#t-render', '#t-sink', '#t-frame', '#t-worst', '#t-load'];
-// The layouts the field suggests - the ones not disabled for the sink's size.
+// The named layouts the page offers - the ones not disabled for the sink's size.
 const enabled = (page) =>
-    page.locator('#layouts option').evaluateAll((options) => options.filter((o) => !o.disabled).map((o) => o.value));
+    page.locator('#layouts input').evaluateAll((presets) => presets.filter((p) => !p.disabled).map((p) => p.value));
 
 // Load the page with the stand-in answering GET /status with `body`, and wait
 // for the first answer to be on screen.
@@ -165,11 +165,18 @@ test('a firmware that reports only the state and the figures', async ({ page, st
     for (const id of ['#location', '#source', '#sink', '#codec', '#channels', '#objects', '#output', '#silent', '#next']) {
         await expect(page.locator(id)).toBeHidden();
     }
-    // No sink size: every suggestion offered, and none claimed for the sink.
+    // No sink size: every preset offered, and none claimed for the sink.
     await expect(page.locator('#layout-fit')).toHaveText('');
     expect(await enabled(page)).toEqual(['1.0', '2.0', '5.1', '7.1', '5.1.2', '5.1.4', '7.1.4', '9.1.6']);
     await expect(page.locator('#played')).toBeVisible();
     await expect(page.locator('#t-frame')).toBeVisible();
+    // Nor any setting it does not report: no name, wiring, slot width or
+    // layout to offer a choice about, so the Speakers group goes with them.
+    for (const id of ['#name-form', '#wiring-row', '#slot-row', '#layout-row']) {
+        await expect(page.locator(id)).toBeHidden();
+    }
+    await expect(page.getByRole('heading', { name: 'Speakers' })).toBeHidden();
+    await expect(page.getByLabel('Wi-Fi network')).toBeVisible();
 });
 
 test('a firmware from before the render and sink figures', async ({ page, stub }) => {
@@ -253,9 +260,64 @@ test('the settings the device reports fill the page', async ({ page, stub }) => 
     await show(page, stub, { ...parsed('stopped.json'), name: 'Sitting room', slot_bits: 16, second_line: true, sink_slots: 16 });
     await expect(page.locator('#title')).toHaveText('Sitting room');
     await expect(page.getByLabel('Name')).toHaveValue('Sitting room');
-    await expect(page.getByLabel('Slot width')).toHaveValue('16');
+    await expect(page.getByRole('radio', { name: '16-bit' })).toBeChecked();
+    await expect(page.getByRole('radio', { name: '32-bit' })).not.toBeChecked();
     await expect(page.getByLabel('A second I2S line is wired to a DAC')).toBeChecked();
     await expect(page.locator('#slot-help')).toHaveText('This sink has 16 slots.');
+    // The layout's preset is the one chosen; a speaker list is none of them.
+    await expect(page.getByRole('radio', { name: '2.0', exact: true })).toBeChecked();
+    stub.setStatus({ ...parsed('stopped.json'), layout: 'L,R,C,LFE,Ls,Rs' });
+    await page.reload();
+    await expect(page.getByLabel('Output layout')).toHaveValue('L,R,C,LFE,Ls,Rs');
+    await expect(page.locator('#layouts input:checked')).toHaveCount(0);
+});
+
+test('a board with no second line to wire offers no wiring', async ({ page, stub }) => {
+    // An ESP32-C6, or a sink that drives one line: /status leaves the wiring out.
+    stub.device.secondLine = undefined;
+    await page.goto(stub.url);
+    await expect(page.locator('#state')).toHaveText('Stopped');
+    await expect(page.locator('#slot-row')).toBeVisible();
+    await expect(page.locator('#wiring-row')).toBeHidden();
+    const wiring = await page.request.put(stub.url + 'wiring', { data: '1' });
+    expect(wiring.status()).toBe(409);
+});
+
+test('the network the board is on', async ({ page, stub }) => {
+    const row = page.locator('#network');
+    const shows = async (network, text) => {
+        stub.device.network = network;
+        await page.reload();
+        await expect(page.locator('#link')).toHaveText(/^Status read at /);
+        if (text === undefined) {
+            await expect(row).toBeHidden();
+        } else {
+            await expect(row).toHaveText(text);
+        }
+    };
+    await page.goto(stub.url);
+    await expect(row).toHaveText('Wi-Fi kitchen \u00b7 -58 dBm \u00b7 192.168.1.23');
+    await shows({ kind: 'wifi', ssid: '', rssi_dbm: null, address: '' }, 'Wi-Fi, not joined \u00b7 no address');
+    // QEMU's emulated Ethernet, as the emulated board reports it.
+    await shows({ kind: 'ethernet', ssid: '', rssi_dbm: null, address: '10.0.2.15' }, 'Ethernet \u00b7 10.0.2.15');
+    // A kind the page has no word for is shown as the firmware's own.
+    await shows({ kind: 'thread', ssid: '', rssi_dbm: null, address: 'fd00::1' }, 'thread \u00b7 fd00::1');
+    await shows({ address: '10.0.2.15' }, 'A network \u00b7 10.0.2.15');
+    // A build with no network, and a firmware that does not say.
+    await shows(null, undefined);
+    await shows(undefined, undefined);
+});
+
+test("the state's mark follows the state", async ({ page, stub }) => {
+    for (const [body, state] of [
+        [recorded('playing-eac3.json'), 'playing'],
+        [recorded('failed-decode.json'), 'failed'],
+        [recorded('finished-eac3.json'), 'finished'],
+        [recorded('stopped.json'), 'stopped'],
+    ]) {
+        await show(page, stub, body);
+        await expect(page.locator('#state')).toHaveAttribute('data-state', state);
+    }
 });
 
 test('text from the device goes into the page as text', async ({ page, stub }) => {
@@ -281,7 +343,7 @@ test('a 7.1.4 stream on a twelve-slot sink at 7.1.4', async ({ page, stub }) => 
     await expect(page.locator('#output')).toHaveText('7.1.4, 12 slots: each channel on the speaker at its location');
     await expect(page.locator('#silent')).toBeHidden();
     await expect(page.locator('#next')).toBeHidden();
-    await expect(page.getByRole('combobox', { name: 'Output layout' })).toHaveAccessibleDescription(/This sink has 12 slots\.$/);
+    await expect(page.getByRole('textbox', { name: 'Output layout' })).toHaveAccessibleDescription(/This sink has 12 slots\.$/);
     expect(await enabled(page)).toEqual(['1.0', '2.0', '5.1', '7.1', '5.1.2', '5.1.4', '7.1.4']);
 });
 

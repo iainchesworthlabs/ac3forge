@@ -1,5 +1,6 @@
 #pragma once
 
+#include <optional>
 #include <string>
 
 // The board's network, as a seam CMake resolves - the same rule as
@@ -59,5 +60,16 @@ namespace player {
 // holds none. For the URL an Improv client sends the user to, and for the
 // console line that says where the page is.
 [[nodiscard]] std::string network_address();
+
+// What the board's network is, for GET /status (ac3forge::ControlNetwork):
+// "wifi" or "ethernet", and on WiFi, while the station is associated, the
+// access point's SSID and the signal from it. `kind` is null in a build with
+// no network. Safe from any task.
+struct NetworkLink {
+    const char* kind = nullptr;
+    std::string ssid;
+    std::optional<int> rssi_dbm;
+};
+[[nodiscard]] NetworkLink network_link();
 
 }  // namespace player

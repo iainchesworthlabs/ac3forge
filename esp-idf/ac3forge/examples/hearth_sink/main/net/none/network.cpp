@@ -22,4 +22,6 @@ bool network_ready() { return false; }
 
 std::string network_address() { return {}; }
 
+NetworkLink network_link() { return {}; }
+
 }  // namespace player

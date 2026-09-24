@@ -53,10 +53,9 @@ test.describe('with the clock running', () => {
     });
 
     test('the slot width goes to PUT /slot-width, and the sink grows with it', async ({ page, stub }) => {
-        const width = page.getByLabel('Slot width');
-        await expect(width).toHaveValue('32');
+        await expect(page.getByRole('radio', { name: '32-bit' })).toBeChecked();
         await expect(page.locator('#slot-help')).toHaveText('This sink has 2 slots.');
-        await width.selectOption('16');
+        await page.getByRole('radio', { name: '16-bit' }).check();
         await expect.poll(() => stub.sent('PUT /slot-width').map((r) => r.body)).toEqual(['16']);
         await expect(page.getByRole('status')).toHaveText('16-bit slots from the next play.');
         // Eight 16-bit slots a line where four 32-bit ones fitted.
@@ -67,8 +66,10 @@ test.describe('with the clock running', () => {
         stub.device.framesPerPoll = 1;
         await startPlay(page, stub);
         await expect(page.locator('#state')).toHaveText('Playing');
-        await page.getByLabel('Slot width').selectOption('16');
+        await page.getByRole('radio', { name: '16-bit' }).check();
         await expect(page.getByRole('status')).toContainText('16-bit slots refused (409)');
+        // The choice goes back to what the board still has.
+        await expect(page.getByRole('radio', { name: '32-bit' })).toBeChecked();
     });
 
     test('the wiring checkbox goes to PUT /wiring and doubles the slots', async ({ page, stub }) => {
@@ -84,7 +85,7 @@ test.describe('with the clock running', () => {
     });
 
     test('the network form sends the SSID and passphrase, and keeps neither', async ({ page, stub }) => {
-        await page.getByLabel('Network').fill('attic');
+        await page.getByLabel('Wi-Fi network').fill('attic');
         await page.getByLabel('Passphrase').fill('hunter2');
         await page.locator('#network-form').getByRole('button', { name: 'Save' }).click();
         await expect.poll(() => stub.sent('PUT /network').map((r) => r.body)).toEqual(['attic\nhunter2']);
@@ -95,8 +96,28 @@ test.describe('with the clock running', () => {
         await expect.poll(() => stub.device.ssid).toBe('attic');
     });
 
+    test('the passphrase can be shown while it is typed, and is hidden again once sent', async ({ page, stub }) => {
+        const pass = page.getByLabel('Passphrase');
+        const show = page.getByRole('button', { name: 'Show' });
+        await expect(pass).toHaveAttribute('type', 'password');
+        await expect(show).toHaveAttribute('aria-pressed', 'false');
+        await pass.fill('hunter2');
+        await show.click();
+        await expect(pass).toHaveAttribute('type', 'text');
+        await expect(show).toHaveAttribute('aria-pressed', 'true');
+        await show.click();
+        await expect(pass).toHaveAttribute('type', 'password');
+        await show.click();
+        await page.getByLabel('Wi-Fi network').fill('attic');
+        await page.locator('#network-form').getByRole('button', { name: 'Save' }).click();
+        await expect.poll(() => stub.sent('PUT /network').map((r) => r.body)).toEqual(['attic\nhunter2']);
+        await expect(pass).toHaveValue('');
+        await expect(pass).toHaveAttribute('type', 'password');
+        await expect(show).toHaveAttribute('aria-pressed', 'false');
+    });
+
     test('a network with no name is not sent', async ({ page, stub }) => {
-        await page.getByLabel('Network').fill('  ');
+        await page.getByLabel('Wi-Fi network').fill('  ');
         await page.locator('#network-form').getByRole('button', { name: 'Save' }).click();
         await expect(page.getByRole('status')).toHaveText('Enter a network name.');
         expect(stub.sent('PUT /network')).toHaveLength(0);
@@ -179,10 +200,30 @@ test.describe('with the clock running', () => {
         );
     });
 
-    test('the field suggests the layouts the sink can carry', async ({ page, stub }) => {
+    test('a preset sends its layout to PUT /layout at once', async ({ page, stub }) => {
+        await expect(page.getByRole('radio', { name: '2.0', exact: true })).toBeChecked();
+        await page.getByRole('radio', { name: '1.0', exact: true }).check();
+        await expect.poll(() => stub.sent('PUT /layout').map((r) => r.body)).toEqual(['1.0']);
+        await expect(page.getByRole('status')).toHaveText('Output layout 1.0 from the next play.');
+        await expect(page.getByLabel('Output layout')).toHaveValue('1.0');
+        await expect(page.locator('#next')).toHaveText('1.0');
+        await expect(page.getByRole('radio', { name: '1.0', exact: true })).toBeChecked();
+    });
+
+    test('a refused preset goes back to the layout the board has', async ({ page, stub }) => {
+        stub.device.sinkSlots = 8;
+        await page.reload();
+        stub.next('PUT /layout', { status: 409, body: REPLIES.layoutRefused });
+        await page.getByRole('radio', { name: '5.1', exact: true }).check();
+        await expect(page.getByRole('status')).toHaveText(`Output layout 5.1 refused (409): ${REPLIES.layoutRefused.trim()}`);
+        await expect(page.getByRole('radio', { name: '2.0', exact: true })).toBeChecked();
+    });
+
+    test('the presets the sink cannot carry cannot be chosen', async ({ page, stub }) => {
         const enabled = () =>
-            page.locator('#layouts option').evaluateAll((options) => options.filter((o) => !o.disabled).map((o) => o.value));
+            page.locator('#layouts input').evaluateAll((presets) => presets.filter((p) => !p.disabled).map((p) => p.value));
         await expect.poll(enabled).toEqual(['1.0', '2.0']);
+        await expect(page.getByRole('radio', { name: '5.1', exact: true })).toBeDisabled();
         await expect(page.getByLabel('Output layout')).toHaveAccessibleDescription(/This sink has 2 slots\.$/);
         stub.device.sinkSlots = 16;
         await page.reload();
@@ -245,6 +286,58 @@ test.describe('with the clock held', () => {
         await expect.poll(() => stub.sent('PUT /name').length).toBe(1);
         await page.clock.runFor(4000);
         await expect(page.getByRole('status')).toHaveText('Name Kitchen: no answer in 4 s.');
+    });
+
+    test('a status read begun before a choice was answered does not undo it', async ({ page, stub }) => {
+        // What the board said before the change, answered to a read that was
+        // already out when the change went: the page keeps the choice, and the
+        // read after it - held here until the clock moves - brings the board's.
+        const before = await (await page.request.get(stub.url + 'status')).text();
+        const release = stub.hold('GET /status');
+        const polls = stub.sent('GET /status').length;
+        await page.clock.runFor(1000);
+        await expect.poll(() => stub.sent('GET /status').length).toBe(polls + 1);
+        await page.getByRole('radio', { name: '16-bit' }).check();
+        await expect.poll(() => stub.sent('PUT /slot-width').map((r) => r.body)).toEqual(['16']);
+        await expect(page.getByRole('status')).toHaveText('16-bit slots from the next play.');
+        stub.setStatus(before);
+        release();
+        stub.setStatus(null);
+        await expect(page.locator('#link')).toHaveText('Status read at 12:00:01.');
+        await expect(page.getByRole('radio', { name: '16-bit' })).toBeChecked();
+        await page.clock.runFor(1);
+        await expect.poll(() => stub.sent('GET /status').length).toBe(polls + 2);
+        await expect(page.locator('#slot-help')).toHaveText('This sink has 8 slots.');
+        await expect(page.getByRole('radio', { name: '16-bit' })).toBeChecked();
+    });
+
+    test('a message leaves after six seconds; an error stays until it is replaced or clicked', async ({ page, stub }) => {
+        const toast = page.getByRole('status');
+        // A second at a time, each poll let finish before the clock moves on
+        // (see everySecondUntil below).
+        const seconds = async (from, to) => {
+            for (let second = from; second <= to; second += 1) {
+                await page.clock.runFor(1000);
+                await expect(page.locator('#link')).toHaveText(`Status read at 12:00:${String(second).padStart(2, '0')}.`);
+            }
+        };
+        await page.getByLabel('Name').fill('Attic');
+        await page.locator('#name-form').getByRole('button', { name: 'Save' }).click();
+        await expect(toast).toHaveText('This sink is called Attic.');
+        await seconds(1, 5);
+        await expect(toast).not.toHaveClass(/gone/);
+        await seconds(6, 6);
+        await expect(toast).toHaveClass(/gone/);
+        stub.next('PUT /name', { status: 409, body: REPLIES.nameRefused });
+        await page.locator('#name-form').getByRole('button', { name: 'Save' }).click();
+        await expect(toast).toHaveClass(/error/);
+        await expect(toast).not.toHaveClass(/gone/);
+        await seconds(7, 13);
+        await expect(toast).not.toHaveClass(/gone/);
+        await toast.click();
+        await expect(toast).toHaveClass(/gone/);
+        // Still read out: the text stays where a screen reader found it.
+        await expect(toast).toContainText('refused (409)');
     });
 
     test("a play someone else started keeps the page's own clock lines coming", async ({ page, stub }) => {

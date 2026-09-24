@@ -1,10 +1,14 @@
-// The player's web page. planning/esp32-device-ui.md is its design.
+// The board's web page, a client of the REST routes and nothing else.
+// planning/esp32-device-ui.md is its design.
 (() => {
   'use strict';
   const POLL_MS = 1000; // while the page is visible
   const RETRY_MS = 5000; // while GET /status fails
   const TIMEOUT_MS = 4000; // for any one request
+  const TOAST_MS = 6000; // how long a message that is not an error stays in view
   const FRAME_US = 32000; // 1,536 samples at 48 kHz
+  const FLOOR_DB = -60; // a level meter's left end; 0 dBFS is its right
+  const HOT_DB = -6; // a peak past this shows in the accent colour
   const ACMOD = ['1+1', '1/0', '2/0', '3/0', '2/1', '3/1', '2/2', '3/2']; // A/52 Table 5.8
   const HOW = {
     loro: 'folded to two channels by the decoder (Lo/Ro)',
@@ -16,6 +20,7 @@
   // The Sendspin player's words for what /status reports of it.
   const LINK = { 'long-term': 'Paired, encrypted', pairing: 'Pairing, encrypted', sentinel: 'Encrypted, not paired' };
   const PLAYING = { bursts: 'Bursts, decoded here', pcm: 'PCM', idle: 'Nothing' };
+  const KINDS = { wifi: 'Wi-Fi', ethernet: 'Ethernet' }; // /status's network.kind
 
   const $ = (id) => document.getElementById(id);
   const num = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -29,25 +34,41 @@
   const names = (v) => v.split(',').join(' ');
   // The slots a layout needs, where the page can count them: a name's three
   // figures added, as OutputLayout reads F.L.H, or a list's tokens. The
-  // firmware decides; this only explains a refusal and filters suggestions.
+  // firmware decides; this only explains a refusal and marks the presets
+  // the sink cannot carry.
   const need = (text) => {
     const m = /^([1234579])\.([012])(?:\.([0246]))?$/.exec(text);
     return m ? +m[1] + +m[2] + +(m[3] || 0) : text.includes(',') ? text.split(',').length : undefined;
   };
   const ms = (us) => (us / 1000).toFixed(1) + ' ms';
+  const db = (v) => (num(v) ? (v <= -120 ? 'Silent' : v.toFixed(1) + ' dB') : '');
+  // Where a level sits along a meter, as a CSS percentage.
+  const along = (v) => (num(v) ? Math.min(100, Math.max(0, 100 - (v / FLOOR_DB) * 100)).toFixed(1) : '0') + '%';
   const clock = (t) => new Date(t).toTimeString().slice(0, 8);
   const put = (id, text, bad) => {
     $(id).textContent = text;
     $(id).classList.toggle('error', !!bad);
   };
-  // The one live region: what an action did, and the state when it changes.
-  const say = (text, bad) => put('outcome', text, bad);
-  // A description-list row, hidden when /status does not carry it.
+  // A row and its value - a description list's, or the network's in Settings -
+  // hidden when /status does not carry it.
   const row = (id, value) => {
     const dd = $(id);
-    dd.hidden = dd.previousElementSibling.hidden = value === undefined;
+    dd.parentElement.hidden = value === undefined;
     dd.textContent = value ?? '';
   };
+  const radios = (name) => document.querySelectorAll('input[name="' + name + '"]');
+
+  // The one live region, shown as a toast: what an action did, and the state
+  // when it changes. An error stays until something replaces it or it is
+  // clicked away; anything else leaves by itself.
+  let toastTimer = 0;
+  const hideToast = () => $('outcome').classList.add('gone');
+  function say(text, bad) {
+    put('outcome', text, bad);
+    $('outcome').classList.remove('gone');
+    clearTimeout(toastTimer);
+    if (!bad) toastTimer = setTimeout(hideToast, TOAST_MS);
+  }
 
   let status = {};
   let timer = 0;
@@ -58,6 +79,11 @@
   let filled = false;
   let code = '';
   let hardwareShown = false;
+  // GET /status reads begun, and for each choice the page sends, the reads
+  // begun by the time its request was answered (Infinity while it is out): a
+  // read begun before then says what the board had before the choice.
+  let reads = 0;
+  const settled = {};
 
   async function call(method, path, body) {
     const abort = new AbortController();
@@ -85,6 +111,7 @@
     if (polling) return new Promise((resolve) => waiting.push(resolve));
     polling = true;
     const asked = waiting.splice(0);
+    const read = ++reads;
     clearTimeout(timer);
     let delay = POLL_MS;
     try {
@@ -100,7 +127,7 @@
       if (failing) say('The player is answering again.');
       failing = 0;
       put('link', 'Status read at ' + clock(Date.now()) + '.');
-      render(s);
+      render(s, read);
       if (!hardwareShown) loadHardware();
     } catch (e) {
       delay = RETRY_MS;
@@ -143,6 +170,16 @@
     };
   }
 
+  // The network the board is on: /status's "network" object.
+  function network(n) {
+    if (!n || typeof n !== 'object') return undefined;
+    const link = KINDS[n.kind] || str(n.kind) || 'A network';
+    const where = [n.kind === 'wifi' ? (str(n.ssid) ? link + ' ' + n.ssid : link + ', not joined') : link];
+    if (num(n.rssi_dbm)) where.push(n.rssi_dbm + ' dBm');
+    where.push(str(n.address) || 'no address');
+    return where.join(' \u00b7 ');
+  }
+
   function played(frames) {
     if (!num(frames)) return undefined;
     const sec = Math.floor((frames * FRAME_US) / 1e6);
@@ -174,19 +211,41 @@
     });
   }
 
-  const db = (v) => (num(v) ? (v <= -120 ? 'Silent' : v.toFixed(1) + ' dB') : '');
+  // One output's row in the levels table: its number and a meter - the RMS
+  // filled in, the peak a mark - then both figures as text. The meter is
+  // drawn for the eye only; the figures are what a screen reader reads.
+  function levelRow(peak, rms, i) {
+    const tr = document.createElement('tr');
+    const th = document.createElement('th');
+    const n = document.createElement('span');
+    const meter = document.createElement('span');
+    th.scope = 'row';
+    n.className = 'n';
+    n.textContent = String(i + 1);
+    meter.className = peak > HOT_DB ? 'meter hot' : 'meter';
+    meter.setAttribute('aria-hidden', 'true');
+    meter.style.setProperty('--r', along(rms));
+    meter.style.setProperty('--p', along(peak));
+    th.append(n, meter);
+    tr.append(th);
+    tr.insertCell().textContent = db(peak);
+    tr.insertCell().textContent = db(rms);
+    return tr;
+  }
 
   // A Sendspin player's part of /status: who plays to it, how well, and a
   // pairing in progress, whose code is announced once when it appears.
   function sendspin(p) {
     const on = !!p && typeof p === 'object';
     $('sendspin').hidden = !on;
+    // With a Sendspin player on the board, Now is the board's own player only.
+    $('now-note').hidden = !on;
     if (!on) return;
     const c = str(p.pairing_code) || '';
     const spaced = c.replace(/(\d{3})(?=\d)/g, '$1 ');
     if (c && c !== code) say('Pairing code ' + spaced + ': enter it where the server asks for it.');
     code = c;
-    put('ss-code', c ? 'Pairing code ' + spaced : '');
+    $('ss-digits').textContent = spaced;
     $('ss-code').hidden = !c;
     const server = str(p.server);
     const note = p.pairing_held === true ? 'Pairing is held back after codes that did not match.'
@@ -205,17 +264,9 @@
     row('ss-paired', count(p.paired));
     row('ss-outcome', str(p.pairing_outcome) || undefined);
     const peaks = playing && Array.isArray(p.peak_db) ? p.peak_db : [];
+    const rms = Array.isArray(p.rms_db) ? p.rms_db : [];
     $('ss-levels').hidden = !peaks.length;
-    $('ss-rows').replaceChildren(...peaks.map((peak, i) => {
-      const tr = document.createElement('tr');
-      const th = document.createElement('th');
-      th.scope = 'row';
-      th.textContent = String(i + 1);
-      tr.append(th);
-      tr.insertCell().textContent = db(peak);
-      tr.insertCell().textContent = db((p.rms_db || [])[i]);
-      return tr;
-    }));
+    $('ss-rows').replaceChildren(...peaks.map((peak, i) => levelRow(peak, rms[i], i)));
     $('ss-cancel').hidden = !c;
     $('ss-reset').hidden = p.pairing_held !== true;
   }
@@ -232,6 +283,8 @@
     row('hw-arithmetic', hw.fpu === true ? 'Hardware floating point' : hw.fpu === false ? 'Fixed-point (no floating-point unit)' : undefined);
     row('hw-psram', mib(hw.psram_bytes));
     row('hw-sink', num(hw.sink_max_slots) ? slots(hw.sink_max_slots) + (num(hw.sink_max_slots_bits) ? ' at ' + hw.sink_max_slots_bits + '-bit' : '') : undefined);
+    row('hw-firmware', str(hw.project) && hw.project + (str(hw.version) ? ' ' + hw.version : ''));
+    row('hw-idf', str(hw.idf_version));
     const notices = Array.isArray(hw.notices) ? hw.notices : [];
     $('hw-notices').hidden = !notices.length;
     $('hw-notices').replaceChildren(...notices.map((text) => {
@@ -255,11 +308,48 @@
     }
   }
 
-  function render(s) {
+  // The settings, filled in from what the board says rather than from what
+  // this page last sent: a choice whose request is out, or that a read begun
+  // before its answer would undo, keeps what the user chose, and a field is
+  // never changed under someone typing in it.
+  function settings(s, read) {
+    const fresh = (key) => read > (settled[key] ?? 0);
+    // A setting the board does not report is one it has no choice about.
+    $('name-form').hidden = !str(s.name);
+    $('wiring-row').hidden = typeof s.second_line !== 'boolean';
+    $('slot-row').hidden = !num(s.slot_bits);
+    $('layout-row').hidden = !str(s.layout);
+    row('network', network(s.network));
+    if (str(s.name)) {
+      $('title').textContent = s.name;
+      document.title = s.name + ' - Hearth sink';
+      if (document.activeElement !== $('name-input') && !$('name-input').value) $('name-input').value = s.name;
+    }
+    const fit = num(s.sink_slots) ? 'This sink has ' + slots(s.sink_slots) + '.' : '';
+    $('slot-help').textContent = fit;
+    $('layout-fit').textContent = fit && ' ' + fit;
+    if (num(s.slot_bits) && fresh('slot')) radios('slot-width').forEach((r) => (r.checked = r.value === String(s.slot_bits)));
+    if (typeof s.second_line === 'boolean' && fresh('wiring')) $('wiring').checked = s.second_line;
+    for (const preset of radios('layout')) {
+      preset.disabled = num(s.sink_slots) && need(preset.value) > s.sink_slots;
+      if (fresh('layout')) preset.checked = preset.value === s.layout;
+    }
+    if (!filled) {
+      filled = true;
+      // The device keeps 95 characters of a layout's text and cuts the rest, so a text
+      // that long may be part of one. Show it, but leave it out of the field, where
+      // Apply would send the part as the whole layout.
+      if (str(s.layout) && s.layout.length < 95 && !$('layout-input').value)
+        $('layout-input').value = s.layout;
+    }
+  }
+
+  function render(s, read) {
     status = s;
     const state = str(s.state) || '';
     const head = state === 'finished' && s.why ? 'Finished (' + s.why + ')' : state ? state[0].toUpperCase() + state.slice(1) : 'Unknown';
     $('state').textContent = head;
+    $('state').dataset.state = state;
     if (shown && head !== shown) say(head + '.');
     shown = head;
     const why = reason(state, s);
@@ -276,9 +366,6 @@
     row('silent', t.silent);
     row('next', str(s.layout) !== t.layout ? str(s.layout) : undefined);
     row('played', played(s.frames));
-    // The suggestions the sink can carry, and its size beside the field.
-    $('layout-fit').textContent = num(s.sink_slots) ? ' This sink has ' + slots(s.sink_slots) + '.' : '';
-    for (const option of $('layouts').options) option.disabled = num(s.sink_slots) && need(option.value) > s.sink_slots;
     timing(s);
     row('c-held', count(s.held));
     row('c-passes', count(s.passes));
@@ -286,51 +373,51 @@
     row('c-resync', bytes(s.resync_bytes));
     row('c-mismatches', count(s.layout_mismatches));
     sendspin(s.sendspin);
-    // The settings, filled in from what the board says rather than from what
-    // this page last sent - and never under someone who is typing in them.
-    if (str(s.name)) {
-      $('title').textContent = s.name;
-      document.title = s.name + ' - Hearth sink';
-      if (document.activeElement !== $('name-input') && !$('name-input').value) $('name-input').value = s.name;
-    }
-    if (num(s.slot_bits) && document.activeElement !== $('slot-width')) $('slot-width').value = String(s.slot_bits);
-    $('slot-help').textContent = num(s.sink_slots) ? 'This sink has ' + slots(s.sink_slots) + '.' : '';
-    if (typeof s.second_line === 'boolean' && document.activeElement !== $('wiring')) $('wiring').checked = s.second_line;
-    if (!filled) {
-      filled = true;
-      // The device keeps 95 characters of a layout's text and cuts the rest, so a text
-      // that long may be part of one. Show it, but leave it out of the field, where
-      // Apply would send the part as the whole layout.
-      if (str(s.layout) && s.layout.length < 95 && !$('layout-input').value)
-        $('layout-input').value = s.layout;
-    }
+    settings(s, read);
   }
 
   // One request per action. No retry: a play sent again could restart it.
   // `why` explains a 409 better than the firmware's words can, when given.
-  // Play and Stop say what they asked at once, and the state the poll that
-  // follows announces (Playing.) replaces it; said after that poll, their
-  // words would stand, as a state is announced only when it changes. Nothing
-  // replaces a layout's words, so with `after` they wait for that poll and
-  // follow what it announces.
-  async function act(label, method, path, body, done, why, after) {
+  // Every action reads the status again at once. A confirmation is said as
+  // soon as the answer comes, and a state that read announces (Playing.)
+  // replaces it; said after that read, it would stand, since a state is
+  // announced only when it changes. Nothing replaces a layout's words, so
+  // with `after` they wait for that read and follow what it announces. `key`
+  // names the choice the request carries, which the reads begun before its
+  // answer leave alone.
+  async function act(label, method, path, body, done, { why = '', after = false, key = '' } = {}) {
+    settled[key] = Infinity;
+    let ok = false;
     try {
       const r = await call(method, path, body);
-      if (r.status >= 200 && r.status < 300) {
-        if (after) {
-          await poll();
-          done();
-          return;
-        }
-        done();
-      } else {
-        say(label + ' refused (' + r.status + '): ' + (r.status === 409 && why ? why : r.text), true);
-      }
+      ok = r.status >= 200 && r.status < 300;
+      if (!ok) say(label + ' refused (' + r.status + '): ' + (r.status === 409 && why ? why : r.text), true);
+      else if (!after) done();
     } catch (e) {
       say(label + ': ' + e.message + '.', true);
     }
-    poll();
+    settled[key] = reads;
+    await poll();
+    if (ok && after) done();
   }
+
+  // A preset and the field both end here: the page sends every layout and
+  // lets the firmware decide, counting slots only to explain a refusal.
+  function setLayout(layout) {
+    const n = need(layout);
+    const room = status.sink_slots;
+    $('layout-input').value = layout;
+    act('Output layout ' + layout, 'PUT', 'layout', layout, () => say('Output layout ' + layout + ' from the next play.'),
+      { why: num(room) && n > room ? 'it needs ' + n + ' slots and this sink has ' + room + '.' : '', after: true, key: 'layout' });
+  }
+
+  // POST /pairing's three bodies.
+  const pairing = (label, body, done) => act(label, 'POST', 'pairing', body, () => say(done));
+
+  const reveal = (on) => {
+    $('pass-input').type = on ? 'text' : 'password';
+    $('pass-show').setAttribute('aria-pressed', String(on));
+  };
 
   $('name-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -339,18 +426,29 @@
     act('Name ' + name, 'PUT', 'name', name, () => say('This sink is called ' + name + '.'));
   });
 
-  $('slot-width').addEventListener('change', () => {
-    const bits = $('slot-width').value;
-    act(bits + '-bit slots', 'PUT', 'slot-width', bits,
-      () => say(bits + '-bit slots from the next play.'), 'a play is running, or this sink has one width only.');
+  $('slot-width').addEventListener('change', (event) => {
+    const bits = event.target.value;
+    act(bits + '-bit slots', 'PUT', 'slot-width', bits, () => say(bits + '-bit slots from the next play.'),
+      { why: 'a play is running, or this sink has one width only.', key: 'slot' });
   });
 
   $('wiring').addEventListener('change', () => {
     const wired = $('wiring').checked;
     act(wired ? 'A second line' : 'One line', 'PUT', 'wiring', wired ? '1' : '0',
       () => say(wired ? 'A second I2S line, from the next play.' : 'One I2S line, from the next play.'),
-      'a play is running.');
+      { why: 'a play is running.', key: 'wiring' });
   });
+
+  $('layouts').addEventListener('change', (event) => setLayout(event.target.value));
+
+  $('layout-form').addEventListener('submit', (event) => {
+    event.preventDefault();
+    const layout = $('layout-input').value.trim();
+    if (!layout) return say('Enter an output layout.', true);
+    setLayout(layout);
+  });
+
+  $('pass-show').addEventListener('click', () => reveal($('pass-input').type === 'password'));
 
   $('network-form').addEventListener('submit', (event) => {
     event.preventDefault();
@@ -358,30 +456,29 @@
     if (!ssid) return say('Enter a network name.', true);
     act('Network ' + ssid, 'PUT', 'network', ssid + '\n' + $('pass-input').value, () => {
       $('pass-input').value = '';
+      reveal(false);
       say('Stored ' + ssid + ' for the next restart.');
     });
   });
 
-  $('layout-form').addEventListener('submit', (event) => {
-    event.preventDefault();
-    const layout = $('layout-input').value.trim();
-    if (!layout) return say('Enter an output layout.', true);
-    const n = need(layout);
-    const room = status.sink_slots;
-    act('Output layout ' + layout, 'PUT', 'layout', layout, () => say('Output layout ' + layout + ' from the next play.'),
-      num(room) && n > room ? 'it needs ' + n + ' slots and this sink has ' + room + '.' : '', true);
-  });
+  $('ss-cancel').addEventListener('click', () => pairing('Cancel pairing', 'cancel', 'Pairing cancelled.'));
 
-  $('ss-cancel').addEventListener('click', () =>
-    act('Cancel pairing', 'POST', 'pairing', 'cancel', () => say('Pairing cancelled.')));
+  $('ss-reset').addEventListener('click', () => pairing('Allow pairing', 'reset', 'A server may ask to pair again.'));
 
-  $('ss-reset').addEventListener('click', () =>
-    act('Allow pairing', 'POST', 'pairing', 'reset', () => say('A server may ask to pair again.')));
-
+  // Forgetting is the one action that cannot be taken back, so it asks first.
+  // The dialog keeps the last answer it closed with; Escape closes it without
+  // giving one, which must not read as the last time's "forget".
   $('ss-forget').addEventListener('click', () => {
-    if (!confirm('Forget every server this board has paired with? Each has to pair again.')) return;
-    act('Forget every server', 'POST', 'pairing', 'forget', () => say('Every server is forgotten: each has to pair again.'));
+    $('forget-dialog').returnValue = '';
+    $('forget-dialog').showModal();
   });
+
+  $('forget-dialog').addEventListener('close', () => {
+    if ($('forget-dialog').returnValue === 'forget')
+      pairing('Forget every server', 'forget', 'Every server is forgotten: each has to pair again.');
+  });
+
+  $('outcome').addEventListener('click', hideToast);
 
   document.addEventListener('visibilitychange', () => (document.visibilityState === 'hidden' ? clearTimeout(timer) : poll()));
 

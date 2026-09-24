@@ -16,13 +16,19 @@
 // decision 18, has the image sizes behind it: the budget is a statement about
 // keeping the page small enough to read and serve from flash rather than
 // about running out of room.
+//
+// 45,056 since the redesign: Hearth's own look - its palette in both schemes,
+// section rules, segmented controls for the slot width and the named
+// layouts, level meters, a toast for the live region and a dialog before
+// forgetting every server - and the board's network and firmware. Decision
+// 22 has the images it was measured against.
 
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { UI_DIR } = require('./stub');
 
-const BUDGET = 28672;
+const BUDGET = 45056;
 
 test('the page and its script fit the flash budget', () => {
     const files = ['ac3forge_ui.html', 'ac3forge_ui.js'].map((name) => fs.readFileSync(path.join(UI_DIR, name)));

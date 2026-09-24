@@ -33,6 +33,10 @@ async function nextPoll(stub) {
 test('a board no server is connected to', async ({ page, stub }) => {
     await show(page, stub, idleSendspin());
     await expect(page.getByRole('region', { name: 'Sendspin' })).toBeVisible();
+    // Before Now, which is only the board's own player on a board that has one.
+    const regions = await page.getByRole('region').evaluateAll((all) => all.map((r) => r.getAttribute('aria-labelledby')));
+    expect(regions.slice(0, 2)).toEqual(['sendspin-heading', 'now-heading']);
+    await expect(page.locator('#now-note')).toBeVisible();
     await expect(page.locator('#ss-note')).toHaveText(
         'No server is connected. Servers on this network find this board by its name.',
     );
@@ -135,6 +139,15 @@ test('a pairing code is shown and announced once, until the pairing ends', async
     await expect(page.getByRole('status')).toHaveText('Pairing code 123 456 7: enter it where the server asks for it.');
 });
 
+test('several servers paired, one connected', async ({ page, stub }) => {
+    await show(page, stub, { ...playingSendspin(), paired: 3 });
+    await expect(page.locator('#ss-server')).toHaveText('Hearth on the desk (specification)');
+    await expect(page.locator('#ss-paired')).toHaveText('3');
+    await expect(page.getByRole('region', { name: 'Sendspin' })).toContainText(
+        'One server plays to it at a time: one that starts playing takes over from the last.',
+    );
+});
+
 test('pairing held back after codes that did not match', async ({ page, stub }) => {
     await show(page, stub, { ...idleSendspin(), pairing_held: true, pairing_rounds: 5, pairing_outcome: 'code mismatch' });
     await expect(page.locator('#ss-note')).toHaveText('Pairing is held back after codes that did not match.');
@@ -145,6 +158,7 @@ test('pairing held back after codes that did not match', async ({ page, stub }) 
 test('a firmware with no Sendspin player, or one whose player did not start, has no section', async ({ page, stub }) => {
     await show(page, stub, undefined);
     await expect(page.getByRole('region', { name: 'Sendspin' })).toBeHidden();
+    await expect(page.locator('#now-note')).toBeHidden();
     stub.device.sendspin = null;
     await nextPoll(stub);
     await expect(page.locator('#sendspin')).toBeHidden();
@@ -181,20 +195,25 @@ test.describe('the pairing actions', () => {
 
     test('Forget every server asks first, and sends forget only when told to', async ({ page, stub }) => {
         await show(page, stub, playingSendspin());
-        const asked = [];
-        page.once('dialog', (dialog) => {
-            asked.push(dialog.message());
-            return dialog.dismiss();
-        });
+        const dialog = page.getByRole('dialog', { name: 'Forget every server?' });
         await page.getByRole('button', { name: 'Forget every server' }).click();
-        await expect.poll(() => asked).toEqual([
-            'Forget every server this board has paired with? Each has to pair again.',
-        ]);
+        await expect(dialog).toBeVisible();
+        await expect(dialog).toContainText('Each server this board has paired with has to pair again');
+        await dialog.getByRole('button', { name: 'Cancel' }).click();
+        await expect(dialog).toBeHidden();
         await nextPoll(stub);
         expect(stub.sent('POST /pairing')).toHaveLength(0);
-        page.once('dialog', (dialog) => dialog.accept());
+        // Escape after a forget is not a forget: the dialog keeps the answer
+        // it last closed with, and Escape gives none.
         await page.getByRole('button', { name: 'Forget every server' }).click();
+        await dialog.getByRole('button', { name: 'Forget', exact: true }).click();
         await expect.poll(() => stub.sent('POST /pairing').map((r) => r.body)).toEqual(['forget']);
+        await page.getByRole('button', { name: 'Forget every server' }).click();
+        await expect(dialog).toBeVisible();
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
+        await nextPoll(stub);
+        expect(stub.sent('POST /pairing').map((r) => r.body)).toEqual(['forget']);
         await expect(page.getByRole('status')).toHaveText('Every server is forgotten: each has to pair again.');
         await expect(page.locator('#ss-paired')).toHaveText('0');
         await expect(page.locator('#ss-server')).toBeHidden();
@@ -203,8 +222,8 @@ test.describe('the pairing actions', () => {
     test("a pairing action the board refuses shows the board's reply", async ({ page, stub }) => {
         await show(page, stub, playingSendspin());
         stub.next('POST /pairing', { status: 409, body: REPLIES.pairingRefused });
-        page.once('dialog', (dialog) => dialog.accept());
         await page.getByRole('button', { name: 'Forget every server' }).click();
+        await page.getByRole('dialog').getByRole('button', { name: 'Forget', exact: true }).click();
         await expect(page.getByRole('status')).toHaveText(
             'Forget every server refused (409): this board is not a Sendspin player',
         );

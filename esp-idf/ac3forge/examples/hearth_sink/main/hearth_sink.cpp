@@ -47,6 +47,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -490,10 +491,12 @@ ac3forge::ControlHandlers control_handlers() {
         player::sendspin_board_changed();
         return true;
     };
-    h.second_line = []() { return player::sink_second_line_possible() && player::settings().second_line; };
-    // On a part with one I2S controller (an ESP32-C6) the wiring is fixed, and
-    // PUT /wiring says so rather than storing a line nothing can open.
+    // On a part with one I2S controller (an ESP32-C6), and on a sink that
+    // drives one line only, there is no second line to wire: /status leaves
+    // the wiring out, so the page offers no choice about it, and PUT /wiring
+    // says it is fixed rather than storing a line nothing can open.
     if (player::sink_second_line_possible()) {
+        h.second_line = []() { return player::settings().second_line; };
         h.set_second_line = [](bool wired) {
             xSemaphoreTake(g_player_mutex, portMAX_DELAY);
             const bool playing = g_player != nullptr || player::sendspin_playing();
@@ -511,6 +514,16 @@ ac3forge::ControlHandlers control_handlers() {
     }
     h.set_network = [](std::string_view ssid, std::string_view password) {
         return player::settings_set_network(ssid, password);
+    };
+    h.network = []() -> std::optional<ac3forge::ControlNetwork> {
+        player::NetworkLink link = player::network_link();
+        if (link.kind == nullptr) {
+            return std::nullopt;
+        }
+        return ac3forge::ControlNetwork{.kind = link.kind,
+                                        .ssid = std::move(link.ssid),
+                                        .rssi_dbm = link.rssi_dbm,
+                                        .address = player::network_address()};
     };
     h.slot_bits = []() { return player::sink_slot_bits(); };
     h.set_slot_bits = [](int bits) {

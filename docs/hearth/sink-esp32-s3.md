@@ -87,21 +87,26 @@ A board is called `hearth-` followed by the last six hex digits of its MAC addre
 name it. It advertises `_sendspin._tcp` over mDNS under its name, which is how a server finds it,
 and answers as `<name>.local`.
 
-To move a board to another network, use the page's *Network* field, or `PUT /network` with the
+To move a board to another network, use the page's *Wi-Fi network* field, or `PUT /network` with the
 SSID and passphrase on two lines. The board joins that network at its next restart. A board that
 cannot join its stored network when it starts listens for Improv again, so give it the new
 network the same way.
 
 ## The page
 
-`http://<name>.local/`, or the board's address, shows three sections:
+`http://<name>.local/`, or the board's address, shows:
 
-- **Now:** what the board is doing.
-- **Sendspin:** the server playing to it, its clock, the stream's timing, underruns, the levels
-  of each output over the last 100 ms, and how many servers are paired. While a pairing runs, a
-  six-digit code is shown at the top.
-- **Settings:** the name, the slot width, whether a second I2S line is wired, the output layout
-  and the network.
+- **Sendspin:** the server connected to the board, its clock, the stream's timing, underruns, a
+  meter for each output over the last 100 ms, and how many servers are paired. While a pairing
+  runs, its six-digit code is shown at the top. A board keeps a pairing for each server it has
+  paired with, and one server plays to it at a time.
+- **Now:** the board's own player, which plays a location sent to `POST /play`: its state, and the
+  stream's path from source through decode to the output.
+- **Settings:** the wiring, the slot width and the output layout under *Speakers*; the network the
+  board is on, its name and the network to join under *Network*. A choice is sent as it is made;
+  a name, a layout typed in full or a network is sent with its button.
+- **Real time**, **Hardware** and **Counters:** how long each frame takes, what the board is -
+  chip, memory, the sink's ceiling and the firmware - and the player's counters.
 
 The same routes answer without the page (`GET /api` lists them): `GET /status` for a script, and
 `PUT /name`, `/layout`, `/slot-width`, `/wiring` and `/network` to change what the board is. A

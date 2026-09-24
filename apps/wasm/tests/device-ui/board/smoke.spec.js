@@ -50,6 +50,15 @@ test('the board serves the page, and the page drives the board', async ({ page, 
     await expect(page.locator('#output')).toHaveText('2.0, 2 slots: folded to two channels by the decoder (Lo/Ro)');
     await expect(page.locator('#silent')).toBeHidden();
 
+    // What the board says it is and where: QEMU's Ethernet and its address,
+    // the firmware this image is, and no wiring to choose on a capture sink,
+    // which has no second line.
+    await expect(page.locator('#network')).toHaveText('Ethernet \u00b7 10.0.2.15');
+    await expect(page.locator('#hw-firmware')).toHaveText(/^ac3forge_hearth_sink /);
+    await expect(page.locator('#hw-idf')).toHaveText(/^v\d/);
+    await expect(page.locator('#wiring-row')).toBeHidden();
+    await expect(page.getByRole('radio', { name: '32-bit' })).toBeChecked();
+
     // A setting, made from the page and read back from the device: the name
     // it answers to, which is what B2 made the page's business.
     await page.getByLabel('Name').fill('Bench sink');
@@ -58,7 +67,7 @@ test('the board serves the page, and the page drives the board', async ({ page, 
 
     // A layout the capture sink's two slots cannot carry: refused by the
     // firmware, explained by the page; the layout stays.
-    await page.getByRole('combobox', { name: 'Output layout' }).fill('5.1');
+    await page.getByRole('textbox', { name: 'Output layout' }).fill('5.1');
     await page.getByRole('button', { name: 'Apply' }).click();
     await expect(page.getByRole('status')).toHaveText('Output layout 5.1 refused (409): it needs 6 slots and this sink has 2.');
     expect((await status()).layout).toBe('2.0');

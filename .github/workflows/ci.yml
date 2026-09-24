@@ -487,8 +487,14 @@ jobs:
     needs: check-runner
     runs-on: ${{ fromJSON(needs.check-runner.outputs.runner) }}
     steps:
+      # fetch-depth: 0, same requirement and reasoning as packaging-consistency
+      # above: the Patch attribution step below needs `git log` to see the
+      # PR's base commit on main, which a shallow (depth-1) clone never
+      # fetches, silently breaking that step's range instead of just this
+      # job's own `git describe --tags` use.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       # A venv rather than a bare `pip install`: the hosted image's system
@@ -579,6 +585,35 @@ jobs:
       - name: Platform matrix coverage
         shell: bash
         run: python3 tools/checks/check_platform_matrix.py
+
+      # This script's own header describes the same review for a `git
+      # format-patch` series a parallel session hands back before it is
+      # applied; here it runs automatically over the commits a PR actually
+      # adds. PR-only, unlike the checks above: by the time a push or
+      # merge_group run reaches this job, every commit in it already passed
+      # this same check while its PR was open, and for a push to main in
+      # particular the range against its own new tip is empty by then, which
+      # the script treats as "no commits found" - an error, not a vacuous
+      # pass. Dependabot's PRs are excluded the same way branch-name excludes
+      # their branch pattern above: their commits carry Dependabot's own bot
+      # identity by design, never this project's, and were never a
+      # session's patch to review. --expect-name/--expect-email are passed
+      # explicitly rather than left to the script's own git-config default:
+      # a hosted runner's checkout has no user.name/user.email of its own,
+      # so the default would fail this step on every PR with "unset", not
+      # check anything. Merge commits already in the range need no special
+      # handling here - --range mode passes --no-merges to `git log` on its
+      # own (see the script's header), proved by
+      # RangeModeChecks.test_merge_commits_are_excluded in
+      # test_check_patch_attribution.py.
+      - name: Patch attribution
+        if: github.event_name == 'pull_request' && !startsWith(github.head_ref, 'dependabot/')
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          python3 tools/checks/check_patch_attribution.py --range "$BASE_SHA..HEAD" \
+            --expect-name "Iain Chesworth" --expect-email "iain.chesworth@gmail.com"
 
       # The comparison tables are committed Markdown so they remain searchable
       # and usable without JavaScript. The home-page selector reads the JSON

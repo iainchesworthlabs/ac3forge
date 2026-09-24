@@ -409,6 +409,7 @@ key:
   restart (`PUT /network`, whose body carries the passphrase in clear over HTTP);
 - forget every pairing, which gives the board a new identity, and lift the limit on wrong
   pairing codes;
+- read the network the board is on (its SSID, signal and address) and its firmware's version;
 - read `GET /status`, including the pairing code while a pairing runs. So on a board, pairing by
   code shows only that the server's operator can reach the page, and anyone who can reach it can
   pair a server of their own. The network is the boundary for pairing, as it is for the rest. The

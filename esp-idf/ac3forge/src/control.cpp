@@ -3,6 +3,7 @@
 
 #include "ac3forge/control.hpp"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cstdio>
@@ -12,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "esp_http_server.h"
 #include "esp_psram.h"
@@ -253,9 +255,22 @@ HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
     return facts;
 }
 
+// One of esp_app_desc_t's fixed-size text fields, up to its terminator: the
+// build fills them from the project and checks each fits, but a field that
+// exactly fills its array has no terminator to stop at.
+template <std::size_t N>
+std::string_view app_field(const char (&field)[N]) {
+    return {field, static_cast<std::size_t>(std::find(field, field + N, '\0') - field)};
+}
+
 std::string build_hardware_json(const ControlHandlers& handlers) {
     const HardwareFacts facts = gather_hardware_facts(handlers);
     const HardwareReport report = describe_hardware(facts);
+    // The firmware on the board, from the description the build stamps into
+    // the image: the project's name, its version (PROJECT_VER, or `git
+    // describe` of the tree it was built from) and the ESP-IDF it was built
+    // with.
+    const esp_app_desc_t* app = esp_app_get_description();
     std::string out = "{";
     append_key(out, "target");
     append_json_string(out, facts.target);
@@ -275,6 +290,9 @@ std::string build_hardware_json(const ControlHandlers& handlers) {
                           static_cast<unsigned long long>(facts.sink_max_slots_bits));
         }
     }
+    append_string(out, "project", app_field(app->project_name));
+    append_string(out, "version", app_field(app->version));
+    append_string(out, "idf_version", app_field(app->idf_ver));
     append_strings(out, "capabilities", report.capabilities);
     append_strings(out, "notices", report.notices);
     out += "}\n";
@@ -507,6 +525,21 @@ struct Control::Impl {
             append_key(out, "sendspin");
             if (const std::optional<ControlSendspin> sendspin = h.sendspin()) {
                 append_sendspin(out, *sendspin);
+            } else {
+                out += "null";
+            }
+        }
+        // What the board is joined to: see ControlNetwork.
+        if (h.network) {
+            append_key(out, "network");
+            if (const std::optional<ControlNetwork> network = h.network()) {
+                out += '{';
+                append_string(out, "kind", network->kind);
+                append_string(out, "ssid", network->ssid);
+                append_optional(out, "rssi_dbm", network->rssi_dbm ? std::optional<long long>(*network->rssi_dbm)
+                                                                   : std::nullopt);
+                append_string(out, "address", network->address);
+                out += '}';
             } else {
                 out += "null";
             }
