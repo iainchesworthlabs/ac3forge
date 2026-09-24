@@ -1023,12 +1023,36 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
     // destructive rather than merely odd (the sink truncates it first), so it
     // is refused. Compared as paths rather than as text, so "./a.ac3" and
     // "a.ac3" are recognised as the same file.
-    for (const auto path : in_paths) {
+    //
+    // Refused whether or not the output exists yet: an output that does not
+    // exist when this runs is created by the sink before the loop below
+    // reaches the input of the same name, which would then read back this
+    // command's own half-written output. fs::equivalent alone cannot see
+    // that case - it reports false (with an error) when either path is
+    // missing - so it is backed by a comparison of the normalised absolute
+    // paths, which needs neither file to exist. equivalent() still runs
+    // first, since only it sees a hard link or a symlink to the same file
+    // under another name.
+    const auto same_file = [](const std::filesystem::path& a, const std::filesystem::path& b) {
         std::error_code ec;
-        if (std::filesystem::equivalent(std::filesystem::path{std::string{out_path}},
-                                        std::filesystem::path{std::string{path}}, ec)) {
-            fmt::println(stderr, "error: {} is both an input and the output", path);
-            return 1;
+        if (std::filesystem::equivalent(a, b, ec)) {
+            return true;
+        }
+        const auto a_norm = std::filesystem::weakly_canonical(a, ec);
+        if (ec) {
+            return false;
+        }
+        const auto b_norm = std::filesystem::weakly_canonical(b, ec);
+        return !ec && a_norm == b_norm;
+    };
+    if (!is_stdio_path(out_path)) {
+        const std::filesystem::path out_fs{std::string{out_path}};
+        for (const auto path : in_paths) {
+            if (!is_stdio_path(path) &&
+                same_file(out_fs, std::filesystem::path{std::string{path}})) {
+                fmt::println(stderr, "error: {} is both an input and the output", path);
+                return kExitUsage;
+            }
         }
     }
     // Loaded one at a time and written straight through, so only one input's

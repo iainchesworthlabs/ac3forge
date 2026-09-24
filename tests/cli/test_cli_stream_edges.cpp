@@ -512,6 +512,19 @@ TEST_CASE("cat refuses joining a file into itself and streams whose shape differ
                log);
     CHECK(read_bytes(out_path) == before);
 
+    // ...and so is an output that does not exist YET: the sink would create
+    // it before the loop reached the input of the same name, which would
+    // then read back cat's own half-written output. fs::equivalent cannot
+    // compare a path that does not exist, so this used to be joined, exit 0.
+    // Spelled differently on each side, so the check is not a string match.
+    const auto fresh = dir / "cat_fresh.ac3";
+    fs::remove(fresh);
+    check_rows({{"cat " + quoted(fresh) + " " + quoted(in.stereo) + " " +
+                     quoted(dir / "." / "cat_fresh.ac3"),
+                 1, "is both an input and the output"}},
+               log);
+    CHECK_FALSE(fs::exists(fresh));
+
     check_rows(
         {{"cat " + quoted(out_path) + " " + quoted(in.stereo) + " " + quoted(in.wide), 1,
           "error: " + in.wide.string() + " differs from " + in.stereo.string() +
