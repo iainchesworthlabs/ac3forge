@@ -1248,6 +1248,11 @@ gold-reference gate, and over the full set locally.
 - DEE low-passes the LFE before it codes it, with the phase of a filter near 120 Hz, which librempeg's
   decode shows as well. The LFE is held to its level from 20 to 100 Hz and to librempeg's decode, and
   its SNR against the source is pinned as measured.
+- The 5.1 centre's A-SPX band exposed D3's pre-flattening: as printed, the patch takes the inverse of
+  the gain that flattens the low band's slope, which doubles the slope, and the top group of film's
+  centre came out 4.6 dB under the source at 256 kbps, lost to the limiter, and 10.9 dB under at 192.
+  D4 flattens the patch, in the decoder and in the encoder's analysis, and measures both scorers' ASPX
+  legs again (`src/ac4dec/ERRATA.md`, "Pre-flattening's direction").
 
 **Exit:** every DEE 5.1 stream from 192 to 768 kbps decodes with the checks of D2 and D3 on each
 channel, and one tone per channel lands on its own channel, the LFE included. Constructed 3.0 and

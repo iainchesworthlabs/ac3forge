@@ -768,8 +768,10 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 - **Reading:** the length in QMF slots, which makes `est_sig_sb` the mean energy per QMF subsample that
   clause 3.1 makes a signal scale factor: "average energy of the signal within the region in a QMF matrix".
 - **Evidence:** Observation. Where the source has content above the crossover (DEE's music at 48 kbps and
-  speech at 48, 64 and 128 kbps), the divisor as printed decodes the A-SPX tiles 3.5 to 4.8 dB below the
-  source's on average; this one 1.3 to 2.2 dB below, of which the limiter accounts for up to 1 dB.
+  speech at 48, 64 and 128 kbps), the divisor as printed decoded the A-SPX tiles 3.5 to 4.8 dB below the
+  source's on average when phase D3 measured them, and this one 1.3 to 2.2 dB below, of which the limiter
+  accounted for up to 1 dB. With the pre-flattening phase D4 reads ("Pre-flattening's direction", below),
+  this one decodes them 0.5 to 1.0 dB below.
 
 ### alpha0's parentheses
 
@@ -782,6 +784,31 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 - **Evidence:** Text. The gold legs set `aspx_tna_mode` Light to Heavy in most noise groups, but decode to
   the same tile energies and log-spectral distance, within 0.1 dB, under either sign, so they do not decide
   it.
+
+### Pre-flattening's direction
+
+- **Where:** Part 1 5.7.6.4.1, pp. 217 to 220: pre-flattening derives "a gain value ... from a coarse
+  approximation of the slope of the source range", and "the inverse of this gain value is applied during the
+  patching process". Pseudocode 85 defines `gain_vec[sb] = pow(10, (mean_energy - slope[sb])/20)`, the gain
+  that brings each subband of the fitted slope to the mean, and Pseudocode 89 multiplies the patch by
+  `1/gain_vec[p]`. Together the two double the low band's slope in the patch, where the clause names the
+  step pre-flattening and describes the fit as the slope to take out.
+- **Reading:** the patch is multiplied by `gain_vec[p]`: the fitted slope is taken out of the low band as it
+  is copied up, and each patched subband starts from the fit's mean level.
+- **Why:** with `aspx_interpolation` set, as in every stream here, the envelope adjuster gains each subband
+  to its envelope whatever the patch's shape; what the patch's slope changes is the limiter, which cuts a
+  gain more than 3 dB over its limiter group's (Pseudocodes 96 to 101). A patch whose slope is doubled needs
+  its largest gains at the top of each patch, where the limiter cuts them.
+- **Evidence:** Streams, not all one way. Over G0's legs with content above the crossover, this reading
+  brings the A-SPX tiles nearer the source's energy: 2.0 speech at 48 and 64 kbps from 2.4 and 2.8 dB to
+  1.3 and 1.6 dB, with ViSQOL from 4.23 and 4.40 to 4.55 and 4.50; 2.0 music at 48 kbps from 2.7 to 1.5 dB;
+  immersive stereo at 64 kbps from 3.1 to 1.7 dB; 5.1 film's centre from 5.2 to 1.9 dB at 192 kbps and from
+  2.7 to 1.7 dB at 256 to 320. As printed, film's centre loses 4.6 to 10.9 dB in its first patch's top
+  group, and at 256 kbps the limiter takes it all: the envelope adjuster's output before the limiter is
+  within 0.3 dB of the envelope there, and 3.9 dB under it after. It takes them a little further on 2.0 music at 64 kbps and immersive stereo at 96,
+  0.3 and 0.2 dB, and on 2.0 speech at 96 to 144 kbps, whose crossover is 13.5 kHz, from 2.4 to 3.1 dB,
+  with ViSQOL 0.05 to 0.07 lower. librempeg's decodes of these legs sit level across the subband groups,
+  1.2 to 2.2 dB under the source, in every one.
 
 ### The first signal scale factor below zero
 
