@@ -114,6 +114,19 @@ struct OutputStage::Impl {
 
     std::unique_ptr<ac3::iec61937::Eac3BurstPacker> packer;  // Atmos / DD+
     std::unique_ptr<ac3::FrameEncoder> ac3_encoder;           // DD 5.1
+    // DD 5.1 only: the bed gathered until a whole AC-3 frame's worth is in
+    // hand, one vector per coded channel. AC-3 has no short frames - every
+    // syncframe is six blocks, kSamplesPerFrame samples a channel, and
+    // FrameEncoder takes exactly that - but in low-latency mode the engine
+    // hands over one-block (256-sample) beds. Gathering them here, rather
+    // than refusing DD 5.1 in low-latency mode, keeps an AC-3-only receiver
+    // playing: the docs promise low latency shortens Crucible's own E-AC-3
+    // cadence (docs/crucible/settings.md, "03 Latency"), not that every leg
+    // can match it, and on this leg the six-block frame is the format's own
+    // floor. At six-block frames each submit fills exactly one frame and
+    // nothing waits here.
+    std::vector<std::vector<float>> ac3_pending;
+    std::vector<std::span<const float>> ac3_views;
     std::unique_ptr<ac3::Eac3Decoder> decoder;                // the decoded modes
 
     std::vector<float> interleaved;
@@ -161,6 +174,7 @@ struct OutputStage::Impl {
         spatial_started = false;
         packer.reset();
         ac3_encoder.reset();
+        ac3_pending.clear();
         decoder.reset();
         lfe_delay.reset();
     }
@@ -415,13 +429,29 @@ void OutputStage::submit(std::span<const std::byte> unit, const RawFrame& raw) {
             return;
         }
         case OutputMode::kDd51: {
-            const auto frame = impl.ac3_encoder->encode_frame(raw.bed);
-            if (!frame.has_value()) {
-                return;
+            // Gathered into whole AC-3 frames first - see Impl::ac3_pending.
+            impl.ac3_pending.resize(raw.bed.size());
+            for (std::size_t ch = 0; ch < raw.bed.size(); ++ch) {
+                impl.ac3_pending[ch].insert(impl.ac3_pending[ch].end(), raw.bed[ch].begin(),
+                                            raw.bed[ch].end());
             }
-            if (const auto wrapped = ac3::iec61937::wrap_frame(*frame)) {
-                submit_with_patience(*impl.passthrough, status_.underruns,
-                                     std::span<const std::byte>(*wrapped));
+            constexpr auto kAc3Frame = static_cast<std::size_t>(ac3::kSamplesPerFrame);
+            while (!impl.ac3_pending.empty() && impl.ac3_pending[0].size() >= kAc3Frame) {
+                impl.ac3_views.clear();
+                for (const auto& channel : impl.ac3_pending) {
+                    impl.ac3_views.emplace_back(channel.data(), kAc3Frame);
+                }
+                const auto frame = impl.ac3_encoder->encode_frame(impl.ac3_views);
+                for (auto& channel : impl.ac3_pending) {
+                    channel.erase(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(kAc3Frame));
+                }
+                if (!frame.has_value()) {
+                    continue;
+                }
+                if (const auto wrapped = ac3::iec61937::wrap_frame(*frame)) {
+                    submit_with_patience(*impl.passthrough, status_.underruns,
+                                         std::span<const std::byte>(*wrapped));
+                }
             }
             return;
         }

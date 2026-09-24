@@ -144,6 +144,48 @@ TEST_CASE("output stage edges: the pinned mode and the preferred endpoint take e
     CHECK(preferred.mode == OutputMode::kStereo);
 }
 
+TEST_CASE("output stage edges: low-latency one-block beds reach DD 5.1 as whole AC-3 frames",
+          "[crucible][output_stage]") {
+    // In low-latency mode the engine hands the stage 256-sample beds, but AC-3
+    // has no short frames: the DD 5.1 leg gathers six of them into each
+    // 1536-sample frame it encodes, rather than handing the AC-3 encoder a
+    // frame it cannot take.
+    auto devices = std::make_shared<FakeDevices>();
+    devices->devices = {null_sink(), ac3_only_avr()};
+    auto config = config_over(devices);
+    config.low_latency = true;
+    OutputStage stage(config);
+    REQUIRE(stage.reprobe(false).mode == OutputMode::kDd51);
+    REQUIRE(devices->burst_sinks.size() == 1);
+
+    constexpr std::size_t kBlock = 256;
+    std::vector<std::vector<float>> bed(6, std::vector<float>(kBlock, 0.0F));
+    std::vector<std::span<const float>> bed_views(bed.begin(), bed.end());
+    double phase = 0.0;
+    const auto submit_block = [&] {
+        for (std::size_t i = 0; i < kBlock; ++i) {
+            const auto v = static_cast<float>(0.25 * std::sin(phase));
+            for (auto& channel : bed) {
+                channel[i] = v;
+            }
+            phase += 2.0 * std::numbers::pi * 440.0 / 48000.0;
+        }
+        stage.submit({}, RawFrame{.objects = {}, .placements = {}, .bed = bed_views});
+    };
+    for (int block = 0; block < 5; ++block) {
+        submit_block();
+    }
+    CHECK(devices->burst_sinks[0]->submits == 0);  // five blocks: not yet a frame
+    submit_block();
+    CHECK(devices->burst_sinks[0]->submits == 1);
+    for (int block = 0; block < 6; ++block) {
+        submit_block();
+    }
+    CHECK(devices->burst_sinks[0]->submits == 2);
+    CHECK(devices->burst_sinks[0]->bytes == 2 * 6144);
+    CHECK(stage.status().running);
+}
+
 TEST_CASE("output stage edges: the null-sink substring decides which endpoint is marked as the silent device",
           "[crucible][output_stage]") {
     auto devices = std::make_shared<FakeDevices>();

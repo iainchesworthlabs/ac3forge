@@ -352,17 +352,27 @@ TEST_CASE("crucible engine commands: an application that leaves is dropped from 
 TEST_CASE("crucible engine commands: pin, preferred endpoint and bypass reach the output stage",
           "[crucible][engine][concurrency]") {
     Rig rig;
-    // Six-block frames: the DD 5.1 leg re-encodes the bed with an AC-3
-    // encoder that takes whole 1536-sample frames only.
-    auto config = rig.config();
-    config.low_latency = false;
-    Engine engine(std::move(config));
+    // One-block frames (the rig's low_latency): the DD 5.1 leg re-encodes the
+    // bed with an AC-3 encoder that takes whole 1536-sample frames only, so
+    // the output stage gathers six 256-sample beds into each one - the pin
+    // must reach an AC-3 burst on the wire, not an encoder assertion.
+    Engine engine(rig.config());
     REQUIRE(engine.start().has_value());
     REQUIRE(wait_for([&] { return engine.status().mode == OutputMode::kDdPlus51; }));
 
     engine.pin(OutputMode::kDd51);
     REQUIRE(wait_for([&] { return engine.status().mode == OutputMode::kDd51; }));
     CHECK(rig.noted("output: "));
+    REQUIRE(wait_for([&] {
+        const std::lock_guard devices_lock(rig.devices->mutex);
+        for (const auto& sink : rig.devices->burst_sinks) {
+            const std::lock_guard lock(sink->mutex);
+            if (sink->started && !sink->eac3 && sink->submits > 0) {
+                return true;
+            }
+        }
+        return false;
+    }));
     engine.pin(std::nullopt);
     REQUIRE(wait_for([&] { return engine.status().mode == OutputMode::kDdPlus51; }));
 
