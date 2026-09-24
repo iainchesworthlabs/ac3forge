@@ -48,7 +48,13 @@ endif()
 add_executable(ac3tests
     ac4/test_ac4.cpp
     ac4/test_ac4_presentation_configs.cpp
+    ac4/test_ac4_toc_syntax.cpp
+    ac4dec/test_ac4dec_asf.cpp
+    ac4dec/test_ac4dec_channel_elements.cpp
     ac4dec/test_ac4dec_decoder.cpp
+    ac4dec/test_ac4dec_frames.cpp
+    ac4dec/test_ac4dec_metadata.cpp
+    ac4dec/test_ac4dec_presentation.cpp
     ac4dec/test_ac4dec_syntax.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
@@ -220,6 +226,11 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/c
 # fixed-point tier's block exponent, which both decoders share and which is not
 # library surface.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/decoder")
+# tests/ac4dec/test_ac4dec_{asf,metadata,presentation,channel_elements}.cpp reach the
+# AC-4 decoder's syntax functions (src/ac4dec/src/syntax/) to hold each branch of
+# the syntax to a hand-built bitstream - the committed streams reach only the
+# branches DEE writes. Same pattern as the forge headers above.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src")
 
 # test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the
