@@ -902,9 +902,12 @@ TEST_CASE("the C API holds back and flushes transient pre-noise frames like the 
             decoder, reinterpret_cast<const uint8_t*>(frame.data()), frame.size(), out);
     };
 
+    // Every frame fed to `decoder`, replayed below into a second decoder.
+    std::vector<std::vector<std::byte>> stream;
     for (int f = 0; f < 2; ++f) {
         const auto frame = encoder.encode_frame(silent_views);
         REQUIRE(frame.has_value());
+        stream.push_back(*frame);
         ac3forge_decoded_substream_t* substream = nullptr;
         REQUIRE(decode_one(*frame, &substream) == AC3FORGE_OK);
         REQUIRE(substream != nullptr);
@@ -920,6 +923,7 @@ TEST_CASE("the C API holds back and flushes transient pre-noise frames like the 
     const std::vector<std::span<const float>> transient_views{transient, transient};
     const auto transient_frame = encoder.encode_frame(transient_views);
     REQUIRE(transient_frame.has_value());
+    stream.push_back(*transient_frame);
 
     // transproce turns on: AC3FORGE_OK with a NULL substream is the held-back
     // signal, not an error - the header documents exactly this pair.
@@ -929,6 +933,7 @@ TEST_CASE("the C API holds back and flushes transient pre-noise frames like the 
 
     const auto after = encoder.encode_frame(silent_views);
     REQUIRE(after.has_value());
+    stream.push_back(*after);
     ac3forge_decoded_substream_t* released = nullptr;
     REQUIRE(decode_one(*after, &released) == AC3FORGE_OK);
     REQUIRE(released != nullptr);
@@ -942,7 +947,34 @@ TEST_CASE("the C API holds back and flushes transient pre-noise frames like the 
     REQUIRE(flushed != nullptr);
     REQUIRE(flushed_count == 1);
     CHECK(ac3forge_decoded_substream_channel_count(flushed[0]) == 2);
+    // array_destroy with the full count destroys the elements too (the header's
+    // contract) - the elements are NOT destroyed individually here.
     ac3forge_decoded_substream_array_destroy(flushed, flushed_count);
+
+    // The other documented release shape: take ownership of an element, then
+    // free only the array with a count of 0. The kept handle must outlive the
+    // array intact (this is the path the Rust binding's flush() uses; it once
+    // passed the full count here instead and freed every substream twice).
+    ac3forge_eac3_decoder_t* replay = nullptr;
+    REQUIRE(ac3forge_eac3_decoder_create(&config, &replay) == AC3FORGE_OK);
+    for (const auto& frame : stream) {
+        ac3forge_decoded_substream_t* substream = nullptr;
+        REQUIRE(ac3forge_eac3_decoder_decode_substream(
+                    replay, reinterpret_cast<const uint8_t*>(frame.data()), frame.size(),
+                    &substream) == AC3FORGE_OK);
+        ac3forge_decoded_substream_destroy(substream);  // NULL for the held-back one: a no-op
+    }
+    flushed = nullptr;
+    flushed_count = 0;
+    REQUIRE(ac3forge_eac3_decoder_flush(replay, &flushed, &flushed_count) == AC3FORGE_OK);
+    REQUIRE(flushed_count == 1);
+    ac3forge_decoded_substream_t* kept = flushed[0];
+    ac3forge_decoded_substream_array_destroy(flushed, 0);
+    REQUIRE(kept != nullptr);
+    CHECK(ac3forge_decoded_substream_channel_count(kept) == 2);
+    CHECK(ac3forge_decoded_substream_samples_per_channel(kept) == AC3FORGE_SAMPLES_PER_FRAME);
+    ac3forge_decoded_substream_destroy(kept);
+    ac3forge_eac3_decoder_destroy(replay);
 
     ac3forge_eac3_decoder_destroy(decoder);
 }

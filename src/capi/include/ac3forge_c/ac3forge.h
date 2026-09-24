@@ -668,9 +668,16 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_decode_access_unit_into
 
 /* Releases whichever frames transient pre-noise processing is still holding
  * back. *out_substreams receives a library-owned array of *out_count owned
- * handles (each must still be individually destroyed); *out_count is 0 (and
- * *out_substreams NULL) for a stream that never used the tool. Free the array
- * itself with ac3forge_decoded_substream_array_destroy(). */
+ * handles; *out_count is 0 (and *out_substreams NULL) for a stream that never
+ * used the tool. Release it with
+ * ac3forge_decoded_substream_array_destroy(*out_substreams, *out_count), which
+ * destroys every element AND the array - do not also destroy the elements
+ * individually. array_destroy destroys only the non-NULL elements in
+ * [0, count) and always frees the array itself, so a caller that keeps a
+ * handle beyond the array's lifetime (and later destroys it itself with
+ * ac3forge_decoded_substream_destroy()) either sets its slot to NULL first or,
+ * having taken every handle, passes a count of 0 to free just the array.
+ * A NULL array is a no-op. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_eac3_decoder_flush(
     ac3forge_eac3_decoder_t* decoder, ac3forge_decoded_substream_t*** out_substreams,
     size_t* out_count);

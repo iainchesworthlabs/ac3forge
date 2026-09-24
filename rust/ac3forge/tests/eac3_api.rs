@@ -278,8 +278,10 @@ fn latency_reports_holdback_only_with_transient_prenoise() {
 /// `Ok(None)` and switches the decoder's reported latency to one frame, and the stream keeps
 /// flowing (one frame behind) afterwards.
 ///
-/// `flush()` is deliberately NOT called after the hold-back engages: with frames pending it
-/// double-frees (see the bug report accompanying this suite), so only its empty case is covered.
+/// `flush()` then hands over the frame still held back at end of stream. That call is the
+/// regression test for a double free: `flush()` used to wrap each returned handle in a
+/// `DecodedSubstream` AND pass the full count to `ac3forge_decoded_substream_array_destroy()`,
+/// which destroys the elements too - so dropping the Vec freed every substream a second time.
 #[test]
 fn transient_prenoise_holds_back_one_frame() {
     let config = Eac3FrameConfig {
@@ -311,7 +313,27 @@ fn transient_prenoise_holds_back_one_frame() {
             (true, SAMPLES_PER_FRAME as i32),
         ]
     );
-    // Dropping a decoder that still holds a frame back must be clean.
+
+    // The last burst frame is the one now held back (buffered mode is sticky once the tool has
+    // fired); flush() releases exactly it, as a real, fully-owned substream.
+    let flushed = decoder.flush().unwrap();
+    assert_eq!(flushed.len(), 1);
+    for substream in &flushed {
+        assert!(substream.is_independent());
+        assert_eq!(substream.channel_count(), 2);
+        assert_eq!(substream.samples_per_channel(), SAMPLES_PER_FRAME);
+        for channel in 0..substream.channel_count() {
+            let pcm = substream.channel_samples(channel);
+            assert_eq!(pcm.len(), SAMPLES_PER_FRAME);
+            assert!(pcm.iter().all(|s| s.is_finite()));
+            // The burst alternates 0.9-amplitude blocks: the released frame is audio, not silence.
+            assert!(rms(pcm) > 0.1, "flushed channel {channel} rms {}", rms(pcm));
+        }
+    }
+    // Nothing is left behind, and a second flush hands over the empty shape.
+    assert!(decoder.flush().unwrap().is_empty());
+    // Dropping the flushed substreams (each freed exactly once) and the decoder must be clean.
+    drop(flushed);
     drop(decoder);
 }
 
