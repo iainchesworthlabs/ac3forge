@@ -376,7 +376,9 @@ bank's structure reproduces AC-4's bank to floating-point precision (checked num
 plan). The designed window cannot stand in for `QWIN`: A-SPX's patching and its tone generator
 depend on `QWIN`'s response and phase. Several QMF-domain tools are not scale-invariant (the
 companding exponent, A-SPX's envelope estimate, DRC levels), and Part 1 does not state its
-full-scale convention.
+full-scale convention. Phase D3 settled the first two against DEE's streams: A-SPX's envelopes read at
+the inverse transform's scale, full scale 2^15, and companding measures its levels against full scale
+1.0 (`src/ac4dec/ERRATA.md`).
 
 **QMF-domain parameters arrive ahead of their audio.** The inverse MDCT output is delayed so that
 the control data of A-SPX, A-CPL, dialogue enhancement and DRC applies one, two or four frames
@@ -1210,7 +1212,9 @@ gold-reference gate, and over the full set locally.
 #### D3: the QMF domain and A-SPX
 
 - The QMF bank with `QWIN`, following Pseudocode 66's modulation offset; control data held for its
-  one, two or four frames.
+  one, two or four frames. Every codec mode passes through the banks, SIMPLE included, as Part 1
+  Figure 9 draws it, which gives the decoder one delay, 1,313 samples at index 13: DEE's SIMPLE and
+  ASPX streams and librempeg's decodes of them each show one delay for both modes (D3).
 - Companding.
 - A-SPX in full: the subband group tables, framing, envelope decoding, the HF generator,
   envelope adjustment with its limiter, the noise and tone generators, and interleaved waveform
@@ -1227,7 +1231,8 @@ gold-reference gate, and over the full set locally.
   first measurement. Log-spectral distance and ViSQOL at or above their pinned floors.
 - The IMS streams, made from 5.1, have no stereo source. Their decode is scored against the
   source's Lo/Ro and Lt/Rt downmixes after a gain fit; if neither correlates, they are held to the
-  invariants and to librempeg's decode, and the reason is recorded.
+  invariants and to librempeg's decode, and the reason is recorded. D3 found them a frame earlier
+  than the AC-4 encoder's streams and correlating with Lo/Ro at 0.98.
 
 **Verified by:** as D2.
 
