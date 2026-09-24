@@ -626,16 +626,18 @@ ESP-IDF install:
 3. **A new board.** The browser installer or `esptool write-flash 0x0 <image>-factory.bin`
    ([decision 15](#decisions)), then joining a network over Improv, as the S3 guide already
    describes.
-4. **A board running an older build.** The `parts.zip` and `write-flash @flash_args`, which keeps
-   the board's name, network and pairings.
+4. **A board running an older build.** The browser installer with erasing left off, or the
+   `parts.zip` and `write-flash @flash_args`. Either keeps the board's name, network and
+   pairings.
 5. **Updating over the network.** `ota.py push --release latest --all`, the page's **Update
    firmware…**, or `curl -T`.
 6. **What the board does** during an update: flash mode, the trial and a rollback, and what
    `ota.py` and the page show for each.
 7. **Going back.** **Roll back** on the page, `ota.py rollback`, or an older release pushed as
    any other.
-8. **When a board does not come back.** Cycle the power during a trial; failing that, USB with
-   the release's `parts.zip`. The ROM download mode is always there.
+8. **When a board does not come back.** Cycle the power during a trial; failing that, USB, with
+   the browser installer or the release's `parts.zip`. If the board does not answer on USB, hold
+   BOOT while pressing RESET to put it in the ROM's download mode, which is always there.
 
 O9 also brings the rest of the documentation into line:
 
@@ -645,11 +647,28 @@ O9 also brings the rest of the documentation into line:
 - `docs/releasing.md` covers the firmware in its release checklist.
 
 **The browser installer** ([decision 15](#decisions)) is a page on the documentation site built
-on ESP Web Tools. In Chrome or Edge it flashes a new board over Web Serial, chooses the image by
-chip, and then offers Improv, which the boards already answer, to give the board its network. A
-first install then needs a browser and a USB cable and nothing else. The installer cannot fetch
-GitHub release assets, which carry no CORS headers, so `docs.yml` copies the latest release's
-factory images and manifest into the site when it deploys.
+on ESP Web Tools. Its supported chips include the ESP32-S3, ESP32-C6 and ESP32-P4.
+
+- **How it flashes.** Over Web Serial on the board's USB serial connector, talking to the chip's
+  ROM download mode, as `esptool` does. It resets a board into download mode by itself where the
+  board allows that. A board that does not can be put into download mode by hand, by holding
+  BOOT while pressing RESET, and the installer then talks to the ROM directly. Such a board is
+  one whose firmware no longer answers on USB, or one that does not reset cleanly, like COM16.
+  The ROM cannot be overwritten, so the same page recovers a board that will not boot.
+- **After flashing.** A board put into download mode by hand may need one press of RESET to start
+  the new firmware. The page then offers Improv, which the boards already answer, to give the board
+  its network. A first install needs a browser and a USB cable, and nothing else.
+- **Its manifest lists the pieces, not the merged factory image**: bootloader, partition table,
+  `otadata`, app, `audio` and `storage`, each at its offset. It sets
+  `new_install_prompt_erase: true`, so the person installing chooses whether to erase. A new board
+  is erased; a board already in use is left unerased, so its NVS survives and the same page moves
+  it to the new layout.
+- **Browsers:** Chrome, Edge and Firefox, which ESP Web Tools lists as having Web Serial; not
+  Safari, and nothing on iOS.
+- **Hosting.** The page cannot fetch GitHub release assets, which carry no CORS headers, so
+  `docs.yml` copies the latest release's images and manifest into the site when it deploys.
+- **On the P4,** the installer has to be on the USB-C connector that carries the console. The
+  board's other connector is a separate USB peripheral.
 
 ## What stays USB-only, and how a board is recovered
 
@@ -671,9 +690,11 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
 1. The trial rolls back by itself.
 2. A power cycle during a hung trial rolls back.
 3. `PUT /firmware/rollback` for a fault that appears after acceptance.
-4. USB: `write-flash @flash_args`, as today. The ROM download mode is in mask ROM, and no eFuse
-   this plan leaves alone can lock it, so a board can always be recovered this way. The P4 needs
-   its cable working for this, which it does not have today.
+4. USB: `write-flash @flash_args`, as today, or from O9 the browser installer. Both talk to the
+   ROM download mode, which is in mask ROM, and this plan burns no eFuse that could lock it, so a
+   board can always be recovered this way. A board that does not reset into it by itself is put
+   there by holding BOOT while pressing RESET. The P4 needs its cable working for this, which it
+   does not have today.
 
 ## Per chip
 
@@ -819,7 +840,8 @@ boards leave development, and if that is before O8, O8's images are published si
 - **Boards other than the ones on the desk.** A published image is checked on one board of its
   kind. Another module with the same chip, flash and PSRAM should run it; one that differs in any
   of them is what the guide's "Which image" section and `ota.py`'s choice exist to catch.
-- **The browser installer outside Chrome and Edge.** Web Serial is not in Firefox or Safari; the
+- **The browser installer in every browser.** ESP Web Tools lists Chrome, Edge and Firefox as
+  having Web Serial; O9 tries it in each. There is no Web Serial in Safari or on iOS, and the
   guide's `esptool` commands are the way in there.
 
 ## Decisions
@@ -897,6 +919,8 @@ boards leave development, and if that is before O8, O8's images are published si
 15. **How a new board gets its first image.** (a) **a browser installer on the documentation
     site (ESP Web Tools), with the `esptool` commands beside it**; (b) the `esptool` commands
     only. **Recommend (a).** A first install then needs only a browser and a cable, and it ends
-    in Improv, which gives the board its network in the same few minutes. Cost: a third-party
-    script on one page of the site, Chrome or Edge for Web Serial, and `docs.yml` copying each
-    release's factory images into the site, because a page cannot fetch release assets directly.
+    in Improv, which gives the board its network in the same few minutes. The same page moves a
+    board in use to the new layout without erasing it, and recovers one held in download mode.
+    Cost: a third-party script on one page of the site; a browser with Web Serial (not Safari or
+    iOS); and `docs.yml` copying each release's images into the site, because a page cannot fetch
+    release assets directly.
