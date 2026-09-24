@@ -504,7 +504,9 @@ TEST_CASE("RecordingSink's fragmented-MP4 take reports a bad folder, a bad frame
     }
 }
 
-#ifdef __linux__
+// Portable as written: on a system without a /dev/full character device the
+// helper below finds none and both cases SKIP, so no preprocessor branch is
+// needed to keep them off other platforms.
 // /dev/full: every write the kernel sees fails with ENOSPC, the disk-full case
 // a long take can actually meet. The streams are buffered, so the failure
 // surfaces a few frames in - which is exactly how it surfaces on a real disk.
@@ -601,4 +603,3 @@ TEST_CASE("RecordingSink reports a take that only fails as it is closed", "[gui]
     REQUIRE(sink.push(*small).empty());
     CHECK(sink.close() == "Writing the stream failed.");
 }
-#endif

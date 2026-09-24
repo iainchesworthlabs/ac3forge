@@ -15,11 +15,7 @@
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/handshake.hpp"
@@ -53,11 +49,7 @@ using ac3::sendspin::crypto::Key32;
 using namespace std::chrono_literals;
 
 std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
+    return ac3::test::platform::process_id();
 }
 
 // A fresh scratch directory for one case.

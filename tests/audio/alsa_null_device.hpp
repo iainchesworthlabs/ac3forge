@@ -11,11 +11,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 // Software ALSA devices for the ALSA backend's tests, so its success paths run
 // on a machine with no sound card at all.
@@ -123,11 +119,7 @@ inline std::string named_devices(const fs::path& infile_float, const fs::path& i
 
 // A directory of this test process's own under the shared scratch root.
 inline fs::path scratch_dir(std::string_view leaf) {
-#ifdef _WIN32
-    const auto pid = std::to_string(_getpid());
-#else
-    const auto pid = std::to_string(getpid());
-#endif
+    const auto pid = ac3::test::platform::process_id();
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / (std::string{leaf} + "_" + pid);
     fs::create_directories(dir);
     return dir;

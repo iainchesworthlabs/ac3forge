@@ -32,4 +32,16 @@ int run_shell(std::string_view command) {
     return std::system(wrapped.c_str());
 }
 
+void set_environment(std::string_view name, std::string_view value) {
+    const std::string n{name};
+    const std::string v{value};
+    ::_putenv_s(n.c_str(), v.c_str());
+}
+
+void unset_environment(std::string_view name) {
+    // _putenv_s with an empty value is how the CRT removes a variable.
+    const std::string n{name};
+    ::_putenv_s(n.c_str(), "");
+}
+
 }  // namespace ac3::test::platform

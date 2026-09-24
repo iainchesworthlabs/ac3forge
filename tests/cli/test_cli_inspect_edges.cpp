@@ -13,12 +13,7 @@
 #include <string_view>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/io/wav.hpp"
 
@@ -45,11 +40,7 @@ namespace {
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
 std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
+    return ac3::test::platform::process_id();
 }
 
 fs::path scratch_dir() {
@@ -58,29 +49,10 @@ fs::path scratch_dir() {
     return dir;
 }
 
-// See test_cli.cpp's child_exit_code: POSIX std::system() hands back a wait()
-// status word, not the exit code itself.
-int child_exit_code(int system_status) {
-#ifdef _WIN32
-    return system_status;
-#else
-    if (system_status == -1) {
-        return system_status;
-    }
-    return WIFEXITED(system_status) ? WEXITSTATUS(system_status)
-                                    : 128 + WTERMSIG(system_status);
-#endif
-}
-
 int run_cli(const std::string& args, const fs::path& log) {
     const std::string command =
         "\"" + std::string(AC3CLI_EXE) + "\" " + args + " > \"" + log.string() + "\" 2>&1";
-#ifdef _WIN32
-    const std::string wrapped = "\"" + command + "\"";
-    return child_exit_code(std::system(wrapped.c_str()));
-#else
-    return child_exit_code(std::system(command.c_str()));
-#endif
+    return ac3::test::platform::run_shell(command);
 }
 
 std::string read_log(const fs::path& log) {
@@ -320,25 +292,27 @@ TEST_CASE("probe reports an AC-4 stream cut mid-frame and one with a failed CRC"
     CHECK(contains(crc_text, "CRC             72 of 73 valid"));
 }
 
-#ifndef _WIN32
 TEST_CASE("probe's JSON escapes every character a file name can carry that JSON cannot",
           "[cli][probe][json]") {
     // Quote, backslash, the five named control escapes and a bare control
-    // byte - none of which Windows allows in a file name, hence POSIX only.
-    // Passed to the shell through the environment so no quoting layer
-    // between here and ac3cli has to understand them.
+    // byte - none of which Windows allows in a file name, so a filesystem
+    // that refuses the name skips the case rather than a preprocessor branch
+    // hiding it (tools/checks/check_platform_macros.ps1). Single-quoted for
+    // sh, which leaves every one of these characters alone inside '...'.
     const auto dir = scratch_dir();
     const std::string name = std::string{"odd\"name\\"} + "\t\n\r\b\f\x01" + ".ac3";
     const auto path = dir / name;
+    std::error_code ec;
     fs::copy_file(generated(dir / "clean.ac3", "sine", "1 192"), path,
-                  fs::copy_options::overwrite_existing);
-    REQUIRE(setenv("AC3CLI_PROBE_ODD_NAME", path.c_str(), 1) == 0);
+                  fs::copy_options::overwrite_existing, ec);
+    if (ec) {
+        SKIP("this filesystem does not allow control characters in a file name");
+    }
     const auto log = dir / "probe_escape.log";
-    const auto json = run_expecting("probe \"$AC3CLI_PROBE_ODD_NAME\" json=1", log, 0);
+    const auto json = run_expecting("probe '" + path.string() + "' json=1", log, 0);
     CHECK(contains(json, "odd\\\"name\\\\\\t\\n\\r\\b\\f\\u0001.ac3\""));
     fs::remove(path);
 }
-#endif
 
 TEST_CASE("decode refuses a stream too short to frame, one that loses sync and a corrupt frame",
           "[cli][decode]") {

@@ -15,11 +15,7 @@
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "diagnostics.hpp"
 #include "engine.hpp"
@@ -123,30 +119,15 @@ bool tapped_and_running(const Engine& engine, std::size_t apps) {
 }
 
 std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
+    return ac3::test::platform::process_id();
 }
 
-// This process's environment only. MSVC's CRT has no setenv/unsetenv, and
-// _putenv_s with an empty value is how it removes a variable.
+// This process's environment only (tests/platform/process.hpp's seam).
 void set_env(const char* name, const char* value) {
-#ifdef _WIN32
-    _putenv_s(name, value);
-#else
-    ::setenv(name, value, 1);
-#endif
+    ac3::test::platform::set_environment(name, value);
 }
 
-void unset_env(const char* name) {
-#ifdef _WIN32
-    _putenv_s(name, "");
-#else
-    ::unsetenv(name);
-#endif
-}
+void unset_env(const char* name) { ac3::test::platform::unset_environment(name); }
 
 // A scratch directory of this process's own, for key files.
 std::filesystem::path scratch() {

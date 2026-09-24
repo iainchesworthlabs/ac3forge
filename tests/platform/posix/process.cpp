@@ -38,4 +38,15 @@ int run_shell(std::string_view command) {
     return WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status);
 }
 
+void set_environment(std::string_view name, std::string_view value) {
+    const std::string n{name};
+    const std::string v{value};
+    ::setenv(n.c_str(), v.c_str(), 1);
+}
+
+void unset_environment(std::string_view name) {
+    const std::string n{name};
+    ::unsetenv(n.c_str());
+}
+
 }  // namespace ac3::test::platform
