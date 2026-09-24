@@ -32,12 +32,14 @@ TEST_CASE("a part with an FPU and PSRAM reports both as capabilities, neither as
     facts.revision_minor = 2;
     facts.cores = 2;
     facts.fpu = true;
+    facts.cpu_freq_mhz = 240;
     facts.psram_bytes = 8 * 1024 * 1024;
     facts.sink_max_slots = 16;
 
     const auto report = describe_hardware(facts);
     REQUIRE(has(report.capabilities, "2 cores"));
     REQUIRE(has(report.capabilities, "hardware floating-point unit"));
+    REQUIRE(has(report.capabilities, "Running at 240 MHz"));
     REQUIRE(has(report.capabilities, "8 MiB of PSRAM"));
     REQUIRE(has(report.capabilities, "up to 16 slots"));
     REQUIRE_FALSE(has(report.notices, "floating point"));
@@ -55,11 +57,13 @@ TEST_CASE("a part with no FPU and no PSRAM notices both, and never claims a capa
     facts.revision_minor = 2;
     facts.cores = 1;
     facts.fpu = false;
+    facts.cpu_freq_mhz = 160;
     facts.psram_bytes = 0;
     facts.sink_max_slots = 8;
 
     const auto report = describe_hardware(facts);
     REQUIRE(has(report.capabilities, "fixed-point arithmetic"));
+    REQUIRE(has(report.capabilities, "Running at 160 MHz"));
     REQUIRE_FALSE(has(report.capabilities, "PSRAM"));
     REQUIRE(has(report.notices, "No hardware floating point"));
     REQUIRE(has(report.notices, "No PSRAM in this build"));
@@ -135,4 +139,10 @@ TEST_CASE("a sink with nothing to say about its ceiling reports no slot count, n
     HardwareFacts facts;
     facts.sink_max_slots = 0;
     REQUIRE_FALSE(has(describe_hardware(facts).capabilities, "slot"));
+}
+
+TEST_CASE("no clock reading claims no clock capability", "[io][hardware_info]") {
+    HardwareFacts facts;
+    facts.cpu_freq_mhz = 0;
+    REQUIRE_FALSE(has(describe_hardware(facts).capabilities, "Running at"));
 }

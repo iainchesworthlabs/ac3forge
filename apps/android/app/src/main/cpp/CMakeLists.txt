@@ -41,6 +41,11 @@ set(AC3FORGE_BUILD_GUI OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(AC3FORGE_BUILD_FUZZERS OFF CACHE BOOL "" FORCE)
+# Defaults ON (root CMakeLists.txt) and add_subdirectory()s src/sendspin, which hard-requires
+# MbedTLS/httplib/FLAC/Opus/mdns via find_package(... REQUIRED) - packages that exist nowhere
+# in an NDK cross-compile (no vcpkg toolchain here, see setup-vcpkg's own desktop-only scope).
+# Same gap python/pyproject.toml and rust/ac3forge-sys/build.rs had for the same reason.
+set(AC3FORGE_BUILD_HEARTH OFF CACHE BOOL "" FORCE)
 
 # ac3forge_jni's own target_link_libraries below is ac3::forge/ac3::audio/ac3::signing only
 # (see the comment above the MATROSKA/MP4/MPEGTS block just below) - this app never links

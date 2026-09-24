@@ -1,0 +1,9 @@
+# idf-component-manager for esp-component.yml's pack and publish jobs
+# (compote manifest lint / compote component pack / compote component upload).
+# ~=3.1 rather than an exact pin: the workflow's own comment on the install
+# step says this was developed and verified against 3.1.2, and the lint/pack
+# flags used are stable across that minor series. Regenerate the lock after
+# any change here with:
+#   python -m piptools compile --generate-hashes --strip-extras \
+#     --output-file=requirements-esp-component.txt requirements-esp-component.in
+idf-component-manager~=3.1
