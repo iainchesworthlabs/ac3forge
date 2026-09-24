@@ -158,21 +158,24 @@ ParseResult SubstreamPcm::check_control(const SubstreamContext& ctx, const Chann
         return fail(DecodeError::kInvalidStream, "an ASPX channel element without its A-SPX or companding data");
     }
     for (const AspxUnit& unit : units_) {
-        const AspxData2ch* two = unit.pair ? &element.aspx_2ch[at(unit.index)] : nullptr;
-        const AspxData1ch* one = unit.pair ? nullptr : &element.aspx_1ch[at(unit.index)];
         AspxFrame frame{.config = &*element.aspx_config,
-                        .xover_subband_offset = two != nullptr ? two->xover_subband_offset : one->xover_subband_offset,
-                        .balance = two != nullptr && two->balance,
+                        .xover_subband_offset = 0,
+                        .balance = false,
                         .master_reset = false,
                         .base_48k = ctx.fs_index == 1,
                         .num_qmf_timeslots = slots_,
                         .num_ts_in_ats = ts_in_ats_,
                         .ts_offset_hfgen = hfgen_};
         std::array<const AspxChannel*, 2> data{};
-        if (two != nullptr) {
-            data = {&two->channels[0], &two->channels[1]};
+        if (unit.pair) {
+            const AspxData2ch& two = element.aspx_2ch[at(unit.index)];
+            frame.xover_subband_offset = two.xover_subband_offset;
+            frame.balance = two.balance;
+            data = {&two.channels[0], &two.channels[1]};
         } else {
-            data[0] = &one->channel;
+            const AspxData1ch& one = element.aspx_1ch[at(unit.index)];
+            frame.xover_subband_offset = one.xover_subband_offset;
+            data[0] = &one.channel;
         }
         if (auto ok = check_aspx(frame, std::span<const AspxChannel* const>(data).first(unit.pair ? 2 : 1)); !ok) {
             return ok;
@@ -196,26 +199,32 @@ void SubstreamPcm::pass_through() {
 }
 
 SubstreamPcm::UnitIo SubstreamPcm::unit_io(const AspxUnit& unit, const Control& control, bool master_reset) {
-    const AspxData2ch* two = unit.pair ? &control.aspx_2ch[at(unit.index)] : nullptr;
-    const AspxData1ch* one = unit.pair ? nullptr : &control.aspx_1ch[at(unit.index)];
     UnitIo out;
     out.frame = AspxFrame{.config = &*control.aspx_config,
-                          .xover_subband_offset = two != nullptr ? two->xover_subband_offset : one->xover_subband_offset,
-                          .balance = two != nullptr && two->balance,
+                          .xover_subband_offset = 0,
+                          .balance = false,
                           .master_reset = master_reset,
                           .base_48k = fs_index_ == 1,
                           .num_qmf_timeslots = slots_,
                           .num_ts_in_ats = ts_in_ats_,
                           .ts_offset_hfgen = hfgen_};
+    std::array<const AspxChannel*, 2> data{};
+    if (unit.pair) {
+        const AspxData2ch& two = control.aspx_2ch[at(unit.index)];
+        out.frame.xover_subband_offset = two.xover_subband_offset;
+        out.frame.balance = two.balance;
+        data = {&two.channels[0], &two.channels[1]};
+    } else {
+        const AspxData1ch& one = control.aspx_1ch[at(unit.index)];
+        out.frame.xover_subband_offset = one.xover_subband_offset;
+        data[0] = &one.channel;
+    }
     out.count = unit.pair ? 2 : 1;
     for (std::size_t c = 0; c < out.count; ++c) {
         const int index = channel_of(unit.speakers[c]);
         Channel& channel = channels_[at(index)];
         out.channels[c] = index;
-        out.io[c] = AspxChannelIo{.data = two != nullptr ? &two->channels[c] : &one->channel,
-                                  .state = &channel.aspx,
-                                  .ext = channel.ext,
-                                  .out = channel.out};
+        out.io[c] = AspxChannelIo{.data = data[c], .state = &channel.aspx, .ext = channel.ext, .out = channel.out};
     }
     return out;
 }

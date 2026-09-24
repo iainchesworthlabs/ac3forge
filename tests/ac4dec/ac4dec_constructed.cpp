@@ -334,13 +334,16 @@ class ElementWriter {
     }
     c.envelope_freq_res = {high ? 1 : 0};
     const int bands = high ? setup.counts.num_sbg_sig_highres : setup.counts.num_sbg_sig_lowres;
-    ac4::detail::AspxEnvelopeFields signal{.delta_dir = 0, .values = std::vector<int>(static_cast<std::size_t>(bands), 0)};
-    signal.values[0] = loud ? kLoudEnvelope : 0;
-    c.sig = {signal};
-    ac4::detail::AspxEnvelopeFields noise{
-        .delta_dir = 0, .values = std::vector<int>(static_cast<std::size_t>(setup.counts.num_sbg_noise), 0)};
-    noise.values[0] = loud ? 0 : kNoNoise;
-    c.noise = {noise};
+    // The first value along frequency, then no change: every group at it.
+    const auto flat = [](int count, int first) {
+        std::vector<int> values(static_cast<std::size_t>(count), 0);
+        if (!values.empty()) {
+            values.front() = first;
+        }
+        return ac4::detail::AspxEnvelopeFields{.delta_dir = 0, .values = values};
+    };
+    c.sig = {flat(bands, loud ? kLoudEnvelope : 0)};
+    c.noise = {flat(setup.counts.num_sbg_noise, loud ? 0 : kNoNoise)};
     c.tna_mode.assign(static_cast<std::size_t>(setup.counts.num_sbg_noise), 0);
     return c;
 }
