@@ -39,14 +39,14 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock as mock
 from pathlib import Path
 from typing import ClassVar
-from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 try:
-    import numpy  # noqa: F401
+    importlib.import_module("numpy")  # only whether it imports matters
     qr = importlib.import_module("quality_race")
 except ImportError:
     with mock.patch.dict(sys.modules, {"numpy": mock.MagicMock(name="numpy")}):
