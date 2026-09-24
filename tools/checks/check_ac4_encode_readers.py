@@ -1,4 +1,4 @@
-"""Readers outside this project against what ac3cli's AC-4 encoder writes: MediaInfo and DEE's muxer.
+"""Readers outside this project against ac3cli's AC-4 encoder: MediaInfo and DEE's muxer.
 
 planning/ac4.md, the encoder's ladder, item 3, as phase E1 needs it. For each configuration below,
 `ac3cli ac4-encode` writes a raw stream and an MP4 file, and:
@@ -6,8 +6,8 @@ planning/ac4.md, the encoder's ladder, item 3, as phase E1 needs it. For each co
   MediaInfo  its frame-by-frame trace (`--Details=1`) of the raw stream holds the values the encoder
              was configured with, field by field, in every frame it details: the sync word and
              frame_size, the table of contents (bitstream_version, sequence_counter, wait_frames,
-             fs_index, frame_rate_index, b_iframe_global), the presentation and its substream group's
-             channel mode, the presentation substream's dialnorm_bits and its empty DRC and
+             fs_index, frame_rate_index, b_iframe_global), the presentation and its substream
+             group's channel mode, the presentation substream's dialnorm_bits and its empty DRC and
              loudness fields, the audio substream's metadata() with no dialogue enhancement or EMDF
              payloads, and each frame's crc_word, computed again here;
   DEE's muxer  dee_mp4muxer takes the raw stream and writes an MP4 file whose 'dac4' box is the one
@@ -47,11 +47,11 @@ CONFIGURATIONS = [
 ]
 
 # The fields check_frame() holds to the configuration.
-FIELDS = ("sync_word", "frame_size", "bitstream_version", "sequence_counter", "b_wait_frames", "wait_frames",
-          "fs_index",
-          "frame_rate_index", "b_iframe_global", "presentation_version", "channel_mode", "dialnorm_bits",
-          "b_further_loudness_info", "drc_metadata_size_value", "b_drc_present", "tools_metadata_size",
-          "b_de_data_present", "b_emdf_payloads_substream", "crc_word")
+FIELDS = ("sync_word", "frame_size", "bitstream_version", "sequence_counter", "b_wait_frames",
+          "wait_frames", "fs_index", "frame_rate_index", "b_iframe_global", "presentation_version",
+          "channel_mode", "dialnorm_bits", "b_further_loudness_info", "drc_metadata_size_value",
+          "b_drc_present", "tools_metadata_size", "b_de_data_present", "b_emdf_payloads_substream",
+          "crc_word")
 
 LINE = re.compile(r"^([0-9A-F]{4,})\s+(.*?):\s+(.*)$")
 FRAME = re.compile(r"^([0-9A-F]{4,}) ac4_syncframe - (\d+) ")
@@ -100,7 +100,8 @@ def check_frame(index, fields, raw, crc, channels, rate, dialnorm):
     want("sync_word", lambda v: number(v) == 0xAC41, "0xAC41")
     want("frame_size", lambda v: number(v) == len(raw), str(len(raw)))
     want("bitstream_version", lambda v: number(v) == 2, "2")
-    want("sequence_counter", lambda v: number(v) == expected_counter(index), str(expected_counter(index)))
+    counter = expected_counter(index)
+    want("sequence_counter", lambda v: number(v) == counter, str(counter))
     # A constant rate: b_wait_frames set, and wait_frames 0 - decode at once.
     want("b_wait_frames", lambda v: v == "Yes", "Yes")
     want("wait_frames", lambda v: number(v) == 0, "0")
@@ -169,9 +170,8 @@ def main():
             detailed = 0
             for index, fields in enumerate(frames[:len(raw_frames)]):
                 raw = raw_frames[index]
-                header = len(raw).to_bytes(2, "big")
-                wrong, seen = check_frame(index, fields, raw, space.crc16(header + raw), channels, rate,
-                                          dialnorm)
+                crc = space.crc16(len(raw).to_bytes(2, "big") + raw)
+                wrong, seen = check_frame(index, fields, raw, crc, channels, rate, dialnorm)
                 failures += [f"{name}: {w}" for w in wrong]
                 covered |= seen
                 detailed += len(seen) > 3
@@ -180,8 +180,8 @@ def main():
                   f"{len(FIELDS) - len(missing)} of {len(FIELDS)} fields checked"
                   + (f", never shown: {', '.join(missing)}" if missing else ""))
             if len(frames) != len(raw_frames):
-                failures.append(f"{name}: MediaInfo found {len(frames)} sync frames, the stream has "
-                                f"{len(raw_frames)}")
+                failures.append(f"{name}: MediaInfo found {len(frames)} sync frames, "
+                                f"the stream has {len(raw_frames)}")
 
             theirs = work / f"{name}.dee.mp4"
             run([muxer, "--track", stream, "-o", theirs, "--overwrite", "1"])
