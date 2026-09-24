@@ -156,6 +156,10 @@ on:
         description: "E-AC-3 encoder input-space budget, in seconds"
         type: number
         default: 900
+      ac4_encoder_space_seconds:
+        description: "AC-4 encoder input-space budget, in seconds"
+        type: number
+        default: 900
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
@@ -455,6 +459,7 @@ jobs:
       AC3CLI: build/config-linux-llvm/bin/ac3cli
       ENCODER_SPACE_SECONDS: ${{ github.event.inputs.encoder_space_seconds || 900 }}
       EAC3_ENCODER_SPACE_SECONDS: ${{ github.event.inputs.eac3_encoder_space_seconds || 900 }}
+      AC4_ENCODER_SPACE_SECONDS: ${{ github.event.inputs.ac4_encoder_space_seconds || 900 }}
     steps:
       - name: Bootstrap container
         run: |
@@ -510,6 +515,16 @@ jobs:
         run: >
           python3 tools/ci/fuzz_eac3_encoder_space.py
           --seconds "$EAC3_ENCODER_SPACE_SECONDS"
+
+      # The AC-4 half: the envelope first, for the same reason, then the
+      # search with the three traces, FFmpeg's framing and a decode.
+      - name: AC-4 encoder acceptance envelope (the rates it takes)
+        run: python3 tools/ci/fuzz_ac4_encoder_space.py --check-envelope
+
+      - name: AC-4 encoder input-space fuzz (deeper budget)
+        run: >
+          python3 tools/ci/fuzz_ac4_encoder_space.py
+          --seconds "$AC4_ENCODER_SPACE_SECONDS"
 
       - name: Upload failing inputs
         if: failure()

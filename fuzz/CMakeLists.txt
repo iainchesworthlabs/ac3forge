@@ -341,6 +341,16 @@ if(AC3FORGE_BUILD_AC4)
     ac3forge_add_fuzzer(fuzz_ac4_decode ac4::decoder)
 endif()
 
+# ac4::Encoder (src/ac4enc): configurations and samples from the input, each
+# frame read back by the decoder, whose trace must be the encoder's, decoded
+# to finite PCM, and written again byte for byte by a second encoder
+# (planning/ac4.md, the encoder's ladder, items 1 and 8). The core and the
+# decoder are instrumented by the block above.
+if(AC3FORGE_BUILD_AC4)
+    ac3forge_instrument_for_fuzzing(ac4enc_objects)
+    ac3forge_add_fuzzer(fuzz_ac4_encode ac4::encoder ac4::decoder)
+endif()
+
 # --- Sendspin (planning/hearth-reference-player.md, A4) ----------------------
 # ac3::sendspin's parsers are the first code a network peer's bytes reach, on
 # ac3hearth's server and on a sink. Gated on AC3FORGE_BUILD_HEARTH like the
