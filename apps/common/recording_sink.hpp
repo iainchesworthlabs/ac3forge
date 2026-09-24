@@ -87,7 +87,11 @@ class RecordingSink {
 
     // Finalizes the container. With zero frames pushed, removes the file
     // and reports "Nothing was encoded." - the whole-buffer path this
-    // replaces never created a file at all in that case.
+    // replaces never created a file at all in that case. Only a file (for
+    // kFmp4, a folder) that open() created is removed: a path that already
+    // held something before the take - a file, a symlink, a device node -
+    // keeps it, truncated by open() as a take to an existing path always is,
+    // but never deleted.
     [[nodiscard]] std::string close();
 
     [[nodiscard]] std::size_t frames() const { return frames_; }
@@ -97,6 +101,8 @@ class RecordingSink {
 
     Config config_;
     std::string path_;
+    // Whether nothing was at path_ before open(); see close().
+    bool created_ = false;
     bool open_ = false;
     std::size_t frames_ = 0;
     // kElementary / kMatroska / kMpegts write here...

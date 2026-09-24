@@ -37,6 +37,14 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
     config_ = config;
     path_ = path;
     frames_ = 0;
+    // Whether anything at all - a file, a folder, a device node, a symlink,
+    // dangling or not - was at `path` before this take. Asked of the link
+    // itself (symlink_status), so a symlink counts as there whatever it
+    // points at. close() cleans up after an empty take only when it was not:
+    // what the user already had is theirs, and "nothing was encoded" is no
+    // licence to delete it.
+    std::error_code probe;
+    created_ = !std::filesystem::exists(std::filesystem::symlink_status(path, probe));
 
     if (config.container == Container::kSpdif) {
         // The carrier runs at 4x the content rate for E-AC-3 - see
@@ -172,13 +180,28 @@ std::string RecordingSink::close() {
         // frame that never came), so removing the folder is the same
         // gesture - and remove(), not remove_all(), so a folder the user
         // pointed at that already had something in it is left alone.
+        //
+        // Only what open() itself created, though, and only if it is still
+        // the plain file (or, for kFmp4, folder) it made. A path that already
+        // held something - a user's file, a symlink, a device node such as
+        // /dev/null - is left where it was: open() truncated a file there,
+        // as any take to an existing path does, but removing it would
+        // delete something this sink never owned (and, run as root, a
+        // device node the whole machine uses).
         wav_.close();
         file_.close();
-        std::error_code ec;
-        if (config_.container == Container::kFmp4) {
-            std::filesystem::remove(fmp4_.directory(), ec);
-        } else {
-            std::filesystem::remove(std::filesystem::path{path_}, ec);
+        if (created_) {
+            std::error_code ec;
+            const auto made = config_.container == Container::kFmp4
+                                  ? fmp4_.directory()
+                                  : std::filesystem::path{path_};
+            const auto status = std::filesystem::symlink_status(made, ec);
+            const bool ours = config_.container == Container::kFmp4
+                                  ? std::filesystem::is_directory(status)
+                                  : std::filesystem::is_regular_file(status);
+            if (ours) {
+                std::filesystem::remove(made, ec);
+            }
         }
         return kNothingEncoded;
     }
