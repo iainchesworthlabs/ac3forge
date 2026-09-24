@@ -15,6 +15,7 @@
 #include "ac3/core/bitreader.hpp"
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
+#include "ac3/meta/mixing.hpp"
 
 namespace ac3::io {
 
