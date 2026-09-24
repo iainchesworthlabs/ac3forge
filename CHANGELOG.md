@@ -910,6 +910,17 @@ The sections below contain the complete change list and fixes.
   Table 39's own `max_sfb` (an active extension needs it to mean `get_max_sfb_hsf(g)`, not
   `get_max_sfb(g)` as written) and for `ac4_hsf_ext_substream()`'s `num_channels`/
   `b_different_framing` are in `src/ac4dec/ERRATA.md`.
+- **The committed DEE AC-4 streams can be scored against their sources.** Every one but
+  `ac4-stereo-64` is made again, from 5 s sources, with DEE's loudness measured and not corrected:
+  DEE's default normalises to −24 LKFS and runs a true-peak limiter, which no gain fit undoes. Two
+  one-tone-per-channel streams, at 2.0 and 5.1, join them. `ac4-manifest.json` records the SHA-256
+  of each source the generator rebuilds from the committed programme fixtures, and the properties it
+  lists (codec mode, DRC curves, custom downmix data, dialogue enhancement) are computed by
+  `tools/references/ac4_syntax.py` instead of recorded by hand. The two syntax transcriptions agree
+  on every frame of the new streams and on 2,500 streams mutated from them.
+  `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
+  `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
+  rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
 
 **Browser (WASM)**
 
