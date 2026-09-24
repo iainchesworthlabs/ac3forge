@@ -158,12 +158,24 @@ The app finds `audio` and `storage` by label, not by offset. The first image wri
 to be able to take the next update over the network, so no board migrates until O1 is merged in
 full ([Phases](#phases)).
 
-**The P4's bootloader.** It sits at `0x2000`, below the partition table at `0x8000`, and has
-1,280 bytes to spare. Rollback adds code to it. If it no longer fits, lower the bootloader's log
-level first (`CONFIG_BOOTLOADER_LOG_LEVEL_WARN`). Moving the partition table is the last resort:
-it moves NVS, so the P4's NVS would have to be read out and written back at its new offset. NVS
-pages locate their data relative to the partition, so the bytes move as they are. O1's first
-build for the P4 settles this.
+**The P4's bootloader.** It sits at `0x2000`, below the partition table at `0x8000`: a
+24,576-byte window. The "ESP32P4 firmware flash" session measured it on 2026-09-24 with
+bootloader-only builds from `b49a966c` and the board's overlays:
+
+| P4 bootloader | Bytes | Spare |
+|---|---|---|
+| As flashed today: log level Info, no rollback | 23,296 | 1,280 |
+| Rollback, Info | 23,424 | 1,152 |
+| Rollback, Warning | 20,896 | 3,680 |
+| Rollback, Error | 20,608 | 3,968 |
+| Rollback, Warning, signed apps (O7) | 20,992 | 3,584 |
+
+Rollback costs 128 bytes, so it fits and the partition table stays where it is. O1 keeps the Info
+level, because O2's board tests read the bootloader's lines about which slot it chose and why.
+A board's bootloader changes only with a USB flash, so this margin matters only at build time. If
+a later ESP-IDF grows the bootloader past the window, the build fails and says so, and
+`CONFIG_BOOTLOADER_LOG_LEVEL_WARN` is the one-line fix. The S3 and C6 bootloaders start at `0x0`
+in a 32,768-byte window, with 11,600 and 9,616 bytes spare.
 
 Anything else that might one day need a partition has to be in this table before the boards
 migrate, because a table change is a USB flash. That is why `coredump` and `reserve` are there
@@ -554,7 +566,8 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
 **ESP32-P4.**
 
 - The 16 MB table.
-- The bootloader's 1,280 spare bytes ([Flash layout](#flash-layout)).
+- The tightest bootloader of the three: 1,152 bytes spare with rollback at log level Info
+  ([Flash layout](#flash-layout)).
 - Rev v1.3: images must come from `sdkconfig.p4` (`ESP32P4_SELECTS_REV_LESS_V3`,
   `REV_MIN_100`). A default P4 image needs v3.1 and is refused before anything is written. O2
   pushes one on purpose to prove it. The other direction holds too: this board's images accept
@@ -614,8 +627,8 @@ that image has to be able to take the next update.
 
 - **O1, in the repository only.** Split into PRs that merge before any board migrates:
   - (a) the layouts, the rollback bootloader, `sdkconfig.flash16mb` and
-    `check_esp_efuse_free.py`, with CI's QEMU shapes passing on the new table, the README's
-    offsets updated, and the P4 bootloader fitting;
+    `check_esp_efuse_free.py`, with CI's QEMU shapes passing on the new table and the README's
+    offsets updated;
   - (b) `ac3forge::Firmware` beside `Control` in the component, flash mode through the example's
     hooks, the integrity checks, the `Host` check, the trial, and the host tests;
   - (c) the QEMU end-to-end tests;
