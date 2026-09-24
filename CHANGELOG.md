@@ -151,6 +151,27 @@ The sections below contain the complete change list and fixes.
   link (`wifi`, or `ethernet` under QEMU), the access point's SSID and signal in dBm, and the
   board's address - from `ControlHandlers::network`, and `GET /hardware` gains `project`,
   `version` and `idf_version` from the image's own description. The page shows both.
+- **A Hearth sink lists the servers it is paired with, and forgets one at a time.** Each
+  pairing record now keeps the name its server's hello gave, in NVS beside the records, and
+  `GET /pairing` lists them, the most recently used first, with each server's `server_id`,
+  whether it is connected, whether it has connected since the board started, and which played
+  last. The page's Sendspin section shows the list with a *Forget* for each; `POST /pairing`
+  with `forget` and a `server_id` forgets that server alone, closing its connection with
+  `client/goodbye user_request`, and the board keeps its identity and its other pairings. The
+  console gains `pair list` and `pair forget ID`. A pairing made before names were kept is named
+  when its server next holds the board. Before this the board could say only how many servers it
+  was paired with, and the only way to drop one was to forget every server and take a new
+  identity.
+  - A ninth pairing now evicts the least recently used record that no open connection rests on
+    (`esp-idf/ac3forge/include/ac3forge/pairing_records.hpp`, tested on the host); a record is
+    used when its server is admitted. The board evicted the oldest pairing, which could be the
+    server that played to it every day, or one with a connection open on it, which pairing.md
+    forbids.
+  - A forgotten server is no longer the last-playback server (`ac3::sendspin::Arbiter::forget`),
+    so it cannot take the board from a holder that declares nothing.
+  - `tools/checks/run_sendspin_qemu.sh` has the emulated board list the test server by name and
+    then forget it by its `server_id`. The page's budget is 49,152 bytes, up from 45,056
+    (planning/esp32-device-ui.md, decision 22).
 - **The ESP32 web page explains the output layout**, showing this play's fold, each
   channel's speaker or object placement, and the speakers left silent; `GET /status`
   gains `sink_slots`, `stream.layout`, `render`, `coded` and `silent`. A 38-stream set

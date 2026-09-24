@@ -606,11 +606,20 @@ once they are paired, which happens one of two ways:
   server. After twenty codes that did not match, the board holds pairing back
   until `pair reset` on the console or *Allow pairing again* on the page.
 
-The board keeps eight pairings in NVS. `pair forget`, or *Forget every server*
-on the page, removes them all and gives the board a new identity, so every
-server has to pair again. Lines typed on the console are commands: `pair
-token`, `pair reset`, `pair cancel`, `pair forget`, and `sendspin`, which
-prints the player's state.
+The board keeps eight pairings in NVS, each with the name its server's hello
+gave, the most recently used first. A ninth pairing replaces the least
+recently used one that no open connection rests on
+([`pairing_records.hpp`](../../include/ac3forge/pairing_records.hpp)). `pair
+list` prints them, and the page's Sendspin section lists them from `GET
+/pairing`, with a *Forget* for each. `pair forget` and a server's ID - its
+server_id, or the first eight or more characters of it that `pair list`
+prints - forgets that server alone: its connection closes with
+`client/goodbye user_request`, the board keeps its identity and its other
+pairings, and that server has to pair again. `pair forget` alone, or *Forget
+every server* on the page, removes them all and gives the board a new
+identity, so every server has to pair again. Lines typed on the console are
+commands: `pair list`, `pair token`, `pair reset`, `pair cancel`, `pair
+forget` with or without an ID, and `sendspin`, which prints the player's state.
 
 A server that has not paired gets nothing to play unless
 `CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS` is set, and then only once

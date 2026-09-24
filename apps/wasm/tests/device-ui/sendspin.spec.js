@@ -4,11 +4,11 @@
 // The Sendspin player's part of the page (planning/hearth-reference-player.md,
 // B3): what GET /status's "sendspin" object shows - the server, the link, the
 // clock, how the stream plays, a level per output, a pairing in progress -
-// and the three pairing actions, POST /pairing's reset, cancel and forget,
-// against the stand-in device.
+// and the pairing actions, POST /pairing's reset, cancel and forget, with the
+// list of paired servers GET /pairing gives, against the stand-in device.
 
 const { test, expect } = require('./fixtures');
-const { REPLIES, idleSendspin, playingSendspin } = require('./stub');
+const { REPLIES, idleSendspin, playingSendspin, pairedServer } = require('./stub');
 
 const ROWS = ['#ss-server', '#ss-link', '#ss-clock', '#ss-timing', '#ss-underruns', '#ss-lost', '#ss-outcome'];
 
@@ -238,6 +238,151 @@ test.describe('the pairing actions', () => {
         stub.device.sendspin = undefined;
         const none = await page.request.post(stub.url + 'pairing', { data: 'reset' });
         expect(none.status()).toBe(409);
+        expect(await none.text()).toBe(REPLIES.pairingRefused);
+    });
+});
+
+// GET /pairing's list (planning/esp32-device-ui.md, decision 28): each server
+// the board is paired with, by the name its hello gave, and a Forget for each
+// that sends POST /pairing "forget" and its server_id.
+test.describe('the paired servers', () => {
+    // playingSendspin()'s server, whose server_id /status shows the first
+    // eight characters of.
+    const HEARTH = 'Yx3kP0aZtYk4Q9mLr2vNw8sJc1bXe5hGd7fAu3oKp6i';
+    const MA = 'M5eL1mdvqGkXo3sLr9TfP2wYh8bNc4jZa7eUd1iKx0Q';
+    const OLD = 'Qm9aB2cD4eF6gH8iJ0kL1mN3oP5qR7sT9uV1wX3yZ5a';
+    const MA_NAME = 'Music Assistant (d5369777-music-assistant)';
+    const three = () => [
+        pairedServer({ server_id: HEARTH, name: 'Hearth on the desk', connected: true, last_playback: true }),
+        pairedServer({ server_id: MA, name: MA_NAME }),
+        pairedServer({ server_id: OLD, seen: false }),
+    ];
+    const rows = (page) => page.getByRole('list', { name: 'Paired servers' }).getByRole('listitem');
+
+    test('each is listed, the most recently used first, with what it is doing', async ({ page, stub }) => {
+        stub.device.pairings = three();
+        await show(page, stub, { ...playingSendspin(), paired: 3 });
+        await expect(rows(page)).toHaveCount(3);
+        await expect(rows(page).nth(0)).toContainText('Hearth on the desk');
+        await expect(rows(page).nth(0)).toContainText('Yx3kP0aZ · connected · the last to play');
+        await expect(rows(page).nth(1)).toContainText(MA_NAME);
+        await expect(rows(page).nth(1)).toContainText('M5eL1mdv · seen since the board started');
+        // A pairing from before the board kept names, whose server has not
+        // been back since: its Forget goes by its server_id.
+        await expect(rows(page).nth(2)).toContainText('No name yet');
+        await expect(rows(page).nth(2)).toContainText('Qm9aB2cD · not seen since the board started');
+        await expect(page.getByRole('button', { name: 'Forget ' + MA_NAME })).toBeVisible();
+        await expect(page.getByRole('button', { name: 'Forget the server Qm9aB2cD' })).toBeVisible();
+    });
+
+    test('none paired, or no player: no list', async ({ page, stub }) => {
+        await show(page, stub, idleSendspin());
+        await expect(page.getByRole('list', { name: 'Paired servers' })).toBeHidden();
+        // With none, there is nothing to ask the board for.
+        await nextPoll(stub);
+        expect(stub.sent('GET /pairing')).toHaveLength(0);
+        // A player that has gone takes its section with it, list and all.
+        stub.device.pairings = three();
+        stub.device.sendspin = undefined;
+        await nextPoll(stub);
+        await expect(page.getByRole('list', { name: 'Paired servers' })).toBeHidden();
+    });
+
+    test('forgetting one asks first, sends its server_id, and leaves the rest', async ({ page, stub }) => {
+        stub.device.pairings = three();
+        await show(page, stub, { ...playingSendspin(), paired: 3 });
+        const dialog = page.getByRole('dialog', { name: 'Forget ' + MA_NAME + '?' });
+        await page.getByRole('button', { name: 'Forget ' + MA_NAME }).click();
+        await expect(dialog).toContainText('To play here again, ' + MA_NAME + ' has to pair again. The board keeps its other pairings.');
+        await dialog.getByRole('button', { name: 'Cancel' }).click();
+        await nextPoll(stub);
+        expect(stub.sent('POST /pairing')).toHaveLength(0);
+        await page.getByRole('button', { name: 'Forget ' + MA_NAME }).click();
+        await dialog.getByRole('button', { name: 'Forget', exact: true }).click();
+        await expect.poll(() => stub.sent('POST /pairing').map((r) => r.body)).toEqual(['forget ' + MA]);
+        await expect(page.getByRole('status')).toHaveText('Forgot ' + MA_NAME + ': it has to pair again.');
+        await expect(page.locator('#ss-paired')).toHaveText('2');
+        await expect(rows(page)).toHaveCount(2);
+        await expect(page.getByRole('button', { name: 'Forget ' + MA_NAME })).toHaveCount(0);
+        // The server that plays here plays on.
+        await expect(page.locator('#ss-server')).toHaveText('Hearth on the desk (specification)');
+        // And the dialog asks about every server again when that is what is
+        // asked for.
+        await page.getByRole('button', { name: 'Forget every server' }).click();
+        await expect(page.getByRole('dialog', { name: 'Forget every server?' })).toContainText(
+            'Each server this board has paired with has to pair again',
+        );
+    });
+
+    test('forgetting the server that is connected closes its connection', async ({ page, stub }) => {
+        stub.device.pairings = three();
+        await show(page, stub, { ...playingSendspin(), paired: 3 });
+        await page.getByRole('button', { name: 'Forget Hearth on the desk' }).click();
+        await page.getByRole('dialog').getByRole('button', { name: 'Forget', exact: true }).click();
+        await expect.poll(() => stub.sent('POST /pairing').map((r) => r.body)).toEqual(['forget ' + HEARTH]);
+        await expect(page.locator('#ss-note')).toHaveText(
+            'No server is connected. Servers on this network find this board by its name.',
+        );
+        await expect(page.locator('#ss-server')).toBeHidden();
+        await expect(rows(page)).toHaveCount(2);
+        await expect(rows(page).nth(0)).toContainText(MA_NAME);
+    });
+
+    test('a server the board no longer has a pairing with is reported', async ({ page, stub }) => {
+        stub.device.pairings = three();
+        await show(page, stub, { ...playingSendspin(), paired: 3 });
+        stub.next('POST /pairing', { status: 404, body: REPLIES.pairingUnknown });
+        await page.getByRole('button', { name: 'Forget ' + MA_NAME }).click();
+        await page.getByRole('dialog').getByRole('button', { name: 'Forget', exact: true }).click();
+        await expect(page.getByRole('status')).toHaveText(
+            'Forget ' + MA_NAME + ' refused (404): this board has no pairing with that server',
+        );
+        await expect(page.getByRole('status')).toHaveClass(/error/);
+    });
+
+    test('the list is read again only when what /status says of the servers changes', async ({ page, stub }) => {
+        stub.device.pairings = three();
+        await show(page, stub, { ...playingSendspin(), paired: 3 });
+        await expect(rows(page)).toHaveCount(3);
+        const reads = stub.sent('GET /pairing').length;
+        await nextPoll(stub);
+        await nextPoll(stub);
+        expect(stub.sent('GET /pairing')).toHaveLength(reads);
+        // A pairing somewhere else: the count moves, and the list is read.
+        stub.device.pairings = [pairedServer({ server_id: OLD.replace('Q', 'R'), name: 'Hearth in the study' }), ...three()];
+        stub.device.sendspin.paired = 4;
+        await expect(rows(page)).toHaveCount(4);
+        await expect(rows(page).nth(0)).toContainText('Hearth in the study');
+    });
+
+    test('a list the board did not send is asked for again at the next poll', async ({ page, stub }) => {
+        stub.device.pairings = three();
+        stub.next('GET /pairing', 'hang');
+        await show(page, stub, { ...playingSendspin(), paired: 3 });
+        await expect(page.getByRole('list', { name: 'Paired servers' })).toBeHidden();
+        // Four seconds for the request to give up, and a poll after.
+        await expect(rows(page)).toHaveCount(3, { timeout: 10_000 });
+        expect(stub.sent('GET /pairing').length).toBeGreaterThanOrEqual(2);
+    });
+
+    test('a name from a server goes into the page as text, and a row with no server_id is left out', async ({ page, stub }) => {
+        const markup = '<img src=x onerror="document.title=1">';
+        stub.device.pairings = [pairedServer({ server_id: MA, name: markup }), pairedServer({ name: 'No id' })];
+        await show(page, stub, { ...playingSendspin(), paired: 2 });
+        await expect(rows(page)).toHaveCount(1);
+        await expect(rows(page).nth(0)).toContainText(markup);
+        await expect(page.locator('img')).toHaveCount(0);
+    });
+
+    test('the stand-in answers a server_id it does not have as the board does', async ({ page, stub }) => {
+        stub.device.pairings = three();
+        await show(page, stub, playingSendspin());
+        const unknown = await page.request.post(stub.url + 'pairing', { data: 'forget ' + OLD.replace('Q', 'Z') });
+        expect(unknown.status()).toBe(404);
+        expect(await unknown.text()).toBe(REPLIES.pairingUnknown);
+        stub.device.sendspin = undefined;
+        const none = await page.request.get(stub.url + 'pairing');
+        expect(none.status()).toBe(404);
         expect(await none.text()).toBe(REPLIES.pairingRefused);
     });
 });

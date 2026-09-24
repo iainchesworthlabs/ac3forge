@@ -407,8 +407,10 @@ key:
 - play any HTTP URL, stop a play, and set the volume;
 - change the board's name, layout, slot width and wiring, and the network it joins at its next
   restart (`PUT /network`, whose body carries the passphrase in clear over HTTP);
-- forget every pairing, which gives the board a new identity, and lift the limit on wrong
-  pairing codes;
+- forget every pairing, which gives the board a new identity, or one server's pairing, and lift
+  the limit on wrong pairing codes;
+- read which servers the board is paired with (`GET /pairing`): each one's name, as its own hello
+  gave it, and its server_id, which is its public key;
 - read the network the board is on (its SSID, signal and address) and its firmware's version;
 - read `GET /status`, including the pairing code while a pairing runs. So on a board, pairing by
   code shows only that the server's operator can reach the page, and anyone who can reach it can
@@ -416,16 +418,17 @@ key:
   pairing token pairs with no code at all, and only the console prints it.
 
 A page on another site, opened by someone on the same network, can send the board requests that
-need no CORS preflight, such as `POST /play` with a text body.
+need no CORS preflight, such as `POST /play` with a text body. Forgetting one server that way
+needs its whole server_id, which such a page cannot read from `GET /pairing`.
 [`planning/esp32-device-ui.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-device-ui.md)
 records that exposure and the decision to leave it. The page puts every string from `/status` into
 the document as text, never as markup.
 
 **A board keeps its keys in NVS, unencrypted.** Its X25519 identity, its pairing PSK, up to eight
-pairing records and the Wi-Fi passphrase are in the NVS partition, and these builds turn on neither
-NVS encryption nor flash encryption. Whoever holds the board can read them with `esptool`, and
-with them pass as the board to every server it paired with, or join its network. Turning on both
-is the integrator's choice, and no build here has tried it.
+pairing records with their servers' names, and the Wi-Fi passphrase are in the NVS partition,
+and these builds turn on neither NVS encryption nor flash encryption. Whoever holds the board can
+read them with `esptool`, and with them pass as the board to every server it paired with, or
+join its network. Turning on both is the integrator's choice, and no build here has tried it.
 
 **The console is trusted.** Anyone with the board's USB port can read its pairing token, give it a
 network over Improv Wi-Fi, and type `pair forget` or `pair reset`.

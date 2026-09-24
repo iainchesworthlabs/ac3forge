@@ -8,9 +8,10 @@
 # token, sends it a 2.0 layout, and plays the E-AC-3 JOC fixture to it and to
 # a test sink of its own in one group, reading the board's GET /status as it
 # plays. It fails on a connection, a pairing, a setting or a burst that goes
-# wrong. Then check_sendspin_levels.py holds each of the board's outputs to the
-# test sink's WAV, and check_esp_console.py holds the console to one clean boot
-# and the heap floor.
+# wrong. The board's GET /pairing must then list the test server by name, and
+# forget it by its server_id. Then check_sendspin_levels.py holds each of the
+# board's outputs to the test sink's WAV, and check_esp_console.py holds the
+# console to one clean boot and the heap floor.
 #
 #   tools/checks/run_sendspin_qemu.sh --qemu QEMU --image DIR --server SERVER \
 #       [--out DIR] [--board-trim-db LIST]
@@ -118,6 +119,35 @@ for _ in $(seq 1 30); do
     fi
     sleep 1
 done
+
+# The board's list of the servers it is paired with (GET /pairing): the test
+# server alone, by the name its hello gave and the server_id its report gives.
+# Then that one server forgotten by its server_id, which takes it off the list
+# and out of /status's count (planning/esp32-device-ui.md, Several servers).
+server_id="$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["server"]["id"])' "$out/report.json")" \
+    || fail "the test server's report gives no server id"
+curl -fsS http://127.0.0.1:18080/pairing > "$out/pairing.json" || fail "GET /pairing failed"
+python3 - "$out/pairing.json" "$server_id" <<'EOF' || fail "GET /pairing did not list the test server as it paired (the line above says how)"
+import json, sys
+listed = json.load(open(sys.argv[1]))
+servers = listed.get("servers", [])
+expected = {"server_id": sys.argv[2], "name": "Hearth test server", "seen": True}
+if listed.get("capacity") != 8 or len(servers) != 1 or any(servers[0].get(k) != v for k, v in expected.items()):
+    print(f"GET /pairing: {json.dumps(listed)}; expected one server like {json.dumps(expected)}", file=sys.stderr)
+    sys.exit(1)
+EOF
+curl -fsS -X POST --data "forget $server_id" http://127.0.0.1:18080/pairing >/dev/null \
+    || fail "POST /pairing did not forget the test server by its server_id"
+curl -fsS http://127.0.0.1:18080/pairing > "$out/pairing-forgotten.json" || fail "GET /pairing failed after the forget"
+curl -fsS http://127.0.0.1:18080/status > "$out/status-forgotten.json" || fail "GET /status failed after the forget"
+python3 - "$out/pairing-forgotten.json" "$out/status-forgotten.json" <<'EOF' || fail "the forgotten server is still paired (the line above says how)"
+import json, sys
+servers = json.load(open(sys.argv[1])).get("servers", [])
+paired = json.load(open(sys.argv[2]))["sendspin"]["paired"]
+if servers or paired != 0:
+    print(f"after the forget, GET /pairing lists {json.dumps(servers)} and /status counts {paired}", file=sys.stderr)
+    sys.exit(1)
+EOF
 kill "$qemu_pid" 2>/dev/null || true
 
 wav="$(find "$out/reference/out" -name 'bursts-*.wav' -print -quit 2>/dev/null)" || true

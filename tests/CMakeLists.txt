@@ -91,6 +91,7 @@ add_executable(ac3tests
     io/test_hardware_info.cpp
     io/test_improv.cpp
     io/test_interleave.cpp
+    io/test_pairing_records.cpp
     io/test_sink_plan.cpp
     io/test_tcp_arrivals.cpp
     io/test_block_ring.cpp
@@ -245,7 +246,9 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 # checked without a DAC on the other end - the rest is peripheral setup and a
 # blocking write - and they are the parts with the indexing and the arithmetic
 # in them. test_block_ring.cpp and test_unit_hold.cpp build the component's
-# block_ring.hpp and unit_hold.hpp through the same path. None of these headers
+# block_ring.hpp and unit_hold.hpp through the same path, and
+# test_pairing_records.cpp the Sendspin player's record order and eviction
+# (pairing_records.hpp), which the board keeps in NVS. None of these headers
 # includes anything from ESP-IDF, which is what makes building them here
 # possible and is worth keeping true. (The layout and the renderer were here
 # too, and moved into the library as ac3/render/ with render/test_layout.cpp.)

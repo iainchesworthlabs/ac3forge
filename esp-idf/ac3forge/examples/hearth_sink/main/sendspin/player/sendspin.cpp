@@ -29,6 +29,7 @@
 #include "ac3/render/render.hpp"
 #include "ac3/render/trim_delay.hpp"
 #include "ac3/sendspin/ac3forge_player.hpp"
+#include "ac3/sendspin/base64url.hpp"
 #include "ac3/sendspin/messages.hpp"
 #include "ac3/sendspin/noise.hpp"
 #include "ac3/sendspin/pairing.hpp"
@@ -685,6 +686,76 @@ bool sendspin_pairing(std::string_view action) {
     return false;
 }
 
+std::optional<ac3forge::ControlPairings> sendspin_pairings() {
+    const Running* const r = running();
+    if (r == nullptr) {
+        return std::nullopt;
+    }
+    const ac3forge::SendspinPairings pairings = r->host->pairings();
+    ac3forge::ControlPairings out;
+    out.capacity = static_cast<unsigned>(ac3forge::SendspinStore::kRecordCapacity);
+    out.servers.reserve(pairings.count);
+    for (std::size_t i = 0; i < pairings.count; ++i) {
+        const ac3forge::SendspinPairing& p = pairings.servers[i];
+        out.servers.push_back(ac3forge::ControlPairing{.server_id = ss::base64url::encode(p.server_key),
+                                                       .name = p.name.data(),
+                                                       .connected = p.connected,
+                                                       .last_playback = p.last_playback,
+                                                       .seen = p.seen});
+    }
+    return out;
+}
+
+std::optional<bool> sendspin_forget_server(std::string_view server_id) {
+    const Running* const r = running();
+    if (r == nullptr) {
+        return std::nullopt;
+    }
+    ss::crypto::Key32 key{};
+    if (!ss::base64url::decode_exact(server_id, key)) {
+        return false;
+    }
+    return r->host->forget_server(key);
+}
+
+namespace {
+
+// `pair list`: each record's server_id as the console shows it, its name, and
+// what it is doing.
+void print_pairings(const ac3forge::SendspinHost& host) {
+    const ac3forge::SendspinPairings pairings = host.pairings();
+    std::printf("sendspin: %u of %u pairing records, the most recently used first\n",
+                static_cast<unsigned>(pairings.count), static_cast<unsigned>(ac3forge::SendspinStore::kRecordCapacity));
+    for (std::size_t i = 0; i < pairings.count; ++i) {
+        const ac3forge::SendspinPairing& p = pairings.servers[i];
+        std::printf("sendspin:   %s  %s%s%s%s\n", ss::base64url::encode(p.server_key).substr(0, 8).c_str(),
+                    p.name[0] != '\0' ? p.name.data() : "(no name yet)", p.connected ? ", connected" : "",
+                    p.last_playback ? ", the last to play" : "", p.seen ? "" : ", not seen since the board started");
+    }
+}
+
+// `pair forget ID`: the one record whose server_id starts with `id`, which is
+// the whole of it or the first eight or more of its characters, as
+// `pair list` prints them. Nothing when none does, or more than one.
+[[nodiscard]] std::optional<ss::crypto::Key32> record_for(const ac3forge::SendspinPairings& pairings,
+                                                          std::string_view id) {
+    if (id.size() < 8) {
+        return std::nullopt;
+    }
+    std::optional<ss::crypto::Key32> found;
+    for (std::size_t i = 0; i < pairings.count; ++i) {
+        if (ss::base64url::encode(pairings.servers[i].server_key).starts_with(id)) {
+            if (found) {
+                return std::nullopt;
+            }
+            found = pairings.servers[i].server_key;
+        }
+    }
+    return found;
+}
+
+}  // namespace
+
 bool sendspin_console(std::string_view line) {
     const Running* const r = running();
     if (r == nullptr) {
@@ -698,6 +769,24 @@ bool sendspin_console(std::string_view line) {
     }
     if (line == "pair forget") {
         return sendspin_pairing("forget");
+    }
+    // Both read the servers' names from NVS, which the console's own 4 KB
+    // task has too little stack for.
+    if (line == "pair list") {
+        (void)on_key_stack("listing the pairings", [r] { print_pairings(*r->host); });
+        return true;
+    }
+    constexpr std::string_view kForgetOne = "pair forget ";
+    if (line.starts_with(kForgetOne)) {
+        const std::string_view id = line.substr(kForgetOne.size());
+        (void)on_key_stack("forgetting a pairing", [r, id] {
+            const std::optional<ss::crypto::Key32> key = record_for(r->host->pairings(), id);
+            if (!key || !r->host->forget_server(*key)) {
+                std::printf("sendspin: no one pairing has a server_id starting '%.*s'; 'pair list' shows them\n",
+                            static_cast<int>(id.size()), id.data());
+            }
+        });
+        return true;
     }
     if (line == "pair token") {
         print_token(*r->host);
