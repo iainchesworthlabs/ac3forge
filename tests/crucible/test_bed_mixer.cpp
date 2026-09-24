@@ -133,3 +133,60 @@ TEST_CASE("fold_to_pair passes stereo through and shares the centre of 5.1", "[c
     CHECK(left[2] == 0.3F);
     CHECK(right[2] == 0.3F);
 }
+
+TEST_CASE("fold_to_pair gives each side of 7.1 its front, side and rear with the shared centre", "[crucible]") {
+    using ac3::crucible::fold_to_pair;
+    std::vector<float> left(2, 9.0F), right(2, 9.0F);
+    // L R C LFE Lss Rss Lrs Rrs, every channel driven: each side normalises to 1.
+    const std::vector<float> full(8 * 2, 1.0F);
+    fold_to_pair(full, 8, left, right);
+    CHECK(left[0] == Approx(1.0F).margin(1e-5));
+    CHECK(right[1] == Approx(1.0F).margin(1e-5));
+    // Left side channels only: nothing reaches the right, the LFE never counts.
+    const std::vector<float> lefts = {0.0F, 0.0F, 0.0F, 1.0F, 1.0F, 0.0F, 1.0F, 0.0F};
+    fold_to_pair(lefts, 8, left, right);
+    CHECK(left[0] == Approx(2.0F * 0.70710678F / (1.0F + 3.0F * 0.70710678F)));
+    CHECK(right[0] == 0.0F);
+    CHECK(left[1] == 0.0F);  // one frame in, so the tail is silence
+}
+
+TEST_CASE("a zero-channel tap folds to silence and adds nothing to the bed", "[crucible]") {
+    using ac3::crucible::fold_to_pair;
+    const std::vector<float> samples = {0.5F, 0.5F};
+    std::vector<float> mono(2, 9.0F);
+    fold_to_mono(samples, 0, mono);
+    CHECK(mono == std::vector<float>{0.0F, 0.0F});
+    std::vector<float> left(2, 9.0F), right(3, 9.0F);
+    fold_to_pair(samples, 0, left, right);
+    CHECK(left == std::vector<float>{0.0F, 0.0F});
+    CHECK(right == std::vector<float>{0.0F, 0.0F, 0.0F});
+    BedMix mix;
+    mix.resize(2);
+    add_to_bed(samples, 0, 1.0F, mix);
+    CHECK(bed(mix, BedChannel::kL, 0) == 0.0F);
+    CHECK(bed(mix, BedChannel::kR, 1) == 0.0F);
+}
+
+TEST_CASE("a mono tap reaches the bed's L and R at -3 dB each", "[crucible]") {
+    const std::vector<float> mono = {1.0F, -0.5F};
+    BedMix mix;
+    mix.resize(2);
+    add_to_bed(mono, 1, 0.5F, mix);
+    CHECK(bed(mix, BedChannel::kL, 0) == Approx(0.5F * 0.70710678F));
+    CHECK(bed(mix, BedChannel::kR, 0) == Approx(0.5F * 0.70710678F));
+    CHECK(bed(mix, BedChannel::kR, 1) == Approx(-0.25F * 0.70710678F));
+    CHECK(bed(mix, BedChannel::kC, 0) == 0.0F);
+}
+
+TEST_CASE("a quad tap maps its fronts and rears by channel", "[crucible]") {
+    // L R Ls Rs, two frames.
+    const std::vector<float> quad = {0.1F, 0.2F, 0.3F, 0.4F, 0.5F, 0.6F, 0.7F, 0.8F};
+    BedMix mix;
+    mix.resize(2);
+    add_to_bed(quad, 4, 1.0F, mix);
+    CHECK(bed(mix, BedChannel::kL, 0) == Approx(0.1F));
+    CHECK(bed(mix, BedChannel::kR, 0) == Approx(0.2F));
+    CHECK(bed(mix, BedChannel::kLs, 0) == Approx(0.3F));
+    CHECK(bed(mix, BedChannel::kRs, 1) == Approx(0.8F));
+    CHECK(bed(mix, BedChannel::kC, 1) == 0.0F);
+}

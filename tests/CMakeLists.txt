@@ -709,6 +709,8 @@ target_sources(ac3tests PRIVATE
     crucible/test_desktop_entries.cpp
     crucible/test_translations.cpp
     crucible/test_engine.cpp
+    crucible/test_engine_commands.cpp
+    crucible/test_output_stage_edges.cpp
     crucible/platform_services_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
@@ -808,7 +810,7 @@ endif()
 # only linked, when AC3FORGE_BUILD_IAB actually turned the target on. Same conditional shape
 # as the AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_IAB)
-    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_mxf_reader.cpp)
+    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_ac3iab_truncation.cpp ac3iab/test_mxf_reader.cpp)
     target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
 endif()
 
@@ -839,7 +841,9 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_decoder_settings.cpp
         hearth/test_diagnostics.cpp
         hearth/test_engine.cpp
+        hearth/test_engine_queue_commands.cpp
         hearth/test_media_info.cpp
+        hearth/test_media_info_json.cpp
         hearth/test_network_view.cpp
         hearth/test_output_decision.cpp
         hearth/test_output_selector.cpp
@@ -971,6 +975,7 @@ if(AC3FORGE_BUILD_HEARTH)
             sendspin/test_noise.cpp
             sendspin/test_pairing.cpp
             sendspin/test_pairing_flow.cpp
+            sendspin/test_pairing_flow_errors.cpp
             sendspin/test_session_driver.cpp
             sendspin/test_sessions.cpp)
         # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
@@ -990,7 +995,8 @@ if(AC3FORGE_BUILD_HEARTH)
             hearth/test_aiosendspin.cpp
             hearth/test_aiosendspin_group.cpp
             hearth/test_group.cpp
-            hearth/test_testsink.cpp)
+            hearth/test_testsink.cpp
+            hearth/test_testsink_edges.cpp)
         # The engine's pairing records, its Network page bookkeeping (A6), its
         # NetworkGroupSink (A6, streaming to a group) and issue #874's own
         # exit - a group of two test sinks played from ac3::hearth::Engine
@@ -999,6 +1005,7 @@ if(AC3FORGE_BUILD_HEARTH)
         target_sources(ac3tests PRIVATE
             hearth/test_pairing_store.cpp
             hearth/test_network_sinks.cpp
+            hearth/test_network_sinks_rows.cpp
             hearth/test_network_group_sink.cpp
             hearth/test_engine_network_group.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
