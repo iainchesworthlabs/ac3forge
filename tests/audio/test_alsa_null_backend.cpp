@@ -359,14 +359,16 @@ TEST_CASE("alsa monitor: a pause once the device is running holds it, and resume
     CHECK(sink.stats().frames_submitted == 0);
 }
 
-TEST_CASE("alsa monitor: a device that under-runs is recovered and keeps playing",
+TEST_CASE("alsa monitor: a device that under-runs is recovered, keeps playing and drains",
           "[audio][alsa-null][concurrency]") {
     // `mono` (multi over null) drops into XRUN as soon as its start threshold
     // starts it, so every buffer's worth ends in -EPIPE: the render thread's
     // snd_pcm_recover path, over and over, with the sink still running.
     //
-    // Not plug: through plug this same device leaves a blocking writei
-    // spinning in alsa-lib for ever, and stop() would never join.
+    // Not plug: through plug this same device leaves writei spinning inside
+    // alsa-lib for ever, holding the PCM's own lock - non-blocking mode does
+    // not change that, and nor can a snd_pcm_drop from another thread, which
+    // waits on the same lock - so stop() would never join.
     const NullDevices devices;
     ac3::audio::MonitorSink sink;
     REQUIRE(sink.start("mono", 48000, 1).has_value());
@@ -378,6 +380,16 @@ TEST_CASE("alsa monitor: a device that under-runs is recovered and keeps playing
     // worth rendered means the thread came back from at least two of them.
     CHECK(eventually([&] { return sink.stats().frames_rendered >= 3 * 4096; }));
     CHECK(sink.running());
+    // And every frame submitted is rendered: the period whose write met the
+    // under-run is written again once recovered, not dropped uncounted, so a
+    // caller draining the queue (ac3cli monitor waits for exactly this)
+    // finishes. Before, one period in five went missing from the count and
+    // the drain waited for ever.
+    CHECK(eventually([&] {
+        const auto stats = sink.stats();
+        return stats.frames_rendered >= stats.frames_submitted;
+    }));
+    CHECK(sink.stats().frames_submitted == 40 * 480);
 }
 
 TEST_CASE("alsa monitor: a missing device and a zero-channel stream are refused by name",
@@ -629,6 +641,14 @@ TEST_CASE("alsa passthrough: a link that under-runs is recovered and keeps carry
     }
     CHECK(eventually([&] { return sink.stats().bursts_rendered >= 6; }));
     CHECK(sink.running());
+    // Every burst submitted is rendered, as the monitor's under-run case
+    // checks: the burst whose write met -EPIPE is written again once
+    // recovered, so a drain of the queue ends.
+    CHECK(eventually([&] {
+        const auto stats = sink.stats();
+        return stats.bursts_rendered >= stats.bursts_submitted;
+    }));
+    CHECK(sink.stats().bursts_submitted == 12);
 }
 
 TEST_CASE("alsa passthrough: a device whose writes fail for good stops the sink by itself",

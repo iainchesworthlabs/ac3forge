@@ -93,6 +93,9 @@ constexpr snd_pcm_format_t kCarrierFormat = SND_PCM_FORMAT_S16_LE;
 constexpr std::size_t kCarrierFrameBytes = 4;
 constexpr unsigned kPeriodsPerBuffer = 4;
 constexpr int kWaitMs = 100;
+// How many recoveries one burst's write may need before the rest of it is
+// given up on; see MonitorSink's ALSA backend.
+constexpr int kWriteRetries = 4;
 
 std::size_t burst_bytes_for(BitstreamFormat format) {
     return format == BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes : iec61937::kBurstBytes;
@@ -721,16 +724,36 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
                 impl_->underruns.fetch_add(1);
             }
 
-            const snd_pcm_sframes_t written =
-                snd_pcm_writei(pcm, chunk.data(), static_cast<snd_pcm_uframes_t>(burst_frames));
-            if (written < 0) {
-                if (snd_pcm_recover(pcm, static_cast<int>(written), /*silent=*/1) < 0) {
-                    lost = true;
-                    break;
+            // As in MonitorSink's ALSA backend: the burst has left the queue,
+            // so it is written out in full or given up on here. A write that
+            // meets an under-run hands over nothing; once recovered, the rest
+            // of the burst is written again, so bursts_rendered keeps up with
+            // bursts_submitted and a caller draining the one into the other
+            // finishes. A device that under-runs on every retry is given up
+            // on after kWriteRetries recoveries, the burst counted as
+            // finished with all the same.
+            std::size_t done = 0;
+            int retries = 0;
+            while (done < burst_frames && !stop.stop_requested()) {
+                const snd_pcm_sframes_t written =
+                    snd_pcm_writei(pcm, chunk.data() + done * kCarrierFrameBytes,
+                                   static_cast<snd_pcm_uframes_t>(burst_frames - done));
+                if (written < 0) {
+                    if (snd_pcm_recover(pcm, static_cast<int>(written), /*silent=*/1) < 0) {
+                        lost = true;
+                        break;
+                    }
+                    if (++retries > kWriteRetries) {
+                        break;
+                    }
+                    continue;
                 }
-                continue;
+                done += static_cast<std::size_t>(written);
+                handed_over += static_cast<std::uint64_t>(written);
             }
-            handed_over += static_cast<std::uint64_t>(written);
+            if (lost) {
+                break;
+            }
             impl_->rendered.fetch_add(got / burst_bytes);
         }
 

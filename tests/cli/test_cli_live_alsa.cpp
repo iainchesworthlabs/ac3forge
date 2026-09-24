@@ -91,6 +91,19 @@ int run_cli(const fs::path& config, const std::string& args, const fs::path& log
     return exit_code(std::system(command.c_str()));
 }
 
+// run_cli under coreutils' `timeout`, for a command whose regression is a
+// hang: the child is killed after `seconds` and the case sees exit code 124
+// rather than waiting with it for ever.
+constexpr int kTimedOut = 124;
+
+int run_cli_bounded(const fs::path& config, const std::string& args, const fs::path& log,
+                    int seconds) {
+    const std::string command = alsa_null::env_prefix(config) + "timeout " +
+                                std::to_string(seconds) + " \"" + std::string(AC3CLI_EXE) +
+                                "\" " + args + " > \"" + log.string() + "\" 2>&1";
+    return exit_code(std::system(command.c_str()));
+}
+
 std::string read_text(const fs::path& path) {
     std::ifstream in{path, std::ios::binary};
     return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
@@ -707,6 +720,28 @@ TEST_CASE("monitor decodes and plays a stream to the end on the default output",
         CHECK(contains(out, "(2 channels, 48000 Hz)"));
         CHECK(contains(out, "played 32 frames"));
     }
+}
+
+TEST_CASE("monitor plays to the end on an output that under-runs every buffer",
+          "[cli][audio-io][alsa-null][concurrency]") {
+    // `mono` (multi over null, one channel) drops into XRUN each time its
+    // start threshold starts it, so a write in every five meets -EPIPE. The
+    // period that write carried used to be dropped uncounted, frames_rendered
+    // never caught frames_submitted, and monitor's final drain waited for
+    // ever; bounded here, so that regression fails instead of hanging.
+    const auto dir = scratch_dir();
+    const auto config = write_default_config(dir / "monitor_xrun.conf", "\"null\"", "\"mono\"");
+    const auto stream = dir / "monitor_xrun.ac3";
+    REQUIRE(run_cli(null_config(), "sine \"" + stream.string() + "\" 1 96 440 50 mono",
+                    dir / "monitor_xrun_make.log") == 0);
+    const auto log = dir / "monitor_xrun.log";
+    const int code = run_cli_bounded(config, "monitor \"" + stream.string() + "\"", log, 60);
+    CHECK(code != kTimedOut);
+    CHECK(code == 0);
+    const auto out = read_text(log);
+    check_clean(out);
+    CHECK(contains(out, "(1 channels, 48000 Hz)"));
+    CHECK(contains(out, "played 32 frames"));
 }
 
 TEST_CASE("monitor names an output that goes away mid-stream instead of waiting on it",
