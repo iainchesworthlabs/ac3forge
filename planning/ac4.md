@@ -1241,6 +1241,13 @@ gold-reference gate, and over the full set locally.
 - `5_X_channel_element` in SIMPLE and ASPX modes: the LFE path, the multichannel matrices (Part 1
   Tables 178 to 185), `2ch_mode`, and A-SPX's channel pairing. The 3.0 and 7.X elements in the same
   modes, tested on constructed streams.
+- D4 found that DEE's 5.1 streams use one form of the element, `coding_config` 0 with `2ch_mode` 0.
+  The other forms, and the 3.0 and 7.X elements, are tested on streams built with the encoder's writer,
+  whose tracks are the channels through the inverse of the printed matrices; twelve are committed with
+  the Python parser's digests.
+- DEE low-passes the LFE before it codes it, with the phase of a filter near 120 Hz, which librempeg's
+  decode shows as well. The LFE is held to its level from 20 to 100 Hz and to librempeg's decode, and
+  its SNR against the source is pinned as measured.
 
 **Exit:** every DEE 5.1 stream from 192 to 768 kbps decodes with the checks of D2 and D3 on each
 channel, and one tone per channel lands on its own channel, the LFE included. Constructed 3.0 and

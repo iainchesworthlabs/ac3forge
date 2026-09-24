@@ -986,6 +986,17 @@ The sections below contain the complete change list and fixes.
   and frequency interleaved waveform coding are written only under `experimental=`, since no reader
   outside this project has read them from the encoder yet. `src/ac4enc/ERRATA.md` records the
   readings taken.
+- **AC-4 decodes the 3.0, 5.X and 7.X channel elements** (phase D4 of `planning/ac4.md`) in the SIMPLE
+  and ASPX codec modes: the LFE, the multichannel matrices of Part 1 Tables 178 and 179 and clause
+  5.3.3.4, the routing of Tables 180 and 182 with `2ch_mode`, Table 183's additional channels, and
+  companding and A-SPX over the channels Tables 212 and 213 give them. `ac4::Speaker` names the channels
+  of every Part 1 channel mode, and `ac3cli decode` writes them in WAV order and meters them. DEE's 5.1
+  streams from 192 to 768 kbps decode with each channel's tone on its own channel, the LFE's included,
+  and agree with librempeg's decode to 83 dB below the crossover; `tools/checks/score_ac4_decode.py`
+  scores and pins them, taking the LFE's level from 20 to 100 Hz, since DEE low-passes the LFE. The
+  element forms DEE does not write are tested on streams built with the encoder's writer
+  (`tests/ac4dec/ac4dec_constructed.cpp`), twelve of them committed with
+  `tools/references/ac4_syntax.py`'s digests. `src/ac4dec/ERRATA.md` records the readings taken.
 
 **Browser (WASM)**
 
