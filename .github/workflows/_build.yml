@@ -1680,6 +1680,12 @@ jobs:
     name: Rust bindings (${{ matrix.os }})
     if: inputs.run_rust
     runs-on: ${{ matrix.os }}
+    # The macOS leg keeps only the newest main commit's run, as
+    # _ci-macos.yml's build job does - see its concurrency comment. The
+    # other two legs, and every non-main event, get a group of their own run.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.os == 'macos-latest' && 'rust-macos-main' || format('rust-run-{0}-{1}', github.run_id, matrix.os) }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -3239,10 +3245,20 @@ jobs:
   # the one trigger where this job can run at all, none of the three
   # job-calls below is ever skipped for a lane reason. A skip here would
   # still mean what it always has: something upstream did not run clean.
+  #
+  # The one exception: on a push to main a macOS leg can give way to a newer
+  # main run (_ci-macos.yml's concurrency comment), leaving build-macos
+  # "cancelled" rather than failed. This merge's Windows and Linux numbers
+  # are still published then, and the macOS series just has a gap -
+  # append_quality_history.py records whichever legs' artifacts exist. A leg
+  # that failed still skips the publish.
   quality-trend:
     name: Publish quality trend
     needs: [build-windows, build-linux, build-macos]
-    if: inputs.persist_quality_trend
+    if: >-
+      ${{ !cancelled() && inputs.persist_quality_trend
+      && needs.build-windows.result == 'success' && needs.build-linux.result == 'success'
+      && (needs.build-macos.result == 'success' || needs.build-macos.result == 'cancelled') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write

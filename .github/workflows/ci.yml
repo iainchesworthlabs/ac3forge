@@ -807,7 +807,16 @@ jobs:
   persist-performance-trend:
     name: Publish performance trend
     needs: [build-and-test, toolchain-versions, performance-trend-arm64]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Explicit results under !cancelled() instead of the implicit success():
+    # build-and-test reads "cancelled" whenever one of its macOS legs gave way
+    # to a newer main run (_ci-macos.yml's concurrency comment), which says
+    # nothing about the Linux build this job measures. A real failure there
+    # still skips the publish.
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.toolchain-versions.result == 'success'
+      && needs.performance-trend-arm64.result == 'success'
+      && (needs.build-and-test.result == 'success' || needs.build-and-test.result == 'cancelled') }}
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     permissions:
@@ -1115,7 +1124,13 @@ jobs:
   performance-trend-arm64:
     name: Publish performance trend (arm64 measurements)
     needs: [build-and-test, toolchain-versions]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Same explicit-results condition as persist-performance-trend's, for the
+    # same reason: a macOS leg giving way to a newer main run leaves
+    # build-and-test "cancelled", not failed.
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.toolchain-versions.result == 'success'
+      && (needs.build-and-test.result == 'success' || needs.build-and-test.result == 'cancelled') }}
     runs-on: ubuntu-24.04-arm
     container: ubuntu:26.04
     env:
@@ -1235,9 +1250,28 @@ jobs:
           R_WHEELS: ${{ needs.wheels.result }}
           R_NPM: ${{ needs.npm.result }}
           R_ESP_COMPONENT: ${{ needs.esp-component.result }}
+          # For the superseded-main check below: on a push to main,
+          # build-and-test and wheels each carry macOS legs that give way to a
+          # newer main run's (see _ci-macos.yml's concurrency comment), and a
+          # "cancelled" from exactly those two is expected once main has moved
+          # past this commit.
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           fail=0
+          superseded=false
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; then
+            tip="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.sha" \
+              "https://api.github.com/repos/$REPO/commits/main" || true)"
+            if [ -n "$tip" ] && [ "$tip" != "$SHA" ]; then
+              superseded=true
+              echo "main has moved on to ${tip:0:8}; a 'cancelled' from build-and-test or wheels here is a macOS leg that gave way to the newer run."
+            fi
+          fi
           for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
                       "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
                       "packaging-consistency:$R_PACKAGING" \
@@ -1257,6 +1291,11 @@ jobs:
             job="${pair%%:*}"; result="${pair#*:}"
             echo "  $job: $result"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              if [ "$result" = "cancelled" ] && [ "$superseded" = true ] \
+                 && { [ "$job" = "build-and-test" ] || [ "$job" = "wheels" ]; }; then
+                echo "::notice::$job reported 'cancelled' on a main commit a newer merge has superseded - accepted."
+                continue
+              fi
               echo "::error::$job reported '$result'."
               fail=1
             fi
