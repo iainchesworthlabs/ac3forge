@@ -175,6 +175,24 @@ jobs:
         with:
           persist-credentials: false
 
+      # Must match requirements-pytest.txt's own pip-compile Python (3.14,
+      # like nearly every other lock in requirements/ - see PR #991's identical
+      # fix to esp-component.yml). Without this, the job falls back to
+      # ubuntu-latest's own system python3, which is 3.12 (confirmed from this
+      # job's own pytest banner: "platform linux -- Python 3.12.3"). That is
+      # only safe by accident: nothing in today's pytest/pytest-cov/numpy/mypy
+      # dependency tree happens to have a `python_version`-gated transitive
+      # dependency that resolves differently between 3.12 and 3.14, but
+      # `--require-hashes` gives no warning if that ever changes - it would
+      # fail exactly the way esp-component.yml's esphome job failed on
+      # py7zr's `backports.zstd>=1.0.0; python_version < "3.14"` (the marker
+      # excludes it from a lock compiled under 3.14, so it's simply absent -
+      # no hash to fall back to - the moment something installs under a
+      # different Python). Pinning here closes that gap the same way #991 did.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
       # The wheel the build job just produced, not a fresh build: this
       # measures what would actually ship, and reuses several minutes of
       # compilation rather than repeating it.
