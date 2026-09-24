@@ -29,6 +29,13 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# No source in this tree is a C++20 module, but CMake 3.28+ scans every C++20-or-later target
+# for them under Ninja and the Visual Studio generators. The scan is not free: each changed file
+# re-collates its target's module map, and a re-collated map marks every object in the target
+# dirty, so editing one test file recompiled all of ac3tests (measured: 224 objects, 3m17s on
+# 4 cores, instead of one object and a link). Turn it back on here if a module is ever added.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # One place for runtime artefacts so the Qt app finds its plugins and the CLI
