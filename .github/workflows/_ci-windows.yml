@@ -822,6 +822,35 @@ jobs:
             exit 1
           }
 
+      # The same drift check for Hearth's six (apps/hearth/ui/translations).
+      # Every Windows leg builds ac3hearth, so it needs no matrix flag, and it
+      # runs on windows-msvc alone for the reason given above. It is here
+      # rather than beside the GUI's on Linux GCC because this leg's lupdate
+      # is the Qt pinned in .github/toolchain-versions.json, whereas the
+      # Linux legs run whichever lupdate Ubuntu's archive ships. A check that
+      # compares generated files should only move when this repository moves
+      # its pin.
+      #
+      # -I drops every hunk made only of <location .../> lines. Those record
+      # the line each string sits on, so without it this would fail any
+      # change that adds or removes a line above a qsTr(); the GUI and
+      # Crucible checks compare every line, and nine commits since
+      # 2026-08-27 changed nothing in those catalogues but locations. A
+      # string added, removed or reworded without regenerating still fails
+      # here. The locations are rewritten whenever the target runs, so they
+      # catch up at the next regeneration.
+      - name: Check the Hearth translations are up to date
+        if: matrix.preset == 'windows-msvc'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --build "build/config-${{ matrix.preset }}" --target ac3hearth_lupdate
+          git diff --exit-code -I '^[[:space:]]*<location filename="[^"]*" line="[0-9]+"/>' \
+            -- apps/hearth/ui/translations || {
+            echo "::error::a qsTr() string changed without regenerating the catalogues - build the ac3hearth_lupdate target and commit apps/hearth/ui/translations"
+            exit 1
+          }
+
       - name: Assert the AC3Forge Crucible was built
         # Windows and macOS, which are the two platforms whose matrix build
         # tree carries Crucible; on Linux that tree deliberately has none
