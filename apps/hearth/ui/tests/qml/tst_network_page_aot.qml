@@ -3,20 +3,19 @@ import QtTest
 
 import Ac3ForgeHearth
 
-// KNOWN BUG, kept as a skipped case so the suite stays green and the defect
-// stays on record (FEATURE_COVERAGE.md, "UI bugs found"): Network.qml cannot
-// be created with the qmlcachegen-compiled (AOT) bindings this binary - and
-// ac3hearth itself - links in under the pinned Qt 6.9.3. Its Loader's
-// sourceComponent binding reads `group.id` off NetworkController.selectedGroup
-// (a QVariantMap); the generated C++ (Network_qml.cpp, the
-// AOTCompiledContext::initGetValueLookup() call for that `.id` lookup) is
-// handed a null QMetaObject for QVariant and dereferences it, so the process
-// segfaults the moment the page is built. `ac3hearth -platform offscreen`
-// crashes on start the same way (the Network page is part of Main.qml's
-// StackLayout); with QML_DISABLE_DISK_CACHE=1 (the engine compiles the QML
-// itself) both run. The suites that need the Network page or Main.qml run
-// that way (tests/CMakeLists.txt, AC3HEARTH_QML_INTERPRETED_SUITES); this
-// one does not, so removing the skip reproduces the crash.
+// Network.qml built with the qmlcachegen-compiled (AOT) bindings this binary
+// - and ac3hearth itself - links in, the way every suite now runs it (no
+// QML_DISABLE_DISK_CACHE anywhere). Regression for a startup segfault under
+// the pinned Qt 6.9.3: the Loader's sourceComponent binding used to read
+// `group.id` off NetworkController.selectedGroup (a QVariantMap), and the
+// generated C++ for that lookup handed AOTCompiledContext::
+// initGetValueLookup() a null QMetaObject and crashed the moment the page
+// was built - ac3hearth crashed on start the same way. Network.qml's own
+// comment at that binding says what it reads instead and why.
+//
+// Each case builds the page in one of the Loader's states - nothing
+// selected, a group selected - since each takes a different branch of the
+// binding; a crash, not a failed assertion, is what a regression looks like.
 TestCase {
     id: testCase
     name: "NetworkPageAot"
@@ -26,11 +25,27 @@ TestCase {
 
     Component { id: networkComponent; Network { width: 1200; height: 800 } }
 
-    function test_networkPageBuildsWithTheCompiledBindings() {
-        skip("Network.qml's AOT-compiled Loader binding segfaults under Qt 6.9.3 (FEATURE_COVERAGE.md, UI bugs found)");
+    function initTestCase() {
         NetworkController.start();
+    }
+
+    function test_networkPageBuildsWithNothingSelected() {
         const page = createTemporaryObject(networkComponent, testCase.parent);
         verify(page !== null);
+        waitForRendering(page);
+        verify(findChild(page, "networkNewGroup") !== null, "the sink list did not build");
+    }
+
+    function test_networkPageBuildsWithAGroupSelected() {
+        const page = createTemporaryObject(networkComponent, testCase.parent);
+        verify(page !== null);
+        waitForRendering(page);
+        mouseClick(findChild(page, "networkNewGroup"));
+        tryVerify(function() { return NetworkController.selectedGroupId.length > 0; }, 5000);
+        tryVerify(function() { return findChild(page, "networkGroupName") !== null; }, 5000,
+                  "selecting a group did not show its editor");
+        mouseClick(findChild(page, "networkGroupDelete"));
+        tryVerify(function() { return NetworkController.selectedGroupId.length === 0; }, 5000);
         waitForRendering(page);
     }
 }

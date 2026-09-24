@@ -151,20 +151,6 @@ endif()
 # comment records real macOS hangs under the default GPU-accelerated backend
 # for suites that build heavily on an offscreen runner with no display
 # server - applied here from the start rather than waiting to rediscover it.
-#
-# The suites that instantiate Network.qml (directly, or through Main.qml)
-# run with QML_DISABLE_DISK_CACHE=1, so the engine compiles the QML itself
-# instead of calling the qmlcachegen-generated C++ linked into this binary.
-# Under Qt 6.9.3 that generated code for Network.qml's Loader.sourceComponent
-# binding (`group.id !== undefined` on NetworkController.selectedGroup, a
-# QVariantMap) dereferences a null QMetaObject in
-# AOTCompiledContext::initGetValueLookup() the moment the page is created -
-# ac3hearth itself segfaults on start the same way. That is a real defect of
-# the shipped window, recorded in FEATURE_COVERAGE.md and exposed (skipped,
-# so the suite stays green) by tst_network_page_aot.qml; everything else
-# these suites prove about the Network page and the shell does not depend on
-# which compiler ran the bindings.
-set(AC3HEARTH_QML_INTERPRETED_SUITES dialogs network_pairing output_picker shell)
 file(GLOB AC3HEARTH_QML_TEST_FILES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/tests/qml/tst_*.qml")
 foreach(test_file IN LISTS AC3HEARTH_QML_TEST_FILES)
@@ -172,12 +158,8 @@ foreach(test_file IN LISTS AC3HEARTH_QML_TEST_FILES)
     string(REGEX REPLACE "^tst_" "" suite "${test_name}")
     add_test(NAME ac3hearth_qml_tests_${suite}
         COMMAND ac3hearth_qmltests -input "${test_file}" -platform offscreen)
-    set(suite_environment "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1")
-    if(suite IN_LIST AC3HEARTH_QML_INTERPRETED_SUITES)
-        list(APPEND suite_environment "QML_DISABLE_DISK_CACHE=1")
-    endif()
     set_tests_properties(ac3hearth_qml_tests_${suite} PROPERTIES
-        ENVIRONMENT "${suite_environment}"
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software;QT_FORCE_STDERR_LOGGING=1"
         TIMEOUT 300
         LABELS "hearth-ui")
 endforeach()
