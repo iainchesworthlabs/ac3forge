@@ -40,3 +40,17 @@ jobs:
         with:
           fail-on-severity: moderate
           comment-summary-in-pr: on-failure
+          # requirements/requirements-esphome.txt's starlette==0.52.1 (esphome's
+          # dashboard dependency), confirmed NOT fixable by pinning forward:
+          # platformio (esphome's own embedded-build dependency) hard-caps
+          # starlette<0.53,>=0.19, and 0.52.1 is the last 0.x release ever
+          # published - the next is 1.0.0, which platformio's own pin refuses.
+          # This job only ever runs `esphome config` to validate YAML, never
+          # esphome's dashboard, so StaticFiles/request.form() - what these
+          # four advisories are actually about - are never exercised. Revisit
+          # (drop these four ids) once platformio raises its cap.
+          allow-ghsas: |
+            GHSA-wqp7-x3pw-xc5r
+            GHSA-82w8-qh3p-5jfq
+            GHSA-86qp-5c8j-p5mr
+            GHSA-x746-7m8f-x49c
