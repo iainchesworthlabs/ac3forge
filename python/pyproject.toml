@@ -56,6 +56,11 @@ AC3FORGE_BUILD_TESTS = "OFF"
 AC3FORGE_BUILD_EXAMPLES = "OFF"
 AC3FORGE_BUILD_FUZZERS = "OFF"
 AC3FORGE_BUILD_ADM = "OFF"
+# Off for the same reason as the rest of this list: Hearth (src/sendspin, apps/hearth) is no part
+# of the F2 binding surface, and this option's default is ON (root CMakeLists.txt), so leaving it
+# unset here tries to find_package() cpp-httplib/mbedTLS/libFLAC/Opus/mdns that cibuildwheel's
+# manylinux/musllinux/macOS/Windows images never install - see that option's own comment.
+AC3FORGE_BUILD_HEARTH = "OFF"
 # ON since Python bindings completeness: the wheel carries the container muxers/demuxers
 # (ac3forge.containers) and object signing (ac3forge.signing) - the
 # "no containers, no signing" gap its record used to name.

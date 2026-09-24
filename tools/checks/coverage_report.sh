@@ -167,15 +167,16 @@ html="$build_dir/coverage.html"
 # vanishing silently.
 #
 # --gcov-ignore-parse-errors=negative_hits.warn: the same gcov bug
-# (bugzilla#68080), a different symptom - bitalloc_memo.hpp:42's memo-validity
-# check (`return valid && sample_rate == rate && csnroffst == csnr && ...`) is
-# the same shape of tight, heavily-short-circuited boolean chain as mdct.cpp's
-# loop, and gcov produces a negative rather than suspicious hit count for it.
+# (bugzilla#68080), a different symptom - a negative rather than suspicious
+# hit count. Confirmed independently at two unrelated sites, both the same
+# shape of tight, heavily-optimized conditional logic as mdct.cpp's loop:
+# bitalloc_memo.hpp:42's memo-validity check (a short-circuited boolean
+# chain, `return valid && sample_rate == rate && csnroffst == csnr && ...`)
+# and a branch inside joc.cpp:1163's nested early-return decision tree.
 # gcovr's own error message names this exact flag too; each ignored category
-# is its own flag (gcovr's --gcov-ignore-parse-errors takes one value per
-# occurrence, not a combined list) so a genuinely new problem in either
-# category still shows up rather than both going quiet under one blanket
-# `all`.
+# is its own flag (gcovr's --gcov-ignore-parse-errors appends per occurrence
+# rather than replacing) so a genuinely new problem in either category still
+# shows up rather than both going quiet under one blanket `all`.
 gcovr --root . \
     --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin)/.*' \
     --filter 'apps/cli/.*' \
