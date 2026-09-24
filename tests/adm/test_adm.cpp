@@ -1151,3 +1151,23 @@ TEST_CASE("write_bw64 reports a libadm failure after the build as kOther without
     CHECK(written.error() == ac3adm::AdmWriteError::kOther);
     CHECK_FALSE(std::filesystem::exists(path));
 }
+
+// An audioTrackUID refers to an audioTrackFormat or, for plain PCM, straight to an
+// audioChannelFormat, never both, and libadm's AudioTrackUid::setReference() throws
+// adm::error::AudioTrackUidMutuallyExclusiveReferences when given the second. That left
+// write_bw64() the same way a polar block's std::bad_variant_access did.
+TEST_CASE("write_bw64 reports an audioTrackUID naming a track and a channel format as "
+          "kInvalidDocument",
+          "[adm][write]") {
+    auto document = writable_document(ac3adm::TypeDefinition::kObjects);
+    auto& track_uid = document.model.track_uids.front();
+    REQUIRE(track_uid.track_format_ref.has_value());
+    track_uid.channel_format_ref = document.model.channel_formats.front().id;
+
+    const auto path = write_scratch_dir("adm_write_track_uid_refs") / "both_refs.wav";
+    std::filesystem::remove(path);
+    const auto written = ac3adm::write_bw64(path.string(), document);
+    REQUIRE_FALSE(written.has_value());
+    CHECK(written.error() == ac3adm::AdmWriteError::kInvalidDocument);
+    CHECK_FALSE(std::filesystem::exists(path));
+}

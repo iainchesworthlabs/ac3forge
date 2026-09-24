@@ -542,6 +542,13 @@ std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel
 
     std::unordered_map<std::string, std::shared_ptr<::adm::AudioTrackUid>> track_uids_by_id;
     for (const auto& track_uid : model.track_uids) {
+        if (track_uid.track_format_ref && track_uid.channel_format_ref) {
+            // An audioTrackUID refers to an audioTrackFormat or, for plain PCM, straight to an
+            // audioChannelFormat - not both (model.hpp's AudioTrackUid). libadm's setReference()
+            // enforces that by throwing adm::error::AudioTrackUidMutuallyExclusiveReferences on
+            // the second, which would leave write_bw64() as an exception.
+            return std::unexpected(AdmWriteError::kInvalidDocument);
+        }
         auto libadm_track_uid = ::adm::AudioTrackUid::create();
         if (track_uid.has_sample_rate) {
             libadm_track_uid->set(::adm::SampleRate(track_uid.sample_rate));
