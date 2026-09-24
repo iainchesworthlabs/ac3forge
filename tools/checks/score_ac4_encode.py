@@ -135,14 +135,15 @@ FLOORS = {
 }
 
 # The race, per G0 leg: the encoder's scores, pinned as FLOORS are. What it measured against DEE's
-# streams of the same legs, both decoded by the decoder. In the ASPX legs, ViSQOL is DEE's or
-# better, within 0.02, from 64 kbps up (music +0.05 at 64 and 96, speech +0.07 at 64), and 0.06
-# under it on music at 48 kbps; below the crossover the encoder's SNR is 1.5 to 3.5 dB under DEE's
-# at 48 to 96 kbps, whose bits go where ViSQOL marks the noise, and 0.5 to 8 dB over it from 128.
-# The A-SPX tiles land within 0.25 dB of DEE's distance from the source's energy, or closer (music
-# at 64 kbps: 1.9 dB against 5.4). In the SIMPLE legs, from 192
-# kbps, the encoder is E1's: 5.6 dB over DEE's SNR on music at 192 kbps, 14.9 on speech and 32 on
-# the tones, its log-spectral distance lower on each, and ViSQOL within 0.01 of DEE's 4.70 to 4.73.
+# streams of the same legs, both decoded by the decoder. In the ASPX legs, ViSQOL is within 0.02
+# of DEE's or above it from 64 kbps up (music +0.05 at 64 and 96, speech +0.07 at 64), and 0.06
+# under it on music at 48 kbps. Below the crossover the encoder's SNR is 1.4 to 3.6 dB under DEE's
+# at 48 and 64 kbps and on music at 96, whose bits go where ViSQOL marks the noise, and 0.5 to 8.2
+# dB over it on speech at 96 and from 128. The A-SPX tiles land within 0.25 dB of DEE's distance
+# from the source's energy, or closer (music at 64 kbps: 1.9 dB against 5.4). In the SIMPLE legs,
+# from 192 kbps, the encoder is E1's: 5.6 dB over DEE's SNR on music at 192 kbps, 14.9 on speech
+# and 32 on the tones, its log-spectral distance lower on each, and ViSQOL within 0.01 of DEE's
+# 4.70 to 4.73.
 # From 256 kbps DEE's audio stops changing and the encoder's goes on improving, to 74 dB on music
 # at 768 kbps, where the QMF banks' reconstruction bounds it.
 RACE = {

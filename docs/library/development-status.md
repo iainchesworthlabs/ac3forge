@@ -154,7 +154,8 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Transforms (`ac4core`: FFT, MDCT pair, KBD, QMF banks) | 🟢 | High | Essential | Each against its formula to 1e-12; shared by the decoder and the encoder, with A-SPX's tables and high frequency generator |
 | **Encoder (`ac4enc::`)** | SIMPLE mono and stereo | 🟢 | High | Essential | 48 and 44.1 kHz at `frame_rate_index` 13, a constant rate from 8 kbps; block switching, M/S and prediction; SNR, LSD and ViSQOL floors in CI; ahead of DEE on SNR and LSD at 192 kbps |
 | | Frame writer, sync frame, MP4 and `dac4` | 🟢 | High | Essential | Encoder, decoder and Python traces agree record for record (tests, `fuzz_ac4_encode`, encoder-space harness); FFmpeg frames it; MediaInfo and DEE's MP4 muxer read it as configured |
-| | Other codec modes, layouts, rates and metadata | 🔴 | High | Essential | A-SPX, A-CPL, 3.0 to 7.X, other frame rates, DRC, dialogue enhancement: plan phases E2 to E7 |
+| | ASPX mono and stereo | 🟢 | High | Essential | Below 96 kbps a channel: A-SPX with DEE's crossovers, FIXFIX, FIXVAR and VARFIX framing, sinusoids, companding below 64 kbps a channel; SNR below the crossover, A-SPX tiles, LSD and ViSQOL pinned in CI; ViSQOL within 0.02 of DEE's or above it from 64 to 144 kbps. Balance, VARVAR and frequency interleaving behind `experimental=` |
+| | Other codec modes, layouts, rates and metadata | 🔴 | High | Essential | A-CPL, 3.0 to 7.X, other frame rates, DRC, dialogue enhancement: plan phases E3 to E7 |
 
 ---
 
@@ -297,7 +298,7 @@ this register is the checklist that those bounds appear here too.
 | SSF / immersive / objects | Decode | 🔴 |
 | §4.2.4.3 | HSF extension substream content (syntax only; synthetic frames only) | 🟡 |
 | Whole codec | PCM reconstruction beyond SIMPLE and ASPX mono and stereo | 🔴 |
-| Whole codec | Encoding beyond SIMPLE mono and stereo | 🔴 |
+| Whole codec | Encoding beyond SIMPLE and ASPX mono and stereo | 🔴 |
 | §5.1.4 | Spectral noise fill: decoded, but no stream here sets it | 🟡 |
 
 ### SMPTE ST 2098-2 / ST 2067-201 (IAB)

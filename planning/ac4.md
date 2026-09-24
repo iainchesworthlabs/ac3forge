@@ -1487,6 +1487,15 @@ decode with the invariants holding and MediaInfo's and librempeg's readings reco
 - Companding: the compressor, as the inverse of the decoder's expander, on and off by rate as DEE
   uses it.
 - The ASPX codec mode for stereo. Mono, VARVAR framing and interleaved waveform coding as options.
+  E2 writes balance, VARVAR and frequency interleaving behind `experimental=`, and not time
+  interleaving, whose slots take the spectral frontend's output across the whole band and would need
+  it coded full band in two frames around each.
+- E2 found the spectral frontend's rate loop of E1 unfit below 64 kbps a channel: no frame there
+  holds its bands at their masking thresholds, and raising every band's noise over its threshold
+  together left 6 dB of SNR in every band of music at 48 kbps, where DEE keeps 19 dB in the bass.
+  Such frames now pull every band toward one level of noise, with each band's noise capped at a
+  multiple of its energy, which ViSQOL rewards over leaving holes; frames that hold their thresholds
+  keep E1's law, which ViSQOL prefers there.
 
 **Exit:** decoded by D3's decoder: below each stream's crossover, per-channel SNR at or above the
 pinned floor; above it, each A-SPX tile's energy within the quantiser step of the source's plus the
