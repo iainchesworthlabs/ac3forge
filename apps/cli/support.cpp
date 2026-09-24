@@ -1275,6 +1275,41 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.syntax_trace_path = std::string{value};
             continue;
         }
+        if (key == "codec-mode" && command == "ac4-encode") {
+            if (value != "auto" && value != "simple" && value != "aspx") {
+                fmt::println(stderr,
+                             "error: codec-mode is 'auto' (ASPX below 96 kbps a channel, the default), "
+                             "'simple' or 'aspx' (got '{}')",
+                             token);
+                return false;
+            }
+            out.ac4_codec_mode = std::string{value};
+            continue;
+        }
+        if (key == "experimental" && command == "ac4-encode") {
+            // A comma-separated list of the encoder's experimental tools
+            // (ac4::EncoderConfig::Experimental).
+            std::string_view rest = value;
+            while (!rest.empty()) {
+                const std::size_t comma = rest.find(',');
+                const std::string_view tool = rest.substr(0, comma);
+                rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+                if (tool == "aspx-balance") {
+                    out.ac4_experimental_balance = true;
+                } else if (tool == "aspx-varvar") {
+                    out.ac4_experimental_varvar = true;
+                } else if (tool == "aspx-interleave") {
+                    out.ac4_experimental_interleave = true;
+                } else {
+                    fmt::println(stderr,
+                                 "error: experimental takes aspx-balance, aspx-varvar and aspx-interleave, comma-separated "
+                                 "(got '{}')",
+                                 token);
+                    return false;
+                }
+            }
+            continue;
+        }
         if (key == "conceal") {
             // §7.10. Off by default: a decode that hits a damaged frame says
             // so and stops, which is what a verification tool should do.

@@ -12,6 +12,7 @@
 #include <limits>
 #include <numbers>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -336,6 +337,195 @@ TEST_CASE("at 44.1 kHz frames alternate sizes to keep the bit rate", "[ac4enc][e
     const auto parsed = ac4::parse_raw_frame(encoded.frames.front().raw_ac4_frame);
     REQUIRE(parsed.has_value());
     CHECK(parsed->toc.sample_rate_hz == 44100);
+}
+
+namespace {
+
+// The energy of x in [lo_hz, hi_hz), over Hann-windowed blocks of 2 048
+// samples from `first`, by a direct DFT of the bins there.
+double band_energy(std::span<const float> x, std::size_t first, std::size_t blocks, double lo_hz, double hi_hz,
+                   int rate) {
+    constexpr std::size_t kBlock = 2048;
+    const double bin_hz = static_cast<double>(rate) / kBlock;
+    const auto lo = static_cast<std::size_t>(lo_hz / bin_hz);
+    const auto hi = static_cast<std::size_t>(hi_hz / bin_hz);
+    double energy = 0.0;
+    for (std::size_t b = 0; b < blocks; ++b) {
+        const std::size_t at = first + b * kBlock;
+        for (std::size_t k = lo; k < hi; ++k) {
+            double re = 0.0;
+            double im = 0.0;
+            for (std::size_t n = 0; n < kBlock && at + n < x.size(); ++n) {
+                const double w = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(n) / kBlock);
+                const double phase = 2.0 * std::numbers::pi * static_cast<double>(k * n) / kBlock;
+                re += w * static_cast<double>(x[at + n]) * std::cos(phase);
+                im -= w * static_cast<double>(x[at + n]) * std::sin(phase);
+            }
+            energy += re * re + im * im;
+        }
+    }
+    return energy;
+}
+
+std::size_t count_records(const Encoded& encoded, std::string_view name, std::uint64_t value) {
+    return static_cast<std::size_t>(std::count_if(encoded.trace.begin(), encoded.trace.end(),
+                                                  [&](const ac4::SyntaxRecord& r) { return r.name == name && r.value == value; }));
+}
+
+// Two tones under every crossover, noise over 14 to 16 kHz, and castanet-like
+// bursts now and then.
+std::vector<std::vector<float>> mixed(std::size_t count, int rate, int channels) {
+    std::vector<std::vector<float>> out;
+    std::uint32_t seed = 12345;
+    for (int c = 0; c < channels; ++c) {
+        std::vector<float> x = tone(c == 0 ? 440.0 : 660.0, 0.1, count, rate);
+        const std::vector<float> high = tone(15000.0 + 100.0 * c, 0.01, count, rate);
+        for (std::size_t n = 0; n < count; ++n) {
+            seed = seed * 1664525U + 1013904223U;
+            const double noise = (static_cast<double>(seed >> 8) / 16777216.0 - 0.5) * 0.02;
+            const double burst = (n % 7000) < 300 ? noise * 10.0 * std::exp(-static_cast<double>(n % 7000) / 60.0) : 0.0;
+            x[n] += high[n] + static_cast<float>(noise * 0.2 + burst);
+        }
+        out.push_back(std::move(x));
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("ASPX streams read back with the encoder's trace at every rate, channel count and tool",
+          "[ac4enc][encoder][aspx]") {
+    struct Config {
+        int channels;
+        int rate;
+        int kbps;
+        bool balance;
+        bool varvar;
+        bool interleave;
+    };
+    for (const Config c : {Config{2, 48000, 48, false, false, false}, Config{2, 48000, 64, false, false, false},
+                           Config{2, 48000, 96, true, true, true}, Config{2, 48000, 144, false, false, false},
+                           Config{1, 48000, 24, false, true, false}, Config{1, 48000, 32, false, false, true},
+                           Config{2, 44100, 64, true, false, false}, Config{1, 44100, 48, false, false, false},
+                           Config{2, 48000, 16, true, true, true}}) {
+        CAPTURE(c.channels, c.rate, c.kbps, c.balance, c.varvar, c.interleave);
+        const std::size_t count = static_cast<std::size_t>(c.rate) * 2;
+        ac4::EncoderConfig config;
+        config.channels = c.channels;
+        config.sample_rate_hz = c.rate;
+        config.bitrate_kbps = c.kbps;
+        config.iframe_interval = 7;
+        config.experimental.aspx_balance = c.balance;
+        config.experimental.aspx_varvar = c.varvar;
+        config.experimental.aspx_interleave = c.interleave;
+        const Encoded encoded = encode(config, mixed(count, c.rate, c.channels), 3001);
+        CHECK(count_records(encoded, c.channels == 2 ? "stereo_codec_mode" : "mono_codec_mode", 1) ==
+              encoded.frames.size());
+        check_frames_read_back(encoded);
+        const auto decoded = decode(encoded.frames);
+        REQUIRE(decoded.size() == static_cast<std::size_t>(c.channels));
+        // The tone below the crossover comes through at unity gain, from 16
+        // kbps a channel; below that the rate is past what DEE writes.
+        if (c.kbps / c.channels >= 16) {
+            const Score s = score(tone(440.0, 0.1, count, c.rate), decoded[0], 3072 + kDecoderDelay);
+            CHECK(std::abs(s.gain_db) < 0.5);
+        }
+    }
+}
+
+TEST_CASE("ASPX recreates the band above the crossover at its energy", "[ac4enc][encoder][aspx]") {
+    // Noise over 11 to 20 kHz on a tone: the crossover is 7.5 kHz at 48 kbps
+    // and 13.5 kHz at 96, and A-SPX recreates the band over it at the
+    // source's energy, give or take its envelopes' steps and the limiter.
+    const std::size_t count = 48000 * 2;
+    std::vector<float> x = tone(1000.0, 0.1, count, 48000);
+    std::uint32_t seed = 99;
+    std::vector<double> white(count);
+    for (double& w : white) {
+        seed = seed * 1664525U + 1013904223U;
+        w = static_cast<double>(seed >> 8) / 16777216.0 - 0.5;
+    }
+    // A crude band-pass: white noise less its smoothed self keeps the top.
+    for (std::size_t n = 8; n < count; ++n) {
+        double sum = 0.0;
+        for (std::size_t k = 0; k < 8; ++k) {
+            sum += white[n - k];
+        }
+        x[n] += static_cast<float>(0.2 * (white[n] - sum / 8.0));
+    }
+    for (const int kbps : {48, 96}) {
+        CAPTURE(kbps);
+        ac4::EncoderConfig config;
+        config.bitrate_kbps = kbps;
+        const Encoded encoded = encode(config, {x, x}, 4096);
+        const auto decoded = decode(encoded.frames);
+        const std::size_t lag = 3072 + kDecoderDelay;
+        // Under 17.25 kHz, the top of the A-SPX range at 48 kbps.
+        const double source = band_energy(x, 8192, 8, 14000.0, 17000.0, 48000);
+        const double output = band_energy(decoded[0], 8192 + lag, 8, 14000.0, 17000.0, 48000);
+        CHECK(std::abs(10.0 * std::log10(output / source)) < 3.0);
+        const Score s = score(tone(1000.0, 0.1, count, 48000), decoded[0], lag);
+        CHECK(std::abs(s.gain_db) < 0.5);
+    }
+}
+
+TEST_CASE("the experimental A-SPX tools do what they are for", "[ac4enc][encoder][aspx]") {
+    const std::size_t count = 48000 * 2;
+    SECTION("balance codes equal channels as a sum and a centred balance") {
+        const std::vector<float> x = mixed(count, 48000, 1).front();
+        ac4::EncoderConfig config;
+        config.bitrate_kbps = 48;
+        config.experimental.aspx_balance = true;
+        const Encoded encoded = encode(config, {x, x}, 4096);
+        CHECK(count_records(encoded, "aspx_balance", 1) * 10 >= encoded.frames.size() * 9);
+        check_frames_read_back(encoded);
+        const auto decoded = decode(encoded.frames);
+        const Score l = score(tone(440.0, 0.1, count, 48000), decoded[0], 3072 + kDecoderDelay);
+        const Score r = score(tone(440.0, 0.1, count, 48000), decoded[1], 3072 + kDecoderDelay);
+        CHECK(std::abs(l.gain_db - r.gain_db) < 0.1);
+    }
+    SECTION("VARVAR frames an attack in an interval that starts where the last ran on") {
+        std::vector<float> clicks(count, 0.0F);
+        std::uint32_t seed = 7;
+        for (std::size_t n = 6000; n + 1200 < count; n += 2600) {
+            for (std::size_t k = 0; k < 1200; ++k) {
+                seed = seed * 1664525U + 1013904223U;
+                const double noise = static_cast<double>(seed >> 8) / 16777216.0 - 0.5;
+                clicks[n + k] = static_cast<float>(0.8 * std::exp(-static_cast<double>(k) / 150.0) * noise);
+            }
+        }
+        ac4::EncoderConfig config;
+        config.bitrate_kbps = 64;
+        config.experimental.aspx_varvar = true;
+        const Encoded encoded = encode(config, {clicks, clicks}, 4096);
+        CHECK(count_records(encoded, "aspx_int_class", 0b111) > 0);
+        check_frames_read_back(encoded);
+    }
+    SECTION("interleaving codes a steady tone above the crossover where it is") {
+        std::vector<float> x = tone(440.0, 0.1, count, 48000);
+        const std::vector<float> high = tone(17100.0, 0.05, count, 48000);
+        for (std::size_t n = 0; n < count; ++n) {
+            x[n] += high[n];
+        }
+        for (const bool interleave : {false, true}) {
+            CAPTURE(interleave);
+            ac4::EncoderConfig config;
+            config.bitrate_kbps = 96;
+            config.experimental.aspx_interleave = interleave;
+            const Encoded encoded = encode(config, {x, x}, 4096);
+            check_frames_read_back(encoded);
+            const auto decoded = decode(encoded.frames);
+            // A sinusoid sits at its subband's edge; the spectral frontend
+            // codes the tone at 17.1 kHz itself.
+            const Score s = score(high, decoded[0], 3072 + kDecoderDelay);
+            if (interleave) {
+                CHECK(count_records(encoded, "aspx_fic_present", 1) * 10 >= encoded.frames.size() * 9);
+                CHECK(std::abs(s.gain_db) < 1.0);
+            } else {
+                CHECK(s.gain_db < -20.0);
+            }
+        }
+    }
 }
 
 TEST_CASE("sequence_counter starts at 0 and I-frames come at the configured interval", "[ac4enc][encoder]") {

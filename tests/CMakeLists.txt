@@ -60,6 +60,7 @@ add_executable(ac3tests
     ac4dec/test_ac4dec_pcm.cpp
     ac4dec/test_ac4dec_presentation.cpp
     ac4dec/test_ac4dec_syntax.cpp
+    ac4enc/test_ac4enc_aspx.cpp
     ac4enc/test_ac4enc_encoder.cpp
     ac4enc/test_ac4enc_writer.cpp
     analysis/test_analysis.cpp
