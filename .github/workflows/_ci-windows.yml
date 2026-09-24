@@ -742,6 +742,18 @@ jobs:
       # identical reason (no installer on this leg's PATH to run one with).
       # This bootstrap check only ever needs a python capable of running a
       # few lines of pathlib - nothing here needs pip or the full install.
+      # That stopped being the whole story once aqtinstall needed py7zr to
+      # unpack this leg's qtquick3d/qtshadertools modules: install-qt-action
+      # runs with setup-python: false below, so this embeddable python is the
+      # ONLY one on PATH for that later `pip install py7zr` step too, and the
+      # embeddable package ships with no pip at all ("No module named pip",
+      # confirmed against a real CI run - not a network flake, deterministic
+      # every time). get-pip.py is the standard way to bootstrap pip into an
+      # embeddable install (it has no ensurepip module either); downloading a
+      # script and installing pip's own files under $RUNNER_TEMP touches no
+      # installer and no registry, so it does not reintroduce the
+      # installer-database conflict the embeddable-zip approach itself exists
+      # to avoid.
       - name: Setup Python (for install-qt-action)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
         shell: powershell
@@ -761,12 +773,20 @@ jobs:
           # against a real CI run: install-qt-action's own bootstrap check
           # calls the bare `exit()` builtin (not sys.exit()), which only
           # exists once the site module has actually run. Uncommenting is
-          # the documented way to turn that back on.
+          # the documented way to turn that back on, and pip's own installer
+          # needs site enabled too (it imports sysconfig, which needs site's
+          # path setup) - one flip serves both.
           $pth = Get-ChildItem -Path $dest -Filter '*._pth' | Select-Object -First 1
           if (-not $pth) {
               throw "no *._pth file found under $dest to enable the site module in"
           }
           (Get-Content $pth.FullName) -replace '^#import site$', 'import site' | Set-Content $pth.FullName
+          $getPip = Join-Path $env:RUNNER_TEMP 'get-pip.py'
+          Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
+          & $exe.FullName $getPip --no-warn-script-location
+          if ($LASTEXITCODE -ne 0) {
+              throw "get-pip.py exited $LASTEXITCODE against $($exe.FullName)"
+          }
           Write-Host "Found python.exe at $($exe.FullName)"
           $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
 
