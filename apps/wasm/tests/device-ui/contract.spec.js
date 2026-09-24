@@ -91,12 +91,11 @@ test('every request the page makes is to a route the firmware registers', () => 
         (m) => `${m[1]} /${m[2]}`,
     );
     // No POST /play, /stop or /volume: a server owns playback from B2 on, and
-    // the page is what the board itself is.
+    // the page is what the board itself is. One call each: the three pairing
+    // actions share one, and the layout's presets and its field another.
     expect(made.sort((a, b) => a.localeCompare(b))).toEqual([
         'GET /hardware',
         'GET /status',
-        'POST /pairing',
-        'POST /pairing',
         'POST /pairing',
         'PUT /layout',
         'PUT /name',
@@ -114,7 +113,12 @@ test('every request the page makes is to a route the firmware registers', () => 
 
 test('the page asks for nothing the device does not serve', () => {
     const links = [...PAGE.matchAll(/(?:src|href)="([^"]*)"/g)].map((m) => m[1]);
-    expect(links.sort((a, b) => a.localeCompare(b))).toEqual(['api', 'api', 'data:,', 'status', 'ui.js']);
+    // The icon is inline, a single pixel of the signal red, so that a browser
+    // does not ask for /favicon.ico, which the firmware does not serve.
+    const inline = links.filter((link) => link.startsWith('data:'));
+    expect(inline).toEqual([expect.stringMatching(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/)]);
+    const routes = links.filter((link) => !inline.includes(link));
+    expect(routes.sort((a, b) => a.localeCompare(b))).toEqual(['api', 'api', 'status', 'ui.js']);
     expect(PAGE).not.toMatch(/url\(|@import|https?:\/\//);
 });
 

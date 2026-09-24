@@ -27,13 +27,19 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
         await expect(page.getByRole('region', { name })).toBeVisible();
     }
     await expect(page.getByRole('textbox', { name: 'Name' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Slot width' })).toBeVisible();
-    await expect(page.getByRole('checkbox', { name: 'A second I2S line is wired to a DAC' })).toBeVisible();
-    await expect(page.getByRole('textbox', { name: 'Network' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Output layout' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Output layout' })).toHaveAccessibleDescription(
+    await expect(page.getByRole('radiogroup', { name: 'Slot width' })).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'Slot width' })).toHaveAccessibleDescription('This sink has 2 slots.');
+    await expect(page.getByRole('radiogroup', { name: 'Slot width' }).getByRole('radio')).toHaveCount(2);
+    await expect(page.getByRole('checkbox', { name: 'A second I2S line is wired to a DAC' })).toHaveAccessibleDescription(
+        /^Two lines carry twice the slots of one\./,
+    );
+    await expect(page.getByRole('textbox', { name: 'Wi-Fi network' })).toBeVisible();
+    await expect(page.getByRole('radiogroup', { name: 'Common layouts' }).getByRole('radio')).toHaveCount(8);
+    await expect(page.getByRole('textbox', { name: 'Output layout' })).toBeVisible();
+    await expect(page.getByRole('textbox', { name: 'Output layout' })).toHaveAccessibleDescription(
         /^The speakers this player drives, one per output slot: .+ It takes effect at the next play\. This sink has 2 slots\.$/,
     );
+    await expect(page.getByRole('button', { name: 'Show' })).toHaveAttribute('aria-controls', 'pass-input');
     await expect(page.locator('summary', { hasText: 'What an output layout does' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Apply' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Forget every server' })).toBeVisible();
@@ -43,11 +49,12 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
 
 test('every action from the keyboard, in page order', async ({ page, stub }) => {
     await page.locator('body').click({ position: { x: 1, y: 1 } });
-    const order = ['ss-forget', 'name-input', 'Save', 'slot-width', 'wiring', 'layout-input', 'Apply', 'What an output layout does', 'ssid-input', 'pass-input', 'Save', 'Counters'];
+    // A radio group is one stop, at its chosen radio.
+    const order = ['ss-forget', 'wiring', 'slot-width=32', 'layout=2.0', 'layout-input', 'Apply', 'What an output layout does', 'name-input', 'Save', 'ssid-input', 'pass-input', 'pass-show', 'Save', 'Counters'];
     const focused = () =>
         page.evaluate(() => {
-            const el = /** @type {HTMLElement} */ (document.activeElement);
-            return el.id || el.textContent || '';
+            const el = /** @type {HTMLInputElement} */ (document.activeElement);
+            return el.id || (el.type === 'radio' ? el.name + '=' + el.value : el.textContent) || '';
         });
     for (const expected of order) {
         await page.keyboard.press('Tab');
@@ -64,16 +71,28 @@ test('every action from the keyboard, in page order', async ({ page, stub }) => 
     await page.keyboard.press('Space');
     await expect.poll(() => stub.sent('PUT /wiring').map((r) => r.body)).toEqual(['1']);
 
-    await page.getByRole('combobox', { name: 'Slot width' }).focus();
+    // The chosen radio, then the arrow keys: 32-bit wraps round to 16-bit.
+    await page.getByRole('radio', { name: '32-bit' }).focus();
     await page.keyboard.press('ArrowDown');
     await expect.poll(() => stub.sent('PUT /slot-width').map((r) => r.body)).toEqual(['16']);
+    // Eight 16-bit slots a line, on the two lines wired above.
+    await expect(page.locator('#slot-help')).toHaveText('This sink has 16 slots.');
 
-    const layout = page.getByRole('combobox', { name: 'Output layout' });
+    const layout = page.getByRole('textbox', { name: 'Output layout' });
     await layout.focus();
     await page.keyboard.press('ControlOrMeta+a');
     await page.keyboard.type('1.0');
     await page.keyboard.press('Enter');
     await expect.poll(() => stub.sent('PUT /layout').map((r) => r.body)).toEqual(['1.0']);
+    // A preset from the arrow keys, from the one the board now has.
+    await expect(page.getByRole('radio', { name: '1.0', exact: true })).toBeChecked();
+    await page.getByRole('radio', { name: '1.0', exact: true }).focus();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => stub.sent('PUT /layout').map((r) => r.body)).toEqual(['1.0', '2.0']);
+
+    await page.getByRole('button', { name: 'Show' }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByLabel('Passphrase')).toHaveAttribute('type', 'text');
 
     for (const name of ['What an output layout does', 'Counters']) {
         const summary = page.locator('summary', { hasText: name });
@@ -82,9 +101,18 @@ test('every action from the keyboard, in page order', async ({ page, stub }) => 
         await expect(page.locator('details', { has: summary })).toHaveAttribute('open', '');
     }
 
-    // The pairing actions, the confirmation included.
-    page.once('dialog', (dialog) => dialog.accept());
-    await page.getByRole('button', { name: 'Forget every server' }).focus();
+    // The pairing actions, the confirmation included: the dialog opens on
+    // Cancel, so Enter alone forgets nothing, and focus goes back after.
+    const forget = page.getByRole('button', { name: 'Forget every server' });
+    await forget.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'Cancel' })).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(page.getByRole('dialog')).toBeHidden();
+    await expect(forget).toBeFocused();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Tab');
+    await expect(page.getByRole('dialog').getByRole('button', { name: 'Forget', exact: true })).toBeFocused();
     await page.keyboard.press('Enter');
     await expect.poll(() => stub.sent('POST /pairing').map((r) => r.body)).toEqual(['forget']);
     Object.assign(stub.device.sendspin, { pairing_code: '482913', pairing_held: true });
@@ -104,7 +132,8 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
         stub.device.framesPerPoll = 50;
         stub.setStatus({
             state: 'failed', location: 'http://10.0.2.2:8000/demo.ec3', source: 'http', sink: 'capture-tdm',
-            sink_slots: 12, layout: '5.1', volume: 1, stream: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1,
+            sink_slots: 12, slot_bits: 16, second_line: true, name: 'Attic',
+            layout: '5.1', volume: 1, stream: { codec: 'E-AC-3', acmod: 7, channels: 6, substreams: 1,
                 dialnorm: -31, objects: true, objects_rendered: false, slots: 12, layout: '7.1.4', render: 'channels',
                 coded: 'L,C,R,Ls,Rs,LFE', silent: 'Lrs,Rrs,Vhl,Vhr,Lts,Rts' },
             frames: 100, held: 0, us_per_frame: 5404, worst_frame_us: 7617, render_us_per_frame: 115,
@@ -112,12 +141,19 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
             passes: 0, layout_mismatches: 0, finished: true, failed: true, why: 'decode', error: 2,
             // A server playing, a level for each output, and a second pairing's code.
             sendspin: { ...playingSendspin(), pairing_code: '482913', pairing_outcome: 'paired' },
+            network: { kind: 'wifi', ssid: 'kitchen', rssi_dbm: -58, address: '192.168.1.23' },
         });
         await page.reload();
-        // Both closed sections open, so their text is measured too.
+        // Both closed sections open, so their text is measured too, and an
+        // error in the toast, which the pairing code's announcement is not.
         await page.locator('summary', { hasText: 'What an output layout does' }).click();
         await page.locator('summary', { hasText: 'Counters' }).click();
-        await page.getByLabel('Name').fill('Attic');
+        await expect(page.locator('#hw-chip')).toBeVisible();
+        await expect(page.getByRole('radio', { name: '9.1.6' })).toBeDisabled();
+        await expect(page.getByRole('radio', { name: '5.1', exact: true })).toBeChecked();
+        await page.getByLabel('Name').fill('   ');
+        await page.locator('#name-form').getByRole('button', { name: 'Save' }).click();
+        await expect(page.getByRole('status')).toHaveClass(/error/);
         await expect(page.locator('#reason')).toBeVisible();
         await expect(page.locator('#ss-code')).toBeVisible();
         await expect(page.getByRole('table')).toBeVisible();
@@ -158,29 +194,37 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
 }
 
 test('the focused control shows a 3 px outline', async ({ page }) => {
-    for (const control of [
-        page.getByRole('textbox', { name: 'Name' }),
-        page.getByRole('combobox', { name: 'Slot width' }),
-        page.getByRole('checkbox', { name: 'A second I2S line is wired to a DAC' }),
+    // A segment's radio is drawn by the segment beside it, which carries the
+    // outline in its place.
+    const segment = (name) => page.getByRole('radio', { name, exact: true }).locator('xpath=following-sibling::span');
+    for (const [control, outlined] of [
+        [page.getByRole('textbox', { name: 'Name' })],
+        [page.getByRole('radio', { name: '32-bit' }), segment('32-bit')],
+        [page.getByRole('radio', { name: '2.0', exact: true }), segment('2.0')],
+        [page.getByRole('checkbox', { name: 'A second I2S line is wired to a DAC' })],
+        [page.getByRole('button', { name: 'Apply' })],
     ]) {
         await control.focus();
         await page.keyboard.press('Shift+Tab');
         await page.keyboard.press('Tab');
         await expect(control).toBeFocused();
-        await expect(control).toHaveCSS('outline-style', 'solid');
-        await expect(control).toHaveCSS('outline-width', '3px');
+        await expect(outlined || control).toHaveCSS('outline-style', 'solid');
+        await expect(outlined || control).toHaveCSS('outline-width', '3px');
     }
 });
 
 test('controls at least 44 CSS pixels tall', async ({ page }) => {
     for (const control of [
         page.getByRole('textbox', { name: 'Name' }),
-        page.getByRole('combobox', { name: 'Slot width' }),
-        page.getByRole('textbox', { name: 'Network' }),
+        // A segment is the radio's target: the label around it.
+        page.locator('#slot-width label').first(),
+        page.locator('#layouts label').first(),
+        page.getByRole('textbox', { name: 'Wi-Fi network' }),
         // A password input has no textbox role to ask for, so it is found by
         // the label that names it.
         page.getByLabel('Passphrase'),
-        page.getByRole('combobox', { name: 'Output layout' }),
+        page.getByRole('button', { name: 'Show' }),
+        page.getByRole('textbox', { name: 'Output layout' }),
         page.getByRole('button', { name: 'Apply' }),
         page.locator('summary', { hasText: 'What an output layout does' }),
         page.locator('summary', { hasText: 'Counters' }),

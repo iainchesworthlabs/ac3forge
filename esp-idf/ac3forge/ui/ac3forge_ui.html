@@ -3,177 +3,294 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f3f3f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#151515" media="(prefers-color-scheme: dark)">
 <title>ac3forge player</title>
-<link rel="icon" href="data:,">
+<link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR42mO4YioDAAMGASbu36iWAAAAAElFTkSuQmCC">
 <style>
-:root{color-scheme:light dark;--bg:#fff;--fg:#1a1a1a;--muted:#555;--panel:#f5f5f5;--line:#d4d4d4;--edge:#767676;--accent:#0b57d0;--on-accent:#fff;--bad:#b3261e;--render:#8e24aa;--sink:#9e9e9e}
-@media (prefers-color-scheme:dark){:root{--bg:#121212;--fg:#ececec;--muted:#b4b4b4;--panel:#1d1d1d;--line:#3d3d3d;--edge:#8f8f8f;--accent:#8ab4f8;--on-accent:#0b1b33;--bad:#f2b8b5;--render:#e1a6f0;--sink:#757575}}
+/* Hearth's signal palette (planning/hearth-design.md), light and dark. */
+:root{color-scheme:light dark;--bg:#f3f3f2;--panel:#ebebea;--field:#fbfaf9;--line:#c6c6c3;--edge:#767676;--fg:#1b1b1b;--muted:#595959;--accent:#d4351c;--on-accent:#fff;--ink:#b3261e;--track:#d6d6d3;--level:#3d3d3d;--sink:#8f8f8b;--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#151515;--panel:#1e1e1e;--field:#121212;--line:#383838;--edge:#8f8f8f;--fg:#ececec;--muted:#a9a9a9;--accent:#ff6b4d;--on-accent:#1b0a05;--ink:#ff8a70;--track:#303030;--level:#d0d0d0;--sink:#707070}}
 *{box-sizing:border-box}
+html{scroll-padding-bottom:6rem}
 body{margin:0;background:var(--bg);color:var(--fg);font:1rem/1.5 system-ui,sans-serif}
-header,main,footer{max-width:50rem;margin:0 auto;padding:0 1rem}
-h1{font-size:1.5rem;margin:1rem 0 0}
-h2{font-size:1.125rem;margin:0 0 .5rem}
-p{margin:0 0 .5rem}
-section,details{background:var(--panel);border:1px solid var(--line);border-radius:.5rem;margin:1rem 0;padding:1rem}
-details{padding-block:0}
-summary{line-height:2.75rem;font-weight:600}
-.muted,dt{color:var(--muted)}
-.error{color:var(--bad)}
-.state{font-size:1.25rem;font-weight:600}
-dl{display:grid;grid-template-columns:auto 1fr;gap:0 1rem;margin:0 0 .5rem}
-dd{margin:0;min-width:0;overflow-wrap:anywhere}
-@media (max-width:30rem){dl{grid-template-columns:1fr}dd{margin-bottom:.25rem}}
-form,.control{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;margin:0 0 1rem}
-label{flex:0 0 100%;font-weight:600}
-input,button,select{font:inherit;min-height:2.75rem}
-select{padding:0 .5rem;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:.375rem}
-input[type=text]{flex:1 1 16rem;min-width:0;padding:0 .75rem;color:var(--fg);background:var(--bg);border:1px solid var(--edge);border-radius:.25rem}
-input[type=range]{flex:1 1 12rem;margin:0;accent-color:var(--accent)}
-button{padding:0 1.25rem;font-weight:600;color:var(--on-accent);background:var(--accent);border:2px solid var(--accent);border-radius:.25rem;cursor:pointer}
-.secondary{color:var(--accent);background:none}
-:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-a{color:var(--accent)}
-.bar{display:flex;height:.75rem;margin:0 0 .75rem;background:var(--bg);border:1px solid var(--line)}
-.bar span,.key{background:var(--accent)}
-.bar .render,.key.render{background:var(--render)}
-.bar .sink,.key.sink{background:var(--sink)}
-.key{display:inline-block;width:.75rem;height:.75rem;margin-right:.5rem}
-ul{margin:0 0 .5rem;padding-left:1.25rem}
-table{border-collapse:collapse;margin:0 0 1rem}
-caption{text-align:left;font-weight:600}
-th,td{padding:0 1.5rem 0 0;text-align:left;font-variant-numeric:tabular-nums}
+main,footer{max-width:60rem;margin:0 auto;padding:0 1rem}
+p{margin:0 0 .75rem}
+a{color:var(--ink)}
 [hidden]{display:none!important}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:.75rem 1.5rem;padding:1.25rem max(1rem,(100% - 58rem)/2);border-bottom:1px solid var(--line)}
+.kicker,h2,h3,caption,thead th,dt{font-family:var(--mono);letter-spacing:.07em;text-transform:uppercase}
+.kicker{margin:0;font-size:.75rem;color:var(--muted)}
+h1{margin:0;font-size:1.625rem;line-height:1.25;overflow-wrap:anywhere}
+.pill{display:flex;align-items:center;gap:.5rem;margin:0;padding:.375rem .75rem;border:1px solid var(--edge);background:var(--field);font:.8125rem/1.4 var(--mono)}
+.pill::before{content:"";flex:none;width:.625rem;height:.625rem;background:var(--accent)}
+.pill.error{border-color:var(--ink)}
+.pill.error::before{background:none;border:2px solid var(--ink)}
+main{counter-reset:sec}
+section,.sec{margin:1.75rem 0}
+h2{display:flex;align-items:center;gap:.75rem;margin:0 0 .625rem;font-size:.8125rem;line-height:1.3}
+h2::before{counter-increment:sec;content:counter(sec,decimal-leading-zero);content:counter(sec,decimal-leading-zero) / "";color:var(--ink);font-weight:400}
+h2::after{content:"";flex:1;border-top:1px solid var(--edge)}
+h3{margin:1.5rem 0 0;font-size:.75rem;color:var(--muted)}
+.panel{padding:1rem;border:1px solid var(--line);background:var(--panel)}
+.panel>:first-child{margin-top:0}
+.note,.help,dt{color:var(--muted)}
+.help{margin:.375rem 0 0;font-size:.875rem}
+.error{color:var(--ink)}
+dl{margin:0}
+dt{font-size:.75rem;line-height:1.3}
+dd{margin:0;min-width:0;overflow-wrap:anywhere}
+.kv>div{display:grid;grid-template-columns:minmax(0,11rem) minmax(0,1fr);gap:0 1rem;padding:.3125rem 0}
+.kv dt{padding-top:.2rem}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(10rem,1fr));gap:1px;margin:.75rem 0 0}
+.tiles>div{padding:.625rem .75rem;background:var(--field);box-shadow:0 0 0 1px var(--line)}
+.tiles>.two{grid-column:span 2}
+.tiles dd{margin-top:.25rem;font-size:.9375rem;font-variant-numeric:tabular-nums}
+.state{display:flex;align-items:flex-start;gap:.625rem;margin:0 0 .25rem;font-size:1.5rem;font-weight:700;line-height:1.25}
+.state::before{content:"";flex:none;width:.75rem;height:.75rem;margin-top:.5625rem;border:2px solid var(--muted)}
+.state[data-state=playing]::before{border-color:var(--accent);background:var(--accent)}
+.state[data-state=opening]::before{border-color:var(--accent)}
+.state[data-state=failed]::before{border-color:var(--ink);background:var(--ink)}
+.state[data-state=finished]::before{background:var(--muted)}
+.path{counter-reset:blk;display:grid;gap:1.5rem;margin:1rem 0 0;padding:0;list-style:none}
+.path>li{position:relative;padding:.75rem 1rem;border:1px solid var(--line);background:var(--field)}
+.path>li:not(:has(div:not([hidden]))){display:none}
+.path>li+li::before{content:"\2193";content:"\2193" / "";position:absolute;inset-inline-start:1rem;top:-1.4rem;color:var(--muted);line-height:1}
+.path h3{margin:0 0 .375rem}
+.path h3::before{counter-increment:blk;content:counter(blk) " \00B7  ";content:counter(blk) " \00B7  " / ""}
+.path dl>div{margin-top:.5rem}
+.path dd{font-size:.9375rem}
+#location{font:.875rem/1.45 var(--mono)}
+.code{display:flex;flex-wrap:wrap;align-items:baseline;gap:.25rem 1rem;margin:0 0 1rem;padding:.75rem 1rem;border:2px solid var(--accent);background:var(--field)}
+.code span{font:700 .75rem var(--mono);letter-spacing:.07em;text-transform:uppercase}
+.code b{font:700 2rem/1.15 var(--mono);letter-spacing:.06em}
+table{width:100%;margin:1.25rem 0 0;border-collapse:collapse;font-variant-numeric:tabular-nums}
+caption{padding-bottom:.375rem;font-size:.75rem;font-weight:700;text-align:start;color:var(--muted)}
+th,td{padding:.1875rem 0 .1875rem .875rem;white-space:nowrap;text-align:end}
+thead th{font-size:.75rem;font-weight:600;color:var(--muted)}
+th:first-child{width:100%;padding-inline-start:0;text-align:start}
+td,.n{font:.875rem var(--mono)}
+.n{display:inline-block;width:1.75rem}
+.meter{position:relative;display:inline-block;width:calc(100% - 1.75rem);height:.5rem;vertical-align:middle;background:linear-gradient(to right,var(--level) var(--r),var(--track) 0)}
+.meter::after{content:"";position:absolute;inset-block:-.1875rem;inset-inline-start:var(--p);width:2px;background:var(--fg)}
+.meter.hot{--level:var(--accent)}
+.bar{display:flex;height:1rem;margin:.25rem 0 0;background:repeating-linear-gradient(to right,var(--track) 0 calc(25% - 1px),var(--line) 0 25%)}
+.bar span,.key{background:var(--level)}
+.bar .render,.key.render{background:var(--accent)}
+.bar .sink,.key.sink{background:var(--sink)}
+.key{display:inline-block;width:.625rem;height:.625rem;margin-inline-end:.375rem}
+.notices{margin:1rem 0 0;padding:0;list-style:none}
+.notices li{position:relative;margin-top:.5rem;padding:.625rem .875rem .625rem 2.75rem;border:1px solid var(--line);border-inline-start:4px solid var(--ink);background:var(--field)}
+.notices li::before{content:"!";content:"!" / "";position:absolute;inset-inline-start:.75rem;top:.75rem;width:1.25rem;height:1.25rem;border-radius:50%;background:var(--ink);color:var(--panel);font:700 .8125rem/1.25rem var(--mono);text-align:center}
+button,input{font:inherit}
+button{min-height:2.75rem;padding:0 1.125rem;border:1px solid var(--edge);background:var(--field);color:var(--fg);cursor:pointer}
+button:hover{border-color:var(--fg)}
+.primary{border-color:var(--accent);background:var(--accent);color:var(--on-accent);font-weight:600}
+.danger{border-color:var(--ink);color:var(--ink)}
+.actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:1.25rem}
+input[type=text],input[type=password]{min-width:0;min-height:2.75rem;padding:0 .75rem;border:1px solid var(--edge);background:var(--field);color:var(--fg)}
+.inline{display:flex;flex-wrap:wrap;gap:.5rem;max-width:32rem}
+.inline input{flex:1 1 12rem}
+.wide{width:100%;max-width:32rem}
+.row{display:grid;gap:.375rem;padding:.875rem 0;border-top:1px solid var(--line)}
+.group:not(:has(.row:not([hidden]))){display:none}
+.val{margin:0}
+.lbl{font-weight:600}
+.seg{display:flex;flex-wrap:wrap;padding:1px 0 0 1px}
+.seg label{position:relative;display:flex;margin:-1px 0 0 -1px}
+.seg input{position:absolute;inset:0;margin:0;opacity:0;cursor:pointer}
+.seg span{display:flex;align-items:center;justify-content:center;min-width:3.5rem;min-height:2.75rem;padding:0 .75rem;border:1px solid var(--edge);background:var(--field)}
+.seg input:checked+span{position:relative;border-color:var(--accent);background:var(--accent);color:var(--on-accent);font-weight:600}
+.seg input:focus-visible+span{position:relative;z-index:1;outline:3px solid var(--accent);outline-offset:2px}
+.seg input:disabled{cursor:not-allowed}
+.seg input:disabled+span{border-style:dashed;color:var(--muted)}
+.seg+form{margin-top:.625rem}
+.check{display:flex;align-items:center;gap:.75rem;min-height:2.75rem;cursor:pointer}
+.check input{flex:none;width:1.25rem;height:1.25rem;margin:0;accent-color:var(--accent)}
+summary{line-height:2.75rem;font-weight:600;cursor:pointer}
+.more{margin-top:.5rem}
+.more p{max-width:44rem}
+.sec>summary{font:700 .8125rem/2.75rem var(--mono);letter-spacing:.07em;text-transform:uppercase}
+footer{padding-block:.5rem 7rem;font-size:.875rem;color:var(--muted)}
+.toast{position:fixed;inset-inline:1rem;bottom:1rem;z-index:2;max-width:36rem;margin:0 auto;padding:.75rem 1rem;border:1px solid var(--edge);border-inline-start:4px solid var(--fg);background:var(--panel);box-shadow:0 .25rem 1.5rem #0004;cursor:pointer}
+.toast.error{border-color:var(--ink)}
+.toast:empty,.toast.gone{transform:translateY(calc(100% + 2rem))}
+.toast:empty{padding:0;border:0;box-shadow:none}
+dialog{max-width:min(28rem,calc(100% - 2rem));padding:1.25rem;border:1px solid var(--edge);background:var(--panel);color:var(--fg)}
+dialog::backdrop{background:#0009}
+.title{font-size:1.125rem;font-weight:700}
+@media (min-width:40rem){.panel{padding:1.25rem 1.5rem}.row{grid-template-columns:10rem minmax(0,1fr);gap:1.5rem}.lbl,.val{padding-top:.625rem}}
+@media (min-width:52rem){.path{grid-template-columns:repeat(3,minmax(0,1fr))}.path>li+li::before{content:"\2192";content:"\2192" / "";inset-inline-start:-1.15rem;top:1rem}}
+@media (max-width:30rem){.kv>div{grid-template-columns:minmax(0,1fr)}}
+@media (prefers-reduced-motion:no-preference){.toast{transition:transform .2s}}
+@media (forced-colors:active){.meter,.bar span,.key,.pill::before,.state::before{forced-color-adjust:none}.seg input:checked+span{outline:3px solid Highlight}}
 </style>
 <script src="ui.js" defer></script>
 </head>
 <body>
-<header>
-<h1 id="title">Hearth sink</h1>
-<p id="link" class="muted">Reading the sink's status.</p>
+<header class="top">
+<div><p class="kicker">AC3Forge Hearth sink</p><h1 id="title">Hearth sink</h1></div>
+<p id="link" class="pill">Reading the sink's status.</p>
 </header>
 <main>
 <noscript><p>This page needs JavaScript; <a href="api">the routes</a> do not.</p></noscript>
-<section aria-labelledby="now-heading">
-<h2 id="now-heading">Now</h2>
-<p id="state" class="state">Waiting for the player</p>
-<p id="reason" class="error" hidden></p>
-<dl>
-<dt hidden>Location</dt><dd id="location" hidden></dd>
-<dt hidden>Source</dt><dd id="source" hidden></dd>
-<dt hidden>Sink</dt><dd id="sink" hidden></dd>
-<dt hidden>Codec</dt><dd id="codec" hidden></dd>
-<dt hidden>Channels</dt><dd id="channels" hidden></dd>
-<dt hidden>Objects</dt><dd id="objects" hidden></dd>
-<dt hidden>Output</dt><dd id="output" hidden></dd>
-<dt hidden>Silent</dt><dd id="silent" hidden></dd>
-<dt hidden>Next play</dt><dd id="next" hidden></dd>
-<dt hidden>Played</dt><dd id="played" hidden></dd>
-</dl>
-</section>
 <section id="sendspin" aria-labelledby="sendspin-heading" hidden>
 <h2 id="sendspin-heading">Sendspin</h2>
-<p id="ss-code" class="state" hidden></p>
-<p id="ss-note" class="muted"></p>
-<dl>
-<dt hidden>Server</dt><dd id="ss-server" hidden></dd>
-<dt hidden>Link</dt><dd id="ss-link" hidden></dd>
-<dt hidden>Clock</dt><dd id="ss-clock" hidden></dd>
-<dt hidden>Playing</dt><dd id="ss-playing" hidden></dd>
-<dt hidden>Timing</dt><dd id="ss-timing" hidden></dd>
-<dt hidden>Underruns</dt><dd id="ss-underruns" hidden></dd>
-<dt hidden>Chunks not played</dt><dd id="ss-lost" hidden></dd>
-<dt hidden>Paired servers</dt><dd id="ss-paired" hidden></dd>
-<dt hidden>Last pairing</dt><dd id="ss-outcome" hidden></dd>
+<div class="panel">
+<p id="ss-code" class="code" hidden><span>Pairing code</span> <b id="ss-digits"></b></p>
+<p id="ss-note" class="note"></p>
+<dl class="kv">
+<div hidden><dt>Connected</dt><dd id="ss-server"></dd></div>
+<div hidden><dt>Link</dt><dd id="ss-link"></dd></div>
+<div hidden><dt>Clock</dt><dd id="ss-clock"></dd></div>
+<div hidden><dt>Playing</dt><dd id="ss-playing"></dd></div>
+<div hidden><dt>Timing</dt><dd id="ss-timing"></dd></div>
+<div hidden><dt>Underruns</dt><dd id="ss-underruns"></dd></div>
+<div hidden><dt>Chunks not played</dt><dd id="ss-lost"></dd></div>
+<div hidden><dt>Paired servers</dt><dd id="ss-paired"></dd></div>
+<div hidden><dt>Last pairing</dt><dd id="ss-outcome"></dd></div>
 </dl>
 <table id="ss-levels" hidden><caption>Levels over the last 100 ms</caption><thead><tr><th scope="col">Output</th><th scope="col">Peak</th><th scope="col">RMS</th></tr></thead><tbody id="ss-rows"></tbody></table>
-<div class="control">
-<button id="ss-cancel" type="button" class="secondary" hidden>Cancel pairing</button>
-<button id="ss-reset" type="button" class="secondary" hidden>Allow pairing again</button>
-<button id="ss-forget" type="button" class="secondary">Forget every server</button>
+<p class="help">The board keeps a pairing for each server it has paired with. One server plays to it at a time: one that starts playing takes over from the last.</p>
+<div class="actions">
+<button id="ss-cancel" type="button" hidden>Cancel pairing</button>
+<button id="ss-reset" type="button" hidden>Allow pairing again</button>
+<button id="ss-forget" type="button" class="danger">Forget every server</button>
+</div>
+</div>
+</section>
+<section aria-labelledby="now-heading">
+<h2 id="now-heading">Now</h2>
+<div class="panel">
+<p id="now-note" class="note" hidden>This board's own player: a location sent to it with POST /play. What a Sendspin server plays is under Sendspin.</p>
+<p id="state" class="state">Waiting for the player</p>
+<p id="reason" class="error" hidden></p>
+<dl class="kv"><div hidden><dt>Played</dt><dd id="played"></dd></div></dl>
+<ol class="path">
+<li><h3>Source</h3><dl>
+<div hidden><dt>Location</dt><dd id="location"></dd></div>
+<div hidden><dt>Source</dt><dd id="source"></dd></div>
+</dl></li>
+<li><h3>Decode</h3><dl>
+<div hidden><dt>Codec</dt><dd id="codec"></dd></div>
+<div hidden><dt>Channels</dt><dd id="channels"></dd></div>
+<div hidden><dt>Objects</dt><dd id="objects"></dd></div>
+</dl></li>
+<li><h3>Output</h3><dl>
+<div hidden><dt>Sink</dt><dd id="sink"></dd></div>
+<div hidden><dt>Output</dt><dd id="output"></dd></div>
+<div hidden><dt>Silent</dt><dd id="silent"></dd></div>
+<div hidden><dt>Next play</dt><dd id="next"></dd></div>
+</dl></li>
+</ol>
 </div>
 </section>
 <section aria-labelledby="settings-heading">
 <h2 id="settings-heading">Settings</h2>
-<p class="muted">What this board is. A server plays to it: this page does not.</p>
-<form id="name-form">
-<label for="name-input">Name</label>
-<input id="name-input" type="text" maxlength="32" required autocomplete="off" spellcheck="false" aria-describedby="name-help">
-<button type="submit" class="secondary">Save</button>
-<p id="name-help" class="muted">What this sink answers to on the network, and what a server lists it as.</p>
+<div class="panel">
+<p class="note">What this board is and how it is wired. A server plays to it: this page does not.</p>
+<div class="group">
+<h3>Speakers</h3>
+<div id="wiring-row" class="row" hidden><span class="lbl">Wiring</span><div>
+<label class="check"><input id="wiring" type="checkbox" aria-describedby="wiring-help">A second I2S line is wired to a DAC</label>
+<p id="wiring-help" class="help">Two lines carry twice the slots of one. It takes effect at the next play.</p>
+</div></div>
+<div id="slot-row" class="row" hidden><span id="slot-label" class="lbl">Slot width</span><div>
+<div id="slot-width" class="seg" role="radiogroup" aria-labelledby="slot-label" aria-describedby="slot-help"><label><input type="radio" name="slot-width" value="16"><span>16-bit</span></label><label><input type="radio" name="slot-width" value="32"><span>32-bit</span></label></div>
+<p id="slot-help" class="help"></p>
+</div></div>
+<div id="layout-row" class="row" hidden><label class="lbl" for="layout-input">Output layout</label><div>
+<div id="layouts" class="seg" role="radiogroup" aria-label="Common layouts"><label><input type="radio" name="layout" value="1.0"><span>1.0</span></label><label><input type="radio" name="layout" value="2.0"><span>2.0</span></label><label><input type="radio" name="layout" value="5.1"><span>5.1</span></label><label><input type="radio" name="layout" value="7.1"><span>7.1</span></label><label><input type="radio" name="layout" value="5.1.2"><span>5.1.2</span></label><label><input type="radio" name="layout" value="5.1.4"><span>5.1.4</span></label><label><input type="radio" name="layout" value="7.1.4"><span>7.1.4</span></label><label><input type="radio" name="layout" value="9.1.6"><span>9.1.6</span></label></div>
+<form id="layout-form" class="inline">
+<input id="layout-input" type="text" required autocomplete="off" spellcheck="false" aria-describedby="layout-help">
+<button type="submit" class="primary">Apply</button>
 </form>
-<div class="control">
-<label for="slot-width">Slot width</label>
-<select id="slot-width"><option value="32">32-bit</option><option value="16">16-bit</option></select>
-<span id="slot-help" class="muted"></span>
-</div>
-<div class="control">
-<input id="wiring" type="checkbox">
-<label for="wiring">A second I2S line is wired to a DAC</label>
-</div>
-<form id="layout-form">
-<label for="layout-input">Output layout</label>
-<input id="layout-input" type="text" list="layouts" required autocomplete="off" spellcheck="false" aria-describedby="layout-help">
-<button type="submit" class="secondary">Apply</button>
-<datalist id="layouts"><option value="1.0"><option value="2.0"><option value="5.1"><option value="7.1"><option value="5.1.2"><option value="5.1.4"><option value="7.1.4"><option value="9.1.6"></datalist>
-<p id="layout-help" class="muted">The speakers this player drives, one per output slot: a name such as 5.1 or 7.1.4, or one speaker per slot such as L,R,C,LFE,Ls,Rs. It takes effect at the next play.<span id="layout-fit"></span></p>
-</form>
-<details>
+<p id="layout-help" class="help">The speakers this player drives, one per output slot: a name such as 5.1 or 7.1.4, or one speaker per slot such as L,R,C,LFE,Ls,Rs. It takes effect at the next play.<span id="layout-fit"></span></p>
+<details class="more">
 <summary>What an output layout does</summary>
 <p>2.0 or 1.0: the decoder folds every channel but the LFE into two channels, or one, heights and rear surrounds included.</p>
 <p>Wider: each channel plays on the speaker at its location. A channel the layout has no speaker for is spread over the nearest ones, and the LFE goes only to LFE outputs.</p>
 <p>With height speakers, a stream's objects are placed by their positions.</p>
 <p>Nothing is upmixed. A speaker the stream has nothing for stays silent, so a 5.1 stream on 7.1.4 leaves the rear surrounds and heights silent; Now lists them.</p>
 </details>
-<form id="network-form">
-<label for="ssid-input">Network</label>
-<input id="ssid-input" type="text" autocomplete="off" spellcheck="false" aria-describedby="network-help">
-<label for="pass-input">Passphrase</label>
-<input id="pass-input" type="password" autocomplete="off">
-<button type="submit" class="secondary">Save</button>
-<p id="network-help" class="muted">Stored for the next restart; this board stays on the network it is already on. A board with no network at all is told over its USB port instead.</p>
+</div></div>
+</div>
+<h3>Network</h3>
+<div class="row" hidden><span class="lbl">Connected to</span><p id="network" class="val"></p></div>
+<form id="name-form" class="row" hidden>
+<label class="lbl" for="name-input">Name</label><div>
+<div class="inline"><input id="name-input" type="text" maxlength="32" required autocomplete="off" spellcheck="false" aria-describedby="name-help"><button type="submit" class="primary">Save</button></div>
+<p id="name-help" class="help">What this sink answers to on the network, and what a server lists it as.</p>
+</div>
 </form>
-<p id="outcome" role="status"></p>
+<form id="network-form">
+<div class="row"><label class="lbl" for="ssid-input">Wi-Fi network</label><div>
+<input id="ssid-input" class="wide" type="text" autocomplete="off" spellcheck="false" aria-describedby="network-help">
+</div></div>
+<div class="row"><label class="lbl" for="pass-input">Passphrase</label><div>
+<div class="inline"><input id="pass-input" type="password" autocomplete="off"><button id="pass-show" type="button" aria-pressed="false" aria-controls="pass-input">Show</button></div>
+<div class="actions"><button type="submit" class="primary">Save</button></div>
+<p id="network-help" class="help">Stored for the next restart; this board stays on the network it is already on. A board with no network at all is told over its USB port instead.</p>
+</div></div>
+</form>
+</div>
 </section>
 <section aria-labelledby="timing-heading">
 <h2 id="timing-heading">Real time</h2>
-<p id="timing-note" class="muted">Nothing decoded yet.</p>
+<div class="panel">
+<p id="timing-note" class="note">Nothing decoded yet.</p>
 <div id="bar" class="bar" aria-hidden="true" hidden><span id="bar-decoder"></span><span id="bar-render" class="render"></span><span id="bar-sink" class="sink"></span></div>
-<dl>
-<dt hidden><span class="key" aria-hidden="true"></span>Decoder</dt><dd id="t-decoder" hidden></dd>
-<dt hidden><span class="key render" aria-hidden="true"></span>Render</dt><dd id="t-render" hidden></dd>
-<dt hidden><span class="key sink" aria-hidden="true"></span>Sink</dt><dd id="t-sink" hidden></dd>
-<dt hidden>Each frame</dt><dd id="t-frame" hidden></dd>
-<dt hidden>Worst frame</dt><dd id="t-worst" hidden></dd>
-<dt hidden>Load</dt><dd id="t-load" hidden></dd>
-<dt hidden>Ring low-water</dt><dd id="t-ring" hidden></dd>
+<dl class="tiles">
+<div hidden><dt><span class="key" aria-hidden="true"></span>Decoder</dt><dd id="t-decoder"></dd></div>
+<div hidden><dt><span class="key render" aria-hidden="true"></span>Render</dt><dd id="t-render"></dd></div>
+<div hidden><dt><span class="key sink" aria-hidden="true"></span>Sink</dt><dd id="t-sink"></dd></div>
+<div hidden><dt>Each frame</dt><dd id="t-frame"></dd></div>
+<div hidden><dt>Worst frame</dt><dd id="t-worst"></dd></div>
+<div hidden><dt>Load</dt><dd id="t-load"></dd></div>
+<div hidden><dt>Ring low-water</dt><dd id="t-ring"></dd></div>
 </dl>
+</div>
 </section>
 <section aria-labelledby="hardware-heading">
 <h2 id="hardware-heading">Hardware</h2>
-<p id="hw-note" class="muted">Reading what this board is.</p>
-<dl>
-<dt hidden>Chip</dt><dd id="hw-chip" hidden></dd>
-<dt hidden>Cores</dt><dd id="hw-cores" hidden></dd>
-<dt hidden>Clock</dt><dd id="hw-clock" hidden></dd>
-<dt hidden>Arithmetic</dt><dd id="hw-arithmetic" hidden></dd>
-<dt hidden>PSRAM</dt><dd id="hw-psram" hidden></dd>
-<dt hidden>Sink ceiling</dt><dd id="hw-sink" hidden></dd>
+<div class="panel">
+<p id="hw-note" class="note">Reading what this board is.</p>
+<dl class="tiles">
+<div hidden><dt>Chip</dt><dd id="hw-chip"></dd></div>
+<div hidden><dt>Cores</dt><dd id="hw-cores"></dd></div>
+<div hidden><dt>Clock</dt><dd id="hw-clock"></dd></div>
+<div hidden><dt>Arithmetic</dt><dd id="hw-arithmetic"></dd></div>
+<div hidden><dt>PSRAM</dt><dd id="hw-psram"></dd></div>
+<div hidden><dt>Sink ceiling</dt><dd id="hw-sink"></dd></div>
+<div class="two" hidden><dt>Firmware</dt><dd id="hw-firmware"></dd></div>
+<div hidden><dt>ESP-IDF</dt><dd id="hw-idf"></dd></div>
 </dl>
-<ul id="hw-notices" hidden></ul>
+<ul id="hw-notices" class="notices" hidden></ul>
+</div>
 </section>
-<details>
+<details class="sec">
 <summary>Counters</summary>
-<dl>
-<dt hidden>Held back</dt><dd id="c-held" hidden></dd>
-<dt hidden>Passes</dt><dd id="c-passes" hidden></dd>
-<dt hidden>Fetched</dt><dd id="c-fetched" hidden></dd>
-<dt hidden>Skipped to resynchronise</dt><dd id="c-resync" hidden></dd>
-<dt hidden>Layout mismatches</dt><dd id="c-mismatches" hidden></dd>
-</dl>
+<div class="panel"><dl class="tiles">
+<div hidden><dt>Held back</dt><dd id="c-held"></dd></div>
+<div hidden><dt>Passes</dt><dd id="c-passes"></dd></div>
+<div hidden><dt>Fetched</dt><dd id="c-fetched"></dd></div>
+<div hidden><dt>Skipped to resynchronise</dt><dd id="c-resync"></dd></div>
+<div hidden><dt>Layout mismatches</dt><dd id="c-mismatches"></dd></div>
+</dl></div>
 </details>
 </main>
 <footer>
-<p class="muted">The page uses <a href="api">the REST routes</a> and <a href="status">the status</a>, nothing else.</p>
+<p>The page uses <a href="api">the REST routes</a> and <a href="status">the status</a>, nothing else.</p>
 </footer>
+<p id="outcome" class="toast" role="status"></p>
+<dialog id="forget-dialog" aria-labelledby="forget-title">
+<form method="dialog">
+<p id="forget-title" class="title">Forget every server?</p>
+<p>Each server this board has paired with has to pair again, and the board takes a new identity.</p>
+<div class="actions"><button value="keep" autofocus>Cancel</button><button value="forget" class="danger">Forget</button></div>
+</form>
+</dialog>
 </body>
 </html>

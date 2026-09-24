@@ -17,7 +17,7 @@ test('the page says what each output layout does with each stream', async ({ pag
     const problems = [];
     page.on('pageerror', (error) => problems.push(String(error)));
     const status = async () => (await request.get('status')).json();
-    const field = page.getByRole('combobox', { name: 'Output layout' });
+    const field = page.getByRole('textbox', { name: 'Output layout' });
 
     // A play through to its end: first the new location past "opening", then
     // its end, so that the previous play's end is never taken for this one's.
@@ -53,8 +53,8 @@ test('the page says what each output layout does with each stream', async ({ pag
     await expect(page.locator('#sink')).toHaveText('capture-tdm, 12 slots');
     await expect(field).toHaveAccessibleDescription(/This sink has 12 slots\.$/);
     const enabled = await page
-        .locator('#layouts option')
-        .evaluateAll((options) => options.filter((o) => !o.disabled).map((o) => o.value));
+        .locator('#layouts input')
+        .evaluateAll((presets) => presets.filter((p) => !p.disabled).map((p) => p.value));
     expect(enabled).toEqual(['1.0', '2.0', '5.1', '7.1', '5.1.2', '5.1.4', '7.1.4']);
 
     // 7.1.4 on 7.1.4: every speaker has its own channel.
