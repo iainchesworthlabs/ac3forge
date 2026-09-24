@@ -152,13 +152,36 @@ TestCase {
         }, 10000, message);
     }
 
+    // Clicks the sink's row until the controller has selected it. The row
+    // exists from the moment the sink is found and is rebuilt as its hello
+    // fills in the rest of it, so a click made straight after ensureSink()
+    // can land on a delegate being replaced and be lost - the first test to
+    // run failed intermittently on Windows with the pairing view never
+    // appearing, which is what a lost click looks like. Unlike clickUntil(),
+    // this waits for the selection to be published (the controller polls
+    // every 60 ms) before clicking again: each selection of an unpaired sink
+    // queues a pairing attempt, so a click that did land must not be
+    // repeated just because its selection was not yet visible.
+    function selectSinkRow(page) {
+        for (let attempt = 0; attempt < 5; ++attempt) {
+            mouseClick(rowItem(page));
+            for (let waited = 0; waited < 2000 && NetworkController.selectedId !== sinkRow().id; waited += 50) {
+                wait(50);
+            }
+            if (NetworkController.selectedId === sinkRow().id) {
+                return;
+            }
+        }
+        fail("the sink row never selected after five clicks");
+    }
+
     function test_cancelEndsThePairingAttempt() {
         ensureSink();
         if (sinkRow().badge === "paired") {
             skip("the sink is already paired in this process");
         }
         const page = makePage();
-        mouseClick(rowItem(page));
+        selectSinkRow(page);
         tryVerify(function() { return findChild(page, "networkPairingCancel") !== null; }, 10000);
         tryVerify(function() { return TestServices.testSinkCode().length === 6; }, 15000,
                   "the sink never printed a code to cancel");
