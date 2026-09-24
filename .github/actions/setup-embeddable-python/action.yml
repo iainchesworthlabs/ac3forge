@@ -15,9 +15,20 @@ description: >-
 runs:
   using: composite
   steps:
+    # zizmor's github-env audit (docs.zizmor.sh/audits/#github-env) targets
+    # workflows an attacker can trigger with elevated permissions/secrets -
+    # pull_request_target, workflow_run - where a value written to
+    # GITHUB_PATH could carry attacker-controlled content into a later,
+    # privileged step. Neither caller fits that shape: _ci-windows.yml runs
+    # under ci.yml's push/pull_request/merge_group/workflow_dispatch
+    # triggers, and msvc-analysis.yml under schedule/workflow_dispatch only.
+    # Nor is the value attacker-influenceable: it is the directory python.exe
+    # lands in under $RUNNER_TEMP, extracted from a pinned python.org URL.
+    # Putting python on PATH for install-qt-action's later steps is exactly
+    # what GITHUB_PATH is for - the same reasoning as setup-emscripten.
     - name: Setup Python (embeddable)
       shell: powershell
-      run: |
+      run: | # zizmor: ignore[github-env] the PATH entry is $RUNNER_TEMP-derived, not attacker-influenced - see above
         $ErrorActionPreference = 'Stop'
         $ProgressPreference = 'SilentlyContinue'
         $zip = Join-Path $env:RUNNER_TEMP 'python-embed.zip'
