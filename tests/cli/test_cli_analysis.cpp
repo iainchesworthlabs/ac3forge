@@ -392,7 +392,7 @@ TEST_CASE("spdif refuses an unreadable input, a non-AC-3 one and an unwritable o
     const auto rc = run_cli("spdif " + quoted(stream) + " " + quoted(nowhere), log);
     const auto text = read_log(log);
     INFO(text);
-    CHECK(rc != 0);
+    CHECK(rc == 3);  // the output's fault, not the (valid) input's
     CHECK(text.find("error: cannot open " + nowhere.string() + " for writing") !=
           std::string::npos);
 }

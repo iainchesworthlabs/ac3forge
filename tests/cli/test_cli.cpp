@@ -4586,7 +4586,7 @@ TEST_CASE("programme2= reports why its own source could not be used", "[cli][enc
                                 log);
         const auto text = read_log(log);
         INFO(text);
-        CHECK(rc != 0);
+        CHECK(rc == 2);  // an input error, as a missing primary source is
         CHECK_FALSE(fs::exists(out_path));
         // ProgrammeSource::open falls through its own streaming attempt to
         // read_wav_arg, and it is read_wav_arg's error this prints - naming
@@ -4608,7 +4608,7 @@ TEST_CASE("programme2= reports why its own source could not be used", "[cli][enc
                                 log);
         const auto text = read_log(log);
         INFO(text);
-        CHECK(rc != 0);
+        CHECK(rc == 1);  // no layout to name it by: the primary's own class
         CHECK_FALSE(fs::exists(out_path));
         CHECK(text.find("7 channels") != std::string::npos);
         CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);

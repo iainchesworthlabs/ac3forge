@@ -136,7 +136,7 @@ Inputs inputs() {
 
 struct Expectation {
     std::string args;
-    int exit_code;  // 0 here means "any failure", for the stream tools' shared 1
+    int exit_code;
     std::string message;
 };
 
@@ -146,11 +146,7 @@ void check_rows(std::initializer_list<Expectation> rows, const fs::path& log) {
         const auto rc = run_cli(row.args, log);
         const auto text = read_log(log);
         INFO(text);
-        if (row.exit_code == 0) {
-            CHECK(rc != 0);
-        } else {
-            CHECK(rc == row.exit_code);
-        }
+        CHECK(rc == row.exit_code);
         CHECK(text.find(row.message) != std::string::npos);
     }
 }
@@ -313,11 +309,12 @@ void check_io_refusals(std::string_view command, std::string_view extra) {
     const auto out_path = dir / ("io_refused_" + cmd + ".ac3");
     const auto blocked = nowhere("tools.ac3");
     const std::string tail = extra.empty() ? "" : " " + std::string{extra};
-    check_rows({{cmd + " " + quoted(missing) + " " + quoted(out_path) + tail, 0,
+    // exit_codes.hpp's classes: 2 for the input's fault, 3 for the output's.
+    check_rows({{cmd + " " + quoted(missing) + " " + quoted(out_path) + tail, 2,
                  "error: cannot read " + missing.string()},
-                {cmd + " " + quoted(text_file) + " " + quoted(out_path) + tail, 0,
+                {cmd + " " + quoted(text_file) + " " + quoted(out_path) + tail, 2,
                  "error: " + text_file.string() + ": lost sync: expected 0x0B77"},
-                {cmd + " " + quoted(in.stereo) + " " + quoted(blocked) + tail, 0,
+                {cmd + " " + quoted(in.stereo) + " " + quoted(blocked) + tail, 3,
                  "error: cannot open " + blocked.string() + " for writing"}},
                log);
     CHECK_FALSE(fs::exists(out_path));
@@ -352,11 +349,11 @@ TEST_CASE("cat refuses an unreadable input, a non-stream one and an unwritable o
     const auto blocked = nowhere("cat.ac3");
     // Each input is read after the output opens, so a refusal part-way
     // through has to take the partial output back out again.
-    check_rows({{"cat " + quoted(out_path) + " " + quoted(in.stereo) + " " + quoted(missing), 0,
+    check_rows({{"cat " + quoted(out_path) + " " + quoted(in.stereo) + " " + quoted(missing), 2,
                  "error: cannot read " + missing.string()},
-                {"cat " + quoted(out_path) + " " + quoted(in.stereo) + " " + quoted(text_file), 0,
+                {"cat " + quoted(out_path) + " " + quoted(in.stereo) + " " + quoted(text_file), 2,
                  "error: " + text_file.string() + ": lost sync: expected 0x0B77"},
-                {"cat " + quoted(blocked) + " " + quoted(in.stereo) + " " + quoted(in.stereo), 0,
+                {"cat " + quoted(blocked) + " " + quoted(in.stereo) + " " + quoted(in.stereo), 3,
                  "error: cannot open " + blocked.string() + " for writing"}},
                log);
     CHECK_FALSE(fs::exists(out_path));
@@ -369,7 +366,7 @@ TEST_CASE("transcode refuses what it cannot measure, name or code", "[cli][strea
     const auto out_ac3 = dir / "transcode_refused.ac3";
     const auto out_ec3 = dir / "transcode_refused.ec3";
     check_rows(
-        {{"transcode " + quoted(in.silent) + " " + quoted(out_ec3) + " dialnorm=auto", 1,
+        {{"transcode " + quoted(in.silent) + " " + quoted(out_ec3) + " dialnorm=auto", 5,
           "error: no audio above the -70 LKFS absolute gate; pass dialnorm=<1..31> explicitly"},
          {"transcode " + quoted(in.stereo) + " " + quoted(out_ec3) + " dialnorm2=auto", 1,
           "error: " + in.stereo.string() +
@@ -460,7 +457,7 @@ TEST_CASE("normalize measures each 1+1 programme and refuses a silent stream",
     const auto dir = scratch_dir();
     const auto log = dir / "normalize_edges.log";
     const auto out_path = dir / "normalize_edges.ac3";
-    check_rows({{"normalize " + quoted(in.silent) + " " + quoted(out_path), 1,
+    check_rows({{"normalize " + quoted(in.silent) + " " + quoted(out_path), 5,
                  "error: no audio above the -70 LKFS absolute gate; nothing to normalise "
                  "against"}},
                log);

@@ -179,14 +179,20 @@ struct PlannedExtraProgramme {
 // up to 8), used only to phrase messages the way the token that named it
 // reads. `rate` is the PRIMARY programme's sample rate: every substream of an
 // access unit codes the same frame period, so an extra programme sampled
-// differently cannot ride along.
+// differently cannot ride along. On nullptr, `exit_code` holds the class the
+// refusal belongs in (exit_codes.hpp) - the same class run_eac3_encode gives
+// the matching refusal of its primary programme: an unreadable source or
+// one this format cannot carry is an input error, a layout/routing/rate
+// combination the command line asked for is a usage one, and nothing above
+// the loudness gate is a runtime one.
 std::unique_ptr<PlannedExtraProgramme> open_extra_programme(int n,
                                                             const Options::ExtraProgramme& extra,
                                                             ac3::SampleRate rate,
                                                             std::uint32_t primary_kbps,
                                                             const plan::Tools& tools,
-                                                            FILE* status) {
+                                                            FILE* status, int& exit_code) {
     assert(extra.path.has_value());
+    exit_code = kExitUsage;
     auto out = std::make_unique<PlannedExtraProgramme>();
     out->path = *extra.path;
     out->index = n - 1;
@@ -195,10 +201,12 @@ std::unique_ptr<PlannedExtraProgramme> open_extra_programme(int n,
     // reader cannot do (it only ever walks forward). Load the whole file
     // instead, the same trade run_eac3_encode itself makes for the primary.
     if (!out->source.open(out->path, /*allow_streaming=*/!extra.meta.measure_dialnorm)) {
+        exit_code = kExitInput;
         return nullptr;
     }
     const auto extra_rate = wav_sample_rate(out->source.sample_rate(), "E-AC-3", true);
     if (!extra_rate.has_value()) {
+        exit_code = kExitInput;
         return nullptr;
     }
     if (*extra_rate != rate) {
@@ -275,6 +283,7 @@ std::unique_ptr<PlannedExtraProgramme> open_extra_programme(int n,
         }
         for (std::size_t start = 0; start < frames; start += frame_len) {
             if (!out->source.fill(start, src, frame_len, out->path)) {
+                exit_code = kExitInput;
                 return nullptr;
             }
             for (std::size_t c = 0; c < src.size(); ++c) {
@@ -290,6 +299,7 @@ std::unique_ptr<PlannedExtraProgramme> open_extra_programme(int n,
                          "error: programme{} has no audio above the -70 LKFS absolute gate; "
                          "pass programme{}-dialnorm=<1..31> explicitly",
                          n, n);
+            exit_code = kExitRuntime;
             return nullptr;
         }
         out->p.meta.dialnorm = *measured;
@@ -784,9 +794,10 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
             }
             break;
         }
-        auto planned = open_extra_programme(n, slot, *sr, bitrate, p.tools, status);
+        int refused = kExitUsage;
+        auto planned = open_extra_programme(n, slot, *sr, bitrate, p.tools, status, refused);
         if (!planned) {
-            return 1;
+            return refused;
         }
         extra.push_back(std::move(planned));
     }
@@ -938,7 +949,7 @@ int run_eac3_encode(std::string_view in_path, std::string_view out_path,
             if (!extra[i]->source.fill(start, feeds[i].source, samples_per_frame,
                                        extra[i]->path)) {
                 out_sink.abort();
-                return 1;
+                return kExitInput;  // that programme's source stopped reading
             }
             plan::render(extra[i]->routing, feeds[i].in, feeds[i].out, samples_per_frame);
         }

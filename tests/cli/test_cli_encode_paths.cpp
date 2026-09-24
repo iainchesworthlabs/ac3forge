@@ -579,7 +579,9 @@ TEST_CASE("an extra programme's own file is refused when it cannot ride the prim
     check_rows({{head + quoted(other_rate), 1,
                  "error: programme2= is 44100 Hz but the primary programme is 48000 Hz - every "
                  "substream of an access unit codes the same frame period"},
-                {head + quoted(silent) + " programme2-dialnorm=auto", 1,
+                // Nothing above the gate is a runtime outcome (exit 5), as it
+                // is for the primary programme's own dialnorm=auto.
+                {head + quoted(silent) + " programme2-dialnorm=auto", 5,
                  "error: programme2 has no audio above the -70 LKFS absolute gate; pass "
                  "programme2-dialnorm=<1..31> explicitly"},
                 {head + quoted(mono) + " programme2-layout=bogus", 1,
