@@ -25,8 +25,8 @@
 # assertions. Each is now the same directory-selected shape the rest of the
 # tree uses -- tests/platform/<os>/, tests/core/avx2/{present,absent}/,
 # tests/render/abi/{msvc,unknown}/ -- and python/ likewise
-# (src/ac3forge_ext/{signing,containers}/{present,absent}/), so every tree here
-# starts at zero rather than being grandfathered in with a waiver list.
+# (python/src/ac3forge_ext/{signing,containers}/{present,absent}/), so every
+# tree here starts at zero rather than being grandfathered in with a waiver list.
 #
 # NOT scanned, deliberately: esp-idf/. That tree is an ESP-IDF component built
 # by idf.py, not by this repository's CMake, and its `#if CONFIG_*` guards are
