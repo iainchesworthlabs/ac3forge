@@ -203,6 +203,9 @@ HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
     if (handlers.sink_max_slots) {
         facts.sink_max_slots = handlers.sink_max_slots();
     }
+    if (handlers.sink_max_slots_bits) {
+        facts.sink_max_slots_bits = handlers.sink_max_slots_bits();
+    }
 // The ESP32-P4's own pre-production-silicon accommodation
 // (docs/platforms/bare-metal/esp32-p4.md, "The chip revision, and what it
 // blocks"): a build that lowers the bootloader's revision floor below the
@@ -226,6 +229,26 @@ HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
         "Kconfig.cpu), and falls back to the 40 MHz crystal for I2S rather than the 160 MHz "
         "PLL v3.0+ silicon supports (I2S_CLK_SRC_XTAL/PLL_160M, hal/i2s_ll.h) - a build that "
         "required v3.0 or newer could reach both.";
+    // The opposite direction from the notice above, and a hard limit rather
+    // than a cost: below v3.0 there is no PLL clock source for I2S at all,
+    // and switching to APLL (SOC_I2S_SUPPORTS_APLL) does not rescue it
+    // either - its own CLK_LL_APLL_MAX_HZ (125 MHz) ceiling falls short of
+    // the ~147 MHz a full-width TDM frame needs on this part. Since a TDM
+    // line always opens at its full configured width regardless of the
+    // layout actually in use (sink/i2s_wide's own header comment), this
+    // isn't "fewer slots than the ceiling above claims" - it's TDM failing
+    // to open at ANY channel count above 2 on this exact silicon, proven on
+    // a real board (esp32p4-hearth-sink-tdm-clock-ceiling), not a
+    // theoretical gap. Unconditional on the detected revision alone, unlike
+    // revision_notice_at above: a chip this old can only ever be running a
+    // build lenient enough to accept it, so there is no build-flag case
+    // where the limit does not apply.
+    facts.revision_hard_limit_below = 300;  // v3.0
+    facts.revision_hard_limit_cost =
+        "This chip has no PLL clock source for I2S (hal/i2s_ll.h), and the APLL fallback's own "
+        "125 MHz ceiling falls short of what a full-width TDM frame needs: TDM output cannot "
+        "open at any channel count above 2 on this board, regardless of layout - only standard "
+        "1-2 channel I2S is reachable.";
 #endif
     return facts;
 }
@@ -247,6 +270,10 @@ std::string build_hardware_json(const ControlHandlers& handlers) {
     append_number(out, "psram_bytes", static_cast<unsigned long long>(facts.psram_bytes));
     if (facts.sink_max_slots > 0) {
         append_number(out, "sink_max_slots", static_cast<unsigned long long>(facts.sink_max_slots));
+        if (facts.sink_max_slots_bits > 0) {
+            append_number(out, "sink_max_slots_bits",
+                          static_cast<unsigned long long>(facts.sink_max_slots_bits));
+        }
     }
     append_strings(out, "capabilities", report.capabilities);
     append_strings(out, "notices", report.notices);

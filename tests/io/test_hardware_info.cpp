@@ -141,6 +141,58 @@ TEST_CASE("a sink with nothing to say about its ceiling reports no slot count, n
     REQUIRE_FALSE(has(describe_hardware(facts).capabilities, "slot"));
 }
 
+TEST_CASE("a sink ceiling names the slot width it was reached at, when the owner has one to give",
+          "[io][hardware_info]") {
+    HardwareFacts widthed;
+    widthed.sink_max_slots = 32;
+    widthed.sink_max_slots_bits = 16;
+    REQUIRE(has(describe_hardware(widthed).capabilities, "up to 32 slots at 16-bit"));
+
+    // No width to give (a capture/null sink, or any future one whose
+    // ceiling is not a function of slot width) - the plain count stands,
+    // never a guessed qualifier.
+    HardwareFacts unwidthed;
+    unwidthed.sink_max_slots = 8;
+    unwidthed.sink_max_slots_bits = 0;
+    const auto report = describe_hardware(unwidthed);
+    REQUIRE(has(report.capabilities, "up to 8 slots"));
+    REQUIRE_FALSE(has(report.capabilities, "up to 8 slots at"));
+}
+
+TEST_CASE("a hard revision limit fires only below its own threshold, the opposite direction from "
+          "the notice above",
+          "[io][hardware_info]") {
+    // The ESP32-P4's own shape (esp32p4-hearth-sink-tdm-clock-ceiling): no
+    // PLL clock source for I2S below v3.0, so TDM cannot open at any channel
+    // count above 2 on such a chip, regardless of build - the notice is
+    // unconditional on the detected revision alone.
+    HardwareFacts below;
+    below.revision_major = 1;
+    below.revision_minor = 3;
+    below.revision_hard_limit_below = 300;
+    below.revision_hard_limit_cost = "only standard 1-2 channel I2S works on this chip";
+    const auto report = describe_hardware(below);
+    REQUIRE(has(report.notices, "detected chip is v1.3"));
+    REQUIRE(has(report.notices, "below v3.0"));
+    REQUIRE(has(report.notices, "only standard 1-2 channel I2S works on this chip"));
+
+    // At or above the threshold: the limitation does not apply, nothing is
+    // said.
+    HardwareFacts at;
+    at.revision_major = 3;
+    at.revision_minor = 0;
+    at.revision_hard_limit_below = 300;
+    at.revision_hard_limit_cost = "cost words";
+    REQUIRE_FALSE(has(describe_hardware(at).notices, "cost words"));
+
+    // No threshold at all: nothing to say, however old the detected
+    // revision reads.
+    HardwareFacts no_threshold;
+    no_threshold.revision_major = 1;
+    no_threshold.revision_minor = 0;
+    REQUIRE_FALSE(has(describe_hardware(no_threshold).notices, "below v"));
+}
+
 TEST_CASE("no clock reading claims no clock capability", "[io][hardware_info]") {
     HardwareFacts facts;
     facts.cpu_freq_mhz = 0;
