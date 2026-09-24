@@ -308,7 +308,7 @@ been refactoring for its own sake, not preventing duplication.
 | File | Legs | Windows/Linux/macOS-only steps it carries |
 |---|---|---|
 | `.github/workflows/_ci-windows.yml` | windows-msvc, windows-llvm, windows-msvc-arm64 | Install LLVM/ffmpeg/NSIS (Windows), Setup MSVC environment, Install Qt (prebuilt), Crucible translation check + built assert + coverage floor, Assert NSIS installer, Assert Crucible packaged |
-| `.github/workflows/_ci-linux.yml` | linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan | Bootstrap container, Install Qt6 (Linux GUI)/GCC/LLVM/ffmpeg, the linux-gcc-only scalar-tier gold-reference variants, Codec matrix (sanitizer), conformance vectors, ALSA fallback, the Linux Crucible/PipeWire pass, BUILD_SHARED_LIBS=ON pass |
+| `.github/workflows/_ci-linux.yml` | linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan | Bootstrap container, Install Qt6 (Linux GUI)/GCC/LLVM/ffmpeg, the linux-gcc-only scalar-tier gold-reference variants, Codec matrix (sanitizer), conformance vectors, ALSA fallback, the Linux Crucible/PipeWire pass, BUILD_SHARED_LIBS=ON pass, the installed-SDK C consumer |
 | `.github/workflows/_ci-macos.yml` | macos-llvm, macos-llvm-x64 | Install Qt6/LLVM/ffmpeg (macOS), Assert Crucible built (shared with Windows), the universal-merge install-tree uploads |
 
 Steps that applied to more than one OS in the original job (`Package`,

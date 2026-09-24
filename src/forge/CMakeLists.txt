@@ -649,11 +649,17 @@ target_compile_features(forge_objects PUBLIC cxx_std_23)
 # exported." ac3::tracy is a no-op INTERFACE target unless AC3FORGE_ENABLE_TRACY
 # is on (see cmake/Tracy.cmake), so linking it unconditionally costs nothing
 # by default.
+#
+# ac3::fmt_private is wrapped for the same reason, but it changes the object code, which the
+# other three do not: {fmt} is compiled into this library, as a private copy in its own
+# namespace, and no {fmt} library is linked. forge_static is an archive, so a {fmt} function
+# called from here and defined elsewhere would be an undefined reference for every consumer of
+# the installed package, which names no {fmt} to resolve it. cmake/Fmt.cmake has the full account.
 target_link_libraries(forge_objects PRIVATE
     "$<BUILD_INTERFACE:ac3::warnings>"
     "$<BUILD_INTERFACE:ac3::coverage>"
     "$<BUILD_INTERFACE:ac3::tracy>"
-    "$<BUILD_INTERFACE:ac3::fmt>")
+    "$<BUILD_INTERFACE:ac3::fmt_private>")
 
 # --- Static+shared plumbing -------------------------------------------------
 # PIC is required for any object code that might end up in a shared library

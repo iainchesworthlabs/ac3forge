@@ -1098,6 +1098,26 @@ jobs:
           cmake --build build/config-linux-llvm-shared -- -k 0
           ctest --preset test-linux-llvm-shared -LE Performance
 
+      # A build tree is not an installed package. tests/capi and the C examples compile against
+      # the build tree, where every generated header is already on the include path whether or
+      # not an install rule copies it, so `cmake --install` shipped an ac3forge_c/ac3forge.h that
+      # #included an ac3forge_c/version.h it never installed, and nothing here noticed. This
+      # installs the two trees this leg has just built (linux-llvm: Release, both linkages
+      # installed; the shared pass above: Debug, BUILD_SHARED_LIBS=ON) and builds and runs a C
+      # program against each prefix through find_package(ac3forge).
+      #
+      # A vcpkg or Conan package installs one linkage only (AC3FORGE_INSTALL_BOTH_LINKAGES=OFF),
+      # which neither tree here does. check_install_consumer.sh takes any build directory; that
+      # configuration was checked by hand rather than built a third time in this leg.
+      - name: Build a C consumer against the installed SDK
+        if: matrix.preset == 'linux-llvm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/checks/check_install_consumer.sh \
+            build/config-linux-llvm \
+            build/config-linux-llvm-shared
+
       # Packaging. windows-msvc always packages, on every push, as a
       # continuous smoke test of the packaging path itself. For a real
       # release (do_package set, from release.yml), only one leg per
