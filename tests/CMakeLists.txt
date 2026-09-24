@@ -722,6 +722,14 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/signing_hook.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/engine.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
+# test_engine_commands.cpp saves the signing key's env-var fallbacks with
+# std::getenv before clearing them for its own case - same C4996 reasoning as
+# src/signing/src/signing_key.cpp (src/signing/CMakeLists.txt) and
+# core/test_simd_kernels.cpp above.
+if(AC3FORGE_IS_MSVC_LIKE)
+    set_source_files_properties(crucible/test_engine_commands.cpp
+        PROPERTIES COMPILE_OPTIONS "/wd4996")
+endif()
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the
 # one piece of the driver that is logic rather than framework plumbing is
