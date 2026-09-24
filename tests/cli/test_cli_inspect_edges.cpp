@@ -378,6 +378,12 @@ TEST_CASE("decode refuses an output, census or object directory it cannot write"
                    "error: cannot create directory " + (blocker / "objects").string()));
 }
 
+// E-AC-3's own version of this same warning (adm_out= against a programme with no object layer)
+// lives in tests/cli/test_cli_decode_adm.cpp, not here: decode.cpp's run_decode_eac3 checks
+// ac3cli::adm_capability() before it can even tell whether the programme has an object layer, so
+// that path only reaches these warnings (rather than exiting 2 with "this build was not configured
+// with -DAC3FORGE_BUILD_ADM=ON") when ADM support was actually built. Plain AC-3 has no such
+// check - it cannot have an object layer at all, on any build - so it stays here.
 TEST_CASE("decode warns when object or ADM output is asked of a stream with no object layer",
           "[cli][decode]") {
     const auto dir = scratch_dir();
@@ -386,24 +392,13 @@ TEST_CASE("decode warns when object or ADM output is asked of a stream with no o
     const auto adm = dir / "unused_adm.wav";
 
     const auto ac3_in = generated(dir / "clean.ac3", "sine", "1 192");
-    auto text = run_expecting("decode " + quoted(ac3_in) + " " + quoted(dir / "plain_ac3.wav") +
+    const auto text = run_expecting("decode " + quoted(ac3_in) + " " + quoted(dir / "plain_ac3.wav") +
                                   " " + quoted(objects_dir) + " " + quoted(adm),
                               log, 0);
     CHECK(contains(text, "warning: objects_dir given but " + ac3_in.string() +
                              " is plain AC-3 - it has no object layer"));
     CHECK(contains(text, "warning: " + adm.string() + " given but " + ac3_in.string() +
                              " is plain AC-3 - it has no object layer"));
-
-    const auto ec3_in = generated(dir / "clean.ec3", "eac3-silence", "1 192 stereo");
-    text = run_expecting("decode " + quoted(ec3_in) + " " + quoted(dir / "plain_ec3.wav") + " " +
-                             quoted(objects_dir) + " " + quoted(adm),
-                         log, 0);
-    CHECK(contains(text, "warning: " + adm.string() +
-                             " given but no dynamic-object-only Atmos programme was decoded"));
-    CHECK(contains(text,
-                   "warning: objects_dir given but there is no reconstructed object audio to "
-                   "export"));
-    CHECK_FALSE(fs::exists(adm));
 }
 
 TEST_CASE("decode's DRC report says what each drcmode did with dynrng and compr",

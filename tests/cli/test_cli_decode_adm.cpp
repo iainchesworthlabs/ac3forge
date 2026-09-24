@@ -70,6 +70,32 @@ std::string read_log(const fs::path& log) {
     return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
 }
 
+std::string quoted(const fs::path& path) { return "\"" + path.string() + "\""; }
+
+// Makes `path` with one ac3cli run - `command` and `path`, then `rest` -
+// once per test process. Same trimmed copy as test_cli_inspect_edges.cpp's own.
+fs::path generated(const fs::path& path, std::string_view command, std::string_view rest) {
+    if (!fs::exists(path)) {
+        const auto log = fs::path{path}.replace_extension(".gen.log");
+        REQUIRE(run_cli(std::string{command} + " " + quoted(path) + " " + std::string{rest}, log) ==
+                0);
+    }
+    return path;
+}
+
+// Runs `args`, checks the exit code, and returns everything it printed.
+std::string run_expecting(const std::string& args, const fs::path& log, int exit_code) {
+    const auto rc = run_cli(args, log);
+    auto text = read_log(log);
+    INFO(text);
+    CHECK(rc == exit_code);
+    return text;
+}
+
+bool contains(const std::string& text, std::string_view needle) {
+    return text.find(needle) != std::string::npos;
+}
+
 constexpr int kFrames = 8;
 // Frame 3, as tests/decoder/test_latency.cpp and tests/render/test_object_lfe_timing.cpp (the header-
 // only renderer's own regression test for this same class of bug) both place their own marker: past
@@ -223,4 +249,30 @@ TEST_CASE("decode's ADM master lines the bed's LFE up with the object it was pul
     // behind it - the object trailed the LFE by 576 in the unfixed file (measured on this exact
     // fixture while confirming the bug - see the PR description). Fixed, the two line up.
     CHECK(lag == 0);
+}
+
+// Moved from tests/cli/test_cli_inspect_edges.cpp - see that file's own comment on its sibling,
+// plain-AC-3 case. decode.cpp's run_decode_eac3 checks ac3cli::adm_capability() up front, before it
+// can tell whether this specific programme has an object layer, so an E-AC-3 stream only reaches
+// these two warnings (rather than exiting 2 with "this build was not configured with
+// -DAC3FORGE_BUILD_ADM=ON") when ADM support was actually built - which is exactly this file's own
+// gate (tests/CMakeLists.txt's AC3FORGE_BUILD_ADM block).
+TEST_CASE("decode warns when ADM output is asked of an E-AC-3 stream with no object layer",
+          "[cli][decode]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "decode_no_objects_eac3.log";
+    const auto objects_dir = dir / "unused_objects";
+    const auto adm = dir / "unused_adm.wav";
+
+    const auto ec3_in = generated(dir / "clean.ec3", "eac3-silence", "1 192 stereo");
+    const auto text = run_expecting("decode " + quoted(ec3_in) + " " +
+                                         quoted(dir / "plain_ec3.wav") + " " + quoted(objects_dir) +
+                                         " " + quoted(adm),
+                                     log, 0);
+    CHECK(contains(text, "warning: " + adm.string() +
+                             " given but no dynamic-object-only Atmos programme was decoded"));
+    CHECK(contains(text,
+                   "warning: objects_dir given but there is no reconstructed object audio to "
+                   "export"));
+    CHECK_FALSE(fs::exists(adm));
 }
