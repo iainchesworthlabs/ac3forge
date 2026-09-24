@@ -102,6 +102,9 @@ struct ServerHost::State {
         std::optional<m::CodeFormat> format;
     };
     std::map<Key32, Requested> requested;
+    // Pairings asked for by URL (dial_to_pair()), before the client behind it is known: the
+    // connection dialled there moves its entry into `requested` when it decides.
+    std::map<std::string, Requested> requested_at;
     // Services browsing found, by URL, and when to dial each again; and each one's URL by instance
     // name, so a service browsing loses is not dialled again.
     std::map<std::string, std::chrono::steady_clock::time_point> redial;
@@ -216,6 +219,7 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
                 view.source_support = session.hello()->source_support;
             }
             view.pairing = session.pairing();
+            view.pairing_attempt = session.pairing_attempt_running();
             view.wants_code = session.pairing_wants_code();
             view.bursts = contains(session.active_roles(), ac3forge::kRole);
             view.playing = view.bursts || contains(session.active_roles(), kPlayerRole);
@@ -250,6 +254,12 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
         std::optional<ServerHost::State::Requested> requested;
         {
             const std::lock_guard lock(host_->mutex);
+            if (const auto at = host_->requested_at.find(url_); !url_.empty() && at != host_->requested_at.end()) {
+                // A pairing dial_to_pair() asked for at this connection's URL: now the client is
+                // known, it is this client's request like any other.
+                host_->requested[client.client_key] = at->second;
+                host_->requested_at.erase(at);
+            }
             if (const auto found = host_->requested.find(client.client_key); found != host_->requested.end()) {
                 requested = found->second;
             }
@@ -257,7 +267,10 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
         const ServerStore& store = *host_->store;
         const bool approved = store.approved(client.client_key);
 
-        if (client.pairing) {
+        // An attempt in progress is left alone. One that ended without pairing leaves the pairing
+        // activity declared, which is decided again like any other: back to waiting, or a new
+        // attempt the operator has asked for since.
+        if (client.pairing && client.pairing_attempt) {
             return;
         }
         m::Activate activate{.activities = {}, .active_roles = std::vector<std::string>{}, .pairing = std::nullopt};
@@ -351,10 +364,23 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
         host_->member_changed(client.client_id);
     }
 
-    // Forgets the last decision, so the next decide() acts again.
+    // Forgets the last decision, so the next decide() acts again, and reports what the host now
+    // knows of the client: an activation it sent, or a pairing attempt that ended, changes what
+    // ClientView says (pairing, wants_code, the roles), and nothing else would report it. On the
+    // host's thread.
     void reconsider() {
         last_decision_.clear();
         decide();
+        report();
+    }
+
+    // Tells the host's events what it now knows of the client, once it has said hello. On the
+    // host's thread.
+    void report() {
+        ClientView client = view();
+        if (client.hello) {
+            host_->events->on_client(client);
+        }
     }
 
     // --- ServerListener, with the session lock held --------------------------------------
@@ -404,6 +430,8 @@ class HostConnection final : public ServerListener, public std::enable_shared_fr
         const std::string client_id = base64url::encode(session_->client_key());
         ServerHost::State* host = host_;
         host->post([host, client_id] { host->events->on_pairing_code_wanted(client_id); });
+        // ClientView::wants_code changed: what the host knows of the client did.
+        post_view();
     }
 
     bool on_paired(const Key32& client_key, const Key32& long_term_psk) override {
@@ -564,6 +592,13 @@ void ServerHost::State::dial(const std::string& url) {
     std::expected<std::unique_ptr<transport::Connection>, websocket::ConnectError> dialled = websocket::connect(url);
     if (!dialled) {
         log("could not dial " + url);
+        {
+            // A pairing asked for there goes with the dial: a later dial is not a pairing unless
+            // it is asked for again.
+            const std::lock_guard lock(mutex);
+            requested_at.erase(url);
+        }
+        events->on_dial_failed(url, false);
         return;
     }
     log("dialled " + url);
@@ -582,11 +617,24 @@ void ServerHost::State::remove(std::uint64_t id) {
         connections.erase(found);
     }
     const ClientView client = gone->view();
-    if (client.hello) {
-        events->on_client_gone(client.client_id);
-        // Its player no longer counts towards its groups' volume and mute.
-        member_changed(client.client_id);
+    if (!client.hello) {
+        if (!gone->url().empty()) {
+            log("the connection to " + gone->url() + " ended before hello");
+            {
+                const std::lock_guard lock(mutex);
+                requested_at.erase(gone->url());
+            }
+            events->on_dial_failed(gone->url(), true);
+        }
+        return;
     }
+    // A second connection decide() closed leaves the client connected by its first.
+    if (find(client.client_id)) {
+        return;
+    }
+    events->on_client_gone(client.client_id);
+    // Its player no longer counts towards its groups' volume and mute.
+    member_changed(client.client_id);
 }
 
 std::shared_ptr<HostConnection> ServerHost::State::find(const std::string& client_id) const {
@@ -609,11 +657,11 @@ std::vector<std::shared_ptr<HostConnection>> ServerHost::State::all() const {
 
 // --- ServerHost ------------------------------------------------------------------------------
 
-ServerHost::ServerHost(std::unique_ptr<State> state) : state_(std::move(state)) {}
+ServerHost::ServerHost(std::shared_ptr<State> state) : state_(std::move(state)) {}
 
 std::expected<std::unique_ptr<ServerHost>, std::string> ServerHost::start(ServerHostOptions options, ServerStore& store,
                                                                           ServerHostEvents& events) {
-    auto state = std::make_unique<State>();
+    auto state = std::make_shared<State>();
     state->options = std::move(options);
     state->store = &store;
     state->events = &events;
@@ -685,6 +733,38 @@ void ServerHost::dial(const std::string& url) {
     state->post([state, url] { state->dial(url); });
 }
 
+bool ServerHost::dial_to_pair(const std::string& url, m::PairMethod method, std::optional<m::CodeFormat> format) {
+    if (method == m::PairMethod::kPairingPsk || url.empty()) {
+        return false;
+    }
+    State* state = state_.get();
+    std::shared_ptr<HostConnection> existing;
+    {
+        const std::lock_guard lock(state->mutex);
+        state->requested_at[url] = {.method = method, .format = format};
+        for (const auto& [id, connection] : state->connections) {
+            if (connection->url() == url) {
+                existing = connection;
+                break;
+            }
+        }
+    }
+    if (!existing) {
+        state->post([state, url] { state->dial(url); });
+        return true;
+    }
+    // Already dialled: the connection takes the request when it next decides - at its hello, or
+    // now for one that has said hello (a connection its client has refused is closing, and the
+    // request waits for the next dial).
+    const std::weak_ptr<HostConnection> weak = existing;
+    state->post([weak] {
+        if (const std::shared_ptr<HostConnection> held = weak.lock()) {
+            held->reconsider();
+        }
+    });
+    return true;
+}
+
 std::vector<ClientView> ServerHost::clients() const {
     std::vector<ClientView> views;
     for (const std::shared_ptr<HostConnection>& connection : state_->all()) {
@@ -738,14 +818,34 @@ bool ServerHost::pair(const std::string& client_id, m::PairMethod method, std::o
 
 bool ServerHost::enter_code(const std::string& client_id, const pairing_flow::Code& code) {
     const std::shared_ptr<HostConnection> connection = state_->find(client_id);
-    return connection &&
-           connection->driver().call([&] { return connection->session().enter_code(code); }).has_value();
+    if (!connection || !connection->driver().call([&] { return connection->session().enter_code(code); }).has_value()) {
+        return false;
+    }
+    // The attempt no longer waits for a code.
+    const std::weak_ptr<HostConnection> weak = connection;
+    state_->post([weak] {
+        if (const std::shared_ptr<HostConnection> held = weak.lock()) {
+            held->report();
+        }
+    });
+    return true;
 }
 
 bool ServerHost::cancel_pairing(const std::string& client_id) {
     const std::shared_ptr<HostConnection> connection = state_->find(client_id);
-    return connection &&
-           connection->driver().call([&] { return connection->session().cancel_pairing(); }).has_value();
+    if (!connection ||
+        !connection->driver().call([&] { return connection->session().cancel_pairing(); }).has_value()) {
+        return false;
+    }
+    // The session has left pairing with an activation declaring nothing, which is what the host
+    // would have decided anyway: only the client's view has changed.
+    const std::weak_ptr<HostConnection> weak = connection;
+    state_->post([weak] {
+        if (const std::shared_ptr<HostConnection> held = weak.lock()) {
+            held->report();
+        }
+    });
+    return true;
 }
 
 bool ServerHost::ac3forge_command(const std::string& client_id, const ac3forge::CommandMessage& command) {
@@ -824,7 +924,8 @@ bool ServerHost::stop_source(const std::string& client_id) {
 // --- Group ------------------------------------------------------------------------------------
 
 struct Group::State {
-    ServerHost::State* host = nullptr;
+    // Shared: the group may outlive the host (Group's own comment in the header).
+    std::shared_ptr<ServerHost::State> host;
     std::string id;
     std::string name;
 
@@ -1321,7 +1422,7 @@ Group::~Group() {
 
 std::shared_ptr<Group> ServerHost::make_group(std::string name) {
     auto state = std::make_shared<Group::State>();
-    state->host = state_.get();
+    state->host = state_;
     state->name = std::move(name);
     {
         const std::lock_guard lock(state_->mutex);

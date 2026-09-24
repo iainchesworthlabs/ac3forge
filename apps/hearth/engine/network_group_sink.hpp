@@ -90,13 +90,16 @@ public:
     [[nodiscard]] virtual bool submit_burst(std::uint16_t pc, std::uint16_t pd,
                                             std::span<const std::byte> payload, std::int64_t frame) = 0;
 
-    // Where the group has got to, from what has been taken so far. There is
-    // no clock to read back over the wire - a member's own player buffers
-    // what it is sent, on its own timeline, past where this can see - so
-    // "taken" is treated as "heard", the same idealisation a fire-and-forget
-    // sink with no telemetry has to make. Shaped like PcmSink::position()'s
-    // own MonitorPosition so Player's timeline arithmetic does not need to
-    // know the difference.
+    // Where the group has got to. A group plays frame n at a fixed time on its
+    // own timeline (ac3::sendspin::Group::start_time() plus n at the sample
+    // rate), and every member plays it then, so what has been taken counts
+    // as played once that time has passed and as queued until it has - a
+    // group reads a buffered source well ahead (a second and a half and its
+    // members' lead), and treating "taken" as "heard" would end the
+    // programme that far short of its last frame. Nothing is played before
+    // the timeline starts (no member playing yet). Shaped like
+    // PcmSink::position()'s own MonitorPosition so Player's timeline
+    // arithmetic does not need to know the difference.
     [[nodiscard]] virtual std::optional<audio::MonitorPosition> position() const = 0;
 
     // Counts from zero again, matching submitted_since_open_'s own reset at

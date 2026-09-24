@@ -217,6 +217,16 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
         offset += taken;
     }
     REQUIRE(offset == kFrames);
+    // Taken is not played: the group reads ahead of its own timeline, which
+    // starts a lead after the first push, so the tone is all still queued -
+    // Player waits on this before it closes the output, or the programme's
+    // last second or so would never be heard.
+    {
+        const auto position = sink->position();
+        REQUIRE(position.has_value());
+        CHECK(position->frames_played + position->frames_queued == kFrames);
+        CHECK(position->frames_played < kFrames);
+    }
 
     // A burst: one real AC-3 frame, wrapped exactly as Player's own
     // send_unit() would, pc/pd read back from the wrap the same way
@@ -257,6 +267,18 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     CHECK(played_pcm() == kFrames);
     CHECK(played_burst() >= 1);
     CHECK(burst_sink->totals().burst_frames >= static_cast<std::uint64_t>(ac3::kSamplesPerFrame));
+    // The group's timeline runs through it within its lead (a sink may count
+    // a chunk as it arrives, before its time).
+    {
+        const auto timeline_deadline = std::chrono::steady_clock::now() + 10s;
+        while (sink->position()->frames_played < kFrames && std::chrono::steady_clock::now() < timeline_deadline) {
+            std::this_thread::sleep_for(20ms);
+        }
+        const auto position = sink->position();
+        REQUIRE(position.has_value());
+        CHECK(position->frames_played == kFrames);
+        CHECK(position->frames_queued == 0);
+    }
 
     sink->close();
     group.reset();
