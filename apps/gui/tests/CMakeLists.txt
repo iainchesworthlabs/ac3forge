@@ -145,6 +145,12 @@ target_link_libraries(ac3gui_qmltests
         # profiling header pair ../CMakeLists.txt's ac3gui target links -
         # otherwise a Tracy-enabled configure fails only on this target.
         ac3::tracy
+        # Inert unless AC3FORGE_ENABLE_COVERAGE is on - see cmake/Coverage.cmake:
+        # linking an instrumented library gives this target only the gcov
+        # runtime, not instrumentation of the controller sources it
+        # recompiles, so without this a gcovr filter for apps/gui measured
+        # nothing these suites ran (Crucible's qmltests link it the same way).
+        ac3::coverage
         Qt6::Core
         Qt6::Gui
         Qt6::Quick

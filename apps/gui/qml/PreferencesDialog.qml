@@ -91,6 +91,7 @@ Dialog {
     // support file from either window looks the same to whoever reads it.
     FileDialog {
         id: diagnosticsDialog
+        objectName: "diagnosticsDialog"
         title: qsTr("Save diagnostics")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "txt"

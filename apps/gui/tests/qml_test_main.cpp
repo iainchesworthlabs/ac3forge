@@ -12,6 +12,7 @@
 #include <optional>
 
 #include "../language_manager.hpp"
+#include "ac3/version.hpp"
 
 // Standard Qt Quick Test entry point: discovers and runs every tst_*.qml
 // file under QUICK_TEST_SOURCE_DIR (set in CMakeLists.txt), exercising the
@@ -92,6 +93,11 @@ public slots:
         language_manager_->applyInitialLanguage();
         engine->rootContext()->setContextProperty(QStringLiteral("languageManager"),
                                                    &*language_manager_);
+        // Same context property, same value, main.cpp installs: without it
+        // AboutDialog's version line is a ReferenceError here and the About
+        // dialog could only ever be tested showing nothing.
+        engine->rootContext()->setContextProperty(
+            QStringLiteral("appVersionDetails"), QString::fromStdString(ac3::version_details()));
     }
 
 private:
