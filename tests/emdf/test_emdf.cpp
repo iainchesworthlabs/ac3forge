@@ -412,6 +412,18 @@ TEST_CASE("the frame walker reaches addbsi through every optional bsi group", "[
          {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .mixing = per_block,
           .oba_complexity_index = 8},
          true},
+        // The per-block form is one flag per block the syncframe carries -
+        // two at numblkscod 0x1, three at 0x2 - never MixMetadata's full six
+        // slots; infomdate behind it proves the walk came out at the right
+        // offset.
+        {"2/0 two-block frames, per-block mix config and infomdate",
+         {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .numblkscod = 1, .mixing = per_block,
+          .info = info, .oba_complexity_index = 5},
+         false},
+        {"2/0 three-block frames, per-block mix config and infomdate",
+         {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0, .numblkscod = 2, .mixing = per_block,
+          .info = info, .oba_complexity_index = 6},
+         false},
         {"3/2+LFE, extended mixdef",
          {.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true, .mixing = extended,
           .oba_complexity_index = 11},

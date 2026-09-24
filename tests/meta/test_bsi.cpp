@@ -711,6 +711,68 @@ TEST_CASE("E-AC-3: blkmixcfginfo's one-block word is unconditional at numblkscod
     CHECK((*substream.mixing->blkmixcfginfo)[0] == 19);
 }
 
+TEST_CASE("E-AC-3: blkmixcfginfo carries one flag per block the syncframe holds",
+          "[bsi]") {
+    // §E2.3.1.60 (Table E1.2): past numblkscod 0x0 the per-block form loops
+    // over number_of_blocks_per_syncframe - two flags at numblkscod 0x1,
+    // three at 0x2, six at 0x3 - not over MixMetadata's six-slot array. An
+    // encoder that always wrote six flags left short syncframes with stray
+    // bits ahead of infomdate: the decoder refused the frame, io::scan read
+    // bsmod 0 instead of 5, and emdf::walk_frame lost the addbsi marker (see
+    // tests/emdf/test_emdf.cpp's frame-walker cases). Every numblkscod runs
+    // here, each as an encode -> decode round trip and a scan of the same
+    // bytes, so the field is checked at the width every reader expects.
+    for (int numblkscod = 0; numblkscod <= 3; ++numblkscod) {
+        CAPTURE(numblkscod);
+        ac3::eac3::FrameConfig config;
+        config.acmod = ac3::Acmod::k2_0;
+        config.numblkscod = numblkscod;
+        ac3::meta::MixMetadata mix;
+        mix.blkmixcfginfo = std::array<std::optional<int>, ac3::kBlocksPerFrame>{
+            3, std::nullopt, std::nullopt, std::nullopt, std::nullopt, std::nullopt};
+        config.mixing = mix;
+        config.info = ac3::meta::BsiInfo{.bsmod = ac3::meta::BitstreamMode::kCommentary};
+
+        ac3::eac3::FrameEncoder encoder{config};
+        const auto samples = static_cast<std::size_t>(encoder.samples_per_frame());
+        const auto full = tone(2);
+        std::vector<std::vector<float>> shortened(full.size());
+        for (std::size_t ch = 0; ch < full.size(); ++ch) {
+            shortened[ch].assign(full[ch].begin(),
+                                 full[ch].begin() + static_cast<std::ptrdiff_t>(samples));
+        }
+        const auto spans = views(shortened);
+        std::vector<std::byte> stream;
+        std::vector<std::byte> last;
+        for (int f = 0; f < 3; ++f) {
+            const auto frame = encoder.encode_frame(spans);
+            REQUIRE(frame.has_value());
+            stream.insert(stream.end(), frame->begin(), frame->end());
+            last = *frame;
+        }
+
+        ac3::Eac3Decoder decoder;
+        const auto decoded = decoder.decode_access_unit(last);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+
+        ac3::Eac3Decoder substream_decoder;
+        const auto substream = substream_decoder.decode_substream(last);
+        REQUIRE(substream.has_value());
+        REQUIRE(substream->has_value());
+        REQUIRE((*substream)->mixing);
+        REQUIRE((*substream)->mixing->blkmixcfginfo);
+        const auto& words = *(*substream)->mixing->blkmixcfginfo;
+        CHECK(words[0] == 3);
+        CHECK(!words[1]);
+
+        const auto scanned = ac3::io::scan(stream);
+        REQUIRE(scanned.has_value());
+        CHECK(scanned->bsmod_present);
+        CHECK(scanned->bsmod == 5);
+    }
+}
+
 TEST_CASE("E-AC-3: pan information round trips on a mono programme", "[bsi]") {
     ac3::eac3::FrameConfig config;
     config.acmod = ac3::Acmod::k1_0;  // §E2.3.1.53: acmod < 0x2 only
