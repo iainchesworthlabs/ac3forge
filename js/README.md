@@ -151,7 +151,13 @@ hls.attachMedia(videoElement); // video still decodes natively; only audio is di
 - `fmp4.ts`'s box walker: unit-tested against a real ffmpeg-remuxed fragmented-MP4 fixture
   (`fmp4.test.js`), asserting every extracted sample lands exactly on an AC-3/E-AC-3 syncword.
 - The `MediaSource`/`addSourceBuffer` shim's mechanics: unit-tested against a fake `MediaSource`
-  stub (`hls-bridge.test.js`).
+  stub (`hls-bridge.test.js`), and `attachHlsAudioBridge` against the same fMP4 fixture split into
+  init and media segments (`hls-bridge-attach.test.js`).
+- The TypeScript around the WASM module - `PushDecoder`, `decodeFile`, the decode worker, the
+  worklet processor and `Ac3ForgeDecoderNode` - unit-tested in Node against a scripted stand-in for
+  the Embind module and fake Worker/Web Audio globals (`tests/fake-embind.js`). These check the
+  wrappers' own logic; decoding itself is covered by the C++ suite.
+- `npm test` fails under 95% line, 90% branch or 95% function coverage of `dist/`.
 
 **Not yet verified**: a live hls.js instance against a real HLS manifest/segment server carrying
 an EC-3 audio rendition. The mechanism above is real and each of its pieces is tested in
