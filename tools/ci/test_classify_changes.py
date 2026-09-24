@@ -16,9 +16,12 @@ building rather than silently skipping.
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
 
+import contextlib
+import io
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -161,6 +164,36 @@ class NpmAndWasmSplitTest(unittest.TestCase):
     def test_js_change_lights_both_npm_and_wasm_but_nothing_else(self):
         hits = gate.classify(["js/src/index.ts"])
         self.assertEqual(lit(hits, *ALL_LANES), {"npm", "wasm"})
+
+
+class MainTest(unittest.TestCase):
+    """main() reads paths from stdin and writes lane=true|false lines that the
+    workflow feeds to $GITHUB_OUTPUT."""
+
+    def run_main(self, argv, stdin=""):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(sys, "stdin", io.StringIO(stdin)), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = gate.main(argv)
+        lanes = dict(line.split("=", 1) for line in out.getvalue().splitlines())
+        return rc, lanes
+
+    def test_force_all_ignores_stdin(self):
+        rc, lanes = self.run_main(["x", "--force-all"], stdin="docs/readme.md\n")
+        self.assertEqual(rc, 0)
+        self.assertEqual(set(lanes), set(gate.LANES))
+        self.assertTrue(all(v == "true" for v in lanes.values()))
+
+    def test_stdin_paths_are_classified(self):
+        rc, lanes = self.run_main(["x"], stdin="apps/android/app/build.gradle.kts\n\n")
+        self.assertEqual(rc, 0)
+        self.assertEqual(lanes["android"], "true")
+        self.assertIn("false", lanes.values())
+
+    def test_empty_stdin_runs_everything(self):
+        """No paths is not 'nothing changed' - fail open, run every lane."""
+        _, lanes = self.run_main(["x"], stdin="")
+        self.assertTrue(all(v == "true" for v in lanes.values()))
 
 
 if __name__ == "__main__":

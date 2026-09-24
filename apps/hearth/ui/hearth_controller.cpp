@@ -58,6 +58,7 @@
 #include "pcm_sink.hpp"
 #include "probe_json.hpp"
 #include "qsettings_store.hpp"
+#include "test_outputs.hpp"
 #include "queue.hpp"
 #include "settings_model.hpp"
 #include "transport.hpp"
@@ -869,12 +870,12 @@ void HearthController::start() {
     // this point, let alone made the group a person later pins
     // (network_output_status.hpp's own header comment).
     ac3::hearth::EngineOutputs outputs{
-        .pcm = ac3::hearth::make_device_sink(std::string()),
+        .pcm = test_outputs_ ? test_outputs_->make_pcm() : ac3::hearth::make_device_sink(std::string()),
         .bitstream = {},
         .group = ac3::hearth::make_group_sink([](const std::string& group_id) {
             return ac3::hearth::ui::NetworkOutputStatus::instance().group(group_id);
         }),
-        .endpoints = ac3::hearth::device_endpoints()};
+        .endpoints = test_outputs_ ? test_outputs_->endpoints : ac3::hearth::device_endpoints()};
     const ac3::hearth::EngineSettings loaded = current_settings(*store_);
     engine_ = std::make_unique<ac3::hearth::Engine>(
         std::move(outputs), ac3::hearth::ui::make_file_item_loader(), layout,
@@ -1436,7 +1437,14 @@ void HearthController::clearRouting() {
     if (!engine_) {
         return;
     }
-    const auto patch = ac3::render::Routing::identity(static_cast<std::size_t>(routing_.size()), 0);
+    // Every slot unpatched, for the device's OWN output count: a patch is
+    // refused whole by the sink unless its outputs() matches what is open
+    // (ac3::audio::PcmOutput::set_routing()), so the zero-output patch this
+    // used to post did nothing at all while a device was open. With nothing
+    // open routing_outputs_ is 0, which is that case's width anyway.
+    const std::vector<int> unpatched(static_cast<std::size_t>(routing_.size()), ac3::render::Routing::kUnassigned);
+    const auto patch =
+        ac3::render::Routing::from_outputs(unpatched, static_cast<std::size_t>(routing_outputs_));
     engine_->set_routing(patch.value_or(ac3::render::Routing{}));
 }
 
@@ -1453,7 +1461,7 @@ void HearthController::useDeviceOrder() {
 
 void HearthController::refreshOutputDevices() {
     QVariantList rows;
-    const auto devices = ac3::audio::enumerate_render_devices();
+    const auto devices = test_outputs_ ? test_outputs_->enumerate() : ac3::audio::enumerate_render_devices();
     if (devices.has_value()) {
         rows.reserve(static_cast<qsizetype>(devices->size()));
         for (const auto& device : *devices) {

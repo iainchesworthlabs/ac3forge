@@ -508,11 +508,12 @@ inline constexpr std::uint32_t kMaxFrameWords = 2048;
 // An EMDF container (ac3::emdf::build_container) to carry in this frame's aux
 // data, or an empty span for none.
 //
-// A/52 §5.4.4.1 puts aux user data at the END of the auxbits field, immediately
-// before auxdatal, "so a decoder can find and unpack the auxdatal user bits
-// without knowing the value of nauxbits" - nauxbits being unknowable until the
-// whole frame has been decoded. So the container is not appended after the
-// padding; the padding is what gets pushed in front of it.
+// It travels in block 0's skip field (Annex E audblk's skiple/skipl/skipfld), not in
+// auxbits: skipl counts bytes in 9 bits, so at most 511 bytes fit, and a
+// longer payload is refused with FrameError::kInvalidObjectAudio before any
+// of the frame is written. (A/52 §5.4.4.1's auxbits/auxdatal route - user
+// data at the END of auxbits, found backwards from auxdatal - is what this
+// encoder's auxbits padding would otherwise have to be pushed in front of.)
 using AuxPayload = std::span<const std::byte>;
 
 // The latency budget a stream from this configuration imposes end to end

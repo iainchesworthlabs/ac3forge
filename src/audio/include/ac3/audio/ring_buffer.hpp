@@ -32,10 +32,24 @@ public:
     // Producer side. Returns the number of items actually written; a short
     // return means the consumer is behind and the remainder was refused.
     std::size_t write(std::span<const T> items) {
+        return write_frames(items, 1);
+    }
+
+    // Producer side, for interleaved audio: as write(), but a short write
+    // stops on a whole frame of `frame_items` items (the channel count), so
+    // the reader's channel slots never slip. With plain write(), a full ring
+    // keeps however many samples fit - an odd number, say, of a stereo
+    // period - and every read after it is shifted by a channel for the rest
+    // of the stream. Everything refused, the partial frame included, is
+    // counted in dropped(), which therefore stays a whole number of frames.
+    // `items` is expected to hold whole frames itself.
+    std::size_t write_frames(std::span<const T> items, std::size_t frame_items) {
         const auto write_at = write_.load();
         const auto read_at = read_.load();
         const std::size_t free_space = buffer_.size() - (write_at - read_at) - 1;
-        const std::size_t count = std::min(items.size(), free_space);
+        const std::size_t whole = frame_items > 1 ? free_space - free_space % frame_items
+                                                  : free_space;
+        const std::size_t count = std::min(items.size(), whole);
         for (std::size_t i = 0; i < count; ++i) {
             buffer_[(write_at + i) & mask_] = items[i];
         }

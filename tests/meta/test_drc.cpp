@@ -352,8 +352,10 @@ TEST_CASE("the loudness meter hits the BS.1770 calibration point", "[loudness]")
 
 TEST_CASE("the loudness meter weights the surrounds and drops the LFE",
           "[loudness]") {
-    std::vector<float> tone(48000 * 6);
-    std::vector<float> silence(48000 * 6, 0.0f);
+    // 1 s (seven 400 ms gating blocks): a steady tone's gated reading, and
+    // so the front/surround difference below, does not depend on length.
+    std::vector<float> tone(48000);
+    std::vector<float> silence(48000, 0.0f);
     for (std::size_t n = 0; n < tone.size(); ++n) {
         tone[n] = static_cast<float>(
             0.1 * std::sin(2.0 * std::numbers::pi * 1000.0 * static_cast<double>(n) / 48000.0));

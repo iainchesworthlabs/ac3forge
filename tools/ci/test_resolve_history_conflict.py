@@ -7,6 +7,8 @@ on main (see the script's own header).
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import os
 import shutil
@@ -14,6 +16,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import resolve_history_conflict as resolver
 from append_quality_history import RECENT_WINDOW_COMMITS, write_recent_window
@@ -164,6 +167,99 @@ class ARealRebaseConflict(unittest.TestCase):
         resolved = self.resolve()
         self.assertEqual(resolved.returncode, 1)
         self.assertIn("no unmerged path", resolved.stdout)
+
+
+class FakeGit:
+    """In-process stand-in for the three git calls the resolver makes, so
+    main() and every refusal path run without a real rebase."""
+
+    def __init__(self, unmerged, stages, fail=None):
+        self.unmerged = unmerged
+        self.stages = stages          # {(number, path): bytes}
+        self.fail = fail or set()
+        self.calls = []
+
+    def __call__(self, cmd, cwd=None, check=False, stdout=None, stderr=None):
+        self.calls.append(cmd[1:])
+        verb = cmd[1]
+        if verb in self.fail:
+            return subprocess.CompletedProcess(cmd, 128, b"", b"fatal: boom")
+        if verb == "diff":
+            return subprocess.CompletedProcess(cmd, 0, "\0".join(self.unmerged).encode(), b"")
+        if verb == "show":
+            number, path = cmd[2][1:].split(":", 1)
+            content = self.stages.get((int(number), path))
+            if content is None:
+                return subprocess.CompletedProcess(cmd, 128, b"", b"")
+            return subprocess.CompletedProcess(cmd, 0, content, b"")
+        if verb == "add":
+            return subprocess.CompletedProcess(cmd, 0, b"", b"")
+        raise AssertionError(cmd)
+
+
+class MainInProcess(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self) -> None:
+        self.tmp.cleanup()
+
+    def run_main(self, fake):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.object(resolver.subprocess, "run", fake), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = resolver.main(["--history-dir", str(self.dir)])
+        return rc, out.getvalue(), err.getvalue()
+
+    def test_union_other_and_orphan_sidecar(self):
+        base, ours, theirs = row("a" * 40), row("b" * 40), row("c" * 40)
+        fake = FakeGit(
+            ["main.jsonl", "badge.json", "memory-main.recent.jsonl"],
+            {(1, "main.jsonl"): (base + "\n").encode(),
+             (2, "main.jsonl"): (base + "\n" + ours + "\n").encode(),
+             (3, "main.jsonl"): (base + "\n" + theirs + "\n\n").encode(),
+             (2, "badge.json"): b"old", (3, "badge.json"): b"new"})
+        rc, out, err = self.run_main(fake)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual((self.dir / "main.jsonl").read_text().splitlines(), [base, ours, theirs])
+        self.assertEqual((self.dir / "badge.json").read_bytes(), b"new")
+        self.assertIn("added 1 from this run", out)
+        self.assertIn("Resolved 3 conflicted path(s)", out)
+        self.assertEqual(fake.calls[-1], ["add", "-A", "--", "."])
+
+    def test_other_file_falls_back_to_branch_side(self):
+        fake = FakeGit(["deleted-by-run.json"], {(2, "deleted-by-run.json"): b"kept"})
+        rc, _, _ = self.run_main(fake)
+        self.assertEqual(rc, 0)
+        self.assertEqual((self.dir / "deleted-by-run.json").read_bytes(), b"kept")
+
+    def test_other_file_with_no_side_is_refused(self):
+        rc, _, err = self.run_main(FakeGit(["x.json"], {}))
+        self.assertEqual(rc, 1)
+        self.assertIn("x.json has no side to take", err)
+
+    def test_jsonl_missing_a_side_is_refused(self):
+        rc, _, err = self.run_main(FakeGit(["main.jsonl"], {(2, "main.jsonl"): b""}))
+        self.assertEqual(rc, 1)
+        self.assertIn("missing from one side", err)
+
+    def test_malformed_added_line_is_refused_and_nothing_written(self):
+        fake = FakeGit(["main.jsonl"], {(2, "main.jsonl"): b"", (3, "main.jsonl"): b"{not json"})
+        rc, _, err = self.run_main(fake)
+        self.assertEqual(rc, 1)
+        self.assertIn("is not JSON", err)
+        self.assertFalse((self.dir / "main.jsonl").exists())
+
+    def test_git_failure_is_reported(self):
+        rc, _, err = self.run_main(FakeGit([], {}, fail={"diff"}))
+        self.assertEqual(rc, 1)
+        self.assertIn("git diff --name-only --diff-filter=U -z failed: fatal: boom", err)
+
+    def test_nothing_unmerged_is_refused(self):
+        rc, _, err = self.run_main(FakeGit([], {}))
+        self.assertEqual(rc, 1)
+        self.assertIn("no unmerged path", err)
 
 
 if __name__ == "__main__":

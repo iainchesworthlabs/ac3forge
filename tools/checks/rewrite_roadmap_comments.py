@@ -184,9 +184,11 @@ REPLACEMENTS: list[tuple[str, str]] = [
         "this option pins.",
     ),
     (r"See ROADMAP\.md's", "See the roadmap's"),
+    # The whole parenthetical goes first: the "see ROADMAP.md)" -> ")" rule
+    # below would otherwise eat its inside and leave an empty "()".
+    (r" ?\(see ROADMAP\.md\)", ""),
     (r", see ROADMAP\.md\)", ")"),
     (r"see ROADMAP\.md\)", ")"),
-    (r" \(see ROADMAP\.md\)", ""),
     (r", see ROADMAP\.md", ""),
     (r"see ROADMAP\.md", ""),
     (r"--- roadmap ", "--- "),
@@ -218,25 +220,24 @@ def replace_bare_roadmap_ids(text: str) -> str:
             return f"{name}'s{tail[2:]}"
         if tail.startswith(" phase") or tail.startswith(" phases"):
             return f"{name}{tail}"
-        if tail.startswith(")"):
-            return f"{name})"
-        if tail.startswith(","):
-            return f"{name},{tail[1:]}"
-        if tail.startswith(":"):
-            return f"{name}:{tail[1:]}"
+        # group(2) only ever matches "'s..." or whitespace + "phase...", so a
+        # tail starting with ")", "," or ":" cannot reach here; those branches
+        # were dead and have been removed.
         return name + tail
 
+    # The "roadmap X/Y" pair runs first: the case-insensitive bare-id pass
+    # below would otherwise consume "roadmap X" and leave "/Y" untranslated.
     text = re.sub(
-        r"(?i)\b(?:roadmap|ROADMAP(?!\.md))\s+([A-Z]{1,2}[0-9]+[a-z]?)('s\b[^)\n]*|\s+phase[s]?[^)\n]*)?",
-        repl,
-        text,
-    )
-    return re.sub(
         r"roadmap ([A-Z]{1,2}[0-9]+[a-z]?)/([A-Z]{1,2}[0-9]+[a-z]?)",
         lambda m: (
             f"{name_for_id(m.group(1))}/"
             f"{name_for_id(m.group(2))}"
         ),
+        text,
+    )
+    return re.sub(
+        r"(?i)\b(?:roadmap|ROADMAP(?!\.md))\s+([A-Z]{1,2}[0-9]+[a-z]?)('s\b[^)\n]*|\s+phase[s]?[^)\n]*)?",
+        repl,
         text,
     )
 

@@ -18,8 +18,12 @@ Flickable {
     readonly property real innerWidth: width - Theme.space6 * 2
     readonly property bool twoUp: innerWidth >= 1000
 
+    // Object names for the Qt Quick suites, which cannot drive a native
+    // picker headless and accept a chosen file on the dialog itself
+    // (ui/tests/qml/tst_settingsworkflow.qml).
     FileDialog {
         id: keyDialog
+        objectName: "keyDialog"
         title: qsTr("Choose the signing key")
         onAccepted: CrucibleController.loadKey(selectedFile.toString())
     }
@@ -27,6 +31,7 @@ Flickable {
     // the suggested name and folder appear in the dialog.
     FileDialog {
         id: diagnosticsDialog
+        objectName: "diagnosticsDialog"
         title: qsTr("Save diagnostics")
         fileMode: FileDialog.SaveFile
         defaultSuffix: "txt"

@@ -49,16 +49,28 @@ Item {
         Loader {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            // Reads the selected sink/group through the maps' members
+            // directly off NetworkController, never through a local
+            // (`const group = NetworkController.selectedGroup; if (group &&
+            // group.id ...)`) - do not "simplify" it back. Under Qt 6.9.3,
+            // qmlcachegen compiles a member read on such a local as a
+            // value-type lookup on QVariant itself: the generated C++ passes
+            // QMetaType::fromName("QVariant").metaObject() - null, QVariant
+            // has no meta-object - to AOTCompiledContext::
+            // initGetValueLookup(), which dereferences it, and ac3hearth
+            // segfaulted on start (Network.qml is built with Main.qml's
+            // StackLayout). A read straight off the singleton's QVariantMap
+            // property is compiled as an ordinary lookup.
+            // tst_network_page_aot.qml builds the page with the compiled
+            // bindings to hold this.
             sourceComponent: {
-                const group = NetworkController.selectedGroup;
-                if (group && group.id !== undefined) {
+                if (NetworkController.selectedGroup.id !== undefined) {
                     return groupState;
                 }
-                const sink = NetworkController.selectedSink;
-                if (!sink || sink.id === undefined) {
+                if (NetworkController.selectedSink.id === undefined) {
                     return emptyState;
                 }
-                if (sink.badge !== "paired") {
+                if (NetworkController.selectedSink.badge !== "paired") {
                     return pairingState;
                 }
                 return NetworkController.selectedSinkSettable ? settingsState : pairedState;

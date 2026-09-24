@@ -50,6 +50,10 @@ using alsa::SwParams;
 constexpr snd_pcm_uframes_t kPreferredPeriod = 1024;
 constexpr unsigned kPeriodsPerBuffer = 4;
 constexpr int kWaitMs = 100;
+// How many recoveries one period's write may need before the rest of it is
+// given up on (see the render loop). An under-run costs one; a device that
+// needs more than a few in a row to take a single period is not playing.
+constexpr int kWriteRetries = 4;
 
 // Convert normalised float into the device's format, in place into `out`.
 //
@@ -480,6 +484,11 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
                 impl_->submitted.store(0, std::memory_order_relaxed);
                 impl_->flushes.fetch_add(1, std::memory_order_release);
                 if (device_paused) {
+                    // Dropped, so whatever kind of pause was in force the
+                    // stream is now PREPARED and a resume starts it by
+                    // writing - not with snd_pcm_pause(0), which a PREPARED
+                    // stream refuses. As PassthroughSink's ALSA backend does.
+                    dropped_to_pause = true;
                     continue;
                 }
             }
@@ -508,15 +517,44 @@ std::expected<void, MonitorError> MonitorSink::start(const std::string& device_i
             }
             convert(chunk, format.kind, raw);
 
-            const snd_pcm_sframes_t written = snd_pcm_writei(pcm, raw.data(), period);
-            if (written < 0) {
-                if (snd_pcm_recover(pcm, static_cast<int>(written), /*silent=*/1) < 0) {
-                    lost = true;
-                    break;
+            // The chunk has left the queue, so it is written out here in
+            // full or given up on here - never simply dropped by a
+            // `continue`. A write that meets an under-run (-EPIPE) or a
+            // suspend has handed over nothing of what it was asked; once
+            // snd_pcm_recover has prepared the stream again, the rest of the
+            // chunk is written again rather than lost, so what the caller
+            // submitted is what the device is given. Were the chunk skipped,
+            // frames_rendered would fall behind frames_submitted for good and
+            // a caller waiting for the one to catch the other (ac3cli
+            // monitor's drain) would wait for ever.
+            //
+            // A device that under-runs again on every retry without taking a
+            // frame is given up on after kWriteRetries recoveries: the rest
+            // of the chunk is counted as rendered all the same, because the
+            // counter means "taken from the queue and finished with", and a
+            // drain has to end.
+            const std::size_t frame_bytes = raw.size() / period;
+            snd_pcm_uframes_t done = 0;
+            int retries = 0;
+            while (done < period && !stop.stop_requested()) {
+                const snd_pcm_sframes_t written =
+                    snd_pcm_writei(pcm, raw.data() + done * frame_bytes, period - done);
+                if (written < 0) {
+                    if (snd_pcm_recover(pcm, static_cast<int>(written), /*silent=*/1) < 0) {
+                        lost = true;
+                        break;
+                    }
+                    if (++retries > kWriteRetries) {
+                        break;
+                    }
+                    continue;
                 }
-                continue;
+                done += static_cast<snd_pcm_uframes_t>(written);
+                handed_over += static_cast<std::uint64_t>(written);
             }
-            handed_over += static_cast<std::uint64_t>(written);
+            if (lost) {
+                break;
+            }
             impl_->rendered.fetch_add(got / channels);
         }
 

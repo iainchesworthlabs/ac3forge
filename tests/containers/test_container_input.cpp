@@ -6,6 +6,7 @@
 #include <limits>
 #include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -85,6 +86,50 @@ TEST_CASE("sniff_container still finds a real MPEG-TS packet grid", "[containers
     }
 
     CHECK(ac3::apps::sniff_container(stream) == ac3::apps::ContainerKind::kMpegTs);
+}
+
+// The same false positive from a WAV: steady PCM repeats bytes at a fixed
+// period (a 1 kHz sine at 48 kHz is 48 samples a cycle), and a float WAV
+// `ac3cli decode` wrote had five 0x47 bytes exactly 192 apart, so every
+// command that sniffs its input refused it as an undemuxable transport
+// stream. Its RIFF/WAVE magic - and RF64's and BW64's - settles it first.
+TEST_CASE("sniff_container does not mistake a WAV with a 0x47 grid for MPEG-TS",
+          "[containers][io2]") {
+    for (const std::string_view id : {"RIFF", "RF64", "BW64"}) {
+        CAPTURE(id);
+        constexpr int kRepeats = 8;
+        Bytes wav(44 + (204 * kRepeats), std::byte{0x00});
+        const std::string_view header_ids[] = {id, "WAVE"};
+        std::ranges::copy(std::as_bytes(std::span{header_ids[0]}), wav.begin());
+        std::ranges::copy(std::as_bytes(std::span{header_ids[1]}), wav.begin() + 8);
+        // Both grids at once, each starting inside its first stride as a real
+        // capture's would, so only the magic can tell this apart.
+        for (int i = 0; i < kRepeats; ++i) {
+            wav[44 + (188 * static_cast<std::size_t>(i))] = std::byte{0x47};
+            wav[52 + (192 * static_cast<std::size_t>(i))] = std::byte{0x47};
+        }
+        CHECK(ac3::apps::sniff_container(wav) == ac3::apps::ContainerKind::kUnknown);
+    }
+}
+
+// A capture may start mid-packet, but then its first whole packet's sync
+// byte is less than one stride in; a grid that only starts further in has
+// something that is not transport stream before it, and is not one.
+TEST_CASE("sniff_container wants the packet grid to start within its first stride",
+          "[containers][io2]") {
+    constexpr std::size_t kStride = 188;
+    constexpr int kRepeats = 6;
+    for (const std::size_t start : {std::size_t{100}, std::size_t{187}, std::size_t{188},
+                                    std::size_t{1000}}) {
+        CAPTURE(start);
+        Bytes stream(start + (kStride * kRepeats), std::byte{0x00});
+        for (int i = 0; i < kRepeats; ++i) {
+            stream[start + (static_cast<std::size_t>(i) * kStride)] = std::byte{0x47};
+        }
+        CHECK(ac3::apps::sniff_container(stream) == (start < kStride
+                                                         ? ac3::apps::ContainerKind::kMpegTs
+                                                         : ac3::apps::ContainerKind::kUnknown));
+    }
 }
 
 TEST_CASE("elementary_stream_from_bytes leaves a bare elementary stream untouched",

@@ -328,7 +328,13 @@ Item {
                         }
                         onReleased: { if (marker.dragging) { marker.emitMove(); marker.settle(marker.dragX / field.width, marker.dragY / field.height); marker.dragging = false; } }
                         onCanceled: marker.dragging = false
-                        onDoubleClicked: root.returned(marker.app.app)
+                        // A double-click arrives as press, release, press,
+                        // doubleClicked, release. The second press set
+                        // dragging, so without clearing it here the final
+                        // release would send the marker's position back and
+                        // the engine would re-place what it was just asked to
+                        // return.
+                        onDoubleClicked: { marker.dragging = false; root.returned(marker.app.app); }
                     }
                     function emitMove() {
                         const u = marker.dragX / field.width;

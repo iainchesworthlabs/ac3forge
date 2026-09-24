@@ -334,6 +334,11 @@ TestCase {
         tryCompare(window, "page", "settings");
         keySequence("Ctrl+1");
         tryCompare(window, "page", "room");
+        // Help is where every desktop puts it, and it is About here.
+        keySequence(StandardKey.HelpContents);
+        tryCompare(window.aboutDialog, "opened", true);
+        window.aboutDialog.close();
+        tryCompare(window.aboutDialog, "opened", false);
         // Out of the way before the next case: while the shell's window is
         // the active one, keys go there and not to this test's own window.
         window.visible = false;

@@ -9,6 +9,7 @@
 #include <QtQmlIntegration>
 
 #include <memory>
+#include <string>
 
 // Forward-declared, not included: PairingStore and QSettingsStore both reach
 // ac3::render transitively (settings_model.hpp includes engine_thread.hpp),
@@ -193,11 +194,24 @@ public:
     Q_INVOKABLE void setMemberVolume(const QString& groupId, const QString& sinkId, int volume);
     Q_INVOKABLE void setMemberMuted(const QString& groupId, const QString& sinkId, bool muted);
 
+    // For the Qt Quick suites alone (ui/tests/qml_test_main.cpp), the same
+    // kind of seam as HearthController::set_test_outputs(): the running
+    // NetworkSinks, or null before start(), so a suite can hand it an
+    // in-process test sink (apps/hearth/testsink) as a found service -
+    // NetworkSinks::on_found() is public for exactly this use (its own
+    // comment) - rather than depend on mDNS multicast, which a CI container
+    // does not carry. Not Q_INVOKABLE: nothing in QML can reach it.
+    [[nodiscard]] ac3::hearth::NetworkSinks* sinks_for_test() const { return sinks_engine_.get(); }
+
 signals:
     void sinksChanged();
 
 private:
     void poll();
+    // Records whether a settings push to `sink_id` was actually sent
+    // (NetworkSinks::push_sink_settings()'s result) and republishes, so a
+    // refused one shows in that sink's report rather than vanishing.
+    void note_push(bool sent, const std::string& sink_id);
 
     std::unique_ptr<ac3::hearth::NetworkSinks> sinks_engine_;
     // The four-argument constructor, network_controller.cpp's own comment
@@ -219,6 +233,9 @@ private:
     QVariantMap sink_decoder_settings_;
     QVariantMap sink_report_;
     QVariantMap sink_only_on_sink_;
+    // The sink the last settings push was refused for, or empty - see
+    // note_push().
+    QString refused_push_sink_;
 
     QVariantList groups_;
     QString selected_group_id_;

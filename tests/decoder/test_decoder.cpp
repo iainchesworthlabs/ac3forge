@@ -124,12 +124,22 @@ double dominant_freq_hz(const std::vector<float>& x, double rate) {
     const std::size_t n0 = 2048;
     const std::size_t len = std::min<std::size_t>(8192, x.size() - n0);
     for (double f = 50.0; f <= 2000.0; f += 10.0) {
+        // The same correlation against cos/sin(2*pi*f*i/rate), advanced by
+        // one complex rotation per sample instead of two libm calls: the
+        // drift over 8192 steps is ~1e-12, and the scan costs a tenth.
+        const double step = 2.0 * std::numbers::pi * f / rate;
+        const double step_cos = std::cos(step);
+        const double step_sin = std::sin(step);
+        double osc_cos = 1.0;
+        double osc_sin = 0.0;
         double re = 0.0;
         double im = 0.0;
         for (std::size_t i = 0; i < len; ++i) {
-            const double phase = 2.0 * std::numbers::pi * f * static_cast<double>(i) / rate;
-            re += static_cast<double>(x[n0 + i]) * std::cos(phase);
-            im += static_cast<double>(x[n0 + i]) * std::sin(phase);
+            re += static_cast<double>(x[n0 + i]) * osc_cos;
+            im += static_cast<double>(x[n0 + i]) * osc_sin;
+            const double next_cos = osc_cos * step_cos - osc_sin * step_sin;
+            osc_sin = osc_sin * step_cos + osc_cos * step_sin;
+            osc_cos = next_cos;
         }
         const double mag = re * re + im * im;
         if (mag > best_m) {

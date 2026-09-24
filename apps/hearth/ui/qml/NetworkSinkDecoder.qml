@@ -22,7 +22,12 @@ ScrollView {
     // Scaled, like every other page's label column: a fixed 90 clips its own
     // words at 150% text size.
     readonly property int labelWidth: Math.round(90 * Theme.fontScale)
-    function accepts(key) { return root.acceptedKeys.indexOf(key) >= 0; }
+    // A listed key is still out of reach when the sink's state does not list
+    // the Settings command at all (NetworkSinkSpeakers.qml's own comment on
+    // settingsAccepted): the push would be refused unsent.
+    function accepts(key) {
+        return NetworkController.sinkSpeakerSettings.settingsAccepted === true && root.acceptedKeys.indexOf(key) >= 0;
+    }
     function set(key, value) {
         const next = Object.assign({}, settings);
         next[key] = value;

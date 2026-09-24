@@ -289,6 +289,13 @@ class Connection final : public sendspin::PlayerListener, public std::enable_sha
                 log("output delay " + std::to_string(command.output_delay_ms) + " ms");
                 break;
             case ac::Command::kSettings:
+                // Listed only with accept_settings; nothing here renders, so
+                // "applied" is the revision reported back, which is all a
+                // server can read.
+                ac3forge_state_.settings_revision = command.settings.revision;
+                ac3forge_state_.settings_error.reset();
+                log("settings " + std::to_string(command.settings.revision) + " applied");
+                break;
             case ac::Command::kIdentify:
                 // Not listed, so not sent.
                 break;
@@ -554,6 +561,9 @@ void Sink::accept(std::unique_ptr<sendspin::transport::Connection> transport) {
         config.ac3forge_state.required_lead_time_ms = 500;
         config.ac3forge_state.min_buffer_ms = 200;
         config.ac3forge_state.supported_commands = {ac::Command::kVolume, ac::Command::kMute};
+        if (options_.accept_settings) {
+            config.ac3forge_state.supported_commands.push_back(ac::Command::kSettings);
+        }
     }
     for (const std::string& role : options_.other_roles) {
         config.supported_roles.push_back(role);

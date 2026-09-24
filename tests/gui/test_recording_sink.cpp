@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fmt/format.h>
 #include <fstream>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -289,6 +290,73 @@ TEST_CASE("RecordingSink with zero frames removes the file and says so", "[gui]"
     CHECK_FALSE(fs::exists(path));
 }
 
+TEST_CASE("RecordingSink with zero frames leaves a file that was already there in place",
+          "[gui]") {
+    // An empty take removes only what its own open() created. A path that
+    // already held the user's file keeps it: open() truncates it, as a take
+    // to an existing path always does, but "nothing was encoded" must not
+    // delete it. (Before the fix this was removed outright - and, pointed at
+    // a device node by a process running as root, so was the node.)
+    const auto path = scratch_dir() / "empty_take_existing.ac3";
+    { std::ofstream{path, std::ios::binary} << "the user's own bytes"; }
+    for (const auto container : {RecordingSink::Container::kElementary,
+                                 RecordingSink::Container::kMatroska,
+                                 RecordingSink::Container::kMpegts,
+                                 RecordingSink::Container::kSpdif}) {
+        CAPTURE(static_cast<int>(container));
+        RecordingSink sink;
+        REQUIRE(sink.open(path.string(),
+                          {.container = container, .eac3 = false, .sample_rate = 48000,
+                           .channels = 2})
+                    .empty());
+        CHECK(sink.close() == "Nothing was encoded.");
+        CHECK(fs::is_regular_file(path));
+    }
+    fs::remove(path);
+}
+
+TEST_CASE("RecordingSink with zero frames through a symlink removes neither the link nor its target",
+          "[gui]") {
+    const auto dir = scratch_dir();
+    const auto target = dir / "empty_take_target.ac3";
+    const auto link = dir / "empty_take_link.ac3";
+    const RecordingSink::Config config{.container = RecordingSink::Container::kElementary,
+                                       .eac3 = false,
+                                       .sample_rate = 48000,
+                                       .channels = 2};
+    std::error_code ec;
+    fs::remove(link, ec);
+    fs::remove(target, ec);
+    SECTION("a link to an existing file keeps both") {
+        { std::ofstream{target, std::ios::binary} << "x"; }
+        fs::create_symlink(target, link, ec);
+        if (ec) {
+            SKIP("cannot create a symlink here");
+        }
+        RecordingSink sink;
+        REQUIRE(sink.open(link.string(), config).empty());
+        CHECK(sink.close() == "Nothing was encoded.");
+        CHECK(fs::is_symlink(link));
+        CHECK(fs::is_regular_file(target));
+    }
+    SECTION("a dangling link keeps the link, and the file opening it made") {
+        // The link was the user's, so it stays - and so does the file open()
+        // created through it: the sink removes only a plain file it created
+        // at the path itself, and never deletes anything through a link.
+        fs::create_symlink(target, link, ec);
+        if (ec) {
+            SKIP("cannot create a symlink here");
+        }
+        RecordingSink sink;
+        REQUIRE(sink.open(link.string(), config).empty());
+        CHECK(sink.close() == "Nothing was encoded.");
+        CHECK(fs::is_symlink(link));
+        CHECK(fs::exists(target));
+    }
+    fs::remove(link, ec);
+    fs::remove(target, ec);
+}
+
 TEST_CASE("RecordingSink reports an uncreatable destination at open, not at stop", "[gui]") {
     RecordingSink sink;
     const auto problem =
@@ -298,4 +366,240 @@ TEST_CASE("RecordingSink reports an uncreatable destination at open, not at stop
                    .sample_rate = 48000,
                    .channels = 2});
     CHECK(problem == "Could not open the output file for writing.");
+}
+
+TEST_CASE("RecordingSink's IEC 61937 take patches its header as it goes and stays one-shot equal",
+          "[gui]") {
+    // 40 frames: past the 32nd, where the carrier's header is patched mid-take.
+    const auto frames = silent_ac3_frames(40);
+    const auto path = scratch_dir() / "spdif_long.wav";
+    const auto streamed =
+        pushed_through(RecordingSink::Container::kSpdif, /*eac3=*/false, path, frames);
+    std::vector<std::byte> payload;
+    for (const auto& frame : frames) {
+        const auto burst = ac3::iec61937::wrap_frame(frame);
+        REQUIRE(burst.has_value());
+        payload.insert(payload.end(), burst->begin(), burst->end());
+    }
+    // 44-byte header, then the bursts exactly.
+    REQUIRE(streamed.size() == 44 + payload.size());
+    CHECK(std::vector<std::byte>(streamed.begin() + 44, streamed.end()) == payload);
+}
+
+TEST_CASE("RecordingSink reports an uncreatable IEC 61937 carrier at open", "[gui]") {
+    RecordingSink sink;
+    const auto problem = sink.open((scratch_dir() / "no" / "such" / "dir" / "take.wav").string(),
+                                   {.container = RecordingSink::Container::kSpdif,
+                                    .eac3 = true,
+                                    .sample_rate = 48000,
+                                    .channels = 6});
+    CHECK(problem == "Could not open the output file for writing.");
+}
+
+TEST_CASE("RecordingSink refuses a track no container can describe, at open", "[gui]") {
+    for (const auto container :
+         {RecordingSink::Container::kMatroska, RecordingSink::Container::kMpegts}) {
+        RecordingSink sink;
+        const auto problem =
+            sink.open((scratch_dir() / "no_channels.bin").string(),
+                      {.container = container, .eac3 = false, .sample_rate = 48000, .channels = 0});
+        CHECK_FALSE(problem.empty());
+        // Nothing was opened, so there is nothing to close or report.
+        CHECK(sink.close().empty());
+    }
+}
+
+TEST_CASE("RecordingSink that was never opened closes quietly", "[gui]") {
+    RecordingSink sink;
+    CHECK(sink.close().empty());
+    CHECK(sink.frames() == 0);
+}
+
+TEST_CASE("RecordingSink reports bytes it cannot wrap into IEC 61937 bursts", "[gui]") {
+    const std::vector<std::byte> not_a_frame(512, std::byte{0x5A});
+    for (const bool eac3 : {false, true}) {
+        RecordingSink sink;
+        const auto path = scratch_dir() / (eac3 ? "garbage_eac3.wav" : "garbage_ac3.wav");
+        REQUIRE(sink.open(path.string(), {.container = RecordingSink::Container::kSpdif,
+                                          .eac3 = eac3,
+                                          .sample_rate = 48000,
+                                          .channels = 2})
+                    .empty());
+        CHECK(sink.push(not_a_frame) == "Could not wrap the stream into IEC 61937 bursts.");
+        CHECK(sink.frames() == 0);
+        CHECK(sink.close() == "Nothing was encoded.");
+        CHECK_FALSE(fs::exists(path));
+    }
+}
+
+TEST_CASE("RecordingSink reports an access unit too large for one MPEG-TS PES packet", "[gui]") {
+    RecordingSink sink;
+    REQUIRE(sink.open((scratch_dir() / "huge.ts").string(),
+                      {.container = RecordingSink::Container::kMpegts,
+                       .eac3 = true,
+                       .sample_rate = 48000,
+                       .channels = 2})
+                .empty());
+    const std::vector<std::byte> huge(70'000, std::byte{0});
+    const auto problem = sink.push(huge);
+    CHECK_FALSE(problem.empty());
+    CHECK(sink.frames() == 0);
+}
+
+TEST_CASE("RecordingSink's fragmented-MP4 take reports a bad folder, a bad frame and an empty take",
+          "[gui]") {
+    {
+        // A folder cannot be made under a regular file.
+        const auto blocker = scratch_dir() / "fmp4_blocker";
+        { std::ofstream{blocker} << "x"; }
+        RecordingSink sink;
+        const auto problem = sink.open((blocker / "take").string(),
+                                       {.container = RecordingSink::Container::kFmp4,
+                                        .eac3 = true,
+                                        .sample_rate = 48000,
+                                        .channels = 6});
+        CHECK_FALSE(problem.empty());
+    }
+    {
+        const auto folder = scratch_dir() / "fmp4_bad_frame";
+        fs::remove_all(folder);
+        RecordingSink sink;
+        REQUIRE(sink.open(folder.string(), {.container = RecordingSink::Container::kFmp4,
+                                            .eac3 = true,
+                                            .sample_rate = 48000,
+                                            .channels = 6})
+                    .empty());
+        const std::vector<std::byte> not_a_unit(256, std::byte{0x5A});
+        CHECK_FALSE(sink.push(not_a_unit).empty());
+    }
+    {
+        // Nothing encoded: the folder open() made is removed again.
+        const auto folder = scratch_dir() / "fmp4_empty";
+        fs::remove_all(folder);
+        RecordingSink sink;
+        REQUIRE(sink.open(folder.string(), {.container = RecordingSink::Container::kFmp4,
+                                            .eac3 = true,
+                                            .sample_rate = 48000,
+                                            .channels = 6})
+                    .empty());
+        CHECK(fs::is_directory(folder));
+        CHECK(sink.close() == "Nothing was encoded.");
+        CHECK_FALSE(fs::exists(folder));
+    }
+    {
+        // ...but a folder the user already had, even an empty one, is theirs
+        // and stays.
+        const auto folder = scratch_dir() / "fmp4_empty_existing";
+        fs::remove_all(folder);
+        fs::create_directories(folder);
+        RecordingSink sink;
+        REQUIRE(sink.open(folder.string(), {.container = RecordingSink::Container::kFmp4,
+                                            .eac3 = true,
+                                            .sample_rate = 48000,
+                                            .channels = 6})
+                    .empty());
+        CHECK(sink.close() == "Nothing was encoded.");
+        CHECK(fs::is_directory(folder));
+        fs::remove_all(folder);
+    }
+}
+
+// Portable as written: on a system without a /dev/full character device the
+// helper below finds none and both cases SKIP, so no preprocessor branch is
+// needed to keep them off other platforms.
+// /dev/full: every write the kernel sees fails with ENOSPC, the disk-full case
+// a long take can actually meet. The streams are buffered, so the failure
+// surfaces a few frames in - which is exactly how it surfaces on a real disk.
+//
+// Reached through a symlink of this test's own, never by its real name, so
+// that a regression of close()'s "only remove what open() created" rule costs
+// this test its link rather than the machine its device node: a take that
+// fails before its first frame is an empty take, and an empty take's close()
+// used to remove whatever was at the path.
+namespace {
+
+std::optional<fs::path> full_device_link() {
+    std::error_code ec;
+    if (!fs::is_character_file("/dev/full", ec)) {
+        return std::nullopt;
+    }
+    const auto link = scratch_dir() / "dev_full";
+    fs::remove(link, ec);
+    fs::create_symlink("/dev/full", link, ec);
+    if (ec) {
+        return std::nullopt;
+    }
+    return link;
+}
+
+}  // namespace
+
+TEST_CASE("RecordingSink names a full disk in each container's own words", "[gui]") {
+    const auto full = full_device_link();
+    if (!full) {
+        SKIP("no /dev/full character device here");
+    }
+    struct Case {
+        RecordingSink::Container container;
+        bool eac3;
+        const char* message;
+    };
+    for (const auto& c : {Case{RecordingSink::Container::kElementary, false,
+                               "Writing the stream failed."},
+                          Case{RecordingSink::Container::kMatroska, false,
+                               "Writing the Matroska file failed."},
+                          Case{RecordingSink::Container::kMpegts, false,
+                               "Writing the MPEG-TS file failed."},
+                          Case{RecordingSink::Container::kSpdif, false,
+                               "Writing the WAV carrier failed."},
+                          Case{RecordingSink::Container::kSpdif, true,
+                               "Writing the WAV carrier failed."}}) {
+        CAPTURE(static_cast<int>(c.container), c.eac3);
+        // The link predates every take, so no empty take removed it.
+        REQUIRE(fs::is_symlink(*full));
+        RecordingSink sink;
+        REQUIRE(sink.open(full->string(), {.container = c.container,
+                                           .eac3 = c.eac3,
+                                           .sample_rate = 48000,
+                                           .channels = c.eac3 ? 6 : 2})
+                    .empty());
+        const auto frames = c.eac3 ? silent_eac3_units(1) : silent_ac3_frames(1);
+        std::string problem;
+        for (int i = 0; i < 2000 && problem.empty(); ++i) {
+            problem = sink.push(frames.front());
+        }
+        CHECK(problem == c.message);
+        // Closing a take whose disk filled up never reports a clean finish:
+        // the write failure again, or - where the very first frame was the
+        // one that failed - an empty take. The carrier's close() is the
+        // exception, with nothing buffered left to fail.
+        const bool empty_take = sink.frames() == 0;
+        const auto closed = sink.close();
+        if (empty_take) {
+            CHECK(closed == "Nothing was encoded.");
+        } else if (c.container != RecordingSink::Container::kSpdif) {
+            CHECK(closed == c.message);
+        }
+    }
+    CHECK(fs::is_character_file("/dev/full"));
+}
+
+TEST_CASE("RecordingSink reports a take that only fails as it is closed", "[gui]") {
+    const auto full = full_device_link();
+    if (!full) {
+        SKIP("no /dev/full character device here");
+    }
+    // One small frame fits in the stream's buffer, so the failure arrives with
+    // the flush at close().
+    RecordingSink sink;
+    REQUIRE(sink.open(full->string(), {.container = RecordingSink::Container::kElementary,
+                                       .eac3 = false,
+                                       .sample_rate = 48000,
+                                       .channels = 2})
+                .empty());
+    const auto small = ac3::build_silent_stereo_frame({.bitrate_kbps = 32});
+    REQUIRE(small.has_value());
+    REQUIRE(small->size() < 512);
+    REQUIRE(sink.push(*small).empty());
+    CHECK(sink.close() == "Writing the stream failed.");
 }

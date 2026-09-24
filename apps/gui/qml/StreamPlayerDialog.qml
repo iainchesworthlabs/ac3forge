@@ -39,6 +39,7 @@ Dialog {
 
     FileDialog {
         id: spFileDialog
+        objectName: "spFileDialog"
         title: qsTr("Choose an AC-3 / E-AC-3 stream")
         nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
         onAccepted: StreamPlayerController.openFile(selectedFile)
@@ -46,6 +47,7 @@ Dialog {
 
     FileDialog {
         id: spExportWavDialog
+        objectName: "spExportWavDialog"
         title: qsTr("Export decoded WAV")
         fileMode: FileDialog.SaveFile
         nameFilters: [qsTr("WAV audio (*.wav)"), qsTr("All files (*)")]
@@ -60,6 +62,7 @@ Dialog {
     // reasoning.
     FolderDialog {
         id: spExportObjectsDialog
+        objectName: "spExportObjectsDialog"
         title: qsTr("Choose a folder for the exported objects")
         onAccepted: StreamPlayerController.exportObjects(selectedFolder)
     }

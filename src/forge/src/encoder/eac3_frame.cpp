@@ -1588,15 +1588,21 @@ void emit_frame(BitWriter& w, const FrameConfig& config, std::uint32_t words,
                 // §E2.3.1.60: at numblkscod 0x0 (one block per syncframe) the
                 // per-block flag is INFERRED set, so entry 0 alone is written,
                 // unconditionally - the mirror of the decoder's own read_mixing_
-                // metadata(). Every other case - the six blocks of numblkscod
-                // 0x3, or the implicit six of a reduced-rate fscod2 frame -
-                // writes the full per-block form. MixMetadata::blkmixcfginfo's
-                // own comment documents the numblkscod-0x0 contract: entry 0
-                // must be set whenever the group itself is.
+                // metadata(). Every other case writes the per-block form, one
+                // flag per block the syncframe actually carries: the loop is
+                // over number_of_blocks_per_syncframe, so two at numblkscod
+                // 0x1, three at 0x2, six at 0x3 (and at the implicit six of a
+                // reduced-rate fscod2 frame). Walking all six array slots at
+                // a short syncframe would put flags on the wire no reader
+                // consumes and shift every later BSI field. MixMetadata::
+                // blkmixcfginfo's own comment documents both contracts: entry
+                // 0 must be set at numblkscod 0x0, and entries at or past the
+                // frame's block count are never written.
                 if (config.numblkscod == 0x0) {
                     w.put(static_cast<std::uint32_t>((*mix.blkmixcfginfo)[0].value_or(0)), 5);
                 } else {
-                    for (const auto& word : *mix.blkmixcfginfo) {
+                    for (int blk = 0; blk < nblks; ++blk) {
+                        const auto& word = (*mix.blkmixcfginfo)[static_cast<std::size_t>(blk)];
                         w.put(word ? 1 : 0, 1);  // blkmixcfginfoe
                         if (word.has_value()) {
                             w.put(static_cast<std::uint32_t>(*word), 5);
@@ -3044,6 +3050,14 @@ std::expected<std::vector<std::byte>, FrameError> FrameEncoder::encode_frame(
     }
     if (const auto ok = validate(impl_->config_); !ok) {
         return std::unexpected(ok.error());
+    }
+    // The aux payload rides block 0's skip field, whose skipl is 9 bits.
+    // finish_frame() refuses an oversized one too, but step 8's side-info
+    // probe below emits the skip field long before finish_frame runs - and
+    // BitWriter::put asserts on a length that does not fit its field - so
+    // the refusal has to happen here, before any bits are written.
+    if (aux.size() > kMaxSkipBytes) {
+        return std::unexpected(FrameError::kInvalidObjectAudio);
     }
     const int nfchans = fullbw_channel_count(impl_->config_.acmod);
     const int nchans = channel_count();

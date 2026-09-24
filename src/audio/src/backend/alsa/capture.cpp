@@ -412,7 +412,7 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
                 if (frames > 0) {
                     const auto count = static_cast<std::size_t>(frames);
                     convert(raw.data(), count * settings.channels, settings.format, scratch);
-                    impl_->ring->write(scratch);
+                    impl_->ring->write_frames(scratch, settings.channels);
                     impl_->frames_captured.fetch_add(count);
                     timeline_frames += count;
                 }
@@ -435,7 +435,7 @@ std::expected<void, CaptureError> Capture::start(const std::string& device_id, D
                 auto missing = elapsed_frames - timeline_frames;
                 missing = std::min<std::uint64_t>(missing, settings.rate);  // cap a long stall
                 silence.assign(static_cast<std::size_t>(missing) * settings.channels, 0.0f);
-                impl_->ring->write(silence);
+                impl_->ring->write_frames(silence, settings.channels);
                 impl_->frames_silence.fetch_add(missing);
                 timeline_frames += missing;
             }

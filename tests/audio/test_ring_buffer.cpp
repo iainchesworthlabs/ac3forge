@@ -55,6 +55,25 @@ TEST_CASE("a full buffer drops the overflow and counts it", "[ring][concurrency]
     CHECK(ring.write(std::vector<float>(4, 1.0f)) == 4);
 }
 
+TEST_CASE("a frame-aligned write stops a full buffer on a whole frame", "[ring][concurrency]") {
+    // Seven usable slots take three stereo frames and refuse the fourth
+    // whole, where a plain write would keep its left sample and leave every
+    // later read a channel out of step. The refusal counts the half frame
+    // too, so dropped() stays a whole number of frames.
+    ac3::audio::RingBuffer ring(8);
+    std::vector<float> in(10);
+    std::iota(in.begin(), in.end(), 0.0f);
+    CHECK(ring.write_frames(in, 2) == 6);
+    CHECK(ring.available() == 6);
+    CHECK(ring.dropped() == 4);
+
+    std::vector<float> out(6);
+    REQUIRE(ring.read(out) == 6);
+    CHECK(out == std::vector<float>(in.begin(), in.begin() + 6));
+    // A frame of one item is a plain write.
+    CHECK(ring.write_frames(std::vector<float>(9, 1.0f), 1) == 7);
+}
+
 TEST_CASE("reads never exceed what was written", "[ring][concurrency]") {
     ac3::audio::RingBuffer ring(32);
     std::vector<float> out(10);

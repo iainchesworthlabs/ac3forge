@@ -57,8 +57,9 @@ enum class FrameError : std::uint8_t {
     // A mixing-metadata field would go out as a reserved code (Tables D2.4 and
     // D2.6 reserve three of the eight surround levels) or out of range.
     kInvalidMixLevel,
-    // Aux user data longer than auxdatal's 14 bits can measure (§5.4.4.2), or
-    // an object count outside what TS 103 420 §8.3.2.2 allows in addbsi.
+    // E-AC-3 aux data (eac3::AuxPayload) longer than the 511 bytes block 0's
+    // 9-bit skipl can measure, or an object count outside what TS 103 420
+    // (§8.3.2.2's addbsi complexity index, the OAMD/JOC containers) allows.
     kInvalidObjectAudio,
     // A bit stream information field would not fit the bits §5.4.2 / Table
     // E1.2 gives it (a mixing level above 31, a time code past 23:59:59, a

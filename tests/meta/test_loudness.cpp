@@ -223,11 +223,14 @@ TEST_CASE("true peak finds the inter-sample peak a sample-peak reading misses",
 
     // The oversampled reading must sit clearly above what sample-peak alone
     // would report (BS.1770-4 Annex 2's whole reason to exist), and land
-    // close to the true analytic answer of 0 dBTP - Annex 2's own worst-case
-    // under-read table puts a 4x-oversampled reading within ~0.7 dB of the
-    // true value even at Nyquist itself; Fs/4 is comfortably inside that.
+    // close to the true analytic answer of 0 dBTP. Annex 2's worst-case
+    // under-read is ~0.7 dB at Nyquist itself, but at Fs/4 the peaks land
+    // exactly on the 4x grid's midpoint phase, so all that is left is the
+    // interpolator's own passband ripple (this meter reads +0.08 dB): 0.2 dB
+    // holds that with room while still refusing an interpolator that merely
+    // got "most of the way" up from -3 dB.
     CHECK(*true_peak > sample_peak_dbtp + 1.5);
-    CHECK(*true_peak == Catch::Approx(0.0).margin(1.0));
+    CHECK(*true_peak == Catch::Approx(0.0).margin(0.2));
 }
 
 TEST_CASE("true peak includes the LFE channel that integrated loudness excludes",
@@ -369,10 +372,14 @@ TEST_CASE("the meter weights each channel of a wide layout by its own position",
     const auto layout = chanmap::expand(mask);
     CAPTURE(mask, layout.count);
 
-    // 2 s is seventeen 400 ms blocks - ample for a steady tone, and this
-    // probe runs once per channel of four layouts, so the duration is the
-    // whole cost of the test.
-    const auto tone = make_tone(2.0, 1000.0, 0.1);  // -20 dBFS
+    // 0.5 s is two 400 ms gating blocks. On a steady tone every block holds
+    // the same power, so the integrated reading does not depend on how many
+    // there are: the K-weighting filters settle within a few milliseconds
+    // and move a 0.4 s reading by under 0.001 dB against a 2 s one (worked
+    // through the BS.1770 biquads), a hundredth of the 0.1 dB checked below.
+    // This probe runs once per channel of four layouts, so the duration is
+    // the whole cost of the test.
+    const auto tone = make_tone(0.5, 1000.0, 0.1);  // -20 dBFS
     const std::vector<float> silence(tone.size(), 0.0f);
 
     for (int probe = 0; probe < layout.count; ++probe) {
@@ -413,8 +420,10 @@ TEST_CASE("a 5.1 layout measures identically through Annex 1 and Annex 3",
     // positional table ever drifted off Table 3 for these five channels, this
     // is what would catch it.
     const auto layout = chanmap::expand(k51);
-    const auto tone = make_tone(4.0, 1000.0, 0.1);
-    const auto quieter = make_tone(4.0, 1000.0, 0.05);
+    // 1 s (seven gating blocks) is plenty: both meters read the same
+    // samples, so they agree - or not - at any length.
+    const auto tone = make_tone(1.0, 1000.0, 0.1);
+    const auto quieter = make_tone(1.0, 1000.0, 0.05);
     // Deliberately not the same level in every channel: equal levels would
     // still agree even if the two constructors permuted the weights.
     const std::array<std::span<const float>, 6> channels = {tone,    quieter, tone,
@@ -445,7 +454,9 @@ TEST_CASE("the two algorithms disagree only about the lone surround of 2/1 and 3
     REQUIRE(layout.count == 3);
     REQUIRE(layout[2] == Location::kCs);
 
-    const auto tone = make_tone(4.0, 1000.0, 0.1);
+    // 1 s: a steady tone's gated reading, and so the difference checked
+    // below, is independent of length once one 400 ms block has elapsed.
+    const auto tone = make_tone(1.0, 1000.0, 0.1);
     const std::vector<float> silence(tone.size(), 0.0f);
     // Only the surround carries signal, so the whole reading IS that
     // channel's weighted contribution.
@@ -478,7 +489,9 @@ TEST_CASE("widening 5.1 to 7.1.4 adds channels the meter counts but does not sur
     REQUIRE(bed.count == 6);
     REQUIRE(wide.count == 12);
 
-    const auto tone = make_tone(4.0, 1000.0, 0.1);
+    // 1 s: a steady tone's gated reading, and so the difference checked
+    // below, is independent of length once one 400 ms block has elapsed.
+    const auto tone = make_tone(1.0, 1000.0, 0.1);
     const std::vector<float> silence(tone.size(), 0.0f);
 
     // Bed: L, C, R at unity and Ls, Rs at 1.41, LFE excluded.

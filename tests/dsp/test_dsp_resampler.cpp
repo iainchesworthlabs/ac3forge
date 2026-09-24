@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -196,11 +197,15 @@ TEST_CASE("resample_planar matches per-channel resample() and keeps channels ind
 
     REQUIRE(planar[0].size() == individual0.size());
     REQUIRE(planar[1].size() == individual1.size());
-    for (std::size_t i = 0; i < individual0.size(); ++i) {
-        CHECK(planar[0][i] == individual0[i]);
-    }
-    for (std::size_t i = 0; i < individual1.size(); ++i) {
-        CHECK(planar[1][i] == individual1[i]);
+    // Bit-exact, sample for sample. One assertion per channel rather than
+    // one per sample (96k of them): the vector comparison is the same
+    // property, and the CAPTUREd first mismatch still says where it broke.
+    for (std::size_t ch = 0; ch < 2; ++ch) {
+        const auto& individual = ch == 0 ? individual0 : individual1;
+        const auto first_mismatch = static_cast<std::size_t>(
+            std::ranges::mismatch(planar[ch], individual).in1 - planar[ch].begin());
+        CAPTURE(ch, first_mismatch);
+        CHECK(planar[ch] == individual);
     }
 
     // Each channel's own tone survives the conversion under its own

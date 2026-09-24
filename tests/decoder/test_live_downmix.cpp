@@ -86,10 +86,27 @@ TEST_CASE("clamp_to_legal_ac3_bitrate feeds a bitrate the downmix leg's encoder 
                                     .bitrate_kbps = clamped,
                                     .acmod = ac3::Acmod::k3_2,
                                     .lfe = true};
-    // Construction alone must not throw/assert - proves the clamped value is
-    // one the encoder actually accepts, not just one is_valid_bitrate agrees
-    // with in isolation.
-    REQUIRE_NOTHROW(ac3::FrameEncoder{config});
+    // The encoder never throws - a rate it cannot carry surfaces as
+    // kInvalidBitrate from encode_frame - so constructing one proves
+    // nothing. Encoding a frame is what shows the clamped value is one the
+    // encoder actually accepts, not just one is_valid_bitrate agrees with in
+    // isolation.
+    ac3::FrameEncoder encoder{config};
+    const std::vector<float> silence(ac3::kSamplesPerFrame, 0.0f);
+    const std::vector<std::span<const float>> channels(6, silence);
+    const auto frame = encoder.encode_frame(channels);
+    REQUIRE(frame.has_value());
+    // The frame size a 448 kbit/s syncframe has at 48 kHz (Table 5.18).
+    CHECK(frame->size() == 448U * 1000U / 8U * 1536U / 48000U);
+
+    // The unclamped rate is the one it would have refused.
+    ac3::FrameEncoder unclamped{{.sample_rate = ac3::SampleRate::k48000,
+                                 .bitrate_kbps = requested,
+                                 .acmod = ac3::Acmod::k3_2,
+                                 .lfe = true}};
+    const auto refused = unclamped.encode_frame(channels);
+    REQUIRE_FALSE(refused.has_value());
+    CHECK(refused.error() == ac3::FrameError::kInvalidBitrate);
 }
 
 TEST_CASE("the downmix leg's encoder carries every bed channel's own content, not a silent or "

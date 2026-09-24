@@ -779,8 +779,14 @@ ApplicationWindow {
         return line;
     }
 
+    // The pickers carry objectNames (here and in the dialogs) for the Qt
+    // Quick Test suites: a test presses the real button, finds the picker it
+    // opened, fills selectedFile and emits its accepted(), so the SAME
+    // onAccepted a real pick runs is what drives the workflow
+    // (tst_e2e_encode.qml's pickFile).
     FileDialog {
         id: openDialog
+        objectName: "openDialog"
         title: qsTr("Choose a WAV file")
         nameFilters: [qsTr("WAV audio (*.wav)"), qsTr("All files (*)")]
         onAccepted: EncoderController.loadSourceFile(selectedFile)
@@ -788,6 +794,7 @@ ApplicationWindow {
 
     FileDialog {
         id: addSourceDialog
+        objectName: "addSourceDialog"
         title: qsTr("Add another source")
         nameFilters: [qsTr("WAV audio (*.wav)"), qsTr("All files (*)")]
         onAccepted: EncoderController.addSourceFile(selectedFile)
@@ -799,6 +806,7 @@ ApplicationWindow {
     // stale the moment the codec or container changed.
     FileDialog {
         id: saveDialog
+        objectName: "saveDialog"
         title: qsTr("Save encoded audio")
         fileMode: FileDialog.SaveFile
         // Snapshotted right before the run opens - see runs' and
@@ -873,6 +881,7 @@ ApplicationWindow {
     // suffix, so either file works wherever the other does.
     FileDialog {
         id: exportPathsDialog
+        objectName: "exportPathsDialog"
         title: qsTr("Export object paths")
         fileMode: FileDialog.SaveFile
         nameFilters: [qsTr("Keyframe columns (*.txt)"), qsTr("Object scene (*.json)"),

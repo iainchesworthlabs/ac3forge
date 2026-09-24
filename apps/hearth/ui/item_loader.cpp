@@ -81,7 +81,12 @@ std::vector<std::string> list_folder_items(const std::string& folder) {
         std::error_code type_error;
         if (it->is_regular_file(type_error) && !type_error &&
             is_folder_media_extension(lowercase_extension(it->path().string()))) {
-            paths.push_back(it->path().string());
+            // generic_string(), not string(): every other path QueueItem::path ever holds
+            // (addFiles' selectedFiles, a drop) arrives through a QUrl/QDir, which is always
+            // "/"-separated even on Windows (Qt's own convention) - std::filesystem::path's
+            // native string() would instead give this one caller "\\"-separated paths, so a
+            // file added both ways would show up under two different-looking queue entries.
+            paths.push_back(it->path().generic_string());
         }
         it.increment(walk_error);
     }

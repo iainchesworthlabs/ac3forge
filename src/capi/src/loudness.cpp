@@ -54,6 +54,13 @@ ac3forge_status_t ac3forge_loudness_meter_push(ac3forge_loudness_meter_t* meter,
     if (meter == nullptr || channels == nullptr) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
+    // At most channel_count() spans. Checked before the reserve() below,
+    // which would otherwise size itself from an unchecked caller count -
+    // SIZE_MAX threw std::length_error there - and before the loop reads past
+    // the array.
+    if (channel_count > static_cast<size_t>(meter->impl->channel_count())) {
+        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+    }
     return guard([&meter, &channels, &channel_count, &samples_per_channel]() -> ac3forge_status_t {
         std::vector<std::span<const float>> spans;
         spans.reserve(channel_count);

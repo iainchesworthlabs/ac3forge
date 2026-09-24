@@ -32,10 +32,18 @@
 # reason: Settings.qml imports Ac3ForgeHearthLanguage, whose LanguageManager
 # main.cpp registers as a singleton instance.
 # ---------------------------------------------------------------------------
-find_package(Qt6 6.8 REQUIRED COMPONENTS QuickTest)
+find_package(Qt6 6.8 REQUIRED COMPONENTS QuickTest Test)
 
 qt_add_executable(ac3hearth_qmltests
     tests/qml_test_main.cpp
+    # TestServices' fakes (tests/test_room.hpp): a fake device room for
+    # HearthController::set_test_outputs() and an in-process test sink for
+    # NetworkController::sinks_for_test() - kept in their own translation
+    # unit, apart from qml_test_main.cpp's Qt headers, for the `slots` macro
+    # reason test_room.hpp gives.
+    tests/test_room.cpp
+    tests/test_room.hpp
+    test_outputs.hpp
     hearth_controller.cpp
     hearth_controller.hpp
     item_loader.cpp
@@ -75,9 +83,15 @@ target_compile_definitions(ac3hearth_qmltests PRIVATE
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
 target_link_libraries(ac3hearth_qmltests PRIVATE
     ac3hearth_engine
+    # apps/hearth/testsink's library, for TestServices.startTestSink() - the
+    # same in-process Sink tests/hearth/test_testsink.cpp pairs over loopback.
+    ac3hearth_testsink
     matroska::matroska mp4::mp4 mpegts::mpegts
     ac3::warnings ac3::fmt
-    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest)
+    Qt6::Core Qt6::Gui Qt6::Qml Qt6::Quick Qt6::QuickControls2 Qt6::QuickTest
+    # QTest::keyClick() on a QWindow, for TestServices.keyClick() (see
+    # qml_test_main.cpp).
+    Qt6::Test)
 
 # Same rationale as apps/gui/tests/CMakeLists.txt's identical loop: Qt's
 # generated moc/rcc/qmlcachegen output for THIS target compiles under the

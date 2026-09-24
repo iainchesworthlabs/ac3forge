@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <initializer_list>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "diagnostics.hpp"
@@ -198,4 +199,94 @@ TEST_CASE("the process log survives and is shared", "[crucible][diagnostics]") {
     REQUIRE(lines.size() == before + 1);
     CHECK(lines.back().ends_with("shared note"));
     CHECK(one.capacity() == DiagnosticLog::kDefaultCapacity);
+}
+
+TEST_CASE("the report renders a busy engine: endpoints, placed and paired applications, and multi-line messages flattened",
+          "[crucible][diagnostics]") {
+    ReportFacts facts;
+    facts.platform = {{"os", "test"}};
+    facts.signing.objects_enabled = true;
+    facts.signing.source = KeySource::kEnvironmentFile;
+    facts.render_endpoints = {{.id = "a", .name = "Speakers", .is_default = false},
+                              {.id = "b", .name = "Silent", .is_default = true}};
+    facts.default_is_silent = true;
+    facts.previous_default_name = "Speakers";
+    facts.default_message = "moved\nback";
+    facts.silent.detail = {"first\nsecond"};
+    facts.foreground_available = false;
+    facts.foreground_reason = "Wayland";
+
+    EngineStatus engine;
+    engine.running = true;
+    engine.endpoints = {{.id = "hp", .name = "Headphones", .spatial = true, .spatial_max_objects = 17},
+                        {.id = "avr", .name = "AVR", .accepts_eac3 = true, .accepts_ac3 = true, .shared_channels = 8}};
+    AppStatus fullscreen;
+    fullscreen.name = "game";
+    fullscreen.fullscreen = true;
+    fullscreen.packaged = true;
+    fullscreen.slot = 0;
+    fullscreen.width = 1;
+    AppStatus pair;
+    pair.name = "player";
+    pair.has_window = true;
+    pair.slot = 2;
+    pair.width = 2;
+    AppStatus custom = pair;
+    custom.name = "custom";
+    custom.pair_custom = true;
+    AppStatus background;
+    background.name = "daemon";
+    background.has_session = false;
+    engine.apps = {fullscreen, pair, custom, background};
+
+    const std::string report = ac3::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{});
+    CHECK(has(report, "key source: AC3FORGE_SIGNING_KEY_FILE (path withheld)"));
+    CHECK(has(report, "\"Headphones\"  id=hp"));
+    CHECK(has(report, "spatial=yes (max 17 objects)"));
+    CHECK(has(report, "eac3=yes  ac3=yes  pcm=8ch  spatial=no"));
+    CHECK(has(report, "game \"\": idle, packaged, session, not tapped, full-screen, slot 0"));
+    CHECK(has(report, "width 2 size 0.00 pair "));
+    CHECK(has(report, "width 2 size 0.00 custom pair "));
+    CHECK(has(report, "daemon \"\": idle, background, no session, not tapped, in the bed"));
+    CHECK(has(report, "\"Speakers\" id=a  \"Silent\" id=b [default]"));
+    CHECK(has(report, "(silent device: yes)"));
+    CHECK(has(report, "previous: \"Speakers\""));
+    CHECK(has(report, "moved; back"));
+    CHECK(has(report, "first; second"));
+    CHECK(has(report, "unavailable: Wayland"));
+
+    for (const auto& [source, text] :
+         {std::pair{KeySource::kFile, "a file chosen in Settings (path withheld)"},
+          std::pair{KeySource::kEnvironmentInline, "AC3FORGE_SIGNING_KEY (value withheld)"}}) {
+        facts.signing.source = source;
+        CHECK(has(ac3::crucible::render_report(facts, engine, DiagnosticLog{}, Secrets{}), text));
+    }
+}
+
+TEST_CASE("a note cut at the cap never ends inside a multi-byte character", "[crucible][diagnostics]") {
+    DiagnosticLog log(1);
+    // Two-byte characters all the way: wherever the cut lands, it must back
+    // off to a character boundary.
+    std::string text;
+    for (int i = 0; i < 600; ++i) {
+        text += "\xC3\xA9";  // U+00E9
+    }
+    log.note(text);
+    for (const std::string& shifted : {text, "x" + text}) {
+        log.note(shifted);
+        const auto line = log.lines().back();
+        const auto body = line.substr(DiagnosticLog::kStampBytes);
+        std::size_t lead = 0;
+        std::size_t cont = 0;
+        for (const char c : body) {
+            const auto u = static_cast<unsigned char>(c);
+            if (u == 0xC3U) {
+                ++lead;
+            } else if (u == 0xA9U) {
+                ++cont;
+            }
+        }
+        CHECK(lead == cont);
+        CHECK(body.size() <= DiagnosticLog::kMaxLine);
+    }
 }

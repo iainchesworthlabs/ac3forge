@@ -804,7 +804,7 @@ int run_levels_eac3(std::span<const std::byte> stream, std::string_view in_path,
     const auto ids = ac3::programme_ids(stream);
     if (!ids || ids->empty()) {
         fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
-        return 1;
+        return kExitInput;
     }
     // §E2.3.1.2: levels are per programme. Two independent substreams are two
     // separate pieces of audio, so one set of per-channel figures across both
@@ -1003,7 +1003,7 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         const auto ids = ac3::programme_ids(stream);
         if (!ids || ids->empty()) {
             fmt::println(stderr, "error: {} is not a valid E-AC-3 stream", in_path);
-            return 1;
+            return kExitInput;
         }
         const auto programme = ac3cli::choose_programme(*ids, want_programme);
         if (!programme.has_value()) {
@@ -1246,10 +1246,14 @@ int run_spdif(std::string_view in_path, std::string_view out_path) {
                          : wrap_ac3_stream(stream, content_rate, push);
     if (!ok) {
         sink.abort();
-        if (!sink_failed) {
-            fmt::println(stderr, "error: {} is not a valid {} stream", in_path,
-                         eac3 ? "E-AC-3" : "AC-3");
+        // The wrapper stops for either side's failure; only a stream it
+        // rejected is the input's fault. A sink that could not be opened or
+        // written has already said so, and is the output's (exit_codes.hpp).
+        if (sink_failed) {
+            return kExitOutput;
         }
+        fmt::println(stderr, "error: {} is not a valid {} stream", in_path,
+                     eac3 ? "E-AC-3" : "AC-3");
         return kExitInput;
     }
     const auto carrier_rate = eac3 ? content_rate * 4 : content_rate;

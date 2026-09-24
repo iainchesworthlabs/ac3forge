@@ -185,8 +185,12 @@ namespace ac3forge_c {
 // or anything else - is caught here instead of crossing into the caller's
 // (possibly non-C++) frame, which is undefined behaviour. The codec core
 // itself never throws (see ac3::FrameError/DecodeError's std::expected
-// convention), so in practice only allocation failure and caller-supplied
-// nullptr/out-of-range arguments reach the catch clauses.
+// convention), and every entry point validates its pointers and counts
+// BEFORE calling guard() - in particular any count a body sizes a container
+// from (reserve(n) throws std::length_error past max_size()) - so in practice
+// only allocation failure should reach the catch clauses; the catch-all is
+// the backstop that turns a missed check into AC3FORGE_ERROR_INTERNAL rather
+// than into an exception crossing the C boundary.
 template <class F>
 [[nodiscard]] ac3forge_status_t guard(F&& body) noexcept {
     try {

@@ -898,8 +898,20 @@ ScrollView {
                                         HearthController.setTrimDb(row.index, value);
                                     }
                                 }
+                                // A value the validator refuses (99, say)
+                                // never reaches editingFinished, so nothing
+                                // is set - and without this the field went
+                                // on showing it after focus left, as if it
+                                // had been. Back to the trim in effect, the
+                                // same way the crossover field below does.
+                                Binding on text {
+                                    value: Number(HearthController.trimDb[row.index] ?? 0).toFixed(1)
+                                    when: !trimField.activeFocus
+                                    restoreMode: Binding.RestoreBindingOrValue
+                                }
                             }
                             AppTextField {
+                                id: delayField
                                 objectName: "speakersDelay-" + row.index
                                 width: levels.fieldWidth + levels.unitWidth
                                 unit: qsTr("ms")
@@ -911,6 +923,12 @@ ScrollView {
                                     if (!isNaN(value)) {
                                         HearthController.setDelayMs(row.index, value);
                                     }
+                                }
+                                // As the trim field's own Binding above.
+                                Binding on text {
+                                    value: Number(HearthController.delayMs[row.index] ?? 0).toFixed(1)
+                                    when: !delayField.activeFocus
+                                    restoreMode: Binding.RestoreBindingOrValue
                                 }
                             }
 

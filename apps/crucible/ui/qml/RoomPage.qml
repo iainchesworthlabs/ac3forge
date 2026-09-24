@@ -488,7 +488,12 @@ Item {
                                 Accessible.description: page.selected
                                     ? (page.selected.size === 0 ? qsTr("point") : qsTr("%1%").arg(Math.round(page.selected.size * 100)))
                                     : ""
-                                activeFocusOnTab: page.selected !== null
+                                // BedChip's rule: Qt will not take an item out
+                                // of the tab chain while it holds the focus, so
+                                // the focus goes first when the selection does.
+                                readonly property bool tabbable: page.selected !== null
+                                onTabbableChanged: if (!sizeTrack.tabbable && sizeTrack.activeFocus) sizeTrack.focus = false;
+                                activeFocusOnTab: sizeTrack.tabbable
                                 function step(by) {
                                     if (!page.selected) return;
                                     CrucibleController.setSize(page.selected.app, Math.max(0, Math.min(1, sizeTrack.value + by)));

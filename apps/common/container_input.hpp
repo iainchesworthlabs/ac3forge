@@ -49,7 +49,10 @@ namespace ac3::apps {
 // this for real). sniff_container's implementation checks for a genuine,
 // syntactically-valid AC-3/E-AC-3 frame header first, which no accidental
 // byte pattern satisfies the way a single recurring byte can - see its own
-// comment.
+// comment. A RIFF/RF64/BW64 WAVE file is likewise recognised by its magic
+// before the grid (steady PCM repeats bytes at a fixed period too), and the
+// grid itself must start within the first packet stride, as any capture's
+// does.
 enum class ContainerKind : std::uint8_t { kUnknown, kMatroska, kMp4, kMpegTs };
 
 [[nodiscard]] ContainerKind sniff_container(std::span<const std::byte> head);

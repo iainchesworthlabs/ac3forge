@@ -1,9 +1,11 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <numbers>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -454,6 +456,225 @@ TEST_CASE("a stream that is not AC-3 or E-AC-3 is refused", "[metadata-edit]") {
         ac3::io::read_frame_metadata(std::span{stream}.first(stream.size() - 1));
     REQUIRE_FALSE(clipped.has_value());
     CHECK(clipped.error() == ac3::io::EditError::kTruncated);
+}
+
+TEST_CASE("every rewritable field is found behind the optional bsi groups ahead of it",
+          "[metadata-edit]") {
+    // Each field's bit position is only right if every conditional group in
+    // front of it was walked with the right width. These streams switch
+    // those groups on - langcod/audprodie in AC-3, mixmdate's pan, premix
+    // and per-block config in E-AC-3, the 1+1 second channel in both - and
+    // then rewrite a field sitting BEHIND them. A mis-walked group would put
+    // the write on the wrong bits: the decoder would then read back the old
+    // value, or refuse the frame.
+    SECTION("AC-3 1+1 with langcod and audprodie on both channels") {
+        ac3::meta::BsiInfo info;
+        info.langcod = true;
+        info.langcod2 = true;
+        info.audprod = ac3::meta::AudioProduction{.mixlevel = 17};
+        info.audprod2 = ac3::meta::AudioProduction{.mixlevel = 9};
+        auto stream = ac3_stream({.bitrate_kbps = 192,
+                                  .dialnorm = 24,
+                                  .dialnorm2 = 20,
+                                  .acmod = ac3::Acmod::kDualMono,
+                                  .heavy = ac3::meta::HeavyConfig{},
+                                  .heavy2 = ac3::meta::HeavyConfig{},
+                                  .info = info});
+        const std::vector<std::byte> original = stream;
+        const auto meta = ac3::io::read_frame_metadata(stream);
+        REQUIRE(meta.has_value());
+        REQUIRE(meta->compr.has_value());
+        REQUIRE(meta->compr2.has_value());
+        CHECK(meta->dialnorm2 == 20);
+
+        constexpr std::uint8_t kWord2 = 0x5A;
+        REQUIRE(*meta->compr2 != kWord2);
+        const auto summary =
+            ac3::io::edit_stream_metadata(stream, {.dialnorm2 = 7, .compr2 = kWord2});
+        REQUIRE(summary.has_value());
+        CHECK(summary->changed == 3);
+        const auto after = ac3::io::read_frame_metadata(stream);
+        REQUIRE(after.has_value());
+        CHECK(after->dialnorm2 == 7);
+        CHECK(after->compr2 == kWord2);
+        CHECK(after->compr == meta->compr);  // Ch1's word untouched
+        CHECK(after->dialnorm == 24);
+
+        ac3::DecodedFrame before_meta{};
+        ac3::DecodedFrame after_meta{};
+        CHECK(decode_ac3(stream, after_meta) == decode_ac3(original, before_meta));
+    }
+
+    SECTION("E-AC-3 infomdate carries bsmod and, on 2/0, dsurmod") {
+        ac3::eac3::AccessUnitConfig config;
+        config.independent = {.bitrate_kbps = 192,
+                              .acmod = ac3::Acmod::k2_0,
+                              .info = ac3::meta::BsiInfo{
+                                  .bsmod = ac3::meta::BitstreamMode::kCommentary,
+                                  .dsurmod = ac3::meta::SurroundMode::kDolbySurround}};
+        auto stream = eac3_stream(config);
+        const std::vector<std::byte> original = stream;
+        const auto meta = ac3::io::read_frame_metadata(stream);
+        REQUIRE(meta.has_value());
+        CHECK(meta->bsmod == 5);
+        CHECK(meta->dsurmod == 2);
+
+        const auto summary = ac3::io::edit_stream_metadata(stream, {.bsmod = 1, .dsurmod = 1});
+        REQUIRE(summary.has_value());
+        CHECK(summary->changed == 3);
+        const auto after = ac3::io::read_frame_metadata(stream);
+        REQUIRE(after.has_value());
+        CHECK(after->bsmod == 1);
+        CHECK(after->dsurmod == 1);
+
+        ac3::DecodedAccessUnit before_meta{};
+        ac3::DecodedAccessUnit after_meta{};
+        CHECK(decode_eac3(stream, after_meta) == decode_eac3(original, before_meta));
+    }
+
+    SECTION("E-AC-3 1+1 rewrites both channels' compression words") {
+        ac3::eac3::AccessUnitConfig config;
+        config.independent = {.bitrate_kbps = 192,
+                              .acmod = ac3::Acmod::kDualMono,
+                              .dialnorm = 22,
+                              .dialnorm2 = 18,
+                              .heavy = ac3::meta::HeavyConfig{},
+                              .heavy2 = ac3::meta::HeavyConfig{}};
+        auto stream = eac3_stream(config);
+        const auto meta = ac3::io::read_frame_metadata(stream);
+        REQUIRE(meta.has_value());
+        REQUIRE(meta->compr.has_value());
+        REQUIRE(meta->compr2.has_value());
+        CHECK(meta->dialnorm2 == 18);
+
+        const auto summary = ac3::io::edit_stream_metadata(
+            stream, {.dialnorm2 = 30, .compr = 0x11, .compr2 = 0x22});
+        REQUIRE(summary.has_value());
+        const auto after = ac3::io::read_frame_metadata(stream);
+        REQUIRE(after.has_value());
+        CHECK(after->dialnorm == 22);
+        CHECK(after->dialnorm2 == 30);
+        CHECK(after->compr == 0x11);
+        CHECK(after->compr2 == 0x22);
+        ac3::DecodedAccessUnit after_meta{};
+        CHECK_FALSE(decode_eac3(stream, after_meta).empty());
+    }
+
+    SECTION("E-AC-3 at a reduced rate reads its rate from fscod2") {
+        ac3::eac3::AccessUnitConfig config;
+        config.independent = {.sample_rate = ac3::SampleRate::k24000,
+                              .bitrate_kbps = 96,
+                              .acmod = ac3::Acmod::k2_0,
+                              .dialnorm = 19};
+        auto stream = eac3_stream(config);
+        const auto meta = ac3::io::read_frame_metadata(stream);
+        REQUIRE(meta.has_value());
+        CHECK(meta->sample_rate == ac3::SampleRate::k24000);
+        CHECK(meta->numblkscod == 3);
+        CHECK(meta->dialnorm == 19);
+        const auto summary = ac3::io::edit_stream_metadata(stream, {.dialnorm = 4});
+        REQUIRE(summary.has_value());
+        CHECK(ac3::io::read_frame_metadata(stream)->dialnorm == 4);
+        ac3::DecodedAccessUnit after_meta{};
+        CHECK_FALSE(decode_eac3(stream, after_meta).empty());
+        CHECK(after_meta.dialnorm == 4);
+    }
+
+    SECTION("E-AC-3 mono one-block frames with pan, premix and per-block mix config") {
+        // numblkscod 0 is the one frame size whose blkmixcfginfo is a single
+        // unconditional field rather than a per-block flag-and-field list,
+        // and 1/0 is what carries panmean - so this is the mixmdate walk's
+        // own odd corner, with infomdate's bsmod right behind it.
+        ac3::meta::MixMetadata mix;
+        mix.pgmscl = 20;
+        mix.extpgmscl = 30;
+        mix.mixing.mixdef = ac3::meta::MixDefinition::kPremix;
+        mix.pan = ac3::meta::PanInfo{.panmean = 60};
+        std::array<std::optional<int>, ac3::kBlocksPerFrame> blocks{};
+        blocks[0] = 5;
+        mix.blkmixcfginfo = blocks;
+        ac3::eac3::FrameEncoder encoder{{.bitrate_kbps = 256,
+                                         .acmod = ac3::Acmod::k1_0,
+                                         .numblkscod = 0,
+                                         .mixing = mix,
+                                         .info = ac3::meta::BsiInfo{
+                                             .bsmod = ac3::meta::BitstreamMode::kEmergency}}};
+        const auto samples = static_cast<std::size_t>(encoder.samples_per_frame());
+        REQUIRE(samples == 256);
+        std::vector<float> pcm(samples);
+        std::vector<std::byte> stream;
+        for (int f = 0; f < 4; ++f) {
+            for (std::size_t i = 0; i < samples; ++i) {
+                pcm[i] = static_cast<float>(
+                    0.4 * std::sin(2.0 * std::numbers::pi * 700.0 *
+                                   static_cast<double>(static_cast<std::size_t>(f) * samples + i) /
+                                   48000.0));
+            }
+            const std::array<std::span<const float>, 1> views{pcm};
+            const auto frame = encoder.encode_frame(views);
+            REQUIRE(frame.has_value());
+            stream.insert(stream.end(), frame->begin(), frame->end());
+        }
+        const auto meta = ac3::io::read_frame_metadata(stream);
+        REQUIRE(meta.has_value());
+        CHECK(meta->numblkscod == 0);
+        REQUIRE(meta->mix.has_value());
+        CHECK(meta->bsmod == 6);
+
+        const auto summary = ac3::io::edit_stream_metadata(stream, {.bsmod = 3});
+        REQUIRE(summary.has_value());
+        CHECK(summary->syncframes == 4);
+        CHECK(summary->changed == 4);
+        CHECK(ac3::io::read_frame_metadata(stream)->bsmod == 3);
+        ac3::Eac3Decoder decoder;
+        const auto units = ac3::split_access_units(stream);
+        REQUIRE(units.has_value());
+        for (const auto& unit : *units) {
+            CHECK(decoder.decode_access_unit(unit).has_value());
+        }
+    }
+}
+
+TEST_CASE("reserved and foreign syncframe headers are refused before anything is written",
+          "[metadata-edit]") {
+    const auto ac3_frame = ac3_stream({.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0}, 1);
+    ac3::eac3::AccessUnitConfig config;
+    config.independent = {.bitrate_kbps = 192, .acmod = ac3::Acmod::k2_0};
+    const auto eac3_frame = eac3_stream(config, 1);
+    const auto refused = [](std::vector<std::byte> frame, ac3::io::EditError error) {
+        const auto original = frame;
+        const auto result = ac3::io::edit_stream_metadata(frame, {.dialnorm = 5});
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error() == error);
+        CHECK(frame == original);
+    };
+    using ac3::io::EditError;
+
+    auto patched = ac3_frame;
+    patched[4] |= std::byte{0xC0};  // fscod '11' (Table 5.6)
+    refused(patched, EditError::kReservedValue);
+    patched = ac3_frame;
+    patched[4] = (patched[4] & std::byte{0xC0}) | std::byte{38};  // frmsizecod past Table 5.18
+    refused(patched, EditError::kReservedValue);
+    patched = ac3_frame;
+    patched[5] = std::byte{12U << 3} | (patched[5] & std::byte{0x07});  // bsid 12
+    refused(patched, EditError::kUnsupportedBsid);
+
+    patched = eac3_frame;
+    patched[2] = (patched[2] & std::byte{0x3F}) | std::byte{0x80};  // strmtyp 2
+    refused(patched, EditError::kReservedValue);
+    patched = eac3_frame;
+    patched[4] |= std::byte{0xF0};  // fscod '11' and fscod2 '11'
+    refused(patched, EditError::kReservedValue);
+    refused({eac3_frame.begin(), eac3_frame.end() - 2}, EditError::kTruncated);
+
+    // A good frame followed by junk: the first pass finds it before the
+    // second pass has touched the good frame.
+    auto trailing = ac3_frame;
+    trailing.insert(trailing.end(), 16, std::byte{0});
+    refused(trailing, EditError::kBadSyncWord);
+    // Nothing at all is not a stream of zero syncframes rewritten.
+    refused({}, EditError::kTruncated);
 }
 
 TEST_CASE("describe() gives every EditError a distinct, non-empty message", "[metadata-edit]") {

@@ -2482,11 +2482,16 @@ TEST_CASE("qc layout=rendered measures a 7.1.4 program's dependents, layout=bed 
 
     // True peak, by contrast, is not channel-weighted and both passes see a
     // full-bandwidth channel at the same level, so it should barely move.
+    // Measured: -13.97 dBTP (bed) against -13.46 dBTP (rendered), both near
+    // the tones' own -13.98 dBFS - the rendered pass's max simply also
+    // covers six more coded channels, whose codec overshoot differs by about
+    // half a dB. 1 dB keeps that with headroom while still failing on a
+    // pass that scaled or summed channels into the peak.
     const auto bed_tp = value_after(bed_text, "true peak");
     const auto rendered_tp = value_after(rendered_text, "true peak");
     REQUIRE(bed_tp.has_value());
     REQUIRE(rendered_tp.has_value());
-    CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(3.0));
+    CHECK(*rendered_tp == Catch::Approx(*bed_tp).margin(1.0));
 }
 
 // legacy item IO12: `ac3cli qc objects=<layout>`. layout=bed's Annex 1 pass sees
@@ -4586,7 +4591,7 @@ TEST_CASE("programme2= reports why its own source could not be used", "[cli][enc
                                 log);
         const auto text = read_log(log);
         INFO(text);
-        CHECK(rc != 0);
+        CHECK(rc == 2);  // an input error, as a missing primary source is
         CHECK_FALSE(fs::exists(out_path));
         // ProgrammeSource::open falls through its own streaming attempt to
         // read_wav_arg, and it is read_wav_arg's error this prints - naming
@@ -4608,7 +4613,7 @@ TEST_CASE("programme2= reports why its own source could not be used", "[cli][enc
                                 log);
         const auto text = read_log(log);
         INFO(text);
-        CHECK(rc != 0);
+        CHECK(rc == 1);  // no layout to name it by: the primary's own class
         CHECK_FALSE(fs::exists(out_path));
         CHECK(text.find("7 channels") != std::string::npos);
         CHECK(text.find("no standard speaker layout has that many channels") != std::string::npos);

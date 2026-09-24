@@ -18,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "analysis.hpp"
 #include "ac3/analysis/levels.hpp"
@@ -338,12 +339,16 @@ class TranscodeEncoder {
             }
         }
         if (!sink_.push(std::move(frame))) {
+            write_failed_ = true;
             sink_.abort();
             return false;
         }
         return true;
     }
 
+    // True once encode() failed because the destination did, rather than
+    // because the encoder refused a frame - run_transcode's exit class.
+    [[nodiscard]] bool write_failed() const { return write_failed_; }
     [[nodiscard]] bool close() { return sink_.close(); }
     void abort() { sink_.abort(); }
     [[nodiscard]] std::size_t frames() const { return sink_.frames(); }
@@ -354,6 +359,7 @@ class TranscodeEncoder {
     std::unique_ptr<ac3::eac3::AccessUnitEncoder> eac3_;
     std::size_t coded_channels_ = 0;
     std::optional<std::uint8_t> compr_;
+    bool write_failed_ = false;
     EncodedStreamSink sink_;
 };
 
@@ -557,16 +563,16 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
                   std::string_view layout, const Options& meta) {
     const auto loaded = load_stream(in_path);
     if (!loaded.has_value()) {
-        return 1;
+        return kExitInput;
     }
     const auto target_codec = output_codec(out_path, meta);
     if (!target_codec.has_value()) {
-        return 1;
+        return kExitUsage;
     }
     const auto source_meta = ac3::io::read_frame_metadata(loaded->bytes);
     if (!source_meta.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(source_meta.error()));
-        return 1;
+        return kExitInput;
     }
 
     // status_stream(out_path): stderr instead of stdout when the encoded
@@ -577,7 +583,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
         source_rate, *target_codec == plan::Codec::kAc3 ? "AC-3" : "E-AC-3",
         *target_codec == plan::Codec::kEac3);
     if (!rate.has_value()) {
-        return 1;
+        return kExitUsage;
     }
 
     plan::Plan p{.codec = *target_codec,
@@ -610,13 +616,13 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     if (meta.p.measure_dialnorm || meta.p.measure_dialnorm2) {
         const auto measured = measure_stream_loudness(loaded->bytes);
         if (!measured.has_value()) {
-            return 1;
+            return kExitInput;
         }
         if (meta.p.measure_dialnorm) {
             if (!measured->integrated_lkfs.has_value()) {
                 fmt::println(stderr, "error: no audio above the -70 LKFS absolute gate; "
                                      "pass dialnorm=<1..31> explicitly");
-                return 1;
+                return kExitRuntime;
             }
             p.meta.dialnorm = ac3::meta::dialnorm_from_lkfs(*measured->integrated_lkfs);
         }
@@ -626,7 +632,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
                              "error: {} is not 1+1, so there is no Ch2 to measure for "
                              "dialnorm2=auto",
                              in_path);
-                return 1;
+                return kExitUsage;
             }
             p.meta.dialnorm2 = ac3::meta::dialnorm_from_lkfs(*measured->ch2_lkfs);
         }
@@ -650,7 +656,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     const auto source_channels = static_cast<std::size_t>(loaded->scan.channels);
     if (!layout.empty()) {
         if (!resolve_layout(layout, *target_codec, p, label)) {
-            return 1;
+            return kExitUsage;
         }
     } else if (loaded->scan.acmod == ac3::Acmod::kDualMono) {
         // 1+1 is two independent programmes sharing one syncframe, not a
@@ -662,7 +668,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
         label = std::string(plan::layout(plan::LayoutId::kDualMono).label);
         if (!meta.dialnorm2_given && !source_meta->dialnorm2.has_value()) {
             fmt::println(stderr, "error: {} is 1+1 but carries no dialnorm2", in_path);
-            return 1;
+            return kExitInput;  // both bsi syntaxes always send it for 1+1
         }
     } else {
         auto id = plan::layout_for_source(source_channels);
@@ -682,7 +688,7 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
             fmt::println(stderr, "error: no standard layout has {} channels; name one with the "
                                  "[layout] argument",
                          source_channels);
-            return 1;
+            return kExitUsage;
         }
         p.layout = *id;
         label = std::string(plan::layout(*id).label);
@@ -690,34 +696,47 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     p.tools.fast_mdct = meta.fast_mdct;
     if (const auto bad = plan::validate(p)) {
         fmt::println(stderr, "error: {}", plan::describe(*bad));
-        return 1;
+        return kExitUsage;
     }
 
     const auto routing = routing_or_error(p, source_channels);
     if (!routing.has_value()) {
-        return 1;
+        return kExitUsage;
     }
 
     TranscodeEncoder encoder;
     if (!encoder.open(p, out_path, meta.keep_partial, compr_passthrough)) {
-        return 1;
+        // open() refuses for one of two reasons, and each has its own exit
+        // class: an encoder that built no channels could not express the
+        // configuration (a usage error), otherwise it was the sink that
+        // could not be opened (an output one).
+        return encoder.coded_channels() == 0 ? kExitUsage : kExitOutput;
     }
     const auto coded_channels = encoder.coded_channels();
     const auto coded_plan = plan::resolve(p);
     ac3::analysis::LevelMeter meter{coded_plan.bed_acmod, coded_plan.bed_lfe, source_rate};
 
+    // Latched so a failure can be put in its exit class afterwards:
+    // decode_and_render only says THAT it stopped, and it stops both when
+    // the source stops decoding (an input fault) and when this callback
+    // refuses (the encoder or its sink - see TranscodeEncoder::encode).
+    bool encode_failed = false;
     const auto stats = decode_and_render(
         in_path, *loaded, *routing, coded_channels,
-        [&meter, &encoder](std::span<const std::span<const float>> views) {
+        [&meter, &encoder, &encode_failed](std::span<const std::span<const float>> views) {
             meter.process(views);
-            return encoder.encode(views);
+            encode_failed = !encoder.encode(views);
+            return !encode_failed;
         },
         [&encoder] { encoder.abort(); });
     if (!stats.has_value()) {
-        return 1;
+        if (!encode_failed) {
+            return kExitInput;
+        }
+        return encoder.write_failed() ? kExitOutput : kExitUsage;
     }
     if (!encoder.close()) {
-        return 1;
+        return kExitOutput;
     }
 
     status_println(status, "transcoded {} {} access units -> {} {} frames ({} kbps, {} Hz) in {}",
@@ -763,12 +782,12 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
 int run_metadata(std::string_view in_path, std::string_view out_path, const Options& meta) {
     auto loaded = load_stream(in_path);
     if (!loaded.has_value()) {
-        return 1;
+        return kExitInput;
     }
     const auto before = ac3::io::read_frame_metadata(loaded->bytes);
     if (!before.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(before.error()));
-        return 1;
+        return kExitInput;
     }
 
     // Only what the operator actually named. dialnorm's plan::Metadata
@@ -780,7 +799,7 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
             fmt::println(stderr,
                          "error: dialnorm=auto needs a measurement - use 'ac3cli normalize', "
                          "which decodes the stream to measure it");
-            return 1;
+            return kExitUsage;
         }
         edit.dialnorm = meta.p.dialnorm;
     }
@@ -788,7 +807,7 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
         if (meta.p.measure_dialnorm2) {
             fmt::println(stderr, "error: dialnorm2=auto needs a measurement - use 'ac3cli "
                                  "normalize'");
-            return 1;
+            return kExitUsage;
         }
         edit.dialnorm2 = meta.p.dialnorm2;
     }
@@ -805,13 +824,13 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
         fmt::println(stderr,
                      "error: nothing to change - give at least one of dialnorm=, dialnorm2=, "
                      "compr=, compr2=, bsmod=, dsurmod=");
-        return 1;
+        return kExitUsage;
     }
 
     const auto summary = ac3::io::edit_stream_metadata(loaded->bytes, edit);
     if (!summary.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(summary.error()));
-        return 1;
+        return kExitUsage;
     }
     // Re-scanned rather than reusing the pre-edit spans: edit_stream_metadata
     // rewrote the buffer those pointed into, and re-deriving the framing from
@@ -820,10 +839,10 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
     if (!rescanned.has_value()) {
         fmt::println(stderr, "error: the rewritten stream no longer scans: {}",
                      ac3::io::describe(rescanned.error()));
-        return 1;
+        return kExitInternal;  // the rewrite itself broke the framing
     }
     if (!write_units(out_path, rescanned->access_units, meta.keep_partial)) {
-        return 1;
+        return kExitOutput;
     }
 
     const auto status = status_stream(out_path);
@@ -850,25 +869,25 @@ int run_metadata(std::string_view in_path, std::string_view out_path, const Opti
 int run_normalize(std::string_view in_path, std::string_view out_path, const Options& meta) {
     auto loaded = load_stream(in_path);
     if (!loaded.has_value()) {
-        return 1;
+        return kExitInput;
     }
     const auto before = ac3::io::read_frame_metadata(loaded->bytes);
     if (!before.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(before.error()));
-        return 1;
+        return kExitInput;
     }
     // The measurement is a full decode - the BS.1770-4 relative gate needs
     // the whole programme, so there is no shortcut - but the audio it
     // produces is thrown away: only the dialnorm it implies is written back.
     const auto measured = measure_stream_loudness(loaded->bytes);
     if (!measured.has_value()) {
-        return 1;
+        return kExitInput;
     }
     if (!measured->integrated_lkfs.has_value()) {
         fmt::println(stderr,
                      "error: no audio above the -70 LKFS absolute gate; nothing to normalise "
                      "against");
-        return 1;
+        return kExitRuntime;
     }
 
     // ATSC A/85 §8: dialnorm states where dialogue sits relative to full
@@ -885,16 +904,16 @@ int run_normalize(std::string_view in_path, std::string_view out_path, const Opt
     const auto summary = ac3::io::edit_stream_metadata(loaded->bytes, edit);
     if (!summary.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(summary.error()));
-        return 1;
+        return kExitUsage;
     }
     const auto rescanned = ac3::io::scan(loaded->bytes);
     if (!rescanned.has_value()) {
         fmt::println(stderr, "error: the rewritten stream no longer scans: {}",
                      ac3::io::describe(rescanned.error()));
-        return 1;
+        return kExitInternal;  // the rewrite itself broke the framing
     }
     if (!write_units(out_path, rescanned->access_units, meta.keep_partial)) {
-        return 1;
+        return kExitOutput;
     }
 
     const auto status = status_stream(out_path);
@@ -918,7 +937,7 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
             std::string_view duration_seconds) {
     const auto loaded = load_stream(in_path);
     if (!loaded.has_value()) {
-        return 1;
+        return kExitInput;
     }
     const auto& scan = loaded->scan;
     const auto total_units = scan.access_units.size();
@@ -926,7 +945,7 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
     const double start = start_seconds.empty() ? 0.0 : parse_seconds_or(start_seconds, 0.0);
     if (start < 0.0) {
         fmt::println(stderr, "error: start must not be negative");
-        return 1;
+        return kExitUsage;
     }
     const auto first = start == 0.0
                            ? std::optional<std::size_t>{0}
@@ -934,7 +953,7 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
     if (!first.has_value()) {
         fmt::println(stderr, "error: start {:.3f} s is past the end of {} ({:.3f} s)", start,
                      in_path, ac3::io::stream_duration_seconds(scan));
-        return 1;
+        return kExitUsage;
     }
 
     std::size_t last = total_units;  // exclusive
@@ -942,7 +961,7 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
         const double duration = parse_seconds_or(duration_seconds, 0.0);
         if (duration <= 0.0) {
             fmt::println(stderr, "error: duration must be positive");
-            return 1;
+            return kExitUsage;
         }
         const auto start_timing = ac3::io::access_unit_timing(scan, *first);
         // Measured from the access unit the cut actually starts at, not from
@@ -971,7 +990,7 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
     const auto units =
         std::span{scan.access_units}.subspan(*first, last - *first);
     if (!write_units(out_path, units, false)) {
-        return 1;
+        return kExitOutput;
     }
 
     const auto status = status_stream(out_path);
@@ -996,7 +1015,7 @@ int run_cut(std::string_view in_path, std::string_view out_path, std::string_vie
 int run_cat(std::string_view out_path, std::span<const std::string_view> in_paths) {
     if (in_paths.size() < 2) {
         fmt::println(stderr, "error: cat needs at least two inputs");
-        return 1;
+        return kExitUsage;
     }
     // Unlike every other command here, this opens its output BEFORE reading
     // its inputs - one at a time, so only one input's bytes are resident at
@@ -1004,19 +1023,43 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
     // destructive rather than merely odd (the sink truncates it first), so it
     // is refused. Compared as paths rather than as text, so "./a.ac3" and
     // "a.ac3" are recognised as the same file.
-    for (const auto path : in_paths) {
+    //
+    // Refused whether or not the output exists yet: an output that does not
+    // exist when this runs is created by the sink before the loop below
+    // reaches the input of the same name, which would then read back this
+    // command's own half-written output. fs::equivalent alone cannot see
+    // that case - it reports false (with an error) when either path is
+    // missing - so it is backed by a comparison of the normalised absolute
+    // paths, which needs neither file to exist. equivalent() still runs
+    // first, since only it sees a hard link or a symlink to the same file
+    // under another name.
+    const auto same_file = [](const std::filesystem::path& a, const std::filesystem::path& b) {
         std::error_code ec;
-        if (std::filesystem::equivalent(std::filesystem::path{std::string{out_path}},
-                                        std::filesystem::path{std::string{path}}, ec)) {
-            fmt::println(stderr, "error: {} is both an input and the output", path);
-            return 1;
+        if (std::filesystem::equivalent(a, b, ec)) {
+            return true;
+        }
+        const auto a_norm = std::filesystem::weakly_canonical(a, ec);
+        if (ec) {
+            return false;
+        }
+        const auto b_norm = std::filesystem::weakly_canonical(b, ec);
+        return !ec && a_norm == b_norm;
+    };
+    if (!is_stdio_path(out_path)) {
+        const std::filesystem::path out_fs{std::string{out_path}};
+        for (const auto path : in_paths) {
+            if (!is_stdio_path(path) &&
+                same_file(out_fs, std::filesystem::path{std::string{path}})) {
+                fmt::println(stderr, "error: {} is both an input and the output", path);
+                return kExitUsage;
+            }
         }
     }
     // Loaded one at a time and written straight through, so only one input's
     // bytes are resident at once however many are joined.
     EncodedStreamSink sink;
     if (!sink.open(out_path, false)) {
-        return 1;
+        return kExitOutput;
     }
     // The comparable fields only, copied out by value: a ScannedStream's
     // access_units are spans into the buffer it was scanned from, and that
@@ -1039,7 +1082,7 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
         const auto loaded = load_stream(path);
         if (!loaded.has_value()) {
             sink.abort();
-            return 1;
+            return kExitInput;
         }
         const auto& scan = loaded->scan;
         if (!reference.has_value()) {
@@ -1071,20 +1114,20 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
                              "across a join",
                              path, reference_path, mismatch);
                 sink.abort();
-                return 1;
+                return kExitUsage;
             }
         }
         for (const auto& unit : scan.access_units) {
             if (!sink.push(unit)) {
                 sink.abort();
-                return 1;
+                return kExitOutput;
             }
         }
         units += scan.access_units.size();
         samples += ac3::io::stream_duration_samples(scan);
     }
     if (!sink.close()) {
-        return 1;
+        return kExitOutput;
     }
 
     if (!reference.has_value()) {
@@ -1093,7 +1136,7 @@ int run_cat(std::string_view out_path, std::span<const std::string_view> in_path
         // real check rather than an assert, so the report below reads a value
         // that is checked where it is used.
         fmt::println(stderr, "error: nothing was joined");
-        return 1;
+        return kExitInternal;
     }
     const auto status = status_stream(out_path);
     const auto rate = ac3::sample_rate_hz(reference->sample_rate);

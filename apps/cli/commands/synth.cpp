@@ -92,9 +92,13 @@ int run_sine(std::string_view out_path, std::uint32_t seconds, std::uint32_t bit
              bool couple_flag, const Options& meta) {
     // A layout may be suffixed with "c" to turn channel coupling on (51c). A
     // bare 'couple' token does the same, so the flag that works for 'encode'
-    // is not silently ignored here.
-    const bool couple = couple_flag || (!layout.empty() && layout.back() == 'c');
-    const std::string_view base = couple ? layout.substr(0, layout.size() - 1) : layout;
+    // is not silently ignored here. Only the suffix is stripped: the bare
+    // token leaves the layout as typed (or defaulted), and stripping on the
+    // combined flag used to cut the last character off it - "51 couple"
+    // asked for layout '5', and the default for 'stere'.
+    const bool suffixed = !layout.empty() && layout.back() == 'c';
+    const bool couple = couple_flag || suffixed;
+    const std::string_view base = suffixed ? layout.substr(0, layout.size() - 1) : layout;
 
     plan::Plan p{.codec = plan::Codec::kAc3, .bitrate_kbps = bitrate, .meta = meta.p};
     std::string label;

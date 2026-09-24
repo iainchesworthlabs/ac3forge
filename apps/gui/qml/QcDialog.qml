@@ -35,6 +35,7 @@ Dialog {
 
     FileDialog {
         id: qcFileDialog
+        objectName: "qcFileDialog"
         title: qsTr("Choose an AC-3 / E-AC-3 stream")
         // container readers (mkv/mp4/ts): a Matroska/MP4/MPEG-TS container works too -
         // QcController sniffs the actual bytes rather than trusting the

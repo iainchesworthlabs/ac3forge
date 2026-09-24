@@ -42,6 +42,23 @@ constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "
     return std::ranges::contains(kIsobmffLeadingTypes, type);
 }
 
+// RIFF/WAVE's magic: "RIFF", or RF64/BW64's 64-bit-size ids (EBU Tech 3306,
+// ITU-R BS.2088), at offset 0 and "WAVE" at offset 8 - the same test
+// src/forge/src/io/wav_format.cpp's is_riff_wave makes, repeated here because
+// that header is private to forge. A WAV is not a container this reads, but
+// it must be recognised positively BEFORE the packet grid below: PCM of a
+// steady tone repeats bytes at a fixed period, and a 1 kHz sine at 48 kHz
+// (48 samples a cycle) put five 0x47 bytes exactly 192 apart in a float WAV
+// `ac3cli decode` wrote, which the grid alone read as an M2TS capture.
+[[nodiscard]] bool has_riff_wave_magic(std::span<const std::byte> head) {
+    if (head.size() < 12) {
+        return false;
+    }
+    const std::string_view id{reinterpret_cast<const char*>(head.data()), 4};
+    const std::string_view form{reinterpret_cast<const char*>(head.data()) + 8, 4};
+    return (id == "RIFF" || id == "RF64" || id == "BW64") && form == "WAVE";
+}
+
 // A transport stream has no header at all - it is a bare repeating grid of
 // 188-byte packets, each starting with 0x47, and a capture may begin
 // anywhere in it. So the test is the grid itself: a sync byte that recurs at
@@ -49,18 +66,30 @@ constexpr std::array<std::string_view, 5> kIsobmffLeadingTypes{"ftyp", "styp", "
 // several times over. A lone 0x47 proves nothing; five in a row exactly a
 // stride apart is not a coincidence.
 //
-// Checked LAST, after the two formats that do have magic: an MP4 or Matroska
+// "Anywhere" still bounds where the grid can START, though: a capture cut
+// mid-packet reaches its first whole packet's sync byte within one stride of
+// its first byte, so a grid whose first sync sits a stride or more in has
+// something before it that is not transport stream at all. Requiring the
+// run to begin inside the first stride keeps a file that merely contains a
+// periodic 0x47 pattern somewhere in its first 64 KiB (as steady PCM or a
+// repetitive payload can) from being taken for one.
+//
+// Checked LAST, after the formats that do have magic: an MP4 or Matroska
 // file can easily contain a 0x47 pattern by chance somewhere in its audio,
-// and the grid test is the loosest of the three.
+// and the grid test is the loosest of them.
 constexpr std::array<std::size_t, 3> kTsStrides{188, 192, 204};
 constexpr int kTsSyncRuns = 5;
 
 [[nodiscard]] bool has_ts_packet_grid(std::span<const std::byte> head) {
-    for (std::size_t at = 0; at < head.size(); ++at) {
+    const std::size_t search_end = std::min(head.size(), kTsStrides.back());
+    for (std::size_t at = 0; at < search_end; ++at) {
         if (std::to_integer<std::uint8_t>(head[at]) != 0x47) {
             continue;
         }
         for (const auto stride : kTsStrides) {
+            if (at >= stride) {
+                continue;  // not the first packet of this grid - see above
+            }
             int seen = 1;
             for (int i = 1; i < kTsSyncRuns; ++i) {
                 const std::size_t next = at + (stride * static_cast<std::size_t>(i));
@@ -282,6 +311,10 @@ ContainerKind sniff_container(std::span<const std::byte> head) {
     // bsi, which no accidental byte pattern satisfies by chance the way a
     // single recurring byte can.
     if (ac3::io::read_frame_header(sniffed).has_value()) {
+        return ContainerKind::kUnknown;
+    }
+    // A WAV likewise, by its magic - see has_riff_wave_magic.
+    if (has_riff_wave_magic(sniffed)) {
         return ContainerKind::kUnknown;
     }
     if (has_ts_packet_grid(sniffed)) {

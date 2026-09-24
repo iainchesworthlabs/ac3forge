@@ -48,7 +48,13 @@ endif()
 add_executable(ac3tests
     ac4/test_ac4.cpp
     ac4/test_ac4_presentation_configs.cpp
+    ac4/test_ac4_toc_syntax.cpp
+    ac4dec/test_ac4dec_asf.cpp
+    ac4dec/test_ac4dec_channel_elements.cpp
     ac4dec/test_ac4dec_decoder.cpp
+    ac4dec/test_ac4dec_frames.cpp
+    ac4dec/test_ac4dec_metadata.cpp
+    ac4dec/test_ac4dec_presentation.cpp
     ac4dec/test_ac4dec_syntax.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
@@ -220,6 +226,11 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/c
 # fixed-point tier's block exponent, which both decoders share and which is not
 # library surface.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/decoder")
+# tests/ac4dec/test_ac4dec_{asf,metadata,presentation,channel_elements}.cpp reach the
+# AC-4 decoder's syntax functions (src/ac4dec/src/syntax/) to hold each branch of
+# the syntax to a hand-built bitstream - the committed streams reach only the
+# branches DEE writes. Same pattern as the forge headers above.
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src")
 
 # test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the
@@ -497,7 +508,11 @@ endif()
 if(AC3FORGE_AUDIO_BACKEND STREQUAL "alsa")
     target_sources(ac3tests PRIVATE
         backend/alsa/test_alsa_device_names.cpp
-        backend/alsa/test_alsa_eld_parsing.cpp)
+        backend/alsa/test_alsa_eld_parsing.cpp
+        # Software ALSA devices (audio/alsa_null_device.hpp): the backend's
+        # classes and the device-facing ac3cli commands against alsa-lib's
+        # null/file/route plugins, so their success paths run without a card.
+        audio/test_alsa_null_backend.cpp)
     # The backend's internal header. Not part of the library's public
     # interface and deliberately not installed - it is on the include path for
     # this target only, and only in this configuration.
@@ -563,7 +578,15 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
         cli/test_cli.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
-        cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp)
+        cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp
+        cli/test_cli_options.cpp cli/test_cli_synth.cpp cli/test_cli_analysis.cpp
+        cli/test_cli_encode_paths.cpp cli/test_cli_stream_edges.cpp
+        cli/test_cli_inspect_edges.cpp cli/test_cli_atmos_edges.cpp)
+    # The same device-facing commands with a device to find: software ALSA
+    # devices (audio/alsa_null_device.hpp), so only in the ALSA configuration.
+    if(AC3FORGE_AUDIO_BACKEND STREQUAL "alsa")
+        target_sources(ac3tests PRIVATE cli/test_cli_live_alsa.cpp)
+    endif()
     target_compile_definitions(ac3tests PRIVATE "AC3CLI_EXE=\"$<TARGET_FILE:ac3cli>\"")
     # cli/test_cli_probe.cpp probes the committed FFmpeg/DEE-encoded fixtures as
     # well as this encoder's own output - they exercise syntax ac3forge never
@@ -686,6 +709,8 @@ target_sources(ac3tests PRIVATE
     crucible/test_desktop_entries.cpp
     crucible/test_translations.cpp
     crucible/test_engine.cpp
+    crucible/test_engine_commands.cpp
+    crucible/test_output_stage_edges.cpp
     crucible/platform_services_stub.cpp
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/slots.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/bed_mixer.cpp"
@@ -697,6 +722,14 @@ target_sources(ac3tests PRIVATE
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/signing_hook.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/engine/engine.cpp"
     "${CMAKE_SOURCE_DIR}/apps/crucible/ui/desktop_entries.cpp")
+# test_engine_commands.cpp saves the signing key's env-var fallbacks with
+# std::getenv before clearing them for its own case - same C4996 reasoning as
+# src/signing/src/signing_key.cpp (src/signing/CMakeLists.txt) and
+# core/test_simd_kernels.cpp above.
+if(AC3FORGE_IS_MSVC_LIKE)
+    set_source_files_properties(crucible/test_engine_commands.cpp
+        PROPERTIES COMPILE_OPTIONS "/wd4996")
+endif()
 # The null-sink driver's position clock (apps/windows/driver/Source/Main/
 # position.h) is a header with no kernel dependencies, kept that way so the
 # one piece of the driver that is logic rather than framework plumbing is
@@ -785,7 +818,7 @@ endif()
 # only linked, when AC3FORGE_BUILD_IAB actually turned the target on. Same conditional shape
 # as the AC3FORGE_BUILD_ADM block above.
 if(AC3FORGE_BUILD_IAB)
-    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_mxf_reader.cpp)
+    target_sources(ac3tests PRIVATE ac3iab/test_ac3iab.cpp ac3iab/test_ac3iab_truncation.cpp ac3iab/test_mxf_reader.cpp)
     target_link_libraries(ac3tests PRIVATE ac3iab::ac3iab)
 endif()
 
@@ -816,7 +849,9 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_decoder_settings.cpp
         hearth/test_diagnostics.cpp
         hearth/test_engine.cpp
+        hearth/test_engine_queue_commands.cpp
         hearth/test_media_info.cpp
+        hearth/test_media_info_json.cpp
         hearth/test_network_view.cpp
         hearth/test_output_decision.cpp
         hearth/test_output_selector.cpp
@@ -948,6 +983,7 @@ if(AC3FORGE_BUILD_HEARTH)
             sendspin/test_noise.cpp
             sendspin/test_pairing.cpp
             sendspin/test_pairing_flow.cpp
+            sendspin/test_pairing_flow_errors.cpp
             sendspin/test_session_driver.cpp
             sendspin/test_sessions.cpp)
         # test_mdns.cpp reads the mdns backend's packet layer, which is private to the library.
@@ -967,7 +1003,8 @@ if(AC3FORGE_BUILD_HEARTH)
             hearth/test_aiosendspin.cpp
             hearth/test_aiosendspin_group.cpp
             hearth/test_group.cpp
-            hearth/test_testsink.cpp)
+            hearth/test_testsink.cpp
+            hearth/test_testsink_edges.cpp)
         # The engine's pairing records, its Network page bookkeeping (A6), its
         # NetworkGroupSink (A6, streaming to a group) and issue #874's own
         # exit - a group of two test sinks played from ac3::hearth::Engine
@@ -976,6 +1013,7 @@ if(AC3FORGE_BUILD_HEARTH)
         target_sources(ac3tests PRIVATE
             hearth/test_pairing_store.cpp
             hearth/test_network_sinks.cpp
+            hearth/test_network_sinks_rows.cpp
             hearth/test_network_group_sink.cpp
             hearth/test_engine_network_group.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)

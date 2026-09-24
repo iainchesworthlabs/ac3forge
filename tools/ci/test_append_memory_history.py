@@ -29,11 +29,15 @@ workload could ever be added - but must not be invisible.
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
 
+import contextlib
+import io
 import json
+import os
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -118,10 +122,118 @@ class ChurnGateTests(unittest.TestCase):
         self.assertTrue(findings, "an ungated series produced no annotation")
         self.assertTrue(any("NOTHING gated this value" in m for _, m in findings))
 
+    def test_recent_sidecars_are_not_sibling_series(self):
+        """Regression: the sibling glob memory-*.jsonl also matched the
+        *.recent.jsonl windows write_recent_window() keeps beside each full
+        file, so every widened sample was counted twice (and the sidecar of
+        this branch's own file was read as a sibling)."""
+        write_series(self.history / "memory-develop.jsonl", [10.0, 10.0, 10.0, 100.0, 100.0])
+        write_series(self.history / "memory-main.jsonl", [10.0], start_day=20)
+        # The sidecars: the newest records of each full file, repeated
+        # verbatim (as write_recent_window writes them once a history outgrows
+        # its window).
+        write_series(self.history / "memory-develop.recent.jsonl", [100.0, 100.0], start_day=4)
+        write_series(self.history / "memory-main.recent.jsonl", [10.0], start_day=20)
+
+        mean, count, widened = amh.baseline_for(
+            self.history, "main", "linux-gcc", "eac3_51_encode", "allocs_per_frame", 10)
+        self.assertEqual((mean, count, widened), (40.0, 6, True))
+
     def test_steady_series_within_threshold_stays_quiet(self):
         """The ordinary case: no annotations at all when nothing moved."""
         write_series(self.history / "memory-main.jsonl", [67.0] * 12)
         self.assertEqual([], self.findings(record(allocs=67.0, byts=28792.0)))
+
+
+class NearZeroAndLeakTests(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.history = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+    def test_climb_off_a_near_zero_baseline_warns(self):
+        """Ratios are meaningless near zero; a series at ~0 allocs/frame that
+        starts allocating is judged by the absolute floor instead."""
+        write_series(self.history / "memory-main.jsonl", [0.0] * 5)
+        findings = list(amh.check_churn(record(allocs=12.0, byts=0.0), self.history, "main"))
+        self.assertTrue(any("near-zero trailing mean" in m and "allocs/frame" in m
+                            for h, m in findings if not h))
+        self.assertFalse([m for h, m in findings if h])
+
+    def test_soft_growth_warns(self):
+        write_series(self.history / "memory-main.jsonl", [100.0] * 5)
+        findings = list(amh.check_churn(record(allocs=130.0, byts=43000.0),
+                                        self.history, "main"))
+        self.assertTrue(any("A trend warning" in m for h, m in findings if not h))
+
+    def test_leak_tiers(self):
+        rec = record()
+        self.assertIsNone(amh.check_leak(rec))
+        rec["steady_live_growth"] = amh.LIVE_GROWTH_WARN_BYTES
+        self.assertFalse(amh.check_leak(rec)[0])
+        rec["steady_live_growth"] = amh.LIVE_GROWTH_HARD_BYTES
+        self.assertTrue(amh.check_leak(rec)[0])
+
+    def test_branch_slug_is_flat(self):
+        self.assertEqual(amh.branch_slug("feat/x\\y"), "feat_x_y")
+
+
+class MainTests(unittest.TestCase):
+    """main() end to end: results tree in, history + verdict out."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.results = self.tmp / "results"
+        self.hist = self.tmp / "hist"
+        self.output = self.tmp / "out"
+        self.os = os
+
+    def write_result(self, allocs, growth=0):
+        d = self.results / "memory-linux-gcc"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "m.json").write_text(json.dumps({"peak_rss_bytes": 1 << 20, "results": [{
+            "name": "eac3_51_encode", "frames": 200, "setup_allocs": 1, "setup_bytes": 2,
+            "first_allocs": 3, "first_bytes": 4, "allocs_per_frame": allocs,
+            "bytes_per_frame": allocs * 430.0, "steady_live_growth": growth,
+            "peak_live_delta": 5}]}))
+
+    def run_main(self, branch="feat/x"):
+        argv = ["x", "--results-dir", str(self.results), "--history-dir", str(self.hist),
+                "--branch", branch, "--commit", "c", "--commit-date", "2026-09-01"]
+        buf = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), \
+                mock.patch.dict(self.os.environ, {"GITHUB_OUTPUT": str(self.output)}), \
+                contextlib.redirect_stdout(buf):
+            rc = amh.main()
+        return rc, buf.getvalue(), (self.output.read_text() if self.output.exists() else "")
+
+    def test_no_results(self):
+        self.results.mkdir()
+        (self.results / "loose").write_text("")
+        rc, out, verdict = self.run_main()
+        self.assertEqual((rc, verdict), (0, ""))
+        self.assertIn("nothing to append", out)
+
+    def test_hard_leak_fails_but_is_recorded_in_flat_file(self):
+        self.write_result(67.0, growth=amh.LIVE_GROWTH_HARD_BYTES)
+        rc, out, verdict = self.run_main()
+        self.assertEqual(rc, 0)
+        self.assertEqual(verdict, "hard_regression=true\n")
+        self.assertIn("::error title=Memory trend hard regression::", out)
+        rec = json.loads((self.hist / "memory-feat_x.jsonl").read_text())
+        self.assertEqual((rec["peak_rss_bytes"], rec["branch"]), (1 << 20, "feat/x"))
+
+    def test_new_series_warns_and_does_not_fail(self):
+        self.write_result(67.0)
+        _, out, verdict = self.run_main()
+        self.assertEqual(verdict, "hard_regression=false\n")
+        self.assertIn("::warning title=Memory trend regression::", out)
+
+    def test_emit_output_noop(self):
+        with mock.patch.dict(self.os.environ, {}, clear=True):
+            amh.emit_github_output("a", "b")
 
 
 if __name__ == "__main__":

@@ -67,6 +67,23 @@ ScrollView {
     ColumnLayout {
         width: root.availableWidth
         spacing: Theme.gap * 2
+        // Nothing on this tab can reach a sink whose state does not list the
+        // Settings command (NetworkController's sinkSpeakerSettings
+        // .settingsAccepted): the push is refused before it is sent. So
+        // every control is disabled, and the line below says why, rather
+        // than offering edits that are silently dropped.
+        enabled: root.speakers.settingsAccepted === true
+
+        Text {
+            objectName: "networkSinkSettingsBlocked"
+            Layout.fillWidth: true
+            visible: root.speakers.settingsAccepted === false
+            text: qsTr("This sink does not take settings from Hearth, so nothing here can be changed. "
+                      + "It is set up on the sink itself.")
+            color: Theme.textMuted
+            font.pixelSize: Theme.fontSmall
+            wrapMode: Text.WordWrap
+        }
 
         // Flat and untitled: network-sink-speakers.png puts the layout and
         // crossover rows straight onto the page under the Speakers/Decoder

@@ -163,6 +163,11 @@ def baseline_for(history_dir: Path, branch: str, leg: str, config: str,
     for sibling in sorted(history_dir.glob("memory-*.jsonl")):
         if sibling.name == f"memory-{branch_slug(branch)}.jsonl":
             continue
+        # The glob also matches the *.recent.jsonl windows write_recent_window
+        # keeps beside each full file - a verbatim copy of its newest records,
+        # so reading them as a series would count those samples twice.
+        if sibling.name.endswith(".recent.jsonl"):
+            continue
         merged.extend(series_samples(sibling, leg, config, metric))
     if not merged:
         return None, 0, False

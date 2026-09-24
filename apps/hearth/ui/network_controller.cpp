@@ -216,11 +216,26 @@ struct LayoutFields {
     return fields;
 }
 
+// Whether the sink's own state lists the Settings command - the only way
+// any of the Speakers/Decoder tabs' edits can reach it:
+// ServerSession::ac3forge_command() refuses a command the state does not
+// list, whatever the support object says the sink could manage.
+[[nodiscard]] bool sink_takes_settings(const ac3::hearth::SinkFacts& facts) {
+    if (!facts.ac3forge_state) {
+        return false;
+    }
+    const std::vector<forge::Command>& listed = facts.ac3forge_state->supported_commands;
+    return std::find(listed.begin(), listed.end(), forge::Command::kSettings) != listed.end();
+}
+
 [[nodiscard]] QVariantMap sink_speaker_settings_to_map(const ac3::hearth::SinkFacts& facts) {
     QVariantMap map;
     if (!facts.ac3forge_support) {
         return map;
     }
+    // NetworkSinkSpeakers.qml disables every control, and says why, when
+    // this is false - an edit it offered would otherwise be dropped silently.
+    map[QStringLiteral("settingsAccepted")] = sink_takes_settings(facts);
     const forge::Settings settings = sink_settings_base(facts);
     const ac3::render::OutputLayout layout = draft_layout(settings.layout);
     const LayoutFields fields = layout_fields(layout);
@@ -296,13 +311,22 @@ struct LayoutFields {
     return map;
 }
 
-[[nodiscard]] QVariantMap sink_report_to_map(const ac3::hearth::SinkFacts& facts) {
+// `refused` is set when the last push this window made to this sink was
+// not sent (NetworkController::note_push()): that, not "Nothing sent yet.",
+// is what the report has to say then.
+[[nodiscard]] QVariantMap sink_report_to_map(const ac3::hearth::SinkFacts& facts, bool refused) {
     QVariantMap map;
     if (!facts.ac3forge_support) {
         return map;
     }
     QString settings_text = QStringLiteral("Nothing sent yet.");
-    if (facts.intended_settings) {
+    if (refused) {
+        settings_text = sink_takes_settings(facts)
+                            ? QObject::tr("not sent: the sink refused the settings.")
+                            : QObject::tr("not sent: the sink does not take settings from Hearth.");
+    } else if (!sink_takes_settings(facts) && !facts.intended_settings) {
+        settings_text = QObject::tr("The sink does not take settings from Hearth.");
+    } else if (facts.intended_settings) {
         const std::int64_t sent = facts.intended_settings->revision;
         if (!facts.ac3forge_state) {
             settings_text = QObject::tr("revision %1 sent, not reported yet").arg(sent);
@@ -596,7 +620,7 @@ void NetworkController::poll() {
             if (selected_settable) {
                 speaker_settings = sink_speaker_settings_to_map(facts);
                 decoder_settings = sink_decoder_settings_to_map(facts);
-                report = sink_report_to_map(facts);
+                report = sink_report_to_map(facts, refused_push_sink_ == QString::fromStdString(facts.id));
                 only_on_sink = sink_only_on_sink_to_map(facts);
             }
         }
@@ -680,7 +704,7 @@ void NetworkController::setSinkLayoutText(const QString& text) {
     // an assignment past the new layout's own slot count simply stops
     // showing in the grid, the same "narrower layout drops the tail" rule
     // HearthController::setLayoutText() follows locally.
-    sinks_engine_->push_sink_settings(facts->id, settings);
+    note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
 }
 
 void NetworkController::setSinkHeights(const QString& realization) {
@@ -694,7 +718,7 @@ void NetworkController::setSinkHeights(const QString& realization) {
     forge::Settings settings = sink_settings_base(*facts);
     const ac3::render::OutputLayout layout = draft_layout(settings.layout);
     settings.layout = std::string(layout.with_realization(realization_from_name(realization)).text());
-    sinks_engine_->push_sink_settings(facts->id, settings);
+    note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
 }
 
 void NetworkController::setSinkSpeakerSmall(int slot, bool small) {
@@ -712,7 +736,7 @@ void NetworkController::setSinkSpeakerSmall(int slot, bool small) {
         return;
     }
     settings.layout = std::string(changed->text());
-    sinks_engine_->push_sink_settings(facts->id, settings);
+    note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
 }
 
 void NetworkController::setSinkTrimDb(int output, double db) {
@@ -728,7 +752,7 @@ void NetworkController::setSinkTrimDb(int output, double db) {
         return;
     }
     (*settings.trim_db)[static_cast<std::size_t>(output)] = db;
-    sinks_engine_->push_sink_settings(facts->id, settings);
+    note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
 }
 
 void NetworkController::setSinkDelayMs(int output, double ms) {
@@ -744,7 +768,7 @@ void NetworkController::setSinkDelayMs(int output, double ms) {
         return;
     }
     (*settings.delay_ms)[static_cast<std::size_t>(output)] = ms;
-    sinks_engine_->push_sink_settings(facts->id, settings);
+    note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
 }
 
 void NetworkController::setSinkCrossoverHz(double hz) {
@@ -757,7 +781,7 @@ void NetworkController::setSinkCrossoverHz(double hz) {
     }
     forge::Settings settings = sink_settings_base(*facts);
     settings.crossover_hz = hz;
-    sinks_engine_->push_sink_settings(facts->id, settings);
+    note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
 }
 
 void NetworkController::setSinkRoutingAssignment(int slot, int output) {
@@ -782,7 +806,7 @@ void NetworkController::setSinkRoutingAssignment(int slot, int output) {
         return;
     }
     settings.routing = std::string(text.data());
-    sinks_engine_->push_sink_settings(facts->id, settings);
+    note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
 }
 
 void NetworkController::setSinkDecoderSettings(const QVariantMap& settings_map) {
@@ -828,7 +852,14 @@ void NetworkController::setSinkDecoderSettings(const QVariantMap& settings_map) 
     if (settings_map.contains(QStringLiteral("concealment"))) {
         decoder.concealment = concealment_from_name(settings_map.value(QStringLiteral("concealment")).toString());
     }
-    sinks_engine_->push_sink_settings(facts->id, settings);
+    note_push(sinks_engine_->push_sink_settings(facts->id, settings), facts->id);
+}
+
+void NetworkController::note_push(bool sent, const std::string& sink_id) {
+    // Remembered per window, for the one sink it concerns, until the next
+    // push to any sink - poll() puts it in that sink's report.
+    refused_push_sink_ = sent ? QString() : QString::fromStdString(sink_id);
+    poll();
 }
 
 void NetworkController::startSinkIdentify(int slot) {

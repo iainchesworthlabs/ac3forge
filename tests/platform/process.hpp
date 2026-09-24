@@ -66,4 +66,11 @@ std::string process_id();
 // wrapping belongs on the Windows side of this seam and nowhere else.
 int run_shell(std::string_view command);
 
+// Sets (or, with unset_environment, removes) a variable in this process's own
+// environment - the seam for a test that has to steer code reading
+// std::getenv(). POSIX spells these setenv()/unsetenv(); the Windows CRT has
+// neither and uses _putenv_s(), where an empty value removes the variable.
+void set_environment(std::string_view name, std::string_view value);
+void unset_environment(std::string_view name);
+
 }  // namespace ac3::test::platform

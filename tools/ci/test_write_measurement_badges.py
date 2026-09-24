@@ -23,9 +23,14 @@ test_per_channel_breach_is_amber_where_the_scalar_test_stayed_green pins it.
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
 
+import contextlib
+import io
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -150,6 +155,58 @@ class AccuracyBadgeTest(unittest.TestCase):
         """A performance row sharing the commit must not be read as a check."""
         got = badges.accuracy_badge([{"leg": "linux-gcc", "ms_per_frame": 0.31}])
         self.assertEqual(got["message"], "no data")
+
+
+class SpeedAndMemoryBadgeTest(unittest.TestCase):
+    def test_speed_reports_the_slowest_workload(self):
+        """Worst case, not average: one workload below real time goes amber
+        even when every other one is far above it."""
+        b = badges.speed_badge([
+            {"ms_per_frame": 1.0, "real_time_budget_ms_per_frame": 32.0},
+            {"ms_per_frame": 64.0, "real_time_budget_ms_per_frame": 32.0},
+            {"ms_per_frame": "n/a"}])
+        self.assertEqual((b["message"], b["color"]), ("0x real time", badges.AMBER))
+        b = badges.speed_badge([{"ms_per_frame": 2.0}])   # default 32 ms budget
+        self.assertEqual((b["message"], b["color"]), ("16x real time", badges.GREEN))
+        self.assertEqual(badges.speed_badge([{"ms_per_frame": 0}])["message"], badges.NO_DATA)
+
+    def test_memory_colour_follows_retention_not_churn(self):
+        b = badges.memory_badge([{"bytes_per_frame": 10240.0, "steady_live_growth": 0},
+                                 {"bytes_per_frame": 2048.0, "steady_live_growth": None}])
+        self.assertEqual((b["message"], b["color"]), ("10 KB/frame", badges.GREEN))
+        b = badges.memory_badge([{"bytes_per_frame": 1024.0, "steady_live_growth": 8192}])
+        self.assertEqual(b["color"], badges.AMBER)
+        self.assertEqual(badges.memory_badge([{}])["color"], badges.GREY)
+
+
+class HistoryAndMainTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.dir = Path(self._tmp.name)
+
+    def test_newest_commit_rows_takes_the_last_sha(self):
+        path = self.dir / "h.jsonl"
+        self.assertEqual(badges.newest_commit_rows(path), [])
+        path.write_text("\n\n{broken\n")
+        self.assertEqual(badges.newest_commit_rows(path), [])
+        path.write_text("\n".join(json.dumps(r) for r in [
+            {"commit": "a", "v": 1}, {"commit": "b", "v": 2}, {"commit": "b", "v": 3}]) + "\n")
+        self.assertEqual([r["v"] for r in badges.newest_commit_rows(path)], [2, 3])
+
+    def test_main_writes_three_badges(self):
+        (self.dir / "performance-dev.jsonl").write_text(json.dumps(
+            {"commit": "x", "ms_per_frame": 4.0, "real_time_budget_ms_per_frame": 32.0}) + "\n")
+        argv = ["x", "--history-dir", str(self.dir), "--branch", "dev"]
+        buf = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(buf):
+            self.assertEqual(badges.main(), 0)
+        speed = json.loads((self.dir / "badges" / "speed.json").read_text())
+        self.assertEqual(speed["message"], "8x real time")
+        for name in ("accuracy", "memory"):
+            data = json.loads((self.dir / "badges" / f"{name}.json").read_text())
+            self.assertEqual(data["message"], badges.NO_DATA)
+        self.assertIn("encode speed = 8x real time", buf.getvalue())
 
 
 if __name__ == "__main__":

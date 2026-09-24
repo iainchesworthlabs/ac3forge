@@ -43,7 +43,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json",
-    "test": "node --test"
+    "test": "node --test --experimental-test-coverage --test-coverage-exclude='tests/**' --test-coverage-lines=95 --test-coverage-branches=90 --test-coverage-functions=95"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

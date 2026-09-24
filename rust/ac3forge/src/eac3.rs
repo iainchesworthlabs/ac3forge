@@ -331,7 +331,7 @@ impl Eac3Decoder {
             return Ok(Vec::new());
         }
         // SAFETY: AC3FORGE_OK with a non-null array and out_count > 0 guarantees `out_count`
-        // valid, individually-owned handles at `out_substreams[0..out_count]` (ac3forge.h's own
+        // valid, library-owned handles at `out_substreams[0..out_count]` (ac3forge.h's own
         // comment on ac3forge_eac3_decoder_flush).
         let handles = unsafe { std::slice::from_raw_parts(out_substreams, out_count) };
         let result = handles
@@ -341,9 +341,12 @@ impl Eac3Decoder {
                     .expect("ac3forge_eac3_decoder_flush returned a null substream handle"),
             })
             .collect();
-        // The array itself (not the substreams it points to, which `result`'s Drop impls now
-        // own) is destroyed here, per ac3forge_decoded_substream_array_destroy()'s own contract.
-        unsafe { sys::ac3forge_decoded_substream_array_destroy(out_substreams, out_count) };
+        // ac3forge_decoded_substream_array_destroy(array, count) destroys the first `count`
+        // elements AND the array. Ownership of every element has just moved into `result`
+        // (each DecodedSubstream's Drop destroys its own handle), so pass a count of 0: that
+        // frees only the array. Passing `out_count` here would free every substream now, before
+        // the caller ever reads it, and again when the Vec drops.
+        unsafe { sys::ac3forge_decoded_substream_array_destroy(out_substreams, 0) };
         Ok(result)
     }
 }

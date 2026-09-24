@@ -103,47 +103,60 @@ fi
 # comment), the rest as ordinary in-flight-churn headroom. Re-check against
 # the first hosted run and tighten if the margin proves generous.
 #
-# src/audio's floor is low because its MEASUREMENT is low, deliberately not
-# rounded up to look respectable: no test opens an audio device, so the ALSA
-# capture/monitor/passthrough device paths (the bulk of src/audio's lines)
-# never execute headless - only the device-naming/format logic does. The
-# floor holds the line while that is true; raising it is a matter of writing
-# the missing tests, not of editing this table. src/capi sat in the same
-# paragraph (48.4/27.1: test_capi.cpp barely touched the E-AC-3 half,
-# src/capi/src/eac3.cpp measured 31% line) until that half's tests were
-# written; its remaining gap is src/capi/src/internal.hpp's guard() catch
-# clauses (allocation failure is not fakeable from a test) and the
-# defensively unreachable enum fallthroughs beside them.
+# src/audio's floor used to be low because its measurement was: no test
+# opened an audio device, so the ALSA capture/monitor/passthrough paths never
+# ran headless. They do now, against software devices (see the 2026-09-24
+# note below). src/capi's remaining gap is src/capi/src/internal.hpp's guard()
+# catch clauses and the defensively unreachable enum fallthroughs beside them.
 #
-# apps/cli's floor is the same kind of honest-low number, and its margin is
-# the widest here for a reason its own breakdown below makes visible: two of
-# its command modules (audio_io, live_audio) only execute at all to the
-# extent the runner has a capture or render endpoint, and that differs
-# between a developer's WSL (which has an ALSA `default`) and a headless CI
-# container (which has nothing). Roughly 15% of apps/cli's lines sit behind
-# that difference, so the floor is set to survive the no-device case rather
-# than the measurement that produced it.
+# apps/cli's device commands (audio_io, live_audio) used to execute only to
+# the extent the runner had a capture or render endpoint, which differed
+# between a developer's WSL and a headless CI container. The software-device
+# suites give both the same endpoints, so apps/cli's margin no longer has to
+# absorb that difference.
 #
-# src/sendspin and apps/hearth are NOT calibrated the same way as the rows above: nothing has
-# measured them against the CI toolchain pin yet (Hearth only just started building on this leg -
-# see CMakePresets.json's config-linux-gcc-coverage). Their floors are deliberately low - proof
-# the components produce coverage data at all (the no-data check a few lines down is the real
-# protection until a first real run exists), not a claim about what fraction of either is
-# exercised. Tighten both against the first hosted-runner coverage run that includes them, the
-# same "measure, then set a few points under" process every other row already went through.
+# Re-measured 2026-09-24 after the coverage review that added the ALSA
+# software-device suites (tests/audio/alsa_null_device.hpp), the AC-4 syntax
+# suites and the CLI/Crucible/Hearth/IAB edge suites, on GCC 14.2 / gcovr 8.6
+# (not the CI pin - hence the ~4-6 point margins rather than tighter ones):
+#
+#   forge 93.6/87.7   audio 78.1/64.3   signing 95.3/83.1  matroska 93.6/88.1
+#   mp4 93.7/88.6     mpegts 96.8/90.0  capi 88.0/78.9     ac3adm 87.2/81.5
+#   admbridge 93.3/84.0                 sendspin 90.4/80.2 apps/cli 86.1/77.8
+#   apps/hearth 92.4/83.1               ac4 98.0/93.4      ac4dec 92.7/85.4
+#   ac3iab 95.4/92.9  iamf 96.1/96.2    apps/common 83.3/71.9
+#   apps/crucible/engine 95.9/87.8
+#
+# src/audio and apps/cli's device commands no longer depend on the runner
+# having an audio endpoint: their success paths run against alsa-lib's
+# built-in null/file/route/multi plugins. What they still miss needs a real
+# card (snd_card_next() walks /dev/snd/controlC* directly), so src/audio's
+# floor is the agreed 70%-class floor for hardware-bound code rather than
+# 85%. apps/common is below 85% for the same reason: sink_wait.hpp's play and
+# passthrough instantiations only run against a card. src/sendspin and
+# apps/hearth now have a real measurement behind their floors.
+#
+# apps/crucible/engine is the platform-free engine core ac3tests compiles in;
+# the rest of apps/crucible keeps its own floors in coverage_crucible.ps1.
 components="
-src/forge      88 78
-src/audio      25 15
-src/signing    82 55
-src/matroska   88 85
-src/mp4        90 85
-src/mpegts     88 85
-src/capi       82 72
-src/ac3adm     82 75
-src/admbridge  85 78
-src/sendspin   10 5
-apps/cli       40 34
-apps/hearth    10 5
+src/forge             90 82
+src/audio             72 58
+src/signing           90 76
+src/matroska          88 85
+src/mp4               90 85
+src/mpegts            92 85
+src/capi              84 74
+src/ac3adm            82 75
+src/admbridge         88 78
+src/sendspin          85 74
+src/ac4               93 88
+src/ac4dec            88 80
+src/ac3iab            90 87
+src/iamf              91 90
+apps/cli              80 71
+apps/common           78 66
+apps/crucible/engine  90 82
+apps/hearth           87 77
 "
 
 json="$build_dir/coverage.json"
@@ -166,6 +179,11 @@ html="$build_dir/coverage.html"
 # suspicious-hit line elsewhere still shows up in the log instead of
 # vanishing silently.
 #
+# "$build_dir" as the search path: without one gcovr searches --root (the
+# whole checkout) for .gcda files, so a second instrumented tree under build/
+# - a GUI or PipeWire configuration beside this one - was folded into these
+# figures with its own copies of the same sources.
+#
 # --gcov-ignore-parse-errors=negative_hits.warn: the same gcov bug
 # (bugzilla#68080), a different symptom - a negative rather than suspicious
 # hit count. Confirmed independently at two unrelated sites, both the same
@@ -177,9 +195,14 @@ html="$build_dir/coverage.html"
 # is its own flag (gcovr's --gcov-ignore-parse-errors appends per occurrence
 # rather than replacing) so a genuinely new problem in either category still
 # shows up rather than both going quiet under one blanket `all`.
+# -fprofile-update=atomic would remove the threaded-code form of the race,
+# but it made the DSP-heavy cases 2-6x slower (the ten-minute playout case
+# 4.9 s -> 30.8 s), so the flag stays.
 gcovr --root . \
-    --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin)/.*' \
+    --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin|ac4|ac4dec|ac3iab|iamf)/.*' \
     --filter 'apps/cli/.*' \
+    --filter 'apps/common/.*' \
+    --filter 'apps/crucible/engine/.*' \
     --filter 'apps/hearth/(engine|testsink)/.*' \
     --gcov-executable "$gcov_exe" \
     --exclude-throw-branches --exclude-unreachable-branches \
@@ -187,7 +210,8 @@ gcovr --root . \
     --gcov-ignore-parse-errors=suspicious_hits.warn \
     --gcov-ignore-parse-errors=negative_hits.warn \
     --object-directory "$build_dir" \
-    --json "$json" --html-details "$html" --html-self-contained --print-summary
+    --json "$json" --html-details "$html" --html-self-contained --print-summary \
+    "$build_dir"
 
 fail=0
 while read -r comp line_min branch_min; do

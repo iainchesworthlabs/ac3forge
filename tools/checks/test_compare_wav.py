@@ -17,6 +17,8 @@ catch. test_per_channel_floor_catches_what_scalar_misses is that scenario.
 Run: python3 -m unittest discover -s tools/checks -p 'test_*.py'
 """
 
+import contextlib
+import io
 import json
 import math
 import struct
@@ -25,6 +27,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -193,6 +196,193 @@ class EndToEnd(unittest.TestCase):
         _, result = self.run_compare(ref, act, "--min-snr-db", "30")
         self.assertEqual(result["threshold_db"], 30.0)
         self.assertEqual(result["thresholds_db"], [30.0, 30.0])
+
+
+def write_wav_pcm16(path: Path, channels: list[list[float]], rate: int = RATE,
+                    extensible: bool = False, junk: bytes = b"") -> None:
+    """PCM16 (optionally WAVE_FORMAT_EXTENSIBLE, optionally preceded by an
+    odd-sized chunk) - the other two shapes read_channels must accept."""
+    nch = len(channels)
+    frames = len(channels[0])
+    payload = bytearray()
+    for i in range(frames):
+        for c in range(nch):
+            payload += struct.pack("<h", max(-32768, min(32767, round(channels[c][i] * 32768))))
+    block_align = nch * 2
+    if extensible:
+        fmt = struct.pack("<HHIIHH", 0xFFFE, nch, rate, rate * block_align, block_align, 16)
+        fmt += struct.pack("<HHI", 22, 16, 0) + struct.pack("<H", 1) + bytes(14)
+    else:
+        fmt = struct.pack("<HHIIHH", 1, nch, rate, rate * block_align, block_align, 16)
+    riff = b"WAVE"
+    if junk:
+        riff += b"LIST" + struct.pack("<I", len(junk)) + junk + (b"\0" if len(junk) & 1 else b"")
+    riff += b"fmt " + struct.pack("<I", len(fmt)) + fmt + \
+        b"data" + struct.pack("<I", len(payload)) + bytes(payload)
+    path.write_bytes(b"RIFF" + struct.pack("<I", len(riff)) + riff)
+
+
+class ReadChannels(unittest.TestCase):
+    """The reader must accept every shape the two decoders emit and refuse,
+    loudly, anything it cannot interpret - a reader that returned an empty or
+    misscaled signal would make every SNR meaningless."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_pcm16_is_scaled_to_unit_range(self):
+        path = self.tmp / "a.wav"
+        write_wav_pcm16(path, [[0.5, -0.25, 0.0], [0.0, 0.125, -1.0]])
+        chans, rate = compare_wav.read_channels(path)
+        self.assertEqual(rate, RATE)
+        self.assertEqual(chans, [[0.5, -0.25, 0.0], [0.0, 0.125, -1.0]])
+
+    def test_extensible_with_odd_chunk_before_fmt(self):
+        """The SubFormat GUID carries the real tag, and odd chunks are padded
+        to a word boundary - misreading either loses the fmt/data chunks."""
+        path = self.tmp / "b.wav"
+        write_wav_pcm16(path, [[0.5, -0.5]], rate=44100, extensible=True, junk=b"abc")
+        chans, rate = compare_wav.read_channels(path)
+        self.assertEqual((chans, rate), ([[0.5, -0.5]], 44100))
+
+    def test_float32_round_trips(self):
+        path = self.tmp / "c.wav"
+        write_wav_f32(path, [[0.25, -0.75]])
+        self.assertEqual(compare_wav.read_channels(path), ([[0.25, -0.75]], RATE))
+
+    def test_not_riff_is_fatal(self):
+        path = self.tmp / "d.wav"
+        path.write_bytes(b"OggS" + bytes(40))
+        with self.assertRaisesRegex(SystemExit, "not a RIFF/WAVE"):
+            compare_wav.read_channels(path)
+
+    def test_missing_data_chunk_is_fatal(self):
+        path = self.tmp / "e.wav"
+        fmt = struct.pack("<HHIIHH", 1, 1, RATE, RATE * 2, 2, 16)
+        riff = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt
+        path.write_bytes(b"RIFF" + struct.pack("<I", len(riff)) + riff)
+        with self.assertRaisesRegex(SystemExit, "missing fmt/data"):
+            compare_wav.read_channels(path)
+
+    def test_unsupported_format_is_fatal(self):
+        """24-bit PCM is not silently read as 16-bit garbage."""
+        path = self.tmp / "f.wav"
+        fmt = struct.pack("<HHIIHH", 1, 1, RATE, RATE * 3, 3, 24)
+        riff = b"WAVE" + b"fmt " + struct.pack("<I", len(fmt)) + fmt + \
+            b"data" + struct.pack("<I", 6) + bytes(6)
+        path.write_bytes(b"RIFF" + struct.pack("<I", len(riff)) + riff)
+        with self.assertRaisesRegex(SystemExit, "unsupported format tag 1/24"):
+            compare_wav.read_channels(path)
+
+
+class Helpers(unittest.TestCase):
+    def test_best_lag_finds_positive_and_negative_shifts(self):
+        sig = [math.sin(i * 0.37) * math.cos(i * 0.011) for i in range(400)]
+        delayed = [0.0] * 7 + sig          # actual lags reference by 7
+        self.assertEqual(compare_wav.best_lag(sig, delayed, 16, 300), 7)
+        self.assertEqual(compare_wav.best_lag(delayed, sig, 16, 300), -7)
+
+    def test_align_trims_both_directions(self):
+        self.assertEqual(compare_wav.align([1, 2, 3], [0, 1, 2, 3], 1), ([1, 2, 3], [1, 2, 3]))
+        self.assertEqual(compare_wav.align([0, 0, 1, 2], [1, 2, 3], -2), ([1, 2], [1, 2]))
+
+    def test_diff_rms_dbfs(self):
+        self.assertEqual(compare_wav.diff_rms_dbfs([], []), -math.inf)
+        self.assertEqual(compare_wav.diff_rms_dbfs([0.5], [0.5]), -math.inf)
+        self.assertAlmostEqual(compare_wav.diff_rms_dbfs([0.1, 0.1], [0.0, 0.0]), -20.0)
+
+    def test_snr_db_edges(self):
+        self.assertEqual(compare_wav.snr_db([1.0], [1.0]), math.inf)
+        self.assertEqual(compare_wav.snr_db([0.0, 0.0], [0.1, 0.1]), -math.inf)
+        self.assertAlmostEqual(compare_wav.snr_db([1.0, 1.0], [1.1, 0.9]), 20.0)
+
+    def test_json_safe_db(self):
+        self.assertEqual(compare_wav.json_safe_db(math.inf), 200.0)
+        self.assertEqual(compare_wav.json_safe_db(-math.inf), -200.0)
+        self.assertEqual(compare_wav.json_safe_db(12.5), 12.5)
+
+
+class MainInProcess(unittest.TestCase):
+    """main() driven in-process (argv patched) on short signals with a small
+    lag search, so every decision branch is exercised cheaply."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = Path(self._tmp.name)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def run_main(self, ref, act, *args, act_rate=None):
+        r, a = self.tmp / "r.wav", self.tmp / "a.wav"
+        out = self.tmp / "sub" / "o.json"
+        write_wav_f32(r, ref)
+        if act_rate is None:
+            write_wav_f32(a, act)
+        else:
+            write_wav_pcm16(a, act, rate=act_rate)
+        argv = ["compare_wav.py", str(r), str(a), "--max-lag-samples", "4",
+                "--probe-samples", "256", "--json-out", str(out), *args]
+        buf = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(buf):
+            rc = compare_wav.main()
+        return rc, buf.getvalue(), (json.loads(out.read_text()) if out.exists() else None)
+
+    def test_rate_mismatch_fails(self):
+        sig = [tone(frames=512)]
+        rc, text, js = self.run_main(sig, sig, act_rate=44100)
+        self.assertEqual(rc, 1)
+        self.assertIn("sample rate mismatch", text)
+        self.assertIsNone(js)
+
+    def test_channel_count_mismatch_fails(self):
+        sig = tone(frames=512)
+        rc, text, _ = self.run_main([sig], [sig, sig])
+        self.assertEqual(rc, 1)
+        self.assertIn("channel count mismatch", text)
+
+    def test_below_floor_fails_with_named_channel(self):
+        ref = [tone(frames=512), tone(frames=512, freq=300.0)]
+        act = [ref[0], degrade(ref[1], 10.0)]
+        rc, text, js = self.run_main(ref, act, "--min-snr-db", "20")
+        self.assertEqual(rc, 1)
+        self.assertIn("channel 1 (R)", text)
+        self.assertIn("below its own SNR floor\n", text)
+        self.assertFalse(js["pass"])
+        self.assertEqual(js["tightest_channel"], 1)
+
+    def test_max_diff_dbfs_gates_even_when_snr_passes(self):
+        """A quiet passage can clear the SNR ratio floor while the absolute
+        difference is too loud; --max-diff-dbfs must catch that."""
+        ref = [tone(frames=512, amp=0.5)]
+        act = [degrade(ref[0], 30.0)]   # diff ~ -39 dBFS
+        rc, text, js = self.run_main(ref, act, "--min-snr-db", "20", "--max-diff-dbfs", "-60")
+        self.assertEqual(rc, 1)
+        self.assertIn("difference threshold", text)
+        self.assertIn("loudest channel difference", text)
+        self.assertFalse(js["pass"])
+
+    def test_max_diff_dbfs_passes_when_below(self):
+        ref = [tone(frames=512, amp=0.5)]
+        act = [degrade(ref[0], 30.0)]
+        rc, text, js = self.run_main(ref, act, "--min-snr-db", "20", "--max-diff-dbfs", "-20",
+                                     "--codec-label", "ac3", "--bitrate-kbps", "192")
+        self.assertEqual(rc, 0, text)
+        self.assertTrue(text.rstrip().endswith("PASS"))
+        self.assertEqual((js["codec"], js["bitrate_kbps"]), ("ac3", 192))
+        self.assertLess(js["worst_diff_dbfs"], -20)
+        json.dumps(js, allow_nan=False)   # stays browser-parseable
+
+    def test_bit_exact_diff_clamped_in_json(self):
+        ref = [tone(frames=512)]
+        rc, _, js = self.run_main(ref, ref, "--max-diff-dbfs", "-100")
+        self.assertEqual(rc, 0)
+        self.assertEqual(js["worst_diff_dbfs"], -200.0)
+        self.assertEqual(js["headroom_db"], [200.0])
 
 
 if __name__ == "__main__":

@@ -269,7 +269,7 @@ TEST_CASE("metadata refuses a field the stream does not carry", "[cli][metadata]
     // Removed first: the scratch directory survives between runs, so an
     // "it wrote nothing" check is only meaningful against a clean slate.
     fs::remove(out);
-    REQUIRE(run_cli("metadata " + quoted(source) + " " + quoted(out) + " compr=-6", log) != 0);
+    REQUIRE(run_cli("metadata " + quoted(source) + " " + quoted(out) + " compr=-6", log) == 1);
     const auto text = read_log(log);
     INFO(text);
     CHECK(text.find("does not transmit that field") != std::string::npos);
@@ -371,7 +371,7 @@ TEST_CASE("cut snaps to access-unit boundaries and refuses a start past the end"
     SECTION("a start past the end is refused, not silently empty") {
         const auto empty = dir / "cut_past_end.ac3";
         fs::remove(empty);
-        REQUIRE(run_cli("cut " + quoted(source) + " " + quoted(empty) + " 60", log) != 0);
+        REQUIRE(run_cli("cut " + quoted(source) + " " + quoted(empty) + " 60", log) == 1);
         CHECK(text.find("access-unit aligned") != std::string::npos);
         CHECK_FALSE(fs::exists(empty));
     }
@@ -498,7 +498,7 @@ TEST_CASE("transcode needs to be told the codec when the name cannot say it",
     // This one writes `out` for real further down, so the previous run's
     // copy is still there unless it goes first.
     fs::remove(out);
-    REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out), log) != 0);
+    REQUIRE(run_cli("transcode " + quoted(source) + " " + quoted(out), log) == 1);
     CHECK(read_log(log).find("codec=ac3|eac3") != std::string::npos);
     CHECK_FALSE(fs::exists(out));
 
@@ -839,7 +839,7 @@ TEST_CASE("transcode names the reason when the encoder refuses a carried dialnor
         const auto rc = run_cli("transcode " + quoted(source) + " " + quoted(out) + " 448", log);
         const auto text = read_log(log);
         INFO(text);
-        CHECK(rc != 0);
+        CHECK(rc == 1);  // a configuration the encoder cannot express
         CHECK(text.find("dialnorm out of range 1..31") != std::string::npos);
         CHECK(text.find("bitrate") == std::string::npos);
         CHECK_FALSE(fs::exists(out));
