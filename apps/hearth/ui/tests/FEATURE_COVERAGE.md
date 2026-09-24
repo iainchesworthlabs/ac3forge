@@ -9,7 +9,7 @@ Status:
 
 - **UI**: driven from the UI (click, key, typed text, drop, dialog) against the real controller, with the outcome asserted.
 - **logic**: exercised only by calling the controller, or by rendering a page without driving it.
-- **bug**: driven from the UI and found broken; the case is an `expectFail` (XFAIL now, XPASS the day it is fixed). See "UI bugs found".
+- The four defects this work found are fixed; each now has a normal regression case. See "UI bugs found (fixed)".
 - **none**: not exercised.
 
 ## How the suites stand in for hardware
@@ -71,9 +71,9 @@ Status:
 | 45 | Speakers | Height speaker realisation | none | UI | SpeakersPage::test_heightsRealizationNeedsAHeightLayout |
 | 46 | Speakers | Routing grid: arrow keys, Space commits | UI | UI | SpeakersRouting::test_arrowKeys..., test_spaceCommits... |
 | 47 | Speakers | Routing grid: click a cell to patch (6 real output columns) | logic | UI | SpeakersPage::test_routingGridClicksPatchSpeakersToDeviceOutputs |
-| 48 | Speakers | "Use the device's order" / "Clear" buttons | logic | UI / bug | SpeakersPage::test_routingGrid... (Use the device's order); **Clear: bug**, SpeakersPage::test_clearRoutingButtonUnpatchesEverySlot |
+| 48 | Speakers | "Use the device's order" / "Clear" buttons | logic | UI | SpeakersPage::test_routingGridClicksPatchSpeakersToDeviceOutputs, SpeakersPage::test_clearRoutingButtonUnpatchesEverySlot |
 | 49 | Speakers | Size large / small per speaker | none | UI | SpeakersPage::test_sizeTrimAndDelayPerSpeaker |
-| 50 | Speakers | Trim field (and validator refusal) | none | UI | SpeakersPage::test_sizeTrimAndDelayPerSpeaker |
+| 50 | Speakers | Trim / delay fields: a refused value reverts to the one in effect | none | UI | SpeakersPage::test_sizeTrimAndDelayPerSpeaker |
 | 51 | Speakers | Delay field | none | UI | SpeakersPage::test_sizeTrimAndDelayPerSpeaker |
 | 52 | Speakers | Identify button per speaker (Identify / Stop) | none | UI | SpeakersPage::test_identifyButtonAndLevel, Shell::test_escapeStops... |
 | 53 | Speakers | Crossover presets and exact field | none | UI | SpeakersPage::test_crossoverPresetAndExactField |
@@ -96,7 +96,7 @@ Status:
 | 70 | Network | Type the sink's code, Pair: sink becomes paired | none | UI | NetworkPairing::test_discoveredSink... (the sink logs "paired with server") |
 | 71 | Network | Cancel pairing | none | UI | NetworkPairing::test_cancelEndsThePairingAttempt |
 | 72 | Network | Paired Hearth sink settings view (its outputs, crossover range) | logic | UI | NetworkPairing::test_pairedSinkSpeakersTabShowsTheSinkAndEditsReachIt |
-| 73 | Network | Sink Speakers tab edits reach the sink | logic | bug | NetworkPairing::test_pairedSinkSpeakersTab... (expectFail) |
+| 73 | Network | Sink Speakers tab: disabled with the reason when the sink takes no settings; an edit reaches a sink that does | logic | UI | NetworkPairing::test_pairedSinkSpeakersTabIsDisabledWhenTheSinkTakesNoSettings, NetworkPairing::test_sinkThatTakesSettingsAppliesAnEditFromTheSpeakersTab (report shows "revision N · applied") |
 | 74 | Network | Sink Decoder tab offers only what the sink lists | logic | UI | NetworkPairing::test_pairedSinkDecoderTabFollowsWhatTheSinkAccepts (test sink lists none, so all disabled) |
 | 75 | Network | Sink report panel | logic | UI | NetworkPairing::test_pairedSinkDecoderTab... ("Nothing playing.", "0 bursts") |
 | 76 | Network | New group, rename, delete | none | UI | NetworkPairing::test_groupsCreateRenameAddMemberAndDelete |
@@ -118,42 +118,44 @@ Status:
 
 ### Totals
 
-| | Before (4 suites, 18 cases) | After (14 suites, 70 cases) |
+| | Before (4 suites, 18 cases) | After (14 suites, 72 cases) |
 |---|---|---|
-| UI | 5 | 88 (row 48 partly: its Clear button is a bug) |
+| UI | 5 | 89 |
 | logic only | 15 | 1 (row 15: no UI control exists) |
-| bug (expectFail) | - | 1 (row 73), plus Clear in row 48 |
 | none | 71 | 1 (row 91) |
 
 Gaps that remain inside covered rows:
 
-- The sink's own trim, delay, routing and identify controls cannot take an edit, because the test sink offers none of them (`management.routing` false, trim range 0..0, `identify` false).
+- The sink's own trim, delay, routing and identify edits are not driven: even the accept-settings test sink manages none of them (`management.routing` false, trim range 0..0, `identify` false), so only the layout edit is shown reaching a sink.
 - The group mute and group volume sliders are not driven.
 - The Only-on-sink panel is rendered but its text is not read.
 
-## UI bugs found
+## UI bugs found (fixed)
 
-1. **ac3hearth segfaults on start (Qt 6.9.3, qmlcachegen-compiled QML).**
-   - Where: the `Loader.sourceComponent` binding in `apps/hearth/ui/qml/Network.qml` (`const group = NetworkController.selectedGroup; if (group && group.id !== undefined)`).
-   - Cause: the generated `Network_qml.cpp` calls `AOTCompiledContext::initGetValueLookup()` with a null `QMetaObject` (the one for QVariant) for the `.id` lookup.
-   - Steps: `QT_QPA_PLATFORM=offscreen build/gui-cov/bin/ac3hearth`.
-   - Expected: the window runs. Actual: SIGSEGV (exit 139) while Main.qml builds its StackLayout.
-   - With `QML_DISABLE_DISK_CACHE=1` (the engine compiles the QML itself) it runs.
-   - Recorded as the skipped `NetworkPageAot::test_networkPageBuildsWithTheCompiledBindings`, which crashes when the skip is removed. The suites that need Network.qml or Main.qml (`dialogs`, `network_pairing`, `output_picker`, `shell`) run with `QML_DISABLE_DISK_CACHE=1` (`tests/CMakeLists.txt`).
-2. **Speakers "Clear" does nothing while a device is open.**
-   - Where: `HearthController::clearRouting()` (`hearth_controller.cpp`, ~l.1440) posts `Routing::identity(slots, 0)`, a patch for zero outputs. `PcmOutput::set_routing()` (`src/audio/src/pcm_output.cpp:83`) refuses any patch whose output count is not the open device's.
-   - Expected: every slot unpatched. Actual: routing unchanged.
-   - It only looked right in `tst_speakers_routing.qml` because nothing is open there, so zero is the width.
-   - Case: `SpeakersPage::test_clearRoutingButtonUnpatchesEverySlot` (expectFail).
-3. **Sink Speakers tab offers edits the sink cannot take, and drops them silently.**
-   - The layout preset, crossover, trim and similar controls are enabled for a paired Hearth sink whose state does not list the `Settings` command (`apps/hearth/testsink` lists only volume and mute).
-   - `ServerSession::ac3forge_command()` refuses the push (`kCommandNotListed`). `NetworkSinks::push_sink_settings()` returns false and nothing on the page says so: the report stays "Nothing sent yet." and the value snaps back.
-   - Expected: the controls disabled, or a refusal shown.
-   - Case: `NetworkPairing::test_pairedSinkSpeakersTabShowsTheSinkAndEditsReachIt` (expectFail).
-4. **Minor: a refused Speakers-page field keeps showing the refused text.**
-   - An out-of-range trim (e.g. `99`, outside the validator's range) is not committed, but the field goes on showing `99` after focus leaves, because `text` is a plain binding with no restore.
-   - The layout field restores itself through its `Binding when: !activeFocus`.
-   - The committed suite asserts only that the value never reaches the engine.
+Each was first shown failing on the unfixed code, then fixed.
+
+1. **ac3hearth segfaulted on start (Qt 6.9.3, qmlcachegen-compiled QML).**
+   - Cause: `Network.qml`'s `Loader.sourceComponent` read members off a local (`const group = NetworkController.selectedGroup; if (group && group.id ...)`). qmlcachegen compiled that as a value-type lookup on QVariant, passing `QMetaType::fromName("QVariant").metaObject()` (null) to `AOTCompiledContext::initGetValueLookup()`, which dereferenced it.
+   - Fix: the binding reads `NetworkController.selectedGroup.id`, `.selectedSink.id` and `.selectedSink.badge` straight off the singleton. The generated `Network_qml.cpp` now has no QVariant value lookups. The behaviour is unchanged, because an empty map's `.id` is undefined. A comment at the binding says why it must not be "simplified" back.
+   - Check: `QT_QPA_PLATFORM=offscreen build/gui-cov/bin/ac3hearth` under `timeout 5` now exits 124 (still running); before the fix it exited 139.
+   - The `QML_DISABLE_DISK_CACHE=1` workaround is gone from `tests/CMakeLists.txt`, so every suite runs the compiled QML.
+   - Regression: `NetworkPageAot::test_networkPageBuildsWithNothingSelected` and `test_networkPageBuildsWithAGroupSelected` (unskipped; both segfaulted before the fix, as did `shell`).
+2. **Speakers "Clear" did nothing while a device was open.**
+   - Cause: `HearthController::clearRouting()` posted a patch sized for zero outputs, which `PcmOutput::set_routing()` refuses.
+   - Fix: it now posts every slot unassigned for the open device's own output count (`Routing::from_outputs(all -1, routingOutputs)`).
+   - Regression: `SpeakersPage::test_clearRoutingButtonUnpatchesEverySlot`.
+3. **The sink Speakers tab offered edits that were silently dropped.**
+   - Cause: the sink's state did not list the Settings command, but the controls were enabled anyway.
+   - Fix, in NetworkController:
+     - `sinkSpeakerSettings.settingsAccepted` says whether the sink's `ac3forge_state` lists the Settings command.
+     - The report says "The sink does not take settings from Hearth." instead of "Nothing sent yet.".
+     - A push that is refused anyway is recorded (`note_push()`) and reported as "not sent: ...".
+   - Fix, in QML: `NetworkSinkSpeakers.qml` disables every control and shows the reason (`networkSinkSettingsBlocked`). `NetworkSinkDecoder.qml`'s `accepts()` also requires the command.
+   - The test sink gained `SinkOptions::accept_settings` (off by default), so a sink that does take settings can be shown receiving an edit.
+   - Regressions: `NetworkPairing::test_pairedSinkSpeakersTabIsDisabledWhenTheSinkTakesNoSettings` and `NetworkPairing::test_sinkThatTakesSettingsAppliesAnEditFromTheSpeakersTab`.
+4. **A refused trim or delay value stayed displayed after focus left.**
+   - Fix: both fields now carry the same `Binding on text { when: !activeFocus }` restore as the page's layout and crossover fields. The page reverts rather than clamps, so this is consistent with it.
+   - Regression: `SpeakersPage::test_sizeTrimAndDelayPerSpeaker`.
 
 Not bugs, but worth knowing:
 
@@ -178,4 +180,4 @@ These are line figures from `build/gui-cov`, with the Hearth `.gcda` files clear
 ctest --test-dir build/gui-cov -R ac3hearth_qml_tests_ -j2 --output-on-failure
 ```
 
-All 14 suites take about 12 s wall-clock at `-j2`. The slowest is Playback, at about 6 s.
+All 14 suites take about 11 s wall-clock at `-j2`. The slowest is Playback, at about 6 s.
