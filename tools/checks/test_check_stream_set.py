@@ -15,7 +15,10 @@ import json
 import sys
 import tempfile
 import unittest
+import urllib.error
 from pathlib import Path
+from typing import ClassVar
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -277,6 +280,127 @@ class CommandTest(unittest.TestCase):
         self.assertIn("ac3-51-44k.ac3: never played", out)
         self.assertNotIn("714-aht.ec3", out)
         self.assertIn("::error title=ESP32-S3 stream set::", out)
+
+
+class PlayCommandTest(unittest.TestCase):
+    """`play` mode against a fake device: each POST /play appends that
+    stream's console output (or nothing), GET /status answers with JSON."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        tmp = Path(self._tmp.name)
+        self.manifest = tmp / "streams.json"
+        self.manifest.write_text(json.dumps(MANIFEST), encoding="utf-8")
+        self.console = tmp / "console.txt"
+        self.console.write_text("boot\n", encoding="utf-8")
+        self.posted = []
+
+    def device(self, lines_for, status_for=None, post_code=202, fail_post=False):
+        def http(method, url, body=None, timeout=10):
+            if method == "POST":
+                if fail_post:
+                    raise urllib.error.URLError("connection refused")
+                self.posted.append(body)
+                name = body.rsplit("/", 1)[-1]
+                with self.console.open("a", encoding="utf-8") as f:
+                    f.write(console(lines_for.get(name, [])))
+                return post_code, "busy\n" if post_code != 202 else ""
+            name = self.posted[-1].rsplit("/", 1)[-1]
+            status = (status_for or {}).get(name, {})
+            if status == "garbage":
+                return 200, "not json"
+            return 200, json.dumps(status)
+        clock = iter(range(0, 10000, 1))
+        return [mock.patch.object(check_stream_set, "http", http),
+                mock.patch.object(check_stream_set.time, "sleep", lambda s: None),
+                mock.patch.object(check_stream_set.time, "monotonic", lambda: next(clock))]
+
+    def run_play(self, patches, *extra):
+        out = io.StringIO()
+        with contextlib.ExitStack() as stack:
+            for p in patches:
+                stack.enter_context(p)
+            stack.enter_context(contextlib.redirect_stdout(out))
+            code = check_stream_set.main(["play", str(self.manifest), str(self.console),
+                                          "--device", "http://dev/", "--base", "http://h/",
+                                          "--timeout", "5", *extra])
+        return code, out.getvalue()
+
+    GOOD: ClassVar[dict] = {"layout-51.ec3": play_lines("layout-51.ec3", LEVELS_51),
+                            "51-tpn.ec3": play_lines("51-tpn.ec3", LEVELS_51, units=15, held=1),
+                            "ac3-51-44k.ac3": refused_lines("ac3-51-44k.ac3")}
+
+    def test_every_non_psram_stream_is_played_and_passes(self):
+        status = {"ac3-51-44k.ac3": {"state": "failed", "why": "sample rate"},
+                  "layout-51.ec3": {"stream": {"layout": "7.1.4", "render": "channels"}}}
+        code, out = self.run_play(self.device(self.GOOD, status))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.posted, ["http://h/layout-51.ec3", "http://h/51-tpn.ec3",
+                                       "http://h/ac3-51-44k.ac3"])
+        self.assertNotIn("714-aht", out)
+
+    def test_status_disagreement_and_bad_status_fail(self):
+        status = {"layout-51.ec3": {"stream": {"layout": "5.1"}}, "51-tpn.ec3": "garbage"}
+        code, out = self.run_play(self.device(self.GOOD, status))
+        self.assertEqual(code, 1)
+        self.assertIn("stream.layout '5.1', the play's layout is '7.1.4'", out)
+        self.assertIn("51-tpn.ec3: GET /status:", out)
+
+    def test_no_verdict_times_out_and_stops(self):
+        code, out = self.run_play(self.device({}))
+        self.assertEqual(code, 1)
+        self.assertIn("layout-51.ec3: no verdict on the console in 5 s", out)
+        self.assertEqual(len(self.posted), 1)
+
+    def test_panic_stops_the_run(self):
+        lines = {"layout-51.ec3": [*play_lines("layout-51.ec3", LEVELS_51)[:3],
+                                   "Guru Meditation Error: Core 0 panic'ed"]}
+        code, out = self.run_play(self.device(lines))
+        self.assertEqual(code, 1)
+        self.assertIn("the part panicked", out)
+        self.assertEqual(len(self.posted), 1)
+
+    def test_post_refused_or_unanswered(self):
+        code, out = self.run_play(self.device(self.GOOD, post_code=409))
+        self.assertEqual(code, 1)
+        self.assertIn("POST /play answered 409: busy", out)
+        self.assertEqual(len(self.posted), 3)   # a 409 moves on to the next stream
+        self.posted.clear()
+        code, out = self.run_play(self.device(self.GOOD, fail_post=True))
+        self.assertEqual(code, 1)
+        self.assertIn("POST /play did not answer", out)
+
+    def test_http_helper_uses_urllib(self):
+
+        class Response(io.BytesIO):
+            status = 202
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+        seen = []
+
+        def urlopen(request, timeout):
+            seen.append((request.get_method(), request.full_url, request.data, timeout))
+            return Response(b"queued")
+        with mock.patch.object(check_stream_set.urllib.request, "urlopen", urlopen):
+            self.assertEqual(check_stream_set.http("POST", "http://d/play", "x", timeout=3),
+                             (202, "queued"))
+        self.assertEqual(seen, [("POST", "http://d/play", b"x", 3)])
+
+
+class MoreStatusTest(unittest.TestCase):
+    def test_coded_and_silent_disagreements(self):
+        status = {"stream": {"coded": "L,R", "silent": "C"}}
+        problems = check_stream_set.check_status(status, ENTRY_51, SLOTS, "7.1.4")
+        self.assertTrue(any("stream.coded 'L,R'" in p for p in problems))
+        self.assertTrue(any("stream.silent 'C'" in p for p in problems))
+        self.assertTrue(any("render" in p for p in check_stream_set.check_status(
+            {"stream": {"render": "binaural"}}, ENTRY_51, SLOTS, "7.1.4")))
+        self.assertIsNone(check_stream_set.expected_silent(ENTRY_44K, SLOTS))
 
 
 if __name__ == "__main__":
