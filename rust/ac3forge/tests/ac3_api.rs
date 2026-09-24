@@ -55,6 +55,31 @@ fn encoder_config_default_mirrors_the_c_initializer() {
     assert!(format!("{config:?}").contains("EncoderConfig"));
 }
 
+/// `CentreMixLevel::default()`/`SurroundMixLevel::default()` are the library's own downmix
+/// defaults - -4.5 dB and -6 dB, what `ac3forge_encoder_config_init()` (and so the C++
+/// `ac3::EncoderConfig`, docs/library/encoding-ac3.md) sets - not merely the first variant.
+/// They used to derive `Minus3Db` for both, so a config built field-by-field with
+/// `..Default::default()` on the enum disagreed with `EncoderConfig::default()`.
+#[test]
+fn mix_level_defaults_match_the_c_initializer() {
+    // SAFETY: config_init fills every field; the zeroed value is never read.
+    let mut raw: ac3forge_sys::ac3forge_encoder_config_t = unsafe { std::mem::zeroed() };
+    unsafe { ac3forge_sys::ac3forge_encoder_config_init(&mut raw) };
+    assert_eq!(
+        raw.cmixlev,
+        ac3forge_sys::ac3forge_centre_mix_level_AC3FORGE_CMIXLEV_MINUS_4_5DB
+    );
+    assert_eq!(
+        raw.surmixlev,
+        ac3forge_sys::ac3forge_surround_mix_level_AC3FORGE_SURMIXLEV_MINUS_6DB
+    );
+    assert_eq!(CentreMixLevel::default(), CentreMixLevel::Minus4_5Db);
+    assert_eq!(SurroundMixLevel::default(), SurroundMixLevel::Minus6Db);
+    let config = EncoderConfig::default();
+    assert_eq!(config.cmixlev, CentreMixLevel::default());
+    assert_eq!(config.surmixlev, SurroundMixLevel::default());
+}
+
 #[test]
 fn shared_value_type_defaults() {
     let heavy = HeavyConfig::default();

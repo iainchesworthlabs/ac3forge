@@ -161,11 +161,13 @@ impl DrcProfile {
     }
 }
 
-/// `ac3forge_centre_mix_level_t` — A/52 Table 5.9 (§5.4.2.4).
+/// `ac3forge_centre_mix_level_t` — A/52 Table 5.9 (§5.4.2.4). The default is −4.5 dB, the
+/// library's own (`ac3forge_encoder_config_init()`, `ac3::EncoderConfig::cmixlev`) - not the
+/// first variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum CentreMixLevel {
-    #[default]
     Minus3Db,
+    #[default]
     Minus4_5Db,
     Minus6Db,
 }
@@ -194,11 +196,13 @@ impl CentreMixLevel {
     }
 }
 
-/// `ac3forge_surround_mix_level_t` — A/52 Table 5.10 (§5.4.2.5).
+/// `ac3forge_surround_mix_level_t` — A/52 Table 5.10 (§5.4.2.5). The default is −6 dB, the
+/// library's own (`ac3forge_encoder_config_init()`, `ac3::EncoderConfig::surmixlev`) - not the
+/// first variant.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum SurroundMixLevel {
-    #[default]
     Minus3Db,
+    #[default]
     Minus6Db,
     Silent,
 }
