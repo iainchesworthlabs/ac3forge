@@ -1333,7 +1333,10 @@ def main():
 
     print(f"E-AC-3 encoder-space fuzz: cli={cli} ffmpeg={'off' if ffmpeg is None else ffmpeg}")
     print(f"master seed {master}"
-          + (f", {args.cases} cases" if args.cases else f", {args.seconds:g}s budget")
+          # `is not None`, not truthiness: --cases 0 is a case count too, and
+          # testing `if args.cases` sent it to format the unset --seconds.
+          + (f", {args.cases} cases" if args.cases is not None
+             else f", {args.seconds:g}s budget")
           + f", {args.jobs} jobs")
     print("(every failure below prints its own case seed; --replay <seed> reruns just it)")
     print()
@@ -1407,6 +1410,12 @@ def main():
         print(f"\nonly {checked} of {total} configurations encoded at all - too few to call "
               "this a pass. Either the generator is drawing outside the accepted space (re-run "
               "with --check-envelope) or the encoder has regressed into refusing it.")
+        sys.exit(1)
+
+    # The same guard fuzz_encoder_space.py has: a budget that ran nothing
+    # checked nothing, so it cannot be reported as a clean pass.
+    if total == 0:
+        print("\nno cases ran at all - the budget was too small to be a gate")
         sys.exit(1)
 
 

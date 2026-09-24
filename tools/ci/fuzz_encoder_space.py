@@ -965,7 +965,10 @@ def main():
 
     print(f"encoder-space fuzz: cli={cli} ffmpeg={'off' if ffmpeg is None else ffmpeg}")
     print(f"master seed {master}"
-          + (f", {args.cases} cases" if args.cases else f", {args.seconds:g}s budget")
+          # `is not None`, not truthiness: --cases 0 is a case count too, and
+          # testing `if args.cases` sent it to format the unset --seconds.
+          + (f", {args.cases} cases" if args.cases is not None
+             else f", {args.seconds:g}s budget")
           + f", {args.jobs} jobs")
     print("(every failure below prints its own case seed; --replay <seed> reruns just it)")
     print()

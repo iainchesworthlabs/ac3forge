@@ -488,6 +488,17 @@ class Main(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("only 0 of 20 configurations encoded", out)
 
+    def test_zero_cases_does_not_crash(self):
+        """Regression: the banner tested `if args.cases`, so --cases 0 fell
+        through to formatting the unset --seconds (None) and crashed with a
+        TypeError."""
+        code, out = self.run_main("--cases", "0", "--seed", "3", run_case=self.verdicts(["ok"]))
+        self.assertIn("master seed 3, 0 cases,", out)
+        self.assertIn("0 cases in", out)
+        # Running nothing checked nothing: not a pass (as fuzz_encoder_space.py).
+        self.assertEqual(code, 1)
+        self.assertIn("no cases ran at all", out)
+
     def test_seconds_budget_and_replay_and_regressions(self):
         code, out = self.run_main("--seconds", "0", run_case=self.verdicts(["ok"]))
         self.assertIn("0s budget", out)

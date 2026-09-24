@@ -367,6 +367,15 @@ class Main(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("no cases ran at all", out)
 
+    def test_zero_cases_is_not_a_pass(self):
+        """Regression: the banner tested `if args.cases`, so --cases 0 fell
+        through to formatting the unset --seconds (None) and crashed with a
+        TypeError instead of reporting an empty run."""
+        code, out = self.run_main("--cases", "0", "--seed", "1", run_case=self.verdicts(["ok"]))
+        self.assertEqual(code, 1)
+        self.assertIn("master seed 1, 0 cases,", out)
+        self.assertIn("no cases ran at all", out)
+
     def test_replay_and_regressions(self):
         code, out = self.run_main("--replay", "42", run_case=self.verdicts(["ok"]))
         self.assertEqual(code, 0)
