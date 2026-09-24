@@ -73,8 +73,10 @@ SAMPLE_RATES = [48000, 44100]
 RATES = [8, 12, 16, 24, 32, 48, 64, 96, 128, 144, 192, 256, 320, 384, 448, 512, 640, 768, 1024]
 LOWEST_KBPS = 8
 HIGHEST_KBPS = 3000
-# The encoder's delay (a frame and a half) and the decoder's d_pcm (Part 1 Table 188).
-LAG = 3072 + 352
+# The encoder's delay (a frame and a half) and the decoder's at frame_rate_index 13, which the
+# encoder's last frame covers: d_pcm (Part 1 Table 188), the QMF banks' 577 samples and six QMF
+# slots.
+LAG = 3072 + 352 + 577 + 6 * 64
 
 # Refusals a case may end in, by the text ac3cli prints for each.
 REFUSALS = {

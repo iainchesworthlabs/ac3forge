@@ -401,14 +401,22 @@ TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][a
     CHECK(from_mp4->channels == raw->channels);
 }
 
-TEST_CASE("decode refuses AC-4 it does not decode yet, naming what", "[cli][ac4]") {
+TEST_CASE("decode writes AC-4's ASPX mode and refuses what it does not decode, naming it", "[cli][ac4]") {
     const auto dir = scratch_dir();
-    const auto log = dir / "ac4_decode_refused.log";
-    const auto out = dir / "ac4_refused.wav";
-    CHECK(run_cli("decode " + quoted(ac4_fixture()) + " " + quoted(out), log) == 2);  // kExitInput
-    const auto report = read_log(log);
-    CHECK(report.find("A-SPX") != std::string::npos);
-    CHECK_FALSE(fs::exists(out));
+    const auto log = dir / "ac4_decode_aspx.log";
+    const auto out = dir / "ac4_aspx.wav";
+    REQUIRE(run_cli("decode " + quoted(ac4_fixture()) + " " + quoted(out), log) == 0);
+    const auto decoded = ac3::io::read_wav(out.string());
+    REQUIRE(decoded.has_value());
+    CHECK(decoded->channels.size() == 2);
+    CHECK(decoded->frame_count() % 2048 == 0);
+
+    const auto refused_log = dir / "ac4_decode_refused.log";
+    const auto refused = dir / "ac4_refused.wav";
+    const fs::path five_one = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-384" / "dee.ac4";
+    CHECK(run_cli("decode " + quoted(five_one) + " " + quoted(refused), refused_log) == 2);  // kExitInput
+    CHECK(read_log(refused_log).find("mono and stereo") != std::string::npos);
+    CHECK_FALSE(fs::exists(refused));
 }
 
 TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "[cli][mp4][ac4]") {
@@ -437,20 +445,21 @@ TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "
         CHECK(frame.raw_ac4_frame.size() == 1024U);  // 192 kbps at 2 048 samples a frame
     }
 
-    // Our decoder reads it back: the input, 3 424 samples later (the
-    // encoder's 3 072 and Table 188's 352), well above the coding noise.
+    // Our decoder reads it back: the input, 4 385 samples later (the
+    // encoder's 3 072, and the decoder's 1 313: Table 188's 352, the QMF
+    // banks' 577 and six QMF slots), well above the coding noise.
     const auto raw_wav = dir / "ac4_encoded_raw.wav";
     REQUIRE(run_cli("decode " + quoted(raw_out) + " " + quoted(raw_wav), log) == 0);
     const auto decoded = ac3::io::read_wav(raw_wav.string());
     REQUIRE(decoded.has_value());
     REQUIRE(decoded->channels.size() == 2);
-    REQUIRE(decoded->frame_count() >= kLength + 3424);
+    REQUIRE(decoded->frame_count() >= kLength + 4385);
     for (std::size_t ch = 0; ch < 2; ++ch) {
         double signal = 0.0;
         double noise = 0.0;
         for (std::size_t i = 0; i < kLength; ++i) {
             const double error =
-                static_cast<double>(decoded->channels[ch][i + 3424]) - static_cast<double>(channels[ch][i]);
+                static_cast<double>(decoded->channels[ch][i + 4385]) - static_cast<double>(channels[ch][i]);
             signal += static_cast<double>(channels[ch][i]) * static_cast<double>(channels[ch][i]);
             noise += error * error;
         }

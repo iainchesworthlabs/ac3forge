@@ -79,6 +79,7 @@ ParseResult ElementParser::begin(ElementKind kind, int mode, bool needs_aspx,
                 return ok;
             }
             state_.aspx_config = config;
+            out_.aspx_config = config;
         }
         if (acpl_1ch) {
             AcplConfig1ch config{};
@@ -99,6 +100,9 @@ ParseResult ElementParser::begin(ElementKind kind, int mode, bool needs_aspx,
     if (needs_config && (state_.configured_codec_mode != mode || state_.configured_kind != kind)) {
         return fail(DecodeError::kMissingIFrame,
                     "this codec mode needs configuration that no I-frame has sent");
+    }
+    if (needs_aspx) {
+        out_.aspx_config = state_.aspx_config;
     }
     return {};
 }

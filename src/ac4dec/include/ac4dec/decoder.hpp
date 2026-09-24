@@ -102,7 +102,9 @@ struct DecodedFrame {
     int sequence_counter = 0;             // of the frame this came from
     std::vector<Speaker> speakers;        // one per channel, in the order of `channels`
     // Planar PCM, one vector per channel, all the same length, at full scale
-    // 1.0. The frame alignment delay of Part 1 clause 5.6 is applied.
+    // 1.0. The decoder's delay is applied: Part 1's frame alignment (clause
+    // 5.6), the QMF banks and the QMF domain's history (5.7.1), 1 313 samples
+    // at frame_rate_index 13 in every codec mode.
     std::vector<std::vector<float>> channels;
 };
 

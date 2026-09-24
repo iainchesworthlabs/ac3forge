@@ -397,22 +397,24 @@ Later phases add the readings their processing needs.
 
 - **Where:** Part 1 Table 53 sends no `aspx_tsg_ptr` for FIXFIX, while Pseudocodes 92 and 95 (5.7.6.4.2)
   compare envelopes with it for every interval class.
-- **Reading:** -1, the value a transmitted 0 gives, which points at no envelope: no transient. The phase
-  that decodes the HF generator confirms or replaces this.
+- **Reading:** -1, the value a transmitted 0 gives, which points at no envelope: no transient. Pseudocodes
+  92, 95 and 99 then treat no envelope as a transient's, and add sinusoids from the first.
 
 ### Stray semicolon in the limiter's patch borders
 
 - **Where:** Part 1 Pseudocode 72, p. 207: `for (sbg = 1; sbg < num_sbg_patches; sbg++);` before its
   block.
 - **Reading:** the block is the loop's body, copying the interior patch borders, which matches
-  `num_sbg_lim = num_sbg_sig_lowres + num_sbg_patches - 1`. Not syntax; recorded for the HF phase.
+  `num_sbg_lim = num_sbg_sig_lowres + num_sbg_patches - 1`. Not syntax: the limiter
+  (`src/ac4core/src/aspx/frequency_tables.cpp`) takes it.
 
 ### freq_res_prev in Pseudocode 80
 
 - **Where:** Part 1 Pseudocode 80, p. 214: `atsg_freqres[num_atsg_sig_prev - 1]`, with two unbalanced
   parentheses.
 - **Reading:** the previous interval's resolution vector, which the paragraph after the pseudocode names
-  `freq_res_prev`. Not syntax; recorded for the envelope phase.
+  `freq_res_prev`: its last envelope's resolution, which maps the first envelope's time deltas between
+  resolutions. Not syntax: the envelope decoding (`src/ac4dec/src/pcm/aspx.cpp`) takes it.
 
 ## A-CPL
 
@@ -662,6 +664,182 @@ clause's formula.
   every track of a frame the same sequence, since `sequence_counter` is the frame's, and the noise of the
   two channels of a pair would be the same noise at two levels.
 - **Evidence:** Text; no stream here sets `b_snf_data_exists`.
+
+## The QMF domain
+
+The readings phase D3 of `planning/ac4.md` takes for the QMF banks, companding and A-SPX decoding (Part 1
+clause 5.7). They are the decoder's alone, as under "Reconstruction". The evidence is DEE's 2.0 legs at 48
+to 144 kbps and its native-rate immersive stereo (IMS) legs in G0's gold set, scored against their sources
+(`tools/checks/score_ac4_decode.py`), the text, or a test in `tests/ac4core/test_ac4core_aspx.cpp` and
+`tests/ac4dec/test_ac4dec_aspx.cpp`. Across those 24 legs DEE sets the limiter, interpolation and
+pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX intervals, and never sets
+`aspx_balance`, either interleaved waveform coding, `sync_flag` or VARVAR; the tests carry those.
+
+### Every codec mode passes through the QMF banks
+
+- **Where:** Part 1 6.2.8, p. 266, says the QMF analysis "is needed for the tools which operate in the QMF
+  domain", and 5.7.1, p. 193, that the synthesis works on QMF data delayed by six QMF slots. Figure 9,
+  p. 259, draws one chain for every substream.
+- **Reading:** SIMPLE substreams pass through the analysis and synthesis banks too, behind the same
+  history of `ts_offset_hfgen` slots that A-SPX keeps (Table 192), so the decoder has one delay for every
+  codec mode: `d_pcm`, the banks' 577 samples and 6 x 64 samples, 1,313 at `frame_rate_index` 13. The
+  banks reconstruct to 75 to 88 dB on tones and 78 dB on noise, which now bounds a SIMPLE decode's SNR.
+- **Evidence:** Observation. DEE's SIMPLE and ASPX 2.0 streams decode with the same lag, 4,385 samples,
+  and its output manifests give both the same MP4 offset; librempeg's output lags DEE's source by one
+  delay, 3,649 samples, on SIMPLE and ASPX streams alike. DEE's IMS encoder runs one frame shorter: its
+  streams lag by 2,337.
+
+### Companding measures against full scale 1.0
+
+- **Where:** Part 1 5.7.5.2, p. 198: the gain `L(ts)^((1 - alpha)/alpha)` depends on the scale of the
+  slot level `L`, which the text does not state; A-SPX's signal scale factors (5.7.6.3.5) are absolute
+  energies in the same QMF matrices.
+- **Reading:** the QMF domain runs at the scale the inverse transform produces, full scale 2^15 ("Full
+  scale, and the overlap-add's factor of two"), and companding divides its levels by 2^15 before the
+  exponent.
+- **Evidence:** Observation. DEE's 48 kbps 2.0 legs set `b_compand_on` in 470 of their 474 channel frames.
+  Measured at 2^15 they decode 48.5 dB loud, which is (2^15)^(0.35/0.65), 48.6 dB; against full scale 1.0
+  they decode within 0.17 dB of the source. A-SPX's envelopes read only at 2^15: its smallest signal scale
+  factor, 64, is the energy of one least significant bit of white noise there, and of noise at 0 dBFS at
+  full scale 1.0.
+
+### The companding average
+
+- **Where:** Part 1 5.7.5.2, p. 198. The average gain's exponent prints as "1alpha / alpha". `L_avg`'s sum
+  runs from `ts0` to `ts1`, where the tool's range is `[ts0, ts1 - 1]`. With `sync_flag`, `g_synch(ts)`
+  averages the channels' gains per slot, but the two channels of an `aspx_data_2ch()` without
+  `aspx_balance` frame their intervals separately.
+- **Reading:** the exponent `(1 - alpha)/alpha`, as for the per-slot gain; the average over `[ts0, ts1)`,
+  divided by `ts1 - ts0`; with `sync_flag`, each slot averages the gains of the channels whose interval
+  holds it, and each channel is scaled over its own interval.
+- **Evidence:** Text for the exponent and the sum. The gold legs set `b_compand_avg` in 721 channel frames
+  and never `sync_flag`.
+
+### Companding's slots are Q_low's
+
+- **Where:** Part 1 5.7.5.1, p. 197: the matrices hold "exactly those QMF time slots that are part of the
+  A-SPX interval". The interval's borders count from slot 0 of Q_low, the analysis delayed by
+  `ts_offset_hfgen` (5.7.6.3.2, 5.7.6.3.3.1), while companding runs before A-SPX (Figure 6).
+- **Reading:** companding scales the delayed matrix over the interval's slots on Q_low's axis. A slot that
+  an interval running past its frame's end holds is companded once, with that interval, and waits for the
+  next frame companded.
+- **Evidence:** Text: only on that axis does every slot an interval can hold, up to `num_qmf_timeslots +
+  ts_offset_hfgen`, exist when the interval is decoded. Observation, slightly: DEE's companded speech legs
+  at 48 and 64 kbps score 0.14 and 0.18 dB more SNR below the crossover this way than companded six slots
+  earlier, on the analysis's own axis.
+
+### The estimated envelope's time divisor
+
+- **Where:** Part 1 Pseudocode 90, p. 220, sums `|Q_high|^2` over the QMF slots from `tsa` to `tsz` and
+  divides by `atsg_sig[atsg+1] - atsg_sig[atsg]`, the envelope's length in A-SPX slots, each
+  `num_ts_in_ats` QMF slots long.
+- **Reading:** the length in QMF slots, which makes `est_sig_sb` the mean energy per QMF subsample that
+  clause 3.1 makes a signal scale factor: "average energy of the signal within the region in a QMF matrix".
+- **Evidence:** Observation. Where the source has content above the crossover (DEE's music at 48 kbps and
+  speech at 48, 64 and 128 kbps), the divisor as printed decodes the A-SPX tiles 3.5 to 4.8 dB below the
+  source's on average; this one 1.3 to 2.2 dB below, of which the limiter accounts for up to 1 dB.
+
+### alpha0's parentheses
+
+- **Where:** Part 1 Pseudocode 87, p. 218: `alpha0[sb] = - cov[sb][0][1] + alpha1[sb] *
+  cplx_conj(cov[sb][1][2]);`, then divided by `cov[sb][1][1]`. The line computing `denom` drops `[sb]` from
+  `cov[1][2]`.
+- **Reading:** `alpha0 = -(cov01 + alpha1 conj(cov12)) / cov11`, the first normal equation of the covariance
+  method the clause names, whose second gives `alpha1` as printed; and `cov[sb][1][2]`. The pair then
+  whitens: a subband that follows a two-slot recursion returns its coefficients.
+- **Evidence:** Text. The gold legs set `aspx_tna_mode` Light to Heavy in most noise groups, but decode to
+  the same tile energies and log-spectral distance, within 0.1 dB, under either sign, so they do not decide
+  it.
+
+### The first signal scale factor below zero
+
+- **Where:** Part 1 Pseudocode 82, p. 215: `qscf_sig_sbg[0][atsg] == 0 && scf_sig_sbg[1][atsg] < 0`. No
+  dequantised scale factor, `64 * 2^(qscf/a)`, is negative, so as printed the rule never applies.
+- **Reading:** `qscf_sig_sbg[1][atsg] < 0`: an envelope coded along frequency whose first value is 0 and
+  second negative takes the second group's scale factor for the first. The F0 codebooks send no negative
+  value, and this lets an envelope start below their floor.
+- **Evidence:** Observation. DEE relies on it in 265 of the 484 signal envelopes of its 96 to 144 kbps
+  music legs, whose source is near silence above the crossover. With this reading the first group's
+  energy, frame by frame, errs against the source within 2.2 dB of the second group's error; as printed,
+  it sits 6.9 dB above it.
+
+### The sinusoid's subband
+
+- **Where:** Part 1 Pseudocode 92, p. 222: `sb_mid = (int) 0.5*(sbz+sba);`, where C's cast binds to `0.5`
+  and gives 0. The same lines reuse `sba` and `sbz` for the group's own borders.
+- **Reading:** `(int)(0.5 * (sbz + sba))` over the group's borders relative to `sbx`: its middle subband,
+  rounded down, as the paragraph before says ("the sinusoid is placed in the middle of the high-frequency
+  resolution subband group").
+- **Evidence:** Text; the speech legs add sinusoids in 35 frames each.
+
+### b_sine_at_end
+
+- **Where:** Part 1 Pseudocode 95, p. 224, sets `b_sine_at_end` from this interval's `aspx_tsg_ptr` and
+  never reads it; its test, like Pseudocode 99's, reads `p_sine_at_end`, which Pseudocode 92 sets from the
+  previous interval's.
+- **Reading:** as printed: `p_sine_at_end`, which makes the first envelope a transient's when the previous
+  interval's transient was at its end. `b_sine_at_end` is unused.
+- **Evidence:** Text.
+
+### aspx_limiter
+
+- **Where:** Part 1 4.3.10.1.7, p. 98, turns the limiter off with `aspx_limiter` 0; clause 5.7.6.4.2.2 never
+  tests it.
+- **Reading:** with the limiter off, Pseudocodes 96 to 101 are skipped: the gains and levels go to the
+  assembly unlimited and unboosted.
+- **Evidence:** Text; every gold leg sets it.
+
+### The limiter's last group
+
+- **Where:** Part 1 Pseudocodes 72 to 74, p. 207, can remove `sbz` from `sbg_lim`, when it is no patch
+  border and lies less than 0.245 octave above the border before it. Pseudocodes 96 and 100 then map the
+  subbands above the table's last border to a group past its end.
+- **Reading:** the last limiter group runs to `sbz`, in the sums of Pseudocodes 96 and 99 and in the gains.
+- **Evidence:** Text. 168 of the 5,622 configurations and base rates a stream can select end the limiter
+  table below `sbz`, and 232 end the patches below it (`tests/ac4core/test_ac4core_aspx.cpp`); DEE's do
+  neither.
+
+### The noise and tone generators' indices
+
+- **Where:** Part 1 Pseudocodes 103 and 105, pp. 228 and 229: `noise_idx_prev[sb][ts]` and
+  `sine_idx_prev[sb][ts]` are "the last noise_idx" and "the last sine_idx" "from the previous A-SPX
+  interval", written as matrices; both add `ts - atsg_sig[0]`, a QMF slot less an A-SPX slot. Pseudocodes
+  107 and 108 start their loops at `atsg_sig[0]`, without `num_ts_in_ats`.
+- **Reading:** one running index each per channel, from the last one the previous interval used: the noise
+  index counts on by `num_sb_aspx` a QMF slot and 1 a subband, the sine index by 1 a QMF slot, both from
+  the interval's first QMF slot, `atsg_sig[0] * num_ts_in_ats`, where Pseudocodes 107 and 108 start too.
+  `master_reset` restarts the noise index at 0, and the first frame starts the sine index at 1.
+- **Evidence:** Text. Either way the noise and the tones take the same sequences; which entry a subband
+  gets cannot be measured against a source.
+
+### Interleaved waveform coding
+
+- **Where:** Part 1 5.7.6.5.2, p. 231, counts `aspx_tic_used_in_slot` in A-SPX slots "starting at the A-SPX
+  timeslot that coincides with QMF timeslot 0"; 5.7.6.5.3 gives the output for frequency and time
+  interleaving only.
+- **Reading:** slot n covers the frame's output slots `n * num_ts_in_ats` to `(n + 1) * num_ts_in_ats - 1`,
+  counted on Q_low's axis. Elsewhere the output is Q_low below `sbx` and the assembled `Y` from `sbx` to
+  `sbz`, the waveform-coded input kept there only in a high resolution group `aspx_fic_used_in_sfb` marks,
+  where it is added; above `sbz`, nothing but a time-interleaved slot's input.
+- **Evidence:** Text; no gold leg interleaves.
+
+### Before the first interval
+
+- **Where:** Part 1 5.7.2 holds control data back `d_ctrl` frames; Pseudocodes 75, 80, 81, 86, 88, 92 and
+  106 read the previous interval's state, and give its first value only for some of it.
+- **Reading:** until a frame's control data comes due, the QMF matrix passes through as in SIMPLE mode. The
+  previous Q_low, `Y` and envelopes are silence, `aspx_tna_mode_prev` and the chirp factors 0 (as
+  5.7.6.4.1.3 says), `aspx_tsg_ptr_prev` -1, and `master_reset` is set at the first configuration. The
+  first envelope's time deltas start from 0 at the resolution it has.
+- **Evidence:** Text.
+
+### Scale factors far out of range
+
+- **Where:** Part 1 5.7.6.3.5: dequantisation raises 2 to a sum of transmitted deltas, which a stream that is
+  not audio can take anywhere.
+- **Reading:** the exponent is clamped to +-96 before `2^x`, and the output to +-10^9 of full scale before
+  it becomes `float`: no stream DEE writes comes near, and every value the decoder computes stays finite.
+- **Evidence:** Text; `fuzz_ac4_decode`.
 
 ## Tables
 

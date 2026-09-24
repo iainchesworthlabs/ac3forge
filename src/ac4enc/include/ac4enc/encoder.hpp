@@ -97,7 +97,8 @@ class AC4ENC_EXPORT Encoder {
 
     // Samples of silence the encoder puts before the input: an input sample at
     // index n is at index n + delay_samples() of the decoded output before the
-    // decoder's own delay (Part 1 Table 188's d_pcm) is added.
+    // decoder's own delay is added: at frame_rate_index 13, 1 313 samples
+    // (Part 1 Table 188's d_pcm, 352, the QMF banks' 577 and six QMF slots).
     [[nodiscard]] int delay_samples() const noexcept;
 
    private:
