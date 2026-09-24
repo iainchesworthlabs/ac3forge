@@ -16,7 +16,7 @@
 //
 // Every read that corresponds to a syntax element names that element, and
 // when a SyntaxSink is attached the reader emits one SyntaxRecord for it (see
-// SyntaxRecord in ac4dec/decoder.hpp for what counts as one element). Reads
+// SyntaxRecord in ac4/syntax.hpp for what counts as one element). Reads
 // that are not syntax elements - byte_align, fill bits, skipped bytes - go
 // through skip() and align(), which emit nothing.
 

@@ -11,7 +11,8 @@
 //
 // Part 1 Annex A.0: each codebook is a table of codeword lengths and a table
 // of codewords, indexed from 0, and huff_decode() returns the index of the
-// codeword read (Part 1 clause 4.3.6.4.2). The tables themselves are
+// codeword read (Part 1 clause 4.3.6.4.2); an encoder writes the codeword of
+// an index, from tables/huffman_codes.hpp. The tables themselves are
 // generated from the ETSI attachment by tools/generators/gen_ac4_tables.py
 // into tables/huffman_tables.cpp, together with the per-codebook values Annex
 // A prints beside them (cb_off, cb_mod, and for the ASF spectrum codebooks
@@ -27,6 +28,13 @@ namespace ac4::detail {
 struct HuffEntry {
     std::uint32_t code = 0;   // the codeword, right-aligned in `bits` bits, MSB first
     std::uint16_t index = 0;  // its position in the codebook: what huff_decode returns
+    std::uint8_t bits = 0;
+};
+
+// One entry of a codebook in index order (tables/huffman_codes.hpp), which is
+// how an encoder looks a codeword up.
+struct HuffCode {
+    std::uint32_t code = 0;  // right-aligned in `bits` bits, MSB first
     std::uint8_t bits = 0;
 };
 
