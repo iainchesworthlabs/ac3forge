@@ -417,12 +417,17 @@ if(AC3FORGE_BUILD_CAPI)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ac3forge_c"
         COMPONENT library)
 
+    # STATIC_REQUIRES ac3forge: libac3forge_c_static.a calls into libac3forge_static.a (capiTargets
+    # carries $<LINK_ONLY:ac3::forge_static> for it), and only a static-only install names the
+    # archive here. ac3forge_install_pkgconfig() says why that goes to Requires.private:
+    # libac3forge_c.so embeds the codec and needs no libac3forge.so beside it.
     ac3forge_pkgconfig_libname(_ac3forge_capi_pc_libname forge_c_shared ac3forge_c ac3forge_c_static
         "${_ac3forge_capi_install_targets}")
     ac3forge_install_pkgconfig(
         NAME ac3forge_c
         DESCRIPTION "Stable C11 API over ac3::forge's encode/decode core"
-        LIBNAME "${_ac3forge_capi_pc_libname}")
+        LIBNAME "${_ac3forge_capi_pc_libname}"
+        STATIC_REQUIRES ac3forge)
 endif()
 
 # The config file find_package(ac3forge) actually loads. No find_dependency()
