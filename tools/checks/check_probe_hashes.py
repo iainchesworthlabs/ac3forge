@@ -98,7 +98,13 @@ def main() -> int:
             print(f"::error::no pcm_hash lines in {a_path if not a else b_path}", file=sys.stderr)
             return 1
         # A fixture either run declared skipped is excused on that side.
-        ok = compare(a, a_path.name, b, b_path.name, b_skipped)
+        # compare() only takes the second run's declarations, so a fixture
+        # the FIRST run declined is dropped from b's side here - otherwise it
+        # would read as "hashed in b only" and fail the gate; the [skipped]
+        # line below reports it instead.
+        b_compared = {codec: value for codec, value in b.items()
+                      if codec in a or codec not in a_skipped}
+        ok = compare(a, a_path.name, b_compared, b_path.name, b_skipped)
         for codec, reason in a_skipped.items():
             if codec not in a and codec in b:
                 print(f"[skipped]  {codec}: {a_path.name} declined it ({reason})")

@@ -78,17 +78,16 @@ class ProbeHashes(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("[skipped]  ac4: b.txt declined it (heap)", out)
 
-    @unittest.expectedFailure
     def test_declared_skip_on_first_run_is_excused(self):
-        """SUSPECTED BUG (check_probe_hashes.py:117-121): main()'s comment says
-        "A fixture either run declared skipped is excused on that side", but
-        only the SECOND run's skips reach compare(); a skip declared by the
-        FIRST run is reported as hashed-in-one-side-only and fails the gate,
-        and the [skipped] line printed afterwards does not undo that."""
+        """Regression: main() used to pass only the SECOND run's skips to
+        compare(), so a skip declared by the FIRST run was reported as
+        hashed-in-one-side-only and failed the gate."""
         a = self.write("a.txt", f"ac3.pcm_hash={H1}\nac4.skipped=heap\n")
         b = self.write("b.txt", f"ac3.pcm_hash={H1}\nac4.pcm_hash={H2}\n")
-        rc, _, _ = self.run_main(a, b)
+        rc, out, err = self.run_main(a, b)
         self.assertEqual(rc, 0)
+        self.assertIn("[skipped]  ac4: a.txt declined it (heap)", out)
+        self.assertNotIn("hashed in", err)
 
     def test_run_without_hashes_fails(self):
         a = self.write("a.txt", f"ac3.pcm_hash={H1}\n")
