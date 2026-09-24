@@ -31,7 +31,11 @@ Dialog {
 
     modal: true
     anchors.centerIn: parent
-    width: Math.min(900, parent ? parent.width - 60 : 900)
+    // Wide enough, on a large window, for the room plan beside a whole object
+    // row; below that the two stack (objectsGrid below) rather than pushing
+    // each row's Audition button past the dialog's edge onto the modal
+    // dimmer, where a click does nothing.
+    width: Math.min(1400, parent ? parent.width - 60 : 900)
     height: Math.min(760, parent ? parent.height - 60 : 760)
     padding: Theme.space6
     title: ""
@@ -267,9 +271,19 @@ Dialog {
                     }
                 }
 
-                RowLayout {
+                GridLayout {
+                    id: objectsGrid
                     Layout.fillWidth: true
-                    spacing: Theme.space6
+                    columnSpacing: Theme.space6
+                    rowSpacing: Theme.space6
+
+                    // An object row's fixed columns (marker, label, position,
+                    // gain, extent - the preferredWidths below), its spacing,
+                    // and room for the Audition/Stop button. Side by side with
+                    // the 340px room column only when all of that fits.
+                    readonly property real objectRowWidth:
+                        10 + 60 + 130 + 70 + 150 + 96 + 6 * Theme.space3
+                    columns: width >= 340 + columnSpacing + objectRowWidth ? 2 : 1
 
                     // ---- room: plan + elevation -----------------------------
                     ColumnLayout {
