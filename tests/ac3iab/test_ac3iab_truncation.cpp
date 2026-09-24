@@ -16,7 +16,8 @@
 
 // The IAB reader against damaged input: every element this reader understands, built with
 // randomly chosen but well-formed field values (a fixed seed, so a failure reproduces), parses
-// whole and fails with kTruncated when its payload is cut short at any byte - with its
+// whole and fails with kTruncated (kUnterminatedString when the cut lands inside a
+// NUL-terminated string) when its payload is cut short at any byte - with its
 // ElementSize kept honest, so the cut lands inside the element's own fields rather than being
 // caught by the element header. The random choices move the fields across byte boundaries, which
 // is what reaches each field's own "ran out of bits" return. The segment framing gets the same
@@ -308,7 +309,9 @@ std::vector<std::byte> cut(const std::vector<std::byte>& bytes, std::size_t size
 }
 
 // Parses `payload` whole as element `id` inside a frame, then every strict prefix of it with an
-// honest ElementSize, and counts the prefixes that were refused as truncated.
+// honest ElementSize, and counts the prefixes that were refused as truncated. A cut that lands
+// inside a NUL-terminated string (AudioDescriptionText) is refused as kUnterminatedString
+// instead - the element ended before the string did - and counts the same.
 std::size_t refused_prefixes(std::uint32_t id, const std::vector<std::byte>& payload) {
     const auto whole = ac3iab::parse_iaframe(iaframe({element(id, payload)}));
     INFO("element " << id << ", " << payload.size() << " bytes");
@@ -316,7 +319,8 @@ std::size_t refused_prefixes(std::uint32_t id, const std::vector<std::byte>& pay
     std::size_t refused = 0;
     for (std::size_t size = 0; size < payload.size(); ++size) {
         const auto parsed = ac3iab::parse_iaframe(iaframe({element(id, cut(payload, size))}));
-        if (!parsed.has_value() && parsed.error() == ac3iab::IabError::kTruncated) {
+        if (!parsed.has_value() && (parsed.error() == ac3iab::IabError::kTruncated ||
+                                    parsed.error() == ac3iab::IabError::kUnterminatedString)) {
             ++refused;
         }
     }
@@ -412,10 +416,21 @@ TEST_CASE("audio data, authoring and user data elements are refused as truncated
         const auto dlc = w.take();
         CHECK(refused_prefixes(kAudioDataDlc, dlc) == dlc.size());
     }
-    // AuthoringToolInfo: a URI that loses its terminator.
+    // AuthoringToolInfo: a URI that loses its terminator. The element's own ElementSize is
+    // honest, so this is not a truncated element - it is a string that runs off the end of a
+    // whole one, which is kUnterminatedString (ac3iab.hpp), not kTruncated.
     {
         const std::vector<std::byte> uri{std::byte{'x'}, std::byte{'y'}, std::byte{0}};
-        CHECK(refused_prefixes(kAuthoringToolInfo, uri) == uri.size());
+        const auto whole = ac3iab::parse_iaframe(iaframe({element(kAuthoringToolInfo, uri)}));
+        REQUIRE(whole.has_value());
+        REQUIRE(whole->authoring_tool.has_value());
+        CHECK(whole->authoring_tool->uri == "xy");
+        for (std::size_t size = 0; size < uri.size(); ++size) {
+            const auto parsed = ac3iab::parse_iaframe(iaframe({element(kAuthoringToolInfo, cut(uri, size))}));
+            INFO("size " << size);
+            REQUIRE_FALSE(parsed.has_value());
+            CHECK(parsed.error() == ac3iab::IabError::kUnterminatedString);
+        }
     }
     // UserData: the 16-byte id is required, the data after it is whatever remains.
     {

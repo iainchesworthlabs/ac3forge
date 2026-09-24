@@ -140,12 +140,19 @@ inline constexpr std::uint32_t kAudioDataPcm = 0x400;
 
 // AudioDescriptionText (§10.3.13/§10.5) and AuthoringToolURI (§10.9.1): a NUL-terminated
 // strict-ASCII string, one 8-bit byte per character.
+//
+// Every caller hands this a BitReader bounded by its own element's payload (ElementSize), and
+// read_element_header() has already refused an element whose declared size runs past the
+// bytes actually present with kTruncated. So running out of bits here can only mean the element
+// ended before the string's 0x00 did - kUnterminatedString, not kTruncated: the element itself is
+// whole, it is the string inside it that is malformed.
 [[nodiscard]] std::expected<std::string, IabError> read_cstring(BitReader& br) {
     std::string result;
     while (true) {
         auto byte = br.read_bits(8);
         if (!byte.has_value()) {
-            return std::unexpected(byte.error());
+            return std::unexpected(byte.error() == IabError::kTruncated ? IabError::kUnterminatedString
+                                                                       : byte.error());
         }
         if (*byte == 0) {
             return result;
