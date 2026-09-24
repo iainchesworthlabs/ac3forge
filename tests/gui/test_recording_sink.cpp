@@ -9,11 +9,7 @@
 #include <string>
 #include <vector>
 
-#ifdef _WIN32
-#include <process.h>
-#else
-#include <unistd.h>
-#endif
+#include "platform/process.hpp"
 
 #include "ac3/core/tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
@@ -48,13 +44,7 @@ namespace {
 
 // See tests/cli/test_cli.cpp's own scratch_dir for the reasoning this copy
 // shares, including the PID fold; the leaf name below is this file's own.
-std::string scratch_pid_suffix() {
-#ifdef _WIN32
-    return std::to_string(_getpid());
-#else
-    return std::to_string(getpid());
-#endif
-}
+std::string scratch_pid_suffix() { return ac3::test::platform::process_id(); }
 
 fs::path scratch_dir() {
     auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("recording_sink_" + scratch_pid_suffix());

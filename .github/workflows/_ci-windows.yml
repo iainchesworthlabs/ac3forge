@@ -784,7 +784,9 @@ jobs:
           # against a real CI run: install-qt-action's own bootstrap check
           # calls the bare `exit()` builtin (not sys.exit()), which only
           # exists once the site module has actually run. Uncommenting is
-          # the documented way to turn that back on.
+          # the documented way to turn that back on, and pip's own installer
+          # needs site enabled too (it imports sysconfig, which needs site's
+          # path setup) - one flip serves both.
           $pth = Get-ChildItem -Path $dest -Filter '*._pth' | Select-Object -First 1
           if (-not $pth) {
               throw "no *._pth file found under $dest to enable the site module in"
