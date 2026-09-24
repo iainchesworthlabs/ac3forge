@@ -24,12 +24,16 @@
 
 namespace ac3::sendspin::discovery::mdns {
 
+// Every member has a default, {} included, so a designated initializer can name only what it
+// changes - NetworkSinks names request_firewall_exception alone. GCC's
+// -Wmissing-field-initializers flags an omitted member with no default, and -Werror makes that
+// a build failure on the Linux GCC legs.
 struct Options {
     // The IPv4 addresses of the interfaces to use; empty for every interface that is up, can
     // multicast, and is not a loopback.
-    std::vector<std::string> interfaces;
+    std::vector<std::string> interfaces{};
     // The host name the SRV record names, without .local; empty for the computer's own.
-    std::string host;
+    std::string host{};
     // Whether opening this socket should also make sure Windows' firewall allows inbound
     // traffic to it (firewall::ensure_inbound_rule(), ac3/sendspin/firewall.hpp) - on an
     // unelevated interactive session, that means relaunching this same process once for a UAC
