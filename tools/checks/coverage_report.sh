@@ -165,6 +165,13 @@ html="$build_dir/coverage.html"
 # names this exact flag as the fix. Warn, not skip, so a genuinely new
 # suspicious-hit line elsewhere still shows up in the log instead of
 # vanishing silently.
+#
+# --gcov-ignore-parse-errors=negative_hits.warn: the same gcc/gcov bug
+# (gcc.gnu.org/bugzilla#68080), seen instead as a negative hit count on
+# src/forge/src/oba/joc.cpp:1163's branch. gcovr's own option list is
+# additive (each --gcov-ignore-parse-errors occurrence appends rather than
+# replaces), so this sits alongside the suspicious_hits one above instead of
+# needing to fold both symptoms into one flag.
 gcovr --root . \
     --filter 'src/(forge|audio|signing|matroska|mp4|mpegts|capi|ac3adm|admbridge|sendspin)/.*' \
     --filter 'apps/cli/.*' \
@@ -173,6 +180,7 @@ gcovr --root . \
     --exclude-throw-branches --exclude-unreachable-branches \
     --gcov-ignore-errors=no_working_dir_found \
     --gcov-ignore-parse-errors=suspicious_hits.warn \
+    --gcov-ignore-parse-errors=negative_hits.warn \
     --object-directory "$build_dir" \
     --json "$json" --html-details "$html" --html-self-contained --print-summary
 

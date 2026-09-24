@@ -271,34 +271,37 @@ the page loads rather than polled every second, since nothing in it changes whil
 | `revision` | The chip's silicon revision (`1.3`) | `esp_chip_info()` |
 | `cores` | CPU core count | `esp_chip_info()` |
 | `fpu` | Whether this die has a hardware floating-point unit | `CONFIG_SOC_CPU_HAS_FPU` |
+| `cpu_freq_mhz` | The CPU clock this build actually runs at - not a peripheral's own clock, and not a ceiling the silicon could reach under a different build | `CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ` |
 | `psram_bytes` | PSRAM actually brought up, in bytes; 0 when none is fitted or this build never turned it on | `esp_psram_get_size()` |
 | `sink_max_slots` | This sink's own ceiling at any setting it takes, not just the one in force; left out when the owner has nothing to say | A new `ControlHandlers::sink_max_slots`; the example answers with `player::sink_max_slots()` |
-| `capabilities` | Plain sentences: cores and arithmetic, PSRAM size, the sink's ceiling | `ac3forge::describe_hardware` (`ac3forge/hardware_info.hpp`) |
+| `capabilities` | Plain sentences: cores and arithmetic, clock speed, PSRAM size, the sink's ceiling | `ac3forge::describe_hardware` (`ac3forge/hardware_info.hpp`) |
 | `notices` | Plain sentences: no FPU, no PSRAM, a firmware running on a different chip than it was built for, or (the ESP32-P4 only) a build accommodating pre-production silicon whose detected chip actually clears v3.0 | The same |
 
 For a P4 dev board built with `CONFIG_ESP32P4_SELECTS_REV_LESS_V3` (so the bootloader admits
 anything from v1.0 up), running genuinely v3.0+ silicon - the notice checks against v3.0
-specifically (where `hal/i2s_ll.h`'s own clock-source choice changes), not against this build's
-own lowered floor, since a v1.3 board under the same build has nothing to be noticed about:
+specifically (where both `hal/i2s_ll.h`'s own clock-source choice and `esp32p4/Kconfig.cpu`'s own
+CPU-frequency choice change), not against this build's own lowered floor, since a v1.3 board under
+the same build has nothing to be noticed about:
 
 ```json
-{"target":"esp32p4","chip":"ESP32-P4","revision":"3.0","cores":2,"fpu":true,
+{"target":"esp32p4","chip":"ESP32-P4","revision":"3.0","cores":2,"fpu":true,"cpu_freq_mhz":360,
  "psram_bytes":33554432,"sink_max_slots":16,
- "capabilities":["2 cores, a hardware floating-point unit","32 MiB of PSRAM",
- "This sink's bus reaches up to 16 slots"],
+ "capabilities":["2 cores, a hardware floating-point unit","Running at 360 MHz",
+ "32 MiB of PSRAM","This sink's bus reaches up to 16 slots"],
  "notices":["The detected chip is v3.0, v3.0 or newer. This build was compiled to also accept
- older, pre-production silicon, and so falls back to the 40 MHz crystal for I2S rather than the
- 160 MHz PLL v3.0+ silicon supports (I2S_CLK_SRC_XTAL/PLL_160M, hal/i2s_ll.h) - a build that
- required v3.0 or newer could reach wider TDM frames than this one's own clock source does."]}
+ older, pre-production silicon: it runs the CPU at 360 MHz rather than 400 (esp32p4/Kconfig.cpu),
+ and falls back to the 40 MHz crystal for I2S rather than the 160 MHz PLL v3.0+ silicon supports
+ (I2S_CLK_SRC_XTAL/PLL_160M, hal/i2s_ll.h) - a build that required v3.0 or newer could reach
+ both."]}
 ```
 
-The page's own **Hardware** section reads `chip`, `revision`, `cores`, `fpu` and `psram_bytes` as
-its own rows (`hw-chip`, `hw-cores`, `hw-arithmetic`, `hw-psram`) and `sink_max_slots` as
-`hw-sink`; `notices` is shown as a plain list under them, verbatim, and `capabilities` is not
-re-rendered on the page at all - it says the same thing the rows above it already do, in words a
-`curl` of the route can read without a browser. `target` is not its own row either: a mismatch
-with `chip` is exactly what a `notices` entry already says, and showing both a build target and a
-chip name that almost always agree would read as two facts where there is one.
+The page's own **Hardware** section reads `chip`, `revision`, `cores`, `cpu_freq_mhz`, `fpu` and
+`psram_bytes` as its own rows (`hw-chip`, `hw-cores`, `hw-clock`, `hw-arithmetic`, `hw-psram`) and
+`sink_max_slots` as `hw-sink`; `notices` is shown as a plain list under them, verbatim, and
+`capabilities` is not re-rendered on the page at all - it says the same thing the rows above it
+already do, in words a `curl` of the route can read without a browser. `target` is not its own row
+either: a mismatch with `chip` is exactly what a `notices` entry already says, and showing both a
+build target and a chip name that almost always agree would read as two facts where there is one.
 
 **What it costs**, measured on the two files together: 25,594 to 28,103 bytes, 2,509 more - within
 decision 18's 28,672-byte budget with 569 to spare, so nothing there was raised for this.
