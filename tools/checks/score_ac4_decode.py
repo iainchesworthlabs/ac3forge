@@ -1,31 +1,45 @@
 """Score ac3cli's AC-4 decoding of DEE's streams against the sources they were encoded from.
 
-For each leg the decoder turns into PCM - SIMPLE mono or stereo at frame_rate_index 13 (see
-src/ac4dec/include/ac4dec/decoder.hpp) - this decodes the stream with `ac3cli decode`, aligns
-the output with the source by cross-correlation, fits a least-squares gain per channel, and
-checks (planning/ac4.md, the decoder's ladder, item 3):
+For each leg the decoder turns into PCM - SIMPLE and ASPX mono or stereo, and DEE's immersive
+stereo (IMS), at frame_rate_index 13 (see src/ac4dec/include/ac4dec/decoder.hpp) - this decodes
+the stream with `ac3cli decode`, aligns the output with its reference by cross-correlation, fits a
+least-squares gain per channel, and checks (planning/ac4.md, the decoder's ladder, item 3):
 
-  lag      the output lags the source by LAG samples, the same on every leg: DEE's encoder
-           delay plus this decoder's, whose frame alignment (Part 1 Table 188's d_pcm) is
-           part of it. The QMF domain of phase D3 will add its own delay.
-  gain     every channel within 0.2 dB of unity. The streams were made with loudness measured
-           only, and the decoder applies no DRC or output level yet, so the prediction is the
-           source's own level; src/ac4dec/ERRATA.md, "Full scale, and the overlap-add's factor
-           of two", is what this settles.
-  SNR      every channel's signal-to-noise ratio against the gain-scaled source at or above its
-           floor: the first measurement less 1 dB, pinned in FLOORS below.
-  routing  on a tone leg, each channel's own tone at least 40 dB above every other channel's
-           tone in it.
+  lag      the output lags the source by the leg's LAG: DEE's encoder delay plus this decoder's,
+           1 313 samples at index 13 (Part 1 Table 188's d_pcm, the QMF banks' 577 samples and six
+           QMF slots of history, for every codec mode: src/ac4dec/ERRATA.md, "Every codec mode
+           passes through the QMF banks"). DEE's IMS encoder runs a frame shorter than its AC-4
+           encoder.
+  gain     every channel of a 2.0 or mono leg within 0.2 dB of unity. The streams were made with
+           loudness measured only, and the decoder applies no DRC or output level yet, so the
+           prediction is the source's own level. An IMS leg, made from 5.1, is compared with the
+           source's Lo/Ro downmix (L + C/sqrt 2 + Ls/sqrt 2 and its mirror), which its channels must
+           correlate with at 0.95 or better; its render is DEE's, so its level is only reported.
+  SNR      every channel's signal-to-noise ratio against the gain-scaled reference at or above its
+           floor, the first measurement less 1 dB: over the whole band for SIMPLE, and below the
+           A-SPX crossover for ASPX, from 2 048-point STFT frames.
+  tiles    for ASPX, above the crossover, each 2 048-sample frame's energy in each low-resolution
+           A-SPX subband group against the reference's, in dB, where the reference's is above -95 dB
+           per subband: the mean of their absolute differences at or below its ceiling, the first
+           measurement plus 0.5 dB. DEE quantises these envelopes in 1.5 or 3 dB steps.
+  LSD      tools/ci/quality_race.py's log-spectral distance at or below its ceiling, the first
+           measurement plus 0.5 dB.
+  MOS      ViSQOL's MOS-LQO (quality_race.perceptual_score) at or above its floor, the first
+           measurement less 0.1, where visqol-python is installed.
+  routing  on a tone leg, each channel's own tone at least 40 dB above every other channel's tone
+           in it.
 
-Each leg also reports tools/ci/quality_race.py's log-spectral distance and high-band energy
-ratio, the scores the E-AC-3 races use, which gate nothing here.
+The crossover and the subband groups come from the leg's first aspx_config() and
+aspx_xover_subband_offset, read from `ac3cli decode ... syntax-trace=`, through Part 1
+Pseudocodes 67 to 69.
 
-The committed legs (tests/golden/external-baseline/) are scored by default; their sources are
-rebuilt by tools/generators/gen_ac4_baseline.py from the committed FLAC fixtures, which needs
-ffmpeg on PATH. --gold DIR scores phase G0's local gold set in DIR instead (DIR/streams/<leg>/
-dee.ac4, DIR/sources/<source>.wav, DIR/gold-manifest.json), which never runs in CI.
+The committed legs (tests/golden/external-baseline/) made with loudness measured only are scored
+by default; their sources are rebuilt by tools/generators/gen_ac4_baseline.py from the committed
+FLAC fixtures, which needs ffmpeg on PATH. --gold DIR scores phase G0's local gold set in DIR
+instead (DIR/streams/<leg>/dee.ac4, DIR/sources/<source>.wav, DIR/gold-manifest.json), which never
+runs in CI.
 
---measure prints what every leg measures and checks nothing, for pinning a new leg's floors.
+--measure prints what every leg measures, as the PINS lines to pin it with, and checks nothing.
 
 Usage:
     python tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
@@ -33,6 +47,7 @@ Usage:
 """
 
 import argparse
+import itertools
 import json
 import subprocess
 import sys
@@ -50,31 +65,74 @@ import quality_race  # noqa: E402
 BASELINE_DIR = REPO / "tests" / "golden" / "external-baseline"
 RATE = 48000
 
-# DEE's encoder and this decoder together, at frame_rate_index 13: 3 072 samples, a frame and a
-# half, plus d_pcm's 352.
-LAG = 3424
+# DEE's encoder and this decoder together, at frame_rate_index 13, by DEE encoder: 3 072 samples
+# (a frame and a half) plus the decoder's 1 313; the IMS encoder a frame less.
+DECODER_DELAY = 352 + 577 + 6 * 64
+LAG = {baseline.AC4: 3072 + DECODER_DELAY, baseline.IMS: 1024 + DECODER_DELAY}
 GAIN_TOLERANCE_DB = 0.2
 ROUTING_MARGIN_DB = 40.0
-# Samples left out of the SNR at each end of the aligned overlap: the decoder's first frame
-# starts from silence, and the encoder's last frames are padding.
+IMS_CORRELATION = 0.95
+# Samples left out at each end of the aligned overlap: the decoder's first frames start from
+# silence, and the encoder's last frames are padding.
 EDGE = 4096
+FRAME = 2048
+TILE_FLOOR_DB = -95.0
+SNR_MARGIN_DB = 1.0
+LSD_MARGIN_DB = 0.5
+TILE_MARGIN_DB = 0.5
+MOS_MARGIN = 0.1
 
-# Per-channel SNR floors in dB, the first measurement less 1 dB, by leg: the committed legs by
-# their directory under tests/golden/external-baseline/, the gold legs by their name in
-# gold-manifest.json. Measured 2026-09-25 with the decoder of phase D2.
-FLOORS = {
-    "ac4-20-music-192": (33.8, 34.5),
-    "ac4-20-tones-192": (48.9, 50.5),
-    "20-music-192": (33.5, 33.6),
-    "20-speech-192": (38.4, 38.4),
-    "20-tones-192": (48.9, 50.3),
+# Part 1 5.7.6.3.1.1's template subband group tables.
+SBG_TEMPLATE_LOWRES = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 26, 28, 30, 32, 35, 38,
+                       42, 46]
+SBG_TEMPLATE_HIGHRES = [18, 19, 20, 21, 22, 23, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 47,
+                        50, 53, 56, 59, 62]
+ASPX_FIELDS = ("aspx_master_freq_scale", "aspx_start_freq", "aspx_stop_freq",
+               "aspx_xover_subband_offset")
+
+# Per leg: (SNR floor per channel in dB, LSD ceiling in dB, tile ceiling in dB or None for
+# SIMPLE, MOS floor or None where ViSQOL was not installed), the first measurement less (plus) the
+# margins above. The committed legs by their directory under tests/golden/external-baseline/, the
+# gold legs by their name in gold-manifest.json. Measured 2026-09-25 with the decoder of phase D3.
+PINS = {
+    "ac4-20-music-192": ((33.9, 34.5), 1.82, None, 4.62),
+    "ac4-20-speech-128": ((37.1, 37.1), 0.77, 2.57, 4.41),
+    "ac4-20-tones-192": ((48.9, 50.6), 10.87, None, 4.63),
+    "20-music-48": ((15.7, 15.8), 1.90, 3.21, 4.43),
+    "20-music-64": ((18.3, 18.3), 1.45, 5.91, 4.50),
+    "20-music-96": ((24.3, 24.3), 1.48, 0.55, 4.57),
+    "20-music-128": ((28.8, 29.0), 1.27, 0.60, 4.60),
+    "20-music-144": ((30.2, 30.3), 1.21, 0.90, 4.61),
+    "20-music-192": ((33.6, 33.6), 1.67, None, 4.63),
+    "20-speech-48": ((24.1, 24.1), 1.33, 2.85, 4.13),
+    "20-speech-64": ((27.1, 27.1), 1.16, 3.33, 4.30),
+    "20-speech-96": ((31.5, 31.5), 0.90, 2.83, 4.54),
+    "20-speech-128": ((37.0, 37.0), 0.79, 2.86, 4.56),
+    "20-speech-144": ((38.2, 38.2), 0.76, 2.87, 4.57),
+    "20-speech-192": ((38.4, 38.4), 0.83, None, 4.60),
+    "20-tones-48": ((48.4, 49.7), 10.54, None, 4.63),
+    "20-tones-64": ((48.4, 49.7), 10.42, None, 4.63),
+    "20-tones-96": ((48.6, 49.4), 10.45, None, 4.63),
+    "20-tones-128": ((48.8, 50.3), 10.45, None, 4.63),
+    "20-tones-144": ((48.8, 50.3), 10.45, None, 4.63),
+    "20-tones-192": ((49.0, 50.3), 10.44, None, 4.63),
+    # The immersive stereo legs against the source's Lo/Ro downmix, which DEE's render is not.
+    "ims-music-64-native": ((12.3, 12.4), 1.69, 3.62, 4.37),
+    "ims-music-96-native": ((13.3, 13.5), 1.25, 5.02, 4.51),
+    "ims-music-128-native": ((13.6, 13.7), 1.50, None, 4.53),
+    "ims-music-128-native-drcddp": ((13.6, 13.7), 1.50, None, 4.53),
+    "ims-music-128-native-drcnone": ((13.6, 13.7), 1.50, None, 4.53),
+    "ims-music-128-native-musicmode": ((13.3, 13.4), 1.45, None, 4.53),
+    "ims-music-144-native": ((13.6, 13.7), 1.45, None, 4.53),
+    "ims-music-256-native": ((13.7, 13.9), 0.94, None, 4.55),
+    "ims-music-320-native": ((13.7, 13.9), 0.94, None, 4.55),
 }
 # DEE's 2.0 streams carry the same audio from 256 kbps up, the rest of each frame being fill,
-# so every rate from 256 to 768 decodes to the same samples and takes the same floors.
+# so every rate from 256 to 768 decodes to the same samples and takes the same pins.
 for _rate in (256, 288, 320, 384, 448, 512, 768):
-    FLOORS[f"20-music-{_rate}"] = (35.7, 35.7)
-    FLOORS[f"20-speech-{_rate}"] = (38.4, 38.4)
-    FLOORS[f"20-tones-{_rate}"] = (48.9, 50.3)
+    PINS[f"20-music-{_rate}"] = ((35.7, 35.8), 1.54, None, 4.63)
+    PINS[f"20-speech-{_rate}"] = ((38.4, 38.4), 0.83, None, 4.60)
+    PINS[f"20-tones-{_rate}"] = ((49.0, 50.3), 10.44, None, 4.63)
 
 
 def read_wav(path):
@@ -130,18 +188,24 @@ def tone_power(x, hz):
     return float(np.abs(projection) ** 2)
 
 
-def score(source, decoded):
-    """lag, per channel (gain in dB, SNR in dB), and the aligned source and output."""
-    lag = best_lag(source.sum(axis=1), decoded.sum(axis=1), 16384)
+def align(reference, decoded):
+    """lag, and the reference and output over their overlap less EDGE at each end."""
+    lag = best_lag(reference.sum(axis=1), decoded.sum(axis=1), 16384)
     if lag >= 0:
-        count = min(len(source), len(decoded) - lag)
-        ref, out = source[:count], decoded[lag:lag + count]
+        count = min(len(reference), len(decoded) - lag)
+        ref, out = reference[:count], decoded[lag:lag + count]
     else:
-        count = min(len(source) + lag, len(decoded))
-        ref, out = source[-lag:-lag + count], decoded[:count]
-    ref, out = ref[EDGE:-EDGE], out[EDGE:-EDGE]
+        count = min(len(reference) + lag, len(decoded))
+        ref, out = reference[-lag:-lag + count], decoded[:count]
+    return lag, ref[EDGE:-EDGE], out[EDGE:-EDGE]
+
+
+def score(reference, decoded):
+    """lag, per channel (gain in dB, SNR in dB over the whole band), and the aligned reference
+    and output. score_ac4_encode.py scores the encoder's streams with it."""
+    lag, ref, out = align(reference, decoded)
     channels = []
-    for c in range(source.shape[1]):
+    for c in range(reference.shape[1]):
         gain = float(np.dot(ref[:, c], out[:, c]) / np.dot(ref[:, c], ref[:, c]))
         error = out[:, c] - gain * ref[:, c]
         snr = 10.0 * np.log10(np.dot(gain * ref[:, c], gain * ref[:, c]) / np.dot(error, error))
@@ -149,45 +213,126 @@ def score(source, decoded):
     return lag, channels, ref, out
 
 
-def decode(cli, stream, out_wav):
-    result = subprocess.run([str(cli), "decode", str(stream), str(out_wav)], capture_output=True,
-                            text=True, check=False)
+def band_snr(ref, out, gain, top_hz):
+    """SNR in dB of out against gain * ref below top_hz, over half-overlapped Hann STFT frames."""
+    window = np.hanning(FRAME)
+    top = int(top_hz / (RATE / FRAME))
+    signal = error = 0.0
+    for start in range(0, len(ref) - FRAME, FRAME // 2):
+        r = np.fft.rfft(window * ref[start:start + FRAME])[:top]
+        o = np.fft.rfft(window * out[start:start + FRAME])[:top]
+        signal += float(np.sum(np.abs(gain * r) ** 2))
+        error += float(np.sum(np.abs(o - gain * r) ** 2))
+    return 10.0 * np.log10(signal / error)
+
+
+def aspx_groups(values):
+    """The low-resolution signal subband groups (Pseudocodes 67 to 69) from a leg's
+    aspx_config() and crossover offset; their first border is the crossover, sbx."""
+    scale, start, stop, offset = (values[name] for name in ASPX_FIELDS)
+    template = SBG_TEMPLATE_HIGHRES if scale else SBG_TEMPLATE_LOWRES
+    num_master = (22 if scale else 20) - 2 * start - 2 * stop
+    master = template[2 * start:2 * start + num_master + 1]
+    high = master[offset:]
+    num_high = len(high) - 1
+    num_low = num_high - num_high // 2
+    return [high[0]] + [high[2 * g] if num_high % 2 == 0 else high[2 * g - 1]
+                        for g in range(1, num_low + 1)]
+
+
+def trace_values(trace):
+    """The first value of each of ASPX_FIELDS in a syntax trace, or None when it has none."""
+    values = {}
+    for line in Path(trace).read_text(encoding="utf-8").splitlines():
+        fields = line.split("\t")
+        if len(fields) == 6 and fields[5] in ASPX_FIELDS:
+            values.setdefault(fields[5], int(fields[4]))
+            if len(values) == len(ASPX_FIELDS):
+                return values
+    return None
+
+
+def tile_error(ref, out, groups):
+    """The mean absolute dB difference of out's tile energies from ref's, per frame and
+    low-resolution group above the crossover, over the tiles where ref's is above the floor."""
+    window = np.hanning(FRAME)
+    bin_hz = RATE / FRAME
+    # A full-scale sine's energy in one frame through the window: (FRAME / 4)^2.
+    full_scale = (FRAME / 4.0) ** 2
+    differences = []
+    for start in range(0, len(ref) - FRAME, FRAME):
+        r = np.abs(np.fft.rfft(window * ref[start:start + FRAME])) ** 2
+        o = np.abs(np.fft.rfft(window * out[start:start + FRAME])) ** 2
+        for low, high in itertools.pairwise(groups):
+            first, last = int(low * 375 / bin_hz), int(high * 375 / bin_hz)
+            er, eo = float(r[first:last].sum()), float(o[first:last].sum())
+            per_subband = er / (high - low) / full_scale
+            if per_subband > 10.0 ** (TILE_FLOOR_DB / 10.0):
+                differences.append(10.0 * np.log10(max(eo, 1e-30) / er))
+    return differences
+
+
+def decode(cli, stream, out_wav, trace=None):
+    """ac3cli's decode of `stream`, with its syntax trace written to `trace` when one is given."""
+    command = [str(cli), "decode", str(stream), str(out_wav)]
+    if trace is not None:
+        command.append(f"syntax-trace={trace}")
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise SystemExit(f"{stream}: ac3cli decode failed ({result.returncode}):\n"
                          f"{result.stdout}{result.stderr}")
     return read_wav(out_wav)
 
 
+def lo_ro(five_one):
+    """The Lo/Ro downmix of an L R C LFE Ls Rs source, centre and surrounds at -3 dB."""
+    k = 1.0 / np.sqrt(2.0)
+    left = five_one[:, 0] + k * five_one[:, 2] + k * five_one[:, 4]
+    right = five_one[:, 1] + k * five_one[:, 2] + k * five_one[:, 5]
+    return np.stack([left, right], axis=1)
+
+
+def chosen(leg):
+    return (leg.get("codec_mode") in ("SIMPLE", "ASPX") and leg.get("frame_rate_index") == 13
+            and leg.get("output_channel_layout") in ("stereo", "mono", "IMS")
+            and any(option.startswith("measure_only") for option in leg.get("options", [])))
+
+
 def legs_committed(work):
-    """(name, stream, source WAV path, source name) for every committed leg decode reads.
+    """(name, stream, source WAV path, source name, encoder, codec mode) for every committed leg
+    decode reads.
 
     The manifest records what each stream turned out to be and a digest of the source it was
     made from; gen_ac4_baseline.py's LEGS names the source, which is rebuilt here and must
     hash to that digest."""
     manifest = json.loads((BASELINE_DIR / "ac4-manifest.json").read_text(encoding="utf-8"))
     source_of = {leg["name"]: leg["source"] for leg in baseline.LEGS}
-    chosen = {name: leg for name, leg in manifest["legs"].items()
-              if leg.get("codec_mode") == "SIMPLE" and leg.get("frame_rate_index") == 13
-              and leg.get("output_channel_layout") in ("stereo", "mono")}
-    sources = sorted({source_of[name] for name in chosen})
+    picked = {name: leg for name, leg in manifest["legs"].items() if chosen(leg)}
+    sources = sorted({source_of[name] for name in picked})
     paths = baseline.build_sources(work / "sources", baseline.COMMITTED_SECONDS, sources)
     legs = []
-    for name, leg in sorted(chosen.items()):
+    for name, leg in sorted(picked.items()):
         path = paths[source_of[name]]
         if baseline.sha256(path) != leg["source_sha256"]:
             raise SystemExit(f"{name}: the rebuilt source {path.name} does not hash to the "
                              "manifest's source_sha256")
-        legs.append((name, BASELINE_DIR / name / "dee.ac4", path, source_of[name]))
+        legs.append((name, BASELINE_DIR / name / "dee.ac4", path, source_of[name], leg["encoder"],
+                     leg["codec_mode"]))
     return legs
 
 
 def legs_gold(gold):
     manifest = json.loads((gold / "gold-manifest.json").read_text(encoding="utf-8"))
     return [(name, gold / "streams" / name / "dee.ac4", gold / "sources" / f"{leg['source']}.wav",
-             leg["source"])
-            for name, leg in sorted(manifest["legs"].items())
-            if leg.get("codec_mode") == "SIMPLE" and leg.get("frame_rate_index") == 13
-            and leg.get("output_channel_layout") in ("stereo", "mono")]
+             leg["source"], leg["encoder"], leg["codec_mode"])
+            for name, leg in sorted(manifest["legs"].items()) if chosen(leg)]
+
+
+def pin_text(name, snrs, lsd, tiles, mos):
+    floors = ", ".join(f"{snr - SNR_MARGIN_DB:.1f}" for snr in snrs)
+    tile = "None" if tiles is None else f"{tiles + TILE_MARGIN_DB:.2f}"
+    mos_text = "None" if mos is None else f"{mos - MOS_MARGIN:.2f}"
+    return f'    "{name}": (({floors},), {lsd + LSD_MARGIN_DB:.2f}, {tile}, {mos_text}),'
 
 
 def main():
@@ -206,52 +351,100 @@ def main():
         if not legs:
             raise SystemExit("no leg to score")
         failures = []
-        for name, stream, source_path, source_name in legs:
+        pins = []
+        for name, stream, source_path, source_name, encoder, codec_mode in legs:
             source, source_rate = read_wav(source_path)
-            decoded, rate = decode(args.cli, stream, work / f"{name}.wav")
+            decoded, rate = decode(args.cli, stream, work / f"{name}.wav", work / f"{name}.trace")
             if rate != RATE or source_rate != RATE:
                 failures.append(f"{name}: decoded at {rate} Hz, source at {source_rate} Hz")
                 continue
-            if decoded.shape[1] != source.shape[1]:
-                failures.append(f"{name}: {decoded.shape[1]} channels decoded, the source has "
-                                f"{source.shape[1]}")
+            ims = encoder == baseline.IMS
+            reference = lo_ro(source) if ims else source
+            if decoded.shape[1] != reference.shape[1]:
+                failures.append(f"{name}: {decoded.shape[1]} channels decoded, the reference has "
+                                f"{reference.shape[1]}")
                 continue
-            lag, channels, reference, aligned = score(source, decoded)
-            lsd, high_band = quality_race.spectral_scores(reference, aligned)
-            cells = "  ".join(f"ch{c} {gain:+.3f} dB {snr:.2f} dB" for c, (gain, snr) in
-                              enumerate(channels))
-            print(f"{name:<24} lag {lag:5d}  {cells}  LSD {lsd:.2f} dB  HF {high_band:+.2f} dB")
+            lag, ref, out = align(reference, decoded)
+            groups = None
+            if codec_mode == "ASPX":
+                values = trace_values(work / f"{name}.trace")
+                if values is None:
+                    failures.append(f"{name}: no aspx_config() in its syntax trace")
+                    continue
+                groups = aspx_groups(values)
+            cells, snrs, tiles = [], [], []
+            for c in range(reference.shape[1]):
+                r, o = ref[:, c], out[:, c]
+                gain = float(np.dot(r, o) / np.dot(r, r))
+                if groups is None:
+                    error = o - gain * r
+                    snr = 10.0 * np.log10(np.dot(gain * r, gain * r) / np.dot(error, error))
+                else:
+                    snr = band_snr(r, o, gain, groups[0] * 375 - 375)
+                    tiles += tile_error(r, o, groups)
+                snrs.append(float(snr))
+                correlation = float(np.dot(r, o) / np.sqrt(np.dot(r, r) * np.dot(o, o)))
+                gain_db = 20.0 * np.log10(abs(gain))
+                cells.append(f"ch{c} {gain_db:+.3f} dB {snr:.2f} dB"
+                             + (f" r {correlation:.3f}" if ims else ""))
+                if args.measure:
+                    continue
+                if ims and correlation < IMS_CORRELATION:
+                    failures.append(f"{name} ch{c}: correlation with the Lo/Ro downmix "
+                                    f"{correlation:.3f}, under {IMS_CORRELATION}")
+                if not ims and abs(gain_db) > GAIN_TOLERANCE_DB:
+                    failures.append(f"{name} ch{c}: gain {gain_db:+.3f} dB, beyond "
+                                    f"+-{GAIN_TOLERANCE_DB} dB of unity")
+            tile_mean = float(np.mean(np.abs(tiles))) if tiles else None
+            lsd, _ = quality_race.spectral_scores(ref, out)
+            mos = quality_race.perceptual_score(ref, out, RATE)
+            tile_text = "" if tile_mean is None else f"  tiles {tile_mean:.2f} dB ({len(tiles)})"
+            mos_text = "-" if mos is None else f"{mos:.2f}"
+            where = f" (xover {groups[0] * 375 / 1000:.2f} kHz)" if groups else ""
+            print(f"{name:<32} lag {lag:5d}  {'  '.join(cells)}{where}  LSD {lsd:.2f} dB"
+                  f"{tile_text}  MOS {mos_text}", flush=True)
+            pins.append(pin_text(name, snrs, float(lsd), tile_mean, mos))
             if args.measure:
                 continue
-            if lag != LAG:
-                failures.append(f"{name}: lag {lag}, expected {LAG}")
-            floors = FLOORS.get(name)
-            if floors is None:
-                failures.append(f"{name}: no SNR floors pinned in FLOORS")
-            for c, (gain, snr) in enumerate(channels):
-                if abs(gain) > GAIN_TOLERANCE_DB:
-                    failures.append(f"{name} ch{c}: gain {gain:+.3f} dB, beyond "
-                                    f"+-{GAIN_TOLERANCE_DB} dB of unity")
-                if floors is not None and snr < floors[c]:
-                    failures.append(f"{name} ch{c}: SNR {snr:.2f} dB below its floor {floors[c]}")
+            if lag != LAG[encoder]:
+                failures.append(f"{name}: lag {lag}, expected {LAG[encoder]}")
+            pin = PINS.get(name)
+            if pin is None:
+                failures.append(f"{name}: nothing pinned in PINS")
+            else:
+                snr_floors, lsd_ceiling, tile_ceiling, mos_floor = pin
+                for c, snr in enumerate(snrs):
+                    if snr < snr_floors[c]:
+                        failures.append(f"{name} ch{c}: SNR {snr:.2f} dB below its floor "
+                                        f"{snr_floors[c]}")
+                if lsd > lsd_ceiling:
+                    failures.append(f"{name}: LSD {lsd:.2f} dB above its ceiling {lsd_ceiling}")
+                if tile_ceiling is not None and (tile_mean is None or tile_mean > tile_ceiling):
+                    failures.append(f"{name}: A-SPX tiles {tile_mean} dB from the reference's, "
+                                    f"above the ceiling {tile_ceiling}")
+                if mos is not None and mos_floor is not None and mos < mos_floor:
+                    failures.append(f"{name}: MOS {mos:.2f} below its floor {mos_floor}")
             if source_name.startswith("tones"):
-                for c in range(aligned.shape[1]):
-                    own = tone_power(aligned[:, c], baseline.TONE_HZ[c])
-                    for other in range(aligned.shape[1]):
+                for c in range(out.shape[1]):
+                    own = tone_power(out[:, c], baseline.TONE_HZ[c])
+                    for other in range(out.shape[1]):
                         if other == c:
                             continue
-                        leak = tone_power(aligned[:, c], baseline.TONE_HZ[other])
+                        leak = tone_power(out[:, c], baseline.TONE_HZ[other])
                         margin = 10.0 * np.log10(own / max(leak, 1e-30))
                         if margin < ROUTING_MARGIN_DB:
                             failures.append(f"{name} ch{c}: its tone only {margin:.1f} dB above "
                                             f"ch{other}'s")
+        if args.measure:
+            print("\nPINS lines:")
+            print("\n".join(pins))
+            return 0
         if failures:
             print("\nFAILED:")
             for failure in failures:
                 print(f"  {failure}")
             return 1
-        if not args.measure:
-            print(f"\n{len(legs)} legs: lag, level, SNR floors and routing all hold")
+        print(f"\n{len(legs)} legs: lag, level, SNR, tiles, LSD, MOS and routing all hold")
         return 0
 
 
