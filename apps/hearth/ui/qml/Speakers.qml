@@ -20,6 +20,10 @@ import Ac3ForgeHearth
 // below. Keep the two in sync if that table ever changes.
 ScrollView {
     id: root
+
+    // The control column both mockups measure, scaled so a label that grows
+    // keeps its column rather than pushing through the control beside it.
+    readonly property int labelWidth: Math.round(108 * Theme.fontScale)
     clip: true
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
@@ -37,7 +41,7 @@ ScrollView {
     // arrangement fits, leaves that entry empty.
     function outputHeading(index) {
         const name = root.outputNames[index];
-        return name ? qsTr("%1\n%2").arg(index + 1).arg(name) : String(index + 1);
+        return name ? qsTr("%1 %2").arg(index + 1).arg(name) : String(index + 1);
     }
 
     // The layout picker's own preset names - a plain "5.1.2" etc. is what
@@ -171,11 +175,19 @@ ScrollView {
     }
 
     ColumnLayout {
+        // implicitWidth as well as width, so the ScrollView derives a content
+        // width from it: the routing grid below is a fixed-size Row tree
+        // whose implicit width grows with the output count, and with
+        // horizontal scrolling off it was the thing being clipped.
         width: root.availableWidth
+        implicitWidth: root.availableWidth
         spacing: Theme.gap * 2
 
         Text {
             Layout.fillWidth: true
+            Layout.topMargin: Theme.pad
+            Layout.leftMargin: Theme.pad
+            Layout.rightMargin: Theme.pad
             text: HearthController.deviceName.length > 0
                   ? qsTr("Setup for %1 · %2 outputs").arg(HearthController.deviceName).arg(root.outputs)
                   : qsTr("No output device chosen yet")
@@ -184,12 +196,17 @@ ScrollView {
         }
 
         Card {
-            title: qsTr("01 Speaker layout")
+            Layout.leftMargin: Theme.pad
+            Layout.rightMargin: Theme.pad
+            ordinal: "01"
+            title: qsTr("Speaker layout")
+            framed: true
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
-                Text { text: qsTr("Layout"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                Text { text: qsTr("Layout"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                       elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                 SegmentedControl {
                     objectName: "speakersLayoutPreset"
                     accessibleName: qsTr("Speaker layout")
@@ -220,11 +237,12 @@ ScrollView {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
-                Text { text: qsTr("As text"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                TextField {
+                Text { text: qsTr("As text"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                       elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                AppTextField {
+                    id: layoutTextField
                     objectName: "speakersLayoutText"
                     Layout.fillWidth: true
-                    font.family: Theme.monoFamily
                     text: HearthController.layoutText
                     Accessible.name: qsTr("Layout, as text")
                     // Unparseable text is simply dropped, the same as an
@@ -234,6 +252,15 @@ ScrollView {
                     // the field falls back to showing the layout still in
                     // effect.
                     onEditingFinished: HearthController.setLayoutText(text)
+                    // Typing destroys the binding above for good, so the
+                    // field is re-read whenever it is not the one being
+                    // edited - otherwise picking a preset moved the engine
+                    // and left this showing the old text.
+                    Binding on text {
+                        value: HearthController.layoutText
+                        when: !layoutTextField.activeFocus
+                        restoreMode: Binding.RestoreBindingOrValue
+                    }
                 }
             }
             Text {
@@ -249,7 +276,8 @@ ScrollView {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
-                Text { text: qsTr("Heights"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                Text { text: qsTr("Heights"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                       elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                 SegmentedControl {
                     objectName: "speakersHeights"
                     accessibleName: qsTr("Height speaker realization")
@@ -267,7 +295,8 @@ ScrollView {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
-                Text { text: qsTr("Objects"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                Text { text: qsTr("Objects"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                       elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                 Text {
                     Layout.fillWidth: true
                     text: root.objectsStatusText()
@@ -475,7 +504,11 @@ ScrollView {
         }
 
         Card {
-            title: qsTr("02 Routing · speaker to device output")
+            Layout.leftMargin: Theme.pad
+            Layout.rightMargin: Theme.pad
+            ordinal: "02"
+            title: qsTr("Routing · speaker to device output")
+            framed: true
 
             Column {
                 id: grid
@@ -497,13 +530,13 @@ ScrollView {
                     }
                 }
 
-                readonly property int cellSize: 32
+                readonly property int cellSize: 28
                 readonly property int labelWidth: 72
                 readonly property int noneWidth: 56
                 // Taller than a body row: a header cell with a device name
                 // wraps its number and name onto two lines (outputHeading()),
                 // which a plain cellSize-square box is too short for.
-                readonly property int headerHeight: cellSize * 1.6
+                readonly property int headerHeight: cellSize + Theme.gap
 
                 // Arrow keys move focus only (Space/Enter/click below still do the
                 // assigning). Looked up fresh via Repeater.itemAt() on every press
@@ -598,9 +631,26 @@ ScrollView {
 
                                 width: grid.cellSize
                                 height: grid.cellSize
-                                color: assigned ? Theme.accent : "transparent"
+                                // The cell's outline is always drawn; a
+                                // patched cell adds an accent square inside
+                                // it at half its size, rather than flooding
+                                // the whole box (components.png, "ROUTING
+                                // GRID · EMPTY, PATCHED, FOCUSED", where the
+                                // accent run measures exactly half the cell
+                                // in both axes). Flooding it made a patched
+                                // cell read twice as heavy as designed and
+                                // swallowed the outline.
+                                color: "transparent"
                                 border.color: Theme.divider
                                 border.width: 1
+
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: Math.round(parent.width / 2)
+                                    height: width
+                                    visible: cell.assigned
+                                    color: Theme.accent
+                                }
 
                                 Accessible.role: Accessible.RadioButton
                                 Accessible.name: qsTr("%1 to output %2").arg(rowItem.modelData).arg(cell.index + 1)
@@ -637,11 +687,23 @@ ScrollView {
                             id: noneCell
                             readonly property bool assigned: (root.routingList[rowItem.index] ?? -1) < 0
 
-                            width: grid.noneWidth
+                            // The NONE column is wide enough for the word in
+                            // its header, but the cell itself is the same
+                            // square every output cell is (measured on both
+                            // mockups), with the same inner accent square.
+                            width: grid.cellSize
                             height: grid.cellSize
-                            color: assigned ? Theme.accent : "transparent"
+                            color: "transparent"
                             border.color: Theme.divider
                             border.width: 1
+
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: Math.round(parent.width / 2)
+                                height: width
+                                visible: noneCell.assigned
+                                color: Theme.accent
+                            }
 
                             Accessible.role: Accessible.RadioButton
                             Accessible.name: qsTr("%1 to no output").arg(rowItem.modelData)
@@ -689,12 +751,12 @@ ScrollView {
             RowLayout {
                 spacing: Theme.gap
 
-                Button {
+                AppButton {
                     objectName: "speakersUseDeviceOrder"
                     text: qsTr("Use the device's order")
                     onClicked: HearthController.useDeviceOrder()
                 }
-                Button {
+                AppButton {
                     objectName: "speakersClearRouting"
                     text: qsTr("Clear")
                     onClicked: HearthController.clearRouting()
@@ -704,10 +766,14 @@ ScrollView {
 
         RowLayout {
             Layout.fillWidth: true
+            Layout.leftMargin: Theme.pad
+            Layout.rightMargin: Theme.pad
             spacing: Theme.gap * 2
 
             Card {
-                title: qsTr("03 Levels and delays")
+                ordinal: "03"
+                title: qsTr("Levels and delays")
+                framed: true
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
                 // Not Layout.fillHeight: true - a Rectangle (Card is one)
@@ -816,12 +882,13 @@ ScrollView {
                                 }
                             }
 
-                            TextField {
+                            AppTextField {
                                 id: trimField
                                 objectName: "speakersTrim-" + row.index
-                                width: levels.fieldWidth
-                                horizontalAlignment: Text.AlignRight
-                                font.family: Theme.monoFamily
+                                width: levels.fieldWidth + levels.unitWidth
+                                // The design writes the unit inside the box,
+                                // right-aligned, rather than after it.
+                                unit: qsTr("dB")
                                 validator: DoubleValidator { bottom: -24; top: 12; decimals: 1 }
                                 text: Number(HearthController.trimDb[row.index] ?? 0).toFixed(1)
                                 Accessible.name: qsTr("Trim for %1, dB").arg(row.modelData)
@@ -832,18 +899,10 @@ ScrollView {
                                     }
                                 }
                             }
-                            Text {
-                                width: levels.unitWidth
-                                height: trimField.implicitHeight
-                                verticalAlignment: Text.AlignVCenter
-                                text: qsTr("dB"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
-                            }
-
-                            TextField {
+                            AppTextField {
                                 objectName: "speakersDelay-" + row.index
-                                width: levels.fieldWidth
-                                horizontalAlignment: Text.AlignRight
-                                font.family: Theme.monoFamily
+                                width: levels.fieldWidth + levels.unitWidth
+                                unit: qsTr("ms")
                                 validator: DoubleValidator { bottom: 0; top: 40; decimals: 1 }
                                 text: Number(HearthController.delayMs[row.index] ?? 0).toFixed(1)
                                 Accessible.name: qsTr("Delay for %1, milliseconds").arg(row.modelData)
@@ -854,12 +913,7 @@ ScrollView {
                                     }
                                 }
                             }
-                            Text {
-                                width: levels.unitWidth
-                                height: trimField.implicitHeight
-                                verticalAlignment: Text.AlignVCenter
-                                text: qsTr("ms"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
-                            }
+
 
                             Item { width: Theme.gap; height: 1 }
 
@@ -951,33 +1005,33 @@ ScrollView {
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("04 Bass management")
+                    ordinal: "04"
+                title: qsTr("Bass management")
+                framed: true
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Crossover"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Crossover"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                       elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Crossover preset")
                             currentValue: [80, 100, 120].includes(HearthController.crossoverHz)
                                           ? String(HearthController.crossoverHz) : ""
+                            // Bare numbers: the unit is written once, inside
+                            // the field beside them (speakers-setup.png).
                             model: [
-                                { value: "80", label: qsTr("80 Hz") },
-                                { value: "100", label: qsTr("100 Hz") },
-                                { value: "120", label: qsTr("120 Hz") }
+                                { value: "80", label: "80" },
+                                { value: "100", label: "100" },
+                                { value: "120", label: "120" }
                             ]
                             onSelected: function(value) { HearthController.setCrossoverHz(Number(value)); }
                         }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Theme.gap
-                        Text { text: qsTr("Exact"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        TextField {
+                        AppTextField {
+                            id: crossoverField
                             objectName: "speakersCrossoverExact"
-                            Layout.preferredWidth: 64
-                            horizontalAlignment: Text.AlignRight
-                            font.family: Theme.monoFamily
+                            Layout.preferredWidth: Math.round(88 * Theme.fontScale)
+                            unit: qsTr("Hz")
                             validator: DoubleValidator { bottom: 40; top: 250; decimals: 0 }
                             text: Number(HearthController.crossoverHz).toFixed(0)
                             Accessible.name: qsTr("Crossover, Hz")
@@ -987,8 +1041,15 @@ ScrollView {
                                     HearthController.setCrossoverHz(value);
                                 }
                             }
+                            // Picking a preset moves the engine; without this
+                            // the field kept showing whatever was last typed.
+                            Binding on text {
+                                value: Number(HearthController.crossoverHz).toFixed(0)
+                                when: !crossoverField.activeFocus
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
                         }
-                        Text { text: qsTr("Hz"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro }
+                        Item { Layout.fillWidth: true }
                     }
                     Text {
                         Layout.fillWidth: true
@@ -1001,7 +1062,9 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("05 Identify")
+                    ordinal: "05"
+                title: qsTr("Identify")
+                framed: true
 
                     Text {
                         Layout.fillWidth: true
@@ -1015,7 +1078,8 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Level"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Level"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                       elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Identify level")
                             currentValue: [-30, -20, -12].includes(HearthController.identifyLevelDb)

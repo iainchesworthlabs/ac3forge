@@ -52,13 +52,13 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Theme.gap
 
-        Button {
+        AppButton {
             objectName: "networkNewGroup"
             text: qsTr("+ New group…")
             enabled: NetworkController.canCreateGroups
             onClicked: NetworkController.createGroup(qsTr("New group"))
         }
-        Button {
+        AppButton {
             objectName: "networkRescan"
             text: qsTr("↻ Look again")
             onClicked: NetworkController.rescan()

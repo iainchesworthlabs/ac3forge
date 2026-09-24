@@ -189,7 +189,17 @@ HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
     facts.fpu = true;
 #endif
     facts.cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+    // Guarded on the Kconfig symbol, not just called unconditionally: a
+    // target with no PSRAM bus at all (the ESP32-C6 sink) never exposes
+    // esp_psram_get_size() to the linker in the first place, unlike a target
+    // where CONFIG_SPIRAM is merely off by choice - CONFIG_SPIRAM reads as
+    // unset either way, so this one guard covers both without needing to
+    // tell them apart. Still reports the real runtime figure, not just
+    // whether Kconfig asked for PSRAM, on every target where the option
+    // exists at all (this component's own CMakeLists.txt comment).
+#if CONFIG_SPIRAM
     facts.psram_bytes = esp_psram_get_size();
+#endif
     if (handlers.sink_max_slots) {
         facts.sink_max_slots = handlers.sink_max_slots();
     }

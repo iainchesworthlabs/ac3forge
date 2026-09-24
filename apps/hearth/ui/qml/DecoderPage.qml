@@ -28,12 +28,16 @@ Item {
                 accessibleName: qsTr("Decoder")
                 currentValue: root.format
                 model: [
-                    { value: "eac3", label: qsTr("AC-3 / E-AC-3") },
+                    { value: "eac3", label: qsTr("AC-3 and E-AC-3") },
                     { value: "ac4", label: qsTr("AC-4") }
                 ]
                 onSelected: function(value) { root.format = value; }
             }
             Text {
+                // Nothing on the AC-4 tab reaches a playing item, and the
+                // design drops this line there (decoder-ac4-inactive.png's
+                // tab row is empty beside the switch).
+                visible: root.format !== "ac4"
                 text: qsTr("Changes reach the playing item at its next access unit.")
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall

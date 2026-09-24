@@ -176,7 +176,8 @@ Item {
             spacing: Theme.gap
 
             SectionHeader {
-                label: qsTr("01 Queue")
+                ordinal: "01"
+                label: qsTr("Queue")
                 summary: root.queueSummary()
             }
 
@@ -184,56 +185,19 @@ Item {
                 Layout.fillWidth: true
                 spacing: Theme.gap
 
-                Button {
+                AppButton {
                     objectName: "addFiles"
+                    glyph: Theme.iconAdd
                     text: qsTr("Add files…")
                     Layout.fillWidth: true
                     onClicked: addFilesDialog.open()
-                    Accessible.name: qsTr("Add files…")
-                    // A separate icon Text beside the label, not a single
-                    // rich-text string with an embedded <font> tag - that
-                    // read as a completely different (wrong) glyph, since
-                    // Basic style's default Label doesn't switch the inline
-                    // span's family the way plain HTML would.
-                    contentItem: RowLayout {
-                        spacing: Theme.gap / 2
-                        Text {
-                            text: Theme.iconAdd
-                            font.family: Theme.iconFamily
-                            font.pixelSize: Theme.iconSize
-                            color: Theme.text
-                        }
-                        Text {
-                            text: qsTr("Add files…")
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-                    }
                 }
-                Button {
+                AppButton {
                     objectName: "addFolder"
+                    glyph: Theme.iconCreateNewFolder
                     text: qsTr("Add folder…")
                     Layout.fillWidth: true
                     onClicked: addFolderDialog.open()
-                    Accessible.name: qsTr("Add folder…")
-                    contentItem: RowLayout {
-                        spacing: Theme.gap / 2
-                        Text {
-                            text: Theme.iconCreateNewFolder
-                            font.family: Theme.iconFamily
-                            font.pixelSize: Theme.iconSize
-                            color: Theme.text
-                        }
-                        Text {
-                            text: qsTr("Add folder…")
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            Layout.fillWidth: true
-                            elide: Text.ElideRight
-                        }
-                    }
                 }
             }
 
@@ -259,9 +223,14 @@ Item {
                     required property int index
                     width: queueList.width
                     height: content.implicitHeight + Theme.pad
-                    color: modelData.current ? Theme.accent100 : Theme.surface
-                    border.color: modelData.current ? Theme.accent : Theme.border
-                    border.width: modelData.current ? 2 : 1
+                    // A row at rest carries no box at all - only the item
+                    // playing now is drawn as one (components.png, "LIST
+                    // ROWS · REST, CHOSEN, FOCUSED"). Boxing every row made
+                    // the list read as a stack of cards and left the current
+                    // one barely distinguishable from its neighbours.
+                    color: modelData.current ? Theme.accent100 : "transparent"
+                    border.color: Theme.accent
+                    border.width: modelData.current ? 1 : 0
                     radius: Theme.radius
 
                     // codecBadge answers "" for an item nothing has probed
@@ -292,13 +261,21 @@ Item {
                                 visible: row.badge.length > 0
                                 Layout.preferredWidth: badgeLabel.implicitWidth + 8
                                 Layout.preferredHeight: badgeLabel.implicitHeight + 2
-                                color: modelData.playable ? Theme.accent : Theme.neutral400
+                                // Accent only on the item playing now; every
+                                // other row's badge is neutral, whether or
+                                // not that item is playable (components.png's
+                                // own list rows - the "not playable" pill on
+                                // the right is what says that, not the
+                                // badge). neutral800 is the far end of the
+                                // ramp in BOTH modes, so bg always reads on
+                                // it.
+                                color: modelData.current ? Theme.accent : Theme.neutral800
                                 radius: 2
                                 Text {
                                     id: badgeLabel
                                     anchors.centerIn: parent
                                     text: row.badge
-                                    color: Theme.accentText
+                                    color: modelData.current ? Theme.accentText : Theme.bg
                                     font.bold: true
                                     font.pixelSize: Theme.fontMicro
                                 }
@@ -429,7 +406,8 @@ Item {
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("02 Now playing")
+                    ordinal: "02"
+                    title: qsTr("Now playing")
                     flat: true
 
                     Text {
@@ -459,7 +437,8 @@ Item {
                 }
 
                 Card {
-                    title: qsTr("03 Levels · at play time")
+                    ordinal: "03"
+                    title: qsTr("Levels · at play time")
                     flat: true
                     summary: HearthController.deviceName.length > 0
                              ? qsTr("%1 · %2 outputs").arg(HearthController.deviceName)
@@ -497,6 +476,14 @@ Item {
                                 Layout.fillWidth: true
                                 spacing: Theme.gap / 2
                                 readonly property int routedTo: HearthController.routing[levelRow.index] ?? -1
+                                // Past -6 dBFS the bar turns accent, before
+                                // anything has actually clipped - the design
+                                // system's own "LEVEL, PAST -6 DBFS,
+                                // CLIPPED, NOT FED" meter states
+                                // (components.png). -6 is where its own axis
+                                // puts the last division too.
+                                readonly property bool hot: levelRow.modelData.clipped
+                                                            || levelRow.modelData.peakDb > -6.0
 
                                 Text {
                                     Layout.preferredWidth: 28
@@ -516,7 +503,7 @@ Item {
                                         anchors.top: parent.top
                                         anchors.bottom: parent.bottom
                                         width: parent.width * root.levelFraction(levelRow.modelData.rmsDb)
-                                        color: levelRow.modelData.clipped ? Theme.bad : Theme.neutral800
+                                        color: levelRow.hot ? Theme.bad : Theme.neutral800
                                     }
                                     Rectangle {
                                         x: Math.max(0, Math.min(parent.width - 2,
@@ -538,7 +525,12 @@ Item {
                                     Layout.preferredWidth: 44
                                     horizontalAlignment: Text.AlignRight
                                     text: Number(levelRow.modelData.peakDb).toFixed(1)
-                                    color: Theme.text
+                                    // The readout turns accent once the
+                                    // channel has actually clipped, not
+                                    // merely gone hot (components.png's
+                                    // CLIPPED row is the only one whose
+                                    // number is red).
+                                    color: levelRow.modelData.clipped ? Theme.bad : Theme.text
                                     font.family: Theme.monoFamily
                                     font.pixelSize: Theme.fontSmall
                                 }
@@ -561,9 +553,27 @@ Item {
 
                                 Text {
                                     Layout.preferredWidth: 68
-                                    text: levelRow.routedTo >= 0
-                                          ? qsTr("→ out %1").arg(levelRow.routedTo + 1) : qsTr("unrouted")
+                                    // "1 FL" - the output's own number and
+                                    // the name the device gives it, the same
+                                    // pair the design system's meters and
+                                    // the Speakers routing grid's column
+                                    // headers both show (components.png).
+                                    // The bare number when the device names
+                                    // no output, since outputNames is empty
+                                    // where even the standard arrangement
+                                    // cannot name one (HearthController's
+                                    // own comment).
+                                    text: {
+                                        if (levelRow.routedTo < 0) {
+                                            return qsTr("unrouted");
+                                        }
+                                        const name = HearthController.outputNames[levelRow.routedTo] ?? "";
+                                        return name.length > 0
+                                               ? qsTr("%1 %2").arg(levelRow.routedTo + 1).arg(name)
+                                               : String(levelRow.routedTo + 1);
+                                    }
                                     color: Theme.textMuted
+                                    font.family: Theme.monoFamily
                                     font.pixelSize: Theme.fontMicro
                                 }
                             }
@@ -580,7 +590,8 @@ Item {
                 }
 
                 Card {
-                    title: qsTr("04 Loudness · BS.1770-4")
+                    ordinal: "04"
+                    title: qsTr("Loudness · BS.1770-4")
                     flat: true
                     summary: Object.keys(HearthController.loudness).length > 0
                              ? qsTr("Integrated since this item started")
@@ -627,7 +638,8 @@ Item {
                 }
 
                 Card {
-                    title: qsTr("05 This frame")
+                    ordinal: "05"
+                    title: qsTr("This frame")
                     flat: true
                     summary: Object.keys(HearthController.thisFrame).length > 0
                              ? qsTr("At play time · access unit %1")

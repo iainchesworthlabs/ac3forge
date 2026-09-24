@@ -256,6 +256,8 @@ TEST_CASE("media_bitstream_to_map: Lt/Rt mix levels (ltrt_clev/ltrt_slev) join t
 
     CHECK(mix.value(QStringLiteral("centreDb")).toDouble() ==
           Catch::Approx(20.0 * std::log10(0.5)));
+    CHECK(mix.value(QStringLiteral("surroundDb")).toDouble() ==
+          Catch::Approx(20.0 * std::log10(1.0)));
     REQUIRE(mix.contains(QStringLiteral("ltrtCentreDb")));
     CHECK(mix.value(QStringLiteral("ltrtCentreDb")).toDouble() ==
           Catch::Approx(20.0 * std::log10(0.25)));

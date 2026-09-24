@@ -87,13 +87,39 @@ std::string_view emdf_payload_label(int id) {
 
 // The bed a §5.5 program describes, as the channel names its assignment bits
 // stand for - "5.1", "5.1.4", or "none" for a program that is dynamic objects
-// alone. Built from the object count rather than from a table of layout names
-// because a bed instance is a bit mask, not one of a fixed set.
+// alone. Counted off the Table 12 mask rather than looked up in a table of
+// layout names, because a bed instance is a bit mask, not one of a fixed set:
+// the full-range, LFE and height groups are each a known set of bits, so any
+// mask - including one no layout has a name for - still describes itself.
+//
+// This used to answer "{n} channel(s)", which is not what either caller wants
+// to read: both the Decoder and the Media page paste it into a sentence, and
+// "reconstructed from the 6 channel(s)" is not a sentence. The shapes that
+// have names now get them.
 std::string bed_label(const oba::Program& program) {
     if (program.dynamic_only) {
         return program.lfe ? "LFE only" : "none";
     }
-    return fmt::format("{} channel(s)", oba::bed::channel_count(program.bed));
+    const auto group = [mask = program.bed](std::uint16_t bit, int channels) {
+        return (mask & bit) != 0 ? channels : 0;
+    };
+    const int full = group(oba::bed::kLR, 2) + group(oba::bed::kC, 1)
+                     + group(oba::bed::kLsRs, 2) + group(oba::bed::kLbRb, 2)
+                     + group(oba::bed::kLwRw, 2);
+    const int lfe = group(oba::bed::kLfe, 1) + group(oba::bed::kLfe2, 1);
+    const int height = group(oba::bed::kTflTfr, 2) + group(oba::bed::kTslTsr, 2)
+                       + group(oba::bed::kTblTbr, 2);
+    if (full == 0 && lfe == 0 && height == 0) {
+        // A non-standard assignment, which Table 12's bits cannot describe -
+        // the count is all there is to say, said grammatically.
+        const int count = oba::bed::channel_count(program.bed);
+        return count == 1 ? std::string{"1-channel bed"} : fmt::format("{}-channel bed", count);
+    }
+    // "5.1 bed", not "5.1": both callers paste this straight into a
+    // sentence ("reconstructed by JOC from the ..."), and the design's own
+    // wording is the noun phrase, not the bare layout.
+    return height > 0 ? fmt::format("{}.{}.{} bed", full, lfe, height)
+                      : fmt::format("{}.{} bed", full, lfe);
 }
 
 // dialnorm is transmitted as 1..31 meaning -1..-31 dB LKFS (§5.4.2.8); 0 is

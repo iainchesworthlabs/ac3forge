@@ -17,6 +17,9 @@ import Ac3ForgeHearth
 // rather than reading them.
 ScrollView {
     id: root
+
+    // Same control column the AC-3/E-AC-3 tab uses.
+    readonly property int labelWidth: Math.round(108 * Theme.fontScale)
     clip: true
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
@@ -28,8 +31,8 @@ ScrollView {
 
         Rectangle {
             Layout.fillWidth: true
-            color: Theme.accent100
-            border.color: Theme.bad
+            color: Theme.neutral100
+            border.color: Theme.accentInk
             border.width: 1
             radius: Theme.radius
             implicitHeight: banner.implicitHeight + Theme.pad * 2
@@ -41,10 +44,14 @@ ScrollView {
                 spacing: Theme.gap / 2
 
                 Text {
-                    text: qsTr("NOT IN THIS BUILD")
-                    color: Theme.bad
+                    // Mixed case in the string, uppercased by the font
+                    // property: a locale whose casing rules differ should
+                    // not have "NOT IN THIS BUILD" baked into its catalogue.
+                    text: qsTr("Not in this build")
+                    color: Theme.accentInk
                     font.pixelSize: Theme.fontSmall
                     font.bold: true
+                    font.letterSpacing: Theme.trackingWide
                     font.capitalization: Font.AllUppercase
                 }
                 Text {
@@ -55,6 +62,7 @@ ScrollView {
                 }
                 Text {
                     Layout.fillWidth: true
+                    font.pixelSize: Theme.fontBody
                     text: qsTr("These are the AC-4 settings Hearth will use, shown so the page is complete. "
                               + "They stay inactive until an AC-4 decoder is added; AC-4 items in the queue "
                               + "show their media information and are skipped when they come up. The two "
@@ -72,16 +80,20 @@ ScrollView {
             ColumnLayout {
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("01 Presentation")
+                    ordinal: "01"
+                    title: qsTr("Presentation")
+                    framed: true
                     enabled: false
 
-                    ComboBox {
-                        Layout.fillWidth: true
+                    AppComboBox {
+                        Layout.preferredWidth: Math.round(319 * Theme.fontScale)
                         model: [qsTr("1 · English · 5.1 · main")]
                         currentIndex: 0
+                        Accessible.name: qsTr("Presentation")
                     }
                     Text {
                         Layout.fillWidth: true
@@ -94,15 +106,20 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("02 Dialogue")
+                    ordinal: "02"
+                    title: qsTr("Dialogue")
+                    framed: true
                     enabled: false
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Enhancement"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        Slider { Layout.fillWidth: true; from: 0; to: 12; value: 6 }
-                        Text { text: qsTr("6 dB"); color: Theme.textMuted }
+                        Text { text: qsTr("Enhancement"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppSlider { id: enhancementSlider; Layout.preferredWidth: Math.round(200 * Theme.fontScale)
+                                   from: 0; to: 12; value: 6 }
+                        Text { text: qsTr("%1 dB").arg(enhancementSlider.value.toFixed(0)); color: Theme.textMuted
+                               font.family: Theme.monoFamily; font.pixelSize: Theme.fontNormal }
                     }
                     Text {
                         Layout.fillWidth: true
@@ -112,25 +129,26 @@ ScrollView {
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
                     }
-                    ColumnLayout {
+                    RowLayout {
                         Layout.fillWidth: true
-                        spacing: 0
-                        CheckBox { text: qsTr("Mix in audio description") }
-                        Text {
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        AppCheckBox {
                             Layout.fillWidth: true
-                            Layout.leftMargin: 32
-                            text: qsTr("When the presentation carries an associated programme.")
-                            color: Theme.textMuted
-                            font.pixelSize: Theme.fontSmall
-                            wrapMode: Text.WordWrap
+                            text: qsTr("Mix in audio description")
+                            note: qsTr("When the presentation carries an associated programme.")
                         }
                     }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Its level"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        Slider { Layout.fillWidth: true; from: -12; to: 0; value: -6 }
-                        Text { text: qsTr("-6 dB"); color: Theme.textMuted }
+                        Text { text: qsTr("Its level"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppSlider { id: levelSlider; Layout.preferredWidth: Math.round(200 * Theme.fontScale)
+                                   from: -12; to: 0; value: -6 }
+                        Text { text: qsTr("%1 dB").arg(levelSlider.value.toFixed(0)).replace("-", "−")
+                               color: Theme.textMuted
+                               font.family: Theme.monoFamily; font.pixelSize: Theme.fontNormal }
                     }
                 }
             }
@@ -138,10 +156,13 @@ ScrollView {
             ColumnLayout {
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
+                Layout.alignment: Qt.AlignTop
                 spacing: Theme.gap * 2
 
                 Card {
-                    title: qsTr("03 Dynamic range")
+                    ordinal: "03"
+                    title: qsTr("Dynamic range")
+                    framed: true
 
                     Text {
                         text: qsTr("SHARED WITH AC-3 AND E-AC-3 · LIVE")
@@ -152,7 +173,8 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Mode"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Mode"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Mode")
                             currentValue: root.settings.mode ?? "line"
@@ -171,12 +193,15 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Device"); color: Theme.textMuted; Layout.preferredWidth: 90 }
-                        ComboBox {
-                            Layout.fillWidth: true
+                        Text { text: qsTr("Device"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppComboBox {
+                            Layout.preferredWidth: Math.round(259 * Theme.fontScale)
                             enabled: false
                             model: [qsTr("Home theatre")]
+                            Accessible.name: qsTr("Device")
                         }
+                        Item { Layout.fillWidth: true }
                     }
                     Text {
                         Layout.fillWidth: true
@@ -189,7 +214,9 @@ ScrollView {
                 }
 
                 Card {
-                    title: qsTr("04 Stereo and mono")
+                    ordinal: "04"
+                    title: qsTr("Stereo and mono")
+                    framed: true
 
                     Text {
                         text: qsTr("SHARED WITH AC-3 AND E-AC-3 · LIVE")
@@ -200,7 +227,8 @@ ScrollView {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
-                        Text { text: qsTr("Downmix"); color: Theme.textMuted; Layout.preferredWidth: 90 }
+                        Text { text: qsTr("Downmix"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         SegmentedControl {
                             accessibleName: qsTr("Downmix")
                             currentValue: root.settings.stereoFold ?? "loro"

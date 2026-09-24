@@ -865,9 +865,15 @@ if(AC3FORGE_BUILD_HEARTH)
         target_link_libraries(ac3tests_websocket
             PRIVATE ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
         target_link_libraries(ac3tests PRIVATE ac3tests_websocket)
-        # Hearth's test sink, run in process (apps/hearth/testsink), and the server's half of A4's
-        # exit with aiosendspin 9.1.1, which tools/sendspin/aiosendspin_exit.py runs.
-        target_sources(ac3tests PRIVATE hearth/test_aiosendspin.cpp hearth/test_group.cpp hearth/test_testsink.cpp)
+        # Hearth's test sink, run in process (apps/hearth/testsink), the server's half of A4's
+        # exit with aiosendspin 9.1.1 (tools/sendspin/aiosendspin_exit.py), and A6's own
+        # (tools/sendspin/aiosendspin_group_exit.py) - a group with the scripted player as one
+        # of its members, played from the app's own Engine.
+        target_sources(ac3tests PRIVATE
+            hearth/test_aiosendspin.cpp
+            hearth/test_aiosendspin_group.cpp
+            hearth/test_group.cpp
+            hearth/test_testsink.cpp)
         # The engine's pairing records, its Network page bookkeeping (A6), its
         # NetworkGroupSink (A6, streaming to a group) and issue #874's own
         # exit - a group of two test sinks played from ac3::hearth::Engine
@@ -880,9 +886,12 @@ if(AC3FORGE_BUILD_HEARTH)
             hearth/test_engine_network_group.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
-        # as core/test_simd_kernels.cpp's.
+        # as core/test_simd_kernels.cpp's. test_aiosendspin_group.cpp's own environment() helper
+        # takes the same address the same way.
         if(AC3FORGE_IS_MSVC_LIKE)
-            set_source_files_properties(hearth/test_aiosendspin.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
+            set_source_files_properties(
+                hearth/test_aiosendspin.cpp hearth/test_aiosendspin_group.cpp
+                PROPERTIES COMPILE_OPTIONS "/wd4996")
         endif()
     endif()
     target_link_libraries(ac3tests PRIVATE ac3::sendspin)

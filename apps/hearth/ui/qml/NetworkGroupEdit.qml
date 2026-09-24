@@ -35,7 +35,8 @@ RowLayout {
         spacing: Theme.gap
 
         Card {
-            title: qsTr("02 GROUP · %1").arg(root.group.name ?? "").toUpperCase()
+            ordinal: "02"
+            title: qsTr("Group · %1").arg(root.group.name ?? "")
 
             RowLayout {
                 Layout.fillWidth: true
@@ -46,14 +47,14 @@ RowLayout {
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall
                 }
-                TextField {
+                AppTextField {
                     id: nameField
                     objectName: "networkGroupName"
                     Layout.fillWidth: true
                     text: root.group.name ?? ""
                     onEditingFinished: NetworkController.renameGroup(root.group.id, text)
                 }
-                Button {
+                AppButton {
                     objectName: "networkGroupDelete"
                     text: qsTr("Delete group")
                     onClicked: NetworkController.deleteGroup(root.group.id)
@@ -114,7 +115,7 @@ RowLayout {
                         font.pixelSize: Theme.fontSmall
                         elide: Text.ElideRight
                     }
-                    Slider {
+                    AppSlider {
                         objectName: "networkGroupMemberVolume-" + memberRow.modelData.sinkId
                         Layout.fillWidth: true
                         from: 0; to: 100
@@ -129,14 +130,14 @@ RowLayout {
                         color: Theme.textMuted
                         horizontalAlignment: Text.AlignRight
                     }
-                    CheckBox {
+                    AppCheckBox {
                         objectName: "networkGroupMemberMute-" + memberRow.modelData.sinkId
                         Layout.preferredWidth: 48
                         enabled: memberRow.modelData.connected && memberRow.modelData.muteSupported
                         checked: memberRow.modelData.muted
                         onToggled: NetworkController.setMemberMuted(root.group.id, memberRow.modelData.sinkId, checked)
                     }
-                    Button {
+                    AppButton {
                         objectName: "networkGroupRemoveMember-" + memberRow.modelData.sinkId
                         Layout.preferredWidth: 32
                         text: "×"
@@ -150,7 +151,7 @@ RowLayout {
                 Layout.fillWidth: true
                 spacing: Theme.gap
 
-                ComboBox {
+                AppComboBox {
                     id: addMemberBox
                     objectName: "networkGroupAddMemberChoice"
                     Layout.fillWidth: true
@@ -162,7 +163,7 @@ RowLayout {
                     }))
                     enabled: count > 0
                 }
-                Button {
+                AppButton {
                     objectName: "networkGroupAddMember"
                     text: qsTr("Add to the group")
                     enabled: addMemberBox.count > 0
@@ -179,7 +180,7 @@ RowLayout {
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall
                 }
-                Slider {
+                AppSlider {
                     objectName: "networkGroupVolume"
                     Layout.fillWidth: true
                     from: 0; to: 100
@@ -235,7 +236,8 @@ RowLayout {
 
         Card {
             Layout.fillWidth: true
-            title: qsTr("03 GROUP")
+            ordinal: "03"
+            title: qsTr("Group")
 
             GridLayout {
                 Layout.fillWidth: true
