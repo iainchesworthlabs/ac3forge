@@ -1,12 +1,16 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <latch>
 #include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "diagnostic_log.hpp"
@@ -116,8 +120,9 @@ TEST_CASE("engine queue commands: insert, move and clear edit the queue and say 
         engine.clear();
         engine.sync();
         CHECK(engine.status().queue.empty());
+        // No sync() before the engine goes: a command made before ~Engine is still carried
+        // out (engine_thread.hpp - every command runs, in order), so this one is noted too.
         engine.clear();
-        engine.sync();
     }
     const std::vector<std::string> expected{
         "add 2 items to a queue of 0",
@@ -127,6 +132,39 @@ TEST_CASE("engine queue commands: insert, move and clear edit the queue and say 
         "move item 2 \"b\" to 8 (no such place)",
         "clear a queue of 4 items",
         "clear a queue of 0 items",
+        "engine stopped",
+    };
+    CHECK(notes(log) == expected);
+}
+
+TEST_CASE("engine queue commands: a command made just before the engine goes is still carried out",
+          "[hearth][engine]") {
+    // ~Engine stops the thread, but every command made before it was queued to run: the
+    // destructor drains the queue rather than dropping what is left in it. The change callback
+    // holds the engine thread inside a publication while the next command is made and the
+    // destructor asks the thread to stop, so the command is still queued when the stop lands -
+    // the case a run loop that only checked for a stop would drop.
+    DiagnosticLog log;
+    {
+        Engine engine(std::make_unique<IdleDevice>(), no_files, stereo(), {}, EngineTiming{.period = 1ms, .budget = 4800},
+                      &log);
+        std::atomic<bool> hold{false};
+        std::latch held{1};
+        engine.on_change([&hold, &held](const EngineStatus& /*status*/) {
+            if (hold.exchange(false)) {
+                held.count_down();
+                std::this_thread::sleep_for(100ms);
+            }
+        });
+        engine.sync();
+        hold = true;
+        engine.add({item("a")});
+        held.wait();
+        engine.clear();
+    }
+    const std::vector<std::string> expected{
+        "add 1 item to a queue of 0",
+        "clear a queue of 1 item",
         "engine stopped",
     };
     CHECK(notes(log) == expected);

@@ -158,7 +158,8 @@ public:
     Engine(EngineOutputs outputs, ItemLoader loader, const render::OutputLayout& layout,
            const DecoderSettings& settings = {}, const EngineTiming& timing = {},
            DiagnosticLog* diagnostics = nullptr);
-    // Stops the thread, and with it whatever is playing.
+    // Carries out any command still queued, then stops the thread, and with
+    // it whatever is playing.
     ~Engine();
 
     Engine(const Engine&) = delete;

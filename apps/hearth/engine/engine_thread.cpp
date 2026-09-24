@@ -552,6 +552,19 @@ void Engine::run(const std::stop_token& stop) {
             wake_.wait(lock, stop, has_work);
         }
     }
+    // Every command made before ~Engine asked the thread to stop is still carried out, in
+    // order: the contract is that each command returns at once and the engine thread carries
+    // it out (engine_thread.hpp), and a caller that makes one last change on its way out - a
+    // clear(), a restore() - must not have it vanish because the stop landed between its post
+    // and the next pass of the loop above. Nothing is published for these: the engine is going,
+    // and no reader may be waiting on status() or sync() across its destruction.
+    while (!commands_.empty()) {
+        Command command = std::move(commands_.front());
+        commands_.pop_front();
+        lock.unlock();
+        (void)command(player_);
+        lock.lock();
+    }
     lock.unlock();
     // Stopped with the thread, so the sink closes before the player goes.
     player_.stop();
