@@ -227,13 +227,33 @@ dependencyLocking {
 // versions with disclosed CVEs (Netty HTTP/2 Rapid Reset and several SNI-
 // handling issues through 4.1.93.Final; protobuf-java stack overflow
 // GHSA-735f-pc8j-v9w8; commons-io XmlStreamReader DoS GHSA-78wr-2p64-hpwj).
-// AGP 8.9.1 doesn't offer a newer UTP version to pick these up, so force
-// every configuration - including the UTP-internal ones, which don't
-// extend implementation/androidTestImplementation and so aren't reachable
-// via a `constraints` block - to patched releases. All netty artifacts are
-// forced to the same version because Netty only supports matched versions
-// across its modules. Re-run `./gradlew --write-locks` after bumping any
-// of these.
+// The pinned AGP version doesn't offer a newer UTP release to pick these
+// up, so force every configuration - including the UTP-internal ones,
+// which don't extend implementation/androidTestImplementation and so
+// aren't reachable via a `constraints` block - to patched releases. All
+// netty artifacts are forced to the same version because Netty only
+// supports matched versions across its modules.
+//
+// force() does reach the UTP-internal configurations - but AGP only
+// creates and resolves them inside connectedDebugAndroidTest's own task
+// action, gated behind a device-availability check that runs before any
+// dependency resolution happens. No other task or flag resolves them
+// (confirmed: they don't exist in the configuration container until that
+// task is requested, and `--info` shows zero resolution activity for them
+// when the task fails at the device check). That means:
+//   - `./gradlew --write-locks` against assembleDebug/assembleDebugAndroidTest/
+//     assembleRelease (CI's and most local runs' usual tasks) NEVER touches
+//     these configurations, so bumping a version above does NOT by itself
+//     re-secure the lockfile for the UTP-internal path.
+//   - After changing any version here, re-run
+//     `./gradlew :app:connectedDebugAndroidTest --write-locks` against a
+//     real device or a working emulator and commit the gradle.lockfile
+//     diff - otherwise the UTP-internal entries silently keep whatever was
+//     last actually resolved that way (check gradle.lockfile's git blame).
+//   - Until that's done, running connectedDebugAndroidTest for real
+//     without --write-locks should fail on a dependency-lock mismatch for
+//     the bumped module rather than silently using the old version - a
+//     loud failure there is this gap surfacing, not an unrelated bug.
 configurations.all {
     resolutionStrategy {
         force(
