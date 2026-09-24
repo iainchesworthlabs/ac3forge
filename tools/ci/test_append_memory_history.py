@@ -122,6 +122,23 @@ class ChurnGateTests(unittest.TestCase):
         self.assertTrue(findings, "an ungated series produced no annotation")
         self.assertTrue(any("NOTHING gated this value" in m for _, m in findings))
 
+    def test_recent_sidecars_are_not_sibling_series(self):
+        """Regression: the sibling glob memory-*.jsonl also matched the
+        *.recent.jsonl windows write_recent_window() keeps beside each full
+        file, so every widened sample was counted twice (and the sidecar of
+        this branch's own file was read as a sibling)."""
+        write_series(self.history / "memory-develop.jsonl", [10.0, 10.0, 10.0, 100.0, 100.0])
+        write_series(self.history / "memory-main.jsonl", [10.0], start_day=20)
+        # The sidecars: the newest records of each full file, repeated
+        # verbatim (as write_recent_window writes them once a history outgrows
+        # its window).
+        write_series(self.history / "memory-develop.recent.jsonl", [100.0, 100.0], start_day=4)
+        write_series(self.history / "memory-main.recent.jsonl", [10.0], start_day=20)
+
+        mean, count, widened = amh.baseline_for(
+            self.history, "main", "linux-gcc", "eac3_51_encode", "allocs_per_frame", 10)
+        self.assertEqual((mean, count, widened), (40.0, 6, True))
+
     def test_steady_series_within_threshold_stays_quiet(self):
         """The ordinary case: no annotations at all when nothing moved."""
         write_series(self.history / "memory-main.jsonl", [67.0] * 12)
