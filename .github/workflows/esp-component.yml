@@ -127,7 +127,15 @@ jobs:
 
       - uses: actions/setup-python@e9d6f990972a57673cdb72ec29e19d42ba28880f # v6.0.0
         with:
-          python-version: "3.13"
+          # Must match requirements-esphome.txt's own pip-compile Python
+          # (3.14, like nearly every other lock in requirements/ - only
+          # requirements-esp-component.txt differs, pinned to the ESP-IDF
+          # container's fixed 3.13). A mismatch here isn't cosmetic: py7zr
+          # (an esphome dependency) declares `backports.zstd>=1.0.0;
+          # python_version < "3.14"`, which the 3.14 lock correctly omits -
+          # installing under 3.13 instead makes pip need that package, find
+          # it absent from the hash-pinned lock, and fail `--require-hashes`.
+          python-version: "3.14"
 
       - name: Install ESPHome
         run: |

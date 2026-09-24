@@ -8,14 +8,15 @@ double (aiosendspin_exit.py's own docstring is the A4 case this mirrors).
 
 Starts the scripted player in aiosendspin_player.py on a loopback port, runs ac3tests's hidden
 [aiosendspin-group] case (tests/hearth/test_aiosendspin_group.cpp) with the player's URL, token and
-a directory, and checks what the player took: one PCM stream, ended, with exactly the programme's
-own frame count - not a byte-exact PCM comparison the way aiosendspin_exit.py's own check() makes
-for A4 (that test hand-pushes uncompressed samples with nothing to compare against here: this one's
-programme is E-AC-3, needed so the group's OTHER member - a burst-taking test sink - has something
-to take at the same time, and AC-3/E-AC-3 is lossy, so there is no reference PCM this could
-byte-match). What real third-party interop needs proving - pairing, handshake, negotiation, a
-complete stream decoded without error, the right length - is what this checks instead; codec
-correctness itself is exhaustively covered elsewhere in this suite.
+a directory, and checks what the player took against programme.wav, the case's own local decode and
+render of the programme, carried through the same full-scale-to-16-bit rescale
+NetworkGroupSink::submit_pcm() and Group::rescaled() apply before a PCM member's encoder ever sees a
+sample (that file's own header comment has the detail) - one PCM stream, ended, decoding sample for
+sample to programme.wav, the same rigour aiosendspin_exit.py's own check() applies to A4's PCM and
+FLAC. What real third-party interop additionally needs proving - pairing, handshake, negotiation, a
+complete stream decoded without error - is checked alongside it; codec correctness itself
+(AC-3/E-AC-3 decoding, as opposed to this group's own rescale) is exhaustively covered elsewhere in
+this suite.
 
 Usage: python tools/sendspin/aiosendspin_group_exit.py --ac3tests PATH [--out DIR] [--verbose]
 
@@ -31,23 +32,32 @@ import logging
 import os
 import sys
 import tempfile
+import wave
+from array import array
 from pathlib import Path
 
 from aiosendspin.models.types import AudioCodec
-from aiosendspin_player import Received, ScriptedPlayer, free_port
+from aiosendspin_player import CHANNELS, Received, ScriptedPlayer, free_port
 
 HOST = "127.0.0.1"
+
+
+def samples(data: bytes) -> array:
+    """Little-endian 16-bit samples."""
+    values = array("h", data)
+    if sys.byteorder == "big":
+        values.byteswap()
+    return values
 
 
 def check(directory: Path, received: Received) -> tuple[list[str], str]:
     """The problems with what the player took, and a line describing it."""
     problems: list[str] = []
-    expected: dict[str, int] = {}
-    for line in (directory / "expected.txt").read_text(encoding="utf-8").splitlines():
-        key, _, value = line.partition("=")
-        if key:
-            expected[key] = int(value)
-    frames = len(received.pcm) // (2 * 2)  # stereo, 16-bit - aiosendspin_player.py's own constants
+    with wave.open(str(directory / "programme.wav"), "rb") as programme_wav:
+        programme = samples(programme_wav.readframes(programme_wav.getnframes()))
+    decoded = samples(bytes(received.pcm))
+    frames = len(programme) // CHANNELS
+    decoded_frames = len(decoded) // CHANNELS
 
     if received.streams != 1 or not received.ended or received.codec != "pcm":
         problems.append(
@@ -56,10 +66,17 @@ def check(directory: Path, received: Received) -> tuple[list[str], str]:
     if not received.chunks:
         problems.append("no chunks")
         return problems, "nothing received"
-    if "frames" in expected and frames != expected["frames"]:
-        problems.append(f"decoded {frames} frames against {expected['frames']}")
+    if decoded != programme:
+        different = next(
+            (i for i, (a, b) in enumerate(zip(decoded, programme, strict=False)) if a != b),
+            min(len(decoded), len(programme)),
+        )
+        problems.append(
+            f"decoded {decoded_frames} frames against {frames}; first difference at sample "
+            f"{different}"
+        )
 
-    summary = f"{received.streams} stream, {len(received.chunks)} chunks, {frames} frames"
+    summary = f"{received.streams} stream, {len(received.chunks)} chunks, {decoded_frames} frames"
     return problems, summary
 
 
