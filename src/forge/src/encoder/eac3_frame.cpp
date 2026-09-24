@@ -5917,7 +5917,12 @@ struct AccessUnitEncoder::Impl {
         }
         std::size_t offset = 0;
         for (std::size_t i = 0; i < built->size(); ++i) {
-            Programme state;
+            // Constructed directly in the vector's own (heap) storage rather
+            // than as a local moved in at the end of the loop body: Programme
+            // carries two 6-channel, 256-sample tail arrays (PREfast's C6262,
+            // alert #526) - a local copy of it is stack the encoder does not
+            // need to spend.
+            Programme& state = programmes_.emplace_back();
             state.channel_offset = offset;
             for (const auto& sub : (*built)[i]) {
                 state.substreams.emplace_back(sub);
@@ -5953,7 +5958,6 @@ struct AccessUnitEncoder::Impl {
             if (dual_mono && lead.heavy2.has_value()) {
                 state.heavy2.emplace(*lead.heavy2, lead.sample_rate);
             }
-            programmes_.push_back(std::move(state));
         }
     }
 };
