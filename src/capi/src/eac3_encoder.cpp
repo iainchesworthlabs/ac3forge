@@ -167,6 +167,13 @@ ac3forge_status_t ac3forge_eac3_access_unit_encoder_create(
         (dependent_count > 0 && dependents == nullptr)) {
         return AC3FORGE_ERROR_INVALID_ARGUMENT;
     }
+    // §E2.3.1.2: eight dependents at most, as the header documents. Checked
+    // before the reserve() below, which would otherwise size itself from an
+    // unchecked caller count - SIZE_MAX threw std::length_error there - and
+    // before the loop reads past the caller's array.
+    if (dependent_count > 8) {
+        return AC3FORGE_ERROR_INVALID_ARGUMENT;
+    }
     return guard([&independent, &dependents, &dependent_count, &out_encoder] {
         ac3::eac3::AccessUnitConfig config;
         config.independent = eac3_frame_config_to_cpp(*independent);
@@ -206,8 +213,8 @@ ac3forge_status_t ac3forge_eac3_access_unit_encoder_encode(
     size_t channel_count, size_t samples_per_channel, const uint8_t* aux, size_t aux_size,
     ac3forge_eac3_access_unit_t** out_unit) {
     // channels may be NULL when channel_count is 0 - a config the constructor
-    // could not build any substreams from (an invalid chanmap, too many
-    // dependents, ...) reports channel_count() == 0 exactly as
+    // could not build any substreams from (an invalid chanmap, a dependent at
+    // another sample rate, ...) reports channel_count() == 0 exactly as
     // ac3::eac3::AccessUnitEncoder does, and encode() below is how a caller
     // discovers the real reason (see the C++ constructor's own comment).
     if (encoder == nullptr || out_unit == nullptr || (channel_count > 0 && channels == nullptr) ||

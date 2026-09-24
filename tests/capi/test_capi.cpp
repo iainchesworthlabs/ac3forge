@@ -623,6 +623,22 @@ TEST_CASE("E-AC-3 C encode entry points surface the encoder's own error codes", 
                                                     &unit) == AC3FORGE_ERROR_ENCODE_INVALID_CHANNEL_MAP);
     CHECK(unit == nullptr);
     ac3forge_eac3_access_unit_encoder_destroy(au_encoder);
+
+    // §E2.3.1.2 allows eight dependents; a larger count is refused up front,
+    // before anything is sized from it or read past the caller's array -
+    // SIZE_MAX used to reach a reserve() that threw std::length_error and came
+    // back as AC3FORGE_ERROR_INTERNAL.
+    std::vector<ac3forge_eac3_frame_config_t> nine(9, dependent);
+    au_encoder = nullptr;
+    CHECK(ac3forge_eac3_access_unit_encoder_create(&independent, nine.data(), 9, &au_encoder) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_eac3_access_unit_encoder_create(&independent, nine.data(), SIZE_MAX,
+                                                    &au_encoder) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(au_encoder == nullptr);
+    REQUIRE(ac3forge_eac3_access_unit_encoder_create(&independent, nine.data(), 8, &au_encoder) ==
+            AC3FORGE_OK);
+    ac3forge_eac3_access_unit_encoder_destroy(au_encoder);
 }
 
 TEST_CASE("E-AC-3 access units with a dependent substream cross the C API intact",
@@ -2512,6 +2528,17 @@ TEST_CASE("ac3forge_loudness_meter_create/push reject bad arguments", "[capi][lo
     const float* channels[2] = {nullptr, nullptr};
     CHECK(ac3forge_loudness_meter_push(meter, channels, 2, AC3FORGE_SAMPLES_PER_FRAME) ==
           AC3FORGE_ERROR_INVALID_ARGUMENT);
+    // More spans than the meter has channels is an argument error, caught
+    // before anything is sized from the count - SIZE_MAX used to reach a
+    // reserve() that threw std::length_error and came back as
+    // AC3FORGE_ERROR_INTERNAL.
+    const std::vector<float> silence(AC3FORGE_SAMPLES_PER_FRAME, 0.0f);
+    const float* three[3] = {silence.data(), silence.data(), silence.data()};
+    CHECK(ac3forge_loudness_meter_push(meter, three, 3, AC3FORGE_SAMPLES_PER_FRAME) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_loudness_meter_push(meter, three, SIZE_MAX, AC3FORGE_SAMPLES_PER_FRAME) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_loudness_meter_push(meter, three, 2, AC3FORGE_SAMPLES_PER_FRAME) == AC3FORGE_OK);
     ac3forge_loudness_meter_destroy(meter);
 }
 
@@ -2614,6 +2641,18 @@ TEST_CASE("ac3forge_level_meter_process rejects bad arguments", "[capi][levels]"
     const float* channels[2] = {nullptr, nullptr};
     CHECK(ac3forge_level_meter_process(meter, channels, 2, AC3FORGE_SAMPLES_PER_FRAME) ==
           AC3FORGE_ERROR_INVALID_ARGUMENT);
+    // Fewer spans than channels is legal (the rest meter as silence); more is
+    // an argument error, caught before anything is sized from the count -
+    // SIZE_MAX used to reach a reserve() that threw std::length_error and came
+    // back as AC3FORGE_ERROR_INTERNAL.
+    const std::vector<float> silence(AC3FORGE_SAMPLES_PER_FRAME, 0.0f);
+    const float* three[3] = {silence.data(), silence.data(), silence.data()};
+    CHECK(ac3forge_level_meter_process(meter, three, 3, AC3FORGE_SAMPLES_PER_FRAME) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_level_meter_process(meter, three, SIZE_MAX, AC3FORGE_SAMPLES_PER_FRAME) ==
+          AC3FORGE_ERROR_INVALID_ARGUMENT);
+    CHECK(ac3forge_level_meter_process(meter, three, 2, AC3FORGE_SAMPLES_PER_FRAME) == AC3FORGE_OK);
+    CHECK(ac3forge_level_meter_process(meter, three, 1, AC3FORGE_SAMPLES_PER_FRAME) == AC3FORGE_OK);
     ac3forge_level_meter_destroy(meter);
 }
 

@@ -563,7 +563,8 @@ AC3FORGEC_EXPORT uint32_t ac3forge_eac3_access_unit_substream_bytes(
 AC3FORGEC_EXPORT void ac3forge_eac3_access_unit_destroy(ac3forge_eac3_access_unit_t* unit);
 
 /* `independent` is the bed's config; `dependents`/`dependent_count` are the
- * substreams that widen it (at most 8), in transmission order - see
+ * substreams that widen it (at most 8 - a larger count fails with
+ * AC3FORGE_ERROR_INVALID_ARGUMENT), in transmission order - see
  * ac3::eac3::AccessUnitConfig. Every substream must agree on sample_rate;
  * strmtyp/substreamid on `independent` and each of `dependents` are assigned
  * by this call the way ac3::eac3::AccessUnitEncoder's constructor does, so
@@ -1206,7 +1207,8 @@ AC3FORGEC_EXPORT int ac3forge_loudness_meter_channel_count(const ac3forge_loudne
 /* channels: channel_count() planar spans, coded order with LFE last, each
  * samples_per_channel samples - any length works, unlike encode_frame()'s
  * fixed frame size, since a meter is fed incrementally over a whole
- * programme rather than one frame at a time. */
+ * programme rather than one frame at a time. A channel_count above
+ * channel_count() fails with AC3FORGE_ERROR_INVALID_ARGUMENT. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_loudness_meter_push(
     ac3forge_loudness_meter_t* meter, const float* const* channels, size_t channel_count,
     size_t samples_per_channel);
@@ -1283,7 +1285,8 @@ AC3FORGEC_EXPORT uint32_t ac3forge_level_meter_sample_rate(const ac3forge_level_
 /* Planar, one span per channel in A/52 order. The shortest span sets the
  * length; channels beyond the ones supplied are metered as silence, so a
  * caller that hands over fewer spans sees the rest fall away rather than
- * freeze. */
+ * freeze. More spans than channel_count() fails with
+ * AC3FORGE_ERROR_INVALID_ARGUMENT. */
 AC3FORGEC_EXPORT ac3forge_status_t ac3forge_level_meter_process(
     ac3forge_level_meter_t* meter, const float* const* channels, size_t channel_count,
     size_t samples_per_channel);
