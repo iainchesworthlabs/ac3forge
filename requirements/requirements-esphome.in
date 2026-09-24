@@ -5,17 +5,23 @@
 #     --output-file=requirements-esphome.txt requirements-esphome.in
 esphome
 
-# Not imported directly - esphome's dashboard pulls in starlette, which
-# carries four disclosed CVEs at every version this graph can resolve (two
-# high: an SSRF/NTLM-credential-theft path via StaticFiles on Windows, and a
-# request.form() size-limit bypass enabling DoS). Confirmed NOT fixable by
-# pinning forward: platformio (esphome's own embedded-build dependency) hard-
-# caps starlette<0.53,>=0.19, and 0.52.1 - already the version an unpinned
-# resolve picks - is the last 0.x release ever published; the next one is
-# 1.0.0, which platformio's own pin refuses. Explicit here (not left to
-# resolve implicitly) so this reads as a confirmed, accepted limitation
-# rather than an oversight: this job only ever runs `esphome config` to
-# validate YAML, never esphome's dashboard, so the actual vulnerable code
-# paths (StaticFiles, request.form() against attacker input) are present in
-# the environment but never exercised. Revisit once platformio raises its cap.
+# Not imported directly - platformio (esphome's own embedded-build
+# dependency) pulls in starlette, which carries five disclosed CVEs at every
+# version this graph can resolve (two high: an SSRF/NTLM-credential-theft
+# path via StaticFiles on Windows, and a request.form() size-limit bypass
+# enabling DoS). Confirmed NOT fixable by pinning forward: esphome==2026.9.0
+# (latest) hard-pins platformio==6.1.19 exactly, which caps
+# starlette<0.53,>=0.19, and 0.52.1 - already the version an unpinned
+# resolve picks - is the newest release that cap allows. Starlette itself
+# has long since moved past that cap (1.3.1 is the first release with all
+# five CVEs fixed), and platformio's own cap has separately been raised too
+# - platformio 6.2.0 allows starlette<2 - but esphome has not adopted that
+# newer platformio yet, so the resolver still rejects any starlette bump
+# (verified via `pip install --dry-run`: ResolutionImpossible). Explicit
+# here (not left to resolve implicitly) so this reads as a confirmed,
+# accepted limitation rather than an oversight: this job only ever runs
+# `esphome config` to validate YAML, never platformio's local dashboard or
+# remote-agent server, so the actual vulnerable code paths (StaticFiles,
+# request.form() against attacker input) are present in the environment but
+# never exercised. Revisit once esphome bumps its platformio pin past 6.2.0.
 starlette==0.52.1
