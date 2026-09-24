@@ -82,6 +82,13 @@ idf.py -p <PORT> flash monitor
 `idf.py flash` writes `stream/sample.ac3` into the `audio` partition as well as
 the application, so there is nothing to copy by hand.
 
+On native Windows, run that first line from **PowerShell**, not Git Bash:
+ESP-IDF's own tooling refuses MSYS/MinGW shells outright, and
+`idf.py`/`export.sh` fail with `ERROR: MSys/Mingw is not supported. Please
+follow the getting started guide of the documentation to set up a supported
+environment.` Use `export.ps1` from PowerShell instead of `export.sh`; WSL is
+unaffected — this is specifically about MSYS2/Git-Bash-style shells.
+
 On a DevKitC-1 reached through its **native USB connector** rather than the
 UART bridge, build with `SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw"`
 so the console comes out of the same cable. The reset esptool performs after
@@ -93,6 +100,19 @@ terminal that does not reopen it misses the first lines. Building more than one
 shape on one machine, give each its own build directory **and** its own
 `-DSDKCONFIG=<build dir>/sdkconfig`, because ESP-IDF otherwise keeps a single
 `sdkconfig` in the project directory and the second shape inherits the first's.
+
+Building more than one target shape from this project source at once — say
+esp32s3, esp32c6 and esp32p4 together, each with its own `-B` — also races the
+component manager: `idf.py build` downloads dependencies (`mdns`, `esp_hosted`,
+and the like) into `managed_components/` inside the project directory, not
+under each target's own `-B`. Two builds populating
+`managed_components/espressif__mdns` at the same time can collide
+mid-`copytree` with `FileExistsError: [WinError 183] Cannot create a file when
+that file already exists`; the losing process fails at `os.makedirs`, before
+writing anything, so a build that reports success was not corrupted by a
+concurrent loser. Build multiple target shapes from one project source
+serially, or expect the occasional build to need one retry once the others
+have finished.
 
 Without a board:
 
