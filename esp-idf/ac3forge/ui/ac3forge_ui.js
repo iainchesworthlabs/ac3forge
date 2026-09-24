@@ -228,6 +228,7 @@
     $('hw-note').hidden = true;
     row('hw-chip', str(hw.chip) && hw.chip + (str(hw.revision) ? ', revision ' + hw.revision : ''));
     row('hw-cores', num(hw.cores) ? String(hw.cores) : undefined);
+    row('hw-clock', num(hw.cpu_freq_mhz) ? hw.cpu_freq_mhz + ' MHz' : undefined);
     row('hw-arithmetic', hw.fpu === true ? 'Hardware floating point' : hw.fpu === false ? 'Fixed-point (no floating-point unit)' : undefined);
     row('hw-psram', mib(hw.psram_bytes));
     row('hw-sink', num(hw.sink_max_slots) ? slots(hw.sink_max_slots) : undefined);

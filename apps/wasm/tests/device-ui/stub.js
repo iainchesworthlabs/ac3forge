@@ -234,9 +234,14 @@ function defaultHardware() {
         revision: '0.2',
         cores: 2,
         fpu: true,
+        cpu_freq_mhz: 240,
         psram_bytes: 0,
         sink_max_slots: 8,
-        capabilities: ['2 cores, a hardware floating-point unit', "This sink's bus reaches up to 8 slots"],
+        capabilities: [
+            '2 cores, a hardware floating-point unit',
+            'Running at 240 MHz',
+            "This sink's bus reaches up to 8 slots",
+        ],
         notices: ['No PSRAM in this build: a wide buffer ring, deep DMA queues or an object reconstruction buffer fall back to internal RAM, or may not fit at all.'],
     };
 }

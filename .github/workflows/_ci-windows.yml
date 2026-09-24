@@ -599,12 +599,23 @@ jobs:
       # choco's ffmpeg package is x64-only (Chocolatey packages here are
       # typically x64 binaries) - there is no arm64 equivalent to install the
       # same way. BtbN/FFmpeg-Builds publishes static win-arm64 GPL builds
-      # instead (confirmed for real - see the release page's asset list under
-      # the "latest" tag); the n8.1 release build is used rather than the
-      # "master" one for the same reason choco's package tracks an actual
-      # FFmpeg release rather than a git snapshot. The zip's ffmpeg.exe is
-      # nested under a versioned subfolder that can drift between builds, so
-      # this searches for it instead of hardcoding that path.
+      # instead; the n8.1 release build is used rather than the "master" one
+      # for the same reason choco's package tracks an actual FFmpeg release
+      # rather than a git snapshot. The zip's ffmpeg.exe is nested under a
+      # versioned subfolder that drifts between builds, so this searches for
+      # it instead of hardcoding that path.
+      #
+      # PINNED to a dated autobuild tag, not the rolling "latest" one this
+      # used to fetch. BtbN republishes "latest" every day, so the binary
+      # underneath it changes with no commit here - which is exactly how this
+      # leg went red: main passed on 2026-09-21 and every run from 2026-09-23
+      # failed identically, on unrelated branches, with ac3cli's own 2,183
+      # tests all passing and the gate's FFmpeg step ([2] ac3: FFmpeg strict
+      # decode) dying on a segfault (exit 139). Nothing in this repository
+      # changed the download; the file behind the URL did. autobuild-2026-09-
+      # 20-13-11 is the build "latest" resolved to when this leg last passed.
+      # A dated tag's asset is immutable, so this can only change by editing
+      # this line - which is the point.
       - name: Install ffmpeg (Windows ARM64)
         if: matrix.gold_reference && matrix.preset == 'windows-msvc-arm64'
         shell: powershell
@@ -616,7 +627,7 @@ jobs:
           $ProgressPreference = 'SilentlyContinue'
           $zip = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64.zip'
           $dest = Join-Path $env:RUNNER_TEMP 'ffmpeg-winarm64'
-          Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n8.1-latest-winarm64-gpl-8.1.zip' -OutFile $zip
+          Invoke-WebRequest -Uri 'https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-09-20-13-11/ffmpeg-n8.1.2-267-gb2f422d306-winarm64-gpl-8.1.zip' -OutFile $zip
           Expand-Archive -Path $zip -DestinationPath $dest
           $exe = Get-ChildItem -Path $dest -Recurse -Filter 'ffmpeg.exe' | Select-Object -First 1
           if (-not $exe) {
@@ -741,19 +752,19 @@ jobs:
       # download-and-extract shape as the ARM64 ffmpeg step above, for the
       # identical reason (no installer on this leg's PATH to run one with).
       # This bootstrap check only ever needs a python capable of running a
-      # few lines of pathlib - nothing here needs pip or the full install.
-      # That stopped being the whole story once aqtinstall needed py7zr to
-      # unpack this leg's qtquick3d/qtshadertools modules: install-qt-action
-      # runs with setup-python: false below, so this embeddable python is the
-      # ONLY one on PATH for that later `pip install py7zr` step too, and the
-      # embeddable package ships with no pip at all ("No module named pip",
-      # confirmed against a real CI run - not a network flake, deterministic
-      # every time). get-pip.py is the standard way to bootstrap pip into an
-      # embeddable install (it has no ensurepip module either); downloading a
-      # script and installing pip's own files under $RUNNER_TEMP touches no
-      # installer and no registry, so it does not reintroduce the
-      # installer-database conflict the embeddable-zip approach itself exists
-      # to avoid.
+      # few lines of pathlib - nothing here needs pip or the full install -
+      # but setup-python: false does not stop install-qt-action reaching for
+      # pip anyway, later, on whatever python it finds on PATH: its own
+      # aqtinstall step still runs `python -m pip install setuptools py7zr`
+      # (the py7zrversion/aqtversion inputs below), unconditionally, to get
+      # aqtinstall itself. Confirmed against a real CI run: that call failed
+      # with "No module named pip" against this exact python.exe - the site
+      # module fix above makes the bootstrap check's bare exit() work, but
+      # site has nothing to do with pip being present at all. python.org's
+      # embeddable zip ships neither pip nor ensurepip's bundled wheels (its
+      # own docs name get-pip.py as the fix), so bootstrap it the documented
+      # way rather than assuming enabling site was ever going to cover this
+      # too.
       - name: Setup Python (for install-qt-action)
         if: runner.os == 'Windows' && matrix.preset != 'windows-msvc-arm64'
         shell: powershell
@@ -781,11 +792,15 @@ jobs:
               throw "no *._pth file found under $dest to enable the site module in"
           }
           (Get-Content $pth.FullName) -replace '^#import site$', 'import site' | Set-Content $pth.FullName
+          # get-pip.py, not `-m ensurepip`: the embeddable zip does not carry
+          # ensurepip's own bundled wheels (python.org's own embeddable-package
+          # docs name this exact script as the fix), so ensurepip has nothing
+          # to install from and fails differently on this distribution.
           $getPip = Join-Path $env:RUNNER_TEMP 'get-pip.py'
           Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
-          & $exe.FullName $getPip --no-warn-script-location
+          & $exe.FullName $getPip --quiet
           if ($LASTEXITCODE -ne 0) {
-              throw "get-pip.py exited $LASTEXITCODE against $($exe.FullName)"
+              throw "get-pip.py exited $LASTEXITCODE installing pip into $($exe.FullName)"
           }
           Write-Host "Found python.exe at $($exe.FullName)"
           $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
