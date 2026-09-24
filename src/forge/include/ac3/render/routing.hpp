@@ -126,7 +126,7 @@ class Routing {
         for (std::size_t c = 0; c < channels_; ++c) {
             std::array<char, 3> token{};
             std::size_t length = 0;
-            const int output = output_of_[c];
+            const int output = output_of(c);
             if (output == kUnassigned) {
                 token[length++] = '-';
             } else {

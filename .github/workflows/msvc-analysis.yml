@@ -115,12 +115,13 @@ jobs:
       # fleet's self-hosted Windows runners never put one on PATH - see
       # _ci-windows.yml's identical fix (same v4.4.0 change) for the full
       # story; this job can land on that same fleet (its own decider above).
-      # choco, not actions/setup-python: its MSI installer fails outright on
-      # this fleet's persistent, reused runners - see _ci-windows.yml's own
-      # comment for the real CI failure this produced.
+      # The same embeddable-zip step that leg uses, not an installer: choco's
+      # python package only adds a versioned python3.14.exe shim and puts
+      # C:\Python314 on the machine PATH, which a running job never re-reads,
+      # so install-qt-action still found no bare `python` - this job's first
+      # nightly after v4.4.0's bump (#952) failed on exactly that.
       - name: Setup Python (for install-qt-action)
-        shell: bash
-        run: choco install python -y --no-progress --requirechecksums
+        uses: ./.github/actions/setup-embeddable-python
 
       # windows-msvc defaults AC3FORGE_BUILD_GUI to ON (CMakePresets.json),
       # and Qt is a prebuilt dependency (cmake/FindQt6.cmake), never a vcpkg

@@ -50,6 +50,7 @@ fuzz/run.sh grew for fuzz_ac4_decode reaches syntax random streams do not.
 """
 
 import argparse
+import contextlib
 import random
 import subprocess
 import sys
@@ -244,11 +245,9 @@ def generate(streams, cases, n_mutations, n_synthetic, seed):
             # all ends up with none and is skipped below instead of aborting
             # the whole run.
             frames = []
-            try:
+            with contextlib.suppress(ValueError, IndexError):
                 for _, _, raw, _ in ac4_parse.iter_sync_frames(data):
                     frames.append(raw)
-            except (ValueError, IndexError):
-                pass
             frames_of[path] = frames
         frames = frames_of[path]
         if not frames:
