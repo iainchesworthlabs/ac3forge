@@ -188,6 +188,7 @@ HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
 #if CONFIG_SOC_CPU_HAS_FPU
     facts.fpu = true;
 #endif
+    facts.cpu_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
     facts.psram_bytes = esp_psram_get_size();
     if (handlers.sink_max_slots) {
         facts.sink_max_slots = handlers.sink_max_slots();
@@ -200,17 +201,21 @@ HardwareFacts gather_hardware_facts(const ControlHandlers& handlers) {
 // boot, since anything genuinely below whatever floor THIS build set never
 // reaches this line at all, refused by the bootloader itself before
 // app_main runs. 300 (v3.0), not this build's own lowered floor, because
-// v3.0 is where hal/i2s_ll.h's own I2S_LL_DEFAULT_CLK_SRC switches from
-// I2S_CLK_SRC_XTAL to I2S_CLK_SRC_PLL_160M - the fact worth a chip actually
+// v3.0 is where TWO things this build's own Kconfig chose conservatively
+// both change: hal/i2s_ll.h's own I2S_LL_DEFAULT_CLK_SRC switches from
+// I2S_CLK_SRC_XTAL to I2S_CLK_SRC_PLL_160M, and esp_system's own
+// Kconfig.cpu only offers 400 MHz (esp32p4/Kconfig.cpu) once
+// ESP32P4_SELECTS_REV_LESS_V3 is unset - both facts worth a chip actually
 // there knowing about, which nothing below v3.0 (this board's own v1.3
 // included) unlocks regardless of how low this build's floor goes.
 #if CONFIG_IDF_TARGET_ESP32P4 && CONFIG_ESP32P4_SELECTS_REV_LESS_V3
     facts.revision_notice_at = 300;  // v3.0
     facts.revision_floor_cost =
-        "This build was compiled to also accept older, pre-production silicon, and so falls "
-        "back to the 40 MHz crystal for I2S rather than the 160 MHz PLL v3.0+ silicon supports "
-        "(I2S_CLK_SRC_XTAL/PLL_160M, hal/i2s_ll.h) - a build that required v3.0 or newer could "
-        "reach wider TDM frames than this one's own clock source does.";
+        "This build was compiled to also accept older, pre-production silicon: it runs the "
+        "CPU at " + std::to_string(facts.cpu_freq_mhz) + " MHz rather than 400 (esp32p4/"
+        "Kconfig.cpu), and falls back to the 40 MHz crystal for I2S rather than the 160 MHz "
+        "PLL v3.0+ silicon supports (I2S_CLK_SRC_XTAL/PLL_160M, hal/i2s_ll.h) - a build that "
+        "required v3.0 or newer could reach both.";
 #endif
     return facts;
 }
@@ -228,6 +233,7 @@ std::string build_hardware_json(const ControlHandlers& handlers) {
                                 std::to_string(facts.revision_minor));
     append_number(out, "cores", static_cast<unsigned long long>(facts.cores));
     append_bool(out, "fpu", facts.fpu);
+    append_number(out, "cpu_freq_mhz", static_cast<unsigned long long>(facts.cpu_freq_mhz));
     append_number(out, "psram_bytes", static_cast<unsigned long long>(facts.psram_bytes));
     if (facts.sink_max_slots > 0) {
         append_number(out, "sink_max_slots", static_cast<unsigned long long>(facts.sink_max_slots));

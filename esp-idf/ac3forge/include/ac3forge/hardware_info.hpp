@@ -40,6 +40,12 @@ struct HardwareFacts {
     int revision_minor = 0;
     int cores = 0;
     bool fpu = false;
+    // CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ, verbatim: what this build actually
+    // runs the CPU at, not a peripheral's own clock (I2S's, say) and not a
+    // ceiling the silicon could reach under a different build. 0 when a
+    // caller has nothing to say (every real board sets this; only synthetic
+    // facts in a test leave it at the default).
+    int cpu_freq_mhz = 0;
     // 0 when PSRAM was never brought up: absent, or present but this build's
     // Kconfig never turned CONFIG_SPIRAM on. Either way, features that need
     // it are not available, which is the fact worth reporting; this struct
@@ -133,6 +139,10 @@ namespace detail {
     if (!facts.fpu) {
         report.notices.push_back(
             "No hardware floating point on this die: this build's decode arithmetic is fixed-point.");
+    }
+
+    if (facts.cpu_freq_mhz > 0) {
+        report.capabilities.push_back("Running at " + std::to_string(facts.cpu_freq_mhz) + " MHz");
     }
 
     if (facts.psram_bytes > 0) {
