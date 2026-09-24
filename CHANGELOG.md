@@ -189,6 +189,20 @@ The sections below contain the complete change list and fixes.
   playing a 7.1 stream onto eight 16-bit TDM slots, `sink_us_per_frame` drops from
   20,875 to 12,689 microseconds a frame, 11,551 with the sink's source at `-O2`
   (`AC3FORGE_MINIMAL_HOT_O2`); levels unchanged to the digit.
+- **A Hearth sink's flash has two application slots and a bootloader that can go back to
+  the previous one**, the groundwork for updating boards over the network
+  (`planning/esp32-ota.md`).
+  - **Tables.** `partitions.csv` is for boards with 16 MB of flash: the ESP32-S3, the
+    ESP32-P4, and an ESP32-C6 with the new `sdkconfig.flash16mb`. `partitions_c6.csv` is for a
+    4 MB C6 module. Both now hold `ota_0`, `ota_1` and `otadata`, with
+    `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` on. `partitions_p4.csv` is gone, since the P4 uses
+    `partitions.csv`.
+  - **What a board keeps.** `nvs` stays at `0x9000` and no flash writes it, so a board moves to
+    the new table with one USB flash and keeps its name, its network and its pairings.
+  - **Room for later.** The tables also hold a `coredump` partition, and on 16 MB a 4 MiB
+    `reserve`, because the table changes only over USB.
+  - **A new check.** `tools/checks/check_esp_efuse_free.py` fails CI when an sdkconfig
+    fragment turns on an option that burns eFuses or skips the bootloader's image check.
 
 **Crucible desktop application**
 
