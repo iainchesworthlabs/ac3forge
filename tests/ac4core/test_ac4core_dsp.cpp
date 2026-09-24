@@ -492,6 +492,36 @@ TEST_CASE("windowed blocks reconstruct their input across every Table 187 transi
     }
 }
 
+TEST_CASE("the transforms leave their output alone when given the wrong sizes", "[ac4core][dsp]") {
+    dsp::Fft<double> fft(8);
+    std::vector<Complex> short_data(4, Complex(1.0, 0.0));
+    fft.forward(short_data);
+    CHECK(short_data == std::vector<Complex>(4, Complex(1.0, 0.0)));
+
+    // A length that is not a multiple of 4 has no MDCT, whatever its FFT.
+    CHECK_FALSE(dsp::Imdct<double>(6).valid());
+    CHECK_FALSE(dsp::Mdct<double>(6).valid());
+    CHECK_FALSE(dsp::Imdct<double>(28).valid());  // 14 has a factor of 7
+
+    dsp::Imdct<double> imdct(16);
+    REQUIRE(imdct.valid());
+    const std::vector<double> lines(16, 1.0);
+    std::vector<double> wrong(16, -1.0);  // should be 32
+    imdct.inverse(lines, wrong);
+    CHECK(wrong == std::vector<double>(16, -1.0));
+
+    dsp::Mdct<double> mdct(16);
+    REQUIRE(mdct.valid());
+    const std::vector<double> samples(16, 1.0);  // should be 32
+    std::vector<double> spectrum(16, -1.0);
+    mdct.forward(samples, spectrum);
+    CHECK(spectrum == std::vector<double>(16, -1.0));
+
+    CHECK(dsp::kbd_left(0, 4.0).empty());
+    CHECK(dsp::kbd_alpha(0, 1) == 0.0);
+    CHECK(dsp::kbd_alpha(-96, 1) == 0.0);
+}
+
 TEST_CASE("the synthesis refuses a block length its transform set does not have", "[ac4core][dsp]") {
     dsp::TransformSet<double> set(2048, 1);
     REQUIRE(set.valid());

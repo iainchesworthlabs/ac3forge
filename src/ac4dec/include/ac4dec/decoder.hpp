@@ -181,10 +181,11 @@ class AC4DEC_EXPORT Decoder {
         std::span<const std::byte> raw_ac4_frame);
 
     // Reads one raw_ac4_frame as parse() does and decodes the audio of the
-    // first presentation's first channel-coded substream. Nothing for a frame
-    // that has no output: one whose substream needs configuration no I-frame
-    // has sent yet. The error, when there is one, is that substream's (or the
-    // table of contents'), and refusal_reason() says why.
+    // first channel-coded substream of the first presentation that has one.
+    // Nothing for a frame that has no output: one whose substream needs
+    // configuration no I-frame has sent yet. The error, when there is one, is
+    // that substream's (or the table of contents'), and refusal_reason() says
+    // why.
     [[nodiscard]] std::expected<std::optional<DecodedFrame>, DecodeError> decode(
         std::span<const std::byte> raw_ac4_frame);
 

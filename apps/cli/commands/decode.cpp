@@ -365,8 +365,8 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
     }
 }
 
-// AC-4 (ETSI TS 103 190), through ac4::Decoder: the first presentation's
-// first channel-coded substream, written as its coded channels. What the
+// AC-4 (ETSI TS 103 190), through ac4::Decoder: the channel-coded substream
+// its decode() picks, written as its coded channels. What the
 // options change on AC-3 and E-AC-3 - a downmix, DRC, the dialogue level - is
 // output processing the AC-4 decoder does not do yet, and the object options
 // have no AC-4 counterpart yet either; each is reported rather than applied.
