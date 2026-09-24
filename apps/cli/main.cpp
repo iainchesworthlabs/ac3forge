@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <fmt/base.h>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <system_error>
@@ -66,6 +67,26 @@ struct Args {
     }
     [[nodiscard]] std::uint32_t u32(std::size_t i, std::uint32_t fallback) const {
         return i < a.size() ? parse_u32_or(a[i], fallback) : fallback;
+    }
+    // A generator's [seconds] argument. Every generator counts whole seconds
+    // (its frame count is seconds * 48000 rounded up to a frame), and u32's
+    // silent fallback made "0.5" - which does not parse as one - quietly
+    // produce the 5 s default instead. So a token that is present but is not
+    // a whole number is refused by name (nullopt, already reported, for the
+    // row to return kExitUsage), and only an ABSENT one takes the default.
+    [[nodiscard]] std::optional<std::uint32_t> whole_seconds(std::size_t i,
+                                                             std::uint32_t fallback) const {
+        if (i >= a.size()) {
+            return fallback;
+        }
+        const std::string_view text{a[i]};
+        std::uint32_t value = 0;
+        const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), value);
+        if (ec != std::errc{} || ptr != text.data() + text.size()) {
+            fmt::println(stderr, "error: seconds must be a whole number (got '{}')", text);
+            return std::nullopt;
+        }
+        return value;
     }
     // Signed, unlike u32: routing a negative token through parse_u32_or (which
     // parses unsigned) always fails and silently returns 0 rather than
@@ -181,33 +202,44 @@ int run_completions(std::string_view shell);
 constexpr std::array<Command, 43> kCommands{{
     {"silence", 2, "<out.ac3> [seconds] [bitrate_kbps]", "", topic::kNone,
      Needs::kNothing,
-     [](const Args& x) { return run_silence(x.str(1), x.u32(2, 5), x.u32(3, 192)); }},
+     [](const Args& x) {
+         const auto seconds = x.whole_seconds(2, 5);
+         return seconds ? run_silence(x.str(1), *seconds, x.u32(3, 192)) : kExitUsage;
+     }},
     {"sine", 2, "<out.ac3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "",
      topic::kLayout | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) {
-         return run_sine(x.str(1), x.u32(2, 5), x.u32(3, 192), x.u32(4, 1000), x.u32(5, 50),
-                         x.str(6, "stereo"), x.couple, x.meta);
+         const auto seconds = x.whole_seconds(2, 5);
+         return seconds ? run_sine(x.str(1), *seconds, x.u32(3, 192), x.u32(4, 1000),
+                                   x.u32(5, 50), x.str(6, "stereo"), x.couple, x.meta)
+                        : kExitUsage;
      }},
     {"orbit", 2, "<out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]", "", topic::kMeta,
      Needs::kNothing,
      [](const Args& x) {
-         return run_orbit(x.str(1), x.u32(2, 8), x.u32(3, 448), x.u32(4, 4), x.meta);
+         const auto seconds = x.whole_seconds(2, 8);
+         return seconds ? run_orbit(x.str(1), *seconds, x.u32(3, 448), x.u32(4, 4), x.meta)
+                        : kExitUsage;
      }},
     {"atmos", 2, "<out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]", "",
      topic::kAtmos | topic::kMeta | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) {
-         return run_atmos(x.str(1), x.u32(2, 8), x.u32(3, 448), x.u32(4, 4), x.u32(5, 6),
-                          x.str(6, "objects"), x.meta);
+         const auto seconds = x.whole_seconds(2, 8);
+         return seconds ? run_atmos(x.str(1), *seconds, x.u32(3, 448), x.u32(4, 4),
+                                    x.u32(5, 6), x.str(6, "objects"), x.meta)
+                        : kExitUsage;
      }},
     {"atmos-path", 3, "<out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects]",
      "objects driven by an authored scene file instead of the built-in orbit",
      topic::kAtmos | topic::kPaths | topic::kMeta | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) {
-         return run_atmos_path(x.str(1), x.str(2), x.u32(3, 8), x.u32(4, 448), x.u32(5, 0),
-                               x.meta);
+         const auto seconds = x.whole_seconds(3, 8);
+         return seconds ? run_atmos_path(x.str(1), x.str(2), *seconds, x.u32(4, 448),
+                                         x.u32(5, 0), x.meta)
+                        : kExitUsage;
      }},
     {"atmos-encode", 3, "<in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt]",
      "every source channel as an object; optional: authored per-object motion from a scene "
@@ -279,15 +311,19 @@ constexpr std::array<Command, 43> kCommands{{
     {"eac3-silence", 2, "<out.ec3> [seconds] [bitrate_kbps] [layout]", "", topic::kLayout | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) {
-         return run_eac3_silence(x.str(1), x.u32(2, 5), x.u32(3, 192), x.str(4, "stereo"),
-                                 x.meta);
+         const auto seconds = x.whole_seconds(2, 5);
+         return seconds ? run_eac3_silence(x.str(1), *seconds, x.u32(3, 192),
+                                           x.str(4, "stereo"), x.meta)
+                        : kExitUsage;
      }},
     {"eac3-sine", 2,
      "<out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]", "", topic::kLayout | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) {
-         return run_eac3_sine(x.str(1), x.u32(2, 5), x.u32(3, 192), x.u32(4, 1000),
-                              x.u32(5, 50), x.str(6, "stereo"), x.meta);
+         const auto seconds = x.whole_seconds(2, 5);
+         return seconds ? run_eac3_sine(x.str(1), *seconds, x.u32(3, 192), x.u32(4, 1000),
+                                        x.u32(5, 50), x.str(6, "stereo"), x.meta)
+                        : kExitUsage;
      }},
     {"eac3-encode", 3,
      "<in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav]",

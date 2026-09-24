@@ -256,6 +256,56 @@ TEST_CASE("sine's c layout suffix turns coupling on in every block", "[cli][synt
     CHECK(plain_text.find("coupling ") == std::string::npos);
 }
 
+// The bare 'couple' token is the other spelling metadata-options.md gives
+// for sine's coupling. It used to be read as though the layout carried the
+// 'c' suffix, so the layout lost its last character instead: "51 couple"
+// was refused as "unknown layout '5'", and the default as 'stere'.
+TEST_CASE("sine's bare couple token turns coupling on for a named and the default layout",
+          "[cli][synth]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "sine_couple_token.log";
+    const auto probe_log = dir / "sine_couple_token_probe.log";
+    struct Case {
+        std::string_view name;
+        std::string_view args;
+    };
+    for (const auto& c : {Case{"sine_couple_51.ac3", " 1 384 1000 50 51 couple"},
+                          Case{"sine_couple_default.ac3", " 1 384 1000 50 couple"}}) {
+        CAPTURE(c.args);
+        const auto coupled = dir / c.name;
+        REQUIRE(run_cli("sine " + quoted(coupled) + std::string{c.args}, log) == 0);
+        REQUIRE(run_cli("probe " + quoted(coupled), probe_log) == 0);
+        const auto text = read_log(probe_log);
+        INFO(text);
+        CHECK(text.find("coupling      192 of 192 block(s)") != std::string::npos);
+    }
+}
+
+// Every generator counts whole seconds, and the [seconds] argument used to
+// go through the same silent-fallback parse as the other numbers, so "0.5"
+// quietly became the 5 s default. A token that is present but not a whole
+// number is now refused by name.
+TEST_CASE("the generators refuse a seconds argument that is not a whole number",
+          "[cli][synth]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "synth_seconds.log";
+    const auto out = dir / "synth_seconds.bin";
+    for (const std::string_view command :
+         {"silence", "sine", "orbit", "atmos", "eac3-silence", "eac3-sine"}) {
+        CAPTURE(command);
+        for (const std::string_view seconds : {"0.5", "5s", "-1"}) {
+            CAPTURE(seconds);
+            check_refused(std::string{command} + " " + quoted(out) + " " + std::string{seconds},
+                          out, log, 1,
+                          "error: seconds must be a whole number (got '" + std::string{seconds} +
+                              "')");
+        }
+    }
+    // atmos-path takes its seconds one argument later, after the scene file.
+    check_refused("atmos-path " + quoted(out) + " scene.txt 0.5", out, log, 1,
+                  "error: seconds must be a whole number (got '0.5')");
+}
+
 TEST_CASE("quiet silences a generator's report without changing what it writes",
           "[cli][synth]") {
     const auto dir = scratch_dir();
