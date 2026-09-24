@@ -26,7 +26,9 @@ namespace {
 
 }  // namespace
 
-NetworkSinks::NetworkSinks(ss::noise::KeyPair identity, std::string name, PairingStore& store) : store_(store) {
+NetworkSinks::NetworkSinks(ss::noise::KeyPair identity, std::string name, PairingStore& store,
+                           bool request_firewall_exception)
+    : store_(store) {
     ss::ServerHostOptions options{
         .identity = identity,
         .name = std::move(name),
@@ -48,7 +50,8 @@ NetworkSinks::NetworkSinks(ss::noise::KeyPair identity, std::string name, Pairin
         return;
     }
     host_ = std::move(*started);
-    browser_ = ss::discovery::mdns::browse(std::string(ss::discovery::kPlayerService), *this);
+    browser_ = ss::discovery::mdns::browse(std::string(ss::discovery::kPlayerService), *this,
+                                           {.request_firewall_exception = request_firewall_exception});
 }
 
 NetworkSinks::~NetworkSinks() {

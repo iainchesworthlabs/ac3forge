@@ -105,8 +105,9 @@ class Sockets {
         // mDNS is never loopback-only (ipv4_interfaces() already excludes loopback), so a link to
         // bind means a real, LAN-reachable socket - the one Windows' own firewall prompt gates.
         // Skipped when there is nothing to bind, so a build box with no active interface does not
-        // ask for an exception it will never use.
-        if (!links.empty()) {
+        // ask for an exception it will never use, and skipped whenever the caller says it does
+        // not need one (Options::request_firewall_exception's own comment says who that is).
+        if (!links.empty() && options.request_firewall_exception) {
             firewall::ensure_inbound_rule(
                 {.name = "Sendspin - mDNS Discovery", .protocol = firewall::Protocol::kUdp, .port = packets::kPort});
         }
