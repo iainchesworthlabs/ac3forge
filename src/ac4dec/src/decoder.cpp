@@ -541,8 +541,8 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
     // - reading a fragment as a whole substream reports a legal stream as a
     // damaged one.
     const bool fragmented =
-        std::ranges::any_of(toc.presentations_v1, [](const PresentationInfoV1& presentation) {
-            return presentation.frame_rate_fraction != 1;
+        std::ranges::any_of(toc.presentations_v1, [](const PresentationInfoV1& info) {
+            return info.frame_rate_fraction != 1;
         });
     if (fragmented) {
         for (std::size_t index = 0; index < frame->substreams.size(); ++index) {

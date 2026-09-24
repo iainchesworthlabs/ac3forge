@@ -17,6 +17,9 @@ checks (planning/ac4.md, the decoder's ladder, item 3):
   routing  on a tone leg, each channel's own tone at least 40 dB above every other channel's
            tone in it.
 
+Each leg also reports tools/ci/quality_race.py's log-spectral distance and high-band energy
+ratio, the scores the E-AC-3 races use, which gate nothing here.
+
 The committed legs (tests/golden/external-baseline/) are scored by default; their sources are
 rebuilt by tools/generators/gen_ac4_baseline.py from the committed FLAC fixtures, which needs
 ffmpeg on PATH. --gold DIR scores phase G0's local gold set in DIR instead (DIR/streams/<leg>/
@@ -40,7 +43,9 @@ import numpy as np
 
 REPO = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO / "tools" / "generators"))
+sys.path.insert(0, str(REPO / "tools" / "ci"))
 import gen_ac4_baseline as baseline  # noqa: E402
+import quality_race  # noqa: E402
 
 BASELINE_DIR = REPO / "tests" / "golden" / "external-baseline"
 RATE = 48000
@@ -126,7 +131,7 @@ def tone_power(x, hz):
 
 
 def score(source, decoded):
-    """lag, and per channel (gain in dB, SNR in dB), of decoded against source."""
+    """lag, per channel (gain in dB, SNR in dB), and the aligned source and output."""
     lag = best_lag(source.sum(axis=1), decoded.sum(axis=1), 16384)
     if lag >= 0:
         count = min(len(source), len(decoded) - lag)
@@ -141,7 +146,7 @@ def score(source, decoded):
         error = out[:, c] - gain * ref[:, c]
         snr = 10.0 * np.log10(np.dot(gain * ref[:, c], gain * ref[:, c]) / np.dot(error, error))
         channels.append((20.0 * np.log10(abs(gain)), float(snr)))
-    return lag, channels, out
+    return lag, channels, ref, out
 
 
 def decode(cli, stream, out_wav):
@@ -211,10 +216,11 @@ def main():
                 failures.append(f"{name}: {decoded.shape[1]} channels decoded, the source has "
                                 f"{source.shape[1]}")
                 continue
-            lag, channels, aligned = score(source, decoded)
+            lag, channels, reference, aligned = score(source, decoded)
+            lsd, high_band = quality_race.spectral_scores(reference, aligned)
             cells = "  ".join(f"ch{c} {gain:+.3f} dB {snr:.2f} dB" for c, (gain, snr) in
                               enumerate(channels))
-            print(f"{name:<24} lag {lag:5d}  {cells}")
+            print(f"{name:<24} lag {lag:5d}  {cells}  LSD {lsd:.2f} dB  HF {high_band:+.2f} dB")
             if args.measure:
                 continue
             if lag != LAG:

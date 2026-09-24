@@ -567,7 +567,10 @@ Later phases add the readings their processing needs.
 
 The readings the decoding of clause 5 takes. Phase D2 of `planning/ac4.md` decodes the audio spectral
 frontend, stereo processing, the inverse transform and frame alignment for mono and stereo in the SIMPLE
-codec mode; later phases add theirs.
+codec mode; later phases add theirs. The Python reference transcribes the syntax only, so these are the
+decoder's readings alone, and the evidence for each is DEE's streams scored against their sources and
+against librempeg (`docs/verification.md`, "The decoder's output"), the text, or a test against the
+clause's formula.
 
 ### Full scale, and the overlap-add's factor of two
 
