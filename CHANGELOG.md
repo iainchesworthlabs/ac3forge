@@ -1216,6 +1216,14 @@ The sections below contain the complete change list and fixes.
   at an acmod other than 1/0 — a *main* service per A/52 Table 5.7) the same as bsmod 7's other
   meaning, voice-over. The MPEG-TS descriptor writer already got this split right; the `dec3`
   writer now shares its rule, `ac3::meta::is_associated_service`.
+- **ADM BWF masters had no `bitDepth` on their `audioTrackUID`s.** `ac3adm::write_bw64()`, and
+  with it `ac3cli decode <in> <out> [objects_dir] [adm_out]`, wrote each `audioTrackUID` with
+  `UID` and `sampleRate` alone while its `<fmt >` chunk declares 24-bit PCM, and Dolby Encoding
+  Engine 6.5.4 refused the master ("Mismatched track bit depth between ADM and WAV"). Every
+  `audioTrackUID` now carries `bitDepth` equal to the `<fmt >` chunk's bits per sample: both come
+  from one constant, `ac3adm::kWriteBitDepth`, whatever the model's own `bit_depth` says.
+  `ac3::admbridge::write()` sets the same value in the document it returns. `parse_bw64()` reads
+  `audioTrackUID`s with or without the attribute, as before.
 
 **Command line and GUI**
 
