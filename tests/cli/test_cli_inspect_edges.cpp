@@ -171,13 +171,17 @@ TEST_CASE("probe refuses a missing file, an empty one and a stream that loses sy
     CHECK(contains(run_expecting("probe " + quoted(empty), log, 1), "error: no frames in stream"));
 
     // Two whole syncframes and a run of zeroes where the third should start.
+    // The offset is where sync was lost - the third frame's start, 1536 -
+    // not the start of the last good syncframe (768), which is what it used
+    // to name: an AC-3 access unit is only closed by peeking at the next
+    // frame, and the reader reported the unit it was assembling.
     auto bytes = read_raw(generated(dir / "clean.ac3", "sine", "1 192"));
     bytes.resize(768 * 2);
     bytes.resize(768 * 2 + 500, '\0');
     const auto lost = dir / "probe_lost_sync.ac3";
     write_raw(lost, bytes);
     CHECK(contains(run_expecting("probe " + quoted(lost), log, 1),
-                   "error: lost sync: expected 0x0B77 at byte "));
+                   "error: lost sync: expected 0x0B77 at byte 1536"));
 }
 
 TEST_CASE("probe counts a corrupt syncframe as a CRC and parse failure and fails the exit code",

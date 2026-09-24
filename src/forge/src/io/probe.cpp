@@ -484,15 +484,23 @@ std::expected<std::span<const std::byte>, ScanError> AccessUnitReader::next() {
             break;
         }
         const auto at = std::span<const std::byte>{impl.window}.subspan(impl.pos, available);
+        // On any failure byte_offset() names the frame that failed, not the
+        // start of the unit being assembled: an AC-3 unit is only closed by
+        // peeking at the NEXT frame, so a stream that loses sync right after
+        // a good syncframe would otherwise be reported at that good frame.
+        const auto fail = [&impl](ScanError error) {
+            impl.unit_offset = impl.base + impl.pos;
+            return std::unexpected(error);
+        };
         if (!sync_at(at)) {
-            return std::unexpected(ScanError::kLostSync);
+            return fail(ScanError::kLostSync);
         }
         const auto header = read_frame_header(at);
         if (!header.has_value()) {
-            return std::unexpected(header.error());
+            return fail(header.error());
         }
         if (header->bytes > available) {
-            return std::unexpected(ScanError::kTruncated);
+            return fail(ScanError::kTruncated);
         }
         // An independent substream (or any AC-3 frame) begins a new access
         // unit; a dependent joins the one in progress. So a unit is closed by

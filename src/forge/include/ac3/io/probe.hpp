@@ -316,7 +316,8 @@ class AC3FORGE_EXPORT AccessUnitReader {
     // The span is valid until the next call.
     [[nodiscard]] std::expected<std::span<const std::byte>, ScanError> next();
 
-    // Where in the stream the unit just returned began.
+    // Where in the stream the unit just returned began - or, after next()
+    // failed, where the frame it could not read begins.
     [[nodiscard]] std::uint64_t byte_offset() const;
 
    private:
