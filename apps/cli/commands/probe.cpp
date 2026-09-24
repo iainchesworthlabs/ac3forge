@@ -528,6 +528,16 @@ int run_probe(std::string_view in_path, const Options& meta) {
     }
     std::istream& in = is_stdio_path(in_path) ? std::cin : file;
 
+    // json=1's document is byte-exact text a consumer (or, here, a test's own
+    // substring check) can reasonably expect to round-trip: on Windows, an
+    // untouched stdout is in the same CRT text mode set_stdio_binary()'s own
+    // header comment describes for raw audio bytes, so every 0x0A this writer
+    // emits would otherwise arrive as 0x0D 0x0A. Idempotent alongside the
+    // is_stdio_path() call above when both apply to the same run.
+    if (meta.json) {
+        ac3::cli::platform::set_stdio_binary();
+    }
+
     // A single peek() disambiguates without disturbing the stream position
     // for either downstream reader: AC-3/E-AC-3's syncword starts 0x0B77,
     // AC-4's Annex G sync_word starts 0xAC40/0xAC41 - the first byte alone
