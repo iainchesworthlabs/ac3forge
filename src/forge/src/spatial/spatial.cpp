@@ -217,8 +217,8 @@ PanTargets pan_targets(std::span<const eac3::chanmap::Location> locations) {
     const auto is_lfe = [](Location location) {
         return location == Location::kLfe || location == Location::kLfe2;
     };
-    const bool has_rears = std::ranges::contains(locations, Location::kLrs);
-    const bool has_side_discrete = std::ranges::contains(locations, Location::kLsd);
+    const bool has_rears = std::ranges::find(locations, Location::kLrs) != locations.end();
+    const bool has_side_discrete = std::ranges::find(locations, Location::kLsd) != locations.end();
     PanTargets out;
     for (const auto location : locations) {
         if (is_lfe(location)) {
