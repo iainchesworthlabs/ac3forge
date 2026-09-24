@@ -215,15 +215,15 @@ jobs:
       # point release (the build-time assert down in build-leg/action.yml
       # already only checks the major, for the same reason). A mismatched
       # major (wrong major, or nothing installed) renames any existing
-      # C:\Program Files\LLVM out of the way
-      # first (see the run block's own comment for why a rename, not a
-      # delete), so the installer always writes into a fresh directory -
-      # NSIS `/S` overwrites same-named files but never uninstalls first, so
-      # installing straight over a *different* version can leave stale
-      # compiler-rt builtins/libs behind that silently break linking far
-      # downstream (see iainchesworthlabs/ci-runners#9, which hit exactly
-      # this on a long-lived self-hosted runner after a toolchain version
-      # bump).
+      # C:\Program Files\LLVM out of the way first - a rename, not a delete,
+      # since deleting the tree has hung in its own right (see this step's
+      # git history) - so the installer always writes into a fresh directory
+      # rather than over a *different* version, which left stale compiler-rt
+      # builtins/libs behind that silently broke linking far downstream
+      # (iainchesworthlabs/ci-runners#9, on a long-lived self-hosted runner
+      # after a toolchain bump). The rename has to take the old tree's
+      # uninstall entry with it - see the run block's ROOT CAUSE comment for
+      # the hang that entry caused on every GitHub-hosted runner.
       - name: Install LLVM ${{ inputs.llvm_version }} (Windows)
         id: install_llvm
         if: matrix.llvm && runner.os == 'Windows'
@@ -265,29 +265,16 @@ jobs:
           } catch {
             Write-Host "Could not read boot time ($_)"
           }
-          # DRAFT (ci-runners#26): prefers winget over the hand-rolled
-          # Invoke-WebRequest + NSIS '/S' dance, with that original dance
-          # kept as a fallback for any runner without winget - confirmed
-          # absent from actions/runner-images' own software manifest for
-          # the exact hosted image build (win25-vs2026/20260907.229) this
-          # repo last hit the hang on, so hosted availability is unverified
-          # either way; self-hosted only has it once ci-runners provisions
-          # it (Chocolatey, 05-choco-packages.ps1). See the winget-pkgs
-          # manifest for LLVM.LLVM: same installer this step already
-          # fetched directly (same SHA256, still nullsoft/NSIS under the
-          # hood), so winget is not a different binary, just different
-          # orchestration - NOT yet confirmed to fix the underlying hang,
-          # since the manifest has no InstallerSwitches override and most
-          # likely still runs the identical `/S` invocation for install.
-          # What winget changes is the uninstall side - `winget uninstall`
-          # drives the NSIS installer's own Uninstall.exe instead of our
-          # rename-away workaround, which should also clear the registry
-          # uninstall record the rename never touched (see this step's git
-          # history for the registry-orphan hypothesis this is meant to
-          # test). Still timed and polled either way, never a bare call,
-          # because uninstall/install are exactly the shape of operation
-          # (touching every file LLVM ships) that hung for the full
-          # 90 minutes in the original 2026-08-28 incident.
+          # winget is preferred where present (GitHub-hosted runners have it;
+          # self-hosted only once ci-runners provisions it via Chocolatey,
+          # 05-choco-packages.ps1), with the direct Invoke-WebRequest + NSIS
+          # '/S' install kept as the fallback. Both run the same installer
+          # (winget-pkgs' LLVM.LLVM manifest has the same SHA256, NSIS under
+          # the hood, no InstallerSwitches override), so winget is different
+          # orchestration, not a different binary. Neither hangs once the
+          # orphaned uninstall entry is gone (see ROOT CAUSE below). Still
+          # timed and polled either way, never a bare call, so anything new
+          # that stalls shows up in the log instead of as a silent timeout.
           # DIAGNOSTIC (ci-runners#26): a top-15-by-CPU snapshot from a prior
           # occurrence showed nothing installer-related, but that only
           # covers the top 15 by CPU - a near-zero-CPU child process (an
@@ -360,6 +347,12 @@ jobs:
             param([string]$FilePath, [string[]]$ArgumentList, [string]$Label, [string]$WatchDir)
             $sw = [System.Diagnostics.Stopwatch]::StartNew()
             $p = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -PassThru
+            # Open the process handle while the process is still alive.
+            # Without it, a Start-Process -PassThru object reads ExitCode as
+            # $null once the process has exited, so every `$code -ne 0` below
+            # saw a failure - the "exited: code=" with no number that earlier
+            # occurrences logged.
+            $null = $p.Handle
             $lastMpCpu = (Get-Process MsMpEng -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CPU)
             while (-not $p.WaitForExit(30000)) {
               $mpCpu = (Get-Process MsMpEng -ErrorAction SilentlyContinue | Select-Object -ExpandProperty CPU)
@@ -447,86 +440,70 @@ jobs:
           if ($alreadyCurrent) {
             Write-Host "LLVM $($matches[1]).x already installed at $clangCl (pinned major $pinnedMajor) - skipping install"
           } else {
+            if (Test-Path $llvmDir) {
+              $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+              Write-Host "Existing LLVM install is not major $pinnedMajor - renaming out of the way ($staleName) before installing $version"
+              $renameSw = [System.Diagnostics.Stopwatch]::StartNew()
+              Rename-Item -Path $llvmDir -NewName $staleName
+              Write-Host "Rename completed in $([math]::Round($renameSw.Elapsed.TotalMilliseconds)) ms"
+            }
+            # ROOT CAUSE (ci-runners#26), proven on a GitHub-hosted
+            # windows-latest VM by a probe run (36003021348, 2026-09-24): the
+            # renamed tree's Add/Remove Programs entry still names
+            # $llvmDir\Uninstall.exe. LLVM's installer is CPack's NSIS
+            # template with CPACK_NSIS_ENABLE_UNINSTALL_BEFORE_INSTALL, so its
+            # .onInit runs that uninstaller first, finds nothing there, and
+            # shows an "Uninstall failed." MessageBox (read off the dialog by
+            # the probe) that has no /SD default - /S displays it anyway, and
+            # on a headless runner nothing ever clicks OK, so every hosted
+            # install sat there until the step timeout. With the orphaned
+            # entry removed, the same probe installed 22.1.2 in 67 s. The
+            # hosted image's entry is in the 32-bit view (the installer is a
+            # 32-bit NSIS exe); both views are checked. `winget uninstall`
+            # never cleared it: an NSIS uninstaller copies itself to %TEMP%
+            # and returns at once, so winget reported success with the real
+            # uninstall still running, and the rename that followed pulled
+            # the tree out from under it.
+            foreach ($root in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall') {
+              if (-not (Test-Path $root)) {
+                continue
+              }
+              foreach ($key in Get-ChildItem -Path $root -ErrorAction SilentlyContinue) {
+                $uninstall = (Get-ItemProperty -Path $key.PSPath -ErrorAction SilentlyContinue).UninstallString
+                if ($uninstall -and $uninstall -like "*$llvmDir\Uninstall.exe*" -and -not (Test-Path "$llvmDir\Uninstall.exe")) {
+                  Write-Host "Removing orphaned uninstall entry $($key.Name) ($uninstall)"
+                  Remove-Item -Path $key.PSPath -Recurse -Force
+                }
+              }
+            }
             $winget = Get-Command winget -ErrorAction SilentlyContinue
             if ($winget) {
               Write-Host "winget found ($($winget.Source)) - using it"
-              # ROOT CAUSE FOUND (ci-runners#26, 2026-09-22): a live
-              # occurrence on ac3forge#796 (job 106687216920) caught winget
-              # mid-hang, not just before/after it - `winget uninstall`
-              # (which never had --accept-source-agreements, unlike install
-              # below) tried to refresh its configured sources, hit the
-              # unaccepted `msstore` source's terms prompt, and blocked
-              # reading a response from a console that doesn't exist in a
-              # headless CI job. That occurrence happened to fail fast
-              # (0x8a150042 "Error reading input in prompt") rather than
-              # hang, but whether a blocked stdin read errors immediately or
-              # blocks forever depends on exactly how the child process's
-              # stdin handle is set up - plausibly the same mechanism as
-              # every prior hang here, on both this step's uninstall call
-              # and its now-abandoned attempts. Fixed three ways:
-              # 1) --accept-source-agreements added to uninstall too
-              #    (already present on install below - this was the actual
-              #    gap, `winget uninstall --help` lists this flag too, it
-              #    was just never added there).
-              # 2) The `msstore` source removed up front, best-effort - we
-              #    never install from it, so there is nothing it needs to
-              #    still be configured for, and removing it means no winget
-              #    subcommand can hit its prompt even if a future edit adds
-              #    a call that forgets this flag the way uninstall did.
-              # 3) --disable-interactivity added to both calls as a
-              #    catch-all: converts ANY prompt this doesn't anticipate
-              #    into a fast, visible error instead of a silent hang,
-              #    same as the two known ones above.
+              # The `msstore` source goes first, best-effort: an earlier
+              # occurrence (ac3forge#796, job 106687216920) caught winget
+              # blocked on that source's unaccepted terms prompt with no
+              # console to answer it (0x8a150042 "Error reading input in
+              # prompt"). Nothing here installs from it, so removing it
+              # means no winget call can reach that prompt, and
+              # --accept-source-agreements/--disable-interactivity below turn
+              # any other prompt into a fast error instead of a wait.
               try {
                 winget source remove --name msstore 2>&1 | Out-String | Write-Host
               } catch {
                 Write-Host "::warning::Could not remove msstore winget source ($_) - continuing without it"
               }
-              if (Test-Path $llvmDir) {
-                Write-Host "Existing LLVM install is not major $pinnedMajor - forcing uninstall via winget before installing $version"
-                # --force here: "Direct run the command and continue with
-                # non security related issues" (winget's own help text) -
-                # the previous plain `uninstall --silent` came back with a
-                # blank exit code in ~2-3s (ci-runners#26 git history), too
-                # fast to be a real per-file uninstall and not a value
-                # PowerShell's process object should ever leave blank.
-                $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('uninstall', '--id', 'LLVM.LLVM', '--silent', '--force', '--accept-source-agreements', '--disable-interactivity') -Label 'winget uninstall' -WatchDir $llvmDir
-                if ($code -ne 0 -and (Test-Path $llvmDir)) {
-                  # winget doesn't recognize a previous install it didn't
-                  # make itself (e.g. a hosted image's pre-baked LLVM, or
-                  # one this same step installed before this change) - fall
-                  # back to the rename workaround rather than leaving a
-                  # dirty directory for winget install to walk into.
-                  Write-Host "::warning::winget uninstall exited $code and $llvmDir still exists - falling back to rename"
-                  $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-                  Rename-Item -Path $llvmDir -NewName $staleName
-                }
-              }
-              # --force on install (ci-runners#26): winget's own --help is
-              # explicit - "By default, install command will check package
-              # installed status and try to perform an upgrade if
-              # applicable. Override with --force to perform a direct
-              # install." A prior occurrence's log showed exactly that
-              # upgrade path triggering ("Found an existing package already
-              # installed. Trying to upgrade the installed package...")
-              # right before hanging - --force bypasses it. Applied
-              # regardless of whether the uninstall above fully succeeded,
-              # since winget's own detection is registry/product-code
-              # based, not directory-presence based, so a rename alone
-              # doesn't necessarily stop it from trying to upgrade.
+              # --force: winget's own --help - "By default, install command
+              # will check package installed status and try to perform an
+              # upgrade if applicable. Override with --force to perform a
+              # direct install." Its detection is registry-based, and the
+              # cleanup above only drops entries pointing at $llvmDir, so
+              # this stays as the guarantee of a plain install.
               $code = Invoke-TimedProcess -FilePath 'winget' -ArgumentList @('install', '--id', 'LLVM.LLVM', '--exact', '--version', $version, '--silent', '--force', '--accept-source-agreements', '--accept-package-agreements', '--disable-interactivity') -Label 'winget install' -WatchDir $llvmDir
               if ($code -ne 0) {
                 throw "winget install exited with code $code"
               }
             } else {
               Write-Host "winget not found - falling back to direct NSIS install"
-              if (Test-Path $llvmDir) {
-                $staleName = "LLVM.stale-$([guid]::NewGuid().ToString('N').Substring(0,8))"
-                Write-Host "Existing LLVM install is not major $pinnedMajor - renaming out of the way ($staleName) before installing $version"
-                $renameSw = [System.Diagnostics.Stopwatch]::StartNew()
-                Rename-Item -Path $llvmDir -NewName $staleName
-                Write-Host "Rename completed in $([math]::Round($renameSw.Elapsed.TotalMilliseconds)) ms"
-              }
               # Invoke-WebRequest renders a progress bar by default, and
               # updating it in a non-interactive CI console turns into the
               # dominant cost of the download - see this step's git history
