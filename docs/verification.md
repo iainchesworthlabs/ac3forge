@@ -930,6 +930,47 @@ Comparing the two transcriptions' notes found that they had framed ASPX_ACPL_1's
 both now follow that mapping. The check shows that the two transcriptions read these paths alike,
 which a shared misreading still passes.
 
+### The encoder
+
+`src/ac4enc` writes AC-4 from the same two standards: mono or stereo at 48 or 44.1 kHz, at
+`frame_rate_index` 13, in the SIMPLE codec mode, at a constant rate. It shares `src/ac4core`'s
+transforms, windows and codebooks with the decoder, and writes the syntax through a transcription of
+the tables of its own. `ac3cli ac4-encode` writes it raw or in MP4. Four checks stand behind it
+(`planning/ac4.md`, the encoder's ladder):
+
+- **Three transcriptions agree.** The encoder records each element it writes in the shape the decoder
+  records what it reads. The encoder's tests and the fuzz target `fuzz_ac4_encode` require the
+  decoder to read every frame to the end of every substream with the encoder's trace, record for
+  record; the fuzz target also decodes every frame and encodes the input a second time, which must
+  give the same bytes. The encoder-space harness (`tools/ci/fuzz_ac4_encoder_space.py`) draws
+  configurations and adversarial PCM, and compares the encoder's trace, the decoder's and
+  `tools/references/ac4_syntax.py`'s through `ac3cli`'s `syntax-trace=` option. FFmpeg Validate runs
+  it for 120 seconds on each pull request, and the nightly fuzz workflow for 900.
+- **Readers outside the project.** FFmpeg's raw AC-4 demuxer finds every frame at the size written,
+  and its mov demuxer reads the MP4 track (the harness and the codec matrix). Locally,
+  `tools/checks/check_ac4_encode_readers.py` holds MediaInfo's frame-by-frame trace to the
+  configuration, field by field, CRC included, and has DEE's MP4 muxer mux the raw output: the `dac4`
+  it writes is the encoder's, byte for byte, for mono and stereo at both sample rates.
+- **Decoded against the sources** (`tools/checks/score_ac4_encode.py`, in FFmpeg Validate): the
+  programme fixtures, one tone per channel, a sweep, noise, castanet-like bursts and a panned source,
+  mono and stereo, 48 and 44.1 kHz, 48 to 256 kbps, encoded and decoded by the decoder. Every leg
+  lags its source by 3,424 samples, sits within 0.2 dB of unity where its SNR is 20 dB or more, and
+  meets SNR, log-spectral distance and ViSQOL floors pinned at the first measurement. librempeg
+  decodes the same streams to the same scores; its output and the decoder's agree to 77 dB.
+- **The race against DEE** (`score_ac4_encode.py --gold`, locally): phase G0's 2.0 legs of music,
+  speech and tones from 192 to 768 kbps, where DEE writes SIMPLE, encoded again here, and both
+  decoded by the decoder. At 192 kbps the encoder's SNR is 5.6 dB above DEE's on music, 14.9 dB on
+  speech and 33 dB on the tones, its log-spectral distance is lower on each (2.06 against 2.42 dB on
+  music), and ViSQOL is within 0.02 of DEE's. DEE's 2.0 audio stops changing from 256 kbps; the
+  encoder's goes on improving with the rate. Its scores are pinned.
+
+The race changed the encoder before it was pinned. Its first version trailed DEE by 11.7 dB of SNR
+on music at 192 kbps, and removed the top octave of speech and music: its rate loop spent a frame's
+bits beyond the masking thresholds in proportion to each band's signal, and Terhardt's threshold in
+quiet, taken with a full-scale sine at 96 dB SPL, zeroed content DEE keeps. The loop now spends those
+bits where the noise is loudest first, and the model has no threshold in quiet. The readings the
+writer takes, and those it shares with the decoder, are in `src/ac4enc/ERRATA.md`.
+
 ## What untrusted input is checked against
 
 Correctness and robustness are different questions, and this page answers only the first. What

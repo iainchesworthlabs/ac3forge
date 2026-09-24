@@ -783,15 +783,18 @@ class Encoder {  // a Pimpl
 ### Rate control and the psychoacoustic model
 
 - **The model.** Per scale factor band of the transform in use: a masking threshold from the band's
-  energy, a tonality estimate, spreading across bands and the threshold in quiet, and a perceptual
-  entropy per block. It follows the published sources `ac3::quality`'s model cites, written anew for
-  AC-4's bands and its fifteen transform lengths, and does not link it
-  ([decision 17](#decisions-for-the-encoder-and-the-applications)).
+  energy, a tonality estimate, spreading across bands and a floor, and a perceptual entropy per
+  block. It follows the published sources `ac3::quality`'s model cites, written anew for AC-4's bands
+  and its fifteen transform lengths, and does not link it
+  ([decision 17](#decisions-for-the-encoder-and-the-applications)). Phase E1 took out the threshold
+  in quiet the plan first named: in the race it removed the top octave of speech and music that
+  DEE's streams keep (`docs/verification.md`, "The encoder").
 - **The loop.** Each frame gets a budget from the bit rate and, at an average rate, the buffer's
   fill, shared across the substream's channels, the parametric tools' data and the metadata. Scale
   factors and quantisation are chosen so each band's noise sits under its threshold where the budget
   allows, with the shortfall spread by perceptual entropy where it does not; sections and codebooks
-  are chosen by their exact Huffman cost.
+  are chosen by their exact Huffman cost. Bits beyond what the thresholds need go first where the
+  noise is loudest (E1).
 - **The three rates.** A constant rate fills each frame to its size with fill bits; an average rate
   carries unused bits forward within the buffer Part 1 6.2.4 sets, and signals the wait
   `wait_frames` needs; a variable rate fixes quality and lets the size follow.
@@ -1452,7 +1455,8 @@ decode with the invariants holding and MediaInfo's and librempeg's readings reco
 - Stereo processing: MDCT-domain M/S and prediction per band, chosen by the energy each saves.
 - A constant bit rate (`wait_frames` 0) at `frame_rate_index` 13 and 48 kHz, each frame filled to
   its size, and I-frames at an interval the caller sets, which predict nothing across time.
-- `ac3cli encode` writes AC-4 in these modes, raw or through the MP4 muxer.
+- `ac3cli ac4-encode` writes AC-4 in these modes, raw or through the MP4 muxer, as `eac3-encode`
+  writes E-AC-3.
 - Mono, in the `single_channel_element`, as an option.
 
 **Exit:**

@@ -1,6 +1,6 @@
 # Commands
 
-The command list from the usage text, reproduced rather than paraphrased — 43 commands, as
+The command list from the usage text, reproduced rather than paraphrased — 44 commands, as
 a Windows build without `-DAC3FORGE_BUILD_ADM=ON` prints them. The two ADM commands read
 `UNAVAILABLE HERE` because that flag is off; `spatial` does not, because Windows is the one
 platform with a spatial backend. Nothing in the build compares this block against the binary, so
@@ -28,7 +28,8 @@ Usage:
   ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
   ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source. programme2= is a different thing entirely - a second, independent E-AC-3 substream (its own layout/bitrate/dialnorm via programme2-layout=/-bitrate=/-dialnorm=), not another channel of this one)
-  ac3cli decode        <in.ac3|in.ec3|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3 or E-AC-3, bare or inside a container; bsid decides. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there - bed LFE plus every dynamic object, positioned by its own decoded OAMD)
+  ac3cli ac4-encode    <in.wav> <out.ac4|out.mp4> [bitrate_kbps] (mono or stereo at 48 or 44.1 kHz, to AC-4 in the SIMPLE mode at frame_rate_index 13 and a constant bit rate: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is .mp4/.m4a/.mov. dialnorm= sets the dialogue level (auto measures it); the other metadata options are not written to AC-4 yet and are refused. syntax-trace=<file> writes what the encoder writes)
+  ac3cli decode        <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: SIMPLE mono and stereo so far, and syntax-trace=<file> writes what the decoder reads. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there - bed LFE plus every dynamic object, positioned by its own decoded OAMD)
   ac3cli probe         <in.ac3|in.ec3|in.ac4> [json=1] [detail=frames|blocks] (inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 TOC/presentations/substream groups; table or documented JSON)
   ac3cli transcode     <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
   ac3cli metadata      <in.ac3|in.ec3> <out.ac3|out.ec3>      (rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the audio is copied through untouched, not re-encoded)
@@ -112,6 +113,7 @@ so a misrouted channel is identifiable by ear.)
 | `eac3-encode` | WAV → E-AC-3, with the Annex E `tools:` token and an optional `vbr:` token available (see [Options & grammars](metadata-options.md)). Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1, 8→7.1, 10→5.1.4, 12→7.1.4). |
 | `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement |
 | `atmos-cbi` | WAV already mixed into a fixed channel-based-immersive (CBI) bed layout → E-AC-3 Atmos with `program.bed != 0` and 0 dynamic objects — Dolby's `dee_ddpjoc_encoder --input-format cbi_wav` shape, not free-floating objects |
+| `ac4-encode` | WAV → AC-4: mono or stereo at 48 or 44.1 kHz, in the SIMPLE codec mode at `frame_rate_index` 13 (2,048 samples a frame) and a constant rate from 8 kbps. Writes raw sync frames with their CRC, or an MP4 file with the `ac-4` sample entry and its `dac4` when the output is `.mp4`, `.m4a` or `.mov`. `dialnorm=` sets the presentation's dialogue level, `dialnorm=auto` measures it; `syntax-trace=<file>` writes every syntax element it writes, one per line |
 
 ```bash
 ac3cli encode in.wav out.ac3 448 couple
@@ -292,7 +294,7 @@ requirements ask for beside an Atmos one.
 
 | Command | What it does |
 |---|---|
-| `decode` | AC-3 or E-AC-3 → WAV; `bsid` in the stream decides which decoder runs. The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
+| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, SIMPLE mono and stereo so far). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
 | `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. Auto-detects AC-4 too (TOC/presentation/substream-group framing only) |
 | `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or a Matroska/MP4/MPEG-TS container carrying one |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
