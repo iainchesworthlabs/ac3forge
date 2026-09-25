@@ -215,4 +215,13 @@ FirmwareCandidate to_candidate(const FirmwareFile& file, const SinkFirmware::Sna
     return candidate;
 }
 
+FirmwareClientPlan plan_firmware_client(bool busy, const SinkFirmware::Snapshot& snapshot, bool shown,
+                                        std::string_view address) {
+    // A sink that took a new address is asked there, unless an update is
+    // following it at the old one.
+    const bool moved = shown && !address.empty() && snapshot.host != address;
+    const bool ended = snapshot.update && snapshot.update->outcome != UpdateOutcome::kNone;
+    return FirmwareClientPlan{.let_go = (!shown || moved) && !busy, .keep_sink = busy || (shown && !moved && ended)};
+}
+
 }  // namespace ac3::hearth

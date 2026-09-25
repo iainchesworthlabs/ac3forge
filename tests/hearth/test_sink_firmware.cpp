@@ -551,6 +551,55 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
     }
 }
 
+TEST_CASE("sink firmware: the page keeps a sink's client, and its row, while there is something to show",
+          "[hearth][sink-firmware]") {
+    using ac3::hearth::FirmwareClientPlan;
+    using ac3::hearth::plan_firmware_client;
+    ac3::hearth::SinkFirmware::Snapshot snapshot;
+    snapshot.host = "192.168.1.117";
+
+    SECTION("with nothing under way and nothing ended, the client goes with the tab and keeps no row") {
+        FirmwareClientPlan plan = plan_firmware_client(false, snapshot, true, "192.168.1.117");
+        CHECK_FALSE(plan.let_go);
+        CHECK_FALSE(plan.keep_sink);
+        plan = plan_firmware_client(false, snapshot, false, "");
+        CHECK(plan.let_go);
+        CHECK_FALSE(plan.keep_sink);
+    }
+    SECTION("an update under way keeps the client and the row, shown or not, and at the address it began at") {
+        snapshot.update = ac3::hearth::SinkFirmware::Update{.version = "v0.11.0", .stage = "sending", .text = "sending"};
+        for (const bool shown : {true, false}) {
+            const FirmwareClientPlan plan = plan_firmware_client(true, snapshot, shown, shown ? "192.168.1.117" : "");
+            CHECK_FALSE(plan.let_go);
+            CHECK(plan.keep_sink);
+        }
+        const FirmwareClientPlan moved = plan_firmware_client(true, snapshot, true, "192.168.1.200");
+        CHECK_FALSE(moved.let_go);
+        CHECK(moved.keep_sink);
+    }
+    SECTION("an update that ended keeps the row while the tab shows how, and not once the tab moves on") {
+        // Rolled back: the board can say so before mDNS lists it again.
+        snapshot.update = ac3::hearth::SinkFirmware::Update{.version = "v0.11.0",
+                                                            .stage = "done",
+                                                            .outcome = UpdateOutcome::kRolledBack,
+                                                            .text = "rolled back: v0.11.0 did not last"};
+        FirmwareClientPlan plan = plan_firmware_client(false, snapshot, true, "192.168.1.117");
+        CHECK_FALSE(plan.let_go);
+        CHECK(plan.keep_sink);
+        // The tab closed, or another sink selected.
+        plan = plan_firmware_client(false, snapshot, false, "");
+        CHECK(plan.let_go);
+        CHECK_FALSE(plan.keep_sink);
+    }
+    SECTION("a sink at a new address is asked there, and the client let go keeps nothing") {
+        snapshot.update = ac3::hearth::SinkFirmware::Update{
+            .version = "v0.11.0", .stage = "done", .outcome = UpdateOutcome::kUpdated, .text = "updated"};
+        const FirmwareClientPlan plan = plan_firmware_client(false, snapshot, true, "192.168.1.200");
+        CHECK(plan.let_go);
+        CHECK_FALSE(plan.keep_sink);
+    }
+}
+
 TEST_CASE("sink firmware: a chosen file, as the dialog asks about it", "[hearth][sink-firmware]") {
     ImageSpec running;
     ImageSpec update_spec;

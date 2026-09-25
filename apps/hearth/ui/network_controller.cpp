@@ -799,19 +799,17 @@ void NetworkController::poll_firmware(const ac3::hearth::NetworkStatus& status) 
     }
     for (auto it = firmware_.begin(); it != firmware_.end();) {
         const bool shown = it->first == sink_id;
-        // A sink that took a new address is asked there, unless an update
-        // is following it at the old one.
-        const bool moved = shown && !address.empty() && it->second->snapshot().host != address;
-        const bool busy = it->second->busy();
         // An update puts the board in flash mode, which withdraws its mDNS
         // service and stops its Sendspin player until it restarts: left
         // alone, NetworkSinks would drop the sink's row, and the Firmware tab
-        // with it, until the board is back. So the row is kept while anything
-        // is under way here, whether the tab shows it or not, and let go by
-        // the same reading of busy() that lets the client go below, so no
-        // client goes with its sink still kept.
-        sinks_engine_->keep_sink(it->first, busy);
-        if ((!shown || moved) && !busy) {
+        // with it, until the board is back - and the board can say how the
+        // update ended before then. The plan says when the row is kept, and
+        // it is kept or let go at every poll from the same reading that lets
+        // the client go, so no client goes with its sink still kept.
+        const ac3::hearth::FirmwareClientPlan plan =
+            ac3::hearth::plan_firmware_client(it->second->busy(), it->second->snapshot(), shown, address);
+        sinks_engine_->keep_sink(it->first, plan.keep_sink);
+        if (plan.let_go) {
             it = firmware_.erase(it);
             continue;
         }
