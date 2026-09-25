@@ -1251,6 +1251,30 @@ The sections below contain the complete change list and fixes.
   the presentation and the gains from its input. librempeg decodes a presentation's first substream
   alone, and MediaInfo reads a second parameter set after `de_ms_proc_flag` that the text does not
   send; `src/ac4dec/ERRATA.md` records the readings.
+- **AC-4 decodes the immersive element of 7.0.4 and 7.1.4, in full and core decoding, and renders
+  it by Part 2's channel renderer** (phase D9 of `planning/ac4.md`). Both transcriptions read
+  `immersive_channel_element()` with `immers_cfg` and A-JCC's `ajcc_data()` (Part 2 6.2.4 to 6.2.6),
+  and `ac4::Decoder` decodes the element in its five codec modes: Part 2 5.2's track assignment with
+  step 4 and Table 20's prediction, S-CPL on the inverse transform's output, A-SPX's immersive
+  pairing and gains, A-CPL's four modules and A-JCC (in `src/ac4core`, templated on `Real`), in full
+  decoding and in core decoding (`ac4::DecoderConfig::decoding`), which gives the 5.X.2 core by the
+  core gains, A-SPX on the first channel of a pair and A-JCC's core modules. Part 2's channel renderer
+  (5.10.2) takes the element from the layout its presence flags give to the one
+  `OutputConfig::downmix` names, which gains 7.X.4, 7.X.2, 7.X.0, 5.X.4 and 5.X.2: Tables 38 to 43 in
+  full decoding and 45 and 46 in core, with the custom downmix data the stream sends and the loudness
+  correction of the output, and for two channels and mono Part 1's Table 218 after 5.X.0. DRC's
+  transmitted gains take Part 2 Table 69's groups. The 9.X.4 modes and 22.2 are refused by name.
+  DEE's 5.1.4 legs, one per immersive codec mode it writes, decode with each of the ten tones on its
+  own channel, to 0.02 dB where the tops are coded channel by channel, and in core decoding each on
+  its core channel at the core gains; rendered to 5.1 and to two channels in both modes they equal
+  the renderer's matrices applied to their as-coded decode to 0.01 dB, as the gold set's 5.1.4 legs
+  do with their custom downmix data (`tools/checks/gain_ac4_decode.py`), and every table is held
+  against a second transcription in the tests. The encoder's frame writer gains the 7.X.4 channel
+  modes with their presence flags, and an A-JCC writer, with which constructed streams reach the
+  codec modes, groupings and routes DEE does not write; five are committed with their digests.
+  `ac3cli decode` takes `decoding=full|core` and `speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4`, and
+  `fuzz_ac4_decode` reaches the element from DEE's 5.1.4 seeds. librempeg does not decode the
+  element; `src/ac4dec/ERRATA.md` records the readings.
 
 **Browser (WASM)**
 

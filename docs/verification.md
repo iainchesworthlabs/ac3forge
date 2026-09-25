@@ -855,9 +855,8 @@ extended (`audio_size_value` and its `variable_bits(7)`) is two records.
 zlib's CRC-32 over the records packed as `struct.pack('<IHQ', offset, width, value)`.
 `tests/golden/ac4dec/` holds the Python parser's digests of the committed DEE streams: SIMPLE, ASPX,
 ASPX_ACPL_2 and ASPX_ACPL_3 at 2.0 and 5.1, one tone per channel at 2.0 and 5.1, DRC curves with an
-Lt/Rt downmix, and immersive stereo at three frame rates. The three 5.1.4 streams, one tone per channel
-in each immersive codec mode DEE writes, have none until both transcriptions read the immersive
-element (phase D9). `tests/ac4dec/test_ac4dec_syntax.cpp` requires
+Lt/Rt downmix, immersive stereo at three frame rates, and 5.1.4, one tone per channel in each
+immersive codec mode DEE writes. `tests/ac4dec/test_ac4dec_syntax.cpp` requires
 the decoder to produce the same lines, to read every substream to its exact end and to refuse nothing,
 and `tools/checks/test_ac4_syntax_digests.py` requires the Python parser to reproduce the same files, so
 neither transcription can change alone.
@@ -999,7 +998,10 @@ or anyone else, sets `b_snf_data_exists`, so the noise fill is decoded from the 
 compares the decoder with the Python parser's digests of any other set of streams. Over the 107 DEE
 streams of the local census (50,728 frames of 2.0, 5.1, 5.1.4 and immersive stereo) every digest
 agrees, and every substream is read to its exact end or, for 5.1.4's audio, refused at the immersive
-element. The same holds for the public channel-based streams other encoders wrote: DASH-IF's Dolby
+element, as it was before phase D9. Over the gold set's 527 AC-4 streams (G0's and G1's, 162,813
+frames, 127 of the streams 5.1.4) every digest agrees and every substream is read to its exact end,
+the immersive element's included. The same holds for the public channel-based streams other
+encoders wrote: DASH-IF's Dolby
 test vectors (2.0 and 5.1 at 25 and 29.97 fps), CTA WAVE's `ca4s` sets (2.0 at 30 fps) and Chromium's
 channel-based and immersive-stereo test files, 6,670 frames in all, taken out of their MP4 and CMAF
 segments with `ac3cli demux` and kept out of the tree. Chromium's A-JOC file is refused at the same
@@ -1120,6 +1122,60 @@ reading is in `src/ac4dec/ERRATA.md`, under "Presentations".
   puts out silence for 15 and 16 presentations over 22 and 23 substreams, and refuses
   `bitstream_version` 1 ("not yet implemented"), which the version 0 stream is. Part 2 bounds none of
   these counts.
+
+### The decoder's immersive element
+
+Phase D9 adds the immersive channel element of 7.0.4 and 7.1.4 (Part 2 6.2.4 to 6.2.6, and 5.2 to
+5.6 for its tools), in full decoding and in core decoding, and Part 2's channel renderer (5.10.2),
+which takes it to the layout a system asks for. Where the text leaves a choice open, the reading is in
+`src/ac4dec/ERRATA.md`, under "The immersive element", "Immersive decoding" and "The channel renderer".
+
+- **The syntax, in both transcriptions**: the element, `immers_cfg` and A-JCC's `ajcc_data()` with
+  Annex A's codebooks, in the decoder and in `ac4_syntax.py`. DEE's three 5.1.4 legs (G1's, one per
+  immersive codec mode DEE writes) and five constructed streams carry the Python parser's digests,
+  which the decoder reproduces, and 3,000 mutations of them find the two transcriptions agreeing.
+- **DEE's 5.1.4 legs, as coded** (`tests/ac4dec/test_ac4dec_pcm.cpp`, `score_ac4_decode.py`): DEE's
+  5.1.4 is 7.1.4 with its back channels silent, which the decoder gives as 5.1.4. SCPL at 768 kbps and
+  ASPX_SCPL at 512 put each of the ten tones on its own channel to 0.02 dB (the LFE 0.26 dB down, DEE's
+  low-pass), 50 dB over every other channel. ASPX_ACPL_2, at 192 to 448 kbps, codes each top pair's
+  sum and A-CPL makes the pair, so a top tone spreads over its pair and the pair's sum carries it at its
+  level; the other channels are coded channel by channel. In core decoding each tone lands on its core
+  channel: L, R, C and the LFE as in full decoding, Ls and Rs at 0 dB (Table 45's +3 dB over the core's
+  -3 dB, the source having no backs), and each top pair's two tones in its top side channel at -3 dB, to
+  0.2 dB. The scorer holds each leg's channels to the source's, the top pairs of ASPX_ACPL_2 as their
+  sums and core decoding's to the source's 5.1.2 by Table 42, below the lowest A-SPX crossover or, in
+  SCPL, which codes to about 17 kHz, below 16 kHz, over the committed three and 54 of the gold set's
+  (G0's tones and music at every rate and its height legs, G1's film, speech, sweeps and transients
+  at every rate), in both modes: every leg lags by 4,385 samples, as the 2.0 and 5.1 legs do, every
+  channel sits within 0.25 dB of unity (0.21 dB down in film's sides at 192 kbps, the most), and each
+  tone leg's tones are 64 dB over the others in their channels. G1's noise legs are left out: white
+  noise codes at 7 to 13 dB SNR, and its level falls 0.3 to 0.7 dB with the bands the encoder leaves
+  empty, at every rate.
+- **The constructed streams** (`tests/ac4dec/test_ac4dec_immersive.cpp`): the element in its five codec
+  modes, every `core_5ch_grouping` and `2ch_mode`, step 4's and Table 20's parameters and 7.1.4 with
+  its back channels, built with the encoder's writer from tones worked back through S-CPL, A-CPL or
+  A-JCC by the text; each decodes with every tone on its own channel, and in core decoding on its core
+  channel at the core's gain. A-SPX fills the channels Part 2 Table 8 pairs, the first of a coupled
+  pair alone in core decoding.
+- **A-JCC on known input**: its full and core reconstructions (Part 2 Pseudocodes 8 and 12) equal
+  the printed sums on known QMF input, in both core modes, to 1e-9.
+- **The renderer** (`tests/ac4dec/test_ac4dec_renderer.cpp`): Tables 38 to 43, 45 and 46, transcribed
+  again in the test, hold against the renderer's matrices for every input and output configuration,
+  each custom downmix gain a distinct value, so that one in the wrong place shows; Table 130's defaults,
+  6.3.10.3.10's exception, the persistence of the custom downmix data and the loudness corrections, and
+  the steps to two channels and one after 5.X.0 hold on their own. DRC's transmitted gains take Part 2
+  Table 69's groups (`test_ac4dec_drc.cpp`).
+- **The renders on DEE's streams** (`tests/ac4dec/test_ac4dec_pcm.cpp`, `gain_ac4_decode.py`): each
+  render's tones equal the renderer's matrix applied to the as-coded decode, to 0.01 dB, in full
+  decoding to 5.1 and to Lo/Ro in the tests, and in the gain script to every layout the renderer
+  gives, in full and core decoding, with the stream's custom downmix data, its stereo coefficients and
+  its corrections read from the syntax trace: what the matrix leaves is 149 dB under the output, its
+  rounding. CI runs the committed legs; locally 77 of the gold set's, G1's 23 height downmixes among
+  them, which send custom downmix data from 0 dB to silence in I-frames alone, its 24 stereo downmix
+  legs and its film at every rate, and G0's 22.
+- **librempeg** (git 2026-09-24) does not decode the element: on the 5.1.4 tone legs its L, R and C
+  come out 6 to 9 dB down, its surrounds 12 to 15 dB down, all four top tones in its Lb at about -15
+  dB, and its top channels silent.
 
 ### The encoder
 

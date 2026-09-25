@@ -1685,9 +1685,9 @@ decoder takes them in `src/ac4dec/src/pcm/renderer.cpp` and `downmix.cpp`, and
   gains are in dB, 10^(dB/20), code 7 silence.
 - **Why:** DEE sends custom downmix data in I-frames alone, 12 of a leg's 237 frames; the defaults between
   them would move the render's gains at every I-frame.
-- **Evidence:** Streams: G1's 5.1.4 height legs (`out_ch_config` 0, `gain_t2a_code` to `gain_t2e_code`
-  from 0 dB to silence) render to 5.1 at the gains they send, in every frame
-  (`tools/checks/gain_ac4_decode.py --gold`).
+- **Evidence:** Streams: G1's 23 5.1.4 height legs (`out_ch_config` 0, `gain_t2a_code` to
+  `gain_t2e_code` from 0 dB to silence) render to 5.1 and to two channels at the gains they send, in
+  every frame, in full and core decoding (`tools/checks/gain_ac4_decode.py --gold ... --g1`).
 
 ### The loudness correction of a render
 

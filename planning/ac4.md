@@ -1470,6 +1470,26 @@ gates.
 - 7.1.4 with every channel present, which DEE cannot write: the same element with the back channels
   present, tested on constructed streams and then on E8's.
 - 22.2 and 9.X.4 are refused.
+- D9 found the element's text at odds with itself in three places, each read by the rest of the
+  text: Table 19's track numbers are names, not the order the syntax reads the elements in; the
+  EXAMPLE after it assigns the first pair of grouping 1 against the table; step 4's NOTE 2 names F'
+  where it means H'. Table 20's prediction gains, which the text does not say how to extract, are
+  read as Pseudocode 59's `sap_gain`. The core's top pair is Tsl and Tsr, which Tables 45 and 46 index,
+  and Table 59 prints a .2 source's pair as carried "in Tbr, Tbl", read left to left. Tables 38 to
+  43 have rows no channel mode names, so the renderer's input configuration is the channel mode
+  narrowed by the presence flags; custom downmix data hold from the frame that sends them until
+  another does, since DEE sends them in I-frames alone; a render takes its output's loudness
+  correction only where it downmixes, and two channels the Lo/Ro or Lt/Rt correction alone.
+- DEE writes the element in three codec modes, by rate alone: ASPX_ACPL_2 from 192 to 448 kbps,
+  ASPX_SCPL at 512 and SCPL at 768, always with the back channels silent
+  (`b_4_back_channels_present` 0), so its 5.1.4 comes out as 5.1.4. It writes neither ASPX_ACPL_1
+  nor ASPX_AJCC, and no 7.1.4 with backs, so those, every `core_5ch_grouping` and `2ch_mode`, and
+  step 4's and Table 20's parameters are read from streams the encoder's writer builds, five of
+  them committed with their digests. In ASPX_ACPL_2 DEE codes each top pair's sum and A-CPL makes
+  the pair, so a top tone comes out across its pair, the sum at its level. librempeg does not decode
+  the element: its L, R and C come out 6 to 9 dB down, its surrounds 12 to 15 dB down, all four top
+  tones in its Lb and its top channels silent. The Dolby delivery kit's 5.1.4 stream is not on this
+  machine, and fetching it waits on the user.
 
 **Exit:**
 
