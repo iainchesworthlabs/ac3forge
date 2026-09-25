@@ -256,6 +256,61 @@ TEST_CASE("every frame rate frames attacks within its block and A-SPX limits",
     }
 }
 
+TEST_CASE("I-frames fall where the caller names them and a decoder can start at each",
+          "[ac4enc][frame-rate]") {
+    // At 29.97 fps, whose frames decode to 1 601 or 1 602 samples: frames 5
+    // and 7 named, and fragments from output samples 16 016 (frame 10's first)
+    // and 20 000 (inside frame 12, so frame 13).
+    ac4::EncoderConfig config;
+    config.channels = 2;
+    config.bitrate_kbps = 128;
+    config.frame_rate_index = 3;
+    config.iframe_interval = 1000;
+    config.iframes = {7, 5};
+    config.fragment_starts = {16016, 20000};
+    auto encoder = ac4::Encoder::create(config);
+    REQUIRE(encoder.has_value());
+    const std::vector<float> left = tone(440.0, 0.1, 48000);
+    const std::vector<float> right = tone(550.0, 0.1, 48000);
+    const std::vector<std::span<const float>> views = {left, right};
+    auto frames = encoder->encode(views);
+    REQUIRE(frames.has_value());
+    auto rest = encoder->flush();
+    REQUIRE(rest.has_value());
+    frames->insert(frames->end(), rest->begin(), rest->end());
+    REQUIRE(frames->size() > 14);
+    std::vector<std::size_t> iframes;
+    std::int64_t output = 0;
+    for (std::size_t f = 0; f < frames->size(); ++f) {
+        if ((*frames)[f].iframe) {
+            iframes.push_back(f);
+        }
+        if (f == 10) {
+            CHECK(output == 16016);
+        }
+        output += (*frames)[f].samples;
+    }
+    CHECK(iframes == std::vector<std::size_t>{0, 5, 7, 10, 13});
+
+    // A decoder that starts at an I-frame decodes from there; one that
+    // starts after it has nothing, the stream being ASPX, until the next.
+    for (const std::size_t start : {std::size_t{5}, std::size_t{13}, std::size_t{6}}) {
+        CAPTURE(start);
+        ac4::Decoder decoder(ac4::DecoderConfig{});
+        const auto first = decoder.decode((*frames)[start].raw_ac4_frame);
+        REQUIRE(first.has_value());
+        CHECK(first->has_value() == (*frames)[start].iframe);
+    }
+    CHECK(encoder->codec_mode() == ac4::CodecMode::kAspx);
+
+    // No frame or fragment starts before the stream.
+    config.iframes = {-1};
+    CHECK_FALSE(ac4::Encoder::create(config).has_value());
+    config.iframes = {};
+    config.fragment_starts = {-2048};
+    CHECK_FALSE(ac4::Encoder::create(config).has_value());
+}
+
 TEST_CASE("frame rates the sample rate does not have are refused", "[ac4enc][frame-rate]") {
     ac4::EncoderConfig config;
     config.sample_rate_hz = 44100;

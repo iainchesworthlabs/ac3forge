@@ -19,6 +19,11 @@ namespace ac4::detail {
 
 struct FrameFields {
     int sequence_counter = 0;   // 0 to 1020
+    // Part 1 Table 81: 0 a constant bit rate, 1 to 6 an average one with the
+    // decoder waiting 0 to 5 frames (twice that at indices 10 to 12), 7 a
+    // variable one; above 0, Part 2 Table 52's br_code follows.
+    int wait_frames = 0;
+    int br_code = 0;
     bool iframe = true;         // b_iframe_global, b_pres_ndot and b_audio_ndot
     int fs_index = 1;           // Part 1 Table 82: 1 = 48 kHz, 0 = 44.1 kHz
     int frame_rate_index = 13;

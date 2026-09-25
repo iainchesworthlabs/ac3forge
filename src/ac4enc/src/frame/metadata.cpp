@@ -321,6 +321,26 @@ std::optional<StreamMetadata> resolve_metadata(const EncoderConfig& config, int 
             return std::nullopt;
         }
         codes.max_gain = de.max_gain_db / 3 - 1;
+        switch (de.method) {
+            case DialogueMethod::kChannelIndependent:
+                break;
+            case DialogueMethod::kMid:
+                // de_ms_proc_flag is sent for two channels alone: L and R.
+                if (codes.channel_config != 6) {
+                    return std::nullopt;
+                }
+                codes.mid = true;
+                break;
+            case DialogueMethod::kCrossChannel:
+                // Panning needs two channels or three, and marked channels,
+                // dialogue alone, are the channel-independent method's.
+                if (de_channel_count(codes.channel_config) < 2 ||
+                    de.source != DialogueSource::kStem) {
+                    return std::nullopt;
+                }
+                codes.method = 1;
+                break;
+        }
         out.de = codes;
     }
     return out;
@@ -463,27 +483,46 @@ void write_dialog_enhancement(BitWriter& w, const DeConfigCodes* config,
     } else {
         w.write(1, 0, "b_de_config_flag");
     }
-    // de_data(de_method, de_nr_channels, b_iframe), Part 1 Table 78, in the
-    // channel-independent method: no rendering coefficients, no Mid/Side.
+    // de_data(de_method, de_nr_channels, b_iframe), Part 1 Table 78: in the
+    // cross-channel method the panning, kept where it is the last frame's;
+    // then the parameters, of each channel or with de_ms_proc_flag of the
+    // Mid alone, kept where they are the last frame's.
     const int nr_channels = de_channel_count(config->channel_config);
     if (nr_channels == 0) {
         return;
     }
-    const DeFrameParameters& par = *parameters;
-    const auto channels = static_cast<std::size_t>(nr_channels);
+    const DeFrameParameters& frame = *parameters;
+    const bool cross = config->method == 1 || config->method == 3;
+    if (cross && nr_channels > 1) {
+        bool keep_pos = false;
+        if (!iframe) {
+            keep_pos = previous != nullptr && frame.mix == previous->mix;
+            w.write(1, keep_pos ? 1U : 0U, "de_keep_pos_flag");
+        }
+        if (!keep_pos) {
+            w.write(5, static_cast<std::uint64_t>(frame.mix[0]), "de_mix_coef1_idx");
+            if (nr_channels == 3) {
+                w.write(5, static_cast<std::uint64_t>(frame.mix[1]), "de_mix_coef2_idx");
+            }
+        }
+    }
+    const bool ms = (config->method == 0 || config->method == 2) && nr_channels == 2 && config->mid;
+    const auto channels = static_cast<std::size_t>(nr_channels - (ms ? 1 : 0));
     bool keep = false;
     if (!iframe) {
-        keep = previous != nullptr &&
-               std::equal(par.begin(), par.begin() + static_cast<std::ptrdiff_t>(channels),
-                          previous->begin());
+        keep =
+            previous != nullptr &&
+            std::equal(frame.par.begin(), frame.par.begin() + static_cast<std::ptrdiff_t>(channels),
+                       previous->par.begin());
         w.write(1, keep ? 1U : 0U, "de_keep_data_flag");
     }
     if (keep) {
         return;
     }
-    if (nr_channels == 2) {
-        w.write(1, 0, "de_ms_proc_flag");
+    if ((config->method == 0 || config->method == 2) && nr_channels == 2) {
+        w.write(1, ms ? 1U : 0U, "de_ms_proc_flag");
     }
+    const std::array<std::array<int, kDeBands>, 3>& par = frame.par;
     const bool second = config->method % 2 != 0;
     const std::span<const HuffCode> abs_codes =
         second ? std::span<const HuffCode>(tables::kDeHcbAbs1Codes)
@@ -514,7 +553,7 @@ void write_dialog_enhancement(BitWriter& w, const DeConfigCodes* config,
                     code(diff_codes, row[band] - ref + diff_off);
                     ref = row[band];
                 } else {
-                    code(diff_codes, row[band] - (*previous)[ch][band] + diff_off);
+                    code(diff_codes, row[band] - previous->par[ch][band] + diff_off);
                 }
             }
         }

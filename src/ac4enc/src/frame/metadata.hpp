@@ -89,16 +89,24 @@ struct DownmixCodes {
     std::optional<int> ltrt_dmx_loud_corr;
 };
 
-// de_config() (Table 77).
+// de_config() (Table 77), and de_ms_proc_flag, which the channel-independent
+// method sets for L and R's Mid.
 struct DeConfigCodes {
     int method = 0;
     int max_gain = 2;
     int channel_config = 1;  // Table 171: L, R and C as bits 4, 2 and 1
+    bool mid = false;
 };
 
-// One frame's dialogue enhancement parameters: Table 209's indices, per
-// processed channel in de_channel_config's order and per band.
-using DeFrameParameters = std::array<std::array<int, kDeBands>, 3>;
+// One frame's dialogue enhancement parameters: Table 209's indices (Table
+// 210's in the cross-channel method), per processed channel in
+// de_channel_config's order, the Mid's alone with de_ms_proc_flag, and per
+// band; and in the cross-channel method de_mix_coef1_idx and
+// de_mix_coef2_idx (Table 172).
+struct DeFrameParameters {
+    std::array<std::array<int, kDeBands>, 3> par{};
+    std::array<int, 2> mix{};
+};
 
 // What the stream's frames carry beside dialnorm: each where it is configured.
 struct StreamMetadata {

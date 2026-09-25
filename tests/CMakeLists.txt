@@ -59,6 +59,7 @@ add_executable(ac3tests
     ac4enc/test_ac4enc_encoder.cpp
     ac4enc/test_ac4enc_frame_rates.cpp
     ac4enc/test_ac4enc_metadata.cpp
+    ac4enc/test_ac4enc_rates.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp

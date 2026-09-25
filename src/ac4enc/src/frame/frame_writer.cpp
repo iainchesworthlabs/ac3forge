@@ -111,7 +111,10 @@ void write_toc(BitWriter& w, const FrameFields& f, std::size_t payload_base, std
     w.write(2, 2, "bitstream_version");
     w.write(10, static_cast<std::uint64_t>(f.sequence_counter), "sequence_counter");
     w.write(1, 1, "b_wait_frames");
-    w.write(3, 0, "wait_frames");  // Part 1 Table 81: a constant bit rate; no br_code
+    w.write(3, static_cast<std::uint64_t>(f.wait_frames), "wait_frames");
+    if (f.wait_frames > 0) {
+        w.write(2, static_cast<std::uint64_t>(f.br_code), "br_code");
+    }
     w.write(1, static_cast<std::uint64_t>(f.fs_index), "fs_index");
     w.write(4, static_cast<std::uint64_t>(f.frame_rate_index), "frame_rate_index");
     w.write(1, f.iframe ? 1U : 0U, "b_iframe_global");

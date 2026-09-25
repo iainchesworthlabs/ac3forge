@@ -76,6 +76,24 @@ constexpr double kSilencedAllowance = 1e200;
 // together. Measured on the race's sources, 2026-09-25.
 constexpr double kLevelWeight = 0.75;
 
+// The average bit rate (Part 1 clauses 4.3.3.2.4 and 6.2.4, Part 2 Annex B).
+// A channel at the rate delivers a frame's share of it, F bytes, every frame
+// period into the decoder's input buffer of v F bytes (v six, twelve above 60
+// fps), and each frame leaves it at its output time, a frame period after
+// the last's. In shares: before frame i is taken the buffer holds x(i), and
+// what frame i of S(i) bytes leaves, s(i) = x(i) - S(i) / F, is the frame
+// periods between its arrival and its output; x(i + 1) = s(i) + 1. A decoder
+// that starts at frame i waits floor(s(i)) frames, which wait_frames sends
+// (in twos at indices 10 to 12), and outputs up to a frame (two) early, so a
+// frame leaves at least 1 (2); and at most v - 1, for the buffer to hold the
+// next: s(i) from 1 to 5, or 2 to 11. Over frames 1 to m the sizes then add
+// up to m + s(0) - s(m) shares, within Annex B's N' + 1 and N' - 1 (N' + 2
+// and N' - 2). br_code carries the rate: 0b11, then the first six base-3
+// digits of the fraction of log2(the rate in kbps) (Annex B's steps 2 and 4).
+// A variable rate lets s run from minus to plus two seconds' shares, with no
+// wait to send (wait_frames 7).
+constexpr int kBrCodeDigits = 6;
+
 // Below this rate a channel, CodecMode::kAuto codes in the ASPX mode: in mono
 // and stereo as DEE does from 144 kbps in stereo down, and in the 5.X and 7.X
 // elements as DEE's 5.1 streams do up to 320 kbps, SIMPLE from 384. The LFE
@@ -506,6 +524,27 @@ struct Encoder::Impl {
     double cutoff = 20000.0;
     double bytes_per_frame = 0.0;
     double byte_carry = 0.0;
+    // Average and variable rates (the model above): the decoder's input
+    // buffer in frames' shares of the rate before the next frame is taken,
+    // the least and the most a frame may leave there, and Part 2 Annex B's
+    // br_code sequence.
+    double rate_level = 0.0;
+    double rate_low = 0.0;
+    double rate_high = 0.0;
+    std::vector<int> br_codes{3};
+
+    // Table 81's wait_frames for a frame that leaves `left` shares in the
+    // buffer: the whole frames a decoder that starts at it waits, counted in
+    // twos at indices 10 to 12.
+    [[nodiscard]] int wait_frames_for(double left) const noexcept {
+        if (config.rate_mode == RateMode::kVariable) {
+            return 7;
+        }
+        if (timing.frame_rate_index >= 10 && timing.frame_rate_index <= 12) {
+            return std::clamp(static_cast<int>(std::floor(left / 2.0)), 0, 5) + 1;
+        }
+        return std::clamp(static_cast<int>(std::floor(left)), 0, 5) + 1;
+    }
 
     // The input at the internal rate, from sample index `base` of the delayed
     // signal on; the first `delay` samples of that signal are the silence
@@ -514,6 +553,9 @@ struct Encoder::Impl {
     std::int64_t base = 0;
     std::int64_t input_samples = 0;
     bool flushed = false;
+    // The frames the configuration makes I-frames besides the interval's:
+    // those it names, and those whose output starts a fragment, sorted.
+    std::vector<std::int64_t> forced_iframes;
 
     // The metadata beside the audio (frame/metadata.hpp). With dialogue
     // enhancement: the input channels its parameters are for, in
@@ -819,9 +861,16 @@ struct Encoder::Impl {
     [[nodiscard]] detail::FrameFields fields_for(std::int64_t frame) const {
         detail::FrameFields fields;
         fields.sequence_counter = sequence_counter(frame);
-        fields.iframe = frame % config.iframe_interval == 0;
+        fields.iframe = frame % config.iframe_interval == 0 ||
+                        std::ranges::binary_search(forced_iframes, frame);
         fields.fs_index = fs_index;
         fields.frame_rate_index = timing.frame_rate_index;
+        if (config.rate_mode != RateMode::kConstant) {
+            // The wait is the frame's own, set once its size is; br_code runs
+            // through its sequence frame by frame.
+            fields.wait_frames = config.rate_mode == RateMode::kVariable ? 7 : 1;
+            fields.br_code = br_codes[static_cast<std::size_t>(frame % std::ssize(br_codes))];
+        }
         fields.ch_mode = plan.ch_mode;
         fields.dialnorm_bits = dialnorm_bits;
         fields.metadata = &metadata;
@@ -847,11 +896,11 @@ struct Encoder::Impl {
         const std::int64_t start = dialogue_window(frame);
         const FrameLayout layout = detail::long_layout(frame_length);
         std::vector<double> window(2 * static_cast<std::size_t>(frame_length));
-        std::vector<double> programme;
-        std::vector<double> dialogue;
+        std::vector<std::vector<double>> programme(de_channels.size());
+        std::vector<std::vector<double>> dialogue(de_channels.size());
         for (std::size_t i = 0; i < de_channels.size(); ++i) {
-            for (const auto& [from, to] :
-                 {std::pair{&de_programme[i], &programme}, std::pair{&de_dialogue[i], &dialogue}}) {
+            for (const auto& [from, to] : {std::pair{&de_programme[i], &programme[i]},
+                                           std::pair{&de_dialogue[i], &dialogue[i]}}) {
                 for (std::size_t n = 0; n < window.size(); ++n) {
                     const std::int64_t s = start + static_cast<std::int64_t>(n);
                     window[n] = s >= base && s < signal_end()
@@ -860,10 +909,30 @@ struct Encoder::Impl {
                 }
                 analysis.transform(window, layout, frame_length, frame_length, *to);
             }
-            de_current[i] = detail::de_parameters(programme, dialogue, frame_length);
+        }
+        switch (config.dialogue->method) {
+            case DialogueMethod::kChannelIndependent:
+                for (std::size_t i = 0; i < de_channels.size(); ++i) {
+                    de_current.par[i] =
+                        detail::de_parameters(programme[i], dialogue[i], frame_length);
+                }
+                break;
+            case DialogueMethod::kMid: {
+                // L and R's Mids, (L + R) / 2, the transform being linear.
+                std::vector<double> mid(programme[0].size());
+                std::vector<double> dialogue_mid(mid.size());
+                for (std::size_t k = 0; k < mid.size(); ++k) {
+                    mid[k] = 0.5 * (programme[0][k] + programme[1][k]);
+                    dialogue_mid[k] = 0.5 * (dialogue[0][k] + dialogue[1][k]);
+                }
+                de_current.par[0] = detail::de_parameters(mid, dialogue_mid, frame_length);
+                break;
+            }
+            case DialogueMethod::kCrossChannel:
+                de_current = detail::de_cross_parameters(programme, dialogue, frame_length);
+                break;
         }
     }
-
     // Undoes each unit's matrix: `spectra`, per input channel, then holds each
     // unit's tracks where its outputs were.
     static void undo(Structure& s, std::vector<detail::Channel>& spectra) {
@@ -1166,7 +1235,7 @@ struct Encoder::Impl {
         if (stem()) {
             estimate_dialogue(frame);
         }
-        const detail::FrameFields fields = fields_for(frame);
+        detail::FrameFields fields = fields_for(frame);
         Coding f;
         f.iframe = fields.iframe;
         std::vector<int> next_first(groups.size());
@@ -1269,16 +1338,19 @@ struct Encoder::Impl {
         }
 
         // The frame's size, and the bits the channel element's sf_data() may
-        // take.
+        // take: at a constant rate the frame's share of the rate; at the
+        // others, set below once the rate loop says what the frame needs.
         const double exact = byte_carry + bytes_per_frame;
-        const auto frame_bytes = static_cast<std::size_t>(exact);
-        const std::size_t overhead = detail::frame_overhead_bits(fields, frame_bytes);
+        auto frame_bytes = static_cast<std::size_t>(exact);
         f.tracks.resize(channels);
         BitWriter side = BitWriter::buffered();
         write_element(side, f, false);
         const std::size_t side_bits = side.bit_position();
-        const std::size_t budget =
-            8 * frame_bytes > overhead + side_bits ? 8 * frame_bytes - overhead - side_bits : 0;
+        const auto budget_for = [&](std::size_t bytes) -> std::size_t {
+            const std::size_t overhead = detail::frame_overhead_bits(fields, bytes);
+            return 8 * bytes > overhead + side_bits ? 8 * bytes - overhead - side_bits : 0;
+        };
+        std::size_t budget = budget_for(frame_bytes);
 
         // The rate loop: a level of noise per line, top_level * 10^(kStepDb p
         // / 10) at step p, and two laws that bring the bands' allowances to
@@ -1375,6 +1447,21 @@ struct Encoder::Impl {
             }
             return write();
         };
+        if (config.rate_mode != RateMode::kConstant) {
+            // What the frame needs at its masking thresholds (step 0), within
+            // what the buffer lets it borrow and makes it spend.
+            const double share = bytes_per_frame;
+            const auto longest =
+                static_cast<std::size_t>(std::floor(share * (rate_level - rate_low)));
+            const auto shortest = static_cast<std::size_t>(
+                std::max(0.0, std::ceil(share * (rate_level - rate_high))));
+            const std::size_t overhead = detail::frame_overhead_bits(fields, longest);
+            const std::size_t needed = (overhead + side_bits + bits_at(false, 0) + 7) / 8;
+            frame_bytes = std::clamp(needed, std::min(shortest, longest), longest);
+            fields.wait_frames =
+                wait_frames_for(rate_level - static_cast<double>(frame_bytes) / share);
+            budget = budget_for(frame_bytes);
+        }
         std::optional<std::vector<std::byte>> raw;
         if (bits_at(false, 0) <= budget) {
             for (int step = lowest_fitting(false, kLowestStep, 0); step <= 0 && !raw; ++step) {
@@ -1454,7 +1541,11 @@ struct Encoder::Impl {
             acpl->commit(*f.acpl);
             acpl->drop_before_frame(frame + 1);
         }
-        byte_carry = exact - static_cast<double>(frame_bytes);
+        if (config.rate_mode == RateMode::kConstant) {
+            byte_carry = exact - static_cast<double>(frame_bytes);
+        } else {
+            rate_level += 1.0 - static_cast<double>(frame_bytes) / bytes_per_frame;
+        }
         for (std::size_t g = 0; g < groups.size(); ++g) {
             groups[g].previous_last = f.layout[g].window_length.back();
         }
@@ -1580,6 +1671,26 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
     impl->config = config;
     impl->plan = *plan;
     impl->timing = *timing;
+    // The frames named as I-frames, and for each fragment start the first
+    // frame whose output starts at or after it.
+    for (const std::int64_t frame : config.iframes) {
+        if (frame < 0) {
+            return std::unexpected(EncodeError::kInvalidConfig);
+        }
+        impl->forced_iframes.push_back(frame);
+    }
+    for (const std::int64_t start : config.fragment_starts) {
+        if (start < 0) {
+            return std::unexpected(EncodeError::kInvalidConfig);
+        }
+        std::int64_t frame = start * timing->decoder_down /
+                             (static_cast<std::int64_t>(timing->frame_length) * timing->decoder_up);
+        while (timing->output_before(frame) < start) {
+            ++frame;
+        }
+        impl->forced_iframes.push_back(frame);
+    }
+    std::ranges::sort(impl->forced_iframes);
     impl->frame_length = timing->frame_length;
     impl->delay = timing->frame_length * 3 / 2;
     impl->sub_block = timing->frame_length / kSubBlocks;
@@ -1594,6 +1705,24 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
     // A frame lasts frame_length samples of the internal rate.
     impl->bytes_per_frame = static_cast<double>(config.bitrate_kbps) * 1000.0 *
                             timing->frame_length / (internal_rate * 8.0);
+    if (config.rate_mode == RateMode::kAverage) {
+        const bool fast = timing->frame_rate_index >= 10 && timing->frame_rate_index <= 12;
+        impl->rate_low = fast ? 2.0 : 1.0;
+        impl->rate_high = fast ? 11.0 : 5.0;
+        impl->rate_level = (impl->rate_low + impl->rate_high) / 2.0 + 1.0;
+    } else if (config.rate_mode == RateMode::kVariable) {
+        impl->rate_high = 2.0 * internal_rate / timing->frame_length;
+        impl->rate_low = -impl->rate_high;
+        impl->rate_level = 1.0;
+    }
+    double octave = std::log2(static_cast<double>(config.bitrate_kbps));
+    octave -= std::floor(octave);
+    for (int digit = 0; digit < kBrCodeDigits; ++digit) {
+        octave *= 3.0;
+        const double whole = std::floor(octave);
+        impl->br_codes.push_back(static_cast<int>(whole));
+        octave -= whole;
+    }
     if (timing->resampled()) {
         // The converters, the inverse of the decoder's; and the decoder's
         // converter's delay, which flush() codes past as well.
@@ -1698,7 +1827,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
             // Marked channels carry dialogue alone: 1 in every band.
             const int one = detail::de_parameter_index(1.0);
             for (std::size_t i = 0; i < impl->de_channels.size(); ++i) {
-                impl->de_current[i].fill(one);
+                impl->de_current.par[i].fill(one);
             }
         }
     }

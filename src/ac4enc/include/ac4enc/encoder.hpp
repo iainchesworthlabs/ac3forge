@@ -21,8 +21,8 @@
 // What this version writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, at every
 // frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples
 // (frame_rate_index 13, the one Table 84 has), as one presentation of one
-// channel-coded substream, at a constant bit rate (wait_frames 0), each frame
-// filled to its size. At every frame rate but index 13's the input is
+// channel-coded substream, at a constant, average or variable bit rate
+// (RateMode). At every frame rate but index 13's the input is
 // converted to the rate the frames are coded at, the inverse of the
 // decoder's conversion (Tables 83 and 84's resampling ratio). The codec
 // mode is SIMPLE, the audio spectral frontend with block switching and
@@ -83,6 +83,22 @@ enum class CodecMode : std::uint8_t {
     // 5.0 and 5.1: the Lo/Ro downmix coded as a pair, in the ASPX way from 12
     // kHz, and all five channels rebuilt from it by A-CPL (clause 5.7.7.6.2).
     kAspxAcpl3,
+};
+
+// How frames share the rate (Part 1 Table 81's wait_frames).
+enum class RateMode : std::uint8_t {
+    // Every frame bitrate_kbps' share, to the byte (wait_frames 0).
+    kConstant,
+    // Each frame as long as its content needs at its masking thresholds, as
+    // far as the decoder's input buffer of Part 1 clause 6.2.4 (six frames at
+    // the rate, twelve above 60 fps) lets frames lend each other bytes, with
+    // bitrate_kbps over the long term (wait_frames 1 to 6: the frames a
+    // decoder that starts at the frame waits before its output, and Part 2
+    // Table 52's br_code carrying the rate, Part 2 Annex B).
+    kAverage,
+    // As kAverage without the buffer: frames lend each other up to two
+    // seconds' share of the rate (wait_frames 7).
+    kVariable,
 };
 
 // The 7.X element's pair beyond L, R, C, Ls and Rs (Part 1 Table 88).
@@ -218,10 +234,26 @@ enum class DialogueSource : std::uint8_t {
     kStem,
 };
 
-// Dialogue enhancement (Part 1 clauses 4.3.14 and 5.7.8), in the
-// channel-independent method: de_config() in I-frames and each frame's
-// parameters in de_data().
+// How dialogue enhancement's parameters raise the dialogue (Part 1 Table 170
+// and clause 5.7.8). The hybrid methods, 2 and 3, add a dialogue waveform in
+// a substream of its own, which phase E6's presentations bring.
+enum class DialogueMethod : std::uint8_t {
+    // de_method 0: each channel scaled, band by band, by its own parameter,
+    // the dialogue's share of it.
+    kChannelIndependent,
+    // de_method 0 with de_ms_proc_flag, for L and R alone: their Mid scaled,
+    // where dialogue centred between them sits.
+    kMid,
+    // de_method 1, from a stem, over two or three channels: a mix of the
+    // channels that follows the dialogue, panned back onto them as the
+    // dialogue is panned (de_mix_coef1_idx and 2).
+    kCrossChannel,
+};
+
+// Dialogue enhancement (Part 1 clauses 4.3.14 and 5.7.8): de_config() in
+// I-frames and each frame's parameters in de_data().
 struct DialogueConfig {
+    DialogueMethod method = DialogueMethod::kChannelIndependent;
     DialogueSource source = DialogueSource::kMarkedChannels;
     // Which of L, R and C carry dialogue, in de_channel_config's order (Table
     // 171); a mono programme has only C, a stereo one L and R.
@@ -245,11 +277,20 @@ struct EncoderConfig {
     // alone at 44.1 kHz.
     int frame_rate_index = 13;
     int bitrate_kbps = 192;        // the stream's rate, over whole raw_ac4_frame()s
+    RateMode rate_mode = RateMode::kConstant;
     CodecMode codec_mode = CodecMode::kAuto;
     // An I-frame every this many frames, the first frame being one; 1 makes
     // every frame an I-frame. The containers need one at every fragment's start
     // (Part 1 Annex E.5, Part 2 Annex E.3).
     int iframe_interval = 24;
+    // I-frames besides those: the frames, counted from 0, that must be ones,
+    // in any order.
+    std::vector<std::int64_t> iframes;
+    // Where the caller's fragments start, in samples of the decoded output
+    // from its first, which is the media time an MP4 track counts: the frame
+    // whose output starts there, or the first to start after it, is an
+    // I-frame, so that a fragment can start with it.
+    std::vector<std::int64_t> fragment_starts;
     // The input reference level, Part 1 clause 4.3.12.2.1: 0 to -31.75 dBFS in
     // steps of 0.25 dB.
     double dialnorm_db = -31.0;

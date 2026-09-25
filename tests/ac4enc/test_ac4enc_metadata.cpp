@@ -408,48 +408,82 @@ TEST_CASE("the decoder applies the encoder's metadata with the gains its formula
 TEST_CASE("dialogue enhancement from a stem raises the dialogue and leaves the rest",
           "[ac4enc][metadata]") {
     // Stereo: a 1 kHz tone, the dialogue, in L and R under noise-like music
-    // of three far tones; the stem is the dialogue alone.
+    // of three far tones; the stem is the dialogue alone. Centred for the
+    // channel-independent method and the Mid, and panned for the
+    // cross-channel method, which follows the panning.
     const std::size_t count = 3 * 48000;
     const std::vector<float> dialogue_tone = tone(1000.0, 0.1, count);
     const std::vector<float> music_low = tone(90.0, 0.1, count);
     const std::vector<float> music_high = tone(9000.0, 0.05, count);
+    struct Method {
+        ac4::DialogueMethod method;
+        std::array<float, 2> pan;
+        std::uint64_t de_method;
+    };
+    for (const Method& m : {Method{ac4::DialogueMethod::kChannelIndependent, {1.0F, 1.0F}, 0},
+                            Method{ac4::DialogueMethod::kMid, {1.0F, 1.0F}, 0},
+                            Method{ac4::DialogueMethod::kCrossChannel, {1.2F, 0.6F}, 1}}) {
+        CAPTURE(static_cast<int>(m.method));
+        std::vector<std::vector<float>> programme(2, std::vector<float>(count));
+        std::vector<std::vector<float>> dialogue(2, std::vector<float>(count));
+        for (std::size_t c = 0; c < 2; ++c) {
+            for (std::size_t n = 0; n < count; ++n) {
+                dialogue[c][n] = m.pan[c] * dialogue_tone[n];
+                programme[c][n] = dialogue[c][n] + music_low[n] + music_high[n];
+            }
+        }
+        ac4::EncoderConfig config;
+        config.channels = 2;
+        config.bitrate_kbps = 192;
+        config.codec_mode = ac4::CodecMode::kSimple;
+        config.dialogue = ac4::DialogueConfig{.method = m.method,
+                                              .source = ac4::DialogueSource::kStem,
+                                              .left = true,
+                                              .right = true,
+                                              .centre = false,
+                                              .max_gain_db = 9};
+        const Encoded encoded = encode(config, programme, &dialogue);
+        std::vector<std::size_t> starts;
+        const std::vector<ac4::SyntaxRecord> read = read_back(encoded, starts);
+        CHECK(values(read, starts, 0, "de_method") == std::vector<std::uint64_t>{m.de_method});
+        const std::vector<std::uint64_t> ms = values(read, starts, 0, "de_ms_proc_flag");
+        CHECK(ms ==
+              (m.de_method == 0
+                   ? std::vector<std::uint64_t>{m.method == ac4::DialogueMethod::kMid ? 1U : 0U}
+                   : std::vector<std::uint64_t>{}));
+        const std::vector<std::vector<float>> coded = decode(encoded.frames, {});
+        const std::vector<std::vector<float>> raised =
+            decode(encoded.frames,
+                   output(std::nullopt, ac4::DrcMode::kDefault, 9.0, ac4::DownmixTarget::kAsCoded));
+        for (std::size_t c = 0; c < 2; ++c) {
+            CAPTURE(c);
+            const double dialogue_db =
+                db_of_power(tone_power(raised[c], 1000.0) / tone_power(coded[c], 1000.0));
+            const double low_db =
+                db_of_power(tone_power(raised[c], 90.0) / tone_power(coded[c], 90.0));
+            const double high_db =
+                db_of_power(tone_power(raised[c], 9000.0) / tone_power(coded[c], 9000.0));
+            CAPTURE(dialogue_db, low_db, high_db);
+            CHECK(dialogue_db > 8.5);
+            CHECK(dialogue_db < 9.5);
+            CHECK(std::abs(low_db) < 0.5);
+            CHECK(std::abs(high_db) < 0.5);
+        }
+    }
     std::vector<std::vector<float>> programme(2, std::vector<float>(count));
-    std::vector<std::vector<float>> dialogue(2, std::vector<float>(count));
     for (std::size_t c = 0; c < 2; ++c) {
         for (std::size_t n = 0; n < count; ++n) {
             programme[c][n] = dialogue_tone[n] + music_low[n] + music_high[n];
-            dialogue[c][n] = dialogue_tone[n];
         }
     }
     ac4::EncoderConfig config;
     config.channels = 2;
     config.bitrate_kbps = 192;
-    config.codec_mode = ac4::CodecMode::kSimple;
     config.dialogue = ac4::DialogueConfig{.source = ac4::DialogueSource::kStem,
                                           .left = true,
                                           .right = true,
                                           .centre = false,
                                           .max_gain_db = 9};
-    const Encoded encoded = encode(config, programme, &dialogue);
-    std::vector<std::size_t> starts;
-    (void)read_back(encoded, starts);
-    const std::vector<std::vector<float>> coded = decode(encoded.frames, {});
-    const std::vector<std::vector<float>> raised =
-        decode(encoded.frames,
-               output(std::nullopt, ac4::DrcMode::kDefault, 9.0, ac4::DownmixTarget::kAsCoded));
-    for (std::size_t c = 0; c < 2; ++c) {
-        CAPTURE(c);
-        const double dialogue_db =
-            db_of_power(tone_power(raised[c], 1000.0) / tone_power(coded[c], 1000.0));
-        const double low_db = db_of_power(tone_power(raised[c], 90.0) / tone_power(coded[c], 90.0));
-        const double high_db =
-            db_of_power(tone_power(raised[c], 9000.0) / tone_power(coded[c], 9000.0));
-        CAPTURE(dialogue_db, low_db, high_db);
-        CHECK(dialogue_db > 8.5);
-        CHECK(dialogue_db < 9.5);
-        CHECK(std::abs(low_db) < 0.5);
-        CHECK(std::abs(high_db) < 0.5);
-    }
 
     // A stem is given with the programme, and only where one is configured.
     auto stemmed = ac4::Encoder::create(config);
@@ -498,6 +532,23 @@ TEST_CASE("the encoder refuses metadata the syntax cannot send", "[ac4enc][metad
         CHECK(refused(config));
         config = config_51();
         config.dialogue->max_gain_db = 10;
+        CHECK(refused(config));
+        // The Mid is L and R's alone; the cross-channel method pans over two
+        // channels or three, from a stem.
+        config = config_51();
+        config.dialogue = ac4::DialogueConfig{.method = ac4::DialogueMethod::kMid,
+                                              .source = ac4::DialogueSource::kMarkedChannels,
+                                              .left = true,
+                                              .right = true,
+                                              .centre = true,
+                                              .max_gain_db = 9};
+        CHECK(refused(config));
+        config.dialogue->method = ac4::DialogueMethod::kCrossChannel;
+        CHECK(refused(config));
+        config.dialogue->source = ac4::DialogueSource::kStem;
+        CHECK_FALSE(refused(config));
+        config.dialogue->left = false;
+        config.dialogue->right = false;
         CHECK(refused(config));
     }
     SECTION("DRC modes: an id past 7, one twice, a repeat of none, output levels out of order") {
