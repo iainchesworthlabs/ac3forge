@@ -55,6 +55,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "esp_system.h"
 #include "freertos/task.h"
 
 #include "ac3/core/tables.hpp"
@@ -779,6 +780,21 @@ extern "C" void app_main() {
             start_sendspin();
             if (player::sendspin_running()) {
                 player::provisioning_start(&player::sendspin_console);
+            } else if (player::sendspin_built()) {
+                // A network that comes up after boot - a new board's, over
+                // Improv - finds internal RAM already split by what started
+                // without one: the Improv task and the network stack. On the
+                // S3 board that left the burst player's task no 32 KiB block
+                // (largest 31,744), so a board just given its network could
+                // not play until it was restarted (planning/esp32-ota.md, O9).
+                // A boot with the network stored starts the player before
+                // those, so restart into one, once the Improv client has had
+                // its answer. That boot has its network from the start, so it
+                // never comes back here.
+                std::printf("sendspin: the player could not start now the network is up; "
+                            "restarting, which starts it first\n");
+                vTaskDelay(pdMS_TO_TICKS(2000));
+                esp_restart();
             }
         }
         player::sendspin_poll();
