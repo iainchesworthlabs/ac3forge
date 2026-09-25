@@ -26,6 +26,7 @@ target_sources(ac4core
         src/dsp/kbd.cpp
         src/dsp/mdct.cpp
         src/dsp/qmf.cpp
+        src/dsp/resampler.cpp
         src/dsp/synthesis.cpp
         src/tables/huffman_codes.cpp
         src/tables/huffman_tables.cpp

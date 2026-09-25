@@ -871,7 +871,8 @@ I-frame settings, each with MediaInfo's frame-by-frame trace beside it.
 ### The decoder's output
 
 The decoder turns a mono, stereo, 3.0, 5.X or 7.X substream in any of Part 1's codec modes (SIMPLE,
-ASPX and the three A-CPL modes), at `frame_rate_index` 13, into PCM: the audio spectral frontend, stereo
+ASPX and the three A-CPL modes), at `frame_rate_index` 13 and, through the sample rate converter of
+the next section, at every other index, into PCM: the audio spectral frontend, stereo
 and multichannel processing, the inverse transform with block switching and frame alignment (Part 1
 clauses 5.1, 5.3, 5.5 and 5.6), then the QMF domain (5.7): the analysis bank, companding, A-SPX, A-CPL
 and the synthesis bank. Every codec
@@ -1011,6 +1012,62 @@ Comparing the two transcriptions' notes found that they had framed ASPX_ACPL_1's
 `b_use_sap_add_ch`'s parameters differently, each against the channel mapping of Part 1 clause 5.3.4;
 both now follow that mapping. The check shows that the two transcriptions read these paths alike,
 which a shared misreading still passes.
+
+### The decoder's output processing
+
+Phase D6 adds the sample rate converter for every frame rate but index 13, the output processing a
+system configures through `ac4::OutputConfig` (the output level and DRC, dialogue enhancement and the
+downmix), and what the decoder does at I-frames, at a change of source and with a frame that does not
+decode. Where the text leaves a choice open, the reading is in `src/ac4dec/ERRATA.md`, under "Output
+processing" and in "A change of source" and "What an I-frame does not restore".
+
+- **The sample rate converter** (`tests/ac4core/test_ac4core_resampler.cpp`): over 100,000 frames at
+  each of the decoder's three ratios and the encoder's inverses the output count is exact, frame by
+  frame in Part 2 Table 47's sequence at the 1000/1001 rates and from any starting frame, and a
+  converter whose phase jumps goes on converting at the new phase's counts. Tones in the passband come
+  out flat to 0.001 dB with everything else 100 dB under them, and converting down, a tone between the
+  two Nyquist frequencies comes out 100 dB down. DEE's immersive stereo at 23.976, 24, 25 and 29.97 fps
+  decodes at Table 47's counts, and `score_ac4_decode.py` scores it as it scores index 13: each rate lags
+  its source by a constant, within 1.3 samples of DEE's half frame plus the decoder's delay.
+- **The output level and DRC** (`tests/ac4dec/test_ac4dec_drc.cpp`): Table 162's profiles and the
+  curves DEE transmits are the compression curves the text defines; stepped tones at steady state
+  follow each profile's static curve within 0.5 dB, and a step in level moves the gain at the attack and
+  release time constants. Table 161 chooses the mode for the output level. The output level gain
+  equals 2^((Lout - dialnorm) / 6) to 0.01 dB on streams the encoder writes at dialnorms from -31 to
+  -17. Transmitted gains apply by channel group, band and subframe on constructed data, and DEE's 5.1
+  stream compresses within its own curves in each mode it configures.
+- **Dialogue enhancement** (`tests/ac4dec/test_ac4dec_de.cpp`): at 0 dB the output is the output with
+  the tool bypassed, sample for sample; at the stream's cap the channel-independent method, its mid and
+  side form and the cross-channel method apply the gains their parameters give to 0.01 dB on known
+  input, and a frame's matrix moves to the next slot by slot. DEE's speech comes out raised at its cap
+  and unchanged at 0 dB.
+- **The downmix** (`tests/ac4dec/test_ac4dec_downmix.cpp`): Tables 149 and 149a give the mix gains,
+  5.1's downmixes are Table 218's with the stream's gains, the LFE and the loudness corrections, 7.X
+  folds to 5.X by Table 219 for each additional pair, and 3.0, stereo and mono take Table 217, the sum
+  and the 0.707 upmix; the gains hold from the frame that sends them until another does. DEE's 5.1 tones
+  come out of each downmix at the stream's gains to 0.01 dB.
+- **The gains on DEE's streams** (`tools/checks/gain_ac4_decode.py`): each stream decoded as coded and
+  again at output levels of -31, -24 and -17 dBFS with DRC off gives the coded output times
+  2^((Lout - dialnorm) / 6) to 0.01 dB, with what is left beside that gain 100 dB down; each 5.1
+  stream's two-channel, Lo/Ro, Lt/Rt and mono outputs are clause 6.2.17's matrix, with the stream's own
+  values read from its syntax trace, applied to its coded output, to 80 dB. Both hold to the output's
+  rounding. CI runs the committed streams, dialnorms from -26 to -16 dBFS; locally the 115 legs of the
+  gold set, dialnorms from -24 (the ATSC A/85 preset) to -16, with DEE's own Lo/Ro and Lt/Rt gains,
+  each preferred downmix method and Lt/Rt's Pro Logic II form. DEE's immersive stereo at 24 and 25 fps
+  sends a dialnorm of -24 dBFS in its last frame, so the checks stop before it.
+- **Start-up, splices and damaged frames** (`tests/ac4dec/test_ac4dec_decoder.cpp`): decoded from each
+  of their I-frames, the committed streams give the whole stream's output from the frame after the
+  I-frame, whose own audio overlaps a frame the decoder never had: to under -100 dBFS in SIMPLE, to -50
+  dBFS in ASPX, whose noise and tone generators run at another phase, and in A-CPL within -54 dBFS by
+  the fourth frame, as its decorrelators settle. Spliced at an I-frame, marked 0 or with the counter
+  jumping, two streams come out as each decodes alone, the first up to the joint and the second from the
+  frame after it, overlapping across the joint frame; spliced between I-frames, the output resumes at
+  the next I-frame as the second stream decoded alone. At 29.97 fps the counts follow the new counter's
+  phase across a jump and the old sequence across a 0. Under either concealment policy each of three
+  damaged frames in a row comes out at its length with the damage reported, and the output is the
+  undamaged decode's up to the lost audio and again from the second good frame after it; muted frames
+  are silent, repeated ones fade by more than 20 dB a frame, and a frame whose table of contents does
+  not read keeps the stream's counter and the converter's counts.
 
 ### The encoder
 
