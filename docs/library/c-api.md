@@ -22,7 +22,10 @@ explicitly as `ac3::forge_c_static`/`ac3::forge_c_shared` — see [Using ac3::fo
 the equivalent `ac3::forge` linking recipe. Unlike `ac3::forge`, **both** `ac3forge_c` variants
 statically embed the codec core regardless of `BUILD_SHARED_LIBS`: a binding or embedder reaching
 for a C ABI wants exactly one library to `dlopen`/`ctypes`/`ffi.dlopen`, not a second
-`libac3forge.so` to also track down and ship — see `src/capi/CMakeLists.txt`'s header comment.
+`libac3forge.so` to also track down and ship — see `src/capi/CMakeLists.txt`'s header comment. On
+Linux the shared library exports the C API and nothing else, so a program that links it beside
+`libac3forge.so` still calls the C++ API in `libac3forge.so`; the copy of the codec inside
+`libac3forge_c.so` serves the C API alone.
 
 Built by default (`-DAC3FORGE_BUILD_CAPI=OFF` to skip it); it needs nothing `ac3::forge` itself
 doesn't.

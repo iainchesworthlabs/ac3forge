@@ -860,6 +860,14 @@ co-processor - this part has no radio of its own - and needs nothing extra in
 so they are resolved and linked automatically, unused everywhere else this example
 already builds for.
 
+The board's default name (`hearth-` and the last six hex digits of its MAC address) and
+the `mac_address` it gives a Sendspin server come from the P4's own base MAC, the one its
+USB serial number shows, and not from the C6's radio: ESP-IDF lists a Wi-Fi station MAC
+only for a target with a radio of its own, so `board_mac()` (`main/settings.cpp`) takes
+the base MAC there and the station MAC everywhere else. A P4 that has not been renamed
+and was running an earlier image, which left it `hearth` with no MAC to report, takes the
+new name, and so the new `.local` address, at its next start.
+
 Brought up on a DFRobot FireBeetle 2 ESP32-P4, pre-production silicon (chip revision
 v1.3 - see [ESP32-P4](../../../../docs/platforms/bare-metal/esp32-p4.md) for that
 board's own chip-revision and clock findings from the bare-metal probe). Three more

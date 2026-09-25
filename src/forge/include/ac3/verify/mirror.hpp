@@ -114,7 +114,7 @@ struct BlockTrace {
 };
 
 // One side's view of one frame.
-struct FrameTrace {
+struct AC3FORGE_EXPORT FrameTrace {
     int fbw_channels = 0;    // nfchans
     int coded_channels = 0;  // nfchans + lfe; the coupling stream sits at this index
     std::array<BlockTrace, kBlocksPerFrame> blocks{};

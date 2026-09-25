@@ -19,7 +19,6 @@
 
 #include "esp_app_desc.h"
 #include "esp_heap_caps.h"
-#include "esp_mac.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -178,7 +177,7 @@ bool g_board_changed = false;
 
 [[nodiscard]] std::string mac_text() {
     std::array<std::uint8_t, 6> mac{};
-    if (esp_read_mac(mac.data(), ESP_MAC_WIFI_STA) != ESP_OK) {
+    if (!board_mac(mac)) {
         return {};
     }
     std::array<char, 18> text{};

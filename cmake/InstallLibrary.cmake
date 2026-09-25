@@ -72,12 +72,15 @@ elseif(BUILD_SHARED_LIBS)
     # ac3::forge_c (src/capi/CMakeLists.txt) statically embeds ac3::forge_static PRIVATE
     # unconditionally, regardless of BUILD_SHARED_LIBS - see that file's header comment for why
     # (a self-contained C ABI, not one that depends on a separately-shipped forge shared
-    # library). forge_c_objects is an OBJECT library, so that PRIVATE dependency still ends up in
-    # forge_c_objects's own INTERFACE_LINK_LIBRARIES (OBJECT libraries have no link step of their
-    # own to hide it behind) - and since forge_c_objects is itself part of capiTargets whenever
-    # AC3FORGE_BUILD_CAPI is ON, forge_static must be in an export set too, or install(EXPORT
-    # capiTargets) fails with "requires target forge_static that is not in any export set."
-    # forge_shared has no such requirement, so it doesn't need the same treatment here.
+    # library). forge_static used to have to be in an export set here: forge_c_objects is an
+    # OBJECT library, so the PRIVATE dependency ended up in its own INTERFACE_LINK_LIBRARIES
+    # (OBJECT libraries have no link step of their own to hide it behind), and since
+    # forge_c_objects is itself part of capiTargets whenever AC3FORGE_BUILD_CAPI is ON,
+    # install(EXPORT capiTargets) failed with "requires target forge_static that is not in any
+    # export set." That dependency now sits on forge_c_static and forge_c_shared instead, and a
+    # shared library's PRIVATE dependencies are not exported, so nothing in capiTargets names
+    # forge_static in this branch any more. It is still installed, so that a package built this
+    # way keeps shipping the archive it always has. forge_shared never needed the same treatment.
     if(AC3FORGE_BUILD_CAPI)
         set(_ac3forge_forge_install_targets forge_objects forge_static forge_shared)
     else()
