@@ -1264,6 +1264,19 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.ac4_output_level = level;
             continue;
         }
+        if (key == "dialogue-enhancement") {
+            // AC-4's G_DE (ETSI TS 103 190-1 clause 5.7.8), which the stream
+            // caps at 3, 6, 9 or 12 dB.
+            double gain = 0.0;
+            if (!parse_double(value, gain) || !std::isfinite(gain) || gain < 0.0 || gain > 12.0) {
+                fmt::println(stderr,
+                             "error: dialogue-enhancement is a gain in dB from 0 to 12 (got '{}')",
+                             token);
+                return false;
+            }
+            out.ac4_dialogue_enhancement = gain;
+            continue;
+        }
         // Scoped to `decode`, which is the only command that builds a census -
         // run_decode is reached from nowhere else, and the loudness commands
         // run their own decode loop that never accumulates one. Unscoped, this

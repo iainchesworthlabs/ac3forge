@@ -420,9 +420,10 @@ ac4::DrcMode ac4_drc_mode(std::string_view name) {
 }
 
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the channel-coded substream
-// its decode() picks, written as its coded channels, at the output level
-// output-level= names and compressed in the DRC decoder mode drcmode= names
-// (ETSI TS 103 190-1 clause 5.7.9). The downmix and the object options are
+// its decode() picks, written as its coded channels, with the dialogue raised
+// by dialogue-enhancement= (ETSI TS 103 190-1 clause 5.7.8), at the output
+// level output-level= names and compressed in the DRC decoder mode drcmode=
+// names (clause 5.7.9). The downmix and the object options are
 // output processing the AC-4 decoder does not do yet; each is reported rather
 // than applied.
 int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
@@ -471,6 +472,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     ac4::DecoderConfig config;
     config.output.output_level_dbfs = meta.ac4_output_level;
     config.output.drc = ac4_drc_mode(meta.ac4_drc_mode);
+    config.output.dialogue_enhancement_db = meta.ac4_dialogue_enhancement;
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {

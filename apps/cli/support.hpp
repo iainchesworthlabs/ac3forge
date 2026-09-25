@@ -143,6 +143,9 @@ struct Options {
     // or "portable-headphones" (ac4::DrcMode), empty for the default.
     std::optional<double> ac4_output_level;
     std::string ac4_drc_mode;
+    // 'decode' of AC-4 only: dialogue-enhancement=, G_DE in dB, 0 to 12
+    // (ac4::OutputConfig::dialogue_enhancement_db).
+    double ac4_dialogue_enhancement = 0.0;
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in

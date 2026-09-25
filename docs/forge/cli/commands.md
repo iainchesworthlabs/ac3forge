@@ -404,7 +404,7 @@ top, which puts dialogue at −20 dBFS, and plays any syncframe without a `compr
 mode's level — the same as the Dolby Reference Player's RF mode (see
 [RF mode's level](../../library/decoding.md#rf-modes-level)).
 
-AC-4 has a different model (ETSI TS 103 190-1 clause 5.7.9): the decoder takes the stream's
+AC-4 has a different model (ETSI TS 103 190-1 clauses 5.7.8 and 5.7.9): the decoder takes the stream's
 dialnorm to an output level the system supplies, cutting or boosting by
 2^((output level − dialnorm) / 6), and compresses in one of the DRC decoder modes the stream
 configures. `output-level=<dBFS>` sets that level; without it `decode` writes the coded level.
@@ -418,6 +418,10 @@ ac3cli decode stream.ac4 out.wav output-level=-31                  # home theatr
 ac3cli decode stream.ac4 out.wav output-level=-14 drcmode=portable-headphones
 ac3cli decode stream.ac4 out.wav output-level=-24 drcmode=off      # the level, no compression
 ```
+
+`dialogue-enhancement=<dB>` raises the dialogue where the stream sends dialogue enhancement
+parameters (clause 5.7.8), from 0 (the default, which leaves the output alone) to 12 dB, and never
+beyond the cap the stream sets, 3, 6, 9 or 12 dB.
 
 `monitor` takes all of the same tokens, and additionally folds on its own initiative when the
 output device renders fewer channels than the programme: playing 5.1 on a stereo endpoint

@@ -487,6 +487,33 @@ TEST_CASE("decode takes AC-4 to output-level= and compresses it in drcmode='s mo
           1);
 }
 
+TEST_CASE("decode raises AC-4's dialogue by dialogue-enhancement=", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_de.log";
+    // DEE's speech stream sends dialogue enhancement parameters for L and R,
+    // capped at 9 dB.
+    const fs::path stream =
+        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-speech-128" / "dee.ac4";
+    const auto plain_wav = dir / "ac4_de_plain.wav";
+    const auto raised_wav = dir / "ac4_de_raised.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(plain_wav), log) == 0);
+    REQUIRE(
+        run_cli("decode " + quoted(stream) + " " + quoted(raised_wav) + " dialogue-enhancement=9",
+                log) == 0);
+    const auto plain = ac3::io::read_wav(plain_wav.string());
+    const auto raised = ac3::io::read_wav(raised_wav.string());
+    REQUIRE(plain.has_value());
+    REQUIRE(raised.has_value());
+    const auto energy = [](const std::vector<float>& x) {
+        double sum = 0.0;
+        for (const float v : x) {
+            sum += static_cast<double>(v) * static_cast<double>(v);
+        }
+        return sum;
+    };
+    CHECK(10.0 * std::log10(energy(raised->channels[0]) / energy(plain->channels[0])) > 1.0);
+}
+
 TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "[cli][mp4][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_encode.log";
