@@ -1,6 +1,8 @@
 #include "network_controller.hpp"
 
 #include <QDebug>
+#include <QFile>
+#include <QFileInfo>
 #include <QSysInfo>
 
 #include <algorithm>
@@ -25,6 +27,7 @@
 #include "ac3/render/layout.hpp"
 #include "ac3/render/routing.hpp"
 #include "ac3/sendspin/ac3forge_player.hpp"
+#include "ac3/version.hpp"
 #include "network_output_status.hpp"
 #include "network_sinks.hpp"
 #include "network_view.hpp"
@@ -33,6 +36,8 @@
 #include "server_identity.hpp"
 #include "settings_model.hpp"
 #include "shared_pairing_store.hpp"
+#include "sink_firmware.hpp"
+#include "sink_firmware_view.hpp"
 
 namespace ac3::hearth::ui {
 
@@ -491,6 +496,43 @@ struct LayoutFields {
     return map;
 }
 
+// --- a Hearth sink's firmware (planning/esp32-ota.md, O5) -----------------
+
+// The largest file chooseSinkFirmwareFile() reads: every board's slot is at
+// most 4 MiB, so anything past twice that is not an image for one.
+constexpr qint64 kMaxFirmwareFileBytes = 8 * 1024 * 1024;
+
+[[nodiscard]] QVariantMap firmware_panel_to_map(const ac3::hearth::FirmwarePanel& panel) {
+    QVariantMap map;
+    map[QStringLiteral("answering")] = panel.answering;
+    map[QStringLiteral("statusText")] = QString::fromStdString(panel.status_text);
+    map[QStringLiteral("reported")] = panel.reported;
+    map[QStringLiteral("runningText")] = QString::fromStdString(panel.running_text);
+    map[QStringLiteral("otherText")] = QString::fromStdString(panel.other_text);
+    map[QStringLiteral("runningVersion")] = QString::fromStdString(panel.running_version);
+    map[QStringLiteral("otherVersion")] = QString::fromStdString(panel.other_version);
+    map[QStringLiteral("sameBuild")] = panel.same_build;
+    map[QStringLiteral("buildText")] = QString::fromStdString(panel.build_text);
+    map[QStringLiteral("modeText")] = QString::fromStdString(panel.mode_text);
+    map[QStringLiteral("trialText")] = QString::fromStdString(panel.trial_text);
+    map[QStringLiteral("uploadText")] = QString::fromStdString(panel.upload_text);
+    map[QStringLiteral("lastUpdateText")] = QString::fromStdString(panel.last_update_text);
+    map[QStringLiteral("crashText")] = QString::fromStdString(panel.crash_text);
+    map[QStringLiteral("updating")] = panel.updating;
+    map[QStringLiteral("progress")] = panel.progress;
+    map[QStringLiteral("progressText")] = QString::fromStdString(panel.progress_text);
+    map[QStringLiteral("outcome")] = QString::fromStdString(panel.outcome);
+    map[QStringLiteral("outcomeText")] = QString::fromStdString(panel.outcome_text);
+    map[QStringLiteral("actionText")] = QString::fromStdString(panel.action_text);
+    map[QStringLiteral("canUpdate")] = panel.can_update;
+    map[QStringLiteral("canRollback")] = panel.can_rollback;
+    map[QStringLiteral("canRestart")] = panel.can_restart;
+    map[QStringLiteral("pageUrl")] = QString::fromStdString(panel.page_url);
+    map[QStringLiteral("logUrl")] = QString::fromStdString(panel.log_url);
+    map[QStringLiteral("coredumpUrl")] = QString::fromStdString(panel.coredump_url);
+    return map;
+}
+
 }  // namespace
 
 NetworkController::NetworkController(QObject* parent)
@@ -510,6 +552,8 @@ NetworkController::NetworkController(QObject* parent)
 
 NetworkController::~NetworkController() {
     poll_timer_.stop();
+    // Each takes at most a second to let its thread go (sink_firmware.hpp).
+    firmware_.clear();
     // The groups this controller published go first, so that a group nothing
     // else holds leaves its members while the host can still tell them (a
     // group the engine still holds just finds no members once the host has
@@ -667,6 +711,7 @@ void NetworkController::poll() {
         qInfo().noquote() << "sendspin:" << QString::fromStdString(line);
     }
     const ac3::hearth::NetworkStatus status = sinks_engine_->status();
+    poll_firmware(status);
 
     QVariantList rows;
     rows.reserve(static_cast<qsizetype>(status.sinks.size()));
@@ -736,6 +781,144 @@ void NetworkController::poll() {
     selected_group_id_ = new_selected_group_id;
     selected_group_ = std::move(selected_group);
     emit sinksChanged();
+}
+
+void NetworkController::poll_firmware(const ac3::hearth::NetworkStatus& status) {
+    // The sink the Firmware tab is open on, and the address mDNS gave for it,
+    // where its web server is too.
+    std::string sink_id;
+    std::string address;
+    if (firmware_watching_) {
+        for (const ac3::hearth::SinkFacts& facts : status.sinks) {
+            if (facts.id == status.selected_id) {
+                sink_id = facts.id;
+                address = facts.address;
+                break;
+            }
+        }
+    }
+    for (auto it = firmware_.begin(); it != firmware_.end();) {
+        const bool shown = it->first == sink_id;
+        // A sink that took a new address is asked there, unless an update
+        // is following it at the old one.
+        const bool moved = shown && !address.empty() && it->second->snapshot().host != address;
+        if ((!shown || moved) && !it->second->busy()) {
+            it = firmware_.erase(it);
+            continue;
+        }
+        it->second->set_watching(shown);
+        ++it;
+    }
+    if (!sink_id.empty() && !address.empty() && firmware_.find(sink_id) == firmware_.end()) {
+        auto client = std::make_unique<ac3::hearth::SinkFirmware>(address);
+        client->set_watching(true);
+        firmware_.emplace(sink_id, std::move(client));
+    }
+
+    const auto found = firmware_.find(sink_id);
+    if (found == firmware_.end()) {
+        if (!sink_firmware_.isEmpty() || !firmware_sink_id_.empty()) {
+            sink_firmware_.clear();
+            firmware_sink_id_.clear();
+            firmware_generation_ = 0;
+            emit sinkFirmwareChanged();
+        }
+        return;
+    }
+    const ac3::hearth::SinkFirmware::Snapshot snapshot = found->second->snapshot();
+    if (sink_id == firmware_sink_id_ && snapshot.generation == firmware_generation_ && !sink_firmware_.isEmpty()) {
+        return;
+    }
+    firmware_sink_id_ = sink_id;
+    firmware_generation_ = snapshot.generation;
+    QVariantMap panel = firmware_panel_to_map(ac3::hearth::to_firmware_panel(snapshot, ac3::git_describe));
+    if (panel != sink_firmware_) {
+        sink_firmware_ = std::move(panel);
+        emit sinkFirmwareChanged();
+    }
+}
+
+ac3::hearth::SinkFirmware* NetworkController::selected_firmware() const {
+    const auto found = firmware_.find(firmware_sink_id_);
+    return found != firmware_.end() ? found->second.get() : nullptr;
+}
+
+void NetworkController::watchSinkFirmware(bool watching) {
+    firmware_watching_ = watching;
+    if (!watching) {
+        clearSinkFirmwareFile();
+    }
+    if (sinks_engine_) {
+        poll_firmware(sinks_engine_->status());
+    }
+}
+
+void NetworkController::chooseSinkFirmwareFile(const QUrl& file) {
+    firmware_file_.reset();
+    const QString path = file.isLocalFile() ? file.toLocalFile() : file.toString();
+    QVariantMap candidate;
+    candidate[QStringLiteral("name")] = QFileInfo(path).fileName();
+    candidate[QStringLiteral("version")] = QString();
+    candidate[QStringLiteral("text")] = QString();
+    QFile image(path);
+    if (!image.open(QIODevice::ReadOnly)) {
+        candidate[QStringLiteral("refusal")] = tr("it could not be read: %1").arg(image.errorString());
+    } else if (image.size() > kMaxFirmwareFileBytes) {
+        candidate[QStringLiteral("refusal")] =
+            tr("it is %1 bytes, more than any sink's app slot holds").arg(image.size());
+    } else {
+        const QByteArray bytes = image.readAll();
+        const auto* first = reinterpret_cast<const std::uint8_t*>(bytes.constData());
+        ac3::hearth::ReadFirmwareFile read =
+            ac3::hearth::read_firmware_file(std::vector<std::uint8_t>(first, first + bytes.size()));
+        if (!read.file) {
+            candidate[QStringLiteral("refusal")] = QString::fromStdString(read.why);
+        } else {
+            const ac3::hearth::SinkFirmware* client = selected_firmware();
+            const ac3::hearth::FirmwareCandidate checked = ac3::hearth::to_candidate(
+                *read.file, client != nullptr ? client->snapshot() : ac3::hearth::SinkFirmware::Snapshot{});
+            candidate[QStringLiteral("version")] = QString::fromStdString(checked.version);
+            candidate[QStringLiteral("text")] = QString::fromStdString(checked.text);
+            candidate[QStringLiteral("refusal")] = QString::fromStdString(checked.refusal);
+            if (checked.refusal.empty()) {
+                firmware_file_ = std::make_unique<ac3::hearth::FirmwareFile>(std::move(*read.file));
+                firmware_file_sink_id_ = firmware_sink_id_;
+            }
+        }
+    }
+    sink_firmware_candidate_ = std::move(candidate);
+    emit sinkFirmwareChanged();
+}
+
+void NetworkController::clearSinkFirmwareFile() {
+    firmware_file_.reset();
+    firmware_file_sink_id_.clear();
+    if (!sink_firmware_candidate_.isEmpty()) {
+        sink_firmware_candidate_.clear();
+        emit sinkFirmwareChanged();
+    }
+}
+
+void NetworkController::updateSinkFirmware() {
+    ac3::hearth::SinkFirmware* client = selected_firmware();
+    // The file was checked for the sink the tab showed then; a selection
+    // changed since sends nothing.
+    if (client != nullptr && firmware_file_ && firmware_file_sink_id_ == firmware_sink_id_) {
+        (void)client->start_update(std::move(*firmware_file_));
+    }
+    clearSinkFirmwareFile();
+}
+
+void NetworkController::rollbackSinkFirmware() {
+    if (ac3::hearth::SinkFirmware* client = selected_firmware()) {
+        (void)client->rollback();
+    }
+}
+
+void NetworkController::restartSink() {
+    if (ac3::hearth::SinkFirmware* client = selected_firmware()) {
+        (void)client->restart();
+    }
 }
 
 namespace {
