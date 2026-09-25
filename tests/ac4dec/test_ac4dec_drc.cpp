@@ -383,6 +383,57 @@ TEST_CASE("transmitted DRC gains apply by channel group, band and subframe", "[a
     }
 }
 
+TEST_CASE("transmitted DRC gains apply by Part 2 Table 69's groups to the immersive element",
+          "[ac4dec][drc]") {
+    // Table 69 for 7.X.4: L, R and the LFE; C; Ls, Rs, Lb and Rb; the four
+    // tops. Core decoding's Tsl and Tsr carry the tops and take their group
+    // (src/ac4dec/ERRATA.md, "DRC's groups in core decoding").
+    using S = ac4::Speaker;
+    const std::vector<S> full = {S::kLeft,          S::kRight,        S::kCentre,
+                                 S::kLfe,           S::kLeftSurround, S::kRightSurround,
+                                 S::kLeftBack,      S::kRightBack,    S::kTopFrontLeft,
+                                 S::kTopFrontRight, S::kTopBackLeft,  S::kTopBackRight};
+    const std::vector<int> full_groups = {0, 0, 1, 0, 2, 2, 2, 2, 3, 3, 3, 3};
+    const std::vector<S> core = {S::kLeft,        S::kRight,        S::kCentre,
+                                 S::kLfe,         S::kLeftSurround, S::kRightSurround,
+                                 S::kTopSideLeft, S::kTopSideRight};
+    const std::vector<int> core_groups = {0, 0, 1, 0, 2, 2, 3, 3};
+    detail::DrcGainset set;
+    set.drc_gains_config = 0;
+    set.nr_drc_channels = 4;
+    set.nr_drc_bands = 1;
+    set.nr_drc_subframes = 1;
+    set.gains_present = true;
+    for (int group = 0; group < 4; ++group) {
+        set.drc_gain[static_cast<std::size_t>(group * detail::kMaxDrcSubframes *
+                                              detail::kMaxDrcBands)] =
+            static_cast<std::int16_t>(-6 * (group + 1));
+    }
+    for (const auto& [speakers, groups] :
+         {std::pair{full, full_groups}, std::pair{core, core_groups}}) {
+        CAPTURE(speakers.size());
+        detail::DrcStage stage;
+        stage.configure(48000.0, kSlots, speakers, false, true);
+        const ac4::OutputConfig output{
+            .output_level_dbfs = -30.0, .drc = ac4::DrcMode::kDefault, .headphones = false};
+        std::vector<std::vector<QmfValue>> channels(
+            speakers.size(), std::vector<QmfValue>(kSlots * 64, QmfValue{1.0, 0.0}));
+        std::vector<std::vector<QmfValue>*> matrices;
+        for (auto& channel : channels) {
+            matrices.push_back(&channel);
+        }
+        stage.process(output,
+                      {.dialnorm = -30.0, .curve = std::nullopt, .gains = set, .reset = false},
+                      matrices, matrices);
+        for (std::size_t c = 0; c < channels.size(); ++c) {
+            CAPTURE(c);
+            // -6 dB2 per group from the first: a half, a quarter, and so on.
+            const double gain = std::exp2(-static_cast<double>(groups[c] + 1));
+            CHECK(std::abs(channels[c][100].real() - gain) < 1e-12);
+        }
+    }
+}
+
 TEST_CASE(
     "decode takes dialnorm to the output level by 2^((Lout - dialnorm) / 6), dialnorms -31 to -17",
     "[ac4dec][drc]") {

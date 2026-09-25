@@ -150,6 +150,11 @@ struct Options {
     // 'decode' of AC-4 only: decoding=core, core decoding (ac4::DecodingMode);
     // full decoding by default.
     bool ac4_core_decoding = false;
+    // 'decode' of AC-4 only: speakers=, the layout Part 2's renderer takes an
+    // immersive element to, "5.1", "5.1.2", "5.1.4", "7.1", "7.1.2" or
+    // "7.1.4" (ac4::DownmixTarget), empty for the source's own; a fold that
+    // channels= or downmix= asks for wins.
+    std::string ac4_speakers;
     // 'ac4-encode' only: the frame rate, rate mode, I-frames and metadata
     // (ac4::EncoderConfig) as its options set them; print_meta_usage says
     // what each takes. Where a key other commands also read (dialnorm=, drc=,

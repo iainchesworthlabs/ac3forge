@@ -1427,6 +1427,95 @@ output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample 
 - **Evidence:** Text; `tests/ac4dec/test_ac4dec_decoder.cpp` holds the counts across a jump and a 0 at
   29.97 fps.
 
+## The channel renderer
+
+The readings phase D9 takes to render the immersive element by Part 2's channel renderer (5.10.2), which
+takes its place in the downmix stage: Tables 38 to 43 in full decoding and 45 and 46 in core decoding,
+with the custom downmix parameters (6.2.9.2, 6.3.10.3) and the loudness corrections (4.8.5.3). The
+decoder takes them in `src/ac4dec/src/pcm/renderer.cpp` and `downmix.cpp`, and
+`tools/checks/gain_ac4_decode.py` takes them again in the matrices it holds DEE's 5.1.4 legs to.
+
+### The renderer's input channel configuration
+
+- **Where:** Part 2 5.10.2.2 and 5.10.2.4, pp. 102 and 103: the input channel configuration is the one
+  `pres_ch_mode` or `ch_mode` indicates, and the element's modes are 7.X.4 (and 9.X.4); Tables 38 to 43 give
+  rows for 7.X.2, 5.X.4 and 5.X.2 inputs, which no channel mode names. 6.3.2.7.1, p. 159, says the three
+  presence flags signal "whether some of the channels as signalled by channel_mode are actually present in
+  the original content", and 6.2.9.2 derives `bs_ch_config`, which custom downmix data depend on, from
+  them.
+- **Reading:** the input configuration is the channel mode narrowed by the presence flags: 7.X with
+  `b_4_back_channels_present`, 5.X without; .4 with `top_channels_present` 3, .2 with 1 or 2, .0 with 0.
+  The channels it leaves out are silenced, as 5.10.2.2 says of input signals the input channel mode lacks,
+  and decode()'s as-coded output is that configuration. Core decoding's Tables 45 and 46 read the flags
+  themselves. `b_centre_present` 0 leaves C in, silent.
+- **Evidence:** Text. DEE's 5.1.4 legs send `b_4_back_channels_present` 0 and come out as 5.1.4.
+
+### Where a .2 source's top pair is carried
+
+- **Where:** Part 2 Table 59, p. 161: with `top_channels_present` 1, "Original content of Tsl, Tsr is
+  carried in Tfl, Tfr"; with 2, "carried in Tbr, Tbl".
+- **Reading:** Tsl in Tbl and Tsr in Tbr, left in left as with 1: the printed order lists the pair and
+  does not pair it crosswise.
+- **Evidence:** Text. No stream here sends `top_channels_present` 1 or 2 but the constructed ones.
+
+### Custom downmix data
+
+- **Where:** Part 2 6.2.9.2, p. 151: every presentation substream sends `custom_dmx_data()`, with or
+  without data (`b_cdmx_data_present`); 6.3.10.3.10, p. 208: a parameter "not transmitted for a certain
+  out_ch_config" takes Table 130's default, except that "For the downmix from bs_ch_config = 1 to
+  out_ch_config = 4 the same tool_t4_to_t2() parameters as for the downmix to out_ch_config = 1 shall be
+  used, if transmitted". Nothing says how long data a frame sends hold.
+- **Reading:** the data a frame sends hold until a frame sends others, as the mix gains and the loudness
+  corrections do (Part 1 6.2.17.0, Part 2 4.8.5.3), and each sending replaces them whole: a parameter it
+  does not send for an `out_ch_config`, or an `out_ch_config` it does not send, takes Table 130's default.
+  The exception holds where `out_ch_config` 4 sends no `gain_t1_code` and `out_ch_config` 1 does. The
+  gains are in dB, 10^(dB/20), code 7 silence.
+- **Why:** DEE sends custom downmix data in I-frames alone, 12 of a leg's 237 frames; the defaults between
+  them would move the render's gains at every I-frame.
+- **Evidence:** Streams: G1's 5.1.4 height legs (`out_ch_config` 0, `gain_t2a_code` to `gain_t2e_code`
+  from 0 dB to silence) render to 5.1 at the gains they send, in every frame
+  (`tools/checks/gain_ac4_decode.py --gold`).
+
+### The loudness correction of a render
+
+- **Where:** Part 2 4.8.5.3, p. 52: "When downmixing is done in the decoder, the loudness shall be adjusted
+  using the output channel-specific loudness correction factor from the loud_corr element that relates to
+  the selected downmix"; `loud_corr()` (6.2.9.1) sends one per output configuration, and the core's.
+- **Reading:** a render takes its output configuration's correction (`loud_corr_7_X`, `_7_X_2`,
+  `_5_X_4`, `_5_X_2`, `_5_X`) where it downmixes, its output narrower or lower than the input
+  configuration, and none where it does not: as coded, or to a configuration as wide and as high or more.
+  Core decoding takes `loud_corr_core_5_X_2` and `loud_corr_core_5_X` on the same terms against the source's
+  configuration. A correction of 31 is 0 dB.
+- **Evidence:** Text. DEE's legs send no correction for an immersive output (`b_corr_for_immersive_out`
+  0).
+
+### The renderer's two-channel output
+
+- **Where:** Part 2 Table 34, p. 104, and Table 44, p. 107, render to 5.X.0 at the narrowest; Part 1
+  6.2.17 downmixes 5.X to two channels by Table 218; `loud_corr()` sends `loro_dmx_loud_corr` and
+  `ltrt_dmx_loud_corr`, and the core's `loud_corr_core_loro` and `_ltrt`.
+- **Reading:** to two channels, or one, the renderer goes to 5.X.0 (Table 43, or 46 in core decoding),
+  and Part 1's step 2 follows with the stream's stereo coefficients and the Lo/Ro or Lt/Rt correction
+  alone, the core's in core decoding: the correction that "relates to the selected downmix" is the stereo
+  one, and `loud_corr_5_X` would count the fold to 5.X.0 twice.
+- **Evidence:** Text; DEE's legs in both modes (`tests/ac4dec/test_ac4dec_pcm.cpp`).
+
+### Core decoding's layouts
+
+- **Where:** Part 2 Table 44, p. 107: core decoding renders to 5.X.2 and 5.X.0 alone.
+- **Reading:** a layout asked for with top channels comes out as 5.X.2, one without as 5.X.0; as coded,
+  5.X.2, or 5.X.0 where the source has no top channels.
+- **Evidence:** Text.
+
+### DRC's groups in core decoding
+
+- **Where:** Part 2 4.8.3.16, p. 49: "For core decoding mode the decoder should discard gain values which
+  are assigned to channels that are not present in the core channel configuration"; Table 69, p. 170,
+  groups 7.X.4's channels and has no group for Tsl and Tsr.
+- **Reading:** Tsl and Tsr take group 4's gains, those of the tops they carry; the gains of Lb, Rb and the
+  four tops go with channels the core does not have, and Ls and Rs keep group 3's.
+- **Evidence:** Text.
+
 ## Tables
 
 The Huffman codebooks come from the table attachment of Part 1, `ts_103190_tables.c`, which Annex A

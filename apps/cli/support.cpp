@@ -1583,6 +1583,19 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
+        if (key == "speakers") {
+            // AC-4's immersive element rendered to a layout (ETSI TS 103
+            // 190-2 clause 5.10.2), the LFE where the stream has one.
+            if (value != "5.1" && value != "5.1.2" && value != "5.1.4" && value != "7.1" &&
+                value != "7.1.2" && value != "7.1.4") {
+                fmt::println(stderr,
+                             "error: speakers is 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4 (got '{}')",
+                             token);
+                return false;
+            }
+            out.ac4_speakers = std::string(value);
+            continue;
+        }
         // Scoped to `decode`, which is the only command that builds a census -
         // run_decode is reached from nowhere else, and the loudness commands
         // run their own decode loop that never accumulates one. Unscoped, this

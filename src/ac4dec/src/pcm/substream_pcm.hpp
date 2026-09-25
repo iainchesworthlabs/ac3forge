@@ -53,8 +53,9 @@
 // (OutputConfig): dialogue enhancement (clause 5.7.8, pcm/de.hpp), then the
 // output level and DRC (clause 5.7.9, pcm/drc.hpp), whose level is measured on
 // the signal before dialogue enhancement (6.2.13), then the downmix (6.2.17,
-// pcm/downmix.hpp), after which only the channels that come out are
-// synthesised. Their values are held with the rest of the frame's control data
+// pcm/downmix.hpp), for the immersive element Part 2's channel renderer
+// (clause 5.10.2, pcm/renderer.hpp), after which only the channels that come
+// out are synthesised. Their values are held with the rest of the frame's control data
 // until its signal reaches the QMF domain (5.7.2).
 
 namespace ac4::detail {
@@ -181,8 +182,9 @@ class SubstreamPcm {
                                      std::vector<Speaker>& speakers);
     [[nodiscard]] ParseResult configure(const SubstreamContext& ctx, DecodingMode decoding);
     // The output stages - DRC's channel groups, the downmix, and each channel
-    // out's synthesis bank and converter - for add_ch_base and the output the
-    // system asks for, rebuilt only where one of them changes.
+    // out's synthesis bank and converter - for add_ch_base, the immersive
+    // element's presence flags and the output the system asks for, rebuilt
+    // only where one of them changes.
     void configure_outputs(const SubstreamContext& ctx, const OutputConfig& output);
     [[nodiscard]] ParseResult check_control(const SubstreamContext& ctx, const ChannelElement& element) const;
     [[nodiscard]] UnitIo unit_io(const AspxUnit& unit, const Control& control, bool master_reset);
@@ -245,6 +247,7 @@ class SubstreamPcm {
     bool add_ch_base_ = false;
     DownmixTarget downmix_target_ = DownmixTarget::kAsCoded;
     bool mix_lfe_ = true;
+    std::optional<ImmersiveLayout> layout_;     // the immersive element's, for the renderer
     std::vector<Output> outputs_;               // in downmix_.speakers()'s order
     // The last good frame, which concealment repeats, and the frames lost
     // since it.

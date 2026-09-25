@@ -44,6 +44,10 @@ The writer takes the decoder's reading of each of these:
   and [immersive_codec_mode_code in the trace](../ac4dec/ERRATA.md#immersive_codec_mode_code-in-the-trace);
   `custom_dmx_data()` sends no custom downmix data and `loud_corr()` no correction for the immersive
   outputs.
+- The channel renderer (phase D9's): the frame writer's `top_channels_present` takes
+  [Where a .2 source's top pair is carried](../ac4dec/ERRATA.md#where-a-2-sources-top-pair-is-carried), and
+  a writer that sends custom downmix data in I-frames alone, as DEE does, relies on
+  [Custom downmix data](../ac4dec/ERRATA.md#custom-downmix-data) to hold them between.
 
 ## The QMF domain
 

@@ -419,16 +419,41 @@ ac4::DrcMode ac4_drc_mode(std::string_view name) {
     return ac4::DrcMode::kDefault;
 }
 
-// AC-4's downmix for channels= and downmix=: downmix=loro, ltrt and mono as
-// named, and downmix=auto or channels=2 alone the stream's preferred method
-// (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send.
+// speakers='s layout for an immersive element (ETSI TS 103 190-2 clause
+// 5.10.2); without one, as coded.
+ac4::DownmixTarget ac4_layout(std::string_view speakers) {
+    if (speakers == "5.1") {
+        return ac4::DownmixTarget::k5X;
+    }
+    if (speakers == "5.1.2") {
+        return ac4::DownmixTarget::k5X2;
+    }
+    if (speakers == "5.1.4") {
+        return ac4::DownmixTarget::k5X4;
+    }
+    if (speakers == "7.1") {
+        return ac4::DownmixTarget::k7X0;
+    }
+    if (speakers == "7.1.2") {
+        return ac4::DownmixTarget::k7X2;
+    }
+    if (speakers == "7.1.4") {
+        return ac4::DownmixTarget::k7X4;
+    }
+    return ac4::DownmixTarget::kAsCoded;
+}
+
+// AC-4's downmix for channels=, downmix= and speakers=: downmix=loro, ltrt and
+// mono as named, downmix=auto or channels=2 alone the stream's preferred
+// method (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send, and
+// without a fold speakers='s layout.
 ac4::DownmixTarget ac4_downmix(const ac3cli::Options& meta) {
     if (meta.downmix_auto) {
         return ac4::DownmixTarget::kStereo;
     }
     switch (meta.output.target) {
         case ac3::DownmixTarget::kAsCoded:
-            return ac4::DownmixTarget::kAsCoded;
+            return ac4_layout(meta.ac4_speakers);
         case ac3::DownmixTarget::kLoRo:
             return meta.downmix_named ? ac4::DownmixTarget::kLoRo : ac4::DownmixTarget::kStereo;
         case ac3::DownmixTarget::kLtRt:
@@ -466,8 +491,24 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
         add(fmt::format("dialogue raised {:g} dB where the stream allows",
                         output.dialogue_enhancement_db));
     }
-    if (output.downmix != ac4::DownmixTarget::kAsCoded) {
-        add(fmt::format("downmixed to {}", ac4::describe(output.downmix)));
+    switch (output.downmix) {
+        case ac4::DownmixTarget::kAsCoded:
+            break;
+        case ac4::DownmixTarget::k7X4:
+        case ac4::DownmixTarget::k7X2:
+        case ac4::DownmixTarget::k7X0:
+        case ac4::DownmixTarget::k5X4:
+        case ac4::DownmixTarget::k5X2:
+            // Only the immersive element takes these; the rest come out as coded.
+            add(fmt::format("an immersive element rendered to {}", ac4::describe(output.downmix)));
+            break;
+        case ac4::DownmixTarget::k5X:
+        case ac4::DownmixTarget::kStereo:
+        case ac4::DownmixTarget::kLoRo:
+        case ac4::DownmixTarget::kLtRt:
+        case ac4::DownmixTarget::kMono:
+            add(fmt::format("downmixed to {}", ac4::describe(output.downmix)));
+            break;
     }
     return done.empty() ? "the coded channels, with no DRC, downmix or dialogue processing" : done;
 }

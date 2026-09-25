@@ -100,6 +100,16 @@ std::string_view describe(DownmixTarget target) {
             return "Lt/Rt";
         case DownmixTarget::kMono:
             return "mono";
+        case DownmixTarget::k7X4:
+            return "7.X.4";
+        case DownmixTarget::k7X2:
+            return "7.X.2";
+        case DownmixTarget::k7X0:
+            return "7.X.0";
+        case DownmixTarget::k5X4:
+            return "5.X.4";
+        case DownmixTarget::k5X2:
+            return "5.X.2";
     }
     return "?";
 }

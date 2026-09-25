@@ -137,15 +137,25 @@ int SubstreamPcm::channel_of(Speaker speaker) const noexcept {
 }
 
 void SubstreamPcm::configure_outputs(const SubstreamContext& ctx, const OutputConfig& output) {
+    // The immersive element's source layout, which its presence flags give
+    // (Part 2 clauses 6.3.2.7.3 to 6.3.2.7.5), for the renderer.
+    std::optional<ImmersiveLayout> layout;
+    if (is_immersive(ch_mode_)) {
+        layout = ImmersiveLayout{.backs = ctx.b_4_back_channels_present,
+                                 .tops = ctx.top_channels_present,
+                                 .lfe = ch_mode_ == ch_mode::k7_1_4,
+                                 .decoding = decoding_};
+    }
     if (outputs_valid_ && add_ch_base_ == ctx.add_ch_base && downmix_target_ == output.downmix &&
-        mix_lfe_ == output.mix_lfe) {
+        mix_lfe_ == output.mix_lfe && layout_ == layout) {
         return;
     }
     add_ch_base_ = ctx.add_ch_base;
     downmix_target_ = output.downmix;
     mix_lfe_ = output.mix_lfe;
-    drc_.configure(internal_rate_, slots_, speakers_, add_ch_base_);
-    downmix_.configure(speakers_, add_ch_base_, downmix_target_, mix_lfe_);
+    layout_ = layout;
+    drc_.configure(internal_rate_, slots_, speakers_, add_ch_base_, layout_.has_value());
+    downmix_.configure(speakers_, add_ch_base_, downmix_target_, mix_lfe_, layout_);
     outputs_.clear();
     for (std::size_t o = 0; o < downmix_.speakers().size(); ++o) {
         Output out{.synthesis = {}, .converter = {}};

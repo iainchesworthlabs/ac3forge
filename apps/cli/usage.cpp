@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 82> kOptionTokens{{
+constexpr std::array<OptionToken, 83> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -79,6 +79,7 @@ constexpr std::array<OptionToken, 82> kOptionTokens{{
     {"output-level=", "decode of AC-4: the level in dBFS dialnorm is taken to (Lout)"},
     {"dialogue-enhancement=", "decode of AC-4: raise the dialogue by 0 to 12 dB, capped by the stream"},
     {"decoding=", "decode of AC-4: full (default) or core, the immersive element's 5.X.2 core"},
+    {"speakers=", "decode of AC-4: 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4, an immersive element's layout"},
     {"syntax-trace=", "ac4-encode, and decode of AC-4: write every syntax element written or read"},
     {"codec-mode=", "ac4-encode: simple, aspx, aspx-acpl-1, aspx-acpl-2 or aspx-acpl-3"},
     {"experimental=", "ac4-encode: tools and layouts no outside reader has checked yet"},
@@ -386,6 +387,12 @@ void print_decode_topic() {
     fmt::println("       and no more than the stream's cap. decoding=core decodes an immersive");
     fmt::println("       element's core, 5.X.2, as a low-complexity decoder does (ETSI TS 103");
     fmt::println("       190-2 4.7); decoding=full, the default, decodes every channel.");
+    fmt::println("       speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4 renders an immersive element to");
+    fmt::println("       that layout by the channel renderer (190-2 5.10.2), the LFE where the");
+    fmt::println("       stream has one, with the stream's custom downmix gains and loudness");
+    fmt::println("       correction; core decoding renders to 5.1.2 at most. Without it the");
+    fmt::println("       element comes out in its source's layout, and channels= and downmix=");
+    fmt::println("       folds win over it.");
 }
 
 void print_ac4_encode_topic() {
