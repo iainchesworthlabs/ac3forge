@@ -18,10 +18,13 @@
 // personalized audio", written from the published texts. Clause numbers below
 // name the part that defines the element.
 //
-// What this version writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, or 44.1
-// kHz, in frames of 2 048 samples (frame_rate_index 13, which needs no sample
-// rate converter), as one presentation of one channel-coded substream, at a
-// constant bit rate (wait_frames 0), each frame filled to its size. The codec
+// What this version writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, at every
+// frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples
+// (frame_rate_index 13, the one Table 84 has), as one presentation of one
+// channel-coded substream, at a constant bit rate (wait_frames 0), each frame
+// filled to its size. At every frame rate but index 13's the input is
+// converted to the rate the frames are coded at, the inverse of the
+// decoder's conversion (Tables 83 and 84's resampling ratio). The codec
 // mode is SIMPLE, the audio spectral frontend with block switching and
 // MDCT-domain stereo processing for each channel pair; or ASPX, which codes
 // the spectral frontend up to a crossover and recreates the band above it
@@ -36,8 +39,8 @@
 // carries the dialogue normalisation it is given and, as configured, further
 // loudness values, DRC's decoder modes and the stereo downmix's values; the
 // audio substream's metadata() carries dialogue enhancement's parameters.
-// Everything else in the plan's later phases (immersive layouts, other frame
-// rates) is refused by name as an invalid configuration.
+// Everything else in the plan's later phases (immersive layouts, several
+// presentations) is refused by name as an invalid configuration.
 //
 // src/ac4enc/ERRATA.md records the readings the writer alone needs; where the
 // decoder depends on the same reading, src/ac4dec/ERRATA.md has it.
@@ -236,6 +239,11 @@ struct EncoderConfig {
     // and the additional pair.
     int channels = 2;
     int sample_rate_hz = 48000;    // 48 000, or 44 100
+    // Part 1 Table 83 at 48 kHz: 0 23.976 fps, 1 24, 2 25, 3 29.97, 4 30, 5
+    // 47.95, 6 48, 7 50, 8 59.94, 9 60, 10 100, 11 119.88, 12 120, and 13
+    // the 2 048-sample frame, 23.4375 fps, which alone needs no converter; 13
+    // alone at 44.1 kHz.
+    int frame_rate_index = 13;
     int bitrate_kbps = 192;        // the stream's rate, over whole raw_ac4_frame()s
     CodecMode codec_mode = CodecMode::kAuto;
     // An I-frame every this many frames, the first frame being one; 1 makes
@@ -293,7 +301,12 @@ struct EncoderConfig {
 // wraps for a raw .ac4 file or MPEG-2 TS.
 struct EncodedFrame {
     std::vector<std::byte> raw_ac4_frame;
-    int samples = 0;       // PCM samples per channel the frame codes
+    // PCM samples per channel the frame decodes to, at the input's rate: the
+    // frame's length at index 13, and elsewhere what the decoder's converter
+    // gives the frame, which at 29.97, 59.94 and 119.88 fps changes from
+    // frame to frame in a cycle of five (Part 2 clause 5.11): 1 601, 1 602,
+    // 1 601, 1 602 and 1 602 at 29.97.
+    int samples = 0;
     bool iframe = false;   // b_iframe_global
 };
 
@@ -340,6 +353,9 @@ class AC4ENC_EXPORT Encoder {
     // index n is at index n + delay_samples() of the decoded output before the
     // decoder's own delay is added: at frame_rate_index 13, 1 313 samples
     // (Part 1 Table 188's d_pcm, 352, the QMF banks' 577 and six QMF slots).
+    // At the other frame rates, a frame and a half at the internal rate and
+    // the converter's delay, at the input's rate to the nearest sample: the
+    // delay itself is a fraction of a sample off it.
     [[nodiscard]] int delay_samples() const noexcept;
 
    private:

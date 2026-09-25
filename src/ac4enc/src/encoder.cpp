@@ -19,9 +19,11 @@
 #include "asf/stereo.hpp"
 #include "aspx/aspx_encoder.hpp"
 #include "bit_writer.hpp"
+#include "dsp/resampler.hpp"
 #include "frame/dialogue.hpp"
 #include "frame/frame_writer.hpp"
 #include "frame/metadata.hpp"
+#include "frame/timing.hpp"
 #include "tables/sfb_tables.hpp"
 
 namespace ac4 {
@@ -41,20 +43,16 @@ namespace {
 using detail::BitWriter;
 using detail::FrameLayout;
 
-constexpr int kFrameLength = 2048;  // frame_rate_index 13, at 44.1 and 48 kHz
-// The silence ahead of the input: the frame's long window starts at its first
-// output sample, so a frame codes input from half a frame before it to half a
-// frame after it, and this delay puts the next frame's transients, which set
-// the frame's last window, inside the input read before the frame is coded.
-// A frame and a half, which is also what DEE's encoder gives.
-constexpr int kDelay = kFrameLength * 3 / 2;
-// The decoder's delay at index 13, which flush() codes enough frames to
-// cover: d_pcm (Part 1 Table 188), the QMF banks' 577 samples and the six
-// QMF slots the synthesis works behind (5.7.1).
-constexpr int kDecoderDelay = 352 + 577 + 6 * 64;
+// The frame grid is the stream's (frame/timing.hpp): frame_length samples a
+// frame at the internal rate, 2 048 at frame_rate_index 13. Ahead of the
+// input, a frame and a half of silence (Impl::delay): the frame's long window
+// starts at its first output sample, so a frame codes input from half a frame
+// before it to half a frame after it, and this delay puts the next frame's
+// transients, which set the frame's last window, inside the input read before
+// the frame is coded. At index 13 that is 3 072 samples, which is also what
+// DEE's encoder gives.
 constexpr int kQmfSlot = 64;        // samples per QMF slot
 constexpr int kSubBlocks = 16;      // transient detection, a sixteenth of a frame each
-constexpr int kSubBlock = kFrameLength / kSubBlocks;
 constexpr double kAttackRatio = 10.0;     // 10 dB over the sub-blocks before
 constexpr double kAttackFloor = 1e-7;     // per sample: nothing below -70 dBFS is an attack
 // The rate loop's steps, and what one is worth: a scale factor step, 2^(1/4)
@@ -100,11 +98,9 @@ constexpr int kAcplResidualQmfBand = 8;
 
 // The LFE's coded band: the scale factor bands that start below 120 Hz, the
 // first three at 2 048 samples, to 140.6 Hz at 48 kHz, which is what DEE's
-// 5.1 streams send.
+// 5.1 streams send; at most what sf_info_lfe()'s max_sfb holds (Part 1 Table
+// 106's n_msfbl_bits).
 constexpr double kLfeCutoffHz = 120.0;
-// sf_info_lfe()'s max_sfb: Part 1 Table 106's n_msfbl_bits at a transform of
-// 2 048 samples.
-constexpr int kLfeMaxSfbBits = 3;
 
 // The bandwidth the SIMPLE mode codes, by bit rate per channel.
 [[nodiscard]] double cutoff_hz(double kbps_per_channel) {
@@ -487,8 +483,23 @@ struct Encoder::Impl {
 
     EncoderConfig config{};
     Plan plan{};
-    detail::Analysis analysis{kFrameLength, 1};
-    detail::Psychoacoustics psycho{48000, kFrameLength};
+    // The frame grid, and from it the frame's length, the silence ahead of
+    // the input (a frame and a half), transient detection's sub-block, and
+    // what flush() codes past the decoder's delay: its converter's, where the
+    // frame rate needs one.
+    detail::FrameTiming timing{};
+    int frame_length = 2048;
+    int rate_hz =
+        48000;  // the internal rate, which lines and subbands are measured at, to the hertz
+    int delay = 3072;
+    int sub_block = 128;
+    int flush_extra = 0;
+    // At every frame_rate_index but 13, the input converted to the internal
+    // rate, a converter per channel and per channel of a dialogue stem.
+    std::vector<detail::dsp::Resampler<double>> converters;
+    std::vector<detail::dsp::Resampler<double>> stem_converters;
+    detail::Analysis analysis{2048, 1};
+    detail::Psychoacoustics psycho{48000, 2048};
     Toc toc{};
     int fs_index = 1;
     int dialnorm_bits = 124;
@@ -496,8 +507,9 @@ struct Encoder::Impl {
     double bytes_per_frame = 0.0;
     double byte_carry = 0.0;
 
-    // The input, from sample index `base` of the delayed signal on; the first
-    // kDelay samples of that signal are the silence ahead of the input.
+    // The input at the internal rate, from sample index `base` of the delayed
+    // signal on; the first `delay` samples of that signal are the silence
+    // ahead of the input.
     std::vector<std::vector<double>> signal;
     std::int64_t base = 0;
     std::int64_t input_samples = 0;
@@ -528,7 +540,7 @@ struct Encoder::Impl {
         std::vector<int> channels;
         bool lfe = false;  // sf_info_lfe(): always one long block
         std::deque<FrameLayout> layouts;
-        int previous_last = kFrameLength;
+        int previous_last = 2048;  // the frame's length at first
     };
     std::vector<Group> groups;
     std::vector<std::size_t> group_of;  // per input channel
@@ -588,16 +600,17 @@ struct Encoder::Impl {
             return;
         }
         const FrameLayout& layout = f.layout[group_of[static_cast<std::size_t>(plan.residuals.front())]];
-        const double top = kAcplResidualQmfBand * static_cast<double>(config.sample_rate_hz) / 128.0;
+        const double top = kAcplResidualQmfBand * static_cast<double>(rate_hz) / 128.0;
         const int first = layout.window_length.front();
         const int last = layout.window_length.back();
         if (*plan.acpl == detail::AcplLayout::kPair) {
-            f.residual_max_sfb = {bands_below(first, top, config.sample_rate_hz),
-                                  bands_below(last, top, config.sample_rate_hz)};
+            f.residual_max_sfb = {bands_below(first, top, rate_hz),
+                                  bands_below(last, top, rate_hz)};
             return;
         }
         const int largest = std::max(first, last);
-        f.residual_master = bands_below(largest, top, config.sample_rate_hz, (1 << detail::side_bits(largest)) - 1);
+        f.residual_master =
+            bands_below(largest, top, rate_hz, (1 << detail::side_bits(largest)) - 1);
         const auto from_master = [&](int length) {
             if (length == largest) {
                 return f.residual_master;
@@ -614,7 +627,8 @@ struct Encoder::Impl {
         const detail::Grouped& grouped, const FrameLayout& layout,
         const std::vector<std::pair<double, double>>& waveform_hz) const {
         std::vector<std::vector<bool>> out(grouped.offset.size());
-        const double crossover = aspx ? aspx->groups.sbx * static_cast<double>(config.sample_rate_hz) / 128.0 : 0.0;
+        const double crossover =
+            aspx ? aspx->groups.sbx * static_cast<double>(rate_hz) / 128.0 : 0.0;
         for (std::size_t g = 0; g < grouped.offset.size(); ++g) {
             const auto bands = static_cast<std::size_t>(grouped.max_sfb[g]);
             out[g].assign(bands, false);
@@ -623,7 +637,7 @@ struct Encoder::Impl {
             }
             const int length = layout.group_length[g];
             const std::span<const std::uint16_t> offsets = detail::band_offsets(length);
-            const double line_hz = static_cast<double>(config.sample_rate_hz) / (2.0 * length);
+            const double line_hz = static_cast<double>(rate_hz) / (2.0 * length);
             for (std::size_t b = 0; b < bands; ++b) {
                 const double lo = offsets[b] * line_hz;
                 const double hi = offsets[b + 1] * line_hz;
@@ -658,8 +672,8 @@ struct Encoder::Impl {
     // f's parameters read.
     void analyse_acpl(std::int64_t frame) {
         std::vector<std::array<double, kQmfSlot>> chunk(acpl->channels());
-        while (acpl->slots() < detail::AcplEncoder::slots_needed(frame)) {
-            const std::int64_t from = kQmfSlot * acpl->slots() - detail::kAnalysisLead;
+        while (acpl->slots() < acpl->slots_needed(frame)) {
+            const std::int64_t from = kQmfSlot * acpl->slots() - timing.alignment_delay;
             for (std::size_t k = 0; k < chunk.size(); ++k) {
                 for (std::size_t i = 0; i < chunk[k].size(); ++i) {
                     chunk[k][i] = source_sample(k, from + static_cast<std::int64_t>(i));
@@ -678,20 +692,27 @@ struct Encoder::Impl {
         return sample(c, s);
     }
 
-    // Analyses the QMF slots frame f needs: its interval's and the six after
-    // it that a variable border can reach, and with companding those whose
-    // synthesis reaches the end of its transform window.
-    void analyse_qmf(std::int64_t frame) {
-        std::int64_t end = detail::kQmfSlotsPerFrame * (frame + 2);
+    // The QMF slots frame f needs analysed: its interval's and the
+    // ts_offset_hfgen after it that a variable border can reach, and with
+    // companding those whose synthesis reaches the end of its transform
+    // window.
+    [[nodiscard]] std::int64_t qmf_slots_needed(std::int64_t frame) const noexcept {
+        std::int64_t end =
+            static_cast<std::int64_t>(timing.qmf_slots) * (frame + timing.control_delay + 1);
         if (aspx->companding) {
-            const std::int64_t window_last = (frame + 2) * kFrameLength - 1;
-            end = std::max(end, (window_last + detail::kCompandedLag) / kQmfSlot + 1);
+            const std::int64_t window_last = (frame + 2) * frame_length - 1;
+            end = std::max(end, (window_last + timing.alignment_delay + 577) / kQmfSlot + 1);
         }
+        return end;
+    }
+
+    void analyse_qmf(std::int64_t frame) {
+        const std::int64_t end = qmf_slots_needed(frame);
         std::array<double, kQmfSlot> chunk{};
         for (std::size_t q = 0; q < qmf.size(); ++q) {
             const auto c = static_cast<std::size_t>(qmf_channel[q]);
             while (qmf[q].slots() < end) {
-                const std::int64_t from = kQmfSlot * qmf[q].slots() - detail::kAnalysisLead;
+                const std::int64_t from = kQmfSlot * qmf[q].slots() - timing.alignment_delay;
                 for (std::size_t i = 0; i < chunk.size(); ++i) {
                     chunk[i] = sample(c, from + static_cast<std::int64_t>(i));
                 }
@@ -736,16 +757,16 @@ struct Encoder::Impl {
     // summed over the group's channels.
     [[nodiscard]] FrameLayout decide(std::int64_t frame, const Group& group) const {
         if (group.lfe) {
-            return detail::long_layout(kFrameLength);
+            return detail::long_layout(frame_length);
         }
-        const std::int64_t centre = frame * kFrameLength + kFrameLength / 2;
+        const std::int64_t centre = frame * frame_length + frame_length / 2;
         std::array<double, kSubBlocks + 4> energy{};
         for (int k = -4; k < kSubBlocks; ++k) {
             double e = 0.0;
             for (const int channel : group.channels) {
                 const auto c = static_cast<std::size_t>(channel);
-                const std::int64_t start = centre + static_cast<std::int64_t>(k) * kSubBlock;
-                for (std::int64_t s = start; s < start + kSubBlock; ++s) {
+                const std::int64_t start = centre + static_cast<std::int64_t>(k) * sub_block;
+                for (std::int64_t s = start; s < start + sub_block; ++s) {
                     const double d = sample(c, s) - sample(c, s - 1);
                     e += d * d;
                 }
@@ -753,7 +774,9 @@ struct Encoder::Impl {
             energy[static_cast<std::size_t>(k + 4)] = e;
         }
         std::array<int, 2> attack{-1, -1};
-        const double quietest = kAttackFloor * kSubBlock * static_cast<double>(group.channels.size());
+        int first_attack = -1;
+        const double quietest =
+            kAttackFloor * sub_block * static_cast<double>(group.channels.size());
         for (int k = 0; k < kSubBlocks; ++k) {
             const auto i = static_cast<std::size_t>(k + 4);
             const double before = (energy[i - 1] + energy[i - 2] + energy[i - 3] + energy[i - 4]) / 4.0;
@@ -762,25 +785,35 @@ struct Encoder::Impl {
                 if (attack[half] < 0) {
                     attack[half] = k % (kSubBlocks / 2);
                 }
+                if (first_attack < 0) {
+                    first_attack = k;
+                }
             }
         }
-        if (attack[0] < 0 && attack[1] < 0) {
-            return detail::long_layout(kFrameLength);
+        if (first_attack < 0) {
+            return detail::long_layout(frame_length);
+        }
+        if (!timing.long_family()) {
+            // Below 1 536 samples the whole frame splits, into its shortest
+            // blocks: eight, or four at 512 and 384 samples.
+            const int windows = 1 << detail::whole_frame_index(frame_length);
+            return detail::short_layout(frame_length, 0, first_attack * windows / kSubBlocks);
         }
         // An attack's half splits into eight blocks; the other half stays one
         // block of half the frame.
         const std::array<int, 2> transf_length{attack[0] >= 0 ? 0 : 3, attack[1] >= 0 ? 0 : 3};
-        return detail::split_layout(kFrameLength, transf_length, attack);
+        return detail::split_layout(frame_length, transf_length, attack);
     }
 
     [[nodiscard]] std::array<int, 2> max_sfb_for(const FrameLayout& layout, const Group& group) const {
         if (group.lfe) {
-            const int bands = bands_below(kFrameLength, kLfeCutoffHz, config.sample_rate_hz, (1 << kLfeMaxSfbBits) - 1);
+            const int bands = bands_below(frame_length, kLfeCutoffHz, rate_hz,
+                                          (1 << detail::lfe_max_sfb_bits(frame_length)) - 1);
             return {bands, bands};
         }
         const int first = layout.window_length.front();
         const int last = layout.window_length.back();
-        return {bands_below(first, cutoff, config.sample_rate_hz), bands_below(last, cutoff, config.sample_rate_hz)};
+        return {bands_below(first, cutoff, rate_hz), bands_below(last, cutoff, rate_hz)};
     }
 
     [[nodiscard]] detail::FrameFields fields_for(std::int64_t frame) const {
@@ -788,7 +821,7 @@ struct Encoder::Impl {
         fields.sequence_counter = sequence_counter(frame);
         fields.iframe = frame % config.iframe_interval == 0;
         fields.fs_index = fs_index;
-        fields.frame_rate_index = 13;
+        fields.frame_rate_index = timing.frame_rate_index;
         fields.ch_mode = plan.ch_mode;
         fields.dialnorm_bits = dialnorm_bits;
         fields.metadata = &metadata;
@@ -797,14 +830,23 @@ struct Encoder::Impl {
         return fields;
     }
 
+    // Where frame f's dialogue enhancement parameters are estimated from: a
+    // long block's window, two frames of the signal, centred where the
+    // decoder's interpolation reaches them. They reach the QMF domain d_ctrl
+    // frames on (frame/timing.hpp) and apply to the frame's slots from
+    // frame_length (f + d_ctrl) - d_pcm of the signal, reaching their full
+    // value at the last.
+    [[nodiscard]] std::int64_t dialogue_window(std::int64_t frame) const noexcept {
+        return frame_length * (frame + timing.control_delay) - timing.alignment_delay;
+    }
+
     // Dialogue enhancement's parameters for frame f from the stem: the
-    // long-block spectra of each channel and of its dialogue over the frame's
-    // transform window, which is centred where the decoder's interpolation
-    // reaches the frame's parameters.
+    // long-block spectra of each channel and of its dialogue over
+    // dialogue_window().
     void estimate_dialogue(std::int64_t frame) {
-        const std::int64_t start = frame * kFrameLength;
-        const FrameLayout layout = detail::long_layout(kFrameLength);
-        std::vector<double> window(2 * kFrameLength);
+        const std::int64_t start = dialogue_window(frame);
+        const FrameLayout layout = detail::long_layout(frame_length);
+        std::vector<double> window(2 * static_cast<std::size_t>(frame_length));
         std::vector<double> programme;
         std::vector<double> dialogue;
         for (std::size_t i = 0; i < de_channels.size(); ++i) {
@@ -816,9 +858,9 @@ struct Encoder::Impl {
                                     ? (*from)[static_cast<std::size_t>(s - base)]
                                     : 0.0;
                 }
-                analysis.transform(window, layout, kFrameLength, kFrameLength, *to);
+                analysis.transform(window, layout, frame_length, frame_length, *to);
             }
-            de_current[i] = detail::de_parameters(programme, dialogue, kFrameLength);
+            de_current[i] = detail::de_parameters(programme, dialogue, frame_length);
         }
     }
 
@@ -917,7 +959,8 @@ struct Encoder::Impl {
         switch (unit.kind) {
             case UnitKind::kLfe:
                 // sf_info_lfe() (Table 35): one long block, max_sfb alone.
-                w.write(kLfeMaxSfbBits, static_cast<std::uint64_t>(max_sfb[0]), "max_sfb");
+                w.write(static_cast<unsigned>(detail::lfe_max_sfb_bits(frame_length)),
+                        static_cast<std::uint64_t>(max_sfb[0]), "max_sfb");
                 break;
             case UnitKind::kMono:
                 // Table 21, mono_data(0) with the ASF.
@@ -1119,7 +1162,7 @@ struct Encoder::Impl {
 
     [[nodiscard]] EncodedFrame encode_frame(std::int64_t frame) {
         const std::size_t channels = signal.size();
-        const std::int64_t start = frame * kFrameLength;
+        const std::int64_t start = frame * frame_length;
         if (stem()) {
             estimate_dialogue(frame);
         }
@@ -1161,7 +1204,7 @@ struct Encoder::Impl {
         std::vector<std::vector<std::pair<double, double>>> waveform_hz(groups.size());
         std::vector<std::vector<std::pair<int, int>>> interleaved(channels);
         if (aspx && aspx->interleave) {
-            const double subband_hz = static_cast<double>(config.sample_rate_hz) / 128.0;
+            const double subband_hz = static_cast<double>(rate_hz) / 128.0;
             for (std::size_t g = 0; g < groups.size(); ++g) {
                 for (const int channel : groups[g].channels) {
                     const auto c = static_cast<std::size_t>(channel);
@@ -1181,15 +1224,15 @@ struct Encoder::Impl {
                 }
                 const int first_length = f.layout[g].window_length.front();
                 const int last_length = f.layout[g].window_length.back();
-                f.max_sfb[g] = {std::max(f.max_sfb[g][0], bands_below(first_length, top, config.sample_rate_hz)),
-                                std::max(f.max_sfb[g][1], bands_below(last_length, top, config.sample_rate_hz))};
+                f.max_sfb[g] = {std::max(f.max_sfb[g][0], bands_below(first_length, top, rate_hz)),
+                                std::max(f.max_sfb[g][1], bands_below(last_length, top, rate_hz))};
             }
         }
 
         limit_residuals(f);
         std::vector<detail::Channel> spectra(channels);
         std::vector<std::vector<std::vector<bool>>> silenced(channels);
-        std::vector<double> window(2 * kFrameLength);
+        std::vector<double> window(2 * static_cast<std::size_t>(frame_length));
         std::vector<double> spectrum;
         for (std::size_t g = 0; g < groups.size(); ++g) {
             for (const int channel : groups[g].channels) {
@@ -1421,7 +1464,7 @@ struct Encoder::Impl {
         }
         EncodedFrame out;
         out.raw_ac4_frame = std::move(raw).value();
-        out.samples = kFrameLength;
+        out.samples = timing.output_samples(frame);
         out.iframe = fields.iframe;
         return out;
     }
@@ -1432,17 +1475,51 @@ struct Encoder::Impl {
         std::span<const std::span<const float>> channels,
         std::span<const std::span<const float>> dialogue);
 
-    // The frames the input read so far lets through. A frame needs the input
-    // to half a frame past its window, where the next frame's transients are.
+    // The input at the internal rate: each channel as it is, or `through`
+    // its converter.
+    [[nodiscard]] static std::vector<std::vector<double>> internal(
+        std::span<const std::span<const float>> input,
+        std::vector<detail::dsp::Resampler<double>>& through);
+
+    // Appends input at the internal rate, and with a stem the dialogue in it.
+    void take(const std::vector<std::vector<double>>& programme,
+              const std::vector<std::vector<double>>& stem_input);
+
+    // The signal frame f needs read before it is coded: to half a frame past
+    // its window, where the next frame's transients are; with A-SPX, what the
+    // QMF slots it needs analysed read; with A-CPL, what its estimate reads;
+    // and with a dialogue stem, the window its parameters come from. At
+    // frame_rate_index 13 the first holds all the others but the last.
+    [[nodiscard]] std::int64_t input_needed(std::int64_t frame) const {
+        std::int64_t needed = (frame + 2) * frame_length + frame_length / 2;
+        const auto through_slot = [&](std::int64_t slots) {
+            return kQmfSlot * slots - timing.alignment_delay;
+        };
+        if (aspx) {
+            needed = std::max(needed, through_slot(qmf_slots_needed(frame)));
+        }
+        if (acpl) {
+            needed = std::max(needed, through_slot(acpl->slots_needed(frame)));
+        }
+        if (stem()) {
+            needed = std::max(needed,
+                              dialogue_window(frame) + 2 * static_cast<std::int64_t>(frame_length));
+        }
+        return needed;
+    }
+
+    // The frames the input read so far lets through; after flush(), until the
+    // output covers the input, the delays and this project's decoder's
+    // converter.
     [[nodiscard]] std::vector<EncodedFrame> drain() {
         std::vector<EncodedFrame> frames;
         for (;;) {
             const std::int64_t frame = frames_out;
-            if (flushed && frame * kFrameLength >= input_samples + kDelay + kDecoderDelay) {
+            if (flushed && frame * frame_length >=
+                               input_samples + delay + timing.decoder_delay() + flush_extra) {
                 break;
             }
-            const std::int64_t needed = (frame + 2) * kFrameLength + kFrameLength / 2;
-            if (!flushed && signal_end() < needed) {
+            if (!flushed && signal_end() < input_needed(frame)) {
                 break;
             }
             for (Group& group : groups) {
@@ -1456,7 +1533,8 @@ struct Encoder::Impl {
             }
             ++frames_out;
             // Nothing before the next frame's window is read again.
-            const std::int64_t keep_from = (frames_out * kFrameLength) - kSubBlock * 5;
+            const std::int64_t keep_from =
+                (frames_out * frame_length) - static_cast<std::int64_t>(sub_block) * 5;
             if (keep_from > base) {
                 const auto drop = static_cast<std::size_t>(std::min(keep_from - base, signal_end() - base));
                 for (std::vector<double>& channel : signal) {
@@ -1493,14 +1571,44 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
     if (!(config.dialnorm_db <= 0.0 && config.dialnorm_db >= -31.75)) {
         return std::unexpected(EncodeError::kInvalidConfig);
     }
+    const std::optional<detail::FrameTiming> timing =
+        detail::frame_timing(config.frame_rate_index, config.sample_rate_hz);
+    if (!timing) {
+        return std::unexpected(EncodeError::kInvalidConfig);
+    }
     auto impl = std::make_unique<Impl>();
     impl->config = config;
     impl->plan = *plan;
-    impl->psycho = detail::Psychoacoustics(config.sample_rate_hz, kFrameLength);
+    impl->timing = *timing;
+    impl->frame_length = timing->frame_length;
+    impl->delay = timing->frame_length * 3 / 2;
+    impl->sub_block = timing->frame_length / kSubBlocks;
+    // The internal rate: the sample rate over the decoder's resampling ratio.
+    const double internal_rate =
+        static_cast<double>(config.sample_rate_hz) * timing->decoder_down / timing->decoder_up;
+    impl->rate_hz = static_cast<int>(std::lround(internal_rate));
+    impl->analysis = detail::Analysis(timing->frame_length, 1);
+    impl->psycho = detail::Psychoacoustics(impl->rate_hz, timing->frame_length);
     impl->fs_index = config.sample_rate_hz == 48000 ? 1 : 0;
     impl->dialnorm_bits = static_cast<int>(std::lround(-config.dialnorm_db * 4.0));
-    impl->bytes_per_frame = static_cast<double>(config.bitrate_kbps) * 1000.0 * kFrameLength /
-                            (static_cast<double>(config.sample_rate_hz) * 8.0);
+    // A frame lasts frame_length samples of the internal rate.
+    impl->bytes_per_frame = static_cast<double>(config.bitrate_kbps) * 1000.0 *
+                            timing->frame_length / (internal_rate * 8.0);
+    if (timing->resampled()) {
+        // The converters, the inverse of the decoder's; and the decoder's
+        // converter's delay, which flush() codes past as well.
+        const auto filter = std::make_shared<const detail::dsp::ResamplerFilter>(
+            timing->decoder_down, timing->decoder_up);
+        const int stem_channels =
+            config.dialogue && config.dialogue->source == DialogueSource::kStem ? config.channels
+                                                                                : 0;
+        impl->converters.assign(static_cast<std::size_t>(config.channels),
+                                detail::dsp::Resampler<double>(filter));
+        impl->stem_converters.assign(static_cast<std::size_t>(stem_channels),
+                                     detail::dsp::Resampler<double>(filter));
+        const detail::dsp::ResamplerFilter decoder(timing->decoder_up, timing->decoder_down);
+        impl->flush_extra = static_cast<int>(std::ceil(decoder.delay()));
+    }
     const auto channels = static_cast<std::size_t>(plan->coded);
     const int full_channels = config.channels - (plan->lfe >= 0 ? 1 : 0);
     const double kbps_per_channel = static_cast<double>(config.bitrate_kbps) / full_channels;
@@ -1514,25 +1622,29 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
         for (const int c : group.channels) {
             impl->group_of[static_cast<std::size_t>(c)] = g;
         }
+        group.previous_last = timing->frame_length;
         impl->groups.push_back(std::move(group));
     }
     if (plan->acpl) {
         if (*plan->acpl == detail::AcplLayout::kPair) {
             // As stereo is coded in the ASPX mode at the rate, without
             // companding, which DEE's A-CPL streams never turn on.
-            impl->aspx = detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz, false);
+            impl->aspx =
+                detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz, false, *timing);
             if (impl->aspx) {
                 impl->aspx->companding = false;
             }
         } else {
             impl->aspx = detail::aspx_setup_for_acpl(*plan->acpl == detail::AcplLayout::kCoupling,
-                                                     config.sample_rate_hz);
+                                                     config.sample_rate_hz, *timing);
         }
         impl->acpl.emplace(*plan->acpl, kAcplBandsId, kAcplQuantMode,
-                           plan->residuals.empty() ? 0 : kAcplResidualQmfBand);
-        impl->source.assign(plan->source.size(), std::vector<double>(static_cast<std::size_t>(kDelay), 0.0));
+                           plan->residuals.empty() ? 0 : kAcplResidualQmfBand, *timing);
+        impl->source.assign(plan->source.size(),
+                            std::vector<double>(static_cast<std::size_t>(impl->delay), 0.0));
     } else if (mode == CodecMode::kAspx) {
-        impl->aspx = detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz, multichannel);
+        impl->aspx =
+            detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz, multichannel, *timing);
     }
     if (mode != CodecMode::kSimple) {
         if (!impl->aspx) {
@@ -1544,7 +1656,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
         impl->interleaved_prev.resize(channels);
         // The spectral frontend codes up to the crossover, subband sbx of 64
         // across half the sampling rate.
-        impl->cutoff = static_cast<double>(impl->aspx->groups.sbx) * config.sample_rate_hz / 128.0;
+        impl->cutoff = static_cast<double>(impl->aspx->groups.sbx) * impl->rate_hz / 128.0;
         impl->qmf_of.assign(channels, -1);
         for (std::size_t c = 0; c < channels; ++c) {
             const bool coded = std::ranges::any_of(plan->aspx_elements, [&](const std::vector<int>& element) {
@@ -1558,7 +1670,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
             impl->qmf.emplace_back(*impl->aspx);
         }
     }
-    impl->signal.assign(channels, std::vector<double>(static_cast<std::size_t>(kDelay), 0.0));
+    impl->signal.assign(channels, std::vector<double>(static_cast<std::size_t>(impl->delay), 0.0));
 
     const std::optional<detail::StreamMetadata> metadata =
         detail::resolve_metadata(config, plan->ch_mode);
@@ -1578,8 +1690,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
             }
         }
         if (impl->stem()) {
-            impl->de_programme.assign(impl->de_channels.size(),
-                                      std::vector<double>(static_cast<std::size_t>(kDelay), 0.0));
+            impl->de_programme.assign(
+                impl->de_channels.size(),
+                std::vector<double>(static_cast<std::size_t>(impl->delay), 0.0));
             impl->de_dialogue = impl->de_programme;
         } else {
             // Marked channels carry dialogue alone: 1 in every band.
@@ -1602,11 +1715,13 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
         aspx_data = impl->aspx_frame(0, true, true);
     }
     std::optional<std::vector<std::byte>> raw;
-    for (const FrameLayout& layout :
-         {detail::long_layout(kFrameLength), detail::split_layout(kFrameLength, {0, 0}, {0, 0})}) {
+    const int n = timing->frame_length;
+    const FrameLayout shortest = timing->long_family() ? detail::split_layout(n, {0, 0}, {0, 0})
+                                                       : detail::short_layout(n, 0, -1);
+    for (const FrameLayout& layout : {detail::long_layout(n), shortest}) {
         std::vector<FrameLayout> layouts;
         for (const Impl::Group& group : impl->groups) {
-            layouts.push_back(group.lfe ? detail::long_layout(kFrameLength) : layout);
+            layouts.push_back(group.lfe ? detail::long_layout(n) : layout);
         }
         Impl::Coding silent = impl->silent(fields.iframe, layouts);
         silent.aspx = aspx_data;
@@ -1691,13 +1806,37 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::Impl::push(
             }
         }
     }
+    const std::vector<std::vector<double>> programme = internal(channels, converters);
+    std::vector<std::vector<double>> stem_input;
+    if (stem()) {
+        stem_input = internal(dialogue, stem_converters);
+    }
+    take(programme, stem_input);
+    return drain();
+}
+
+std::vector<std::vector<double>> Encoder::Impl::internal(
+    std::span<const std::span<const float>> input,
+    std::vector<detail::dsp::Resampler<double>>& through) {
+    std::vector<std::vector<double>> out(input.size());
+    std::vector<double> samples;
+    for (std::size_t c = 0; c < input.size(); ++c) {
+        samples.assign(input[c].begin(), input[c].end());
+        if (through.empty()) {
+            out[c] = samples;
+        } else {
+            through[c].process(samples, out[c]);
+        }
+    }
+    return out;
+}
+
+void Encoder::Impl::take(const std::vector<std::vector<double>>& programme,
+                         const std::vector<std::vector<double>>& stem_input) {
+    const std::size_t count = programme.front().size();
     if (!plan.acpl) {
-        for (std::size_t c = 0; c < channels.size(); ++c) {
-            std::vector<double>& buffer = signal[c];
-            buffer.reserve(buffer.size() + count);
-            for (const float x : channels[c]) {
-                buffer.push_back(static_cast<double>(x));
-            }
+        for (std::size_t c = 0; c < programme.size(); ++c) {
+            signal[c].insert(signal[c].end(), programme[c].begin(), programme[c].end());
         }
     } else {
         // The A-CPL modes: the downmixes, the LFE and ASPX_ACPL_1's residuals
@@ -1705,7 +1844,7 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::Impl::push(
         std::vector<double> input(plan.source.size());
         for (std::size_t n = 0; n < count; ++n) {
             for (std::size_t k = 0; k < input.size(); ++k) {
-                input[k] = static_cast<double>(channels[static_cast<std::size_t>(plan.source[k])][n]);
+                input[k] = programme[static_cast<std::size_t>(plan.source[k])][n];
                 source[k].push_back(input[k]);
             }
             const std::vector<double> coded = detail::acpl_downmix(*plan.acpl, input);
@@ -1714,7 +1853,7 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::Impl::push(
             }
             if (plan.lfe >= 0) {
                 signal[static_cast<std::size_t>(plan.lfe)].push_back(
-                    static_cast<double>(channels[static_cast<std::size_t>(plan.input_lfe)][n]));
+                    programme[static_cast<std::size_t>(plan.input_lfe)][n]);
             }
             if (!plan.residuals.empty()) {
                 const std::vector<double> residuals = detail::acpl_residuals(*plan.acpl, input);
@@ -1726,16 +1865,15 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::Impl::push(
     }
     if (stem()) {
         for (std::size_t i = 0; i < de_channels.size(); ++i) {
-            for (const auto& [from, to] :
-                 {std::pair{channels, &de_programme[i]}, std::pair{dialogue, &de_dialogue[i]}}) {
-                for (const float x : from[de_channels[i]]) {
-                    to->push_back(static_cast<double>(x));
-                }
-            }
+            const std::vector<double>& programme_channel = programme[de_channels[i]];
+            const std::vector<double>& dialogue_channel = stem_input[de_channels[i]];
+            de_programme[i].insert(de_programme[i].end(), programme_channel.begin(),
+                                   programme_channel.end());
+            de_dialogue[i].insert(de_dialogue[i].end(), dialogue_channel.begin(),
+                                  dialogue_channel.end());
         }
     }
     input_samples += static_cast<std::int64_t>(count);
-    return drain();
 }
 
 std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
@@ -1756,11 +1894,24 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
 }
 
 std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::flush() {
-    if (impl_->flushed) {
+    Impl& impl = *impl_;
+    if (impl.flushed) {
         return std::vector<EncodedFrame>{};
     }
-    impl_->flushed = true;
-    return impl_->drain();
+    if (!impl.converters.empty()) {
+        // What the converters hold back, flushed out with silence.
+        const std::vector<float> zeros(
+            static_cast<std::size_t>(impl.converters.front().filter().taps()), 0.0F);
+        const std::vector<std::span<const float>> views(impl.converters.size(), zeros);
+        const std::vector<std::vector<double>> programme = Impl::internal(views, impl.converters);
+        std::vector<std::vector<double>> stem_input;
+        if (impl.stem()) {
+            stem_input = Impl::internal(views, impl.stem_converters);
+        }
+        impl.take(programme, stem_input);
+    }
+    impl.flushed = true;
+    return impl.drain();
 }
 
 const Toc& Encoder::toc() const noexcept {
@@ -1772,7 +1923,14 @@ CodecMode Encoder::codec_mode() const noexcept {
 }
 
 int Encoder::delay_samples() const noexcept {
-    return kDelay;
+    // The silence ahead of the input at the external rate, and where the
+    // frame rate needs one the converter's delay.
+    const detail::FrameTiming& t = impl_->timing;
+    double delay = static_cast<double>(impl_->delay) * t.decoder_up / t.decoder_down;
+    if (!impl_->converters.empty()) {
+        delay += impl_->converters.front().filter().delay();
+    }
+    return static_cast<int>(std::lround(delay));
 }
 
 }  // namespace ac4

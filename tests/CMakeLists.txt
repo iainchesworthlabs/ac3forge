@@ -57,6 +57,7 @@ add_executable(ac3tests
     ac4dec/test_ac4dec_frames.cpp
     ac4dec/test_ac4dec_syntax.cpp
     ac4enc/test_ac4enc_encoder.cpp
+    ac4enc/test_ac4enc_frame_rates.cpp
     ac4enc/test_ac4enc_metadata.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp

@@ -41,7 +41,8 @@ target_sources(ac4enc_objects
         src/frame/dialogue.cpp
         src/frame/frame_writer.cpp
         src/frame/metadata.cpp
-        src/frame/sync_frame.cpp)
+        src/frame/sync_frame.cpp
+        src/frame/timing.cpp)
 
 target_include_directories(ac4enc_objects
     PUBLIC

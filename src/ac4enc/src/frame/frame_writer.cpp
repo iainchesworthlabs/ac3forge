@@ -35,8 +35,17 @@ void write_presentation_v1_info(BitWriter& w, const FrameFields& f) {
     w.write(1, 0, "b_tmp");
     w.write(3, 0, "md_compat");
     w.write(1, 0, "b_presentation_id");
-    // frame_rate_multiply_info() (Part 1 Table 7) and frame_rate_fractions_info()
-    // (6.2.1.4) transmit nothing at frame_rate_index 13.
+    // frame_rate_multiply_info() (Part 1 Table 7): no multiplier, so
+    // frame_rate_factor 1, where the index has one to send; and
+    // frame_rate_fractions_info() (6.2.1.4): a fraction of 1 at 47.95 fps and
+    // up. Neither sends anything at index 13.
+    const int index = f.frame_rate_index;
+    if (index <= 4 || (index >= 7 && index <= 9)) {
+        w.write(1, 0, "b_multiplier");
+    }
+    if (index >= 5 && index <= 12) {
+        w.write(1, 0, "b_frame_rate_fraction");
+    }
     write_emdf_info(w);
     w.write(1, 0, "b_presentation_filter");
     // ac4_sgi_specifier(), 6.2.1.7: the one substream group.
