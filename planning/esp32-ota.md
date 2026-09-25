@@ -316,9 +316,14 @@ On the new image:
 - A panic, a watchdog reset, a brownout or a power cut before acceptance also rolls back, through
   the bootloader. A board that hangs during its trial can therefore be unplugged and plugged back
   in, and it comes back on the previous image.
-- The trial runs on a task of its own, not in app_main's loop, so a stuck loop still rolls back.
-  An `esp_timer` 30 s past the deadline restarts the board if that task has not acted, and a
-  restart while on trial is itself a rollback.
+- The trial is read once a second by an `esp_timer`, not in app_main's loop, so a stuck loop
+  still rolls back. It has no task of its own until it has decided: a short-lived task then
+  writes the decision to otadata and NVS, which needs more stack than `esp_timer`'s task has. A
+  task kept for the whole trial took 6 KiB of internal RAM as the board started, and on the S3
+  board that left the Sendspin player without the 32 KiB block it starts with, so no update
+  could pass its trial there (found by O2). A second `esp_timer`, 30 s past the deadline,
+  restarts the board if the trial has not acted, and a restart while on trial is itself a
+  rollback.
 - The task watchdog is left as the builds set it: it reports and does not panic
   (`CONFIG_ESP_TASK_WDT_PANIC` is off in every board build). A decode that keeps the idle task
   from running for 5 s makes it fire. That is a problem of load, not a broken image, and a trial
