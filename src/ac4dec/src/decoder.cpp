@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <deque>
 #include <limits>
 #include <map>
 #include <memory>
@@ -1141,7 +1140,10 @@ struct Decoder::Impl {
     struct ObjectTrack {
         detail::ObjectMetadataState state;
         ObjectProperties current;  // in force at the next output sample
-        std::deque<std::pair<std::int64_t, ObjectUpdate>> pending;
+        // The updates waiting, in order from `next`: a queue whose storage
+        // stays from frame to frame.
+        std::vector<std::pair<std::int64_t, ObjectUpdate>> pending;
+        std::size_t next = 0;
         detail::IsfGain isf_gain;  // an intermediate spatial format object's
     };
     std::map<std::pair<int, int>, ObjectTrack> object_tracks;
@@ -1156,6 +1158,7 @@ struct Decoder::Impl {
     // frame's length.
     std::vector<std::vector<float>> object_pcm;
     std::size_t object_samples = 0;
+    std::size_t objects_used = 0;  // DecodedFrame::objects filled so far this frame
     // The frame's intermediate spatial format objects, for the ISF renderer
     // once the presentation's channels are decoded: the first `isf_used`,
     // their essences' storage kept from frame to frame.
@@ -1557,22 +1560,32 @@ detail::ParseResult Decoder::Impl::decode_objects(const CapturedAudio& member,
     // The objects, each with the updates that fall in this frame; an
     // intermediate spatial format's, their gains applied, wait for the ISF
     // renderer.
+    // A frame decode_by_block() keeps has its objects' storage from the frame
+    // before, which the essences swap with object_pcm's.
     int isf_seen = 0;
     const auto end = start + static_cast<std::int64_t>(length);
     for (int k = 0; k < n; ++k) {
         const ObjectEntry& e = essences[static_cast<std::size_t>(k)];
         ObjectTrack& track = object_tracks[{member.state_key, k}];
         const bool rendered = e.kind == ObjectKind::kIsf;
-        DecodedObject object;
-        std::vector<ObjectUpdate>& updates = rendered ? isf_updates : object.updates;
+        if (!rendered && objects_used == frame.objects.size()) {
+            frame.objects.emplace_back();
+        }
+        DecodedObject* const object = rendered ? nullptr : &frame.objects[objects_used];
+        std::vector<ObjectUpdate>& updates = rendered ? isf_updates : object->updates;
         updates.clear();
-        object.properties = track.current;
-        while (!track.pending.empty() && track.pending.front().first < end) {
-            auto [at_sample, update] = track.pending.front();
-            track.pending.pop_front();
+        if (object != nullptr) {
+            object->properties = track.current;
+        }
+        while (track.next < track.pending.size() && track.pending[track.next].first < end) {
+            auto [at_sample, update] = track.pending[track.next++];
             update.sample = at_sample < start ? 0 : static_cast<std::size_t>(at_sample - start);
             track.current = update.properties;
             updates.push_back(std::move(update));
+        }
+        if (track.next == track.pending.size()) {
+            track.pending.clear();
+            track.next = 0;
         }
         std::vector<float>& samples = object_pcm[static_cast<std::size_t>(k)];
         if (rendered) {
@@ -1591,13 +1604,11 @@ detail::ParseResult Decoder::Impl::decode_objects(const CapturedAudio& member,
             slot.samples.swap(samples);
             continue;
         }
-        object.kind = e.kind;
-        object.lfe = e.lfe;
-        if (e.speaker) {
-            object.speaker = detail::speaker_of_index(*e.speaker);
-        }
-        object.samples = std::move(samples);
-        frame.objects.push_back(std::move(object));
+        object->kind = e.kind;
+        object->lfe = e.lfe;
+        object->speaker = e.speaker ? detail::speaker_of_index(*e.speaker) : std::nullopt;
+        object->samples.swap(samples);
+        ++objects_used;
     }
     return {};
 }
@@ -2080,10 +2091,10 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
     }
     inputs.drc = detail::drc_frame_values(d.config.output, dialnorm, drc_state, drc_frame);
     // The presentation's object audio substreams, each decoded apart.
-    frame.objects.clear();
     frame.object_common.reset();
     d.last_objects.clear();
     d.isf_used = 0;
+    d.objects_used = 0;
     d.object_samples = 0;
     for (std::size_t m = 0; m < capture.audio.size(); ++m) {
         if (!is_object(m)) {
@@ -2097,6 +2108,7 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
         d.last_objects.push_back(capture.audio[m].state_key);
         d.latency = d.pcm[capture.audio[m].state_key].output_delay_samples();
     }
+    frame.objects.resize(d.objects_used);
     if (!channel_anchor) {
         // A presentation of object audio alone: no channels, but an
         // intermediate spatial format's.
