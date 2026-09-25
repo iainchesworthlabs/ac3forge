@@ -1440,8 +1440,8 @@ into the tree.
   bursts of a sequence without saying which frame is data-burst 0; the packer takes the frame's
   phase in the five-frame cycle TS 103 190-2 clause 5.11 locks the decoder's converter to, set by
   `sequence_counter`. Part 14's sequences start at the same frame of that cycle, so each burst
-  lasts as long as its frame decodes to, and a stream packed from any frame gives each frame the
-  same period. And it gives `Pd` in bits for AC-4 and AC-4 LD where IEC
+  starts within a sample of its frame's first decoded sample, and a stream packed from any frame
+  gives each frame the same period. And it gives `Pd` in bits for AC-4 and AC-4 LD where IEC
   61937-2 Table 2 says bytes; the packer writes bits, as the part that defines the data-burst says,
   and the reader takes either. Its AC-4 LD rate of 187.5 fps has no `frame_rate_index` in
   TS 103 190-1 V1.4.1, so no frame reaches that row.
