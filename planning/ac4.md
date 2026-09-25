@@ -1367,6 +1367,46 @@ three angles Part 1 Table 216 defines; the multiplexed streams parse in both imp
   the syntax sink's lifetime; one error for a Huffman miss at the end of a substream, whichever tool
   reads it; a report for an HSF extension substream nothing claims; and the Android, WASM and Python
   wheel configurations no longer compiling AC-4 libraries they do not link, until I4 binds them.
+- D8 settled the syntax trace's lifetime by ownership. `DecoderConfig::syntax` and
+  `EncoderConfig::trace` are `ac4::SyntaxTrace`, a `std::function` the configuration owns and the
+  decoder or encoder copies, and `ac4::SyntaxSink`, the reference the readers and writers hold while
+  they run, binds a named callable only. The change showed a second way to dangle: `sink_of()`, taking
+  a `const SyntaxTrace&`, accepted the old reference type by converting it into a temporary
+  `std::function` around a null reference, and the encoder's tests crashed on it until `sink_of()`
+  took a `SyntaxTrace` alone.
+- The API differs from the sketch under [The API](#the-api) where the sketch left room. The
+  presentation changes through `set_presentation()` beside `set_output()`; `decode_by_block()`
+  returns a `FrameInfo`, a decoded frame's description without its samples, or nothing for a frame
+  without output, and `flush()` hands over the samples short of a block at the end; `parse()` reads
+  a frame without decoding it, in place of `skip_reconstruction`; and the syntax trace and
+  `refusal_reason()` stand in for a diagnostic sink. The output layouts of Part 2 5.10.2 and core
+  decoding are D9's, as fields after the existing ones.
+- A decoder built afresh when the listener changes a setting waits for the stream's next I-frame,
+  so Hearth's rebuild-and-prime, which serves AC-3 and E-AC-3, cannot serve AC-4. `set_output()`
+  takes the new values from the next frame instead: nothing is lost, and from two frames on, once
+  the control data has reached the QMF domain, the output is the new configuration's sample for
+  sample. Every presentation's substreams are read in every frame whichever is decoded, so
+  `set_presentation()` needs no I-frame either, and `presentations()`, `metadata()` and
+  `ac3cli probe` report a stream without decoding its audio.
+- Part 2 6.3.3.1.4 sends an alternative presentation's name whole or in chunks, one a frame, and
+  leaves open which bytes of a chunk are the name's and where a decoder joining in the middle begins.
+  The register reads a chunk before the last as name bytes throughout and the last as two bytes
+  shorter, and takes the name once as many consecutive chunks as the count says have arrived
+  (`src/ac4dec/ERRATA.md`, "A presentation name in chunks"); the Python reference takes the same
+  reading on 14 cases. No stream here names a presentation.
+- DEE's 5.1 streams send no `lfe_mixgain`, so the LFE's place in a two-channel downmix is tested on
+  an encoder stream written with `lfemix=-4.5`.
+- The static decoder calls into the core without containing it, as no archive contains what it
+  links, so the package installs `libac4core_static.a` beside `libac4dec_static.a` and names it in
+  the decoder's exported target and in `ac4dec.pc`'s `Requires.private`. The decoder's OBJECT library
+  used to link the inspector and the core itself, which put the core's archive on the link line of
+  everything that linked `libac4dec.so`, and in a static build the inspector's archive as well; each
+  library now links the inspector of its own kind. The member functions of `ac4::Decoder::Impl`
+  were exported from `libac4dec.so` with the class they are nested in; they are hidden now, and
+  `tools/ci/abi-allowlist/libac4dec.so.txt` lists the header's API alone.
+- Over DEE's local set the test standing in for Hearth's engine decodes 406 of 533 streams, and
+  refuses the 127 5.1.4 streams by the immersive channel element's name; over the 13 third-party
+  streams it decodes 12, and refuses Chromium's A-JOC stream naming the substream it does not decode.
 
 **Exit:** the Hearth engine, or a test standing in for it, decodes every stream in the set through
 the public API alone; the CLI tests cover every option; the packages contain the libraries; each

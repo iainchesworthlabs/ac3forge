@@ -58,14 +58,14 @@ fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https
 
 | Layer | State |
 |---|---|
-| Container parse and inspect (`src/ac4`, CLI `probe`) | **Shipped** — see CHANGELOG and [Validation — AC-4](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/verification.md) |
+| Container parse and inspect (`src/ac4`, CLI `probe`) | **Shipped** — see CHANGELOG and [Validation — AC-4](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/verification.md); sync frames from a stream that arrives in pieces, and `probe` reports each presentation and the metadata as the decoder reads them (D8) |
 | Syntax transcription (`src/ac4dec`) | **Shipped** — reads channel-coded substream syntax, cross-checked against a second transcription |
-| PCM decode | **In progress** — mono, stereo, 3.0, 5.X and 7.X decode to PCM in every codec mode Part 1 gives them, SIMPLE, ASPX and A-CPL (phases D2 to D5), through the QMF banks, companding, A-SPX and A-CPL; every frame rate, with the output level, DRC, dialogue enhancement and the downmix (D6); streams of several presentations, the presentation chosen and its substreams mixed (D7) |
+| PCM decode | **In progress** — mono, stereo, 3.0, 5.X and 7.X decode to PCM in every codec mode Part 1 gives them, SIMPLE, ASPX and A-CPL (phases D2 to D5), through the QMF banks, companding, A-SPX and A-CPL; every frame rate, with the output level, DRC, dialogue enhancement and the downmix (D6); streams of several presentations, the presentation chosen and its substreams mixed (D7); the API in its final form for channel-based streams, with the output and the presentation changed while a stream plays, output by block, and each presentation and the metadata reported, and the inspector, decoder and core installed and exported (D8, [AC-4 decoding](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/ac4.md)) |
 | Immersive paths, objects | **Not started** — plan phases D9 and D10; the speech frontend waits for a stream that uses it |
 | Encoder (`src/ac4enc`) | **In progress** — mono, stereo, 5.0 and 5.1 in the SIMPLE, ASPX and A-CPL codec modes (phases E1 to E4), A-SPX below 96 kbps a channel in mono and stereo and below 384 kbps in 5.1, companding in mono and stereo below 64 kbps a channel, ASPX_ACPL_2 and ASPX_ACPL_3 in 5.1 below 168 and 112 kbps, `ac3cli ac4-encode`; 7.X, the 5.X element's other coding configurations, ASPX_ACPL_1 and A-CPL in stereo as experimental options; metadata and the other frame rates follow in E5 to E7 |
 | Applications (`ac3cli`, Hearth, Forge GUI, bindings) | **Not started** — plan phases I1 to I6, after the channel-based library |
 
-Hearth and Forge playback of AC-4 waits on PCM decode. Plan:
+Hearth and Forge playback of AC-4 waits on the application phases. Plan:
 [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md). Its
 first phase makes the DEE reference streams the others need before the local DEE licence ends on
 2026-11-06.
