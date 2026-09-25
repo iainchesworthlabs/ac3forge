@@ -111,13 +111,15 @@ enum class DrcMode : std::uint8_t {
 // The controls of planning/ac4.md's "One control for both formats" that act on
 // the decoded channels. Decoder::set_output() changes them from the next frame.
 // A later version adds the immersive output layouts (Part 2 clause 5.10.2) as
-// fields after these.
+// fields after these. Every field has a default, so a designated initializer
+// names only the fields it sets; the same holds for PresentationChoice and
+// DecoderConfig.
 struct OutputConfig {
     // Lout of Part 1 clause 5.7.9.3.3, in dBFS: the level the stream's
     // dialnorm is taken to, by 2^((Lout - dialnorm) / 6), which cuts or
     // boosts. Part 1 gives no default, the system supplies it; unset leaves the
     // stream at its coded level and compresses nothing.
-    std::optional<double> output_level_dbfs;
+    std::optional<double> output_level_dbfs{};
     // With an output level: the mode that compresses. A mode the stream does
     // not configure compresses nothing.
     DrcMode drc = DrcMode::kDefault;
@@ -171,19 +173,19 @@ struct PresentationChoice {
     // The presentation carrying this presentation_id (Part 2 clause
     // 6.3.2.2.4a); where no presentation that can be selected carries it, the
     // rest decides.
-    std::optional<int> presentation_id;
+    std::optional<int> presentation_id{};
     // Else the presentation at this position of the table of contents, which
     // the text warns can change over time.
-    std::optional<std::size_t> index;
+    std::optional<std::size_t> index{};
     // Else the preferences. The language of the main or dialogue audio: an
     // IETF BCP 47 tag, a presentation's tag matching it whole before one whose
     // primary subtag matches; empty for none.
-    std::string language;
+    std::string language{};
     // The associated audio: Part 1 Table 91's content_classifier of the
     // service a presentation should carry (0b010 visually impaired, 0b011
     // hearing impaired, 0b101 commentary, and so on), with Table 92's
     // refinement of it; unset for a presentation without associated audio.
-    std::optional<int> associated;
+    std::optional<int> associated{};
     AssociatedType associated_type = AssociatedType::kAny;
     // The kind of audio: a presentation rendered for headphones before it was
     // encoded (b_pre_virtualized, Part 1 clause 4.3.3.3.5) before one that was

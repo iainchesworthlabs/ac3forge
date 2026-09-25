@@ -76,7 +76,7 @@ struct Ac4Summary {
     // What ac4::Decoder reads of every frame: the presentations of the last
     // frame whose table of contents reads, with their names, and the
     // metadata of the presentation it selects without preferences.
-    std::vector<ac4::PresentationInfo> presentations;
+    std::vector<ac4::PresentationInfo> presentations{};
     std::optional<ac4::PresentationMetadata> metadata = std::nullopt;
 };
 
