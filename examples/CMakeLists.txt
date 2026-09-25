@@ -135,6 +135,13 @@ if(AC3FORGE_BUILD_CAPI)
             C_STANDARD 11
             C_STANDARD_REQUIRED ON
             C_EXTENSIONS OFF)
+        # Both call sin() to make their tone, and a C link, unlike a clang++/g++ one, does not add
+        # libm. They never had to name it: the static codec rode along on ac3::forge_c's link
+        # interface, which made CMake link them with the C++ driver. With BUILD_SHARED_LIBS=ON it
+        # no longer does (src/capi/CMakeLists.txt), so they link as the C programs they are.
+        if(UNIX)
+            target_link_libraries(${capi_example} PRIVATE m)
+        endif()
     endforeach()
 
     if(AC3FORGE_BUILD_TESTS)

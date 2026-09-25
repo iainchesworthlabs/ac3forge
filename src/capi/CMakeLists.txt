@@ -20,6 +20,17 @@
 # libac3forge.so would defeat that. forge_static's objects are already built
 # PIC (src/forge/CMakeLists.txt), so embedding them in a shared library is
 # safe on every platform this project targets.
+#
+# The embedded codec has to stay private to this library, or a program that
+# links ac3::forge_shared and this library together can run the C++ API on the
+# copy inside this one. Two things keep it private:
+#  - linking ac3::forge_c_shared must not put libac3forge_static.a on the
+#    consumer's link line, where it beats a libac3forge.so listed after it
+#    (forge_c_objects, below);
+#  - libac3forge_c.so exports the C API and nothing else (the end of this file).
+# Without them ac3tests in the BUILD_SHARED_LIBS=ON pass bound none of its
+# ac3:: symbols to libac3forge.so; tools/checks/check_shared_forge_binding.sh
+# checks that it does.
 # ---------------------------------------------------------------------------
 add_library(forge_c_objects OBJECT)
 add_library(forge_c_static STATIC)
@@ -57,18 +68,32 @@ target_include_directories(forge_c_objects
 
 target_compile_features(forge_c_objects PUBLIC cxx_std_23)
 
-# ac3::forge_static PRIVATE: see this file's header comment on why both
-# forge_c_static and forge_c_shared embed the static codec rather than tracking
-# BUILD_SHARED_LIBS. $<BUILD_INTERFACE:...> wraps ac3::warnings for the same
-# "dev-only, must not enter the export graph" reason src/forge/CMakeLists.txt's
-# identical forge_objects treatment documents - not needed for
-# ac3::forge_static itself, which forge_c_static/forge_c_shared's install(EXPORT)
-# already resolves via forgeTargets.
+# See this file's header comment on why both forge_c_static and forge_c_shared
+# embed the static codec rather than tracking BUILD_SHARED_LIBS.
+#
+# forge_c_objects takes only ac3::forge_static's usage requirements (include
+# path, AC3FORGE_STATIC_DEFINE, C++23), through $<COMPILE_ONLY:...>. It must not
+# link it: an OBJECT library has no link step to hide a PRIVATE dependency
+# behind, so the dependency lands in its INTERFACE_LINK_LIBRARIES, and both
+# libraries below link forge_c_objects PUBLIC for its include path. Linked
+# PRIVATE here, ac3::forge_static reached every consumer of
+# ac3::forge_c_shared, and ac3tests' link line carried libac3forge_static.a
+# ahead of libac3forge.so, so the archive supplied the symbols the tests call.
+# The two libraries link it themselves instead, where PRIVATE means what it
+# says: a shared library keeps it to itself, and a static one passes it on to
+# its consumers as a link-only dependency, which they need.
+#
+# $<BUILD_INTERFACE:...> wraps ac3::warnings and ac3::coverage for the "dev-only,
+# must not enter the export graph" reason src/forge/CMakeLists.txt's identical
+# forge_objects treatment documents, and the compile-only ac3::forge_static
+# because nothing that uses the installed package compiles these objects.
 target_link_libraries(forge_c_objects
     PRIVATE
-        ac3::forge_static
+        "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac3::forge_static>>"
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")
+target_link_libraries(forge_c_static PRIVATE ac3::forge_static)
+target_link_libraries(forge_c_shared PRIVATE ac3::forge_static)
 
 set_target_properties(forge_c_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON
@@ -112,3 +137,18 @@ set_target_properties(forge_c_shared PROPERTIES
 
 set_target_properties(forge_c_shared PROPERTIES OUTPUT_NAME "ac3forge_c")
 set_target_properties(forge_c_static PROPERTIES OUTPUT_NAME "ac3forge_c_static")
+
+# libac3forge_c.so exports the C API and nothing else. forge_static's objects are
+# compiled once, for forge_shared as well, with AC3FORGE_EXPORT marking the C++
+# API for export, so without --exclude-libs the linker exports every one of them
+# that the embedded copy pulled in: 346 of the 562 lines of this library's ABI
+# allowlist were codec symbols, beside its 216 C functions. A process that then
+# loaded libac3forge.so had the C++ API, and libac3forge.so's own calls to
+# itself, bound to the copy in this library. --exclude-libs makes the linker
+# treat every symbol it takes from an archive as local; src/ac3adm/CMakeLists.txt
+# does the same for the same reason. ELF linkers only (GNU ld, gold, lld, mold):
+# Mach-O's has no such option and MSVC's link.exe exports what an object marks
+# dllexport, so macOS and Windows are left as they were.
+if(LINUX)
+    target_link_options(forge_c_shared PRIVATE "LINKER:--exclude-libs,ALL")
+endif()

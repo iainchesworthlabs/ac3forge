@@ -1778,6 +1778,20 @@ The sections below contain the complete change list and fixes.
 
 **Build system**
 
+- **`libac3forge_c.so` exported the codec it embeds, and the `BUILD_SHARED_LIBS=ON` test pass ran
+  on that copy instead of `libac3forge.so`.** On Linux the C library exported the C++ symbols of
+  the static codec inside it (346 of the 562 lines in its ABI allowlist, beside its 216 C
+  functions), and linking `ac3::forge_c_shared` put `libac3forge_static.a` on the consumer's link
+  line. In the shared pass `ac3tests` bound none of its `ac3::` symbols to `libac3forge.so`: 231
+  went to `libac3forge_c.so`, 244 were linked in from the archive, and `libac3forge.so`'s own
+  internal calls resolved to those copies. A C program linking the shared library was also linked
+  with the C++ driver and the archive. The archive no longer reaches consumers of the shared
+  library, and on Linux the library exports the 216 C functions and nothing else; macOS and
+  Windows are unchanged. Four member functions a shared-library user could not call are now
+  exported from `libac3forge.so`: `quality::BandNoise::reset`, `total_signal` and `total_noise`,
+  and `verify::FrameTrace::reset`. The two C examples name libm themselves, and
+  `tools/checks/check_shared_forge_binding.sh` fails the shared pass if `ac3tests` stops binding
+  to `libac3forge.so`.
 - **macOS cross-builds compiled the wrong architecture's SIMD kernels.**
   `AC3FORGE_SIMD`'s `auto` keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple platforms
   describes the host, not `CMAKE_OSX_ARCHITECTURES`'s target — building arm64 from an
