@@ -1076,6 +1076,17 @@ target_link_libraries(ac3tests
         ac3::fmt
         Catch2::Catch2WithMain)
 
+# core/test_fixed32_ecpl.cpp calls the fixed-point tier's enhanced-coupling
+# functions, which are internal to the library: declared under src/forge/src/
+# rather than in the installed include tree, and so not exported from
+# libac3forge.so. With BUILD_SHARED_LIBS=ON there is nothing for it to link
+# against, and linking the static archive in as well would put a second copy of
+# the codec in the executable that the shared pass exists to keep out. It tests
+# the tier's arithmetic, not the linkage, and every static leg runs it.
+if(NOT BUILD_SHARED_LIBS)
+    target_sources(ac3tests PRIVATE core/test_fixed32_ecpl.cpp)
+endif()
+
 include(Catch)
 
 # ADD_TAGS_AS_LABELS turns each case's Catch2 tags into ctest LABELS, which is
