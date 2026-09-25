@@ -251,6 +251,12 @@ The sections below contain the complete change list and fixes.
   - **`tools/hearth/ota.py`**, and `idf.py ota` through the example's `idf_ext.py`, push a
     build to one board or to every board on the network, and wait for each to accept or go
     back.
+  - **The board's web page has a Firmware section.** It shows both slots, a trial and its time
+    left, an update under way and how the last one ended. **Update firmware…** sends an image
+    chosen from a file and shows the bytes sent; **Restart** and **Roll back** ask first. A
+    file the board would refuse on its head alone is not sent, since an upload stops what plays
+    before the board reads it. When the board comes back running another image, the page loads
+    again.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
