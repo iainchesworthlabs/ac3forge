@@ -2,12 +2,14 @@
 
 #include <array>
 #include <deque>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
 
 #include "ac4dec/decoder.hpp"
 #include "dsp/qmf.hpp"
+#include "dsp/resampler.hpp"
 #include "dsp/synthesis.hpp"
 #include "pcm/acpl.hpp"
 #include "pcm/aspx.hpp"
@@ -33,18 +35,26 @@
 // works behind (5.7.1), 352 + 577 + 384 samples at frame_rate_index 13. The
 // LFE goes through the banks with the rest and nothing else touches it there:
 // companding, A-SPX and A-CPL leave it out (Tables 212 to 214).
+//
+// At every frame_rate_index but 13 the frame is coded at an internal rate, and
+// the sample rate converter (Part 1 clause 6.2.15, src/ac4core/src/dsp/
+// resampler.hpp) takes the synthesis's output to 48 kHz, its phase locked to
+// sequence_counter as Part 2 clause 5.11 locks it.
 
 namespace ac4::detail {
 
 class SubstreamPcm {
    public:
     // Decodes one frame of `substream`, read under `ctx`, to planar PCM in
-    // `channels` (one vector per output channel, frame_len_base samples each,
-    // full scale 1.0) and names the channels in `speakers`, in speakers_of()'s
-    // order. A substream whose channel mode or frame length differs from the
-    // last frame's starts from silence.
+    // `channels` (one vector per output channel, full scale 1.0) and names the
+    // channels in `speakers`, in speakers_of()'s order. A frame is
+    // frame_len_base samples at frame_rate_index 13, and otherwise as many as
+    // the converter gives at `converter_phase`, Part 2 clause 5.11's phi_t: at
+    // 29.97 fps 1 601 or 1 602. A substream whose channel mode or frame length
+    // differs from the last frame's starts from silence.
     [[nodiscard]] ParseResult decode(const SubstreamContext& ctx, const AudioSubstream& substream,
-                                     int sequence_counter, std::vector<std::vector<float>>& channels,
+                                     int sequence_counter, int converter_phase,
+                                     std::vector<std::vector<float>>& channels,
                                      std::vector<Speaker>& speakers);
 
     // Silence in every overlap buffer, delay line and filter bank, and no
@@ -69,6 +79,7 @@ class SubstreamPcm {
         std::vector<QmfValue> ext;
         std::vector<QmfValue> out;  // what the synthesis bank takes
         AspxChannelState aspx;
+        std::optional<dsp::Resampler<double>> converter;  // at every frame_rate_index but 13
     };
 
     // The QMF-domain control data of one frame, held d_ctrl frames until the
@@ -128,6 +139,10 @@ class SubstreamPcm {
     AcplQuantHistory acpl_history_;
     std::optional<int> decoded_mode_;
     std::optional<int> applied_mode_;
+    // The sample rate converter's filter, which every channel's converter
+    // shares, and the phase of the last frame converted.
+    std::shared_ptr<const dsp::ResamplerFilter> converter_filter_;
+    std::optional<int> converter_phase_;
 
     // Scratch, kept to save an allocation per frame.
     ElementRoute route_;
@@ -140,6 +155,7 @@ class SubstreamPcm {
     std::vector<std::vector<double>> spectra_;  // per channel, in window order
     std::vector<int> track_of_;                 // per channel, the track its lines are in
     std::vector<double> pcm_;
+    std::vector<double> converted_;
     std::vector<double> aligned_;
     std::vector<std::vector<int>> lengths_;  // per channel, its blocks' lengths
     std::vector<std::vector<QmfValue>*> matrices_;  // per channel, its `out`, for A-CPL

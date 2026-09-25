@@ -432,13 +432,17 @@ TEST_CASE("decode writes AC-4's ASPX mode, 5.1 and A-CPL, and refuses what it do
     REQUIRE(decoded_acpl.has_value());
     CHECK(decoded_acpl->channels.size() == 6);
 
-    // 25 frames a second, which needs phase D6's sample rate converter.
-    const auto refused_log = dir / "ac4_decode_refused.log";
-    const auto refused = dir / "ac4_refused.wav";
+    // 25 frames a second, through the sample rate converter: 1 920 samples a
+    // frame at 48 kHz.
+    const auto ims_log = dir / "ac4_decode_ims25.log";
+    const auto ims_wav = dir / "ac4_ims25.wav";
     const fs::path ims = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-ims-music-128-25" / "dee.ac4";
-    CHECK(run_cli("decode " + quoted(ims) + " " + quoted(refused), refused_log) == 2);  // kExitInput
-    CHECK(read_log(refused_log).find("frame_rate_index 13") != std::string::npos);
-    CHECK_FALSE(fs::exists(refused));
+    REQUIRE(run_cli("decode " + quoted(ims) + " " + quoted(ims_wav), ims_log) == 0);
+    const auto decoded_ims = ac3::io::read_wav(ims_wav.string());
+    REQUIRE(decoded_ims.has_value());
+    CHECK(decoded_ims->sample_rate == 48000);
+    REQUIRE(decoded_ims->channels.size() == 2);
+    CHECK(decoded_ims->channels[0].size() % 1920 == 0);
 }
 
 TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "[cli][mp4][ac4]") {

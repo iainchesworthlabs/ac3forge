@@ -25,13 +25,15 @@
 // ac4_hsf_ext_substream(), included), and EMDF payload substreams - and
 // reports what a frame carries. It decodes to PCM the mono, stereo, 3.0, 5.X
 // and 7.X channel elements in every codec mode Part 1 gives them (SIMPLE,
-// ASPX and the A-CPL modes) at frame_rate_index 13 (2 048 samples a frame at
-// 48 or 44.1 kHz, which needs no sample rate converter): the audio spectral
-// frontend, stereo and multichannel processing, the inverse transform with
-// block switching, frame alignment, and the QMF domain's companding, A-SPX
-// and A-CPL (Part 1 clauses 5.1, 5.3, 5.5, 5.6 and 5.7). The table of contents and the substream framing
-// come from ac4::parse_raw_frame (the inspector, src/ac4); this library starts
-// where the inspector stops.
+// ASPX and the A-CPL modes), at every frame rate of Part 1 Tables 83 and 84:
+// the audio spectral frontend, stereo and multichannel processing, the
+// inverse transform with block switching, frame alignment, the QMF domain's
+// companding, A-SPX and A-CPL (Part 1 clauses 5.1, 5.3, 5.5, 5.6 and 5.7),
+// and at every frame_rate_index but 13 the sample rate converter from the
+// internal rate to 48 kHz (clause 6.2.15), its phase locked to
+// sequence_counter (Part 2 clause 5.11). The table of contents and the
+// substream framing come from ac4::parse_raw_frame (the inspector, src/ac4);
+// this library starts where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
 // spectral frontend (Part 1 clause 5.2), immersive and 22.2 channel elements,
@@ -39,7 +41,7 @@
 // substream could not be resolved and read alongside it. Refusing is per
 // substream and per frame; the next frame is attempted afresh. decode()
 // refuses, the same way, everything above that it does not turn into PCM
-// yet: other frame rates and 96/192 kHz.
+// yet: 96/192 kHz.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
@@ -115,9 +117,12 @@ struct DecodedFrame {
     // then a 7.X mode's last pair, each where the channel mode has it.
     std::vector<Speaker> speakers;
     // Planar PCM, one vector per channel, all the same length, at full scale
-    // 1.0. The decoder's delay is applied: Part 1's frame alignment (clause
-    // 5.6), the QMF banks and the QMF domain's history (5.7.1), 1 313 samples
-    // at frame_rate_index 13 in every codec mode.
+    // 1.0: a frame's worth, which at 29.97, 59.94 and 119.88 fps alternates
+    // by a sample in the sequence Part 2 Table 47 locks to sequence_counter
+    // (1 601 or 1 602 at 29.97). The decoder's delay is applied: Part 1's
+    // frame alignment (clause 5.6), the QMF banks and the QMF domain's history
+    // (5.7.1), 1 313 samples at frame_rate_index 13 in every codec mode, and
+    // at the other indices the sample rate converter's too.
     std::vector<std::vector<float>> channels;
 };
 

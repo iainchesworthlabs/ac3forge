@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <span>
 
 #include "aspx/hf_generator.hpp"
@@ -85,6 +86,9 @@ void SubstreamPcm::reset() {
         channel.qmf_synthesis.reset();
         std::ranges::fill(channel.ext, QmfValue{});
         channel.aspx = AspxChannelState{};
+        if (channel.converter) {
+            channel.converter->reset();
+        }
     }
     held_.clear();
     master_.reset();
@@ -92,6 +96,7 @@ void SubstreamPcm::reset() {
     acpl_history_ = {};
     decoded_mode_.reset();
     applied_mode_.reset();
+    converter_phase_.reset();
 }
 
 int SubstreamPcm::channel_of(Speaker speaker) const noexcept {
@@ -128,6 +133,12 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
     hfgen_ = aspx::ts_offset_hfgen(full_length_);
     const int ext_slots = aspx::kTsOffsetHfadj + hfgen_ + slots_;
     speakers_ = speakers;
+    // Part 1 clause 6.2.15: 48 kHz from the internal rate.
+    const ResamplingRatio ratio = resampling_ratio(ctx.frame_rate_index);
+    converter_filter_.reset();
+    if (ratio.up != ratio.down) {
+        converter_filter_ = std::make_shared<const dsp::ResamplerFilter>(ratio.up, ratio.down);
+    }
     channels_.clear();
     for (std::size_t c = 0; c < speakers_.size(); ++c) {
         Channel channel{.synthesis = dsp::ChannelSynthesis<double>(full_length_),
@@ -136,7 +147,11 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
                         .qmf_synthesis = {},
                         .ext = std::vector<QmfValue>(at(ext_slots) * kSubbands),
                         .out = std::vector<QmfValue>(at(slots_) * kSubbands),
-                        .aspx = {}};
+                        .aspx = {},
+                        .converter = {}};
+        if (converter_filter_) {
+            channel.converter.emplace(converter_filter_);
+        }
         channels_.push_back(std::move(channel));
     }
     held_.clear();
@@ -145,6 +160,7 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
     acpl_history_ = {};
     decoded_mode_.reset();
     applied_mode_.reset();
+    converter_phase_.reset();
     return {};
 }
 
@@ -404,15 +420,13 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
     return {};
 }
 
-ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstream& substream, int sequence_counter,
-                                 std::vector<std::vector<float>>& channels, std::vector<Speaker>& speakers) {
+ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstream& substream,
+                                 int sequence_counter, int converter_phase,
+                                 std::vector<std::vector<float>>& channels,
+                                 std::vector<Speaker>& speakers) {
     const ChannelElement& element = substream.element;
     if (ctx.sf_multiplier.has_value()) {
         return fail(DecodeError::kUnsupported, "96 and 192 kHz decoding (the HSF extension) is not decoded yet");
-    }
-    if (ctx.frame_rate_index != 13) {
-        return fail(DecodeError::kUnsupported,
-                    "frame rates other than frame_rate_index 13 need the sample rate converter, not built yet");
     }
     if (auto ok = route_element(ctx, element, route_); !ok) {
         return ok;
@@ -523,17 +537,35 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     }
 
     channels.resize(channel_count);
+    // Part 2 clause 5.11: the converter's grid starts at the frame's phase,
+    // and moves where the phase jumps, so that each frame gives the count
+    // Table 47 gives its phi_t.
+    const auto grid = static_cast<std::int64_t>(converter_phase) * full_length_;
+    const bool jumped = converter_phase_ && converter_phase != (*converter_phase_ + 1) % 5;
     for (std::size_t c = 0; c < channel_count; ++c) {
         Channel& channel = channels_[c];
         channel.qmf_synthesis.process(channel.out, pcm_);
+        std::span<const double> produced = pcm_;
+        if (channel.converter) {
+            if (!converter_phase_) {
+                channel.converter->reset(grid);
+            } else if (jumped) {
+                channel.converter->rephase(grid);
+            }
+            converted_.clear();
+            channel.converter->process(pcm_, converted_);
+            produced = converted_;
+        }
         std::vector<float>& out = channels[c];
-        out.resize(frame);
-        for (std::size_t n = 0; n < frame; ++n) {
-            out[n] = static_cast<float>(std::clamp(pcm_[n] / kFullScale, -kOutputLimit, kOutputLimit));
+        out.resize(produced.size());
+        for (std::size_t n = 0; n < produced.size(); ++n) {
+            out[n] = static_cast<float>(
+                std::clamp(produced[n] / kFullScale, -kOutputLimit, kOutputLimit));
         }
         // The last slots become the next frame's history.
         std::copy(channel.ext.end() - static_cast<std::ptrdiff_t>(history), channel.ext.end(), channel.ext.begin());
     }
+    converter_phase_ = converter_phase;
     speakers.assign(speakers_.begin(), speakers_.end());
     return {};
 }

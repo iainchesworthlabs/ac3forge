@@ -445,6 +445,9 @@ struct Decoder::Impl {
     // decode()'s reconstruction state, keyed as `audio` is.
     std::map<int, detail::SubstreamPcm> pcm;
     std::optional<int> previous_sequence_counter;
+    // Part 2 clause 5.11's phi_t of the last frame decode() read, which a
+    // change of source does not forget: the 0 a splicer writes continues it.
+    std::optional<int> converter_phase;
     std::string_view refusal;
 
     void forget() {
@@ -471,6 +474,7 @@ Decoder& Decoder::operator=(Decoder&&) noexcept = default;
 
 void Decoder::reset() {
     impl_->forget();
+    impl_->converter_phase.reset();
 }
 
 std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte> raw_ac4_frame) {
@@ -489,6 +493,14 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         impl_->refusal = describe(report.error());
         return std::unexpected(report.error());
     }
+    // Part 2 clause 5.11: phi_t is sequence_counter modulo 5, but where a
+    // splicer wrote 0 it goes on from the frame before, and it is 0 for a
+    // first frame of 0.
+    const int counter = report->sequence_counter;
+    const int phase = counter != 0
+                          ? counter % 5
+                          : (impl_->converter_phase ? (*impl_->converter_phase + 1) % 5 : 0);
+    impl_->converter_phase = phase;
     if (!capture.index) {
         impl_->refusal = "no presentation has a channel-coded substream";
         return std::unexpected(DecodeError::kUnsupported);
@@ -508,9 +520,9 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     DecodedFrame frame;
     frame.sample_rate_hz = capture.context.fs_index == 0 ? 44100 : 48000;
     frame.sequence_counter = report->sequence_counter;
-    const detail::ParseResult decoded =
-        impl_->pcm[capture.state_key].decode(capture.context, capture.content, report->sequence_counter,
-                                             frame.channels, frame.speakers);
+    const detail::ParseResult decoded = impl_->pcm[capture.state_key].decode(
+        capture.context, capture.content, report->sequence_counter, phase, frame.channels,
+        frame.speakers);
     if (!decoded) {
         impl_->refusal = decoded.error().reason;
         return std::unexpected(decoded.error().error);

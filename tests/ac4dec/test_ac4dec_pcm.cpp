@@ -2,7 +2,8 @@
 // the noise fill's random number generator against the text's own closed
 // form, and the committed DEE streams decoded to PCM - each channel's tone on
 // its own channel in stereo and 5.1, the LFE's included, an ASPX stream's high
-// band rebuilt, and the modes this version refuses refused by name.
+// band rebuilt, and the IMS streams' frame rates through the sample rate
+// converter.
 
 #include <algorithm>
 #include <array>
@@ -113,17 +114,6 @@ std::vector<double> subband_energy(std::span<const float> samples) {
         }
     }
     return energy;
-}
-
-// The DEE stream's refusal on the first frame, with its reason.
-std::pair<ac4::DecodeError, std::string> first_refusal(const std::string& leg) {
-    const std::vector<std::byte> stream = read_stream(leg);
-    const ac4::ScanResult scan = ac4::scan(stream);
-    REQUIRE_FALSE(scan.frames.empty());
-    ac4::Decoder decoder;
-    const auto decoded = decoder.decode(scan.frames.front().raw_ac4_frame);
-    REQUIRE_FALSE(decoded.has_value());
-    return {decoded.error(), std::string{decoder.refusal_reason()}};
 }
 
 }  // namespace
@@ -361,10 +351,50 @@ TEST_CASE("an ASPX 5.1 stream rebuilds the high band of every channel but the LF
     }
 }
 
-TEST_CASE("decode refuses by name what it does not turn into PCM yet", "[ac4dec][pcm]") {
-    const auto [error, reason] = first_refusal("ac4-ims-music-128-25");  // frame_rate_index 2
-    CHECK(error == ac4::DecodeError::kUnsupported);
-    CHECK(reason.find("frame_rate_index 13") != std::string::npos);
+TEST_CASE("decode takes the IMS streams' frame rates through the sample rate converter to 48 kHz",
+          "[ac4dec][pcm][src]") {
+    struct Leg {
+        const char* name;
+        int frame_rate_index;
+        std::array<std::size_t, 5> counts;  // by phi_t, sequence_counter modulo 5
+    };
+    // Part 1 Table 83 and Part 2 Table 47: 48 000 samples a second, a frame's
+    // share at a time.
+    constexpr std::array<Leg, 3> kLegs{{
+        {"ac4-ims-film-96-24", 1, {2000, 2000, 2000, 2000, 2000}},
+        {"ac4-ims-music-128-25", 2, {1920, 1920, 1920, 1920, 1920}},
+        {"ac4-ims-music-64-2997", 3, {1601, 1602, 1601, 1602, 1602}},
+    }};
+    for (const Leg& leg : kLegs) {
+        CAPTURE(leg.name);
+        const std::vector<std::byte> stream = read_stream(leg.name);
+        const ac4::ScanResult scan = ac4::scan(stream);
+        REQUIRE_FALSE(scan.frames.empty());
+        const auto first = ac4::parse_raw_frame(scan.frames.front().raw_ac4_frame);
+        REQUIRE(first.has_value());
+        REQUIRE(first->toc.frame_rate_index == leg.frame_rate_index);
+        ac4::Decoder decoder;
+        std::vector<float> left;
+        for (const ac4::SyncFrame& frame : scan.frames) {
+            const auto decoded = decoder.decode(frame.raw_ac4_frame);
+            INFO(decoder.refusal_reason());
+            REQUIRE(decoded.has_value());
+            REQUIRE(decoded->has_value());
+            const ac4::DecodedFrame& pcm = **decoded;
+            CHECK(pcm.sample_rate_hz == 48000);
+            REQUIRE(pcm.channels.size() == 2);
+            CHECK(pcm.channels[0].size() ==
+                  leg.counts[static_cast<std::size_t>(pcm.sequence_counter % 5)]);
+            CHECK(pcm.channels[1].size() == pcm.channels[0].size());
+            left.insert(left.end(), pcm.channels[0].begin(), pcm.channels[0].end());
+        }
+        // Music and film come out at a level, past the decoder's delay.
+        double power = 0.0;
+        for (std::size_t n = 48000; n < left.size(); ++n) {
+            power += static_cast<double>(left[n]) * static_cast<double>(left[n]);
+        }
+        CHECK(10.0 * std::log10(power / static_cast<double>(left.size() - 48000)) > -50.0);
+    }
 }
 
 TEST_CASE("decode reports a table of contents it cannot read", "[ac4dec][pcm]") {

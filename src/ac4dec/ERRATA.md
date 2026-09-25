@@ -1033,6 +1033,36 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
   it becomes `float`: no stream DEE writes comes near, and every value the decoder computes stays finite.
 - **Evidence:** Text; `fuzz_ac4_decode`.
 
+## Output processing
+
+What follows the QMF domain: the sample rate converter of Part 1 6.2.15, whose phase Part 2 5.11 locks
+to `sequence_counter`.
+
+### The sample rate converter's filter and output grid
+
+- **Where:** Part 1 6.2.15, p. 268, asks only that the converter "should use high-quality anti-aliasing
+  filters"; Part 2 5.11 and Table 47, p. 110, give the number of samples each frame yields at the
+  1000/1001 rates, by phase.
+- **Reading:** a Kaiser-windowed sinc, polyphase, with the passband to 0.86 of the lower rate's Nyquist
+  frequency and the stopband from that frequency 100 dB down (`src/ac4core/src/dsp/resampler.hpp`). Output
+  sample m is complete once (m + 1) x down / up input samples have arrived, so frame t of N samples
+  yields floor((t + 1) R) - floor(t R), R = N x up / down: Table 47's sequence for phi_t = t modulo 5, and
+  a constant count at the other rates. A converter starting at phi_t starts its grid t frames in.
+- **Evidence:** Text, and Table 47 held in `tests/ac4core/test_ac4core_resampler.cpp`. DEE's IMS streams
+  at 23.976, 24, 25 and 29.97 fps lag their sources by a constant per rate, within 1.3 samples of DEE's half
+  frame plus this decoder's delay (`tools/checks/score_ac4_decode.py`, LAG_AT_RATE).
+
+### The converter's phase across a splice
+
+- **Where:** Part 2 5.11, p. 110: phi_t goes on from phi_t-1 where `sequence_counter` is 0 and the frame is
+  not the first, and a change of source that moves the sequence "shall only be applied at the time the
+  first frame of the new source is returned".
+- **Reading:** a change of source (Part 1 4.3.3.2.2) resets the decoder but not phi_t. The frame a
+  splicer marks 0 takes phi_t-1 + 1, so its sample count goes on in the old sequence; the frame after it
+  takes its own counter's phase. Where that jumps, the converter's grid moves by the jump and keeps the
+  input it holds, so the jump neither drops samples nor inserts silence.
+- **Evidence:** Text.
+
 ## Tables
 
 The Huffman codebooks come from the table attachment of Part 1, `ts_103190_tables.c`, which Annex A
