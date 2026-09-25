@@ -490,6 +490,48 @@ TEST_CASE("decode takes AC-4 to output-level= and compresses it in drcmode='s mo
           1);
 }
 
+TEST_CASE("decode takes AC-4's presentation by presentation-id= and language=, mixed at dialogue-gain=",
+          "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_presentation.log";
+    // tests/golden/ac4dec/presentations/presentations-5_1.ac4: presentation_id
+    // 1 is 5.1 music and effects with English dialogue, 2 the same with
+    // German, 21 the English dialogue alone (tests/ac4dec/
+    // test_ac4dec_presentations.cpp).
+    const fs::path stream = fs::path{AC4DEC_GOLDEN_DIR} / "presentations" / "presentations-5_1.ac4";
+    const auto mixed_wav = dir / "ac4_mixed.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(mixed_wav) + " presentation-id=1", log) == 0);
+    CHECK(read_log(log).find("presentation 0 (presentation_id 1)") != std::string::npos);
+    const auto mixed = ac3::io::read_wav(mixed_wav.string());
+    REQUIRE(mixed.has_value());
+    CHECK(mixed->channels.size() == 6);
+    const auto quiet_wav = dir / "ac4_mixed_quiet.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(quiet_wav) + " presentation-id=1 dialogue-gain=-130",
+                    log) == 0);
+    CHECK(read_log(log).find("dialogue substreams at -130 dB") != std::string::npos);
+    const auto quiet = ac3::io::read_wav(quiet_wav.string());
+    REQUIRE(quiet.has_value());
+    // The dialogue goes to L at 330 degrees: silenced, L loses energy; the
+    // other channels are the music and effects alone either way.
+    const auto energy = [](const std::vector<float>& x) {
+        double sum = 0.0;
+        for (const float v : x) {
+            sum += static_cast<double>(v) * static_cast<double>(v);
+        }
+        return sum;
+    };
+    CHECK(energy(quiet->channels[0]) < energy(mixed->channels[0]));
+    CHECK(energy(quiet->channels[1]) == energy(mixed->channels[1]));
+    const auto german_wav = dir / "ac4_german.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(german_wav) + " language=de", log) == 0);
+    CHECK(read_log(log).find("presentation 1 (presentation_id 2)") != std::string::npos);
+    const auto alone_wav = dir / "ac4_dialogue_alone.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(alone_wav) + " presentation=11", log) == 0);
+    const auto alone = ac3::io::read_wav(alone_wav.string());
+    REQUIRE(alone.has_value());
+    CHECK(alone->channels.size() == 1);
+}
+
 TEST_CASE("decode raises AC-4's dialogue by dialogue-enhancement=", "[cli][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_decode_de.log";
