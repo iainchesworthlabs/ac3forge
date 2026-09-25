@@ -427,11 +427,9 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     // The configuration is checked before loudness= reads the whole file,
     // with loudness values in place: they cost the same bits whatever they
     // are.
-    const auto refuse_config = [] {
-        fmt::println(stderr,
-                     "error: {}: the codec mode, the rate and the options must be ones the "
-                     "encoder takes together (ac3cli help ac4-encode)",
-                     ac4::describe(ac4::EncodeError::kInvalidConfig));
+    const auto refuse_config = [](const ac4::EncoderConfig& refused) {
+        fmt::println(stderr, "error: the encoder refuses {} (ac3cli help ac4-encode)",
+                     ac4::Encoder::refusal_reason(refused));
         return kExitUsage;
     };
     ac4::EncoderConfig sized = config;
@@ -446,7 +444,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         sized.loudness = loudness;
     }
     if (!ac4::Encoder::create(sized).has_value()) {
-        return refuse_config();
+        return refuse_config(sized);
     }
     // Each of the encoder's channels' place in the WAV file.
     const std::vector<std::size_t> wav_order = ac4_order(std::span{speakers}, ac4_wav_rank);
@@ -554,7 +552,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
 
     auto encoder = ac4::Encoder::create(config);
     if (!encoder.has_value()) {
-        return refuse_config();
+        return refuse_config(config);
     }
     auto frames = stem ? encoder->encode(views, stem_views) : encoder->encode(views);
     if (!frames.has_value()) {

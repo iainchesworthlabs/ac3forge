@@ -46,6 +46,10 @@ namespace {
 using detail::BitWriter;
 using detail::FrameLayout;
 
+// Why a configuration is refused: a string literal naming the rule it breaks,
+// which Encoder::refusal_reason() returns.
+using Refusal = std::string_view;
+
 // The frame grid is the stream's (frame/timing.hpp): frame_length samples a
 // frame at the internal rate, 2 048 at frame_rate_index 13. Ahead of the
 // input, a frame and a half of silence (Impl::delay): the frame's long window
@@ -277,14 +281,19 @@ struct Plan {
     return p;
 }
 
-[[nodiscard]] std::optional<Plan> plan_for(const EncoderConfig& config, CodecMode mode) {
+[[nodiscard]] std::expected<Plan, Refusal> plan_for(const EncoderConfig& config, CodecMode mode) {
     Plan p;
     p.mode = mode;
     p.coded = config.channels;
     const AdditionalPair pair = config.experimental.seven_x;
     const bool seven = config.channels == 7 || config.channels == 8;
-    if (seven != (pair != AdditionalPair::kNone)) {
-        return std::nullopt;
+    if (seven && pair == AdditionalPair::kNone) {
+        return std::unexpected(
+            "seven or eight channels without experimental.seven_x's additional pair");
+    }
+    if (!seven && pair != AdditionalPair::kNone) {
+        return std::unexpected(
+            "experimental.seven_x's additional pair without seven or eight channels");
     }
     if (is_acpl(mode)) {
         // ASPX_ACPL_2 and 3 in the 5.X element; with experimental.acpl,
@@ -293,8 +302,14 @@ struct Plan {
         const bool options = config.experimental.acpl;
         const bool fits = five ? mode != CodecMode::kAspxAcpl1 || options
                                : config.channels == 2 && mode != CodecMode::kAspxAcpl3 && options;
-        if (!fits || config.experimental.coding_configs) {
-            return std::nullopt;
+        if (!fits) {
+            return std::unexpected(
+                "an A-CPL codec mode the layout does not take: ASPX_ACPL_2 and ASPX_ACPL_3 in 5.0 "
+                "and 5.1, and with experimental.acpl ASPX_ACPL_1 there and ASPX_ACPL_1 and 2 in "
+                "stereo");
+        }
+        if (config.experimental.coding_configs) {
+            return std::unexpected("an A-CPL codec mode with experimental.coding_configs");
         }
         return plan_acpl(config, mode);
     }
@@ -319,7 +334,7 @@ struct Plan {
             // R as a pair and C alone (clause 5.3.4.2), each with its own
             // transform layout, and A-SPX's two elements in that order.
             if (!config.experimental.three_zero) {
-                return std::nullopt;
+                return std::unexpected("three channels without experimental.three_zero");
             }
             p.ch_mode = 2;
             p.l = 0;
@@ -335,7 +350,9 @@ struct Plan {
         case 8:
             break;
         default:
-            return std::nullopt;
+            return std::unexpected(
+                "a channel count the encoder does not take: 1, 2, 5 or 6, and 3, 7 or 8 as "
+                "experimental layouts");
     }
     const bool lfe = config.channels % 2 == 0;
     p.l = 0;
@@ -526,10 +543,10 @@ struct Candidate {
 struct SubstreamCoder {
     // A coder in `mode` for `config`, which describes the substream alone (its
     // channels, codec mode, share of the rate and dialogue enhancement), or
-    // kInvalidConfig where the configuration is not one this version writes
-    // in that mode. Without `converts` the input arrives at the internal rate
-    // already, as a dialogue enhancement substream's does.
-    [[nodiscard]] static std::expected<std::unique_ptr<SubstreamCoder>, EncodeError> make(
+    // why the configuration is not one the encoder writes in that mode.
+    // Without `converts` the input arrives at the internal rate already, as a
+    // dialogue enhancement substream's does.
+    [[nodiscard]] static std::expected<std::unique_ptr<SubstreamCoder>, Refusal> make(
         const EncoderConfig& config, CodecMode mode, bool converts);
 
     EncoderConfig config{};
@@ -1797,22 +1814,24 @@ struct SubstreamCoder {
     }
 };
 
-std::expected<std::unique_ptr<SubstreamCoder>, EncodeError> SubstreamCoder::make(
+std::expected<std::unique_ptr<SubstreamCoder>, Refusal> SubstreamCoder::make(
     const EncoderConfig& config, CodecMode mode, bool converts) {
-    const std::optional<Plan> plan = plan_for(config, mode);
+    const std::expected<Plan, Refusal> plan = plan_for(config, mode);
     if (!plan) {
-        return std::unexpected(EncodeError::kInvalidConfig);
+        return std::unexpected(plan.error());
     }
     if (config.sample_rate_hz != 48000 && config.sample_rate_hz != 44100) {
-        return std::unexpected(EncodeError::kInvalidConfig);
+        return std::unexpected("a sample rate other than 48 kHz or 44.1 kHz");
     }
     if (config.bitrate_kbps < 1) {
-        return std::unexpected(EncodeError::kInvalidConfig);
+        return std::unexpected("a substream's rate below 1 kbps");
     }
     const std::optional<detail::FrameTiming> timing =
         detail::frame_timing(config.frame_rate_index, config.sample_rate_hz);
     if (!timing) {
-        return std::unexpected(EncodeError::kInvalidConfig);
+        return std::unexpected(
+            "a frame_rate_index Part 1 Table 83 does not give at the sample rate: 0 to 13 at 48 "
+            "kHz, 13 alone at 44.1 kHz");
     }
     auto coder = std::make_unique<SubstreamCoder>();
     coder->config = config;
@@ -1878,7 +1897,8 @@ std::expected<std::unique_ptr<SubstreamCoder>, EncodeError> SubstreamCoder::make
     }
     if (mode != CodecMode::kSimple) {
         if (!coder->aspx) {
-            return std::unexpected(EncodeError::kInvalidConfig);
+            return std::unexpected(
+                "the ASPX or an A-CPL codec mode at a rate A-SPX has no configuration for");
         }
         coder->aspx->varvar = config.experimental.aspx_varvar;
         coder->aspx->balance = config.experimental.aspx_balance;
@@ -1908,7 +1928,10 @@ std::expected<std::unique_ptr<SubstreamCoder>, EncodeError> SubstreamCoder::make
     if (config.dialogue) {
         coder->metadata.de = detail::resolve_dialogue(*config.dialogue, plan->ch_mode);
         if (!coder->metadata.de) {
-            return std::unexpected(EncodeError::kInvalidConfig);
+            return std::unexpected(
+                "dialogue enhancement on a channel the layout lacks, a cap other than 3, 6, 9 or "
+                "12 dB, the Mid without L and R, the cross-channel method without a stem over two "
+                "or three channels, or a waveform share outside 0 to 1");
         }
         // de_channel_config's L, R and C (Table 171) as input channels: C
         // alone in mono, L and R in stereo, and L, R and C the first three
@@ -2145,10 +2168,14 @@ struct StreamPresentation {
 
 }  // namespace
 
+// Nested in an exported class, Impl takes its visibility, so each member
+// function defined out of line below would be exported from libac4enc.so with
+// it. AC4ENC_NO_EXPORT on each keeps them to the library, and the exported set
+// to the header's API (tools/ci/abi-allowlist/libac4enc.so.txt).
 struct Encoder::Impl {
-    // The stream `config` asks for, or kInvalidConfig where it is not one
-    // this version writes, or its rate cannot hold its least frame.
-    [[nodiscard]] static std::expected<std::unique_ptr<Impl>, EncodeError> make(
+    // The stream `config` asks for, or why it is not one the encoder writes,
+    // or its rate cannot hold its least frame.
+    [[nodiscard]] AC4ENC_NO_EXPORT static std::expected<std::unique_ptr<Impl>, Refusal> make(
         const EncoderConfig& config);
 
     EncoderConfig config{};
@@ -2366,11 +2393,11 @@ struct Encoder::Impl {
         return std::pair{std::move(sizes), *fit};
     }
 
-    [[nodiscard]] EncodedFrame encode_frame(std::int64_t frame);
+    [[nodiscard]] AC4ENC_NO_EXPORT EncodedFrame encode_frame(std::int64_t frame);
 
     // Takes the input, and with a stem the dialogue in it, and returns the
     // frames it completes.
-    [[nodiscard]] std::expected<std::vector<EncodedFrame>, EncodeError> push(
+    [[nodiscard]] AC4ENC_NO_EXPORT std::expected<std::vector<EncodedFrame>, EncodeError> push(
         std::span<const std::span<const float>> channels,
         std::span<const std::span<const float>> dialogue);
 
@@ -2378,19 +2405,19 @@ struct Encoder::Impl {
     // each its own channels (and their dialogue), and each dialogue
     // enhancement substream the waveform it derives from the substream it
     // enhances.
-    void take(std::span<const std::vector<std::vector<double>>> programmes,
-              std::span<const std::vector<std::vector<double>>> stems);
+    AC4ENC_NO_EXPORT void take(std::span<const std::vector<std::vector<double>>> programmes,
+                               std::span<const std::vector<std::vector<double>>> stems);
 
     // The dialogue enhancement substream's waveform (DialogueConfig::hybrid)
     // from what arrived for the substream it enhances.
-    [[nodiscard]] std::vector<std::vector<double>> waveform(
+    [[nodiscard]] AC4ENC_NO_EXPORT std::vector<std::vector<double>> waveform(
         StreamSubstream& de, const std::vector<std::vector<double>>& programme,
         const std::vector<std::vector<double>>& dialogue) const;
 
     // The frames the input read so far lets through; after flush(), until the
     // output covers the input, the delays and this project's decoder's
     // converter.
-    [[nodiscard]] std::vector<EncodedFrame> drain();
+    [[nodiscard]] AC4ENC_NO_EXPORT std::vector<EncodedFrame> drain();
 };
 
 EncodedFrame Encoder::Impl::encode_frame(std::int64_t frame) {
@@ -2617,23 +2644,28 @@ std::vector<EncodedFrame> Encoder::Impl::drain() {
     return frames;
 }
 
-std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
+std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     const EncoderConfig& config) {
-    const auto invalid = [] { return std::unexpected(EncodeError::kInvalidConfig); };
+    const auto invalid = [](Refusal why) { return std::unexpected(why); };
     if (config.sample_rate_hz != 48000 && config.sample_rate_hz != 44100) {
-        return invalid();
+        return invalid("a sample rate other than 48 kHz or 44.1 kHz");
     }
-    if (config.iframe_interval < 1 || config.bitrate_kbps < 8 || config.bitrate_kbps > 3000) {
-        return invalid();
+    if (config.iframe_interval < 1) {
+        return invalid("an I-frame interval below one frame");
+    }
+    if (config.bitrate_kbps < 8 || config.bitrate_kbps > 3000) {
+        return invalid("a rate outside 8 to 3 000 kbps");
     }
     const auto dialnorm_ok = [](double db) { return db <= 0.0 && db >= -31.75; };
     if (!dialnorm_ok(config.dialnorm_db)) {
-        return invalid();
+        return invalid("a dialnorm outside 0 to -31.75 dBFS");
     }
     const std::optional<detail::FrameTiming> timing =
         detail::frame_timing(config.frame_rate_index, config.sample_rate_hz);
     if (!timing) {
-        return invalid();
+        return invalid(
+            "a frame_rate_index Part 1 Table 83 does not give at the sample rate: 0 to 13 at 48 "
+            "kHz, 13 alone at 44.1 kHz");
     }
     auto impl = std::make_unique<Impl>();
     impl->config = config;
@@ -2644,13 +2676,13 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     // frame whose output starts at or after it.
     for (const std::int64_t frame : config.iframes) {
         if (frame < 0) {
-            return invalid();
+            return invalid("an I-frame named before frame 0");
         }
         impl->forced_iframes.push_back(frame);
     }
     for (const std::int64_t start : config.fragment_starts) {
         if (start < 0) {
-            return invalid();
+            return invalid("a fragment starting before the output does");
         }
         std::int64_t frame = start * timing->decoder_down /
                              (static_cast<std::int64_t>(timing->frame_length) * timing->decoder_up);
@@ -2704,14 +2736,14 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     std::vector<PresentationConfig> presentations = config.presentations;
     if (presentations.empty()) {
         if (subs.size() != 1) {
-            return invalid();  // several substreams need presentations to play them
+            return invalid("several substreams and no presentation to play them");
         }
         presentations.push_back(PresentationConfig{});
         presentations.front().substreams = {0};
     }
     // CMAF's limit (Part 2 Annex H.1.2.1), and every substream played.
     if (presentations.size() > 64) {
-        return invalid();
+        return invalid("more than CMAF's 64 presentations (Part 2 Annex H.1.2.1)");
     }
     const std::size_t n = subs.size();
 
@@ -2740,7 +2772,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     for (std::size_t i = 0; i < n; ++i) {
         const std::optional<int> channels = channels_of(i);
         if (!channels) {
-            return invalid();
+            return invalid(
+                "a dialogue enhancement substream for no substream, for another dialogue "
+                "enhancement substream, or for one without a hybrid method");
         }
         switch (*channels) {
             case 1:
@@ -2762,7 +2796,8 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             case 8: {
                 const AdditionalPair pair = config.experimental.seven_x;
                 if (pair == AdditionalPair::kNone) {
-                    return invalid();
+                    return invalid(
+                        "seven or eight channels without experimental.seven_x's additional pair");
                 }
                 const int base =
                     pair == AdditionalPair::kBack ? 5 : (pair == AdditionalPair::kWide ? 7 : 9);
@@ -2770,19 +2805,26 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
                 break;
             }
             default:
-                return invalid();
+                return invalid(
+                    "a substream of a channel count the encoder does not take: 1, 2, 5 or 6, and "
+                    "3, 7 or 8 as experimental layouts");
         }
         const SubstreamConfig& s = subs[i];
-        if (s.language.size() > 63 || (!s.language.empty() && !s.content) ||
-            (s.bitrate_kbps && *s.bitrate_kbps < 1)) {
-            return invalid();
+        if (s.language.size() > 63) {
+            return invalid("a language tag longer than 63 bytes");
+        }
+        if (!s.language.empty() && !s.content) {
+            return invalid("a language without a content classifier to carry it");
+        }
+        if (s.bitrate_kbps && *s.bitrate_kbps < 1) {
+            return invalid("a substream's rate below 1 kbps");
         }
     }
     // One waveform for each hybrid dialogue enhancement at most.
     for (std::size_t i = 0; i < n; ++i) {
         for (std::size_t j = i + 1; j < n; ++j) {
             if (subs[i].enhances && subs[i].enhances == subs[j].enhances) {
-                return invalid();
+                return invalid("two dialogue enhancement substreams for one substream");
             }
         }
     }
@@ -2812,12 +2854,16 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             if (!pc.substreams.empty() || pc.emdf.empty() || !pc.name.empty() ||
                 pc.presentation_id || pc.md_compat || pc.enabled || pc.pre_virtualized ||
                 !pc.gains_db.empty() || pc.associated) {
-                return invalid();
+                return invalid(
+                    "an EMDF-only presentation (configuration 6) with substreams, an id, a level, "
+                    "a name, a filter, gains or mixing values, or without payloads");
             }
             for (const EmdfPayload& payload : pc.emdf) {
                 const auto codes = detail::resolve_emdf(payload);
                 if (!codes) {
-                    return invalid();
+                    return invalid(
+                        "an EMDF payload with an id below 1 or a field outside Part 1 Table 79's "
+                        "range");
                 }
                 p.emdf.push_back(*codes);
             }
@@ -2830,15 +2876,19 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
                                    : *pc.config == 3 || *pc.config == 4 ? 3
                                    : *pc.config == 5 ? std::max<std::size_t>(count, 2)
                                                      : 2;
-        if ((pc.config && (*pc.config < 0 || *pc.config > 5)) || count != wanted) {
-            return invalid();
+        if (pc.config && (*pc.config < 0 || *pc.config > 5)) {
+            return invalid("a presentation_config outside Part 2 Table 53's 0 to 6");
+        }
+        if (count != wanted) {
+            return invalid(
+                "a presentation of more or fewer substreams than its configuration plays");
         }
         std::vector<Role> roles;
         for (std::size_t position = 0; position < count; ++position) {
             const int index = pc.substreams[position];
             if (index < 0 || static_cast<std::size_t>(index) >= n ||
                 std::ranges::count(pc.substreams, index) != 1) {
-                return invalid();
+                return invalid("a presentation naming a substream the stream lacks, or one twice");
             }
             const auto i = static_cast<std::size_t>(index);
             Role role = Role::kMain;
@@ -2866,7 +2916,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
                     default:
                         // Table 54: each group's content classifier.
                         if (!subs[i].content) {
-                            return invalid();
+                            return invalid(
+                                "a configuration 5 presentation's substream without a content "
+                                "classifier to give its role (Part 2 Table 54)");
                         }
                         role = role_from_classifier(*subs[i].content);
                         break;
@@ -2877,10 +2929,12 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             // enhances.
             if (role == Role::kEnhancement) {
                 if (subs[i].enhances != pc.substreams[0]) {
-                    return invalid();
+                    return invalid(
+                        "a dialogue enhancement position whose substream does not enhance the "
+                        "presentation's main");
                 }
             } else if (subs[i].enhances && pc.config) {
-                return invalid();
+                return invalid("a dialogue enhancement substream in a role other than its own");
             }
             roles.push_back(role);
             played[i] = true;
@@ -2894,7 +2948,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             }
         }
         if (!p.anchor) {
-            return invalid();
+            return invalid("a presentation without main or music and effects audio");
         }
         const std::uint32_t anchor_channels =
             kModeChannels[static_cast<std::size_t>(ch_modes[*p.anchor])];
@@ -2915,7 +2969,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             // a mono one.
             if ((roles[m] == Role::kDialogue || roles[m] == Role::kAssociated) && mode != 0 &&
                 (own & ~anchor_channels) != 0) {
-                return invalid();
+                return invalid(
+                    "dialogue or associated audio with a channel its main or music and effects "
+                    "audio lacks (Part 1 clause 6.2.16.0)");
             }
             // Part 1 clause 4.3.3.7.1: 3.0 codes a dialogue enhancement signal,
             // or the dialogue of a music and effects presentation, alone; the
@@ -2923,7 +2979,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             // substreams").
             const bool three_dialogue = roles[m] == Role::kDialogue && music_and_effects;
             if (mode == 2 && !subs[i].enhances && !three_dialogue && pc.config) {
-                return invalid();
+                return invalid(
+                    "3.0 audio in a role other than dialogue enhancement or a music and effects "
+                    "presentation's dialogue (Part 1 clause 4.3.3.7.1)");
             }
             three_zero_dialogue[i] = three_zero_dialogue[i] || three_dialogue;
             associated = associated || roles[m] == Role::kAssociated;
@@ -2931,7 +2989,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             pres_ch_mode = superset(pres_ch_mode, mode);
         }
         if (pres_ch_mode < 0) {
-            return invalid();
+            return invalid("substreams no channel mode holds together");
         }
         p.pres_ch_mode = pres_ch_mode;
         p.pres_has_lfe = mode_has_lfe(pres_ch_mode);
@@ -2939,7 +2997,8 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         const int least = least_md_compat(tracks);
         const int md_compat = pc.md_compat.value_or(least);
         if (md_compat < least || (md_compat > 3 && md_compat != 7)) {
-            return invalid();
+            return invalid(
+                "an md_compat below the least its tracks need, or in 4 to 6 (Part 2 Table 55)");
         }
         if (!pc.presentation_id) {
             while (std::ranges::find(named_ids, next_id) != named_ids.end()) {
@@ -2948,7 +3007,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         }
         const int id = pc.presentation_id ? *pc.presentation_id : next_id++;
         if (id < 0) {
-            return invalid();
+            return invalid("a presentation_id below 0");
         }
         ids.emplace_back(id);
         p.toc.groups.assign(pc.substreams.begin(), pc.substreams.end());
@@ -2960,7 +3019,8 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         // one not 0, sent whole with the 0 that says so.
         if (!pc.name.empty()) {
             if (pc.name.size() > 31 || std::ranges::find(pc.name, '\0') != pc.name.end()) {
-                return invalid();
+                return invalid(
+                    "an alternative presentation's name longer than 31 bytes or holding a 0 byte");
             }
             detail::AlternativeCodes alternative;
             for (const char c : pc.name) {
@@ -2974,20 +3034,25 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         // Its own values, or the stream's.
         p.dialnorm_db = pc.dialnorm_db.value_or(config.dialnorm_db);
         if (!dialnorm_ok(p.dialnorm_db)) {
-            return invalid();
+            return invalid("a presentation's dialnorm outside 0 to -31.75 dBFS");
         }
         p.dialnorm_bits = static_cast<int>(std::lround(-p.dialnorm_db * 4.0));
         if (const std::optional<FurtherLoudness>& l = pc.loudness ? pc.loudness : config.loudness;
             l) {
             p.loudness = detail::resolve_loudness(*l);
             if (!p.loudness) {
-                return invalid();
+                return invalid(
+                    "a further loudness value outside further_loudness_info()'s codes, or a "
+                    "correction without a practice");
             }
         }
         if (const std::optional<DrcConfig>& d = pc.drc ? pc.drc : config.drc; d) {
             p.drc = detail::resolve_drc(*d, config.experimental.drc_gains);
             if (!p.drc) {
-                return invalid();
+                return invalid(
+                    "a DRC mode past Part 1 Table 161's eight or named twice, a repeat of no mode, "
+                    "an output level range outside 0 to -31 dBFS, or gains without "
+                    "experimental.drc_gains");
             }
         }
         // The downmix's values go where the presentation's channel mode sends
@@ -2997,7 +3062,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             p.downmix =
                 detail::resolve_downmix(pc.downmix ? *pc.downmix : *config.downmix, pres_ch_mode);
             if (!p.downmix) {
-                return invalid();
+                return invalid(
+                    "downmix values for a presentation below 5.X, or a gain, an LFE gain or a "
+                    "correction off its table's steps");
             }
             downmix_sent = downmix_sent || !pc.downmix;
         }
@@ -3012,17 +3079,22 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         p.mix.n_substream_groups = groups_sent;
         if (!pc.gains_db.empty()) {
             if (pc.gains_db.size() != count) {
-                return invalid();
+                return invalid(
+                    "group gains that are not one for each of a presentation's substreams");
             }
             std::vector<int> codes;
             for (std::size_t m = 0; m < count; ++m) {
                 const std::optional<int> code = group_gain_code(pc.gains_db[m]);
                 if (!code) {
-                    return invalid();
+                    return invalid(
+                        "a group gain off sg_gain's steps: 0 to -15.5 dB in steps of 0.25, or "
+                        "-infinity");
                 }
                 const bool sent = groups_sent > 1 && roles[m] != Role::kEnhancement;
                 if (!sent && *code != 0) {
-                    return invalid();  // a gain the syntax has nowhere to send
+                    return invalid(
+                        "a group gain where the syntax sends none: configuration 1's, and "
+                        "configuration 4's dialogue enhancement's");
                 }
                 if (sent) {
                     codes.push_back(*code);
@@ -3034,7 +3106,8 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         }
         if (pc.associated) {
             if (!associated) {
-                return invalid();
+                return invalid(
+                    "associated audio's mixing values for a presentation without associated audio");
             }
             detail::AssociatedMixCodes a;
             const auto scaled = [](const std::optional<double>& db, std::optional<int>& to) {
@@ -3047,7 +3120,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             if (!scaled(pc.associated->main_db, a.scale_main) ||
                 !scaled(pc.associated->main_centre_db, a.scale_main_centre) ||
                 !scaled(pc.associated->main_front_db, a.scale_main_front)) {
-                return invalid();
+                return invalid(
+                    "a main audio scaling off its steps: 0 to -76.2 dB in steps of 0.3, or "
+                    "-infinity");
             }
             if (pc.associated->pan_degrees) {
                 // pan_associated is sent for a mono associated substream.
@@ -3056,7 +3131,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
                     p.members[static_cast<std::size_t>(described - roles.begin())];
                 a.pan_associated = detail::pan_code(*pc.associated->pan_degrees);
                 if (ch_modes[i] != 0 || !a.pan_associated) {
-                    return invalid();
+                    return invalid(
+                        "a pan for associated audio that is not mono, or off its steps of 1.5 "
+                        "degrees");
                 }
             }
             p.mix.associated = a;
@@ -3064,21 +3141,25 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         for (const EmdfPayload& payload : pc.emdf) {
             const auto codes = detail::resolve_emdf(payload);
             if (!codes) {
-                return invalid();
+                return invalid(
+                    "an EMDF payload with an id below 1 or a field outside Part 1 Table 79's "
+                    "range");
             }
             p.emdf.push_back(*codes);
         }
         impl->presentations.push_back(std::move(p));
     }
     if (std::ranges::find(played, false) != played.end()) {
-        return invalid();  // a substream no presentation plays
+        return invalid("a substream no presentation plays");
     }
     if (config.downmix && !downmix_sent) {
-        return invalid();  // the stream's downmix values, and no presentation to send them
+        return invalid("the stream's downmix values, and no 5.X or 7.X presentation to send them");
     }
     for (std::size_t i = 0; i < n; ++i) {
         if (ch_modes[i] == 2 && !subs[i].enhances && !three_zero_dialogue[i]) {
-            return invalid();  // 3.0 that is neither dialogue enhancement nor such dialogue
+            return invalid(
+                "3.0 audio that is neither a dialogue enhancement signal nor the dialogue of a "
+                "music and effects presentation");
         }
     }
     // CMAF (Part 2 Annex H.1.2.1): no two presentations with one
@@ -3086,7 +3167,8 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     for (std::size_t a = 0; a < ids.size(); ++a) {
         for (std::size_t b = a + 1; b < ids.size(); ++b) {
             if (ids[a] && ids[a] == ids[b]) {
-                return invalid();
+                return invalid(
+                    "two presentations with one presentation_id (CMAF, Part 2 Annex H.1.2.1)");
             }
         }
     }
@@ -3109,7 +3191,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     }
     if (set_kbps > config.bitrate_kbps ||
         (unset_channels > 0.0 && set_kbps >= config.bitrate_kbps)) {
-        return invalid();
+        return invalid("substream rates that leave nothing of the stream's rate for the others");
     }
     impl->input_channels = 0;
     for (std::size_t i = 0; i < n; ++i) {
@@ -3151,35 +3233,42 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             impl->stem = true;
         }
         std::vector<std::unique_ptr<SubstreamCoder>> candidates;
+        std::optional<Refusal> refused;  // kAuto's first mode's reason, where none takes it
         for (const CodecMode mode : modes_for(one)) {
             auto coder = SubstreamCoder::make(one, mode, !s.enhances);
             if (coder) {
                 candidates.push_back(std::move(*coder));
             } else if (s.codec_mode != CodecMode::kAuto) {
                 return std::unexpected(coder.error());
+            } else if (!refused) {
+                refused = coder.error();
             }
         }
         if (candidates.empty()) {
-            return invalid();
+            return invalid(refused.value_or("a substream no codec mode codes"));
         }
         // A dialogue substream's mixing values (b_dialog), for a substream
         // that is dialogue somewhere or is classified so; and its payloads.
         const bool is_dialogue = dialogue[i] || s.content == ContentClassifier::kDialogue;
         if (s.dialogue_mix && !is_dialogue) {
-            return invalid();
+            return invalid("dialogue mixing values for a substream that is not dialogue");
         }
         std::optional<detail::DialogueMixCodes> mix;
         if (is_dialogue) {
             mix = detail::resolve_dialogue_mix(s.dialogue_mix.value_or(DialogueMix{}), ch_modes[i]);
             if (!mix) {
-                return invalid();
+                return invalid(
+                    "a dialogue gain cap other than 3, 6, 9 or 12 dB, or pans that are not one a "
+                    "channel of mono or stereo dialogue in steps of 1.5 degrees");
             }
         }
         std::vector<detail::EmdfPayloadCodes> payloads;
         for (const EmdfPayload& payload : s.emdf) {
             const auto codes = detail::resolve_emdf(payload);
             if (!codes) {
-                return invalid();
+                return invalid(
+                    "an EMDF payload with an id below 1 or a field outside Part 1 Table 79's "
+                    "range");
             }
             payloads.push_back(*codes);
         }
@@ -3208,7 +3297,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         }
         SubstreamCoder& anchor = *impl->substreams[*p.anchor].coder;
         if (impl->substreams[*p.anchor].enhances) {
-            return invalid();
+            return invalid(
+                "DRC gains for a presentation whose main audio is a dialogue enhancement "
+                "substream");
         }
         const std::vector<detail::DrcChannel> drc_channels =
             drc_channels_of(anchor.config.channels, config.experimental.seven_x);
@@ -3320,7 +3411,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     impl->least_sizes.assign(n, 0);
     const auto sized = impl->sizes_for(least_layout, fixed, frame_bytes, {}, impl->least_sizes);
     if (!sized) {
-        return invalid();  // the rate cannot hold the fixed substreams
+        return invalid("a rate that cannot hold the presentation and EMDF payload substreams");
     }
     const std::vector<std::size_t>& sizes = sized->first;
     for (std::size_t i = 0; i < n; ++i) {
@@ -3329,7 +3420,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         std::size_t next = 0;
         while (!s.coder->least_fits(size)) {
             if (next == impl->fallbacks[i].size()) {
-                return invalid();  // the rate cannot hold the frame
+                return invalid("a rate that cannot hold a substream's least frame");
             }
             s.coder = std::move(impl->fallbacks[i][next++]);
             s.coder->pending.fields = s.coder->fields_for(true);
@@ -3351,11 +3442,11 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     const std::optional<std::vector<std::byte>> raw =
         detail::assemble(least_layout, written, 0, {});
     if (!raw) {
-        return invalid();
+        return invalid("a least frame the writer cannot assemble");
     }
     const auto parsed = parse_raw_frame(*raw);
     if (!parsed) {
-        return invalid();
+        return invalid("a least frame whose table of contents does not read back");
     }
     impl->toc = parsed->toc;
     // What the table of contents does not carry, for build_dac4(): whether
@@ -3385,11 +3476,16 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
 }
 
 std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config) {
-    std::expected<std::unique_ptr<Impl>, EncodeError> impl = Impl::make(config);
+    std::expected<std::unique_ptr<Impl>, Refusal> impl = Impl::make(config);
     if (!impl) {
-        return std::unexpected(impl.error());
+        return std::unexpected(EncodeError::kInvalidConfig);
     }
     return Encoder(std::move(*impl));
+}
+
+std::string_view Encoder::refusal_reason(const EncoderConfig& config) {
+    const std::expected<std::unique_ptr<Impl>, Refusal> impl = Impl::make(config);
+    return impl ? std::string_view{} : impl.error();
 }
 
 Encoder::Encoder(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}

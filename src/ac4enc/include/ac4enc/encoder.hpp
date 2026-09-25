@@ -19,8 +19,8 @@
 // personalized audio", written from the published texts. Clause numbers below
 // name the part that defines the element.
 //
-// What this version writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, at every
-// frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples
+// What it writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, at every frame rate
+// of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples
 // (frame_rate_index 13, the one Table 84 has), as one presentation of one
 // channel-coded substream, or as several channel-coded substreams, each in a
 // substream group of its own, and the presentations of Part 2 Table 53 made of
@@ -48,8 +48,15 @@
 // dialogue enhancement's parameters and a dialogue substream's mixing values.
 // The table of contents keeps CMAF's rules (Part 2 Annex H.1.2): at most 64
 // presentations, each that carries audio with a presentation_id of its own,
-// and one configuration throughout. Everything else in the plan's later phases
-// (immersive layouts, objects) is refused as an invalid configuration.
+// and one configuration throughout. Immersive layouts and objects, which the
+// plan's phases E8 and E9 add, are refused, as is every configuration outside
+// the rules this header states; Encoder::refusal_reason() names the rule a
+// configuration breaks. Each frame comes out as a raw_ac4_frame, which an MP4
+// sample holds as it is (ac4::build_dac4() describes the track from toc()),
+// and which sync_frame() wraps for a raw .ac4 file or MPEG-2 TS.
+//
+// Every field of the configuration structures has a default, so a designated
+// initializer names only the fields it sets.
 //
 // src/ac4enc/ERRATA.md records the readings the writer alone needs; where the
 // decoder depends on the same reading, src/ac4dec/ERRATA.md has it.
@@ -57,7 +64,7 @@
 namespace ac4 {
 
 enum class EncodeError : std::uint8_t {
-    kInvalidConfig,  // a configuration this version does not encode - see the header comment
+    kInvalidConfig,  // a configuration the encoder does not write: Encoder::refusal_reason() says why
     kInvalidInput,   // a channel count or lengths that do not match, or a sample that is not finite
 };
 
@@ -154,16 +161,16 @@ struct FurtherLoudness {
     // With a practice: the dialogue gating the programme's loudness was
     // corrected with, if any, and whether the correction ran in real time
     // rather than over the whole file.
-    std::optional<DialogueGating> corrected_with_gating;
+    std::optional<DialogueGating> corrected_with_gating{};
     bool corrected_in_real_time = false;
-    std::optional<double> integrated_lkfs;    // loudrelgat: BS.1770, relative gated
-    std::optional<double> speech_gated_lkfs;  // loudspchgat, gated as `speech_gating` says
+    std::optional<double> integrated_lkfs{};    // loudrelgat: BS.1770, relative gated
+    std::optional<double> speech_gated_lkfs{};  // loudspchgat, gated as `speech_gating` says
     DialogueGating speech_gating = DialogueGating::kNotIndicated;
-    std::optional<double> max_short_term_lufs;  // max_loudstrm3s: the loudest 3 s
-    std::optional<double> max_true_peak_dbtp;   // max_truepk
-    std::optional<double> loudness_range_lu;    // lra, EBU Tech 3342
+    std::optional<double> max_short_term_lufs{};  // max_loudstrm3s: the loudest 3 s
+    std::optional<double> max_true_peak_dbtp{};   // max_truepk
+    std::optional<double> loudness_range_lu{};    // lra, EBU Tech 3342
     bool loudness_range_v2 = true;              // lra_prac_type: EBU Tech 3342 v2, or v1
-    std::optional<double> max_momentary_lufs;   // max_loudmntry
+    std::optional<double> max_momentary_lufs{};  // max_loudmntry
 };
 
 // Part 1 Table 160: drc_eac3_profile, and Table 162's default profiles.
@@ -188,8 +195,8 @@ struct DrcModeConfig {
     // drc_default_profile_flag; another profile, sent as its compression curve
     // (Table 166's parameters, Table 162's values); or another mode's
     // configuration, by that mode's id (drc_repeat_profile_flag).
-    std::optional<DrcProfile> profile;
-    std::optional<int> repeat_of;
+    std::optional<DrcProfile> profile{};
+    std::optional<int> repeat_of{};
     // With experimental.drc_gains: the gains the profile (the stream's
     // default where unset) gives the input, computed frame by frame as a
     // decoder applying it would and sent in every frame
@@ -199,7 +206,7 @@ struct DrcModeConfig {
     // Every group and band takes the programme's gain, the curve being
     // defined on the programme's level; configurations 1 to 3 add the
     // subframes' resolution in time.
-    std::optional<int> gains_config;
+    std::optional<int> gains_config{};
 };
 
 // DRC (Part 1 clause 4.3.13): drc_config() in I-frames, which is where
@@ -210,7 +217,7 @@ struct DrcConfig {
     DrcProfile profile = DrcProfile::kFilmLight;
     // The modes; empty sends the four of Table 161 on the default profile, as
     // DEE's streams do.
-    std::vector<DrcModeConfig> modes;
+    std::vector<DrcModeConfig> modes{};
 };
 
 // Part 1 Table 150: the downmix the stream prefers.
@@ -230,16 +237,16 @@ struct DownmixConfig {
     // Table 149a: 0, -1.5, -3, -4.5 or -6 dB, or -infinity.
     double loro_surround_db = -3.0;
     // Lt/Rt's, where they differ from Lo/Ro's (b_ltrt_mixinfo).
-    std::optional<double> ltrt_centre_db;
-    std::optional<double> ltrt_surround_db;
+    std::optional<double> ltrt_centre_db{};
+    std::optional<double> ltrt_surround_db{};
     // The LFE into the stereo downmix, 5.5 - lfe_mixgain dB: +5.5 to -25.5 in
     // steps of 1 dB. Unset leaves the LFE out.
-    std::optional<double> lfe_db;
+    std::optional<double> lfe_db{};
     PreferredDownmix preferred = PreferredDownmix::kLoRo;
     // The loudness correction each downmix takes, in dB2 (6 dB2 a factor of
     // 2): -7.5 to +7.5 in steps of 0.5 (loro_dmx_loud_corr, ltrt_dmx_loud_corr).
-    std::optional<double> loro_correction_db2;
-    std::optional<double> ltrt_correction_db2;
+    std::optional<double> loro_correction_db2{};
+    std::optional<double> ltrt_correction_db2{};
 };
 
 // Where dialogue enhancement's parameters come from (planning/ac4.md,
@@ -303,12 +310,12 @@ struct DialogueConfig {
 struct DialogueMix {
     // g_dialog_max, the most a listener may raise the dialogue: 3, 6, 9 or 12
     // dB (dialog_max_gain); unset for 0 dB.
-    std::optional<int> max_gain_db;
+    std::optional<int> max_gain_db{};
     // Where a mono dialogue's channel sits, or each of a stereo one's two
     // (pan_dialog): degrees clockwise from the front, 0 to 358.5 in steps of
     // 1.5, 330 being L and 30 R. Empty sends none: a mono dialogue then sits
     // at 0 degrees, and a stereo one goes channel to channel.
-    std::vector<double> pan_degrees;
+    std::vector<double> pan_degrees{};
 };
 
 // Part 1 Table 91: what a substream group carries (content_classifier).
@@ -327,11 +334,11 @@ enum class ContentClassifier : std::uint8_t {
 // its id, emdf_payload_config()'s fields, and its bytes.
 struct EmdfPayload {
     int id = 1;  // emdf_payload_id, 1 and up: 0 ends a list
-    std::vector<std::uint8_t> bytes;
-    std::optional<int> sample_offset;  // smpoffst, 0 and up
-    std::optional<int> duration;       // duration, 0 and up
-    std::optional<int> group_id;       // groupid, 0 and up
-    std::optional<int> codec_data;     // codecdata, 0 to 255
+    std::vector<std::uint8_t> bytes{};
+    std::optional<int> sample_offset{};  // smpoffst, 0 and up
+    std::optional<int> duration{};       // duration, 0 and up
+    std::optional<int> group_id{};       // groupid, 0 and up
+    std::optional<int> codec_data{};     // codecdata, 0 to 255
     bool discard_unknown = true;       // b_discard_unknown_payload
     // Where the payload is not discarded: without a sample offset, whether it
     // is aligned to the frame and may be duplicated or removed by a
@@ -361,24 +368,24 @@ struct SubstreamConfig {
     int channels = 2;
     // Its share of the stream's rate; unset shares what the set ones leave in
     // proportion to the full-band channels.
-    std::optional<int> bitrate_kbps;
+    std::optional<int> bitrate_kbps{};
     CodecMode codec_mode = CodecMode::kAuto;
     // Its group's content_type() (Part 1 clause 4.2.3.7): the classifier, and
     // an IETF BCP 47 language tag of at most 63 bytes, empty for none; unset
     // sends no content_type().
-    std::optional<ContentClassifier> content;
-    std::string language;
+    std::optional<ContentClassifier> content{};
+    std::string language{};
     // Its dialogue enhancement.
-    std::optional<DialogueConfig> dialogue;
+    std::optional<DialogueConfig> dialogue{};
     // A dialogue substream's mixing values (b_dialog).
-    std::optional<DialogueMix> dialogue_mix;
+    std::optional<DialogueMix> dialogue_mix{};
     // A dialogue enhancement substream: the waveform of substream `enhances`'
     // hybrid dialogue enhancement, which takes no input channels of its own;
     // `channels` is then ignored.
-    std::optional<int> enhances;
+    std::optional<int> enhances{};
     // Payloads its metadata() carries in every frame
     // (b_emdf_payloads_substream).
-    std::vector<EmdfPayload> emdf;
+    std::vector<EmdfPayload> emdf{};
 };
 
 // The associated audio's mixing values (Part 2 clause 6.2.2.3, Part 1 clauses
@@ -387,12 +394,12 @@ struct AssociatedMix {
     // The main audio's gains while the associated audio plays: every channel
     // (scale_main), C (scale_main_centre) and L and R (scale_main_front), 0 to
     // -76.2 dB in steps of 0.3, or -infinity; unset sends none.
-    std::optional<double> main_db;
-    std::optional<double> main_centre_db;
-    std::optional<double> main_front_db;
+    std::optional<double> main_db{};
+    std::optional<double> main_centre_db{};
+    std::optional<double> main_front_db{};
     // Where a mono associated substream sits (pan_associated), as
     // DialogueMix::pan_degrees; unset leaves it at 0 degrees.
-    std::optional<double> pan_degrees;
+    std::optional<double> pan_degrees{};
 };
 
 struct PresentationConfig {
@@ -401,40 +408,40 @@ struct PresentationConfig {
     // with dialogue and associated audio, 4 main with dialogue enhancement
     // and associated audio, 5 roles by each group's content classifier (Table
     // 54), 6 EMDF payloads alone; unset for one substream alone.
-    std::optional<int> config;
+    std::optional<int> config{};
     // The substreams it plays, indices into EncoderConfig::substreams, in
     // Table 53's order; none for configuration 6.
-    std::vector<int> substreams;
+    std::vector<int> substreams{};
     // Unset: the least no other presentation takes, so 0, 1, 2 and on in the
     // presentations' order where none is set. Every presentation that carries
     // audio has one, as CMAF asks (Part 2 Annex H.1.2.1), and no two the
     // same; configuration 6 has no field for one.
-    std::optional<int> presentation_id;
+    std::optional<int> presentation_id{};
     // The decoder compatibility level (Part 2 Table 55); unset takes the
     // least its tracks allow, which a value set may not be below.
-    std::optional<int> md_compat;
+    std::optional<int> md_compat{};
     // b_enable_presentation, where it is set.
-    std::optional<bool> enabled;
+    std::optional<bool> enabled{};
     bool pre_virtualized = false;  // b_pre_virtualized
     // An alternative presentation of this name (b_alternative; Part 2 clause
     // 6.3.3.1.4), UTF-8, at most 31 bytes; empty for a presentation that is
     // not one.
-    std::string name;
+    std::string name{};
     // Its values where they are not the stream's: EncoderConfig's
     // dialnorm_db, loudness, drc and downmix.
-    std::optional<double> dialnorm_db;
-    std::optional<FurtherLoudness> loudness;
-    std::optional<DrcConfig> drc;
-    std::optional<DownmixConfig> downmix;
+    std::optional<double> dialnorm_db{};
+    std::optional<FurtherLoudness> loudness{};
+    std::optional<DrcConfig> drc{};
+    std::optional<DownmixConfig> downmix{};
     // Each of `substreams`' groups' gain (sg_gain, Part 2 Table 70): 0 to
     // -15.5 dB in steps of 0.25, or -infinity; empty for 0 dB throughout.
     // Configuration 1, and configuration 4's dialogue enhancement substream,
     // take none (src/ac4dec/ERRATA.md, "Substream group gains").
-    std::vector<double> gains_db;
-    std::optional<AssociatedMix> associated;
+    std::vector<double> gains_db{};
+    std::optional<AssociatedMix> associated{};
     // Payloads in an EMDF payloads substream its emdf_info() names, in every
     // frame; configuration 6 carries these alone.
-    std::vector<EmdfPayload> emdf;
+    std::vector<EmdfPayload> emdf{};
 };
 
 struct EncoderConfig {
@@ -458,12 +465,12 @@ struct EncoderConfig {
     int iframe_interval = 24;
     // I-frames besides those: the frames, counted from 0, that must be ones,
     // in any order.
-    std::vector<std::int64_t> iframes;
+    std::vector<std::int64_t> iframes{};
     // Where the caller's fragments start, in samples of the decoded output
     // from its first, which is the media time an MP4 track counts: the frame
     // whose output starts there, or the first to start after it, is an
     // I-frame, so that a fragment can start with it.
-    std::vector<std::int64_t> fragment_starts;
+    std::vector<std::int64_t> fragment_starts{};
     // The input reference level, Part 1 clause 4.3.12.2.1: 0 to -31.75 dBFS in
     // steps of 0.25 dB.
     double dialnorm_db = -31.0;
@@ -473,18 +480,18 @@ struct EncoderConfig {
     // presentations, dialnorm_db, loudness, drc and downmix are every
     // presentation's but where it sets its own, the downmix going only to
     // those of 5.X and 7.X.
-    std::optional<FurtherLoudness> loudness;
-    std::optional<DrcConfig> drc;
-    std::optional<DownmixConfig> downmix;
-    std::optional<DialogueConfig> dialogue;
+    std::optional<FurtherLoudness> loudness{};
+    std::optional<DrcConfig> drc{};
+    std::optional<DownmixConfig> downmix{};
+    std::optional<DialogueConfig> dialogue{};
     // Several substreams, and the presentations made of them. With substreams
     // set, encode() takes every substream's input channels one substream
     // after the other (a dialogue enhancement substream takes none), and
     // `channels`, `codec_mode` and `dialogue` are the substreams' own. With
     // presentations alone, they are of the one substream above. Empty: one
     // presentation of the one substream.
-    std::vector<SubstreamConfig> substreams;
-    std::vector<PresentationConfig> presentations;
+    std::vector<SubstreamConfig> substreams{};
+    std::vector<PresentationConfig> presentations{};
     // One record per syntax element written, in the shape ac4/syntax.hpp
     // states, for comparing what was written with what a reader reads. The
     // configuration owns a copy of the callable, and the encoder one of its
@@ -533,7 +540,7 @@ struct EncoderConfig {
 // One coded frame: what an MP4 sample holds as it is, and what sync_frame()
 // wraps for a raw .ac4 file or MPEG-2 TS.
 struct EncodedFrame {
-    std::vector<std::byte> raw_ac4_frame;
+    std::vector<std::byte> raw_ac4_frame{};
     // PCM samples per channel the frame decodes to, at the input's rate: the
     // frame's length at index 13, and elsewhere what the decoder's converter
     // gives the frame, which at 29.97, 59.94 and 119.88 fps changes from
@@ -546,8 +553,14 @@ struct EncodedFrame {
 class AC4ENC_EXPORT Encoder {
    public:
     // Fails with EncodeError::kInvalidConfig for a configuration outside what
-    // this version encodes.
+    // the encoder writes (the rules this header states), or whose rate cannot
+    // hold its least frame.
     [[nodiscard]] static std::expected<Encoder, EncodeError> create(const EncoderConfig& config);
+
+    // Why create() refuses `config`: a string literal naming the first rule it
+    // breaks, such as "a language tag longer than 63 bytes"; empty where
+    // create() makes an encoder of it. It does create()'s work to find out.
+    [[nodiscard]] static std::string_view refusal_reason(const EncoderConfig& config);
 
     ~Encoder();
     Encoder(Encoder&&) noexcept;

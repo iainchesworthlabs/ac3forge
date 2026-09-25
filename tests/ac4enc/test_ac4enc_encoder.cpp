@@ -178,6 +178,92 @@ TEST_CASE("the encoder refuses what it does not write", "[ac4enc][encoder]") {
     CHECK(encoder->encode(with_nan).error() == ac4::EncodeError::kInvalidInput);
 }
 
+TEST_CASE("Encoder::refusal_reason names the rule a refused configuration breaks",
+          "[ac4enc][encoder]") {
+    CHECK(ac4::Encoder::refusal_reason(ac4::EncoderConfig{}).empty());
+    const auto two = [](std::string_view language) {
+        return ac4::SubstreamConfig{.channels = 2,
+                                    .content = ac4::ContentClassifier::kCompleteMain,
+                                    .language = std::string{language}};
+    };
+    struct Case {
+        const char* name;
+        ac4::EncoderConfig config;
+        std::string_view says;
+    };
+    const std::vector<Case> cases = {
+        {"a sample rate", {.sample_rate_hz = 32000}, "sample rate"},
+        {"an I-frame interval", {.iframe_interval = 0}, "I-frame interval"},
+        {"a rate", {.bitrate_kbps = 5}, "8 to 3 000 kbps"},
+        {"a dialnorm", {.dialnorm_db = -40.0}, "dialnorm"},
+        {"a frame rate at 44.1 kHz",
+         {.sample_rate_hz = 44100, .frame_rate_index = 2},
+         "frame_rate_index"},
+        {"four channels", {.channels = 4}, "channel count"},
+        {"eight channels and no pair",
+         {.channels = 8, .bitrate_kbps = 640},
+         "seven or eight channels"},
+        {"3.0 alone", {.channels = 3, .experimental = {.three_zero = true}}, "3.0 audio"},
+        {"stereo A-CPL", {.codec_mode = ac4::CodecMode::kAspxAcpl2}, "A-CPL codec mode"},
+        {"stereo downmix values", {.downmix = ac4::DownmixConfig{}}, "downmix values"},
+        {"dialogue enhancement on C in stereo",
+         {.dialogue = ac4::DialogueConfig{}},
+         "dialogue enhancement"},
+        {"a long language tag", {.substreams = {two(std::string(64, 'a'))}}, "63 bytes"},
+        {"several substreams and no presentation",
+         {.substreams = {two("en"), two("de")}},
+         "no presentation"},
+        {"one id twice",
+         {.substreams = {two("en"), two("de")},
+          .presentations = {{.substreams = {0}, .presentation_id = 3},
+                            {.substreams = {1}, .presentation_id = 3}}},
+         "presentation_id"},
+        {"configuration 6 with a substream",
+         {.presentations = {{.config = 6, .substreams = {0}}}},
+         "EMDF-only"},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        CHECK_FALSE(ac4::Encoder::create(c.config).has_value());
+        const std::string_view reason = ac4::Encoder::refusal_reason(c.config);
+        CAPTURE(reason);
+        CHECK(reason.find(c.says) != std::string_view::npos);
+    }
+}
+
+TEST_CASE("the configuration takes designated initializers naming some fields",
+          "[ac4enc][encoder]") {
+    // Every field of the configuration's structures has a default, so these
+    // name only what they set, and GCC's and Clang's missing initializer
+    // warnings, errors here, have nothing to say.
+    const ac4::EncoderConfig config{
+        .channels = 2,
+        .bitrate_kbps = 256,
+        .dialnorm_db = -24.0,
+        .loudness = ac4::FurtherLoudness{.practice = ac4::LoudnessPractice::kEbuR128,
+                                         .integrated_lkfs = -23.0},
+        .drc = ac4::DrcConfig{.profile = ac4::DrcProfile::kMusicLight},
+        .substreams = {ac4::SubstreamConfig{.channels = 2,
+                                            .content = ac4::ContentClassifier::kMusicAndEffects},
+                       ac4::SubstreamConfig{.channels = 1,
+                                            .bitrate_kbps = 64,
+                                            .content = ac4::ContentClassifier::kDialogue,
+                                            .language = "en",
+                                            .dialogue_mix = ac4::DialogueMix{.max_gain_db = 6}}},
+        .presentations = {ac4::PresentationConfig{
+                              .config = 0, .substreams = {0, 1}, .gains_db = {0.0, -3.0}},
+                          ac4::PresentationConfig{.substreams = {0}, .name = "Music"}},
+    };
+    INFO(ac4::Encoder::refusal_reason(config));
+    auto encoder = ac4::Encoder::create(config);
+    REQUIRE(encoder.has_value());
+    const ac4::Toc& toc = encoder->toc();
+    REQUIRE(toc.presentations_v1.size() == 2);
+    CHECK(toc.presentations_v1[0].presentation_config == 0);
+    CHECK(toc.presentations_v1[1].b_alternative);
+    CHECK_FALSE(ac4::build_dac4(toc).empty());
+}
+
 TEST_CASE("samples far past full scale still encode, to frames that read back and decode", "[ac4enc][encoder]") {
     // A finite float can stand 10^38 over full scale, more than the coarsest
     // step codes in a frame at a low rate: such a frame goes out with no bands.

@@ -875,6 +875,7 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
           1);
     CHECK(read_log(log).find("44.1 kHz") != std::string::npos);
     CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " 5000", log) == 1);  // kExitUsage
+    CHECK(read_log(log).find("a rate outside 8 to 3 000 kbps") != std::string::npos);
     CHECK_FALSE(fs::exists(out));
     // Silence has no loudness for dialnorm=auto to measure.
     CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " dialnorm=auto", log) == 5);
