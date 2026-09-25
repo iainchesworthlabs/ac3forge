@@ -1089,6 +1089,13 @@ jobs:
       # the WSL2 measurement above's own margin - a genuine, repeatable
       # characteristic of this configuration, not runner noise, and not a
       # regression in the codec itself.
+      #
+      # ctest alone cannot say whether ac3tests ran against libac3forge.so, and
+      # at one point it did not: the C API library embeds the codec as a static
+      # archive, exported its C++ symbols, and put the archive on the link line
+      # of everything that linked it, all of which beat the .so. Every test
+      # passed on code that was never in it. check_shared_forge_binding.sh
+      # reads the dynamic bindings themselves.
       - name: Configure, build and test with BUILD_SHARED_LIBS=ON
         if: matrix.preset == 'linux-llvm'
         shell: bash
@@ -1097,6 +1104,9 @@ jobs:
           cmake --preset config-linux-llvm-shared
           cmake --build build/config-linux-llvm-shared -- -k 0
           ctest --preset test-linux-llvm-shared -LE Performance
+          bash tools/checks/check_shared_forge_binding.sh \
+            build/config-linux-llvm-shared/bin/ac3tests \
+            build/config-linux-llvm-shared/src/forge/libac3forge.so
 
       # A build tree is not an installed package. tests/capi and the C examples compile against
       # the build tree, where every generated header is already on the include path whether or

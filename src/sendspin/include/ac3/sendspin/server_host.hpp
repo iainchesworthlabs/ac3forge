@@ -83,8 +83,15 @@ struct ClientView {
     messages::DeviceInfo device_info;
     bool offers_unpaired_access = false;
     std::vector<messages::PairMethod> pair_methods;
+    // A pairing activity is declared; an attempt runs under it (pairing_attempt) until it pairs
+    // or ends, and one that ended leaves the activity declared until the host decides again.
     bool pairing = false;
+    bool pairing_attempt = false;
     bool wants_code = false;
+    // How many times the attempts on this connection have asked for a code: once a round
+    // (pairing.md, rounds). A code entered and then another request means it did not match -
+    // whichever of the two a caller hears about first.
+    std::uint32_t code_requests = 0;
     // A playback role is active: player@v1, or _ac3forge_player@v1 when `bursts`.
     bool playing = false;
     bool bursts = false;
@@ -115,7 +122,15 @@ class ServerHostEvents {
 
     // A client connected, or what the host knows of it changed.
     virtual void on_client(const ClientView& client) = 0;
+    // The client's last connection ended. A second connection to a client the host already holds
+    // is closed without this: the client is still connected.
     virtual void on_client_gone(const std::string& client_id) = 0;
+    // A connection the host dialled at `url` ended before the client said hello. `answered` is
+    // false when the dial itself failed (nothing answered, or not with a WebSocket), true when the
+    // WebSocket opened but the handshake did not complete, as when the client holds a pairing
+    // record for another server identity (connection.md, E8). A connection that got as far as
+    // hello ends with on_client_gone() instead.
+    virtual void on_dial_failed(const std::string& /*url*/, bool /*answered*/) {}
     // The client sent client/goodbye, its own reason for the disconnect that follows shortly as
     // on_client_gone(): kAnotherServer when a connection of equal or higher rank displaced this
     // one, kConcurrentAttempt when this one's own activation was rejected because another
@@ -162,6 +177,13 @@ class ServerHost {
 
     // Dials a client at a ws:// URL, on the host's thread.
     void dial(const std::string& url);
+    // Dials a client at a ws:// URL to pair it by a code method it offers, as pair() does for a
+    // client already connected: the connection's first activation is the pairing, which a client
+    // another server holds admits beside that server, where it refuses an activation with no
+    // activities (connection.md, Multiple servers). A connection to `url` that has not yet said
+    // hello, or has not yet been activated, takes the request instead of a second dial. False for
+    // the pairing-PSK method, which pairs by enter_pairing_token().
+    bool dial_to_pair(const std::string& url, messages::PairMethod method, std::optional<messages::CodeFormat> format);
 
     [[nodiscard]] std::vector<ClientView> clients() const;
     [[nodiscard]] std::optional<ClientView> client(const std::string& client_id) const;
@@ -194,11 +216,14 @@ class ServerHost {
     friend class HostBrowseListener;
     friend class Group;
     struct State;
-    explicit ServerHost(std::unique_ptr<State> state);
-    std::unique_ptr<State> state_;
+    explicit ServerHost(std::shared_ptr<State> state);
+    // Shared with every Group made here, which may outlive the host (Group's own comment).
+    std::shared_ptr<State> state_;
 };
 
-// One programme to several clients on one timeline. A group must not outlive its host.
+// One programme to several clients on one timeline. A group may outlive its host - an
+// application that hands one to its player cannot always order the two - but once the host has
+// gone it has no connected members, so every call on it does nothing.
 class Group {
    public:
     ~Group();

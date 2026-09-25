@@ -263,6 +263,15 @@ ColumnLayout {
                             Text {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
+                                visible: text.length > 0
+                                text: row.modelData.linkText ?? ""
+                                color: Theme.textMuted
+                                font.pixelSize: Theme.fontSmall
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                Layout.minimumWidth: 0
                                 visible: row.modelData.notice.length > 0
                                 text: row.modelData.notice
                                 color: Theme.bad

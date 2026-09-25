@@ -92,7 +92,7 @@ Status:
 | 66 | Decoder | Settings applied to what is playing | none | UI | DecoderApplied::test_settingsReachWhatIsPlaying (RF is louder than Line at the device) |
 | 67 | Network | Sink list shows a discovered sink | none | UI | NetworkPairing::test_discoveredSinkIsListedAndPairsWithTheCodeItShows (discovery injected, not mDNS) |
 | 68 | Network | Look again (rescan) | none | UI | NetworkPairing::test_discoveredSink... (clicked; mDNS itself not exercised) |
-| 69 | Network | Select a sink: pairing view | none | UI | NetworkPairing::test_discoveredSink... |
+| 69 | Network | Select a sink: pairing view; "Pair with this computer" starts the attempt (selecting alone does not) | none | UI | NetworkPairing::test_discoveredSink..., NetworkPairing::test_cancelEndsThePairingAttempt |
 | 70 | Network | Type the sink's code, Pair: sink becomes paired | none | UI | NetworkPairing::test_discoveredSink... (the sink logs "paired with server") |
 | 71 | Network | Cancel pairing | none | UI | NetworkPairing::test_cancelEndsThePairingAttempt |
 | 72 | Network | Paired Hearth sink settings view (its outputs, crossover range) | logic | UI | NetworkPairing::test_pairedSinkSpeakersTabShowsTheSinkAndEditsReachIt |
@@ -114,15 +114,15 @@ Status:
 | 88 | Dialogs | About: version, Licences... chain, Close | none | UI | Dialogs::test_shortcutsAboutLicencesChain |
 | 89 | Dialogs | Licences: notices text, Close | none | UI | Dialogs::test_shortcutsAboutLicencesChain |
 | 90 | Dialogs | First run shows once; Not now / Open Speakers | none | UI | Dialogs::test_firstRunShowsOnceAndNotNowRemembersIt, test_firstRunOpenSpeakersGoesToTheSpeakersPage |
-| 91 | Output | Play to a network group (`selectOutputGroup`) | none | none | No UI control reaches it: the picker's Network section says groups are "not available from this build yet" |
+| 91 | Output | Play to a network group (`selectOutputGroup`) | none | UI | OutputPicker::test_groupRowPinsPlaybackToTheGroup (the picker's group row, Play here, then a device row moves it back) |
 
 ### Totals
 
-| | Before (4 suites, 18 cases) | After (14 suites, 72 cases) |
+| | Before (4 suites, 18 cases) | After (14 suites, 73 cases) |
 |---|---|---|
-| UI | 5 | 89 |
+| UI | 5 | 90 |
 | logic only | 15 | 1 (row 15: no UI control exists) |
-| none | 71 | 1 (row 91) |
+| none | 71 | 0 |
 
 Gaps that remain inside covered rows:
 

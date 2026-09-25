@@ -34,9 +34,9 @@
 
 namespace ac3::hearth {
 
-// The settings the pairing records and the saved queue live under: keys,
-// codes and paths.
-inline constexpr std::array<std::string_view, 2> kWithheldSettings{"pairing/", "queue/"};
+// The settings the pairing records, the server identity they are bound to
+// (server_identity.hpp) and the saved queue live under: keys, codes and paths.
+inline constexpr std::array<std::string_view, 3> kWithheldSettings{"pairing/", "identity/", "queue/"};
 
 // The lists in the file keep this many entries: the last items played, the
 // first items that cannot be played.
