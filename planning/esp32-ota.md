@@ -242,8 +242,9 @@ update that was cancelled or refused.
 **Memory.** The upload needs a task whose stack is in internal RAM (8 KiB to start with, measured
 in O1). The flash cache is off while the task erases and writes, and PSRAM is reached through that
 cache, so a stack there would be out of reach. It also needs a 4 KiB receive buffer. The teardown frees far more than that on every chip: the C6's Sendspin ring alone
-is 48 KiB and its decode stack 24 KiB. So flash mode changes no memory setting. O2 measures the
-C6's internal low-water mark during an upload to confirm it.
+is 48 KiB and its decode stack 24 KiB. So flash mode changes no memory setting. The C6's internal
+low-water mark during an upload confirms it: 114,308 bytes free at the lowest, measured once O4
+printed it ([Diagnostics](#diagnostics-without-a-cable-o4)).
 
 **Flash writes and the cache.** An erase or a write disables the flash cache, in windows of up to
 one 64 KiB block erase. Nothing time-critical is left running by then. On the C6, Wi-Fi's own code
@@ -619,7 +620,17 @@ now 1,665,856 bytes, which leaves 169,152 (9%) of its 1.75 MiB slot.
 **The upload's least free heap.** O2 asks for the C6's internal heap low-water mark during an
 upload. The upload now measures it from the moment flash mode has stopped the player to the
 upload's end, and prints it (`firmware: the upload's least free internal heap was N bytes`). The
-ring keeps that line, so `ota.py log` reads it back without a cable.
+line comes just before the restart into the new image, so it reaches the USB console. After an
+update that went through, the ring in RAM is gone with the restart. Measured on 2026-09-25, each
+board taking a whole image from O4's image:
+
+| Board | Internal heap free as flash mode starts | Least free during the upload |
+|---|---|---|
+| C6 (COM9) | 135,920 bytes, largest block 86,016 | 114,308 bytes |
+| S3 board (COM15) | 94,335 bytes, largest block 31,744 | 89,415 bytes |
+
+Neither comes near running out during an upload. The S3 board is the tighter of the two, and
+still keeps 89 KB free.
 
 ## ac3hearth (O5)
 
@@ -805,7 +816,8 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
 - The 16 MB table on COM9, through `sdkconfig.flash16mb`; the 4 MB table for other modules.
 - No PSRAM, and Wi-Fi's code in flash. Flash mode's teardown matters most here, and O2 measures
   it: the internal heap's low-water mark during an upload, and whether Wi-Fi keeps its association
-  through the erase windows.
+  through the erase windows. It did through every upload, and the low-water mark was 114,308
+  bytes.
 - No QEMU machine, so board-only.
 
 **ESP32-P4.**
@@ -901,7 +913,7 @@ that image has to be able to take the next update.
   - `PUT /firmware/rollback` works;
   - an update of a playing board stops the play and says goodbye to its server;
   - the time each step takes;
-  - the C6's internal heap low-water mark during an upload;
+  - the C6's internal heap low-water mark during an upload (114,308 bytes, read with O4's line);
   - on the P4, a v3.1 image is refused before anything is written.
 - **O3.** The page's Firmware section ([built](#the-web-page-o3)).
 - **O4, diagnostics without a cable.** Core dumps to the `coredump` partition, fetched with
