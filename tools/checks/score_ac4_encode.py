@@ -24,6 +24,14 @@ and checks, as score_ac4_decode.py scores DEE's streams:
            measurement less 0.1, where visqol-python is installed;
   routing  on a tone leg, each channel's tone at least 40 dB above the other channel's in it.
 
+The A-CPL legs, 5.1 at 96 and 128 kbps, where the encoder picks ASPX_ACPL_3 and ASPX_ACPL_2 as
+DEE does, 5.0 in ASPX_ACPL_2, and the experimental ASPX_ACPL_1 and A-CPL in stereo, are scored as
+score_ac4_decode.py scores DEE's A-CPL legs: the coded downmixes, recovered from the output, as
+waveforms below the crossover; per A-CPL parameter band the distance of each rebuilt pair's level
+difference and correlation from the source's; on a tone leg the routing margin; LSD and MOS. Their
+pins are ACPL_FLOORS, in score_ac4_decode.py's ACPL_PINS form. The codec mode is read from the
+decode's syntax trace.
+
 The sources are 5 s long: the committed programme fixtures' 2.0 cuts, their 5.1 music and film
 mixes and one tone per channel, rebuilt by tools/generators/gen_ac4_baseline.py (which reads the
 FLAC fixtures with ffmpeg, so ffmpeg must be on PATH); the mono downmixes and the 5.1 music
@@ -33,10 +41,12 @@ A leg may name ac4-encode's options after its rate: the -configs legs take the e
 configurations.
 
 --gold DIR runs the race instead, locally: for each of phase G0's 2.0 legs, ASPX from 48 to 144
-kbps and SIMPLE from 192 to 768, and its 5.1 legs from 192 to 768, ASPX to 320 kbps, DEE's stream
+kbps and SIMPLE from 192 to 768, and its 5.1 legs from 96 to 768, ASPX_ACPL_3 at 96, ASPX_ACPL_2 at
+128 and 144 and ASPX to 320 kbps, DEE's stream
 (DIR/streams/<leg>/dee.ac4) and this encoder's stream of the same source (DIR/sources/<source>.wav)
 at the same rate are both decoded and scored as above. The encoder's scores are checked against
-RACE, pinned the same way, and its gaps to DEE's are printed.
+RACE, and in the A-CPL legs against RACE_ACPL, pinned the same way, and its gaps to DEE's are
+printed.
 
 --only TEXT runs only the legs whose names contain TEXT.
 
@@ -116,6 +126,17 @@ LEGS = {
     "50-music-320": ("music_50", 48000, 320),
     "51-music-192-configs": ("music_51", 48000, 192, "experimental=coding-configs"),
     "51-music-384-configs": ("music_51", 48000, 384, "experimental=coding-configs"),
+    # A-CPL: ASPX_ACPL_3 below 22.4 kbps a channel, ASPX_ACPL_2 below 33.6; ASPX_ACPL_1 and the
+    # channel pair's modes by name, experimental.
+    "51-music-96": ("music_51", 48000, 96),
+    "51-music-128": ("music_51", 48000, 128),
+    "51-film-128": ("film_51", 48000, 128),
+    "51-tones-96": ("tones_51", 48000, 96),
+    "51-tones-128": ("tones_51", 48000, 128),
+    "50-music-112": ("music_50", 48000, 112),
+    "51-music-160-acpl1": ("music_51", 48000, 160, "codec-mode=aspx-acpl-1", "experimental=acpl"),
+    "20-music-32-acpl2": ("music_20", 48000, 32, "codec-mode=aspx-acpl-2", "experimental=acpl"),
+    "20-music-64-acpl1": ("music_20", 48000, 64, "codec-mode=aspx-acpl-1", "experimental=acpl"),
 }
 
 # Per leg: (SNR floor per channel in dB, LSD ceiling in dB, A-SPX tile ceiling in dB or None for
@@ -160,6 +181,65 @@ FLOORS = {
     "50-music-320": ((28.5, 29.2, 31.9, 31.6, 31.9), 0.93, 5.22, 4.62),
     "51-music-192-configs": ((10.7, 11.8, 13.0, 7.9, 13.2, 13.5), 2.37, 4.30, 4.58),
     "51-music-384-configs": ((32.8, 33.5, 35.7, 16.3, 36.5, 36.8), 2.20, None, 4.61),
+}
+
+# The A-CPL legs, in score_ac4_decode.py's ACPL_PINS form: the downmixes' SNR floors, the per-band
+# level difference and correlation ceilings (None where the source holds nothing to score), the
+# routing floor on a tone leg, the LSD ceiling and the MOS floor. Measured 2026-09-25 with the
+# encoder of phase E4 and the decoder of phase D5.
+ACPL_FLOORS = {
+    "51-music-96": (
+        (17.5, 17.9, 12.6),
+        (3.29, 4.57, 4.42, 4.09, 3.68, 3.71, 3.30, 3.79, 3.30, 3.00, 2.53, 2.76, 2.57, 2.42, None),
+        (0.368, 0.368, 0.319, 0.391, 0.334, 0.311, 0.313, 0.347, 0.334, 0.323, 0.266, 0.290, 0.256,
+         0.260, None),
+        None, 4.16, 4.54),
+    "51-music-128": (
+        (10.5, 11.0, 14.6, 8.3),
+        (3.03, 3.94, 4.07, 4.20, 3.54, 3.57, 3.27, 3.52, 3.41, 2.92, 2.43, 2.21, 2.19, 2.08, None),
+        (0.380, 0.342, 0.327, 0.418, 0.343, 0.326, 0.300, 0.322, 0.311, 0.300, 0.260, 0.258, 0.218,
+         0.226, None),
+        None, 3.59, 4.55),
+    "51-film-128": (
+        (10.9, 11.5, 20.0, 12.2),
+        (2.73, 3.70, 4.13, 4.19, 3.70, 3.46, 3.26, 3.46, 3.53, 2.94, 2.70, 2.45, 2.43, 2.21, None),
+        (0.412, 0.400, 0.324, 0.380, 0.349, 0.321, 0.319, 0.331, 0.350, 0.326, 0.276, 0.259, 0.229,
+         0.222, None),
+        None, 3.57, 4.51),
+    "51-tones-96": (
+        (76.7, 76.7, 69.1),
+        None,
+        None,
+        6.7, 16.05, 4.62),
+    "51-tones-128": (
+        (79.6, 78.7, 80.2, 69.1),
+        None,
+        None,
+        15.3, 13.03, 4.63),
+    "50-music-112": (
+        (15.4, 15.7, 20.0),
+        (3.06, 3.87, 4.22, 4.20, 3.63, 3.50, 3.17, 3.64, 3.51, 3.02, 2.72, 2.52, 2.33, 2.19, None),
+        (0.379, 0.335, 0.325, 0.403, 0.337, 0.316, 0.315, 0.322, 0.320, 0.297, 0.274, 0.281, 0.231,
+         0.243, None),
+        None, 3.17, 4.52),
+    "51-music-160-acpl1": (
+        (11.1, 11.7, 15.7, 9.3),
+        (1.37, 1.16, 1.79, 1.56, 2.04, 1.88, 2.25, 2.17, 3.09, 2.87, 2.52, 2.18, 2.19, 2.11, None),
+        (0.144, 0.139, 0.188, 0.175, 0.198, 0.199, 0.207, 0.217, 0.307, 0.304, 0.261, 0.253, 0.215,
+         0.228, None),
+        None, 2.62, 4.58),
+    "20-music-32-acpl2": (
+        (18.7,),
+        (2.82, 3.19, 2.94, 3.96, 3.52, 3.49, 2.89, 2.92, 2.87, 2.43, 2.44, 1.68, 1.82, 1.75, None),
+        (0.222, 0.156, 0.194, 0.217, 0.215, 0.274, 0.231, 0.240, 0.236, 0.216, 0.220, 0.167, 0.179,
+         0.189, None),
+        None, 2.96, 4.38),
+    "20-music-64-acpl1": (
+        (14.4,),
+        (1.14, 0.93, 1.33, 1.19, 1.33, 1.52, 1.30, 1.49, 2.55, 2.27, 2.07, 1.74, 1.57, 1.73, None),
+        (0.121, 0.085, 0.127, 0.103, 0.130, 0.153, 0.138, 0.155, 0.215, 0.213, 0.207, 0.164, 0.172,
+         0.174, None),
+        None, 1.81, 4.58),
 }
 
 # The race, per G0 leg: the encoder's scores, pinned as FLOORS are. What it measured against DEE's
@@ -249,9 +329,73 @@ RACE = {
     "51-tones-512": ((81.2, 82.1, 80.6, 69.0, 82.2, 79.4), 10.30, None, 4.63),
     "51-tones-768": ((81.3, 82.2, 80.7, 69.0, 82.3, 79.5), 10.17, None, 4.63),
 }
+# The race's A-CPL legs, 5.1 at 96, 128 and 144 kbps, pinned as ACPL_FLOORS are. Measured 2026-09-25
+# with the encoder of phase E4, both streams decoded by the decoder of phase D5. Against DEE's, the
+# per-band level difference lands 0.02 to 0.13 dB nearer the source's on music and film, the
+# correlation within 0.007 of DEE's distance, and the log-spectral distance is lower on every leg;
+# ViSQOL is 0.01 to 0.06 above DEE's, except on film at 128 kbps, 0.12 under, where the coded C's
+# band below 2 kHz trails DEE's by 9.5 dB of SNR. On the tones the routing margin is 1.2 dB (at 96)
+# and 2.9 dB over DEE's. The coded downmixes' SNR trails DEE's by 3.4 to 9.5 dB, the E3 rate loop's
+# spread of noise across the band.
+RACE_ACPL = {
+    "51-music-96": (
+        (17.7, 17.7, 21.9),
+        (3.25, 3.53, 3.64, 3.56, 3.43, 3.46, 3.24, 3.59, 3.42, 3.01, 2.61, 2.80, 2.51, 2.55, None),
+        (0.351, 0.421, 0.350, 0.423, 0.354, 0.353, 0.330, 0.341, 0.348, 0.333, 0.285, 0.335, 0.324,
+         0.310, None),
+        None, 4.50, 4.52),
+    "51-music-128": (
+        (10.8, 10.8, 15.3, 15.2),
+        (3.51, 3.20, 3.63, 3.54, 3.57, 3.58, 3.34, 3.37, 3.29, 2.71, 2.46, 2.37, 2.14, 2.29, None),
+        (0.319, 0.355, 0.366, 0.457, 0.347, 0.331, 0.327, 0.320, 0.311, 0.293, 0.241, 0.242, 0.215,
+         0.232, None),
+        None, 3.85, 4.55),
+    "51-music-144": (
+        (16.2, 16.3, 22.0, 20.8),
+        (3.59, 3.09, 3.61, 3.55, 3.48, 3.49, 3.32, 3.38, 3.27, 2.68, 2.45, 2.38, 2.10, 2.26, None),
+        (0.315, 0.360, 0.375, 0.455, 0.347, 0.331, 0.325, 0.322, 0.310, 0.292, 0.238, 0.239, 0.215,
+         0.227, None),
+        None, 3.71, 4.56),
+    "51-film-96": (
+        (19.4, 19.4, 23.2),
+        (3.54, 3.56, 3.70, 3.78, 3.77, 3.54, 3.32, 3.92, 4.01, 3.50, 3.31, 3.48, 3.71, 2.91, None),
+        (0.362, 0.387, 0.352, 0.440, 0.357, 0.331, 0.357, 0.435, 0.440, 0.442, 0.444, 0.450, 0.527,
+         0.368, None),
+        None, 5.15, 4.43),
+    "51-film-128": (
+        (11.2, 11.3, 20.4, 17.3),
+        (3.60, 3.40, 3.58, 3.73, 3.68, 3.61, 3.32, 3.37, 3.28, 2.91, 2.61, 2.38, 2.23, 2.31, None),
+        (0.314, 0.317, 0.328, 0.431, 0.342, 0.307, 0.329, 0.320, 0.305, 0.298, 0.254, 0.247, 0.235,
+         0.230, None),
+        None, 3.85, 4.38),
+    "51-film-144": (
+        (12.1, 12.2, 24.2, 20.4),
+        (3.57, 3.37, 3.62, 3.70, 3.69, 3.59, 3.31, 3.37, 3.28, 2.82, 2.48, 2.32, 2.05, 2.27, None),
+        (0.306, 0.315, 0.321, 0.433, 0.344, 0.310, 0.326, 0.320, 0.302, 0.286, 0.246, 0.239, 0.220,
+         0.226, None),
+        None, 3.79, 4.52),
+    "51-tones-96": (
+        (76.9, 76.8, 69.0),
+        None,
+        None,
+        6.7, 15.92, 4.62),
+    "51-tones-128": (
+        (79.9, 79.1, 80.3, 69.0),
+        None,
+        None,
+        15.3, 12.87, 4.63),
+    "51-tones-144": (
+        (80.3, 79.6, 80.4, 69.0),
+        None,
+        None,
+        15.3, 12.78, 4.63),
+}
 # The G0 legs the race runs, by rate: 2.0 in ASPX where DEE writes it and in SIMPLE from 192 kbps,
-# and 5.1 from 192 kbps, below which DEE writes A-CPL.
+# and 5.1 from 96 kbps, in A-CPL below 192.
 RACE_RATES = (48, 64, 96, 128, 144, 192, 256, 288, 320, 384, 448, 512, 768)
+# The codec modes a 5_X_codec_mode or stereo_codec_mode names, where A-CPL is on (Part 1 Tables 95
+# and 97).
+ACPL_MODES = {2: "ASPX_ACPL_1", 3: "ASPX_ACPL_2", 4: "ASPX_ACPL_3"}
 
 
 # --- Sources ----------------------------------------------------------------------------------
@@ -381,7 +525,8 @@ def decode_with_groups(cli, stream, out_wav):
     trace = Path(str(out_wav) + ".trace")
     decoded, rate = decoding.decode(cli, stream, out_wav, trace)
     found = decoding.trace_values(trace)
-    if found is None:
+    # An A-CPL leg's elements are score_acpl_leg()'s to read.
+    if found is None or acpl_mode(trace) is not None:
         return decoded, rate, [None] * decoded.shape[1]
     config, offsets = found
     units = decoding.ASPX_UNIT[decoded.shape[1]]
@@ -492,10 +637,36 @@ def encode(cli, source_path, kbps, out, options=()):
     run([cli, "ac4-encode", source_path, out, kbps, "quiet", *options])
 
 
+def acpl_mode(trace):
+    """The A-CPL codec mode of a decode's syntax trace, from its first 5_X_codec_mode or
+    stereo_codec_mode, or None."""
+    for line in Path(trace).read_text(encoding="utf-8").splitlines():
+        fields = line.split("\t")
+        if len(fields) == 6 and fields[5] in ("5_X_codec_mode", "stereo_codec_mode"):
+            return ACPL_MODES.get(int(fields[4]))
+    return None
+
+
+def score_acpl_leg(args, name, source_name, original, decoded, trace, failures, pins, table):
+    """An A-CPL leg's lag and score_ac4_decode.py's A-CPL checks against `table`; what they
+    measured, or None where the trace holds no A-SPX configuration."""
+    lag, ref, out = decoding.align(original, decoded)
+    if not args.measure and lag != LAG:
+        failures.append(f"{name}: lag {lag}, expected {LAG}")
+    found = decoding.trace_values(trace)
+    if found is None:
+        failures.append(f"{name}: no aspx_config() in its syntax trace")
+        return None
+    config, offsets = found
+    return decoding.score_acpl(name, acpl_mode(trace), source_name, ref, out, offsets, config, args,
+                               failures, pins, table=table)
+
+
 def committed_run(args, work):
     paths = build_sources(work)
     failures = []
     pins = []
+    acpl_pins = []
     legs = {name: leg for name, leg in LEGS.items() if args.only is None or args.only in name}
     for name, (source, rate, kbps, *options) in legs.items():
         stream = work / f"{name}.ac4"
@@ -504,6 +675,11 @@ def committed_run(args, work):
         decoded, decoded_rate, groups = decode_with_groups(args.cli, stream, work / f"{name}.wav")
         if decoded_rate != rate or decoded.shape[1] != original.shape[1]:
             failures.append(f"{name}: decoded {decoded.shape[1]} channels at {decoded_rate} Hz")
+            continue
+        trace = Path(str(work / f"{name}.wav") + ".trace")
+        if acpl_mode(trace) is not None:
+            score_acpl_leg(args, name, source, original, decoded, trace, failures, acpl_pins,
+                           ACPL_FLOORS)
             continue
         m = measure(original, decoded, rate, groups)
         print(row(name, m), flush=True)
@@ -519,7 +695,23 @@ def committed_run(args, work):
             failures += routing_failures(name, m.aligned, rate)
     if args.measure:
         print("\nFLOORS = {\n" + "\n".join(pins) + "\n}")
+        print("\nACPL_FLOORS = {\n" + "\n".join(acpl_pins) + "\n}")
     return failures, len(legs)
+
+
+def acpl_gaps(ours, dee):
+    """The encoder's A-CPL scores less DEE's, as a line."""
+    snrs = "  ".join(f"dmx{i} {o - d:+.2f} dB" for i, (o, d) in enumerate(zip(ours["snrs"], dee["snrs"])))
+    text = f"SNR {snrs}, LSD {ours['lsd'] - dee['lsd']:+.2f} dB"
+    if ours["ild"] is not None and dee["ild"] is not None:
+        mean = lambda values: float(np.mean([v for v in values if v is not None]))  # noqa: E731
+        text += (f", ILD mean {mean(ours['ild']) - mean(dee['ild']):+.2f} dB"
+                 f", rho mean {mean(ours['rho']) - mean(dee['rho']):+.3f}")
+    if ours["routing"] is not None and dee["routing"] is not None:
+        text += f", routing {ours['routing'] - dee['routing']:+.1f} dB"
+    if ours["mos"] is not None and dee["mos"] is not None:
+        text += f", MOS {ours['mos'] - dee['mos']:+.3f}"
+    return text
 
 
 def gold_run(args, work):
@@ -529,7 +721,7 @@ def gold_run(args, work):
         for name, leg in sorted(manifest["legs"].items())
         if name.split("-")[0] in ("20", "51")
         and len(name.split("-")) == 3
-        and leg.get("codec_mode") in ("SIMPLE", "ASPX")
+        and leg.get("codec_mode") in ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
         and leg.get("frame_rate_index") == 13
         and leg.get("bitrate_kbps") in RACE_RATES
         and (args.only is None or args.only in name)
@@ -538,12 +730,29 @@ def gold_run(args, work):
         raise SystemExit(f"no 2.0 or 5.1 leg at the race's rates in {args.gold}")
     failures = []
     pins = []
+    acpl_pins = []
     for name, leg in legs:
         source_path = args.gold / "sources" / f"{leg['source']}.wav"
         original, rate = decoding.read_wav(source_path)
         dee_stream = args.gold / "streams" / name / "dee.ac4"
         ours_stream = work / f"{name}.ours.ac4"
         encode(args.cli, source_path, leg["bitrate_kbps"], ours_stream)
+        if leg["codec_mode"] in ACPL_MODES.values():
+            scores = {}
+            for label, stream in (("DEE", dee_stream), ("ours", ours_stream)):
+                out_wav = work / f"{name}.{label}.wav"
+                trace = work / f"{name}.{label}.trace"
+                decoded, _ = decoding.decode(args.cli, stream, out_wav, trace)
+                # DEE's scores are printed, not checked.
+                checked = failures if label == "ours" else []
+                table = {f"{leg_name} ours": pin for leg_name, pin in RACE_ACPL.items()} if label == "ours" else {}
+                scores[label] = score_acpl_leg(args, f"{name} {label}", leg["source"], original,
+                                               decoded, trace, checked,
+                                               acpl_pins if label == "ours" else [], table)
+            if scores["ours"] is not None and scores["DEE"] is not None:
+                print(f"{'':<26} ours less DEE's: {acpl_gaps(scores['ours'], scores['DEE'])}",
+                      flush=True)
+            continue
         scores = {}
         for label, stream in (("DEE", dee_stream), ("ours", ours_stream)):
             decoded, _, groups = decode_with_groups(args.cli, stream, work / f"{name}.{label}.wav")
@@ -568,6 +777,7 @@ def gold_run(args, work):
                 failures += routing_failures(f"{name} ours", ours.aligned, rate)
     if args.measure:
         print("\nRACE = {\n" + "\n".join(pins) + "\n}")
+        print("\nRACE_ACPL = {\n" + "\n".join(acpl_pins) + "\n}")
     return failures, len(legs)
 
 

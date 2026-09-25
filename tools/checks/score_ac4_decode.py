@@ -50,6 +50,10 @@ centre), so their channels are scored as A-CPL rebuilds them:
            or below ceilings of the first measurement plus 0.5 dB and 0.05. Music and film legs
            only; a tone leg's bands hold little but its tones.
 
+score_ac4_encode.py scores the encoder's A-CPL legs with the same checks, which also take
+ASPX_ACPL_1, whose downmixes are ASPX_ACPL_2's, and the channel pair's A-CPL, whose downmix is
+(L + R) / 2 and whose one pair is (L, R).
+
 The crossovers and the subband groups come from the leg's first aspx_config() and the
 aspx_xover_subband_offset of each aspx_data element in that frame, a channel's being the element
 Part 1 Table 213 gives it, read from `ac3cli decode ... syntax-trace=`, through Part 1
@@ -117,7 +121,8 @@ ASPX_UNIT = {1: (0,), 2: (0, 0), 5: (0, 0, 2, 1, 1), 6: (0, 0, 2, None, 1, 1)}
 # The A-CPL legs' aspx_data elements (Part 1 Table 213, codec modes 3 and 4 of the 5.X element),
 # by the decoder's channel order for 5.1: ASPX_ACPL_2 carries L and R in element 0 and C in element
 # 1; ASPX_ACPL_3 carries L and R alone. The downmixes are scored below element 0's crossover.
-ACPL_UNIT = {"ASPX_ACPL_2": (0, 0, 1, None, None, None),
+ACPL_UNIT = {"ASPX_ACPL_1": (0, 0, 1, None, None, None),
+             "ASPX_ACPL_2": (0, 0, 1, None, None, None),
              "ASPX_ACPL_3": (0, 0, None, None, None, None)}
 # Table 197's first QMF subband of each of the 15 parameter bands, and the end.
 ACPL_BAND_SUBBANDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 18, 23, 35, 64]
@@ -535,14 +540,33 @@ def legs_gold(gold):
             for name, leg in sorted(manifest["legs"].items()) if chosen(leg)]
 
 
+def acpl_units(codec_mode, channels):
+    """ACPL_UNIT's entry for a leg: in the channel pair, one aspx_data element carries both."""
+    return (0, 0) if channels == 2 else ACPL_UNIT[codec_mode]
+
+
+def acpl_pairs(channels):
+    """The pairs A-CPL rebuilds from one downmix each, by the decoder's channel order: the channel
+    pair's, 5.0's (L, Ls) and (R, Rs), or 5.1's (ACPL_PAIRS)."""
+    return {2: ((0, 1),), 5: ((0, 3), (1, 4))}.get(channels, ACPL_PAIRS)
+
+
 def acpl_downmixes(signal, codec_mode):
-    """The signals the A-CPL leg's waveform codes, as the output or the source carries them."""
+    """The signals the A-CPL leg's waveform codes, as the output or the source carries them, by the
+    decoder's channel order: the channel pair's (L + R) / 2; or the 5.X element's downmixes, then
+    5.1's LFE."""
     k = 1.0 / np.sqrt(2.0)
+    if signal.shape[1] == 2:
+        return [(signal[:, 0] + signal[:, 1]) / 2.0]
+    ls, rs = (3, 4) if signal.shape[1] == 5 else (4, 5)
+    lfe = [] if signal.shape[1] == 5 else [signal[:, 3]]
     if codec_mode == "ASPX_ACPL_3":
-        lo = lo_ro(signal) / (1.0 + np.sqrt(2.0))
-        return [lo[:, 0], lo[:, 1], signal[:, 3]]
-    return [(signal[:, 0] + k * signal[:, 4]) / 2.0, (signal[:, 1] + k * signal[:, 5]) / 2.0,
-            signal[:, 2], signal[:, 3]]
+        norm = 1.0 + np.sqrt(2.0)
+        lo = (signal[:, 0] + k * signal[:, 2] + k * signal[:, ls]) / norm
+        ro = (signal[:, 1] + k * signal[:, 2] + k * signal[:, rs]) / norm
+        return [lo, ro, *lfe]
+    return [(signal[:, 0] + k * signal[:, ls]) / 2.0, (signal[:, 1] + k * signal[:, rs]) / 2.0,
+            signal[:, 2], *lfe]
 
 
 def acpl_band_scores(ref, out):
@@ -562,7 +586,7 @@ def acpl_band_scores(ref, out):
         last = round(high * subband_hz() / bin_hz)
         floor = full_scale * (high - low) * 10.0 ** (TILE_FLOOR_DB / 10.0)
         band_ild, band_rho = None, None
-        for a, b in ACPL_PAIRS:
+        for a, b in acpl_pairs(ref.shape[1]):
             measures = []
             for spec in (spec_r, spec_o):
                 xa, xb = spec[:, first:last, a], spec[:, first:last, b]
@@ -620,9 +644,11 @@ def acpl_pin_text(name, floors, ild, rho, rest):
     return "\n".join(text)
 
 
-def score_acpl(name, codec_mode, source_name, ref, out, offsets, config, args, failures, pins):
-    """An A-CPL leg's downmix, band and routing checks (the docstring's A-CPL paragraph)."""
-    units = ACPL_UNIT[codec_mode]
+def score_acpl(name, codec_mode, source_name, ref, out, offsets, config, args, failures, pins,
+               table=None):
+    """An A-CPL leg's downmix, band and routing checks (the docstring's A-CPL paragraph), against
+    `table`'s pins (ACPL_PINS by default); what it measured, as a dict."""
+    units = acpl_units(codec_mode, ref.shape[1])
     downmix_units = [u for u in units if u is not None]
     if len(offsets) <= max(downmix_units):
         failures.append(f"{name}: no aspx_data elements for its channels in its syntax trace")
@@ -630,7 +656,10 @@ def score_acpl(name, codec_mode, source_name, ref, out, offsets, config, args, f
     groups = aspx_groups(config, offsets[0])
     refs, outs = acpl_downmixes(ref, codec_mode), acpl_downmixes(out, codec_mode)
     # Which of the downmixes an aspx_data element carries, and the LFE (last) over the whole band.
-    carried = [0, 0, 1] if codec_mode == "ASPX_ACPL_2" else [0, 0]
+    if ref.shape[1] == 2:
+        carried = [0]
+    else:
+        carried = [0, 0] if codec_mode == "ASPX_ACPL_3" else [0, 0, 1]
     snrs, cells = [], []
     for i, (r, o) in enumerate(zip(refs, outs, strict=True)):
         if i < len(carried):
@@ -663,12 +692,14 @@ def score_acpl(name, codec_mode, source_name, ref, out, offsets, config, args, f
     mos_pin = "None" if mos is None else f"{mos - MOS_MARGIN:.2f}"
     pins.append(acpl_pin_text(name, floors, ild_pin, rho_pin,
                               [routing_pin, f"{lsd + LSD_MARGIN_DB:.2f}", mos_pin]))
+    measured = {"snrs": snrs, "ild": ild, "rho": rho, "routing": routing, "lsd": float(lsd),
+                "mos": mos}
     if args.measure:
-        return
-    pin = ACPL_PINS.get(name)
+        return measured
+    pin = (ACPL_PINS if table is None else table).get(name)
     if pin is None:
-        failures.append(f"{name}: nothing pinned in ACPL_PINS")
-        return
+        failures.append(f"{name}: nothing pinned for its A-CPL checks")
+        return measured
     snr_floors, ild_ceilings, rho_ceilings, routing_floor, lsd_ceiling, mos_floor = pin
     for i, snr in enumerate(snrs):
         if snr < snr_floors[i]:
@@ -695,6 +726,7 @@ def score_acpl(name, codec_mode, source_name, ref, out, offsets, config, args, f
         failures.append(f"{name}: LSD {lsd:.2f} dB above its ceiling {lsd_ceiling}")
     if mos is not None and mos_floor is not None and mos < mos_floor:
         failures.append(f"{name}: MOS {mos:.2f} below its floor {mos_floor}")
+    return measured
 
 
 def pin_text(name, snrs, lsd, tiles, mos):
