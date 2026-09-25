@@ -297,6 +297,20 @@ The sections below contain the complete change list and fixes.
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
     the bootloader boots past.
+  - **An update that breaks off says why, and is sent again.**
+    - **An interrupted upload is recorded.** A board that restarts during an upload now records
+      it as `interrupted`, with the reset's cause. `GET /firmware` also gives the boot's
+      `reset_reason` and `uptime_ms`.
+    - **`ota.py` recovers from a break.** It prints the board's own account of a broken upload
+      and sends the image once more. It no longer leaves a board in flash mode after a failed
+      push.
+    - **The board erases as the image arrives.** The slot is erased a block at a time, just
+      ahead of the writes, rather than all at once before the second read.
+    - **Uploads have a limit.** An upload may take ten minutes at most.
+    - **A short-of-RAM board says so.** The upload's task is made after the teardown, and a
+      board that cannot make it answers `503` rather than dropping the connection.
+    - **Tested.** An overnight soak of the four boards, with faults injected, found no board
+      left stuck.
 
 **Crucible desktop application**
 
