@@ -229,7 +229,8 @@ TestCase {
         compare(NetworkController.discoveredCount >= 1, true);
         const row = rowItem(page);
         verify(H.textItem(row, sinkName) !== null, "the row does not show the sink's name");
-        // Look again asks mDNS again; the loopback sink stays listed. Its row is found afresh:
+        // Look again (no mDNS in this process to ask again: qml_test_main.cpp turns discovery
+        // off) keeps the loopback sink listed. Its row is found afresh:
         // the list rebuilds a row's delegate whenever what the row says changes.
         mouseClick(findChild(page, "networkRescan"));
         tryVerify(function() { return sinkRow() !== undefined; }, 5000);

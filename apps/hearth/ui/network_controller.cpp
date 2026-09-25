@@ -42,9 +42,9 @@ namespace forge = ac3::sendspin::ac3forge;
 
 constexpr int kPollMs = 60;
 
-// NetworkController::set_firewall_exception_requested(); read by start() on the
-// GUI thread only.
-bool g_firewall_exception_requested = true;
+// NetworkController::set_network_discovery(); read by start() on the GUI
+// thread only.
+bool g_network_discovery = true;
 
 // --- a Hearth sink's own settings pages ---------------------------------
 // Field names and the "whole struct, apply what changed" idiom deliberately
@@ -518,8 +518,8 @@ NetworkController::~NetworkController() {
     sinks_engine_.reset();
 }
 
-void NetworkController::set_firewall_exception_requested(bool requested) {
-    g_firewall_exception_requested = requested;
+void NetworkController::set_network_discovery(bool discovery) {
+    g_network_discovery = discovery;
 }
 
 void NetworkController::start() {
@@ -538,8 +538,9 @@ void NetworkController::start() {
     // "Hearth on <host>" until the person gives one.
     const ac3::hearth::EngineSettings settings =
         ac3::hearth::load_settings(*settings_store_, QSysInfo::machineHostName().toStdString());
+    const ac3::hearth::NetworkSinksOptions options{.browse = g_network_discovery};
     sinks_engine_ = std::make_unique<ac3::hearth::NetworkSinks>(*identity, settings.network.name, *pairing_store_,
-                                                                g_firewall_exception_requested);
+                                                                options);
     poll_timer_.start();
     poll();
 }

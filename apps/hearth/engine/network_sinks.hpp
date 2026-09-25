@@ -97,6 +97,25 @@ struct NetworkStatus {
     std::string selected_group_id{};
 };
 
+// How NetworkSinks finds sinks. Every member has a default, so a designated
+// initializer names only what it changes.
+struct NetworkSinksOptions {
+    // Whether to browse `_sendspin._tcp` over mDNS at all: true for the
+    // window. False for a test process, whose rows come only from the
+    // on_found() calls it makes itself: browsing, it would list - and so dial
+    // (this file's own header comment) - every real sink on whatever network
+    // it runs on, which for CI's self-hosted runners is someone's home
+    // network.
+    bool browse = true;
+    // Reaches the mDNS browser this starts
+    // (sendspin::discovery::mdns::Options::request_firewall_exception, whose
+    // own comment says why) - true for a real window that needs other
+    // machines' replies to actually arrive; false for a binary with no main()
+    // of its own to finish the elevated relaunch the request makes, such as
+    // ac3tests' live test. With browse off there is no socket to ask for.
+    bool request_firewall_exception = true;
+};
+
 class NetworkSinks final : private sendspin::discovery::BrowseListener, private sendspin::ServerHostEvents {
    public:
     using Clock = std::chrono::steady_clock;
@@ -105,16 +124,10 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // through and, via PairingRecordView::paired_on, where a paired sink's
     // own "Paired on" text comes from. `identity` is this computer's server
     // identity, which has to be the same on every start for a pairing to
-    // outlive the process (server_identity.hpp says why).
-    // `request_firewall_exception` reaches the mDNS browser this starts
-    // (sendspin::discovery::mdns::Options::request_firewall_exception, whose
-    // own comment says why) - true, the default, for a real window that
-    // needs other machines' replies to actually arrive; a test driving
-    // on_found()/on_lost() synthetically has no use for them and passes
-    // false so it is never asked to relaunch elevated for a rule it could
-    // not finish adding anyway.
+    // outlive the process (server_identity.hpp says why). `options` says
+    // whether mDNS is browsed at all (NetworkSinksOptions' own comments).
     NetworkSinks(sendspin::noise::KeyPair identity, std::string name, PairingStore& store,
-                 bool request_firewall_exception = true);
+                 NetworkSinksOptions options = {});
     // Explicit, not defaulted: stops host_/browser_'s own background
     // threads before any other member they call back into (sinks_ and the
     // rest) is torn down - see the .cpp for why that order matters.

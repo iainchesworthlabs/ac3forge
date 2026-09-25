@@ -8,11 +8,10 @@ import Ac3ForgeHearth
 // NetworkSinkReport.qml/NetworkSinkOnlyOnSink.qml, all read from
 // NetworkController's own sink*/selectedSinkSettable properties.
 //
-// This sandbox has no real Sendspin sink to discover (no multicast partner
-// on a CI runner's network, matching tst_speakers_routing.qml's own "no
-// live output device" reasoning for the SAME environment) - NetworkController.
-// start() runs a real, dial-out-only NetworkSinks, but nothing it ever finds
-// keeps selectedSinkSettable false permanently here. That is exactly the
+// No sink is ever found here: qml_test_main.cpp turns NetworkController's
+// mDNS discovery off, so NetworkController.start() runs a real, dial-out-only
+// NetworkSinks that lists only the sinks a suite hands it, and this suite
+// hands it none - selectedSinkSettable stays false throughout. That is exactly the
 // state worth testing directly: every page below must render safely, and
 // every setter must be a safe no-op, with EVERY sink* property at its empty
 // default (a fresh app launch, before anything is ever selected, looks
