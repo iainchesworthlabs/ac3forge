@@ -1170,23 +1170,25 @@ jobs:
       # #included an ac3forge_c/version.h it never installed, and nothing here noticed. This
       # installs the two trees this leg has just built (linux-llvm: Release, both linkages
       # installed; the shared pass above: Debug, BUILD_SHARED_LIBS=ON) and builds and runs a C
-      # program against each prefix through find_package(ac3forge), and again through pkg-config.
+      # program against each prefix through find_package(ac3forge), and again through pkg-config,
+      # and a C++ program that decodes an AC-4 stream with the installed AC-4 decoder, both ways.
       #
       # A vcpkg or Conan package installs one linkage only (AC3FORGE_INSTALL_BOTH_LINKAGES=OFF),
       # which neither tree above does, and two defects showed only there: static archives that
       # left {fmt} symbols undefined (cmake/Fmt.cmake) and a static ac3forge_c.pc that named neither
       # libac3forge_static.a nor the C++ runtime (cmake/PkgConfig.cmake). The .pc files of both
       # trees above name the shared library, so a third tree is configured with one linkage. It
-      # builds only what the install holds, so no tests, examples, CLI, Hearth or AC-4 (19 s to
-      # configure and 22 s to build on a 20-core machine).
-      - name: Build a C consumer against the installed SDK
+      # builds only what the install holds, so no tests, examples, CLI or Hearth. The AC-4
+      # libraries are in the install since phase D8 of planning/ac4.md, and so in this tree, which
+      # builds the AC-4 encoder with them until it is installed too (phase E7).
+      - name: Build C and C++ consumers against the installed SDK
         if: matrix.preset == 'linux-llvm'
         shell: bash
         run: |
           set -euo pipefail
           cmake --preset config-linux-llvm -B build/install-consumer-static \
             -DAC3FORGE_BUILD_TESTS=OFF -DAC3FORGE_BUILD_CLI=OFF -DAC3FORGE_BUILD_EXAMPLES=OFF \
-            -DAC3FORGE_BUILD_HEARTH=OFF -DAC3FORGE_BUILD_AC4=OFF -DVCPKG_MANIFEST_FEATURES= \
+            -DAC3FORGE_BUILD_HEARTH=OFF -DVCPKG_MANIFEST_FEATURES= \
             -DAC3FORGE_INSTALL_BOTH_LINKAGES=OFF
           cmake --build build/install-consumer-static
           bash tools/checks/check_install_consumer.sh \

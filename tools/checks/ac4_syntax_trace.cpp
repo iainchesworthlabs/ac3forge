@@ -26,14 +26,14 @@
 //      /DAC4DEC_STATIC_DEFINE /Isrc/ac4/include /Isrc/ac4dec/include
 //      /I<b>/src/ac4/generated /I<b>/src/ac4dec/generated
 //      tools/checks/ac4_syntax_trace.cpp /link <b>/src/ac4dec/ac4dec_static.lib
-//      <b>/src/ac4core/ac4core.lib <b>/src/ac4/ac4_static.lib
+//      <b>/src/ac4core/ac4core_static.lib <b>/src/ac4/ac4_static.lib
 //
 // With GCC or Clang:
 //
 //   g++ -std=c++23 -O2 -o ac4_syntax_trace tools/checks/ac4_syntax_trace.cpp
 //      -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE -Isrc/ac4/include
 //      -Isrc/ac4dec/include -I<b>/src/ac4/generated -I<b>/src/ac4dec/generated
-//      <b>/src/ac4dec/libac4dec_static.a <b>/src/ac4core/libac4core.a
+//      <b>/src/ac4dec/libac4dec_static.a <b>/src/ac4core/libac4core_static.a
 //      <b>/src/ac4/libac4_static.a
 
 #include <cstddef>
