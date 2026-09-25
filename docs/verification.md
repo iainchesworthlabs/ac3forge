@@ -852,11 +852,20 @@ extended (`audio_size_value` and its `variable_bits(7)`) is two records.
 (`presentation`, `audio` or `emdf_payloads`), record count, the bit where the last record ends, and
 zlib's CRC-32 over the records packed as `struct.pack('<IHQ', offset, width, value)`.
 `tests/golden/ac4dec/` holds the Python parser's digests of every committed DEE stream: SIMPLE, ASPX,
-ASPX_ACPL_2 and ASPX_ACPL_3 at 2.0 and 5.1, DRC curves with an Lt/Rt downmix, and immersive stereo at
-three frame rates. `tests/ac4dec/test_ac4dec_syntax.cpp` requires the decoder to produce the same lines,
-to read every substream to its exact end and to refuse nothing, and
-`tools/checks/test_ac4_syntax_digests.py` requires the Python parser to reproduce the same files, so
+ASPX_ACPL_2 and ASPX_ACPL_3 at 2.0 and 5.1, one tone per channel at 2.0 and 5.1, DRC curves with an
+Lt/Rt downmix, and immersive stereo at three frame rates. `tests/ac4dec/test_ac4dec_syntax.cpp` requires
+the decoder to produce the same lines, to read every substream to its exact end and to refuse nothing,
+and `tools/checks/test_ac4_syntax_digests.py` requires the Python parser to reproduce the same files, so
 neither transcription can change alone.
+
+**The committed streams can be scored.** Every committed stream but `ac4-stereo-64` is made with DEE's
+loudness measured and not corrected (`gen_ac4_baseline.py`'s baseline version 3): DEE's default
+normalises to −24 LKFS and runs a true-peak limiter, which changes the audio in a way a gain fit does
+not undo. `ac4-manifest.json` records each stream's source, rebuilt by the generator from the committed
+programme fixtures, with its SHA-256, so a decode can be scored against the exact source DEE encoded.
+The generator also makes a larger local set, never committed: every layout and rate DEE writes, from
+2.0 at 48 kbps to 5.1.4 at 768, immersive stereo at every frame rate, and DRC, downmix, loudness and
+I-frame settings, each with MediaInfo's frame-by-frame trace beside it.
 
 **Locally, over the census.** With `AC4DEC_GOLDEN_DIR` and `AC4DEC_STREAM_DIR` set, the same test
 compares the decoder with the Python parser's digests of any other set of streams. Over the 107 DEE
