@@ -10,12 +10,28 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
-const { REPLIES, ROUTES, POLICY, UI_DIR, startStub, idleSendspin, playingSendspin, pairedServer } = require('./stub');
+const {
+    REPLIES,
+    FIRMWARE,
+    FIRMWARE_PARTS,
+    ROUTES,
+    POLICY,
+    UI_DIR,
+    startStub,
+    idleSendspin,
+    playingSendspin,
+    pairedServer,
+    firmwareTrial,
+} = require('./stub');
 
-const CONTROL = fs.readFileSync(
-    path.resolve(__dirname, '../../../../esp-idf/ac3forge/src/control.cpp'),
-    'utf8',
-);
+const COMPONENT = path.resolve(__dirname, '../../../../esp-idf/ac3forge');
+const CONTROL = fs.readFileSync(path.join(COMPONENT, 'src/control.cpp'), 'utf8');
+// ac3forge::Firmware answers the firmware routes that Control carries, and
+// firmware_image.hpp words a refused image; firmware_status.hpp writes
+// GET /firmware.
+const FIRMWARE_CPP = fs.readFileSync(path.join(COMPONENT, 'src/firmware.cpp'), 'utf8');
+const FIRMWARE_IMAGE = fs.readFileSync(path.join(COMPONENT, 'include/ac3forge/firmware_image.hpp'), 'utf8');
+const FIRMWARE_STATUS = fs.readFileSync(path.join(COMPONENT, 'include/ac3forge/firmware_status.hpp'), 'utf8');
 const SCRIPT = fs.readFileSync(path.join(UI_DIR, 'ac3forge_ui.js'), 'utf8');
 const PAGE = fs.readFileSync(path.join(UI_DIR, 'ac3forge_ui.html'), 'utf8');
 
@@ -64,6 +80,21 @@ test("the stand-in answers with the firmware's reply texts", () => {
     }
 });
 
+test("the stand-in answers the firmware routes with ac3forge::Firmware's texts", () => {
+    // reply_text adds the newline, so the literals have none.
+    const strings = [...literals(FIRMWARE_CPP), ...literals(FIRMWARE_IMAGE)];
+    for (const [name, text] of Object.entries(FIRMWARE)) {
+        expect(strings, `FIRMWARE.${name} is not a string in firmware.cpp or firmware_image.hpp`).toContain(
+            text.replace(/\n$/, ''),
+        );
+    }
+    for (const [name, parts] of Object.entries(FIRMWARE_PARTS)) {
+        for (const part of parts) {
+            expect(strings, `FIRMWARE_PARTS.${name} has "${part}", which is not a string in firmware.cpp`).toContain(part);
+        }
+    }
+});
+
 test("the stand-in sends the page with the firmware's headers", () => {
     expect(STRINGS[STRINGS.indexOf('Content-Security-Policy') + 1]).toBe(POLICY);
     expect(STRINGS[STRINGS.indexOf('Cache-Control') + 1]).toBe('no-cache');
@@ -84,20 +115,29 @@ test("the stand-in has the firmware's routes and no others", () => {
 });
 
 test('every request the page makes is to a route the firmware registers', () => {
-    // A hyphen is part of a route (/slot-width), so the name is [a-z-]+ and
-    // not [a-z]+ - which matched the route up to the hyphen and then nothing,
-    // leaving a real request out of this list rather than failing it.
-    const made = [...SCRIPT.matchAll(/(?:call|act)\((?:[^,()]+, )?'(GET|POST|PUT)', '([a-z-]+)'/g)].map(
+    // A hyphen is part of a route (/slot-width), and so is a slash
+    // (/firmware/rollback), so the name is [a-z/-]+ and not [a-z]+ - which
+    // matched a route up to the hyphen and then nothing, leaving a real
+    // request out of this list rather than failing it. The requests are
+    // call()'s and act()'s, the firmware section's restart() around act(),
+    // and the upload's XMLHttpRequest open().
+    const made = [...SCRIPT.matchAll(/(?:call|act|restart|open)\((?:[^,()]+, )?'(GET|POST|PUT)', '([a-z/-]+)'/g)].map(
         (m) => `${m[1]} /${m[2]}`,
     );
     // No POST /play, /stop or /volume: a server owns playback from B2 on, and
     // the page is what the board itself is. One call each: the pairing
-    // actions share one, and the layout's presets and its field another.
+    // actions share one, and the layout's presets and its field another. No
+    // PUT /firmware/mode: an upload enters flash mode by itself, and a
+    // restart leaves it.
     expect(made.sort((a, b) => a.localeCompare(b))).toEqual([
+        'GET /firmware',
         'GET /hardware',
         'GET /pairing',
         'GET /status',
         'POST /pairing',
+        'POST /restart',
+        'PUT /firmware',
+        'PUT /firmware/rollback',
         'PUT /layout',
         'PUT /name',
         'PUT /network',
@@ -107,8 +147,10 @@ test('every request the page makes is to a route the firmware registers', () => 
     for (const route of made) {
         expect(ROUTES).toContain(route);
     }
-    // One way out, and no address but the device's own.
+    // Two ways out - fetch, and for the upload's progress an XMLHttpRequest -
+    // and no address but the device's own.
     expect(SCRIPT.match(/fetch\(/g)).toHaveLength(1);
+    expect(SCRIPT.match(/new XMLHttpRequest\(/g)).toHaveLength(1);
     expect(SCRIPT).not.toMatch(/https?:\/\//);
 });
 
@@ -172,6 +214,50 @@ test("the stand-in writes GET /pairing's keys in the firmware's order", async ()
             key === 'servers' ? [key, ...Object.keys(body.servers[0])] : [key],
         );
         expect(keys).toEqual(firmware);
+    } finally {
+        await stub.close();
+    }
+});
+
+test("the stand-in writes GET /firmware's keys in the firmware's order", async () => {
+    // render_firmware_status writes each part with a JsonObject of its own -
+    // `object` for the body, then trial, upload, last and part - and
+    // append_slot writes a slot. A part that does not apply is written with
+    // null() under the same key, so a key comes twice in a row there.
+    const keys = (from, to, name) => {
+        const text = FIRMWARE_STATUS.slice(FIRMWARE_STATUS.indexOf(from), FIRMWARE_STATUS.indexOf(to));
+        return [...text.matchAll(new RegExp(`\\b${name}\\.(?:text|number|null|key)\\("([a-z_0-9]+)"`, 'g'))]
+            .map((m) => m[1])
+            .filter((key, i, all) => key !== all[i - 1]);
+    };
+    const render = (name) => keys('inline std::string render_firmware_status', 'bootloader_version);', name);
+    const slot = keys('inline void append_slot', '}  // namespace detail', 'object');
+    const firmware = {
+        body: [...render('object'), 'bootloader_version'].filter((key, i, all) => all.indexOf(key) === i),
+        slot,
+        trial: render('trial'),
+        upload: render('upload'),
+        last: render('last'),
+        part: render('part'),
+    };
+    expect(firmware.body).toEqual(expect.arrayContaining(['mode', 'running', 'other', 'partitions']));
+    expect(firmware.slot.length).toBe(8);
+    const stub = await startStub();
+    try {
+        // Every part present: a trial, an upload and a last update.
+        Object.assign(stub.device.firmware, {
+            trial: firmwareTrial(),
+            upload: { received: 0, total: 4096, stage: 'waiting' },
+            last_update: { version: 'v0.11.0', result: 'refused', reason: 'no' },
+        });
+        const body = JSON.parse(await (await fetch(`${stub.url}firmware`)).text());
+        expect(Object.keys(body)).toEqual(firmware.body);
+        expect(Object.keys(body.running)).toEqual(firmware.slot);
+        expect(Object.keys(body.other)).toEqual(firmware.slot);
+        expect(Object.keys(body.trial)).toEqual(firmware.trial);
+        expect(Object.keys(body.upload)).toEqual(firmware.upload);
+        expect(Object.keys(body.last_update)).toEqual(firmware.last);
+        expect(Object.keys(body.partitions[0])).toEqual(firmware.part);
     } finally {
         await stub.close();
     }

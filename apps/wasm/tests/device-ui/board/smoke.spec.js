@@ -59,6 +59,14 @@ test('the board serves the page, and the page drives the board', async ({ page, 
     await expect(page.locator('#wiring-row')).toBeHidden();
     await expect(page.getByRole('radio', { name: '32-bit' })).toBeChecked();
 
+    // What the board runs (GET /firmware): the image the flash image put in
+    // ota_0, accepted, since a flash over USB leaves nothing on trial; the
+    // other slot empty; and an update and a restart offered.
+    await expect(page.locator('#fw-running')).toHaveText(/ in ota_0, accepted(, intact)?$/);
+    await expect(page.locator('#fw-other')).toHaveText('Empty');
+    await expect(page.getByRole('button', { name: 'Update firmware…' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Restart' })).toBeVisible();
+
     // A setting, made from the page and read back from the device: the name
     // it answers to, which is what B2 made the page's business.
     await page.getByLabel('Name').fill('Bench sink');
