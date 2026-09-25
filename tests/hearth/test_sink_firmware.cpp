@@ -676,7 +676,8 @@ TEST_CASE("sink firmware: the page keeps a sink's client, and its row, while the
         CHECK_FALSE(plan.keep_sink);
     }
     SECTION("an update under way keeps the client and the row, shown or not, and at the address it began at") {
-        snapshot.update = ac3::hearth::SinkFirmware::Update{.version = "v0.11.0", .stage = "sending", .text = "sending"};
+        snapshot.update =
+            ac3::hearth::SinkFirmware::Update{.version = "v0.11.0", .stage = "sending", .text = "sending"};
         for (const bool shown : {true, false}) {
             const FirmwareClientPlan plan = plan_firmware_client(true, snapshot, shown, shown ? "192.168.1.117" : "");
             CHECK_FALSE(plan.let_go);

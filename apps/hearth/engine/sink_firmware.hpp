@@ -228,8 +228,10 @@ class SinkFirmware {
     // and /firmware first, refuse_update() against both, PUT /firmware, then
     // judge_wait() on each answer. An upload that breaks off is sent once
     // more when judge_break() says another try can go through, as ota.py
-    // sends it. False when an update or an action is already under way here,
-    // when nothing starts.
+    // sends it. A board that a failed or refused update leaves in flash mode
+    // is told to leave it (PUT /firmware/mode normal), as ota.py tells it,
+    // rather than left silent until its idle timeout restarts it. False when
+    // an update or an action is already under way here, when nothing starts.
     bool start_update(FirmwareFile file);
     // PUT /firmware/rollback and POST /restart. False while an update or
     // another action is under way.

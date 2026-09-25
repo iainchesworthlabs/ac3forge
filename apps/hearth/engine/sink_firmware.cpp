@@ -173,6 +173,15 @@ constexpr std::array<TargetChip, 10> kTargets{{
     return !a || (a->version == b->version && a->result == b->result && a->reason == b->reason);
 }
 
+// `text`, with `more` after it as a sentence of its own when there is one.
+[[nodiscard]] std::string with_sentence(std::string text, std::string_view more) {
+    if (!more.empty()) {
+        text += text.ends_with('.') ? " " : ". ";
+        text += more;
+    }
+    return text;
+}
+
 [[nodiscard]] std::string http_hint(int status) {
     if (status == 403) {
         return " (name the board by its IP address or its .local name)";
@@ -635,8 +644,18 @@ class SinkFirmware::Worker {
     template <class Request>
     [[nodiscard]] Answer request(httplib::Client& client, Request&& send);
     [[nodiscard]] Answer get(const char* path);
-    // `method` with an empty body: PUT /firmware/rollback, POST /restart.
-    [[nodiscard]] Answer send_empty(bool post, const char* path);
+    // `method` with a short text body: PUT /firmware/rollback and POST
+    // /restart with none, PUT /firmware/mode with "normal".
+    [[nodiscard]] Answer send_text(bool post, const char* path, std::string_view body);
+    // PUT /firmware/mode "normal" (ota.py's leave_flash_mode), for a board a
+    // failed or refused update left in flash mode: left alone, it plays
+    // nothing and is not advertised until its idle timeout restarts it. What
+    // came of it, as a sentence for the outcome.
+    [[nodiscard]] std::string leave_flash_mode();
+    // leave_flash_mode() for a board GET /firmware finds in flash mode with
+    // no upload running, waiting for an image this update has none of
+    // (ota.py's leave_flash_mode_if_waiting); nothing to say for any other.
+    [[nodiscard]] std::string leave_flash_mode_if_waiting();
     // GET /firmware, published to the snapshot as a poll would be; nothing
     // when it was not answered with one.
     std::optional<ac3forge::FirmwareStatus> read_firmware();
@@ -754,13 +773,32 @@ SinkFirmware::Worker::Answer SinkFirmware::Worker::get(const char* path) {
     });
 }
 
-SinkFirmware::Worker::Answer SinkFirmware::Worker::send_empty(bool post, const char* path) {
+SinkFirmware::Worker::Answer SinkFirmware::Worker::send_text(bool post, const char* path, std::string_view body) {
     httplib::Client http = client(timing_.request);
     const httplib::Headers headers{{"Host", host_header(host_, port_)}};
+    const std::string content(body);
     return request(http, [&](httplib::Client& c) {
-        return post ? c.Post(path, headers, std::string(), "text/plain")
-                    : c.Put(path, headers, std::string(), "text/plain");
+        return post ? c.Post(path, headers, content, "text/plain") : c.Put(path, headers, content, "text/plain");
     });
+}
+
+std::string SinkFirmware::Worker::leave_flash_mode() {
+    const Answer answer = send_text(false, "/firmware/mode", "normal");
+    if (answer.status == 0) {
+        return fmt::format("The board stays in flash mode, and could not be told to leave it ({})", answer.error);
+    }
+    if (answer.status != 200) {
+        return fmt::format("The board stays in flash mode: leaving it answered {} {}", answer.status, answer.body);
+    }
+    return "Told the board to leave flash mode: it restarts into the image it runs";
+}
+
+std::string SinkFirmware::Worker::leave_flash_mode_if_waiting() {
+    const std::optional<ac3forge::FirmwareStatus> firmware = read_firmware();
+    if (firmware && firmware->mode == "flash" && !firmware->upload) {
+        return leave_flash_mode();
+    }
+    return {};
 }
 
 void SinkFirmware::Worker::publish_poll(std::optional<SinkHardware> hardware,
@@ -913,7 +951,9 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
     // An upload that breaks off, or that a restart of the board cuts short,
     // is sent once more (ota.py's push): the board keeps running what it ran,
     // and nothing was accepted. Another break, or a board that gave the
-    // upload up for a reason other than the connection, leaves it at that.
+    // upload up for a reason other than the connection, leaves it at that,
+    // and takes the board out of flash mode rather than leave it silent
+    // until its idle timeout restarts it.
     // A board whose HTTP sockets other clients hold open can reset an
     // upload's new connection before it reads any of it (ESP-IDF v6.1's
     // httpd), and a second try gets past that.
@@ -924,8 +964,9 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
         update.sent = 0;
         update.total = file.data.size();
         if (attempt == 1) {
-            update.text = fmt::format("sending {} bytes to {}; the board erases what the image needs first",
-                                      grouped(file.data.size()), context.slot.empty() ? "the other slot" : context.slot);
+            update.text =
+                fmt::format("sending {} bytes to {}; the board erases what the image needs first",
+                            grouped(file.data.size()), context.slot.empty() ? "the other slot" : context.slot);
         }
         set_update(update);
         const auto started = std::chrono::steady_clock::now();
@@ -950,18 +991,19 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
             continue;
         }
         std::string text = "failed: the image was not taken; " + broken.text;
-        if (broken.flash_mode) {
-            text += ". The board is in flash mode: another update, or ten minutes, restarts it into the image it runs";
-        }
-        finish(UpdateOutcome::kFailed, std::move(text));
+        finish(UpdateOutcome::kFailed,
+               broken.flash_mode ? with_sentence(std::move(text), leave_flash_mode()) : std::move(text));
         return;
     }
     if (answer.status == 0) {
         context.reply_lost = true;
         update.text = fmt::format("no answer to the upload ({}); looking for the board", answer.error);
     } else if (answer.status != 200) {
+        // A board that took the upload and then refused the image waits in
+        // flash mode for a corrected one, which this update has none of.
         finish(UpdateOutcome::kRefused,
-               fmt::format("refused ({}): {}{}", answer.status, answer.body, http_hint(answer.status)));
+               with_sentence(fmt::format("refused ({}): {}{}", answer.status, answer.body, http_hint(answer.status)),
+                             leave_flash_mode_if_waiting()));
         return;
     } else {
         std::vector<json::Token> tokens;
@@ -1001,7 +1043,12 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
         }
         const WaitVerdict verdict = judge_wait(firmware ? &*firmware : nullptr, file, context);
         if (verdict.outcome != UpdateOutcome::kNone) {
-            finish(verdict.outcome, verdict.text);
+            // The image not taken: a board that refused it waits in flash
+            // mode for another, as above.
+            const bool not_taken =
+                verdict.outcome == UpdateOutcome::kRefused || verdict.outcome == UpdateOutcome::kFailed;
+            finish(verdict.outcome,
+                   not_taken ? with_sentence(verdict.text, leave_flash_mode_if_waiting()) : verdict.text);
             return;
         }
         if (verdict.accepted && !sha_deadline) {
@@ -1023,7 +1070,7 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
 
 void SinkFirmware::Worker::run_action(Job job) {
     const bool rollback = job == Job::kRollback;
-    const Answer answer = rollback ? send_empty(false, "/firmware/rollback") : send_empty(true, "/restart");
+    const Answer answer = rollback ? send_text(false, "/firmware/rollback", {}) : send_text(true, "/restart", {});
     std::string text = answer.status == 0
                            ? fmt::format("{}: no answer ({})", rollback ? "roll back" : "restart", answer.error)
                            : fmt::format("{}: {} {}{}", rollback ? "roll back" : "restart", answer.status,
