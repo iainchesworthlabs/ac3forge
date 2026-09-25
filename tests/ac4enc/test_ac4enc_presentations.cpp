@@ -478,7 +478,7 @@ const Encoded& encoded_hybrid() {
 
 // --- The configurations as JSON, for the readers outside the project ----------------
 
-std::string quoted(std::string_view text) {
+std::string json_string(std::string_view text) {
     std::string out = "\"";
     for (const char c : text) {
         if (c == '"' || c == '\\') {
@@ -501,7 +501,7 @@ std::string configuration_json(const ac4::EncoderConfig& config, const ac4::Toc&
         out << "    {\"ch_mode\": " << g.substreams.front().chan->ch_mode.value_or(-1)
             << ", \"content_classifier\": "
             << (s.content ? std::to_string(static_cast<int>(*s.content)) : std::string{"null"})
-            << ", \"language\": " << quoted(s.language) << ", \"enhances\": "
+            << ", \"language\": " << json_string(s.language) << ", \"enhances\": "
             << (s.enhances ? std::to_string(*s.enhances) : std::string{"null"}) << "}"
             << (i + 1 < toc.substream_groups.size() ? ",\n" : "\n");
     }
@@ -519,7 +519,7 @@ std::string configuration_json(const ac4::EncoderConfig& config, const ac4::Toc&
             << (info.presentation_id ? std::to_string(*info.presentation_id) : std::string{"null"})
             << ", \"md_compat\": "
             << (info.md_compat ? std::to_string(*info.md_compat) : std::string{"null"})
-            << ", \"name\": " << quoted(p.name)
+            << ", \"name\": " << json_string(p.name)
             << ", \"dialnorm_db\": " << p.dialnorm_db.value_or(config.dialnorm_db)
             << ", \"enabled\": " << (p.enabled.value_or(true) ? "true" : "false") << "}"
             << (i + 1 < config.presentations.size() ? ",\n" : "\n");
