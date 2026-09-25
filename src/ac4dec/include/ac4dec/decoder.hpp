@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -42,16 +43,22 @@
 // substreams: music and effects with dialogue, main audio with associated
 // audio, both, and a main substream with the dialogue enhancement substream
 // the hybrid dialogue enhancement methods take (Part 1 clauses 5.7.8.9 and
-// 6.2.16, Part 2 clauses 4.8.3.17 to 4.8.4). The table of contents and the
-// substream framing come from ac4::parse_raw_frame (the inspector, src/ac4);
-// this library starts where the inspector stops.
+// 6.2.16, Part 2 clauses 4.8.3.17 to 4.8.4). It decodes object audio (Part 2
+// clauses 4.8.3.4, 4.8.3.13 and 4.8.3.19): A-JOC substreams in full and core
+// decoding (clause 5.7), with A-JOC's dialogue enhancement (5.8.2.3 and
+// 5.8.2.4), and direct-coded object substreams with theirs (5.8.2.5), to each
+// object's PCM and the properties its object audio metadata sets (clause
+// 6.3.9, Annex F), for the application to render (DecodedFrame::objects).
+// The table of contents and the substream framing come from
+// ac4::parse_raw_frame (the inspector, src/ac4); this library starts where the
+// inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
 // spectral frontend (Part 1 clause 5.2), the 9.X.4 channel modes (Part 2's
-// immersive element with b_5fronts) and the 22.2 channel element, object
-// substreams, and a 96/192 kHz substream whose HSF extension substream could
-// not be resolved and read alongside it. Refusing is per substream and per
-// frame; the next frame is attempted afresh. decode() refuses, the same way,
+// immersive element with b_5fronts) and the 22.2 channel element, and a
+// 96/192 kHz substream whose HSF extension substream could not be resolved
+// and read alongside it. Refusing is per substream and per frame;
+// the next frame is attempted afresh. decode() refuses, the same way,
 // everything above that it does not turn into PCM yet: 96/192 kHz, which it
 // reads.
 //
@@ -317,9 +324,79 @@ enum class Speaker : std::uint8_t {
     kTopBackRight,   // Tbr
     kTopSideLeft,    // Tsl, the top pair of the X.2 layouts: 5.X.2, the core layout
     kTopSideRight,   // Tsr
+    kLfe2,           // the second LFE a bed can assign (Part 2 Tables 64 and 65)
 };
 
 [[nodiscard]] AC4DEC_EXPORT std::string_view describe(Speaker speaker);
+
+// --- Objects -----------------------------------------------------------------
+//
+// A presentation with object audio (Part 2 clause 4.8.3.4) decodes each
+// object's PCM and the properties its metadata sets, which Part 2 Annex F
+// lists as what a decoder gives an object audio renderer: the application
+// renders them. An alternative presentation's alternative object properties
+// (Part 2 clause 6.3.9.4) are read and not applied.
+
+// Annex F.2 to F.10, and add_per_object_md()'s data (Part 2 clause 6.3.9.11):
+// what one block update of an object's metadata sets (clause 6.3.9).
+struct ObjectProperties {
+    // Whether the object's essence carries sound (!b_object_not_active).
+    bool active = true;
+    // F.5, object_gain in dB; -infinity for silence.
+    double gain_db = 0.0;
+    // F.7, 0 to 1.
+    double priority = 1.0;
+    // F.2, for a dynamic object: X from the left wall (0) to the right (1), Y
+    // from the front wall (0) to the back (1), Z from the floor (-1) through
+    // the height of the screen (0) to the ceiling (1).
+    std::array<double, 3> position{0.5, 0.5, 0.0};
+    // F.8: zone_mask (Table 104) and b_enable_elevation; F.10: b_object_snap.
+    int zone_mask = 0;
+    bool enable_elevation = true;
+    bool snap = false;
+    // F.6, the object's width in X, Y and Z, 0 to 1 (object_width in all
+    // three where the stream sends one value).
+    std::array<double, 3> width{};
+    // F.4: object_screen_factor, and the exponent object_depth_factor gives
+    // the Y position (Table 107).
+    double screen_factor = 0.0;
+    double depth_exponent = 1.0;
+    // object_distance_factor (Table 108), infinity for b_obj_at_infinity;
+    // unset where the stream sends none.
+    std::optional<double> distance;
+    // F.9, object_divergence, 0 to 1.
+    double divergence = 0.0;
+    // b_obj_trim_disable, hp_render_mode_obj (Table 121) and
+    // b_head_track_disable_obj.
+    bool trim_disabled = false;
+    std::optional<int> headphone_render_mode;
+    bool head_track_disabled = false;
+};
+
+// F.11: one block update, from the output sample of the frame at which it
+// takes effect (sample_offset + 32 x block_offset_factor into its codec frame,
+// counted with the decoder's delay), and the ramp_duration, in samples, over
+// which a renderer moves to it.
+struct ObjectUpdate {
+    std::size_t sample = 0;
+    int ramp_samples = 0;
+    ObjectProperties properties;
+};
+
+struct DecodedObject {
+    // ac4/ac4.hpp: a bed object, a dynamic object or an intermediate spatial
+    // format's.
+    ObjectKind kind = ObjectKind::kDyn;
+    bool lfe = false;
+    // F.3, a bed object's loudspeaker.
+    std::optional<Speaker> speaker;
+    // The frame's PCM, as long as the frame, at full scale 1.0.
+    std::vector<float> samples;
+    // What is in force at the frame's first sample, and the updates within
+    // the frame, in order.
+    ObjectProperties properties;
+    std::vector<ObjectUpdate> updates;
+};
 
 // One frame of output.
 struct DecodedFrame {
@@ -347,6 +424,14 @@ struct DecodedFrame {
     // Set only on a frame DecoderConfig::concealment made in place of one that
     // did not decode.
     std::optional<Concealment> concealed;
+    // A presentation with object audio: its objects, each substream's in turn
+    // (a substream's LFE first), each as long as the frame. Their samples and
+    // their updates carry the decoder's delay as `channels` do. A presentation
+    // of objects alone has no `speakers` or `channels`.
+    std::vector<DecodedObject> objects;
+    // The common data of the objects' substream group in force (Part 2 clause
+    // 6.3.9.2 and Annex F.12's trim), as the stream codes it.
+    std::optional<OamdCommonData> object_common;
 };
 
 // One decoder per stream: configuration sent only in I-frames (A-SPX, A-CPL,

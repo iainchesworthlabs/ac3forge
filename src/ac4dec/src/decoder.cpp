@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <limits>
 #include <map>
 #include <memory>
@@ -17,6 +18,7 @@
 
 #include "ac4/ac4.hpp"
 #include "bit_reader.hpp"
+#include "pcm/objects.hpp"
 #include "pcm/substream_pcm.hpp"
 #include "presentations.hpp"
 #include "syntax/context.hpp"
@@ -77,6 +79,8 @@ std::string_view describe(Speaker speaker) {
             return "Tsl";
         case Speaker::kTopSideRight:
             return "Tsr";
+        case Speaker::kLfe2:
+            return "LFE2";
     }
     return "?";
 }
@@ -208,6 +212,14 @@ struct Assignment {
     // or an OAMD substream belongs to, whose carried state (the timing) the
     // group's substreams share; unset for a group without one.
     std::optional<int> oamd_key;
+    // An object audio substream's objects as decode() puts them out, in full
+    // and in core decoding, the LFE first (SubstreamPcm's object order); and
+    // where its objects start in its group's list, oamd_dyndata_multi()'s.
+    std::vector<ObjectEntry> essences_full;
+    std::vector<ObjectEntry> essences_core;
+    int group_offset = 0;
+    // An A-JOC substream's oamd_common_data() from the table of contents.
+    std::optional<OamdCommonData> object_common;
 };
 
 [[nodiscard]] detail::ObjType obj_type_of(ObjectKind kind) noexcept {
@@ -263,6 +275,7 @@ struct StaticRun {
 // share.
 struct ObjectShare {
     detail::OamdObjectList objects{};
+    std::vector<ObjectEntry> entries;  // the same objects, as the table of contents lists them
     int n_objects = 0;
     bool b_lfe = false;
     std::optional<detail::SyntaxError> refusal;
@@ -280,6 +293,7 @@ struct ObjectShare {
     const auto add = [&share](const ObjectEntry& entry) {
         share.objects.push(
             {.type = obj_type_of(entry.kind), .lfe = entry.lfe, .ajoc_coded = false});
+        share.entries.push_back(entry);
     };
     if (info.b_dynamic_objects) {
         share.b_lfe = info.b_lfe;
@@ -419,12 +433,21 @@ void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, i
 // `b_iframe.size()` instances (Part 1 4.3.3.7.9, as assign_instances() reads
 // it for channel-coded substreams). `fill` completes the context's object
 // fields. Its channel_mode is negative (Part 2 6.2.2.2's NOTE 2).
+// An object audio substream's objects as decode() puts them out, full and
+// core, and where they start in the group's list.
+struct Essences {
+    std::vector<ObjectEntry> full;
+    std::vector<ObjectEntry> core;
+    int group_offset = 0;
+    std::optional<OamdCommonData> object_common;
+};
+
 template <typename Fill>
 void assign_object_instances(const Toc& toc, std::optional<int> first_index,
                              const std::vector<bool>& b_iframe, std::optional<int> sf_multiplier,
                              int presentation_version, bool b_associated, bool b_dialog,
                              bool b_alternative, const detail::ObjectAudioContext& objects,
-                             std::optional<int> oamd_key, Fill fill,
+                             std::optional<int> oamd_key, const Essences& essences, Fill fill,
                              std::map<int, Assignment>& out) {
     if (!first_index) {
         return;
@@ -470,6 +493,10 @@ void assign_object_instances(const Toc& toc, std::optional<int> first_index,
         fill(ctx);
         a.objects = objects;
         a.oamd_key = oamd_key;
+        a.essences_full = essences.full;
+        a.essences_core = essences.core;
+        a.group_offset = essences.group_offset;
+        a.object_common = essences.object_common;
         out.emplace(index, std::move(a));
     }
 }
@@ -606,6 +633,47 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                                      objects.dmx);
                     const bool umx_ok = ajoc_portion(
                         info.upmix_objects, info.n_fullband_upmix_signals, info.b_lfe, objects.umx);
+                    // Its objects: in full decoding the upmix's, in core
+                    // decoding the downmix's, or a static downmix's bed (L, R,
+                    // C, Ls and Rs, Table A.27's 0 to 4); the LFE first.
+                    Essences essences;
+                    essences.group_offset = group_objects.count;
+                    const auto portion = [&info](const std::vector<ObjectEntry>& assigned,
+                                                 int count, std::vector<ObjectEntry>& out_list) {
+                        if (info.b_lfe) {
+                            out_list.push_back({.kind = ObjectKind::kBed,
+                                                .lfe = true,
+                                                .ajoc_coded = true,
+                                                .speaker = 11});
+                        }
+                        for (const ObjectEntry& entry : assigned) {
+                            out_list.push_back(entry);
+                        }
+                        for (int i = static_cast<int>(assigned.size()); i < count; ++i) {
+                            out_list.push_back({.kind = ObjectKind::kDyn,
+                                                .lfe = false,
+                                                .ajoc_coded = true,
+                                                .speaker = {}});
+                        }
+                    };
+                    portion(info.upmix_objects, info.n_fullband_upmix_signals, essences.full);
+                    essences.object_common = info.oamd_common_data;
+                    if (info.b_static_dmx) {
+                        if (info.b_lfe) {
+                            essences.core.push_back({.kind = ObjectKind::kBed,
+                                                     .lfe = true,
+                                                     .ajoc_coded = true,
+                                                     .speaker = 11});
+                        }
+                        for (int s = 0; s < 5; ++s) {
+                            essences.core.push_back({.kind = ObjectKind::kBed,
+                                                     .lfe = false,
+                                                     .ajoc_coded = true,
+                                                     .speaker = s});
+                        }
+                    } else {
+                        portion(info.static_objects, info.n_fullband_dmx_signals, essences.core);
+                    }
                     // Every object counts, past the list's capacity too, so a
                     // group of more than it holds is refused where it is read.
                     for (int i = 0; i < objects.umx.count; ++i) {
@@ -625,7 +693,7 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                         assign_object_instances(
                             toc, info.substream_index, info.b_iframe, info.sf_multiplier,
                             p.presentation_version, b_associated, b_dialog, p.b_alternative,
-                            objects, oamd_key,
+                            objects, oamd_key, essences,
                             [&info](SubstreamContext& ctx) {
                                 ctx.coding = detail::AudioCoding::kAjoc;
                                 ctx.b_lfe = info.b_lfe;
@@ -638,6 +706,10 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                 } else if (sub.kind == GroupSubstream::Kind::kObj && sub.obj) {
                     const ObjSubstreamInfo& info = *sub.obj;
                     const ObjectShare share = object_share(info, run);
+                    Essences essences;
+                    essences.group_offset = group_objects.count;
+                    essences.full = share.entries;
+                    essences.core = share.entries;
                     for (int i = 0; i < share.objects.count; ++i) {
                         group_objects.push(i < detail::kMaxOamdObjects ? share.objects[i]
                                                                        : detail::OamdObjectType{});
@@ -651,7 +723,7 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                         assign_object_instances(
                             toc, info.substream_index, info.b_iframe, info.sf_multiplier,
                             p.presentation_version, b_associated, b_dialog, p.b_alternative,
-                            objects, oamd_key,
+                            objects, oamd_key, essences,
                             [&share](SubstreamContext& ctx) {
                                 ctx.coding = detail::AudioCoding::kObjects;
                                 ctx.b_lfe = share.b_lfe;
@@ -721,6 +793,19 @@ struct CapturedAudio {
     SubstreamContext context{};
     AudioSubstream content{};
     bool read = false;  // read to its end, with no refusal
+    // An object audio substream's objects and its group's OAMD substream
+    // (Assignment's).
+    std::vector<ObjectEntry> essences_full;
+    std::vector<ObjectEntry> essences_core;
+    int group_offset = 0;
+    std::optional<int> oamd_key;
+    std::optional<OamdCommonData> object_common;
+};
+
+// A group's OAMD substream as the frame carried it.
+struct CapturedOamd {
+    int key = -1;
+    detail::OamdSubstream content{};
 };
 
 // What decode() keeps of the frame: the presentation select_presentation()
@@ -731,6 +816,7 @@ struct Capture {
     std::vector<CapturedAudio> audio;
     PresentationSubstream presentation{};
     bool presentation_read = false;
+    std::vector<CapturedOamd> oamd;
 
     [[nodiscard]] CapturedAudio* wants(int index) noexcept {
         for (CapturedAudio& a : audio) {
@@ -856,11 +942,40 @@ struct Decoder::Impl {
     // by dialogue substream.
     std::map<int, AssociatedMixState> associated_mix;
     std::map<int, DialogueMixState> dialogue_mix;
+    // Object audio: each object's metadata and its updates that wait for
+    // their output sample, by substream (its state key) and object; an A-JOC
+    // substream's portions' own timings, the last each sent; the object
+    // substreams decode() last output; and the output samples so far.
+    struct ObjectTrack {
+        detail::ObjectMetadataState state;
+        ObjectProperties current;  // in force at the next output sample
+        std::deque<std::pair<std::int64_t, ObjectUpdate>> pending;
+    };
+    std::map<std::pair<int, int>, ObjectTrack> object_tracks;
+    struct AjocTimings {
+        std::optional<detail::OamdTimingData> dmx;
+        std::optional<detail::OamdTimingData> umx;
+    };
+    std::map<int, AjocTimings> ajoc_timings;
+    std::vector<int> last_objects;
+    std::int64_t output_samples = 0;
+    // An object substream's objects, kept from frame to frame, and the
+    // frame's length.
+    std::vector<std::vector<float>> object_pcm;
+    std::size_t object_samples = 0;
 
     [[nodiscard]] bool keeps(int key) const noexcept {
         return key == last_key ||
-               std::ranges::any_of(last_members, [key](const LastMember& m) { return m.key == key; });
+               std::ranges::any_of(last_members,
+                                   [key](const LastMember& m) { return m.key == key; }) ||
+               std::ranges::find(last_objects, key) != last_objects.end();
     }
+
+    // The objects of one object audio member of the presentation, decoded,
+    // their metadata applied, into `frame`.
+    [[nodiscard]] detail::ParseResult decode_objects(const CapturedAudio& member,
+                                                     const detail::FrameInputs& base,
+                                                     DecodedFrame& frame);
 
     // A change of source (Part 1 clause 4.3.3.2.2): what was read from the
     // stream goes, the mixing values with it, and the signal of the
@@ -873,6 +988,10 @@ struct Decoder::Impl {
         oamd.clear();
         associated_mix.clear();
         dialogue_mix.clear();
+        ajoc_timings.clear();
+        for (auto& [key, track] : object_tracks) {
+            track.state = {};
+        }
         std::erase_if(pcm, [this](const auto& entry) { return !keeps(entry.first); });
         new_source = true;
     }
@@ -883,6 +1002,8 @@ struct Decoder::Impl {
         pcm.clear();
         last_key.reset();
         last_members.clear();
+        last_objects.clear();
+        object_tracks.clear();
     }
 
     // This frame's mixing of `plan` (Part 1 clause 6.2.16, Part 2 clauses
@@ -963,6 +1084,167 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::Impl::conceal_o
                                                 ? ConcealmentAction::kRepeatFade
                                                 : ConcealmentAction::kMute};
     return std::optional<DecodedFrame>{std::move(frame)};
+}
+
+detail::ParseResult Decoder::Impl::decode_objects(const CapturedAudio& member,
+                                                  const detail::FrameInputs& base,
+                                                  DecodedFrame& frame) {
+    // The objects' PCM: the substream's element, then A-JOC in full
+    // decoding, with the output level gain alone (SubstreamPcm).
+    detail::FrameInputs inputs = base;
+    inputs.de = {};
+    inputs.downmix = {};
+    inputs.mix = {};
+    inputs.sources = {};
+    inputs.dialogue.reset();
+    inputs.qmf_only = false;
+    inputs.objects = true;
+    detail::SubstreamPcm& substream = pcm[member.state_key];
+    if (auto ok =
+            substream.decode(member.context, member.content, inputs, object_pcm, scratch_speakers);
+        !ok) {
+        return ok;
+    }
+    const bool full = config.decoding == DecodingMode::kFull;
+    const std::vector<ObjectEntry>& essences = full ? member.essences_full : member.essences_core;
+    if (object_pcm.size() != essences.size()) {
+        return detail::fail(
+            DecodeError::kInvalidStream,
+            "an object audio substream whose objects its table of contents does not list");
+    }
+    const std::size_t length = object_pcm.empty() ? 0 : object_pcm.front().size();
+    object_samples = length;
+    // Part 2 clause 5.8.2.5: a direct-coded dialogue substream's objects take
+    // the dialogue enhancement gain, up to the cap its dialog_max_gain sets
+    // (0 dB without one), which is kept as a dialogue substream's is for the
+    // mix (Part 1 clause 4.3.12.4.11).
+    const detail::ExtendedMetadata& sent = member.content.metadata.extended;
+    if (member.context.coding == detail::AudioCoding::kObjects && sent.b_dialog) {
+        DialogueMixState& state = dialogue_mix[member.state_key];
+        if (sent.dialog_max_gain) {
+            state.dialog_max_gain = sent.dialog_max_gain;
+        } else if (member.context.b_iframe) {
+            state.dialog_max_gain.reset();
+        }
+        const double max_db =
+            state.dialog_max_gain ? 3.0 * static_cast<double>(1 + *state.dialog_max_gain) : 0.0;
+        if (const double db = std::min(config.output.dialogue_enhancement_db, max_db); db != 0.0) {
+            const auto de_gain = static_cast<float>(std::pow(10.0, db / 20.0));
+            for (std::vector<float>& samples : object_pcm) {
+                for (float& sample : samples) {
+                    sample *= de_gain;
+                }
+            }
+        }
+    }
+
+    // The metadata of this frame's objects and its timing (Part 2 Table 7):
+    // an A-JOC substream's portion, the upmix's in full decoding and the
+    // downmix's in core decoding; a direct-coded substream's in its group's
+    // OAMD substream, or in its own metadata() in an alternative
+    // presentation. A portion that sends no timing takes the downmix's
+    // (b_derive_timing_from_dmx), the group's, or its own last (src/ac4dec/
+    // ERRATA.md, "Which oamd_timing_data() applies").
+    // The common data: an A-JOC substream's own in the table of contents,
+    // else its group's OAMD substream's.
+    std::optional<detail::OamdTimingData> group_timing;
+    if (member.object_common) {
+        frame.object_common = member.object_common;
+    }
+    if (member.oamd_key) {
+        if (const auto group = oamd.find(*member.oamd_key); group != oamd.end()) {
+            group_timing = group->second.timing;
+            if (group->second.common && !member.object_common) {
+                frame.object_common = group->second.common->data;
+            }
+        }
+    }
+    const detail::OamdDynData* dyn = nullptr;
+    int offset = 0;
+    std::optional<detail::OamdTimingData> timing;
+    if (member.context.coding == detail::AudioCoding::kAjoc && member.content.ajoc) {
+        const detail::AjocSubstream& a = *member.content.ajoc;
+        AjocTimings& own = ajoc_timings[member.state_key];
+        const std::optional<detail::OamdTimingData> dmx_timing =
+            a.dmx_timing ? a.dmx_timing : (group_timing ? group_timing : own.dmx);
+        if (a.dmx_timing) {
+            own.dmx = a.dmx_timing;
+        }
+        if (a.umx_timing) {
+            own.umx = a.umx_timing;
+        }
+        if (full) {
+            dyn = &a.umx;
+            timing = a.umx_timing
+                         ? a.umx_timing
+                         : (a.b_derive_timing_from_dmx ? dmx_timing
+                                                       : (group_timing ? group_timing : own.umx));
+        } else if (!member.context.b_static_dmx) {
+            dyn = a.dmx ? &*a.dmx : nullptr;
+            timing = dmx_timing;
+        }
+    } else {
+        if (member.content.metadata.oamd) {
+            dyn = &*member.content.metadata.oamd;
+        } else if (member.oamd_key) {
+            for (const CapturedOamd& captured : frame_capture.oamd) {
+                if (captured.key == *member.oamd_key && captured.content.dyndata) {
+                    dyn = &*captured.content.dyndata;
+                    offset = member.group_offset;
+                }
+            }
+        }
+        timing = group_timing;
+    }
+
+    // Each block's update, at its sample in the output: the codec frame's
+    // first sample comes out the decoder's delay after this frame's first
+    // output sample (clause 5.9.2).
+    const std::int64_t start = output_samples;
+    const auto origin =
+        start + static_cast<std::int64_t>(std::lround(substream.output_delay_samples()));
+    const int n = static_cast<int>(essences.size());
+    if (dyn != nullptr && timing && dyn->n_blocks > 0 && offset + n <= dyn->n_objs) {
+        for (int b = 0; b < dyn->n_blocks; ++b) {
+            const detail::BlockTiming when = detail::block_timing(*timing, b);
+            std::optional<double> previous_gain;
+            for (int k = 0; k < n; ++k) {
+                const ObjectEntry& e = essences[static_cast<std::size_t>(k)];
+                const bool dynamic = e.kind == ObjectKind::kDyn && !e.lfe;
+                ObjectTrack& track = object_tracks[{member.state_key, k}];
+                const ObjectProperties p = detail::apply_block(dyn->block(offset + k, b), dynamic,
+                                                               previous_gain, track.state);
+                previous_gain = p.gain_db;
+                track.pending.emplace_back(
+                    origin + when.sample,
+                    ObjectUpdate{.sample = 0, .ramp_samples = when.ramp, .properties = p});
+            }
+        }
+    }
+
+    // The objects, each with the updates that fall in this frame.
+    const auto end = start + static_cast<std::int64_t>(length);
+    for (int k = 0; k < n; ++k) {
+        const ObjectEntry& e = essences[static_cast<std::size_t>(k)];
+        ObjectTrack& track = object_tracks[{member.state_key, k}];
+        DecodedObject object;
+        object.kind = e.kind;
+        object.lfe = e.lfe;
+        if (e.speaker) {
+            object.speaker = detail::speaker_of_index(*e.speaker);
+        }
+        object.samples = std::move(object_pcm[static_cast<std::size_t>(k)]);
+        object.properties = track.current;
+        while (!track.pending.empty() && track.pending.front().first < end) {
+            auto [at_sample, update] = track.pending.front();
+            track.pending.pop_front();
+            update.sample = at_sample < start ? 0 : static_cast<std::size_t>(at_sample - start);
+            track.current = update.properties;
+            object.updates.push_back(std::move(update));
+        }
+        frame.objects.push_back(std::move(object));
+    }
+    return {};
 }
 
 Decoder::Decoder() : Decoder(DecoderConfig{}) {}
@@ -1141,7 +1423,8 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         return d.conceal_or(DecodeError::kUnsupported);
     }
     const detail::PresentationPlan& plan = *capture.plan;
-    const std::size_t anchor = detail::anchor_member(plan).value_or(0);
+    const std::optional<std::size_t> channel_anchor = detail::anchor_member(plan);
+    const std::size_t anchor = channel_anchor.value_or(0);
     // The presentation needs every one of its substreams: one refused, or
     // missing, is the frame's failure.
     for (const CapturedAudio& member : capture.audio) {
@@ -1164,6 +1447,9 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     const CapturedAudio& main = capture.audio[anchor];
     DecodedFrame frame;
     frame.sample_rate_hz = main.context.fs_index == 0 ? 44100 : 48000;
+    const auto is_object = [&plan](std::size_t m) {
+        return plan.members[m].coding != detail::Coding::kChannel;
+    };
     frame.sequence_counter = report->sequence_counter;
     frame.presentation = plan.index;
     frame.presentation_id = plan.presentation_id;
@@ -1197,6 +1483,32 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         }
     }
     inputs.drc = detail::drc_frame_values(d.config.output, dialnorm, drc_state, drc_frame);
+    // The presentation's object audio substreams, each decoded apart.
+    d.last_objects.clear();
+    d.object_samples = 0;
+    for (std::size_t m = 0; m < capture.audio.size(); ++m) {
+        if (!is_object(m)) {
+            continue;
+        }
+        if (const detail::ParseResult decoded = d.decode_objects(capture.audio[m], inputs, frame);
+            !decoded) {
+            d.refusal = decoded.error().reason;
+            return d.conceal_or(decoded.error().error);
+        }
+        d.last_objects.push_back(capture.audio[m].state_key);
+    }
+    if (!channel_anchor) {
+        // A presentation of object audio alone: no channels.
+        d.last_key.reset();
+        d.last_members.clear();
+        d.last_rate = frame.sample_rate_hz;
+        d.last_presentation = plan.index;
+        d.last_presentation_id = plan.presentation_id;
+        d.new_source = false;
+        d.output_samples += static_cast<std::int64_t>(d.object_samples);
+        std::erase_if(d.pcm, [&d](const auto& entry) { return !d.keeps(entry.first); });
+        return std::optional<DecodedFrame>{std::move(frame)};
+    }
     inputs.de = detail::de_frame_values(main.content.metadata.dialog_enhancement);
     inputs.downmix =
         detail::downmix_values(capture.presentation_read ? &capture.presentation : nullptr, main.content.metadata);
@@ -1207,7 +1519,7 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     d.sources.clear();
     std::optional<detail::MixSource> dialogue;
     for (std::size_t m = 0; m < capture.audio.size(); ++m) {
-        if (m == anchor) {
+        if (m == anchor || is_object(m)) {
             continue;
         }
         const CapturedAudio& member = capture.audio[m];
@@ -1244,10 +1556,12 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     d.last_key = main.state_key;
     d.last_members.clear();
     for (std::size_t m = 0; m < capture.audio.size(); ++m) {
-        if (m != anchor) {
+        if (m != anchor && !is_object(m)) {
             d.last_members.push_back({.key = capture.audio[m].state_key, .role = plan.members[m].role});
         }
     }
+    d.output_samples +=
+        frame.channels.empty() ? 0 : static_cast<std::int64_t>(frame.channels.front().size());
     d.last_rate = frame.sample_rate_hz;
     d.last_presentation = plan.index;
     d.last_presentation_id = plan.presentation_id;
@@ -1275,6 +1589,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
     if (capture != nullptr) {
         capture->plan = nullptr;
         capture->audio.clear();
+        capture->oamd.clear();
         capture->presentation_read = false;
         if (const std::optional<std::size_t> selected =
                 detail::select(toc, config.presentation, config.level, plans)) {
@@ -1502,6 +1817,11 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                         captured->context = assignment.audio;
                         captured->content = std::move(parsed);
                         captured->read = true;
+                        captured->essences_full = assignment.essences_full;
+                        captured->essences_core = assignment.essences_core;
+                        captured->object_common = assignment.object_common;
+                        captured->group_offset = assignment.group_offset;
+                        captured->oamd_key = assignment.oamd_key;
                     }
                     break;
                 }
@@ -1519,7 +1839,10 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                             group.timing = parsed.timing;
                         }
                         if (parsed.common) {
-                            group.common = std::move(parsed.common);
+                            group.common = parsed.common;
+                        }
+                        if (capture != nullptr) {
+                            capture->oamd.push_back({.key = index, .content = std::move(parsed)});
                         }
                     }
                     break;

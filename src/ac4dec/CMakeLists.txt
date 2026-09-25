@@ -34,6 +34,7 @@ target_sources(ac4dec_objects
         src/huffman.cpp
         src/pcm/acpl.cpp
         src/pcm/ajcc.cpp
+        src/pcm/ajoc.cpp
         src/pcm/asf_reconstruct.cpp
         src/pcm/aspx.cpp
         src/pcm/companding.cpp
@@ -43,6 +44,7 @@ target_sources(ac4dec_objects
         src/pcm/immersive.cpp
         src/pcm/mixer.cpp
         src/pcm/multichannel.cpp
+        src/pcm/objects.cpp
         src/pcm/renderer.cpp
         src/pcm/routing.cpp
         src/pcm/snf_random.cpp

@@ -1911,6 +1911,182 @@ decoder takes them in `src/ac4dec/src/pcm/renderer.cpp` and `downmix.cpp`, and
   four tops go with channels the core does not have, and Ls and Rs keep group 3's.
 - **Evidence:** Text.
 
+## A-JOC
+
+The readings phase D10 takes to decode A-JOC substreams (Part 2 clause 5.7) in full and core decoding,
+with A-JOC's dialogue enhancement (5.8.2.3 and 5.8.2.4). They are the decoder's alone: the Python
+transcription reads the syntax. `src/ac4core/src/ajoc/` does the processing, and
+`tests/ac4core/test_ac4core_ajoc.cpp` holds it to the formulas on known input. The constructed streams of
+`tests/ac4dec/ac4dec_objects.cpp` give each object coefficients of whole quantisation steps, so that each
+object is a known sum of the downmix's tones, which the decoder meets to 0.1 dB in both modes. Chromium's
+`ac4-ajoc.ac4` decodes in both with the invariants holding. librempeg, the one other decoder here, refuses
+every object substream ("object coding is not implemented"), so no reading below rests on it.
+
+### A-JOC's ramp
+
+- **Where:** Part 2 Pseudocodes 17 and 18, pp. 88 to 90: `ajoc_interpolate()` moves a coefficient while
+  `curr_ramp_len <= target_ramp_len` and increments `curr_ramp_len` itself, and Pseudocode 18 calls it
+  for every coefficient of every subband of a slot; at the end of a slot where a data point starts, the
+  counter is set to 0 and the target to that data point's `ajoc_ramp_len`.
+- **Reading:** one counter a substream, advanced once a slot for all its coefficients. A coefficient
+  moves by its `delta_inc` in a slot that starts with the counter below the target, so a ramp of
+  `ajoc_ramp_len` slots moves that many times, from the slot after its start slot, and ends on its
+  target; the start slot sets `delta_inc` to (the data point's value - the value it put out) /
+  `ajoc_ramp_len`. The counter, the target and every coefficient's value and `delta_inc` carry from frame
+  to frame, all 0 before the first, so a ramp of up to 64 slots (5.7.3.4) runs on across frames.
+- **Why:** advanced by every call, the counter would pass its target within the first slot and no ramp
+  would last more than one; compared with `<=`, a ramp would move `ajoc_ramp_len` + 1 times and pass its
+  target by a step.
+- **Evidence:** Text. The kernel's tests check ramps of one and two data points within a frame and
+  across frames; the constructed streams ramp over 1 and 8 slots.
+
+### The decorrelation input matrix
+
+- **Where:** Pseudocode 18, p. 89, sums `abs(mtx_wet_dq[o][dp][de][pb]) * mtx_dry_dq[o][dp][ch][pb]` into
+  `mtx_pre_param[pb][de][ch][dp]` over each object's own `ajoc_num_bands[o]` bands, and interpolates it
+  at `sb_to_pb(sb)` without saying whose band count maps the subband; 5.7.3.6.2, p. 91, writes D(ts, sb)
+  = |Csub2(ts, sb)^T| x Csub1(ts, sb), from the interpolated matrices.
+- **Reading:** subband by subband: in each QMF subband, each object's coefficients at the band its own
+  count maps the subband to (Table 28), summed over the objects, per data point and before dialogue
+  enhancement scales them, as Pseudocode 18 takes them. The sum is a parameter with its own
+  interpolation, as Pseudocode 18 makes it, so during a ramp D is not the product of the ramped dry and
+  wet matrices that 5.7.3.6.2 writes; the two agree once the ramp ends.
+- **Why:** band indices of different counts cover different subbands, so a sum over band indices has no
+  one mapping back to subbands; where every object has the same count, the readings agree.
+- **Evidence:** Text; the kernel's tests check the matrix of objects of different band counts against a
+  hand computation, and the wet path against the decorrelators and duckers run by hand.
+
+### Pseudocode 16's sparse wet entries
+
+- **Where:** Pseudocode 16, p. 83: for a wet entry `ajoc_sparse_mask_wet[o][de]` leaves out,
+  `mtx_wet_q[o][dp][ch][pb] = (nquant - 1) / 2`, indexed by `ch` in the loop over `de`.
+- **Reading:** `mtx_wet_q[o][dp][de][pb]`, the loop's own index, at the range's centre, which
+  dequantises to 0.
+- **Evidence:** Text; `ajoc-5lfe-aspx-decorr-sparse` leaves wet entries out.
+
+### A-JOC's differential decoding across frames
+
+- **Where:** Pseudocode 16 and 5.7.3.2, pp. 82 and 83: DIFF_TIME adds to `mtx_dry_q_prev` and
+  `mtx_wet_q_prev`, "the quantized values from the last corresponding data point of the previous AC-4
+  frame", which the pseudocode sets after each data point, and does not take the sum modulo `nquant` as
+  DIFF_FREQ does; nothing gives the previous values where the object was not present, where its
+  `ajoc_quant_select` or `ajoc_num_bands` changed, or before any frame.
+- **Reading:** the previous values are the last data point's, of this frame or of the last frame that
+  sent the object. An object not present stands at the range's centre (5.7.3.3 sets an inactive object's
+  coefficients to 0), in whichever quantisation it next comes in. A DIFF_TIME sum outside 0 to `nquant` -
+  1 fails the substream as invalid; a DIFF_TIME entry with no previous values fails as missing its
+  I-frame where no frame has sent the object, and as invalid where its quantisation or band count changed.
+- **Evidence:** Text; the constructed streams send DIFF_TIME in the frames between I-frames, with an
+  object not present.
+
+### A disabled decorrelator
+
+- **Where:** Part 2 6.3.6.2.1, p. 175: `ajoc_decorr_enable[d]` "indicates whether the decorrelator with
+  index d is enabled"; nothing says what a disabled one puts out.
+- **Reading:** silence, so the wet coefficients on it add nothing. Its history and its ducker's go, and
+  it starts from silence when next enabled, as does one past `ajoc_num_decorr`.
+- **Evidence:** Text; Chromium's stream uses no decorrelator.
+
+### A static downmix's inputs
+
+- **Where:** 5.7.2.1, p. 80: QinAJOC is the `var_channel_element()`'s output reordered by Pseudocode 14a;
+  with `b_static_dmx` (6.2.3.4) the downmix is a 5.X channel element instead, and nothing orders its
+  channels as A-JOC's inputs.
+- **Reading:** L, R, C, Ls and Rs, Table A.27's order, with the LFE apart as Pseudocode 14a leaves it; in
+  core decoding those five are the objects, bed objects at their speakers after the LFE.
+- **Evidence:** Text; `ajoc-static-5_1` decodes to each object's coefficients' tones in that order.
+
+### Core decoding's objects
+
+- **Where:** 4.8.3.4.2, p. 44: "The decoder shall use the first portion present in the bitstream for core
+  decoding mode"; the downmix portion's `oamd_dyndata_single(n_dmx_signals, ...)` lists objects, and
+  nothing pairs them with the downmix's signals.
+- **Reading:** the downmix portion's objects are the downmix signals in QinAJOC's order, the LFE first,
+  as "The objects of an A-JOC substream" pairs the upmix's objects with the reconstruction's outputs.
+- **Evidence:** Text; Chromium's stream decodes in core decoding to its ten downmix signals, each with the
+  first portion's metadata.
+
+### Core decoding's H_M
+
+- **Where:** 5.8.2.4, pp. 96 and 97: the downmix plus H_M(ts, sb) H_A(ts, sb) times the downmix, H_A the
+  dialogue objects' rows of `mtx_dry` after `ajoc_de_process()` with core decoding's `de_gain`, 10^(G_DE /
+  20) - 1, and H_M ramped from H'_M,prev to H'_M by (ts + 1) / `num_qmf_timeslots`, H'_M[sb][ch][dlg] =
+  `de_dlg_dmx_coeff[dlg][ch]`; Pseudocode 22 scales the coefficients only where `de_gain` is above 1. "Gmax
+  shall be derived from de_max_gain", with no formula in Part 2.
+- **Reading:** Pseudocode 22's test belongs to full decoding's `de_gain`: in core decoding the dialogue
+  objects' dry coefficients take core's `de_gain` whenever dialogue enhancement is asked for (G_DE above 0
+  dB), and the downmix is left as it is otherwise. H'_M and H'_M,prev are kept by upmix object, 0 for one
+  that carries no dialogue, so that a change in which objects carry dialogue ramps each from its own last
+  coefficient; H'_M,prev is 0 before the first frame. The dry matrix is interpolated for every object in
+  every frame that asks for dialogue enhancement, so it is in step when an object turns to dialogue.
+  Gmax is Part 1 4.3.14.3.2's, (`de_max_gain` + 1) x 3 dB.
+- **Why:** core's `de_gain` passes 1 only above 6.02 dB; with the test, a G_DE below that would leave H_A
+  unscaled and add the dialogue again, 6 dB up whatever G_DE was asked.
+- **Evidence:** Text. `tests/ac4dec/test_ac4dec_objects.cpp` holds a constructed dialogue case to the
+  formulas in both modes, at 6 dB and at 12 dB, which the stream's `de_max_gain` of 2 caps at 9.
+
+## Object audio metadata
+
+The readings phase D10 takes for what the object audio metadata sets and when (Part 2 clauses 5.9 and
+6.3.9, Annex F). They are the decoder's alone. `tests/ac4dec/test_ac4dec_objects.cpp` holds the
+constructed streams' positions and timing to the formulas of 6.3.9.8.4 and 5.9.2.
+
+### Object audio metadata
+
+- **Where:** Part 2 6.3.9.6 to 6.3.9.8 and 6.3.9.12, pp. 188 to 197, and Annex F: what an
+  `object_info_block()` sets; NOTE 1 of 6.3.9.8.4.2 to 6.3.9.8.4.4: a difference refers to "the standard
+  precision position value coded in the previous metadata update block"; Table 101's `object_gain_code`
+  0b11, "Set to object_gain of previous object".
+- **Reading:**
+  - A block starts from the object's last block's properties; REUSE keeps them. An inactive object takes
+    Table 98's and Table 99's DEFAULT: gain -infinity dB, priority 0, X and Y 0.5 and Z 0, no zone,
+    elevation off, width and screen factor 0, no snap.
+  - A difference adds to the last standard precision position the object's blocks coded, explicitly or as
+    a difference, clipped to 0 to 62 and -15 to 15; a block that sends no position leaves it. Extended
+    precision refines the position of the block that sends it alone.
+  - `object_gain_code` 0b11 takes the gain of the object before it in the same substream's list, in the
+    same block; the first object takes 0 dB.
+  - The other properties' group sets each property it does not send to its default: no width, screen
+    factor 0, the depth exponent 1 (Table 107's code 2), no distance and divergence 0. A reserved
+    divergence code (Table 111's 0) and `object_div_mode` 0b11 keep the last divergence, as 0b01 does.
+  - `add_per_object_md()` sets its block alone: a block without it has trim on and no headphone data.
+  - An alternative presentation's alternative properties (6.3.9.4) are read and not applied: its
+    objects carry their blocks' properties.
+- **Evidence:** Text; the constructed streams send differences, reuses, extended precision and each of
+  the other properties.
+
+### When an update takes effect
+
+- **Where:** 5.9.2, p. 98: an update's sample is `sample_offset` + 32 x `block_offset_factor`, "an
+  offset to the first PCM sample of the actual codec frame", and "One block update is valid until the
+  update PCM sample of the next received block update"; Annex F.11's ramp.
+- **Reading:** the update's sample in the decoder's output, where the codec frame's first sample comes
+  out the decoder's delay later (1,313 samples at `frame_rate_index` 13), so that the metadata stays with
+  the essence it describes; an update past the frame's end waits for the frame that holds its sample. The
+  ramp goes with the update, to the renderer.
+- **Evidence:** Text; the constructed streams' updates come out at their samples plus 1,313.
+
+### DRC and object audio
+
+- **Where:** Part 1 5.7.9 and Part 2 4.8.6 apply DRC "to the channels", and 4.8.3.19 hands the object
+  renderer each object's essence with its properties.
+- **Reading:** objects take the output level's gain, 2^((Lout - dialnorm) / 6), and no compression, which
+  belongs to the channels an application renders them into. A presentation's `b_obj_loud_corr` values
+  are read and not applied.
+- **Evidence:** Text.
+
+### Dialogue enhancement of direct-coded objects
+
+- **Where:** 5.8.2.5, p. 97: in a dialogue substream, the gain 10^(min(G_DE, Gmax) / 20) goes to "the
+  corresponding audio objects for which b_dialog is true", Gmax 3 x (1 + `dialog_max_gain`) dB, and 0 dB
+  without `b_dialog_max_gain`.
+- **Reading:** every object of a direct-coded substream whose `extended_metadata()` sets `b_dialog`, the
+  LFE among them; `dialog_max_gain` holds from the frame that sends it until an I-frame that does not, as
+  a dialogue substream's does for the mix (Part 1 4.3.12.4.11). Pseudocode 22's test does not apply: the
+  clause gives none.
+- **Evidence:** Text; the constructed direct-coded streams, made dialogue substreams, come out 6 dB up
+  asked for 6, and at their cap of 9 asked for 12.
+
 ## Tables
 
 The Huffman codebooks come from the table attachment of Part 1, `ts_103190_tables.c`, which Annex A
@@ -1918,6 +2094,12 @@ names as normative, with the parameters Annex A prints; every one of the 60 is a
 (its Kraft sum is exactly 1). Annex B's scale factor band tables come from the text, each checked against
 a rendering of its page. `tools/generators/gen_ac4_tables.py` and
 `tools/generators/gen_ac4_reference_tables.py` generate the C++ and Python tables separately.
+
+Phase D10's tables: A-JOC's Table 28 and its dequantisation (Tables 29 to 32, uniform steps about each
+range's centre, every row checked), Tables 78 and 82, and the object audio metadata's tables that give
+values (Tables 98, 99, 101 to 105, 107, 108, 110, 111 and 121 to 125) come from the text, each checked
+against a rendering of its page; the common data's (Tables 112 to 120) are handed on as the stream codes
+them.
 
 ## The trace
 

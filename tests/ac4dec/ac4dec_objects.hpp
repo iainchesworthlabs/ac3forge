@@ -63,8 +63,9 @@ struct ObjectCase {
     int ramp = 1;            // ajoc_ramp_len
     bool diff_time = false;  // DIFF_TIME in the frames that are not I-frames
     bool absent = false;     // the last object not present (ajoc_object_present 0)
-    // Dialogue: object 0 is a dialogue object of de_max_gain 2, with its
-    // downmix coefficients.
+    // Dialogue: A-JOC's object 0 is a dialogue object of de_max_gain 2, with
+    // its downmix coefficients; direct-coded substreams are dialogue
+    // substreams (b_dialog) of dialog_max_gain 2.
     bool dialogue = false;
     // OAMD: blocks per frame, the substream sending the timing (A-JOC's own
     // or the group's OAMD substream), a moving object 0, and the extras:
@@ -96,6 +97,10 @@ struct BuiltObjectStream {
     std::vector<std::vector<ac4::SyntaxRecord>> traces;
     std::vector<ExpectedObject> full;  // the objects of full decoding, LFE first
     std::vector<ExpectedObject> core;  // and of core decoding
+    // Full decoding's metadata timing: per frame, each block's update sample
+    // from the codec frame's first sample (sample_offset + 32 x
+    // block_offset_factor, clause 5.9.2), of the timing that applies to it.
+    std::vector<std::vector<int>> update_samples;
 };
 
 // `frames` frames of the case, an I-frame every fourth.
@@ -109,6 +114,14 @@ struct BuiltObjectStream {
 // ac4_syntax.py wrote beside the others in tests/golden/ac4dec/.
 inline constexpr int kCommittedObjectFrames = 8;
 [[nodiscard]] std::vector<ObjectCase> committed_object_cases();
+
+// A-JOC: object `o`'s dry coefficient on the downmix signal A-JOC takes as
+// input `ch` (Pseudocode 14a's order), in the band of that signal's tone, as
+// the builder quantises it; that signal's tone; and, for a case with
+// `dialogue`, the dialogue object's downmix coefficient on it (Table 82).
+[[nodiscard]] double ajoc_dry_coefficient(const ObjectCase& c, int o, int ch);
+[[nodiscard]] double ajoc_input_tone_hz(const ObjectCase& c, int ch);
+[[nodiscard]] double ajoc_dialogue_dmx_coefficient(const ObjectCase& c, int ch);
 
 // The tone of downmix signal or direct-coded object `k`, in Hz: the middle of
 // QMF subband 2k + 1. The LFE's is 47 Hz.

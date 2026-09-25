@@ -152,6 +152,12 @@ constexpr double kFineStep = 0.10009765625;
     return o == c.umx - 1 - d ? 3 : 0;
 }
 
+// The dialogue object's downmix coefficient on input `ch`, Table 82's value
+// times 15: all of the first input and a third of the second.
+[[nodiscard]] int dialogue_coeff_code(int ch) {
+    return ch == 0 ? 15 : (ch == 1 ? 5 : 0);
+}
+
 [[nodiscard]] double step_of(const ObjectCase& c) {
     return c.quant == 1 ? kCoarseStep : kFineStep;
 }
@@ -756,12 +762,31 @@ void write_metadata(BitWriter& w, bool dialog) {
     return f;
 }
 
+// A timing's update samples, block by block.
+[[nodiscard]] std::vector<int> update_samples_of(const OamdTimingFields& t) {
+    const std::array<int, 3> kCodeOffset = {16, 8, 24};  // Table 93 by 0b0, 0b10 and 0b11
+    int offset = 0;
+    if (t.sample_offset_type == 0b10) {
+        offset =
+            kCodeOffset[t.sample_offset_code == 0b0 ? 0 : (t.sample_offset_code == 0b10 ? 1 : 2)];
+    } else if (t.sample_offset_type == 0b11) {
+        offset = t.sample_offset;
+    }
+    std::vector<int> out;
+    for (const OamdTimingFields::Block& b : t.blocks) {
+        out.push_back(offset + 32 * b.offset_factor);
+    }
+    return out;
+}
+
 struct Frame {
     std::vector<std::vector<std::byte>> substreams;
     std::vector<std::vector<ac4::SyntaxRecord>> traces;  // per substream
     ac4::detail::TocGroup group;
     int oamd_index = -1;
     int presentation_index = 0;
+    std::optional<OamdTimingFields>
+        full_timing;  // the timing full decoding's metadata takes, where sent
 };
 
 void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
@@ -812,7 +837,7 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
     if (c.dialogue) {
         de.dialogue[0] = 1;
         for (int ch = 0; ch < m; ++ch) {
-            de.coeff.push_back(ch == 0 ? 15 : (ch == 1 ? 5 : 0));
+            de.coeff.push_back(static_cast<std::uint8_t>(dialogue_coeff_code(ch)));
         }
     }
     ac4::detail::write_ajoc_dmx_de_data(audio, m, de, c.dialogue ? 1 : 0);
@@ -822,16 +847,19 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
         const bool own = is_static && !c.oamd_substream;
         audio.write(1, own ? 1U : 0U, "b_umx_timing");
         if (own) {
-            ac4::detail::write_oamd_timing_data(audio, timing_of(c, frame));
+            out.full_timing = timing_of(c, frame);
+            ac4::detail::write_oamd_timing_data(audio, *out.full_timing);
         } else {
             audio.write(1, 0, "b_derive_timing_from_dmx");
         }
     } else if (frame % 2 == 0) {
         audio.write(1, 1, "b_umx_timing");
-        ac4::detail::write_oamd_timing_data(audio, timing_of(c, frame + 1));
+        out.full_timing = timing_of(c, frame + 1);
+        ac4::detail::write_oamd_timing_data(audio, *out.full_timing);
     } else {
         audio.write(1, 0, "b_umx_timing");
         audio.write(1, 1, "b_derive_timing_from_dmx");
+        out.full_timing = dmx_timing;
     }
     const std::vector<ObjectInfoBlockFields> umx_blocks =
         blocks_of(c, umx_objects, frame, frames, iframe);
@@ -873,6 +901,7 @@ void build_ajoc_frame(const ObjectCase& c, int frame, int frames, bool iframe,
         std::optional<OamdTimingFields> timing;
         if (iframe) {
             timing = timing_of(c, frame);
+            out.full_timing = timing;
         }
         ac4::detail::write_oamd_substream(w, common, timing, group, c.blocks, iframe, false, {});
         out.substreams.push_back(w.bytes());
@@ -989,7 +1018,7 @@ void build_direct_frame(const ObjectCase& c, int frame, int frames, bool iframe,
         s.info.iframe = iframe;
         s.info.substream_index = index;
         out.traces.emplace_back();
-        out.substreams.push_back(audio_substream(audio, index, false, out.traces.back()));
+        out.substreams.push_back(audio_substream(audio, index, c.dialogue, out.traces.back()));
         out.group.objects.push_back(s.info);
         ++index;
     }
@@ -1008,6 +1037,7 @@ void build_direct_frame(const ObjectCase& c, int frame, int frames, bool iframe,
     std::optional<OamdTimingFields> timing;
     if (iframe || c.kind != ObjectCase::Kind::kDynamic) {
         timing = timing_of(c, frame);
+        out.full_timing = timing;
     }
     const std::vector<ObjectInfoBlockFields> blocks = blocks_of(c, objects, frame, frames, iframe);
     ac4::detail::write_oamd_substream(w, common, timing, objects, c.blocks, iframe, false, blocks);
@@ -1085,6 +1115,20 @@ void expect(const ObjectCase& c, int frames, BuiltObjectStream& out) {
 
 }  // namespace
 
+double ajoc_dry_coefficient(const ObjectCase& c, int o, int ch) {
+    const int pb =
+        band_of(ac4::detail::ajoc_band_count(c.bands_code), tone_subband(qin_track(c, ch)));
+    return dry_steps(c, o, ch, pb) * step_of(c);
+}
+
+double ajoc_input_tone_hz(const ObjectCase& c, int ch) {
+    return object_tone_hz(qin_track(c, ch));
+}
+
+double ajoc_dialogue_dmx_coefficient(const ObjectCase& c, int ch) {
+    return c.dialogue ? dialogue_coeff_code(ch) / 15.0 : 0.0;
+}
+
 double object_tone_hz(int k) {
     return (static_cast<double>(tone_subband(k)) + 0.5) * static_cast<double>(kRate) / 128.0;
 }
@@ -1097,6 +1141,7 @@ BuiltObjectStream build_objects(const ObjectCase& c, int frames) {
         throw std::runtime_error("no A-SPX configuration at 48 kHz");
     }
     ac4::detail::Analysis analysis(kFrameLength, 1);
+    std::optional<OamdTimingFields> carried;
     for (int f = 0; f < frames; ++f) {
         const bool iframe = f % 4 == 0;
         Frame frame;
@@ -1120,6 +1165,10 @@ BuiltObjectStream build_objects(const ObjectCase& c, int frames) {
         p.presentation_substream = frame.presentation_index;
         layout.presentations.push_back(p);
         layout.groups.push_back(frame.group);
+        if (frame.full_timing) {
+            carried = frame.full_timing;
+        }
+        out.update_samples.push_back(carried ? update_samples_of(*carried) : std::vector<int>{});
         auto raw = ac4::detail::assemble_frame(layout, frame.substreams);
         if (!raw) {
             throw std::runtime_error("the table of contents writer refused a frame");
