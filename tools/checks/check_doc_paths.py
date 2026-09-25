@@ -158,6 +158,10 @@ PROSE_PATHS_UNCHECKED = {
     "planning/hearth-sendspin-extension.md": (
         "specification; names the Sendspin library and test tools it defines"
     ),
+    "planning/esp32-ota.md": (
+        "plan; proposes firmware sources, sdkconfig overlays, a host tool and tests that do not "
+        "exist yet"
+    ),
     "planning/ac4.md": (
         "plan; proposes decoder, encoder and core libraries and sources that do not exist yet"
     ),
