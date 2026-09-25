@@ -204,6 +204,13 @@ every in-tree consumer (`ac3cli`, `ac3gui`, `ac3tests`, `examples/`) links and r
 real `.so`. `.github/workflows/_build.yml` runs it as an extra step inside the existing
 `linux-llvm` leg rather than a new matrix entry, the same shape as the ASan/UBSan pass.
 
+Passing tests do not show that `ac3tests` ran against `libac3forge.so`, so that is checked
+separately: `tools/checks/check_shared_forge_binding.sh` reads the dynamic linker's bindings
+(`LD_DEBUG=bindings`) and fails if any `ac3::` symbol the test binary takes from `libac3forge.so`
+binds to another library, or if the binary carries its own copy of the codec. The few test files
+that reach into the library's internals — the AC-4 syntax cases and `core/test_fixed32_ecpl.cpp` —
+are built only when `ac3::forge` is the static library, because a `.so` exports none of that.
+
 Anything machine-specific belongs in `CMakeUserPresets.json`, which is gitignored. The pattern
 is a hidden `local` preset carrying the paths, inherited alongside the checked-in fragments:
 
