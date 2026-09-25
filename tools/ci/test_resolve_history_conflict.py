@@ -15,8 +15,8 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import unittest.mock as mock
 from pathlib import Path
-from unittest import mock
 
 import resolve_history_conflict as resolver
 from append_quality_history import RECENT_WINDOW_COMMITS, write_recent_window

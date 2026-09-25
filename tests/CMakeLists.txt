@@ -50,13 +50,8 @@ add_executable(ac3tests
     ac4/test_ac4_presentation_configs.cpp
     ac4/test_ac4_toc_syntax.cpp
     ac4core/test_ac4core_dsp.cpp
-    ac4dec/test_ac4dec_asf.cpp
-    ac4dec/test_ac4dec_channel_elements.cpp
     ac4dec/test_ac4dec_decoder.cpp
     ac4dec/test_ac4dec_frames.cpp
-    ac4dec/test_ac4dec_metadata.cpp
-    ac4dec/test_ac4dec_pcm.cpp
-    ac4dec/test_ac4dec_presentation.cpp
     ac4dec/test_ac4dec_syntax.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
@@ -231,10 +226,28 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/d
 # tests/ac4dec/test_ac4dec_{asf,metadata,presentation,channel_elements}.cpp reach the
 # AC-4 decoder's syntax functions (src/ac4dec/src/syntax/) to hold each branch of
 # the syntax to a hand-built bitstream - the committed streams reach only the
-# branches DEE writes. Same pattern as the forge headers above. The shared
-# core's headers (src/ac4core/src, for tests/ac4core/ and the tables) come
-# with linking ac4::core below.
+# branches DEE writes - and test_ac4dec_pcm.cpp its noise fill's generator
+# (src/ac4dec/src/pcm/). Same pattern as the forge headers above, with one
+# difference: those headers are inline, and these functions are compiled into
+# ac4dec_objects under CXX_VISIBILITY_PRESET hidden. With BUILD_SHARED_LIBS=ON,
+# ac4::decoder is libac4dec.so, which exports none of them, so these tests link
+# only against the static library and are built only when that is what
+# ac4::decoder names. They test the syntax and the arithmetic, not the linkage:
+# every static leg runs them, and the shared-libs pass (config-linux-llvm-shared)
+# still runs test_ac4dec_{decoder,frames,syntax}.cpp against the real .so.
+# Linking ac4::decoder_static here instead would let those three bind to a
+# static copy of the decoder too, and stop testing the .so at all. The shared
+# core's headers (src/ac4core/src, for tests/ac4core/ and the tables) come with
+# linking ac4::core below, a static library in every build.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src")
+if(NOT BUILD_SHARED_LIBS)
+    target_sources(ac3tests PRIVATE
+        ac4dec/test_ac4dec_asf.cpp
+        ac4dec/test_ac4dec_channel_elements.cpp
+        ac4dec/test_ac4dec_metadata.cpp
+        ac4dec/test_ac4dec_pcm.cpp
+        ac4dec/test_ac4dec_presentation.cpp)
+endif()
 
 # test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the

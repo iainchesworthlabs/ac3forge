@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <expected>
 #include <memory>
 #include <optional>
