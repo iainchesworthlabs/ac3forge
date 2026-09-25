@@ -422,7 +422,9 @@ struct Control::Impl {
                          "GET  /slot-width    16 or 32; PUT one to change it at the next play\n"
                          "GET  /wiring        1 when a second I2S line is wired; PUT 1 or 0\n"
                          "PUT  /network       body: an SSID, a newline, a passphrase; next boot\n"
-                         "POST /pairing       body: reset, cancel or forget (Sendspin pairing)\n");
+                         "GET  /pairing       the servers this board is paired with, as JSON\n"
+                         "POST /pairing       body: reset, cancel, forget, or forget and a server_id "
+                         "(Sendspin pairing)\n");
     }
 
     static esp_err_t on_status(httpd_req_t* req) {
@@ -690,11 +692,52 @@ struct Control::Impl {
         return send_text(req, "200 OK", "ok; takes effect at the next boot\n");
     }
 
+    // GET /pairing: see ControlPairings. Here, below on_play, for the reason
+    // append_strings gives: contract.spec.js reads the keys GET /status
+    // writes from the text between on_status and on_play.
+    static esp_err_t on_pairing_get(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        const std::optional<ControlPairings> p = h.pairings ? h.pairings() : std::nullopt;
+        if (!p) {
+            return send_text(req, "404 Not Found", "this board is not a Sendspin player\n");
+        }
+        std::string out = "{";
+        append_number(out, "capacity", p->capacity);
+        append_key(out, "servers");
+        out += '[';
+        for (std::size_t i = 0; i < p->servers.size(); ++i) {
+            const ControlPairing& s = p->servers[i];
+            out += i == 0 ? "{" : ",{";
+            append_string(out, "server_id", s.server_id);
+            append_string(out, "name", s.name);
+            append_bool(out, "connected", s.connected);
+            append_bool(out, "last_playback", s.last_playback);
+            append_bool(out, "seen", s.seen);
+            out += '}';
+        }
+        out += "]}\n";
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_send(req, out.c_str(), static_cast<ssize_t>(out.size()));
+    }
+
     static esp_err_t on_pairing(httpd_req_t* req) {
         auto& h = self(req)->handlers;
         const std::string body = read_body(req);
+        constexpr std::string_view kForgetOne = "forget ";
+        if (body.starts_with(kForgetOne) && body.size() > kForgetOne.size()) {
+            const std::optional<bool> forgotten =
+                h.forget_server ? h.forget_server(std::string_view(body).substr(kForgetOne.size())) : std::nullopt;
+            if (!forgotten) {
+                return send_text(req, "409 Conflict", "this board is not a Sendspin player\n");
+            }
+            if (!*forgotten) {
+                return send_text(req, "404 Not Found", "this board has no pairing with that server\n");
+            }
+            return send_text(req, "200 OK", "ok\n");
+        }
         if (body != "reset" && body != "cancel" && body != "forget") {
-            return send_text(req, "400 Bad Request", "POST /pairing wants reset, cancel or forget\n");
+            return send_text(req, "400 Bad Request",
+                             "POST /pairing wants reset, cancel, forget, or forget and a server_id\n");
         }
         if (!h.pairing || !h.pairing(body)) {
             return send_text(req, "409 Conflict", "this board is not a Sendspin player\n");
@@ -777,6 +820,7 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::si
         {.uri = "/wiring", .method = HTTP_GET, .handler = &Impl::on_wiring_get},
         {.uri = "/wiring", .method = HTTP_PUT, .handler = &Impl::on_wiring_put},
         {.uri = "/network", .method = HTTP_PUT, .handler = &Impl::on_network_put},
+        {.uri = "/pairing", .method = HTTP_GET, .handler = &Impl::on_pairing_get},
         {.uri = "/pairing", .method = HTTP_POST, .handler = &Impl::on_pairing},
     };
 

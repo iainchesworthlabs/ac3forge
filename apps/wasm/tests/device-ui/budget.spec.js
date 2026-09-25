@@ -22,13 +22,17 @@
 // layouts, level meters, a toast for the live region and a dialog before
 // forgetting every server - and the board's network and firmware. Decision
 // 22 has the images it was measured against.
+//
+// 49,152 since the list of paired servers: GET /pairing's servers, each by
+// its name with a Forget, and the one dialog asking before forgetting one
+// server or every server. Decision 22's re-derivation has the images.
 
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
 const { UI_DIR } = require('./stub');
 
-const BUDGET = 45056;
+const BUDGET = 49152;
 
 test('the page and its script fit the flash budget', () => {
     const files = ['ac3forge_ui.html', 'ac3forge_ui.js'].map((name) => fs.readFileSync(path.join(UI_DIR, name)));

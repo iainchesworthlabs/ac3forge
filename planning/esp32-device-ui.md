@@ -53,6 +53,13 @@
     [The redesign](#the-redesign) has the detail; decisions 22 to 28 are its choices. The budget
     was re-derived: **45,056 bytes**, against 42,846 used.
 
+    **Several servers, 2026-09-25.** `GET /pairing` lists the servers the board is paired with,
+    each by the name its hello gave, the most recently used first, and the page lists them with
+    a Forget each; `POST /pairing` takes `forget` and a `server_id` for one server alone. The
+    record a ninth pairing evicts is now the least recently used one no connection rests on.
+    [Several servers](#several-servers) has the detail, and decision 28 what it took. The budget
+    was re-derived: **49,152 bytes**, against 45,957 used.
+
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
     a cost each, and [what cannot be verified](#what-cannot-be-verified).
@@ -397,9 +404,34 @@ under 300 bytes to it, against 3,856 spare at the last measurement (decision 12)
 Sendspin lets a player keep a pairing record for each server it pairs with (pairing.md, Pairing
 Records; `SendspinStore::kRecordCapacity` is eight) and admit one connection at a time: a server
 that starts playing displaces the one playing (connection.md, Multiple servers;
-`ac3::sendspin::Arbiter`). The page says so beside the count of paired servers. It cannot name the
-others or forget one of them: a record holds the server's key and PSK, not its name, and `POST
-/pairing` has one `forget`, for every server. [Decision 28](#decisions).
+`ac3::sendspin::Arbiter`). The page says so beside the count of paired servers, and lists them
+([decision 28](#decisions)):
+
+- **Each server by its name.** A record keeps the name its server's hello gave, in NVS beside
+  the records rather than in RAM, which a board streaming has too little of to hold them for
+  nothing (`ac3forge/pairing_records.hpp`). A name is written when its server pairs and again
+  when the board admits it under another name, so a pairing made before names were kept is
+  named the first time its server holds the board again; until then the page says it has no
+  name yet, and its Forget goes by its `server_id`, so two unnamed servers are still two
+  different buttons.
+- **The most recently used first**, with its `server_id`'s first eight characters, whether it
+  is connected, whether it has connected since the board started, and which played last. A
+  record is used when a pairing makes it or a connection it authenticates is admitted; one the
+  board refuses marks it seen and writes nothing, since a refused server may try again every
+  few seconds. The same order decides which record a ninth pairing evicts: the least recently
+  used, never one an open connection rests on (pairing.md forbids that). Before, the first
+  record was simply the oldest pairing.
+- **A Forget each**, behind the dialog *Forget every server* opens: `POST /pairing` with
+  `forget` and the `server_id`. The record and its name go and the board keeps its identity and
+  its other pairings. An open connection from that server closes with `client/goodbye
+  user_request`, and the server is no longer the last-playback server. Its next handshake falls
+  back to the Sentinel PSK (connection.md, Sentinel Fallback), which tells it the pairing is gone.
+
+`GET /pairing` is a route of its own rather than part of `/status`: eight names would add up to
+a kilobyte to a read the page makes every second, and the list changes only when a server
+pairs, connects or is forgotten, which `/status`'s own fields show. The page reads it when the
+count, the connection or the last pairing's outcome changes, and not at all while the count is
+none.
 
 ## How the page updates
 
@@ -494,7 +526,7 @@ mark after each handler, then reverted.
 
 | Item | Budget | Measured |
 |---|---|---|
-| Flash: the page and its script together, as stored | 45,056 bytes ([decision 22](#decisions)); 28,672 before the redesign, 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 42,846 (19,677 + 23,169); 28,317 before the redesign, 25,594 at B3, 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
+| Flash: the page and its script together, as stored | 49,152 bytes ([decision 22](#decisions)); 45,056 before the list of paired servers, 28,672 before the redesign, 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 45,957 (20,077 + 25,880); 42,846 at the redesign, 28,317 before it, 25,594 at B3, 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
 | Internal heap held once the server is up: two more route registrations and handler slots | 256 bytes | 76, from the `heap:` line: 290,428 free against the base's 290,504 |
 | Internal heap held while a browser has the page open | - | 376, the keep-alive connection |
 | Internal heap at the peak of one `GET /status` | 3,072 bytes | 4,700 to 7,700 from the page's keep-alive connection; 5,100 from `curl`, a new connection each time |
@@ -907,6 +939,15 @@ run as root, so Playwright can install Chromium's system libraries).
     bytes more flash than the page before, in every firmware that mounts Control, and as much more
     sent per page load. **Taken, (a).**
 
+    **Re-derived 2026-09-25: 49,152 bytes.** The list of paired servers (decision 28) took the
+    page to 45,957: a row and a Forget per server, one dialog for forgetting one server or every
+    server, and the script that reads `GET /pairing` when `/status` says the servers changed. The
+    question is decision 18's and the ceiling is where this decision found it. Built with the
+    list, the S3 board's image is 1,428,624 bytes of its 1,572,864-byte factory partition
+    (144,240 free), the C6's 1,591,344 of 2,097,152, the P4's 1,473,744 of 4,194,304, and the CI
+    shape's 1,065,344. The page is 3% of the S3 board's image. The new figure is in
+    `apps/wasm/tests/device-ui/budget.spec.js`.
+
 23. **The output layout's control.** (a) **the named layouts as a segmented control, those wider
     than the sink disabled, above the field**; (b) the field with its suggestion list, as before;
     (c) the segmented control alone. **Recommend (a).** A `<datalist>` shows its suggestions only
@@ -950,3 +991,14 @@ run as root, so Playwright can install Chromium's system libraries).
     `SendspinStore`, `SendspinHost`, Control and the example, and (b) would show eight-character
     fingerprints nobody can match to a server. Cost: until then a person can forget every server
     or none from the page; forgetting one is done from that server, which unpairs it.
+
+    **Done 2026-09-25**, as [Several servers](#several-servers) describes, with two changes to
+    the sketch. The list is a route of its own, `GET /pairing`, not part of `/status`, for the
+    reason decision 19 kept the hardware apart: the page reads `/status` every second, and the
+    list changes only when `/status`'s count, connection or pairing outcome does. And the names
+    are in NVS only, read for each list, not held with the records: the S3 board's least free
+    internal heap while streaming has measured in tens of bytes (hearth_sink's README), and
+    eight names would hold 384 bytes of it for a list nobody may open. Forgetting one server
+    closes its connection with `client/goodbye user_request` rather than `unpaired`, which the
+    specification keeps for an answer to `server/unpair`. Cost: a list read costs an NVS read
+    and about 1.3 KB of heap for as long as it runs, and the page's budget grew (decision 22).

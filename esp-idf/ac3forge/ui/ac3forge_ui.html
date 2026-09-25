@@ -66,6 +66,7 @@ dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .code{display:flex;flex-wrap:wrap;align-items:baseline;gap:.25rem 1rem;margin:0 0 1rem;padding:.75rem 1rem;border:2px solid var(--accent);background:var(--field)}
 .code span{font:700 .75rem var(--mono);letter-spacing:.07em;text-transform:uppercase}
 .code b{font:700 2rem/1.15 var(--mono);letter-spacing:.06em}
+.servers{margin:.75rem 0 0;padding:0;list-style:none}.servers li{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem 1rem;padding:.5rem 0;border-top:1px solid var(--line)}.servers span{flex:1;min-width:0;overflow-wrap:anywhere}.servers small{display:block;font:.75rem var(--mono);color:var(--muted)}
 table{width:100%;margin:1.25rem 0 0;border-collapse:collapse;font-variant-numeric:tabular-nums}
 caption{padding-bottom:.375rem;font-size:.75rem;font-weight:700;text-align:start;color:var(--muted)}
 th,td{padding:.1875rem 0 .1875rem .875rem;white-space:nowrap;text-align:end}
@@ -152,6 +153,7 @@ dialog::backdrop{background:#0009}
 <div hidden><dt>Paired servers</dt><dd id="ss-paired"></dd></div>
 <div hidden><dt>Last pairing</dt><dd id="ss-outcome"></dd></div>
 </dl>
+<ul id="ss-servers" class="servers" aria-label="Paired servers" hidden></ul>
 <table id="ss-levels" hidden><caption>Levels over the last 100 ms</caption><thead><tr><th scope="col">Output</th><th scope="col">Peak</th><th scope="col">RMS</th></tr></thead><tbody id="ss-rows"></tbody></table>
 <p class="help">The board keeps a pairing for each server it has paired with. One server plays to it at a time: one that starts playing takes over from the last.</p>
 <div class="actions">
@@ -288,7 +290,7 @@ dialog::backdrop{background:#0009}
 <dialog id="forget-dialog" aria-labelledby="forget-title">
 <form method="dialog">
 <p id="forget-title" class="title">Forget every server?</p>
-<p>Each server this board has paired with has to pair again, and the board takes a new identity.</p>
+<p id="forget-text">Each server this board has paired with has to pair again, and the board takes a new identity.</p>
 <div class="actions"><button value="keep" autofocus>Cancel</button><button value="forget" class="danger">Forget</button></div>
 </form>
 </dialog>

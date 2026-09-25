@@ -201,6 +201,11 @@ struct SendspinHost::Impl {
     bool pending_reset_rounds = false;
     bool pending_cancel = false;
     bool pending_queued = false;
+    // A pairing was forgotten: a connection its record authenticated closes.
+    // One flag rather than the servers' keys, since the store says which
+    // records have gone; this is held in internal RAM for as long as the
+    // board runs.
+    bool pending_prune = false;
 
     // What status() and server_time() read.
     mutable std::mutex status_mutex;
@@ -216,6 +221,10 @@ struct SendspinHost::Impl {
     std::size_t clock_updates = 0;
     Arbiter::Id clock_connection = 0;
     std::array<char, 48> client_id{};
+    // The servers whose records the open connections authenticated, for
+    // pairings() to mark connected.
+    std::array<ss::crypto::Key32, kMaxConnections> open_keys{};
+    std::size_t open_key_count = 0;
     TaskHandle_t server_task = nullptr;
     // A frame on its way out, header and payload together; on the server's
     // task only.
@@ -311,6 +320,19 @@ class HostConnection final : public ss::PlayerListener {
         std::printf("sendspin: [%u] %s for %.*s\n", static_cast<unsigned>(id_),
                     verdict.admit ? "activated" : "refused, another server holds the board:",
                     static_cast<int>(activity.size()), activity.data());
+        if (first && session_->psk_category() == ss::handshake::PskCategory::kLongTerm) {
+            // The record this connection's handshake matched. Admitted, it is
+            // the most recently used now, and its server's name is what its
+            // hello just said (pairing_records.hpp). Refused, its server is at
+            // least there, and nothing is written: a server refused while
+            // another holds the board may try again every few seconds.
+            if (verdict.admit) {
+                host_->store.touch(server_key);
+                host_->store.set_name(server_key, session_->server_name());
+            } else {
+                host_->store.saw(server_key);
+            }
+        }
         return verdict.admit;
     }
 
@@ -369,7 +391,18 @@ class HostConnection final : public ss::PlayerListener {
     // A pairing that completes is reported here and nowhere else: the
     // attempt is finished, and the re-handshake that follows ends nothing.
     void on_paired(const ss::crypto::Key32& server_key, const ss::crypto::Key32& long_term_psk) override {
-        const bool stored = host_->store.add_record(server_key, long_term_psk);
+        // A record another open connection rests on is never the one evicted
+        // for this one (pairing.md, Pairing Records).
+        std::array<ss::crypto::Key32, kMaxConnections> in_use{};
+        std::size_t n = 0;
+        for (const HostConnection* other : host_->connections) {
+            if (other != nullptr && other != this && !other->closing() &&
+                other->session().psk_category() == ss::handshake::PskCategory::kLongTerm) {
+                in_use[n++] = other->session().server_key();
+            }
+        }
+        const bool stored = host_->store.add_record(server_key, long_term_psk, std::span(in_use).first(n));
+        host_->store.set_name(server_key, session_->server_name());
         std::printf("sendspin: [%u] paired with server %s%s\n", static_cast<unsigned>(id_),
                     ss::base64url::encode(server_key).substr(0, 8).c_str(),
                     stored ? "" : " (the record could not be written to NVS)");
@@ -528,8 +561,19 @@ void SendspinHost::Impl::refresh_status() {
         }
     }
 
+    std::array<ss::crypto::Key32, kMaxConnections> keys{};
+    std::size_t key_count = 0;
+    for (const HostConnection* connection : connections) {
+        if (connection != nullptr && !connection->closing() &&
+            connection->session().psk_category() == ss::handshake::PskCategory::kLongTerm) {
+            keys[key_count++] = connection->session().server_key();
+        }
+    }
+
     const std::lock_guard lock(status_mutex);
     clock_map = map;
+    open_keys = keys;
+    open_key_count = key_count;
     SendspinStatus& s = status;
     s.connections = static_cast<std::uint8_t>(open_connections());
     s.paired_servers = static_cast<std::uint8_t>(store.records());
@@ -765,6 +809,7 @@ void SendspinHost::Impl::pending_work(void* arg) {
     bool reset_rounds = false;
     bool cancel = false;
     std::uint32_t generation = 0;
+    bool prune = false;
     {
         const std::lock_guard lock(host->pending_mutex);
         player_state.swap(host->pending_player_state);
@@ -773,9 +818,16 @@ void SendspinHost::Impl::pending_work(void* arg) {
         config = std::exchange(host->pending_config, false);
         reset_rounds = std::exchange(host->pending_reset_rounds, false);
         cancel = std::exchange(host->pending_cancel, false);
+        prune = std::exchange(host->pending_prune, false);
         generation = host->player_generation;
         host->pending_queued = false;
     }
+    // A long-term connection whose record the store no longer has: its server
+    // was forgotten (forget_server()).
+    const auto was_forgotten = [&](const ss::PlayerSession& session) {
+        return prune && session.psk_category() == ss::handshake::PskCategory::kLongTerm &&
+               !host->store.has_record(session.server_key());
+    };
     if (player_state) {
         host->player_state = *player_state;
     }
@@ -794,6 +846,13 @@ void SendspinHost::Impl::pending_work(void* arg) {
             continue;
         }
         ss::PlayerSession& session = connection->session();
+        if (was_forgotten(session)) {
+            // Its record is gone: it leaves, and its server hears that a
+            // person here asked (messaging.md, client/goodbye).
+            std::printf("sendspin: [%u] closing: its server was forgotten\n", static_cast<unsigned>(connection->id()));
+            host->deliver(*connection, session.goodbye(m::GoodbyeReason::kUserRequest));
+            continue;
+        }
         if (config && connection->generation() != generation &&
             session.phase() != ss::PlayerSession::Phase::kHandshake) {
             // It said hello with what this board no longer is; its server
@@ -998,6 +1057,57 @@ bool SendspinHost::forget_pairings() {
         return false;
     }
     return forgotten;
+}
+
+bool SendspinHost::forget_server(const SendspinStore::Key32& server_key) {
+    Impl& im = *impl_;
+    // Gone from the store at once, so a list read after this answer no longer
+    // has it; its connection closes on the server's task.
+    if (!im.store.remove_record(server_key)) {
+        return false;
+    }
+    if (im.arbiter) {
+        im.arbiter->forget(server_key);
+    }
+    std::printf("sendspin: forgot server %s; it has to pair again\n",
+                ss::base64url::encode(server_key).substr(0, 8).c_str());
+    {
+        const std::lock_guard lock(im.pending_mutex);
+        im.pending_prune = true;
+    }
+    im.queue_pending();
+    return true;
+}
+
+SendspinPairings SendspinHost::pairings() const {
+    const Impl& im = *impl_;
+    std::array<SendspinStore::Listed, SendspinStore::kRecordCapacity> listed{};
+    SendspinPairings out;
+    out.count = im.store.list(listed);
+    std::array<ss::crypto::Key32, kMaxConnections> open{};
+    std::size_t open_count = 0;
+    {
+        const std::lock_guard lock(im.status_mutex);
+        open = im.open_keys;
+        open_count = im.open_key_count;
+    }
+    const auto open_end = open.begin() + static_cast<std::ptrdiff_t>(open_count);
+    const std::optional<ss::crypto::Key32> last = im.store.last_playback();
+    // From the heap: the names are 640 bytes, and a caller may be a task with
+    // little stack to spare.
+    auto names = std::unique_ptr<SendspinStore::Names>(new (std::nothrow) SendspinStore::Names());
+    const bool named = names && im.store.read_names(*names);
+    for (std::size_t i = 0; i < out.count; ++i) {
+        SendspinPairing& p = out.servers[i];
+        p.server_key = listed[i].server_key;
+        p.seen = listed[i].seen;
+        p.connected = std::find(open.begin(), open_end, p.server_key) != open_end;
+        p.last_playback = last == p.server_key;
+        if (named) {
+            copy_text(p.name, names->find(p.server_key));
+        }
+    }
+    return out;
 }
 
 SendspinStatus SendspinHost::status() const {
