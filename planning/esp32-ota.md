@@ -1,10 +1,9 @@
 # Firmware over the network for Hearth sinks
 
 **Status, 2026-09-25:** O1 is built and merged, and all four boards are on the two-slot layout
-(O2). Some of O2's checks wait for someone at the desk, among them the P4's rollback and its
-v3.1 refusal: a restart left the P4 unable to reach its co-processor
-([The P4's co-processor](#the-p4s-co-processor-o6)). O3, O4, O5, O8 and O9 are built and in
-review, O6 is studied, and O7 waits for the boards to leave development ([Phases](#phases)).
+and have passed O2's checks, except a power cut during a trial, which waits for someone at the
+desk. O3, O4, O5, O8 and O9 are built and in review, O6 is studied, and O7 waits for the boards
+to leave development ([Phases](#phases)).
 
 This plan was written on 2026-09-24, when every `hearth_sink` layout on `main` (`b49a966c`) was a
 single `factory` app and nothing in the tree called `esp_ota_*`. The ESP-IDF facts below were read
@@ -935,8 +934,11 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
 - Wi-Fi through the co-processor, which stays up in flash mode.
 - The co-processor's own firmware (boot log: "Version mismatch: Host [2.12.0] > Co-proc [0.0.0]")
   is a separate flash target: [The P4's co-processor](#the-p4s-co-processor-o6) has O6's study.
-- **A restart once left the P4 unable to reach its co-processor** (O2, 2026-09-25), with only a
-  power cycle left to try. Every update ends in a restart; the next section says what is known.
+- **A restart once left the P4 unable to reach its co-processor** until its power was cycled (O2,
+  2026-09-25). Every update ends in a restart; the next section says what is known.
+- One upload to the P4 broke off 64 KiB in, about 10 s after the board had restarted: the board
+  restarted again, with nothing recorded, and the same push passed a few minutes later. Its
+  console was not attached, so the cause is not known.
 - No QEMU machine. Its USB is the console USB-C (COM10), which it was migrated over on
   2026-09-25.
 
@@ -991,9 +993,12 @@ day had come back normally.
 - The SDIO card initialised, but the C6 never sent the event that completes the link:
   `sd_host_wait_for_event returned 0x107`, then "Not able to connect with ESP-Hosted slave
   device".
-- The P4 resets the C6 through GPIO54 each time it starts, and that has not brought it back.
-  `esp_hosted` restarts the P4 about every 15 s ("Restarting host"), on the update in `ota_1`,
-  and the board waits for its power to be cycled.
+- The P4 resets the C6 through GPIO54 each time it starts, and that did not bring it back.
+  `esp_hosted` restarted the P4 about every 15 s ("Restarting host"). The release it had been
+  rolled back to was on trial, so the bootloader went back to the update in `ota_1`, as the trial
+  is meant to (its reason: "it restarted before it had proved itself").
+- A power cycle brought it back. About ten restarts that evening then came back normally,
+  through every one of O2's checks, so the hang does not follow every restart.
 - It matches an open upstream issue, #240 (since 2026-08-31): a P4 v1.3 with a C6 on GPIO54, after
   a large update over Wi-Fi and a restart. Espressif have not reproduced it, and have asked for the
   C6's console.
@@ -1016,7 +1021,7 @@ the network, the upload would pass through the chip being rewritten.
 **What O6 would do next, in order:**
 
 1. **With someone at the desk:**
-   - the P4's power cycled, and its console on COM10;
+   - the P4's console on COM10;
    - a 3.3 V USB-UART adapter on the C6's pads;
    - the C6's console captured at a cold boot and through a P4 restart;
    - the C6's whole flash backed up, with the P4 held in reset.
@@ -1118,6 +1123,10 @@ that image has to be able to take the next update.
   - the time each step takes;
   - the C6's internal heap low-water mark during an upload (114,308 bytes, read with O4's line);
   - on the P4, a v3.1 image is refused before anything is written.
+
+  Passed on all four boards on 2026-09-25, with USB resets standing in for the power cut, which
+  waits for someone at the desk. The P4's run needed its power cycled part-way
+  ([The P4's co-processor](#the-p4s-co-processor-o6)).
 - **O3.** The page's Firmware section ([built](#the-web-page-o3)).
 - **O4, diagnostics without a cable.** Core dumps to the `coredump` partition, fetched with
   `GET /firmware/coredump` and read with `idf.py coredump-info`. Also a ring of recent console
