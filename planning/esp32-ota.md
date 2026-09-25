@@ -339,13 +339,20 @@ On the new image:
   the bootloader. A board that hangs during its trial can therefore be unplugged and plugged back
   in, and it comes back on the previous image.
 - The trial is read once a second by an `esp_timer`, not in app_main's loop, so a stuck loop
-  still rolls back. It has no task of its own until it has decided: a short-lived task then
-  writes the decision to otadata and NVS, which needs more stack than `esp_timer`'s task has. A
-  task kept for the whole trial took 6 KiB of internal RAM as the board started, and on the S3
-  board that left the Sendspin player without the 32 KiB block it starts with, so no update
-  could pass its trial there (found by O2). A second `esp_timer`, 30 s past the deadline,
-  restarts the board if the trial has not acted, and a restart while on trial is itself a
-  rollback.
+  still rolls back. It has no task of its own. A task kept for the whole trial took 6 KiB of
+  internal RAM as the board started, and on the S3 board that left the Sendspin player without
+  the 32 KiB block it starts with, so no update could pass its trial there (found by O2).
+  - Accepting writes otadata and NVS from `esp_timer`'s own task. On the S3 board that left
+    2,192 of the task's 3,584 bytes of stack unused. A task made for it could fail on a board
+    whose internal RAM a stream had taken by then, such as one a server resumed as the board came
+    back, and the guard would then roll back a good image.
+  - Giving up makes a short-lived task, since it tells servers the board is going. If it cannot
+    make one, it restarts, which rolls back without the reason.
+  - A second `esp_timer`, 30 s past the deadline, restarts the board if the trial has not acted,
+    and a restart while on trial is itself a rollback.
+  - A rollback asked for while the acceptance is being written is refused with a `409`, rather
+    than racing it: the board would go back, and its record would say the new image was
+    accepted.
 - The task watchdog is left as the builds set it: it reports and does not panic
   (`CONFIG_ESP_TASK_WDT_PANIC` is off in every board build). A decode that keeps the idle task
   from running for 5 s makes it fire. That is a problem of load, not a broken image, and a trial
@@ -1268,15 +1275,16 @@ S3s' and the C6's consoles were recorded throughout. The images were the stack a
   made;
 - the example's flash-mode hook able to wait forever, now 15 s;
 - the tools leaving a board in flash mode after a failed push, now told to leave, and a broken
-  upload sent again.
+  upload sent again;
+- the trial's acceptance needing a new 4 KiB task, which a heavy stream started during the S3's
+  hold could leave no room for, now done from `esp_timer`'s task;
+- a rollback asked for at the very end of a trial's hold racing its acceptance, now refused
+  while the acceptance is written.
 
 Tested on the S3 board: a reset over USB 5.1 s into an upload produced the `interrupted` record,
 `ota.py` said so, sent the image again, and it was accepted.
 
 **Still open**, from the same review, each needing a board test first:
-- the trial's decision needs a new 4 KiB task, which a heavy stream started during the S3's
-  hold may not leave room for (#1034's design);
-- a rollback request at the very end of a trial's hold can race its acceptance;
 - ac3hearth's Firmware panel can lose a sink whose mDNS record flash mode withdrew;
 - the NVS record is three writes, which a reset can tear;
 - while the S3 boots, polls can split the internal RAM the player's 32 KiB block needs.

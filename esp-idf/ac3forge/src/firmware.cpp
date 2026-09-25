@@ -481,13 +481,18 @@ struct Firmware::Impl {
     esp_timer_handle_t idle_timer = nullptr;
     esp_timer_handle_t guard_timer = nullptr;
     // The trial is read once a second from esp_timer's task (on_trial), with
-    // no task of its own until it has decided: then decide_task writes what
-    // it decided. A task made at boot for the whole trial took 6 KiB of
-    // internal RAM as the board started, and on the S3 board that left the
+    // no task of its own. A task made at boot for the whole trial took 6 KiB
+    // of internal RAM as the board started, and on the S3 board that left the
     // Sendspin player without the 32 KiB block its burst player starts with,
-    // so no updated image could pass its trial there.
+    // so no updated image could pass its trial there. Accepting is done from
+    // esp_timer's task too: a task made for it could not be made on a board
+    // whose internal RAM a stream had taken by then, and the guard would then
+    // go back from a good image. Only giving up has a task of its own
+    // (give_up_task), and it restarts, which goes back, if it cannot make one.
     esp_timer_handle_t trial_timer = nullptr;
-    TrialStep decided = TrialStep::kWait;
+    // While the acceptance is being written: a rollback asked for then is
+    // refused, rather than racing it and leaving the record saying accepted.
+    bool deciding = false;
 
     [[nodiscard]] FirmwareStatus status() const;
     [[nodiscard]] BoardFacts board() const;
@@ -514,7 +519,7 @@ struct Firmware::Impl {
     Outcome run_upload(UploadJob& job);
     static void upload_task(void* arg);
     static void on_trial(void* arg);
-    static void decide_task(void* arg);
+    static void give_up_task(void* arg);
     void start_check();
     void stop_check();
     [[nodiscard]] std::unique_ptr<SlotHashing> begin_other();
@@ -717,19 +722,14 @@ void Firmware::Impl::on_trial(void* arg) {
     if (step == TrialStep::kWait) {
         return;
     }
-    // Either way the decision writes otadata and NVS, which takes more stack
-    // than esp_timer's task has: a task of its own does it, made now, long
-    // after the board has started. Accepting used 1,812 bytes of its stack on
-    // the S3 board.
     (void)esp_timer_stop(im->trial_timer);
-    im->decided = step;
-    if (xTaskCreate(&Impl::decide_task, "fw_trial", 4096, im, tskIDLE_PRIORITY + 5, nullptr) == pdPASS) {
+    if (step == TrialStep::kAccept) {
+        im->accept_trial();
         return;
     }
-    if (step == TrialStep::kAccept) {
-        // Tried again in a second, when there may be room: the Trial keeps
-        // its answer, and the guard still goes back past the deadline.
-        (void)esp_timer_start_periodic(im->trial_timer, 1'000'000);
+    // Giving up tells servers the board is going, over the network, which
+    // takes more stack than esp_timer's task has: a task of its own does it.
+    if (xTaskCreate(&Impl::give_up_task, "fw_trial", 4096, im, tskIDLE_PRIORITY + 5, nullptr) == pdPASS) {
         return;
     }
     // Nothing can record why, and a restart on trial still goes back.
@@ -737,26 +737,33 @@ void Firmware::Impl::on_trial(void* arg) {
     esp_restart();
 }
 
-void Firmware::Impl::decide_task(void* arg) {
+void Firmware::Impl::give_up_task(void* arg) {
     auto* im = static_cast<Impl*>(arg);
-    if (im->decided == TrialStep::kAccept) {
-        im->accept_trial();
-    } else {
-        std::vector<std::string> waiting;
-        {
-            const std::lock_guard lock(im->mutex);
-            waiting = im->waiting_for;
-        }
-        im->give_up_trial(waiting);
+    std::vector<std::string> waiting;
+    {
+        const std::lock_guard lock(im->mutex);
+        waiting = im->waiting_for;
     }
-    vTaskDelete(nullptr);
+    im->give_up_trial(waiting);
 }
 
+// From esp_timer's task. It writes otadata and NVS and starts the check.
 void Firmware::Impl::accept_trial() {
+    {
+        const std::lock_guard lock(mutex);
+        if (busy) {
+            // A rollback asked for during the trial is under way, and goes
+            // back whatever is written here.
+            return;
+        }
+        deciding = true;
+    }
     if (esp_ota_mark_app_valid_cancel_rollback() != ESP_OK) {
         // The state could not be written. The bootloader then goes back at the
         // next reset, which is the safe way round to be wrong.
         std::printf("firmware: could not mark this image valid\n");
+        const std::lock_guard lock(mutex);
+        deciding = false;
         return;
     }
     if (guard_timer != nullptr) {
@@ -768,10 +775,12 @@ void Firmware::Impl::accept_trial() {
     {
         const std::lock_guard lock(mutex);
         trial.reset();
+        deciding = false;
         waiting_for.clear();
         last_update = FirmwareLastUpdate{version, "accepted", ""};
         running_facts.state = "valid";
     }
+    // The spare is esp_timer's task's, the least it has had since the boot.
     std::printf("firmware: %s accepted after its trial (stack %u spare)\n", version.c_str(),
                 static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     // Nothing is left to decide, so the slots can be read through now.
@@ -1505,6 +1514,11 @@ int Firmware::on_rollback(httpd_req* req) {
         const std::lock_guard lock(im.mutex);
         if (im.busy) {
             return reply_text(req, "409 Conflict", "an update is already under way");
+        }
+        if (im.deciding) {
+            return reply_text(req, "409 Conflict",
+                              "the running image has just passed its trial and is being accepted; ask again in a "
+                              "moment to go back to the image before it");
         }
         on_trial = im.trial.has_value();
         im.busy = on_trial;

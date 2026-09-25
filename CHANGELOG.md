@@ -244,9 +244,11 @@ The sections below contain the complete change list and fixes.
   - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
     address, the HTTP server and the Sendspin player. It goes back to the previous image if
     it does not get there within 5 minutes, or if it resets first. The trial is read from a
-    timer and takes a task only to write what it decided: a task kept for the whole trial
-    left the S3 board's Sendspin player without the internal RAM it starts with, so no update
-    could pass its trial on that board.
+    timer, with no task of its own: a task kept for the whole trial left the S3 board's
+    Sendspin player without the internal RAM it starts with, so no update could pass its trial
+    on that board. The timer's task also writes the acceptance, so a board whose RAM a stream
+    has taken can still accept, and a rollback asked for while it does is refused rather than
+    racing it.
   - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
     its own name.
   - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
