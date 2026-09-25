@@ -1868,10 +1868,11 @@ def ajoc(r, num_dmx_signals, num_umx_signals):
                 wet = [r.f(1, 'ajoc_mix_mtx_wet_present') if decorr_enable[d] else 0
                        for d in range(ajoc_num_decorr)]
             config[o] = (bands, qs, sparse, dry, wet)
-    # ajoc_data()
+    # ajoc_data(): without data points an object has no configuration and
+    # sends nothing.
     b_nodt = r.f(1, 'ajoc_b_nodt')
     for o in range(num_umx_signals):
-        if not present[o]:
+        if not present[o] or config[o] is None:
             continue
         bands, qs, sparse, dry, wet = config[o]
         for dp in range(num_dpoints):

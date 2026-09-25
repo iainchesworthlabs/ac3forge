@@ -167,8 +167,8 @@ Later phases add the readings their processing needs.
   frame carries both, the OAMD substream's, read after the table of contents, is the one in force, and
   either holds until a frame sends another ("Object audio metadata", below).
 - **Evidence:** Text. Chromium's `ac4-ajoc.ac4` sends the TOC's in every frame with the default screen size
-  ratio and no additional data, and has no OAMD substream; the constructed streams of
-  `tests/ac4dec/ac4dec_constructed.cpp` send the second with trim, bed render and headphone data.
+  ratio and no additional data, and has no OAMD substream; the constructed object streams of
+  `tests/ac4dec/ac4dec_objects.cpp` send both, with trim, bed render and headphone data.
 
 ### n_objects_code and the LFE
 
@@ -428,8 +428,8 @@ audio metadata of clause 6.2.8, and `oamd_substream()` (6.2.2.4). Both transcrip
 here. The one encoded stream that reaches any of it is Chromium's `ac4-ajoc.ac4` (Dolby's, level 3: ten
 downmix signals in a SIMPLE `var_channel_element()` and seventeen objects, no LFE, no decorrelators, one
 metadata block a frame), which both read to the end of every substream of all 64 frames, every size
-invariant holding; the constructed streams of `tests/ac4dec/ac4dec_constructed.cpp` and the differential
-check reach the rest.
+invariant holding; the constructed object streams of `tests/ac4dec/ac4dec_objects.cpp`, written with the
+encoder's writers, and the differential check, which mutates them, reach the rest.
 
 ### The objects of an A-JOC substream
 
