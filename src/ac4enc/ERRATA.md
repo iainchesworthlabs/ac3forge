@@ -437,7 +437,9 @@ these:
   so long as a music and effects presentation carries it as dialogue. 3.0 as main or associated audio, or
   as dialogue beside a complete main, is refused. The 3.0 element is experimental
   (`experimental.three_zero`): no DEE stream has one.
-- **Evidence:** Readers; the decoder mixes the dialogue channel to channel into the music and effects'
+- **Evidence:** Readers. The decoder and the Python parser read the committed 3.0 stream
+  (`tests/golden/ac4dec/presentations/encoder-three-zero.ac4`) as the encoder wrote it, MediaInfo lists
+  it as configured, and the decoder mixes the dialogue channel to channel into the music and effects'
   L, R and C.
 
 ### The hybrid methods' waveform

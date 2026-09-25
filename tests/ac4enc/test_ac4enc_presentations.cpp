@@ -452,9 +452,57 @@ Stream emdf() {
     return s;
 }
 
+// 3.0, experimental: 5.1 music and effects with 3.0 dialogue (configuration
+// 0), and a 5.1 main whose hybrid dialogue enhancement on L, R and C sends
+// its waveform in 3.0 (configuration 1), each substream alone besides. The
+// dialogue carries a tone on each of its channels, which the main carries on
+// its own L, R and C.
+constexpr std::array<double, 3> kDialogue30 = {1117.0, 1373.0, 1531.0};
+
+Stream three_zero() {
+    Stream s;
+    ac4::EncoderConfig& c = s.config;
+    c.bitrate_kbps = 800;
+    c.experimental.three_zero = true;
+    ac4::SubstreamConfig me = substream(6, 256, ContentClassifier::kMusicAndEffects);
+    ac4::SubstreamConfig dialogue = substream(3, 128, ContentClassifier::kDialogue, "en");
+    ac4::SubstreamConfig main = substream(6, 256, ContentClassifier::kCompleteMain);
+    main.dialogue = ac4::DialogueConfig{};
+    main.dialogue->left = true;
+    main.dialogue->right = true;
+    main.dialogue->centre = true;
+    main.dialogue->hybrid = true;
+    ac4::SubstreamConfig waveform;
+    waveform.enhances = 2;
+    waveform.bitrate_kbps = 128;
+    c.substreams = {me, dialogue, main, waveform};
+    c.presentations = {
+        presentation(0, {0, 1}, 1),          presentation(1, {2, 3}, 2),
+        presentation(std::nullopt, {0}, 10), presentation(std::nullopt, {1}, 11),
+        presentation(std::nullopt, {2}, 12), presentation(std::nullopt, {3}, 13)};
+    for (const double hz : kTones51) {
+        s.input.push_back(tone(hz));
+    }
+    for (const double hz : kDialogue30) {
+        s.input.push_back(tone(hz));
+    }
+    for (std::size_t ch = 0; ch < 6; ++ch) {
+        s.input.push_back(tone(ch < 3 ? kDialogue30[ch] : kTones51[ch]));
+    }
+    return s;
+}
+
 const Encoded& encoded_emdf() {
     static const Encoded encoded = [] {
         const Stream s = emdf();
+        return encode(s.config, s.input);
+    }();
+    return encoded;
+}
+
+const Encoded& encoded_three_zero() {
+    static const Encoded encoded = [] {
+        const Stream s = three_zero();
         return encode(s.config, s.input);
     }();
     return encoded;
@@ -969,38 +1017,7 @@ TEST_CASE("the cross-channel hybrid method renders its waveform by the dialogue'
 
 TEST_CASE("3.0 carries the dialogue of a music and effects presentation and a waveform",
           "[ac4enc][presentations]") {
-    ac4::EncoderConfig config;
-    config.bitrate_kbps = 512;
-    config.experimental.three_zero = true;
-    ac4::SubstreamConfig me = substream(6, 256, ContentClassifier::kMusicAndEffects);
-    ac4::SubstreamConfig dialogue = substream(3, 128, ContentClassifier::kDialogue, "en");
-    ac4::SubstreamConfig main = substream(6, 256, ContentClassifier::kCompleteMain);
-    main.dialogue = ac4::DialogueConfig{};
-    main.dialogue->left = true;
-    main.dialogue->right = true;
-    main.dialogue->centre = true;
-    main.dialogue->hybrid = true;
-    ac4::SubstreamConfig waveform;
-    waveform.enhances = 2;
-    waveform.bitrate_kbps = 128;
-    config.bitrate_kbps = 800;
-    config.substreams = {me, dialogue, main, waveform};
-    config.presentations = {
-        presentation(0, {0, 1}, 1),          presentation(1, {2, 3}, 2),
-        presentation(std::nullopt, {0}, 10), presentation(std::nullopt, {1}, 11),
-        presentation(std::nullopt, {2}, 12), presentation(std::nullopt, {3}, 13)};
-    std::vector<std::vector<float>> input;
-    for (const double hz : kTones51) {
-        input.push_back(tone(hz));
-    }
-    constexpr std::array<double, 3> kDialogue30 = {1117.0, 1373.0, 1531.0};
-    for (const double hz : kDialogue30) {
-        input.push_back(tone(hz));
-    }
-    for (std::size_t c = 0; c < 6; ++c) {
-        input.push_back(tone(c < 3 ? kDialogue30[c] : kTones51[c]));
-    }
-    const Encoded e = encode(config, input);
+    const Encoded& e = encoded_three_zero();
     read_back(e);
     const ac4::Toc toc = toc_of(e.frames.front());
     CHECK(toc.substream_groups[1].substreams[0].chan->ch_mode == 2);
@@ -1029,6 +1046,7 @@ TEST_CASE("3.0 carries the dialogue of a music and effects presentation and a wa
         CHECK(amplitude(wave, wave.speakers[c], kDialogue30[c]) > 0.5 * kAmplitude);
     }
     // Without the experimental option, 3.0 is refused.
+    ac4::EncoderConfig config = three_zero().config;
     config.experimental.three_zero = false;
     CHECK_FALSE(accepted(config));
 }
@@ -1187,14 +1205,15 @@ TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentati
 TEST_CASE("the committed encoder presentation streams are the configurations'",
           "[ac4enc][presentations]") {
     const char* write_to = std::getenv("AC4ENC_WRITE_PRESENTATIONS");
-    const std::array<std::pair<std::string_view, Stream>, 3> streams = {
+    const std::array<std::pair<std::string_view, Stream>, 4> streams = {
         std::pair{"encoder-broadcast", broadcast()}, std::pair{"encoder-hybrid", hybrid()},
-        std::pair{"encoder-emdf", emdf()}};
+        std::pair{"encoder-emdf", emdf()}, std::pair{"encoder-three-zero", three_zero()}};
     for (const auto& [name, stream] : streams) {
         CAPTURE(name);
         const Encoded& encoded = name == "encoder-broadcast" ? encoded_broadcast()
                                  : name == "encoder-hybrid"  ? encoded_hybrid()
-                                                             : encoded_emdf();
+                                 : name == "encoder-emdf"    ? encoded_emdf()
+                                                             : encoded_three_zero();
         const ac4::Toc toc = toc_of(encoded.frames.front());
         if (write_to != nullptr) {
             const fs::path out = fs::path{write_to} / "presentations";

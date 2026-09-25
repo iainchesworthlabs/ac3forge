@@ -1226,26 +1226,27 @@ encoder's ladder, and phases E5's and E6's exits):
   nothing more now sends each as a stream starts it, and `create()` sizes it with the costlier
   interval, which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
 - **Presentations and several substreams** (phase E6, `tests/ac4enc/test_ac4enc_presentations.cpp`).
-  Three committed streams, each with its configuration beside it as JSON
+  Four committed streams, each with its configuration beside it as JSON
   (`tests/golden/ac4dec/presentations/encoder-*.ac4`): a broadcast of 5.1 music and effects, English
   and German mono dialogue, a mono audio description, a stereo commentary and stereo French dialogue,
   in 15 presentations of configurations 0, 2, 3 and 5, with an alternative presentation and its name,
   each substream alone, and one presentation disabled and pre-virtualized; hybrid dialogue enhancement
   in 5.1 (channel independent) and in stereo (the Mid), each with its dialogue enhancement substream,
-  in configurations 1 and 4 with audio description; and a configuration 6 presentation of EMDF
-  payloads beside a stereo one. Their tables of contents hold the configuration in every frame, both
+  in configurations 1 and 4 with audio description; a configuration 6 presentation of EMDF payloads
+  beside a stereo one; and, experimental, 3.0 dialogue with 5.1 music and effects, and a 5.1 main's
+  hybrid waveform in 3.0. Their tables of contents hold the configuration in every frame, both
   transcriptions read every frame with the encoder's trace, and the Python parser's digests are with
   the others in `tests/golden/ac4dec/`. Through D7's selection and mixing, with one tone per
   substream, each presentation is selected as configured, by `presentation_id`, language, associated
   audio and level, and every mix comes out at its formula's gains to 0.01 dB: g_dialog against each
   dialogue's cap, pans, group gains, the main audio's scaling under associated audio, and each hybrid
-  method's waveform beside its parameters. `mix_ac4_decode.py`, in CI, fits the encoder's 38 mixes to
-  their formulas with 120 to 157 dB left over. A table of refusals holds the rules: dialogue or
+  method's waveform beside its parameters. `mix_ac4_decode.py`, in CI, fits the encoder's 46 mixes to
+  their formulas with 120 dB or more left over. A table of refusals holds the rules: dialogue or
   associated audio with a channel the main audio lacks but for mono, 3.0 where Part 1 4.3.3.7.1 does
   not allow it, more than 64 presentations, a `presentation_id` twice, a level below the tracks' or
   reserved, a name over 31 bytes, and gains or associated audio's values the syntax cannot send.
   MediaInfo (`check_ac4_encode_readers.py --only presentations`) lists the presentations and groups as
-  configured, with their configurations, classifiers, languages, levels and the name's bytes, and 105
+  configured, with their configurations, classifiers, languages, levels and the name's bytes, and 128
   substream fields as the encoder's trace wrote them. It reads no audio substream of a stream with a
   configuration 6 presentation, so that one is a stream of its own, gives no language to a
   presentation whose one group is associated audio, and shows the EMDF payloads substream framed but

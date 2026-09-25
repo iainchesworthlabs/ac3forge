@@ -74,7 +74,8 @@ SETTINGS = ((0.0, 0.0), (-6.0, -10.0), (9.0, 0.0))  # dialogue-gain, associated-
 DE_GAIN_DB = 6.0
 LEVEL = -31.0  # output-level=, with drcmode=off
 # ac3cli's WAV channel order for each channel count the streams decode to.
-WAV_ORDER = {1: ("C",), 2: ("L", "R"), 6: ("L", "R", "C", "LFE", "Ls", "Rs")}
+WAV_ORDER = {1: ("C",), 2: ("L", "R"), 3: ("L", "R", "C"), 5: ("L", "R", "C", "Ls", "Rs"),
+             6: ("L", "R", "C", "LFE", "Ls", "Rs")}
 # Where each channel sits for panning, clockwise from the front (5.X surrounds).
 AZIMUTH = {"L": 330.0, "C": 0.0, "R": 30.0, "Ls": 250.0, "Rs": 110.0}
 # Part 1 Table 172.
