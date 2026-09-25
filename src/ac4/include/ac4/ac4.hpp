@@ -251,7 +251,7 @@ struct ObjectEntry {
     // Table A.27 indexes speakers: 0 L, 1 R, 2 C, 3 Ls, 4 Rs, 5 Lb, 6 Rb, 7
     // Tfl, 8 Tfr, 9 Tbl, 10 Tbr, 11 LFE, 12 Tsl, 13 Tsr, 19 LFE2, 26 Lw and 27
     // Rw, the ones Tables 62 to 66 can assign. Unset for other objects.
-    std::optional<int> speaker;
+    std::optional<int> speaker{};
 };
 
 // --- §6.2.1.13 oamd_substream_info ------------------------------------------
