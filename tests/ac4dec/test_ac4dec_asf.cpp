@@ -739,7 +739,7 @@ ParseResult read_cut(const std::vector<std::byte>& bytes, F&& parse) {
 
 }  // namespace
 
-TEST_CASE("an ASF codeword the substream ends inside fails as truncated, as in every tool",
+TEST_CASE("an ASF codeword the substream ends inside fails as truncated as in every tool",
           "[ac4dec][asf]") {
     // Each element's longest codeword, placed so that a byte boundary falls
     // inside it; the substream ends there. The

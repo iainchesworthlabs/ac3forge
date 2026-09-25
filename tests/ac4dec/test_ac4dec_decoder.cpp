@@ -541,7 +541,8 @@ TEST_CASE("ac4::Decoder reads a channel's HSF extension substream alongside it",
     CHECK(ext->bits_read == 8);  // the 6-bit header, byte_align'd
 }
 
-TEST_CASE("an HSF extension substream nothing names is reported, refused and unread", "[ac4dec]") {
+TEST_CASE("an HSF extension substream nothing names is reported as refused and unread",
+          "[ac4dec]") {
     // The review of #700: the header said an HSF substream was refused, yet
     // a substream no ac4_hsf_ext_substream_info() named got no report at all.
     // Every substream of the index table now has one.

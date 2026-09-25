@@ -315,7 +315,7 @@ TEST_CASE("set_presentation switches presentations from the next frame", "[ac4de
 // --- Decoding by block ---------------------------------------------------------
 
 TEST_CASE(
-    "decode_by_block hands the output over in blocks of 256 samples, whatever the frame length",
+    "decode_by_block hands the output over in blocks of 256 samples whatever the frame length",
     "[ac4dec][api]") {
     // Index 13's 2 048-sample frames, and 24 fps IMS, whose frames come to 2 000
     // samples at 48 kHz: seven blocks and 208 held for the next.
