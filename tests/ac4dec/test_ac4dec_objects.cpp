@@ -270,6 +270,30 @@ TEST_CASE("A-JOC objects carry their dry coefficients' share of each downmix sig
     }
 }
 
+TEST_CASE("a static downmix's core objects are its LFE and its bed at L R C Ls and Rs", "[ac4dec][objects]") {
+    // src/ac4dec/ERRATA.md, "A static downmix's inputs": in core decoding the
+    // objects of an A-JOC substream over a static 5.1 downmix are its bed.
+    ObjectCase c;
+    for (const ObjectCase& committed : ac4dec_test::committed_object_cases()) {
+        if (committed.kind == ObjectCase::Kind::kAjocStatic) {
+            c = committed;
+        }
+    }
+    REQUIRE(c.kind == ObjectCase::Kind::kAjocStatic);
+    const BuiltObjectStream stream = ac4dec_test::build_objects(c, 4);
+    const Decoded decoded = decode_all(stream, ac4::DecodingMode::kCore);
+    using S = ac4::Speaker;
+    const std::array<S, 6> speakers = {S::kLfe, S::kLeft, S::kRight, S::kCentre, S::kLeftSurround,
+                                       S::kRightSurround};
+    REQUIRE(decoded.last.size() == speakers.size());
+    for (std::size_t o = 0; o < speakers.size(); ++o) {
+        CAPTURE(o);
+        CHECK(decoded.last[o].kind == ac4::ObjectKind::kBed);
+        CHECK(decoded.last[o].lfe == (o == 0));
+        CHECK(decoded.last[o].speaker == speakers[o]);
+    }
+}
+
 TEST_CASE("direct-coded objects and a bed carry their own tones", "[ac4dec][objects]") {
     for (const ObjectCase& c : ac4dec_test::committed_object_cases()) {
         if (c.kind != ObjectCase::Kind::kDynamic && c.kind != ObjectCase::Kind::kBed) {
