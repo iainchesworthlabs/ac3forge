@@ -2164,12 +2164,19 @@ struct Encoder::Impl {
     std::vector<std::vector<detail::EmdfPayloadCodes>> emdf_substreams;
     // The table of contents every frame carries, its counter, rate fields and
     // I-frame flags set frame by frame; and where in substream_index_table()
-    // the EMDF payload substreams and the audio substreams start, the
-    // presentation substreams coming first: the presentation and EMDF payload
-    // substreams, written before the audio, are a frame's first first_audio.
+    // the audio substreams and the EMDF payload substreams start, the
+    // presentation substreams coming first. librempeg takes the substream
+    // after the presentation substreams as the first group's audio.
     detail::TocLayout layout{};
     std::size_t first_audio = 0;
     std::size_t first_emdf = 0;
+
+    // Where the k-th of the substreams a frame writes before its audio, the
+    // presentation substreams and then the EMDF payload substreams, goes in
+    // substream_index_table().
+    [[nodiscard]] std::size_t fixed_index(std::size_t k) const noexcept {
+        return k < first_audio ? k : k + substreams.size();
+    }
     // The substream whose size a frame's fit settles, the one with the most
     // of the rate: the others take their shares.
     std::size_t slack = 0;
@@ -2307,11 +2314,11 @@ struct Encoder::Impl {
         const detail::TocLayout& frame_layout, std::span<const BitWriter> fixed,
         std::size_t frame_bytes, std::span<const std::size_t> needs,
         std::span<const std::size_t> least) const {
-        std::vector<std::size_t> sizes(first_audio + substreams.size(), 0);
+        std::vector<std::size_t> sizes(fixed.size() + substreams.size(), 0);
         std::size_t fixed_bytes = 0;
-        for (std::size_t i = 0; i < first_audio; ++i) {
-            sizes[i] = fixed[i].byte_size();
-            fixed_bytes += sizes[i];
+        for (std::size_t k = 0; k < fixed.size(); ++k) {
+            sizes[fixed_index(k)] = fixed[k].byte_size();
+            fixed_bytes += fixed[k].byte_size();
         }
         const std::size_t n = substreams.size();
         if (n > 1) {
@@ -2430,11 +2437,11 @@ EncodedFrame Encoder::Impl::encode_frame(std::int64_t frame) {
             // header, metadata() and alignment, and channel element.
             frame_layout =
                 layout_for(frame, is_iframe, config.rate_mode == RateMode::kVariable ? 7 : 1);
-            std::vector<std::size_t> sizes(first_audio + substreams.size(), longest);
+            std::vector<std::size_t> sizes(fixed.size() + substreams.size(), longest);
             std::size_t needed = 0;
-            for (std::size_t i = 0; i < first_audio; ++i) {
-                sizes[i] = fixed[i].byte_size();
-                needed += sizes[i];
+            for (std::size_t k = 0; k < fixed.size(); ++k) {
+                sizes[fixed_index(k)] = fixed[k].byte_size();
+                needed += fixed[k].byte_size();
             }
             needed += detail::toc_bytes(frame_layout, 0, sizes);
             needs.assign(substreams.size(), 0);
@@ -2454,17 +2461,18 @@ EncodedFrame Encoder::Impl::encode_frame(std::int64_t frame) {
             continue;
         }
         const auto& [sizes, fit] = *sized;
-        // Each audio substream coded into its size.
-        std::vector<BitWriter> written;
-        for (std::size_t i = 0; i < first_audio; ++i) {
-            written.push_back(fixed[i]);
+        // Each audio substream coded into its size, and every substream in
+        // its place.
+        std::vector<BitWriter> written(sizes.size());
+        for (std::size_t k = 0; k < fixed.size(); ++k) {
+            written[fixed_index(k)] = fixed[k];
         }
         bool fits = true;
         for (std::size_t i = 0; i < substreams.size() && fits; ++i) {
             std::optional<BitWriter> audio = substreams[i].coder->code(sizes[first_audio + i]);
             fits = audio.has_value();
             if (audio) {
-                written.push_back(std::move(*audio));
+                written[first_audio + i] = std::move(*audio);
             }
         }
         if (!fits) {
@@ -3232,16 +3240,16 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     // --- The table of contents --------------------------------------------------
     //
     // The presentation substreams first, in the presentations' order, then
-    // the EMDF payload substreams, then the audio substreams, each in a group
-    // of its own: MediaInfo reads no audio substream placed before an EMDF
-    // payload substream.
+    // the audio substreams, each in a group of its own, then the EMDF payload
+    // substreams.
     std::size_t index = 0;
     for (StreamPresentation& p : impl->presentations) {
         if (p.toc.presentation_config != 6) {
             p.toc.presentation_substream = static_cast<int>(index++);
         }
     }
-    impl->first_emdf = index;
+    impl->first_audio = index;
+    impl->first_emdf = index + n;
     for (StreamPresentation& p : impl->presentations) {
         if (!p.emdf.empty()) {
             const int emdf_index =
@@ -3254,7 +3262,6 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
             }
         }
     }
-    impl->first_audio = impl->first_emdf + impl->emdf_substreams.size();
     impl->layout.fs_index = impl->fs_index;
     impl->layout.frame_rate_index = timing->frame_rate_index;
     for (const StreamPresentation& p : impl->presentations) {
@@ -3320,12 +3327,15 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         impl->least_sizes[i] = s.coder->least_bytes();
     }
     impl->fallbacks.clear();
-    std::vector<BitWriter> written(fixed.begin(),
-                                   fixed.begin() + static_cast<std::ptrdiff_t>(impl->first_audio));
-    for (StreamSubstream& s : impl->substreams) {
+    std::vector<BitWriter> written(fixed.size() + n);
+    for (std::size_t k = 0; k < fixed.size(); ++k) {
+        written[impl->fixed_index(k)] = fixed[k];
+    }
+    for (std::size_t i = 0; i < n; ++i) {
         BitWriter audio = BitWriter::buffered();
         audio.write(1, 0, "b_tmp");  // any content: only the table of contents is read back
-        written.push_back(*detail::write_audio_substream(s.coder->pending.fields, audio, 0));
+        written[impl->first_audio + i] =
+            *detail::write_audio_substream(impl->substreams[i].coder->pending.fields, audio, 0);
     }
     const std::optional<std::vector<std::byte>> raw =
         detail::assemble(least_layout, written, 0, {});
