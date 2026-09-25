@@ -445,7 +445,7 @@ TEST_CASE("IEC 61937-14: every row of every AC-4 burst type as the standard prin
     }
 }
 
-TEST_CASE("IEC 61937-14: codes outside the tables, and rates a type has no row for, give nothing",
+TEST_CASE("IEC 61937-14: codes outside the tables and rates a type has no row for give nothing",
           "[iec61937][ac4]") {
     // Tables 7 and 13 reserve 14 and 15; Table 25 reserves 0 to 9, 13 and 15.
     for (const BurstDataType type :
@@ -744,7 +744,7 @@ TEST_CASE("Ac4BurstPacker: HBR16 counts in 8-byte units and pads the last one wi
     pack_and_read_back(BurstDataType::kAc4Hbr16, frames, periods, 13);
 }
 
-TEST_CASE("wrap_ac4_stream: a stream's bursts back to back, read back whole", "[iec61937][ac4]") {
+TEST_CASE("wrap_ac4_stream: a stream's bursts back to back read back whole", "[iec61937][ac4]") {
     std::vector<std::vector<std::byte>> frames;
     for (int counter = 1; counter <= 7; ++counter) {
         frames.push_back(sync_frame({.frame_rate_index = 8,
@@ -783,7 +783,7 @@ TEST_CASE("ac4_burst_type_for: the smallest type whose every burst holds the fra
 
 // --- Reading ----------------------------------------------------------------------
 
-TEST_CASE("BurstReader: a Pd in bytes, as IEC 61937-2 Table 2 has it, reads the same frame",
+TEST_CASE("BurstReader: a Pd in bytes as IEC 61937-2 Table 2 has it reads the same frame",
           "[iec61937][ac4]") {
     const std::vector<std::byte> frame = sync_frame({.frame_rate_index = 13, .raw_bytes = 301});
     iec::Ac4BurstPacker packer;
@@ -807,7 +807,7 @@ TEST_CASE("BurstReader: a Pd in bytes, as IEC 61937-2 Table 2 has it, reads the 
     CHECK(reader.false_syncs() >= 1);
 }
 
-TEST_CASE("BurstReader: AC-4 in a big-endian carrier, fed a byte at a time", "[iec61937][ac4]") {
+TEST_CASE("BurstReader: AC-4 in a big-endian carrier fed a byte at a time", "[iec61937][ac4]") {
     std::vector<std::vector<std::byte>> frames;
     for (int counter = 1; counter <= 3; ++counter) {
         frames.push_back(sync_frame({.frame_rate_index = 11,

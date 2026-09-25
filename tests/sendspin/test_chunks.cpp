@@ -392,7 +392,7 @@ std::vector<std::byte> ac4_sync_frame(std::size_t raw, bool crc = false) {
 
 }  // namespace
 
-TEST_CASE("chunks: an AC-4 burst chunk carries Ac4BurstPacker's Pc, Pd and sync frame",
+TEST_CASE("chunks: an AC-4 burst chunk carries Ac4BurstPacker's Pc and Pd and its sync frame",
           "[sendspin][chunks][ac4]") {
     // Even and odd lengths, with and without the CRC word.
     using Case = std::pair<std::size_t, bool>;

@@ -278,7 +278,7 @@ TEST_CASE("every passthrough error describes itself", "[audio-backend][concurren
     }
 }
 
-TEST_CASE("passthrough formats: each link's rate, burst lengths and name",
+TEST_CASE("passthrough formats: the rate and burst lengths and name of each link",
           "[audio-backend][concurrency]") {
     using ac3::audio::BitstreamFormat;
     // IEC 61937-14 5.3.1, 5.3.3 and 5.3.5: AC-4 at the content rate, HBR4 at
