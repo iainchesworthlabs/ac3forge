@@ -1116,7 +1116,8 @@ reading is in `src/ac4dec/ERRATA.md`, under "Presentations".
 `src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 kHz at every
 frame rate of Part 1 Table 83 or at 44.1 kHz at `frame_rate_index` 13, at a constant, average or
 variable rate, with I-frames where a caller asks for them, the loudness values, DRC's decoder modes,
-the stereo downmix's values and dialogue enhancement, in the SIMPLE codec mode or the ASPX mode, with A-SPX
+the stereo downmix's values and dialogue enhancement, as one substream or as several in the
+presentations of Part 2 Table 53, in the SIMPLE codec mode or the ASPX mode, with A-SPX
 above a crossover: below 96 kbps a channel in mono and stereo, with companding below 64, and below
 76.8 kbps a channel in 5.X, as DEE's 5.1 streams switch between 320 and 384 kbps. Below 33.6 kbps a
 channel in 5.X it writes ASPX_ACPL_2, and below 22.4 ASPX_ACPL_3, as DEE's 5.1 streams are at 128
@@ -1127,8 +1128,8 @@ configurations, chosen frame by frame by the bits they save, 7.0 and 7.1 in the 
 ASPX_ACPL_1 and A-CPL in stereo are experimental options. It shares
 `src/ac4core`'s transforms, windows, codebooks, QMF banks and A-SPX tables and high frequency
 generator with the decoder, and writes the syntax through a transcription of the tables of its own.
-`ac3cli ac4-encode` writes it raw or in MP4. Five checks stand behind it (`planning/ac4.md`, the
-encoder's ladder, and phase E5's exit):
+`ac3cli ac4-encode` writes it raw or in MP4. Eight checks stand behind it (`planning/ac4.md`, the
+encoder's ladder, and phases E5's and E6's exits):
 
 - **Three transcriptions agree.** The encoder records each element it writes in the shape the decoder
   records what it reads. The encoder's tests and the fuzz target `fuzz_ac4_encode` require the
@@ -1142,7 +1143,11 @@ encoder's ladder, and phase E5's exit):
   metadata option, and its `--check-envelope` holds each A-CPL mode's least rate. A refusal of a rate
   as too low for the frame rate and metadata counts only for frames under 400 bytes, and only if the
   same case at 400 bytes a frame encodes.
-  The fuzz target reaches every A-CPL mode too. FFmpeg Validate runs it for 120 seconds on each pull request, and the nightly fuzz workflow
+  The fuzz target reaches every A-CPL mode too, and phase E6's substreams and presentations: each
+  of Table 53's configurations over a second or third substream, a hybrid method's dialogue
+  enhancement substream, 3.0 dialogue, a presentation of each substream alone, names, languages,
+  levels, group gains, the associated audio's values and EMDF payloads; the harness draws no
+  presentations until `ac3cli ac4-encode` takes them (phase E7). FFmpeg Validate runs it for 120 seconds on each pull request, and the nightly fuzz workflow
   for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
   interleaving back through the decoder's parser, and hold the encoder's reading of the interval
   borders, envelope resolutions and noise borders to the parser's. The encoder undoes the three, four
@@ -1220,6 +1225,43 @@ encoder's ladder, and phase E5's exit):
   interval and per-frame metadata cost more than the frame `create()` checked. A frame that holds
   nothing more now sends each as a stream starts it, and `create()` sizes it with the costlier
   interval, which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
+- **Presentations and several substreams** (phase E6, `tests/ac4enc/test_ac4enc_presentations.cpp`).
+  Three committed streams, each with its configuration beside it as JSON
+  (`tests/golden/ac4dec/presentations/encoder-*.ac4`): a broadcast of 5.1 music and effects, English
+  and German mono dialogue, a mono audio description, a stereo commentary and stereo French dialogue,
+  in 15 presentations of configurations 0, 2, 3 and 5, with an alternative presentation and its name,
+  each substream alone, and one presentation disabled and pre-virtualized; hybrid dialogue enhancement
+  in 5.1 (channel independent) and in stereo (the Mid), each with its dialogue enhancement substream,
+  in configurations 1 and 4 with audio description; and a configuration 6 presentation of EMDF
+  payloads beside a stereo one. Their tables of contents hold the configuration in every frame, both
+  transcriptions read every frame with the encoder's trace, and the Python parser's digests are with
+  the others in `tests/golden/ac4dec/`. Through D7's selection and mixing, with one tone per
+  substream, each presentation is selected as configured, by `presentation_id`, language, associated
+  audio and level, and every mix comes out at its formula's gains to 0.01 dB: g_dialog against each
+  dialogue's cap, pans, group gains, the main audio's scaling under associated audio, and each hybrid
+  method's waveform beside its parameters. `mix_ac4_decode.py`, in CI, fits the encoder's 38 mixes to
+  their formulas with 120 to 157 dB left over. A table of refusals holds the rules: dialogue or
+  associated audio with a channel the main audio lacks but for mono, 3.0 where Part 1 4.3.3.7.1 does
+  not allow it, more than 64 presentations, a `presentation_id` twice, a level below the tracks' or
+  reserved, a name over 31 bytes, and gains or associated audio's values the syntax cannot send.
+  MediaInfo (`check_ac4_encode_readers.py --only presentations`) lists the presentations and groups as
+  configured, with their configurations, classifiers, languages, levels and the name's bytes, and 105
+  substream fields as the encoder's trace wrote them. It reads no audio substream of a stream with a
+  configuration 6 presentation, so that one is a stream of its own, gives no language to a
+  presentation whose one group is associated audio, and shows the EMDF payloads substream framed but
+  not detailed. DEE's MP4 muxer takes a stream of one presentation only. librempeg decodes a
+  presentation's first group alone, as D7 found: the hybrid stream's main substreams to 78 to 86 dB of
+  the decoder's, the EMDF stream's companded stereo to 33 to 40 dB, and silence for the broadcast
+  stream's 15 presentations over 22 substreams, the counts at which D7 found it silent.
+- **The presentations' race** (`tools/checks/race_ac4_presentations.py`, locally): G1's legs of
+  music, dialogue and associated audio, which DEE encoded one at a time, multiplexed by D7's
+  multiplexer into music and effects with dialogue, with associated audio as well, and each alone,
+  against the encoder's encode of the same sources into the same presentations at the legs' rates,
+  both decoded by the decoder and scored against the sources' mix. With music at 128 kbps and dialogue
+  and associated audio at 64 the encoder's SNR is DEE's to within 0.1 dB or above it (by up to 1.1 dB
+  on the music alone) and ViSQOL within 0.03; at 192 and 128 kbps its SNR leads DEE's by 5.5 to 6.3 dB
+  on every presentation, ViSQOL within 0.02; on the tones it leads by 10 to 32 dB. librempeg gives
+  the music and effects alone of either stream's mixes.
 - **The race against DEE** (`score_ac4_encode.py --gold`, locally): phase G0's 2.0 legs of music,
   speech and tones from 48 to 768 kbps, encoded again here in the mode DEE writes at each rate, and
   both decoded by the decoder. In ASPX, from 48 to 144 kbps, ViSQOL is within 0.03 of DEE's or above
