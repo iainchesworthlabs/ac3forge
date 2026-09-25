@@ -118,6 +118,7 @@ add_executable(ac3tests
     containers/test_fmp4.cpp
     core/test_frame.cpp
     iec61937/test_iec61937.cpp
+    iec61937/test_iec61937_ac4.cpp
     decoder/test_latency.cpp
     iec61937/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
