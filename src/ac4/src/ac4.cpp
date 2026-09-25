@@ -1664,8 +1664,9 @@ void put_bitrate_dsi(DsiWriter& w, const Toc& toc) {
 }
 
 // Annex E.10.3's audio channel groups of a channel mode (Table A.27's right
-// column, group g at bit g). Pseudocode E.3 as printed sets no LFE, and above
-// ch_mode 10 no L/R or Ls/Rs and the centre as group 2; the groups here are the
+// column, group g at bit g). Pseudocode E.3 as printed sets no LFE, above
+// ch_mode 10 no L/R or Ls/Rs and the centre as group 2, never the 9.X layouts'
+// Lscr/Rscr, and 22.2's Tsl/Tsr only for one top pair; the groups here are the
 // ones Table A.27 gives each mode, which is what DEE's muxer writes
 // (src/ac4enc/ERRATA.md).
 std::uint32_t channel_groups(int ch_mode, bool centre, bool four_back, int top_pairs) {
@@ -1674,9 +1675,12 @@ std::uint32_t channel_groups(int ch_mode, bool centre, bool four_back, int top_p
     const bool lfe = ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10 || ch_mode == 12 ||
                      ch_mode == 14 || ch_mode == 15;
     if (ch_mode == 15) {
-        for (const int g : {17, 15, 14, 13, 12, 11, 10, 9, 5, 4, 3, 1}) {
+        for (const int g : {17, 15, 14, 13, 12, 11, 10, 9, 7, 5, 4, 3, 1}) {
             set(g);
         }
+    }
+    if (ch_mode == 13 || ch_mode == 14) {
+        set(16);  // Lscr Rscr
     }
     if (ch_mode >= 11) {
         set(0);  // L R
