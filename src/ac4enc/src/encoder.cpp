@@ -3359,16 +3359,27 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     }
     impl->toc = parsed->toc;
     // What the table of contents does not carry, for build_dac4(): whether
-    // a presentation sends dialogue enhancement data, and that none has
-    // immersive audio.
+    // a presentation sends dialogue enhancement data, that none has
+    // immersive audio, and an alternative presentation's name and its one
+    // target, every device category at its md_compat.
     for (std::size_t p = 0; p < impl->toc.presentations_v1.size(); ++p) {
         PresentationInfoV1& presentation = impl->toc.presentations_v1[p];
+        const StreamPresentation& configured = impl->presentations[p];
         bool de = false;
-        for (const std::size_t m : impl->presentations[p].members) {
+        for (const std::size_t m : configured.members) {
             de = de || impl->substreams[m].coder->metadata.de.has_value();
         }
         presentation.de_indicator = de;
         presentation.immersive_audio_indicator = false;
+        if (configured.alternative) {
+            AlternativeInfo alternative;
+            for (const std::uint8_t byte : configured.alternative->name) {
+                alternative.name.push_back(static_cast<char>(byte));
+            }
+            alternative.targets.push_back(AlternativeTarget{
+                .md_compat = configured.alternative->target_level, .device_category = 0b1111});
+            presentation.alternative_info = std::move(alternative);
+        }
     }
     return impl;
 }

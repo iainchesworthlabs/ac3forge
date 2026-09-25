@@ -112,11 +112,26 @@ class PresentationName {
     void clear() noexcept;
     // The last name received whole, UTF-8; empty before one.
     [[nodiscard]] const std::string& name() const noexcept { return name_; }
+    // The targets the last frame sent (clauses 6.3.3.1.5 to 6.3.3.1.8), each
+    // target_level and target_device_category; the storage is kept from one
+    // frame to the next.
+    template <typename Targets>
+    void set_targets(const Targets& sent) {
+        targets_.resize(sent.size());
+        for (std::size_t t = 0; t < sent.size(); ++t) {
+            targets_[t] = AlternativeTarget{.md_compat = sent[t].target_level,
+                                            .device_category = sent[t].target_device_category};
+        }
+    }
+    [[nodiscard]] const std::vector<AlternativeTarget>& targets() const noexcept {
+        return targets_;
+    }
 
    private:
     std::string name_;
     std::string pending_;  // the chunks since the last whole name
     int chunks_ = 0;
+    std::vector<AlternativeTarget> targets_;
 };
 
 }  // namespace ac4::detail

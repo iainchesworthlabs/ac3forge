@@ -591,11 +591,19 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
                          toc.frame_rate_index);
             return kExitOutput;
         }
+        std::vector<std::byte> dac4 = ac4::build_dac4(toc);
+        if (dac4.empty()) {
+            fmt::println(stderr,
+                         "error: the MP4 sample entry's dac4 cannot describe {}; write a raw .ac4 "
+                         "instead",
+                         ac4::dac4_refusal(toc));
+            return kExitUsage;
+        }
         const mp4::AudioTrack track{.codec_id = std::string{mp4::kCodecAc4},
                                     .sample_rate = static_cast<std::uint32_t>(toc.sample_rate_hz),
                                     .channels = 2,  // TS 103 190-2 E.4.5: "should be set to 2"
                                     .samples_per_frame = timing->sample_delta,
-                                    .codec_config = ac4::build_dac4(toc),
+                                    .codec_config = std::move(dac4),
                                     .rfc6381 = ac4::rfc6381_codec_string(toc),
                                     .timescale = timing->timescale};
         rfc6381 = track.rfc6381;
