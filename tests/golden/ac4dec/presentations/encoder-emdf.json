@@ -1,0 +1,9 @@
+{
+  "substreams": [
+    {"ch_mode": 1, "content_classifier": 0, "language": "", "enhances": null}
+  ],
+  "presentations": [
+    {"presentation_config": null, "substreams": [0], "presentation_id": 1, "md_compat": 0, "name": "", "dialnorm_db": -31, "enabled": true},
+    {"presentation_config": 6, "substreams": [], "presentation_id": null, "md_compat": null, "name": "", "dialnorm_db": -31, "enabled": true}
+  ]
+}

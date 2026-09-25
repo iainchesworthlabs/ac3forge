@@ -28,7 +28,7 @@ Usage:
   ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
   ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source. programme2= is a different thing entirely - a second, independent E-AC-3 substream (its own layout/bitrate/dialnorm via programme2-layout=/-bitrate=/-dialnorm=), not another channel of this one)
-  ac3cli ac4-encode    <in.wav> <out.ac4|out.mp4> [bitrate_kbps] (mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4 at frame_rate_index 13 and a constant bit rate: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is .mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a channel and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode (A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 kbps a channel, 76.8 in 5.X, and SIMPLE from there; codec-mode=simple|aspx|aspx-acpl-1|aspx-acpl-2|aspx-acpl-3 picks one, and experimental=aspx-balance,aspx-varvar,aspx-interleave,coding-configs,acpl,7x-back|7x-wide|7x-top-front adds tools and layouts no outside reader has checked yet (acpl: ASPX_ACPL_1 in 5.X, and A-CPL in stereo). dialnorm= sets the dialogue level (auto measures it); the other metadata options are not written to AC-4 yet and are refused. syntax-trace=<file> writes what the encoder writes)
+  ac3cli ac4-encode    <in.wav> <out.ac4|out.mp4> [bitrate_kbps] (mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is .mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a channel and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode (A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 kbps a channel, 76.8 in 5.X, and SIMPLE from there. The options below set the codec mode, the frame rate, the rate mode, the I-frames, the CRC, and the loudness, DRC, downmix and dialogue enhancement metadata; substreamN= and presentationN= add substreams, each an input of its own, and the presentations that play them; syntax-trace=<file> writes what the encoder writes)
   ac3cli decode        <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes so far, and syntax-trace=<file> writes what the decoder reads. objects_dir (E-AC-3 Atmos only): export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there - bed LFE plus every dynamic object, positioned by its own decoded OAMD)
   ac3cli probe         <in.ac3|in.ec3|in.ac4> [json=1] [detail=frames|blocks] (inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 TOC/presentations/substream groups; table or documented JSON)
   ac3cli transcode     <in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the output name's suffix, or from codec=)
@@ -113,7 +113,7 @@ so a misrouted channel is identifiable by ear.)
 | `eac3-encode` | WAV → E-AC-3, with the Annex E `tools:` token and an optional `vbr:` token available (see [Options & grammars](metadata-options.md)). Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1, 8→7.1, 10→5.1.4, 12→7.1.4). |
 | `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement |
 | `atmos-cbi` | WAV already mixed into a fixed channel-based-immersive (CBI) bed layout → E-AC-3 Atmos with `program.bed != 0` and 0 dynamic objects — Dolby's `dee_ddpjoc_encoder --input-format cbi_wav` shape, not free-floating objects |
-| `ac4-encode` | WAV → AC-4: mono, stereo, 5.0 or 5.1 (7.0 and 7.1 experimental), at 48 kHz at every frame rate of Part 1 Table 83 or at 44.1 kHz at the native one, as raw sync frames with their CRC or, for `.mp4`, `.m4a` or `.mov`, an MP4 file with the `ac-4` sample entry and its `dac4`. The codec mode follows the rate: SIMPLE from 96 kbps a channel (76.8 in 5.X), the ASPX mode below, and in 5.X the A-CPL modes lower still. The frame rate, the rate mode, the I-frames and the metadata are options: see [`ac4-encode`](#ac4-encode) below |
+| `ac4-encode` | WAV → AC-4: mono, stereo, 5.0 or 5.1 (7.0, 7.1 and 3.0 experimental), at 48 kHz at every frame rate of Part 1 Table 83 or at 44.1 kHz at the native one, as raw sync frames with their CRC (or without, `crc=off`) or, for `.mp4`, `.m4a` or `.mov`, an MP4 file with the `ac-4` sample entry and its `dac4`. The codec mode follows the rate: SIMPLE from 96 kbps a channel (76.8 in 5.X), the ASPX mode below, and in 5.X the A-CPL modes lower still. The frame rate, the rate mode, the I-frames, the metadata, and further substreams and the presentations that play them are options: see [`ac4-encode`](#ac4-encode) below |
 
 ```bash
 ac3cli encode in.wav out.ac3 448 couple
@@ -181,10 +181,11 @@ project has read from the encoder yet: `aspx-balance`, `aspx-varvar`, `aspx-inte
 `coding-configs` (the 5.X element's coding configurations 1 to 3 and `2ch_mode` 1), `acpl` (with
 `codec-mode=aspx-acpl-1`, ASPX_ACPL_1 in 5.X, which also codes each side's difference from its
 downmix to 3 kHz; with `aspx-acpl-1` or `aspx-acpl-2`, A-CPL in stereo) and `drc-gains-0` to
-`drc-gains-3` (the DRC modes send gains in that `drc_gains_config` of Part 1 Table 163); and
+`drc-gains-3` (the DRC modes send gains in that `drc_gains_config` of Part 1 Table 163);
 `7x-back`, `7x-wide` or `7x-top-front`, which takes seven or eight channels as 7.0 or 7.1 in that
 7.X layout, in the WAV order `decode` writes: 3/4/0's back pair in BL and BR and its surrounds in SL
-and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR.
+and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR; and `three-zero`, which takes
+three channels, L R C, as 3.0, the dialogue of a music and effects presentation (below).
 
 **Frame rate and rate mode.** `frame-rate=` is one of Table 83's rates, `23.976`, `24`, `25`,
 `29.97`, `30`, `47.95`, `48`, `50`, `59.94`, `60`, `100`, `119.88` or `120`, or `native`, the
@@ -225,15 +226,64 @@ programme's channels and sample for sample, and each band's parameter is its sha
 `dialogue-method=independent`, the default, raises each channel; `mid` raises the Mid of L and R;
 `cross`, with a stem over two or three channels, raises a mix of the channels that follows the
 dialogue and pans it back as the dialogue is panned. `dialogue-max-gain=` caps what a decoder may
-add: 3, 6, 9 (the default) or 12 dB.
+add: 3, 6, 9 (the default) or 12 dB. `dialogue-hybrid=<0..1>` makes the method a hybrid one: a
+dialogue enhancement substream carries the dialogue itself as a waveform, that share of the
+enhancement, and the parameters raise it by the rest (Part 1 clause 5.7.8.9); `substreamN-enhances=`
+below names that substream.
 
-`syntax-trace=<file>` writes every syntax element the encoder writes, one per line. The summary
-names the codec mode, the frame rate and the rate mode, and how far the decoder's output lags the
-input, to the nearest sample away from the native frame rate.
+**Substreams.** Without the options below the output is one substream in one presentation, with
+`presentation_id` 0 and the `md_compat` level its layout needs. The input is substream 1, and
+`substream2=<wav>` up to `substream32=` add more, each an input of its own layout at the input's
+rate and length. `substreamN-<option>=` sets substream N's own values:
+
+| Option | What it sets |
+|---|---|
+| `substreamN-bitrate=<kbps>` | Its share of the rate; the substreams without one share the rest by their full-band channels |
+| `substreamN-codec-mode=` | Its codec mode, as `codec-mode=` (which is substream 1's) |
+| `substreamN-content=` | Part 1 Table 91's content classifier: `main`, `music-and-effects`, `visually-impaired`, `hearing-impaired`, `dialogue`, `commentary`, `emergency` or `voice-over` |
+| `substreamN-language=<tag>` | Its BCP 47 language tag, with a classifier to carry it |
+| `substreamN-dialogue-...=` | Its dialogue enhancement, as the `dialogue-` options above (which are substream 1's) |
+| `substreamN-max-dialogue-gain=` | A dialogue substream's cap on how far a listener may raise it, 3, 6, 9 or 12 dB |
+| `substreamN-pan=<degrees>[,<degrees>]` | Where a mono dialogue's channel sits, or each of a stereo one's two, clockwise from the front: 330 is L, 30 R |
+| `substreamN-emdf=<id>:<hex>` | An EMDF payload its metadata carries in every frame, repeated for more; the id from 1 |
+| `substreamN-enhances=<M>` | In place of an input: this substream carries the waveform of substream M's hybrid dialogue enhancement |
+
+**Presentations.** Several substreams need presentations to play them. `presentationN=<substreams>`,
+N from 1 to 64, lists the substreams a presentation plays, from 1, in the order of Part 2 Table 53's
+positions, and `presentationN-<option>=` sets its own values:
+
+| Option | What it sets |
+|---|---|
+| `presentationN-config=` | Table 53's configuration: 0 music and effects with dialogue, 1 main with dialogue enhancement, 2 main with associated audio, 3 music and effects with dialogue and associated audio, 4 main with dialogue enhancement and associated audio, 5 roles by each substream's classifier, 6 EMDF payloads alone, which plays no substream; unset for one substream |
+| `presentationN-id=` | Its `presentation_id`, unset for the least no other presentation takes |
+| `presentationN-md-compat=` | Its level, 0 to 3 or 7 (Table 55), not below what its tracks need |
+| `presentationN-enabled=`, `-pre-virtualized=` | `on` or `off` |
+| `presentationN-name=` | An alternative presentation of this name, up to 31 bytes |
+| `presentationN-dialnorm=` | Its own dialogue level, as `dialnorm=` |
+| `presentationN-gains=<dB>,...` | Each substream's group gain, 0 to -15.5 dB in steps of 0.25, or `off` |
+| `presentationN-main-gain=`, `-main-centre-gain=`, `-main-front-gain=` | The main audio's scaling beside associated audio, 0 to -76.2 dB in steps of 0.3, or `off` |
+| `presentationN-associated-pan=` | Where mono associated audio sits, in degrees |
+| `presentationN-emdf=<id>:<hex>` | An EMDF payload in an EMDF payloads substream the presentation names |
+
+The bare options set every presentation's values: the loudness, DRC and downmix values, the last
+going to the presentations of 5.X and 7.X. `dialnorm=auto` and `loudness=` measure one programme,
+so they take one substream. The encoder refuses what does not go together, naming the rule. An MP4
+file's `dac4` describes every presentation (Part 2 Annex E.10); a presentation of configuration 6
+has no field for the `presentation_id` a CMAF track asks of each, so `fmp4` refuses a stream that
+has one.
+
+**Output.** A raw stream's sync frames carry Part 2 Annex G's CRC unless `crc=off`; an MP4
+sample is the raw frame alone. `syntax-trace=<file>` writes every syntax element the encoder writes,
+one per line. The summary names the codec mode, the frame rate and the rate mode, and how far the
+decoder's output lags the input, to the nearest sample away from the native frame rate.
 
 ```bash
 ac3cli ac4-encode in.wav out.mp4 128 frame-rate=29.97 rate-mode=average iframe-interval=15
 ac3cli ac4-encode in_51.wav out.ac4 384 loudness=ebu-r128 drc=film-light dmixmod=loro dialogue-channels=c
+ac3cli ac4-encode me_51.wav out.mp4 448 substream1-content=music-and-effects \
+    substream2=english.wav substream2-content=dialogue substream2-language=en \
+    substream3=german.wav substream3-content=dialogue substream3-language=de \
+    presentation1=1,2 presentation1-config=0 presentation2=1,3 presentation2-config=0
 ```
 ### ADM ingest — professional master files (opt-in)
 

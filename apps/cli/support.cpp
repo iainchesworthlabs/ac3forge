@@ -15,6 +15,7 @@
 #include <fmt/chrono.h>  // IWYU pragma: keep - fmt::formatter<time_point> for "{:%FT%TZ}" below
 #include <fmt/format.h>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <iterator>
 #include <limits>
@@ -740,6 +741,397 @@ std::optional<ac4::DrcProfile> parse_ac4_drc_profile(std::string_view name) {
     return std::nullopt;
 }
 
+// codec-mode='s values (ac4::CodecMode).
+bool is_ac4_codec_mode(std::string_view value) {
+    constexpr std::array<std::string_view, 6> kModes = {
+        "auto", "simple", "aspx", "aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3"};
+    return std::ranges::find(kModes, value) != kModes.end();
+}
+
+// The substreamN and presentationN families: N, from 1 to `most`, and what
+// follows it after a '-', empty for the bare key; nothing for a key of
+// neither shape.
+std::optional<std::pair<std::size_t, std::string_view>> match_numbered(std::string_view key,
+                                                                       std::string_view prefix,
+                                                                       std::size_t most) {
+    if (!key.starts_with(prefix)) {
+        return std::nullopt;
+    }
+    std::string_view rest = key.substr(prefix.size());
+    std::size_t digits = 0;
+    while (digits < rest.size() && rest[digits] >= '0' && rest[digits] <= '9') {
+        ++digits;
+    }
+    std::size_t n = 0;
+    const auto [ptr, ec] = std::from_chars(rest.data(), rest.data() + digits, n);
+    if (digits == 0 || digits > 2 || rest.front() == '0' || ec != std::errc{} || n < 1 ||
+        n > most) {
+        return std::nullopt;
+    }
+    rest.remove_prefix(digits);
+    if (rest.empty()) {
+        return std::make_pair(n, std::string_view{});
+    }
+    if (rest.front() != '-') {
+        return std::nullopt;
+    }
+    return std::make_pair(n, rest.substr(1));
+}
+
+// An EMDF payload as <id>:<hex bytes>, the id from 1 (Part 1 Table 79's
+// emdf_payload_id), the bytes two hex digits each, none for an empty payload.
+std::optional<ac4::EmdfPayload> parse_emdf_payload(std::string_view value) {
+    const std::size_t colon = value.find(':');
+    if (colon == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const std::string_view id_text = value.substr(0, colon);
+    const std::string_view hex = value.substr(colon + 1);
+    int id = 0;
+    const auto [ptr, ec] = std::from_chars(id_text.data(), id_text.data() + id_text.size(), id);
+    if (id_text.empty() || ec != std::errc{} || ptr != id_text.data() + id_text.size() || id < 1 ||
+        hex.size() % 2 != 0) {
+        return std::nullopt;
+    }
+    ac4::EmdfPayload payload;
+    payload.id = id;
+    for (std::size_t i = 0; i < hex.size(); i += 2) {
+        unsigned byte = 0;
+        const auto [end, error] = std::from_chars(hex.data() + i, hex.data() + i + 2, byte, 16);
+        if (error != std::errc{} || end != hex.data() + i + 2) {
+            return std::nullopt;
+        }
+        payload.bytes.push_back(static_cast<std::uint8_t>(byte));
+    }
+    return payload;
+}
+
+// A comma-separated list of numbers, each read by `one`; false where one does
+// not read or the list is empty.
+template <typename T, typename Read>
+bool parse_list(std::string_view value, std::vector<T>& out, Read one) {
+    out.clear();
+    std::string_view rest = value;
+    do {
+        const std::size_t comma = rest.find(',');
+        T item{};
+        if (!one(rest.substr(0, comma), item)) {
+            return false;
+        }
+        out.push_back(item);
+        rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+    } while (!rest.empty());
+    return !out.empty();
+}
+
+// A gain in dB, 0 or below, or off for -infinity.
+bool parse_cut_db(std::string_view text, double& db) {
+    if (text == "off") {
+        db = -std::numeric_limits<double>::infinity();
+        return true;
+    }
+    return parse_double(text, db) && std::isfinite(db) && db <= 0.0;
+}
+
+// on or off.
+std::optional<bool> parse_on_off(std::string_view value) {
+    if (value == "on") {
+        return true;
+    }
+    if (value == "off") {
+        return false;
+    }
+    return std::nullopt;
+}
+
+// A substream's dialogue enhancement options: `key` without any substreamN-
+// prefix. The same three answers as parse_programme_metadata_option.
+MetadataOptionResult parse_ac4_dialogue_option(
+    std::string_view key, std::string_view value, Options::Ac4Encode::Dialogue& out,
+    const std::function<MetadataOptionResult(std::string_view)>& refuse) {
+    if (key == "dialogue-channels") {
+        std::string_view rest = value;
+        bool ok = !rest.empty();
+        while (ok && !rest.empty()) {
+            const std::size_t comma = rest.find(',');
+            const std::string_view item = rest.substr(0, comma);
+            ok = item == "l" || item == "r" || item == "c";
+            rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+        }
+        if (!ok) {
+            return refuse("dialogue-channels is any of l, r and c, comma-separated");
+        }
+        out.channels = std::string{value};
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialogue-stem") {
+        if (value.empty()) {
+            return refuse("dialogue-stem needs a WAV file");
+        }
+        out.stem = std::string{value};
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialogue-method") {
+        if (value == "independent") {
+            out.method = ac4::DialogueMethod::kChannelIndependent;
+        } else if (value == "mid") {
+            out.method = ac4::DialogueMethod::kMid;
+        } else if (value == "cross") {
+            out.method = ac4::DialogueMethod::kCrossChannel;
+        } else {
+            return refuse("dialogue-method is independent, mid or cross");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialogue-max-gain") {
+        const std::uint32_t db = parse_u32_or(value, 0);
+        if (db != 3 && db != 6 && db != 9 && db != 12) {
+            return refuse("dialogue-max-gain is 3, 6, 9 or 12 dB");
+        }
+        out.max_gain_db = static_cast<int>(db);
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialogue-hybrid") {
+        double share = 0.0;
+        if (!parse_double(value, share) || !(share >= 0.0 && share <= 1.0)) {
+            return refuse("dialogue-hybrid is the waveform's share of the enhancement, 0 to 1");
+        }
+        out.hybrid_share = share;
+        return MetadataOptionResult::kOk;
+    }
+    return MetadataOptionResult::kNotMetadata;
+}
+
+// Part 1 Table 91's content classifiers, as substreamN-content= names them.
+std::optional<ac4::ContentClassifier> parse_content_classifier(std::string_view value) {
+    constexpr std::array<std::pair<std::string_view, ac4::ContentClassifier>, 8> kNames{{
+        {"main", ac4::ContentClassifier::kCompleteMain},
+        {"music-and-effects", ac4::ContentClassifier::kMusicAndEffects},
+        {"visually-impaired", ac4::ContentClassifier::kVisuallyImpaired},
+        {"hearing-impaired", ac4::ContentClassifier::kHearingImpaired},
+        {"dialogue", ac4::ContentClassifier::kDialogue},
+        {"commentary", ac4::ContentClassifier::kCommentary},
+        {"emergency", ac4::ContentClassifier::kEmergency},
+        {"voice-over", ac4::ContentClassifier::kVoiceOver},
+    }};
+    for (const auto& [name, classifier] : kNames) {
+        if (name == value) {
+            return classifier;
+        }
+    }
+    return std::nullopt;
+}
+
+// substreamN= and substreamN-<suffix>= (N from 1; see Options::Ac4Encode).
+MetadataOptionResult parse_ac4_substream_option(
+    std::size_t n, std::string_view suffix, std::string_view value, Options& options,
+    const std::function<MetadataOptionResult(std::string_view)>& refuse) {
+    Options::Ac4Encode& out = options.ac4enc;
+    if (out.substreams.size() < n) {
+        out.substreams.resize(n);
+    }
+    Options::Ac4Encode::Substream& s = out.substreams[n - 1];
+    s.named = true;
+    if (suffix.empty()) {
+        if (n == 1) {
+            return refuse("substream 1 is the positional input; substream2= names the next one");
+        }
+        if (value.empty()) {
+            return refuse("substreamN= needs a WAV file");
+        }
+        s.path = std::string{value};
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix.starts_with("dialogue-")) {
+        const auto parsed = parse_ac4_dialogue_option(suffix, value, s.dialogue, refuse);
+        if (parsed != MetadataOptionResult::kNotMetadata) {
+            return parsed;
+        }
+    }
+    if (suffix == "bitrate") {
+        const std::uint32_t kbps = parse_u32_or(value, 0);
+        if (kbps < 1 || kbps > 3000) {
+            return refuse("a substream's bitrate is its share of the rate in kbps, from 1");
+        }
+        s.bitrate_kbps = static_cast<int>(kbps);
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "codec-mode") {
+        if (!is_ac4_codec_mode(value)) {
+            return refuse(
+                "a substream's codec-mode is auto, simple, aspx, aspx-acpl-1, aspx-acpl-2 or "
+                "aspx-acpl-3");
+        }
+        (n == 1 ? options.ac4_codec_mode : s.codec_mode) = std::string{value};
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "content") {
+        s.content = parse_content_classifier(value);
+        if (!s.content) {
+            return refuse(
+                "a substream's content is main, music-and-effects, visually-impaired, "
+                "hearing-impaired, dialogue, commentary, emergency or voice-over");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "language") {
+        if (value.empty()) {
+            return refuse("a substream's language is an IETF BCP 47 tag");
+        }
+        s.language = std::string{value};
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "enhances") {
+        const std::uint32_t of = parse_u32_or(value, 0);
+        if (of < 1 || of > 32) {
+            return refuse(
+                "enhances names the substream, from 1, whose hybrid dialogue enhancement this "
+                "carries");
+        }
+        s.enhances = static_cast<int>(of);
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "max-dialogue-gain") {
+        const std::uint32_t db = parse_u32_or(value, 0);
+        if (db != 3 && db != 6 && db != 9 && db != 12) {
+            return refuse("max-dialogue-gain is 3, 6, 9 or 12 dB");
+        }
+        s.max_dialogue_gain_db = static_cast<int>(db);
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "pan") {
+        const auto degrees = [](std::string_view text, double& d) {
+            return parse_double(text, d) && d >= 0.0 && d < 360.0;
+        };
+        if (!parse_list(value, s.pan_degrees, degrees) || s.pan_degrees.size() > 2) {
+            return refuse(
+                "pan is a dialogue channel's direction in degrees clockwise from the front, one a "
+                "channel");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "emdf") {
+        const auto payload = parse_emdf_payload(value);
+        if (!payload) {
+            return refuse("emdf is <id>:<hex bytes>, the id from 1");
+        }
+        s.emdf.push_back(*payload);
+        return MetadataOptionResult::kOk;
+    }
+    return MetadataOptionResult::kNotMetadata;
+}
+
+// presentationN= and presentationN-<suffix>= (N from 1; see
+// Options::Ac4Encode).
+MetadataOptionResult parse_ac4_presentation_option(
+    std::size_t n, std::string_view suffix, std::string_view value, Options& options,
+    const std::function<MetadataOptionResult(std::string_view)>& refuse) {
+    Options::Ac4Encode& out = options.ac4enc;
+    if (out.presentations.size() < n) {
+        out.presentations.resize(n);
+    }
+    Options::Ac4Encode::Presentation& p = out.presentations[n - 1];
+    p.named = true;
+    const auto whole = [](std::string_view text, int& i) {
+        const auto [ptr, ec] = std::from_chars(text.data(), text.data() + text.size(), i);
+        return !text.empty() && ec == std::errc{} && ptr == text.data() + text.size() && i >= 0;
+    };
+    if (suffix.empty()) {
+        if (!parse_list(value, p.substreams, whole) ||
+            std::ranges::any_of(p.substreams, [](int s) { return s < 1; })) {
+            return refuse("presentationN= lists the substreams it plays, from 1, comma-separated");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    int number = 0;
+    if (suffix == "config") {
+        if (!whole(value, number) || number > 6) {
+            return refuse("a presentation's config is Part 2 Table 53's 0 to 6");
+        }
+        p.config = number;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "id") {
+        if (!whole(value, number)) {
+            return refuse("a presentation's id is its presentation_id, from 0");
+        }
+        p.id = number;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "md-compat") {
+        if (!whole(value, number) || (number > 3 && number != 7)) {
+            return refuse("a presentation's md-compat is Part 2 Table 55's 0 to 3, or 7");
+        }
+        p.md_compat = number;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "enabled" || suffix == "pre-virtualized") {
+        const std::optional<bool> on = parse_on_off(value);
+        if (!on) {
+            return refuse("a presentation's enabled and pre-virtualized are on or off");
+        }
+        if (suffix == "enabled") {
+            p.enabled = on;
+        } else {
+            p.pre_virtualized = *on;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "name") {
+        if (value.empty()) {
+            return refuse("an alternative presentation's name is UTF-8 text");
+        }
+        p.name = std::string{value};
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "dialnorm") {
+        double db = 0.0;
+        if (!parse_double(value, db) || !(db >= 0.0 && db <= 31.75) || !on_grid(db, 0.25)) {
+            return refuse(
+                "a presentation's dialnorm is dB below full scale, 0 to 31.75 in steps of 0.25");
+        }
+        p.dialnorm_db = -db;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "gains") {
+        if (!parse_list(value, p.gains_db, parse_cut_db)) {
+            return refuse(
+                "gains are each substream's group gain in dB, 0 or below, or off, comma-separated");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "main-gain" || suffix == "main-centre-gain" || suffix == "main-front-gain") {
+        double db = 0.0;
+        if (!parse_cut_db(value, db)) {
+            return refuse(
+                "the main audio's scaling beside associated audio is dB, 0 or below, or off");
+        }
+        (suffix == "main-gain"
+             ? p.main_db
+             : (suffix == "main-centre-gain" ? p.main_centre_db : p.main_front_db)) = db;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "associated-pan") {
+        double degrees = 0.0;
+        if (!parse_double(value, degrees) || !(degrees >= 0.0 && degrees < 360.0)) {
+            return refuse(
+                "associated-pan is mono associated audio's direction in degrees clockwise from the "
+                "front");
+        }
+        p.associated_pan = degrees;
+        return MetadataOptionResult::kOk;
+    }
+    if (suffix == "emdf") {
+        const auto payload = parse_emdf_payload(value);
+        if (!payload) {
+            return refuse("emdf is <id>:<hex bytes>, the id from 1");
+        }
+        p.emdf.push_back(*payload);
+        return MetadataOptionResult::kOk;
+    }
+    return MetadataOptionResult::kNotMetadata;
+}
+
 // ac4-encode's own options, and the keys other commands read that mean
 // something else in AC-4 or take values only AC-4 has; parse_options asks
 // here first for that command. The same three answers as
@@ -751,6 +1143,36 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
         fmt::println(stderr, "error: {} (got '{}')", what, token);
         return MetadataOptionResult::kError;
     };
+    if (const auto numbered = match_numbered(key, "substream", 32)) {
+        const auto parsed =
+            parse_ac4_substream_option(numbered->first, numbered->second, value, options, refuse);
+        return parsed == MetadataOptionResult::kNotMetadata
+                   ? refuse("unknown substreamN option; see ac3cli help ac4-encode")
+                   : parsed;
+    }
+    if (const auto numbered = match_numbered(key, "presentation", 64)) {
+        const auto parsed = parse_ac4_presentation_option(numbered->first, numbered->second, value,
+                                                          options, refuse);
+        return parsed == MetadataOptionResult::kNotMetadata
+                   ? refuse("unknown presentationN option; see ac3cli help ac4-encode")
+                   : parsed;
+    }
+    if (key == "crc") {
+        out.crc = parse_on_off(value);
+        if (!out.crc) {
+            return refuse(
+                "crc is on, a raw stream's sync frames with Part 2 Annex G's CRC (the default), or "
+                "off");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (key.starts_with("dialogue-")) {
+        const auto parsed =
+            parse_ac4_dialogue_option(key, value, out.substreams.front().dialogue, refuse);
+        if (parsed != MetadataOptionResult::kNotMetadata) {
+            return parsed;
+        }
+    }
     // A signed figure in dB, which may lead with a + as a mixing desk shows
     // it and parse_double does not take.
     const auto signed_db = [](std::string_view text, double& db) {
@@ -947,48 +1369,6 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
             return refuse("a downmix loudness correction is -7.5 to +7.5 dB in steps of 0.5");
         }
         (key == "loro-correction" ? out.loro_correction_db : out.ltrt_correction_db) = db;
-        return MetadataOptionResult::kOk;
-    }
-    if (key == "dialogue-channels") {
-        std::string_view rest = value;
-        bool ok = !rest.empty();
-        while (ok && !rest.empty()) {
-            const std::size_t comma = rest.find(',');
-            const std::string_view item = rest.substr(0, comma);
-            ok = item == "l" || item == "r" || item == "c";
-            rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
-        }
-        if (!ok) {
-            return refuse("dialogue-channels is any of l, r and c, comma-separated");
-        }
-        out.dialogue_channels = std::string{value};
-        return MetadataOptionResult::kOk;
-    }
-    if (key == "dialogue-stem") {
-        if (value.empty()) {
-            return refuse("dialogue-stem needs a WAV file");
-        }
-        out.dialogue_stem = std::string{value};
-        return MetadataOptionResult::kOk;
-    }
-    if (key == "dialogue-method") {
-        if (value == "independent") {
-            out.dialogue_method = ac4::DialogueMethod::kChannelIndependent;
-        } else if (value == "mid") {
-            out.dialogue_method = ac4::DialogueMethod::kMid;
-        } else if (value == "cross") {
-            out.dialogue_method = ac4::DialogueMethod::kCrossChannel;
-        } else {
-            return refuse("dialogue-method is independent, mid or cross");
-        }
-        return MetadataOptionResult::kOk;
-    }
-    if (key == "dialogue-max-gain") {
-        const std::uint32_t db = parse_u32_or(value, 0);
-        if (db != 3 && db != 6 && db != 9 && db != 12) {
-            return refuse("dialogue-max-gain is 3, 6, 9 or 12 dB");
-        }
-        out.dialogue_max_gain_db = static_cast<int>(db);
         return MetadataOptionResult::kOk;
     }
     return MetadataOptionResult::kNotMetadata;
@@ -1768,9 +2148,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "codec-mode" && command == "ac4-encode") {
-            constexpr std::array<std::string_view, 6> kModes = {"auto",        "simple",      "aspx",
-                                                                "aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3"};
-            if (std::ranges::find(kModes, value) == kModes.end()) {
+            if (!is_ac4_codec_mode(value)) {
                 fmt::println(stderr,
                              "error: codec-mode is 'auto' (the default: in 5.X ASPX_ACPL_3 below 22.4 kbps a channel "
                              "and ASPX_ACPL_2 below 33.6, then ASPX below 96 kbps a channel, 76.8 in 5.X and 7.X), "
@@ -1799,6 +2177,8 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                     out.ac4_experimental_coding_configs = true;
                 } else if (tool == "acpl") {
                     out.ac4_experimental_acpl = true;
+                } else if (tool == "three-zero") {
+                    out.ac4_experimental_three_zero = true;
                 } else if (tool == "7x-back" || tool == "7x-wide" || tool == "7x-top-front") {
                     out.ac4_experimental_seven_x = std::string{tool.substr(3)};
                 } else if (tool.size() == 11 && tool.starts_with("drc-gains-") && tool[10] >= '0' &&
@@ -1810,8 +2190,9 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                     fmt::println(
                         stderr,
                         "error: experimental takes aspx-balance, aspx-varvar, aspx-interleave, "
-                        "coding-configs, acpl, one of 7x-back, 7x-wide and 7x-top-front, and "
-                        "one of drc-gains-0 to drc-gains-3, comma-separated (got '{}')",
+                        "coding-configs, acpl, three-zero, one of 7x-back, 7x-wide and "
+                        "7x-top-front, and one of drc-gains-0 to drc-gains-3, comma-separated "
+                        "(got '{}')",
                         token);
                     return false;
                 }

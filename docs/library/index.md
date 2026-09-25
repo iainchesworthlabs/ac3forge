@@ -26,8 +26,9 @@ The main public headers are under `src/forge/include/ac3/`.
 | `iamf::iamf` | IAMF OBU and ISOBMFF writing; see [IAMF](iamf.md) |
 | `ac3adm::ac3adm` | ADM/BW64 reading and writing; opt-in with `AC3FORGE_BUILD_ADM=ON` |
 | `ac3::admbridge` | Mapping between ADM objects and the Atmos encoder or decoder |
-| `ac4::decoder` | AC-4 decoding; see [AC-4 decoding](ac4.md) |
-| `ac4::ac4` | AC-4 sync frames, table of contents and presentations, which the decoder reads through |
+| `ac4::decoder` | AC-4 decoding; see [AC-4](ac4.md) |
+| `ac4::encoder` | AC-4 encoding; see [AC-4](ac4.md#encoding-a-stream) |
+| `ac4::ac4` | AC-4 sync frames, table of contents and presentations, which the decoder reads through and the encoder describes its streams with |
 
 `ac3adm::ac3adm` and `ac3::admbridge` need the root dependency manifest's `adm` feature
 (`-DVCPKG_MANIFEST_FEATURES=adm`) when building this repository with vcpkg, and are installed as
@@ -36,10 +37,10 @@ target. Their [ADM](adm.md) and [ADM bridge](adm-bridge.md) pages explain the de
 linkage details.
 
 The AC-4 libraries are installed and exported under `ac4::`: `ac4::decoder_static` and
-`ac4::decoder_shared`, each linking `ac4::ac4_static` or `ac4::ac4_shared`. The static decoder
-calls into `ac4::core`, an archive with no headers that its exported target names as a link-only
-dependency; [AC-4 decoding](ac4.md#linking) has the detail. The AC-4 encoder, `ac4::encoder`, is
-in-tree only until planning/ac4.md's phase E7 installs it.
+`ac4::decoder_shared`, and `ac4::encoder_static` and `ac4::encoder_shared`, each linking
+`ac4::ac4_static` or `ac4::ac4_shared`. The static decoder and encoder call into `ac4::core`, an
+archive with no headers that their exported targets name as a link-only dependency;
+[AC-4](ac4.md#linking) has the detail.
 
 **In-tree** (this repo `add_subdirectory`'d into a larger build, or as a git submodule):
 
@@ -141,8 +142,8 @@ second one, so a Conan consumer's CMakeLists.txt looks identical to a vcpkg or p
 
 **pkg-config.** Every installed component above also gets its own `.pc` file
 (`${libdir}/pkgconfig/<name>.pc` — `ac3forge`, `ac3signing`, `matroska`, `mp4`, `mpegts`,
-`iamf`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`, `ac4`, `ac4dec`, `ac4core`), for a
-non-CMake consumer:
+`iamf`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`, `ac4`, `ac4dec`, `ac4enc`, `ac4core`), for
+a non-CMake consumer:
 
 ```bash
 pkg-config --cflags --libs ac3forge
@@ -152,7 +153,7 @@ Picks whichever linkage was actually installed (the shared name when
 `AC3FORGE_INSTALL_BOTH_LINKAGES`/`BUILD_SHARED_LIBS` selected it, else the `_static`-suffixed
 one — matching what is actually on disk), and chains `Requires:` for a component that PUBLIC-
 links another (`ac3signing` requires `ac3forge`; `admbridge` requires both `ac3forge` and
-`ac3adm`; `ac4dec` requires `ac4`). The `prefix=` line resolves relative to wherever the `.pc` file itself ends up
+`ac3adm`; `ac4dec` and `ac4enc` require `ac4`). The `prefix=` line resolves relative to wherever the `.pc` file itself ends up
 (`pkg-config`'s own `${pcfiledir}`), so it works the same whether that's a real system install or
 an unpacked `ac3forge-dev-*` archive.
 
@@ -166,13 +167,13 @@ cc consumer.c $(pkg-config --static --cflags --libs ac3forge_c)
 ```
 
 `ac3forge_c.pc` requires `ac3forge` privately, because `libac3forge_c_static.a` calls into
-`libac3forge_static.a`, and `ac4dec.pc` requires `ac4core` privately, because
-`libac4dec_static.a` calls into `libac4core_static.a`. `ac3forge.pc`, `matroska.pc`, `mp4.pc`,
+`libac3forge_static.a`, and `ac4dec.pc` and `ac4enc.pc` require `ac4core` privately, because
+`libac4dec_static.a` and `libac4enc_static.a` call into `libac4core_static.a`. `ac3forge.pc`, `matroska.pc`, `mp4.pc`,
 `mpegts.pc`, `iamf.pc`, `ac3iab.pc`, `ac4.pc` and `ac4core.pc` list the C++ runtime and libm in
 `Libs.private`. A C compiler does not link them by itself, and a C++ compiler does. The names are
 the ones CMake recorded for the compiler that built the archives: `-lstdc++ -lm` with libstdc++
 and `-lc++ -lm` with libc++ on Linux. `ac3signing.pc` gets them through `ac3forge`, and
-`ac4dec.pc` through `ac4` and `ac4core`. A `.pc` that names a shared library has neither field: the library
+`ac4dec.pc` and `ac4enc.pc` through `ac4` and `ac4core`. A `.pc` that names a shared library has neither field: the library
 records what it needs, and `libac3forge_c.so` holds its own copy of the codec, so it does not pull
 in `libac3forge.so`. An install with both linkages, such as the `ac3forge-dev-*` packages, names
 the shared libraries, and `--static` does not switch to the archives, so name them yourself:
@@ -222,8 +223,9 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [IAMF writing](iamf.md) — `iamf::iamf`, a standalone writer re-wrapping a decoded 7.1.4
   programme as a channel-based IAMF Audio Element in IAMF's own ISO-BMFF encapsulation (on by
   default).
-- [AC-4 decoding](ac4.md) — `ac4::decoder` and the inspector it reads through, `ac4::ac4`: the
-  controls, the choice of presentation, what the decoder reports, and linking (on by default).
+- [AC-4](ac4.md) — `ac4::decoder`, `ac4::encoder` and the inspector both work through,
+  `ac4::ac4`: the decoder's controls, the choice of presentation and what the decoder reports; the
+  encoder's configuration, substreams and presentations; and linking (on by default).
 - [Measuring quality](quality.md) — `ac3::quality`, the decoded-domain distortion measure and the
   tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.

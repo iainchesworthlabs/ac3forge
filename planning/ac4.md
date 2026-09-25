@@ -1821,6 +1821,31 @@ meet E1's and E2's checks; the race at 5.1 and 96, 128 and 144 kbps.
   lacks, except mono; 3.0 carries only a dialogue enhancement signal or the dialogue of a music and
   effects presentation; and CMAF's limits hold: 64 presentations at most, a `presentation_id` in
   every sample and one table of contents configuration throughout.
+- E6 found the text leaving a writer these choices (`src/ac4enc/ERRATA.md`, "Presentations"): the
+  tracks `md_compat` counts, every channel but the LFE of every substream a presentation names, the
+  dialogue enhancement substream's included, which DEE's levels agree with (0 in stereo, 1 in 5.1, 2
+  in 5.1.4, and `presentation_id` 0 on their one presentation, which E1 to E5 left out); a name sent
+  whole, at most 31 bytes; one target for an alternative presentation of channel-coded substreams,
+  whose `alt_data_set_index` has no object metadata to pick; the substreams' order, presentation
+  substreams, then audio, then EMDF payloads, which librempeg depends on; and what a hybrid method's
+  waveform carries: each processed channel's dialogue, the Mid's sum, or the dialogue projected on its
+  panning. A configuration 6 presentation has no field for the `presentation_id` CMAF asks of every
+  presentation, and DEE's muxer warns of it.
+- MediaInfo reads the encoder's tables of contents as configured, but reads no audio substream of a
+  stream with a configuration 6 presentation, gives no language to a presentation whose one group is
+  associated audio, and frames the EMDF payloads substream without detailing it. DEE's MP4 muxer
+  refuses a stream of more than one presentation, and on the 15 presentations of the broadcast stream
+  it hangs. librempeg decodes a presentation's first group alone, as D7 found, is silent on 15
+  presentations over 22 substreams, and refused a frame whose EMDF payloads substream came before the
+  audio.
+- In the race against G1's legs, which DEE encoded one at a time and D7's multiplexer puts into the
+  same presentations, the encoder's SNR is within 0.1 dB of DEE's or above it with music at 128 kbps
+  and dialogue and associated audio at 64, and 5.5 to 6.3 dB above it at 192 and 128 kbps, ViSQOL
+  within 0.03 of DEE's throughout.
+- Left for E7: the options of `ac3cli ac4-encode`, and the MP4's `dac4`, which `ac4::build_dac4()`
+  writes whole only for a presentation of one substream (Annex E.10 describes the others); and for
+  later, transmitted DRC gains computed from a presentation's mix, where E6 takes the main
+  substream's input.
 
 **Exit:** the decoder's D7 selection and mixing on the encoder's streams give the configured
 presentations, measured with one tone per substream; MediaInfo's trace lists presentations, names,
@@ -1837,6 +1862,49 @@ languages and levels as configured.
   tools.
 - The encoder installed and exported beside the decoder, with an ABI allowlist and the package
   check; the documentation pages; the status table's encoder rows; CHANGELOG and a ROADMAP entry.
+- E7's `Encoder::refusal_reason()` names the first rule a configuration breaks, as a string
+  literal, across the substreams, the presentations, their metadata and the rate; `create()` still
+  answers `kInvalidConfig` alone. Every field of the configuration's structures has a default, so a
+  designated initializer names only what it sets, as D8's decoder configuration does. The members of
+  `Encoder::Impl` defined out of line are hidden, and `tools/ci/abi-allowlist/libac4enc.so.txt` lists
+  the header's API alone.
+- `ac3cli ac4-encode` takes the substreams and presentations as numbered options, `substream2=` to
+  `substream32=` and `presentation1=` to `presentation64=`, each with keys of its own
+  (`substreamN-content=`, `presentationN-config=` and the rest), substream 1's values being the bare
+  options or `substream1-` keys. Without them it builds the configuration as before, so the
+  committed commands' streams do not change. `crc=off` writes sync frames without Annex G's CRC, and
+  `dialogue-hybrid=` with `substreamN-enhances=` gives the hybrid methods their waveform. Every option
+  has a test that reads what it writes back from the table of contents or the syntax trace, and a
+  configuration the encoder refuses is refused with its reason.
+- The MP4's `dac4` (Part 2 Annex E.10) describes every presentation: each group its specifiers name,
+  the channel mode, core and channel groups by Pseudocodes 25, 26 and E.3 over all its substreams,
+  A-JOC and direct-coded object groups, the program identifier and an alternative presentation's
+  `alternative_info()`, whose name and target the decoder now reports. Where it cannot describe a
+  presentation whole it writes nothing, and `dac4_refusal()` says why. DEE's muxer refuses a stream
+  of more than one presentation and does not finish one of an alternative presentation, so the box
+  is held to the text and to MediaInfo's trace, and to the muxer's box byte for byte for Chromium's
+  A-JOC stream and DASH-IF's 5.1 test vectors. MediaInfo reads `n_targets` as `n_targets_minus1`.
+  `src/ac4enc/ERRATA.md` records the readings, among them where Pseudocode E.3 leaves channel groups
+  out and when `b_presentation_core_differs` is set.
+- A configuration 6 presentation has no field for the `presentation_id` Annex H.1.2.1 asks of every
+  presentation of a CMAF track. `ac4::cmaf_refusal()` names the rule a table of contents breaks, and
+  `ac3cli fmp4`, which fragments no AC-4 yet (I1), refuses such a stream by it; an MP4 that is not
+  fragmented carries it.
+- The encoder is installed and exported beside the decoder, `ac4::encoder_static` and
+  `ac4::encoder_shared` with pkg-config `ac4enc`, in the shape D8 gave the decoder: each library links
+  the inspector of its own kind and the core privately, and the core's archive is installed wherever
+  a static decoder or encoder is. `check_install_consumer.sh` encodes a tone through each installed
+  encoder by CMake and by pkg-config and reads it back with the inspector. vcpkg's and Conan's
+  features stay as they are, pending the user's decision on an opt-in AC-4 feature there.
+- The encoder-space harness draws further substreams in one case in five, in each configuration of
+  Table 53, with rate shares, mixing values, ids, levels, names and payloads, through the CLI's
+  options. It found three faults the tests had not: at an average rate a frame could give the
+  substream taking what the others leave less than its least frame, which the encoder then could not
+  write, so each substream now keeps its least frame first and the rest goes by need; a frame
+  between I-frames was sized for a dialogue stem's parameters coded against the last frame's, where
+  it falls back to the last frame's kept, and so found no size (E6's sizing, which it now checks
+  with the fallback's metadata); and the 7.X layout's pair went to every substream, so a 7.1
+  substream refused a mono one beside it.
 
 **Exit:** every CLI option has a test; the packages contain the encoder; the documentation gates
 pass.

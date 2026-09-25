@@ -251,11 +251,18 @@ each of these:
 ## The MP4 sample entry's dac4
 
 `ac4::build_dac4()` in `src/ac4` writes Annex E.6's `ac4_dsi_v1()` from a table of contents, for the
-encoder's MP4 output and for `ac3cli mp4` alike. The DSI of a presentation of one channel-coded
-substream in one substream group is derived whole (Annex E.10 and E.11); these are the readings it
-takes. The evidence for each is DEE's MP4 muxer: for the committed DEE streams and for the encoder's,
-the box it writes is the box `build_dac4()` writes, byte for byte (`tests/ac4/test_ac4.cpp`,
-`tools/checks/check_ac4_encode_readers.py`), but for the 3/2/2 layout's top front pair (below).
+encoder's MP4 output and for `ac3cli mp4` alike. Every presentation of a bitstream_version 2 table of
+contents is derived whole (Annex E.10 and E.11): a single substream group, each configuration of Table
+53, channel-coded, A-JOC and direct-coded object groups, and an alternative presentation's name and
+targets where the writer gives them (an encoder knows them; `ac3cli mp4` reads them with the decoder);
+what it cannot derive whole it refuses, and `ac4::dac4_refusal()` says why. These are the readings it
+takes. Where the evidence is DEE's MP4 muxer, the box it writes is the box `build_dac4()` writes, byte for
+byte (`tests/ac4/test_ac4.cpp`, `tools/checks/check_ac4_encode_readers.py`): for the committed DEE
+streams and the encoder's single-presentation streams (but for the 3/2/2 layout's top front pair, below),
+and for Chromium's A-JOC stream and DASH-IF's 5.1 test vectors, whose program identifier it copies from
+the table of contents. The muxer refuses a stream of more than one presentation and does not finish one
+of an alternative presentation; MediaInfo's trace of the encoder's presentation streams' boxes reads
+every configuration's substream groups as written.
 
 ### Pseudocode E.3 leaves channel groups out
 
@@ -290,23 +297,73 @@ the box it writes is the box `build_dac4()` writes, byte for byte (`tests/ac4/te
 ### b_presentation_core_differs
 
 - **Where:** Part 2 Table E.11, p. 233.
-- **Text:** true "if the pres_ch_mode_core according to pseudocode 26 has a value of -1".
+- **Text:** true "if the pres_ch_mode_core according to pseudocode 26 has a value of -1; or in any
+  ac4_substream_group_info() of the presentation: b_channel_coded is false and b_ajoc is true".
 - **Reading:** true where `pres_ch_mode_core` is not -1, as `b_presentation_core_channel_coded`'s rule,
-  false where it is -1, implies; for one channel-coded substream, the immersive modes 11 to 14 (Table
-  71), with Table E.14's code for their core.
-- **Evidence:** Streams. DEE's muxer writes 0 for 2.0 and 5.1, and 1 with the 5.1.2 core for its 5.1.4.
+  false where it is -1, implies; for channel-coded substreams, the immersive modes 11 to 14 (Table 71),
+  and for an A-JOC substream a static downmix's 5.0 or 5.1, with Table E.14's code for the core. An A-JOC
+  group alone does not set it: an adaptive downmix has no core (Pseudocode 26).
+- **Evidence:** Streams. DEE's muxer writes 0 for 2.0 and 5.1, 1 with the 5.1.2 core for its 5.1.4, and 0
+  for Chromium's A-JOC stream, whose one A-JOC substream has an adaptive downmix of ten signals.
 
 ### The bit rate and the indicators
 
 - **Where:** Part 2 Table E.7 and E.10.1.
 - **Reading:** `bit_rate_mode` follows the table of contents' `wait_frames` as Table E.7 says (1 where it
   is 0, 2 where it is 1 to 6, 3 otherwise, `b_wait_frames` 0 included); `bit_rate` is written as 0,
-  unknown, with `bit_rate_precision` 0xFFFFFFFF. `de_indicator` and `immersive_audio_indicator` are
-  facts of the substreams, which a table of contents does not carry: the encoder gives them, 0 and 0,
-  and a DSI built from a stream's table of contents alone leaves out the closing byte that holds them,
-  as its `pres_bytes` allows.
+  unknown, with `bit_rate_precision` 0xFFFFFFFF. A presentation sends `b_presentation_bitrate_info`
+  where every substream of its substream groups sends `b_bitrate_info`, as Table E.11 asks, and a
+  presentation of configuration 6, which has no substream to send one, sends none. `de_indicator` and
+  `immersive_audio_indicator` are facts of the substreams, which a table of contents does not carry: the
+  encoder gives them, whether a substream sends dialogue enhancement and 0, and a DSI built from a
+  stream's table of contents alone leaves out the closing byte that holds them, as its `pres_bytes`
+  allows.
 - **Evidence:** Streams, for the encoder's output: DEE's muxer writes the same. For DEE's streams it
-  writes mode 2 and sets `de_indicator`, which `ac3cli mp4` cannot see from the table of contents.
+  writes mode 2 and sets `de_indicator`, which `ac3cli mp4` cannot see from the table of contents. Text
+  for configuration 6.
+
+### A presentation's channel mode, core and channel groups
+
+- **Where:** Part 2 E.10.2, p. 232: `dsi_presentation_ch_mode` and `pres_b_4_back_channels_present`,
+  `pres_top_channel_pairs` and the channel groups come from Pseudocode 25 and clauses 6.3.3.1.29 to
+  6.3.3.1.30; E.10.3 from `b_pres_centre_present` too (6.3.3.1.29a).
+- **Reading:** the decoder's ([presentation_config 1 and 4 read more specifiers than
+  n_substream_groups](../ac4dec/ERRATA.md#presentation_config-1-and-4-read-more-specifiers-than-n_substream_groups)
+  and [The presentation substream](../ac4dec/ERRATA.md#the-presentation-substream)): every substream of
+  every group the specifiers name, a group named twice once, `superset()` by the channels each mode holds,
+  and `b_pres_centre_present` the disjunction of the substreams' `b_centre_present`, where they send
+  one. A group the table of contents does not carry (`b_multi_pid`) cannot be described, and is refused.
+  Each group gets its own `ac4_substream_group_dsi()` in its specifiers' order, a group named twice
+  twice.
+- **Evidence:** Text; MediaInfo reads the encoder's presentation streams' boxes as written.
+
+### An A-JOC substream's objects
+
+- **Where:** Part 2 Table E.15, p. 238: `b_substream_contains_bed_objects` and its siblings of an A-JOC
+  substream "match the values transmitted in ac4_substream_info_ajoc", which transmits the upmix's
+  `bed_dyn_obj_assignment()` (6.2.1.10), whose syntax lists bed and ISF objects and no dynamic ones.
+- **Reading:** the upmix holds bed objects where the assignment lists one, ISF objects likewise, and
+  dynamic objects where it lists fewer objects than `n_fullband_upmix_signals`, all of them where
+  `b_dyn_objects_only` is set. A direct-coded object substream holds what its `b_dynamic_objects`,
+  `b_bed_objects` and `b_isf` say, a substream continuing a bed or an ISF set included.
+- **Evidence:** Streams, for the dynamic case: DEE's muxer writes 0, 1 and 0 for Chromium's A-JOC
+  stream, whose upmix of seventeen signals is dynamic objects only. Text for the rest.
+
+### An alternative presentation's dac4
+
+- **Where:** Part 2 E.12, pp. 239 and 240: `alternative_info()` carries `name_len` in 16 bits and the
+  name, `n_targets` ("the value of n_targets_minus1 + 1") in 5 bits, and for each target
+  `target_md_compat` in 3 bits and `target_device_category` in 8 bits, "the respective field defined in
+  clause 6.3.3.1.7", which the presentation substream sends as four Booleans (Table 67) with four more
+  bits behind `b_tdc_extension`.
+- **Reading:** the name's bytes without the 0 the presentation substream closes a whole name with, and
+  `name_len` counting them; `n_targets` the number of targets; `target_device_category` Table 67's four
+  Booleans, index 0 first, in its upper four bits and the extension's four in the lower, 0 where
+  `b_tdc_extension` is 0. The table of contents does not carry them, so `build_dac4()` refuses an
+  alternative presentation whose writer has not given them.
+- **Evidence:** Text. MediaInfo reads the name and the first target as written, then a second target:
+  it takes `n_targets` for `n_targets_minus1`. DEE's muxer, given the encoder's stream of one alternative
+  presentation, writes nothing in 60 seconds and has to be stopped, so it settles nothing here.
 
 ## The presentation substream
 
@@ -356,8 +413,9 @@ The writer takes the decoder's reading of each of these (phase E5):
 ## Presentations
 
 The table of contents of several presentations and their mixing fields (`src/ac4enc/src/frame/toc_writer.cpp`
-and `metadata.cpp`), which phase D7's test multiplexer writes and phase E6 extends to the encoder's own
-presentations. The writer takes the decoder's reading of each of these:
+and `metadata.cpp`), which phase D7's test multiplexer writes, and the encoder's presentations of several
+substreams (`src/ac4enc/src/encoder.cpp`), phase E6's. The writer takes the decoder's reading of each of
+these:
 
 - [presentation_config 1 and 4 read more specifiers than n_substream_groups](../ac4dec/ERRATA.md#presentation_config-1-and-4-read-more-specifiers-than-n_substream_groups)
   and [Substream group gains](../ac4dec/ERRATA.md#substream-group-gains): every specifier the
@@ -366,8 +424,172 @@ presentations. The writer takes the decoder's reading of each of these:
 - [The dialogue's gain and pans](../ac4dec/ERRATA.md#the-dialogues-gain-and-pans) and
   [Panning](../ac4dec/ERRATA.md#panning): `dialog_max_gain` for a g_dialog_max of (1 + `dialog_max_gain`)
   x 3 dB, and pans in 1.5 degree steps clockwise from the front, 330 degrees L and 30 degrees R.
+- [The main audio's and the dialogue's scaling with associated audio](../ac4dec/ERRATA.md#the-main-audios-and-the-dialogues-scaling-with-associated-audio):
+  `scale_main`, `scale_main_centre` and `scale_main_front` at -0.3 dB a step, 255 for silence.
 - [The hybrid dialogue enhancement's waveform](../ac4dec/ERRATA.md#the-hybrid-dialogue-enhancements-waveform):
-  a hybrid method's `de_signal_contribution` sets the waveform's share, alpha_c = x / 31, of the gain.
+  a hybrid method's `de_signal_contribution` sets the waveform's share, alpha_c = x / 31, of the gain,
+  and the dialogue enhancement substream's channels are d_c in that entry's order (below, "The hybrid
+  methods' waveform").
+- [Which presentations can be selected](../ac4dec/ERRATA.md#which-presentations-can-be-selected): each
+  presentation's `md_compat` is the least its tracks allow (below, "Tracks for md_compat"), so that a
+  decoder of that level can select it; a caller may set a higher one, and 7 is selected only by a
+  decoder told its level is 7.
+- [The order of the preferences](../ac4dec/ERRATA.md#the-order-of-the-preferences): a presentation's
+  language is its dialogue substream's, else its main or music and effects substream's. Each substream's
+  language goes in its own group's `content_type()`, so an associated substream's tag, which may be one
+  of Table 92's codes such as `qad`, never gives a presentation its language.
+- [b_associated and b_dialog are parameters at sus_ver 0](../ac4dec/ERRATA.md#b_associated-and-b_dialog-are-parameters-at-sus_ver-0):
+  at sus_ver 1 the writer sends `b_dialog` for a substream that is the dialogue of a presentation or is
+  classified as dialogue, with its mixing values, in every frame.
+- [Levelling before the mix](../ac4dec/ERRATA.md#levelling-before-the-mix): a version 1 presentation
+  carries one dialnorm, in its presentation substream, and levels nothing, so each presentation substream
+  sends the dialnorm its substreams share: the presentation's own, else the stream's.
+- [oamd_dyndata_single() in metadata() of a channel-coded substream](../ac4dec/ERRATA.md#oamd_dyndata_single-in-metadata-of-a-channel-coded-substream):
+  a channel-coded substream sends none, so one substream serves an alternative presentation and others
+  alike.
+- [The end of an EMDF payload list](../ac4dec/ERRATA.md#the-end-of-an-emdf-payload-list): each list ends
+  with an `emdf_payload_id` of 0 and the alignment, and nothing between.
+- [The presentation substream](../ac4dec/ERRATA.md#the-presentation-substream): `superset(0, 1)` is 1,
+  so stereo main audio with mono dialogue or associated audio is a stereo presentation, and the fields
+  that follow `pres_ch_mode`, `custom_dmx_data()` and `loud_corr()`, follow the superset.
+
+### Tracks for md_compat
+
+- **Where:** Part 2 6.3.2.2.3 and Table 55, p. 157: md_compat 0 to 3 allow 2, 6, 9 and 11 tracks, "the
+  total number of audio objects and channels in all substreams contributing to the presentation, with the
+  exception of LFE channels that have the b_lfe flag set in mono_data() structure", and 7 is
+  "Unrestricted".
+- **Reading:** a presentation's tracks are the channels of every substream it names but the LFE, its
+  dialogue enhancement substream's among them, whose waveform joins the output (Part 1 5.7.8.9). The
+  writer sends the least level that holds them, 7 above 11 tracks, and refuses a level set below it or in
+  4 to 6. One substream alone is level 0 in mono and stereo, 1 in 5.X and 2 in 7.X.
+- **Evidence:** Streams. DEE's streams carry level 0 in stereo, 1 in 5.1 and 2 in 5.1.4, whose nine
+  tracks the reading counts, each with `presentation_id` 0 on its one presentation, as the encoder's
+  single presentation now has (phases E1 to E5 wrote level 0 and no `presentation_id`). MediaInfo lists
+  each committed presentation's level as configured, and the decoder selects each at it
+  (`tests/ac4enc/test_ac4enc_presentations.cpp`).
+
+### A presentation_id for every presentation that carries audio
+
+- **Where:** Part 2 Annex H.1.2.1, p. 250: in an AC-4 CMAF track of several presentations "each
+  presentation shall have a unique presentation_id", and "for every presentation presentation_id shall be
+  present in every AC-4 sample"; 6.2.1.3, p. 114, reads no `b_presentation_id` for `presentation_config`
+  6.
+- **Reading:** every presentation of configurations 0 to 5, and every presentation of one substream
+  group, carries a `presentation_id` in every frame, no two the same; a configuration 6 presentation,
+  EMDF payloads alone, has no field for one. The writer takes configuration 6 as Part 2's syntax has it,
+  and an MP4 that is not fragmented carries it (Annex E.10). A CMAF track cannot, since "every
+  presentation" includes it: `ac4::cmaf_refusal()` refuses a stream with one, and `ac3cli fmp4` with it
+  (phase E7). A writer that wants a CMAF track carries the payloads in a presentation that plays audio,
+  in the EMDF payloads substream its `emdf_info()` names.
+- **Evidence:** Text. DEE's muxer, given the encoder's EMDF stream, warns that its second presentation "is
+  missing a presentation_id", and refuses the stream, as it refuses every stream of more than one
+  presentation.
+
+### An alternative presentation's name
+
+- **Where:** Part 2 6.2.2.3, p. 123, and 6.3.3.1.1 to 6.3.3.1.4, p. 167: `name_len` in five bits, or 32
+  bytes where `b_length` is 0; a name whose last byte is 0 is whole, and one whose last byte is not is a
+  chunk of a name serialized over several frames, the last chunk counting them.
+- **Reading:** a name of at most 31 bytes of UTF-8, none of them 0, sent whole in every frame: its bytes
+  and a 0, with `name_len` counting the 0 where that is below 32, and the 32-byte form for a name of 31
+  bytes. A longer name, which only the chunked form holds, is refused.
+- **Evidence:** Readers. MediaInfo frames the name where the writer put it, showing its bytes as data,
+  and the decoder's and the Python parser's traces read the name and the 0.
+
+### An alternative presentation's target
+
+- **Where:** Part 2 6.2.2.3, pp. 123 and 124, and 6.3.3.1.5 to 6.3.3.1.15, pp. 167 and 168: one target
+  or more, each with a `target_level` "similar to the md_compat element", Table 67's four device
+  categories, an optional ducking depth and loudness correction, and for each substream `b_active` and
+  `alt_data_set_index`, which picks one of the alternative object metadata sets an object substream's
+  `oamd_dyndata_single()` carries; 4.8.2, p. 40: alternative presentations apply "alternative metadata
+  to the selected substreams". Nothing says what a decoder does with a target.
+- **Reading:** a channel-coded substream has no alternative metadata sets, so an alternative presentation
+  of channel-coded substreams carries its name and one target: the presentation's `md_compat`, every
+  device category, no ducking depth or loudness correction, and every substream active with
+  `alt_data_set_index` 0, none.
+- **Evidence:** Text; Readers.
+
+### 3.0 substreams
+
+- **Where:** Part 1 4.3.3.7.1, p. 77: "The 3.0 channel mode shall only be used" for "coding of the
+  enhancement signal for the Dialogue Enhancement (DE) feature" and for "coding of the dialogue in a
+  music and effects + dialogue presentation".
+- **Reading:** a 3.0 substream is a hybrid method's dialogue enhancement substream, or the dialogue of a
+  configuration 0 or 3 presentation, or of a configuration 5 one whose main group is classified music and
+  effects. A presentation of one substream group, which gives it no other role, may also play it alone,
+  so long as a music and effects presentation carries it as dialogue. 3.0 as main or associated audio, or
+  as dialogue beside a complete main, is refused. The 3.0 element is experimental
+  (`experimental.three_zero`): no DEE stream has one.
+- **Evidence:** Readers. The decoder and the Python parser read the committed 3.0 stream
+  (`tests/golden/ac4dec/presentations/encoder-three-zero.ac4`) as the encoder wrote it, MediaInfo lists
+  it as configured, and the decoder mixes the dialogue channel to channel into the music and effects'
+  L, R and C.
+
+### The hybrid methods' waveform
+
+- **Where:** Part 1 5.7.8.9, pp. 253 and 254: the hybrid methods add the waveform d_c to the output; the
+  text gives the decoder's equations and says nothing of the signal a writer puts in d_c.
+- **Reading:** d_c is the dialogue the parameters raise. With the channel independent method, the
+  dialogue of each processed channel, from the stem or from the channels marked as dialogue, one channel
+  each in L, R, C order; with the Mid, L's and R's dialogue summed, which 1/2 (1, 1) halves into each;
+  with the cross-channel method, the dialogue projected on r, its panning, which the writer estimates from
+  the dialogue's energy in each channel, averaged with a leak whose time constant is half a second. The
+  waveform's share alpha_c is the caller's (`DialogueConfig::waveform_share`), sent as
+  `de_signal_contribution`.
+- **Evidence:** Text; each method's output measures to 0.01 dB against the main and the waveform decoded
+  alone, as the decoder's reading combines them (`tests/ac4enc/test_ac4enc_presentations.cpp`).
+
+### Mixing values across I-frames
+
+- **Where:** Part 1 6.2.16.0, p. 268: the mixing metadata "are not necessarily sent with each frame, and
+  not necessarily with each I-frame, although this is encouraged", and "remain valid until new ones are
+  transmitted"; Part 2 6.3.3.1.22 to 6.3.3.1.24, p. 170: `b_keep` repeats the last group gains; 6.3.2.11.2,
+  p. 166: `b_pres_ndot` says "whether a presentation substream can be decoded independently from
+  preceding frames".
+- **Reading:** an I-frame's presentation substream sends every mixing value the presentation is
+  configured with, and sets `b_pres_ndot`; a frame between I-frames keeps the group gains with `b_keep`,
+  sends no associated audio's values, which hold, and clears `b_pres_ndot`. A dialogue substream's values
+  (`b_dialog`) go in every frame, since the decoder's reading sets g_dialog_max to 0 dB at an I-frame
+  that does not send them.
+- **Evidence:** Readers; every mix of the committed streams measures its configured gains.
+
+### The substreams' order
+
+- **Where:** Part 1 4.2.3.11, p. 33, and 4.3.3.12.4, p. 81: `substream_index_table()` gives the
+  substreams' sizes in the order the frame carries them; Part 2 4.8.2, p. 40: a presentation finds its
+  substreams by each info element's `substream_index`. Nothing orders the presentation, audio and EMDF
+  payload substreams.
+- **Reading:** the presentation substreams first, in the presentations' order, then the audio
+  substreams, in the groups' order, then the EMDF payload substreams.
+- **Evidence:** Streams. librempeg takes the substream after the presentation substreams as a
+  presentation's first group's audio: with an EMDF payload substream there, it refused the frame ("invalid
+  audio_size"). MediaInfo reads either order.
+
+### EMDF
+
+- **Where:** Part 1 4.3.3.6.1 and 4.3.3.6.2, p. 77: `emdf_version` "shall be set to 0", and the text
+  "defines no semantics" for `key_id`; Part 2 6.2.1.3, p. 114: a presentation names an EMDF payloads
+  substream in its `emdf_info()`, and configuration 6 in `b_add_emdf_substreams`' list.
+- **Reading:** `emdf_version` 0 and `key_id` 0, with no protection bytes. A presentation's payloads go in
+  an EMDF payloads substream of their own that its `emdf_info()` names, configuration 6's in one its list
+  names, and a substream's in its `metadata()` (`b_emdf_payloads_substream`); each in every frame, as the
+  caller gives them.
+- **Evidence:** Readers. MediaInfo frames the EMDF payloads substream without detailing it, and names a
+  substream's payloads `umd_payload`.
+
+### DRC gains for a presentation of several substreams
+
+- **Where:** Part 1 6.2.13, p. 268: the decoder's DRC side chain is the signal before dialogue
+  enhancement. Nothing says what signal a writer computes transmitted gains (`drc_gains()`) from where a
+  presentation mixes several substreams.
+- **Reading:** the presentation's main or music and effects substream's input alone. The decoder's side
+  chain is the mix of the substreams ([Where the substreams are mixed](../ac4dec/ERRATA.md#where-the-substreams-are-mixed)),
+  so these gains leave the dialogue's and the associated audio's level out; transmitted gains are
+  experimental (`experimental=drc-gains`), and computing them from the mix, with the presentation's
+  gains, pans and scaling, is left for later.
+- **Evidence:** Text.
 
 ## Rates
 

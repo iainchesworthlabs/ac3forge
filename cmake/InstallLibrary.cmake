@@ -69,6 +69,7 @@ if(AC3FORGE_INSTALL_BOTH_LINKAGES)
     set(_ac3forge_iamf_install_targets iamf_objects iamf_static iamf_shared)
     set(_ac3forge_ac4_install_targets ac4_objects ac4_static ac4_shared)
     set(_ac3forge_ac4dec_install_targets ac4dec_objects ac4dec_static ac4dec_shared)
+    set(_ac3forge_ac4enc_install_targets ac4enc_objects ac4enc_static ac4enc_shared)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static forge_c_shared)
 elseif(BUILD_SHARED_LIBS)
     # ac3::forge_c (src/capi/CMakeLists.txt) statically embeds ac3::forge_static PRIVATE
@@ -96,6 +97,7 @@ elseif(BUILD_SHARED_LIBS)
     set(_ac3forge_iamf_install_targets iamf_objects iamf_shared)
     set(_ac3forge_ac4_install_targets ac4_objects ac4_shared)
     set(_ac3forge_ac4dec_install_targets ac4dec_objects ac4dec_shared)
+    set(_ac3forge_ac4enc_install_targets ac4enc_objects ac4enc_shared)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_shared)
 else()
     set(_ac3forge_forge_install_targets forge_objects forge_static)
@@ -107,6 +109,7 @@ else()
     set(_ac3forge_iamf_install_targets iamf_objects iamf_static)
     set(_ac3forge_ac4_install_targets ac4_objects ac4_static)
     set(_ac3forge_ac4dec_install_targets ac4dec_objects ac4dec_static)
+    set(_ac3forge_ac4enc_install_targets ac4enc_objects ac4enc_static)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static)
 endif()
 
@@ -398,21 +401,21 @@ if(AC3FORGE_BUILD_IAMF)
         LIBNAME "${_ac3forge_iamf_pc_libname}")
 endif()
 
-# The AC-4 inspector (src/ac4, ac4::ac4) and the AC-4 decoder (src/ac4dec, ac4::decoder) are
-# optional components under one switch, AC3FORGE_BUILD_AC4 (see the root CMakeLists.txt), with the
-# core the decoder links (src/ac4core, ac4::core). The three share one export set, ac4Targets,
-# installed under the ac4:: namespace the tree's own aliases use, each with its own install() and
-# its own .pc file - the pairing tools/checks/check_packaging_versions.sh counts. The decoder's
-# targets are exported as decoder_static and decoder_shared, and the core as core
-# (src/ac4dec/CMakeLists.txt, src/ac4core/CMakeLists.txt). The encoder (src/ac4enc) is built by the
-# same switch and installed once its API is final (planning/ac4.md, phase E7).
+# The AC-4 inspector (src/ac4, ac4::ac4), the AC-4 decoder (src/ac4dec, ac4::decoder) and the
+# AC-4 encoder (src/ac4enc, ac4::encoder) are optional components under one switch,
+# AC3FORGE_BUILD_AC4 (see the root CMakeLists.txt), with the core the decoder and the encoder link
+# (src/ac4core, ac4::core). The four share one export set, ac4Targets, installed under the ac4::
+# namespace the tree's own aliases use, each with its own install() and its own .pc file - the
+# pairing tools/checks/check_packaging_versions.sh counts. The decoder's targets are exported as
+# decoder_static and decoder_shared, the encoder's as encoder_static and encoder_shared, and the
+# core as core (src/ac4dec/CMakeLists.txt, src/ac4enc/CMakeLists.txt, src/ac4core/CMakeLists.txt).
 #
 # The core is a static archive of hidden symbols with no headers and no ABI of its own. The
-# static decoder's archive calls into it without containing it, so it is installed wherever that
-# archive is and named by the decoder's exported target as a link-only dependency; the shared
-# decoder carries the part of it that it uses, and a shared-only install has no core. No vcpkg
-# feature or Conan option of their own yet: AC3FORGE_BUILD_AC4 is on by default in both, as
-# ac3iab's and iamf's switches are, so both install the three.
+# static decoder's and encoder's archives call into it without containing it, so it is installed
+# wherever either archive is and named by their exported targets as a link-only dependency; the
+# shared libraries carry the part of it that each uses, and a shared-only install has no core. No
+# vcpkg feature or Conan option of their own yet: AC3FORGE_BUILD_AC4 is on by default in both, as
+# ac3iab's and iamf's switches are, so both install the four.
 if(AC3FORGE_BUILD_AC4)
     install(TARGETS ${_ac3forge_ac4_install_targets}
         EXPORT ac4Targets
@@ -461,14 +464,40 @@ if(AC3FORGE_BUILD_AC4)
         REQUIRES ac4
         STATIC_REQUIRES ac4core)
 
-    if("ac4dec_static" IN_LIST _ac3forge_ac4dec_install_targets)
+    install(TARGETS ${_ac3forge_ac4enc_install_targets}
+        EXPORT ac4Targets
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
+
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/ac4enc/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        COMPONENT library)
+
+    install(FILES "${CMAKE_BINARY_DIR}/src/ac4enc/generated/ac4enc/export.hpp"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ac4enc"
+        COMPONENT library)
+
+    # As the decoder's: the encoder's header includes the inspector's, each encoder library links
+    # the inspector of its own kind, and libac4enc_static.a calls into the core's archive.
+    ac3forge_pkgconfig_libname(_ac3forge_ac4enc_pc_libname ac4enc_shared ac4enc ac4enc_static
+        "${_ac3forge_ac4enc_install_targets}")
+    ac3forge_install_pkgconfig(
+        NAME ac4enc
+        DESCRIPTION "AC-4 encoder (ETSI TS 103 190-1 and TS 103 190-2)"
+        LIBNAME "${_ac3forge_ac4enc_pc_libname}"
+        REQUIRES ac4
+        STATIC_REQUIRES ac4core)
+
+    if("ac4dec_static" IN_LIST _ac3forge_ac4dec_install_targets OR
+       "ac4enc_static" IN_LIST _ac3forge_ac4enc_install_targets)
         install(TARGETS ac4core
             EXPORT ac4Targets
             ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
 
         ac3forge_install_pkgconfig(
             NAME ac4core
-            DESCRIPTION "The tables and transforms libac4dec_static.a links (no headers)"
+            DESCRIPTION "The tables and transforms libac4dec_static.a and libac4enc_static.a link (no headers)"
             LIBNAME ac4core_static)
     endif()
 endif()

@@ -345,8 +345,10 @@ constexpr std::array<Command, 44> kCommands{{
      "and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode "
      "(A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 "
      "kbps a channel, 76.8 in 5.X, and SIMPLE from there. The options below set the codec mode, "
-     "the frame rate, the rate mode, the I-frames, and the loudness, DRC, downmix and dialogue "
-     "enhancement metadata; syntax-trace=<file> writes what the encoder writes",
+     "the frame rate, the rate mode, the I-frames, the CRC, and the loudness, DRC, downmix and "
+     "dialogue enhancement metadata; substreamN= and presentationN= add substreams, each an input "
+     "of its own, and the presentations that play them; syntax-trace=<file> writes what the "
+     "encoder writes",
      topic::kStdio | topic::kAc4Encode,
      Needs::kNothing,
      [](const Args& x) { return run_ac4_encode(x.str(1), x.str(2), x.u32(3, 192), x.meta); }},
