@@ -709,7 +709,9 @@ TEST_CASE("the committed presentation streams and selection table are the builde
     CHECK(committed("5_1") == five_one);
     CHECK(committed("hybrid") == hybrid);
     std::ifstream in(golden() / "presentations" / "presentation-selection.tsv", std::ios::binary);
-    const std::string on_disk((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string on_disk((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    // A checkout may give the text file CRLF line ends.
+    std::erase(on_disk, '\r');
     CHECK(on_disk == table);
 }
 

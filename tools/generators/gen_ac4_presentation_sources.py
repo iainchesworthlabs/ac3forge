@@ -91,11 +91,12 @@ def main():
             wav = Path(work) / f"{name}.wav"
             write_tones(wav, tones)
             stream = Path(work) / f"{name}.ac4"
-            command = [str(args.cli), "ac4-encode", str(wav), str(stream), str(kbps), "codec-mode=simple",
-                       "quiet"]
+            command = [str(args.cli), "ac4-encode", str(wav), str(stream), str(kbps),
+                       "codec-mode=simple", "quiet"]
             result = subprocess.run(command, capture_output=True, text=True, check=False)
             if result.returncode != 0:
-                sys.exit(f"{name}: ac3cli ac4-encode failed ({result.returncode}):\n{result.stdout}{result.stderr}")
+                sys.exit(f"{name}: ac3cli ac4-encode failed ({result.returncode}):\n"
+                         f"{result.stdout}{result.stderr}")
             (OUT / f"{name}.ac4").write_bytes(first_frames(stream.read_bytes(), FRAMES))
             print(f"{name}: {len(tones)} channel(s), {kbps} kbps, {FRAMES} frames")
     return 0
