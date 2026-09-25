@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <span>
+#include <string_view>
 
 #include "tables/huffman_codes.hpp"
 #include "tables/huffman_tables.hpp"
@@ -581,12 +582,14 @@ void write_dialog_enhancement(BitWriter& w, const DeConfigCodes* config,
     }
     const bool ms = (config->method == 0 || config->method == 2) && nr_channels == 2 && config->mid;
     const auto channels = static_cast<std::size_t>(nr_channels - (ms ? 1 : 0));
+    const bool hybrid = config->method >= 2;
     bool keep = false;
     if (!iframe) {
         keep =
             previous != nullptr &&
             std::equal(frame.par.begin(), frame.par.begin() + static_cast<std::ptrdiff_t>(channels),
-                       previous->par.begin());
+                       previous->par.begin()) &&
+            (!hybrid || frame.signal_contribution == previous->signal_contribution);
         w.write(1, keep ? 1U : 0U, "de_keep_data_flag");
     }
     if (keep) {
@@ -632,6 +635,60 @@ void write_dialog_enhancement(BitWriter& w, const DeConfigCodes* config,
         }
         ref = row[0];
     }
+    if (hybrid) {
+        w.write(5, static_cast<std::uint64_t>(frame.signal_contribution), "de_signal_contribution");
+    }
+}
+
+void write_presentation_mix(BitWriter& w, const PresentationMixCodes& codes) {
+    if (codes.n_substream_groups > 1) {
+        w.write(1, codes.sg_gain ? 1U : 0U, "b_substream_group_gains_present");
+        if (codes.sg_gain) {
+            w.write(1, codes.keep ? 1U : 0U, "b_keep");
+            if (!codes.keep) {
+                for (int sg = 0; sg < codes.n_substream_groups; ++sg) {
+                    const auto at = static_cast<std::size_t>(sg);
+                    w.write(6, static_cast<std::uint64_t>(at < codes.sg_gain->size() ? (*codes.sg_gain)[at] : 0),
+                            "sg_gain");
+                }
+            }
+        }
+    }
+    w.write(1, codes.associated ? 1U : 0U, "b_associated");
+    if (!codes.associated) {
+        return;
+    }
+    const AssociatedMixCodes& a = *codes.associated;
+    const auto optional_8 = [&w](const std::optional<int>& value, std::string_view flag, std::string_view name) {
+        w.write(1, value ? 1U : 0U, flag);
+        if (value) {
+            w.write(8, static_cast<std::uint64_t>(*value), name);
+        }
+    };
+    optional_8(a.scale_main, "b_scale_main", "scale_main");
+    optional_8(a.scale_main_centre, "b_scale_main_centre", "scale_main_centre");
+    optional_8(a.scale_main_front, "b_scale_main_front", "scale_main_front");
+    optional_8(a.pan_associated, "b_associate_is_mono", "pan_associated");
+}
+
+void write_extended_metadata(BitWriter& w, int ch_mode, const DialogueMixCodes* dialogue) {
+    w.write(1, dialogue != nullptr ? 1U : 0U, "b_dialog");
+    if (dialogue != nullptr) {
+        w.write(1, dialogue->dialog_max_gain ? 1U : 0U, "b_dialog_max_gain");
+        if (dialogue->dialog_max_gain) {
+            w.write(2, static_cast<std::uint64_t>(*dialogue->dialog_max_gain), "dialog_max_gain");
+        }
+        w.write(1, dialogue->pan_dialog ? 1U : 0U, "b_pan_dialog_present");
+        if (dialogue->pan_dialog) {
+            w.write(8, static_cast<std::uint64_t>((*dialogue->pan_dialog)[0]), "pan_dialog");
+            if (ch_mode != 0) {
+                w.write(8, static_cast<std::uint64_t>((*dialogue->pan_dialog)[1]), "pan_dialog");
+                w.write(2, static_cast<std::uint64_t>(dialogue->pan_signal_selector), "pan_signal_selector");
+            }
+        }
+    }
+    w.write(1, 0, "b_channels_classifier");
+    w.write(1, 0, "b_event_probability");
 }
 
 }  // namespace ac4::detail

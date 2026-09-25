@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include "frame/toc_writer.hpp"
+
 namespace ac4::detail {
 namespace {
 
@@ -16,130 +18,41 @@ namespace {
 constexpr int kPresentationSubstream = 0;
 constexpr int kAudioSubstream = 1;
 
-// Part 1 Table 8, emdf_info(), with Table 80's emdf_protection() (headed
-// emdf_reserved()) carrying no reserved bytes.
-void write_emdf_info(BitWriter& w) {
-    w.write(2, 0, "emdf_version");
-    w.write(3, 0, "key_id");
-    w.write(1, 0, "b_emdf_payloads_substream_info");
-    w.write(2, 0, "n_skip_bytes_length_primary");
-    w.write(2, 0, "n_skip_bytes_length_secondary");
-}
-
-// Part 2 clause 6.2.1.3, ac4_presentation_v1_info(), for one presentation of
-// one substream group with its presentation substream.
-void write_presentation_v1_info(BitWriter& w, const FrameFields& f) {
-    w.write(1, 1, "b_single_substream_group");
-    // Part 1 Table 6, presentation_version(): a one per count, then a zero.
-    w.write(1, 1, "b_tmp");
-    w.write(1, 0, "b_tmp");
-    w.write(3, 0, "md_compat");
-    w.write(1, 0, "b_presentation_id");
-    // frame_rate_multiply_info() (Part 1 Table 7): no multiplier, so
-    // frame_rate_factor 1, where the index has one to send; and
-    // frame_rate_fractions_info() (6.2.1.4): a fraction of 1 at 47.95 fps and
-    // up. Neither sends anything at index 13.
-    const int index = f.frame_rate_index;
-    if (index <= 4 || (index >= 7 && index <= 9)) {
-        w.write(1, 0, "b_multiplier");
-    }
-    if (index >= 5 && index <= 12) {
-        w.write(1, 0, "b_frame_rate_fraction");
-    }
-    write_emdf_info(w);
-    w.write(1, 0, "b_presentation_filter");
-    // ac4_sgi_specifier(), 6.2.1.7: the one substream group.
-    w.write(3, 0, "group_index");
-    w.write(1, 0, "b_pre_virtualized");
-    w.write(1, 0, "b_add_emdf_substreams");
-    // ac4_presentation_substream_info(), 6.2.1.12.
-    w.write(1, 0, "b_alternative");
-    w.write(1, f.iframe ? 1U : 0U, "b_pres_ndot");
-    w.write(2, kPresentationSubstream, "substream_index");
-}
-
-// Part 2 clause 6.2.1.6, ac4_substream_group_info(), with its one
-// ac4_substream_info_chan() (6.2.1.8) and content_type() (Part 1 Table 10).
-void write_substream_group_info(BitWriter& w, const FrameFields& f) {
-    w.write(1, 1, "b_substreams_present");
-    w.write(1, 0, "b_hsf_ext");
-    w.write(1, 1, "b_single_substream");
-    w.write(1, 1, "b_channel_coded");
-    // Table 56: 0b0 mono, 0b10 stereo, 0b1100 to 0b1110 3.0, 5.0 and 5.1,
-    // 0b1111000 to 0b1111101 the 7.X modes.
-    if (f.ch_mode == 0) {
-        w.write(1, 0b0, "channel_mode");
-    } else if (f.ch_mode == 1) {
-        w.write(2, 0b10, "channel_mode");
-    } else if (f.ch_mode <= 4) {
-        w.write(4, 0b1100U + static_cast<unsigned>(f.ch_mode - 2), "channel_mode");
-    } else {
-        w.write(7, 0b1111000U + static_cast<unsigned>(f.ch_mode - 5), "channel_mode");
-    }
-    if (f.fs_index == 1) {
-        w.write(1, 0, "b_sf_multiplier");
-    }
-    w.write(1, 0, "b_bitrate_info");
-    if (f.ch_mode >= 7) {
-        w.write(1, f.add_ch_base ? 1U : 0U, "add_ch_base");
-    }
-    // frame_rate_factor is 1.
-    w.write(1, f.iframe ? 1U : 0U, "b_audio_ndot");
-    w.write(2, kAudioSubstream, "substream_index");
-    w.write(1, 1, "b_content_type");
-    w.write(3, 0, "content_classifier");  // Table 91: complete main
-    w.write(1, 0, "b_language_indicator");
-}
-
-// Part 1 Table 14, substream_index_table(): two substreams, so b_size_present
-// is implied; each size's low 10 bits, and variable_bits(2) for the rest.
-void write_substream_index_table(BitWriter& w, std::span<const std::size_t> sizes) {
-    w.write(2, sizes.size(), "n_substreams");
-    for (const std::size_t size : sizes) {
-        const bool more = size >= 1024;
-        w.write(1, more ? 1U : 0U, "b_more_bits");
-        w.write(10, size & 0x3FFU, "substream_size");
-        if (more) {
-            w.write_variable_bits(2, size >> 10U, "substream_size");
-        }
-    }
+// The encoder's table of contents (toc_writer.hpp): one version 1 presentation
+// of one substream group, whose one channel-coded substream is complete main
+// (Part 1 Table 91) with no language, and the presentation substream.
+[[nodiscard]] TocLayout toc_layout(const FrameFields& f) {
+    TocLayout layout;
+    layout.sequence_counter = f.sequence_counter;
+    layout.wait_frames = f.wait_frames;
+    layout.br_code = f.br_code;
+    layout.fs_index = f.fs_index;
+    layout.frame_rate_index = f.frame_rate_index;
+    layout.iframe_global = f.iframe;
+    TocPresentation presentation;
+    presentation.groups = {0};
+    presentation.pres_ndot = f.iframe;
+    presentation.presentation_substream = kPresentationSubstream;
+    layout.presentations.push_back(presentation);
+    TocGroup group;
+    group.substreams.push_back(TocSubstream{.ch_mode = f.ch_mode,
+                                            .add_ch_base = f.add_ch_base,
+                                            .iframe = f.iframe,
+                                            .substream_index = kAudioSubstream});
+    group.content_classifier = 0;
+    layout.groups.push_back(group);
+    return layout;
 }
 
 // Part 2 clause 6.2.1.1, ac4_toc(), at bitstream_version 2. `payload_base`
 // bytes of padding separate it from the first substream.
 void write_toc(BitWriter& w, const FrameFields& f, std::size_t payload_base, std::span<const std::size_t> sizes) {
-    w.write(2, 2, "bitstream_version");
-    w.write(10, static_cast<std::uint64_t>(f.sequence_counter), "sequence_counter");
-    w.write(1, 1, "b_wait_frames");
-    w.write(3, static_cast<std::uint64_t>(f.wait_frames), "wait_frames");
-    if (f.wait_frames > 0) {
-        w.write(2, static_cast<std::uint64_t>(f.br_code), "br_code");
-    }
-    w.write(1, static_cast<std::uint64_t>(f.fs_index), "fs_index");
-    w.write(4, static_cast<std::uint64_t>(f.frame_rate_index), "frame_rate_index");
-    w.write(1, f.iframe ? 1U : 0U, "b_iframe_global");
-    w.write(1, 1, "b_single_presentation");
-    w.write(1, payload_base > 0 ? 1U : 0U, "b_payload_base");
-    if (payload_base > 0) {
-        // payload_base_minus1 is 5 bits; 32 and up take variable_bits(3) on top.
-        const std::size_t minus1 = payload_base >= 32 ? 31 : payload_base - 1;
-        w.write(5, minus1, "payload_base_minus1");
-        if (payload_base >= 32) {
-            w.write_variable_bits(3, payload_base - 32, "payload_base");
-        }
-    }
-    w.write(1, 0, "b_program_id");
-    write_presentation_v1_info(w, f);
-    write_substream_group_info(w, f);  // total_n_substream_groups is 1
-    write_substream_index_table(w, sizes);
-    w.align();
+    write_toc(w, toc_layout(f), payload_base, sizes);
 }
 
 [[nodiscard]] std::size_t toc_bytes(const FrameFields& f, std::size_t payload_base,
                                     std::span<const std::size_t> sizes) {
-    BitWriter w;
-    write_toc(w, f, payload_base, sizes);
-    return w.byte_size();
+    return toc_bytes(toc_layout(f), payload_base, sizes);
 }
 
 // Part 1 Table 88's channel modes with an LFE: 5.1 and the three 7.1s.
@@ -181,7 +94,7 @@ void write_presentation_substream(BitWriter& w, const FrameFields& f) {
     BitWriter drc = BitWriter::buffered();
     write_drc_frame(drc, m != nullptr && m->drc ? &*m->drc : nullptr, f.iframe, f.drc_gains);
     write_sized(w, drc, 5, "drc_metadata_size_value", "drc_metadata_size");
-    w.write(1, 0, "b_associated");
+    write_presentation_mix(w, PresentationMixCodes{});  // one group, no associated audio
     write_downmix(w, f.ch_mode, has_lfe(f.ch_mode),
                   m != nullptr && m->downmix ? &*m->downmix : nullptr, f.iframe);
     w.align();
@@ -193,9 +106,7 @@ void write_presentation_substream(BitWriter& w, const FrameFields& f) {
 // data where dialogue enhancement is configured.
 void write_metadata(BitWriter& w, const FrameFields& f) {
     w.write(1, 0, "b_more_basic_metadata");
-    w.write(1, 0, "b_dialog");
-    w.write(1, 0, "b_channels_classifier");
-    w.write(1, 0, "b_event_probability");
+    write_extended_metadata(w, f.ch_mode, nullptr);
     BitWriter tools = BitWriter::buffered();
     const DeConfigCodes* de = f.metadata != nullptr && f.metadata->de ? &*f.metadata->de : nullptr;
     write_dialog_enhancement(tools, de, f.de, f.de_previous, f.iframe);
