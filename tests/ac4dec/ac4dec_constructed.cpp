@@ -13,6 +13,7 @@
 
 #include "ac4dec_printed_matrices.hpp"
 #include "ac4enc/encoder.hpp"
+#include "acpl/acpl_syntax.hpp"
 #include "asf/analysis.hpp"
 #include "asf/coder.hpp"
 #include "asf/layout.hpp"
@@ -26,6 +27,11 @@ namespace ac4dec_test {
 namespace {
 
 using ac4::Speaker;
+using ac4::detail::AcplConfig1chFields;
+using ac4::detail::AcplConfig2chFields;
+using ac4::detail::AcplData1chFields;
+using ac4::detail::AcplData2chFields;
+using ac4::detail::AcplParamFields;
 using ac4::detail::AspxChannelFields;
 using ac4::detail::AspxSetup;
 using ac4::detail::BitWriter;
@@ -48,6 +54,12 @@ constexpr double kAspxKbpsPerChannel = 40.0;
 // silent one at 0 with no noise (29, the codebook's top).
 constexpr int kLoudEnvelope = 40;
 constexpr int kNoNoise = 29;
+constexpr double kRoot2 = std::numbers::sqrt2;
+// ASPX_ACPL_1's acpl_qmf_band: mid-side coded below 3 kHz, above every tone.
+constexpr int kAcplQmfBand = 8;
+// ASPX_ACPL_3's gamma1 and gamma4: 4 steps of 1 638 / 16 384, or 2 of 3 276
+// (Table 208), 6 552 / 16 384 either way.
+constexpr double kGamma = 6552.0 / 16384.0;
 
 // Each channel's tone: gen_ac4_baseline.py's for L R C LFE Ls Rs, and the next
 // two primes for the 7.X modes' last pair; none sits on another's harmonic.
@@ -92,6 +104,9 @@ constexpr int kNoNoise = 29;
 // The decoder's channels for a mode, in its order: L R C, the LFE, Ls Rs, the
 // last pair.
 [[nodiscard]] std::vector<Speaker> speakers_for(int ch_mode) {
+    if (ch_mode == 1) {
+        return {Speaker::kLeft, Speaker::kRight};
+    }
     std::vector<Speaker> out = {Speaker::kLeft, Speaker::kRight, Speaker::kCentre};
     if (ch_mode == 2) {
         return out;
@@ -275,6 +290,45 @@ class ElementWriter {
         ac4::detail::write_chparam_info(w_, choice);
     }
 
+    // The channel pair's ASPX_ACPL_1 data (Table 21): with stereo processing
+    // one sf_info() with b_dual_maxsfb and its chparam_info(), the side track
+    // in c_.side_bands bands where that is set; without, the mid track's
+    // sf_info() and the side track's, b_side_limited. One long block,
+    // n_msfb_bits 6 and n_side_bits 5 (Table 106).
+    void acpl_1_pair(Speaker a, Speaker b) {
+        const auto max_sfb = static_cast<std::uint64_t>(max_sfb_);
+        w_.write(1, c_.stereo_proc ? 1U : 0U, "b_enable_mdct_stereo_proc");
+        if (!c_.stereo_proc) {
+            w_.write(1, 0, "spec_frontend_m");
+            sf_info();
+            w_.write(1, 0, "spec_frontend_s");
+            w_.write(1, 1, "b_long_frame");
+            w_.write(5, max_sfb, "max_sfb_side");
+            pair_tracks(a, b);
+            return;
+        }
+        const int side = c_.side_bands >= 0 ? c_.side_bands : max_sfb_;
+        w_.write(1, 1, "b_long_frame");
+        w_.write(6, max_sfb, "max_sfb");
+        w_.write(6, static_cast<std::uint64_t>(side), "max_sfb_side");
+        chparam(c_.sap_mode);
+        const std::array<Abcd, 1> p = {parameters_of(c_.sap_mode)};
+        const std::vector<Lines> tracks =
+            tracks_for(printed_matrix("a0 b0 | c0 d0", p), {&lines_.at(a), &lines_.at(b)});
+        sf_data(tracks[0]);
+        ac4::detail::write_sf_data(w_, code(tracks[1], layout_, side), layout_);
+    }
+
+    // ASPX_ACPL_1's residuals (Tables 25 and 33): max_sfb_master at the long
+    // block's n_side_bits, two chparam_info() and two sf_data().
+    void residuals(Speaker s0, Speaker s1, int sap_mode) {
+        w_.write(5, static_cast<std::uint64_t>(max_sfb_), "max_sfb_master");
+        chparam(sap_mode);
+        chparam(sap_mode);
+        sf_data(lines_.at(s0));
+        sf_data(lines_.at(s1));
+    }
+
    private:
     void sf_info() { ac4::detail::write_sf_info(w_, layout_, {max_sfb_, max_sfb_}); }
 
@@ -349,7 +403,7 @@ class ElementWriter {
 }
 
 void write_aspx_data(BitWriter& w, bool iframe, const AspxSetup& setup, const ElementCase& c) {
-    const auto elements = aspx_elements(c.ch_mode);
+    const auto elements = aspx_elements(c.ch_mode, c.acpl != 0 ? c.acpl : 1);
     for (std::size_t e = 0; e < elements.size(); ++e) {
         const bool loud = static_cast<int>(e) == c.loud_unit;
         if (elements[e].size() == 1) {
@@ -486,6 +540,285 @@ void write_7_x(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& set
     }
 }
 
+// alpha 1 or -1 (Tables 203 and 205), and alpha 0.
+[[nodiscard]] int alpha_q(bool second, int quant) {
+    if (quant == 0) {
+        return second ? 8 : 24;
+    }
+    return second ? 4 : 12;
+}
+
+[[nodiscard]] int alpha_zero_q(int quant) {
+    return quant == 0 ? 16 : 8;
+}
+
+// Every band of one parameter at one quantised value: in I-frames along
+// frequency, the first band's value and no change after it; otherwise along
+// time, no change from the frame before.
+[[nodiscard]] AcplParamFields constant_param(int value, int first, int bands, bool iframe) {
+    ac4::detail::AcplSetFields set;
+    set.diff_type = iframe ? 0 : 1;
+    set.values.assign(static_cast<std::size_t>(bands - first), 0);
+    if (iframe && !set.values.empty()) {
+        set.values[0] = value;
+    }
+    return {set};
+}
+
+[[nodiscard]] AcplConfig1chFields acpl_config_1ch_of(const ElementCase& c) {
+    return {.partial = c.acpl == 2,
+            .num_param_bands_id = c.acpl_bands_id,
+            .quant_mode = c.acpl_quant,
+            .qmf_band = kAcplQmfBand};
+}
+
+[[nodiscard]] AcplConfig2chFields acpl_config_2ch_of(const ElementCase& c) {
+    return {.num_param_bands_id = c.acpl_bands_id, .quant_mode_0 = c.acpl_quant, .quant_mode_1 = c.acpl_quant};
+}
+
+[[nodiscard]] AcplData1chFields acpl_data_1ch_of(const ElementCase& c, bool iframe) {
+    const AcplConfig1chFields config = acpl_config_1ch_of(c);
+    const int bands = ac4::detail::acpl_num_param_bands(config.num_param_bands_id);
+    const int first = ac4::detail::acpl_param_band(config);
+    const bool decorrelated = c.acpl_beta_q > 0;
+    AcplData1chFields d;
+    d.alpha1 = constant_param(decorrelated ? alpha_zero_q(c.acpl_quant) : alpha_q(c.acpl_second, c.acpl_quant),
+                              first, bands, iframe);
+    d.beta1 = constant_param(c.acpl_beta_q, first, bands, iframe);
+    return d;
+}
+
+// ASPX_ACPL_3: gamma1 and gamma4 route L's and R's downmixes, alpha1 and
+// alpha2 to L and R or to Ls and Rs; every beta 0.
+[[nodiscard]] AcplData2chFields acpl_data_2ch_of(const ElementCase& c, bool iframe) {
+    const int bands = ac4::detail::acpl_num_param_bands(c.acpl_bands_id);
+    const int gamma_q = c.acpl_quant == 0 ? 4 : 2;
+    AcplData2chFields d;
+    for (auto& alpha : d.alpha) {
+        alpha = constant_param(alpha_q(c.acpl_second, c.acpl_quant), 0, bands, iframe);
+    }
+    for (auto& beta : d.beta) {
+        beta = constant_param(0, 0, bands, iframe);
+    }
+    d.beta3 = constant_param(0, 0, bands, iframe);
+    for (std::size_t k = 0; k < d.gamma.size(); ++k) {
+        d.gamma[k] = constant_param(k == 0 || k == 3 ? gamma_q : 0, 0, bands, iframe);
+    }
+    return d;
+}
+
+void write_acpl_1ch_pair(BitWriter& w, const ElementCase& c, bool iframe, int count) {
+    const AcplConfig1chFields config = acpl_config_1ch_of(c);
+    const AcplData1chFields data = acpl_data_1ch_of(c, iframe);
+    for (int k = 0; k < count; ++k) {
+        ac4::detail::write_acpl_data_1ch(w, config, data);
+    }
+}
+
+// channel_pair_element() in ASPX_ACPL_1 and 2 (Table 21).
+void write_pair_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& setup, const ElementCase& c) {
+    using S = Speaker;
+    w.write(2, static_cast<std::uint64_t>(c.acpl), "stereo_codec_mode");
+    if (iframe) {
+        ac4::detail::write_aspx_config(w, setup.config);
+        ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
+    }
+    write_companding(w, 1, c);
+    if (c.acpl == 2) {
+        e.acpl_1_pair(S::kLeft, S::kRight);
+    } else {
+        e.mono(S::kLeft);  // spec_frontend, sf_info() and sf_data(), as mono_data(0) sends them
+    }
+    write_aspx_data(w, iframe, setup, c);
+    write_acpl_1ch_pair(w, c, iframe, 1);
+}
+
+// 5_X_channel_element() in the A-CPL modes (Table 25): Table 181's channel
+// data, ASPX_ACPL_1's residuals, or ASPX_ACPL_3's stereo_data().
+void write_5_x_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& setup, const ElementCase& c) {
+    using S = Speaker;
+    w.write(3, static_cast<std::uint64_t>(c.acpl), "5_X_codec_mode");
+    if (iframe) {
+        ac4::detail::write_aspx_config(w, setup.config);
+        if (c.acpl == 4) {
+            ac4::detail::write_acpl_config_2ch(w, acpl_config_2ch_of(c));
+        } else {
+            ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
+        }
+    }
+    if (has_lfe(c.ch_mode)) {
+        e.lfe();
+    }
+    if (c.acpl == 4) {
+        write_companding(w, 2, c);
+        e.stereo_data(S::kLeft, S::kRight);
+        write_aspx_data(w, iframe, setup, c);
+        ac4::detail::write_acpl_data_2ch(w, acpl_config_2ch_of(c), acpl_data_2ch_of(c, iframe));
+        return;
+    }
+    write_companding(w, 3, c);
+    w.write(1, c.coding_config != 0 ? 1U : 0U, "coding_config");
+    if (c.coding_config != 0) {
+        e.three_channel_data(S::kLeft, S::kRight, S::kCentre);
+    } else {
+        e.two_channel_data(S::kLeft, S::kRight);
+    }
+    if (c.acpl == 2) {
+        e.residuals(S::kLeftSurround, S::kRightSurround, c.sap_add_mode);
+    }
+    if (c.coding_config == 0) {
+        e.mono(S::kCentre);
+    }
+    write_aspx_data(w, iframe, setup, c);
+    write_acpl_1ch_pair(w, c, iframe, 2);
+}
+
+// 7_X_channel_element() in ASPX_ACPL_1 and 2 (Table 33): Table 184's channel
+// data, and ASPX_ACPL_1's residuals for the last pair.
+void write_7_x_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& setup, const ElementCase& c) {
+    using S = Speaker;
+    const auto [f, g] = last_pair(c.ch_mode);
+    w.write(2, static_cast<std::uint64_t>(c.acpl), "7_X_codec_mode");
+    if (iframe) {
+        ac4::detail::write_aspx_config(w, setup.config);
+        ac4::detail::write_acpl_config_1ch(w, acpl_config_1ch_of(c));
+    }
+    if (has_lfe(c.ch_mode)) {
+        e.lfe();
+    }
+    write_companding(w, 5, c);
+    w.write(2, static_cast<std::uint64_t>(c.coding_config), "coding_config");
+    switch (c.coding_config) {
+        case 0:
+            w.write(1, c.two_ch_mode ? 1U : 0U, "2ch_mode");
+            if (c.two_ch_mode) {
+                e.two_channel_data(S::kLeft, S::kLeftSurround);
+                e.two_channel_data(S::kRight, S::kRightSurround);
+            } else {
+                e.two_channel_data(S::kLeft, S::kRight);
+                e.two_channel_data(S::kLeftSurround, S::kRightSurround);
+            }
+            break;
+        case 1:
+            e.three_channel_data(S::kLeft, S::kRight, S::kCentre);
+            e.two_channel_data(S::kLeftSurround, S::kRightSurround);
+            break;
+        case 2:
+            e.four_channel_data(S::kLeft, S::kRight, S::kLeftSurround, S::kRightSurround);
+            break;
+        default:
+            e.five_channel_data(S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround);
+            break;
+    }
+    if (c.acpl == 2) {
+        e.residuals(f, g, c.sap_add_mode);
+    }
+    if (c.coding_config == 0 || c.coding_config == 2) {
+        e.mono(S::kCentre);
+    }
+    write_aspx_data(w, iframe, setup, c);
+    write_acpl_1ch_pair(w, c, iframe, 2);
+}
+
+[[nodiscard]] Lines mix(double a, const Lines& x, double b, const Lines& y) {
+    Lines out(x.size());
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        out[k] = a * x[k] + b * y[k];
+    }
+    return out;
+}
+
+// ASPX_ACPL_1's pair of a base channel and the residual coded against it:
+// below acpl_qmf_band, A-CPL makes base = k (x0 + x3) and partner = sqrt 2
+// (x0 - x3) of what the base and residual carry after the residual's
+// chparam_info() step, (x0, x3) = P (A, res); so (A, res) = P^-1 (x0, x3).
+void residual_pair(std::map<Speaker, Lines>& lines, const std::map<Speaker, Lines>& tone, Speaker base,
+                   Speaker partner, double k, int sap_mode) {
+    const Lines x0 = mix(0.5 / k, tone.at(base), 0.5 / kRoot2, tone.at(partner));
+    const Lines x3 = mix(0.5 / k, tone.at(base), -0.5 / kRoot2, tone.at(partner));
+    const std::array<Abcd, 1> p = {parameters_of(sap_mode)};
+    const std::vector<Lines> tracks = tracks_for(printed_matrix("a0 b0 | c0 d0", p), {&x0, &x3});
+    lines[base] = tracks[0];
+    lines[partner] = tracks[1];
+}
+
+// The A-CPL modes' outputs worked back through Pseudocodes 115 to 120: on
+// entry `lines` holds each channel's tone, on return what the channel data
+// carries for each channel it codes at identity, and the residuals' lines
+// under the channels they are coded for. Returns the channels left silent.
+std::vector<Speaker> acpl_lines(std::map<Speaker, Lines>& lines, const ElementCase& c) {
+    using S = Speaker;
+    const std::map<Speaker, Lines> tone = lines;
+    const Lines& none = tone.begin()->second;
+    const bool second = c.acpl_second;
+    const auto scaled = [&](double gain, Speaker speaker) { return mix(gain, tone.at(speaker), 0.0, none); };
+    if (c.ch_mode == 1) {
+        if (c.acpl == 2) {
+            // Below acpl_qmf_band L = x0 + x1 and R = x0 - x1.
+            lines[S::kLeft] = mix(0.5, tone.at(S::kLeft), 0.5, tone.at(S::kRight));
+            lines[S::kRight] = mix(0.5, tone.at(S::kLeft), -0.5, tone.at(S::kRight));
+            return {};
+        }
+        if (c.acpl_beta_q > 0) {
+            lines[S::kLeft] = tone.at(S::kLeft);  // L + R = 2 x0
+            return {};
+        }
+        lines[S::kLeft] = scaled(0.5, second ? S::kRight : S::kLeft);
+        return {second ? S::kLeft : S::kRight};
+    }
+    if (c.ch_mode <= 4) {
+        if (c.acpl == 4) {
+            // z0 = (1 + sqrt 2) gamma x0; z1 = sqrt 2 times that with alpha -1.
+            const double k = (1.0 + kRoot2) * kGamma * (second ? kRoot2 : 1.0);
+            lines[S::kLeft] = scaled(1.0 / k, second ? S::kLeftSurround : S::kLeft);
+            lines[S::kRight] = scaled(1.0 / k, second ? S::kRightSurround : S::kRight);
+            if (second) {
+                return {S::kLeft, S::kRight, S::kCentre};
+            }
+            return {S::kCentre, S::kLeftSurround, S::kRightSurround};
+        }
+        if (c.acpl == 2) {
+            residual_pair(lines, tone, S::kLeft, S::kLeftSurround, 1.0, c.sap_add_mode);
+            residual_pair(lines, tone, S::kRight, S::kRightSurround, 1.0, c.sap_add_mode);
+            return {};
+        }
+        // z0 = 2 x0 with alpha 1, z1 = sqrt 2 (2 x0) with alpha -1.
+        lines[S::kLeft] = second ? scaled(0.5 / kRoot2, S::kLeftSurround) : scaled(0.5, S::kLeft);
+        lines[S::kRight] = second ? scaled(0.5 / kRoot2, S::kRightSurround) : scaled(0.5, S::kRight);
+        if (second) {
+            return {S::kLeft, S::kRight};
+        }
+        return {S::kLeftSurround, S::kRightSurround};
+    }
+    // Table 202: the base pair the modules couple with the last pair, and the
+    // pair that passes; Pseudocode 120 scales z0 and z2 by sqrt 2 when the base
+    // is the surrounds (3/4/0, or add_ch_base), z6 and z7 when they pass.
+    const bool surround_base = c.ch_mode <= 6 || c.add_ch_base;
+    const auto [f, g] = last_pair(c.ch_mode);
+    const std::array<S, 2> base = surround_base ? std::array{S::kLeftSurround, S::kRightSurround}
+                                                : std::array{S::kLeft, S::kRight};
+    const std::array<S, 2> passing = surround_base ? std::array{S::kLeft, S::kRight}
+                                                   : std::array{S::kLeftSurround, S::kRightSurround};
+    const std::array<S, 2> last = {f, g};
+    const double k = surround_base ? kRoot2 : 1.0;
+    const double k_passing = surround_base ? 1.0 : kRoot2;
+    for (std::size_t i = 0; i < 2; ++i) {
+        lines[passing[i]] = scaled(1.0 / k_passing, passing[i]);
+        if (c.acpl == 2) {
+            residual_pair(lines, tone, base[i], last[i], k, c.sap_add_mode);
+        } else {
+            lines[base[i]] = second ? scaled(0.5 / kRoot2, last[i]) : scaled(0.5 / k, base[i]);
+        }
+    }
+    if (c.acpl == 2) {
+        return {};
+    }
+    if (second) {
+        return {base[0], base[1]};
+    }
+    return {f, g};
+}
+
 // Each channel's lines for frame `frame`: its tone over the 2N samples the
 // frame's one long block transforms (asf/analysis.hpp).
 [[nodiscard]] std::map<Speaker, Lines> channel_lines(ac4::detail::Analysis& analysis, const FrameLayout& layout,
@@ -523,8 +856,20 @@ void undo_additional_steps(std::map<Speaker, Lines>& lines, const ElementCase& c
 
 }  // namespace
 
-std::vector<std::vector<Speaker>> aspx_elements(int ch_mode) {
+std::vector<std::vector<Speaker>> aspx_elements(int ch_mode, int codec_mode) {
     using S = Speaker;
+    if (codec_mode >= 2) {
+        if (ch_mode == 1) {
+            return {{S::kLeft}};
+        }
+        if (ch_mode <= 4) {
+            if (codec_mode == 4) {
+                return {{S::kLeft, S::kRight}};
+            }
+            return {{S::kLeft, S::kRight}, {S::kCentre}};
+        }
+        return {{S::kLeft, S::kRight}, {S::kLeftSurround, S::kRightSurround}, {S::kCentre}};
+    }
     if (ch_mode == 2) {
         return {{S::kLeft, S::kRight}, {S::kCentre}};
     }
@@ -553,15 +898,33 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
     for (int frame = 0; frame < frames; ++frame) {
         const bool iframe = frame % 4 == 0;
         std::map<Speaker, Lines> lines = channel_lines(analysis, layout, out.speakers, frame);
-        if (c.ch_mode >= 5 && c.use_sap_add_ch) {
+        if (c.acpl != 0) {
+            const std::vector<Speaker> silent = acpl_lines(lines, c);
+            for (std::size_t s = 0; s < out.speakers.size(); ++s) {
+                if (std::ranges::find(silent, out.speakers[s]) != silent.end()) {
+                    out.tone_hz[s] = 0.0;
+                }
+            }
+            if (c.acpl_beta_q > 0) {
+                out.tone_hz[1] = out.tone_hz[0];  // R carries L's tone, decorrelated
+            }
+        } else if (c.ch_mode >= 5 && c.use_sap_add_ch) {
             undo_additional_steps(lines, c);
         }
         BitWriter audio = BitWriter::buffered();
         ElementWriter element(audio, lines, c);
-        if (c.ch_mode == 2) {
+        if (c.ch_mode == 1) {
+            write_pair_acpl(audio, element, iframe, *setup, c);
+        } else if (c.ch_mode == 2) {
             write_3_0(audio, element, iframe, *setup, c);
         } else if (c.ch_mode <= 4) {
-            write_5_x(audio, element, iframe, *setup, c);
+            if (c.acpl != 0) {
+                write_5_x_acpl(audio, element, iframe, *setup, c);
+            } else {
+                write_5_x(audio, element, iframe, *setup, c);
+            }
+        } else if (c.acpl != 0) {
+            write_7_x_acpl(audio, element, iframe, *setup, c);
         } else {
             write_7_x(audio, element, iframe, *setup, c);
         }
@@ -569,6 +932,7 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
         fields.sequence_counter = frame;
         fields.iframe = iframe;
         fields.ch_mode = c.ch_mode;
+        fields.add_ch_base = c.add_ch_base;
         std::vector<ac4::SyntaxRecord>& trace = out.traces.emplace_back();
         const auto keep = [&trace](const ac4::SyntaxRecord& record) { trace.push_back(record); };
         auto raw = ac4::detail::write_frame(fields, audio, 0, keep);
@@ -614,6 +978,21 @@ std::vector<ElementCase> committed_cases() {
          .loud_unit = 3},
         {.name = "7_1-322-simple-config2-sap", .ch_mode = 10, .coding_config = 2, .sap_mode = 2,
          .use_sap_add_ch = true},
+        // The A-CPL modes: each element's, both routings, residuals against
+        // both of Table 202's bases, and the band counts and quantisations.
+        {.name = "2_0-acpl1-stereoproc", .ch_mode = 1, .sap_mode = 2, .acpl = 2},
+        {.name = "2_0-acpl2-second", .ch_mode = 1, .acpl = 3, .acpl_second = true, .acpl_bands_id = 3},
+        {.name = "5_1-acpl1-config1-matsel7", .ch_mode = 4, .coding_config = 1, .chel_matsel = 7, .sap_mode = 2,
+         .sap_add_mode = 0, .acpl = 2, .acpl_bands_id = 1},
+        {.name = "5_0-acpl2-config0", .ch_mode = 3, .coding_config = 0, .sap_mode = 2, .acpl = 3},
+        {.name = "5_1-acpl3-second-coarse", .ch_mode = 4, .sap_mode = 2, .acpl = 4, .acpl_second = true,
+         .acpl_quant = 1},
+        {.name = "7_1-340-acpl2-config2", .ch_mode = 6, .coding_config = 2, .sap_mode = 2, .acpl = 3,
+         .acpl_bands_id = 2},
+        {.name = "7_0-520-acpl1-config3-base1", .ch_mode = 7, .coding_config = 3, .chel_matsel = 4, .sap_mode = 2,
+         .acpl = 2, .add_ch_base = true},
+        {.name = "7_1-322-acpl2-config0-second", .ch_mode = 10, .coding_config = 0, .sap_mode = 2, .acpl = 3,
+         .acpl_second = true, .acpl_quant = 1},
     };
 }
 

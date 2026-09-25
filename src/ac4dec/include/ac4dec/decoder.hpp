@@ -24,12 +24,12 @@
 // substreams in the Part 1 channel elements (their HSF extension substreams,
 // ac4_hsf_ext_substream(), included), and EMDF payload substreams - and
 // reports what a frame carries. It decodes to PCM the mono, stereo, 3.0, 5.X
-// and 7.X channel elements in the SIMPLE and ASPX codec modes at
-// frame_rate_index 13 (2 048 samples a frame at 48 or 44.1 kHz, which needs no
-// sample rate converter): the audio spectral frontend, stereo and
-// multichannel processing, the inverse transform with block switching, frame
-// alignment, and the QMF domain's companding and A-SPX (Part 1 clauses 5.1,
-// 5.3, 5.5, 5.6 and 5.7). The table of contents and the substream framing
+// and 7.X channel elements in every codec mode Part 1 gives them (SIMPLE,
+// ASPX and the A-CPL modes) at frame_rate_index 13 (2 048 samples a frame at
+// 48 or 44.1 kHz, which needs no sample rate converter): the audio spectral
+// frontend, stereo and multichannel processing, the inverse transform with
+// block switching, frame alignment, and the QMF domain's companding, A-SPX
+// and A-CPL (Part 1 clauses 5.1, 5.3, 5.5, 5.6 and 5.7). The table of contents and the substream framing
 // come from ac4::parse_raw_frame (the inspector, src/ac4); this library starts
 // where the inspector stops.
 //
@@ -39,7 +39,7 @@
 // substream could not be resolved and read alongside it. Refusing is per
 // substream and per frame; the next frame is attempted afresh. decode()
 // refuses, the same way, everything above that it does not turn into PCM
-// yet: the A-CPL codec modes, other frame rates and 96/192 kHz.
+// yet: other frame rates and 96/192 kHz.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.

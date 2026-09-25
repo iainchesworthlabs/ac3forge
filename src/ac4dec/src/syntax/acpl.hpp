@@ -9,8 +9,8 @@
 
 // Advanced coupling (A-CPL) syntax: ETSI TS 103 190-1 V1.4.1 clause 4.2.13,
 // semantics 4.3.11, with the parameter band mapping of clause 5.7.7.2 (Table
-// 197) that acpl_config_1ch() needs. Part 2 (TS 103 190-2 V1.3.1) Table 48
-// uses these elements unchanged for bitstream_version 2.
+// 197, acpl/acpl.hpp) that acpl_config_1ch() needs. Part 2 (TS 103 190-2
+// V1.3.1) Table 48 uses these elements unchanged for bitstream_version 2.
 //
 // Nothing is dequantised: parameter values stay Huffman codebook indices,
 // before cb_off, with the diff_type that says how clause 5.7.7.7 decodes them.
@@ -84,6 +84,7 @@ struct AcplData1ch {
     AcplFraming framing;
     std::uint8_t num_bands = 0;   // acpl_num_param_bands
     std::uint8_t start_band = 0;  // acpl_param_band
+    std::uint8_t qmf_band = 0;    // acpl_qmf_band, below which the pair is mid-side coded
     AcplParams alpha1;
     AcplParams beta1;
 };
@@ -112,11 +113,6 @@ struct AcplData2ch {
                                               const AcplConfig1ch& config, AcplData1ch& out);
 [[nodiscard]] ParseResult parse_acpl_data_2ch(BitReader& r, const SubstreamContext& ctx,
                                               const AcplConfig2ch& config, AcplData2ch& out);
-
-// sb_to_pb(), Table 197: the parameter band of QMF subband `qmf_subband` (0 to
-// 63) when there are `num_param_bands` (15, 12, 9 or 7) of them. -1 for
-// anything else.
-[[nodiscard]] int acpl_sb_to_pb(int num_param_bands, int qmf_subband) noexcept;
 
 // get_acpl_hcb(), Pseudocode 8. quant_mode is the acpl_quant_mode value: 0
 // selects the FINE codebooks, 1 the COARSE ones (Table 144).

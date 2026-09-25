@@ -1,10 +1,12 @@
 // The decoder on streams of the channel elements DEE's streams do not reach
 // (ac4dec_constructed.hpp): the 3.0 element, the 5.X element's
 // coding_configs, 2ch_modes and matrices, and the 7.X element in its three
-// channel modes, in the SIMPLE and ASPX codec modes. Each stream reads with
-// the writer's trace, record for record; each channel's tone comes back on
-// its own channel; A-SPX fills the channels of the aspx_data element that
-// asks for it; companding changes the channel companding_control() names.
+// channel modes, in the SIMPLE and ASPX codec modes; and the channel pair,
+// 5.X and 7.X elements in the A-CPL modes. Each stream reads with the
+// writer's trace, record for record; each channel's tone comes back on its
+// own channel, and the channels A-CPL leaves silent stay so; A-SPX fills the
+// channels of the aspx_data element that asks for it; companding changes the
+// channel companding_control() names.
 //
 // The streams under tests/golden/ac4dec/constructed/ are the committed cases,
 // byte for byte, and tests/golden/ac4dec/ holds
@@ -110,15 +112,19 @@ std::span<const float> steady(const Decoded& decoded, std::size_t c) {
 }
 
 // Each channel's tone on that channel at -20 dBFS within 0.3 dB, and every
-// other channel's tone at least 60 dB under it there.
+// other channel's tone at least 60 dB under it there; a channel with no tone
+// (tone_hz 0, left silent by A-CPL) has every tone 60 dB under -20 dBFS.
 void check_routing(const BuiltStream& stream, const Decoded& decoded) {
     REQUIRE(decoded.speakers == stream.speakers);
     for (std::size_t c = 0; c < decoded.channels.size(); ++c) {
         CAPTURE(c, ac4::describe(decoded.speakers[c]));
-        const double own = tone_amplitude(steady(decoded, c), stream.tone_hz[c]);
-        CHECK(std::abs(20.0 * std::log10(own / kAmplitude)) < 0.3);
+        double own = kAmplitude;
+        if (stream.tone_hz[c] > 0.0) {
+            own = tone_amplitude(steady(decoded, c), stream.tone_hz[c]);
+            CHECK(std::abs(20.0 * std::log10(own / kAmplitude)) < 0.3);
+        }
         for (std::size_t other = 0; other < decoded.channels.size(); ++other) {
-            if (other != c) {
+            if (other != c && stream.tone_hz[other] > 0.0) {
                 CAPTURE(other);
                 CHECK(tone_amplitude(steady(decoded, c), stream.tone_hz[other]) < own * 1e-3);
             }
@@ -153,7 +159,8 @@ std::string name_of(const ElementCase& c) {
 void check_case(const ElementCase& c) {
     INFO(name_of(c) << (c.aspx ? " ASPX" : " SIMPLE") << ", chel_matsel " << c.chel_matsel << ", sap_mode "
                     << c.sap_mode << ", 2ch_mode " << c.two_ch_mode << ", stereo processing " << c.stereo_proc
-                    << ", b_use_sap_add_ch " << c.use_sap_add_ch);
+                    << ", b_use_sap_add_ch " << c.use_sap_add_ch << ", A-CPL mode " << c.acpl << ", second "
+                    << c.acpl_second << ", add_ch_base " << c.add_ch_base);
     const BuiltStream stream = ac4dec_test::build_stream(c, kFrames);
     check_routing(stream, decode_checked(stream));
 }
@@ -208,6 +215,97 @@ TEST_CASE("Tables 182 and 183 put each 7.X tone on its channel in the three mode
             }
         }
     }
+}
+
+TEST_CASE("the channel pair's A-CPL modes put each tone on its channel", "[ac4dec][constructed][acpl]") {
+    // ASPX_ACPL_1: mid and side below acpl_qmf_band, with and without stereo
+    // processing; ASPX_ACPL_2: one track, sent to L or to R.
+    for (const bool proc : {false, true}) {
+        for (const int sap : {0, 2}) {
+            check_case({.ch_mode = 1, .sap_mode = sap, .stereo_proc = proc, .acpl = 2});
+        }
+    }
+    // b_dual_maxsfb with the side in fewer bands than the mid, 16 of 22 (to
+    // 984 Hz, above both tones): the two tracks' lines do not line up until
+    // the decoder lays them out alike.
+    check_case({.ch_mode = 1, .sap_mode = 0, .stereo_proc = true, .acpl = 2, .side_bands = 16});
+    for (const bool second : {false, true}) {
+        for (int id = 0; id < 4; ++id) {
+            check_case({.ch_mode = 1, .acpl = 3, .acpl_second = second, .acpl_bands_id = id, .acpl_quant = id % 2});
+        }
+    }
+}
+
+TEST_CASE("the 5.X element's A-CPL modes put each tone on its channel", "[ac4dec][constructed][acpl]") {
+    for (const int ch_mode : {3, 4}) {
+        for (int config = 0; config < 2; ++config) {
+            for (const int sap : {0, 2}) {
+                check_case({.ch_mode = ch_mode, .coding_config = config, .chel_matsel = 5 + config, .sap_mode = 2,
+                            .sap_add_mode = sap, .acpl = 2, .acpl_bands_id = config});
+            }
+            for (const bool second : {false, true}) {
+                check_case({.ch_mode = ch_mode, .coding_config = config, .chel_matsel = 9, .sap_mode = 2, .acpl = 3,
+                            .acpl_second = second, .acpl_quant = config});
+            }
+        }
+        for (const bool second : {false, true}) {
+            for (const bool proc : {false, true}) {
+                check_case({.ch_mode = ch_mode, .sap_mode = 2, .stereo_proc = proc, .acpl = 4, .acpl_second = second,
+                            .acpl_quant = proc ? 1 : 0});
+            }
+        }
+    }
+}
+
+TEST_CASE("the 7.X element's A-CPL modes put each tone on its channel by Table 202", "[ac4dec][constructed][acpl]") {
+    for (int ch_mode = 5; ch_mode <= 10; ++ch_mode) {
+        for (int config = 0; config < 4; ++config) {
+            for (const bool base : {false, true}) {
+                if (base && ch_mode <= 6) {
+                    continue;  // 3/4/0 sends no add_ch_base
+                }
+                ElementCase common;
+                common.ch_mode = ch_mode;
+                common.coding_config = config;
+                common.two_ch_mode = ch_mode % 2 == 0;
+                common.chel_matsel = (ch_mode + config) % 12;
+                common.sap_mode = 2;
+                common.sap_add_mode = config % 2 == 0 ? 0 : 2;
+                common.add_ch_base = base;
+                common.acpl_bands_id = config;
+                ElementCase residual = common;
+                residual.acpl = 2;
+                check_case(residual);
+                for (const bool second : {false, true}) {
+                    ElementCase full = common;
+                    full.acpl = 3;
+                    full.acpl_second = second;
+                    check_case(full);
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("A-CPL's decorrelated part cancels in the sum of its two outputs", "[ac4dec][constructed][acpl]") {
+    // The channel pair in ASPX_ACPL_2 with alpha 0 and beta_q 4 (1.4 at ibeta
+    // 0, Table 204): L = x0 + 0.7 y and R = x0 - 0.7 y, with y the ducked
+    // decorrelator output of 2 x0. A steady tone passes the all-pass filters
+    // and the ducker whole, so (L + R) / 2 is the coded tone and (L - R) / 2
+    // the tone 1.4 times over, phase-shifted.
+    const BuiltStream stream = ac4dec_test::build_stream({.ch_mode = 1, .acpl = 3, .acpl_beta_q = 4}, kFrames);
+    const Decoded decoded = decode_checked(stream);
+    const std::span<const float> l = steady(decoded, 0);
+    const std::span<const float> r = steady(decoded, 1);
+    std::vector<float> sum(l.size());
+    std::vector<float> difference(l.size());
+    for (std::size_t n = 0; n < l.size(); ++n) {
+        sum[n] = 0.5F * (l[n] + r[n]);
+        difference[n] = 0.5F * (l[n] - r[n]);
+    }
+    const double hz = stream.tone_hz[0];
+    CHECK(std::abs(20.0 * std::log10(tone_amplitude(sum, hz) / kAmplitude)) < 0.1);
+    CHECK(std::abs(20.0 * std::log10(tone_amplitude(difference, hz) / (1.4 * kAmplitude))) < 0.3);
 }
 
 TEST_CASE("A-SPX fills the channels of the aspx_data element Table 213 gives them", "[ac4dec][constructed]") {

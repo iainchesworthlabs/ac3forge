@@ -402,7 +402,7 @@ TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][a
     CHECK(from_mp4->channels == raw->channels);
 }
 
-TEST_CASE("decode writes AC-4's ASPX mode and 5.1, and refuses what it does not decode, naming it",
+TEST_CASE("decode writes AC-4's ASPX mode, 5.1 and A-CPL, and refuses what it does not decode, naming it",
           "[cli][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_decode_aspx.log";
@@ -423,12 +423,21 @@ TEST_CASE("decode writes AC-4's ASPX mode and 5.1, and refuses what it does not 
     REQUIRE(decoded_51.has_value());
     CHECK(decoded_51->channels.size() == 6);
 
-    // 5.1 in ASPX_ACPL_2, which phase D5 decodes.
+    // 5.1 in ASPX_ACPL_2: A-CPL makes the surrounds of the front pair.
+    const auto acpl_log = dir / "ac4_decode_acpl.log";
+    const auto acpl_wav = dir / "ac4_acpl.wav";
+    const fs::path acpl = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-128" / "dee.ac4";
+    REQUIRE(run_cli("decode " + quoted(acpl) + " " + quoted(acpl_wav), acpl_log) == 0);
+    const auto decoded_acpl = ac3::io::read_wav(acpl_wav.string());
+    REQUIRE(decoded_acpl.has_value());
+    CHECK(decoded_acpl->channels.size() == 6);
+
+    // 25 frames a second, which needs phase D6's sample rate converter.
     const auto refused_log = dir / "ac4_decode_refused.log";
     const auto refused = dir / "ac4_refused.wav";
-    const fs::path acpl = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-128" / "dee.ac4";
-    CHECK(run_cli("decode " + quoted(acpl) + " " + quoted(refused), refused_log) == 2);  // kExitInput
-    CHECK(read_log(refused_log).find("A-CPL") != std::string::npos);
+    const fs::path ims = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-ims-music-128-25" / "dee.ac4";
+    CHECK(run_cli("decode " + quoted(ims) + " " + quoted(refused), refused_log) == 2);  // kExitInput
+    CHECK(read_log(refused_log).find("frame_rate_index 13") != std::string::npos);
     CHECK_FALSE(fs::exists(refused));
 }
 

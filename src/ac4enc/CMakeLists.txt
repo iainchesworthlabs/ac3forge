@@ -26,6 +26,7 @@ endif()
 
 target_sources(ac4enc_objects
     PRIVATE
+        src/acpl/acpl_syntax.cpp
         src/asf/analysis.cpp
         src/asf/coder.cpp
         src/asf/layout.cpp

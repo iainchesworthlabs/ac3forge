@@ -141,7 +141,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Audio PCM decode | 🔴 | High | Essential | Inspector by design — content is byte ranges only |
 | **Decoder (`ac4dec::`)** | Presentation + channel-coded syntax | 🟡 | High | Essential | Full syntax trace |
 | | ASF / ASPX / A-CPL / metadata() | 🟡 | High | Essential | DEE digest CI; dual transcription vs Python |
-| | Channel-coded paths without fixtures | 🟡 | Medium | Optional | Noise fill, VARVAR ASPX, time-interleaved ASPX, mono/3.0/7.X, ASPX_ACPL_1, alt presentations, transmitted DRC gains — transcribed, oracle-poor |
+| | Channel-coded paths without fixtures | 🟡 | Medium | Optional | Noise fill, VARVAR ASPX, time-interleaved ASPX, the mono element, alt presentations, transmitted DRC gains — transcribed, oracle-poor; 3.0, 7.X and every A-CPL mode read on constructed streams |
 | | EMDF payload substreams (syntax) | 🟡 | Medium | Important | Syntax only |
 | | Dialogue enhancement PCM apply | 🔴 | Medium | Important | `metadata()` read; no audio path (blocks Hearth AC-4 playback plans) |
 | | Speech spectral frontend (SSF) | 🔴 | Low | Nice-to-have | Refused `kUnsupported` |
@@ -151,8 +151,9 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | PCM: SIMPLE mono and stereo | 🟢 | High | Essential | ASF, stereo processing, block switching, frame alignment and the QMF banks at `frame_rate_index` 13; DEE's 2.0 streams at unity gain and pinned SNR floors in CI; librempeg agrees to 83 dB or better |
 | | PCM: ASPX mono and stereo | 🟢 | High | Essential | Companding and A-SPX in the QMF domain; DEE's 2.0 streams from 48 to 144 kbps at unity gain and its immersive stereo against Lo/Ro, with SNR below the crossover, A-SPX tile energies, LSD and ViSQOL pinned; interleaved waveform coding, balance and VARVAR tested on constructed data |
 | | PCM: 3.0, 5.X and 7.X | 🟢 | High | Essential | SIMPLE and ASPX: the LFE, Tables 178 to 183's matrices and routing, A-SPX pairing and companding over Tables 212 and 213; DEE's 5.1 streams from 192 to 768 kbps with every channel scored and pinned, each tone on its own channel, librempeg agreeing to 83 dB; every coding_config, 2ch_mode, chel_matsel, the 3.0 element and the three 7.X modes on constructed streams |
-| | PCM: other modes and rates | 🔴 | High | Essential | A-CPL and the sample rate converter: refused by name until plan phases D5 and D6 |
-| | Transforms (`ac4core`: FFT, MDCT pair, KBD, QMF banks) | 🟢 | High | Essential | Each against its formula to 1e-12; shared by the decoder and the encoder, with A-SPX's tables and high frequency generator |
+| | PCM: A-CPL | 🟢 | High | Essential | ASPX_ACPL_1 to 3 in the pair, 5.X and 7.X elements: the decorrelators against their difference equations and flat to 1e-9, the ducker, interpolation and dequantisation; DEE's 5.1 at 96 to 144 kbps with the coded downmixes scored as waveforms and each parameter band's level difference and correlation pinned; the other modes on constructed streams. librempeg does not rebuild the surrounds |
+| | PCM: other frame rates | 🔴 | High | Essential | The sample rate converter: refused by name until plan phase D6 |
+| | Transforms (`ac4core`: FFT, MDCT pair, KBD, QMF banks) | 🟢 | High | Essential | Each against its formula to 1e-12; shared by the decoder and the encoder, with A-SPX's tables and high frequency generator and A-CPL's decorrelators, ducker and tables |
 | **Encoder (`ac4enc::`)** | SIMPLE mono and stereo | 🟢 | High | Essential | 48 and 44.1 kHz at `frame_rate_index` 13, a constant rate from 8 kbps; block switching, M/S and prediction; SNR, LSD and ViSQOL floors in CI; ahead of DEE on SNR and LSD at 192 kbps |
 | | Frame writer, sync frame, MP4 and `dac4` | 🟢 | High | Essential | Encoder, decoder and Python traces agree record for record (tests, `fuzz_ac4_encode`, encoder-space harness); FFmpeg frames it; MediaInfo and DEE's MP4 muxer read it as configured |
 | | ASPX mono and stereo | 🟢 | High | Essential | Below 96 kbps a channel: A-SPX with DEE's crossovers, FIXFIX, FIXVAR and VARFIX framing, sinusoids, companding below 64 kbps a channel; SNR below the crossover, A-SPX tiles, LSD and ViSQOL pinned in CI; ViSQOL within 0.03 of DEE's or above it from 64 to 144 kbps. Balance, VARVAR and frequency interleaving behind `experimental=` |
@@ -295,11 +296,11 @@ this register is the checklist that those bounds appear here too.
 |---|---|---|
 | Part 1 / 2 TOC legacy | `bitstream_version` 0/1 | 🟡 |
 | §6.2.2.4 | OAMD substream DATA body | 🔴 |
-| Channel-coded syntax without fixtures | Noise fill, VARVAR, ASPX_ACPL_1, … | 🟡 |
+| Channel-coded syntax without fixtures | Noise fill, VARVAR, … | 🟡 |
 | Dialogue enhancement | PCM apply | 🔴 |
 | SSF / immersive / objects | Decode | 🔴 |
 | §4.2.4.3 | HSF extension substream content (syntax only; synthetic frames only) | 🟡 |
-| Whole codec | PCM reconstruction beyond SIMPLE and ASPX (A-CPL, immersive, objects, the sample rate converter) | 🔴 |
+| Whole codec | PCM reconstruction beyond the channel elements' codec modes (immersive, objects, the sample rate converter) | 🔴 |
 | Whole codec | Encoding beyond SIMPLE and ASPX mono to 5.1 | 🔴 |
 | §5.1.4 | Spectral noise fill: decoded, but no stream here sets it | 🟡 |
 

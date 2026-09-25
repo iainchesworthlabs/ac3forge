@@ -870,16 +870,17 @@ I-frame settings, each with MediaInfo's frame-by-frame trace beside it.
 
 ### The decoder's output
 
-The decoder turns a mono, stereo, 3.0, 5.X or 7.X substream in the SIMPLE or ASPX codec mode, at
-`frame_rate_index` 13, into PCM: the audio spectral frontend, stereo and multichannel processing, the
-inverse transform with block switching and frame alignment (Part 1 clauses 5.1, 5.3, 5.5 and 5.6),
-then the QMF domain (5.7): the analysis bank, companding, A-SPX and the synthesis bank. Every codec
+The decoder turns a mono, stereo, 3.0, 5.X or 7.X substream in any of Part 1's codec modes (SIMPLE,
+ASPX and the three A-CPL modes), at `frame_rate_index` 13, into PCM: the audio spectral frontend, stereo
+and multichannel processing, the inverse transform with block switching and frame alignment (Part 1
+clauses 5.1, 5.3, 5.5 and 5.6), then the QMF domain (5.7): the analysis bank, companding, A-SPX, A-CPL
+and the synthesis bank. Every codec
 mode passes through the QMF banks, SIMPLE included, as Part 1 Figure 9 draws the chain, so the decoder
 has one delay, 1,313 samples at index 13: `d_pcm`'s 352, the banks' 577 and six QMF slots of history.
 The LFE passes through the banks with the other channels and nothing else touches it there. The
-transforms, the QMF banks, and A-SPX's tables and high frequency generator are in `src/ac4core`, the
-core the decoder shares with the encoder. Five checks stand in for the reference output neither part
-defines:
+transforms, the QMF banks, A-SPX's tables and high frequency generator, and A-CPL's decorrelators,
+transient ducker, interpolation and dequantisation tables are in `src/ac4core`, the core the decoder
+shares with the encoder. Six checks stand in for the reference output neither part defines:
 
 - **Each transform against its formula** (`tests/ac4core/test_ac4core_dsp.cpp`): the FFT against the
   DFT; the inverse MDCT against a verbatim transcription of Pseudocodes 60 to 63 and against the cosine
@@ -897,6 +898,16 @@ defines:
   DEE's streams do not take: frequency and time interleaved waveform coding, a balanced pair, the tone
   generator's phase, the noise generator's index across intervals, an interval running past its frame,
   and companding's gains.
+- **A-CPL's parts on known input** (`tests/ac4core/test_ac4core_acpl.cpp`,
+  `tests/ac4dec/test_ac4dec_acpl.cpp`): each of the three decorrelators, in each of Table 198's regions,
+  has the impulse response of its difference equation to 1e-12, run through 32 or 16 slots at a time,
+  and a magnitude response flat to 1e-9; the transient ducker leaves a steady signal alone and ducks a
+  decaying one by the gain Pseudocode 112 gives, worked by hand. The dequantisation tables hold their
+  printed entries and the structure they share: the fine alpha and beta tables step through one
+  sequence, each fine beta row is a multiple of the last to the table's seven decimals, and the coarse
+  tables are the fine ones at even indices. Differential decoding runs along frequency, along time and
+  across frames, and a value outside its table refuses the frame; interpolation is worked smooth and
+  steep, with one and two parameter sets; ASPX_ACPL_3 makes its centre of gamma5 and gamma6.
 - **The multichannel matrices against the printed tables, and the elements DEE does not write**
   (`tests/ac4dec/test_ac4dec_multichannel.cpp`, `test_ac4dec_constructed.cpp`): the matrices of Part 1
   Tables 178 and 179 and clause 5.3.3.4 equal the tables' printed entries, 300 of them for Table 179
@@ -907,8 +918,15 @@ defines:
   `2ch_mode`s, every `chel_matsel`, stereo processing on and off, `b_use_sap_add_ch`, SIMPLE and ASPX.
   Each reads with the writer's trace, record for record, and puts each tone back on its channel, 60 dB
   over the other tones there. On the ASPX streams, one aspx_data element sent loud fills its own
-  channels' high band alone, and `b_compand_on` changes only the channel Table 212 gives it. Twelve of
-  the streams are committed, with the Python parser's digests, which both transcriptions reproduce.
+  channels' high band alone, and `b_compand_on` changes only the channel Table 212 gives it. The A-CPL
+  modes are built the same way, with A-CPL's syntax written by the encoder's writer: the channel pair in
+  ASPX_ACPL_1 and 2, the 5.X element in all three, and the 7.X element in ASPX_ACPL_1 and 2 in its
+  three channel modes, with both of Table 202's pairings. Their parameters send each module's downmix
+  wholly to one of its two outputs, and ASPX_ACPL_1's residuals carry the other below `acpl_qmf_band`,
+  so each tone comes back on its channel and the channels A-CPL leaves out stay 60 dB under -20 dBFS. A
+  pair in ASPX_ACPL_2 with beta 1.4 puts the decorrelated part in L and R with opposite signs: it cancels
+  in their sum to 0.1 dB and is the tone 1.4 times over in their difference. Twenty of the streams are
+  committed, with the Python parser's digests, which both transcriptions reproduce.
 - **DEE's streams against their sources** (`tools/checks/score_ac4_decode.py`): the decoded output is
   aligned with the source by cross-correlation and fitted with a gain per channel. Every leg must lag
   its source by the same 4,385 samples (DEE's encoder's 3,072 and this decoder's 1,313; DEE's immersive
@@ -916,9 +934,10 @@ defines:
   at the first measurement: per-channel SNR over the whole band for SIMPLE and below the A-SPX crossover
   for ASPX; above the crossover, each frame's energy in each A-SPX subband group against the source's;
   log-spectral distance and ViSQOL. Each tone must land on its own channel. FFmpeg Validate runs it on
-  the seven committed legs, four of them 5.1 and three ASPX; locally it runs over phase G0's 90 legs at
-  index 13: 2.0 from 48 to 768 kbps, 5.1 from 192 to 768 and immersive stereo from 64 to 320, every 2.0
-  channel within 0.17 dB of unity and every 5.1 channel but the LFE within 0.11 dB. DEE low-passes the
+  the nine committed legs, six of them 5.1, three ASPX and two A-CPL; locally it runs over phase G0's 99
+  legs at index 13: 2.0 from 48 to 768 kbps, 5.1 from 96 to 768 and immersive stereo from 64 to 320,
+  every 2.0 channel within 0.17 dB of unity and every 5.1 channel but the LFE within 0.11 dB in SIMPLE
+  and ASPX. DEE low-passes the
   LFE before it codes it: from
   the source to the decoded LFE the level runs 0.25 to 0.31 dB under unity to 100 Hz and falls 12 dB by
   120 to 160 Hz, with the phase of a filter near 120 Hz, so the LFE's level is checked from 20 to 100 Hz
@@ -931,6 +950,20 @@ defines:
   The immersive stereo legs, made from 5.1, are compared with the source's Lo/Ro downmix, which they
   correlate with at 0.977 to 0.984. DEE's 2.0 streams carry the same audio from 256 kbps up, the rest of
   each frame being fill, so those rates decode to the same samples.
+  DEE's 5.1 streams at 96 kbps (ASPX_ACPL_3) and at 128 and 144 (ASPX_ACPL_2) code a pair of downmixes,
+  and A-CPL makes the surrounds of them, and the centre in ASPX_ACPL_3, so they are scored as A-CPL
+  rebuilds them. The coded downmixes, recovered from the output, meet the source's as waveforms below
+  the crossover: in ASPX_ACPL_2 (L + Ls / sqrt 2) / 2 and its mirror, which the upmix keeps exactly, at
+  21 to 23 dB SNR on music, 17 to 20 on film and 48 on tones, and in ASPX_ACPL_3 the Lo/Ro downmix,
+  which it keeps as closely as gamma's quantisation allows, at 22 to 25 dB on music and film; C in
+  ASPX_ACPL_2 and the LFE are scored as they are. Per A-CPL parameter band and pair, (L, Ls) and (R,
+  Rs), the output's level difference and correlation are held to the source's: over 2,048-sample frames
+  their mean distances run 1.8 to 4.0 dB and 0.18 to 0.47, pinned band by band. Applying each frame's
+  parameters a frame early or late takes the level difference's distance on music at 128 kbps from 2.6
+  dB to 3.8 and 3.6 (`src/ac4dec/ERRATA.md`, "When A-CPL's parameters apply"). On the tone legs each tone is at least 15
+  dB over the others in its channel in ASPX_ACPL_2 and 8 dB in ASPX_ACPL_3: the parameters are per band,
+  and a tone 44 Hz from a band's edge, L's at 331 Hz, reaches the next band, whose parameters serve
+  another channel's tone.
 - **librempeg on the same streams**: its output is 736 samples earlier than this decoder's on SIMPLE
   and ASPX streams alike, the 352 of frame alignment and the 384 of history it does not delay by, and
   on SIMPLE streams the two agree to 83 to 90 dB SNR at unity gain, on each of 5.1's six channels as
@@ -941,7 +974,8 @@ defines:
   to 0.9 dB below, and 5.5. Over the whole band of DEE's 5.1 ASPX streams the two agree to 67 to 75 dB,
   and to 48 dB on film's centre, whose band above the crossover carries the dialogue. On the tone legs,
   where A-SPX adds noise alone, the two agree to 30 dB, noise included: they index the noise table
-  alike.
+  alike. On DEE's 5.1 streams in ASPX_ACPL_2 librempeg puts out the coded pair as L and R and leaves Ls
+  and Rs silent, so it is no reference for A-CPL.
 
 The level check settled one question the text leaves open in phase D2: the pseudocode as printed,
 without the factor of two its informative example mentions, decodes DEE's streams at unity gain with
@@ -961,10 +995,11 @@ segments with `ac3cli demux` and kept out of the tree. Chromium's A-JOC file is 
 table of contents by both. `AC4DEC_TRACE_DIR` writes the decoder's full trace, one record per line as
 `frame substream bit_offset width value name`, the shape `ac4_syntax.py trace` prints.
 
-**Where no stream reaches.** Most of the syntax: noise fill, VARVAR framing, time-interleaved A-SPX,
-the mono, 3.0 and 7.X elements, ASPX_ACPL_1, transmitted DRC gains, dialogue enhancement methods 1 to
-3 and alternative presentations among it. The constructed streams above reach the 3.0 and 7.X elements
-in the SIMPLE and ASPX modes. `tools/checks/ac4_syntax_differential.py` reads streams made
+**Where no stream reaches.** No stream of DEE's reaches most of the syntax: noise fill, VARVAR framing,
+time-interleaved A-SPX, the mono, 3.0 and 7.X elements, ASPX_ACPL_1 and A-CPL in a channel pair,
+transmitted DRC gains, dialogue enhancement methods 1 to 3 and alternative presentations among it. The
+constructed streams above reach the 3.0 and 7.X elements in the SIMPLE and ASPX modes, and every A-CPL
+mode. `tools/checks/ac4_syntax_differential.py` reads streams made
 for this through both transcriptions: DEE frames with one substream altered (a random tail from a
 random bit, a few flipped bits, or a random codec mode), tables of contents for the channel modes no
 encoder here writes over random payloads, and, with `--inputs`, a corpus `fuzz_ac4_decode` grew, which
