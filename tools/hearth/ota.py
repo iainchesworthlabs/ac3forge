@@ -1116,7 +1116,7 @@ def show_status(board: Board) -> int:
         ("trial", trial_text(trial) if trial else "none"),
         ("upload", upload_line),
         ("last update", last_update_text(last) if last else "none"),
-        ("core dump", coredump_text(part(firmware, "coredump"), firmware)),
+        ("core dump", coredump_text(firmware)),
         ("network", text_of(firmware, "network") or "?"),
     ]
     console.say(str(board))
@@ -1137,7 +1137,12 @@ def coredump_source(dump: dict[str, Any], firmware: dict[str, Any]) -> str:
     return f"an image neither slot holds now (ELF SHA-256 {prefix}...)"
 
 
-def coredump_text(dump: dict[str, Any] | None, firmware: dict[str, Any]) -> str:
+def coredump_text(firmware: dict[str, Any]) -> str:
+    # A board keeps the key, null when there is no dump; firmware from before O4
+    # has no key at all.
+    if "coredump" not in firmware:
+        return "not reported by this firmware"
+    dump = part(firmware, "coredump")
     if not dump:
         return "none"
     words = [f"{number_of(dump, 'bytes'):,} bytes"]
@@ -1182,7 +1187,7 @@ def fetch_coredump(board: Board, out: Path | None, elf: Path | None, erase: bool
     dump = part(firmware, "coredump")
     path = out or Path(f"coredump-{board.hostname}.bin")
     path.write_bytes(data)
-    say(board, f"saved {len(data):,} bytes to {path}: {coredump_text(dump, firmware)}")
+    say(board, f"saved {len(data):,} bytes to {path}: {coredump_text(firmware)}")
     code = UPDATED if elf is None else decode_coredump(board, path, elf, dump)
     if erase:
         code = max(code, send(board, "DELETE", "/firmware/coredump", b"", "erase"))

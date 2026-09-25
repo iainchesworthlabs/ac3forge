@@ -1112,6 +1112,9 @@ class Diagnostics(Case):
         board.firmware["coredump"] = None
         code, out = run_ota("status", "--host", board.host)
         self.assertIn("  core dump    none", out)
+        del board.firmware["coredump"]  # firmware from before O4
+        code, out = run_ota("status", "--host", board.host)
+        self.assertIn("  core dump    not reported by this firmware", out)
 
     def test_coredump_saves_the_dump_and_erases_it_when_asked(self) -> None:
         board = FakeBoard(self)
