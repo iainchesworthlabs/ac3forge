@@ -2009,6 +2009,28 @@ The sections below contain the complete change list and fixes.
   API targets as well as the shared ones. A C project that links a static C API target must still
   enable the CXX language in CMake so that the C++ runtime is linked; `docs/library/index.md` and
   `docs/library/c-api.md` say so.
+- **`pkg-config --static --libs ac3forge_c` did not link.** In an install that holds only the
+  static libraries (`AC3FORGE_INSTALL_BOTH_LINKAGES=OFF` with `BUILD_SHARED_LIBS=OFF`, the shape a
+  vcpkg or Conan package has), `ac3forge_c.pc` was `Libs: -lac3forge_c_static` and nothing more,
+  with no `Requires.private` and no `Libs.private`. `libac3forge_c_static.a` calls into
+  `libac3forge_static.a`, and a link that a C compiler drives adds neither the C++ runtime that
+  every archive of this project needs nor the libm that `libac3forge_static.a` calls, so a C
+  program built from the flags pkg-config printed stopped at undefined references to
+  `operator new` and `ac3::FrameEncoder::FrameEncoder`. The `.pc` file of a static archive now
+  says what the archive needs. `ac3forge_c.pc` has `Requires.private: ac3forge`, and
+  `ac3forge.pc`, `matroska.pc`, `mp4.pc`, `mpegts.pc`, `iamf.pc` and `ac3iab.pc` have
+  `Libs.private: -lstdc++ -lm` (`-lc++ -lm` for a libc++ build on Linux), taken from
+  `CMAKE_CXX_IMPLICIT_LINK_LIBRARIES` for the compiler that built the archives; `ac3signing.pc`
+  already required `ac3forge`. The runtime libraries are listed by the archives that use them, so
+  that they follow every archive on the link line: GCC on Ubuntu links with `--as-needed` and
+  drops an `-lm` that comes before `libac3forge_static.a`. Only `pkg-config --static` puts either
+  field on the link line, and a `.pc` that names a shared library has neither, so a consumer of
+  `libac3forge_c.so`, which embeds the codec, still does not depend on `libac3forge.so`.
+  `tools/checks/check_install_consumer.sh` now links a C program with the flags pkg-config prints
+  and nothing else, using the compiler that configured the tree, and links each static `.pc` on its
+  own. The two trees the linux-llvm leg installed name the shared library in their `.pc` files, so
+  the leg now configures a third tree with one linkage for it. `docs/library/index.md` and
+  `docs/library/c-api.md` describe what pkg-config prints.
 
 **Audio backend and object signing**
 

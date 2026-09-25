@@ -27,14 +27,30 @@
 # combination and needs AC3FORGE_BUILD_CAPI=ON; pass several to check several. Every exported C
 # API target is linked and run, static and shared; install_consumer/CMakeLists.txt says how.
 #
+# The same prefix is then used the way a Makefile, Meson or autotools build uses it, through its
+# .pc files (cmake/PkgConfig.cmake), which are all such a build has. The C program is linked with
+# the C compiler that configured the tree (cc when the tree has none) and the flags pkg-config
+# prints, and nothing else. A prefix whose ac3forge_c.pc names the static archive, the shape a
+# vcpkg or Conan package has (AC3FORGE_INSTALL_BOTH_LINKAGES=OFF and BUILD_SHARED_LIBS=OFF), is
+# asked with --static, which is what puts Requires.private and Libs.private on the link line.
+# Every link here runs with --as-needed, which GCC on Ubuntu does by default and clang does not:
+# it drops an -lm that comes before the archive calling it, so a .pc that lists its libraries in
+# the wrong order fails under either compiler. Each .pc that names an archive is also linked whole
+# into an empty C program on its own, which finds what one component's file lacks even when no
+# consumer reaches that archive. It needs pkg-config, or whatever $PKG_CONFIG names.
+#
 # Usage:  ./tools/checks/check_install_consumer.sh <build-dir>...
-# Exit:   0 = every tree's archives linked whole and its consumer built and ran, 2 = bad
-#         invocation, anything else = a step failed (its own output is above).
+# Exit:   0 = every tree's archives linked whole, its consumers built and ran and its .pc files
+#         linked, 2 = bad invocation, anything else = a step failed (its own output is above).
 
 set -euo pipefail
 
 if [[ $# -eq 0 ]]; then
     echo "Usage: $0 <build-dir>..." >&2
+    exit 2
+fi
+if ! command -v "${PKG_CONFIG:-pkg-config}" > /dev/null; then
+    echo "::error::${PKG_CONFIG:-pkg-config} is not installed, and the pkg-config consumer needs it" >&2
     exit 2
 fi
 
@@ -46,6 +62,69 @@ trap 'rm -rf "$scratch"' EXIT
 # FILEPATH in one tree and STRING in another).
 cache_value() {
     sed -n "s/^$2:[A-Z]*=//p" "$1/CMakeCache.txt" | head -n 1
+}
+
+# pkg-config confined to the .pc files of one prefix (pc_dir, set per build directory below), so a
+# copy of ac3forge installed on the machine is never the one that gets read.
+pc() {
+    PKG_CONFIG_LIBDIR="$pc_dir" "${PKG_CONFIG:-pkg-config}" "$@"
+}
+
+# The prefix, consumed through pkg-config alone. $1 = the prefix, $2 = a scratch directory, $3 =
+# the C compiler that configured the tree, or empty for cc.
+pkg_config_check() {
+    local prefix="$1" work="$2" cc="${3:-${CC:-cc}}"
+    local -a flags libs whole static=()
+    local pc_file name flag libdir
+
+    pc_file="$(find "$prefix" -name ac3forge_c.pc -print -quit)"
+    if [[ -z "$pc_file" ]]; then
+        echo "::error::$prefix installed no ac3forge_c.pc" >&2
+        return 1
+    fi
+    pc_dir="$(dirname "$pc_file")"
+
+    # A Libs line that names the archive is a static-only install, and --static is what makes
+    # pkg-config read the private fields that say what the archive needs.
+    case " $(pc --libs-only-l ac3forge_c) " in
+        *" -lac3forge_c_static "*) static=(--static) ;;
+        *) ;;
+    esac
+
+    libdir="$(pc --variable=libdir ac3forge_c)"
+    read -r -a flags <<< "$(pc ${static[@]+"${static[@]}"} --cflags --libs ac3forge_c)"
+    echo "--- $cc consumer.c, flags from: pkg-config ${static[*]:+${static[*]} }--cflags --libs ac3forge_c"
+    echo "    ${flags[*]}"
+    if ! "$cc" -std=c11 "$root/tools/checks/install_consumer/consumer.c" -o "$work/pc_consumer" \
+            -Wl,--as-needed -Wl,-rpath,"$libdir" "${flags[@]}"; then
+        echo "::error::the flags pkg-config prints for ac3forge_c do not link the C consumer (the linker's complaint is above) - see cmake/PkgConfig.cmake" >&2
+        return 1
+    fi
+    "$work/pc_consumer"
+
+    # One .pc at a time, every archive it names linked whole into a program that calls nothing.
+    printf 'int main(void) { return 0; }\n' > "$work/empty.c"
+    for pc_file in "$pc_dir"/*.pc; do
+        name="$(basename "$pc_file" .pc)"
+        case " $(pc --libs-only-l "$name") " in
+            *" -l"*"_static "*) ;;
+            *) continue ;;
+        esac
+        read -r -a libs <<< "$(pc --static --libs "$name")"
+        whole=()
+        for flag in "${libs[@]}"; do
+            case "$flag" in
+                -l*_static) whole+=("-Wl,--whole-archive" "$flag" "-Wl,--no-whole-archive") ;;
+                *) whole+=("$flag") ;;
+            esac
+        done
+        echo "--- $name, its archives linked whole: pkg-config --static --libs $name"
+        echo "    ${libs[*]}"
+        if ! "$cc" "$work/empty.c" -o "$work/whole_$name" -Wl,--as-needed "${whole[@]}"; then
+            echo "::error::pkg-config --static --libs $name does not link its archive on its own (the linker's complaint is above) - see cmake/PkgConfig.cmake" >&2
+            return 1
+        fi
+    done
 }
 
 index=0
@@ -93,4 +172,6 @@ for build in "$@"; do
         ${compilers[@]+"${compilers[@]}"}
     cmake --build "$consumer_build"
     ctest --test-dir "$consumer_build" --output-on-failure
+
+    pkg_config_check "$prefix" "$scratch/$index" "$c_compiler"
 done

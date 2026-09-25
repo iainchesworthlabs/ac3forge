@@ -38,6 +38,11 @@ runtime symbols such as `operator new`. `ac3::forge_c_shared` carries its own ru
 and links from a C-only project as it is. Neither variant needs {fmt}, and
 [Using ac3::forge](index.md) says why.
 
+A build that finds libraries through pkg-config runs
+`pkg-config --static --cflags --libs ac3forge_c` for a static-only install. The line it prints
+names `libac3forge_static.a` and the C++ runtime along with `libac3forge_c_static.a`; the
+pkg-config paragraph of [Using ac3::forge](index.md) has the details.
+
 ## Conventions
 
 **Every fallible function returns `ac3forge_status_t`.** `AC3FORGE_OK` is always zero, so
