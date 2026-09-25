@@ -48,6 +48,7 @@ endif()
 add_executable(ac3tests
     ac4/test_ac4.cpp
     ac4/test_ac4_presentation_configs.cpp
+    ac4/test_ac4_splitter.cpp
     ac4/test_ac4_toc_syntax.cpp
     ac4core/test_ac4core_acpl.cpp
     ac4core/test_ac4core_aspx.cpp
