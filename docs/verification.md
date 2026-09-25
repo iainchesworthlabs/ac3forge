@@ -1064,10 +1064,11 @@ encoder's ladder):
   leaves out channel group 4, which Part 2 Table A.27 and Pseudocode E.3 both give its top front
   pair, and MediaInfo's summary names that pair Tfc (`src/ac4enc/ERRATA.md`). MediaInfo and the
   muxer read the A-CPL streams as configured as well, ASPX_ACPL_1 and A-CPL in stereo included.
-  librempeg decodes the ASPX_ACPL_2 and ASPX_ACPL_3 streams' coded channels to within 69 dB of the
-  decoder's recovered downmixes and leaves the channels A-CPL rebuilds silent, as it does DEE's; it
-  refuses the ASPX_ACPL_1 streams, whose residuals and side send fewer bands than the channels they
-  pair with, and reads D5's constructed ones, which send as many.
+  librempeg decodes the 5.X element's ASPX_ACPL_2 and ASPX_ACPL_3 streams' coded channels to within
+  69 dB of the decoder's recovered downmixes, and stereo ASPX_ACPL_2's to 45 dB, and leaves the
+  channels A-CPL rebuilds silent, as it does DEE's; it refuses the ASPX_ACPL_1 streams, whose
+  residuals and side send fewer bands than the channels they pair with, and reads D5's constructed
+  ones, which send as many.
 - **Decoded against the sources** (`tools/checks/score_ac4_encode.py`, in FFmpeg Validate): the
   programme fixtures, one tone per channel, a sweep, noise, castanet-like bursts and a panned source,
   mono, stereo, 5.0 and 5.1 (music and film mixes), 48 and 44.1 kHz, 24 to 384 kbps, encoded and
