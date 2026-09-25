@@ -158,7 +158,8 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Frame writer, sync frame, MP4 and `dac4` | 🟢 | High | Essential | Encoder, decoder and Python traces agree record for record (tests, `fuzz_ac4_encode`, encoder-space harness); FFmpeg frames it; MediaInfo and DEE's MP4 muxer read it as configured |
 | | ASPX mono and stereo | 🟢 | High | Essential | Below 96 kbps a channel: A-SPX with DEE's crossovers, FIXFIX, FIXVAR and VARFIX framing, sinusoids, companding below 64 kbps a channel; SNR below the crossover, A-SPX tiles, LSD and ViSQOL pinned in CI; ViSQOL within 0.03 of DEE's or above it from 64 to 144 kbps. Balance, VARVAR and frequency interleaving behind `experimental=` |
 | | SIMPLE and ASPX 5.0 and 5.1 | 🟢 | High | Essential | The 5.X element in DEE's form: L/R and Ls/Rs pairs, C, the LFE to 140.6 Hz; ASPX below 384 kbps for 5.1, at DEE's 5.1 crossovers; each channel's tone on its own channel, the LFE's included; librempeg decodes it as the decoder does, to 82.5 dB; SNR, LSD and ViSQOL pinned in CI, and the race against DEE from 192 to 768 kbps. Coding configurations 1 to 3, `2ch_mode` 1, and 7.0 and 7.1 in the 7.X element behind `experimental=` |
-| | Other codec modes, layouts, rates and metadata | 🔴 | High | Essential | A-CPL, immersive layouts, other frame rates, DRC, dialogue enhancement: plan phases E4 to E7 |
+| | A-CPL 5.0 and 5.1 | 🟢 | High | Essential | ASPX_ACPL_3 and ASPX_ACPL_2 at DEE's rates, with DEE's A-SPX configuration; each band's parameters from each subband's own band; each tone on its own channel; the coded downmixes, each band's level difference and correlation, LSD and ViSQOL pinned in CI, and the race against DEE at 96 to 144 kbps; MediaInfo and DEE's muxer read it, and librempeg decodes its coded channels. ASPX_ACPL_1 and A-CPL in stereo behind `experimental=acpl` |
+| | Other layouts, rates and metadata | 🔴 | High | Essential | Immersive layouts, other frame rates, DRC, dialogue enhancement: plan phases E5 to E7 |
 
 ---
 
@@ -301,7 +302,7 @@ this register is the checklist that those bounds appear here too.
 | SSF / immersive / objects | Decode | 🔴 |
 | §4.2.4.3 | HSF extension substream content (syntax only; synthetic frames only) | 🟡 |
 | Whole codec | PCM reconstruction beyond the channel elements' codec modes (immersive, objects, the sample rate converter) | 🔴 |
-| Whole codec | Encoding beyond SIMPLE and ASPX mono to 5.1 | 🔴 |
+| Whole codec | Encoding beyond SIMPLE, ASPX and A-CPL mono to 5.1 | 🔴 |
 | §5.1.4 | Spectral noise fill: decoded, but no stream here sets it | 🟡 |
 
 ### SMPTE ST 2098-2 / ST 2067-201 (IAB)

@@ -24,15 +24,17 @@
 // mode is SIMPLE, the audio spectral frontend with block switching and
 // MDCT-domain stereo processing for each channel pair; or ASPX, which codes
 // the spectral frontend up to a crossover and recreates the band above it
-// with A-SPX, with companding at the lower rates in mono and stereo. 5.0 and
-// 5.1 take the 5.X element in the form DEE's streams have it (coding_config
-// 0 and 2ch_mode 0: L and R as a pair, Ls and Rs as a pair, C alone, and the
-// LFE); its other coding configurations, and 7.0 and 7.1 in the 7.X element,
-// are experimental. The table of contents is bitstream version 2 with
-// presentation version 1, and the presentation substream carries the dialogue
-// normalisation it is given. Everything else in the plan's later phases
-// (A-CPL, immersive layouts, other frame rates, DRC and dialogue enhancement
-// data) is refused by name as an invalid configuration.
+// with A-SPX, with companding at the lower rates in mono and stereo; or, in
+// 5.0 and 5.1, ASPX_ACPL_2 or ASPX_ACPL_3, which code a downmix in the ASPX
+// way and rebuild the channels from it with A-CPL. 5.0 and 5.1 take the 5.X
+// element in the form DEE's streams have it (coding_config 0 and 2ch_mode 0:
+// L and R as a pair, Ls and Rs as a pair, C alone, and the LFE); its other
+// coding configurations, 7.0 and 7.1 in the 7.X element, ASPX_ACPL_1, and
+// A-CPL in stereo are experimental. The table of contents is bitstream
+// version 2 with presentation version 1, and the presentation substream
+// carries the dialogue normalisation it is given. Everything else in the
+// plan's later phases (immersive layouts, other frame rates, DRC and dialogue
+// enhancement data) is refused by name as an invalid configuration.
 //
 // src/ac4enc/ERRATA.md records the readings the writer alone needs; where the
 // decoder depends on the same reading, src/ac4dec/ERRATA.md has it.
@@ -48,9 +50,12 @@ enum class EncodeError : std::uint8_t {
 
 // The channel element's codec mode (Part 1 clause 4.3.6.1).
 enum class CodecMode : std::uint8_t {
-    // ASPX below 96 kbps a channel in mono and stereo and below 76.8 in the
-    // 5.X and 7.X elements (5.1's LFE not counted), as DEE's streams switch at
-    // 192 kbps in stereo and 384 in 5.1; SIMPLE from there.
+    // In 5.0 and 5.1, ASPX_ACPL_3 below 22.4 kbps a channel (the LFE not
+    // counted) and ASPX_ACPL_2 below 33.6, as DEE's 5.1 streams are
+    // ASPX_ACPL_3 at 96 kbps and ASPX_ACPL_2 at 128 and 144; then ASPX below 96
+    // kbps a channel in mono and stereo and below 76.8 in the 5.X and 7.X
+    // elements, as DEE's streams switch at 192 kbps in stereo and 384 in 5.1;
+    // SIMPLE from there.
     kAuto,
     kSimple,  // the audio spectral frontend over the whole band
     // The spectral frontend up to A-SPX's crossover and A-SPX above it. In
@@ -59,6 +64,19 @@ enum class CodecMode : std::uint8_t {
     // 7.X 12 kHz from 38.4 kbps a channel and 12.75 kHz from 51.2, without
     // companding.
     kAspx,
+    // With experimental.acpl: ASPX_ACPL_2 with each pair's residual, what the
+    // downmix leaves out of it, coded up to 3 kHz (acpl_qmf_band 8), below
+    // which the decoder rebuilds the pair from the two as they are.
+    kAspxAcpl1,
+    // 5.0 and 5.1: the downmixes (L + Ls / sqrt 2) / 2 and (R + Rs / sqrt 2) / 2
+    // coded as a pair and C alone, in the ASPX way from 12.75 kHz, and L, R,
+    // Ls and Rs rebuilt from them by A-CPL (Part 1 clause 5.7.7.6.1). Stereo,
+    // with experimental.acpl: (L + R) / 2 coded alone, in the ASPX way as
+    // stereo is at the rate, and L and R rebuilt from it (clause 5.7.7.5).
+    kAspxAcpl2,
+    // 5.0 and 5.1: the Lo/Ro downmix coded as a pair, in the ASPX way from 12
+    // kHz, and all five channels rebuilt from it by A-CPL (clause 5.7.7.6.2).
+    kAspxAcpl3,
 };
 
 // The 7.X element's pair beyond L, R, C, Ls and Rs (Part 1 Table 88).
@@ -114,6 +132,10 @@ struct EncoderConfig {
         // Seven or eight input channels in the 7.X element, with this pair
         // beyond L, R, C, Ls and Rs.
         AdditionalPair seven_x = AdditionalPair::kNone;
+        // The A-CPL modes DEE's streams do not use, which codec_mode then
+        // takes: ASPX_ACPL_1 in 5.0 and 5.1, and ASPX_ACPL_1 and ASPX_ACPL_2
+        // in stereo, the channel pair element's.
+        bool acpl = false;
     };
     Experimental experimental{};
 };
@@ -156,8 +178,8 @@ class AC4ENC_EXPORT Encoder {
     // ac4::build_dac4() and ac4::rfc6381_codec_string() read.
     [[nodiscard]] const Toc& toc() const noexcept;
 
-    // The codec mode the stream is coded in: kSimple or kAspx, what kAuto
-    // chose from the rate.
+    // The codec mode the stream is coded in: what kAuto chose from the rate,
+    // never kAuto.
     [[nodiscard]] CodecMode codec_mode() const noexcept;
 
     // Samples of silence the encoder puts before the input: an input sample at

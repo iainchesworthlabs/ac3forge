@@ -1564,6 +1564,35 @@ and E2's checks; the race at 5.1 from 192 to 768 kbps.
 - ASPX_ACPL_2 and ASPX_ACPL_3 in the 5.X element. ASPX_ACPL_1 with its residuals, and A-CPL in a
   channel pair, as options.
 
+- E4 found DEE's A-CPL streams in one configuration: 15 parameter bands at the fine step, one
+  parameter set a frame, smooth interpolation in all but about one frame in a hundred, DIFF_FREQ in
+  I-frames, no companding, and A-SPX
+  from subband 32 to 23.25 kHz with a 12.75 kHz crossover in ASPX_ACPL_2, to 18.75 kHz from 12 kHz in
+  ASPX_ACPL_3. The encoder writes that. Its ASPX_ACPL_3 gammas follow DEE's four relations, which
+  DEE's streams hold in all but 37 of 7,110 bands (`src/ac4enc/ERRATA.md`, "ASPX_ACPL_3's gammas").
+- Each band's parameters are estimated over 48 QMF slots centred on the frame's last, where smooth
+  interpolation reaches them, from a DFT of each subband's slots, reading the bins of its own band. A
+  subband's own band lies in half of its spectrum; its neighbours reach the other half through the
+  prototype's transition band, and read from the whole spectrum they pulled ASPX_ACPL_3's centre
+  prediction off on the 5.1 tones, whose routing margin went from -3.7 dB to 9.7 (DEE's 8.4).
+- In the race, each band's level difference lands 0.02 to 0.13 dB nearer the source's than DEE's,
+  the correlation within 0.007 of DEE's distance, and ViSQOL 0.01 to 0.06 above DEE's but for film
+  at 128 kbps, 0.12 under. There the coded C trails DEE's by 9.5 dB of SNR below 2 kHz: DEE gives C as
+  many bits as the whole A/B pair. Neither a 6 dB tighter allowance on C nor capping the TNA mode at
+  1 moved C's ViSQOL by more than 0.01, and C's high band is as near the source's level as DEE's,
+  so the gap is the core coder's, room for its tuning later with E3's.
+- kAuto's rates make ASPX_ACPL_3 the mode from 20 kbps in 5.1, whose least frame, with eleven
+  parameters a band in an I-frame, needs 25 kbps; where the rate cannot hold a mode's least frame
+  kAuto takes the next of ASPX_ACPL_2 and ASPX that it can.
+- The experimental options: ASPX_ACPL_1 in 5.X codes each pair's residual to 3 kHz (`acpl_qmf_band`
+  8), which takes each band's level difference from 2.57 to 1.92 dB of the source's on music at 128
+  kbps, and ViSQOL from 4.65 to 4.60, the residuals' bits taken from the downmixes; at 160 kbps it
+  reaches 4.67. A-CPL in stereo: ASPX_ACPL_2 0.11 ahead of ASPX at 32 kbps and 0.04 under it at 48,
+  ASPX_ACPL_1 0.04 over it at 64. librempeg refuses the ASPX_ACPL_1 streams, whose residuals and side send
+  fewer bands than their bases, and reads D5's constructed ones, which send as many. The stereo form
+  showed the decoder reading a side with fewer bands than its mid at the mid's offsets, fixed in D5
+  (`src/ac4dec/ERRATA.md`, "get_max_sfb() with b_dual_maxsfb").
+
 **Exit:** for each A-CPL parameter band and each reconstructed pair, the decoded level difference
 and correlation within the tolerance fixed at the first measurement; the waveform-coded channels
 meet E1's and E2's checks; the race at 5.1 and 96, 128 and 144 kbps.

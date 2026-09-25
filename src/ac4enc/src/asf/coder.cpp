@@ -348,7 +348,10 @@ std::size_t sf_info_bits(const FrameLayout& layout, std::array<int, 2> max_sfb) 
     return w.bit_position();
 }
 
-void write_sf_info(BitWriter& w, const FrameLayout& layout, std::array<int, 2> max_sfb) {
+namespace {
+
+void write_sf_info(BitWriter& w, const FrameLayout& layout, std::array<int, 2> max_sfb,
+                   const std::array<int, 2>* max_sfb_side) {
     // Table 37, at frame_len_base 1 536 and above.
     w.write(1, layout.long_frame ? 1U : 0U, "b_long_frame");
     int length0 = 0;
@@ -359,15 +362,33 @@ void write_sf_info(BitWriter& w, const FrameLayout& layout, std::array<int, 2> m
         w.write(2, static_cast<std::uint64_t>(layout.transf_length[1]), "transf_length");
         length0 = layout.window_length.front();
     }
-    // Table 38, without b_dual_maxsfb or b_side_limited.
-    w.write(static_cast<unsigned>(max_sfb_bits(length0)), static_cast<std::uint64_t>(max_sfb[0]), "max_sfb");
+    // Table 38, without b_side_limited.
+    const auto bits0 = static_cast<unsigned>(max_sfb_bits(length0));
+    w.write(bits0, static_cast<std::uint64_t>(max_sfb[0]), "max_sfb");
+    if (max_sfb_side != nullptr) {
+        w.write(bits0, static_cast<std::uint64_t>((*max_sfb_side)[0]), "max_sfb_side");
+    }
     if (layout.different_framing) {
-        const int length1 = layout.window_length.back();
-        w.write(static_cast<unsigned>(max_sfb_bits(length1)), static_cast<std::uint64_t>(max_sfb[1]), "max_sfb");
+        const auto bits1 = static_cast<unsigned>(max_sfb_bits(layout.window_length.back()));
+        w.write(bits1, static_cast<std::uint64_t>(max_sfb[1]), "max_sfb");
+        if (max_sfb_side != nullptr) {
+            w.write(bits1, static_cast<std::uint64_t>((*max_sfb_side)[1]), "max_sfb_side");
+        }
     }
     for (const std::uint8_t bit : layout.grouping_bits) {
         w.write(1, bit, "scale_factor_grouping_bit");
     }
+}
+
+}  // namespace
+
+void write_sf_info(BitWriter& w, const FrameLayout& layout, std::array<int, 2> max_sfb) {
+    write_sf_info(w, layout, max_sfb, nullptr);
+}
+
+void write_sf_info_dual(BitWriter& w, const FrameLayout& layout, std::array<int, 2> max_sfb,
+                        std::array<int, 2> max_sfb_side) {
+    write_sf_info(w, layout, max_sfb, &max_sfb_side);
 }
 
 void write_sf_data(BitWriter& w, const CodedTrack& track, const FrameLayout& layout) {

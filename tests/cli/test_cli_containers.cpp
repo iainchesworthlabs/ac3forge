@@ -540,6 +540,45 @@ TEST_CASE("ac4-encode codes the ASPX mode below 96 kbps a channel, or as codec-m
     CHECK(read_log(log).find("codec-mode") != std::string::npos);
 }
 
+TEST_CASE("ac4-encode codes 5.1 in the A-CPL modes at DEE's rates, and the experimental ones when asked",
+          "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_encode_acpl.log";
+    constexpr std::size_t kLength = 48000;
+    const auto write_tones = [&](std::size_t count, const fs::path& path) {
+        std::vector<std::vector<float>> channels(count, std::vector<float>(kLength));
+        for (std::size_t c = 0; c < count; ++c) {
+            for (std::size_t i = 0; i < kLength; ++i) {
+                channels[c][i] = static_cast<float>(
+                    0.1 * std::sin(2.0 * std::numbers::pi * (500.0 + 350.0 * static_cast<double>(c)) *
+                                   static_cast<double>(i) / 48000.0));
+            }
+        }
+        REQUIRE(ac3::io::write_wav_f32(path.string(), channels, 48000).has_value());
+    };
+    const auto five_one = dir / "ac4_acpl_51.wav";
+    const auto stereo = dir / "ac4_acpl_20.wav";
+    write_tones(6, five_one);
+    write_tones(2, stereo);
+    const auto out = dir / "ac4_acpl.ac4";
+    struct Run {
+        const fs::path* in;
+        const char* args;
+        const char* mode;
+    };
+    for (const Run run : {Run{&five_one, " 128", "ASPX_ACPL_2 mode"}, Run{&five_one, " 96", "ASPX_ACPL_3 mode"},
+                          Run{&five_one, " 160 codec-mode=aspx-acpl-1 experimental=acpl", "ASPX_ACPL_1 mode"},
+                          Run{&stereo, " 48 codec-mode=aspx-acpl-2 experimental=acpl", "ASPX_ACPL_2 mode"}}) {
+        CAPTURE(run.args);
+        REQUIRE(run_cli("ac4-encode " + quoted(*run.in) + " " + quoted(out) + run.args, log) == 0);
+        CHECK(read_log(log).find(run.mode) != std::string::npos);
+        const auto wav_out = dir / "ac4_acpl_out.wav";
+        REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(wav_out), log) == 0);
+    }
+    // Stereo A-CPL only with experimental=acpl.
+    CHECK(run_cli("ac4-encode " + quoted(stereo) + " " + quoted(out) + " 48 codec-mode=aspx-acpl-2", log) != 0);
+}
+
 namespace {
 
 // The amplitude of a channel's component at `hz` over `count` samples from

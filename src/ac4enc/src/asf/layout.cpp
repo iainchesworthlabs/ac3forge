@@ -83,6 +83,13 @@ int grouping_bit_count(std::array<int, 2> transf_length) noexcept {
     return kTable109[static_cast<std::size_t>(transf_length[0])][static_cast<std::size_t>(transf_length[1])];
 }
 
+int side_bits(int transform_length) noexcept {
+    if (transform_length >= 480) {
+        return 5;
+    }
+    return transform_length >= 240 ? 4 : 3;
+}
+
 int max_sfb_bits(int transform_length) noexcept {
     switch (transform_length) {
         case 2048:

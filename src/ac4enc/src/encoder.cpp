@@ -9,6 +9,8 @@
 #include <optional>
 #include <utility>
 
+#include "acpl/acpl_encoder.hpp"
+#include "acpl/acpl_syntax.hpp"
 #include "asf/analysis.hpp"
 #include "asf/coder.hpp"
 #include "asf/layout.hpp"
@@ -18,6 +20,7 @@
 #include "aspx/aspx_encoder.hpp"
 #include "bit_writer.hpp"
 #include "frame/frame_writer.hpp"
+#include "tables/sfb_tables.hpp"
 
 namespace ac4 {
 
@@ -79,6 +82,19 @@ constexpr double kLevelWeight = 0.75;
 // is not counted.
 constexpr double kAspxBelowKbps = 96.0;
 constexpr double kAspxBelowKbpsMultichannel = 76.8;
+// Below these rates a channel CodecMode::kAuto codes the 5.X element in an
+// A-CPL mode, between the rates at which DEE's 5.1 streams change mode:
+// ASPX_ACPL_3 at 96 kbps, ASPX_ACPL_2 at 128 and 144, and ASPX from 192.
+constexpr double kAcpl3BelowKbps = 22.4;
+constexpr double kAcpl2BelowKbps = 33.6;
+// A-CPL's configuration, as DEE's streams send it: 15 parameter bands, fine
+// quantisation (acpl_num_param_bands_id 0, acpl_quant_mode 0).
+constexpr int kAcplBandsId = 0;
+constexpr int kAcplQuantMode = 0;
+// ASPX_ACPL_1's acpl_qmf_band, the top of its residuals: 8, the most
+// acpl_qmf_band_minus1 sends, which keeps the waveform to 3 kHz at 48 kHz (a
+// QMF subband is 375 Hz wide).
+constexpr int kAcplResidualQmfBand = 8;
 
 // The LFE's coded band: the scale factor bands that start below 120 Hz, the
 // first three at 2 048 samples, to 140.6 Hz at 48 kHz, which is what DEE's
@@ -125,12 +141,41 @@ constexpr int kLfeMaxSfbBits = 3;
     return frame == 0 ? 0 : static_cast<int>((frame - 1) % 1020) + 1;
 }
 
-// Where the input's channels go: Part 1 Table 88's channel mode, each channel
-// by name (its input index, -1 where the mode has none), the channels that
-// share a transform layout, A-SPX's aspx_data elements in the syntax's order
-// with the channels each carries (Table 213), and the channels
-// companding_control() lists, in its order (Table 212).
+// The codec mode a configuration codes in, CodecMode::kAuto resolved by the
+// rate a channel (the LFE not counted).
+[[nodiscard]] CodecMode resolve_mode(const EncoderConfig& config) {
+    if (config.codec_mode != CodecMode::kAuto) {
+        return config.codec_mode;
+    }
+    const bool lfe = config.channels == 6 || config.channels == 8;
+    const int full = std::max(config.channels - (lfe ? 1 : 0), 1);
+    const double kbps_per_channel = static_cast<double>(config.bitrate_kbps) / full;
+    // The experimental coding configurations code all five channels.
+    const bool five_x = (config.channels == 5 || config.channels == 6) && !config.experimental.coding_configs;
+    if (five_x && kbps_per_channel < kAcpl3BelowKbps) {
+        return CodecMode::kAspxAcpl3;
+    }
+    if (five_x && kbps_per_channel < kAcpl2BelowKbps) {
+        return CodecMode::kAspxAcpl2;
+    }
+    const double aspx_below = config.channels >= 5 ? kAspxBelowKbpsMultichannel : kAspxBelowKbps;
+    return kbps_per_channel < aspx_below ? CodecMode::kAspx : CodecMode::kSimple;
+}
+
+[[nodiscard]] bool is_acpl(CodecMode mode) noexcept {
+    return mode == CodecMode::kAspxAcpl1 || mode == CodecMode::kAspxAcpl2 || mode == CodecMode::kAspxAcpl3;
+}
+
+// The channels the spectral frontend codes, and where they go: Part 1 Table
+// 88's channel mode, each coded channel by name (its index among the coded
+// channels, -1 where the mode has none), the coded channels that share a
+// transform layout, A-SPX's aspx_data elements in the syntax's order with the
+// channels each carries (Table 213), and the channels companding_control()
+// lists, in its order (Table 212). In SIMPLE and ASPX the coded channels are
+// the input's; in the A-CPL modes they are the downmixes A-CPL rebuilds the
+// input's from (acpl/acpl_encoder.hpp), and the LFE.
 struct Plan {
+    CodecMode mode = CodecMode::kSimple;
     int ch_mode = 1;
     int l = -1;
     int r = -1;
@@ -143,17 +188,96 @@ struct Plan {
     std::vector<std::vector<int>> groups{};
     std::vector<std::vector<int>> aspx_elements{};
     std::vector<int> companded{};
+    int coded = 0;  // the coded channels
+    // The A-CPL modes: the layout, the input channels its analysis reads, in
+    // the layout's order, and the input's LFE, which is coded as it is; in
+    // ASPX_ACPL_1 the residuals, coded below acpl_qmf_band, which share the
+    // layout group of the channels A-CPL pairs them with.
+    std::optional<detail::AcplLayout> acpl{};
+    std::vector<int> source{};
+    int input_lfe = -1;
+    std::vector<int> residuals{};
 
     [[nodiscard]] bool five_x() const noexcept { return ch_mode == 3 || ch_mode == 4; }
     [[nodiscard]] bool seven_x() const noexcept { return ch_mode >= 5; }
 };
 
-[[nodiscard]] std::optional<Plan> plan_for(const EncoderConfig& config) {
+// An A-CPL mode: in the channel pair the coded channel is (L + R) / 2; in the
+// 5.X element they are ASPX_ACPL_1's and 2's downmixes A and B and C, or
+// ASPX_ACPL_3's Lo and Ro over 1 + sqrt 2, then the LFE. ASPX_ACPL_1's
+// residuals come last.
+[[nodiscard]] Plan plan_acpl(const EncoderConfig& config, CodecMode mode) {
     Plan p;
+    p.mode = mode;
+    const bool residuals = mode == CodecMode::kAspxAcpl1;
+    if (config.channels == 2) {
+        p.ch_mode = 1;
+        p.acpl = detail::AcplLayout::kPair;
+        p.source = {0, 1};
+        p.l = 0;
+        p.groups = {{p.l}};
+        p.aspx_elements = {{p.l}};
+        p.companded = {p.l};
+        p.coded = 1;
+        if (residuals) {
+            p.residuals = {1};
+            p.groups = {{p.l, 1}};
+            p.coded = 2;
+        }
+        return p;
+    }
+    const bool lfe = config.channels == 6;
+    p.ch_mode = lfe ? 4 : 3;
+    p.source = {0, 1, 2, lfe ? 4 : 3, lfe ? 5 : 4};
+    p.input_lfe = lfe ? 3 : -1;
+    p.l = 0;
+    p.r = 1;
+    if (mode == CodecMode::kAspxAcpl3) {
+        p.acpl = detail::AcplLayout::kCoupling;
+        p.lfe = lfe ? 2 : -1;
+        p.groups = {{p.l, p.r}};
+        p.aspx_elements = {{p.l, p.r}};
+        p.companded = {p.l, p.r};
+    } else {
+        p.acpl = detail::AcplLayout::kFiveX;
+        p.c = 2;
+        p.lfe = lfe ? 3 : -1;
+        p.groups = {{p.l, p.r}, {p.c}};
+        p.aspx_elements = {{p.l, p.r}, {p.c}};
+        p.companded = {p.l, p.r, p.c};
+    }
+    if (lfe) {
+        p.groups.push_back({p.lfe});
+    }
+    p.coded = p.lfe >= 0 ? p.lfe + 1 : static_cast<int>(p.companded.size());
+    if (residuals) {
+        p.residuals = {p.coded, p.coded + 1};
+        p.groups.front().insert(p.groups.front().end(), p.residuals.begin(), p.residuals.end());
+        p.coded += 2;
+    }
+    return p;
+}
+
+[[nodiscard]] std::optional<Plan> plan_for(const EncoderConfig& config, CodecMode mode) {
+    Plan p;
+    p.mode = mode;
+    p.coded = config.channels;
     const AdditionalPair pair = config.experimental.seven_x;
     const bool seven = config.channels == 7 || config.channels == 8;
     if (seven != (pair != AdditionalPair::kNone)) {
         return std::nullopt;
+    }
+    if (is_acpl(mode)) {
+        // ASPX_ACPL_2 and 3 in the 5.X element; with experimental.acpl,
+        // ASPX_ACPL_1 there, and ASPX_ACPL_1 and 2 in the channel pair.
+        const bool five = config.channels == 5 || config.channels == 6;
+        const bool options = config.experimental.acpl;
+        const bool fits = five ? mode != CodecMode::kAspxAcpl1 || options
+                               : config.channels == 2 && mode != CodecMode::kAspxAcpl3 && options;
+        if (!fits || config.experimental.coding_configs) {
+            return std::nullopt;
+        }
+        return plan_acpl(config, mode);
     }
     switch (config.channels) {
         case 1:
@@ -228,6 +352,12 @@ enum class UnitKind : std::uint8_t {
     kThree,  // three_channel_data()
     kFour,   // four_channel_data()
     kFive,   // five_channel_data()
+    // The channel pair's ASPX_ACPL_1: the coded channel and its side, with one
+    // sf_info() and no stereo processing.
+    kMidSide,
+    // The 5.X element's ASPX_ACPL_1: max_sfb_master and the residuals, each
+    // with the framing of the channel it pairs with.
+    kResiduals,
 };
 
 struct Unit {
@@ -255,6 +385,34 @@ struct Structure {
     s.coding_config = coding_config;
     s.two_ch_mode = two_ch_mode;
     s.chel_matsel = chel_matsel;
+    if (p.acpl) {
+        // Table 22: the channel pair's coded channel alone, or with its side.
+        // Table 25: the LFE, the downmixes as two_channel_data(), ASPX_ACPL_1's
+        // residuals and C's mono_data(), or ASPX_ACPL_3's as stereo_data().
+        if (*p.acpl == detail::AcplLayout::kPair) {
+            if (p.residuals.empty()) {
+                s.units.push_back({.kind = UnitKind::kMono, .outputs = {p.l}});
+            } else {
+                s.units.push_back({.kind = UnitKind::kMidSide,
+                                   .outputs = {p.l, p.residuals[0]},
+                                   .choice = {.sets = {detail::StereoChoice{}}}});
+            }
+            return s;
+        }
+        if (p.lfe >= 0) {
+            s.units.push_back({.kind = UnitKind::kLfe, .outputs = {p.lfe}});
+        }
+        s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.l, p.r}});
+        if (!p.residuals.empty()) {
+            s.units.push_back({.kind = UnitKind::kResiduals,
+                               .outputs = p.residuals,
+                               .choice = {.sets = {detail::StereoChoice{}, detail::StereoChoice{}}}});
+        }
+        if (p.c >= 0) {
+            s.units.push_back({.kind = UnitKind::kMono, .outputs = {p.c}});
+        }
+        return s;
+    }
     if (p.ch_mode == 0) {
         s.units.push_back({.kind = UnitKind::kMono, .outputs = {p.c}});
         return s;
@@ -320,6 +478,11 @@ struct Candidate {
 }  // namespace
 
 struct Encoder::Impl {
+    // An encoder in `mode`, or kInvalidConfig where the configuration is not
+    // one this version writes in it, or the rate cannot hold its least frame.
+    [[nodiscard]] static std::expected<std::unique_ptr<Impl>, EncodeError> make(const EncoderConfig& config,
+                                                                              CodecMode mode);
+
     EncoderConfig config{};
     Plan plan{};
     detail::Analysis analysis{kFrameLength, 1};
@@ -356,6 +519,10 @@ struct Encoder::Impl {
     // channel to its own, or -1. With interleaving, each channel's QMF
     // subbands the last frame's A-SPX data had the spectral frontend code.
     std::optional<detail::AspxSetup> aspx;
+    // The A-CPL modes: the analysis and parameters, and the input channels it
+    // reads (Plan::source), on the signal's axis.
+    std::optional<detail::AcplEncoder> acpl;
+    std::vector<std::vector<double>> source;
     std::vector<detail::AspxChannelEncoder> qmf;
     std::vector<int> qmf_of;
     std::vector<int> qmf_channel;
@@ -374,9 +541,52 @@ struct Encoder::Impl {
         Structure structure;
         std::vector<FrameLayout> layout;           // per group
         std::vector<std::array<int, 2>> max_sfb;   // per group
-        std::vector<detail::CodedTrack> tracks;    // per input channel: the track its unit leaves there
+        std::vector<detail::CodedTrack> tracks;    // per coded channel: the track its unit leaves there
         std::optional<AspxFrame> aspx;
+        std::optional<detail::AcplFrameFields> acpl;
+        // ASPX_ACPL_1: the residuals' max_sfb per half, and in the 5.X element
+        // the max_sfb_master they follow from.
+        std::array<int, 2> residual_max_sfb{};
+        int residual_master = 0;
     };
+
+    [[nodiscard]] bool residual(std::size_t c) const noexcept {
+        return std::ranges::find(plan.residuals, static_cast<int>(c)) != plan.residuals.end();
+    }
+
+    // A coded channel's max_sfb per half: its layout group's, or a residual's.
+    [[nodiscard]] std::array<int, 2> max_sfb_of(const Coding& f, std::size_t c) const {
+        return residual(c) ? f.residual_max_sfb : f.max_sfb[group_of[c]];
+    }
+
+    // ASPX_ACPL_1: the residuals' bands for the frame's layout, those below
+    // acpl_qmf_band. The channel pair's side sends its own max_sfb_side; the
+    // 5.X element's residuals take max_sfb_master, in n_side_bits of the
+    // largest transform length, as a window of that length's max_sfb and
+    // Tables B.8 to B.19's value for it at a shorter one (clause 4.3.5.13).
+    void limit_residuals(Coding& f) const {
+        if (plan.residuals.empty()) {
+            return;
+        }
+        const FrameLayout& layout = f.layout[group_of[static_cast<std::size_t>(plan.residuals.front())]];
+        const double top = kAcplResidualQmfBand * static_cast<double>(config.sample_rate_hz) / 128.0;
+        const int first = layout.window_length.front();
+        const int last = layout.window_length.back();
+        if (*plan.acpl == detail::AcplLayout::kPair) {
+            f.residual_max_sfb = {bands_below(first, top, config.sample_rate_hz),
+                                  bands_below(last, top, config.sample_rate_hz)};
+            return;
+        }
+        const int largest = std::max(first, last);
+        f.residual_master = bands_below(largest, top, config.sample_rate_hz, (1 << detail::side_bits(largest)) - 1);
+        const auto from_master = [&](int length) {
+            if (length == largest) {
+                return f.residual_master;
+            }
+            return std::max(detail::tables::max_sfb_from_master(largest, f.residual_master, length), 0);
+        };
+        f.residual_max_sfb = {from_master(first), from_master(last)};
+    }
 
     // With interleaving, the bands above the crossover the spectral frontend
     // leaves silent: all but those that meet `waveform_hz`, the frequency
@@ -415,6 +625,29 @@ struct Encoder::Impl {
             return 0.0;
         }
         return signal[c][static_cast<std::size_t>(s - base)];
+    }
+
+    // Sample s of the input channel A-CPL's analysis reads k-th.
+    [[nodiscard]] double source_sample(std::size_t k, std::int64_t s) const noexcept {
+        if (s < base || s >= signal_end()) {
+            return 0.0;
+        }
+        return source[k][static_cast<std::size_t>(s - base)];
+    }
+
+    // Analyses the QMF slots of the input channels A-CPL rebuilds that frame
+    // f's parameters read.
+    void analyse_acpl(std::int64_t frame) {
+        std::vector<std::array<double, kQmfSlot>> chunk(acpl->channels());
+        while (acpl->slots() < detail::AcplEncoder::slots_needed(frame)) {
+            const std::int64_t from = kQmfSlot * acpl->slots() - detail::kAnalysisLead;
+            for (std::size_t k = 0; k < chunk.size(); ++k) {
+                for (std::size_t i = 0; i < chunk[k].size(); ++i) {
+                    chunk[k][i] = source_sample(k, from + static_cast<std::int64_t>(i));
+                }
+            }
+            acpl->push_slot(chunk);
+        }
     }
 
     // What the spectral frontend codes: the signal, or with companding its
@@ -564,6 +797,11 @@ struct Encoder::Impl {
                 case UnitKind::kMono:
                     unit.choice.bits = detail::perceptual_entropy(at(0)->grouped, at(0)->allowed);
                     break;
+                case UnitKind::kMidSide:
+                case UnitKind::kResiduals:
+                    unit.choice.bits = detail::perceptual_entropy(at(0)->grouped, at(0)->allowed) +
+                                       detail::perceptual_entropy(at(1)->grouped, at(1)->allowed);
+                    break;
             }
         }
     }
@@ -663,6 +901,25 @@ struct Encoder::Impl {
                     detail::write_chparam_info(w, set);
                 }
                 break;
+            case UnitKind::kMidSide:
+                // Table 22's ASPX_ACPL_1 with b_enable_mdct_stereo_proc: one
+                // sf_info() with the side's max_sfb_side after each max_sfb,
+                // and chparam_info() at sap_mode 0.
+                w.write(1, 1, "b_enable_mdct_stereo_proc");
+                detail::write_sf_info_dual(w, layout, max_sfb, f.residual_max_sfb);
+                detail::write_chparam_info(w, unit.choice.sets.at(0));
+                break;
+            case UnitKind::kResiduals: {
+                // Table 25's ASPX_ACPL_1: max_sfb_master, and each residual's
+                // chparam_info() at sap_mode 0, which leaves it as it is.
+                const int largest = std::max(layout.window_length.front(), layout.window_length.back());
+                w.write(static_cast<unsigned>(detail::side_bits(largest)),
+                        static_cast<std::uint64_t>(f.residual_master), "max_sfb_master");
+                for (const detail::StereoChoice& set : unit.choice.sets) {
+                    detail::write_chparam_info(w, set);
+                }
+                break;
+            }
         }
         if (data) {
             for (const int c : unit.outputs) {
@@ -690,6 +947,10 @@ struct Encoder::Impl {
                 }
             }
         };
+        if (plan.acpl) {
+            write_acpl_element(w, f, data);
+            return;
+        }
         if (plan.ch_mode <= 1) {
             // Tables 20 and 22, single_channel_element() and
             // channel_pair_element(): aspx_config() (in an I-frame) and
@@ -738,6 +999,54 @@ struct Encoder::Impl {
         tails();
     }
 
+    // Part 1 Tables 22 and 25 in the A-CPL modes: aspx_config() and
+    // acpl_config_1ch() or acpl_config_2ch() in an I-frame, the LFE,
+    // companding_control(), the coded channels' data, the aspx_data elements
+    // and the A-CPL data.
+    void write_acpl_element(BitWriter& w, const Coding& f, bool data) const {
+        const bool coupling = *plan.acpl == detail::AcplLayout::kCoupling;
+        const bool residuals = plan.mode == CodecMode::kAspxAcpl1;
+        if (*plan.acpl == detail::AcplLayout::kPair) {
+            w.write(2, residuals ? 2U : 3U, "stereo_codec_mode");
+        } else {
+            w.write(3, residuals ? 2U : (coupling ? 4U : 3U), "5_X_codec_mode");
+        }
+        if (f.iframe) {
+            detail::write_aspx_config(w, aspx->config);
+            if (coupling) {
+                detail::write_acpl_config_2ch(w, acpl->config_2ch());
+            } else {
+                detail::write_acpl_config_1ch(w, acpl->config_1ch());
+            }
+        }
+        for (const Unit& unit : f.structure.units) {
+            if (unit.kind == UnitKind::kLfe) {
+                write_unit(w, unit, f, data);
+            }
+        }
+        detail::write_companding_control(w, f.aspx->companding);
+        if (*plan.acpl == detail::AcplLayout::kFiveX) {
+            w.write(1, 0, "coding_config");
+        }
+        for (const Unit& unit : f.structure.units) {
+            if (unit.kind != UnitKind::kLfe) {
+                write_unit(w, unit, f, data);
+            }
+        }
+        for (const detail::AspxElement& element : f.aspx->elements) {
+            detail::write_aspx_tail(w, f.iframe, *aspx, element);
+        }
+        if (coupling) {
+            detail::write_acpl_data_2ch(w, acpl->config_2ch(), f.acpl->coupling);
+            return;
+        }
+        // The channel pair's one module, or the 5.X element's two.
+        const std::size_t modules = *plan.acpl == detail::AcplLayout::kPair ? 1 : 2;
+        for (std::size_t m = 0; m < modules; ++m) {
+            detail::write_acpl_data_1ch(w, acpl->config_1ch(), f.acpl->modules[m]);
+        }
+    }
+
     // The frame's channel element with no bands, sap_mode 0 in every
     // chparam_info() and coding_config 0: what a frame falls back to when no
     // step of the rate loop fits it, and what create() checks the rate holds.
@@ -779,6 +1088,10 @@ struct Encoder::Impl {
         if (aspx) {
             analyse_qmf(frame);
             f.aspx = aspx_frame(frame, fields.iframe, std::nullopt);
+        }
+        if (acpl) {
+            analyse_acpl(frame);
+            f.acpl = acpl->propose(frame, fields.iframe);
         }
         const auto aspx_fields = [&](std::size_t c) -> const detail::AspxChannelFields& {
             for (std::size_t e = 0; e < plan.aspx_elements.size(); ++e) {
@@ -823,6 +1136,7 @@ struct Encoder::Impl {
             }
         }
 
+        limit_residuals(f);
         std::vector<detail::Channel> spectra(channels);
         std::vector<std::vector<std::vector<bool>>> silenced(channels);
         std::vector<double> window(2 * kFrameLength);
@@ -834,7 +1148,7 @@ struct Encoder::Impl {
                     window[i] = coded_sample(c, start + static_cast<std::int64_t>(i));
                 }
                 analysis.transform(window, f.layout[g], groups[g].previous_last, next_first[g], spectrum);
-                spectra[c].grouped = detail::regroup(spectrum, f.layout[g], f.max_sfb[g]);
+                spectra[c].grouped = detail::regroup(spectrum, f.layout[g], max_sfb_of(f, c));
                 spectra[c].allowed = psycho.thresholds(spectra[c].grouped, f.layout[g]);
                 silenced[c] = silenced_bands(spectra[c].grouped, f.layout[g], waveform_hz[g]);
                 for (std::size_t gr = 0; gr < spectra[c].allowed.size(); ++gr) {
@@ -1004,16 +1318,31 @@ struct Encoder::Impl {
             // more than the frame holds, or A-SPX data that leave too little:
             // the frame goes out with no bands, and then with the A-SPX data
             // that cost least.
-            std::optional<AspxFrame> proposed = std::move(f.aspx);
+            // With A-CPL, the parameters as proposed, then those the decoder
+            // holds already, which cost least.
+            const std::optional<AspxFrame> proposed = std::move(f.aspx);
+            std::optional<detail::AcplFrameFields> parameters = std::move(f.acpl);
             f = silent(fields.iframe, f.layout);
-            f.aspx = std::move(proposed);
-            raw = write();
-            for (const bool silence : {false, true}) {
-                if (raw || !f.aspx) {
+            for (const bool held : {false, true}) {
+                if (held) {
+                    if (!parameters) {
+                        break;
+                    }
+                    parameters = acpl->held(fields.iframe);
+                }
+                f.acpl = parameters;
+                f.aspx = proposed;
+                raw = write();
+                for (const bool silence : {false, true}) {
+                    if (raw || !f.aspx) {
+                        break;
+                    }
+                    f.aspx = aspx_frame(frame, fields.iframe, silence);
+                    raw = write();
+                }
+                if (raw) {
                     break;
                 }
-                f.aspx = aspx_frame(frame, fields.iframe, silence);
-                raw = write();
             }
         }
         if (f.aspx) {
@@ -1027,6 +1356,10 @@ struct Encoder::Impl {
                     interleaved_prev[c] = channel.interleaved_subbands(element.channels[i]);
                 }
             }
+        }
+        if (f.acpl) {
+            acpl->commit(*f.acpl);
+            acpl->drop_before_frame(frame + 1);
         }
         byte_carry = exact - static_cast<double>(frame_bytes);
         for (std::size_t g = 0; g < groups.size(); ++g) {
@@ -1069,6 +1402,9 @@ struct Encoder::Impl {
                 for (std::vector<double>& channel : signal) {
                     channel.erase(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(drop));
                 }
+                for (std::vector<double>& channel : source) {
+                    channel.erase(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(drop));
+                }
                 base += static_cast<std::int64_t>(drop);
             }
         }
@@ -1076,8 +1412,9 @@ struct Encoder::Impl {
     }
 };
 
-std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config) {
-    const std::optional<Plan> plan = plan_for(config);
+std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(const EncoderConfig& config,
+                                                                                 CodecMode mode) {
+    const std::optional<Plan> plan = plan_for(config, mode);
     if (!plan) {
         return std::unexpected(EncodeError::kInvalidConfig);
     }
@@ -1090,10 +1427,6 @@ std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config)
     if (!(config.dialnorm_db <= 0.0 && config.dialnorm_db >= -31.75)) {
         return std::unexpected(EncodeError::kInvalidConfig);
     }
-    if (config.codec_mode != CodecMode::kAuto && config.codec_mode != CodecMode::kSimple &&
-        config.codec_mode != CodecMode::kAspx) {
-        return std::unexpected(EncodeError::kInvalidConfig);
-    }
     auto impl = std::make_unique<Impl>();
     impl->config = config;
     impl->plan = *plan;
@@ -1102,7 +1435,7 @@ std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config)
     impl->dialnorm_bits = static_cast<int>(std::lround(-config.dialnorm_db * 4.0));
     impl->bytes_per_frame = static_cast<double>(config.bitrate_kbps) * 1000.0 * kFrameLength /
                             (static_cast<double>(config.sample_rate_hz) * 8.0);
-    const auto channels = static_cast<std::size_t>(config.channels);
+    const auto channels = static_cast<std::size_t>(plan->coded);
     const int full_channels = config.channels - (plan->lfe >= 0 ? 1 : 0);
     const double kbps_per_channel = static_cast<double>(config.bitrate_kbps) / full_channels;
     const bool multichannel = plan->ch_mode >= 3;
@@ -1117,10 +1450,25 @@ std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config)
         }
         impl->groups.push_back(std::move(group));
     }
-    const double aspx_below = multichannel ? kAspxBelowKbpsMultichannel : kAspxBelowKbps;
-    if (config.codec_mode == CodecMode::kAspx ||
-        (config.codec_mode == CodecMode::kAuto && kbps_per_channel < aspx_below)) {
+    if (plan->acpl) {
+        if (*plan->acpl == detail::AcplLayout::kPair) {
+            // As stereo is coded in the ASPX mode at the rate, without
+            // companding, which DEE's A-CPL streams never turn on.
+            impl->aspx = detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz, false);
+            if (impl->aspx) {
+                impl->aspx->companding = false;
+            }
+        } else {
+            impl->aspx = detail::aspx_setup_for_acpl(*plan->acpl == detail::AcplLayout::kCoupling,
+                                                     config.sample_rate_hz);
+        }
+        impl->acpl.emplace(*plan->acpl, kAcplBandsId, kAcplQuantMode,
+                           plan->residuals.empty() ? 0 : kAcplResidualQmfBand);
+        impl->source.assign(plan->source.size(), std::vector<double>(static_cast<std::size_t>(kDelay), 0.0));
+    } else if (mode == CodecMode::kAspx) {
         impl->aspx = detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz, multichannel);
+    }
+    if (mode != CodecMode::kSimple) {
         if (!impl->aspx) {
             return std::unexpected(EncodeError::kInvalidConfig);
         }
@@ -1133,7 +1481,10 @@ std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config)
         impl->cutoff = static_cast<double>(impl->aspx->groups.sbx) * config.sample_rate_hz / 128.0;
         impl->qmf_of.assign(channels, -1);
         for (std::size_t c = 0; c < channels; ++c) {
-            if (static_cast<int>(c) == plan->lfe) {
+            const bool coded = std::ranges::any_of(plan->aspx_elements, [&](const std::vector<int>& element) {
+                return std::ranges::find(element, static_cast<int>(c)) != element.end();
+            });
+            if (!coded) {
                 continue;
             }
             impl->qmf_of[c] = static_cast<int>(impl->qmf.size());
@@ -1163,6 +1514,9 @@ std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config)
         }
         Impl::Coding silent = impl->silent(fields.iframe, layouts);
         silent.aspx = aspx_data;
+        if (impl->acpl) {
+            silent.acpl = impl->acpl->held(fields.iframe);
+        }
         BitWriter audio = BitWriter::buffered();
         impl->write_element(audio, silent, true);
         auto written = detail::write_frame(fields, audio, frame_bytes, {});
@@ -1184,7 +1538,35 @@ std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config)
         presentation.de_indicator = false;
         presentation.immersive_audio_indicator = false;
     }
-    return Encoder(std::move(impl));
+    return impl;
+}
+
+std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config) {
+    // kAuto codes in the mode the rate gives, or where the rate cannot hold
+    // that mode's least frame, in the next of ASPX_ACPL_2 and ASPX that it
+    // holds: ASPX_ACPL_3's least frame, with eleven parameters a band, needs
+    // 25 kbps in 5.1 at 48 kHz, ASPX_ACPL_2's 15, and ASPX's 20.
+    const CodecMode mode = resolve_mode(config);
+    std::vector<CodecMode> modes = {mode};
+    if (config.codec_mode == CodecMode::kAuto) {
+        if (mode == CodecMode::kAspxAcpl3) {
+            modes.push_back(CodecMode::kAspxAcpl2);
+        }
+        if (is_acpl(mode)) {
+            modes.push_back(CodecMode::kAspx);
+        }
+    }
+    std::expected<std::unique_ptr<Impl>, EncodeError> impl = std::unexpected(EncodeError::kInvalidConfig);
+    for (const CodecMode candidate : modes) {
+        impl = Impl::make(config, candidate);
+        if (impl) {
+            break;
+        }
+    }
+    if (!impl) {
+        return std::unexpected(impl.error());
+    }
+    return Encoder(std::move(*impl));
 }
 
 Encoder::Encoder(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
@@ -1194,7 +1576,7 @@ Encoder& Encoder::operator=(Encoder&&) noexcept = default;
 
 std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
     std::span<const std::span<const float>> channels) {
-    if (impl_->flushed || channels.size() != impl_->signal.size()) {
+    if (impl_->flushed || channels.size() != static_cast<std::size_t>(impl_->config.channels)) {
         return std::unexpected(EncodeError::kInvalidInput);
     }
     const std::size_t count = channels.front().size();
@@ -1208,11 +1590,38 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
             }
         }
     }
-    for (std::size_t c = 0; c < channels.size(); ++c) {
-        std::vector<double>& buffer = impl_->signal[c];
-        buffer.reserve(buffer.size() + count);
-        for (const float x : channels[c]) {
-            buffer.push_back(static_cast<double>(x));
+    const Plan& plan = impl_->plan;
+    if (!plan.acpl) {
+        for (std::size_t c = 0; c < channels.size(); ++c) {
+            std::vector<double>& buffer = impl_->signal[c];
+            buffer.reserve(buffer.size() + count);
+            for (const float x : channels[c]) {
+                buffer.push_back(static_cast<double>(x));
+            }
+        }
+    } else {
+        // The A-CPL modes: the downmixes, the LFE and ASPX_ACPL_1's residuals
+        // are coded, and A-CPL's analysis reads the channels it rebuilds.
+        std::vector<double> input(plan.source.size());
+        for (std::size_t n = 0; n < count; ++n) {
+            for (std::size_t k = 0; k < input.size(); ++k) {
+                input[k] = static_cast<double>(channels[static_cast<std::size_t>(plan.source[k])][n]);
+                impl_->source[k].push_back(input[k]);
+            }
+            const std::vector<double> coded = detail::acpl_downmix(*plan.acpl, input);
+            for (std::size_t c = 0; c < coded.size(); ++c) {
+                impl_->signal[c].push_back(coded[c]);
+            }
+            if (plan.lfe >= 0) {
+                impl_->signal[static_cast<std::size_t>(plan.lfe)].push_back(
+                    static_cast<double>(channels[static_cast<std::size_t>(plan.input_lfe)][n]));
+            }
+            if (!plan.residuals.empty()) {
+                const std::vector<double> residuals = detail::acpl_residuals(*plan.acpl, input);
+                for (std::size_t i = 0; i < residuals.size(); ++i) {
+                    impl_->signal[static_cast<std::size_t>(plan.residuals[i])].push_back(residuals[i]);
+                }
+            }
         }
     }
     impl_->input_samples += static_cast<std::int64_t>(count);
@@ -1232,7 +1641,7 @@ const Toc& Encoder::toc() const noexcept {
 }
 
 CodecMode Encoder::codec_mode() const noexcept {
-    return impl_->aspx ? CodecMode::kAspx : CodecMode::kSimple;
+    return impl_->plan.mode;
 }
 
 int Encoder::delay_samples() const noexcept {

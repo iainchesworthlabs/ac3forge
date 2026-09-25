@@ -1,8 +1,8 @@
 """Readers outside this project against ac3cli's AC-4 encoder: MediaInfo and DEE's muxer.
 
-planning/ac4.md, the encoder's ladder, item 3, as phases E1 to E3 need it. For each configuration
-below, mono to 5.1 and the experimental options of 5.X and 7.X, `ac3cli ac4-encode` writes a raw
-stream and an MP4 file, and:
+planning/ac4.md, the encoder's ladder, item 3, as phases E1 to E4 need it. For each configuration
+below, mono to 5.1, the A-CPL modes, and the experimental options of 5.X and 7.X and of A-CPL,
+`ac3cli ac4-encode` writes a raw stream and an MP4 file, and:
 
   MediaInfo  its frame-by-frame trace (`--Details=1`) of the raw stream holds the values the encoder
              was configured with, field by field, in every frame it details: the sync word and
@@ -54,6 +54,13 @@ CONFIGURATIONS = [
     (8, 48000, 448, 24, ("experimental=7x-wide",)),
     (7, 48000, 448, 24, ("experimental=7x-top-front",)),
     (8, 48000, 512, 24, ("experimental=7x-top-front",)),
+    # A-CPL: ASPX_ACPL_2 and ASPX_ACPL_3 by the rate, and the experimental modes by name.
+    (6, 48000, 128, 24, ()),
+    (6, 48000, 96, 27, ()),
+    (5, 48000, 112, 31, ()),
+    (6, 48000, 160, 24, ("codec-mode=aspx-acpl-1", "experimental=acpl")),
+    (2, 48000, 48, 24, ("codec-mode=aspx-acpl-2", "experimental=acpl")),
+    (2, 44100, 64, 27, ("codec-mode=aspx-acpl-1", "experimental=acpl")),
 ]
 
 # The channel mode MediaInfo names for each configuration: Part 1 Table 88's, as its trace

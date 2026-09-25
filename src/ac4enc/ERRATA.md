@@ -178,6 +178,49 @@ traces equal on every 5.X and 7.X stream they write:
 - Table 213's name for 3/2/2's last pair (the misprints in `src/ac4dec/ERRATA.md`): Tfl and Tfr, as
   Tables 88 and 183 have them.
 
+## A-CPL
+
+The readings phase E4 takes for ASPX_ACPL_2 and ASPX_ACPL_3 in the 5.X element, and for ASPX_ACPL_1
+there and A-CPL in the channel pair as experimental options. The writer takes the decoder's reading of
+each of these:
+
+- [When A-CPL's parameters apply](../ac4dec/ERRATA.md#when-a-cpls-parameters-apply): a frame's
+  parameters are estimated from the QMF slots of the A-SPX interval they share a control frame with,
+  over a window centred on the last of them, where smooth interpolation reaches the new values.
+- [ASPX_ACPL_1: the framing of the residuals](../ac4dec/ERRATA.md#aspx_acpl_1-the-framing-of-the-residuals):
+  the 5.X element's residuals share A and B's framing and layout group, and `max_sfb_master`, in
+  n_side_bits of the largest transform length, stops them at `acpl_qmf_band`.
+- [get_max_sfb() with b_dual_maxsfb](../ac4dec/ERRATA.md#get_max_sfb-with-b_dual_maxsfb): the channel
+  pair's ASPX_ACPL_1 sends one `sf_info()` with `b_dual_maxsfb`, the side stopped at `acpl_qmf_band` by
+  its own `max_sfb_side`, and `chparam_info()` at `sap_mode` 0.
+
+### The downmixes A-CPL codes
+
+- **Where:** Part 1 Pseudocodes 115 to 118, pp. 238 to 241, give the upmix; nothing gives the downmix a
+  writer codes, or its level.
+- **Reading:** the signals the upmix keeps whatever its parameters: the channel pair's x0 = (L + R) / 2,
+  whose z0 + z1 is 2 x0; ASPX_ACPL_1's and 2's (L + Ls / sqrt 2) / 2 and its mirror, whose z0 + z1 /
+  sqrt 2 is 2 x0 once Pseudocode 117 has scaled z1 by sqrt 2; and ASPX_ACPL_3's Lo and Ro, L + C /
+  sqrt 2 + Ls / sqrt 2 and its mirror, over 1 + sqrt 2, which Pseudocode 118's input gain, 1 + 2
+  sqrt 0.5, brings back to Lo and Ro. ASPX_ACPL_1's residuals are (L - Ls / sqrt 2) / 2 and its
+  mirror, or the pair's (L - R) / 2: below `acpl_qmf_band` Pseudocode 116 takes x0 plus and minus the
+  residual, which gives each pair back as it was.
+- **Evidence:** Streams: DEE's ASPX_ACPL_2 and ASPX_ACPL_3 streams decode with these downmixes, recovered
+  from the output, 21 to 25 dB over the noise below the crossover on music (phase D5).
+
+### ASPX_ACPL_3's gammas
+
+- **Where:** Part 1 Pseudocodes 118 and 119, pp. 241 and 242: six gammas mix Lo and Ro into the three
+  decorrelators' inputs, the two modules' groups and C. The text says what they do, not how a writer
+  chooses them, and more than one choice rebuilds the same channels.
+- **Reading:** gamma5 and gamma6 are the least squares prediction of C / sqrt 2 from Lo and Ro, per
+  parameter band, and gamma1 = 1 - gamma5, gamma2 = -gamma6, gamma3 = -gamma5 and gamma4 = 1 - gamma6,
+  counted in the quantiser's steps (ten fine steps or five coarse ones make 1), so that each module's
+  group is Lo or Ro less the predicted centre, L + Ls / sqrt 2 or its mirror where the prediction is
+  exact. beta3 gives the centre the energy the prediction leaves out.
+- **Evidence:** Streams: DEE's 5.1 streams at 96 kbps hold the four relations in 3,534 and 3,539 of the
+  3,555 bands of music and film, and one relation is a step out in the rest.
+
 ## The MP4 sample entry's dac4
 
 `ac4::build_dac4()` in `src/ac4` writes Annex E.6's `ac4_dsi_v1()` from a table of contents, for the
