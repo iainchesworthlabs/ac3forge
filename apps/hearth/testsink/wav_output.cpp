@@ -21,9 +21,9 @@ namespace ac3::hearth::testsink {
 WavOutput::WavOutput(std::filesystem::path directory, std::string prefix)
     : directory_(std::move(directory)), prefix_(std::move(prefix)) {}
 
-WavOutput::~WavOutput() {
-    end();
-}
+// writer_'s own destructor finalizes and closes the WAV file as end() does, and log_'s closes the
+// log, so there is nothing left for this one to do - and nothing that can throw runs in it.
+WavOutput::~WavOutput() = default;
 
 bool WavOutput::start(const sendspin::messages::PlayerStream& stream) {
     end();
