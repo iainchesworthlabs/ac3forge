@@ -1196,9 +1196,12 @@ output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample 
 - **Where:** Part 1 5.7.8.9, p. 253, splits the enhancement of the hybrid methods between the parameters
   and a coded dialogue waveform, by alpha_c; 5.7.8.1 lets a low-complexity decoder "use only the
   parametric data to perform dialogue enhancement".
-- **Reading:** until the waveform's substream is decoded (phase D7), a hybrid method enhances by its
-  parameters alone, as its parametric counterpart does, at the whole gain.
-- **Evidence:** Text.
+- **Reading:** where the presentation has no dialogue enhancement substream, or one with fewer channels
+  than the method takes, a hybrid method enhances by its parameters alone, as its parametric counterpart
+  does, at the whole gain; where it has one, the waveform takes its share ("The hybrid dialogue
+  enhancement's waveform", under Presentations).
+- **Evidence:** Text; the main substream of `presentations-hybrid.ac4` decoded alone measures the whole
+  gain on its parameters.
 
 ### The dialogue enhancement gain the system asks for
 
@@ -1236,6 +1239,202 @@ output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample 
   output sample.
 - **Evidence:** Text; `tests/ac4dec/test_ac4dec_decoder.cpp` holds the counts across a jump and a 0 at
   29.97 fps.
+
+## Presentations
+
+Which presentation the decoder decodes (Part 2 4.8.2), and how it mixes a presentation's substreams (Part
+1 6.2.16; Part 2 4.8.3.15 to 4.8.5): phase D7. The decoder's transcription is
+`src/ac4dec/src/presentations.cpp`, `src/ac4dec/src/pcm/mixer.cpp` and the mixing in
+`src/ac4dec/src/decoder.cpp`; the Python one, written from the text separately, is
+`tools/references/ac4_presentations.py` for the selection and `tools/checks/mix_ac4_decode.py` for the
+mixes. The streams that reach these readings are built for them: the selection table
+(`tests/golden/ac4dec/presentations/presentation-selection.tsv`) and the test multiplexer's streams beside
+it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.cpp`).
+
+### Which presentations can be selected
+
+- **Where:** Part 2 4.8.2, pp. 39 and 40; 6.3.2.2.3 and Table 55, p. 157; 6.3.2.3.1, p. 158; Part 1
+  4.3.3.3.8 and Table 86, p. 76.
+- **Text:** a decoder of compatibility level n "shall not decode (i.e. select) presentations with md_compat
+  > n"; a disabled presentation "shall not be selected"; a decoder decodes presentation versions 1 and 2,
+  and version 0 is Part 1's; Table 55 reserves md_compat 4 to 6 and calls 7 "Unrestricted".
+- **Reading:** a presentation can be selected when its presentation_version is 0, 1 or 2, its md_compat is
+  one its table defines (Table 55: 0 to 3 and 7; Table 86: 0 to 4 and 7) and no more than the decoder's
+  level, the stream has not disabled it, it carries audio (a single substream or group, or
+  presentation_config 0 to 5), and the decoder decodes all of it: every substream channel-coded, in a
+  channel mode it renders, at 48 or 44.1 kHz, and none a fragment of the efficient high frame rate mode.
+  md_compat 7 is above every level Table 55 defines, so it is selected only by a decoder told its level
+  is 7. The default level is 3.
+- **Evidence:** Text; the selection table's cases, which both transcriptions take.
+
+### The order of the preferences
+
+- **Where:** Part 2 4.8.2, p. 40: the selection "is application dependent", resting "mainly" on "language
+  type, availability of associated audio, and type of audio (multichannel for speaker rendering, or a
+  pre-virtualized rendition for headphones)"; the decoder "should not rely on the order and number of
+  presentations, as both can change over time". Part 1 4.3.3.8.8's NOTE, p. 80: a presentation's language
+  is that of its main or dialogue substream, never its associated audio's.
+- **Reading:** the presentation the system names by `presentation_id`, else by its position, else the one
+  that best meets the preferences in the order the clause lists them. Language first: the presentation's
+  is its first dialogue substream's tag, else its first main or music and effects substream's; a tag
+  equal to the one asked for (ignoring case) ranks above one whose primary subtag alone matches. Then
+  associated audio: where the system asks for a service (a Table 91 classifier, and optionally Table
+  92's refinement), a presentation carrying it; where it asks for none, a presentation carrying none. A
+  presentation carries the service of its associated substream, or of its main substream where that is
+  classified as associated audio (Part 2 Table 54) or carries a Table 92 code. Then the kind:
+  `b_pre_virtualized` as the system's headphones ask. Among equals, the first in the table of contents.
+  The choice is made again at each frame, so a presentation named by `presentation_id` is followed
+  wherever it moves.
+- **Evidence:** Text; the selection table (34 cases, versions 0 and 1) holds both transcriptions.
+
+### The mixer's sum
+
+- **Where:** Part 2 4.8.4, p. 51: "The actual mixing is done for each channel ch by summing up that channel
+  Xs,ch of each substream s", with the equation Y_ch = (sum over s of X_s,ch) / n_sub; Part 1 6.2.16.1 and
+  6.2.16.2, p. 269, add the dialogue and the associated audio to the main audio with no division.
+- **Reading:** the sum, as the prose and Part 1 have it. Dividing by n_sub would put the music and effects
+  of a presentation with dialogue 6 dB under the same substream decoded alone, and make every level
+  depend on the number of substreams.
+- **Evidence:** Text; every mix of the multiplexed streams measures each substream at its formula's
+  gain, and a decoder that divides fails four of the presentations test's cases.
+
+### Substream group gains
+
+- **Where:** Part 2 6.2.2.3, p. 124: `ac4_presentation_substream()` reads `sg_gain` for sg below
+  n_substream_groups, only where n_substream_groups is above 1; 6.3.3.1.22 to 6.3.3.1.24, p. 170, with
+  `b_keep` repeating the previous frame's gains, 0 dB until the first sent; 4.8.4, p. 51, applies g_sg
+  to "each substream s which is part of a substream group sg". Configuration 1 has n_substream_groups 1
+  and configuration 4 has 2 for three groups ("presentation_config 1 and 4 read more specifiers than
+  n_substream_groups", above).
+- **Reading:** the gains go to the groups in the order the presentation's `ac4_sgi_specifier()`s name
+  them. Configuration 1 sends none. Configuration 4 sends the main group's and the associated group's;
+  the dialogue enhancement group has none of its own, and its waveform, which joins the main substream's
+  channels (5.7.8.9), takes the main group's. A frame whose `b_substream_group_gains_present` is 0
+  applies 0 dB; `b_keep` repeats the last gains sent for that many groups, or 0 dB where none were.
+  Version 0 presentations have no group gains.
+- **Evidence:** Text; the multiplexed streams' gains (-2 dB in configuration 0, -1 dB in 3 and 4, -0.5
+  and -1.5 dB in 5) measure to 0.01 dB in both transcriptions.
+
+### Where the substreams are mixed
+
+- **Where:** Part 2 Figure 4, p. 39, and 4.8.3 to 4.8.7: each substream is decoded and rendered to the
+  output layout, the substreams are mixed, and loudness correction, DRC and QMF synthesis follow; Part 1
+  6.2.16.0, p. 268: the mixer's output has the main or music and effects substream's channels, and "no
+  additional channels are allowed for the dialogue or associated audio substream, except for a mono
+  channel". Part 2 4.8.6, p. 53, and Part 1 6.2.13, p. 268: DRC's side chain is the signal before
+  dialogue enhancement.
+- **Reading:** in the QMF domain, each substream after its own dialogue enhancement, before the output
+  level, DRC, the downmix and one QMF synthesis for the output. A substream's channel that the main or
+  music and effects substream does not have goes nowhere, which only a stream the text forbids has. DRC's
+  side chain is the mix of the substreams' signals before their dialogue enhancement, with the same
+  gains. A presentation needs all of its substreams: a frame in which one is refused or missing fails
+  whole and is concealed, rather than coming out without it.
+- **Evidence:** Text; against each substream decoded alone, the formula leaves the output 110 dB under it
+  or more.
+
+### The main audio's and the dialogue's scaling with associated audio
+
+- **Where:** Part 2 4.8.3.17, pp. 49 and 50; Part 1 6.2.16.2, p. 269, and 4.3.12.4.4 to 4.3.12.4.8,
+  p. 119, which print `scale_main` and `scale_main_front` as "a negative gain of 0 dB (0x00) to 76,2 dB"
+  with 0xff "a full mute", and `scale_main_centre` as "a gain of 0 dB (0x00) to -76,2 dB" with 0xff
+  "-∞ dB". Part 1 6.2.16.0, p. 268: the mixing metadata "remain valid until new ones are transmitted in
+  the same stream or until a splice is detected".
+- **Reading:** each is -0.3 dB a step, 255 silence, 0 dB where none has been sent. C takes
+  `scale_main_centre` and `scale_main`, L and R `scale_main_front` and `scale_main`, every other channel
+  `scale_main`. They apply only in a presentation with associated audio, to the main or music and
+  effects substream and to each dialogue substream, whose own channels take them before it is panned:
+  a mono dialogue, whose channel is C, takes `scale_main_centre` wherever its pan puts it. They come from
+  the presentation substream in version 1 and from the associated substream's `extended_metadata()` in
+  version 0, and hold until sent again; a change of source forgets them.
+- **Evidence:** Text; the multiplexed streams' -6, -1.5 and -3 dB measure to 0.01 dB, in versions 1 and 0,
+  in both transcriptions.
+
+### The dialogue's gain and pans
+
+- **Where:** Part 1 4.3.12.4.11, p. 119, prints g_dialog_max's formula wholly as a subscript,
+  "g_dialog max=(1+dialog_max_gain)×3[dB]", and sets it to 0 dB where an I-frame does not send it; Part 2
+  4.8.3.18, p. 50, sets it "to 0 otherwise" where `b_dialog_max_gain` is false; Part 1 6.2.16.1, pp. 268
+  and 269: one `pan_dialog` per track for mono and stereo dialogue, and for more tracks two, which
+  `pan_signal_selector`'s simplified decoding of a 3.0 substream takes (4.3.12.4.14, p. 120); "Tracks
+  that do not have a pan value are not to played back".
+- **Reading:** g_dialog_max is (1 + `dialog_max_gain`) x 3 dB. It holds from the frame that sends it
+  until a frame of the substream that is an I-frame does not, which sets 0 dB; Part 2's "otherwise" is
+  read as Part 1's I-frame rule. The listener's g_dialog, capped at g_dialog_max, applies to every
+  channel of every dialogue substream. A mono or stereo dialogue substream with `pan_dialog` takes one
+  pan a channel; without it, a mono one takes 0 degrees, as `pan_associated`'s default, and a stereo one
+  goes channel to channel. This decoder does not do the simplified 3.0 decoding, so a 3.0 dialogue
+  substream's channels go channel to channel, and "not to be played back" is read of the simplified
+  decoding's third track.
+- **Evidence:** Text; g_dialog at -6 and +9 dB against caps of 3, 6 and 12 dB, and pans to 330, 0 and 30
+  degrees, measure to 0.01 dB in both transcriptions.
+
+### Panning
+
+- **Where:** Part 1 4.3.12.4.9, p. 119: angles from the front, clockwise, "standard Right speaker is at
+  +30 degree", with codes 0xf0 to 0xff not to be used; Table 216, p. 269, gives the gains at three angles
+  only: 330 degrees L, 0 degrees C (a 5.1 output) or 0.5 to each of L and R (a 2.0 one), and 30 degrees
+  R. Table D.1, p. 301, lists "approximate speaker positions" whose azimuths turn the other way and put
+  L and R at 45 degrees, the surrounds at 110 (5.X) or 90 (7.X).
+- **Reading:** L, C and R sit where the pan clause puts them, at 330, 0 and 30 degrees; the other
+  channels at Table D.1's azimuths turned clockwise: Ls and Rs at 250 and 110 degrees in the 5.X modes
+  and 270 and 90 in the 7.X ones, Lb and Rb at 225 and 135, Lw and Rw at 300 and 60. The LFE and the top
+  channels are outside the ring a pan moves round. A signal at an angle goes to the two channels either
+  side of it, shared linearly, the two gains summing to 1, which is what Table 216's 0.5 and 0.5 at 0
+  degrees between L and R needs. A code the text reserves is taken modulo 360 degrees.
+- **Evidence:** Text; the audio description at 330, 0 and 30 degrees into 5.1, and at 0 degrees into 2.0,
+  measures to 0.01 dB in both transcriptions, and a constant-power law fails them.
+
+### The associated audio's gain
+
+- **Where:** Part 1 6.2.16.2, p. 269: g_assoc in [-∞, 0] dB applies "to all associated audio channels",
+  while the formula for a substream that is not mono, "Y_mixi = X_mainadj + X_associatedi", has none;
+  Part 2 4.8.3.17, p. 49, applies it to each channel; Part 1 4.3.3.8.8 and Table 92, p. 80: with a premix
+  code the associated audio "was mixed with the Main audio content prior to encoding", and user gains
+  "should be disabled".
+- **Reading:** g_assoc, capped at 0 dB, applies to every channel of the associated substream, mono or
+  not, except where its language tag is a premix code (qax, qtx, qsx, qex). An associated substream that
+  is not mono goes channel to channel.
+- **Evidence:** Text; g_assoc at -10 dB on a mono and on a stereo associated substream measures to
+  0.01 dB in both transcriptions.
+
+### Levelling before the mix
+
+- **Where:** Part 1 6.2.16.0, p. 268: substreams "need to be at the same reference level", by
+  10^((Lout - dialnorm)/20) unless DRC processing (5.7.9.3.3) has done it, and not "if both the
+  presentation_version is 0 and the dialnorm values of the music and effects and dialogue substreams
+  differ"; Part 2 4.8.5.2 and Table 16, pp. 51 and 52: in version 0 the dialnorm comes from "the
+  basic_metadata of the associated substream for presentations containing associated audio; and the
+  substream indicated in table 16 for main audio decoding", Table 16 naming a substream for
+  configurations 2 to 4 as well, which contain associated audio; 4.8.6, p. 53, takes DRC from the
+  substream that gives the dialnorm. In version 1 the presentation substream carries the one dialnorm.
+- **Reading:** a version 0 presentation's dialnorm, which its output level and DRC take, is Table 16's
+  substream's: the dialogue's in configurations 0 and 3, the main one's otherwise. The music and effects
+  and the dialogue are not levelled against each other. The associated audio, whose own dialnorm is the
+  first bullet's, comes to the presentation's before the mix, by 2^((dialnorm - own) / 6): dB2, as the
+  output level gain of 5.7.9.3.3 is ("DRC's units"), so that at any output level it plays as it does
+  decoded alone. Without an output level it comes to the presentation's dialnorm all the same, as if
+  that were Lout. A version 1 presentation levels nothing.
+- **Evidence:** Text; `presentations-v0.ac4` levels its audio description by -4.01, +2.01 and +3.01 dB and,
+  at an output level of -31 dBFS, puts its music and effects 6.02 dB under their own level behind
+  dialogue at -25 dBFS, in both transcriptions; a levelling in dB fails the first by 0.014 dB.
+
+### The hybrid dialogue enhancement's waveform
+
+- **Where:** Part 1 5.7.8.9, pp. 253 and 254: the hybrid methods add "up to three waveforms", Y = (I +
+  g_p diag(p)) m + g_s d_c for the channel independent method, (I + g_p r p, r g_s) (m, d_c) for the
+  cross-channel one, and with the M/S flag 1/2 g_s (1, 1) d_c beside the Mid's processing; the
+  conditions on g_s and g_p print "g < Gmax" for G, the cross-channel matrix r p for r p^T, and the M/S
+  equation drops the sign between its terms. Part 2 Table 53, p. 156: configurations 1 and 4 carry the
+  waveforms in a dialogue enhancement substream; the text does not say which of its channels goes where.
+- **Reading:** the dialogue enhancement substream's channels, in its own order, are d_c: one for each
+  processed channel, in L, R, C order ("Dialogue enhancement's front channels"), with the channel
+  independent method; one, the Mid's, halved into L and R with the M/S flag; one, rendered by r, with the
+  cross-channel method. A presentation without that substream, or whose substream has fewer channels
+  than its method takes, enhances by the parameters alone at the whole gain, as 5.7.8.1 lets a
+  low-complexity decoder do. The waveform joins the main substream's channels before its gains, so it
+  takes the main group's gain and the scaling of associated audio.
+- **Evidence:** Text; the three methods measure to 0.01 dB against the main and the waveform decoded
+  alone, in both transcriptions.
 
 ## Tables
 

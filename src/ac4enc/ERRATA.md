@@ -328,6 +328,22 @@ The writer takes the decoder's reading of each of these (phase E5):
 - **Evidence:** Readers. Transmitted gains are experimental (`experimental=drc-gains`): no stream DEE
   writes sends them.
 
+## Presentations
+
+The table of contents of several presentations and their mixing fields (`src/ac4enc/src/frame/toc_writer.cpp`
+and `metadata.cpp`), which phase D7's test multiplexer writes and phase E6 extends to the encoder's own
+presentations. The writer takes the decoder's reading of each of these:
+
+- [presentation_config 1 and 4 read more specifiers than n_substream_groups](../ac4dec/ERRATA.md#presentation_config-1-and-4-read-more-specifiers-than-n_substream_groups)
+  and [Substream group gains](../ac4dec/ERRATA.md#substream-group-gains): every specifier the
+  configuration reads, and `sg_gain` for n_substream_groups groups as 6.2.1.3 assigns it: none for
+  configuration 1, the main and associated groups' for configuration 4.
+- [The dialogue's gain and pans](../ac4dec/ERRATA.md#the-dialogues-gain-and-pans) and
+  [Panning](../ac4dec/ERRATA.md#panning): `dialog_max_gain` for a g_dialog_max of (1 + `dialog_max_gain`)
+  x 3 dB, and pans in 1.5 degree steps clockwise from the front, 330 degrees L and 30 degrees R.
+- [The hybrid dialogue enhancement's waveform](../ac4dec/ERRATA.md#the-hybrid-dialogue-enhancements-waveform):
+  a hybrid method's `de_signal_contribution` sets the waveform's share, alpha_c = x / 31, of the gain.
+
 ## Rates
 
 ### What wait_frames counts
