@@ -1095,6 +1095,37 @@ TEST_CASE("version 0 presentations mix by their substreams' own metadata and dia
     check_tone(decode_id(file, 2, 0.0, 0.0, 0.0, kLevel), ad_at, Speaker::kCentre, kToneAd, {{Speaker::kRight, 0.0}});
 }
 
+TEST_CASE("a stream with no presentation the decoder decodes names the substream it does not", "[ac4dec][presentations]") {
+    // One presentation of one 22.2 substream, whose channel element the
+    // decoder does not decode, and its presentation substream.
+    BitWriter toc;
+    ac4_toc_test::toc_start(toc, {.bitstream_version = 2, .sequence_counter = 1, .fs_index = 1,
+                                  .frame_rate_index = 13, .b_iframe_global = true, .n_presentations = 1});
+    ac4_toc_test::PresV1 pres;
+    pres.presentation_substream = 1;
+    pres.md_compat = 3;
+    ac4_toc_test::presentation_v1(toc, pres);
+    ac4_toc_test::chan_group(toc, {{.ch_mode = 15, .substream_index = 0}});
+    ac4_toc_test::index_table(toc, {4, 1});
+    toc.align();
+    const std::vector<std::byte> frame =
+        ac4_toc_test::assemble(toc, {std::vector<std::byte>(4, std::byte{0}), {std::byte{0}}});
+    const auto parsed = ac4::parse_raw_frame(frame);
+    REQUIRE(parsed.has_value());
+    CHECK_FALSE(ac4::select_presentation(parsed->toc, {}, 3).has_value());
+    ac4::Decoder reader;
+    const auto report = reader.parse(frame);
+    REQUIRE(report.has_value());
+    const auto audio = std::ranges::find(report->substreams, 0, &ac4::SubstreamReport::index);
+    REQUIRE(audio != report->substreams.end());
+    REQUIRE(audio->refused == ac4::DecodeError::kUnsupported);
+    ac4::Decoder decoder;
+    const auto decoded = decoder.decode(frame);
+    REQUIRE_FALSE(decoded.has_value());
+    CHECK(decoded.error() == ac4::DecodeError::kUnsupported);
+    CHECK(decoder.refusal_reason() == audio->refused_reason);
+}
+
 TEST_CASE("the decoder selects by its configuration and reports what it decoded", "[ac4dec][presentations]") {
     const std::vector<std::byte>& file = committed("5_1");
     ac4::DecoderConfig config;

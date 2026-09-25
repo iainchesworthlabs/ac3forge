@@ -804,7 +804,13 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     d.converter_phase = phase;
     const Capture& capture = d.frame_capture;
     if (capture.plan == nullptr) {
-        d.refusal = "no presentation this decoder can select";
+        // Where a substream is one this decoder does not decode yet (an
+        // immersive element or objects, say), that is why no presentation can
+        // be selected, and its reason says so.
+        const auto unsupported = std::ranges::find(report->substreams, std::optional{DecodeError::kUnsupported},
+                                                   &SubstreamReport::refused);
+        d.refusal = unsupported != report->substreams.end() ? unsupported->refused_reason
+                                                            : std::string_view{"no presentation this decoder can select"};
         return d.conceal_or(DecodeError::kUnsupported);
     }
     const detail::PresentationPlan& plan = *capture.plan;
