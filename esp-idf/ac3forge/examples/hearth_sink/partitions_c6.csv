@@ -1,10 +1,18 @@
-# Name,     Type, SubType,  Offset,   Size,  Flags
-# partitions.csv with a 2 MB application partition, for an ESP32-C6 (sdkconfig.c6).
-# The Sendspin player built for the C6 is 1.62 MB, past the 1.5 MB the ESP32-S3's
-# 1.39 MB image fits in. See partitions.csv for what the audio and storage
-# partitions hold. The table ends at 2.6 MB; every C6 module has at least 4 MB.
+# Name,     Type, SubType,  Offset,   Size,     Flags
+# partitions.csv's shape for an ESP32-C6 module with 4 MB of flash, the least
+# any C6 module has (sdkconfig.c6). partitions.csv's two 4 MiB slots do not fit
+# in 4 MB; these are 1.75 MiB each, and the C6's Sendspin image (1.58 MB with
+# sdkconfig.sendspin-c6 in September 2026) fills one to 86%. A C6 with 16 MB of
+# flash takes partitions.csv instead (sdkconfig.flash16mb). See partitions.csv
+# for what each partition is for.
+#
+# `audio` is 64 KB here where partitions.csv has 256: the sample is 10,752
+# bytes, and the room went to the slots.
 nvs,        data, nvs,      0x9000,   0x6000,
 phy_init,   data, phy,      0xf000,   0x1000,
-factory,    app,  factory,  0x10000,  0x200000,
-audio,      data, 0x40,     ,         0x40000,
-storage,    data, fat,      ,         0x40000,
+otadata,    data, ota,      0x10000,  0x2000,
+ota_0,      app,  ota_0,    0x20000,  0x1c0000,
+ota_1,      app,  ota_1,    0x1e0000, 0x1c0000,
+coredump,   data, coredump, 0x3a0000, 0x10000,
+audio,      data, 0x40,     0x3b0000, 0x10000,
+storage,    data, fat,      0x3c0000, 0x40000,

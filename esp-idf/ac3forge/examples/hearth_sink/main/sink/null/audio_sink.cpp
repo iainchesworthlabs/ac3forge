@@ -109,6 +109,9 @@ std::uint64_t sink_frames_written() { return g_frames; }
 // counts from sink_open.
 void sink_begin_play() {}
 
+// No peripheral, so nothing to close.
+void sink_close() {}
+
 // Nothing to report. This sink deliberately knows nothing about the audio -
 // it is the cheapest thing that can stand in for a peripheral. Use
 // sink/capture/ when the question is whether the samples are right.

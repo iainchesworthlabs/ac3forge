@@ -154,6 +154,28 @@ struct SendspinStatus {
     std::size_t stack_free = 0;
 };
 
+// One pairing record, for the console and the page.
+struct SendspinPairing {
+    SendspinStore::Key32 server_key{};
+    // What the server's hello called it: empty for a record from a firmware
+    // that did not keep names, until that server connects again.
+    std::array<char, kServerNameBytes> name{};
+    // A connection this record authenticated is open.
+    bool connected = false;
+    // The server that last played here, which may take the board back from a
+    // holder that declares nothing (connection.md, Multiple servers).
+    bool last_playback = false;
+    // The board has used this record since it started, by a pairing or a
+    // connection.
+    bool seen = false;
+};
+
+// The records, the most recently used first. Fixed-size, like SendspinStatus.
+struct SendspinPairings {
+    std::array<SendspinPairing, SendspinStore::kRecordCapacity> servers{};
+    std::size_t count = 0;
+};
+
 class SendspinHost final {
    public:
     SendspinHost();
@@ -165,6 +187,14 @@ class SendspinHost final {
     // False, having said why on the console, when it cannot.
     [[nodiscard]] bool start(SendspinHostConfig config, SendspinEvents& events);
     void stop();
+
+    // The board is going away for an update or a restart
+    // (planning/esp32-ota.md): every connection past its handshake is told
+    // so with client/goodbye restart, and its server dials again once the
+    // board is back. Then the server stops, as stop() stops it. Waits up to
+    // `wait_ms` for the goodbyes to go out on the server's task. Safe from
+    // any task but the server's own.
+    void leave(std::uint32_t wait_ms = 500);
 
     // Safe from any task; queued onto the server's task, and a later call
     // replaces an earlier one that has not been applied yet.
@@ -189,6 +219,17 @@ class SendspinHost final {
     // board must pair it again. Open connections are closed. Safe from any
     // task whose stack is in internal RAM.
     [[nodiscard]] bool forget_pairings();
+    // One server's pairing dropped, with its name, and the rest kept: its
+    // connection closes with client/goodbye user_request, and it has to pair
+    // again (its next handshake falls back to the Sentinel PSK, which tells it
+    // so; connection.md). No longer the last-playback server either, if it
+    // was. False when there is no record for it. Safe from any task whose
+    // stack is in internal RAM.
+    [[nodiscard]] bool forget_server(const SendspinStore::Key32& server_key);
+
+    // The pairing records, with each server's name, which is read from NVS.
+    // Safe from any task whose stack is in internal RAM.
+    [[nodiscard]] SendspinPairings pairings() const;
 
     [[nodiscard]] SendspinStatus status() const;
     [[nodiscard]] const SendspinStore& store() const;

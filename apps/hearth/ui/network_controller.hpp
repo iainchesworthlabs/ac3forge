@@ -26,21 +26,19 @@ class PairingStore;
 }
 
 // The one object the Network page talks to (planning/hearth-reference-player.md,
-// A6's first slice: discovery and pairing). Kept apart from HearthController
-// rather than adding to it: what it wraps, NetworkSinks, is a standing
-// Sendspin server with its own thread and its own lifetime, not a command
-// queue in front of one Player the way Engine is - the two controllers poll
-// two unrelated engine-side objects, on the same timer rhythm for the same
+// A6: discovery, connection, pairing and groups). Kept apart from
+// HearthController rather than adding to it: what it wraps, NetworkSinks, is a
+// standing Sendspin server with its own thread and its own lifetime, not a
+// command queue in front of one Player the way Engine is - the two controllers
+// poll two unrelated engine-side objects, on the same timer rhythm for the same
 // reason CrucibleController's rate is reused throughout this application.
 //
-// Pairing records live in a QSettingsStore (qsettings_store.hpp) over this
-// class's own QSettings, under the same "ac3forge"/"Hearth" identity
-// HearthController's own settings file uses - a record made here outlives
-// the process. This class owns and constructs its QSettingsStore itself
-// rather than sharing HearthController's C++ instance: the two controllers
-// are independent QML singletons with no natural owner to hand a reference
-// between them, and QSettings instances that share an org/app identity
-// already read and write the same underlying store without one.
+// Pairing records live in the process's one PairingStore
+// (shared_pairing_store.hpp), which HearthController's Settings page lists and
+// forgets from too - a record made here outlives the process. This computer's
+// server identity, which every record is bound to (server_identity.hpp), and
+// the network settings are read through this class's own QSettings, under the
+// same "ac3forge"/"Hearth" identity HearthController's own settings file uses.
 
 namespace ac3::hearth::ui {
 
@@ -52,12 +50,14 @@ class NetworkController : public QObject {
     QML_SINGLETON
 
     // Every discovered sink, in NetworkSinkList.qml's own row shape: id,
-    // name, icon, subtitle, badge, badgeText, notice.
+    // name, icon, subtitle, badge, badgeText, notice, linkText, connected.
     Q_PROPERTY(QVariantList sinks READ sinks NOTIFY sinksChanged)
     Q_PROPERTY(QString selectedId READ selectedId NOTIFY sinksChanged)
     // The selected sink's own detail rows (NetworkSinkInfo.qml) plus its
-    // badge and pairedOnText; an empty map while nothing is selected or the
-    // selection is gone.
+    // badge, pairedOnText, linkText, connected, pageUrl, and what the page
+    // may offer for it: pairing ("none" | "requested" | "code" | "active"),
+    // canPair and canConnect (network_view.hpp's SinkDetail says what each
+    // means); an empty map while nothing is selected or the selection is gone.
     Q_PROPERTY(QVariantMap selectedSink READ selectedSink NOTIFY sinksChanged)
     Q_PROPERTY(int discoveredCount READ discoveredCount NOTIFY sinksChanged)
     Q_PROPERTY(int groupCount READ groupCount NOTIFY sinksChanged)
@@ -104,7 +104,8 @@ class NetworkController : public QObject {
     Q_PROPERTY(QVariantMap sinkOnlyOnSink READ sinkOnlyOnSink NOTIFY sinksChanged)
 
     // Every group, in NetworkSinkList.qml's own row shape: id, name, icon,
-    // subtitle, badge, badgeText - shown above `sinks` in the same list.
+    // subtitle, badge, badgeText, membersText, ready - shown above `sinks` in
+    // the same list, and in the output picker's network section.
     Q_PROPERTY(QVariantList groups READ groups NOTIFY sinksChanged)
     Q_PROPERTY(QString selectedGroupId READ selectedGroupId NOTIFY sinksChanged)
     // The selected group's own editor rows (NetworkGroupEdit.qml): name,
@@ -116,9 +117,23 @@ class NetworkController : public QObject {
 
 public:
     explicit NetworkController(QObject* parent = nullptr);
+    // Explicit: stops the NetworkSinks (and with it every thread that calls
+    // into the pairing store) before the members it uses go.
     ~NetworkController() override;
 
-    // Starts the Sendspin server and mDNS browsing. Called from Main.qml's
+    // Whether start() browses the network for sinks at all
+    // (NetworkSinksOptions::browse): true for the window. The Qt Quick suites
+    // (ui/tests/qml_test_main.cpp) turn it off before any suite starts the
+    // network, so the only sinks a suite sees are the ones it hands
+    // sinks_for_test() itself - left on, every suite that opens Main.qml
+    // would find and dial the real sinks on whatever network it runs on.
+    // Off, there is no mDNS socket either, so no firewall exception is asked
+    // for: ac3hearth_qmltests has no main() of its own to finish the elevated
+    // relaunch that request makes.
+    static void set_network_discovery(bool discovery);
+
+    // Starts the Sendspin server and, unless set_network_discovery(false) came
+    // first, mDNS browsing. Called from Main.qml's
     // Component.onCompleted, the same reason HearthController::start() is:
     // not the constructor, so a singleton QML creates before the window is
     // on screen does not open a socket with nothing yet shown for it.
@@ -137,9 +152,18 @@ public:
     [[nodiscard]] QVariantMap selectedGroup() const { return selected_group_; }
 
     Q_INVOKABLE void rescan();
+    // Selection only: pairing is pairSink().
     Q_INVOKABLE void selectSink(const QString& id);
+    // NetworkSinks::pair_sink(): the sink then shows six digits on its own
+    // page and console, which submitPairingCode() takes.
+    Q_INVOKABLE void pairSink(const QString& id);
     Q_INVOKABLE void submitPairingCode(const QString& id, const QString& code);
     Q_INVOKABLE void cancelPairing(const QString& id);
+    // NetworkSinks::connect_sink(): takes a paired sink back from another
+    // server, or connects to one that is not connected, now.
+    Q_INVOKABLE void connectSink(const QString& id);
+    // NetworkSinks::forget_pairing(): the sink has to be paired again.
+    Q_INVOKABLE void forgetSink(const QString& id);
 
     [[nodiscard]] bool selectedSinkSettable() const { return selected_sink_settable_; }
     [[nodiscard]] QVariantMap sinkSpeakerSettings() const { return sink_speaker_settings_; }
@@ -213,14 +237,17 @@ private:
     // refused one shows in that sink's report rather than vanishing.
     void note_push(bool sent, const std::string& sink_id);
 
-    std::unique_ptr<ac3::hearth::NetworkSinks> sinks_engine_;
     // The four-argument constructor, network_controller.cpp's own comment
     // says why - hearth_controller.hpp carries the identical comment for
-    // the identical reason. Declared before settings_store_ and pairing_
-    // store_, both of which depend on the one before them in this order.
+    // the identical reason. Declared before settings_store_, which depends
+    // on it.
     QSettings settings_;
     std::unique_ptr<ac3::hearth::ui::QSettingsStore> settings_store_;
-    std::unique_ptr<ac3::hearth::PairingStore> pairing_store_;
+    // The process's one pairing store (shared_pairing_store.hpp).
+    std::shared_ptr<ac3::hearth::PairingStore> pairing_store_;
+    // Declared after everything it uses, and reset first by the destructor
+    // regardless: its threads call into pairing_store_ until it is gone.
+    std::unique_ptr<ac3::hearth::NetworkSinks> sinks_engine_;
     QTimer poll_timer_;
 
     QVariantList sinks_;

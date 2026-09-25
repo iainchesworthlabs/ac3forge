@@ -19,6 +19,10 @@
 # {fmt} is a plain CMake/C++ library and builds cleanly under the NDK
 # toolchain with no further plumbing needed, unlike bolting vcpkg's own
 # Android triplet chainloading on for this one dependency.
+#
+# A second target, ac3::fmt_private, is defined at the end of this file. The
+# libraries installed as static archives (ac3::forge, mp4::mp4) link it in place
+# of ac3::fmt.
 # ---------------------------------------------------------------------------
 
 # Matches packaging/vcpkg-port/ac3forge/vcpkg.json's own fmt dependency and
@@ -137,3 +141,54 @@ endif()
 if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
     target_compile_options(ac3_fmt INTERFACE /wd4702)
 endif()
+
+# ac3::fmt_private - a private copy of {fmt}, compiled into the object files of a library that is
+# installed as a static archive: ac3::forge (src/forge/CMakeLists.txt) and mp4::mp4
+# (src/mp4/CMakeLists.txt).
+#
+# An archive is not linked. Each function its objects call without defining stays an undefined
+# reference until a consumer's own link, and the installed package names no {fmt} for that link to
+# find. Linking ac3::fmt privately, as those two libraries did, therefore left an installed
+# libac3forge_static.a and libmp4_static.a with undefined fmt::v12::vformat and fmt::v12::vprint
+# references, and a program linking ac3::forge_c_static from `cmake --install`'s output stopped at
+# "undefined reference to fmt::v12::vprint". A shared library takes {fmt} in at its own link, so
+# only the static variants showed it.
+#
+# Declaring the dependency on the exported targets instead (find_dependency(fmt) plus a link item)
+# does not hold for every way this file finds {fmt}. The FetchContent copy is an ordinary target
+# that is in no export set, so install(EXPORT) refuses it and the configure step fails. The {fmt}
+# a consumer finds also has to be this build's major version, which is part of every symbol name
+# (fmt::v12::), so a consumer whose only copy is another major version, such as Ubuntu 26.04's
+# libfmt-dev 10.1.1, still ends at an undefined reference.
+#
+# FMT_HEADER_ONLY makes {fmt}'s definitions part of each including translation unit, so the archive
+# carries them and no fmt:: symbol is left undefined. $<COMPILE_ONLY:> keeps what ac3::fmt supplies
+# for compiling (include path, SYSTEM marking, /wd4702) and drops the link: no {fmt} library
+# reaches a link line, and a shared {fmt} adds no NEEDED entry to libac3forge.so.
+#
+# The definitions go in their own inline namespace, fmt::ac3_private, through FMT_BEGIN_NAMESPACE
+# and FMT_END_NAMESPACE, the hooks {fmt} provides for embedding it in a library. Without that the
+# archive holds weak definitions of fmt::v12::vprint and vformat, and a weak definition in an
+# archive member satisfies every other object's reference to the same name: ac3tests, which
+# compiles cpu_features.cpp a second time, had the archive's cpu_features.cpp.o pulled in for
+# fmt::v12::vprint and stopped at a duplicate ac3::internal::cpu::has_avx2, in the static build and
+# in the BUILD_SHARED_LIBS=ON pass alike. A member pulled in without a clash would put a copy of
+# this library's code in a test binary that is meant to run against libac3forge.so. The private
+# copy answers to this library's own code alone, and a consumer's {fmt}, of any version, never
+# binds to it.
+#
+# Every translation unit of these libraries gets the definitions, whichever fmt header it
+# includes: with FMT_HEADER_ONLY, fmt/base.h ends by including fmt/format.h (11.1.0 through
+# 12.2.0). A library that goes back to linking ac3::fmt privately is what
+# tools/checks/check_install_consumer.sh finds, by linking every installed archive whole.
+# Applications, tests and examples keep linking ac3::fmt: they are executables, so no later link
+# is left to resolve anything. The FMT_*_NAMESPACE definitions contain spaces and braces, which
+# the Ninja generator (Linux and Windows) and the Unix Makefiles generator (Linux) quote
+# correctly; every preset here uses Ninja, and no other generator has been tried.
+add_library(ac3_fmt_private INTERFACE)
+add_library(ac3::fmt_private ALIAS ac3_fmt_private)
+target_link_libraries(ac3_fmt_private INTERFACE "$<COMPILE_ONLY:ac3::fmt>")
+target_compile_definitions(ac3_fmt_private INTERFACE
+    FMT_HEADER_ONLY=1
+    "FMT_BEGIN_NAMESPACE=namespace fmt { inline namespace ac3_private {"
+    "FMT_END_NAMESPACE=} }")

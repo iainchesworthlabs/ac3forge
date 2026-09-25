@@ -61,6 +61,13 @@ void sendspin_set_external(bool external);
 // player that is starting takes the change up before it has started.
 void sendspin_board_changed();
 
+// The board is going away, into flash mode or through a restart
+// (planning/esp32-ota.md): every server is told the board is restarting,
+// the player stops writing to the sink, and the server stops listening. The
+// player and its host stay in memory, since other tasks hold pointers to
+// them; nothing starts them again, because the board restarts next.
+void sendspin_leave();
+
 // GET /status's "sendspin" object, or nothing without a player.
 [[nodiscard]] std::optional<ac3forge::ControlSendspin> sendspin_status();
 
@@ -68,9 +75,18 @@ void sendspin_board_changed();
 // else, or without a player.
 [[nodiscard]] bool sendspin_pairing(std::string_view action);
 
+// GET /pairing: the servers this board is paired with, or nothing without a
+// player.
+[[nodiscard]] std::optional<ac3forge::ControlPairings> sendspin_pairings();
+
+// POST /pairing's "forget " and a server_id: that one server's pairing. False
+// when the board has none with it, nothing without a player.
+[[nodiscard]] std::optional<bool> sendspin_forget_server(std::string_view server_id);
+
 // A line typed on the console. True when it was one of the player's
-// commands: "pair reset", "pair cancel", "pair forget", "pair token",
-// "sendspin".
+// commands: "pair list", "pair reset", "pair cancel", "pair forget" (every
+// server), "pair forget " and a server_id or the first eight or more of its
+// characters (that server alone), "pair token", "sendspin".
 bool sendspin_console(std::string_view line);
 
 // Called by app_main about ten times a second: what the player reports to its

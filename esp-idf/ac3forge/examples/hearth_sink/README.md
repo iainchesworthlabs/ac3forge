@@ -127,13 +127,91 @@ audio — with no peripheral behind it, so the partition reads, the framing and
 the decode all run exactly as they do on hardware, and it checks the converted
 samples on the way past. What it cannot do is prove a DAC makes a noise.
 
+### The flash layout
+
+Both tables have two application slots, `ota_0` and `ota_1`, and an `otadata`
+partition that says which of them boots: `partitions.csv` for a board with
+16 MB of flash, and `partitions_c6.csv` for an ESP32-C6 module with 4 MB. The
+bootloader is built with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`
+(`sdkconfig.defaults`). An image an update writes into the other slot boots on
+trial, and a reset before that image accepts itself boots the previous one
+again. Updates over the network, in the next section, build on this
+([planning/esp32-ota.md](../../../../planning/esp32-ota.md)).
+
+A USB flash - `idf.py flash`, or `esptool write-flash @flash_args` from the
+build directory - writes these:
+
+- the bootloader and the partition table;
+- an empty `otadata`. From that the bootloader boots `ota_0` and records it as
+  valid (`boot: Set actual ota_seq=1 in otadata[0]` on the console), so nothing
+  is on trial after a USB flash;
+- the application, into `ota_0`;
+- `audio` and `storage`.
+
+`nvs` is at `0x9000` in every table this example has had, and no flash writes
+it. So a board that ran an older build moves to these tables with one USB flash
+and keeps its name, its network and its Sendspin pairings. The partition table,
+the flash size setting and the bootloader change only over USB.
+
+An ESP32-C6 with 16 MB of flash takes `partitions.csv` and its 4 MiB slots:
+add `sdkconfig.flash16mb` after the C6's own overlays. `partitions_c6.csv`'s
+slots are 1.75 MiB, for any C6 module. The ESP32-P4 uses `partitions.csv`, as
+the S3 does.
+
+### Updating over the network
+
+A board on these tables takes a new image over its network. Any of these
+sends the application image, `ac3forge_hearth_sink.bin`, not the merged
+factory image:
+
+```bash
+python tools/hearth/ota.py push --build-dir <build dir> --host hearth-eb2c64.local
+idf.py -C <this directory> -B <build dir> ... build ota --host hearth-eb2c64.local
+curl -T <build dir>/ac3forge_hearth_sink.bin http://hearth-eb2c64.local/firmware
+```
+
+`ota.py` checks the image and the board before it sends anything, sends the
+file's SHA-256 with it, and waits for the board to accept the new image or go
+back to the old one.
+
+On the board, the update goes like this:
+
+1. **Flash mode.** Every play stops, servers are told the board is restarting,
+   the sink closes and the Sendspin service is withdrawn.
+2. **The other slot.** The image is written there. The board then checks it
+   three ways: the image's own SHA-256, read back from flash; the request's
+   `Content-Digest`, when there is one; and every byte read back and hashed
+   again.
+3. **The restart.** The board restarts into the new image, which boots on
+   trial.
+4. **The trial.** The image is accepted once it has held a network address, the
+   HTTP server and the Sendspin player for 30 s without a break
+   (`CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S`). If it does not get there within
+   5 minutes (`_DEADLINE_S`), or it resets first, the board goes back to the
+   image before it. A panic, a watchdog and a power cut are all resets.
+
+`GET /firmware` reports both slots, a trial in progress, an upload's progress
+and how the last update ended. Once no trial is left to decide, the board
+reads both slots through and checks each image against its own SHA-256, as the
+bootloader does, and `GET /firmware` says whether each is intact. The check
+stops before an update writes anything. `PUT /firmware/rollback` goes back to the other
+slot's image, and `POST /restart` restarts. `PUT /firmware/mode` with body
+`flash` enters flash mode, and with `normal` leaves it; leaving is a restart.
+
+The firmware PUTs answer only requests addressed to the board's IP address or
+its own `.local` name, which keeps a web page elsewhere from sending them
+through a browser on this network. Images are not signed while the boards are
+in development: anyone on the network can update a board, as anyone with a USB
+cable can. [planning/esp32-ota.md](../../../../planning/esp32-ota.md) has the
+reasons, and what later phases add.
+
 ## What it prints
 
 Under QEMU, through the capture sink:
 
 ```
 sink: capture 48000 Hz 24-in-32 x2 in 2 slots (no peripheral, no pacing)
-source: partition 'audio' at 0x190000, 10752 bytes of audio in 262144
+source: partition 'audio' at 0x830000, 10752 bytes of audio in 262144
 heap: internal free 336512 (largest block 270336), psram free 0
 player: ring 32768 bytes in internal SRAM, fetch on core 0 at priority 5, decode on core 1 at priority 6
 player: layout 2.0, 2 slots, the decoder's Lo/Ro fold
@@ -435,10 +513,7 @@ To reach it under QEMU, run the emulator with a port forward rather than
 through `idf.py qemu`, which fixes the network options:
 
 ```bash
-esptool --chip=esp32s3 merge-bin --output=build/qemu_flash.bin --pad-to-size=16MB \
-  --flash-mode dio --flash-freq 80m --flash-size 16MB \
-  0x0 build/bootloader/bootloader.bin 0x8000 build/partition_table/partition-table.bin \
-  0x10000 build/ac3forge_hearth_sink.bin 0x190000 stream/sample.ac3 0x1d0000 build/storage.bin
+(cd build && esptool --chip=esp32s3 merge-bin --output=qemu_flash.bin --pad-to-size=16MB @flash_args)
 qemu-system-xtensa -M esp32s3 -m 32M -drive file=build/qemu_flash.bin,if=mtd,format=raw \
   -drive file=build/qemu_efuse.bin,if=none,format=raw,id=efuse \
   -global driver=nvram.esp32s3.efuse,property=drive,value=efuse \
@@ -449,7 +524,9 @@ curl -X POST -d 0.5 http://127.0.0.1:8080/volume
 curl -X POST -d http://10.0.2.2:8000/demo.ec3 http://127.0.0.1:8080/play
 ```
 
-(`qemu_efuse.bin` is what `idf.py qemu` generates on its first run.) On
+(`flash_args` is the build's own list of what goes where, the one `idf.py
+flash` uses, so the image follows the partition table without offsets typed by
+hand. `qemu_efuse.bin` is what `idf.py qemu` generates on its first run.) On
 2026-09-10 that sequence played the demo twice, the second time at half volume
 with per-channel levels exactly half the first's, stopped on request, and
 reported a refused `ftp://` location on the console.
@@ -606,11 +683,20 @@ once they are paired, which happens one of two ways:
   server. After twenty codes that did not match, the board holds pairing back
   until `pair reset` on the console or *Allow pairing again* on the page.
 
-The board keeps eight pairings in NVS. `pair forget`, or *Forget every server*
-on the page, removes them all and gives the board a new identity, so every
-server has to pair again. Lines typed on the console are commands: `pair
-token`, `pair reset`, `pair cancel`, `pair forget`, and `sendspin`, which
-prints the player's state.
+The board keeps eight pairings in NVS, each with the name its server's hello
+gave, the most recently used first. A ninth pairing replaces the least
+recently used one that no open connection rests on
+([`pairing_records.hpp`](../../include/ac3forge/pairing_records.hpp)). `pair
+list` prints them, and the page's Sendspin section lists them from `GET
+/pairing`, with a *Forget* for each. `pair forget` and a server's ID - its
+server_id, or the first eight or more characters of it that `pair list`
+prints - forgets that server alone: its connection closes with
+`client/goodbye user_request`, the board keeps its identity and its other
+pairings, and that server has to pair again. `pair forget` alone, or *Forget
+every server* on the page, removes them all and gives the board a new
+identity, so every server has to pair again. Lines typed on the console are
+commands: `pair list`, `pair token`, `pair reset`, `pair cancel`, `pair
+forget` with or without an ID, and `sendspin`, which prints the player's state.
 
 A server that has not paired gets nothing to play unless
 `CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS` is set, and then only once
@@ -762,6 +848,10 @@ idf.py -DIDF_TARGET=esp32c6 \
   build
 idf.py -p <PORT> flash monitor
 ```
+
+That builds for a module with 4 MB of flash (`partitions_c6.csv`). On a board with 16 MB, which
+`esptool --chip esp32c6 flash-id` reports, add `;sdkconfig.flash16mb` at the end of the list for
+`partitions.csv`'s larger slots ([The flash layout](#the-flash-layout)).
 
 CI builds this combination (not the network-loaded baremetal probe two directories over) but does
 not run it - `idf.py qemu` refuses `esp32c6` outright, so nothing shorter than a board proves it

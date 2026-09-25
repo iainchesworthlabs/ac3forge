@@ -151,6 +151,31 @@ The sections below contain the complete change list and fixes.
   link (`wifi`, or `ethernet` under QEMU), the access point's SSID and signal in dBm, and the
   board's address - from `ControlHandlers::network`, and `GET /hardware` gains `project`,
   `version` and `idf_version` from the image's own description. The page shows both.
+- **A Hearth sink lists the servers it is paired with, and forgets one at a time.** Each
+  pairing record now keeps the name its server's hello gave, in NVS beside the records, and
+  `GET /pairing` lists them, the most recently used first, with each server's `server_id`,
+  whether it is connected, whether it has connected since the board started, and which played
+  last. The page's Sendspin section shows the list with a *Forget* for each; `POST /pairing`
+  with `forget` and a `server_id` forgets that server alone, closing its connection with
+  `client/goodbye user_request`, and the board keeps its identity and its other pairings. The
+  console gains `pair list` and `pair forget ID`. A pairing made before names were kept is named
+  when its server next holds the board. Before this the board could say only how many servers it
+  was paired with, and the only way to drop one was to forget every server and take a new
+  identity.
+  - A ninth pairing now evicts the least recently used record that no open connection rests on
+    (`esp-idf/ac3forge/include/ac3forge/pairing_records.hpp`, tested on the host); a record is
+    used when its server is admitted. The board evicted the oldest pairing, which could be the
+    server that played to it every day, or one with a connection open on it, which pairing.md
+    forbids.
+  - A forgotten server is no longer the last-playback server (`ac3::sendspin::Arbiter::forget`),
+    so it cannot take the board from a holder that declares nothing.
+  - `tools/checks/run_sendspin_qemu.sh` has the emulated board list the test server by name and
+    then forget it by its `server_id`. The page's budget is 49,152 bytes, up from 45,056
+    (planning/esp32-device-ui.md, decision 22).
+  - `hearth_sink` starts its Sendspin player before its host. The player's decode task needs a
+    32 KB stack in internal RAM, which is in pieces by then. An ESP32-S3 with 104,319 bytes free
+    had no block above 31,744 once the host's state had been made first, and the player did not
+    start. A player that cannot start now says so on the console.
 - **The ESP32 web page explains the output layout**, showing this play's fold, each
   channel's speaker or object placement, and the speakers left silent; `GET /status`
   gains `sink_slots`, `stream.layout`, `render`, `coded` and `silent`. A 38-stream set
@@ -189,6 +214,47 @@ The sections below contain the complete change list and fixes.
   playing a 7.1 stream onto eight 16-bit TDM slots, `sink_us_per_frame` drops from
   20,875 to 12,689 microseconds a frame, 11,551 with the sink's source at `-O2`
   (`AC3FORGE_MINIMAL_HOT_O2`); levels unchanged to the digit.
+- **A Hearth sink's flash has two application slots and a bootloader that can go back to
+  the previous one**, the groundwork for updating boards over the network
+  (`planning/esp32-ota.md`).
+  - **Tables.** `partitions.csv` is for boards with 16 MB of flash: the ESP32-S3, the
+    ESP32-P4, and an ESP32-C6 with the new `sdkconfig.flash16mb`. `partitions_c6.csv` is for a
+    4 MB C6 module. Both now hold `ota_0`, `ota_1` and `otadata`, with
+    `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE` on. `partitions_p4.csv` is gone, since the P4 uses
+    `partitions.csv`.
+  - **What a board keeps.** `nvs` stays at `0x9000` and no flash writes it, so a board moves to
+    the new table with one USB flash and keeps its name, its network and its pairings.
+  - **Room for later.** The tables also hold a `coredump` partition, and on 16 MB a 4 MiB
+    `reserve`, because the table changes only over USB.
+  - **A new check.** `tools/checks/check_esp_efuse_free.py` fails CI when an sdkconfig
+    fragment turns on an option that burns eFuses or skips the bootloader's image check.
+- **A Hearth sink takes firmware updates over its network** (`planning/esp32-ota.md`).
+  - **Routes.** `GET` and `PUT /firmware`, `PUT /firmware/mode`, `PUT /firmware/rollback`
+    and `POST /restart` on the control surface, from the component's new `ac3forge::Firmware`.
+  - **Flash mode.** An upload first enters flash mode: every play stops, Sendspin servers hear
+    `client/goodbye restart`, the sink closes and the mDNS service is withdrawn. Every way out
+    of flash mode is a restart.
+  - **Checks before anything is written.** The image's head is checked against the board: an
+    application image, this chip and revision range, this project and this flash size.
+  - **Checks after it is written.** The image's own SHA-256, read back from flash; the
+    request's `Content-Digest` (RFC 9530); and every byte read back and hashed again.
+  - **Both slots checked once any trial is over.** Each slot is read through and its image
+    checked against its own SHA-256, and `GET /firmware` says whether each is intact. The
+    check stops before an update writes anything.
+  - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
+    address, the HTTP server and the Sendspin player. It goes back to the previous image if
+    it does not get there within 5 minutes, or if it resets first.
+  - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
+    its own name.
+  - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
+    so the board keeps it through an update to an image without one.
+  - **`tools/hearth/ota.py`**, and `idf.py ota` through the example's `idf_ext.py`, push a
+    build to one board or to every board on the network, and wait for each to accept or go
+    back.
+  - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
+    (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
+    becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
+    the bootloader boots past.
 
 **Crucible desktop application**
 
@@ -743,23 +809,19 @@ The sections below contain the complete change list and fixes.
 - **Hearth's Network page: discovery and pairing** (A6, its first slice). `ac3hearth` browses
   `_sendspin._tcp` and lists every player it finds, live: a Hearth sink's roles, the codecs and
   data types it takes, its output slot count and width; a standard Sendspin player's codecs.
-  Selecting an unpaired sink starts a dynamic pairing code attempt at once — the sink shows a
-  six-digit code on its own console or page, entered here — and a wrong or expired code says so
-  without losing the attempt. `apps/hearth/engine/network_sinks.hpp` wraps `ac3::sendspin::
-  ServerHost` and its own `_sendspin._tcp` browse (kept apart from `ServerHost`'s own, so
-  `NetworkController`'s "Look again" is a real re-query); `network_view.hpp` turns what it learns
-  into the page's rows and labels, tested the way `output_decision.hpp` is. Groups, a sink's own
-  settings pages and reported levels are later slices — a sink already in use by another server
-  needs `ac3::sendspin` to grow a way to learn that at all, which pairing alone does not give it.
+  An unpaired sink's pairing view asks for a dynamic pairing code attempt with its own button —
+  the sink shows a six-digit code on its own console or page, entered here — and a wrong or
+  expired code says so without losing the attempt. `apps/hearth/engine/network_sinks.hpp` wraps
+  `ac3::sendspin::ServerHost` and its own `_sendspin._tcp` browse (kept apart from `ServerHost`'s
+  own, so `NetworkController`'s "Look again" is a real re-query); `network_view.hpp` turns what it
+  learns into the page's rows and labels, tested the way `output_decision.hpp` is.
 - **Hearth's Network page: making and editing a group** (A6). The list now shows the groups
   alongside the sinks; "+ New group…" makes a real one, backed by `ac3::sendspin::Group`, and its
   own editor adds and removes members, sets a member's volume and mute directly, and sets the
   group's own volume and mute (redistributed across the members that support it, the same
   arithmetic a `controller@v1` client's own command already uses). `Group` gains
   `set_member_volume`/`set_member_muted`, `set_group_volume`/`set_group_muted` and
-  `member_player` for this. Not in this slice: actually streaming a programme to a group, which
-  needs a network-group output seam in `Player` — the editor says so rather than showing a
-  number it cannot yet make true.
+  `member_player` for this.
 - **`ac3hearth` and `ac3hearth-testsink` register their own Windows Firewall exception before
   their first mDNS or Sendspin socket binds**, rather than leaving it to Windows' own "these
   features have been blocked" prompt. `ac3::sendspin::firewall::ensure_inbound_rule()`
@@ -768,6 +830,46 @@ The sections below contain the complete change list and fixes.
   public — the first time it finds none there, elevating once through a UAC prompt if the process
   is not already elevated; every later run finds the rule already in place. A loopback-only bind
   needs none of this and skips it; Linux and macOS do nothing at all.
+- **Hearth's Network page keeps every sink it finds, pairs with one when asked, and plays to a
+  group of them** (A6). Before this, the page showed none of four sinks Music Assistant held: a
+  row lasted only as long as its connection, and a sink another server holds closes a new
+  server's waiting connection at once (`client/goodbye` `concurrent_attempt`) — Music Assistant
+  holds every Sendspin player it knows, playing or not.
+  - A row now lasts while mDNS lists the sink or a connection to it is live, and keeps what the
+    sink last said about itself. A sink held elsewhere says "In use by another server." and is
+    not dialled again until asked: "Pair with this computer" for an unpaired one, "Take it back"
+    for a paired one, whose playback activation displaces the holder. Any other failure is
+    dialled again after 1, 2, 4, 8, 15 and then every 30 seconds, and the row and the detail
+    panel say which state the connection is in ("connecting…", "not answering - trying again").
+  - Pairing starts from the pairing view's own button, never from selecting a row.
+    `ServerHost::dial_to_pair()` opens a connection whose first activation is the pairing,
+    which a sink admits beside or over another server's connection instead of refusing, so a
+    held sink pairs without being released first. The view shows the address of the sink's own
+    page, where the code appears, and a code typed wrong empties the boxes and says so.
+  - The server's Noise identity is kept in settings (`identity/server`) instead of made new at
+    each start. A long-term pairing key is bound to the server identity it was made with (E8),
+    so no pairing survived Hearth restarting. The diagnostics report withholds the key with the
+    pairing records.
+  - The Network and Settings pages share one pairing store. With one each, a pairing made on the
+    Network page was missing from Settings until a restart, and one forgotten in Settings was
+    still used, and written back, by the network side. A paired sink's card gains "Forget this
+    pairing".
+  - The output picker lists the network groups, each with how many of its members are
+    connected, and its "Play here" — or the group editor's "Play to this group" — sends Hearth's
+    playback to the group. The editor's State says whether the group is playing, ready, or
+    waiting for a member to connect.
+  - `NetworkGroupSink::position()` counts what has played from the group's own timeline rather
+    than what has been handed to the group, so the end of a programme is no longer cut off when
+    the queue moves on.
+  - `ServerHost` reports a dial that failed or closed before its hello
+    (`ServerHostEvents::on_dial_failed()`), and a client's second connection closing no longer
+    reports the client gone while its first is still live.
+  - Checked against four Hearth sinks held by Music Assistant: each was listed, paired by code
+    through the page's own path, and the four played one E-AC-3 programme as a group from
+    `ac3hearth`'s engine — 312 of 312 bursts each, no errors, and every frame within 0.6 ms of
+    when it was due on each board (its own `worst_error_us`). A hidden `ac3tests` case,
+    `[hearth-network-live]`, repeats that against the sinks named in `AC3HEARTH_LIVE_SINKS`, and
+    withdraws its pairings afterwards.
 
 **Audio outputs**
 
@@ -1392,6 +1494,14 @@ The sections below contain the complete change list and fixes.
   at an acmod other than 1/0 — a *main* service per A/52 Table 5.7) the same as bsmod 7's other
   meaning, voice-over. The MPEG-TS descriptor writer already got this split right; the `dec3`
   writer now shares its rule, `ac3::meta::is_associated_service`.
+- **ADM BWF masters had no `bitDepth` on their `audioTrackUID`s.** `ac3adm::write_bw64()`, and
+  with it `ac3cli decode <in> <out> [objects_dir] [adm_out]`, wrote each `audioTrackUID` with
+  `UID` and `sampleRate` alone while its `<fmt >` chunk declares 24-bit PCM, and Dolby Encoding
+  Engine 6.5.4 refused the master ("Mismatched track bit depth between ADM and WAV"). Every
+  `audioTrackUID` now carries `bitDepth` equal to the `<fmt >` chunk's bits per sample: both come
+  from one constant, `ac3adm::kWriteBitDepth`, whatever the model's own `bit_depth` says.
+  `ac3::admbridge::write()` sets the same value in the document it returns. `parse_bw64()` reads
+  `audioTrackUID`s with or without the attribute, as before.
 
 **Command line and GUI**
 
@@ -1888,6 +1998,16 @@ The sections below contain the complete change list and fixes.
   encoder's reason. Transcoding the same stream to AC-3 reported
   `bitrate must be a legal AC-3 rate` whatever the refusal was; both codecs now name the
   cause, as in `dialnorm out of range 1..31`.
+- **`ac3adm::write_bw64()` threw on a polar block instead of returning an error.**
+  `AdmWriteError::kInvalidDocument` is documented to cover a block whose position is polar,
+  but the translator read every block as cartesian through an unchecked `std::get`, so a polar
+  block — a default-constructed `AudioBlockFormat` is one — threw `std::bad_variant_access`
+  out of a function that returns `std::expected`, for Objects and DirectSpeakers channels
+  alike. An `audioTrackUID` naming both an `audioTrackFormat` and an `audioChannelFormat` threw
+  the same way, from libadm. Both now return `kInvalidDocument`. The ID assignment, `<chna>`
+  resolution and XML serialization that follow now run inside a `try` as well, and report
+  `kOther`: `adm::formatId()` throws for an ID field that overflows, such as a 256th
+  `audioTrackFormat` on one `audioStreamFormat`.
 
 **Crucible desktop application**
 
@@ -1981,6 +2101,63 @@ The sections below contain the complete change list and fixes.
   is skipped and named in the configure output, and the `FetchContent` fallback (or the
   `AC3FORGE_FETCH_FMT=OFF` error) applies. A build directory that had already cached
   the old copy recovers on its next configure.
+- **The installed C API header could not be included.** `ac3forge_c/ac3forge.h` includes
+  `ac3forge_c/version.h`, which is generated into the build tree from `version.h.in`, and
+  `cmake/InstallLibrary.cmake` installed only the source `include/` directory (which holds the
+  template) and the generated `export.h`. A C program built against an installed prefix, through
+  `find_package(ac3forge)` and `ac3::forge_c_shared` or `ac3::forge_c_static`, stopped at
+  `'ac3forge_c/version.h' file not found`. The in-tree examples and the Rust crate compile against
+  the build tree, so neither saw it. The generated header is now installed beside `export.h`. The
+  linux-llvm leg also installs its default and `BUILD_SHARED_LIBS=ON` build trees and builds a C
+  program against each (`tools/checks/check_install_consumer.sh`).
+- **An installed static library left {fmt} unresolved.** `ac3::forge_static`, `ac3::forge_c_static`
+  and `mp4::mp4_static` use {fmt}, and `forge_objects` and `mp4_objects` linked it PRIVATE inside
+  `$<BUILD_INTERFACE:...>`, so the exported targets named it nowhere and each archive kept
+  undefined `fmt::v12::vformat` and `fmt::v12::vprint` references (from seven objects in
+  `libac3forge_static.a` and two in `libmp4_static.a`). A shared library takes {fmt} in at its own
+  link step, which is why only the static variants showed it: a program linking
+  `ac3::forge_c_static` from an installed prefix stopped at
+  `undefined reference to fmt::v12::vprint`. The libraries now compile a private copy of {fmt} in
+  (`FMT_HEADER_ONLY`, in its own inline namespace `fmt::ac3_private`, through a new
+  `ac3::fmt_private` target in `cmake/Fmt.cmake`) and link no {fmt} library, so a consumer needs no
+  {fmt}, and no particular version of it, however the build found {fmt} itself. Exporting the
+  dependency instead fails both ways: the `FetchContent` copy is in no export set, so
+  `install(EXPORT)` stops the configure step, and a system {fmt} of another major version, such as
+  Ubuntu 26.04's `libfmt-dev` 10.1.1, satisfies `find_dependency(fmt)` and then fails to link. The
+  private namespace is needed inside the tree too: with `FMT_HEADER_ONLY` alone, the archive's
+  weak `fmt::v12::vprint` satisfied a reference from `ac3tests`' own copy of `cpu_features.cpp` and
+  pulled the archive's copy of that file in beside it, and the link stopped at a duplicate
+  `has_avx2`. The cost is about 1.9 s more compile time in each of the nine translation units that
+  use {fmt} (17 s of CPU per build), `libac3forge_static.a` growing from 2.2 MB to 3.8 MB and
+  `libmp4_static.a` from 0.2 MB to 0.7 MB, while `libac3forge.so` is 0.6% smaller and `libmp4.so`
+  5% smaller. `tools/checks/check_install_consumer.sh` now links every installed static archive
+  whole and fails on any symbol that neither the package nor the C++ runtime supplies, which finds
+  an unresolved {fmt} in members no single consumer reaches, and it links and runs the static C
+  API targets as well as the shared ones. A C project that links a static C API target must still
+  enable the CXX language in CMake so that the C++ runtime is linked; `docs/library/index.md` and
+  `docs/library/c-api.md` say so.
+- **`pkg-config --static --libs ac3forge_c` did not link.** In an install that holds only the
+  static libraries (`AC3FORGE_INSTALL_BOTH_LINKAGES=OFF` with `BUILD_SHARED_LIBS=OFF`, the shape a
+  vcpkg or Conan package has), `ac3forge_c.pc` was `Libs: -lac3forge_c_static` and nothing more,
+  with no `Requires.private` and no `Libs.private`. `libac3forge_c_static.a` calls into
+  `libac3forge_static.a`, and a link that a C compiler drives adds neither the C++ runtime that
+  every archive of this project needs nor the libm that `libac3forge_static.a` calls, so a C
+  program built from the flags pkg-config printed stopped at undefined references to
+  `operator new` and `ac3::FrameEncoder::FrameEncoder`. The `.pc` file of a static archive now
+  says what the archive needs. `ac3forge_c.pc` has `Requires.private: ac3forge`, and
+  `ac3forge.pc`, `matroska.pc`, `mp4.pc`, `mpegts.pc`, `iamf.pc` and `ac3iab.pc` have
+  `Libs.private: -lstdc++ -lm` (`-lc++ -lm` for a libc++ build on Linux), taken from
+  `CMAKE_CXX_IMPLICIT_LINK_LIBRARIES` for the compiler that built the archives; `ac3signing.pc`
+  already required `ac3forge`. The runtime libraries are listed by the archives that use them, so
+  that they follow every archive on the link line: GCC on Ubuntu links with `--as-needed` and
+  drops an `-lm` that comes before `libac3forge_static.a`. Only `pkg-config --static` puts either
+  field on the link line, and a `.pc` that names a shared library has neither, so a consumer of
+  `libac3forge_c.so`, which embeds the codec, still does not depend on `libac3forge.so`.
+  `tools/checks/check_install_consumer.sh` now links a C program with the flags pkg-config prints
+  and nothing else, using the compiler that configured the tree, and links each static `.pc` on its
+  own. The two trees the linux-llvm leg installed name the shared library in their `.pc` files, so
+  the leg now configures a third tree with one linkage for it. `docs/library/index.md` and
+  `docs/library/c-api.md` describe what pkg-config prints.
 
 **Audio backend and object signing**
 

@@ -89,4 +89,21 @@ void discovery_start() {
                 static_cast<unsigned>(kSendspinPort), kPath);
 }
 
+void discovery_withdraw() {
+    if (!sendspin_built()) {
+        return;
+    }
+    // Harmless when mDNS never started or the service was never added: the
+    // call then finds nothing to remove.
+    if (mdns_service_remove(kService, kProtocol) == ESP_OK) {
+        std::printf("mdns: %s.%s withdrawn; the host name stays\n", kService, kProtocol);
+    }
+}
+
+std::string discovery_host_name() {
+    std::array<char, kMaxNameBytes + 1> host{};
+    hostname_from(settings().name.data(), host);
+    return host.data();
+}
+
 }  // namespace player

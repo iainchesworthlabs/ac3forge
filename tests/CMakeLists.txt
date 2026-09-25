@@ -89,9 +89,13 @@ add_executable(ac3tests
     decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
+    io/test_firmware_image.cpp
+    io/test_firmware_status.cpp
+    io/test_firmware_trial.cpp
     io/test_hardware_info.cpp
     io/test_improv.cpp
     io/test_interleave.cpp
+    io/test_pairing_records.cpp
     io/test_sink_plan.cpp
     io/test_tcp_arrivals.cpp
     io/test_block_ring.cpp
@@ -284,7 +288,9 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_ARCH_INCLUDE_DIR}")
 # checked without a DAC on the other end - the rest is peripheral setup and a
 # blocking write - and they are the parts with the indexing and the arithmetic
 # in them. test_block_ring.cpp and test_unit_hold.cpp build the component's
-# block_ring.hpp and unit_hold.hpp through the same path. None of these headers
+# block_ring.hpp and unit_hold.hpp through the same path, and
+# test_pairing_records.cpp the Sendspin player's record order and eviction
+# (pairing_records.hpp), which the board keeps in NVS. None of these headers
 # includes anything from ESP-IDF, which is what makes building them here
 # possible and is worth keeping true. (The layout and the renderer were here
 # too, and moved into the library as ac3/render/ with render/test_layout.cpp.)
@@ -1055,15 +1061,18 @@ if(AC3FORGE_BUILD_HEARTH)
             hearth/test_pairing_store.cpp
             hearth/test_network_sinks.cpp
             hearth/test_network_sinks_rows.cpp
+            hearth/test_network_live.cpp
+            hearth/test_server_host_dialling.cpp
+            hearth/test_server_identity.cpp
             hearth/test_network_group_sink.cpp
             hearth/test_engine_network_group.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
         # as core/test_simd_kernels.cpp's. test_aiosendspin_group.cpp's own environment() helper
-        # takes the same address the same way.
+        # takes the same address the same way, and test_network_live.cpp its sinks' names.
         if(AC3FORGE_IS_MSVC_LIKE)
             set_source_files_properties(
-                hearth/test_aiosendspin.cpp hearth/test_aiosendspin_group.cpp
+                hearth/test_aiosendspin.cpp hearth/test_aiosendspin_group.cpp hearth/test_network_live.cpp
                 PROPERTIES COMPILE_OPTIONS "/wd4996")
         endif()
     endif()

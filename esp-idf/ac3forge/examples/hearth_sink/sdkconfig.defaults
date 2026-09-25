@@ -20,6 +20,14 @@ CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
 CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
+# Two application slots, and a bootloader that goes back to the one that ran
+# before (partitions.csv, planning/esp32-ota.md). An image an update writes
+# boots on trial, and a reset before that image accepts itself boots the other
+# slot instead. An image flashed over USB is never on trial: `idf.py flash`
+# writes an empty otadata, and the bootloader boots ota_0 from it as it booted
+# the factory slot before. The bootloader itself changes only over USB.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
 # PSRAM stays off, as everywhere else in this profile: the point is that the
 # decode fits in internal SRAM, and the streaming buffers are part of what has
 # to fit.

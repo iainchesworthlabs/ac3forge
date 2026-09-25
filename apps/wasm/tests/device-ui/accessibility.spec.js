@@ -8,7 +8,12 @@
 // large enough to hit, and a page that fits a narrow screen.
 
 const { test, expect } = require('./fixtures');
-const { playingSendspin } = require('./stub');
+const { playingSendspin, pairedServer } = require('./stub');
+
+// Two servers' server_ids for GET /pairing's list: playingSendspin()'s, and
+// one from before the board kept names.
+const HEARTH_ID = 'Yx3kP0aZtYk4Q9mLr2vNw8sJc1bXe5hGd7fAu3oKp6i';
+const OLD_ID = 'Qm9aB2cD4eF6gH8iJ0kL1mN3oP5qR7sT9uV1wX3yZ5a';
 
 test.beforeEach(async ({ page, stub }) => {
     await page.goto(stub.url);
@@ -140,10 +145,16 @@ for (const colorScheme of /** @type {const} */ (['light', 'dark'])) {
             sink_us_per_frame: 362, realtime_permille: 168, resync_bytes: 0, fetched_bytes: 190464, ring_low: 2048,
             passes: 0, layout_mismatches: 0, finished: true, failed: true, why: 'decode', error: 2,
             // A server playing, a level for each output, and a second pairing's code.
-            sendspin: { ...playingSendspin(), pairing_code: '482913', pairing_outcome: 'paired' },
+            sendspin: { ...playingSendspin(), pairing_code: '482913', pairing_outcome: 'paired', paired: 2 },
             network: { kind: 'wifi', ssid: 'kitchen', rssi_dbm: -58, address: '192.168.1.23' },
         });
+        // And the servers it is paired with, one not yet named.
+        stub.device.pairings = [
+            pairedServer({ server_id: HEARTH_ID, name: 'Hearth on the desk', connected: true, last_playback: true }),
+            pairedServer({ server_id: OLD_ID, seen: false }),
+        ];
         await page.reload();
+        await expect(page.getByRole('list', { name: 'Paired servers' })).toBeVisible();
         // Both closed sections open, so their text is measured too, and an
         // error in the toast, which the pairing code's announcement is not.
         await page.locator('summary', { hasText: 'What an output layout does' }).click();
@@ -213,8 +224,14 @@ test('the focused control shows a 3 px outline', async ({ page }) => {
     }
 });
 
-test('controls at least 44 CSS pixels tall', async ({ page }) => {
+test('controls at least 44 CSS pixels tall', async ({ page, stub }) => {
+    // A paired server's own Forget among them.
+    stub.device.sendspin = { ...playingSendspin(), paired: 1 };
+    stub.device.pairings = [pairedServer({ server_id: HEARTH_ID, name: 'Hearth on the desk', connected: true })];
+    const forgetOne = page.getByRole('button', { name: 'Forget Hearth on the desk' });
+    await expect(forgetOne).toBeVisible();
     for (const control of [
+        forgetOne,
         page.getByRole('textbox', { name: 'Name' }),
         // A segment is the radio's target: the label around it.
         page.locator('#slot-width label').first(),
@@ -243,7 +260,12 @@ test('a 320 px screen, with nothing wider than it', async ({ page, stub }) => {
         peak_db: Array(16).fill(-100.5),
         rms_db: Array(16).fill(-110.5),
     };
+    // And a paired server with a long name, which wraps rather than widen its row.
+    stub.device.pairings = [
+        pairedServer({ server_id: HEARTH_ID, name: 'Music Assistant (d5369777-music-assistant)', connected: true, last_playback: true }),
+    ];
     await expect(page.getByRole('table')).toBeVisible();
+    await expect(page.getByRole('list', { name: 'Paired servers' })).toBeVisible();
     await page.setViewportSize({ width: 320, height: 640 });
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(overflow).toBeLessThanOrEqual(0);

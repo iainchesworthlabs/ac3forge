@@ -37,6 +37,12 @@ ForcedTier forced_tier() {
 
 }  // namespace
 
+// The two diagnostics in this file go through fmt::print, which throws std::system_error when
+// stderr cannot be written, so an escape from this noexcept function is std::terminate. That was
+// already so before {fmt} was compiled into this library (ac3::fmt_private, cmake/Fmt.cmake);
+// clang-tidy only sees the path now that fmt's bodies are in this translation unit. The abort()
+// below chooses the same outcome for a forced tier this CPU cannot run.
+// NOLINTNEXTLINE(bugprone-exception-escape)
 bool has_avx2() noexcept {
     static const bool result = [] {
         const ForcedTier forced = forced_tier();

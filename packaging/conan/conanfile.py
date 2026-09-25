@@ -75,7 +75,11 @@ class Ac3forgeConan(ConanFile):
         # cmake/Fmt.cmake and docs/platforms/android.md for why). Private:
         # it's an implementation detail of forge/mp4's own .cpp files, never
         # named in an installed public header, so a consumer of this package
-        # never needs to resolve fmt themselves.
+        # never needs to resolve fmt themselves. forge and mp4 compile a private
+        # copy of it into their own object files (ac3::fmt_private in
+        # cmake/Fmt.cmake) and link no fmt library: an archive is not linked,
+        # so a linked fmt would have left the static package with undefined
+        # fmt:: symbols for the consumer's link to find.
         self.requires("fmt/12.2.0", visible=False)
 
     def layout(self):

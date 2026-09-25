@@ -494,14 +494,6 @@ std::string_view describe(AdmWriteError error) {
 
 namespace {
 
-// 24-bit: the only integer width libbw64's FormatInfoChunk validates that real ADM BWF masters
-// actually use (EBU Tech 3306 §2's own PCM-only framing settles for 16- or 24-bit; 24 keeps
-// headroom this project's own float32 pipeline already exceeds). The pinned libbw64 (unlike the
-// EBU's own upstream) does have an IEEE-float write path (Bw64Writer's useFloat), but this
-// function does not use it - write_bw64() has no parameter for a caller to ask for float output,
-// and 32 here would otherwise mean 32-bit INTEGER, a worse choice than 24 for no benefit.
-constexpr std::uint16_t kWriteBitDepth = 24;
-
 std::vector<float> interleave(const PcmAudio& audio) {
     const auto frame_count = audio.frame_count();
     const auto channel_count = audio.channels.size();
@@ -539,29 +531,50 @@ std::expected<bw64::AudioId, AdmWriteError> to_audio_id(
 }  // namespace
 
 std::expected<void, AdmWriteError> write_bw64(const std::string& path, const AdmDocument& document) {
-    auto built = detail::build_libadm_document(document.model);
+    // kWriteBitDepth goes to both halves of the file from here - every audioTrackUID's bitDepth
+    // and, below, the <fmt > chunk - so the two cannot drift apart.
+    auto built = detail::build_libadm_document(document.model, kWriteBitDepth);
     if (!built) {
         return std::unexpected(built.error());
     }
-    // reassignIds() BEFORE resolving chna: it is the source of every real, final ID this
-    // function (and the AudioId rows it builds below) reports - see ac3adm.hpp's own write_bw64
-    // doc comment on why the caller's own AdmModel ID strings never appear in the written file.
-    adm::reassignIds(built->document);
+    // Everything from here to the XML calls into libadm, so it runs inside a try (this file's top
+    // comment). adm::formatId() writes each ID field at a fixed width and throws
+    // std::runtime_error for a value that does not fit - a 256th audioTrackFormat on one
+    // audioStreamFormat, say, or a 61,440th audioObject - and both to_audio_id() and
+    // adm::writeXml() format IDs; writeXml() also allocates as it builds the XML.
+    // adm::reassignIds() throws only from the ID setters' collision and type checks, which the
+    // IDs it assigns do not trip, but it is not noexcept either.
+    std::shared_ptr<bw64::ChnaChunk> chna_chunk;
+    std::shared_ptr<bw64::AxmlChunk> axml_chunk;
+    try {
+        // reassignIds() BEFORE resolving chna: it is the source of every real, final ID this
+        // function (and the AudioId rows it builds below) reports - see ac3adm.hpp's own write_bw64
+        // doc comment on why the caller's own AdmModel ID strings never appear in the written file.
+        adm::reassignIds(built->document);
 
-    std::vector<bw64::AudioId> audio_ids;
-    audio_ids.reserve(document.chna.size());
-    for (const auto& entry : document.chna) {
-        auto audio_id = to_audio_id(entry, built->track_uids_by_key);
-        if (!audio_id) {
-            return std::unexpected(audio_id.error());
+        std::vector<bw64::AudioId> audio_ids;
+        audio_ids.reserve(document.chna.size());
+        for (const auto& entry : document.chna) {
+            auto audio_id = to_audio_id(entry, built->track_uids_by_key);
+            if (!audio_id) {
+                return std::unexpected(audio_id.error());
+            }
+            audio_ids.push_back(std::move(*audio_id));
         }
-        audio_ids.push_back(std::move(*audio_id));
-    }
-    auto chna_chunk = std::make_shared<bw64::ChnaChunk>(std::move(audio_ids));
+        chna_chunk = std::make_shared<bw64::ChnaChunk>(std::move(audio_ids));
 
-    std::ostringstream xml;
-    adm::writeXml(xml, built->document);
-    auto axml_chunk = std::make_shared<bw64::AxmlChunk>(xml.str());
+        std::ostringstream xml;
+        adm::writeXml(xml, built->document);
+        // rapidxml prints through std::ostream_iterator, and an exception thrown inside a
+        // stream's output operator sets badbit instead of propagating - so a failed print would
+        // otherwise be written out as a truncated <axml> chunk.
+        if (!xml) {
+            return std::unexpected(AdmWriteError::kOther);
+        }
+        axml_chunk = std::make_shared<bw64::AxmlChunk>(xml.str());
+    } catch (const std::exception&) {
+        return std::unexpected(AdmWriteError::kOther);
+    }
 
     if (document.audio.channels.empty()) {
         return std::unexpected(AdmWriteError::kInvalidDocument);

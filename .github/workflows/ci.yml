@@ -383,7 +383,12 @@ jobs:
           # from, and the merge queue exists to catch what one PR's own lane
           # subset could not see - so both force every lane on, same as an
           # empty file list above. See classify_changes.py's own header.
-          if [ "$EVENT_NAME" = "merge_group" ] || \
+          # A manual dispatch forces them too: it is how a branch asks for the
+          # legs a pull_request run defers to the merge queue (see
+          # build-and-test's run_macos below), and a dispatch does not arrive
+          # with an empty file list - it gets its head commit's files, which
+          # would otherwise pick lanes from one commit's diff.
+          if [ "$EVENT_NAME" = "merge_group" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || \
              { [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; }; then
             force_lanes=true
           fi
@@ -548,11 +553,13 @@ jobs:
       # these is a package. Reporting what the gates measure is part of the
       # same contract as running them - a badge that disagreed with the page it
       # links to is what put a suite in tools/ci in the first place.
+      # tools/hearth holds ota.py, which updates boards over the network
+      # (planning/esp32-ota.md): its suite runs it against a stand-in board.
       - name: Oracle unit tests
         shell: bash
         run: |
           set -euo pipefail
-          for suite in tools/checks tools/ci; do
+          for suite in tools/checks tools/ci tools/hearth; do
             printf '\n=== %s ===\n' "$suite"
             python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
           done
@@ -585,6 +592,16 @@ jobs:
       - name: Platform matrix coverage
         shell: bash
         run: python3 tools/checks/check_platform_matrix.py
+
+      # A board flashed from this tree has to stay recoverable over USB, and
+      # its bootloader has to keep checking an image before it boots it
+      # (planning/esp32-ota.md). Either can be lost to one line in an sdkconfig
+      # fragment - an option that burns eFuses, or one that skips the check -
+      # and no build or emulator run would notice. Its own suite runs in the
+      # Oracle unit tests step above.
+      - name: ESP-IDF settings that would stop USB recovery
+        shell: bash
+        run: python3 tools/checks/check_esp_efuse_free.py
 
       # This script's own header describes the same review for a `git
       # format-patch` series a parallel session hands back before it is
@@ -684,10 +701,15 @@ jobs:
   # through CI Status like every other lane below; each workflow's own
   # `push: tags: v*` trigger (release publishing) is untouched and cannot
   # overlap with this call - see wheels.yml's own comment on its `on:` block.
+  #
+  # Not on a pull_request run: the wheel matrix is five GitHub-hosted runners
+  # (two of them macOS), and it waits for the merge queue instead - see
+  # build-and-test's run_macos comment below for why and how a branch can
+  # still ask for it.
   wheels:
     name: Python wheels
     needs: changes
-    if: needs.changes.outputs.python == 'true'
+    if: needs.changes.outputs.python == 'true' && github.event_name != 'pull_request'
     uses: ./.github/workflows/wheels.yml
     # Ceiling for every job wheels.yml declares, not just the ones this call
     # path actually reaches: GitHub validates a called workflow's nested
@@ -761,11 +783,21 @@ jobs:
       run_core: ${{ needs.changes.outputs.core == 'true' }}
       run_windows: ${{ needs.changes.outputs.windows == 'true' }}
       run_linux: ${{ needs.changes.outputs.linux == 'true' }}
-      run_macos: ${{ needs.changes.outputs.macos == 'true' }}
+      # macOS and the Rust bindings (three GitHub-hosted runners, one of them
+      # macOS) skip pull_request runs and run in the merge queue, on main and
+      # on a dispatch - as does the wheels call above. GitHub Free runs 20
+      # hosted jobs at a time org-wide, and a PR push with every lane set
+      # used to ask for about 25 of them; on 2026-09-25 about 400 sat
+      # queued, some for over five hours, holding every PR's CI Status back.
+      # The merge queue still runs all of them against the exact merge
+      # commit before anything lands. A branch that wants them sooner can
+      # dispatch CI on itself (`gh workflow run ci.yml --ref <branch>`),
+      # which forces every lane on (see the changes job).
+      run_macos: ${{ needs.changes.outputs.macos == 'true' && github.event_name != 'pull_request' }}
       run_android: ${{ needs.changes.outputs.android == 'true' }}
       run_wasm: ${{ needs.changes.outputs.wasm == 'true' }}
       run_esp: ${{ needs.changes.outputs.esp == 'true' }}
-      run_rust: ${{ needs.changes.outputs.rust == 'true' }}
+      run_rust: ${{ needs.changes.outputs.rust == 'true' && github.event_name != 'pull_request' }}
     secrets:
       # Forward the Atmos object-signing key so build-android bundles it and the
       # Shield app signs whenever the secret is set - on ordinary CI builds too,
@@ -807,7 +839,16 @@ jobs:
   persist-performance-trend:
     name: Publish performance trend
     needs: [build-and-test, toolchain-versions, performance-trend-arm64]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Explicit results under !cancelled() instead of the implicit success():
+    # build-and-test reads "cancelled" whenever one of its macOS legs gave way
+    # to a newer main run (_ci-macos.yml's concurrency comment), which says
+    # nothing about the Linux build this job measures. A real failure there
+    # still skips the publish.
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.toolchain-versions.result == 'success'
+      && needs.performance-trend-arm64.result == 'success'
+      && (needs.build-and-test.result == 'success' || needs.build-and-test.result == 'cancelled') }}
     runs-on: ubuntu-latest
     container: ubuntu:26.04
     permissions:
@@ -817,10 +858,16 @@ jobs:
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
             build-essential ca-certificates cmake curl git gnupg lsb-release \
             ninja-build pkg-config software-properties-common tar unzip wget zip
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
 
       # persist-credentials: false - this checkout is only ever read from
       # (ac3bench's build, `git show` on this commit); the "Prepare
@@ -1115,7 +1162,13 @@ jobs:
   performance-trend-arm64:
     name: Publish performance trend (arm64 measurements)
     needs: [build-and-test, toolchain-versions]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Same explicit-results condition as persist-performance-trend's, for the
+    # same reason: a macOS leg giving way to a newer main run leaves
+    # build-and-test "cancelled", not failed.
+    if: >-
+      ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+      && needs.toolchain-versions.result == 'success'
+      && (needs.build-and-test.result == 'success' || needs.build-and-test.result == 'cancelled') }}
     runs-on: ubuntu-24.04-arm
     container: ubuntu:26.04
     env:
@@ -1126,10 +1179,16 @@ jobs:
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
             build-essential ca-certificates cmake curl git gnupg lsb-release \
             ninja-build pkg-config software-properties-common tar unzip wget zip
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1235,9 +1294,28 @@ jobs:
           R_WHEELS: ${{ needs.wheels.result }}
           R_NPM: ${{ needs.npm.result }}
           R_ESP_COMPONENT: ${{ needs.esp-component.result }}
+          # For the superseded-main check below: on a push to main,
+          # build-and-test and wheels each carry macOS legs that give way to a
+          # newer main run's (see _ci-macos.yml's concurrency comment), and a
+          # "cancelled" from exactly those two is expected once main has moved
+          # past this commit.
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           fail=0
+          superseded=false
+          if [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; then
+            tip="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github.sha" \
+              "https://api.github.com/repos/$REPO/commits/main" || true)"
+            if [ -n "$tip" ] && [ "$tip" != "$SHA" ]; then
+              superseded=true
+              echo "main has moved on to ${tip:0:8}; a 'cancelled' from build-and-test or wheels here is a macOS leg that gave way to the newer run."
+            fi
+          fi
           for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
                       "changes:$R_CHANGES" "platform-macros:$R_MACROS" \
                       "packaging-consistency:$R_PACKAGING" \
@@ -1257,6 +1335,11 @@ jobs:
             job="${pair%%:*}"; result="${pair#*:}"
             echo "  $job: $result"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              if [ "$result" = "cancelled" ] && [ "$superseded" = true ] \
+                 && { [ "$job" = "build-and-test" ] || [ "$job" = "wheels" ]; }; then
+                echo "::notice::$job reported 'cancelled' on a main commit a newer merge has superseded - accepted."
+                continue
+              fi
               echo "::error::$job reported '$result'."
               fail=1
             fi

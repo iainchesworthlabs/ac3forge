@@ -19,7 +19,14 @@ on:
   workflow_dispatch:
 
 env:
-  ZIZMOR_VERSION: "1.27.0"
+  # PyPI yanked 1.27.0 for GHSA-f42p-wjw5-97qh: given a GitHub token, its
+  # debug logging (-v, or a RUST_LOG directive) printed the token to stderr.
+  # 1.28.0 is the first release with the fix. This job passes zizmor no
+  # token and no -v, so its logs never carried one. 1.30.0 added the
+  # self-repository audit, which flags every local `uses: ./...` action and
+  # reusable-workflow reference in this repo (58 of them on 2026-09-25), so
+  # moving past 1.29.x needs a decision on that audit as well.
+  ZIZMOR_VERSION: "1.28.0"
 
 permissions: {}
 

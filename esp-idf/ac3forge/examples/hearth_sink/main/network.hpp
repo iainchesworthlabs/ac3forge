@@ -72,4 +72,17 @@ struct NetworkLink {
 };
 [[nodiscard]] NetworkLink network_link();
 
+// Where the network this board joins comes from, for GET /firmware
+// (planning/esp32-ota.md): "stored" in NVS, "built-in" to this image alone
+// (CONFIG_AC3FORGE_EXAMPLE_WIFI_SSID), "wired" for a network that needs
+// nothing stored (QEMU's Ethernet), or "none". An image with no network
+// built in - every image CI publishes - cannot rejoin a "built-in" one.
+[[nodiscard]] const char* network_source();
+
+// At boot, before the network comes up: a network built into this image and
+// none stored is stored, so the board keeps it through an update to an image
+// built without one. Does nothing when one is stored already, or with no
+// network built in.
+void network_adopt_built_in();
+
 }  // namespace player

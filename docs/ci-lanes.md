@@ -207,19 +207,49 @@ Three situations mark every lane true rather than trying to be precise,
 because a false skip is silent and wrong while a false build only costs a
 few minutes:
 
-- **An empty file list** - a manual `workflow_dispatch`, a `gh api` hiccup.
-  Same rule `code` already applies for the same reason.
+- **An empty file list** - a `gh api` hiccup. Same rule `code` already
+  applies for the same reason.
 - **A path the classifier does not recognise** - a new top-level directory,
   or an existing one like `assets/`, `examples/`, `overrides/` or
   `planning/` that has never been given a lane. One unmapped path anywhere
   in the change is enough; the fallback does not degrade to "build only what
   matched".
-- **`push` to `main` or a `merge_group` run** - passed as `--force-all` from
-  `ci.yml`, bypassing path classification entirely. A queued or
-  direct-to-main run has no single PR diff to classify against, and the
-  merge queue's purpose is to catch what one PR's own lane subset could not
-  see; both must stay full-matrix regardless of what the queue entry's own
-  diff looks like.
+- **`push` to `main`, a `merge_group` run or a manual `workflow_dispatch`** -
+  passed as `--force-all` from `ci.yml`, bypassing path classification
+  entirely. A queued or direct-to-main run has no single PR diff to classify
+  against, and the merge queue's purpose is to catch what one PR's own lane
+  subset could not see; both must stay full-matrix regardless of what the
+  queue entry's own diff looks like. A dispatch is how a branch asks for the
+  legs a pull_request run defers (next section). It does not arrive with an
+  empty file list: `github.event.before` is unset, so it would otherwise
+  classify only its head commit's own diff.
+
+## Scarce hosted legs wait for the merge queue
+
+On a `pull_request` run, three lanes' GitHub-hosted legs are skipped, even when
+their lane is true:
+- `macos`: `build-macos`
+- `rust`: `build-rust`, three runners, one of them macOS
+- `python`: the `wheels` call, five runners, two of them macOS
+
+They run in the `merge_group` run, on every push to `main` and on a dispatch.
+`CI Status` reads their `skipped` as a pass, as it does for any lane-skipped job.
+
+**Why:** GitHub Free runs 20 GitHub-hosted jobs at a time, org-wide. A PR push with
+every lane set used to ask for about 25. On 2026-09-25 about 400 were queued, some
+for over five hours, holding back every PR's `CI Status`.
+
+**What still guards merges:** the merge queue runs these legs against the exact
+merge commit before it lands. A PR that bypasses the queue gets them only from
+the push-to-`main` run afterwards.
+
+**Running them on a branch before queueing:** `gh workflow run ci.yml --ref <branch>`
+runs the full set, since a dispatch forces every lane on.
+
+Windows on Arm (`windows-msvc-arm64`) still runs on pull requests. It is one
+entry in `_ci-windows.yml`'s static matrix, beside the two x64 legs, and a
+job-level `if` cannot see matrix values. Deferring it means restructuring
+that matrix, which is left for a follow-up.
 
 ## Known simplifications
 
@@ -308,7 +338,7 @@ been refactoring for its own sake, not preventing duplication.
 | File | Legs | Windows/Linux/macOS-only steps it carries |
 |---|---|---|
 | `.github/workflows/_ci-windows.yml` | windows-msvc, windows-llvm, windows-msvc-arm64 | Install LLVM/ffmpeg/NSIS (Windows), Setup MSVC environment, Install Qt (prebuilt), Crucible translation check + built assert + coverage floor, Assert NSIS installer, Assert Crucible packaged |
-| `.github/workflows/_ci-linux.yml` | linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan | Bootstrap container, Install Qt6 (Linux GUI)/GCC/LLVM/ffmpeg, the linux-gcc-only scalar-tier gold-reference variants, Codec matrix (sanitizer), conformance vectors, ALSA fallback, the Linux Crucible/PipeWire pass, BUILD_SHARED_LIBS=ON pass |
+| `.github/workflows/_ci-linux.yml` | linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan | Bootstrap container, Install Qt6 (Linux GUI)/GCC/LLVM/ffmpeg, the linux-gcc-only scalar-tier gold-reference variants, Codec matrix (sanitizer), conformance vectors, ALSA fallback, the Linux Crucible/PipeWire pass, BUILD_SHARED_LIBS=ON pass, the installed-SDK C consumer |
 | `.github/workflows/_ci-macos.yml` | macos-llvm, macos-llvm-x64 | Install Qt6/LLVM/ffmpeg (macOS), Assert Crucible built (shared with Windows), the universal-merge install-tree uploads |
 
 Steps that applied to more than one OS in the original job (`Package`,

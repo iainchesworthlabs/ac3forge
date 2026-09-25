@@ -5,18 +5,29 @@ import QtQuick.Layouts
 import Ac3ForgeHearth
 
 // The pairing view (planning/hearth-design.md, "Network - discovery and
-// pairing"): a sink not yet paired with this computer shows the dynamic
-// six-digit code it is printing on its own serial console or page, and the
-// person copies it in here. The engine (NetworkSinks::select_sink()) starts
-// the attempt as soon as the sink is selected - there is nothing else useful
-// to do with an unpaired sink - so by the time this loads a code attempt is
-// already running and the sink is already showing a code.
+// pairing"): a sink not paired with this computer. Pairing is asked for with
+// the button here, never by selecting the row - selecting one only shows what
+// it is, and asking takes the sink from whichever server holds it
+// (network_sinks.hpp's own header comment). Once asked, the sink shows a
+// six-digit code on its own page and serial console, and the person copies
+// it into the boxes. NetworkController.selectedSink.pairing says which of the
+// three steps to show: "none" (the button), "requested" (reaching the sink)
+// and "code"/"active" (the boxes).
 RowLayout {
     id: root
     anchors.fill: parent
     spacing: Theme.gap * 2
 
     readonly property var sink: NetworkController.selectedSink
+    readonly property string step: root.sink.pairing ?? "none"
+    readonly property bool typing: root.step === "code" || root.step === "active"
+    // A code that did not match leaves the boxes for the next one, empty.
+    readonly property string error: NetworkController.pairingError
+    onErrorChanged: {
+        if (root.error.length > 0) {
+            root.clearCode();
+        }
+    }
 
     ColumnLayout {
         Layout.fillWidth: true
@@ -45,6 +56,55 @@ RowLayout {
             }
 
             Text {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                visible: (root.sink.notice ?? "").length > 0 && !root.typing
+                text: qsTr("%1 Pairing takes it from the other server.").arg(root.sink.notice ?? "")
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                wrapMode: Text.WordWrap
+            }
+
+            // --- 1: ask ----------------------------------------------------
+            RowLayout {
+                visible: root.step === "none"
+                spacing: Theme.gap
+
+                AppButton {
+                    objectName: "networkPairingStart"
+                    text: qsTr("Pair with this computer")
+                    enabled: root.sink.canPair === true
+                    onClicked: NetworkController.pairSink(root.sink.id)
+                }
+            }
+
+            // --- 2: reaching the sink -------------------------------------
+            RowLayout {
+                visible: root.step === "requested"
+                spacing: Theme.gap
+
+                BusyIndicator {
+                    implicitWidth: 24
+                    implicitHeight: 24
+                    running: visible
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    objectName: "networkPairingWaiting"
+                    text: qsTr("Asking %1 to pair…").arg(root.sink.name ?? "")
+                    color: Theme.textMuted
+                    wrapMode: Text.WordWrap
+                }
+                AppButton {
+                    text: qsTr("Cancel")
+                    onClicked: NetworkController.cancelPairing(root.sink.id)
+                }
+            }
+
+            // --- 3: the code -----------------------------------------------
+            Text {
+                visible: root.typing
                 text: qsTr("THE CODE THE SINK SHOWS")
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontMicro
@@ -52,6 +112,7 @@ RowLayout {
             }
 
             RowLayout {
+                visible: root.typing
                 spacing: Theme.gap / 2
 
                 Repeater {
@@ -91,9 +152,11 @@ RowLayout {
             Text {
                 Layout.fillWidth: true
                 Layout.minimumWidth: 0
-                text: qsTr("The sink prints a new six-digit code on its serial console for each "
-                          + "attempt. A sink with a fixed code has eight digits, printed on the "
-                          + "device.")
+                text: (root.sink.pageUrl ?? "").length > 0
+                      ? qsTr("The sink shows a new six-digit code for each attempt, on its own page "
+                            + "(%1) and on its serial console.").arg(root.sink.pageUrl)
+                      : qsTr("The sink shows a new six-digit code for each attempt, on its own page "
+                            + "and on its serial console.")
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall
                 wrapMode: Text.WordWrap
@@ -110,6 +173,7 @@ RowLayout {
             }
 
             RowLayout {
+                visible: root.typing
                 spacing: Theme.gap
 
                 AppButton {
@@ -154,12 +218,21 @@ RowLayout {
     function currentCode() {
         let code = "";
         for (let i = 0; i < digitFields.count; ++i) {
-            code += digitFields.itemAt(i).text;
+            const field = digitFields.itemAt(i);
+            code += field ? field.text : "";
         }
         return code;
     }
     function codeComplete() {
         return root.currentCode().length === NetworkController.pairingDigitCount;
+    }
+    function clearCode() {
+        for (let i = digitFields.count - 1; i >= 0; --i) {
+            const field = digitFields.itemAt(i);
+            if (field) {
+                field.text = "";
+            }
+        }
     }
     function updateCode() {
         // Nothing is submitted per keystroke - pairing.md's dynamic code

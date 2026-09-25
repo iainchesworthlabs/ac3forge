@@ -348,6 +348,15 @@ public slots:
         // folder would fail for a reason that has nothing to do with the UI.
         QStandardPaths::setTestModeEnabled(true);
         QDir().mkpath(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation));
+        // Before any suite starts the network (Main.qml's own
+        // Component.onCompleted does, in every suite that opens it): a
+        // suite's sinks are the loopback test sinks startTestSink() hands
+        // NetworkSinks itself. Browsing too, every suite would dial the real
+        // sinks on whatever network it runs on - CI's self-hosted runners sit
+        // on someone's home network - and ask for a firewall exception this
+        // binary cannot finish (NetworkController::set_network_discovery()'s
+        // own comment).
+        ac3::hearth::ui::NetworkController::set_network_discovery(false);
     }
 
     void qmlEngineAvailable(QQmlEngine* engine) {

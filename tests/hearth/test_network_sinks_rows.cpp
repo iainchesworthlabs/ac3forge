@@ -38,12 +38,14 @@ std::string today() {
     return "2026-09-24";
 }
 
+// As a Hearth sink says hello: pairable by its pairing PSK or a dynamic code.
 ss::ClientView connected(const ss::discovery::Service& service, std::string client_id) {
     ss::ClientView client;
     client.client_id = std::move(client_id);
     client.url = *service.url();
     client.psk = ss::handshake::PskCategory::kSentinel;
     client.hello = true;
+    client.pair_methods = {ss::messages::PairMethod::kPairingPsk, ss::messages::PairMethod::kDynamicCode};
     return client;
 }
 
@@ -55,7 +57,8 @@ struct Rig {
     Rig() {
         const auto identity = ss::noise::KeyPair::generate();
         REQUIRE(identity.has_value());
-        sinks.emplace(*identity, "Test Hearth", store);
+        // No mDNS browsing: see test_network_sinks.cpp's own header comment.
+        sinks.emplace(*identity, "Test Hearth", store, ac3::hearth::NetworkSinksOptions{.browse = false});
         REQUIRE(sinks->started());
     }
 };
@@ -176,23 +179,98 @@ TEST_CASE("network sinks rows: a client the host never dialled is not given a ro
     CHECK(rig.sinks->status().sinks.empty());
 }
 
-TEST_CASE("network sinks rows: a pairing asked for before hello starts when hello arrives, once",
+TEST_CASE("network sinks rows: a pairing asked for before hello waits for the attempt to run",
           "[hearth][network-sinks]") {
     Rig rig;
     const auto service = service_named("attic");
     rig.sinks->on_found(service);
     rig.sinks->select_sink("attic");
-    // The host has no connection by this id, so pair() refuses harmlessly; what matters is that
-    // on_client() reached it, and that a second hello does not ask again.
+    rig.sinks->pair_sink("attic");
+    CHECK(rig.sinks->status().sinks.front().pairing_requested);
+    // Hello from a connection with no attempt running yet keeps the request;
+    // one whose attempt runs clears it, and the page moves on to the code.
     rig.sinks->on_client(connected(service, "client-attic"));
-    rig.sinks->on_client(connected(service, "client-attic"));
+    CHECK(rig.sinks->status().sinks.front().pairing_requested);
+    auto pairing = connected(service, "client-attic");
+    pairing.pairing = true;
+    pairing.pairing_attempt = true;
+    pairing.wants_code = true;
+    rig.sinks->on_client(pairing);
+    auto row = rig.sinks->status().sinks.front();
+    CHECK_FALSE(row.pairing_requested);
+    CHECK(row.pairing_active);
+    CHECK(row.wants_code);
+    CHECK(ac3::hearth::to_detail(row).pairing == "code");
     CHECK(rig.sinks->status().selected_id == "attic");
 
+    // An attempt that ended without pairing leaves the activity declared until the host decides
+    // again: nothing runs, and the page offers to pair once more.
+    auto ended = pairing;
+    ended.pairing_attempt = false;
+    ended.wants_code = false;
+    rig.sinks->on_client(ended);
+    row = rig.sinks->status().sinks.front();
+    CHECK_FALSE(row.pairing_active);
+    CHECK(ac3::hearth::to_detail(row).pairing == "none");
+    CHECK(ac3::hearth::to_detail(row).can_pair);
+
     // Cancelling clears the request, and the per-sink commands reach the host for a known id.
+    rig.sinks->on_client(connected(service, "client-attic"));
+    rig.sinks->pair_sink("attic");
+    CHECK(rig.sinks->status().sinks.front().pairing_requested);
     rig.sinks->cancel_pairing("attic");
+    CHECK_FALSE(rig.sinks->status().sinks.front().pairing_requested);
     rig.sinks->submit_pairing_code("attic", "123456");
     rig.sinks->forget_pairing("attic");
     CHECK(rig.sinks->status().sinks.size() == 1);
+}
+
+TEST_CASE("network sinks rows: forgetting a paired sink that is not connected forgets its record",
+          "[hearth][network-sinks]") {
+    Rig rig;
+    ss::crypto::Key32 key{};
+    key[0] = 0x51;
+    ss::crypto::Key32 psk{};
+    psk[3] = 0x09;
+    REQUIRE(rig.store.store_record(key, psk));
+    const auto service = service_named("porch");
+    rig.sinks->on_found(service);
+    auto client = connected(service, "client-porch");
+    client.client_key = key;
+    client.psk = ss::handshake::PskCategory::kLongTerm;
+    rig.sinks->on_client(client);
+    rig.sinks->on_client_gone("client-porch");
+    REQUIRE(rig.sinks->status().sinks.front().pair_state == PairState::kPaired);
+
+    rig.sinks->forget_pairing("porch");
+    CHECK_FALSE(rig.store.paired(key));
+    CHECK(rig.sinks->status().sinks.front().pair_state == PairState::kNotPaired);
+}
+
+TEST_CASE("network sinks rows: a sink that lost its pairing says so", "[hearth][network-sinks]") {
+    Rig rig;
+    const auto service = service_named("hall");
+    rig.sinks->on_found(service);
+    auto client = connected(service, "client-hall");
+    client.credential_mismatch = true;
+    rig.sinks->on_client(client);
+    const auto row = rig.sinks->status().sinks.front();
+    CHECK(row.lost_pairing);
+    CHECK(row.pair_state == PairState::kNotPaired);
+    CHECK_FALSE(row.notice.empty());
+    CHECK(ac3::hearth::to_detail(row).can_pair);
+}
+
+TEST_CASE("network sinks rows: mDNS's own name stands until the sink says its own", "[hearth][network-sinks]") {
+    Rig rig;
+    auto service = service_named("hearth-abc123");
+    service.txt.push_back({.key = "name", .value = "Kitchen"});
+    rig.sinks->on_found(service);
+    CHECK(rig.sinks->status().sinks.front().name == "Kitchen");
+    auto client = connected(service, "client-kitchen");
+    client.name = "Kitchen sink";
+    rig.sinks->on_client(client);
+    CHECK(rig.sinks->status().sinks.front().name == "Kitchen sink");
 }
 
 TEST_CASE("network sinks rows: pairing outcomes for the selected sink become the page's error",
@@ -211,8 +289,8 @@ TEST_CASE("network sinks rows: pairing outcomes for the selected sink become the
         rig.sinks->on_pairing_ended("client-office", reason);
         return rig.sinks->status().pairing_error;
     };
-    CHECK(error_after(AbortReason::kCodeMismatch) == "That code was not right. The sink is showing a new one.");
-    CHECK(error_after(AbortReason::kAttemptTimeout) == "Took too long - the sink is showing a new code.");
+    CHECK(error_after(AbortReason::kCodeMismatch) == "That code was not right. Pair again for a new one.");
+    CHECK(error_after(AbortReason::kAttemptTimeout) == "Took too long. Pair again for a new code.");
     CHECK(error_after(AbortReason::kConcurrentAttempt) == "Another pairing attempt is already in progress.");
     CHECK(error_after(AbortReason::kMethodNotSupported) == "The sink could not complete pairing.");
     CHECK(error_after(AbortReason::kPinLengthUnacceptable) == "The sink could not complete pairing.");
@@ -223,7 +301,7 @@ TEST_CASE("network sinks rows: pairing outcomes for the selected sink become the
     rig.sinks->on_pairing_ended("client-office", std::nullopt);
     rig.sinks->on_pairing_ended("client-hall", AbortReason::kAttemptTimeout);
     rig.sinks->on_pairing_ended("client-nobody", AbortReason::kAttemptTimeout);
-    CHECK(rig.sinks->status().pairing_error == "That code was not right. The sink is showing a new one.");
+    CHECK(rig.sinks->status().pairing_error == "That code was not right. Pair again for a new one.");
 
     // Pairing succeeding clears it; the code-wanted and log hooks change nothing.
     rig.sinks->on_pairing_code_wanted("client-office");

@@ -1,6 +1,6 @@
 #include "network_controller.hpp"
 
-#include <QDate>
+#include <QDebug>
 #include <QSysInfo>
 
 #include <algorithm>
@@ -30,7 +30,9 @@
 #include "network_view.hpp"
 #include "pairing_store.hpp"
 #include "qsettings_store.hpp"
+#include "server_identity.hpp"
 #include "settings_model.hpp"
+#include "shared_pairing_store.hpp"
 
 namespace ac3::hearth::ui {
 
@@ -39,6 +41,10 @@ namespace {
 namespace forge = ac3::sendspin::ac3forge;
 
 constexpr int kPollMs = 60;
+
+// NetworkController::set_network_discovery(); read by start() on the GUI
+// thread only.
+bool g_network_discovery = true;
 
 // --- a Hearth sink's own settings pages ---------------------------------
 // Field names and the "whole struct, apply what changed" idiom deliberately
@@ -407,6 +413,8 @@ struct LayoutFields {
     map[QStringLiteral("badge")] = QString::fromStdString(row.badge);
     map[QStringLiteral("badgeText")] = QString::fromStdString(row.badge_text);
     map[QStringLiteral("notice")] = QString::fromStdString(row.notice);
+    map[QStringLiteral("linkText")] = QString::fromStdString(row.link_text);
+    map[QStringLiteral("connected")] = row.connected;
     return map;
 }
 
@@ -424,6 +432,12 @@ struct LayoutFields {
     map[QStringLiteral("clockText")] = QString::fromStdString(detail.clock_text);
     map[QStringLiteral("pairedOnText")] = QString::fromStdString(detail.paired_on_text);
     map[QStringLiteral("notice")] = QString::fromStdString(detail.notice);
+    map[QStringLiteral("linkText")] = QString::fromStdString(detail.link_text);
+    map[QStringLiteral("connected")] = detail.connected;
+    map[QStringLiteral("pageUrl")] = QString::fromStdString(detail.page_url);
+    map[QStringLiteral("pairing")] = QString::fromStdString(detail.pairing);
+    map[QStringLiteral("canPair")] = detail.can_pair;
+    map[QStringLiteral("canConnect")] = detail.can_connect;
     return map;
 }
 
@@ -442,6 +456,8 @@ struct LayoutFields {
     map[QStringLiteral("subtitle")] = QString::fromStdString(row.subtitle);
     map[QStringLiteral("badge")] = QString::fromStdString(row.badge);
     map[QStringLiteral("badgeText")] = QString::fromStdString(row.badge_text);
+    map[QStringLiteral("membersText")] = QString::fromStdString(row.members_text);
+    map[QStringLiteral("ready")] = row.ready;
     return map;
 }
 
@@ -487,25 +503,44 @@ NetworkController::NetworkController(QObject* parent)
       settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
                 QStringLiteral("Hearth")),
       settings_store_(std::make_unique<ac3::hearth::ui::QSettingsStore>(settings_)),
-      pairing_store_(std::make_unique<ac3::hearth::PairingStore>(
-          *settings_store_, [] { return QDate::currentDate().toString(Qt::ISODate).toStdString(); })) {
+      pairing_store_(shared_pairing_store()) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &NetworkController::poll);
 }
 
-NetworkController::~NetworkController() = default;
+NetworkController::~NetworkController() {
+    poll_timer_.stop();
+    // The groups this controller published go first, so that a group nothing
+    // else holds leaves its members while the host can still tell them (a
+    // group the engine still holds just finds no members once the host has
+    // gone - ac3::sendspin::Group's own comment).
+    NetworkOutputStatus::instance().set_groups({});
+    sinks_engine_.reset();
+}
+
+void NetworkController::set_network_discovery(bool discovery) {
+    g_network_discovery = discovery;
+}
 
 void NetworkController::start() {
     if (sinks_engine_) {
         return;
     }
-    const std::optional<ac3::sendspin::noise::KeyPair> identity = ac3::sendspin::noise::KeyPair::generate();
+    // Kept in the settings, so that every pairing outlives a restart
+    // (server_identity.hpp). Read before the NetworkSinks exists, while nothing
+    // else can be using this controller's settings.
+    const std::optional<ac3::sendspin::noise::KeyPair> identity =
+        ac3::hearth::load_or_make_server_identity(*settings_store_);
     if (!identity.has_value()) {
         return;
     }
-    const std::string name =
-        ac3::hearth::default_network_name(QSysInfo::machineHostName().toStdString());
-    sinks_engine_ = std::make_unique<ac3::hearth::NetworkSinks>(*identity, name, *pairing_store_);
+    // The Settings page's own name for this computer (network/name), or
+    // "Hearth on <host>" until the person gives one.
+    const ac3::hearth::EngineSettings settings =
+        ac3::hearth::load_settings(*settings_store_, QSysInfo::machineHostName().toStdString());
+    const ac3::hearth::NetworkSinksOptions options{.browse = g_network_discovery};
+    sinks_engine_ = std::make_unique<ac3::hearth::NetworkSinks>(*identity, settings.network.name, *pairing_store_,
+                                                                options);
     poll_timer_.start();
     poll();
 }
@@ -513,12 +548,34 @@ void NetworkController::start() {
 void NetworkController::rescan() {
     if (sinks_engine_) {
         sinks_engine_->rescan();
+        poll();
     }
 }
 
 void NetworkController::selectSink(const QString& id) {
     if (sinks_engine_) {
         sinks_engine_->select_sink(id.toStdString());
+    }
+}
+
+void NetworkController::pairSink(const QString& id) {
+    if (sinks_engine_) {
+        sinks_engine_->pair_sink(id.toStdString());
+        poll();
+    }
+}
+
+void NetworkController::connectSink(const QString& id) {
+    if (sinks_engine_) {
+        sinks_engine_->connect_sink(id.toStdString());
+        poll();
+    }
+}
+
+void NetworkController::forgetSink(const QString& id) {
+    if (sinks_engine_) {
+        sinks_engine_->forget_pairing(id.toStdString());
+        poll();
     }
 }
 
@@ -600,6 +657,14 @@ void NetworkController::setMemberMuted(const QString& groupId, const QString& si
 void NetworkController::poll() {
     if (!sinks_engine_) {
         return;
+    }
+    // Whatever back-off has run out is dialled now: NetworkSinks has no clock
+    // of its own to wake on (its own tick() comment).
+    sinks_engine_->tick();
+    // The host's trail goes to the application's log, which is where anyone
+    // chasing a sink that will not connect looks first.
+    for (const std::string& line : sinks_engine_->take_log()) {
+        qInfo().noquote() << "sendspin:" << QString::fromStdString(line);
     }
     const ac3::hearth::NetworkStatus status = sinks_engine_->status();
 

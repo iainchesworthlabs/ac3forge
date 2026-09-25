@@ -40,12 +40,22 @@
 //   PUT  /layout      body: a name or a speaker list. Takes effect at the next
 //                     play. 200, 400 when it is not a layout, 409 when the
 //                     sink's bus has fewer slots than it needs.
+//   GET  /pairing     the servers a Sendspin player is paired with, as JSON:
+//                     each one's server_id and name, whether it is connected,
+//                     and which last played. 404 with no player.
 //   POST /pairing     body: reset, cancel or forget, for a board that is a
-//                     Sendspin player. 200, 400 for another body, 409 with no
-//                     player.
+//                     Sendspin player; or forget, a space and a server_id
+//                     from GET /pairing, for that one server alone. 200, 400
+//                     for another body, 404 for a server_id the board has no
+//                     pairing with, 409 with no player.
 //
 // And the board's own settings, which ControlHandlers lists: GET and PUT
 // /name, /slot-width and /wiring, and PUT /network.
+//
+// And updates over the network, which Control hands to the owner's Firmware
+// (firmware.hpp, planning/esp32-ota.md): GET and PUT /firmware, PUT
+// /firmware/mode and /firmware/rollback, and POST /restart. In flash mode
+// every route that would play something or change a setting answers 409.
 //
 // Every handler below runs on esp_http_server's task. Nothing here touches a
 // Player: the callbacks hand the request to whichever task owns the player -
@@ -54,6 +64,8 @@
 // already makes safe from any task.
 
 namespace ac3forge {
+
+class Firmware;
 
 // GET /status's "sendspin" object, for a board that is a Sendspin player
 // (sendspin_host.hpp, burst_player.hpp). Plain values, so that the control
@@ -112,6 +124,30 @@ struct ControlSendspin {
     unsigned long server_stack_free = 0;
     long long settings_revision = 0;
     bool identifying = false;
+};
+
+// GET /pairing: the servers a Sendspin player is paired with, the most
+// recently used first (sendspin_store.hpp keeps them in that order). Plain
+// values, which the owner fills in.
+struct ControlPairing {
+    // The server's key, base64url: what POST /pairing's forget takes.
+    std::string server_id;
+    // What the server's hello called it; empty for a pairing made before the
+    // board kept names, until that server connects again.
+    std::string name;
+    // A connection from it, on this pairing, is open.
+    bool connected = false;
+    // It was the last server to play here.
+    bool last_playback = false;
+    // It has connected, or paired, since the board started.
+    bool seen = false;
+};
+
+struct ControlPairings {
+    // How many pairings the board keeps before it forgets the least recently
+    // used one.
+    unsigned capacity = 0;
+    std::vector<ControlPairing> servers;
 };
 
 // GET /status's "network" object: what the board is joined to, for a page
@@ -209,11 +245,22 @@ struct ControlHandlers {
     // progress) or "forget" (every pairing, and a new identity). False for
     // anything else, or with no player.
     std::function<bool(std::string_view action)> pairing;
+    // GET /pairing; nothing with no player running, and the route answers 404
+    // then, as it does when this is left empty.
+    std::function<std::optional<ControlPairings>()> pairings;
+    // POST /pairing's "forget " and a server_id: that server's pairing alone.
+    // False when the board has none with it; nothing with no player.
+    std::function<std::optional<bool>(std::string_view server_id)> forget_server;
 
     // GET /status's "network" object; null in the reply when this returns
     // nothing (a build with no network), and left out when the handler is
     // empty. Called for every GET /status, on the server's task.
     std::function<std::optional<ControlNetwork>()> network;
+
+    // The firmware routes (firmware.hpp), and flash mode's refusals. Null
+    // leaves the routes answering that the board takes no updates. The owner
+    // keeps it alive for as long as Control runs.
+    Firmware* firmware = nullptr;
 };
 
 class Control {

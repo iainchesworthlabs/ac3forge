@@ -269,6 +269,57 @@
     $('ss-rows').replaceChildren(...peaks.map((peak, i) => levelRow(peak, rms[i], i)));
     $('ss-cancel').hidden = !c;
     $('ss-reset').hidden = p.pairing_held !== true;
+    listServers(p);
+  }
+
+  // GET /pairing's servers, read again when what /status says of them
+  // changes: how many, who is connected, how the last pairing ended. Not read
+  // at all while the count is none.
+  let listed = '';
+  let listing = 0;
+  async function listServers(p) {
+    const now = [p.paired, p.connections, p.server_id, p.pairing_outcome].join();
+    if (now === listed) return;
+    listed = now;
+    const mine = ++listing;
+    let list = [];
+    try {
+      if (p.paired > 0) {
+        const r = await call('GET', 'pairing');
+        list = r.status === 200 ? JSON.parse(r.text).servers : [];
+      }
+    } catch {
+      listed = ''; // read again at the next poll
+      list = undefined;
+    }
+    if (mine !== listing || !Array.isArray(list)) return;
+    // Not a row without a server_id: its Forget would send a bare "forget",
+    // which the board reads as every server.
+    const rows = list.filter((s) => str(s.server_id)).map(serverRow);
+    $('ss-servers').hidden = !rows.length;
+    $('ss-servers').replaceChildren(...rows);
+  }
+
+  // A server with no name yet goes by its server_id, so two of them are still
+  // two different buttons.
+  function serverRow(s) {
+    const li = document.createElement('li');
+    const who = li.appendChild(document.createElement('span'));
+    const id = s.server_id.slice(0, 8);
+    const name = str(s.name) || 'the server ' + id;
+    who.textContent = str(s.name) || 'No name yet';
+    who.appendChild(document.createElement('small')).textContent = [id,
+      s.connected === true ? 'connected' : s.seen === true ? 'seen since the board started' : 'not seen since the board started',
+      s.last_playback === true && 'the last to play'].filter(Boolean).join(' · ');
+    const forget = li.appendChild(document.createElement('button'));
+    forget.type = 'button';
+    forget.className = 'danger';
+    forget.textContent = 'Forget';
+    forget.setAttribute('aria-label', 'Forget ' + name);
+    forget.addEventListener('click', () => ask('forget ' + s.server_id, 'Forget ' + name + '?',
+      'To play here again, ' + name + ' has to pair again. The board keeps its other pairings.', 'Forget ' + name,
+      'Forgot ' + name + ': it has to pair again.'));
+    return li;
   }
 
   // What this board is: fetched once, since nothing in it changes while the
@@ -411,7 +462,7 @@
       { why: num(room) && n > room ? 'it needs ' + n + ' slots and this sink has ' + room + '.' : '', after: true, key: 'layout' });
   }
 
-  // POST /pairing's three bodies.
+  // POST /pairing's bodies: reset, cancel, forget, and forget with a server_id.
   const pairing = (label, body, done) => act(label, 'POST', 'pairing', body, () => say(done));
 
   const reveal = (on) => {
@@ -465,17 +516,24 @@
 
   $('ss-reset').addEventListener('click', () => pairing('Allow pairing', 'reset', 'A server may ask to pair again.'));
 
-  // Forgetting is the one action that cannot be taken back, so it asks first.
+  // Forgetting cannot be taken back, so it asks first - every server, or one.
   // The dialog keeps the last answer it closed with; Escape closes it without
   // giving one, which must not read as the last time's "forget".
-  $('ss-forget').addEventListener('click', () => {
+  let forgetting;
+  function ask(body, title, text, label, done) {
+    forgetting = { body, label, done };
+    $('forget-title').textContent = title;
+    $('forget-text').textContent = text;
     $('forget-dialog').returnValue = '';
     $('forget-dialog').showModal();
-  });
+  }
+
+  $('ss-forget').addEventListener('click', () => ask('forget', 'Forget every server?',
+    'Each server this board has paired with has to pair again, and the board takes a new identity.',
+    'Forget every server', 'Every server is forgotten: each has to pair again.'));
 
   $('forget-dialog').addEventListener('close', () => {
-    if ($('forget-dialog').returnValue === 'forget')
-      pairing('Forget every server', 'forget', 'Every server is forgotten: each has to pair again.');
+    if ($('forget-dialog').returnValue === 'forget') pairing(forgetting.label, forgetting.body, forgetting.done);
   });
 
   $('outcome').addEventListener('click', hideToast);

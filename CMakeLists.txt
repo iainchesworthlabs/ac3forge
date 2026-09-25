@@ -650,10 +650,11 @@ endif()
 # would otherwise generate a notice naming binaries its packages do not
 # contain. The library components want notices of their own too - {fmt} is
 # compiled into the library as well as into the applications
-# (src/forge/CMakeLists.txt links ac3::fmt), so libac3forge0 and
-# libac3forge-dev still have the missing-copyright gap the runtime package
-# had until now - and that is separate work, over install rules in
-# cmake/InstallLibrary.cmake rather than these, not started here.
+# (src/forge/CMakeLists.txt compiles it in through ac3::fmt_private, which
+# puts it in the static archive as well as the shared library), so
+# libac3forge0 and libac3forge-dev still have the missing-copyright gap the
+# runtime package had until now - and that is separate work, over install
+# rules in cmake/InstallLibrary.cmake rather than these, not started here.
 if(AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI)
     include("${CMAKE_CURRENT_SOURCE_DIR}/apps/notices/notices.cmake")
 endif()

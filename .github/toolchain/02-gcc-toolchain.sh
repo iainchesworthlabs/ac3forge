@@ -13,6 +13,25 @@ set -euo pipefail
 
 GCC_VERSION=16
 
+# apt-get update, then apt-get install of any packages named, in up to three
+# attempts 30 s apart. Each attempt re-runs the update, so a retry reads a fresh
+# index and may reach another mirror node: Ubuntu's mirrors fail a single attempt
+# outright now and then (a pool 404 for a version the index names, or an index
+# caught mid-sync), and apt's own Acquire::Retries treats a 404 as final. The
+# workflows' own apt steps run the same loop inline. A function in each script
+# rather than one shared file, because the fleet's Packer build uploads and runs
+# each of these scripts on its own.
+apt_retry() {
+    local attempt=1
+    until apt-get update && { [ "$#" -eq 0 ] || apt-get install -y --no-install-recommends "$@"; }
+    do
+        echo "::warning title=apt-get::attempt $attempt of 3 failed"
+        [ "$attempt" -lt 3 ] || return 1
+        attempt=$((attempt + 1))
+        sleep 30
+    done
+}
+
 echo "==> Installing GCC ${GCC_VERSION} toolchain"
 
 # Ubuntu 26.04 LTS (Resolute Raccoon) ships gcc-16/g++-16, but in the
@@ -24,7 +43,7 @@ echo "==> Installing GCC ${GCC_VERSION} toolchain"
 if ! apt-cache show "gcc-${GCC_VERSION}" >/dev/null 2>&1; then
     echo "==> gcc-${GCC_VERSION} not in default repos, enabling the universe component"
     add-apt-repository -y universe
-    apt-get update
+    apt_retry
 fi
 
 if ! apt-cache show "gcc-${GCC_VERSION}" >/dev/null 2>&1; then
@@ -32,8 +51,7 @@ if ! apt-cache show "gcc-${GCC_VERSION}" >/dev/null 2>&1; then
     add-apt-repository -y ppa:ubuntu-toolchain-r/test
 fi
 
-apt-get update
-apt-get install -y --no-install-recommends \
+apt_retry \
     "gcc-${GCC_VERSION}" \
     "g++-${GCC_VERSION}"
 

@@ -133,13 +133,19 @@ else.
 pairing runs. Type them into the server. After twenty wrong codes the board refuses to pair until
 you type `pair reset` or choose *Allow pairing again* on the page.
 
-The board keeps eight pairings. Lines typed on the console are commands:
+The board keeps eight pairings, each with the name the server gave, and lists them the most
+recently used first: on the page's Sendspin section, and for `pair list`. A ninth pairing
+replaces the one used least recently, never one a server is connected on. A pairing made before
+the board kept names shows without one until its server next takes the board. Lines typed on
+the console are commands:
 
 | Command | What it does |
 |---|---|
+| `pair list` | Prints the pairings: each server's ID (the first eight characters), its name, and whether it is connected |
 | `pair token` | Prints the pairing token again |
 | `pair reset` | Allows pairing again after twenty wrong codes |
 | `pair cancel` | Ends the pairing that is running |
+| `pair forget ID` | Removes one server's pairing, by the ID `pair list` prints, and closes its connection. The board keeps its other pairings and its identity; that server has to pair again. *Forget* beside a server on the page does the same |
 | `pair forget` | Removes every pairing and gives the board a new identity and token; *Forget every server* on the page does the same |
 | `sendspin` | Prints the player's state: the server, the role, the clock, and the stream's counters |
 
@@ -284,7 +290,8 @@ an earlier one-minute run a 108-byte allocation did, with no effect on the strea
 - **Improv says the board could not connect.** Check the network's name and passphrase, and that
   it is a 2.4 GHz network, then send them again. The board keeps listening.
 - **Pairing fails.** Type `sendspin` on the console to see the player's state. After twenty
-  wrong codes, `pair reset`. A server that paired before `pair forget` has to pair again.
+  wrong codes, `pair reset`. A server that paired before `pair forget` has to pair again, and so
+  does one forgotten by its ID.
 - **Underruns.** The page's Sendspin section counts them. The console's closing line for each
   stream gives them, with the average time a chunk took to decode and render (`burst_us`). A chunk
   holds 32 ms of audio, so a `burst_us` near 32,000 means the board cannot keep up with the

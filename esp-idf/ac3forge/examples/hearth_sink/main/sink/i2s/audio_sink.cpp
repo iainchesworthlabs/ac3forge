@@ -542,6 +542,11 @@ std::uint64_t sink_frames_written() { return g_model.writes(); }
 // model starts again. See audio_sink.hpp.
 void sink_begin_play() { g_model.restart(); }
 
+void sink_close() {
+    close_line(g_line0);
+    close_line(g_line1);
+}
+
 // What the DAC did with the samples is not visible from this side of the wire -
 // sink/capture/ is the one that checks the conversion, and it runs the same
 // interleave this does. What IS visible is whether the samples got there in

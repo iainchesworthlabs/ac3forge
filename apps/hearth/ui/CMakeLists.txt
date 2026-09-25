@@ -201,7 +201,8 @@ else()
     #
     # The catalogues are generated, not hand-written: run
     # `cmake --build <dir> --target ac3hearth_lupdate` to re-extract every
-    # qsTr() in AC3HEARTH_QML_FILES into them after changing a string.
+    # qsTr() in AC3HEARTH_QML_FILES, and every tr() in this target's C++,
+    # into them after changing a string.
     # -no-obsolete for the reason apps/gui and Crucible both give: an entry
     # whose source string is gone is kept as translation memory otherwise,
     # and git history is that memory.
@@ -217,6 +218,13 @@ else()
     # Deliberately no test asserting the catalogues are complete, unlike
     # tests/crucible/test_translations.cpp: Crucible's are filled, and
     # holding these to the same bar would fail from the first commit.
+    #
+    # CI does check that they match the sources: the windows-msvc leg
+    # reruns ac3hearth_lupdate and fails if the result differs from what is
+    # committed in anything but <location> lines
+    # (.github/workflows/_ci-windows.yml, "Check the Hearth translations are
+    # up to date"). So moving a string within its file needs no
+    # regeneration, and adding, removing or rewording one does.
     set(AC3HEARTH_TS_FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_fr.ts"
         "${CMAKE_CURRENT_SOURCE_DIR}/translations/ac3hearth_de.ts"

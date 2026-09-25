@@ -5,12 +5,18 @@
 #include <algorithm>
 #include <bit>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
+
+#include "platform/process.hpp"
 
 #include "ac3adm/ac3adm.hpp"
 
@@ -19,13 +25,14 @@
 // layer over the vendored libbw64/libadm - see src/ac3adm/CMakeLists.txt),
 // rather than round-tripping data this same code produced - the same
 // reasoning test_mpegts.cpp and test_matroska.cpp document for their own
-// independent readers/writers, applied in the opposite direction here since
-// ac3adm::ac3adm is a reader with no writer counterpart in this repo (phase 1
-// of roadmap item B1 - a writer is not part of this
-// project's own scope at all, ADM/BW64 masters are produced by third-party
-// production tools).
+// independent readers/writers. ac3adm::ac3adm began as a reader only (phase 1
+// of roadmap item B1); roadmap item IM2 later gave it write_bw64(), and the
+// write tests at the end of this file keep the same rule from the other side:
+// they check the bytes write_bw64() put on disk directly, not only what the
+// same two libraries read back from them.
 //
-// Every test below goes through the public ac3adm::parse_bw64() API only -
+// Every test below goes through the public ac3adm API only (parse_bw64(), and
+// write_bw64() for the write tests) -
 // libadm and libbw64 already have their own upstream test suites for their
 // own internals (chunk-walking, XML/schema validation), so what is worth
 // re-testing here is this module's own boundary: does a real BW64 file
@@ -335,6 +342,94 @@ Bytes wrap_axml_only(std::string_view axml_xml) {
     return build_riff(fmt, Bytes{}, Bytes(axml_xml), data);
 }
 
+// A document write_bw64() accepts, for the write tests to break one thing in at a time: one
+// audioObject whose audioPackFormat and audioChannelFormat are both `type` (kObjects or
+// kDirectSpeakers, the two this writer supports), the channel carrying two cartesian blocks, one
+// <chna> row and four frames of mono PCM. The channel is reached through the full
+// audioStreamFormat -> audioTrackFormat chain ac3::admbridge::write() builds rather than
+// BS.2076-2's plain-PCM shortcut, which libadm's reassignIds() does not support (see bridge.cpp).
+ac3adm::AdmDocument writable_document(ac3adm::TypeDefinition type) {
+    ac3adm::AudioBlockFormat first;
+    first.cartesian = true;
+    first.position = ac3adm::CartesianPosition{.x = -0.5, .y = 1.0, .z = 0.0};
+    ac3adm::AudioBlockFormat second = first;
+    second.rtime_s = 0.5;
+    second.position = ac3adm::CartesianPosition{.x = 0.5, .y = 1.0, .z = 0.0};
+
+    ac3adm::AudioChannelFormat channel_format;
+    channel_format.id = "chan";
+    channel_format.name = "Channel";
+    channel_format.type = type;
+    channel_format.block_formats = {first, second};
+
+    ac3adm::AudioPackFormat pack_format;
+    pack_format.id = "pack";
+    pack_format.name = "Pack";
+    pack_format.type = type;
+    pack_format.channel_format_refs = {channel_format.id};
+
+    ac3adm::AudioStreamFormat stream_format;
+    stream_format.id = "stream";
+    stream_format.name = "Stream";
+    stream_format.channel_format_ref = channel_format.id;
+
+    ac3adm::AudioTrackFormat track_format;
+    track_format.id = "track";
+    track_format.name = "Track";
+    track_format.stream_format_ref = stream_format.id;
+
+    ac3adm::AudioTrackUid track_uid;
+    track_uid.uid = "atu";
+    track_uid.has_sample_rate = true;
+    track_uid.sample_rate = 48000;
+    track_uid.track_format_ref = track_format.id;
+    track_uid.pack_format_ref = pack_format.id;
+
+    ac3adm::AudioObject object;
+    object.id = "object";
+    object.name = "Object";
+    object.pack_format_refs = {pack_format.id};
+    object.track_uid_refs = {track_uid.uid};
+
+    ac3adm::AudioContent content;
+    content.id = "content";
+    content.name = "Content";
+    content.object_refs = {object.id};
+
+    ac3adm::AudioProgramme programme;
+    programme.id = "programme";
+    programme.name = "Programme";
+    programme.content_refs = {content.id};
+
+    ac3adm::AdmDocument document;
+    ac3adm::ChnaEntry chna_entry;
+    chna_entry.track_index = 1;
+    chna_entry.uid = track_uid.uid;
+    document.chna.push_back(std::move(chna_entry));
+    document.audio.sample_rate = 48000;
+    document.audio.channels.push_back({0.25F, -0.5F, 0.125F, 0.0F});
+
+    auto& model = document.model;
+    model.programmes.push_back(std::move(programme));
+    model.contents.push_back(std::move(content));
+    model.objects.push_back(std::move(object));
+    model.pack_formats.push_back(std::move(pack_format));
+    model.channel_formats.push_back(std::move(channel_format));
+    model.stream_formats.push_back(std::move(stream_format));
+    model.track_formats.push_back(std::move(track_format));
+    model.track_uids.push_back(std::move(track_uid));
+    return document;
+}
+
+// Where a write test puts its files: a directory of its own under AC3FORGE_TEST_SCRATCH_DIR, with
+// this process's id folded in (tests/platform/process.hpp says why).
+std::filesystem::path write_scratch_dir(std::string_view name) {
+    auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} /
+               (std::string(name) + "_" + ac3::test::platform::process_id());
+    std::filesystem::create_directories(dir);
+    return dir;
+}
+
 // libadm's own parseXml() always merges the file's own content into a document already
 // pre-populated with BS.2076-2 Annex A's "common definitions" (43 pack formats, 300 each of
 // channel/stream/track formats, one per standard loudspeaker layout - confirmed by grepping
@@ -362,6 +457,130 @@ const T& find_by_id(const std::vector<T>& elements, std::string_view id) {
     auto it = std::find_if(elements.begin(), elements.end(), [&](const T& e) { return e.id == id; });
     REQUIRE(it != elements.end());
     return *it;
+}
+
+std::uint16_t get_u16le(std::string_view bytes, std::size_t at) {
+    return static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[at]) |
+                                      (static_cast<unsigned char>(bytes[at + 1]) << 8));
+}
+
+std::uint32_t get_u32le(std::string_view bytes, std::size_t at) {
+    return static_cast<std::uint32_t>(get_u16le(bytes, at)) |
+           (static_cast<std::uint32_t>(get_u16le(bytes, at + 2)) << 16);
+}
+
+// The content of the first top-level chunk named `id` in a RIFF file - append_chunk()'s layout
+// above, read back: id, 32-bit little-endian size, content, a pad byte after odd-sized content.
+// The 32-bit sizes are all a file this small needs: libbw64's writer keeps it plain RIFF and only
+// turns a file into BW64 with a <ds64> chunk past 4 GB.
+std::optional<std::string_view> find_chunk(std::string_view file, std::string_view id) {
+    std::size_t at = 12;  // "RIFF", the RIFF size, "WAVE"
+    while (at + 8 <= file.size()) {
+        const std::size_t size = get_u32le(file, at + 4);
+        if (file.substr(at, 4) == id) {
+            return file.substr(at + 8, size);
+        }
+        at += 8 + size + (size % 2);
+    }
+    return std::nullopt;
+}
+
+// Every <audioTrackUID ...> start tag in `xml`, as written. The space after the element name keeps
+// an audioObject's <audioTrackUIDRef> children out of the match.
+std::vector<std::string_view> track_uid_start_tags(std::string_view xml) {
+    constexpr std::string_view kOpen = "<audioTrackUID ";
+    std::vector<std::string_view> tags;
+    for (auto at = xml.find(kOpen); at != std::string_view::npos; at = xml.find(kOpen, at + kOpen.size())) {
+        const auto end = xml.find('>', at);
+        REQUIRE(end != std::string_view::npos);
+        tags.push_back(xml.substr(at, end - at + 1));
+    }
+    return tags;
+}
+
+// A document write_bw64() accepts: one Objects audioObject per entry of `declared_bit_depths`, each
+// on its own track, with that entry as its AudioTrackUid's bit depth (nullopt: has_bit_depth
+// false). Built with the full audioStreamFormat -> audioTrackFormat chain ac3::admbridge::write()
+// uses rather than BS.2076-2's plain-PCM shortcut: libadm's reassignIds() gives any
+// audioChannelFormat no audioStreamFormat references the id zero (bridge.cpp's own comment on
+// it), and several channels collapsed onto one id read back as a duplicate-ID failure, not as
+// anything the test using this means to check.
+ac3adm::AdmDocument objects_document(const std::vector<std::optional<std::uint32_t>>& declared_bit_depths) {
+    ac3adm::AdmDocument document;
+    document.audio.sample_rate = 48000;
+    auto& model = document.model;
+
+    ac3adm::AudioContent content;
+    content.id = "content";
+    content.name = "Programme";
+
+    for (std::size_t i = 0; i < declared_bit_depths.size(); ++i) {
+        const std::string key = std::to_string(i);
+
+        ac3adm::AudioBlockFormat block;
+        block.cartesian = true;
+        block.position = ac3adm::CartesianPosition{.x = (0.5 * static_cast<double>(i)) - 0.5, .y = 1.0, .z = 0.0};
+
+        ac3adm::AudioChannelFormat channel_format;
+        channel_format.id = "chan" + key;
+        channel_format.name = "Object " + key;
+        channel_format.type = ac3adm::TypeDefinition::kObjects;
+        channel_format.block_formats.push_back(block);
+
+        ac3adm::AudioPackFormat pack_format;
+        pack_format.id = "pack" + key;
+        pack_format.name = channel_format.name;
+        pack_format.type = ac3adm::TypeDefinition::kObjects;
+        pack_format.channel_format_refs = {channel_format.id};
+
+        ac3adm::AudioStreamFormat stream_format;
+        stream_format.id = "stream" + key;
+        stream_format.name = channel_format.name;
+        stream_format.channel_format_ref = channel_format.id;
+
+        ac3adm::AudioTrackFormat track_format;
+        track_format.id = "track" + key;
+        track_format.name = channel_format.name;
+        track_format.stream_format_ref = stream_format.id;
+
+        ac3adm::AudioTrackUid track_uid;
+        track_uid.uid = "atu" + key;
+        track_uid.has_sample_rate = true;
+        track_uid.sample_rate = 48000;
+        track_uid.has_bit_depth = declared_bit_depths[i].has_value();
+        track_uid.bit_depth = declared_bit_depths[i].value_or(0U);
+        track_uid.track_format_ref = track_format.id;
+        track_uid.pack_format_ref = pack_format.id;
+
+        ac3adm::AudioObject object;
+        object.id = "obj" + key;
+        object.name = channel_format.name;
+        object.pack_format_refs = {pack_format.id};
+        object.track_uid_refs = {track_uid.uid};
+        content.object_refs.push_back(object.id);
+
+        ac3adm::ChnaEntry chna_entry;
+        chna_entry.track_index = static_cast<std::uint16_t>(i + 1);
+        chna_entry.uid = track_uid.uid;
+        document.chna.push_back(chna_entry);
+
+        document.audio.channels.push_back({0.25F, -0.5F, 0.125F, 0.1F * static_cast<float>(i + 1)});
+
+        model.channel_formats.push_back(std::move(channel_format));
+        model.pack_formats.push_back(std::move(pack_format));
+        model.stream_formats.push_back(std::move(stream_format));
+        model.track_formats.push_back(std::move(track_format));
+        model.track_uids.push_back(std::move(track_uid));
+        model.objects.push_back(std::move(object));
+    }
+    model.contents.push_back(std::move(content));
+
+    ac3adm::AudioProgramme programme;
+    programme.id = "programme";
+    programme.name = "Programme";
+    programme.content_refs = {"content"};
+    model.programmes.push_back(std::move(programme));
+    return document;
 }
 
 }  // namespace
@@ -424,6 +643,8 @@ TEST_CASE("parses a minimal RIFF/WAVE ADM file", "[adm]") {
         CHECK(doc->model.track_uids[0].uid == "ATU_00000001");
         CHECK(doc->model.track_uids[0].has_sample_rate);
         CHECK(doc->model.track_uids[0].sample_rate == 48000);
+        CHECK(doc->model.track_uids[0].has_bit_depth);
+        CHECK(doc->model.track_uids[0].bit_depth == 16);
     }
 }
 
@@ -435,6 +656,32 @@ TEST_CASE("parses the same content via RF64 with a ds64-resolved data chunk", "[
     REQUIRE(doc->audio.frame_count() == 4);
     REQUIRE(doc->model.objects.size() == 1);
     CHECK(doc->model.objects[0].id == "AO_1001");
+}
+
+// BS.2076-2 §5.9 makes both of audioTrackUID's sampleRate and bitDepth attributes optional, and
+// masters without bitDepth are real: every one write_bw64() wrote before it began setting it (see
+// the write tests at the end of this file) carries sampleRate alone. The reader reports whichever
+// attributes are present and leaves has_* false for the rest rather than refusing the file.
+TEST_CASE("an audioTrackUID without bitDepth still parses", "[adm]") {
+    const auto removed = GENERATE(std::string_view{R"( bitDepth="16")"},
+                                  std::string_view{R"( sampleRate="48000" bitDepth="16")"});
+    CAPTURE(removed);
+    std::string xml(kCarAdmXml);
+    const auto at = xml.find(removed);
+    REQUIRE(at != std::string::npos);
+    xml.erase(at, removed.size());
+
+    std::istringstream stream(
+        build_riff(build_fmt_chunk(1, 48000, 16), build_chna_chunk(), Bytes(xml), build_pcm16_data(4)));
+    const auto doc = ac3adm::parse_bw64(stream);
+    REQUIRE(doc.has_value());
+    REQUIRE(doc->model.track_uids.size() == 1);
+    const auto& track_uid = doc->model.track_uids[0];
+    CHECK(track_uid.uid == "ATU_00000001");
+    CHECK_FALSE(track_uid.has_bit_depth);
+    CHECK(track_uid.has_sample_rate == (removed.find("sampleRate") == std::string_view::npos));
+    REQUIRE(track_uid.track_format_ref.has_value());
+    CHECK(*track_uid.track_format_ref == "AT_00031001_01");
 }
 
 TEST_CASE("rejects a file that is not RIFF/RF64/BW64", "[adm]") {
@@ -989,4 +1236,148 @@ TEST_CASE("describe() returns a non-empty string for every AdmError", "[adm]") {
                               AdmError::kMalformedAdm, AdmError::kOther}) {
         CHECK_FALSE(ac3adm::describe(error).empty());
     }
+}
+
+// The Dolby Atmos Master ADM Profile expects every audioTrackUID to state the bit depth its track
+// is stored at, and Dolby Encoding Engine 6.5.4 refuses a master whose audioTrackUIDs leave it out
+// ("Mismatched track bit depth between ADM and WAV") - which every master write_bw64() wrote did,
+// with sampleRate alone, until this test was added. One track per way a caller's model can carry
+// the field - absent, stale (describing some other file), already right - and each has to come
+// out as the <fmt > chunk's own width. Three tracks rather than two: a two-channel round trip has
+// already hidden one libadm id problem in this writer (see objects_document()).
+TEST_CASE("write_bw64 gives every audioTrackUID the bit depth of the fmt chunk", "[adm][write]") {
+    const auto document = objects_document({std::nullopt, 16U, 24U});
+
+    const auto dir = std::filesystem::path{AC3FORGE_TEST_SCRATCH_DIR} /
+                     ("adm_write_" + ac3::test::platform::process_id());
+    std::filesystem::create_directories(dir);
+    const auto path = (dir / "track_uid_bit_depth.wav").string();
+    const auto written = ac3adm::write_bw64(path, document);
+    REQUIRE(written.has_value());
+
+    // The raw bytes first: the same two libraries write and read this file, so a parse_bw64()
+    // round trip on its own could agree with a mistake both of them make.
+    std::ifstream in(path, std::ios::binary);
+    REQUIRE(in);
+    const std::string file{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+
+    const auto fmt = find_chunk(file, "fmt ");
+    REQUIRE(fmt.has_value());
+    REQUIRE(fmt->size() >= 16);
+    // build_fmt_chunk()'s layout: formatTag, channels, sampleRate, bytes per second, block
+    // alignment, then bits per sample at byte 14.
+    const auto bits_per_sample = get_u16le(*fmt, 14);
+    CHECK(bits_per_sample == ac3adm::kWriteBitDepth);
+
+    const auto axml = find_chunk(file, "axml");
+    REQUIRE(axml.has_value());
+    const auto tags = track_uid_start_tags(*axml);
+    REQUIRE(tags.size() == 3);
+    const std::string expected = "bitDepth=\"" + std::to_string(bits_per_sample) + "\"";
+    for (const auto tag : tags) {
+        CAPTURE(tag);
+        CHECK(tag.find(expected) != std::string_view::npos);
+    }
+
+    // Then through the reader: every audioTrackUID reports it, equal to the width the audio
+    // itself was read at, and sampleRate still comes from the model.
+    const auto parsed = ac3adm::parse_bw64(path);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed->audio.bits_per_sample == bits_per_sample);
+    REQUIRE(parsed->model.track_uids.size() == 3);
+    for (const auto& track_uid : parsed->model.track_uids) {
+        CAPTURE(track_uid.uid);
+        CHECK(track_uid.has_bit_depth);
+        CHECK(track_uid.bit_depth == parsed->audio.bits_per_sample);
+        CHECK(track_uid.has_sample_rate);
+        CHECK(track_uid.sample_rate == 48000);
+    }
+}
+
+// AdmWriteError::kInvalidDocument's doc comment (ac3adm.hpp) names a block whose position is polar,
+// but the translator behind write_bw64() read every block's position with an unchecked
+// std::get<CartesianPosition>, so a polar block threw std::bad_variant_access out of a function
+// that returns std::expected - for both typeDefinitions the writer supports. A default-constructed
+// AudioBlockFormat is such a block: its position starts as PolarPosition{}. The channel's second
+// block is the one changed, so a check of each channel's first block alone would not pass.
+TEST_CASE("write_bw64 reports a polar block as kInvalidDocument without throwing", "[adm][write]") {
+    const auto type =
+        GENERATE(ac3adm::TypeDefinition::kObjects, ac3adm::TypeDefinition::kDirectSpeakers);
+    INFO("typeDefinition " << (type == ac3adm::TypeDefinition::kObjects ? "Objects"
+                                                                        : "DirectSpeakers"));
+    const auto dir = write_scratch_dir("adm_write_polar");
+    auto document = writable_document(type);
+
+    // Unchanged, the document writes, so what is refused below is refused for the block alone.
+    REQUIRE(ac3adm::write_bw64((dir / "cartesian.wav").string(), document).has_value());
+
+    auto& block = document.model.channel_formats.front().block_formats.back();
+    SECTION("a polar position") {
+        block.cartesian = false;
+        block.position =
+            ac3adm::PolarPosition{.azimuth_deg = 30.0, .elevation_deg = 0.0, .distance = 1.0};
+    }
+    SECTION("a default-constructed block") {
+        block = ac3adm::AudioBlockFormat{};
+    }
+
+    const auto path = dir / "polar.wav";
+    std::filesystem::remove(path);
+    const auto written = ac3adm::write_bw64(path.string(), document);
+    REQUIRE_FALSE(written.has_value());
+    CHECK(written.error() == ac3adm::AdmWriteError::kInvalidDocument);
+    CHECK_FALSE(std::filesystem::exists(path));
+}
+
+// What write_bw64() does with the libadm document once it is built - reassignIds(), formatting
+// the <chna> rows' IDs, writeXml() - ran outside any try block, so an exception from any of it
+// left write_bw64() the same way. adm::formatId() throws for a document the translator accepts:
+// it writes an audioTrackFormat's counter as two hex digits, and reassignIds() numbers the
+// audioTrackFormats on one audioStreamFormat from 01, so the 256th is 0x100, which does not fit.
+// With the <chna> row's audioTrackUID naming that track, the throw comes while the rows are
+// resolved; naming the first track, it comes from writeXml() instead.
+TEST_CASE("write_bw64 reports a libadm failure after the build as kOther without throwing",
+          "[adm][write]") {
+    const auto uid_names_last_track = GENERATE(false, true);
+    CAPTURE(uid_names_last_track);
+    auto document = writable_document(ac3adm::TypeDefinition::kObjects);
+    auto& model = document.model;
+    for (int i = 1; i < 256; ++i) {
+        ac3adm::AudioTrackFormat track_format;
+        track_format.id = "track" + std::to_string(i);
+        track_format.name = "Track";
+        track_format.stream_format_ref = model.stream_formats.front().id;
+        model.track_formats.push_back(std::move(track_format));
+    }
+    REQUIRE(model.track_formats.size() == 256);
+    if (uid_names_last_track) {
+        model.track_uids.front().track_format_ref = model.track_formats.back().id;
+    }
+
+    const auto path = write_scratch_dir("adm_write_id_overflow") / "overflow.wav";
+    std::filesystem::remove(path);
+    const auto written = ac3adm::write_bw64(path.string(), document);
+    REQUIRE_FALSE(written.has_value());
+    CHECK(written.error() == ac3adm::AdmWriteError::kOther);
+    CHECK_FALSE(std::filesystem::exists(path));
+}
+
+// An audioTrackUID refers to an audioTrackFormat or, for plain PCM, straight to an
+// audioChannelFormat, never both, and libadm's AudioTrackUid::setReference() throws
+// adm::error::AudioTrackUidMutuallyExclusiveReferences when given the second. That left
+// write_bw64() the same way a polar block's std::bad_variant_access did.
+TEST_CASE("write_bw64 reports an audioTrackUID naming a track and a channel format as "
+          "kInvalidDocument",
+          "[adm][write]") {
+    auto document = writable_document(ac3adm::TypeDefinition::kObjects);
+    auto& track_uid = document.model.track_uids.front();
+    REQUIRE(track_uid.track_format_ref.has_value());
+    track_uid.channel_format_ref = document.model.channel_formats.front().id;
+
+    const auto path = write_scratch_dir("adm_write_track_uid_refs") / "both_refs.wav";
+    std::filesystem::remove(path);
+    const auto written = ac3adm::write_bw64(path.string(), document);
+    REQUIRE_FALSE(written.has_value());
+    CHECK(written.error() == ac3adm::AdmWriteError::kInvalidDocument);
+    CHECK_FALSE(std::filesystem::exists(path));
 }

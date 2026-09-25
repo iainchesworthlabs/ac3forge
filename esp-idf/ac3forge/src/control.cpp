@@ -18,6 +18,7 @@
 #include "esp_http_server.h"
 #include "esp_psram.h"
 
+#include "ac3forge/firmware.hpp"
 #include "ac3forge/hardware_info.hpp"
 
 // The web UI's two files. CMakeLists.txt embeds them (EMBED_FILES) and they stay
@@ -387,6 +388,20 @@ struct Control::Impl {
 
     static Impl* self(httpd_req_t* req) { return static_cast<Impl*>(req->user_ctx); }
 
+    // Flash mode (planning/esp32-ota.md): nothing plays and no setting
+    // changes until the board restarts. True, having answered, when the
+    // request is refused for it.
+    static bool refused_in_flash_mode(httpd_req_t* req) {
+        const Firmware* firmware = self(req)->handlers.firmware;
+        if (firmware == nullptr || !firmware->flash_mode()) {
+            return false;
+        }
+        (void)send_text(req, "409 Conflict",
+                        "the board is in flash mode: nothing plays and no setting changes until it "
+                        "restarts\n");
+        return true;
+    }
+
     // The web UI: a page and its script, which read /status and drive the
     // routes below like any other client.
     static esp_err_t on_page(httpd_req_t* req) {
@@ -422,7 +437,15 @@ struct Control::Impl {
                          "GET  /slot-width    16 or 32; PUT one to change it at the next play\n"
                          "GET  /wiring        1 when a second I2S line is wired; PUT 1 or 0\n"
                          "PUT  /network       body: an SSID, a newline, a passphrase; next boot\n"
-                         "POST /pairing       body: reset, cancel or forget (Sendspin pairing)\n");
+                         "GET  /pairing       the servers this board is paired with, as JSON\n"
+                         "POST /pairing       body: reset, cancel, forget, or forget and a server_id "
+                         "(Sendspin pairing)\n"
+                         "GET  /firmware      both app slots, a trial, an upload and the last "
+                         "update, as JSON\n"
+                         "PUT  /firmware      body: an app image; flash mode, then a restart into it\n"
+                         "PUT  /firmware/mode body: flash, or normal (a restart)\n"
+                         "PUT  /firmware/rollback  the image before this one boots next\n"
+                         "POST /restart       restart into the image that runs now\n");
     }
 
     static esp_err_t on_status(httpd_req_t* req) {
@@ -550,6 +573,9 @@ struct Control::Impl {
     }
 
     static esp_err_t on_play(httpd_req_t* req) {
+        if (refused_in_flash_mode(req)) {
+            return ESP_OK;
+        }
         auto& h = self(req)->handlers;
         const std::string location = read_body(req);
         if (location.empty()) {
@@ -572,6 +598,9 @@ struct Control::Impl {
     }
 
     static esp_err_t on_volume(httpd_req_t* req) {
+        if (refused_in_flash_mode(req)) {
+            return ESP_OK;
+        }
         auto& h = self(req)->handlers;
         const std::string body = read_body(req);
         char* end = nullptr;
@@ -596,6 +625,9 @@ struct Control::Impl {
     }
 
     static esp_err_t on_layout_put(httpd_req_t* req) {
+        if (refused_in_flash_mode(req)) {
+            return ESP_OK;
+        }
         auto& h = self(req)->handlers;
         const std::string body = read_body(req);
         if (body.empty()) {
@@ -624,6 +656,9 @@ struct Control::Impl {
     }
 
     static esp_err_t on_name_put(httpd_req_t* req) {
+        if (refused_in_flash_mode(req)) {
+            return ESP_OK;
+        }
         auto& h = self(req)->handlers;
         const std::string body = read_body(req);
         if (body.empty()) {
@@ -649,6 +684,9 @@ struct Control::Impl {
     }
 
     static esp_err_t on_wiring_put(httpd_req_t* req) {
+        if (refused_in_flash_mode(req)) {
+            return ESP_OK;
+        }
         auto& h = self(req)->handlers;
         const std::string body = read_body(req);
         if (body.empty() || (body[0] != '0' && body[0] != '1')) {
@@ -666,6 +704,9 @@ struct Control::Impl {
     }
 
     static esp_err_t on_network_put(httpd_req_t* req) {
+        if (refused_in_flash_mode(req)) {
+            return ESP_OK;
+        }
         auto& h = self(req)->handlers;
         // "ssid\npassword", the passphrase being whatever is left after the
         // first newline: an SSID may contain anything but a newline, and a
@@ -690,11 +731,55 @@ struct Control::Impl {
         return send_text(req, "200 OK", "ok; takes effect at the next boot\n");
     }
 
+    // GET /pairing: see ControlPairings. Here, below on_play, for the reason
+    // append_strings gives: contract.spec.js reads the keys GET /status
+    // writes from the text between on_status and on_play.
+    static esp_err_t on_pairing_get(httpd_req_t* req) {
+        auto& h = self(req)->handlers;
+        const std::optional<ControlPairings> p = h.pairings ? h.pairings() : std::nullopt;
+        if (!p) {
+            return send_text(req, "404 Not Found", "this board is not a Sendspin player\n");
+        }
+        std::string out = "{";
+        append_number(out, "capacity", p->capacity);
+        append_key(out, "servers");
+        out += '[';
+        for (std::size_t i = 0; i < p->servers.size(); ++i) {
+            const ControlPairing& s = p->servers[i];
+            out += i == 0 ? "{" : ",{";
+            append_string(out, "server_id", s.server_id);
+            append_string(out, "name", s.name);
+            append_bool(out, "connected", s.connected);
+            append_bool(out, "last_playback", s.last_playback);
+            append_bool(out, "seen", s.seen);
+            out += '}';
+        }
+        out += "]}\n";
+        httpd_resp_set_type(req, "application/json");
+        return httpd_resp_send(req, out.c_str(), static_cast<ssize_t>(out.size()));
+    }
+
     static esp_err_t on_pairing(httpd_req_t* req) {
+        if (refused_in_flash_mode(req)) {
+            return ESP_OK;
+        }
         auto& h = self(req)->handlers;
         const std::string body = read_body(req);
+        constexpr std::string_view kForgetOne = "forget ";
+        if (body.starts_with(kForgetOne) && body.size() > kForgetOne.size()) {
+            const std::optional<bool> forgotten =
+                h.forget_server ? h.forget_server(std::string_view(body).substr(kForgetOne.size())) : std::nullopt;
+            if (!forgotten) {
+                return send_text(req, "409 Conflict", "this board is not a Sendspin player\n");
+            }
+            if (!*forgotten) {
+                return send_text(req, "404 Not Found", "this board has no pairing with that server\n");
+            }
+            return send_text(req, "200 OK", "ok\n");
+        }
         if (body != "reset" && body != "cancel" && body != "forget") {
-            return send_text(req, "400 Bad Request", "POST /pairing wants reset, cancel or forget\n");
+            return send_text(req, "400 Bad Request",
+                             "POST /pairing wants reset, cancel, forget, or forget and a server_id\n");
         }
         if (!h.pairing || !h.pairing(body)) {
             return send_text(req, "409 Conflict", "this board is not a Sendspin player\n");
@@ -713,6 +798,9 @@ struct Control::Impl {
     }
 
     static esp_err_t on_slot_width_put(httpd_req_t* req) {
+        if (refused_in_flash_mode(req)) {
+            return ESP_OK;
+        }
         auto& h = self(req)->handlers;
         const std::string body = read_body(req);
         if (body.empty()) {
@@ -738,6 +826,38 @@ struct Control::Impl {
                              "for\n");
         }
         return send_text(req, "200 OK", "ok; takes effect at the next play\n");
+    }
+
+    // The firmware routes, each answered by the owner's Firmware
+    // (firmware.hpp): this surface carries them, and has no part of an
+    // update in it.
+    static esp_err_t no_firmware(httpd_req_t* req) {
+        return send_text(req, "404 Not Found", "this board takes no firmware updates\n");
+    }
+
+    static esp_err_t on_firmware_get(httpd_req_t* req) {
+        Firmware* firmware = self(req)->handlers.firmware;
+        return firmware != nullptr ? firmware->on_status(req) : no_firmware(req);
+    }
+
+    static esp_err_t on_firmware_put(httpd_req_t* req) {
+        Firmware* firmware = self(req)->handlers.firmware;
+        return firmware != nullptr ? firmware->on_upload(req) : no_firmware(req);
+    }
+
+    static esp_err_t on_firmware_mode(httpd_req_t* req) {
+        Firmware* firmware = self(req)->handlers.firmware;
+        return firmware != nullptr ? firmware->on_mode(req) : no_firmware(req);
+    }
+
+    static esp_err_t on_firmware_rollback(httpd_req_t* req) {
+        Firmware* firmware = self(req)->handlers.firmware;
+        return firmware != nullptr ? firmware->on_rollback(req) : no_firmware(req);
+    }
+
+    static esp_err_t on_restart(httpd_req_t* req) {
+        Firmware* firmware = self(req)->handlers.firmware;
+        return firmware != nullptr ? firmware->on_restart(req) : no_firmware(req);
     }
 };
 
@@ -777,7 +897,13 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::si
         {.uri = "/wiring", .method = HTTP_GET, .handler = &Impl::on_wiring_get},
         {.uri = "/wiring", .method = HTTP_PUT, .handler = &Impl::on_wiring_put},
         {.uri = "/network", .method = HTTP_PUT, .handler = &Impl::on_network_put},
+        {.uri = "/pairing", .method = HTTP_GET, .handler = &Impl::on_pairing_get},
         {.uri = "/pairing", .method = HTTP_POST, .handler = &Impl::on_pairing},
+        {.uri = "/firmware", .method = HTTP_GET, .handler = &Impl::on_firmware_get},
+        {.uri = "/firmware", .method = HTTP_PUT, .handler = &Impl::on_firmware_put},
+        {.uri = "/firmware/mode", .method = HTTP_PUT, .handler = &Impl::on_firmware_mode},
+        {.uri = "/firmware/rollback", .method = HTTP_PUT, .handler = &Impl::on_firmware_rollback},
+        {.uri = "/restart", .method = HTTP_POST, .handler = &Impl::on_restart},
     };
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();

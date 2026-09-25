@@ -12,9 +12,10 @@ import "HearthTestHelpers.js" as H
 // NetworkController's own NetworkSinks as a found service - the one step
 // mDNS would otherwise do, and the one a CI container cannot (no multicast).
 // Everything after that is the real thing: NetworkSinks dials it over
-// WebSocket, the page lists it, selecting it starts a real dynamic-code
-// pairing attempt, the sink prints its six digits, and the digits are typed
-// into the page's own code boxes. Once paired, the sink's own settings view
+// WebSocket, the page lists it, selecting it shows the pairing view, its
+// "Pair with this computer" starts a real dynamic-code pairing attempt, the
+// sink prints its six digits, and the digits are typed into the page's own
+// code boxes. Once paired, the sink's own settings view
 // shows what the sink itself reports (its outputs, its crossover range, the
 // decoder settings it lists - none, for this sink - and its playback
 // report), a group made on the page takes it as a member, and a member
@@ -72,28 +73,39 @@ TestCase {
         return found;
     }
 
-    // Selects the sink, waits for the code the sink prints, types it into
-    // the six boxes and presses Pair - the whole pairing ceremony from the
-    // page's side.
+    // Selects the sink, asks it to pair, waits for the code the sink prints,
+    // types it into the six boxes and presses Pair - the whole pairing
+    // ceremony from the page's side.
     function codesPrinted() {
         return TestServices.testSinkLog().filter(function(line) { return line.indexOf("PAIRING CODE") >= 0; }).length;
+    }
+
+    // Selects the row (`findRow()` finds its delegate, `id` is the sink's id),
+    // then presses "Pair with this computer" once the page offers it -
+    // selecting alone only shows the sink, so the row is clicked until it is
+    // selected (clickUntil()'s comment says why a click can be lost). Exactly
+    // one press of the button: each asks the sink for a pairing attempt.
+    // Returns the first code box once the page shows the boxes.
+    function askToPair(page, findRow, id) {
+        clickUntil(findRow, function() { return NetworkController.selectedId === id; }, "the sink row never selected");
+        let start = null;
+        tryVerify(function() {
+            start = findChild(page, "networkPairingStart");
+            return start !== null && start.visible && start.enabled;
+        }, 15000, "the pairing view offers no Pair button: " + JSON.stringify(NetworkController.selectedSink));
+        compare(NetworkController.selectedSink.pairing, "none", "selecting the row alone asked to pair");
+        mouseClick(start);
+        let first = null;
+        tryVerify(function() { first = findChild(page, "networkPairingDigit-0"); return first !== null && first.visible; },
+                  15000, "asking to pair did not show the code boxes: " + JSON.stringify(NetworkController.selectedSink));
+        return first;
     }
 
     function pairFromThePage(page) {
         // A code from an earlier, cancelled attempt is still the last one in
         // the sink's log until this attempt prints its own.
         const printedBefore = codesPrinted();
-        // Selecting the row is what asks the sink to pair - even when it is
-        // already the selected one (a cancelled attempt leaves it selected).
-        // Exactly one click: each selection of an unpaired sink queues a
-        // pairing attempt, so a second click would start another attempt
-        // once this one has paired.
-        mouseClick(rowItem(page));
-        tryVerify(function() { return NetworkController.selectedId === sinkRow().id; }, 10000,
-                  "the sink row never selected");
-        let first = null;
-        tryVerify(function() { first = findChild(page, "networkPairingDigit-0"); return first !== null; }, 10000,
-                  "selecting an unpaired sink did not show the pairing view");
+        const first = askToPair(page, function() { return rowItem(page); }, sinkRow().id);
         tryVerify(function() { return codesPrinted() > printedBefore && TestServices.testSinkCode().length === 6; },
                   15000, "the sink never printed a six-digit code: " + TestServices.testSinkLog().join(" | "));
         const code = TestServices.testSinkCode();
@@ -152,37 +164,14 @@ TestCase {
         }, 10000, message);
     }
 
-    // Clicks the sink's row until the controller has selected it. The row
-    // exists from the moment the sink is found and is rebuilt as its hello
-    // fills in the rest of it, so a click made straight after ensureSink()
-    // can land on a delegate being replaced and be lost - the first test to
-    // run failed intermittently on Windows with the pairing view never
-    // appearing, which is what a lost click looks like. Unlike clickUntil(),
-    // this waits for the selection to be published (the controller polls
-    // every 60 ms) before clicking again: each selection of an unpaired sink
-    // queues a pairing attempt, so a click that did land must not be
-    // repeated just because its selection was not yet visible.
-    function selectSinkRow(page) {
-        for (let attempt = 0; attempt < 5; ++attempt) {
-            mouseClick(rowItem(page));
-            for (let waited = 0; waited < 2000 && NetworkController.selectedId !== sinkRow().id; waited += 50) {
-                wait(50);
-            }
-            if (NetworkController.selectedId === sinkRow().id) {
-                return;
-            }
-        }
-        fail("the sink row never selected after five clicks");
-    }
-
     function test_cancelEndsThePairingAttempt() {
         ensureSink();
         if (sinkRow().badge === "paired") {
             skip("the sink is already paired in this process");
         }
         const page = makePage();
-        selectSinkRow(page);
-        tryVerify(function() { return findChild(page, "networkPairingCancel") !== null; }, 10000);
+        askToPair(page, function() { return rowItem(page); }, sinkRow().id);
+        tryVerify(function() { const c = findChild(page, "networkPairingCancel"); return c !== null && c.visible; }, 10000);
         tryVerify(function() { return TestServices.testSinkCode().length === 6; }, 15000,
                   "the sink never printed a code to cancel");
         mouseClick(findChild(page, "networkPairingCancel"));
@@ -193,17 +182,61 @@ TestCase {
         compare(sinkRow().badge, "notPaired");
     }
 
+    // Types `code` into the boxes (each digit moves focus on by itself) and
+    // presses Pair.
+    function enterCode(page, first, code) {
+        mouseClick(first);
+        for (let i = 0; i < code.length; ++i) {
+            keyClick(code.charAt(i));
+        }
+        const pair = findChild(page, "networkPairingPair");
+        tryVerify(function() { return pair.enabled; }, 5000, "Pair stayed disabled with every box filled");
+        mouseClick(pair);
+    }
+
+    // A code typed wrong is refused: the page says so and empties the boxes,
+    // and the sink asks again under the same code (another round), which then
+    // pairs. Named to run after the cancel case and before the ones that
+    // want the sink paired, which pair it themselves when it is not.
+    function test_codeTypedWrongSaysSoAndTheRightOnePairs() {
+        ensureSink();
+        if (sinkRow().badge === "paired") {
+            skip("the sink is already paired in this process");
+        }
+        const page = makePage();
+        const printedBefore = codesPrinted();
+        const first = askToPair(page, function() { return rowItem(page); }, sinkRow().id);
+        tryVerify(function() { return codesPrinted() > printedBefore && TestServices.testSinkCode().length === 6; },
+                  15000, "the sink never printed a six-digit code: " + TestServices.testSinkLog().join(" | "));
+        const code = TestServices.testSinkCode();
+        const wrong = String((Number(code.charAt(0)) + 1) % 10) + code.substring(1);
+        enterCode(page, first, wrong);
+        tryVerify(function() { return NetworkController.pairingError.indexOf("not right") >= 0; }, 15000,
+                  "a wrong code was not reported: " + TestServices.testSinkLog().join(" | "));
+        tryVerify(function() { return findChild(page, "networkPairingDigit-0").text === ""; }, 5000,
+                  "the boxes still hold the wrong code");
+        compare(sinkRow().badge, "notPaired");
+        enterCode(page, findChild(page, "networkPairingDigit-0"), code);
+        tryVerify(function() { return sinkRow().badge === "paired"; }, 15000,
+                  "the right code did not pair: " + NetworkController.pairingError + " / "
+                  + TestServices.testSinkLog().join(" | "));
+        compare(NetworkController.pairingError, "");
+    }
+
     function test_discoveredSinkIsListedAndPairsWithTheCodeItShows() {
         const page = makePage();
         ensureSink();
         compare(NetworkController.discoveredCount >= 1, true);
         const row = rowItem(page);
         verify(H.textItem(row, sinkName) !== null, "the row does not show the sink's name");
-        // Look again asks mDNS again; the loopback sink stays listed.
+        // Look again (no mDNS in this process to ask again: qml_test_main.cpp turns discovery
+        // off) keeps the loopback sink listed. Its row is found afresh:
+        // the list rebuilds a row's delegate whenever what the row says changes.
         mouseClick(findChild(page, "networkRescan"));
         tryVerify(function() { return sinkRow() !== undefined; }, 5000);
         if (sinkRow().badge !== "paired") {
-            verify(H.textItem(row, "not paired") !== null, "an unpaired row does not say so");
+            tryVerify(function() { return H.textItem(rowItem(page), "not paired") !== null; }, 5000,
+                      "an unpaired row does not say so");
             pairFromThePage(page);
         }
         tryVerify(function() { return H.textItem(rowItem(page), "paired") !== null; }, 5000,
@@ -330,23 +363,17 @@ TestCase {
             return row !== undefined;
         }, 15000, "the second test sink never appeared");
         const printedBefore = codesPrinted();
-        // One click only - pairFromThePage()'s comment says why - and only
-        // once the sink has said hello, after which its row stops being
-        // rebuilt under the pointer.
+        // Once the sink has said hello, so the page can offer to pair it.
         tryVerify(function() {
             return TestServices.testSinkLog().some(function(line) { return line.indexOf("activated for") >= 0; });
         }, 15000, "the second sink never connected");
         waitForRendering(page);
-        let rowDelegate = null;
-        tryVerify(function() {
-            rowDelegate = H.find(page, function(item) { return item.modelData !== undefined && item.modelData !== null
-                                                               && item.modelData.name === "Settings sink" && item.current !== undefined; });
-            return rowDelegate !== null;
-        }, 10000, "the second sink has no row on the page");
-        mouseClick(rowDelegate);
-        tryVerify(function() { return NetworkController.selectedId === row.id; }, 10000, "the second sink never selected");
-        let first = null;
-        tryVerify(function() { first = findChild(page, "networkPairingDigit-0"); return first !== null; }, 10000);
+        const settingsRow = function() {
+            return H.find(page, function(item) { return item.modelData !== undefined && item.modelData !== null
+                                                        && item.modelData.name === "Settings sink" && item.current !== undefined; });
+        };
+        tryVerify(function() { return settingsRow() !== null; }, 10000, "the second sink has no row on the page");
+        const first = askToPair(page, settingsRow, row.id);
         tryVerify(function() { return codesPrinted() > printedBefore && TestServices.testSinkCode().length === 6; }, 15000);
         const code = TestServices.testSinkCode();
         mouseClick(first);
