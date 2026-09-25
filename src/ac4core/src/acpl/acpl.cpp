@@ -276,7 +276,7 @@ void Decorrelator<Real>::reset() noexcept {
 template <typename Real>
 void Decorrelator<Real>::process(std::span<const Complex> in, std::span<Complex> out, int num_ts) noexcept {
     const std::size_t n = at(num_ts);
-    if (num_ts <= 0 || in.size() < n * kSubbands || out.size() < n * kSubbands) {
+    if (num_ts <= 0 || num_ts > kMaxSlots || in.size() < n * kSubbands || out.size() < n * kSubbands) {
         return;
     }
     // Per subband: x[ts - k] for k up to kInputHistory, and y[ts - i] for i
@@ -284,9 +284,8 @@ void Decorrelator<Real>::process(std::span<const Complex> in, std::span<Complex>
     // NOTE: negative indices reach the frames before).
     constexpr auto kIn = static_cast<std::size_t>(kInputHistory);
     constexpr auto kOut = static_cast<std::size_t>(kOutputHistory);
-    std::array<Complex, kIn + 32> x{};
-    std::array<Complex, kOut + 32> y{};
-    const std::size_t slots = std::min<std::size_t>(n, 32);
+    std::array<Complex, kIn + static_cast<std::size_t>(kMaxSlots)> x{};
+    std::array<Complex, kOut + static_cast<std::size_t>(kMaxSlots)> y{};
     for (int sb = 0; sb < kSubbands; ++sb) {
         const auto s = at(sb);
         const int region = region_of(sb);
@@ -299,10 +298,10 @@ void Decorrelator<Real>::process(std::span<const Complex> in, std::span<Complex>
         for (std::size_t k = 0; k < kOut; ++k) {
             y[k] = y_history_[k * kSubbands + s];
         }
-        for (std::size_t ts = 0; ts < slots; ++ts) {
+        for (std::size_t ts = 0; ts < n; ++ts) {
             x[kIn + ts] = in[ts * kSubbands + s];
         }
-        for (std::size_t ts = 0; ts < slots; ++ts) {
+        for (std::size_t ts = 0; ts < n; ++ts) {
             // b[i] = a[length - i]; a[0] is 1 in every table, kept as printed.
             Complex acc = static_cast<Real>(a[length]) * x[kIn + ts - delay];
             for (std::size_t i = 1; i <= length; ++i) {
@@ -313,10 +312,10 @@ void Decorrelator<Real>::process(std::span<const Complex> in, std::span<Complex>
             out[ts * kSubbands + s] = y[kOut + ts];
         }
         for (std::size_t k = 0; k < kIn; ++k) {
-            x_history_[k * kSubbands + s] = x[slots + k];
+            x_history_[k * kSubbands + s] = x[n + k];
         }
         for (std::size_t k = 0; k < kOut; ++k) {
-            y_history_[k * kSubbands + s] = y[slots + k];
+            y_history_[k * kSubbands + s] = y[n + k];
         }
     }
 }

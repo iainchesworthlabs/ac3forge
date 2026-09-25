@@ -284,6 +284,12 @@ TEST_CASE("Each decorrelator's impulse response is its difference equation", "[a
             CHECK(std::abs(expected[at(delay)]) > 0.0);
         }
     }
+    // A frame longer than any AC-4 frame (32 slots) is refused whole.
+    acpl::Decorrelator<double> d(0);
+    const std::vector<Complex> in(at(acpl::kMaxSlots + 1) * kSubbands, Complex{1.0, 0.0});
+    std::vector<Complex> out(in.size(), Complex{7.0, 0.0});
+    d.process(in, out, acpl::kMaxSlots + 1);
+    CHECK(std::ranges::all_of(out, [](Complex v) { return v == Complex{7.0, 0.0}; }));
 }
 
 TEST_CASE("Each decorrelator is all-pass: its magnitude response is flat to 1e-9", "[ac4core][acpl]") {

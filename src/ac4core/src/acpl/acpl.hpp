@@ -19,6 +19,7 @@
 namespace ac4::detail::acpl {
 
 inline constexpr int kSubbands = 64;       // num_qmf_subbands
+inline constexpr int kMaxSlots = 32;       // num_qmf_timeslots of a 2 048-sample frame, the longest
 inline constexpr int kMaxParamBands = 15;  // Table 143
 inline constexpr int kMaxParamSets = 2;    // Table 146
 inline constexpr int kDecorrelators = 3;   // D0, D1 and D2
@@ -125,7 +126,8 @@ class Decorrelator {
     // Silence in every subband's history.
     void reset() noexcept;
 
-    // Filters `num_ts` slots of `in` into `out`, which must not overlap.
+    // Filters `num_ts` slots of `in` into `out`, which must not overlap;
+    // nothing for more than kMaxSlots.
     void process(std::span<const Complex> in, std::span<Complex> out, int num_ts) noexcept;
 
    private:
