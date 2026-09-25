@@ -85,6 +85,7 @@ td,.n{font:.875rem var(--mono)}
 .notices{margin:1rem 0 0;padding:0;list-style:none}
 .notices li{position:relative;margin-top:.5rem;padding:.625rem .875rem .625rem 2.75rem;border:1px solid var(--line);border-inline-start:4px solid var(--ink);background:var(--field)}
 .notices li::before{content:"!";content:"!" / "";position:absolute;inset-inline-start:.75rem;top:.75rem;width:1.25rem;height:1.25rem;border-radius:50%;background:var(--ink);color:var(--panel);font:700 .8125rem/1.25rem var(--mono);text-align:center}
+progress{width:100%;margin-top:.75rem;accent-color:var(--accent)}
 button,input{font:inherit}
 button{min-height:2.75rem;padding:0 1.125rem;border:1px solid var(--edge);background:var(--field);color:var(--fg);cursor:pointer}
 button:hover{border-color:var(--fg)}
@@ -272,6 +273,27 @@ dialog::backdrop{background:#0009}
 <ul id="hw-notices" class="notices" hidden></ul>
 </div>
 </section>
+<section id="firmware" aria-labelledby="firmware-heading" hidden>
+<h2 id="firmware-heading">Firmware</h2>
+<div class="panel">
+<p id="fw-note" class="note" hidden>Flash mode: nothing plays until the board restarts.</p>
+<dl class="kv">
+<div hidden><dt>Running</dt><dd id="fw-running"></dd></div>
+<div hidden><dt>Trial</dt><dd id="fw-trial"></dd></div>
+<div hidden><dt>Other slot</dt><dd id="fw-other"></dd></div>
+<div hidden><dt>Update</dt><dd id="fw-upload"></dd></div>
+<div hidden><dt>Last update</dt><dd id="fw-last"></dd></div>
+</dl>
+<progress id="fw-sent" aria-label="Sent" hidden></progress>
+<p class="help">An update is written beside the image the board runs, and the board goes back to that image by itself if the new one does not work.</p>
+<div class="actions">
+<button id="fw-pick" type="button" class="primary">Update firmware…</button>
+<button id="fw-restart" type="button">Restart</button>
+<button id="fw-rollback" type="button" class="danger" hidden></button>
+</div>
+<input id="fw-file" type="file" accept=".bin" hidden>
+</div>
+</section>
 <details class="sec">
 <summary>Counters</summary>
 <div class="panel"><dl class="tiles">
@@ -287,11 +309,11 @@ dialog::backdrop{background:#0009}
 <p>The page uses <a href="api">the REST routes</a> and <a href="status">the status</a>, nothing else.</p>
 </footer>
 <p id="outcome" class="toast" role="status"></p>
-<dialog id="forget-dialog" aria-labelledby="forget-title">
+<dialog id="ask" aria-labelledby="ask-title">
 <form method="dialog">
-<p id="forget-title" class="title">Forget every server?</p>
-<p id="forget-text">Each server this board has paired with has to pair again, and the board takes a new identity.</p>
-<div class="actions"><button value="keep" autofocus>Cancel</button><button value="forget" class="danger">Forget</button></div>
+<p id="ask-title" class="title"></p>
+<p id="ask-text"></p>
+<div class="actions"><button value="keep" autofocus>Cancel</button><button id="ask-yes" value="yes" class="danger"></button></div>
 </form>
 </dialog>
 </body>
