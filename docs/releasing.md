@@ -693,7 +693,7 @@ its own - and from there it is signed, checksummed, SBOM'd and attested exactly 
 See [Conformance vectors](conformance-vectors.md) for what is in it and how a decoder implementer
 uses it.
 
-And **the Hearth sink firmware** ([planning/esp32-ota.md](../planning/esp32-ota.md#published-images),
+And **the Hearth sink firmware** ([planning/esp32-ota.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-ota.md#published-images),
 O8). `_build.yml`'s `package-esp32-firmware` job gathers the four board images `build-esp32s3`
 and `build-esp32c3` build: `hearth-sink-esp32s3`, `hearth-sink-esp32c6` (4 MB table),
 `hearth-sink-esp32c6-16mb` and `hearth-sink-esp32p4-rev1`. Each is published as four files:
