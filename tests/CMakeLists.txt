@@ -910,6 +910,7 @@ if(AC3FORGE_BUILD_HEARTH)
     # unlike the test sink further down.
     target_sources(ac3tests PRIVATE
         hearth/test_ac3_transcoder.cpp
+        hearth/test_ac4_engine.cpp
         hearth/test_decoder_settings.cpp
         hearth/test_diagnostics.cpp
         hearth/test_engine.cpp
@@ -928,6 +929,11 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_stream_decoder.cpp
         hearth/test_transport.cpp)
     target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
+    # test_ac4_engine.cpp takes a directory of further AC-4 streams from std::getenv, as
+    # ac4dec/test_ac4dec_api.cpp does - the same C4996 reasoning as that file's.
+    if(AC3FORGE_IS_MSVC_LIKE)
+        set_source_files_properties(hearth/test_ac4_engine.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
+    endif()
 
     # ac3hearth_controller_tests - Catch2 coverage for hearth_controller.cpp's
     # QML-translation layer (issue #886, part 2: queue_row(), media_info_to_map()

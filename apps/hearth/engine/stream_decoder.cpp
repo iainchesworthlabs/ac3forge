@@ -7,12 +7,55 @@
 
 #include "ac3/decoder/output.hpp"
 #include "ac3/io/elementary.hpp"
+#include "ac4_stream.hpp"
 
 // See stream_decoder.hpp. The decode path is apps/hearth/testsink/
 // burst_output.cpp's, which a player needs as much as a test sink does; the
 // end-of-stream path is the part only a player needs.
 
 namespace ac3::hearth {
+
+eac3::chanmap::Layout ac4_bed(std::span<const ac4::Speaker> speakers) {
+    using eac3::chanmap::Location;
+    eac3::chanmap::Layout bed;
+    for (const ac4::Speaker speaker : speakers) {
+        if (bed.count >= eac3::chanmap::kMaxChannels) {
+            break;
+        }
+        Location location = Location::kLeft;
+        // clang-format off
+        switch (speaker) {
+            case ac4::Speaker::kLeft: location = Location::kLeft; break;
+            case ac4::Speaker::kRight: location = Location::kRight; break;
+            case ac4::Speaker::kCentre: location = Location::kCentre; break;
+            case ac4::Speaker::kLfe: location = Location::kLfe; break;
+            case ac4::Speaker::kLeftSurround: location = Location::kLeftSurround; break;
+            case ac4::Speaker::kRightSurround: location = Location::kRightSurround; break;
+            case ac4::Speaker::kLeftBack: location = Location::kLrs; break;
+            case ac4::Speaker::kRightBack: location = Location::kRrs; break;
+            case ac4::Speaker::kLeftWide: location = Location::kLw; break;
+            case ac4::Speaker::kRightWide: location = Location::kRw; break;
+            case ac4::Speaker::kTopFrontLeft: location = Location::kVhl; break;
+            case ac4::Speaker::kTopFrontRight: location = Location::kVhr; break;
+        }
+        // clang-format on
+        bed.items[static_cast<std::size_t>(bed.count++)] = location;
+    }
+    return bed;
+}
+
+Acmod ac4_acmod(std::span<const ac4::Speaker> speakers) {
+    const auto has = [&speakers](ac4::Speaker speaker) {
+        return std::ranges::find(speakers, speaker) != speakers.end();
+    };
+    if (!has(ac4::Speaker::kLeft)) {
+        return Acmod::k1_0;
+    }
+    if (has(ac4::Speaker::kLeftSurround)) {
+        return has(ac4::Speaker::kCentre) ? Acmod::k3_2 : Acmod::k2_2;
+    }
+    return has(ac4::Speaker::kCentre) ? Acmod::k3_0 : Acmod::k2_0;
+}
 
 namespace {
 
@@ -110,6 +153,7 @@ void report_frame(const DecodedFrame& frame, UnitReport& out) {
     out.levels = mix_levels(frame.acmod, frame.cmixlev, frame.surmixlev, frame.alternate_bsi);
     out.concealed = frame.concealed;
     out.objects.reset();
+    out.ac4.reset();
 }
 
 void report_unit(const DecodedAccessUnit& unit, UnitReport& out) {
@@ -128,6 +172,17 @@ void report_unit(const DecodedAccessUnit& unit, UnitReport& out) {
     out.levels = levels_of(unit);
     out.concealed = unit.concealed;
     out.objects = unit.object_metadata;
+    out.ac4.reset();
+}
+
+// What an AC-4 frame's concealment did, in the report's terms. Its error is
+// AC-4's, which the report's own type does not name; the action is what the
+// Play page shows.
+[[nodiscard]] Concealment concealment_of(const ac4::Concealment& concealed) {
+    return Concealment{.error = DecodeError::kInvalidStream,
+                       .action = concealed.action == ac4::ConcealmentAction::kRepeatFade
+                                     ? ConcealmentAction::kRepeatFade
+                                     : ConcealmentAction::kMute};
 }
 
 }  // namespace
@@ -140,13 +195,18 @@ StreamDecoder::StreamDecoder(const render::OutputLayout& layout, std::uint32_t s
       substreams_(substreams),
       serving_(decoder_setup(settings, layout).serving),
       config_(decoder_setup(settings, layout).config),
-      renderer_(layout, sample_rate) {
+      renderer_(layout, sample_rate),
+      ac4_config_(decoder_setup(settings, layout).ac4) {
     renderer_.set_joc_domain(config_.joc_domain);
 }
 
 void StreamDecoder::reset() {
     ac3_decoder_.reset();
     eac3_decoder_.reset();
+    if (ac4_decoder_) {
+        ac4_decoder_->reset();
+    }
+    ac4_speakers_.clear();
     programme_.reset();
     beds_.clear();
     renderer_bed_.reset();
@@ -185,8 +245,12 @@ void StreamDecoder::finish_report(UnitReport& out, std::optional<std::size_t> un
 
 std::expected<std::size_t, std::string> StreamDecoder::decode(std::span<const std::byte> whole,
                                                               const BlockFn& deliver,
-                                                              const UnitFn& reported) {
+                                                              const UnitFn& reported,
+                                                              std::uint32_t unit_samples) {
     delivered_ = 0;
+    if (starts_ac4(whole)) {
+        return decode_ac4(whole, deliver, reported, unit_samples);
+    }
     const auto header = io::read_frame_header(whole);
     if (!header) {
         reset();
@@ -312,8 +376,170 @@ std::size_t StreamDecoder::finish(const BlockFn& deliver, const UnitFn& reported
         std::vector<DecodedSubstream> released = eac3_decoder_->flush();
         frames = render_flushed(released, deliver, reported);
     }
+    if (ac4_decoder_) {
+        // The last frame was reported when it decoded; what comes out now is
+        // the rest of it, held back short of a whole block.
+        const std::size_t before = delivered_;
+        flush_ac4(deliver);
+        frames += delivered_ - before;
+    }
     reset();
     return frames;
+}
+
+bool StreamDecoder::apply(const DecoderSettings& settings) {
+    if (ac3_decoder_ || eac3_decoder_) {
+        return false;
+    }
+    const DecoderSetup setup = decoder_setup(settings, layout_);
+    // The concealment policy is fixed for an AC-4 decoder, which only its
+    // output and presentation change in place.
+    if (ac4_decoder_ && setup.ac4.concealment != ac4_config_.concealment) {
+        return false;
+    }
+    settings_ = settings;
+    serving_ = setup.serving;
+    config_ = setup.config;
+    renderer_.set_joc_domain(config_.joc_domain);
+    ac4_config_ = setup.ac4;
+    if (ac4_decoder_) {
+        ac4_decoder_->set_output(ac4_config_.output);
+        ac4_decoder_->set_presentation(ac4_config_.presentation);
+    }
+    return true;
+}
+
+std::expected<std::size_t, std::string> StreamDecoder::decode_ac4(std::span<const std::byte> unit,
+                                                                  const BlockFn& deliver,
+                                                                  const UnitFn& reported,
+                                                                  std::uint32_t unit_samples) {
+    const std::span<const std::byte> raw = raw_frame_of(unit);
+    if (raw.empty()) {
+        flush_ac4(deliver);
+        return std::unexpected(std::string{"An AC-4 unit is not one whole sync frame."});
+    }
+    if (!ac4_decoder_) {
+        ac4_decoder_.emplace(ac4_config_);
+    }
+    const auto sink = [this, &deliver](const ac4::PcmBlock& block) { place_ac4(block, deliver); };
+    const auto decoded = ac4_decoder_->decode_by_block(raw, sink);
+    if (!decoded) {
+        // No concealment policy covered it. What the decoder holds is from
+        // the frames before, and goes out first, so that what has come out
+        // is everything before this frame.
+        flush_ac4(deliver);
+        return std::unexpected(
+            fmt::format("An AC-4 frame could not be decoded: {}.", ac4_decoder_->refusal_reason()));
+    }
+    if (!*decoded) {
+        // Waiting for an I-frame: the frame's time passes in silence.
+        flush_ac4(deliver);
+        deliver_silence(unit_samples, deliver);
+        return delivered_;
+    }
+    report_ac4(**decoded, unit.size(), reported);
+    return delivered_;
+}
+
+void StreamDecoder::flush_ac4(const BlockFn& deliver) {
+    if (!ac4_decoder_) {
+        return;
+    }
+    const auto sink = [this, &deliver](const ac4::PcmBlock& block) { place_ac4(block, deliver); };
+    (void)ac4_decoder_->flush(sink);
+}
+
+void StreamDecoder::deliver_silence(std::size_t frames, const BlockFn& deliver) {
+    const std::size_t slots = layout_.slots();
+    std::array<std::span<const float>, render::OutputLayout::kMaxSlots> spans{};
+    while (frames > 0) {
+        const std::size_t n = std::min(frames, zeros_.size());
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            spans[slot] = std::span<const float>(zeros_).first(n);
+        }
+        delivered_ += n;
+        deliver(std::span<const std::span<const float>>(spans.data(), slots), n);
+        frames -= n;
+    }
+}
+
+void StreamDecoder::place_ac4(const ac4::PcmBlock& block, const BlockFn& deliver) {
+    const std::size_t slots = layout_.slots();
+    std::array<std::span<float>, render::OutputLayout::kMaxSlots> spans{};
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+        spans[slot] = std::span<float>(block_[slot]);
+    }
+    const std::span<const std::span<float>> out(spans.data(), slots);
+    // A layout that folds takes the decoder's own downmix as it comes; a
+    // wider one places the channels by their speakers, as a bed.
+    if (!serving_.fold && !std::ranges::equal(ac4_speakers_, block.speakers)) {
+        renderer_.set_bed(ac4_bed(block.speakers));
+        ac4_speakers_.assign(block.speakers.begin(), block.speakers.end());
+        // The E-AC-3 path's own record of the bed no longer describes it.
+        renderer_bed_.reset();
+    }
+    const PcmBlock placed{.index = 0,
+                          .blocks = 1,
+                          .channels = block.channels,
+                          .objects = {},
+                          .object_indices = {},
+                          .object_metadata = nullptr};
+    if (serving_.fold) {
+        renderer_.render_folded(placed, 1.0F, out);
+    } else {
+        renderer_.render(placed, false, 1.0F, out);
+    }
+    const std::size_t frames = std::min(block.samples, block_[0].size());
+    std::array<std::span<const float>, render::OutputLayout::kMaxSlots> rendered{};
+    for (std::size_t slot = 0; slot < slots; ++slot) {
+        rendered[slot] = std::span<const float>(block_[slot].data(), frames);
+    }
+    delivered_ += frames;
+    deliver(std::span<const std::span<const float>>(rendered.data(), slots), frames);
+}
+
+void StreamDecoder::report_ac4(const ac4::FrameInfo& info, std::size_t unit_bytes,
+                               const UnitFn& reported) {
+    if (!reported) {
+        return;
+    }
+    UnitReport& out = report_;
+    out.acmod = ac4_acmod(info.speakers);
+    out.lfe = std::ranges::find(info.speakers, ac4::Speaker::kLfe) != info.speakers.end();
+    const std::span<const ac4::PresentationInfo> presentations = ac4_decoder_->presentations();
+    out.substreams = info.presentation < presentations.size()
+                         ? static_cast<int>(std::max<std::size_t>(
+                               presentations[info.presentation].members.size(), 1))
+                         : 1;
+    out.layout = ac4_bed(info.speakers);
+    out.bsmod.reset();
+    out.dialnorm = 31;
+    out.dialnorm2.reset();
+    out.compr.reset();
+    out.compr2.reset();
+    out.dynrng = {};
+    out.blocks = 0;
+    out.short_blocks.reset();
+    out.levels = MixLevels{};
+    out.concealed =
+        info.concealed ? std::optional<Concealment>{concealment_of(*info.concealed)} : std::nullopt;
+    out.objects.reset();
+    const ac4::PresentationMetadata& metadata = ac4_decoder_->metadata();
+    out.ac4 = Ac4UnitReport{.presentation = info.presentation,
+                            .presentation_id = info.presentation_id,
+                            .dialnorm_dbfs = metadata.loudness.dialnorm_dbfs,
+                            .drc_mode = metadata.drc ? metadata.drc->applied_mode : std::nullopt,
+                            .samples = info.samples,
+                            .latency_samples = ac4_decoder_->latency_samples()};
+    out.sequence = ++sequence_;
+    const double seconds = info.sample_rate_hz > 0 ? static_cast<double>(info.samples) /
+                                                         static_cast<double>(info.sample_rate_hz)
+                                                   : 0.0;
+    out.bitrate_kbps =
+        seconds > 0.0
+            ? std::optional<double>(static_cast<double>(unit_bytes) * 8.0 / 1000.0 / seconds)
+            : std::nullopt;
+    reported(out);
 }
 
 std::size_t StreamDecoder::render_flushed(std::span<DecodedSubstream> substreams,
@@ -450,6 +676,7 @@ std::size_t StreamDecoder::render_flushed(std::span<DecodedSubstream> substreams
         report_.levels = levels_of(*independent);
         report_.concealed = independent->concealed;
         report_.objects = independent->object_metadata;
+        report_.ac4.reset();
         for (const DecodedSubstream* dependent : dependents) {
             if (!report_.objects && dependent->object_metadata) {
                 report_.objects = dependent->object_metadata;

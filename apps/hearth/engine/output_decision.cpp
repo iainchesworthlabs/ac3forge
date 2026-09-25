@@ -255,16 +255,18 @@ OutputChoice choose_output(const OutputRequest& request) {
                 "to send. Decode it instead.");
         }
         const bool want_ac3 = request.pinned == OutputMode::kBitstreamAsAc3;
-        // AC-3 already is AC-3: only E-AC-3 needs the transcode.
-        const bool needs_transcode = want_ac3 && *request.stream == BitstreamFormat::kEac3;
+        // AC-3 already is AC-3. E-AC-3 needs the transcode, and AC-4, which
+        // Hearth decodes for every output here (planning/ac4.md, I2), has none.
+        const bool needs_transcode = want_ac3 && *request.stream != BitstreamFormat::kAc3;
+        const bool transcodes =
+            *request.stream == BitstreamFormat::kEac3 && request.transcode_available;
         bool takes_ac3 = false;
         for (const auto& endpoint : pool) {
             if (!want_ac3 && carries_native(endpoint, request.stream)) {
                 return bitstream(endpoint, *request.stream, request, {});
             }
             takes_ac3 = takes_ac3 || endpoint.accepts_ac3;
-            if (want_ac3 && endpoint.accepts_ac3 &&
-                (!needs_transcode || request.transcode_available)) {
+            if (want_ac3 && endpoint.accepts_ac3 && (!needs_transcode || transcodes)) {
                 return needs_transcode ? transcoded(endpoint, request)
                                        : bitstream(endpoint, BitstreamFormat::kAc3, request, {});
             }
@@ -274,8 +276,9 @@ OutputChoice choose_output(const OutputRequest& request) {
         // transcode to reach it.
         const std::string why =
             needs_transcode && takes_ac3
-                ? fmt::format("{} takes AC-3, but E-AC-3 cannot be transcoded to AC-3 here.{}",
-                              preferred != nullptr ? "The chosen output" : "An output", note)
+                ? fmt::format("{} takes AC-3, but {} cannot be transcoded to AC-3 here.{}",
+                              preferred != nullptr ? "The chosen output" : "An output",
+                              audio::format_name(*request.stream), note)
                 : fmt::format(
                       "No {} output takes {} over IEC 61937.{}",
                       preferred != nullptr ? "chosen" : "available",

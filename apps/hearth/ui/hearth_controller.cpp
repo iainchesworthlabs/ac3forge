@@ -11,6 +11,7 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QIODevice>
+#include <QLocale>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QSysInfo>
@@ -23,6 +24,7 @@
 #include <cmath>
 #include <limits>
 #include <optional>
+#include <span>
 #include <vector>
 
 // hearth_controller.hpp's Qt headers define `slots` as a macro for the
@@ -89,21 +91,25 @@ constexpr int kPollMs = 60;
     if (!facts.stream.has_value()) {
         return QString();
     }
+    if (audio::is_ac4(*facts.stream)) {
+        return QStringLiteral("AC-4");
+    }
     if (facts.has_objects) {
         return QStringLiteral("E-AC-3 JOC");
     }
     return *facts.stream == audio::BitstreamFormat::kAc3 ? QStringLiteral("AC-3") : QStringLiteral("E-AC-3");
 }
 
-// The queue row's own codec chip (main-play.png, "01 QUEUE"): "A3"/"E3" from
-// what a probe already found (ItemFacts.stream), or "" before that - an AC-4
-// item never gets this far (item_loader.cpp accepts .ac4 for reading, but
-// io::scan() still refuses it, so ItemFacts.stream stays unset); PlayPage.qml
-// falls back to the file's own extension for that one case, a presentation
-// question this controller does not need to answer twice.
+// The queue row's own codec chip (main-play.png, "01 QUEUE"): "A3"/"E3"/"A4"
+// from what a probe already found (ItemFacts.stream), or "" before that;
+// PlayPage.qml falls back to the file's own extension until then, a
+// presentation question this controller does not need to answer twice.
 [[nodiscard]] QString codec_badge(const ac3::hearth::ItemFacts& facts) {
     if (!facts.stream.has_value()) {
         return QString();
+    }
+    if (audio::is_ac4(*facts.stream)) {
+        return QStringLiteral("A4");
     }
     return *facts.stream == audio::BitstreamFormat::kAc3 ? QStringLiteral("A3") : QStringLiteral("E3");
 }
@@ -326,6 +332,188 @@ constexpr int kPollMs = 60;
     return map;
 }
 
+// The channels a presentation puts out as a layout label: "5.1", "2.0",
+// "5.1.2" - the full-range speakers, the LFE, and the heights.
+[[nodiscard]] QString ac4_channels_label(std::span<const ac4::Speaker> speakers) {
+    int main = 0;
+    int lfe = 0;
+    int heights = 0;
+    for (const ac4::Speaker speaker : speakers) {
+        if (speaker == ac4::Speaker::kLfe) {
+            ++lfe;
+        } else if (speaker == ac4::Speaker::kTopFrontLeft ||
+                   speaker == ac4::Speaker::kTopFrontRight) {
+            ++heights;
+        } else {
+            ++main;
+        }
+    }
+    return heights > 0 ? QStringLiteral("%1.%2.%3").arg(main).arg(lfe).arg(heights)
+                       : QStringLiteral("%1.%2").arg(main).arg(lfe);
+}
+
+// What one member of a presentation is, for the Media and Decoder pages'
+// "Content" column: its role, and for associated audio the service Part 1
+// Table 91 classifies it as. Tokens; the pages turn them into words.
+[[nodiscard]] QString ac4_member_token(const ac4::PresentationMember& member) {
+    // clang-format off
+    switch (member.role) {
+        case ac4::SubstreamRole::kMain: return QStringLiteral("main");
+        case ac4::SubstreamRole::kMusicAndEffects: return QStringLiteral("musicAndEffects");
+        case ac4::SubstreamRole::kDialogue: return QStringLiteral("dialogue");
+        case ac4::SubstreamRole::kDialogueEnhancement: return QStringLiteral("dialogueEnhancement");
+        case ac4::SubstreamRole::kAssociated:
+            switch (member.content_classifier.value_or(-1)) {
+                case 2: return QStringLiteral("audioDescription");
+                case 3: return QStringLiteral("hearingImpaired");
+                case 5: return QStringLiteral("commentary");
+                case 6: return QStringLiteral("emergency");
+                case 7: return QStringLiteral("voiceOver");
+                default: return QStringLiteral("associated");
+            }
+    }
+    // clang-format on
+    return QStringLiteral("associated");
+}
+
+[[nodiscard]] QString drc_compression_token(ac4::DrcModeInfo::Compression compression) {
+    // clang-format off
+    switch (compression) {
+        case ac4::DrcModeInfo::Compression::kDefaultProfile: return QStringLiteral("defaultProfile");
+        case ac4::DrcModeInfo::Compression::kCurve: return QStringLiteral("curve");
+        case ac4::DrcModeInfo::Compression::kGains: return QStringLiteral("gains");
+    }
+    // clang-format on
+    return QStringLiteral("curve");
+}
+
+[[nodiscard]] QString preferred_downmix_token(ac4::DownmixInfo::Preferred preferred) {
+    // clang-format off
+    switch (preferred) {
+        case ac4::DownmixInfo::Preferred::kNotIndicated: return QStringLiteral("none");
+        case ac4::DownmixInfo::Preferred::kLoRo: return QStringLiteral("loro");
+        case ac4::DownmixInfo::Preferred::kLtRt: return QStringLiteral("ltrt");
+        case ac4::DownmixInfo::Preferred::kLtRtProLogicII: return QStringLiteral("pl2");
+    }
+    // clang-format on
+    return QStringLiteral("none");
+}
+
+// A gain in dB for QML, where the decoder's -infinity (a gain of 0) is
+// written as null: JavaScript has no way to print it that reads well.
+[[nodiscard]] QVariant db_or_null(double db) {
+    return std::isfinite(db) ? QVariant{db} : QVariant::fromValue(nullptr);
+}
+
+// Each presentation as the decoder reads it (planning/ac4.md, Media
+// information), for the Media page's table and the AC-4 decoder page's
+// picker.
+[[nodiscard]] QVariantList ac4_presentations_to_list(
+    std::span<const ac4::PresentationInfo> presentations) {
+    QVariantList list;
+    for (const ac4::PresentationInfo& presentation : presentations) {
+        QVariantMap row;
+        row[QStringLiteral("index")] = static_cast<int>(presentation.index);
+        if (presentation.presentation_id) {
+            row[QStringLiteral("id")] = *presentation.presentation_id;
+        }
+        row[QStringLiteral("version")] = presentation.presentation_version;
+        if (presentation.presentation_config) {
+            row[QStringLiteral("config")] = *presentation.presentation_config;
+        }
+        if (presentation.md_compat) {
+            row[QStringLiteral("mdCompat")] = *presentation.md_compat;
+        }
+        row[QStringLiteral("enabled")] = presentation.enabled;
+        row[QStringLiteral("alternative")] = presentation.alternative;
+        row[QStringLiteral("preVirtualized")] = presentation.pre_virtualized;
+        row[QStringLiteral("name")] = QString::fromStdString(presentation.name);
+        row[QStringLiteral("language")] = QString::fromStdString(presentation.language);
+        row[QStringLiteral("channels")] = ac4_channels_label(presentation.speakers);
+        QStringList speakers;
+        for (const ac4::Speaker speaker : presentation.speakers) {
+            speakers.push_back(to_qstring(ac4::describe(speaker)));
+        }
+        row[QStringLiteral("speakers")] = speakers.join(QLatin1Char(' '));
+        QStringList contents;
+        for (const ac4::PresentationMember& member : presentation.members) {
+            if (member.role != ac4::SubstreamRole::kDialogueEnhancement) {
+                contents.push_back(ac4_member_token(member));
+            }
+        }
+        row[QStringLiteral("contents")] = contents;
+        QVariantList groups;
+        for (const int group : presentation.substream_groups) {
+            groups.push_back(group);
+        }
+        row[QStringLiteral("groups")] = groups;
+        row[QStringLiteral("decodable")] = presentation.decodable;
+        row[QStringLiteral("selectable")] = presentation.selectable;
+        list.push_back(row);
+    }
+    return list;
+}
+
+// The selected presentation's metadata as the stream's frames sent it.
+[[nodiscard]] QVariantMap ac4_metadata_to_map(const ac4::PresentationMetadata& metadata) {
+    QVariantMap map;
+    if (metadata.presentation) {
+        map[QStringLiteral("presentation")] = static_cast<int>(*metadata.presentation);
+    }
+    const ac4::LoudnessInfo& loudness = metadata.loudness;
+    if (loudness.dialnorm_dbfs) {
+        map[QStringLiteral("dialnormDbfs")] = *loudness.dialnorm_dbfs;
+    }
+    if (loudness.integrated_lkfs) {
+        map[QStringLiteral("integratedLkfs")] = *loudness.integrated_lkfs;
+    }
+    if (loudness.loudness_range_lu) {
+        map[QStringLiteral("loudnessRangeLu")] = *loudness.loudness_range_lu;
+    }
+    if (const std::optional<double> peak =
+            loudness.max_true_peak_dbtp ? loudness.max_true_peak_dbtp : loudness.true_peak_dbtp) {
+        map[QStringLiteral("truePeakDbtp")] = *peak;
+    }
+    if (metadata.drc) {
+        QVariantList modes;
+        for (const ac4::DrcModeInfo& mode : metadata.drc->modes) {
+            QVariantMap row;
+            row[QStringLiteral("id")] = mode.id;
+            row[QStringLiteral("compression")] = drc_compression_token(mode.compression);
+            if (mode.repeat_of) {
+                row[QStringLiteral("repeatOf")] = *mode.repeat_of;
+            }
+            modes.push_back(row);
+        }
+        map[QStringLiteral("drcModes")] = modes;
+        map[QStringLiteral("drcProfile")] = metadata.drc->eac3_profile;
+    }
+    if (metadata.dialogue_enhancement) {
+        const ac4::DialogueEnhancementInfo& de = *metadata.dialogue_enhancement;
+        QVariantMap row;
+        row[QStringLiteral("method")] = de.method;
+        row[QStringLiteral("left")] = de.left;
+        row[QStringLiteral("right")] = de.right;
+        row[QStringLiteral("centre")] = de.centre;
+        row[QStringLiteral("maxGainDb")] = de.max_gain_db;
+        map[QStringLiteral("dialogueEnhancement")] = row;
+    }
+    if (metadata.downmix) {
+        const ac4::DownmixInfo& downmix = *metadata.downmix;
+        QVariantMap row;
+        row[QStringLiteral("loroCentreDb")] = db_or_null(downmix.loro_centre_db);
+        row[QStringLiteral("loroSurroundDb")] = db_or_null(downmix.loro_surround_db);
+        row[QStringLiteral("ltrtCentreDb")] = db_or_null(downmix.ltrt_centre_db);
+        row[QStringLiteral("ltrtSurroundDb")] = db_or_null(downmix.ltrt_surround_db);
+        if (downmix.lfe_db) {
+            row[QStringLiteral("lfeDb")] = db_or_null(*downmix.lfe_db);
+        }
+        row[QStringLiteral("preferred")] = preferred_downmix_token(downmix.preferred);
+        map[QStringLiteral("downmix")] = row;
+    }
+    return map;
+}
+
 [[nodiscard]] QVariantMap media_ac4_to_map(const apps::probe_json::Ac4Summary& summary) {
     QVariantMap map;
     map[QStringLiteral("syncFrames")] = static_cast<qlonglong>(summary.sync_frames);
@@ -334,6 +522,21 @@ constexpr int kPollMs = 60;
     if (summary.parse_error) {
         map[QStringLiteral("parseError")] = to_qstring(apps::probe_json::ac4_error_token(*summary.parse_error));
     }
+    if (summary.frame_rate) {
+        map[QStringLiteral("framesPerSecond")] = summary.frame_rate->frames_per_second;
+        map[QStringLiteral("frameLength")] = summary.frame_rate->frame_length;
+    }
+    if (summary.bitrate_kbps) {
+        map[QStringLiteral("bitrateKbps")] = *summary.bitrate_kbps;
+    }
+    map[QStringLiteral("iframes")] = static_cast<qlonglong>(summary.iframes);
+    if (summary.min_iframe_interval && summary.max_iframe_interval) {
+        map[QStringLiteral("minIframeInterval")] =
+            static_cast<qlonglong>(*summary.min_iframe_interval);
+        map[QStringLiteral("maxIframeInterval")] =
+            static_cast<qlonglong>(*summary.max_iframe_interval);
+    }
+    map[QStringLiteral("splices")] = static_cast<qlonglong>(summary.splices);
     if (!summary.first_frame) {
         return map;
     }
@@ -342,44 +545,12 @@ constexpr int kPollMs = 60;
     map[QStringLiteral("sampleRate")] = toc.sample_rate_hz;
     map[QStringLiteral("presentationCount")] = toc.n_presentations;
     map[QStringLiteral("substreamCount")] = toc.n_substreams;
-
-    QVariantList presentations;
-    if (!toc.presentations_v0.empty()) {
-        int index = 0;
-        for (const ac4::PresentationInfoV0& presentation : toc.presentations_v0) {
-            QVariantMap row;
-            row[QStringLiteral("index")] = index++;
-            if (presentation.presentation_id) {
-                row[QStringLiteral("id")] = *presentation.presentation_id;
-            }
-            QVariantList substreams;
-            for (const auto& role_and_info : presentation.substreams) {
-                QVariantMap sub;
-                sub[QStringLiteral("role")] = QString::fromStdString(role_and_info.first);
-                sub[QStringLiteral("channelMode")] =
-                    QString::fromStdString(role_and_info.second.channel_mode_name);
-                substreams.push_back(sub);
-            }
-            row[QStringLiteral("substreams")] = substreams;
-            presentations.push_back(row);
-        }
-    } else {
-        int index = 0;
-        for (const ac4::PresentationInfoV1& presentation : toc.presentations_v1) {
-            QVariantMap row;
-            row[QStringLiteral("index")] = index++;
-            if (presentation.presentation_id) {
-                row[QStringLiteral("id")] = *presentation.presentation_id;
-            }
-            QVariantList group_refs;
-            for (const int ref : presentation.group_refs) {
-                group_refs.push_back(ref);
-            }
-            row[QStringLiteral("groupRefs")] = group_refs;
-            presentations.push_back(row);
-        }
+    // What the decoder reads of the presentations, and the metadata of the
+    // one it selects with no preferences (apps/common/probe_json.hpp).
+    map[QStringLiteral("presentations")] = ac4_presentations_to_list(summary.presentations);
+    if (summary.metadata) {
+        map[QStringLiteral("metadata")] = ac4_metadata_to_map(*summary.metadata);
     }
-    map[QStringLiteral("presentations")] = presentations;
 
     QVariantList groups;
     int group_index = 0;
@@ -446,7 +617,8 @@ constexpr int kPollMs = 60;
 // information: not mix_levels (the design's "From the stream/Set here"
 // choice needs the stream's own levels, which this controller does not read
 // yet) and not programme (Session's choice of units, not part of
-// DecoderSettings at all).
+// DecoderSettings at all). AC-4's presentation is set by its id or place,
+// which the page reads from the playing item's media information; -1 is none.
 
 [[nodiscard]] QString mode_name(ac3::OperatingMode mode) {
     switch (mode) {
@@ -553,6 +725,48 @@ constexpr int kPollMs = 60;
     return ac3::ConcealmentPolicy::kRepeatFade;
 }
 
+[[nodiscard]] QString ac4_drc_name(ac4::DrcMode mode) {
+    // clang-format off
+    switch (mode) {
+        case ac4::DrcMode::kOff: return QStringLiteral("off");
+        case ac4::DrcMode::kHomeTheatre: return QStringLiteral("homeTheatre");
+        case ac4::DrcMode::kFlatPanelTv: return QStringLiteral("flatPanelTv");
+        case ac4::DrcMode::kPortableSpeakers: return QStringLiteral("portableSpeakers");
+        case ac4::DrcMode::kPortableHeadphones: return QStringLiteral("portableHeadphones");
+        case ac4::DrcMode::kDefault: return QStringLiteral("auto");
+    }
+    // clang-format on
+    return QStringLiteral("auto");
+}
+
+[[nodiscard]] ac4::DrcMode ac4_drc_from_name(const QString& name) {
+    if (name == QLatin1String("off")) {
+        return ac4::DrcMode::kOff;
+    }
+    if (name == QLatin1String("homeTheatre")) {
+        return ac4::DrcMode::kHomeTheatre;
+    }
+    if (name == QLatin1String("flatPanelTv")) {
+        return ac4::DrcMode::kFlatPanelTv;
+    }
+    if (name == QLatin1String("portableSpeakers")) {
+        return ac4::DrcMode::kPortableSpeakers;
+    }
+    if (name == QLatin1String("portableHeadphones")) {
+        return ac4::DrcMode::kPortableHeadphones;
+    }
+    return ac4::DrcMode::kDefault;
+}
+
+// A presentation's id or place as QML carries it: -1, or no value, for none.
+[[nodiscard]] std::optional<int> presentation_from_variant(const QVariant& value) {
+    if (!value.isValid() || value.isNull()) {
+        return std::nullopt;
+    }
+    const int number = value.toInt();
+    return number >= 0 ? std::optional<int>{number} : std::nullopt;
+}
+
 [[nodiscard]] QVariantMap decoder_settings_to_map(const ac3::hearth::DecoderSettings& settings) {
     QVariantMap map;
     map[QStringLiteral("mode")] = mode_name(settings.mode);
@@ -563,12 +777,29 @@ constexpr int kPollMs = 60;
     map[QStringLiteral("normaliseDialogue")] = settings.normalise_dialogue;
     map[QStringLiteral("stereoFold")] = downmix_name(settings.stereo_fold);
     map[QStringLiteral("ltrtPhaseShift")] = settings.ltrt_phase_shift;
-    map[QStringLiteral("mixLfe")] = settings.mix_lfe;
+    // Absent until the listener sets it: each page then shows its format's
+    // own default (DecoderSettings::mix_lfe).
+    if (settings.mix_lfe) {
+        map[QStringLiteral("mixLfe")] = *settings.mix_lfe;
+    }
     map[QStringLiteral("dualMono")] = dual_mono_name(settings.dual_mono);
     map[QStringLiteral("objects")] = objects_policy_name(settings.objects);
     map[QStringLiteral("jocDomain")] = joc_domain_name(settings.joc_domain);
     map[QStringLiteral("concealment")] = concealment_name(settings.concealment);
     map[QStringLiteral("fastInverseTransform")] = settings.fast_inverse_transform;
+    // AC-4's own (DecoderAc4.qml).
+    const ac3::hearth::Ac4Settings& ac4 = settings.ac4;
+    map[QStringLiteral("ac4PresentationId")] = ac4.presentation_id.value_or(-1);
+    map[QStringLiteral("ac4PresentationIndex")] = ac4.presentation_index.value_or(-1);
+    map[QStringLiteral("ac4Language")] = QString::fromStdString(ac4.language);
+    map[QStringLiteral("ac4AudioDescription")] = ac4.audio_description;
+    map[QStringLiteral("ac4AssociatedDb")] = ac4.associated_db;
+    map[QStringLiteral("ac4DialogueDb")] = ac4.dialogue_db;
+    map[QStringLiteral("ac4DialogueEnhancementDb")] = ac4.dialogue_enhancement_db;
+    map[QStringLiteral("ac4Normalise")] = ac4.normalise;
+    map[QStringLiteral("ac4OutputLevelDbfs")] = ac4.output_level_dbfs;
+    map[QStringLiteral("ac4Drc")] = ac4_drc_name(ac4.drc);
+    map[QStringLiteral("ac4PreferredDownmix")] = ac4.preferred_downmix;
     return map;
 }
 
@@ -620,6 +851,41 @@ constexpr int kPollMs = 60;
     }
     if (map.contains(QStringLiteral("fastInverseTransform"))) {
         out.fast_inverse_transform = map[QStringLiteral("fastInverseTransform")].toBool();
+    }
+    ac3::hearth::Ac4Settings& ac4 = out.ac4;
+    if (map.contains(QStringLiteral("ac4PresentationId"))) {
+        ac4.presentation_id = presentation_from_variant(map[QStringLiteral("ac4PresentationId")]);
+    }
+    if (map.contains(QStringLiteral("ac4PresentationIndex"))) {
+        ac4.presentation_index =
+            presentation_from_variant(map[QStringLiteral("ac4PresentationIndex")]);
+    }
+    if (map.contains(QStringLiteral("ac4Language"))) {
+        ac4.language = map[QStringLiteral("ac4Language")].toString().toStdString();
+    }
+    if (map.contains(QStringLiteral("ac4AudioDescription"))) {
+        ac4.audio_description = map[QStringLiteral("ac4AudioDescription")].toBool();
+    }
+    if (map.contains(QStringLiteral("ac4AssociatedDb"))) {
+        ac4.associated_db = map[QStringLiteral("ac4AssociatedDb")].toDouble();
+    }
+    if (map.contains(QStringLiteral("ac4DialogueDb"))) {
+        ac4.dialogue_db = map[QStringLiteral("ac4DialogueDb")].toDouble();
+    }
+    if (map.contains(QStringLiteral("ac4DialogueEnhancementDb"))) {
+        ac4.dialogue_enhancement_db = map[QStringLiteral("ac4DialogueEnhancementDb")].toDouble();
+    }
+    if (map.contains(QStringLiteral("ac4Normalise"))) {
+        ac4.normalise = map[QStringLiteral("ac4Normalise")].toBool();
+    }
+    if (map.contains(QStringLiteral("ac4OutputLevelDbfs"))) {
+        ac4.output_level_dbfs = map[QStringLiteral("ac4OutputLevelDbfs")].toDouble();
+    }
+    if (map.contains(QStringLiteral("ac4Drc"))) {
+        ac4.drc = ac4_drc_from_name(map[QStringLiteral("ac4Drc")].toString());
+    }
+    if (map.contains(QStringLiteral("ac4PreferredDownmix"))) {
+        ac4.preferred_downmix = map[QStringLiteral("ac4PreferredDownmix")].toBool();
     }
     return out;
 }
@@ -877,9 +1143,14 @@ void HearthController::start() {
         }),
         .endpoints = test_outputs_ ? test_outputs_->endpoints : ac3::hearth::device_endpoints()};
     const ac3::hearth::EngineSettings loaded = current_settings(*store_);
+    // An AC-4 stream's presentation in the listener's own language plays
+    // first, where no other has been chosen (DecoderAc4.qml's "01
+    // Presentation"): the language this window runs in.
+    ac3::hearth::DecoderSettings decoder_settings;
+    decoder_settings.ac4.language = QLocale().bcp47Name().toStdString();
     engine_ = std::make_unique<ac3::hearth::Engine>(
-        std::move(outputs), ac3::hearth::ui::make_file_item_loader(), layout,
-        ac3::hearth::DecoderSettings{}, ac3::hearth::EngineTiming{}, &log_);
+        std::move(outputs), ac3::hearth::ui::make_file_item_loader(), layout, decoder_settings,
+        ac3::hearth::EngineTiming{}, &log_);
     // Each reads with its own loader instance (make_file_item_loader()
     // builds a fresh std::function every call, same as the engine's own
     // above) so the Media page's own pick never blocks on whatever
@@ -1332,7 +1603,24 @@ void HearthController::poll() {
     int new_objects_placed = 0;
     bool new_has_object_metadata = false;
     if (const std::optional<ac3::hearth::UnitReport> report = engine_->unit_report()) {
-        new_this_frame[QStringLiteral("dialnorm")] = report->dialnorm;
+        if (report->ac4) {
+            // AC-4's dialnorm is in quarter dB, and down from full scale as
+            // A/52's code is: the tile reads "−%1 dB" either way.
+            const ac3::hearth::Ac4UnitReport& ac4 = *report->ac4;
+            if (ac4.dialnorm_dbfs) {
+                new_this_frame[QStringLiteral("dialnorm")] = -*ac4.dialnorm_dbfs;
+            }
+            new_this_frame[QStringLiteral("ac4Presentation")] = static_cast<int>(ac4.presentation);
+            if (ac4.presentation_id) {
+                new_this_frame[QStringLiteral("ac4PresentationId")] = *ac4.presentation_id;
+            }
+            if (ac4.drc_mode) {
+                new_this_frame[QStringLiteral("ac4DrcMode")] = *ac4.drc_mode;
+            }
+            new_this_frame[QStringLiteral("ac4LatencySamples")] = ac4.latency_samples;
+        } else {
+            new_this_frame[QStringLiteral("dialnorm")] = report->dialnorm;
+        }
         if (report->compr) {
             new_this_frame[QStringLiteral("comprDb")] =
                 20.0 * std::log10(ac3::meta::compr_gain(*report->compr));
