@@ -14,8 +14,10 @@ decoder's ladder, item 3):
            encoder. At the other frame rates, the lag first measured (LAG_AT_RATE); the A-SPX
            subbands there are the internal rate's.
   gain     every channel of a mono, 2.0 or 5.1 leg within 0.2 dB of unity, fitted below the
-           crossover in ASPX. The streams were made with loudness measured only, and the decoder
-           applies no DRC or output level yet, so the prediction is the source's own level. A 5.1
+           crossover in ASPX. The streams were made with loudness measured only, and they are
+           decoded with no output level, which leaves them at their coded level and uncompressed,
+           so the prediction is the source's own level (gain_ac4_decode.py checks the output
+           level and the downmixes). A 5.1
            leg's LFE, which DEE low-passes before coding it (LFE_CHANNEL's comment), within 0.5 dB,
            from 20 to 100 Hz. An IMS leg, made from 5.1, is compared with the source's Lo/Ro
            downmix (L + C/sqrt 2 + Ls/sqrt 2 and its mirror), which its channels must correlate with
