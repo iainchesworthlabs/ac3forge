@@ -20,6 +20,11 @@ TrialPolicy policy() {
     return p;
 }
 
+// `after_ms` past `start` on the 32-bit clock, wrapping as it does. A function
+// rather than `start + after_ms` in the test, so that the wrap happens at run
+// time: MSVC warns on a constant expression that wraps, unsigned or not.
+std::uint32_t later(std::uint32_t start, std::uint32_t after_ms) { return start + after_ms; }
+
 }  // namespace
 
 TEST_CASE("an image healthy from the start is accepted once the hold has passed", "[io][firmware_trial]") {
@@ -96,14 +101,13 @@ TEST_CASE("a clock that wraps during the trial does no harm", "[io][firmware_tri
     // esp_timer's milliseconds, cut to 32 bits, wrap after 49.7 days.
     constexpr std::uint32_t kStart = 0xFFFF'FFFFU - 10'000U;  // 10 s before the wrap
     Trial trial(policy(), kStart);
-    CHECK(trial.step(kStart + 5'000U, true) == TrialStep::kWait);
-    const std::uint32_t after_wrap = kStart + 35'000U;  // wraps to 24'999
-    CHECK(after_wrap == 24'999);
-    CHECK(trial.healthy_for_ms(after_wrap) == 30'000);
-    CHECK(trial.remaining_ms(after_wrap) == 265'000);
-    CHECK(trial.step(after_wrap, true) == TrialStep::kAccept);
+    CHECK(trial.step(later(kStart, 5'000), true) == TrialStep::kWait);
+    CHECK(later(kStart, 35'000) == 24'999);  // wrapped
+    CHECK(trial.healthy_for_ms(later(kStart, 35'000)) == 30'000);
+    CHECK(trial.remaining_ms(later(kStart, 35'000)) == 265'000);
+    CHECK(trial.step(later(kStart, 35'000), true) == TrialStep::kAccept);
 
     Trial never(policy(), kStart);
-    CHECK(never.step(kStart + 299'999U, false) == TrialStep::kWait);
-    CHECK(never.step(kStart + 300'000U, false) == TrialStep::kRollBack);
+    CHECK(never.step(later(kStart, 299'999), false) == TrialStep::kWait);
+    CHECK(never.step(later(kStart, 300'000), false) == TrialStep::kRollBack);
 }
