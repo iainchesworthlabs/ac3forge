@@ -6,13 +6,16 @@ whether a defect is reported:
 - the CRC and the sync frame walk, which read nothing of the encoder's, catching each
   framing defect they name;
 - the trace comparison naming the first record that differs;
-- draw_case purity, the configurations it draws, and the lengths dialnorm=auto needs;
+- draw_case purity, the configurations it draws, and the lengths a measurement needs;
 - run_case()'s verdicts: a refusal only with the encoder's own message, an out-of-range
-  rate that encodes is a failure, and a stream whose traces differ is a failure.
+  rate or a frame rate 44.1 kHz does not have that encodes is a failure, a stream whose
+  frames do not cover the input at its lag is a failure, and a stream whose traces differ
+  is a failure.
 
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
 
+import math
 import subprocess
 import sys
 import tempfile
@@ -117,9 +120,34 @@ class DrawCase(unittest.TestCase):
         self.assertTrue(any(not any(o.startswith("codec-mode=") for o in c.options) for c in cases))
         for case in cases:
             samples = case.blocks * fa4.BLOCK
-            self.assertGreaterEqual(samples, 2 * fa4.FRAME)
-            if "dialnorm=auto" in case.options:
+            frame = fa4.FRAME
+            if case.sample_rate == 48000:
+                frame = math.ceil(fa4.FRAME_RATES[case.frame_rate_index][1])
+            self.assertGreaterEqual(samples, 2 * frame)
+            if case.measures:
                 self.assertGreaterEqual(samples, 0.6 * case.sample_rate)
+        # Every frame rate at 48 kHz, and now and then one 44.1 kHz does not have; the rate
+        # modes, the I-frame options, and each metadata option.
+        at_48k = {c.frame_rate_index for c in cases if c.sample_rate == 48000}
+        self.assertEqual(at_48k, set(fa4.FRAME_RATES))
+        self.assertTrue(any(not c.frame_rate_valid for c in cases))
+        keys = {o.split("=", 1)[0] for o in options}
+        self.assertTrue(
+            {"frame-rate", "rate-mode", "iframe-interval", "iframes", "fragment", "dialnorm",
+             "loudness", "drc", *fa4.DRC_MODES, "lorocmixlev", "lorosurmixlev", "ltrtcmixlev",
+             "ltrtsurmixlev", "lfemix", "dmixmod", "loro-correction", "ltrt-correction",
+             "dialogue-channels", "dialogue-method", "dialogue-max-gain"} <= keys
+        )
+        self.assertTrue({"rate-mode=average", "rate-mode=variable", "dialogue-method=mid",
+                         "dialogue-method=cross"} <= options)
+        self.assertTrue(any("drc-gains-" in o for o in options))
+        self.assertTrue(any(c.stem for c in cases))
+        # The cross-channel method only with a stem, and the downmix only in 5.X and 7.X.
+        for case in cases:
+            if "dialogue-method=cross" in case.options:
+                self.assertTrue(case.stem)
+            if any(o.startswith(("lorocmixlev=", "dmixmod=", "lfemix=")) for o in case.options):
+                self.assertGreaterEqual(case.channels, 5)
 
 
 def completed(returncode=0, stdout="", stderr=""):
@@ -132,7 +160,74 @@ class RunCase(unittest.TestCase):
         case.bitrate = bitrate
         case.options = []
         case.mp4 = False
+        case.sample_rate = 48000
+        case.frame_rate_index = 13
+        case.stem = False
         return case
+
+    def test_a_frame_rate_441_khz_lacks_refused_with_its_message(self):
+        case = self.case()
+        case.sample_rate = 44100
+        case.frame_rate_index = 2
+        refusal = completed(1, stderr=fa4.REFUSALS["frame rate at 44.1 kHz"])
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(fa4, "_run", return_value=refusal),
+        ):
+            result = fa4.run_case("ac3cli", None, case, tmp)
+        self.assertEqual(result.status, "refused")
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(fa4, "_run", return_value=completed(0, stdout="encoded 3 AC-4 frames")),
+        ):
+            result = fa4.run_case("ac3cli", None, case, tmp)
+        self.assertEqual(result.status, "fail")
+
+    def test_a_rate_too_low_for_the_least_frame_refused_if_frames_of_the_cap_encode(self):
+        # 16 kbps at 120 fps is frames of 16 2/3 bytes: refused, and at FRAME_BYTES_CAP bytes a
+        # frame, 384 kbps, encoded.
+        case = self.case(16)
+        case.frame_rate_index = 12
+
+        def fake(accept_higher):
+            def run(argv):
+                kbps = int(str(argv[4]))
+                if kbps == 16 or not accept_higher:
+                    return completed(1, stderr=fa4.REFUSALS["rate out of range"])
+                return completed(0, stdout="encoded 3 AC-4 frames")
+            return run
+
+        for accept_higher, status in ((True, "refused"), (False, "fail")):
+            with (
+                tempfile.TemporaryDirectory() as tmp,
+                mock.patch.object(fa4, "_run", side_effect=fake(accept_higher)),
+            ):
+                result = fa4.run_case("ac3cli", None, case, tmp)
+            self.assertEqual(result.status, status)
+        # A refusal of frames the cap holds is a failure outright, with no second encode.
+        case.bitrate = 400
+        refusal = completed(1, stderr=fa4.REFUSALS["rate out of range"])
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(fa4, "_run", return_value=refusal) as run,
+        ):
+            result = fa4.run_case("ac3cli", None, case, tmp)
+        self.assertEqual((result.status, run.call_count), ("fail", 1))
+        self.assertIn("exit 1", result.detail)
+
+    def test_frames_that_do_not_cover_the_input_fail(self):
+        # At 25 fps, 1 920 samples a frame: two frames short of the input and its lag.
+        case = self.case()
+        case.frame_rate_index = 2
+        frames = (case.blocks * fa4.BLOCK + 4000) // 1920 - 1
+        stdout = f"encoded {frames} AC-4 frames\n lags the input by 4000 samples"
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(fa4, "_run", return_value=completed(0, stdout=stdout)),
+        ):
+            result = fa4.run_case("ac3cli", None, case, tmp)
+        self.assertEqual((result.status, result.stage), ("fail", "encode"))
+        self.assertIn("decode to", result.detail)
 
     def test_an_out_of_range_rate_refused_with_its_message(self):
         with (
@@ -172,7 +267,10 @@ class RunCase(unittest.TestCase):
             if argv[1] == "ac4-encode":
                 Path(argv[3]).write_bytes(sync_frame(bytes(16)) * frames)
                 Path(trace).write_text("0\t0\t0\t1\t0\tx\n", encoding="utf-8")
-                return completed(0, stdout=f"encoded {frames} AC-4 frames")
+                return completed(
+                    0,
+                    stdout=f"encoded {frames} AC-4 frames\n lags the input by {fa4.LAG} samples",
+                )
             Path(trace).write_text("0\t0\t0\t1\t1\tx\n", encoding="utf-8")
             return completed(0)
 
