@@ -153,7 +153,10 @@ REFUSALS = {
 }
 
 # Case seeds that ever failed, with why; --regressions replays them.
-REGRESSION_SEEDS = {}
+REGRESSION_SEEDS = {
+    5756050987806798014: "an out-of-range rate at 44.1 kHz with another frame rate: ac3cli names "
+    "the frame rate first, and the harness took only the rate's refusal",
+}
 
 
 @dataclass
@@ -473,14 +476,24 @@ def _run_case(cli, ffprobe, case, tmp):
         ]
     )
     if not case.in_range or not case.frame_rate_valid:
-        why = "rate out of range" if not case.in_range else "frame rate at 44.1 kHz"
-        if encoded.returncode != 0 and REFUSALS[why] in encoded.stderr:
-            return Result(case, "refused", "encode", why)
+        # A case can be wrong on both counts; either refusal is right for it.
+        whys = [
+            why
+            for why, wrong in (
+                ("rate out of range", not case.in_range),
+                ("frame rate at 44.1 kHz", not case.frame_rate_valid),
+            )
+            if wrong
+        ]
+        refused = [why for why in whys if REFUSALS[why] in encoded.stderr]
+        if encoded.returncode != 0 and refused:
+            return Result(case, "refused", "encode", refused[0])
         return Result(
             case,
             "fail",
             "encode",
-            f"a {why} was not refused (exit {encoded.returncode}): {encoded.stderr.strip()}",
+            f"a {' and a '.join(whys)} was not refused (exit {encoded.returncode}): "
+            f"{encoded.stderr.strip()}",
         )
     per_frame = Fraction(FRAME)
     if case.sample_rate == 48000:

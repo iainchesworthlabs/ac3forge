@@ -240,6 +240,27 @@ class RunCase(unittest.TestCase):
             result = fa4.run_case("ac3cli", None, self.case(4), tmp)
         self.assertEqual(result.status, "refused")
 
+    def test_a_case_wrong_on_both_counts_takes_either_refusal(self):
+        # An out-of-range rate at 44.1 kHz with another frame rate: ac3cli names the frame rate
+        # first (CI, 2026-09-25, case 5756050987806798014).
+        case = self.case(4)
+        case.sample_rate = 44100
+        case.frame_rate_index = 2
+        for why in ("frame rate at 44.1 kHz", "rate out of range"):
+            with (
+                tempfile.TemporaryDirectory() as tmp,
+                mock.patch.object(fa4, "_run", return_value=completed(1, stderr=fa4.REFUSALS[why])),
+            ):
+                result = fa4.run_case("ac3cli", None, case, tmp)
+            self.assertEqual((result.status, result.detail), ("refused", why))
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            mock.patch.object(fa4, "_run", return_value=completed(134, stderr="abort")),
+        ):
+            result = fa4.run_case("ac3cli", None, case, tmp)
+        self.assertEqual(result.status, "fail")
+        self.assertIn("rate out of range and a frame rate at 44.1 kHz", result.detail)
+
     def test_an_out_of_range_rate_that_encodes_fails(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
