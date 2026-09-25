@@ -42,7 +42,8 @@
 namespace ac3cli::commands {
 namespace {
 
-// The codec mode as Part 1 Table 95 names it.
+// The codec mode as Part 1 Table 95 names it, or Part 2 Table 73 the
+// immersive element's.
 [[nodiscard]] std::string_view mode_name(ac4::CodecMode mode) {
     switch (mode) {
         case ac4::CodecMode::kAspx:
@@ -53,6 +54,12 @@ namespace {
             return "ASPX_ACPL_2";
         case ac4::CodecMode::kAspxAcpl3:
             return "ASPX_ACPL_3";
+        case ac4::CodecMode::kScpl:
+            return "SCPL";
+        case ac4::CodecMode::kAspxScpl:
+            return "ASPX_SCPL";
+        case ac4::CodecMode::kAspxAjcc:
+            return "ASPX_AJCC";
         case ac4::CodecMode::kAuto:
         case ac4::CodecMode::kSimple:
             break;
@@ -90,13 +97,18 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
 
 // The encoder's input channels, in ac4::Decoder's order, for a WAV file of
 // `count` channels, the 7.X element's additional pair, which seven or eight
-// channels need and the other counts leave to another substream, and whether
-// the 3.0 element is asked for; empty for a count the encoder does not take so.
+// channels need and the other counts leave to another substream, whether the
+// 3.0 element is asked for, and whether the immersive layouts' back pair is:
+// nine and ten channels are 5.0.4 and 5.1.4, eleven and twelve 7.0.4 and
+// 7.1.4. Empty for a count the encoder does not take so.
 [[nodiscard]] std::vector<ac4::Speaker> input_speakers(std::size_t count, ac4::AdditionalPair pair,
-                                                       bool three_zero) {
+                                                       bool three_zero, bool back_pair) {
     using S = ac4::Speaker;
     const bool seven = count == 7 || count == 8;
     if (seven && pair == ac4::AdditionalPair::kNone) {
+        return {};
+    }
+    if ((count == 11 || count == 12) && !back_pair) {
         return {};
     }
     switch (count) {
@@ -113,6 +125,10 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
         case 6:
         case 7:
         case 8:
+        case 9:
+        case 10:
+        case 11:
+        case 12:
             break;
         default:
             return {};
@@ -123,6 +139,14 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
     }
     out.push_back(S::kLeftSurround);
     out.push_back(S::kRightSurround);
+    if (count >= 9) {
+        if (count >= 11) {
+            out.insert(out.end(), {S::kLeftBack, S::kRightBack});
+        }
+        out.insert(out.end(),
+                   {S::kTopFrontLeft, S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight});
+        return out;
+    }
     if (!seven) {
         return out;
     }
@@ -148,6 +172,14 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
             return "5.0";
         case 6:
             return "5.1";
+        case 9:
+            return "5.0.4";
+        case 10:
+            return "5.1.4";
+        case 11:
+            return "7.0.4";
+        case 12:
+            return "7.1.4";
         default:
             break;
     }
@@ -175,13 +207,17 @@ struct Measured {
 };
 
 // Over the channels the encoder takes, `channels` in its order: the loudness
-// over the 5.1 or 5.0 bed of a 7.X layout, as encode measures E-AC-3's, and
-// the true peak over every channel. Nothing where no block passes the
-// absolute gate.
+// over the 5.1 or 5.0 bed of a 7.X or immersive layout, as encode measures
+// E-AC-3's, and the true peak over every channel. Nothing where no block
+// passes the absolute gate.
 [[nodiscard]] std::optional<Measured> measure_programme(
     std::span<const std::span<const float>> channels, std::uint32_t sample_rate) {
     const std::size_t count = channels.size();
-    const std::size_t bed = count > 6 ? count - 2 : count;
+    // The bed: every channel up to 5.1, L R C Ls Rs and the LFE where there is
+    // one past that; the pairs after it, the 7.X pair or the immersive
+    // layouts' back and top pairs, add their true peaks.
+    const bool lfe_after_five = count == 8 || count == 10 || count == 12;
+    const std::size_t bed = count <= 6 ? count : (lfe_after_five ? 6 : 5);
     const bool lfe = bed == 6;
     const auto acmod = bed == 1   ? ac3::Acmod::k1_0
                        : bed == 2 ? ac3::Acmod::k2_0
@@ -200,27 +236,26 @@ struct Measured {
             order[k] = k;
         }
     }
-    // The 7.X pair's true peak, from a stereo meter of its own.
-    std::optional<ac3::meta::LoudnessMeter> pair_meter;
-    if (count > bed) {
-        pair_meter.emplace(rate, ac3::Acmod::k2_0, false);
+    // Each pair's true peak after the bed, from a stereo meter of its own.
+    std::vector<ac3::meta::LoudnessMeter> pair_meters;
+    for (std::size_t k = bed; k + 1 < count; k += 2) {
+        pair_meters.emplace_back(rate, ac3::Acmod::k2_0, false);
     }
     Measured out;
     const std::size_t length = channels.empty() ? 0 : channels.front().size();
     const std::size_t step = sample_rate / 10;
     std::vector<std::span<const float>> views(bed);
-    std::vector<std::span<const float>> pair_views(count - bed);
+    std::vector<std::span<const float>> pair_views(2);
     for (std::size_t at = 0; at < length; at += step) {
         const std::size_t n = std::min(step, length - at);
         for (std::size_t k = 0; k < bed; ++k) {
             views[k] = channels[order[k]].subspan(at, n);
         }
         meter.push(views);
-        for (std::size_t k = bed; k < count; ++k) {
-            pair_views[k - bed] = channels[k].subspan(at, n);
-        }
-        if (pair_meter) {
-            pair_meter->push(pair_views);
+        for (std::size_t p = 0; p < pair_meters.size(); ++p) {
+            pair_views[0] = channels[bed + 2 * p].subspan(at, n);
+            pair_views[1] = channels[bed + 2 * p + 1].subspan(at, n);
+            pair_meters[p].push(pair_views);
         }
         const auto keep_max = [](std::optional<double>& max, std::optional<double> value) {
             if (value && (!max || *value > *max)) {
@@ -237,8 +272,8 @@ struct Measured {
     out.integrated = *integrated;
     out.range = meter.loudness_range();
     out.true_peak = meter.true_peak_dbtp();
-    if (pair_meter) {
-        if (const auto pair_peak = pair_meter->true_peak_dbtp();
+    for (const ac3::meta::LoudnessMeter& pair_meter : pair_meters) {
+        if (const auto pair_peak = pair_meter.true_peak_dbtp();
             pair_peak && (!out.true_peak || *pair_peak > *out.true_peak)) {
             out.true_peak = pair_peak;
         }
@@ -275,6 +310,15 @@ struct Measured {
     if (name == "aspx-acpl-3") {
         return ac4::CodecMode::kAspxAcpl3;
     }
+    if (name == "scpl") {
+        return ac4::CodecMode::kScpl;
+    }
+    if (name == "aspx-scpl") {
+        return ac4::CodecMode::kAspxScpl;
+    }
+    if (name == "aspx-ajcc") {
+        return ac4::CodecMode::kAspxAjcc;
+    }
     return ac4::CodecMode::kAuto;
 }
 
@@ -293,19 +337,21 @@ struct Input {
 // not.
 [[nodiscard]] std::optional<Input> read_input(std::string_view path, std::size_t number,
                                               const Options::Ac4Encode::Dialogue& dialogue,
-                                              ac4::AdditionalPair pair, bool three_zero) {
+                                              ac4::AdditionalPair pair, bool three_zero,
+                                              bool back_pair) {
     auto wav = read_wav_arg(path);
     if (!wav.has_value()) {
         fmt::println(stderr, "error: {}: {}", path, ac3::io::describe(wav.error()));
         return std::nullopt;
     }
     Input input;
-    input.speakers = input_speakers(wav->channels.size(), pair, three_zero);
+    input.speakers = input_speakers(wav->channels.size(), pair, three_zero, back_pair);
     if (input.speakers.empty()) {
         fmt::println(stderr,
-                     "error: {}: AC-4 encoding takes mono, stereo, 5.0 and 5.1, 7.0 and 7.1 with "
-                     "experimental=7x-back, 7x-wide or 7x-top-front, and 3.0 with "
-                     "experimental=three-zero; substream {} has {} channels",
+                     "error: {}: AC-4 encoding takes mono, stereo, 5.0, 5.1, 5.0.4 and 5.1.4, 7.0 "
+                     "and 7.1 with experimental=7x-back, 7x-wide or 7x-top-front, 7.0.4 and 7.1.4 "
+                     "with experimental=back-pair, and 3.0 with experimental=three-zero; "
+                     "substream {} has {} channels",
                      path, number, wav->channels.size());
         return std::nullopt;
     }
@@ -513,7 +559,8 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     for (std::size_t n = 0; n < count; ++n) {
         if (n == 0 || !substreams[n].path.empty()) {
             inputs[n] = read_input(n == 0 ? in_path : std::string_view{substreams[n].path}, n + 1,
-                                   substreams[n].dialogue, pair, meta.ac4_experimental_three_zero);
+                                   substreams[n].dialogue, pair, meta.ac4_experimental_three_zero,
+                                   meta.ac4_experimental_back_pair);
             if (!inputs[n]) {
                 return kExitInput;
             }
@@ -540,19 +587,33 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         return kExitUsage;
     }
     const bool multichannel = speakers.size() >= 5;
+    const bool immersive = speakers.size() >= 9;
     const bool has_lfe = std::ranges::find(speakers, ac4::Speaker::kLfe) != speakers.end();
     const bool downmix_named = opts.loro_centre_db || opts.loro_surround_db ||
                                opts.ltrt_centre_db || opts.ltrt_surround_db || opts.lfe_db ||
                                opts.preferred_downmix || opts.loro_correction_db ||
-                               opts.ltrt_correction_db;
+                               opts.ltrt_correction_db || opts.height_downmix || opts.height_db;
     // With several substreams the downmix goes to the presentations of 5.X
     // and 7.X, and the encoder says where there is none.
     if (count == 1 && downmix_named && !multichannel) {
         fmt::println(
             stderr,
-            "error: the downmix options describe the stereo downmix of 5.0, 5.1, 7.0 and 7.1; the "
-            "source is {}",
+            "error: the downmix options describe the stereo downmix of 5.0, 5.1, 7.0, 7.1 and the "
+            "immersive layouts; the source is {}",
             layout_name(speakers.size(), pair));
+        return kExitUsage;
+    }
+    if (opts.height_db && !opts.height_downmix) {
+        fmt::println(stderr,
+                     "error: height-gain= is the gain height-downmix= sends the top channels at; "
+                     "give height-downmix=front, surround or front-and-surround");
+        return kExitUsage;
+    }
+    if (count == 1 && opts.height_downmix && !immersive) {
+        fmt::println(stderr,
+                     "error: height-downmix= describes the top channels' downmix of 5.0.4, 5.1.4, "
+                     "7.0.4 and 7.1.4; the source is {}",
+                     layout_name(speakers.size(), pair));
         return kExitUsage;
     }
     if (count == 1 && opts.lfe_db && !has_lfe) {
@@ -590,6 +651,8 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     config.experimental.seven_x = pair;
     config.experimental.drc_gains = opts.drc_gains.has_value();
     config.experimental.three_zero = meta.ac4_experimental_three_zero;
+    config.experimental.back_pair = meta.ac4_experimental_back_pair;
+    config.experimental.ajcc = meta.ac4_experimental_ajcc;
 
     if (drc_named) {
         // Table 161's four modes on drc='s profile, and a mode named on a
@@ -626,6 +689,8 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         downmix.preferred = opts.preferred_downmix.value_or(downmix.preferred);
         downmix.loro_correction_db2 = opts.loro_correction_db;
         downmix.ltrt_correction_db2 = opts.ltrt_correction_db;
+        downmix.height = opts.height_downmix;
+        downmix.height_db = opts.height_db.value_or(downmix.height_db);
         config.downmix = downmix;
     }
     if (!substream_form) {

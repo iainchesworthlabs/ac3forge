@@ -127,9 +127,9 @@ struct Options {
     // (planning/ac4.md, the encoder's ladder, item 1).
     std::string syntax_trace_path;
     // 'ac4-encode' only: codec-mode=, "auto" (or empty), "simple", "aspx",
-    // "aspx-acpl-1", "aspx-acpl-2" or "aspx-acpl-3" (ac4::CodecMode), and
-    // experimental=, the experimental tools asked for,
-    // with the 7.X element's additional pair as "back", "wide" or
+    // "aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3", "scpl", "aspx-scpl" or
+    // "aspx-ajcc" (ac4::CodecMode), and experimental=, the experimental tools
+    // asked for, with the 7.X element's additional pair as "back", "wide" or
     // "top-front" (ac4::AdditionalPair), or empty.
     std::string ac4_codec_mode;
     bool ac4_experimental_balance = false;
@@ -138,6 +138,8 @@ struct Options {
     bool ac4_experimental_coding_configs = false;
     bool ac4_experimental_acpl = false;
     bool ac4_experimental_three_zero = false;
+    bool ac4_experimental_back_pair = false;
+    bool ac4_experimental_ajcc = false;
     std::string ac4_experimental_seven_x;
     // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
     // dialnorm is taken to (ac4::OutputConfig::output_level_dbfs), unset to
@@ -220,6 +222,11 @@ struct Options {
         std::optional<ac4::PreferredDownmix> preferred_downmix;  // dmixmod=
         std::optional<double> loro_correction_db;                // loro-correction=
         std::optional<double> ltrt_correction_db;                // ltrt-correction=
+        // An immersive layout's downmix to 5.X: height-downmix= (front,
+        // surround or front-and-surround, where the top pairs go) and
+        // height-gain= (0, -1.5, -3, -4.5, -6, -9, -12 dB or off).
+        std::optional<ac4::HeightDownmix> height_downmix;
+        std::optional<double> height_db;
         // crc=on|off: whether a raw stream's sync frames carry Part 2 Annex
         // G's CRC (sync word 0xAC41), which they do unless crc=off.
         std::optional<bool> crc;

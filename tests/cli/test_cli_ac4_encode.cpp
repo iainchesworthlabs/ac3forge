@@ -193,6 +193,7 @@ TEST_CASE("ac4-encode's stream options each write what they name", "[cli][ac4]")
     const fs::path out = dir / "ac4_stream_options.ac4";
     const fs::path stereo = tones_wav("ac4_options_stereo.wav", 2, 2);
     const fs::path five_one = tones_wav("ac4_options_51.wav", 6, 2);
+    const fs::path five_one_four = tones_wav("ac4_options_514.wav", 10, 1);
     struct Run {
         const char* name;
         const fs::path* in;
@@ -217,6 +218,25 @@ TEST_CASE("ac4-encode's stream options each write what they name", "[cli][ac4]")
          "ASPX_ACPL_3 mode",
          "",
          {}},
+        // 5.1.4's codec modes (Part 2 Table 73's immersive_codec_mode_code).
+        {"codec-mode=scpl",
+         &five_one_four,
+         " 768 codec-mode=scpl",
+         "SCPL mode",
+         "immersive_codec_mode_code",
+         {0}},
+        {"codec-mode=aspx-scpl",
+         &five_one_four,
+         " 512 codec-mode=aspx-scpl",
+         "ASPX_SCPL mode",
+         "immersive_codec_mode_code",
+         {1}},
+        {"codec-mode=aspx-acpl-2 for 5.1.4",
+         &five_one_four,
+         " 320 codec-mode=aspx-acpl-2",
+         "ASPX_ACPL_2 mode",
+         "immersive_codec_mode_code",
+         {3}},
         {"frame-rate=native", &stereo, " 192 frame-rate=native", "2 048-sample frames", "", {}},
         {"rate-mode=constant", &stereo, " 192 rate-mode=constant", "constant rate", "", {}},
         // The downmix values the metadata test leaves out: cmixlev= and
@@ -236,6 +256,34 @@ TEST_CASE("ac4-encode's stream options each write what they name", "[cli][ac4]")
         {"dmixmod=loro", &five_one, " 256 dmixmod=loro", "", "preferred_dmx_method", {1}},
         {"dmixmod=ltrt", &five_one, " 256 dmixmod=ltrt", "", "preferred_dmx_method", {2}},
         {"dmixmod=none", &five_one, " 256 dmixmod=none", "", "preferred_dmx_method", {0}},
+        // 5.1.4's downmix to 5.X, in its first frame, an I-frame: front sends
+        // both top pairs to L and R (gain_t2a_code and gain_t2d_code), surround
+        // both to Ls and Rs (gain_t2b_code and gain_t2e_code) at -3 dB unless
+        // height-gain= says, front-and-surround the top back pair to Ls and Rs.
+        {"height-downmix=front",
+         &five_one_four,
+         " 256 height-downmix=front height-gain=-6",
+         "",
+         "gain_t2d_code",
+         {4}},
+        {"height-downmix=surround",
+         &five_one_four,
+         " 256 height-downmix=surround",
+         "",
+         "gain_t2b_code",
+         {2}},
+        {"height-downmix=front-and-surround",
+         &five_one_four,
+         " 256 height-downmix=front-and-surround height-gain=off",
+         "",
+         "gain_t2e_code",
+         {7}},
+        {"height-gain=-12",
+         &five_one_four,
+         " 256 height-downmix=front height-gain=-12",
+         "",
+         "gain_t2a_code",
+         {6}},
         // The stream's profile named none, and DRC's first two modes on
         // profiles of their own, each sent as its curve.
         {"drc=none", &stereo, " 192 drc=none", "", "drc_eac3_profile", {0}},
@@ -392,6 +440,24 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
             configs += count_of(records, "coding_config", value) > 0U ? 1U : 0U;
         }
         CHECK(configs >= 2U);
+    }
+    SECTION("back-pair takes 7.1.4 with the back pair, and acpl the immersive ASPX_ACPL_1") {
+        const fs::path twelve = tones_wav("ac4_714.wav", 12);
+        (void)run(twelve, "768 experimental=back-pair");
+        const std::vector<std::byte> bytes = read_bytes(out);
+        const ac4::Toc toc = first_toc(bytes);
+        const auto& chan = toc.substream_groups.at(0).substreams.at(0).chan;
+        REQUIRE(chan.has_value());
+        CHECK(chan->ch_mode == 12);
+        REQUIRE(chan->original_content.has_value());
+        CHECK(chan->original_content->b_4_back_channels_present);
+        // Without the option, twelve channels are no layout the command takes.
+        CHECK(run_cli("ac4-encode " + quoted(twelve) + " " + quoted(out) + " 768", log) == 2);
+        CHECK(read_log(log).find("7.0.4 and 7.1.4 with experimental=back-pair") !=
+              std::string::npos);
+        const auto records =
+            run(tones_wav("ac4_514_acpl1.wav", 10), "320 codec-mode=aspx-acpl-1 experimental=acpl");
+        CHECK(first_frame(records, "immersive_codec_mode_code") == std::vector<std::uint64_t>{2});
     }
     SECTION("7x-wide and 7x-top-front take the 7.X element's other pairs") {
         struct Layout {
