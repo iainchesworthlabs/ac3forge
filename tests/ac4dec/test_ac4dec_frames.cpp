@@ -345,9 +345,12 @@ TEST_CASE("the decoder refuses a reserved channel mode and an index past the tab
     check_refused(find(report, 5), DecodeError::kInvalidStream);
     CHECK(find(report, 5).kind == SubstreamReport::Kind::kAudio);
     check_read(find(report, 2), SubstreamReport::Kind::kPresentation);
-    // Substream 1 is named by nothing and so not reported at all.
-    CHECK(std::none_of(report.substreams.begin(), report.substreams.end(),
-                       [](const SubstreamReport& s) { return s.index == 1; }));
+    // Substream 1 is named by nothing: reported, refused and unread, since
+    // nothing says what syntax it holds.
+    check_refused(find(report, 1), DecodeError::kUnsupported);
+    CHECK(find(report, 1).kind == SubstreamReport::Kind::kOther);
+    CHECK(find(report, 1).bits_read == 0);
+    CHECK(find(report, 1).size_bits == 8 * mono_audio({}).size());
 }
 
 TEST_CASE("object, A-JOC and object metadata substreams are refused as not decoded yet", "[ac4dec][frames]") {

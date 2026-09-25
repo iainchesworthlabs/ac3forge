@@ -130,6 +130,11 @@ class SubstreamPcm {
     // samples and ts_offset_hfgen QMF slots.
     [[nodiscard]] int delay_samples() const noexcept;
 
+    // The same at the output rate: at every frame_rate_index but 13 the
+    // converter's delay added and the sum taken through its ratio, to the
+    // nearest sample (Decoder::latency_samples()).
+    [[nodiscard]] int output_delay_samples() const noexcept;
+
     // After a decode() or conceal() with FrameInputs::qmf_only: the frame's
     // QMF-domain matrices, one per channel of the channel mode, and the same
     // before its dialogue enhancement. Valid until the next call.

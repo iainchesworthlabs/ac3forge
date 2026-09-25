@@ -313,8 +313,9 @@ struct EncoderConfig {
     std::optional<DialogueConfig> dialogue;
     // One record per syntax element written, in the shape ac4/syntax.hpp
     // states, for comparing what was written with what a reader reads. The
-    // callable must outlive the Encoder.
-    SyntaxSink trace{};
+    // configuration owns a copy of the callable, and the encoder one of its
+    // own.
+    SyntaxTrace trace{};
     // Syntax only this project's readers have read from this encoder, off
     // unless asked for (planning/ac4.md, "What the encoder writes by
     // default"): each leaves the list when a reader outside the project

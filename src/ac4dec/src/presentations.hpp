@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -88,5 +89,34 @@ bool plan_presentation(const Toc& toc, std::size_t index, PresentationPlan& plan
 // effects substream, else the first member; nothing for a plan without
 // members.
 [[nodiscard]] std::optional<std::size_t> anchor_member(const PresentationPlan& plan) noexcept;
+
+// The language selection compares (Part 1 clause 4.3.3.8.8's NOTE): the first
+// dialogue substream's tag, else the first main or music and effects
+// substream's; empty for none.
+[[nodiscard]] std::string_view presentation_language(const PresentationPlan& plan) noexcept;
+
+// A member's role as the public API names it.
+[[nodiscard]] SubstreamRole public_role(Role role) noexcept;
+
+// A presentation's name as ac4_presentation_substream() sends it (Part 2 clause
+// 6.3.3.1.4): whole in one frame, or in chunks, one a frame, the last of which
+// says how many there were (src/ac4dec/ERRATA.md, "A presentation name in
+// chunks").
+class PresentationName {
+   public:
+    // One frame's presentation_name, name_len bytes of it.
+    void add(std::span<const std::uint8_t> chunk);
+    // A frame of the substream that carries no name: the chunks gathered so
+    // far are not consecutive with the next.
+    void none() noexcept;
+    void clear() noexcept;
+    // The last name received whole, UTF-8; empty before one.
+    [[nodiscard]] const std::string& name() const noexcept { return name_; }
+
+   private:
+    std::string name_;
+    std::string pending_;  // the chunks since the last whole name
+    int chunks_ = 0;
+};
 
 }  // namespace ac4::detail

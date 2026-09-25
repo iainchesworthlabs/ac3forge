@@ -1504,7 +1504,7 @@ struct Encoder::Impl {
         const auto write = [&]() {
             BitWriter audio = BitWriter::buffered();
             write_element(audio, f, true);
-            return detail::write_frame(fields, audio, frame_bytes, config.trace);
+            return detail::write_frame(fields, audio, frame_bytes, sink_of(config.trace));
         };
         const auto write_at = [&](bool pull, int step) {
             set_step(pull, step);

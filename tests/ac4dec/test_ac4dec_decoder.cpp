@@ -188,6 +188,9 @@ std::vector<std::byte> self_referencing_hsf_ext_frame() {
 // interleaving itself, and one genuine HSF-only band existing at all - is
 // exercised without needing real Huffman-coded content.
 //
+// `linked` false leaves b_hsf_ext clear, so that nothing names the
+// extension's substream, which the index table still holds.
+//
 // `ext_index_lower` swaps which of the two substream indices is which - the
 // decoder's own assignment map is ordered by index (decoder.cpp's pre-pass
 // looks the extension up by its hsf_ext_substream_index rather than relying
@@ -195,7 +198,8 @@ std::vector<std::byte> self_referencing_hsf_ext_frame() {
 // syntax orders an owner before its extension, so a fuzzed (or, in
 // principle, a real) stream naming its extension at a lower index than its
 // own must resolve identically.
-std::vector<std::byte> hsf_ext_two_substream_frame(bool ext_index_lower = false) {
+std::vector<std::byte> hsf_ext_two_substream_frame(bool ext_index_lower = false,
+                                                   bool linked = true) {
     Bits w;
     w.put(2, 2);   // bitstream_version
     w.put(1, 10);  // sequence_counter
@@ -234,7 +238,7 @@ std::vector<std::byte> hsf_ext_two_substream_frame(bool ext_index_lower = false)
     // Group 0: single channel-coded substream, mono, 96 kHz, HSF-linked to a
     // separate substream.
     w.put(1, 1);     // b_substreams_present
-    w.put(1, 1);     // b_hsf_ext
+    w.put(linked ? 1U : 0U, 1);  // b_hsf_ext
     w.put(1, 1);     // b_single_substream
     w.put(1, 1);     // b_channel_coded
     w.put(0b0, 1);   // channel_mode: mono (Table 56's 1-bit code)
@@ -245,7 +249,10 @@ std::vector<std::byte> hsf_ext_two_substream_frame(bool ext_index_lower = false)
     const int owner_index = ext_index_lower ? 1 : 0;
     const int ext_index = ext_index_lower ? 0 : 1;
     w.put(static_cast<std::uint32_t>(owner_index), 2);  // substream_index (this channel's own)
-    w.put(static_cast<std::uint32_t>(ext_index), 2);    // hsf_ext_substream_index (a separate substream)
+    if (linked) {
+        w.put(static_cast<std::uint32_t>(ext_index),
+              2);  // hsf_ext_substream_index (a separate substream)
+    }
     w.put(0, 1);     // b_content_type
 
     // substream_index_table(): 3 substreams, indexed as owner_index/ext_index
@@ -532,6 +539,36 @@ TEST_CASE("ac4::Decoder reads a channel's HSF extension substream alongside it",
     CHECK(ext->kind == ac4::SubstreamReport::Kind::kHsfExt);
     CHECK_FALSE(ext->refused.has_value());
     CHECK(ext->bits_read == 8);  // the 6-bit header, byte_align'd
+}
+
+TEST_CASE("an HSF extension substream nothing names is reported, refused and unread", "[ac4dec]") {
+    // The review of #700: the header said an HSF substream was refused, yet
+    // a substream no ac4_hsf_ext_substream_info() named got no report at all.
+    // Every substream of the index table now has one.
+    // The extension's substream comes first in the table, before its owner.
+    ac4::Decoder decoder;
+    const auto report = decoder.parse(hsf_ext_two_substream_frame(true, false));
+    REQUIRE(report.has_value());
+    REQUIRE(report->substreams.size() == 3);
+    const ac4::SubstreamReport& ext = report->substreams[0];
+    CHECK(ext.index == 0);
+    CHECK(ext.kind == ac4::SubstreamReport::Kind::kOther);
+    REQUIRE(ext.refused.has_value());
+    CHECK(*ext.refused == ac4::DecodeError::kUnsupported);
+    CHECK_FALSE(ext.refused_reason.empty());
+    CHECK(ext.bits_read == 0);
+    CHECK(ext.size_bits == 8);
+    // Its owner, at 96 kHz with no extension to read beside it, is refused
+    // as it was.
+    const ac4::SubstreamReport& owner = report->substreams[1];
+    CHECK(owner.kind == ac4::SubstreamReport::Kind::kAudio);
+    REQUIRE(owner.refused.has_value());
+    CHECK(*owner.refused == ac4::DecodeError::kUnsupported);
+    // And decode() names the owner's reason, not the unnamed substream's.
+    ac4::Decoder decoding;
+    const auto decoded = decoding.decode(hsf_ext_two_substream_frame(true, false));
+    REQUIRE_FALSE(decoded.has_value());
+    CHECK(decoding.refusal_reason() == owner.refused_reason);
 }
 
 TEST_CASE("a decode begun at an I-frame gives the whole stream's output from the frame after it",

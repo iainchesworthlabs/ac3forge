@@ -150,23 +150,6 @@ void plan_v0(const Toc& toc, std::size_t index, PresentationPlan& plan) {
     return tag.substr(0, tag.find('-'));
 }
 
-// The language of the presentation (Part 1 clause 4.3.3.8.8's NOTE: its main
-// or dialogue substream's, never its associated audio's): the first dialogue
-// substream's tag, else the first main or music and effects substream's.
-[[nodiscard]] std::string_view presentation_language(const PresentationPlan& plan) noexcept {
-    for (const Member& m : plan.members) {
-        if (m.role == Role::kDialogue && !m.language.empty()) {
-            return m.language;
-        }
-    }
-    for (const Member& m : plan.members) {
-        if ((m.role == Role::kMain || m.role == Role::kMusicAndEffects) && !m.language.empty()) {
-            return m.language;
-        }
-    }
-    return {};
-}
-
 [[nodiscard]] int language_rank(const PresentationPlan& plan, std::string_view wanted) noexcept {
     const std::string_view language = presentation_language(plan);
     if (wanted.empty() || language.empty()) {
@@ -247,6 +230,92 @@ struct Service {
 }
 
 }  // namespace
+
+// The language of the presentation (Part 1 clause 4.3.3.8.8's NOTE: its main
+// or dialogue substream's, never its associated audio's).
+std::string_view presentation_language(const PresentationPlan& plan) noexcept {
+    for (const Member& m : plan.members) {
+        if (m.role == Role::kDialogue && !m.language.empty()) {
+            return m.language;
+        }
+    }
+    for (const Member& m : plan.members) {
+        if ((m.role == Role::kMain || m.role == Role::kMusicAndEffects) && !m.language.empty()) {
+            return m.language;
+        }
+    }
+    return {};
+}
+
+SubstreamRole public_role(Role role) noexcept {
+    switch (role) {
+        case Role::kMain:
+            return SubstreamRole::kMain;
+        case Role::kMusicAndEffects:
+            return SubstreamRole::kMusicAndEffects;
+        case Role::kDialogue:
+            return SubstreamRole::kDialogue;
+        case Role::kDialogueEnhancement:
+            return SubstreamRole::kDialogueEnhancement;
+        case Role::kAssociated:
+            return SubstreamRole::kAssociated;
+    }
+    return SubstreamRole::kMain;
+}
+
+void PresentationName::add(std::span<const std::uint8_t> chunk) {
+    const auto append = [](std::string& out, std::span<const std::uint8_t> bytes) {
+        for (const std::uint8_t b : bytes) {
+            out.push_back(static_cast<char>(b));
+        }
+    };
+    // The name ends at its first zero byte: a fixed 32-byte field pads with
+    // them.
+    const auto take = [this](const std::string& text) { name_.assign(text, 0, text.find('\0')); };
+    const std::size_t n = chunk.size();
+    if (n == 0) {
+        none();
+        return;
+    }
+    // byte[name_len - 1] = 0: the whole name, byte[0] to byte[name_len - 2].
+    if (chunk[n - 1] == 0) {
+        pending_.clear();
+        append(pending_, chunk.first(n - 1));
+        take(pending_);
+        none();
+        return;
+    }
+    // byte[name_len - 2] = 0: the last chunk, byte[name_len - 1] the number
+    // of chunks. The name is whole when the chunks gathered in the frames
+    // before it are that many less one; a decoder that joined in the middle
+    // waits for the next repetition.
+    if (n >= 2 && chunk[n - 2] == 0) {
+        const int total = chunk[n - 1];
+        append(pending_, chunk.first(n - 2));
+        if (++chunks_ == total) {
+            take(pending_);
+        }
+        none();
+        return;
+    }
+    // A chunk before the last: all name_len bytes are the name's. No count
+    // reaches past 255 chunks.
+    if (chunks_ == 255) {
+        none();
+    }
+    append(pending_, chunk);
+    ++chunks_;
+}
+
+void PresentationName::none() noexcept {
+    pending_.clear();
+    chunks_ = 0;
+}
+
+void PresentationName::clear() noexcept {
+    name_.clear();
+    none();
+}
 
 Role role_from_classifier(int content_classifier) noexcept {
     switch (content_classifier) {

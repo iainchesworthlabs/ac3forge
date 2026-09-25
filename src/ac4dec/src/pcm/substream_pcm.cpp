@@ -78,6 +78,15 @@ int SubstreamPcm::delay_samples() const noexcept {
     return delay_ + kQmfPairDelay + hfgen_ * dsp::kQmfSubbands;
 }
 
+int SubstreamPcm::output_delay_samples() const noexcept {
+    if (!converter_filter_) {
+        return delay_samples();
+    }
+    const double delay = static_cast<double>(delay_samples()) + converter_filter_->delay();
+    return static_cast<int>(std::lround(delay * static_cast<double>(converter_filter_->up()) /
+                                        static_cast<double>(converter_filter_->down())));
+}
+
 MixSource SubstreamPcm::qmf_output(int key) const noexcept {
     const std::span<std::vector<QmfValue>* const> matrices = matrices_;
     return MixSource{.key = key,
