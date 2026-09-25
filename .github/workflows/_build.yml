@@ -2835,6 +2835,60 @@ jobs:
           ls -l "$image"
           rm -rf build sdkconfig
 
+      # Updates over the network (planning/esp32-ota.md, "Tests"), end to end on
+      # the emulated board. Image A (sdkconfig.ci-ota, over the Sendspin
+      # player's shape) boots; tools/checks/run_ota_qemu.py then pushes it B (A
+      # with another PROJECT_VER), an image that never becomes healthy and one
+      # that panics on its trial, with the refusals and rollbacks between, and
+      # holds each to the plan. The three are rebuilds of A's build directory
+      # that change a file or two (main/CMakeLists.txt's AC3FORGE_FIRMWARE_TEST),
+      # so the step costs one full build. QEMU keeps its flash writes in its
+      # image, which is what an update needs.
+      - name: Update the Sendspin player over the network under QEMU
+        env:
+          SDKCONFIG_DEFAULTS: "sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin;sdkconfig.ci-ota"
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          images="$GITHUB_WORKSPACE/ota-qemu-images"
+          mkdir -p "$images"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          rm -rf build sdkconfig
+          idf.py set-target esp32s3
+          # name:PROJECT_VER:AC3FORGE_FIRMWARE_TEST
+          for variant in a:ci-ota-a: b:ci-ota-b: unhealthy:ci-ota-unhealthy:unhealthy panic:ci-ota-panic:panic; do
+            name="${variant%%:*}"
+            rest="${variant#*:}"
+            version="${rest%%:*}"
+            test_switch="${rest#*:}"
+            idf.py "-DPROJECT_VER=$version" "-DAC3FORGE_FIRMWARE_TEST=$test_switch" build
+            cp build/ac3forge_hearth_sink.bin "$images/$name.bin"
+            # For run_ota_qemu.py's report of where a hung board is.
+            cp build/ac3forge_hearth_sink.elf "$images/$name.elf"
+            if [ "$name" = a ]; then
+              (cd build && esptool --chip esp32s3 merge-bin --output "$images/qemu_flash.bin" --pad-to-size 16MB @flash_args >/dev/null)
+              PYTHONPATH="$IDF_PATH/tools" IMAGE="$images" python3 -c "import os; from idf_py_actions.qemu_ext import QEMU_TARGETS; open(os.path.join(os.environ['IMAGE'], 'qemu_efuse.bin'), 'wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"
+            fi
+          done
+          ls -l "$images"
+          rm -rf build sdkconfig
+          qemu_bin=$(find "${IDF_TOOLS_PATH:-$HOME/.espressif}/tools/qemu-xtensa" -name qemu-system-xtensa -type f | head -1)
+          if [ -z "$qemu_bin" ]; then
+            echo "::error title=ESP32-S3 update over the network::qemu-system-xtensa not found under the IDF tools" >&2
+            exit 1
+          fi
+          python3 "$GITHUB_WORKSPACE/tools/checks/run_ota_qemu.py" --qemu "$qemu_bin" \
+            --images "$images" --out "$GITHUB_WORKSPACE/ota-qemu-run"
+
+      - name: Upload the update test's consoles
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: esp32s3-ota-qemu-run
+          path: ota-qemu-run/
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Upload the Sendspin player's QEMU images
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

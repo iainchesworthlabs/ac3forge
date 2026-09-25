@@ -1,0 +1,15 @@
+# Updates over the network under QEMU (planning/esp32-ota.md, "Tests"), after
+# the Sendspin player's CI shape:
+#
+#   SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.ci-http;sdkconfig.ci-sendspin;sdkconfig.ci-ota"
+#
+# tools/checks/run_ota_qemu.py pushes images to it through QEMU's port forward
+# and holds each trial and rollback to what the plan says. The trial is
+# shortened so that a run of them fits in a CI step: an updated image is
+# accepted after 5 s healthy, and one that never becomes healthy goes back 40 s
+# after it booted, which leaves QEMU room to boot and start the Sendspin
+# player. The images the test pushes are this one with another PROJECT_VER, or
+# with main/CMakeLists.txt's AC3FORGE_FIRMWARE_TEST, each rebuilt in the same
+# build directory at the cost of a file or two.
+CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S=5
+CONFIG_AC3FORGE_FIRMWARE_TRIAL_DEADLINE_S=40

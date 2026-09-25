@@ -143,3 +143,24 @@ if(AC3FORGE_MINIMAL_HOT_O2)
     set_source_files_properties("${AC3FORGE_SINK_DIR}/audio_sink.cpp" PROPERTIES
         COMPILE_OPTIONS "-O2")
 endif()
+
+# CI's rollback tests under QEMU need images that fail their trial
+# (planning/esp32-ota.md, "Tests"): AC3FORGE_FIRMWARE_TEST=unhealthy never
+# reports healthy and goes back at the deadline, and =panic panics as its
+# trial starts. A cache variable rather than Kconfig, so that each variant
+# recompiles this one file rather than the whole image; defined for every
+# build, 0 or 1, for the reason AC3FORGE_STREAM_BYTES is. Never set for a
+# board.
+set(AC3FORGE_FIRMWARE_TEST "" CACHE STRING "CI only: unhealthy, panic, or empty")
+set(ac3forge_firmware_test_unhealthy 0)
+set(ac3forge_firmware_test_panic 0)
+if(AC3FORGE_FIRMWARE_TEST STREQUAL "unhealthy")
+    set(ac3forge_firmware_test_unhealthy 1)
+elseif(AC3FORGE_FIRMWARE_TEST STREQUAL "panic")
+    set(ac3forge_firmware_test_panic 1)
+elseif(NOT AC3FORGE_FIRMWARE_TEST STREQUAL "")
+    message(FATAL_ERROR "AC3FORGE_FIRMWARE_TEST is unhealthy, panic or empty, not \"${AC3FORGE_FIRMWARE_TEST}\"")
+endif()
+set_property(SOURCE "hearth_sink.cpp" APPEND PROPERTY COMPILE_DEFINITIONS
+    "AC3FORGE_FIRMWARE_TEST_UNHEALTHY=${ac3forge_firmware_test_unhealthy}"
+    "AC3FORGE_FIRMWARE_TEST_PANIC_ON_TRIAL=${ac3forge_firmware_test_panic}")

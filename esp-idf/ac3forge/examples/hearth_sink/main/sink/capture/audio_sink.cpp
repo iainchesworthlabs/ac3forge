@@ -277,6 +277,9 @@ void sink_begin_play() {
     g_samples = 0;
 }
 
+// No peripheral, so nothing to close.
+void sink_close() {}
+
 void sink_report() {
     const double rms = g_samples > 0 ? std::sqrt(g_sum_squares / static_cast<double>(g_samples))
                                      : 0.0;

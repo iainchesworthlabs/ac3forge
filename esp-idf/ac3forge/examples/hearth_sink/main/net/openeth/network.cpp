@@ -135,4 +135,9 @@ NetworkLink network_link() {
     return link;
 }
 
+// Ethernet needs nothing stored to join, so any image rejoins it.
+const char* network_source() { return "wired"; }
+
+void network_adopt_built_in() {}
+
 }  // namespace player

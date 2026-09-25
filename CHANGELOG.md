@@ -228,6 +228,33 @@ The sections below contain the complete change list and fixes.
     `reserve`, because the table changes only over USB.
   - **A new check.** `tools/checks/check_esp_efuse_free.py` fails CI when an sdkconfig
     fragment turns on an option that burns eFuses or skips the bootloader's image check.
+- **A Hearth sink takes firmware updates over its network** (`planning/esp32-ota.md`).
+  - **Routes.** `GET` and `PUT /firmware`, `PUT /firmware/mode`, `PUT /firmware/rollback`
+    and `POST /restart` on the control surface, from the component's new `ac3forge::Firmware`.
+  - **Flash mode.** An upload first enters flash mode: every play stops, Sendspin servers hear
+    `client/goodbye restart`, the sink closes and the mDNS service is withdrawn. Every way out
+    of flash mode is a restart.
+  - **Checks before anything is written.** The image's head is checked against the board: an
+    application image, this chip and revision range, this project and this flash size.
+  - **Checks after it is written.** The image's own SHA-256, read back from flash; the
+    request's `Content-Digest` (RFC 9530); and every byte read back and hashed again.
+  - **Both slots checked once any trial is over.** Each slot is read through and its image
+    checked against its own SHA-256, and `GET /firmware` says whether each is intact. The
+    check stops before an update writes anything.
+  - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
+    address, the HTTP server and the Sendspin player. It goes back to the previous image if
+    it does not get there within 5 minutes, or if it resets first.
+  - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
+    its own name.
+  - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
+    so the board keeps it through an update to an image without one.
+  - **`tools/hearth/ota.py`**, and `idf.py ota` through the example's `idf_ext.py`, push a
+    build to one board or to every board on the network, and wait for each to accept or go
+    back.
+  - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
+    (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
+    becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
+    the bootloader boots past.
 
 **Crucible desktop application**
 

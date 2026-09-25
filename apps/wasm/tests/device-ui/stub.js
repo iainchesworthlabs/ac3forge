@@ -42,6 +42,11 @@ const REPLIES = {
         'PUT  /network       body: an SSID, a newline, a passphrase; next boot',
         'GET  /pairing       the servers this board is paired with, as JSON',
         'POST /pairing       body: reset, cancel, forget, or forget and a server_id (Sendspin pairing)',
+        'GET  /firmware      both app slots, a trial, an upload and the last update, as JSON',
+        'PUT  /firmware      body: an app image; flash mode, then a restart into it',
+        'PUT  /firmware/mode body: flash, or normal (a restart)',
+        'PUT  /firmware/rollback  the image before this one boots next',
+        'POST /restart       restart into the image that runs now',
         '',
     ].join('\n'),
     playEmpty: 'POST /play wants the location as the body\n',
@@ -72,6 +77,7 @@ const REPLIES = {
     pairingBad: 'POST /pairing wants reset, cancel, forget, or forget and a server_id\n',
     pairingUnknown: 'this board has no pairing with that server\n',
     pairingRefused: 'this board is not a Sendspin player\n',
+    noFirmware: 'this board takes no firmware updates\n',
 };
 
 const ROUTES = [
@@ -94,6 +100,11 @@ const ROUTES = [
     'PUT /network',
     'GET /pairing',
     'POST /pairing',
+    'GET /firmware',
+    'PUT /firmware',
+    'PUT /firmware/mode',
+    'PUT /firmware/rollback',
+    'POST /restart',
 ];
 
 // The streams the model plays, with the channels each codes. The E-AC-3 one is
@@ -603,6 +614,15 @@ async function startStub() {
                 device.layout = body;
                 return send(res, 200, REPLIES.layoutOk);
             }
+            // Updates over the network (planning/esp32-ota.md): the page has
+            // no part in them yet, so the stand-in answers as a board without
+            // them does.
+            case 'GET /firmware':
+            case 'PUT /firmware':
+            case 'PUT /firmware/mode':
+            case 'PUT /firmware/rollback':
+            case 'POST /restart':
+                return send(res, 404, REPLIES.noFirmware);
             default: {
                 // esp_http_server's own answers, after which it closes the
                 // connection.
