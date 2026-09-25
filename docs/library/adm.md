@@ -144,8 +144,12 @@ Id with the value zero and are thereby marked as ADM elements which should be ig
 `adm/utilities/id_assignment.hpp`'s own doc comment), which the shortcut alone triggers; every
 channel this writer produced collapsed to the same `AC_00000000` id before this chain was added.
 `AdmWriteError::kInvalidDocument` covers every case outside that shape: an unresolved `*_refs`
-entry, Matrix/HOA/Binaural pack or channel types, nested references, or a block whose position is
-polar rather than cartesian.
+entry, Matrix/HOA/Binaural pack or channel types, nested references, an `audioTrackUID` that names
+both an `audioTrackFormat` and an `audioChannelFormat`, or a block whose position is polar rather
+than cartesian (a default-constructed `AudioBlockFormat` is one: its `position` starts as
+`PolarPosition{}`). An exception libadm or libbw64 throws once the document is built comes back as
+`kOther` — `adm::formatId()` throws for an ID field that overflows, such as a 256th
+`audioTrackFormat` on one `audioStreamFormat`.
 
 ## Built on the EBU's own reference implementations
 

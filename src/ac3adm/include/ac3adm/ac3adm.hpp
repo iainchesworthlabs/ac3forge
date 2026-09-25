@@ -97,8 +97,10 @@ enum class AdmWriteError : std::uint8_t {
                        // HOA/Binaural channel/pack formats, nested audioObject/audioPackFormat
                        // references, a block whose `position` is polar rather than cartesian -
                        // this writer only emits the Dolby Atmos Master ADM Profile's cartesian
-                       // shape). A caller bug, not a hostile-input case: unlike parse_bw64's
-                       // AdmError, nothing here comes from an untrusted file.
+                       // shape), or an AudioTrackUid named both an audioTrackFormat and an
+                       // audioChannelFormat (BS.2076-2 clause 5.9 allows one or the other). A
+                       // caller bug, not a hostile-input case: unlike parse_bw64's AdmError,
+                       // nothing here comes from an untrusted file.
     kCannotOpen,       // the output path could not be opened for writing
     kOther,            // any other failure surfaced by libbw64/libadm; see the exception message
                        // this can't carry - kept broad deliberately, same reasoning as AdmError::

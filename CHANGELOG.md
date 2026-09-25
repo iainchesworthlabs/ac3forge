@@ -1770,6 +1770,16 @@ The sections below contain the complete change list and fixes.
   encoder's reason. Transcoding the same stream to AC-3 reported
   `bitrate must be a legal AC-3 rate` whatever the refusal was; both codecs now name the
   cause, as in `dialnorm out of range 1..31`.
+- **`ac3adm::write_bw64()` threw on a polar block instead of returning an error.**
+  `AdmWriteError::kInvalidDocument` is documented to cover a block whose position is polar,
+  but the translator read every block as cartesian through an unchecked `std::get`, so a polar
+  block — a default-constructed `AudioBlockFormat` is one — threw `std::bad_variant_access`
+  out of a function that returns `std::expected`, for Objects and DirectSpeakers channels
+  alike. An `audioTrackUID` naming both an `audioTrackFormat` and an `audioChannelFormat` threw
+  the same way, from libadm. Both now return `kInvalidDocument`. The ID assignment, `<chna>`
+  resolution and XML serialization that follow now run inside a `try` as well, and report
+  `kOther`: `adm::formatId()` throws for an ID field that overflows, such as a 256th
+  `audioTrackFormat` on one `audioStreamFormat`.
 
 **Crucible desktop application**
 
