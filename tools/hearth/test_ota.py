@@ -46,6 +46,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ota
+import package_firmware
+import sink_build_fixture
 
 HERE = Path(__file__).resolve().parent
 EXAMPLE = HERE.parents[1] / "esp-idf" / "ac3forge" / "examples" / "hearth_sink"
@@ -1259,6 +1261,220 @@ class Diagnostics(Case):
         self.assertIn("GET /log got no answer", out)
         code, out = run_ota("log", "--host", host)
         self.assertEqual(code, ota.REFUSED, out)
+
+
+C6_TABLE_4MB = (
+    ("nvs", 1, 0x02, 0x9000, 0x6000),
+    ("phy_init", 1, 0x01, 0xF000, 0x1000),
+    ("otadata", 1, 0x00, 0x10000, 0x2000),
+    ("ota_0", 0, 0x10, 0x20000, 0x1C0000),
+    ("ota_1", 0, 0x11, 0x1E0000, 0x1C0000),
+    ("coredump", 1, 0x03, 0x3A0000, 0x10000),
+    ("audio", 1, 0x40, 0x3B0000, 0x10000),
+    ("storage", 1, 0x81, 0x3C0000, 0x40000),
+)
+
+
+def table_json(entries: tuple[tuple[str, int, int, int, int], ...]) -> list[dict[str, Any]]:
+    return [
+        {"label": label, "type": kind, "subtype": subtype, "offset": offset, "size": size}
+        for label, kind, subtype, offset, size in entries
+    ]
+
+
+class PublishedImages(Case):
+    """push --release and --run: each board gets the published image that fits it (O8)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # The four images a release publishes, packaged as CI packages them.
+        self.published_dir = self.tmp / "published"
+        for name, settings in sink_build_fixture.RELEASE_IMAGES.items():
+            build = sink_build_fixture.make_build(self.tmp / "builds" / name, **settings)
+            package_firmware.package(build, name, self.published_dir)
+        package_firmware.merge_manifest(self.published_dir)
+        self.manifest = json.loads((self.published_dir / ota.MANIFEST_NAME).read_text("utf-8"))
+
+    def published(self) -> ota.Published:
+        return ota.Published(self.manifest, self.published_dir, "release v0.11.0")
+
+    def entry(self, name: str) -> dict[str, Any]:
+        return next(image for image in self.manifest["images"] if image["name"] == name)
+
+    def chosen(self, hardware: dict[str, Any], board_firmware: dict[str, Any]) -> str:
+        image, name = ota.image_for_board(self.published(), hardware, board_firmware)
+        return name if image is not None else f"none: {name}"
+
+    def test_each_board_gets_its_own_image(self) -> None:
+        s3 = {"target": "esp32s3", "chip": "ESP32-S3", "revision": "0.2", "psram_bytes": 8 << 20}
+        c6 = {"target": "esp32c6", "chip": "ESP32-C6", "revision": "0.2", "psram_bytes": 0}
+        p4 = {"target": "esp32p4", "chip": "ESP32-P4", "revision": "1.3", "psram_bytes": 32 << 20}
+        c6_4mb = firmware(
+            flash_bytes=4 << 20, slot_bytes=0x1C0000, partitions=table_json(C6_TABLE_4MB)
+        )
+        self.assertEqual(self.chosen(s3, firmware()), "hearth-sink-esp32s3")
+        self.assertEqual(self.chosen(c6, firmware()), "hearth-sink-esp32c6-16mb")
+        self.assertEqual(self.chosen(c6, c6_4mb), "hearth-sink-esp32c6")
+        self.assertEqual(self.chosen(p4, firmware()), "hearth-sink-esp32p4-rev1")
+
+    def test_a_board_no_image_fits_is_told_why(self) -> None:
+        p4_v3 = {"target": "esp32p4", "chip": "ESP32-P4", "revision": "3.1", "psram_bytes": 1}
+        chosen = self.chosen(p4_v3, firmware())
+        self.assertTrue(chosen.startswith("none: "), chosen)
+        self.assertIn("hearth-sink-esp32p4-rev1: it runs on chip revisions v1.0 to v1.99", chosen)
+        self.assertIn("hearth-sink-esp32s3: it is for ESP32-S3", chosen)
+        s3_without_psram = {"target": "esp32s3", "revision": "0.2", "psram_bytes": 0}
+        self.assertIn(
+            "hearth-sink-esp32s3: it is built for a board with PSRAM",
+            self.chosen(s3_without_psram, firmware()),
+        )
+        s3 = {"target": "esp32s3", "revision": "0.2", "psram_bytes": 8 << 20}
+        other_table = firmware(partitions=table_json(TABLE[:-1]))
+        self.assertIn("its partition table is not the board's", self.chosen(s3, other_table))
+
+    def test_a_download_the_manifest_does_not_describe_is_refused(self) -> None:
+        name = self.entry("hearth-sink-esp32s3")["files"]["app"]["name"]
+        path = self.published_dir / name
+        path.write_bytes(path.read_bytes()[:-1] + b"\0")
+        s3 = {"target": "esp32s3", "revision": "0.2", "psram_bytes": 8 << 20}
+        with self.assertRaisesRegex(ota.ImageError, "SHA-256 is not the one"):
+            ota.image_for_board(self.published(), s3, firmware())
+
+    def release_files(self) -> dict[str, bytes]:
+        files = {path.name: path.read_bytes() for path in self.published_dir.iterdir()}
+        sums = "".join(
+            f"{hashlib.sha512(data).hexdigest()}  {name}\n"
+            for name, data in files.items()
+            if name.endswith((".bin", ".zip"))
+        )
+        files["SHA512SUMS"] = sums.encode()
+        return files
+
+    def fake_github(self, files: dict[str, bytes], releases: list[dict[str, Any]]):
+        def get(url: str) -> bytes:
+            if "/releases/tags/" in url:
+                tag = url.rsplit("/", 1)[1]
+                return json.dumps(next(r for r in releases if r["tag_name"] == tag)).encode()
+            if url.endswith("/releases?per_page=30"):
+                return json.dumps(releases).encode()
+            return files[url.rsplit("/", 1)[1]]
+
+        return get
+
+    def release(self, tag: str, files: dict[str, bytes]) -> dict[str, Any]:
+        return {
+            "tag_name": tag,
+            "assets": [
+                {"name": name, "browser_download_url": f"https://example.invalid/{name}"}
+                for name in files
+            ],
+        }
+
+    def board_that_takes(self, name: str) -> tuple[FakeBoard, bytes]:
+        """A stand-in S3 board, scripted to take the named image, restart and accept it."""
+        entry = self.entry(name)
+        app = (self.published_dir / entry["files"]["app"]["name"]).read_bytes()
+        elf = bytes.fromhex(entry["elf_sha256"])
+        board = FakeBoard(self)
+        old = slot("ota_0", "v1.0.0", OLD_ELF, image_sha=OLD_IMAGE_SHA, intact=True)
+        board.after_upload = [
+            restarting(),
+            DOWN,
+            firmware(
+                running=slot("ota_1", "v0.11.0", elf, state="trial"),
+                other=old,
+                trial={
+                    "healthy_for_ms": 30_000,
+                    "hold_ms": 30_000,
+                    "remaining_ms": 1,
+                    "waiting_for": [],
+                },
+            ),
+            firmware(
+                running=slot("ota_1", "v0.11.0", elf, image_sha=app[-32:].hex(), intact=True),
+                other=old,
+                last_update={"version": "v0.11.0", "result": "accepted", "reason": ""},
+            ),
+        ]
+        return board, app
+
+    def test_push_release_sends_each_board_its_image(self) -> None:
+        files = self.release_files()
+        board, app = self.board_that_takes("hearth-sink-esp32s3")
+        releases = [self.release("v0.11.0", files)]
+        with mock.patch.object(ota, "github_get", side_effect=self.fake_github(files, releases)):
+            code, out = run_ota("push", "--release", "v0.11.0", "--host", board.host)
+        self.assertEqual(code, ota.UPDATED, out)
+        self.assertEqual(board.received, app)
+        self.assertIn(f"{board.host}: release v0.11.0's hearth-sink-esp32s3 fits this board", out)
+        self.assertIn("updated: runs v0.11.0 from ota_1, accepted", out)
+        self.assertIn("the image's SHA-256 on the board matches the file's", out)
+
+    def test_push_release_latest_takes_the_newest_release_that_has_sink_firmware(self) -> None:
+        files = self.release_files()
+        board, _ = self.board_that_takes("hearth-sink-esp32s3")
+        releases = [
+            {"tag_name": "v0.12.0-beta.1", "assets": []},
+            self.release("v0.11.0", files),
+        ]
+        with mock.patch.object(ota, "github_get", side_effect=self.fake_github(files, releases)):
+            code, out = run_ota("push", "--release", "latest", "--host", board.host)
+        self.assertEqual(code, ota.UPDATED, out)
+        self.assertIn("release v0.11.0: 4 image(s)", out)
+
+    def test_a_release_download_sha512sums_disagrees_with_is_refused(self) -> None:
+        files = self.release_files()
+        name = self.entry("hearth-sink-esp32s3")["files"]["app"]["name"]
+        files["SHA512SUMS"] = files["SHA512SUMS"].replace(
+            hashlib.sha512(files[name]).hexdigest().encode(), b"0" * 128
+        )
+        board = FakeBoard(self)
+        releases = [self.release("v0.11.0", files)]
+        with mock.patch.object(ota, "github_get", side_effect=self.fake_github(files, releases)):
+            code, out = run_ota("push", "--release", "v0.11.0", "--host", board.host)
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("SHA-512 is not the one SHA512SUMS gives", out)
+        self.assertEqual(board.puts(), [])
+
+    def test_push_run_downloads_the_artifact_with_gh(self) -> None:
+        board, app = self.board_that_takes("hearth-sink-esp32s3")
+        commands: list[list[str]] = []
+
+        def gh(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            into = Path(command[command.index("--dir") + 1])
+            into.mkdir(parents=True, exist_ok=True)
+            for path in self.published_dir.iterdir():
+                (into / path.name).write_bytes(path.read_bytes())
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(ota.subprocess, "run", side_effect=gh):
+            code, out = run_ota("push", "--run", "1234", "--host", board.host)
+        self.assertEqual(code, ota.UPDATED, out)
+        self.assertEqual(board.received, app)
+        self.assertEqual(commands[0][:4], ["gh", "run", "download", "1234"])
+        self.assertIn("--name", commands[0])
+        self.assertIn(ota.FIRMWARE_ARTIFACT, commands[0])
+        self.assertIn("CI run 1234's hearth-sink-esp32s3 fits this board", out)
+
+    def test_a_board_no_image_fits_is_refused_and_the_next_is_still_updated(self) -> None:
+        files = self.release_files()
+        c3 = FakeBoard(self)
+        c3.hardware = {**c3.hardware, "target": "esp32c3", "chip": "ESP32-C3"}
+        board, _ = self.board_that_takes("hearth-sink-esp32s3")
+        releases = [self.release("v0.11.0", files)]
+        with mock.patch.object(ota, "github_get", side_effect=self.fake_github(files, releases)):
+            code, out = run_ota(
+                "push", "--release", "v0.11.0", "--host", c3.host, "--host", board.host
+            )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn(f"{c3.host}: refused: no image of release v0.11.0 fits this board.", out)
+        self.assertIn("updated: runs v0.11.0 from ota_1, accepted", out)
+
+    def test_run_takes_a_number(self) -> None:
+        code, out = run_ota("push", "--run", "latest", "--host", "127.0.0.1:1")
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("--run takes a workflow run's number", out)
 
 
 class CommandLine(Case):

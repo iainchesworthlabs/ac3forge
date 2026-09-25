@@ -8,8 +8,9 @@ while. A reset during the trial, or a trial that fails, boots the image before
 it again (planning/esp32-ota.md). This is the host side of that. Standard
 library only; the zeroconf package is used for --all when it is installed.
 
-    python tools/hearth/ota.py push (--build-dir DIR | IMAGE) (--host H ... | --all)
-                                    [--yes] [--force] [--timeout SECONDS]
+    python tools/hearth/ota.py push (--build-dir DIR | IMAGE | --release TAG | --run RUN_ID)
+                                    (--host H ... | --all)
+                                    [--yes] [--force] [--timeout SECONDS] [--download-dir DIR]
     python tools/hearth/ota.py status [--host H ... | --all]
     python tools/hearth/ota.py restart --host H
     python tools/hearth/ota.py rollback --host H
@@ -56,6 +57,17 @@ push reads the image file once, and sends the bytes it checked:
 Boards are updated one at a time. push stops at the first board that rolls
 back or does not come back, and the boards after it are not touched.
 
+push --release TAG and --run RUN_ID take published images instead of a build
+(planning/esp32-ota.md, O8). A release's hearth-sink-manifest.json lists each
+board's image with its chip, flash size, PSRAM, revision range and partition
+table; each board gets the one that matches its /hardware and /firmware, and a
+board no image fits is named and skipped. The image is downloaded then, from
+the GitHub API ("latest" is the newest release that publishes sink firmware),
+and checked against the manifest's SHA-256 and the release's SHA512SUMS before
+it is sent. --run downloads a CI run's esp32-firmware artifact whole with the
+GitHub CLI (gh), so a pull request's firmware can go onto a board with no
+local build.
+
 status prints each board's running and other slot, mode, trial, last update,
 core dump and network. restart, rollback and cancel send POST /restart,
 PUT /firmware/rollback and PUT /firmware/mode "normal" (which leaves flash mode
@@ -86,11 +98,15 @@ import dataclasses
 import hashlib
 import http.client
 import json
+import os
 import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NoReturn
@@ -1310,6 +1326,238 @@ def boards_from(args: argparse.Namespace) -> list[Board]:
     return boards
 
 
+# --- published images (planning/esp32-ota.md, O8) ---------------------------------------------
+
+REPOSITORY = "iainchesworthlabs/ac3forge"
+MANIFEST_NAME = "hearth-sink-manifest.json"
+FIRMWARE_ARTIFACT = "esp32-firmware"
+GITHUB_API = "https://api.github.com"
+DOWNLOAD_TIMEOUT = 120.0
+
+
+@dataclass
+class Published:
+    """A published set of images: its manifest, where its files are, and SHA512SUMS's lines."""
+
+    manifest: dict[str, Any]
+    directory: Path
+    source: str  # "release v0.11.0", "CI run 1234"
+    sums: dict[str, str] = field(default_factory=dict)
+    # A file that is not in `directory` yet, and where to fetch it.
+    urls: dict[str, str] = field(default_factory=dict)
+
+
+def github_request(url: str) -> urllib.request.Request:
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "ac3forge-ota.py"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return urllib.request.Request(url, headers=headers)
+
+
+def github_get(url: str) -> bytes:
+    try:
+        with urllib.request.urlopen(github_request(url), timeout=DOWNLOAD_TIMEOUT) as response:
+            return response.read()
+    except urllib.error.HTTPError as error:
+        raise UsageError(f"{url} answered {error.code} {error.reason}") from None
+    except (OSError, http.client.HTTPException) as error:
+        raise UsageError(f"{url} got no answer: {error_text(error)}") from None
+
+
+def read_sums(text: str) -> dict[str, str]:
+    """SHA512SUMS's lines as sha512sum writes them: '<hex>  <name>'."""
+    sums = {}
+    for line in text.splitlines():
+        digest, _, name = line.strip().partition(" ")
+        if digest and name:
+            sums[name.strip().lstrip("*")] = digest.lower()
+    return sums
+
+
+def fetch_release(tag: str, into: Path) -> Published:
+    """The manifest and SHA512SUMS of release `tag`, or of the newest release that has a manifest.
+
+    The images themselves are fetched when a board is matched to one (image_for_board), so
+    that a push to one board downloads one image. "latest" takes prereleases too: every
+    release so far is one.
+    """
+    if tag == "latest":
+        releases = json.loads(github_get(f"{GITHUB_API}/repos/{REPOSITORY}/releases?per_page=30"))
+        release = next(
+            (
+                entry
+                for entry in releases
+                if any(asset.get("name") == MANIFEST_NAME for asset in entry.get("assets", []))
+            ),
+            None,
+        )
+        if release is None:
+            raise UsageError(f"no release of {REPOSITORY} publishes {MANIFEST_NAME} yet")
+    else:
+        release = json.loads(github_get(f"{GITHUB_API}/repos/{REPOSITORY}/releases/tags/{tag}"))
+    urls = {
+        str(asset.get("name")): str(asset.get("browser_download_url"))
+        for asset in release.get("assets", [])
+    }
+    name = str(release.get("tag_name") or tag)
+    if MANIFEST_NAME not in urls:
+        raise UsageError(f"release {name} publishes no {MANIFEST_NAME}: it has no sink firmware")
+    into.mkdir(parents=True, exist_ok=True)
+    manifest = json.loads(github_get(urls[MANIFEST_NAME]))
+    sums = read_sums(github_get(urls["SHA512SUMS"]).decode("utf-8")) if "SHA512SUMS" in urls else {}
+    return Published(manifest, into, f"release {name}", sums, urls)
+
+
+def fetch_run(run_id: str, into: Path) -> Published:
+    """A CI run's esp32-firmware artifact, downloaded whole with the GitHub CLI."""
+    if not run_id.isdigit():
+        raise UsageError(f"--run takes a workflow run's number, not '{run_id}'")
+    command = [
+        "gh", "run", "download", run_id, "--repo", REPOSITORY,
+        "--name", FIRMWARE_ARTIFACT, "--dir", str(into),
+    ]  # fmt: skip
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, check=False, timeout=600)
+    except FileNotFoundError:
+        raise UsageError(
+            "--run downloads with the GitHub CLI (gh), which is not installed"
+        ) from None
+    if done.returncode != 0:
+        raise UsageError(
+            f"gh run download {run_id} failed: {done.stderr.strip() or done.stdout.strip()}"
+        )
+    try:
+        manifest = json.loads((into / MANIFEST_NAME).read_text("utf-8"))
+    except (OSError, ValueError) as error:
+        raise UsageError(
+            f"run {run_id}'s {FIRMWARE_ARTIFACT} has no readable {MANIFEST_NAME}: {error}"
+        ) from None
+    return Published(manifest, into, f"CI run {run_id}")
+
+
+def image_problem(
+    entry: dict[str, Any], hardware: dict[str, Any], firmware: dict[str, Any]
+) -> str | None:
+    """Why the published image `entry` is not the one for this board, or None when it is."""
+    if entry.get("target") != text_of(hardware, "target"):
+        return f"it is for {entry.get('chip') or entry.get('target')}"
+    flash_bytes = number_of(firmware, "flash_bytes")
+    flash = str(entry.get("flash_size", ""))
+    if (
+        flash_bytes
+        and flash.endswith("MB")
+        and flash[:-2].isdigit()
+        and int(flash[:-2]) << 20 != flash_bytes
+    ):
+        return f"it is built for {flash} of flash"
+    has_psram = number_of(hardware, "psram_bytes") > 0
+    if bool(entry.get("psram")) != has_psram:
+        return (
+            "it is built for a board with PSRAM"
+            if entry.get("psram")
+            else "it is built for a board without PSRAM"
+        )
+    revision = parse_revision(text_of(hardware, "revision"))
+    low = number_of(entry, "min_rev_full")
+    high = number_of(entry, "max_rev_full")
+    if revision is not None and (revision < low or (revision_set(high) and revision > high)):
+        return f"it runs on chip revisions {revision_text(low)} to {revision_text(high)}"
+    theirs = board_partitions(firmware)
+    ours = tuple(
+        Partition(
+            text_of(part, "label"),
+            number_of(part, "type"),
+            number_of(part, "subtype"),
+            number_of(part, "offset"),
+            number_of(part, "size"),
+        )
+        for part in entry.get("partitions") or []
+    )
+    if theirs is not None and ours and table_difference(ours, theirs):
+        return f"its partition table is not the board's ({table_difference(ours, theirs)})"
+    return None
+
+
+def image_for_board(
+    published: Published, hardware: dict[str, Any], firmware: dict[str, Any]
+) -> tuple[Image | None, str]:
+    """The published image that fits this board, read and checked, or why there is none."""
+    reasons = []
+    for entry in published.manifest.get("images") or []:
+        problem = image_problem(entry, hardware, firmware)
+        if problem:
+            reasons.append(f"{entry.get('name')}: {problem}")
+            continue
+        app = (entry.get("files") or {}).get("app") or {}
+        name = str(app.get("name", ""))
+        path = published.directory / name
+        if not path.is_file() and name in published.urls:
+            path.write_bytes(github_get(published.urls[name]))
+        if not path.is_file():
+            raise UsageError(f"{published.source} names {name}, which it does not hold")
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != app.get("sha256"):
+            raise ImageError(
+                f"{name}'s SHA-256 is not the one {MANIFEST_NAME} gives: the download is damaged"
+            )
+        if published.sums and published.sums.get(name) != hashlib.sha512(data).hexdigest():
+            raise ImageError(
+                f"{name}'s SHA-512 is not the one SHA512SUMS gives: the download is damaged"
+            )
+        image = read_image_file(path)
+        partitions = tuple(
+            Partition(
+                text_of(part, "label"),
+                number_of(part, "type"),
+                number_of(part, "subtype"),
+                number_of(part, "offset"),
+                number_of(part, "size"),
+            )
+            for part in entry.get("partitions") or []
+        )
+        return (
+            dataclasses.replace(
+                image,
+                partitions=partitions or None,
+                wifi_built_in=bool(entry.get("network_built_in")),
+            ),
+            str(entry.get("name")),
+        )
+    return None, "; ".join(reasons) or f"{published.source} publishes no images"
+
+
+def push_published(published: Published, boards: list[Board], options: PushOptions) -> int:
+    """Each board gets the published image that fits it, one board at a time, as push() goes."""
+    worst = UPDATED
+    for index, board in enumerate(boards):
+        try:
+            hardware = board.get_json("/hardware")
+            firmware = board.get_json("/firmware")
+        except BoardError as error:
+            say(board, f"refused: {error}")
+            worst = max(worst, REFUSED)
+            continue
+        image, name = image_for_board(published, hardware, firmware)
+        if image is None:
+            say(board, f"refused: no image of {published.source} fits this board. {name}")
+            worst = max(worst, REFUSED)
+            continue
+        say(board, f"{published.source}'s {name} fits this board")
+        for line in describe_image(image):
+            console.say(line)
+        code = push_one(board, image, options)
+        if code in (ROLLED_BACK, SILENT):
+            rest = boards[index + 1 :]
+            if rest:
+                console.say(
+                    f"stopped at {board}; not touched: {', '.join(str(each) for each in rest)}"
+                )
+            return code
+        worst = max(worst, code)
+    return worst
+
+
 # --- the command line -----------------------------------------------------------------------
 
 
@@ -1355,6 +1603,24 @@ def build_parser() -> Parser:
         type=Path,
         metavar="IMAGE",
         help="an app image (ac3forge_hearth_sink.bin) on its own",
+    )
+    source.add_argument(
+        "--release",
+        metavar="TAG",
+        help="a release's published images (or 'latest'): each board gets the one that fits it, "
+        f"checked against {MANIFEST_NAME} and SHA512SUMS",
+    )
+    source.add_argument(
+        "--run",
+        metavar="RUN_ID",
+        help=f"a CI run's {FIRMWARE_ARTIFACT} artifact, downloaded with the GitHub CLI (gh): "
+        "each board gets the image that fits it",
+    )
+    push_parser.add_argument(
+        "--download-dir",
+        type=Path,
+        metavar="DIR",
+        help="where --release and --run keep what they download (default: a temporary directory)",
     )
     targets = push_parser.add_mutually_exclusive_group(required=True)
     targets.add_argument(
@@ -1439,11 +1705,23 @@ def run(args: argparse.Namespace) -> int:
     if args.command == "push":
         if args.timeout <= 0:
             raise UsageError("--timeout takes a number of seconds above 0")
+        options = PushOptions(yes=args.yes, force=args.force, timeout=args.timeout)
+        if args.release or args.run:
+            with tempfile.TemporaryDirectory(prefix="ota-") as temporary:
+                into = args.download_dir or Path(temporary)
+                published = (
+                    fetch_release(args.release, into) if args.release else fetch_run(args.run, into)
+                )
+                images = published.manifest.get("images") or []
+                console.say(
+                    f"{published.source}: {len(images)} image(s), "
+                    f"{', '.join(str(image.get('name')) for image in images)}"
+                )
+                return push_published(published, boards_from(args), options)
         # The image is read and checked before any board is contacted.
         image = read_build_dir(args.build_dir) if args.build_dir else read_image_file(args.image)
         for line in describe_image(image):
             console.say(line)
-        options = PushOptions(yes=args.yes, force=args.force, timeout=args.timeout)
         return push(image, boards_from(args), options)
     if args.command == "status":
         return max((show_status(board) for board in boards_from(args)), default=UPDATED)

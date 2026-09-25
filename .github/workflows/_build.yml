@@ -112,7 +112,8 @@ on:
         default: true
       run_esp:
         description: >-
-          Build/test build-esp32s3, hearth-esp32s3, build-esp32c3 and build-footprint. The last one runs on a
+          Build/test build-esp32s3, hearth-esp32s3, build-esp32c3, package-esp32-firmware (the sink images
+          those two build, published with a release) and build-footprint. The last one runs on a
           Linux-fleet runner and cross-compiles arm-none-eabi rather than ESP-IDF, but it shares
           apps/baremetal/'s probe and fixtures with the other two (see its own "sibling" comment)
           and classify_changes.py's LANE_PREFIXES puts apps/baremetal/ in `esp`, not `linux` - the
@@ -2750,11 +2751,6 @@ jobs:
       # The fourth, null, drives no hardware. It is built here because the
       # QEMU runs above all use the capture sink in its place.
       #
-      # And the Sendspin player as a board builds it (sdkconfig.sendspin, over
-      # the hardware and PSRAM overlays): WiFi, PSRAM and the I2S sink, none of
-      # which QEMU has. Its protocol, playout and levels run under QEMU in
-      # hearth-esp32s3, from the image the step after this one builds.
-      #
       # What can go wrong in a build nothing runs is that it stops compiling -
       # an IDF component is renamed, a driver API changes shape - and CI should
       # find that before an integrator does. It has found one: the SD and HTTP
@@ -2782,15 +2778,46 @@ jobs:
             echo "$name: built"
           done
           rm -f sdkconfig.probe
-          echo "--- sendspin board ---"
-          rm -rf build sdkconfig
-          board="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin"
-          SDKCONFIG_DEFAULTS="$board" idf.py set-target esp32s3 >/dev/null
-          SDKCONFIG_DEFAULTS="$board" idf.py build >/dev/null
-          echo "sendspin board: built"
           # Leave the tree as CI's runnable configuration found it, so a later
           # step or a re-run does not inherit a probe build.
           rm -rf build sdkconfig
+
+      # The Sendspin player as the S3 board builds it (sdkconfig.sendspin, over
+      # the hardware and PSRAM overlays): WiFi, PSRAM and the I2S sink, none of
+      # which QEMU has, so it is built and not run. Its protocol, playout and
+      # levels run under QEMU in hearth-esp32s3, from the CI shape the step
+      # after this one builds.
+      #
+      # It is also the image the releases publish for this board
+      # (planning/esp32-ota.md, O8). tools/hearth/package_firmware.py writes
+      # its app image, factory image, parts and ELF, and package-esp32-firmware
+      # checks them and publishes them with the C6's and the P4's. On a release
+      # the image carries the release's tag as its version; otherwise ESP-IDF's
+      # own `git describe` of the checkout.
+      - name: Build the S3 board's Sendspin player and package its image
+        shell: bash
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          dir="$RUNNER_TEMP/hearth-sink-esp32s3"
+          version=()
+          if [ -n "$VERSION_TAG" ]; then version=("-DPROJECT_VER=$VERSION_TAG"); fi
+          idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32s3 \
+            "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin" \
+            "${version[@]}" build >/dev/null
+          python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
+            --name hearth-sink-esp32s3 --out "$GITHUB_WORKSPACE/esp32-firmware"
+
+      - name: Upload the S3 board's image for packaging
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: esp32-firmware-esp32s3
+          path: esp32-firmware/
+          retention-days: 1
+          if-no-files-found: error
 
       # The Sendspin player on QEMU's Ethernet (sdkconfig.ci-sendspin, over the
       # HTTP shape), for hearth-esp32s3 to play to: that job needs the host's
@@ -3148,16 +3175,48 @@ jobs:
       # this combination (the README's "On the ESP32-C6" section, including a ten-minute
       # two-board group play), but nothing before this step caught whether it still compiles.
       # Same container and toolchain as the two steps above, so it costs one more build.
+      #
+      # It is also the image the releases publish for a C6 on the 4 MB table
+      # (planning/esp32-ota.md, O8), packaged as build-esp32s3 packages the S3
+      # board's; the step after this one builds the 16 MB table's.
       - name: Build hearth_sink's Sendspin player for the ESP32-C6 (no emulator for this part)
         shell: bash
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
           cd esp-idf/ac3forge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-c6-sendspin"
+          version=()
+          if [ -n "$VERSION_TAG" ]; then version=("-DPROJECT_VER=$VERSION_TAG"); fi
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6" \
-            build
+            "${version[@]}" build
+          python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
+            --name hearth-sink-esp32c6 --out "$GITHUB_WORKSPACE/esp32-firmware"
+
+      # The same player on a C6 with 16 MB of flash (sdkconfig.flash16mb over
+      # the same overlays), which takes the 16 MB table the S3 and the P4 use,
+      # published as its own image because a board's table cannot change over
+      # the network. Built for publishing alone: the 4 MB build above already
+      # holds that the C6 player compiles.
+      - name: Build hearth_sink's Sendspin player for a 16 MB ESP32-C6
+        shell: bash
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          dir="$RUNNER_TEMP/hearth_sink-c6-16mb-sendspin"
+          version=()
+          if [ -n "$VERSION_TAG" ]; then version=("-DPROJECT_VER=$VERSION_TAG"); fi
+          idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
+            "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6;sdkconfig.flash16mb" \
+            "${version[@]}" build >/dev/null
+          python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
+            --name hearth-sink-esp32c6-16mb --out "$GITHUB_WORKSPACE/esp32-firmware"
 
       # hearth_sink's Sendspin player for the ESP32-P4, built and not run, for the reason the C6
       # step above gives: qemu-riscv32 has no machine for this part either. It is built for its
@@ -3166,16 +3225,33 @@ jobs:
       # 1,152 of those 24,576 bytes spare (sdkconfig.p4, planning/esp32-ota.md). An ESP-IDF
       # update that grows it past the window then fails here rather than in the next board
       # build for a P4. Same container and toolchain as the steps above.
+      #
+      # It is also the image the releases publish for a P4 of silicon revision v1.x (O8):
+      # sdkconfig.p4's revision settings admit v1.x and nothing newer.
       - name: Build hearth_sink's Sendspin player for the ESP32-P4 (no emulator for this part)
         shell: bash
+        env:
+          VERSION_TAG: ${{ inputs.version_tag }}
         run: |
           set -eu
           . "$IDF_PATH/export.sh"
           cd esp-idf/ac3forge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-p4-sendspin"
+          version=()
+          if [ -n "$VERSION_TAG" ]; then version=("-DPROJECT_VER=$VERSION_TAG"); fi
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin" \
-            build
+            "${version[@]}" build
+          python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
+            --name hearth-sink-esp32p4-rev1 --out "$GITHUB_WORKSPACE/esp32-firmware"
+
+      - name: Upload the C6 and P4 images for packaging
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: esp32-firmware-riscv
+          path: esp32-firmware/
+          retention-days: 1
+          if-no-files-found: error
 
       # The ESP32-P4 probe project (planning/esp32-sink-tiers.md's Phase P1),
       # built and not run, for the same reason as the ESP32-C6 step above:
@@ -3192,6 +3268,67 @@ jobs:
           cd apps/baremetal/platform/esp32p4
           dir="$RUNNER_TEMP/esp32p4"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 build
+
+  # The sink firmware every release publishes (planning/esp32-ota.md, O8): the
+  # S3 board's image from build-esp32s3, and the two C6 images and the P4's
+  # from build-esp32c3, checked together and published together.
+  # tools/ci/check_firmware_package.py opens each one first and holds it to its
+  # name: its chip, revisions, flash size and PSRAM, its own SHA-256, the
+  # smallest slot of its table, its parts against its factory image, and no
+  # network built in. Every run keeps them for 14 days as esp32-firmware, which
+  # `ota.py push --run <run id>` downloads; a release publishes them as
+  # packages-esp32-firmware, which release.yml's github-release collects with
+  # every other packages-* artifact.
+  package-esp32-firmware:
+    name: Package the sink firmware
+    needs: [check-runners, build-esp32s3, build-esp32c3]
+    if: inputs.run_esp
+    runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
+    # For its Python, which the two scripts need and nothing else.
+    container: espressif/idf:v6.1
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download the images
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: esp32-firmware-*
+          path: esp32-firmware
+          merge-multiple: true
+
+      - name: Write the manifest and check every image
+        shell: bash
+        run: |
+          set -eu
+          python3 tools/hearth/package_firmware.py manifest --out esp32-firmware
+          python3 tools/ci/check_firmware_package.py esp32-firmware
+          ls -l esp32-firmware
+
+      - name: Upload the sink firmware
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: esp32-firmware
+          path: |
+            esp32-firmware/*.bin
+            esp32-firmware/*.zip
+            esp32-firmware/hearth-sink-manifest.json
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Upload the sink firmware for the release
+        if: inputs.do_package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: packages-esp32-firmware
+          path: |
+            esp32-firmware/*.bin
+            esp32-firmware/*.zip
+            esp32-firmware/hearth-sink-manifest.json
+          if-no-files-found: error
 
   build-footprint:
     name: Minimum-footprint decoder (arm-none-eabi, QEMU)

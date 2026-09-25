@@ -274,6 +274,14 @@ The sections below contain the complete change list and fixes.
     restart and trial to the outcome. **Roll back** and **Restart** ask first. The app reaches
     the board's own web server, not Sendspin, so the tab keeps following an update while the
     sink is off Sendspin.
+  - **Published sink firmware.** Every release now carries an image for each board:
+    `hearth-sink-esp32s3`, `-esp32c6` (4 MB), `-esp32c6-16mb` and `-esp32p4-rev1`. Each comes as
+    the app image for an update over the network, a factory image for a new board, the parts
+    with a relative `flash_args` for a board already in use, and the ELF, with one
+    `hearth-sink-manifest.json`. `tools/ci/check_firmware_package.py` holds each to its name
+    before upload. `ota.py push --release <tag|latest>` gives each board the image that fits it,
+    checked against the manifest and `SHA512SUMS`. `--run <run id>` takes a CI run's
+    `esp32-firmware` artifact, which every run keeps for 14 days.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot

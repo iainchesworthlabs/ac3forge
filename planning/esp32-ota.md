@@ -771,6 +771,29 @@ a time.
 means a release key held by CI, a secret only the user can set, or signing on the maintainer's
 machine before upload. O7 decides which.
 
+**Built** (O8, 2026-09-25), as above, with these specifics:
+
+- `tools/hearth/package_firmware.py package` writes one image's files from its build directory.
+  It lays the factory image out itself: each region at its offset, with `0xFF` between them as
+  erased flash has. For the C6's 16 MB build that came to byte for byte what `esptool merge-bin
+  @flash_args` writes, all 9,109,504 bytes. `check_firmware_package.py` then lays the parts out
+  again with its own code, so each checks the other. The zips' members carry a fixed date, so one build packages to the
+  same bytes every time.
+- Each image's facts go into a fragment (`<image>.json`), which `package_firmware.py manifest`
+  merges into `hearth-sink-manifest.json`. The facts are its chip, revision range, flash size,
+  PSRAM, the partition table it ships and each part's offset. The last of those is what the
+  browser installer's manifest needs (O9).
+- `build-esp32s3` packages the S3 board's image and `build-esp32c3` the other three; the 16 MB C6
+  is one more build there. `package-esp32-firmware` merges and checks them, and uploads
+  `esp32-firmware` (14 days) and, on a release, `packages-esp32-firmware`.
+- `release.yml` lists the four factory images and the manifest in its completeness check. It adds
+  `*.bin` and the manifest to the files it checksums, signs and attests, whose lists name
+  extensions and had no `.bin`.
+- `ota.py push --release` reads the release through the GitHub API with the standard library, so
+  it needs neither the GitHub CLI nor a token for a public repository. It downloads the manifest
+  and `SHA512SUMS` first, and then only the image each board takes. `--run` uses `gh run
+  download`, since workflow artifacts need a token.
+
 ## The user guide
 
 O9 writes `docs/hearth/sink-firmware.md`, for someone who has a board and a release, and no
@@ -985,6 +1008,9 @@ boards leave development, and if that is before O8, O8's images are published si
   - the same images published with each release;
   - `check_firmware_package.py`;
   - `ota.py push --run` and `--release`.
+
+  [Built](#published-images); its exits wait for a release (or `release.yml`'s dry run) and for a
+  blank board.
 
   **Exit:**
   - `ota.py push --release` puts a release's images on each board on the desk over the network,
