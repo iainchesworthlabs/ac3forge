@@ -22,7 +22,9 @@ writes the IAMF bitstream directly, for any 7.1.4-coded programme this decoder c
 nothing else in the chain.
 
 Default-on (`AC3FORGE_BUILD_IAMF`), installed/exported the same way as the container writers —
-unlike `ac3adm::ac3adm`, it has no third-party dependency to opt in around.
+unlike `ac3adm::ac3adm`, it has no third-party dependency to opt in around. The vcpkg port and
+the Conan recipe install it where asked for, off by default: `vcpkg install ac3forge[iamf]`, or
+`-o "ac3forge/*:iamf=True"` (see [Using ac3::forge](index.md)).
 
 ```cpp
 iamf::AudioTrack track{.samples_per_frame = ac3::kSamplesPerFrame};

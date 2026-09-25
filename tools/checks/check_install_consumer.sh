@@ -46,6 +46,13 @@
 # with the decoder's file and not the encoder's fails. It needs pkg-config, or whatever $PKG_CONFIG
 # names.
 #
+# Each optional library a tree was configured with (its AC3FORGE_BUILD_<NAME> option ON) installs
+# its CMake export and its .pc file, and each it was configured without installs no file at all:
+# the vcpkg port's features and the Conan recipe's options (packaging/) switch those same options,
+# and a default install of either, without the container writers, the AC-4 libraries, IAB or IAMF,
+# must carry none of their headers, libraries or targets. A tree configured with the AC-4
+# libraries, IAB and IAMF off is that shape.
+#
 # Usage:  ./tools/checks/check_install_consumer.sh <build-dir>...
 # Exit:   0 = every tree's archives linked whole, its consumers built and ran and its .pc files
 #         linked, 2 = bad invocation, anything else = a step failed (its own output is above).
@@ -69,6 +76,47 @@ trap 'rm -rf "$scratch"' EXIT
 # FILEPATH in one tree and STRING in another).
 cache_value() {
     sed -n "s/^$2:[A-Z]*=//p" "$1/CMakeCache.txt" | head -n 1
+}
+
+# Each optional library: its AC3FORGE_BUILD_<NAME> option, its CMake export file (without
+# .cmake), and the stem its library files, .pc files and include directories are named from.
+components=(
+    "AC3FORGE_BUILD_MATROSKA matroskaTargets matroska"
+    "AC3FORGE_BUILD_MP4 mp4Targets mp4"
+    "AC3FORGE_BUILD_MPEGTS mpegtsTargets mpegts"
+    "AC3FORGE_BUILD_IAB iabTargets ac3iab"
+    "AC3FORGE_BUILD_IAMF iamfTargets iamf"
+    "AC3FORGE_BUILD_AC4 ac4Targets ac4"
+)
+
+# Each optional library the tree $1 was configured with is in the prefix $2 with its export file
+# and its .pc file, and each it was configured without has no file there at all. -print -quit, not
+# a pipe into head: with pipefail, the SIGPIPE a closed pipe sends find would stop the script.
+check_components() {
+    local build="$1" prefix="$2" entry option targets stem value found
+    for entry in "${components[@]}"; do
+        read -r option targets stem <<< "$entry"
+        value="$(cache_value "$build" "$option")"
+        case "${value^^}" in
+            ON|TRUE|1|YES|Y)
+                if [[ -z "$(find "$prefix" -name "$targets.cmake" -print -quit)" ]] ||
+                        [[ -z "$(find "$prefix" -name "$stem.pc" -print -quit)" ]]; then
+                    echo "::error::$build has $option=ON and installed no $targets.cmake or $stem.pc - see cmake/InstallLibrary.cmake" >&2
+                    return 1
+                fi
+                echo "--- $option=ON: $targets.cmake and $stem.pc installed"
+                ;;
+            *)
+                found="$(find "$prefix" \( -name "$targets*.cmake" -o -name "lib$stem*" -o -name "$stem*.pc" \
+                    -o -path "$prefix/include/$stem*" \) -print -quit)"
+                if [[ -n "$found" ]]; then
+                    echo "::error::$build has $option=${value:-unset} and installed a file of it anyway: $found - see cmake/InstallLibrary.cmake" >&2
+                    return 1
+                fi
+                echo "--- $option=${value:-unset}: no file of it installed"
+                ;;
+        esac
+    done
 }
 
 # pkg-config confined to the .pc files of one prefix (pc_dir, set per build directory below), so a
@@ -192,6 +240,7 @@ for build in "$@"; do
     fi
     echo "--- installed include/ac3forge_c:"
     ls -1 "$prefix/include/ac3forge_c"
+    check_components "$build" "$prefix"
 
     # The compilers that built the libraries, not whichever cc and c++ a machine offers.
     c_compiler="$(cache_value "$build" CMAKE_C_COMPILER)"

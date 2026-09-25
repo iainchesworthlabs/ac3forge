@@ -229,6 +229,36 @@ else
     note "conan option-parity check: conanfile.py not found"
 fi
 
+# --- vcpkg <-> Conan parity: the two recipes offer the same optional components, each switching
+# the same AC3FORGE_BUILD_<NAME> option, so that a component added to one and not the other, or
+# wired to another option, fails here. And what a default install carries: the vcpkg port turns
+# no feature on by default, since the curated registry's default features may enable behaviours
+# and not public targets (docs/releasing.md#vcpkg-port), and the Conan recipe turns on by default
+# none but the three container writers it has always had on (docs/library/index.md). ---
+if [[ -f "$vcpkg_json" ]] && [[ -f "$portfile" ]] && [[ -f "$conanfile" ]]; then
+    # Each grep may match nothing, which pipefail and set -e would otherwise turn into a silent
+    # exit rather than the note below.
+    vcpkg_components="$(awk '/FEATURES/{found=1; next} found && /\)/{exit} found {print $1 " " $2}' "$portfile" \
+        | sort -u)"
+    conan_components="$( { grep -oE 'tc\.variables\["AC3FORGE_BUILD_[A-Z0-9_]+"\] = bool\(self\.options\.[a-zA-Z0-9_]+\)' "$conanfile" || true; } \
+        | sed -E 's/^tc\.variables\["(AC3FORGE_BUILD_[A-Z0-9_]+)"\] = bool\(self\.options\.([a-zA-Z0-9_]+)\)$/\2 \1/' \
+        | sort -u)"
+    if [[ "$vcpkg_components" != "$conan_components" ]]; then
+        note "vcpkg/Conan drift: the port's features and the recipe's options switch different AC3FORGE_BUILD_<NAME> options - vcpkg: $(echo "$vcpkg_components" | tr '\n' ';') Conan: $(echo "$conan_components" | tr '\n' ';')"
+    fi
+    if grep -q '"default-features"' "$vcpkg_json"; then
+        note "vcpkg.json declares default-features: each of its features adds public targets, which a curated port's default features may not (docs/releasing.md#vcpkg-port)"
+    fi
+    conan_default_on="$(awk '/^[[:space:]]*default_options = \{/{found=1; next} found && /^[[:space:]]*\}/{exit} found' "$conanfile" \
+        | sed 's/#.*//' | { grep -oE '"[a-zA-Z0-9_]+":[[:space:]]*True' || true; } | sed -E 's/^"([^"]+)".*/\1/' \
+        | { grep -vE '^(shared|fPIC)$' || true; } | sort -u)"
+    unexpected_default_on="$(comm -23 <(printf '%s\n' "$conan_default_on") <(printf '%s\n' matroska mp4 mpegts) \
+        | grep -v '^$' || true)"
+    [[ -z "$unexpected_default_on" ]] || note "conanfile.py turns on by default option(s) beyond the container writers: $(echo "$unexpected_default_on" | tr '\n' ' ')- each adds public targets, off unless asked for as in the vcpkg port"
+else
+    note "vcpkg/Conan parity check: vcpkg.json, portfile.cmake or conanfile.py not found"
+fi
+
 # --- pkg-config completeness: cmake/InstallLibrary.cmake's install(TARGETS ... EXPORT ...)
 # component blocks and its ac3forge_install_pkgconfig() calls must be in 1:1 count - a future
 # component that adds one but forgets the other (packaging metadata parity's original gap: no pkg-config files

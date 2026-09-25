@@ -1,6 +1,7 @@
 # vcpkg port for ac3forge - installs the library only (ac3::forge, plus matroska::matroska,
-# mp4::mp4, mpegts::mpegts and ac3::forge_c as opt-in features), never the CLI, GUI, tests,
-# examples or fuzz harnesses - upstream's own AC3FORGE_BUILD_CLI/GUI/TESTS/EXAMPLES/FUZZERS
+# mp4::mp4, mpegts::mpegts, ac3::forge_c, the AC-4 libraries, ac3iab::ac3iab and iamf::iamf as
+# opt-in features, off unless asked for, since each adds public targets), never the CLI, GUI,
+# tests, examples or fuzz harnesses - upstream's own AC3FORGE_BUILD_CLI/GUI/TESTS/EXAMPLES/FUZZERS
 # options make that a plain OFF each, no patching needed. ac3adm::ac3adm (the ADM/BW64 reader)
 # and ac3::admbridge have no feature here: ac3adm needs Boost and, even though both are now
 # installed/exported by upstream (shared-only - see cmake/InstallLibrary.cmake's
@@ -15,7 +16,8 @@ vcpkg_from_github(
     HEAD_REF main
 )
 
-# One vcpkg feature <-> one AC3FORGE_BUILD_<NAME> CMake option.
+# One vcpkg feature <-> one AC3FORGE_BUILD_<NAME> CMake option, OFF where the feature is not
+# asked for: upstream defaults AC3FORGE_BUILD_AC4/IAB/IAMF (and the container writers) ON.
 vcpkg_check_features(
     OUT_FEATURE_OPTIONS FEATURE_OPTIONS
     FEATURES
@@ -23,6 +25,9 @@ vcpkg_check_features(
         mp4      AC3FORGE_BUILD_MP4
         mpegts   AC3FORGE_BUILD_MPEGTS
         capi     AC3FORGE_BUILD_CAPI
+        ac4      AC3FORGE_BUILD_AC4
+        iab      AC3FORGE_BUILD_IAB
+        iamf     AC3FORGE_BUILD_IAMF
 )
 
 # DERIVED_VERSION_OVERRIDE: upstream derives its version via `git describe`, which finds nothing

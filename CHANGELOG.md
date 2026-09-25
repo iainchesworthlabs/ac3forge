@@ -1626,6 +1626,19 @@ The sections below contain the complete change list and fixes.
 - `ac3::version_details()` (and `ac3cli --version`) now puts commits-past-tag in the
   headline as semver build metadata (`0.10.0-beta.1+100`), so it no longer reads as a
   tagged release when it isn't.
+- **The vcpkg port and the Conan recipe install the AC-4 libraries, the IAB reader and the IAMF
+  writer only where asked for.** Each is a feature of the port and an option of the recipe, `ac4`
+  (`ac4::ac4`, `ac4::decoder`, `ac4::encoder`), `iab` (`ac3iab::ac3iab`) and `iamf`
+  (`iamf::iamf`), off by default, since a curated vcpkg port's default features may enable
+  behaviours and not public targets: `vcpkg install ac3forge[ac4,iab,iamf]` or
+  `-o "ac3forge/*:ac4=True"` and the like opt in. Until now the port and the recipe installed IAB
+  and IAMF with every install, and the AC-4 libraries since they were installed at all. Upstream's
+  `AC3FORGE_BUILD_AC4`, `AC3FORGE_BUILD_IAB` and `AC3FORGE_BUILD_IAMF` still default ON for direct
+  builds and the SDK packages. `tools/checks/check_packaging_versions.sh` now holds the two
+  recipes to the same components switching the same `AC3FORGE_BUILD_<NAME>` options, fails a
+  `default-features` entry in the port and an option the recipe turns on by default beyond the
+  container writers, and `tools/checks/check_install_consumer.sh` checks that a tree built without
+  a library installs no file of it and one built with it installs its export and `.pc` file.
 
 ### Fixed
 

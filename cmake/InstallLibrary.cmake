@@ -14,10 +14,12 @@
 # matroska::matroska, mp4::mp4 and mpegts::mpegts are all optional components, off-able via
 # their own AC3FORGE_BUILD_MATROSKA/AC3FORGE_BUILD_MP4/AC3FORGE_BUILD_MPEGTS option (root
 # CMakeLists.txt) - each its own AC3FORGE_BUILD_<NAME> option, its own guarded
-# add_subdirectory(), and its own guarded block below. Each maps 1:1 onto its own vcpkg
-# feature (packaging/vcpkg-port/ac3forge/vcpkg.json's "matroska"/"mp4"/"mpegts", wired
-# through portfile.cmake's vcpkg_check_features()), so a vcpkg install only gets the ones its
-# feature selection actually asked for.
+# add_subdirectory(), and its own guarded block below, as are ac3::forge_c, the AC-4 libraries,
+# ac3iab::ac3iab and iamf::iamf. Each maps 1:1 onto its own vcpkg feature
+# (packaging/vcpkg-port/ac3forge/vcpkg.json's "matroska"/"mp4"/"mpegts"/"capi"/"ac4"/"iab"/
+# "iamf", wired through portfile.cmake's vcpkg_check_features()) and its own Conan option
+# (packaging/conan/conanfile.py), so a vcpkg or Conan install only gets the ones its feature
+# selection actually asked for.
 #
 # Every install() rule below carries COMPONENT library: without one, CPack
 # files it under its own "Unspecified" component, inconsistent once
@@ -298,9 +300,8 @@ endif()
 
 # ac3iab::ac3iab is an optional component (AC3FORGE_BUILD_IAB, see the root CMakeLists.txt) -
 # same shape as matroska::matroska/mp4::mp4/mpegts::mpegts above, a reader rather than a
-# writer. No vcpkg feature of its own yet - new in this PR, following ac3::forge_c's own
-# precedent of installing/exporting from day one but waiting to add a vcpkg feature until it
-# is formally documented (see packaging/vcpkg-port/ac3forge/portfile.cmake's header comment).
+# writer. The vcpkg port's "iab" feature and the Conan recipe's "iab" option switch it, off unless
+# asked for (packaging/).
 if(AC3FORGE_BUILD_IAB)
     install(TARGETS ${_ac3forge_iab_install_targets}
         EXPORT iabTargets
@@ -375,9 +376,8 @@ if(AC3FORGE_BUILD_ADM)
 endif()
 
 # iamf::iamf is an optional component (AC3FORGE_BUILD_IAMF, see the root CMakeLists.txt) - same
-# shape as ac3iab immediately above, a writer rather than a reader. No vcpkg feature of its own
-# yet, same reasoning as ac3iab's own comment: new in this PR, no downstream consumer to wait on
-# yet.
+# shape as ac3iab immediately above, a writer rather than a reader. The vcpkg port's "iamf"
+# feature and the Conan recipe's "iamf" option switch it, off unless asked for (packaging/).
 if(AC3FORGE_BUILD_IAMF)
     install(TARGETS ${_ac3forge_iamf_install_targets}
         EXPORT iamfTargets
@@ -413,9 +413,10 @@ endif()
 # The core is a static archive of hidden symbols with no headers and no ABI of its own. The
 # static decoder's and encoder's archives call into it without containing it, so it is installed
 # wherever either archive is and named by their exported targets as a link-only dependency; the
-# shared libraries carry the part of it that each uses, and a shared-only install has no core. No
-# vcpkg feature or Conan option of their own yet: AC3FORGE_BUILD_AC4 is on by default in both, as
-# ac3iab's and iamf's switches are, so both install the four.
+# shared libraries carry the part of it that each uses, and a shared-only install has no core. The
+# vcpkg port's "ac4" feature and the Conan recipe's "ac4" option switch all four, off unless asked
+# for (packaging/): each adds public targets, which a curated vcpkg port's default features may
+# not.
 if(AC3FORGE_BUILD_AC4)
     install(TARGETS ${_ac3forge_ac4_install_targets}
         EXPORT ac4Targets

@@ -191,21 +191,25 @@ A vcpkg port for `ac3forge` is staged in-tree at
 `portfile.cmake`, `usage`) and is pending submission to the curated `microsoft/vcpkg` registry -
 see [docs/library/index.md](library/index.md) for how a consumer uses it either
 way. It installs the library only (`ac3::forge`, plus `matroska::matroska`/`mp4::mp4`/
-`mpegts::mpegts` behind their own `matroska`/`mp4`/`mpegts` features - see
-`cmake/InstallLibrary.cmake`'s `AC3FORGE_BUILD_MATROSKA`/`AC3FORGE_BUILD_MP4`/
-`AC3FORGE_BUILD_MPEGTS`/`AC3FORGE_INSTALL_BOTH_LINKAGES` options), never the
-CLI/GUI/tests/examples/fuzzers, and never `ac3::forge_c` (`AC3FORGE_BUILD_CAPI` - see the note
-below). `ac3adm::ac3adm` (the ADM/BW64 reader) and `ac3::admbridge` have no vcpkg feature
+`mpegts::mpegts` behind their own `matroska`/`mp4`/`mpegts` features, `ac3::forge_c` behind
+`capi` (see the note below), the AC-4 libraries behind `ac4`, `ac3iab::ac3iab` behind `iab` and
+`iamf::iamf` behind `iamf` - see `cmake/InstallLibrary.cmake`'s `AC3FORGE_BUILD_<NAME>` and
+`AC3FORGE_INSTALL_BOTH_LINKAGES` options), never the CLI/GUI/tests/examples/fuzzers.
+`ac3adm::ac3adm` (the ADM/BW64 reader) and `ac3::admbridge` have no vcpkg feature
 either - they do install/export via `find_package(ac3forge)` now (shared-only), but embed
 third-party libbw64/libadm and so deliberately carry no vcpkg/Conan feature of their own for
 now - see the recipe note further down and [docs/library/index.md](library/index.md).
 
-None of the three container-writer features are on by default: a curated-registry port's
-`default-features` may only cover behaviors, not additional public APIs/targets/binaries (see
+None of the features is on by default: a curated-registry port's `default-features` may only
+cover behaviors, not additional public APIs/targets/binaries (see
 [vcpkg's maintainer guide](https://learn.microsoft.com/vcpkg/contributing/maintainer-guide#default-features-should-enable-behaviors-not-apis))
-, and each of `matroska`/`mp4`/`mpegts` is exactly that. A plain `vcpkg install ac3forge`
-installs the codec only; opt in explicitly with `vcpkg install ac3forge[matroska,mp4,mpegts]` or
-any subset. The port also pins several build options a curated-registry review otherwise flags
+, and each of `matroska`/`mp4`/`mpegts`/`capi`/`ac4`/`iab`/`iamf` is exactly that. Upstream's
+own `AC3FORGE_BUILD_<NAME>` options default ON; `vcpkg_check_features()` turns each OFF unless
+its feature is asked for. A plain `vcpkg install ac3forge` installs the codec only; opt in
+explicitly with `vcpkg install ac3forge[matroska,mp4,mpegts]`, `ac3forge[ac4]` or any subset.
+`tools/checks/check_packaging_versions.sh` fails a `default-features` entry, a feature missing
+from the Conan recipe's options, and a feature and option that switch different
+`AC3FORGE_BUILD_<NAME>` options. The port also pins several build options a curated-registry review otherwise flags
 as uncontrolled: `AC3FORGE_BUILD_ADM`/`AC3FORGE_ENABLE_TRACY` explicitly OFF (already the
 project's own default, pinned so a future default change can't silently pull an undeclared
 dependency into this port), and `AC3FORGE_WITH_ALSA`/`AC3FORGE_WITH_PIPEWIRE` explicitly OFF -
@@ -217,7 +221,7 @@ Android is a real target (see [docs/platforms/android.md](platforms/android.md))
 architectures fail to build (`matroska`'s size comparisons assume a 64-bit `size_t`).
 
 `ac3::forge_c` (roadmap F1) is exposed as the port's `capi` feature (`vcpkg install
-ac3forge[capi]`), off by default like `matroska`/`mp4`/`mpegts` above. Its `capiTargets` export
+ac3forge[capi]`), off by default like the others above. Its `capiTargets` export
 used to require `forge_static` even when `AC3FORGE_INSTALL_BOTH_LINKAGES=OFF` left that target
 unexported - a real bug independent of vcpkg, fixed in `cmake/InstallLibrary.cmake` by exporting
 `forge_static` alongside `forge_shared` in that branch whenever `AC3FORGE_BUILD_CAPI` is `ON`
@@ -231,7 +235,10 @@ Any future optional library component follows the same three-step recipe this re
 [docs/library/index.md](library/index.md), a consumer expects one alongside every installed
 component's CMake export), then add a same-named
 feature to `packaging/vcpkg-port/ac3forge/vcpkg.json` and one line to `portfile.cmake`'s
-`vcpkg_check_features()` call - unless the component pulls in a real third-party link dependency
+`vcpkg_check_features()` call, and the same-named option, off by default, to
+`packaging/conan/conanfile.py` with its `tc.variables` line (the parity check above fails the
+recipes until both have it), and the component to `tools/checks/check_install_consumer.sh`'s
+list - unless the component pulls in a real third-party link dependency
 of its own, the way `ac3adm`/`ac3::admbridge` do (see
 [ADM / BW64 reading](library/adm.md#why-opt-in)): those still install/export (shared-only, to
 stay self-contained without re-exporting the third party), but deliberately have no vcpkg/Conan
@@ -261,15 +268,18 @@ it drives change (whether or not a release is involved):
 ```bash
 vcpkg install ac3forge --classic --overlay-ports=packaging/vcpkg-port --triplet x64-windows
 vcpkg install ac3forge --classic --overlay-ports=packaging/vcpkg-port --triplet x64-windows-static
-vcpkg install ac3forge[matroska,mp4,mpegts,capi] --classic --overlay-ports=packaging/vcpkg-port --triplet x64-windows
+vcpkg install ac3forge[matroska,mp4,mpegts,capi,ac4,iab,iamf] --classic --overlay-ports=packaging/vcpkg-port --triplet x64-windows
 ```
 
 `--classic` is required from inside this repo - the root `vcpkg.json` (manifest mode, for this
 project's *own* build-time dependencies) would otherwise shadow the package-name argument.
 Check for a clean post-build lint (no "not used"/"missing usage" warnings) and that the bare
-`ac3forge` install excludes `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts`/
-`ac3::forge_c` - not just unlinked, no matching files anywhere in the install tree - while
-`ac3forge[matroska,mp4,mpegts,capi]` installs all four.
+`ac3forge` install excludes every feature's library (`matroska::matroska`/`mp4::mp4`/
+`mpegts::mpegts`/`ac3::forge_c`, the AC-4 libraries, `ac3iab::ac3iab`, `iamf::iamf`) - not just
+unlinked, no matching files anywhere in the install tree - while
+`ac3forge[matroska,mp4,mpegts,capi,ac4,iab,iamf]` installs all seven.
+`tools/checks/check_install_consumer.sh` makes the same check of any build tree it installs: a
+library whose `AC3FORGE_BUILD_<NAME>` option is OFF must leave no file in the prefix.
 
 Fetching a real tag only exercises whatever `AC3FORGE_BUILD_*` options actually existed in that
 tagged source - `vcpkg_from_github()`'s `REF` always points at an already-released tag, so a
@@ -488,9 +498,13 @@ A Conan (2.x) recipe for `ac3forge` is staged in-tree at
 (`conanfile.py`, `conandata.yml`, `test_package/`) and is pending submission to ConanCenter
 (`conan-center-index`). Scoped the same as the vcpkg port - the library only (`ac3::forge`,
 plus `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts` behind their own default-on `matroska`/
-`mp4`/`mpegts` options), never the CLI/GUI/tests/examples/fuzzers - with one Conan option per
-`AC3FORGE_BUILD_<NAME>` CMake option, the same pattern the vcpkg port's `vcpkg_check_features()`
-call already establishes. Rather than asking Conan's `CMakeDeps` generator to synthesise a
+`mp4`/`mpegts` options, and `ac3::forge_c`, the AC-4 libraries, `ac3iab::ac3iab` and
+`iamf::iamf` behind default-off `capi`/`ac4`/`iab`/`iamf` options), never the
+CLI/GUI/tests/examples/fuzzers - with one Conan option per `AC3FORGE_BUILD_<NAME>` CMake option,
+the same pattern the vcpkg port's `vcpkg_check_features()` call already establishes, and the same
+options as the port's features, which `tools/checks/check_packaging_versions.sh` checks. The
+two differ in one default: the three container writers are on by default here, as they have been
+since the recipe was written, and off in the port since its curated-registry review. Rather than asking Conan's `CMakeDeps` generator to synthesise a
 second CMake package config, the recipe sets `cmake_find_mode` to `"none"` and points consumers
 at the config `cmake/InstallLibrary.cmake` already installs - see `conanfile.py`'s
 `package_info()` comment. A consumer's `find_package(ac3forge CONFIG REQUIRED)` and
@@ -517,6 +531,7 @@ conan create packaging/conan --version <version> -s compiler.cppstd=23
 conan create packaging/conan --version <version> -s compiler.cppstd=23 -o "&:shared=True"
 conan create packaging/conan --version <version> -s compiler.cppstd=23 -o "&:matroska=False" -o "&:mp4=False" -o "&:mpegts=False"
 conan create packaging/conan --version <version> -s compiler.cppstd=23 -o "&:capi=True"
+conan create packaging/conan --version <version> -s compiler.cppstd=23 -o "&:ac4=True" -o "&:iab=True" -o "&:iamf=True"
 ```
 
 `-s compiler.cppstd=23` is required - a bare default profile's `compiler.cppstd` predates
