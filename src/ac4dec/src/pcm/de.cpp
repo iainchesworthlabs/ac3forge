@@ -94,7 +94,8 @@ void DeStage::configure(int slots, std::span<const Speaker> speakers) {
 }
 
 void DeStage::reset() noexcept {
-    previous_.fill(identity());
+    previous_.h.fill(identity());
+    previous_.w.fill(Matrix{});
     previous_identity_ = true;
 }
 
@@ -106,10 +107,10 @@ DeStage::Matrix DeStage::identity() noexcept {
     return m;
 }
 
-std::array<DeStage::Matrix, kDeNrBands> DeStage::frame_matrices(double gain_db,
-                                                                const DeFrameValues& values) const {
-    std::array<Matrix, kDeNrBands> out;
-    out.fill(identity());
+DeStage::Frame DeStage::frame_matrices(double gain_db, const DeFrameValues& values,
+                                       std::size_t waveform_channels) const {
+    Frame out;
+    out.h.fill(identity());
     if (!values.active || gain_db <= 0.0 || values.max_gain_db <= 0.0) {
         return out;
     }
@@ -124,29 +125,45 @@ std::array<DeStage::Matrix, kDeNrBands> DeStage::frame_matrices(double gain_db,
         }
     }
     const bool cross = values.method == 1 || values.method == 3;
+    const bool ms = !cross && values.ms && count == 2;
+    // Clause 5.7.8.9: a hybrid method splits g, (1 - alpha_c) g to the
+    // parameters and g_s = alpha_c g to the waveform, where the waveform has
+    // the channels its method takes: one per processed channel with the
+    // channel independent method, one for the Mid, or one rendered by r
+    // (ERRATA, "The hybrid dialogue enhancement's waveform").
+    const std::size_t needed = cross || ms ? 1 : count;
+    const bool hybrid = values.method >= 2 && waveform_channels >= needed && needed > 0;
+    const double gp = hybrid ? (1.0 - values.alpha_c) * g : g;
+    const double gs = hybrid ? values.alpha_c * g : 0.0;
     for (std::size_t band = 0; band < kDeNrBands; ++band) {
-        Matrix& h = out[band];
+        Matrix& h = out.h[band];
+        Matrix& w = out.w[band];
         if (cross) {
-            // Clause 5.7.8.8: Y = (I + g r p^T) m.
+            // Clause 5.7.8.8: Y = (I + g r p^T) m; the hybrid adds r g_s d.
             for (std::size_t i = 0; i < count; ++i) {
                 for (std::size_t j = 0; j < count; ++j) {
-                    h[front[i]][front[j]] += g * values.r[i] * values.p[j][band];
+                    h[front[i]][front[j]] += gp * values.r[i] * values.p[j][band];
                 }
+                w[front[i]][0] = values.r[i] * gs;
             }
-        } else if (values.ms && count == 2) {
+        } else if (ms) {
             // Clause 5.7.8.7 with de_ms_proc_flag: the Mid alone,
-            // 1/2 [1 1; 1 -1] diag(1 + g p0, 1) [1 1; 1 -1].
-            const double half = 0.5 * g * values.p[0][band];
+            // 1/2 [1 1; 1 -1] diag(1 + g p0, 1) [1 1; 1 -1]; the hybrid adds
+            // 1/2 g_s d to both.
+            const double half = 0.5 * gp * values.p[0][band];
             const std::size_t a = front[0];
             const std::size_t b = front[1];
             h[a][a] = 1.0 + half;
             h[a][b] = half;
             h[b][a] = half;
             h[b][b] = 1.0 + half;
+            w[a][0] = 0.5 * gs;
+            w[b][0] = 0.5 * gs;
         } else {
-            // Clause 5.7.8.7: Y_i = m_i + g p_i m_i.
+            // Clause 5.7.8.7: Y_i = m_i + g p_i m_i; the hybrid adds g_s d_i.
             for (std::size_t i = 0; i < count; ++i) {
-                h[front[i]][front[i]] = 1.0 + g * values.p[i][band];
+                h[front[i]][front[i]] = 1.0 + gp * values.p[i][band];
+                w[front[i]][i] = gs;
             }
         }
     }
@@ -158,11 +175,13 @@ bool DeStage::active(double gain_db, const DeFrameValues& values) const noexcept
 }
 
 void DeStage::process(double gain_db, const DeFrameValues& values,
-                      std::span<std::vector<QmfValue>* const> matrices) {
-    const std::array<Matrix, kDeNrBands> current = frame_matrices(gain_db, values);
+                      std::span<std::vector<QmfValue>* const> matrices,
+                      std::span<std::vector<QmfValue>* const> waveform) {
+    const Frame current = frame_matrices(gain_db, values, waveform.size());
     const Matrix unit = identity();
-    const bool current_identity =
-        std::ranges::all_of(current, [&unit](const Matrix& m) { return m == unit; });
+    const Matrix zero{};
+    const bool current_identity = std::ranges::all_of(current.h, [&unit](const Matrix& m) { return m == unit; }) &&
+                                  std::ranges::all_of(current.w, [&zero](const Matrix& m) { return m == zero; });
     if (current_identity && previous_identity_) {
         return;  // the tool bypassed, exactly
     }
@@ -174,22 +193,30 @@ void DeStage::process(double gain_db, const DeFrameValues& values,
         return matrices[static_cast<std::size_t>(channel)]->data() +
                static_cast<std::size_t>(slot * kSubbands + k);
     };
+    const std::size_t waves = std::min<std::size_t>(waveform.size(), kDeFront);
     for (int n = 0; n < slots_; ++n) {
         // Clause 5.7.8.6: from the previous frame's matrix to this one's.
         const double w = (static_cast<double>(n) + 0.5) / static_cast<double>(slots_);
         for (std::size_t band = 0; band < kDeNrBands; ++band) {
             Matrix h{};
+            Matrix hw{};
             for (std::size_t i = 0; i < kDeFront; ++i) {
                 for (std::size_t j = 0; j < kDeFront; ++j) {
-                    h[i][j] = (1.0 - w) * previous_[band][i][j] + w * current[band][i][j];
+                    h[i][j] = (1.0 - w) * previous_.h[band][i][j] + w * current.h[band][i][j];
+                    hw[i][j] = (1.0 - w) * previous_.w[band][i][j] + w * current.w[band][i][j];
                 }
             }
             for (int k = kBandStart[band]; k < kBandStart[band + 1]; ++k) {
                 std::array<QmfValue, kDeFront> m{};
+                std::array<QmfValue, kDeFront> d{};
                 std::array<QmfValue*, kDeFront> where{};
                 for (std::size_t c = 0; c < kDeFront; ++c) {
                     where[c] = at(c, n, k);
                     m[c] = where[c] != nullptr ? *where[c] : QmfValue{};
+                }
+                const auto index = static_cast<std::size_t>(n * kSubbands + k);
+                for (std::size_t j = 0; j < waves; ++j) {
+                    d[j] = index < waveform[j]->size() ? (*waveform[j])[index] : QmfValue{};
                 }
                 for (std::size_t i = 0; i < kDeFront; ++i) {
                     if (where[i] == nullptr) {
@@ -197,7 +224,7 @@ void DeStage::process(double gain_db, const DeFrameValues& values,
                     }
                     QmfValue y{};
                     for (std::size_t j = 0; j < kDeFront; ++j) {
-                        y += h[i][j] * m[j];
+                        y += h[i][j] * m[j] + hw[i][j] * d[j];
                     }
                     *where[i] = y;
                 }

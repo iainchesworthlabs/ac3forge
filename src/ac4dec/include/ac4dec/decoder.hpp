@@ -6,9 +6,11 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
+#include "ac4/ac4.hpp"
 #include "ac4/syntax.hpp"
 #include "ac4dec/export.hpp"
 
@@ -31,9 +33,14 @@
 // companding, A-SPX and A-CPL (Part 1 clauses 5.1, 5.3, 5.5, 5.6 and 5.7),
 // and at every frame_rate_index but 13 the sample rate converter from the
 // internal rate to 48 kHz (clause 6.2.15), its phase locked to
-// sequence_counter (Part 2 clause 5.11). The table of contents and the
-// substream framing come from ac4::parse_raw_frame (the inspector, src/ac4);
-// this library starts where the inspector stops.
+// sequence_counter (Part 2 clause 5.11). It decodes the presentation a
+// system chooses (Part 2 clause 4.8.2) with all its substreams: music and
+// effects with dialogue, main audio with associated audio, both, and a main
+// substream with the dialogue enhancement substream the hybrid dialogue
+// enhancement methods take (Part 1 clauses 5.7.8.9 and 6.2.16, Part 2
+// clauses 4.8.3.17 to 4.8.4). The table of contents and the substream framing
+// come from ac4::parse_raw_frame (the inspector, src/ac4); this library starts
+// where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
 // spectral frontend (Part 1 clause 5.2), immersive and 22.2 channel elements,
@@ -120,7 +127,69 @@ struct OutputConfig {
     // Whether a two-channel or mono downmix takes the LFE, at the stream's
     // lfe_mixgain, as Part 1 does; off drops it, outside the text.
     bool mix_lfe = true;
+    // g_dialog of Part 1 clause 6.2.16.1, in dB: the level of a presentation's
+    // dialogue substreams against its music and effects, up to the
+    // g_dialog_max the stream allows (0 dB where it sends none). Below -120
+    // dB the dialogue is silent.
+    double dialogue_gain_db = 0.0;
+    // g_assoc of Part 1 clause 6.2.16.2, in dB, 0 or less: the level of a
+    // presentation's associated audio. Below -120 dB it is silent.
+    double associated_gain_db = 0.0;
 };
+
+// --- Presentations -----------------------------------------------------------
+//
+// Which presentation decode() decodes, when a stream carries several (Part 2
+// clause 4.8.2): of those it can decode, of a presentation_version it decodes,
+// carrying audio, whose md_compat is within the decoder's level and which the
+// stream has not disabled, the one a system asks for by presentation_id or by
+// position, or else the one that best meets its preferences, in the order the
+// clause lists them, the first in the table of contents among equals. Where
+// the table of contents changes from one frame to the next, the choice is made
+// again. src/ac4dec/ERRATA.md ("Selecting a presentation") records the
+// readings.
+
+// Part 1 Table 92's refinements of associated audio, which an associated
+// substream's language_tag_bytes carry in place of a language.
+enum class AssociatedType : std::uint8_t {
+    kAny,                        // whatever the content_classifier says
+    kAudioDescription,           // qad, or qax premixed
+    kAudioDescriptionSubtitles,  // audio description with spoken subtitles: qas, or qtx premixed
+    kSpokenSubtitles,            // qss, or qsx premixed
+    kEmergencyInformation,       // qei, or qex premixed
+};
+
+struct PresentationChoice {
+    // The presentation carrying this presentation_id (Part 2 clause
+    // 6.3.2.2.4a); where no presentation that can be selected carries it, the
+    // rest decides.
+    std::optional<int> presentation_id;
+    // Else the presentation at this position of the table of contents, which
+    // the text warns can change over time.
+    std::optional<std::size_t> index;
+    // Else the preferences. The language of the main or dialogue audio: an
+    // IETF BCP 47 tag, a presentation's tag matching it whole before one whose
+    // primary subtag matches; empty for none.
+    std::string language;
+    // The associated audio: Part 1 Table 91's content_classifier of the
+    // service a presentation should carry (0b010 visually impaired, 0b011
+    // hearing impaired, 0b101 commentary, and so on), with Table 92's
+    // refinement of it; unset for a presentation without associated audio.
+    std::optional<int> associated;
+    AssociatedType associated_type = AssociatedType::kAny;
+    // The kind of audio: a presentation rendered for headphones before it was
+    // encoded (b_pre_virtualized, Part 1 clause 4.3.3.3.5) before one that was
+    // not, or the other way round.
+    bool headphones = false;
+};
+
+// The presentation decode() selects from `toc` for `choice` at compatibility
+// level `level` (md_compat, Part 1 Table 86 and Part 2 Table 55): its index in
+// Toc::presentations_v1, or in presentations_v0 below bitstream_version 2;
+// nothing when no presentation can be selected.
+[[nodiscard]] AC4DEC_EXPORT std::optional<std::size_t> select_presentation(const Toc& toc,
+                                                                           const PresentationChoice& choice,
+                                                                           int level);
 
 // --- Concealment ---------------------------------------------------------------
 //
@@ -162,6 +231,11 @@ struct DecoderConfig {
     SyntaxSink syntax{};
     OutputConfig output{};
     ConcealmentPolicy concealment = ConcealmentPolicy::kNone;
+    // Which presentation decode() decodes (select_presentation()).
+    PresentationChoice presentation{};
+    // The md_compat level the decoder claims: presentations above it are not
+    // selected (Part 2 clause 6.3.2.2.3).
+    int level = 3;
 };
 
 // What one substream of a frame turned out to be.
@@ -209,6 +283,11 @@ struct DecodedFrame {
     // Of the frame this came from; for a concealed frame whose table of
     // contents did not read, the counter the stream expected.
     int sequence_counter = 0;
+    // The presentation decoded: its index in the frame's table of contents
+    // (select_presentation()) and presentation_id where it carries one; for a
+    // concealed frame, the last one decoded.
+    std::size_t presentation = 0;
+    std::optional<int> presentation_id;
     // One per channel, in the order of `channels`: L, R, C, the LFE, Ls, Rs,
     // then a 7.X mode's last pair, each where the channel mode has it.
     std::vector<Speaker> speakers;
@@ -254,13 +333,14 @@ class AC4DEC_EXPORT Decoder {
     [[nodiscard]] std::expected<FrameReport, DecodeError> parse(
         std::span<const std::byte> raw_ac4_frame);
 
-    // Reads one raw_ac4_frame as parse() does and decodes the audio of the
-    // first channel-coded substream of the first presentation that has one.
-    // Nothing for a frame that has no output: one whose substream needs
-    // configuration no I-frame has sent yet. The error, when there is one, is
-    // that substream's (or the table of contents'), and refusal_reason() says
-    // why. Under a concealment policy, a concealed frame in place of either,
-    // once a frame has decoded.
+    // Reads one raw_ac4_frame as parse() does and decodes the presentation
+    // select_presentation() gives for DecoderConfig::presentation: each of its
+    // substreams, mixed into the channels of its main or music and effects
+    // substream. Nothing for a frame that has no output: one whose substreams
+    // need configuration no I-frame has sent yet. The error, when there is
+    // one, is a substream's (or the table of contents'), and refusal_reason()
+    // says why. Under a concealment policy, a concealed frame in place of
+    // either, once a frame has decoded.
     [[nodiscard]] std::expected<std::optional<DecodedFrame>, DecodeError> decode(
         std::span<const std::byte> raw_ac4_frame);
 
