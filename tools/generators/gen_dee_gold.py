@@ -67,8 +67,9 @@ each stream uses), what that ac3cli's decode and FFmpeg's make of the stream, an
 whether FFmpeg's decode equals the source sample for sample. A refused leg keeps DEE's message.
 
 TrueHD. The roadmap keeps "TrueHD interoperability by black-box analysis of Dolby streams" out of
-scope until the clean-room rule allows it. These streams are kept for what that rule allows, as
-decode material with a known lossless source, and each TrueHD entry says so (TRUEHD_NOTE).
+scope until the clean-room rule allows it. On 2026-09-26 the user decided these streams are test
+inputs only: decoded, passed through and round-tripped, with no analysis of how Dolby's encoder
+made them. Each TrueHD entry says so (TRUEHD_NOTE).
 
 What DEE 6.5.4 could not be made to write is in the manifest's dee_cannot (DEE_CANNOT).
 
@@ -175,9 +176,9 @@ THD_PRESETS = ("atsc_a85", "atsc_a85_agile", "ebu_r128", "freetv_op59", "arib_b3
 THD_DIALNORMS = (-31, -27, -24, -20, -17, -10, -1)
 TIMECODE_RATES = ("24", "25", "29.97", "30")
 
-TRUEHD_NOTE = ("ROADMAP.md keeps TrueHD interoperability by black-box analysis of Dolby streams "
-               "out of scope until the clean-room rule allows it; this stream is kept as decode "
-               "material with a known lossless source, for what that rule allows.")
+TRUEHD_NOTE = ("A test input only (the user's decision, 2026-09-26): decode it, pass it through "
+               "and round-trip it, with no analysis of how Dolby's encoder made it. ROADMAP.md "
+               "keeps TrueHD interoperability by black-box analysis of Dolby streams out of scope.")
 
 G2_GROUPS = {
     "eac3-rates": "E-AC-3 at every layout and rate: the trend and races against DEE "
