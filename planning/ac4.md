@@ -1902,9 +1902,12 @@ AC-3 and E-AC-3 alone, and a few pages describe `ac4dec::` and `ac4enc::` namesp
 not have. The user found a program called `ac3cli` doing AC-4 wrong in itself, and took renaming the
 programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's scheme S3 costed.
 
-- New names for the programs: `ac3cli`, `ac3gui`, `ac3hearth` and `ac3crucible`, and Hearth's test
-  sink and server; the internal ones (`ac3tests`, the benchmarks, the probe) follow or stay, as the
-  user chooses with the names.
+- The programs take their members' names, which the user chose on 2026-09-26 ("I like option b for
+  program names"): `ac3cli` becomes `forge`, `ac3gui` `forge-gui`, `ac3hearth` `hearth` and
+  `ac3crucible` `crucible`, and Hearth's test sink and server `hearth-testsink` and
+  `hearth-testserver`. `forge` is also the name of Foundry's command and of Laravel Forge's, so on
+  a computer with either, the first on the path wins; the documentation says so. The internal
+  programs (`ac3tests`, the benchmarks, the probe) keep their names.
 - The old names kept working through a stated period, printing the new name; the completions for
   four shells, the man page, the Homebrew formula and cask, winget's aliases, the desktop entries
   and bundle identifiers, the Windows file-type command lines, the firewall rules' names and the
@@ -1914,8 +1917,7 @@ programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's s
   E-AC-3 alone.
 - The family's name, the library's identifiers, the packages' names and the C API stay.
 
-The names are the user's to choose. At a point where few phase branches are open, since every
-branch touches the programs' names.
+At a point where few phase branches are open, since every branch touches the programs' names.
 
 **Exit:** the programs build and install under their new names, the old names still run and say the
 new one, every test and document uses the new names, and no page or package description names AC-3
@@ -2432,8 +2434,10 @@ words, asked for 25 in their own words, and took the recommendations for the res
     decisions 15 and 21, and are harder to change once D8, E7 and I4 export them.
 
     **Taken: (b)**, against the recommendation, in the user's words: "Let’s take option b on the
-    names. I feel that “ac3cli” doing ac4 stuff seems incorrect". The new names are the user's to
-    choose; N1 does the rest.
+    names. I feel that “ac3cli” doing ac4 stuff seems incorrect". Offered the family's name with
+    the member (`ac3forge`, `ac3forge-gui`, ...) or the members' own (`forge`, `forge-gui`,
+    `hearth`, `crucible`), whose `forge` other tools also use, the user chose the members' own
+    ("I like option b for program names"); N1 does the rest.
 
 | # | Question | Recommended | **Taken** |
 |---|---|---|---|
@@ -2448,7 +2452,7 @@ words, asked for 25 in their own words, and took the recommendations for the res
 | 32 | AC-4 on the C6 | Measured, with PCM where it misses | **Measured, with PCM where it misses** |
 | 33 | The converter on the ESP32s | The host's design, measured | **The host's design, measured** |
 | 34 | The encoder on an ESP32 | Never | **Never** |
-| 35 | The names | Keep them; correct the wording | **Rename the programs** ← against, in the user's words; the names to come |
+| 35 | The names | Keep them; correct the wording | **Rename the programs: `forge`, `forge-gui`, `hearth`, `crucible`** ← against, in the user's words |
 
 ## What cannot be verified, and why
 
