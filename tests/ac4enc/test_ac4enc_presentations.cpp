@@ -597,6 +597,25 @@ TEST_CASE("the default stream has a presentation_id and the level its layout nee
     auto encoder = ac4::Encoder::create(seven);
     REQUIRE(encoder.has_value());
     CHECK(encoder->toc().presentations_v1[0].md_compat == 2);
+    // Unset, a presentation_id is the least no other presentation takes, and
+    // configuration 6 has none.
+    ac4::EncoderConfig several;
+    several.bitrate_kbps = 128;
+    several.substreams = {substream(2, 96, ContentClassifier::kCompleteMain)};
+    ac4::PresentationConfig only;
+    only.config = 6;
+    only.emdf = {payload(1, {1})};
+    ac4::PresentationConfig single;
+    single.substreams = {0};
+    several.presentations = {only, single, presentation(std::nullopt, {0}, 0), single};
+    auto with_ids = ac4::Encoder::create(several);
+    REQUIRE(with_ids.has_value());
+    const std::vector<ac4::PresentationInfoV1>& got = with_ids->toc().presentations_v1;
+    REQUIRE(got.size() == 4);
+    CHECK_FALSE(got[0].presentation_id.has_value());
+    CHECK(got[1].presentation_id == 1);
+    CHECK(got[2].presentation_id == 0);
+    CHECK(got[3].presentation_id == 2);
 }
 
 TEST_CASE("the table of contents holds the presentations and substreams as configured",

@@ -38,16 +38,17 @@
 // L and R as a pair, Ls and Rs as a pair, C alone, and the LFE); its other
 // coding configurations, 7.0 and 7.1 in the 7.X element, ASPX_ACPL_1, and
 // A-CPL in stereo are experimental. The table of contents is bitstream
-// version 2 with presentation version 1, every presentation with a
-// presentation_id and the least md_compat its tracks need (Part 2 Table 55),
+// version 2 with presentation version 1, every presentation that carries
+// audio with a presentation_id and the least md_compat its tracks need (Part
+// 2 Table 55; configuration 6's EMDF payloads alone have neither),
 // and each presentation substream carries the dialogue normalisation it is
 // given and, as configured, further loudness values, DRC's decoder modes, the
 // stereo downmix's values, the substream groups' gains and the associated
 // audio's mixing values; each audio substream's metadata() carries its
 // dialogue enhancement's parameters and a dialogue substream's mixing values.
 // The table of contents keeps CMAF's rules (Part 2 Annex H.1.2): at most 64
-// presentations, each with a presentation_id of its own, and one
-// configuration throughout. Everything else in the plan's later phases
+// presentations, each that carries audio with a presentation_id of its own,
+// and one configuration throughout. Everything else in the plan's later phases
 // (immersive layouts, objects) is refused as an invalid configuration.
 //
 // src/ac4enc/ERRATA.md records the readings the writer alone needs; where the
@@ -404,8 +405,10 @@ struct PresentationConfig {
     // The substreams it plays, indices into EncoderConfig::substreams, in
     // Table 53's order; none for configuration 6.
     std::vector<int> substreams;
-    // Unset: the presentation's index. Every presentation that carries audio
-    // has one, as CMAF asks (Part 2 Annex H.1.2.1), and no two the same.
+    // Unset: the least no other presentation takes, so 0, 1, 2 and on in the
+    // presentations' order where none is set. Every presentation that carries
+    // audio has one, as CMAF asks (Part 2 Annex H.1.2.1), and no two the
+    // same; configuration 6 has no field for one.
     std::optional<int> presentation_id;
     // The decoder compatibility level (Part 2 Table 55); unset takes the
     // least its tracks allow, which a value set may not be below.

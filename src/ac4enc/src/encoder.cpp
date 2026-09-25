@@ -2795,6 +2795,13 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
     std::vector<bool> three_zero_dialogue(
         n, false);  // 3.0 dialogue of a music and effects presentation
     std::vector<std::optional<int>> ids;
+    // A presentation_id left unset is the least no other presentation takes.
+    std::vector<int> named_ids;
+    for (const PresentationConfig& pc : presentations) {
+        if (pc.presentation_id) {
+            named_ids.push_back(*pc.presentation_id);
+        }
+    }
     int next_id = 0;
     for (const PresentationConfig& pc : presentations) {
         StreamPresentation p;
@@ -2934,12 +2941,16 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(
         if (md_compat < least || (md_compat > 3 && md_compat != 7)) {
             return invalid();
         }
-        const int id = pc.presentation_id.value_or(next_id);
+        if (!pc.presentation_id) {
+            while (std::ranges::find(named_ids, next_id) != named_ids.end()) {
+                ++next_id;
+            }
+        }
+        const int id = pc.presentation_id ? *pc.presentation_id : next_id++;
         if (id < 0) {
             return invalid();
         }
         ids.emplace_back(id);
-        ++next_id;
         p.toc.groups.assign(pc.substreams.begin(), pc.substreams.end());
         p.toc.md_compat = md_compat;
         p.toc.presentation_id = id;
