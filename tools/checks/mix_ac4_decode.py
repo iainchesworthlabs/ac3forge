@@ -67,6 +67,8 @@ STREAMS = REPO / "tests" / "golden" / "ac4dec" / "presentations"
 TOLERANCE_DB = 0.01
 ABSENT_DB = -60.0
 RESIDUAL_DB = -80.0
+# References whose correlation is above this are one reference to a fit.
+COLLINEAR = 0.999
 SKIP = 5 * 2048
 SETTINGS = ((0.0, 0.0), (-6.0, -10.0), (9.0, 0.0))  # dialogue-gain, associated-gain
 DE_GAIN_DB = 6.0
@@ -348,9 +350,35 @@ def expected_matrix(p, found, refs, records, setting, level_sources):
     return np.hstack([blocks[m['substream_index']] for m in found])
 
 
+def merged(stacked, expected):
+    """`stacked` and `expected` with each reference a fit cannot tell from an earlier one (the
+    two correlated above COLLINEAR) folded into it, its coefficients carried over at their ratio:
+    the encoder's hybrid dialogue enhancement codes the dialogue itself as the waveform, the same
+    signal as the channel it raises, and only the two coefficients' sum can be fitted."""
+    keep = []
+    expected = expected.copy()
+    energy = np.sum(stacked ** 2, axis=0)
+    for j in range(stacked.shape[1]):
+        into = None
+        for k in keep:
+            if energy[j] > 0.0 and energy[k] > 0.0:
+                cross = float(np.dot(stacked[:, j], stacked[:, k]))
+                if abs(cross) > COLLINEAR * math.sqrt(energy[j] * energy[k]):
+                    into = k
+                    break
+        if into is None:
+            keep.append(j)
+        else:
+            ratio = float(np.dot(stacked[:, j], stacked[:, into])) / energy[into]
+            expected[:, into] += expected[:, j] * ratio
+    return stacked[:, keep], expected[:, keep], keep
+
+
 def check(name, out, stacked, expected):
     """Failures of the fit of `out` on `stacked` against `expected`, and a summary."""
     failures = []
+    full_stacked, full_expected = stacked, expected
+    stacked, expected, keep = merged(stacked, expected)
     fit, *_ = np.linalg.lstsq(stacked, out, rcond=None)
     fitted = fit.T
     worst = 0.0
@@ -361,12 +389,12 @@ def check(name, out, stacked, expected):
                 error = abs(db(abs(got)) - db(abs(want))) if got * want > 0 else float("inf")
                 worst = max(worst, error)
                 if error > TOLERANCE_DB:
-                    failures.append(f"{name}: channel {c} takes reference {j} at {got:+.6f}, "
+                    failures.append(f"{name}: channel {c} takes reference {keep[j]} at {got:+.6f}, "
                                     f"the formula {want:+.6f}")
             elif abs(got) > from_db(ABSENT_DB):
-                failures.append(f"{name}: channel {c} takes reference {j} at {got:+.6f}, "
+                failures.append(f"{name}: channel {c} takes reference {keep[j]} at {got:+.6f}, "
                                 "where the formula has none")
-    residual = out - stacked @ expected.T
+    residual = out - full_stacked @ full_expected.T
     left = 10.0 * math.log10(max(float(np.sum(residual ** 2)), 1e-300) / float(np.sum(out ** 2)))
     if left > RESIDUAL_DB:
         failures.append(f"{name}: the formula leaves {left:.1f} dB of the output")
@@ -388,8 +416,11 @@ def check_stream(cli, stream, work):
     refs = {None: {}, LEVEL: {}}
     level_sources = {}
     for i, p in enumerate(presentations):
-        found, decodable = ac4_presentations.members(toc, p)
-        if decodable and p['presentation_config'] is None and p['presentation_id'] is not None:
+        found, _ = ac4_presentations.members(toc, p)
+        # A presentation the decoder can select (not one disabled), the first for its substream.
+        if (ac4_presentations.selectable(toc, p, 3) and p['presentation_config'] is None
+                and p['presentation_id'] is not None
+                and found[0]['substream_index'] not in level_sources):
             substream = found[0]['substream_index']
             for level, alone in refs.items():
                 samples = decode(cli, stream, work / f"{stream.stem}-{i}.wav",
@@ -403,8 +434,8 @@ def check_stream(cli, stream, work):
     failures = []
     checked = 0
     for i, p in enumerate(presentations):
-        found, decodable = ac4_presentations.members(toc, p)
-        if not decodable or p['presentation_config'] is None:
+        found, _ = ac4_presentations.members(toc, p)
+        if not ac4_presentations.selectable(toc, p, 3) or p['presentation_config'] is None:
             continue
         if any(m['substream_index'] not in level_sources for m in found):
             failures.append(f"{stream.stem} presentation {i}: a substream has no presentation "
