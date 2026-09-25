@@ -157,7 +157,15 @@ jobs:
       # workflow never otherwise touches a C++ toolchain), so it's installed
       # explicitly here rather than trusted.
       - name: Install Ninja
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ninja-build
+        run: |
+          attempt=1
+          until sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ninja-build
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
 
       - uses: ./.github/actions/setup-emscripten
 
