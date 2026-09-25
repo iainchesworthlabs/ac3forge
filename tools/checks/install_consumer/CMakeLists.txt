@@ -19,9 +19,11 @@
 #
 # One C++ consumer per AC-4 decoder target the package exports, in the same way: ac4::decoder_shared
 # and ac4::decoder_static, or the bare ac4::decoder of a single-linkage package. consumer_ac4.cpp
-# decodes a committed stream through the installed inspector and decoder. A package built with
-# AC3FORGE_BUILD_AC4=OFF has none; check_install_consumer.sh passes AC3FORGE_EXPECT_AC4 from the
-# tree's own cache, so that a package that should have them and does not fails here.
+# decodes a committed stream through the installed inspector and decoder. And one per AC-4 encoder
+# target: consumer_ac4enc.cpp encodes a tone through the installed encoder and reads the stream
+# back with the inspector. A package built with AC3FORGE_BUILD_AC4=OFF has neither;
+# check_install_consumer.sh passes AC3FORGE_EXPECT_AC4 from the tree's own cache, so that a package
+# that should have them and does not fails here.
 cmake_minimum_required(VERSION 3.28)
 project(ac3forge_install_consumer LANGUAGES C CXX)
 
@@ -85,4 +87,30 @@ if(AC3FORGE_EXPECT_AC4 AND NOT ac4_consumers)
 endif()
 if(ac4_consumers)
     message(STATUS "AC-4 consumers of the installed package, each linked and run: ${ac4_consumers}")
+endif()
+
+set(ac4enc_consumers)
+foreach(target IN ITEMS ac4::encoder_shared ac4::encoder_static ac4::encoder)
+    if(NOT TARGET ${target})
+        continue()
+    endif()
+    string(REPLACE "::" "_" name "consumer_${target}")
+    add_executable(${name} consumer_ac4enc.cpp)
+    add_test(NAME ${name} COMMAND ${name})
+    target_link_libraries(${name} PRIVATE ${target})
+    set_target_properties(${name} PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF)
+    list(APPEND ac4enc_consumers ${target})
+endforeach()
+
+if(AC3FORGE_EXPECT_AC4 AND NOT ac4enc_consumers)
+    message(FATAL_ERROR
+        "the package was built with AC3FORGE_BUILD_AC4=ON and exports none of "
+        "ac4::encoder_shared, ac4::encoder_static or ac4::encoder - see cmake/InstallLibrary.cmake")
+endif()
+if(ac4enc_consumers)
+    message(STATUS
+        "AC-4 encoder consumers of the installed package, each linked and run: ${ac4enc_consumers}")
 endif()
