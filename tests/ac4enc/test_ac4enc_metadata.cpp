@@ -213,22 +213,26 @@ ac4::EncoderConfig config_51() {
                                            .output_level_from_db = 0,
                                            .output_level_to_db = 0,
                                            .profile = std::nullopt,
-                                           .repeat_of = std::nullopt},
+                                           .repeat_of = std::nullopt,
+                                           .gains_config = std::nullopt},
                                           {.id = 1,
                                            .output_level_from_db = 0,
                                            .output_level_to_db = 0,
                                            .profile = ac4::DrcProfile::kSpeech,
-                                           .repeat_of = std::nullopt},
+                                           .repeat_of = std::nullopt,
+                                           .gains_config = std::nullopt},
                                           {.id = 2,
                                            .output_level_from_db = 0,
                                            .output_level_to_db = 0,
                                            .profile = std::nullopt,
-                                           .repeat_of = 1},
+                                           .repeat_of = 1,
+                                           .gains_config = std::nullopt},
                                           {.id = 5,
                                            .output_level_from_db = -20,
                                            .output_level_to_db = -12,
                                            .profile = ac4::DrcProfile::kFilmLight,
-                                           .repeat_of = std::nullopt}}};
+                                           .repeat_of = std::nullopt,
+                                           .gains_config = std::nullopt}}};
     config.downmix = ac4::DownmixConfig{.loro_centre_db = -1.5,
                                         .loro_surround_db = -4.5,
                                         .ltrt_centre_db = -3.0,
@@ -498,6 +502,101 @@ TEST_CASE("dialogue enhancement from a stem raises the dialogue and leaves the r
     const auto with = marked->encode(views, views);
     REQUIRE_FALSE(with.has_value());
     CHECK(with.error() == ac4::EncodeError::kInvalidInput);
+}
+
+TEST_CASE("DRC gains sent from a profile read back and compress as the profile's curve does",
+          "[ac4enc][metadata]") {
+    // Two seconds at -40 dBFS, which the profile boosts, then two at -12,
+    // which it cuts, and back: 1 kHz in every channel but the LFE.
+    const std::size_t second = 48000;
+    const auto programme = [&](int channels) {
+        std::vector<std::vector<float>> out;
+        const std::vector<float> quiet = tone(1000.0, 0.01, 6 * second);
+        for (int c = 0; c < channels; ++c) {
+            std::vector<float> x(6 * second);
+            for (std::size_t n = 0; n < x.size(); ++n) {
+                const bool loud = n >= 2 * second && n < 4 * second;
+                x[n] = (channels == 6 && c == 3) ? 0.0F : quiet[n] * (loud ? 25.0F : 1.0F);
+            }
+            out.push_back(std::move(x));
+        }
+        return out;
+    };
+    for (const int channels : {2, 6}) {
+        for (const int gains_config : {0, 1, 2, 3}) {
+            CAPTURE(channels, gains_config);
+            ac4::EncoderConfig config;
+            config.channels = channels;
+            config.bitrate_kbps = channels == 2 ? 192 : 384;
+            config.codec_mode = ac4::CodecMode::kSimple;
+            config.dialnorm_db = -24.0;
+            config.experimental.drc_gains = true;
+            // Home theatre sends the film standard profile's gains, flat
+            // panel applies the profile as a curve, and portable speakers
+            // repeats the first.
+            ac4::DrcModeConfig gains;
+            gains.id = 0;
+            gains.gains_config = gains_config;
+            ac4::DrcModeConfig curve;
+            curve.id = 1;
+            ac4::DrcModeConfig repeat;
+            repeat.id = 2;
+            repeat.repeat_of = 0;
+            config.drc = ac4::DrcConfig{.profile = ac4::DrcProfile::kFilmStandard,
+                                        .modes = {gains, curve, repeat}};
+            const Encoded encoded = encode(config, programme(channels));
+            std::vector<std::size_t> starts;
+            const std::vector<ac4::SyntaxRecord> read = read_back(encoded, starts);
+            CHECK(values(read, starts, 0, "drc_gains_config") ==
+                  std::vector<std::uint64_t>{static_cast<std::uint64_t>(gains_config)});
+            // Gains in every frame, for the mode and its repeat.
+            CHECK(values(read, starts, 1, "drc_gain_val").size() == 2);
+
+            // The two modes' outputs follow each other within the gains'
+            // whole dB2 steps, once the smoothing has settled, where the
+            // profile moves the level by several dB.
+            ac4::OutputConfig as_gains =
+                output(-24.0, ac4::DrcMode::kHomeTheatre, 0.0, ac4::DownmixTarget::kAsCoded);
+            ac4::OutputConfig as_curve =
+                output(-24.0, ac4::DrcMode::kFlatPanelTv, 0.0, ac4::DownmixTarget::kAsCoded);
+            ac4::OutputConfig as_is =
+                output(-24.0, ac4::DrcMode::kOff, 0.0, ac4::DownmixTarget::kAsCoded);
+            const std::vector<std::vector<float>> by_gains = decode(encoded.frames, as_gains);
+            const std::vector<std::vector<float>> by_curve = decode(encoded.frames, as_curve);
+            const std::vector<std::vector<float>> plain = decode(encoded.frames, as_is);
+            const auto rms_db = [](const std::vector<float>& x, std::size_t from,
+                                   std::size_t count) {
+                double sum = 0.0;
+                for (std::size_t n = from; n < from + count; ++n) {
+                    sum += static_cast<double>(x[n]) * static_cast<double>(x[n]);
+                }
+                return 10.0 * std::log10(sum / static_cast<double>(count) + 1e-30);
+            };
+            const std::size_t lag = 3072 + 1313;
+            for (const std::size_t at :
+                 {second + second / 2, 3 * second + second / 2, 5 * second + second / 2}) {
+                CAPTURE(at);
+                const double gains_db =
+                    rms_db(by_gains[0], lag + at, 4800) - rms_db(plain[0], lag + at, 4800);
+                const double curve_db =
+                    rms_db(by_curve[0], lag + at, 4800) - rms_db(plain[0], lag + at, 4800);
+                CAPTURE(gains_db, curve_db);
+                CHECK(std::abs(curve_db) > 2.0);
+                CHECK(std::abs(gains_db - curve_db) < 1.0);
+            }
+        }
+    }
+    // Gains are experimental.
+    ac4::EncoderConfig config;
+    config.channels = 2;
+    ac4::DrcModeConfig gains;
+    gains.gains_config = 0;
+    config.drc = ac4::DrcConfig{.profile = ac4::DrcProfile::kFilmStandard, .modes = {gains}};
+    CHECK_FALSE(ac4::Encoder::create(config).has_value());
+    config.experimental.drc_gains = true;
+    CHECK(ac4::Encoder::create(config).has_value());
+    config.drc->modes.front().gains_config = 4;
+    CHECK_FALSE(ac4::Encoder::create(config).has_value());
 }
 
 TEST_CASE("the encoder refuses metadata the syntax cannot send", "[ac4enc][metadata]") {

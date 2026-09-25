@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "ac4enc/encoder.hpp"
@@ -69,12 +71,32 @@ struct DrcModeCodes {
     std::optional<int> repeat_id;
     bool default_profile = true;
     std::optional<CurveCodes> curve;  // where the mode takes neither of the above
+    // drc_compression_curve_flag 0: the gains sent frame by frame, Table
+    // 163's drc_gains_config, and the curve they are computed from.
+    std::optional<int> gains_config;
+    CurveCodes gains_curve{};
 };
 
-// drc_config() (Table 71).
+// drc_config() (Table 71); `gains` where a mode sends gains, which puts a
+// drc_frame() with its drc_data() in every frame.
 struct DrcCodes {
     std::vector<DrcModeCodes> modes;
     int eac3_profile = 2;
+    bool gains = false;
+};
+
+// One frame's gains for a mode that sends them (Table 75), in dB2:
+// drc_gain[group][subframe][band], as many as the mode's drc_gains_config
+// gives (Tables 163, 168 and 169); with drc_gains_config 0 one gain.
+struct DrcModeGains {
+    int groups = 1;
+    int subframes = 1;
+    int bands = 1;
+    std::vector<int> gain;  // [(group * subframes + subframe) * bands + band]
+
+    [[nodiscard]] int at(int group, int subframe, int band) const noexcept {
+        return gain[static_cast<std::size_t>((group * subframes + subframe) * bands + band)];
+    }
 };
 
 // custom_dmx_data()'s stereo coefficients and loud_corr()'s corrections for
@@ -134,9 +156,12 @@ struct StreamMetadata {
 // every frame, the values in I-frames, as DEE's streams have it.
 void write_further_loudness_info(BitWriter& w, const LoudnessCodes& codes, bool iframe);
 
-// drc_frame(b_iframe): drc_config() and drc_data() in I-frames, nothing
-// (b_drc_present 0) in the others, which keep the configuration.
-void write_drc_frame(BitWriter& w, const DrcCodes* codes, bool iframe);
+// drc_frame(b_iframe): drc_config() in I-frames, and drc_data(), with
+// `gains` for each mode in drc_config()'s order that sends them (a repeat
+// of one included), in I-frames and, where a mode sends gains, every frame;
+// otherwise nothing (b_drc_present 0), and the configuration is kept.
+void write_drc_frame(BitWriter& w, const DrcCodes* codes, bool iframe,
+                     std::span<const DrcModeGains> gains = {});
 
 // custom_dmx_data() and loud_corr() for a channel-based presentation of
 // `ch_mode`: the stereo coefficients and their corrections in I-frames.

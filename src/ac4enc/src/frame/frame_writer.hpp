@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <span>
 #include <vector>
 
 #include "ac4/syntax.hpp"
@@ -36,6 +37,9 @@ struct FrameFields {
     const StreamMetadata* metadata = nullptr;
     const DeFrameParameters* de = nullptr;
     const DeFrameParameters* de_previous = nullptr;
+    // DRC's gains for this frame, per mode in drc_config()'s order where the
+    // mode sends them.
+    std::span<const DrcModeGains> drc_gains;
 };
 
 // The bits the frame spends on everything but the channel element and its

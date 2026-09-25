@@ -181,6 +181,16 @@ struct DrcModeConfig {
     // configuration, by that mode's id (drc_repeat_profile_flag).
     std::optional<DrcProfile> profile;
     std::optional<int> repeat_of;
+    // With experimental.drc_gains: the gains the profile (the stream's
+    // default where unset) gives the input, computed frame by frame as a
+    // decoder applying it would and sent in every frame
+    // (drc_compression_curve_flag 0), as Table 163's drc_gains_config: 0 one
+    // gain a frame for every channel, 1 a gain per channel group (Table 168)
+    // and subframe (Table 169), 2 and 3 those in 2 and 4 bands (Table 164).
+    // Every group and band takes the programme's gain, the curve being
+    // defined on the programme's level; configurations 1 to 3 add the
+    // subframes' resolution in time.
+    std::optional<int> gains_config;
 };
 
 // DRC (Part 1 clause 4.3.13): drc_config() in I-frames, which is where
@@ -334,6 +344,9 @@ struct EncoderConfig {
         // takes: ASPX_ACPL_1 in 5.0 and 5.1, and ASPX_ACPL_1 and ASPX_ACPL_2
         // in stereo, the channel pair element's.
         bool acpl = false;
+        // DRC modes that send gains (DrcModeConfig::gains_config), which no
+        // DEE stream has.
+        bool drc_gains = false;
     };
     Experimental experimental{};
 };

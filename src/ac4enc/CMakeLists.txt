@@ -39,6 +39,7 @@ target_sources(ac4enc_objects
         src/bit_writer.cpp
         src/encoder.cpp
         src/frame/dialogue.cpp
+        src/frame/drc_gains.cpp
         src/frame/frame_writer.cpp
         src/frame/metadata.cpp
         src/frame/sync_frame.cpp

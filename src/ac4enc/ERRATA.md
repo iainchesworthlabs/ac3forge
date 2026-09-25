@@ -68,11 +68,13 @@ equal on every ASPX stream they write:
 - **Where:** Part 1 Table 188's `d_pcm` and `d_ctrl`, 5.7.3's analysis, and 5.7.6.3.2's
   `ts_offset_hfgen`, read from the writer's side: which input samples a frame's A-SPX data describes.
 - **Reading:** the decoder's QMF slot g covers the 64 samples of the encoder's delayed input from
-  `64 g - 352`, since the output of the inverse transform is held `d_pcm` = 352 samples before the
-  analysis; frame f's control data arrives `d_ctrl` = 1 frame later, behind `ts_offset_hfgen` = 6 slots,
-  so its interval's slot i is QMF slot `32 (f + 1) - 6 + i`. The encoder analyses its input with the
-  decoder's own bank on that axis and estimates each frame's envelopes, noise floors and inverse
-  filtering over those slots.
+  `64 g - d_pcm`, since the output of the inverse transform is held `d_pcm` samples before the
+  analysis; frame f's control data arrives `d_ctrl` frames later, behind `ts_offset_hfgen` slots, so its
+  interval's slot i is QMF slot `num_qmf_timeslots (f + d_ctrl) - ts_offset_hfgen + i`: at
+  `frame_rate_index` 13, 352 samples, 1 frame and 6 slots, `32 (f + 1) - 6 + i`. The encoder analyses
+  its input with the decoder's own bank on that axis and estimates each frame's envelopes, noise floors
+  and inverse filtering over those slots, and dialogue enhancement's and DRC's values over the same
+  block, where the decoder's output stages meet them.
 - **Evidence:** Streams and Readers. The encoder's ASPX streams decode at the lag of DEE's, and above
   the crossover the decoded A-SPX tiles land as close to the source's energy as DEE's do
   (`tools/checks/score_ac4_encode.py --gold`).
@@ -84,9 +86,9 @@ equal on every ASPX stream they write:
 - **Reading:** the compressor multiplies each slot of the input's low band, below `sbx`, by `0.5
   L^(alpha - 1)`, L measured as the expander measures it on the input's own analysis: expanded, the
   slot's level is L again. The compressed slots, with nothing above `sbx`, are synthesised back by the
-  decoder's synthesis bank, whose output runs 352 + 577 = 929 samples behind the analysis's input; the
-  spectral frontend codes that output 929 samples on, so that the decoder's analysis of what it decodes
-  sees the compressed slots on the same axis.
+  decoder's synthesis bank, whose output runs `d_pcm` + 577 samples (929 at `frame_rate_index` 13)
+  behind the analysis's input; the spectral frontend codes that output as far on, so that the decoder's
+  analysis of what it decodes sees the compressed slots on the same axis.
 - **Evidence:** Observation. A 1 kHz tone whose level steps by 30 dB steps by 0.65 of that, 19.5 dB,
   compressed (`tests/ac4enc/test_ac4enc_aspx.cpp`), and the encoder's companded streams decode within
   0.4 dB of their source's level.
@@ -297,3 +299,55 @@ the box it writes is the box `build_dac4()` writes, byte for byte (`tests/ac4/te
   one bit; `tools_metadata_size` of the audio substream's `metadata()` is likewise one bit,
   `b_de_data_present` 0.
 - **Evidence:** Readers: both readers hold these sizes to the bits read.
+
+### Dialogue enhancement and DRC in the frame's metadata
+
+The writer takes the decoder's reading of each of these (phase E5):
+
+- [de_data() predicts from the wrong channel](../ac4dec/ERRATA.md#de_data-predicts-from-the-wrong-channel):
+  a channel after the first is sent along its own bands in an I-frame.
+- [Dialogue enhancement and DRC configuration across I-frames](../ac4dec/ERRATA.md#dialogue-enhancement-and-drc-configuration-across-i-frames):
+  `de_config()` and `drc_config()` go in I-frames, and a frame between them sends `b_de_config_flag` 0,
+  and `b_drc_present` 0 unless a mode sends gains.
+- [drc_repeat_id copies a whole mode](../ac4dec/ERRATA.md#drc_repeat_id-copies-a-whole-mode): a repeat of
+  a mode that sends gains sends a gainset in `drc_data()` too, that mode's gains again.
+- [drc_gains() is a brace short](../ac4dec/ERRATA.md#drc_gains-is-a-brace-short) and
+  [DRC's units](../ac4dec/ERRATA.md#drcs-units): gains in whole dB2, frequency-differential along the
+  first subframe's bands and time-differential along each band's subframes.
+- [When dialogue enhancement's, DRC's and the downmix's values apply](../ac4dec/ERRATA.md#when-dialogue-enhancements-drcs-and-the-downmixs-values-apply):
+  a frame's dialogue enhancement parameters and DRC gains are computed on the block its control data
+  meets (above, "Where the encoder's QMF slots fall").
+
+### drc_gainset_size counts drc_version
+
+- **Where:** Part 1 4.3.13.5.1, p. 130 ("the size in bits of the following drc_gains element"), against
+  Table 74, p. 67 (`bits_left = drc_gainset_size - 2 - used_bits`).
+- **Reading:** the formula's: the size counts `drc_version`'s two bits and `drc_gains()`, which is what
+  a reader skipping a gainset by its size needs. The decoder accepts either reading at `drc_version` 0
+  ([drc_gainset_size does and does not count drc_version](../ac4dec/ERRATA.md#drc_gainset_size-does-and-does-not-count-drc_version)).
+- **Evidence:** Readers. Transmitted gains are experimental (`experimental=drc-gains`): no stream DEE
+  writes sends them.
+
+## Rates
+
+### What wait_frames counts
+
+- **Where:** Part 1 4.3.3.2.4 and Table 81, p. 73: the frames a decoder "should wait" after receiving
+  the frame before its output; 6.2.4, p. 263, and Part 2 Annex B, pp. 217 and 218, which estimates the
+  rate from sizes over m frames and `m + wait_frames(0) - wait_frames(m)`, give it a buffer's meaning.
+- **Reading:** the whole frame periods between the frame's arrival, whole, over a channel at the
+  stream's rate and its output, for a decoder that starts at the frame: its slack, floored (in twos at
+  indices 10 to 12, where Table 81 counts in twos). Such a decoder outputs the frame up to a frame (two)
+  early, so each frame keeps at least a frame (two) of slack and at most what the buffer holds: 1 to 5
+  frames, or 2 to 11. Over m frames the sizes then come to within a frame (two) of Annex B's N'.
+- **Evidence:** Text. The tests check, frame by frame and from the stream alone, that a decoder starting
+  at any frame is never fed a frame late and that its buffer never holds more than 6.2.4 sets.
+
+### br_code carries the raw frames' rate
+
+- **Where:** Part 2 6.3.2.1.2 and Annex B, steps 2 to 4 and 13.
+- **Reading:** the sequence carries the rate of the raw frames, `raw_ac4_frame()`s, in kbps, which is
+  the rate the encoder is given; Annex B adds a sync frame's overhead to it as B. The writer sends 0b11
+  and six base-3 digits of the fraction of log2 of the rate, a precision of 3^-6 of an octave, then 0b11
+  again.
+- **Evidence:** Text.

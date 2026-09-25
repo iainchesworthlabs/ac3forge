@@ -216,7 +216,8 @@ std::optional<StreamMetadata> resolve_metadata(const EncoderConfig& config, int 
                                               .output_level_from_db = 0,
                                               .output_level_to_db = 0,
                                               .profile = std::nullopt,
-                                              .repeat_of = std::nullopt});
+                                              .repeat_of = std::nullopt,
+                                              .gains_config = std::nullopt});
             }
         }
         if (modes.size() > 8) {
@@ -254,6 +255,17 @@ std::optional<StreamMetadata> resolve_metadata(const EncoderConfig& config, int 
                 }
                 c.repeat_id = *mode.repeat_of;
                 c.default_profile = false;
+            } else if (mode.gains_config) {
+                // Transmitted gains, experimental (planning/ac4.md, "What
+                // the encoder writes by default").
+                if (!config.experimental.drc_gains || *mode.gains_config < 0 ||
+                    *mode.gains_config > 3) {
+                    return std::nullopt;
+                }
+                c.default_profile = false;
+                c.gains_config = mode.gains_config;
+                c.gains_curve = curve_codes(mode.profile.value_or(d.profile));
+                codes.gains = true;
             } else if (mode.profile && *mode.profile != d.profile) {
                 c.default_profile = false;
                 c.curve = curve_codes(*mode.profile);
@@ -388,35 +400,96 @@ void write_further_loudness_info(BitWriter& w, const LoudnessCodes& codes, bool 
     w.write(1, 0, "b_extension");
 }
 
-void write_drc_frame(BitWriter& w, const DrcCodes* codes, bool iframe) {
-    if (codes == nullptr || !iframe) {
+void write_drc_frame(BitWriter& w, const DrcCodes* codes, bool iframe,
+                     std::span<const DrcModeGains> gains) {
+    if (codes == nullptr || (!iframe && !codes->gains)) {
         w.write(1, 0, "b_drc_present");
         return;
     }
     w.write(1, 1, "b_drc_present");
-    // drc_config().
-    w.write(3, codes->modes.size() - 1, "drc_decoder_nr_modes");
-    for (const DrcModeCodes& mode : codes->modes) {
-        w.write(3, static_cast<std::uint64_t>(mode.id), "drc_decoder_mode_id");
-        if (mode.id > 3) {
-            w.write(5, static_cast<std::uint64_t>(mode.output_level_from), "drc_output_level_from");
-            w.write(5, static_cast<std::uint64_t>(mode.output_level_to), "drc_output_level_to");
+    if (iframe) {
+        // drc_config().
+        w.write(3, codes->modes.size() - 1, "drc_decoder_nr_modes");
+        for (const DrcModeCodes& mode : codes->modes) {
+            w.write(3, static_cast<std::uint64_t>(mode.id), "drc_decoder_mode_id");
+            if (mode.id > 3) {
+                w.write(5, static_cast<std::uint64_t>(mode.output_level_from),
+                        "drc_output_level_from");
+                w.write(5, static_cast<std::uint64_t>(mode.output_level_to), "drc_output_level_to");
+            }
+            w.write(1, mode.repeat_id ? 1U : 0U, "drc_repeat_profile_flag");
+            if (mode.repeat_id) {
+                w.write(3, static_cast<std::uint64_t>(*mode.repeat_id), "drc_repeat_id");
+                continue;
+            }
+            w.write(1, mode.default_profile ? 1U : 0U, "drc_default_profile_flag");
+            if (!mode.default_profile) {
+                w.write(1, mode.gains_config ? 0U : 1U, "drc_compression_curve_flag");
+                if (mode.gains_config) {
+                    w.write(2, static_cast<std::uint64_t>(*mode.gains_config), "drc_gains_config");
+                } else {
+                    write_curve(w, *mode.curve);
+                }
+            }
         }
-        w.write(1, mode.repeat_id ? 1U : 0U, "drc_repeat_profile_flag");
-        if (mode.repeat_id) {
-            w.write(3, static_cast<std::uint64_t>(*mode.repeat_id), "drc_repeat_id");
+        w.write(3, static_cast<std::uint64_t>(codes->eac3_profile), "drc_eac3_profile");
+    }
+    // drc_data() (Table 74): a gainset for each mode that sends gains, a
+    // repeat taking the mode it repeats; and after them, where any mode has
+    // a curve, the reset flag.
+    bool curve = false;
+    for (std::size_t m = 0; m < codes->modes.size(); ++m) {
+        const DrcModeCodes* mode = &codes->modes[m];
+        if (mode->repeat_id) {
+            for (const DrcModeCodes& other : codes->modes) {
+                if (other.id == *mode->repeat_id) {
+                    mode = &other;
+                }
+            }
+        }
+        if (!mode->gains_config) {
+            curve = true;
             continue;
         }
-        w.write(1, mode.default_profile ? 1U : 0U, "drc_default_profile_flag");
-        if (!mode.default_profile) {
-            w.write(1, 1, "drc_compression_curve_flag");
-            write_curve(w, *mode.curve);
+        // drc_gains() (Table 75), under the reading src/ac4dec/ERRATA.md
+        // "drc_gains() is a brace short" takes; drc_gainset_size counts
+        // drc_version, as bits_left's formula does (src/ac4enc/ERRATA.md,
+        // "drc_gainset_size counts drc_version").
+        const DrcModeGains& set = gains[m];
+        BitWriter body = BitWriter::buffered();
+        body.write(7, static_cast<std::uint64_t>(set.at(0, 0, 0) + 64), "drc_gain_val");
+        if (*mode->gains_config > 0) {
+            int ref = set.at(0, 0, 0);
+            for (int ch = 0; ch < set.groups; ++ch) {
+                for (int band = 0; band < set.bands; ++band) {
+                    for (int sf = 0; sf < set.subframes; ++sf) {
+                        if (sf != 0 || band != 0 || ch != 0) {
+                            body.write_codeword(
+                                tables::kDrcHcbCodes,
+                                static_cast<std::size_t>(set.at(ch, sf, band) - ref +
+                                                         tables::kDrcHcb.cb_off),
+                                "drc_gain_code");
+                        }
+                        ref = set.at(ch, sf, band);
+                    }
+                    ref = set.at(ch, 0, band);
+                }
+                ref = set.at(ch, 0, 0);
+            }
         }
+        const std::size_t size = 2 + body.bit_position();
+        w.write(6, size & 63U, "drc_gainset_size_value");
+        w.write(1, size > 63 ? 1U : 0U, "b_more_bits");
+        if (size > 63) {
+            w.write_variable_bits(2, size >> 6U, "drc_gainset_size");
+        }
+        w.write(2, 0, "drc_version");
+        w.append(body);
     }
-    w.write(3, static_cast<std::uint64_t>(codes->eac3_profile), "drc_eac3_profile");
-    // drc_data(): every mode has a curve, so no gains, and the reset flag.
-    w.write(1, 0, "drc_reset_flag");
-    w.write(2, 0, "drc_reserved");
+    if (curve) {
+        w.write(1, 0, "drc_reset_flag");
+        w.write(2, 0, "drc_reserved");
+    }
 }
 
 void write_downmix(BitWriter& w, int ch_mode, bool has_lfe, const DownmixCodes* codes,

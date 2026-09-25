@@ -179,7 +179,7 @@ void write_presentation_substream(BitWriter& w, const FrameFields& f) {
         write_further_loudness_info(w, *loudness, f.iframe);
     }
     BitWriter drc = BitWriter::buffered();
-    write_drc_frame(drc, m != nullptr && m->drc ? &*m->drc : nullptr, f.iframe);
+    write_drc_frame(drc, m != nullptr && m->drc ? &*m->drc : nullptr, f.iframe, f.drc_gains);
     write_sized(w, drc, 5, "drc_metadata_size_value", "drc_metadata_size");
     w.write(1, 0, "b_associated");
     write_downmix(w, f.ch_mode, has_lfe(f.ch_mode),

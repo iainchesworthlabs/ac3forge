@@ -20,6 +20,7 @@
 #include "asf/layout.hpp"
 #include "bit_reader.hpp"
 #include "bit_writer.hpp"
+#include "frame/drc_gains.hpp"
 #include "frame/frame_writer.hpp"
 #include "frame/metadata.hpp"
 #include "huffman.hpp"
@@ -271,5 +272,20 @@ TEST_CASE("a DRC profile sent as a curve is the profile the decoder's Table 162 
         CHECK(sent.adaptive == table->adaptive);
         CHECK(sent.attack_threshold == table->attack_threshold);
         CHECK(sent.release_threshold == table->release_threshold);
+
+        // The encoder's own reading of Table 166, which its transmitted gains
+        // are computed with, gives the same curve.
+        const ac4::detail::DrcGainCurve own = ac4::detail::drc_gain_curve(c);
+        for (int level = -60; level <= 50; ++level) {
+            CAPTURE(level);
+            CHECK(own.gain(level) == table->gain(level));
+        }
+        CHECK(own.attack_ms == table->attack_ms);
+        CHECK(own.release_ms == table->release_ms);
+        CHECK(own.attack_fast_ms == table->attack_fast_ms);
+        CHECK(own.release_fast_ms == table->release_fast_ms);
+        CHECK(own.adaptive == table->adaptive);
+        CHECK(own.attack_threshold == table->attack_threshold);
+        CHECK(own.release_threshold == table->release_threshold);
     }
 }

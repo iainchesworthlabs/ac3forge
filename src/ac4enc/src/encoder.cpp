@@ -21,6 +21,7 @@
 #include "bit_writer.hpp"
 #include "dsp/resampler.hpp"
 #include "frame/dialogue.hpp"
+#include "frame/drc_gains.hpp"
 #include "frame/frame_writer.hpp"
 #include "frame/metadata.hpp"
 #include "frame/timing.hpp"
@@ -574,6 +575,53 @@ struct Encoder::Impl {
         return config.dialogue && config.dialogue->source == DialogueSource::kStem;
     }
 
+    // DRC modes that send gains (frame/drc_gains.hpp): a computer for each,
+    // by the mode's place in drc_config(), the input they analyse on the
+    // signal's axis, and each mode's gains for the frame being coded.
+    std::vector<std::optional<detail::DrcGainEncoder>> drc_gain_encoders;
+    std::vector<std::vector<double>> drc_input;
+    std::vector<detail::DrcModeGains> drc_gains;
+
+    [[nodiscard]] double drc_sample(std::size_t c, std::int64_t s) const noexcept {
+        if (s < base || s >= signal_end()) {
+            return 0.0;
+        }
+        return drc_input[c][static_cast<std::size_t>(s - base)];
+    }
+
+    // Analyses the input's QMF slots frame f's gains read, for each mode that
+    // sends them, and computes the gains; a repeat takes those of the mode it
+    // repeats.
+    void drc_frame_gains(std::int64_t frame) {
+        std::vector<std::array<double, kQmfSlot>> chunk(drc_input.size());
+        for (std::size_t m = 0; m < drc_gain_encoders.size(); ++m) {
+            std::optional<detail::DrcGainEncoder>& encoder = drc_gain_encoders[m];
+            if (!encoder) {
+                continue;
+            }
+            while (encoder->slots() < encoder->slots_needed(frame)) {
+                const std::int64_t from = kQmfSlot * encoder->slots() - timing.alignment_delay;
+                for (std::size_t c = 0; c < chunk.size(); ++c) {
+                    for (std::size_t i = 0; i < chunk[c].size(); ++i) {
+                        chunk[c][i] = drc_sample(c, from + static_cast<std::int64_t>(i));
+                    }
+                }
+                encoder->push_slot(chunk);
+            }
+            drc_gains[m] = encoder->gains(frame);
+        }
+        const std::vector<detail::DrcModeCodes>& modes = metadata.drc->modes;
+        for (std::size_t m = 0; m < modes.size(); ++m) {
+            if (modes[m].repeat_id) {
+                for (std::size_t other = 0; other < modes.size(); ++other) {
+                    if (modes[other].id == *modes[m].repeat_id) {
+                        drc_gains[m] = drc_gains[other];
+                    }
+                }
+            }
+        }
+    }
+
     std::int64_t frames_out = 0;
 
     // Each layout group's transform layouts, decided for frames_out and the
@@ -874,6 +922,7 @@ struct Encoder::Impl {
         fields.ch_mode = plan.ch_mode;
         fields.dialnorm_bits = dialnorm_bits;
         fields.metadata = &metadata;
+        fields.drc_gains = drc_gains;
         fields.de = &de_current;
         fields.de_previous = de_sent ? &de_previous : nullptr;
         return fields;
@@ -882,11 +931,13 @@ struct Encoder::Impl {
     // Where frame f's dialogue enhancement parameters are estimated from: a
     // long block's window, two frames of the signal, centred where the
     // decoder's interpolation reaches them. They reach the QMF domain d_ctrl
-    // frames on (frame/timing.hpp) and apply to the frame's slots from
-    // frame_length (f + d_ctrl) - d_pcm of the signal, reaching their full
-    // value at the last.
+    // frames on (frame/timing.hpp) and apply to the block the output stages
+    // work on then, ts_offset_hfgen slots behind the analysis: the signal from
+    // frame_length (f + d_ctrl) - 64 ts_offset_hfgen - d_pcm, reaching their
+    // full value at its end.
     [[nodiscard]] std::int64_t dialogue_window(std::int64_t frame) const noexcept {
-        return frame_length * (frame + timing.control_delay) - timing.alignment_delay;
+        return frame_length * (frame + timing.control_delay) - kQmfSlot * timing.hfgen_slots -
+               timing.alignment_delay;
     }
 
     // Dialogue enhancement's parameters for frame f from the stem: the
@@ -1234,6 +1285,9 @@ struct Encoder::Impl {
         const std::int64_t start = frame * frame_length;
         if (stem()) {
             estimate_dialogue(frame);
+        }
+        if (!drc_input.empty()) {
+            drc_frame_gains(frame);
         }
         detail::FrameFields fields = fields_for(frame);
         Coding f;
@@ -1596,6 +1650,11 @@ struct Encoder::Impl {
             needed = std::max(needed,
                               dialogue_window(frame) + 2 * static_cast<std::int64_t>(frame_length));
         }
+        for (const std::optional<detail::DrcGainEncoder>& encoder : drc_gain_encoders) {
+            if (encoder) {
+                needed = std::max(needed, through_slot(encoder->slots_needed(frame)));
+            }
+        }
         return needed;
     }
 
@@ -1634,7 +1693,7 @@ struct Encoder::Impl {
                 for (std::vector<double>& channel : source) {
                     channel.erase(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(drop));
                 }
-                for (auto* buffers : {&de_programme, &de_dialogue}) {
+                for (auto* buffers : {&de_programme, &de_dialogue, &drc_input}) {
                     for (std::vector<double>& channel : *buffers) {
                         channel.erase(channel.begin(),
                                       channel.begin() + static_cast<std::ptrdiff_t>(drop));
@@ -1807,6 +1866,64 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
         return std::unexpected(EncodeError::kInvalidConfig);
     }
     impl->metadata = *metadata;
+    if (metadata->drc && metadata->drc->gains) {
+        // The input's channels as BS.1770 weights them and Table 168 groups
+        // them, in the input's order: L R C, the LFE, Ls Rs, and a 7.X pair.
+        using detail::DrcChannel;
+        std::vector<DrcChannel> drc_channels;
+        if (config.channels == 1) {
+            drc_channels = {DrcChannel::kCentre};
+        } else if (config.channels == 2) {
+            drc_channels = {DrcChannel::kFront, DrcChannel::kFront};
+        } else {
+            drc_channels = {DrcChannel::kFront, DrcChannel::kFront, DrcChannel::kCentre};
+            if (config.channels % 2 == 0) {
+                drc_channels.push_back(DrcChannel::kLfe);
+            }
+            drc_channels.insert(drc_channels.end(), {DrcChannel::kSide, DrcChannel::kSide});
+            if (config.channels > 6) {
+                const AdditionalPair pair = config.experimental.seven_x;
+                const DrcChannel extra = pair == AdditionalPair::kBack   ? DrcChannel::kBack
+                                         : pair == AdditionalPair::kWide ? DrcChannel::kWide
+                                                                         : DrcChannel::kFront;
+                drc_channels.insert(drc_channels.end(), {extra, extra});
+            }
+        }
+        const bool small = config.channels <= 2;
+        for (const detail::DrcModeCodes& drc_mode : metadata->drc->modes) {
+            detail::DrcModeGains zero;
+            if (drc_mode.gains_config) {
+                const int gains = *drc_mode.gains_config;
+                zero.groups = gains > 0 && !small ? 3 : 1;
+                zero.subframes = gains > 0 ? detail::drc_subframes(timing->frame_length) : 1;
+                zero.bands = gains == 2 ? 2 : (gains == 3 ? 4 : 1);
+                zero.gain.assign(
+                    static_cast<std::size_t>(zero.groups * zero.subframes * zero.bands), 0);
+            }
+            if (drc_mode.gains_config && !drc_mode.repeat_id) {
+                impl->drc_gain_encoders.emplace_back(std::in_place,
+                                                     detail::drc_gain_curve(drc_mode.gains_curve),
+                                                     *drc_mode.gains_config, drc_channels, small,
+                                                     *timing, impl->rate_hz, config.dialnorm_db);
+            } else {
+                impl->drc_gain_encoders.emplace_back();
+            }
+            impl->drc_gains.push_back(std::move(zero));
+        }
+        // A repeat of a mode that sends gains sends them too.
+        for (std::size_t m = 0; m < metadata->drc->modes.size(); ++m) {
+            const detail::DrcModeCodes& drc_mode = metadata->drc->modes[m];
+            if (drc_mode.repeat_id) {
+                for (std::size_t other = 0; other < metadata->drc->modes.size(); ++other) {
+                    if (metadata->drc->modes[other].id == *drc_mode.repeat_id) {
+                        impl->drc_gains[m] = impl->drc_gains[other];
+                    }
+                }
+            }
+        }
+        impl->drc_input.assign(static_cast<std::size_t>(config.channels),
+                               std::vector<double>(static_cast<std::size_t>(impl->delay), 0.0));
+    }
     if (metadata->de) {
         // de_channel_config's L, R and C (Table 171) as input channels: C
         // alone in mono, L and R in stereo, and L, R and C the first three
@@ -1991,6 +2108,9 @@ void Encoder::Impl::take(const std::vector<std::vector<double>>& programme,
                 }
             }
         }
+    }
+    for (std::size_t c = 0; c < drc_input.size(); ++c) {
+        drc_input[c].insert(drc_input[c].end(), programme[c].begin(), programme[c].end());
     }
     if (stem()) {
         for (std::size_t i = 0; i < de_channels.size(); ++i) {
