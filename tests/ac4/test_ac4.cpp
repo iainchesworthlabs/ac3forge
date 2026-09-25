@@ -2718,6 +2718,181 @@ TEST_CASE("cmaf_refusal names the rule of Part 2 Annex H.1.2.1 a stream breaks",
     CHECK(ac4::cmaf_refusal(frame->toc).find("configuration 6") != std::string_view::npos);
 }
 
+TEST_CASE("signalled_presentation takes Annex G.2.3's widest compatibility", "[ac4][carriage]") {
+    // Every presentation of configurations_toc() needs md_compat 1: the first.
+    ac4::Toc toc = configurations_toc();
+    CHECK(ac4::signalled_presentation(toc) == std::optional<std::size_t>{0});
+    // The lowest level wins, the first among equals.
+    toc.presentations_v1[3].md_compat = 0;
+    toc.presentations_v1[5].md_compat = 0;
+    CHECK(ac4::signalled_presentation(toc) == std::optional<std::size_t>{3});
+    CHECK(ac4::rfc6381_codec_string(toc) == "ac-4.02.01.00");
+    // A presentation the stream disables is not one a decoder may select.
+    toc.presentations_v1[3].enable_presentation = false;
+    CHECK(ac4::signalled_presentation(toc) == std::optional<std::size_t>{5});
+    // EMDF payloads alone carry no audio; where nothing does, the first.
+    ac4::Toc emdf;
+    emdf.bitstream_version = 2;
+    ac4::PresentationInfoV1 payloads;
+    payloads.presentation_version = 1;
+    payloads.presentation_config = 6;
+    emdf.presentations_v1 = {payloads};
+    emdf.n_presentations = 1;
+    CHECK(ac4::signalled_presentation(emdf) == std::optional<std::size_t>{0});
+    CHECK_FALSE(ac4::signalled_presentation(ac4::Toc{}).has_value());
+}
+
+TEST_CASE("dash_channel_configuration maps channel groups by Table G.1 or the Dolby:2015 word",
+          "[ac4][carriage]") {
+    constexpr std::string_view kCicp = "urn:mpeg:mpegB:cicp:ChannelConfiguration";
+    constexpr std::string_view kDolby = "tag:dolby.com,2015:dash:audio_channel_configuration:2015";
+    struct Case {
+        int ch_mode;
+        std::optional<ac4::OriginalContent> content;
+        std::string_view scheme;
+        std::string_view value;
+        int channels;
+    };
+    const std::vector<Case> cases = {
+        {0, std::nullopt, kCicp, "1", 1},   // mono: C
+        {1, std::nullopt, kCicp, "2", 2},   // stereo: L R
+        {2, std::nullopt, kCicp, "3", 3},   // 3.0
+        {3, std::nullopt, kCicp, "5", 5},   // 5.0
+        {4, std::nullopt, kCicp, "6", 6},   // 5.1
+        {6, std::nullopt, kCicp, "12", 8},  // 7.1 3/4/0: 00004F
+        {8, std::nullopt, kCicp, "7", 8},   // 7.1 5/2/0: 020047
+        {10, std::nullopt, kCicp, "14", 8},  // 7.1 3/2/2: 000057
+        // 7.1.4 and 5.1.4 (00007F, 000077), and 5.1.2 (0000C7), which Table
+        // G.1 does not list: G.3.3.2's Example 1, in the Dolby scheme.
+        {12, ac4::OriginalContent{.b_4_back_channels_present = true, .b_centre_present = true,
+                                  .top_channels_present = 3},
+         kCicp, "19", 12},
+        {12, ac4::OriginalContent{.b_4_back_channels_present = false, .b_centre_present = true,
+                                  .top_channels_present = 3},
+         kCicp, "16", 10},
+        {12, ac4::OriginalContent{.b_4_back_channels_present = false, .b_centre_present = true,
+                                  .top_channels_present = 1},
+         kDolby, "0000C7", 8},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.ch_mode, c.value);
+        ac4::Toc toc = one_substream_toc(c.ch_mode);
+        toc.substream_groups[0].substreams[0].chan->original_content = c.content;
+        const auto configuration = ac4::dash_channel_configuration(toc);
+        REQUIRE(configuration.has_value());
+        CHECK(configuration->scheme_id_uri == c.scheme);
+        CHECK(configuration->value == c.value);
+        CHECK(ac4::presentation_channel_count(toc) == std::optional<int>{c.channels});
+    }
+
+    // Object audio: G.3.3.2's Example 2, and no channel count.
+    ac4::Toc objects = one_substream_toc(1);
+    objects.substream_groups[0].b_channel_coded = false;
+    ac4::GroupSubstream ajoc;
+    ajoc.kind = ac4::GroupSubstream::Kind::kAjoc;
+    ajoc.ajoc = ac4::AjocSubstreamInfo{};
+    objects.substream_groups[0].substreams[0] = ajoc;
+    const auto object_configuration = ac4::dash_channel_configuration(objects);
+    REQUIRE(object_configuration.has_value());
+    CHECK(object_configuration->scheme_id_uri == kDolby);
+    CHECK(object_configuration->value == "800000");
+    CHECK_FALSE(ac4::presentation_channel_count(objects).has_value());
+
+    // Below bitstream_version 2 there is no version 1 presentation to read.
+    ac4::Toc legacy = one_substream_toc(1);
+    legacy.bitstream_version = 1;
+    CHECK_FALSE(ac4::dash_channel_configuration(legacy).has_value());
+}
+
+TEST_CASE("dash_supplemental_properties sends Annex G.3's frame rate and pre-virtualized content",
+          "[ac4][carriage]") {
+    constexpr std::string_view kRate = "tag:dolby.com,2017:dash:audio_frame_rate:2017";
+    struct Case {
+        int sample_rate;
+        int frame_rate_index;
+        std::string_view value;
+    };
+    for (const Case c : {Case{48000, 13, "375/16"}, Case{48000, 3, "30000/1001"},
+                         Case{48000, 0, "24000/1001"}, Case{48000, 2, "25"},
+                         Case{48000, 11, "120000/1001"}, Case{44100, 13, "11025/512"}}) {
+        CAPTURE(c.sample_rate, c.frame_rate_index);
+        ac4::Toc toc = one_substream_toc(4);
+        toc.sample_rate_hz = c.sample_rate;
+        toc.frame_rate_index = c.frame_rate_index;
+        const auto properties = ac4::dash_supplemental_properties(toc);
+        REQUIRE(properties.size() == 1);
+        CHECK(properties.front().scheme_id_uri == kRate);
+        CHECK(properties.front().value == c.value);
+    }
+    ac4::Toc virtualized = one_substream_toc(1);
+    virtualized.presentations_v1[0].b_pre_virtualized = true;
+    const auto properties = ac4::dash_supplemental_properties(virtualized);
+    REQUIRE(properties.size() == 2);
+    CHECK(properties[1].scheme_id_uri == "tag:dolby.com,2016:dash:virtualized_content:2016");
+    CHECK(properties[1].value == "1");
+    // A frame rate the tables leave undefined sends none.
+    ac4::Toc reserved = one_substream_toc(1);
+    reserved.frame_rate_index = 14;
+    CHECK(ac4::dash_supplemental_properties(reserved).empty());
+}
+
+TEST_CASE("configuration_difference names the parameter of Annex H.1.2.4 that differs",
+          "[ac4][carriage]") {
+    const ac4::Toc base = configurations_toc();
+    CHECK(ac4::configuration_difference(base, base).empty());
+    // What H.1.2.4 does not list may change from sample to sample.
+    ac4::Toc same = base;
+    same.sequence_counter = 7;
+    same.b_iframe_global = !base.b_iframe_global;
+    same.presentations_v1[1].md_compat = 3;
+    CHECK(ac4::configuration_difference(base, same).empty());
+    // The same primary language subtag is the same language.
+    ac4::Toc region = base;
+    region.substream_groups[1] = chan_group(0, 4, "en-GB");
+    CHECK(ac4::configuration_difference(base, region).empty());
+
+    struct Case {
+        const char* name;
+        std::function<void(ac4::Toc&)> change;
+        std::string_view says;
+    };
+    const std::vector<Case> cases = {
+        {"frame rate", [](ac4::Toc& t) { t.frame_rate_index = 2; }, "frame_rate_index"},
+        {"sample rate", [](ac4::Toc& t) { t.sample_rate_hz = 44100; }, "fs_index"},
+        {"a presentation more",
+         [](ac4::Toc& t) {
+             t.presentations_v1.push_back(t.presentations_v1.front());
+             t.n_presentations += 1;
+         },
+         "n_presentations"},
+        {"a presentation_config", [](ac4::Toc& t) { t.presentations_v1[1].presentation_config = 5; },
+         "presentation_config"},
+        {"a single substream group",
+         [](ac4::Toc& t) { t.presentations_v1[1].presentation_config.reset(); },
+         "b_single_substream_group"},
+        {"a content_classifier",
+         [](ac4::Toc& t) { t.substream_groups[1].content_type->content_classifier = 5; },
+         "content_classifier"},
+        {"a language", [](ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4, "fr"); },
+         "language"},
+        {"no language", [](ac4::Toc& t) { t.substream_groups[1] = chan_group(0, 4); }, "language"},
+        {"a channel_mode",
+         [](ac4::Toc& t) { t.substream_groups[3].substreams[0].chan->channel_mode = 4; },
+         "channel_mode"},
+        {"an sf_multiplier",
+         [](ac4::Toc& t) { t.substream_groups[0].substreams[0].chan->sf_multiplier = 1; },
+         "sf_multiplier"},
+        {"a substream group fewer", [](ac4::Toc& t) { t.substream_groups.pop_back(); },
+         "substream groups"},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        ac4::Toc toc = base;
+        c.change(toc);
+        CHECK(ac4::configuration_difference(base, toc).find(c.says) != std::string_view::npos);
+    }
+}
+
 TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",
           "[ac4][carriage]") {
     ac4::Toc toc;

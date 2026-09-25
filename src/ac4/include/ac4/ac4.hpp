@@ -630,8 +630,65 @@ struct FrameRate {
 
 // RFC 6381 codec string per Annex E.13: "ac-4.AA.BB.CC" with two lowercase
 // hex digits each of bitstream_version, presentation_version and mdcompat,
-// taken from the first presentation (the one a presentation-unaware player
-// selects). An absent md_compat reads as 0.
+// taken from signalled_presentation(), which a manifest describes a track by.
+// An absent md_compat reads as 0.
 [[nodiscard]] AC4_EXPORT std::string rfc6381_codec_string(const Toc& toc);
+
+// --- Manifests (TS 103 190-2 Annex G, and HLS) ------------------------------
+//
+// What an HLS playlist and a DASH MPD say of an AC-4 track, read off its table
+// of contents as build_dac4() reads its box: plain values, so that the
+// manifest writers (mp4/hls.hpp, mp4/dash.hpp) stay codec-blind.
+
+// The presentation a manifest describes a track by: Annex G.2.3's "AC-4
+// presentation with the widest compatibility", read as the lowest md_compat
+// among the presentations that carry audio and that the stream does not
+// disable, the first of them where several share it (src/ac4enc/ERRATA.md,
+// "Manifests"). The first presentation where none carries audio; nothing for
+// a table of contents without presentations.
+[[nodiscard]] AC4_EXPORT std::optional<std::size_t> signalled_presentation(const Toc& toc);
+
+// A DASH descriptor: the scheme it names, and its value there.
+struct ManifestDescriptor {
+    std::string scheme_id_uri{};
+    std::string value{};
+};
+
+// Annex G.3.3's AudioChannelConfiguration for signalled_presentation(): the
+// MPEG scheme urn:mpeg:mpegB:cicp:ChannelConfiguration with Table G.1's value
+// where the presentation's audio channel groups (Annex E.10.3, Pseudocode E.3
+// as build_dac4() writes them) map to one, which G.3.3.1 prefers, and the
+// "Dolby:2015" scheme tag:dolby.com,2015:dash:audio_channel_configuration:2015
+// otherwise, six hexadecimal digits with group g at bit g and bit 23 set for
+// object audio (src/ac4enc/ERRATA.md, "Manifests", on G.3.3.2's bit order).
+// Nothing for a bitstream_version below 2, or a presentation whose substreams
+// the table of contents does not describe whole.
+[[nodiscard]] AC4_EXPORT std::optional<ManifestDescriptor> dash_channel_configuration(const Toc& toc);
+
+// The SupplementalProperty descriptors Annex G.3 asks of a Representation for
+// signalled_presentation(): G.3.2's frame rate
+// (tag:dolby.com,2017:dash:audio_frame_rate:2017, in DASH's FrameRateType:
+// "25", "30000/1001", and at frame_rate_index 13 the sample rate over 2 048,
+// "375/16" at 48 kHz), and G.3.1's pre-virtualized content
+// (tag:dolby.com,2016:dash:virtualized_content:2016, "1") where
+// b_pre_virtualized is set. Nothing for a frame rate Tables 83 and 84 do not
+// define.
+[[nodiscard]] AC4_EXPORT std::vector<ManifestDescriptor> dash_supplemental_properties(
+    const Toc& toc);
+
+// How many channels signalled_presentation() has: the speakers of its audio
+// channel groups (Table A.27), which is what HLS's CHANNELS attribute counts.
+// Nothing for object audio, or a presentation whose substreams the table of
+// contents does not describe whole.
+[[nodiscard]] AC4_EXPORT std::optional<int> presentation_channel_count(const Toc& toc);
+
+// Annex H.1.2.4: whether two tables of contents have equivalent
+// configurations, which every sample of a CMAF track must: the same
+// frame_rate_index, fs_index and n_presentations; each presentation's
+// b_single_substream_group and presentation_config; and each substream group's
+// content_classifier, b_language_indicator and the language tag's primary
+// subtag, and each of its substreams' channel_mode and sf_multiplier. Empty
+// where they are, else a string literal naming the first that differs.
+[[nodiscard]] AC4_EXPORT std::string_view configuration_difference(const Toc& a, const Toc& b);
 
 }  // namespace ac4
