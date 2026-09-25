@@ -771,9 +771,9 @@ none; the firmware tiles; and a board with no second line offering no wiring.
 Since the firmware section, `firmware.spec.js`. The stand-in models `ac3forge::Firmware`'s routes
 as the page uses them: an upload whose head is an application image is written, the board
 restarts into it on trial, and a restart drops the next request. Before it drops a request the
-stand-in closes its idle connections. Chromium sends a request again when a connection it reused
-closes unanswered, so a drop then fails the request exactly once, whatever connections the
-browser had open. `contract.spec.js` holds its
+stand-in closes its idle connections, and until the drop is made each answer closes its own.
+Chromium sends a request again when a connection it reused closes unanswered, so a drop then fails
+the request exactly once, whatever connections the browser had open. `contract.spec.js` holds its
 replies to the literals in `firmware.cpp` and `firmware_image.hpp`, and `GET /firmware`'s keys
 to `firmware_status.hpp`'s order. The tests cover:
 
