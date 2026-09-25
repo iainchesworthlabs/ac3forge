@@ -19,7 +19,14 @@ tools, I-frames at an interval, at named frames and at fragment starts, the
 metadata (dialnorm, the further loudness values, DRC's modes with their
 profiles and with experimental gains, the downmix values, and dialogue
 enhancement from marked channels or a stem by each method), and raw or MP4
-output.
+output. A case in five also has several substreams and the presentations of
+Part 2 Table 53 that play them (substreamN= and presentationN=): music and
+effects with dialogue, main audio with associated audio, main audio whose
+hybrid dialogue enhancement's waveform has a substream of its own, the three
+together, roles by content classifier, one presentation per substream, and
+now and then one of EMDF payloads alone; with languages, classifiers, rate
+shares, dialogue mixing values, group gains, the associated audio's mixing
+values, ids, levels, names and payloads drawn for them.
 
 Each case is held to:
 
@@ -39,7 +46,9 @@ Each case is held to:
            channel count and sample rate, the frames' lengths adding up to
            what the frame rate gives that many frames (Part 2 clause 5.11),
            and the output covering the input delayed by the lag ac4-encode
-           reports, with no more than a frame to spare.
+           reports, with no more than a frame to spare. With several
+           substreams it decodes the first presentation, which plays the
+           input's substream with others that add no channel to it.
 
 A configuration outside the encoder's range - a rate below 8 or above 3000
 kbps, or at 44.1 kHz a frame rate other than the native one - must be refused
@@ -136,6 +145,14 @@ SEVEN_X = ["7x-back", "7x-wide", "7x-top-front"]
 # encoder's last frame covers: d_pcm (Part 1 Table 188), the QMF banks' 577 samples and six QMF
 # slots. At the other frame rates ac4-encode reports the lag, to the nearest sample.
 LAG = 3072 + 352 + 577 + 6 * 64
+# The cases of several substreams: the presentations' shapes, Part 2 Table 53's configurations
+# over substreams in its positions' order ("singles" is one presentation per substream); the
+# classifiers of associated audio, those Part 2 Table 54 gives that role; the language tags drawn;
+# and the alternative presentations' names.
+TEMPLATES = ["singles", "config0", "config1", "config2", "config3", "config4", "config5"]
+ASSOCIATED = ["visually-impaired", "hearing-impaired", "commentary"]
+LANGUAGES = ["en", "de", "fr", "es", "ja", "qad", "en-GB", "pt-BR", "zh-Hant"]
+NAMES = ["Deutsch", "Commentary", "Director", "Stadium", "Home team"]
 
 # A frame of this many bytes holds the least frame of any configuration drawn: a silent I-frame
 # with every metadata element, DRC's gains and dialogue enhancement's parameters in 7.1 among them.
@@ -143,9 +160,13 @@ LAG = 3072 + 352 + 577 + 6 * 64
 # this size encodes.
 FRAME_BYTES_CAP = 400
 
-# Refusals a case may end in, by the text ac3cli prints for each.
+# Refusals a case may end in, by the text ac3cli prints for each: the encoder's reasons
+# (ac4::Encoder::refusal_reason()) and ac3cli's own.
 REFUSALS = {
-    "rate out of range": "the configuration is not one this encoder writes",
+    "rate out of range": "a rate outside 8 to 3 000 kbps",
+    # A rate whose frames cannot hold the least frame of a substream, or the presentation and EMDF
+    # payload substreams.
+    "least frame": "a rate that cannot hold ",
     # dialnorm=auto on input BS.1770's gates leave nothing of, which the
     # generator's sparse profiles draw: the encoder commands all refuse it so.
     "nothing to measure": "no audio above the -70 LKFS absolute gate",
@@ -159,6 +180,11 @@ REGRESSION_SEEDS = {
     10507227253340255992: "8 kbps stereo with dialnorm=auto over input BS.1770's gates leave "
     "nothing of: refused for the rate, then at the retry's rate for the loudness, which the "
     "harness took as a failure",
+    11618868545183904483: "mono and two stereo substreams at an average rate with A-SPX's balance "
+    "coding: the frame gave the substream that takes what the others leave less than its least "
+    "frame, and the encoder threw bad_optional_access (fixed in phase E7)",
+    6658067609366379392: "7.1 music and effects, 3.0 dialogue and stereo associated audio, twelve "
+    "tracks, at md-compat=3, which holds eleven: the harness drew a level the encoder refuses",
 }
 
 
@@ -177,6 +203,10 @@ class Case:
     frame_rate_index: int = 13
     # A dialogue stem beside the programme: the programme's channels, each scaled.
     stem: bool = False
+    # The substreams after the input's, substream 2 on: each one's channel count, 0 for a dialogue
+    # enhancement substream, which takes no input. Their options and the presentations' are in
+    # `options`; ac3cli is given each input as substreamN=.
+    substreams: list = field(default_factory=list)
 
     @property
     def in_range(self):
@@ -320,6 +350,20 @@ def draw_case(seed):
         tools.append("coding-configs")
     if channels > 6:
         tools.append(rng.choice(SEVEN_X))
+    # A case in five has several substreams and presentations, drawn from a generator of its own so
+    # that the other cases, the regression seeds' among them, draw as they did. Its rate holds half
+    # of FRAME_BYTES_CAP a substream in each frame, where the rate is in range.
+    substreams = []
+    presentation_rng = random.Random(seed ^ 0x9E3779B97F4A7C15)
+    if presentation_rng.random() < 0.2:
+        substreams, stem = draw_presentations(presentation_rng, channels, options, tools, stem)
+        if LOWEST_KBPS <= bitrate <= HIGHEST_KBPS:
+            per_frame = FRAME_RATES[frame_rate_index][1] if sample_rate == 48000 else FRAME
+            least = math.ceil(
+                Fraction(FRAME_BYTES_CAP // 2 * (1 + len(substreams)) * 8 * sample_rate)
+                / (1000 * per_frame)
+            )
+            bitrate = min(HIGHEST_KBPS, max(bitrate, least))
     if tools:
         options.append(f"experimental={','.join(tools)}")
     # Two to ten frames of input: several frames, never one, so that block
@@ -342,7 +386,191 @@ def draw_case(seed):
         options=options,
         frame_rate_index=frame_rate_index,
         stem=stem,
+        substreams=substreams,
     )
+
+
+def _emdf(rng):
+    """An EMDF payload as emdf= takes it: an id from 1, past emdf_payload_id's five bits and their
+    escape now and then, and up to eight bytes."""
+    payload_id = rng.randint(1, 30) if rng.random() < 0.7 else rng.randint(31, 400)
+    return f"{payload_id}:" + "".join(f"{rng.randrange(256):02x}" for _ in range(rng.randrange(9)))
+
+
+def _dialogue(rng, channels, tools):
+    """Hybrid dialogue enhancement's options for the input, substream 1, of `channels`: marked
+    channels, or a stem, by each method, with the waveform's share, which a dialogue enhancement
+    substream carries; whether a stem gives the dialogue; and the waveform's channels. The
+    channel-independent method's waveform has a channel for each marked channel, three being the
+    3.0 element's, and the others' one."""
+    available = {1: ["c"], 2: ["l", "r"]}.get(channels, ["l", "r", "c"])
+    marked = [c for c in available if rng.random() < 0.6] or [rng.choice(available)]
+    stem = rng.random() < 0.3
+    method = "independent"
+    roll = rng.random()
+    if roll < 0.25 and marked == ["l", "r"]:
+        method = "mid"
+    elif roll < 0.5 and stem and len(marked) >= 2:
+        method = "cross"
+    if method == "independent" and len(marked) == 3:
+        tools.append("three-zero")
+    options = [
+        f"dialogue-channels={','.join(marked)}",
+        f"dialogue-method={method}",
+        f"dialogue-max-gain={rng.choice([3, 6, 9, 12])}",
+        f"dialogue-hybrid={rng.randrange(32) / 31:.4f}",
+    ]
+    return options, stem, len(marked) if method == "independent" else 1
+
+
+def draw_presentations(rng, channels, options, tools, stem):
+    """Several substreams and the presentations that play them, for a case whose input, substream
+    1, has `channels`: the other substreams' channel counts, 0 for a dialogue enhancement
+    substream (the waveform of substream 1's hybrid dialogue enhancement, which takes no input),
+    with their options and the presentations' added to `options` and the experimental tools they
+    need to `tools`; and whether substream 1's dialogue enhancement reads a stem. The first
+    presentation plays substream 1 as its main or music and effects audio, and the others' channels
+    are ones it has, or a mono one."""
+    template = rng.choice(TEMPLATES)
+    # dialnorm=auto and loudness= measure one programme, and ac3cli refuses them with several.
+    measured = [o for o in options if o == "dialnorm=auto" or o.startswith("loudness=")]
+    for option in measured:
+        options.remove(option)
+    if measured and rng.random() < 0.7:
+        options.append(f"dialnorm={rng.randint(0, 127) / 4:g}")
+
+    def companion():
+        # Dialogue or associated audio: mono, or channels substream 1 has.
+        return rng.choice([1, 1, 2]) if channels >= 2 else 1
+
+    def dialogue_channels():
+        # A music and effects presentation's dialogue may also be 3.0, the 3.0 element's L R C.
+        if channels >= 5 and rng.random() < 0.15:
+            tools.append("three-zero")
+            return 3
+        return companion()
+
+    music_and_effects = template in ("config0", "config3", "config5")
+    subs = []  # (channels, content classifier, or "enhancement")
+    presentations = []  # (substreams from 1, configuration or None)
+    waveform = 0  # the dialogue enhancement substream's channels
+    if template in ("config1", "config4"):
+        options[:] = [o for o in options if not o.startswith("dialogue-")]
+        dialogue, stem, waveform = _dialogue(rng, channels, tools)
+        options.extend(dialogue)
+        subs.append((0, "enhancement"))
+    if template == "singles":
+        for _ in range(rng.randint(1, 2)):
+            layout = rng.choice([1, 2])
+            subs.append((layout, rng.choice(["main", "main", "emergency", "voice-over"])))
+        presentations = [([n], None) for n in range(1, len(subs) + 2)]
+        if rng.random() < 0.3:
+            presentations.append(([1], None))  # another presentation of the input, below named
+    elif template == "config0":
+        subs.append((dialogue_channels(), "dialogue"))
+        presentations = [([1, 2], 0)]
+    elif template == "config1":
+        presentations = [([1, 2], 1)]
+    elif template == "config2":
+        subs.append((companion(), rng.choice(ASSOCIATED)))
+        presentations = [([1, 2], 2)]
+    elif template == "config3":
+        subs.append((dialogue_channels(), "dialogue"))
+        subs.append((companion(), rng.choice(ASSOCIATED)))
+        presentations = [([1, 2, 3], 3), ([1, 2], 0)]
+    elif template == "config4":
+        subs.append((companion(), rng.choice(ASSOCIATED)))
+        presentations = [([1, 2, 3], 4), ([1, 2], 1)]
+    else:
+        subs.append((dialogue_channels(), "dialogue"))
+        if rng.random() < 0.5:
+            subs.append((companion(), rng.choice(ASSOCIATED)))
+        members = list(range(1, len(subs) + 2))
+        rng.shuffle(members)
+        presentations = [(members, 5)]
+    if template != "singles" and rng.random() < 0.5:
+        presentations.append(([1], None))  # the input's substream alone
+    if rng.random() < 0.1:
+        presentations.append(([], 6))  # EMDF payloads alone
+
+    # Substream 1: its classifier, which configuration 5 needs, and a language.
+    if music_and_effects or rng.random() < 0.7:
+        options.append(f"substream1-content={'music-and-effects' if music_and_effects else 'main'}")
+        if rng.random() < 0.3:
+            options.append(f"substream1-language={rng.choice(LANGUAGES)}")
+    if rng.random() < 0.1:
+        options.append(f"substream1-emdf={_emdf(rng)}")
+    for number, (sub_channels, content) in enumerate(subs, start=2):
+        key = f"substream{number}"
+        if content == "enhancement":
+            options.append(f"{key}-enhances=1")
+        else:
+            options.append(f"{key}-content={content}")
+            if rng.random() < 0.7:
+                options.append(f"{key}-language={rng.choice(LANGUAGES)}")
+            if rng.random() < 0.2:
+                options.append(f"{key}-codec-mode={rng.choice(['auto', 'simple', 'aspx'])}")
+        # A share of the rate, which the retry at a higher rate scales with it.
+        if rng.random() < 0.15:
+            options.append(f"{key}-bitrate-share={rng.uniform(0.2, 0.35):.3f}")
+        if content == "dialogue" and rng.random() < 0.4:
+            options.append(f"{key}-max-dialogue-gain={rng.choice([3, 6, 9, 12])}")
+            if sub_channels <= 2 and rng.random() < 0.5:
+                pans = ",".join(f"{rng.randrange(240) * 1.5:g}" for _ in range(sub_channels))
+                options.append(f"{key}-pan={pans}")
+        if rng.random() < 0.1:
+            options.append(f"{key}-emdf={_emdf(rng)}")
+
+    # The presentations: ids for all or none, levels, filters, names, dialnorms, group gains
+    # where the syntax sends them (not configuration 1's, or 4's enhancement's, or one group's),
+    # the associated audio's mixing values, and payloads.
+    audio = [p for p in presentations if p[1] != 6]
+    ids = rng.sample(range(512), len(audio)) if rng.random() < 0.5 else None
+    associated_mono = any(c in ASSOCIATED and n == 1 for n, c in subs)
+    # Each substream's tracks, its channels but an LFE (Part 2 Table 55): md_compat 3 holds 11.
+    tracks = {1: channels - (1 if channels in (6, 8) else 0)}
+    for number, (sub_channels, content) in enumerate(subs, start=2):
+        tracks[number] = waveform if content == "enhancement" else sub_channels
+    for number, (members, config) in enumerate(presentations, start=1):
+        key = f"presentation{number}"
+        if config == 6:
+            options.append(f"{key}-config=6")
+            options.extend(f"{key}-emdf={_emdf(rng)}" for _ in range(rng.randint(1, 2)))
+            continue
+        options.append(f"{key}={','.join(str(m) for m in members)}")
+        if config is not None:
+            options.append(f"{key}-config={config}")
+        if ids is not None:
+            options.append(f"{key}-id={ids[number - 1]}")
+        # The first presentation is decoded at the decoder's default level, enabled.
+        roll = rng.random()
+        if number > 1 and roll < 0.1:
+            options.append(f"{key}-md-compat=7")
+        elif roll < 0.25 and sum(tracks[m] for m in members) <= 11:
+            options.append(f"{key}-md-compat=3")
+        if number > 1 and rng.random() < 0.1:
+            options.append(f"{key}-enabled=off")
+        if number > 1 and rng.random() < 0.1:
+            options.append(f"{key}-pre-virtualized=on")
+        if rng.random() < (0.8 if number > 1 and members == [1] else 0.05):
+            options.append(f"{key}-name={rng.choice(NAMES)}")
+        if rng.random() < 0.2:
+            options.append(f"{key}-dialnorm={rng.randint(0, 127) / 4:g}")
+        if config in (0, 2, 3, 5) and rng.random() < 0.3:
+            gains = [rng.choice(["0", "-0.25", "-3", "-15.5", "off", f"{-rng.randrange(63) / 4:g}"])
+                     for _ in members]
+            options.append(f"{key}-gains={','.join(gains)}")
+        if config in (2, 3, 4) and rng.random() < 0.4:
+            for which in ("main-gain", "main-centre-gain", "main-front-gain"):
+                if rng.random() < 0.5:
+                    scale = rng.choice(["0", "-76.2", "off", f"{-rng.randrange(255) * 0.3:.1f}"])
+                    options.append(f"{key}-{which}={scale}")
+            if associated_mono and rng.random() < 0.5:
+                options.append(f"{key}-associated-pan={rng.randrange(240) * 1.5:g}")
+        if rng.random() < 0.1:
+            options.append(f"{key}-emdf={_emdf(rng)}")
+    return [n for n, _ in subs], stem
+
 
 def describe(case):
     return (
@@ -351,6 +579,7 @@ def describe(case):
         f"{'pcm16' if case.pcm16 else 'float'})"
         f"{' ' + ' '.join(case.options) if case.options else ''}"
         f"{', a dialogue stem' if case.stem else ''}"
+        f"{', and substreams of ' + str(case.substreams) + ' channels' if case.substreams else ''}"
         f"{', MP4 too' if case.mp4 else ''}"
     )
 
@@ -452,6 +681,19 @@ def run_case(cli, ffprobe, case, workdir):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def at_rate(options, kbps):
+    """The options as ac3cli takes them at a rate of `kbps`: each substreamN-bitrate-share=, the
+    harness's own spelling of a substream's share of the rate, as substreamN-bitrate= in kbps."""
+    out = []
+    for option in options:
+        key, _, value = option.partition("=")
+        if key.endswith("-bitrate-share"):
+            out.append(f"{key.removesuffix('-share')}={max(1, round(kbps * float(value)))}")
+        else:
+            out.append(option)
+    return out
+
+
 def _run_case(cli, ffprobe, case, tmp):
     rng = random.Random(case.seed ^ 0x5EED)
     pcm = ac3space.generate_pcm(
@@ -466,6 +708,14 @@ def _run_case(cli, ffprobe, case, tmp):
         stem = [[x * g for x in channel] for channel, g in zip(pcm, gains, strict=True)]
         ac3space.write_wav(tmp / "stem.wav", stem, case.sample_rate, False)
         options.append(f"dialogue-stem={tmp / 'stem.wav'}")
+    # The other substreams' inputs, of the input's rate and length.
+    for number, channels in enumerate(case.substreams, start=2):
+        if channels:
+            other = ac3space.generate_pcm(
+                rng, channels, case.blocks, case.sample_rate, case.audio_profile, case.correlation
+            )
+            ac3space.write_wav(tmp / f"sub{number}.wav", other, case.sample_rate, case.pcm16)
+            options.append(f"substream{number}={tmp / f'sub{number}.wav'}")
     stream = tmp / "out.ac4"
     encoded = _run(
         [
@@ -474,7 +724,7 @@ def _run_case(cli, ffprobe, case, tmp):
             wav,
             stream,
             case.bitrate,
-            *options,
+            *at_rate(options, case.bitrate),
             f"syntax-trace={tmp / 'enc.tsv'}",
         ]
     )
@@ -505,10 +755,13 @@ def _run_case(cli, ffprobe, case, tmp):
         if case.measures and REFUSALS["nothing to measure"] in encoded.stderr:
             return Result(case, "refused", "encode", "nothing to measure")
         frame_bytes = Fraction(case.bitrate * 1000 * per_frame, 8 * case.sample_rate)
-        if REFUSALS["rate out of range"] in encoded.stderr and frame_bytes < FRAME_BYTES_CAP:
-            # A rate whose frames hold no least frame, if frames of FRAME_BYTES_CAP bytes do.
-            higher = math.ceil(Fraction(FRAME_BYTES_CAP * 8 * case.sample_rate, 1000 * per_frame))
-            retry = _run([cli, "ac4-encode", wav, tmp / "retry.ac4", higher, "quiet", *options])
+        cap = FRAME_BYTES_CAP * (1 + len(case.substreams))
+        if REFUSALS["least frame"] in encoded.stderr and frame_bytes < cap:
+            # A rate whose frames hold no least frame, if frames of FRAME_BYTES_CAP bytes a
+            # substream do.
+            higher = math.ceil(Fraction(cap * 8 * case.sample_rate, 1000 * per_frame))
+            retried = at_rate(options, higher)
+            retry = _run([cli, "ac4-encode", wav, tmp / "retry.ac4", higher, "quiet", *retried])
             if retry.returncode == 0:
                 return Result(case, "refused", "encode", "frames too small for the least frame")
             # The rate is checked before the loudness is measured, so the retry can meet the
@@ -563,8 +816,12 @@ def _run_case(cli, ffprobe, case, tmp):
             case, "fail", "framing", f"{len(raw_frames)} sync frames, the encoder said {count}"
         )
 
-    # The three traces.
-    decoded = _run([cli, "decode", stream, tmp / "out.wav", f"syntax-trace={tmp / 'dec.tsv'}"])
+    # The three traces. With several substreams the decoder reads every one, and decodes the first
+    # presentation, whose channels are the input's, at level 7, which takes any number of tracks.
+    chosen = ["presentation=0", "md-compat=7"] if case.substreams else []
+    decoded = _run(
+        [cli, "decode", stream, tmp / "out.wav", f"syntax-trace={tmp / 'dec.tsv'}", *chosen]
+    )
     if decoded.returncode != 0:
         return Result(
             case, "fail", "decode", f"exit {decoded.returncode}: {decoded.stderr.strip()}"
@@ -608,7 +865,9 @@ def _run_case(cli, ffprobe, case, tmp):
             )
         if case.mp4:
             mp4 = tmp / "out.mp4"
-            muxed = _run([cli, "ac4-encode", wav, mp4, case.bitrate, *options])
+            muxed = _run(
+                [cli, "ac4-encode", wav, mp4, case.bitrate, *at_rate(options, case.bitrate)]
+            )
             if muxed.returncode != 0:
                 return Result(
                     case, "fail", "mp4", f"exit {muxed.returncode}: {muxed.stderr.strip()}"
@@ -692,7 +951,10 @@ def check_envelope(cli):
                     ok = (result.returncode == 0) == accepted
                     expected = "accepted" if accepted else "refused"
                     if not accepted:
-                        ok = ok and REFUSALS["rate out of range"] in result.stderr
+                        ok = ok and (
+                            REFUSALS["rate out of range"] in result.stderr
+                            or REFUSALS["least frame"] in result.stderr
+                        )
                     print(
                         f"  {channels} ch {' '.join(options)} {rate} Hz {kbps:5d} kbps: "
                         f"{'accepted' if result.returncode == 0 else 'refused'}"
