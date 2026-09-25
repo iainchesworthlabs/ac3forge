@@ -257,10 +257,18 @@ jobs:
           # the job: a missing/errored API response (e.g. no runner
           # registered against this repo yet, or ORG_TOKEN unset) just counts
           # as zero.
+          #
+          # Every page of the list, not the first. The API returns 30 runners
+          # per page by default, and on 2026-09-25 the org had 45: the first
+          # page held none of the four Windows runners, so both Windows legs
+          # read zero and went to windows-latest on every run, taking two
+          # heavy jobs' worth of the GitHub-hosted slots each time.
+          # --paginate with '.runners[]' prints one runner per line across all
+          # pages, and jq -s counts them as one list.
           runner_online_count() {
             local scope="$1" os_label="$2" json count
-            json="$(gh api "$scope/actions/runners" --jq '.runners' 2>/dev/null)" || { echo 0; return; }
-            count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$os_label\"))] | length" 2>/dev/null)" || { echo 0; return; }
+            json="$(gh api --paginate "$scope/actions/runners?per_page=100" --jq '.runners[]' 2>/dev/null)" || { echo 0; return; }
+            count="$(printf '%s' "$json" | jq -s "[.[] | select(.status==\"online\" and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$os_label\"))] | length" 2>/dev/null)" || { echo 0; return; }
             echo "${count:-0}"
           }
 
@@ -713,7 +721,10 @@ jobs:
   linux-appimage:
     name: Linux AppImage (ac3gui)
     needs: [toolchain-versions]
-    if: inputs.run_linux
+    # Not on a pull_request run: GitHub-hosted, so it waits for the merge
+    # queue instead (ci.yml's run_android comment). run_linux itself stays on
+    # for PRs, since it also gates the Linux build matrix.
+    if: inputs.run_linux && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     # GitHub-hosted, so on a push to main only the newest main commit's run
     # waits for a runner - docs/ci-lanes.md, "Only the newest main commit runs
