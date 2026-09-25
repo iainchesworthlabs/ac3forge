@@ -863,8 +863,8 @@ struct AjccRoute {
         ac4::detail::AjccSetFields set;
         set.diff_type = iframe ? 0 : 1;
         set.values.assign(static_cast<std::size_t>(bands), 0);
-        if (iframe) {
-            set.values[0] = values[p];
+        if (iframe && !set.values.empty()) {
+            set.values.front() = values[p];
         }
         d.params[p] = {set};
     }
