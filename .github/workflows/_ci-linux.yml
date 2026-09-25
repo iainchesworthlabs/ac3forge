@@ -75,7 +75,18 @@ jobs:
     # gap in that logic can't silently hand a fork PR a self-hosted runner.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON(matrix.runner) }}
-    timeout-minutes: 90
+    # On a push to main, a leg on a GitHub-hosted runner keeps only the newest
+    # main commit's run - docs/ci-lanes.md, "Only the newest main commit runs
+    # the hosted jobs". That is the two arm64 legs, plus any leg decide-runner
+    # sent to its hosted fallback; its self-hosted labels always include
+    # "self-hosted". Self-hosted legs and every other event get a group of
+    # their own run, so they run for every commit as before.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(matrix.runner, 'self-hosted') && format('linux-main-{0}', matrix.name) || format('linux-run-{0}-{1}', github.run_id, matrix.name) }}
+      cancel-in-progress: false
+    # A backstop against a hang, as in _ci-windows.yml. A leg can name a
+    # longer one (the ASan+UBSan leg does - see its entry).
+    timeout-minutes: ${{ matrix.timeout_minutes || 90 }}
     # Ubuntu 26.04 for the Linux legs, where the distro archive carries
     # gcc-16 (universe component - 02-gcc-toolchain.sh enables it) and LLVM 22
     # outright. This is a pin, not a convenience: on ubuntu-latest (24.04 at
@@ -202,6 +213,15 @@ jobs:
             preset: linux-llvm-asan-ubsan
             llvm: true
             sanitizer: true
+            # 150, not the 90 every other leg gets. On 2026-09-21 this leg
+            # took about 36 minutes. The AC-4 encoder and decoder tests merged
+            # on 2026-09-25 run for minutes each under ASan+UBSan (the 7.X
+            # A-CPL ones 530 and 335 s), and main's run at f5aded47 spent 72
+            # of its minutes in ctest, all 2738 tests passing, before the
+            # codec matrix ran out of time at 90. Making those tests cheaper
+            # under the sanitizers is the fix; this keeps the leg green until
+            # then.
+            timeout_minutes: 150
 
           # ThreadSanitizer (ThreadSanitizer leg). A DIFFERENT question from the
           # ASan+UBSan leg above, not a duplicate of it: ASan/UBSan ask

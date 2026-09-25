@@ -161,8 +161,14 @@ on:
         type: number
         default: 900
 
+# A newer push to a PR or to main cancels the previous run on that ref. A
+# scheduled or dispatched run gets a group of its own run: keyed on the ref
+# alone it shared Fuzz-main with pushes to main, and Fuzz Nightly takes three
+# to four hours, so any merge in that window cancelled it ("Canceling since a
+# higher priority waiting request for Fuzz-main exists"). 6 of the 12
+# scheduled runs up to 2026-09-24 ended that way, the last three in a row.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  group: ${{ github.workflow }}-${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && format('run-{0}', github.run_id) || github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 permissions:

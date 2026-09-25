@@ -29,11 +29,11 @@ on:
   workflow_dispatch:
   workflow_call:
 
-# Keyed on the commit as well as the ref on main - see wheels.yml's identical
-# block for why.
+# Only the newest main commit's run waits for the GitHub-hosted runners on a
+# push to main - see wheels.yml's identical block for how and why.
 concurrency:
-  group: npm-${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
-  cancel-in-progress: true
+  group: npm-${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' && '-newest' || format('-{0}', github.sha)) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
