@@ -117,10 +117,16 @@ jobs:
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
             build-essential ca-certificates cmake curl git gnupg lsb-release \
             ninja-build pkg-config software-properties-common tar unzip wget zip
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

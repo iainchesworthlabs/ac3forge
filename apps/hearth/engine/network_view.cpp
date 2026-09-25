@@ -132,10 +132,36 @@ std::string_view describe(SinkKind kind) {
     }
 }
 
+std::string link_text(const SinkFacts& facts) {
+    switch (facts.link) {
+        case SinkLink::kConnected:
+            if (facts.pairing_active) {
+                return facts.wants_code ? "pairing - waiting for the code" : "pairing";
+            }
+            return "connected";
+        case SinkLink::kConnecting:
+            return facts.pairing_requested ? "connecting to pair…" : "connecting…";
+        case SinkLink::kRetrying:
+            if (!facts.dial_failed) {
+                return "reconnecting…";
+            }
+            return facts.failed_dials <= 1 ? "not answering - trying again"
+                                           : fmt::format("not answering - tried {} times, trying again",
+                                                         facts.failed_dials);
+        case SinkLink::kIdle:
+        default:
+            // Another server holding it is the notice's to say; an unpaired
+            // sink this computer has only read needs no second word for it.
+            return facts.pair_state == PairState::kPaired && !facts.held_elsewhere ? "not connected" : std::string();
+    }
+}
+
 SinkRow to_row(const SinkFacts& facts) {
     SinkRow row;
     row.id = facts.id;
     row.name = facts.name;
+    row.link_text = link_text(facts);
+    row.connected = facts.link == SinkLink::kConnected;
     switch (facts.kind) {
         case SinkKind::kHearthSink:
             row.icon = "HS";
@@ -239,6 +265,23 @@ SinkDetail to_detail(const SinkFacts& facts) {
 
     detail.paired_on_text = facts.paired_on;
     detail.notice = facts.notice;
+    detail.link_text = link_text(facts);
+    detail.connected = facts.link == SinkLink::kConnected;
+    if (!facts.address.empty()) {
+        detail.page_url = fmt::format("http://{}/", facts.address);
+    }
+
+    if (facts.pairing_active) {
+        detail.pairing = facts.wants_code ? "code" : "active";
+    } else if (facts.pairing_requested) {
+        detail.pairing = "requested";
+    } else {
+        detail.pairing = "none";
+    }
+    detail.can_pair = facts.pair_state != PairState::kPaired && facts.offers_code_pairing && !facts.pairing_active &&
+                      !facts.pairing_requested;
+    detail.can_connect = facts.pair_state == PairState::kPaired && facts.link != SinkLink::kConnected &&
+                         facts.link != SinkLink::kConnecting;
 
     return detail;
 }
@@ -249,6 +292,12 @@ GroupRow to_group_row(const GroupFacts& facts) {
     row.name = facts.name;
     row.icon = initials(facts.name);
     row.subtitle = member_counts_text(facts.members);
+    const auto connected = static_cast<std::size_t>(std::count_if(
+        facts.members.begin(), facts.members.end(), [](const GroupMemberFacts& member) { return member.connected; }));
+    // An empty group's subtitle already says it has none.
+    row.members_text =
+        facts.members.empty() ? std::string() : fmt::format("{} of {} connected", connected, facts.members.size());
+    row.ready = connected > 0;
     return row;
 }
 

@@ -574,10 +574,11 @@ private:
     // Implements ac3::hearth::SettingsStore over settings_
     // (hearth_controller.cpp's QSettingsStore); held through the base class
     // so this header never needs settings_model.hpp's full definition.
-    // Declared after settings_ and before pairing_: both depend on the one
-    // before them, in this order.
+    // Declared after settings_, which it depends on.
     std::unique_ptr<ac3::hearth::SettingsStore> store_;
-    std::unique_ptr<ac3::hearth::PairingStore> pairing_;
+    // The process's one pairing store, which NetworkController pairs through
+    // (shared_pairing_store.hpp says why there is only one).
+    std::shared_ptr<ac3::hearth::PairingStore> pairing_;
     QString diagnostics_message_;
 
     QVariantList queue_;

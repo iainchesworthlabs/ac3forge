@@ -12,6 +12,7 @@
 
 #include "ac3/admbridge/coordinates.hpp"
 #include "ac3/oba/oamd.hpp"
+#include "ac3adm/ac3adm.hpp"
 
 namespace ac3::admbridge {
 
@@ -472,6 +473,9 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
 
     ac3adm::AdmDocument document;
     document.audio.sample_rate = input.sample_rate;
+    // The width ac3adm::write_bw64 stores this PCM at, which every audioTrackUID below states as
+    // its bitDepth too - so the document already describes the master it becomes.
+    document.audio.bits_per_sample = ac3adm::kWriteBitDepth;
 
     auto& model = document.model;
     model.channel_formats.reserve(input.channels.size());
@@ -540,6 +544,11 @@ std::expected<ac3adm::AdmDocument, BridgeError> write(const WriteInput& input) {
         track_uid.uid = "atu_" + key;
         track_uid.has_sample_rate = true;
         track_uid.sample_rate = input.sample_rate;
+        // The Dolby Atmos Master ADM Profile expects bitDepth on every audioTrackUID, matching
+        // <fmt >. write_bw64 writes kWriteBitDepth there whatever this field says (see its doc
+        // comment); it is set here as well so a caller inspecting this document sees the same.
+        track_uid.has_bit_depth = true;
+        track_uid.bit_depth = ac3adm::kWriteBitDepth;
         track_uid.track_format_ref = track_format.id;
         track_uid.pack_format_ref = pack_format.id;
 

@@ -29,12 +29,14 @@ target_include_directories(ac3hearth_engine PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}"
 target_compile_features(ac3hearth_engine PUBLIC cxx_std_23)
 
 # The pairing records are a key ring for src/sendspin's server sessions, which
-# a core-only build leaves out, so they are left out with them. NetworkSinks
-# (discovery and pairing, A6) needs the same server half - ServerHost and the
-# computer's own mdns backend - plus PairingStore itself. network_group_sink.cpp
-# is the same reason: it wraps ac3::sendspin::Group.
+# a core-only build leaves out, so they are left out with them, and the server
+# identity those records are bound to with them. NetworkSinks (discovery and
+# pairing, A6) needs the same server half - ServerHost and the computer's own
+# mdns backend - plus PairingStore itself. network_group_sink.cpp is the same
+# reason: it wraps ac3::sendspin::Group.
 if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
-    target_sources(ac3hearth_engine PRIVATE pairing_store.cpp network_sinks.cpp network_group_sink.cpp)
+    target_sources(ac3hearth_engine PRIVATE pairing_store.cpp server_identity.cpp network_sinks.cpp
+                                            network_group_sink.cpp)
 endif()
 
 # From apps/common, which has no library target: the container facts an item's

@@ -113,6 +113,13 @@ void Arbiter::ended(Id connection) {
     }
 }
 
+void Arbiter::forget(const crypto::Key32& server) {
+    const std::lock_guard lock(mutex_);
+    if (last_playback_ == server) {
+        last_playback_.reset();
+    }
+}
+
 std::optional<crypto::Key32> Arbiter::last_playback() const {
     const std::lock_guard lock(mutex_);
     return last_playback_;

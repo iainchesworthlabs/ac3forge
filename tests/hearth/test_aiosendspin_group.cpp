@@ -359,7 +359,13 @@ TEST_CASE("aiosendspin: a group of two test sinks and the scripted aiosendspin p
     CHECK(finished.history.front().frames == finished.history.front().expected_frames);
 
     const std::uint64_t expected_frames = static_cast<std::uint64_t>(kFrameCount) * 1536;
-    REQUIRE(eventually([&] { return burst_sink->totals().bursts >= 1; }));
+    // Waits for the whole programme, not just the first burst: the engine
+    // reads stopped once it has SENT its last frame, and the burst sink
+    // counts each one only as it arrives, so the tail can still be in flight
+    // here. #1000's merge-queue run failed the exact-count check below at 19
+    // of 20 bursts, while burst_frames, read a moment later, already had all
+    // 20 x 1536. The equality checks still catch a sink that received too many.
+    CHECK(eventually([&] { return burst_sink->totals().bursts >= static_cast<std::uint64_t>(kFrameCount); }));
     CHECK(burst_sink->totals().bursts == static_cast<std::uint64_t>(kFrameCount));
     CHECK(burst_sink->totals().burst_frames == expected_frames);
     CHECK(burst_sink->totals().connections == 1);

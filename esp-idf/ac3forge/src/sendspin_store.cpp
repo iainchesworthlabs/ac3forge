@@ -7,12 +7,17 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <mutex>
+#include <new>
 #include <optional>
+#include <span>
+#include <string_view>
 
 #include "esp_err.h"
 #include "nvs.h"
 
+#include "ac3/sendspin/base64url.hpp"
 #include "ac3/sendspin/crypto.hpp"
 #include "ac3/sendspin/handshake.hpp"
 #include "ac3/sendspin/noise.hpp"
@@ -22,6 +27,8 @@ namespace {
 
 namespace hs = ac3::sendspin::handshake;
 using Key32 = SendspinStore::Key32;
+using Names = SendspinStore::Names;
+using Records = PairingRecords<SendspinStore::kRecordCapacity>;
 
 // One NVS namespace for the player, beside the example's own settings
 // namespace, so that forgetting the board's pairings and forgetting its
@@ -30,10 +37,8 @@ constexpr const char* kNamespace = "sendspin";
 constexpr const char* kKeyIdentity = "identity";
 constexpr const char* kKeyPairingPsk = "pairing_psk";
 constexpr const char* kKeyRecords = "records";
+constexpr const char* kKeyNames = "names";
 constexpr const char* kKeyLastPlayback = "last_play";
-
-// A record on flash: the server's key, then the long-term PSK.
-constexpr std::size_t kRecordBytes = 64;
 
 [[nodiscard]] bool read_key(nvs_handle_t handle, const char* key, Key32& out) {
     std::size_t length = out.size();
@@ -59,6 +64,52 @@ constexpr std::size_t kRecordBytes = 64;
         return false;
     }
     return true;
+}
+
+// The names blob's bytes pass through the heap, not the caller's stack: the
+// Sendspin server's task writes a name after a pairing, and the handshake
+// before it leaves that stack little room.
+using NameBytes = std::unique_ptr<std::uint8_t[]>;
+
+[[nodiscard]] NameBytes name_bytes() { return NameBytes(new (std::nothrow) std::uint8_t[Names::kBlobBytes]); }
+
+// The names NVS holds, into `names`. A board with none stored has none; false
+// when NVS could not be read.
+[[nodiscard]] bool read_names_blob(Names& names) {
+    names = Names{};
+    NameBytes blob = name_bytes();
+    nvs_handle_t handle = 0;
+    if (!blob || nvs_open(kNamespace, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+    std::size_t length = Names::kBlobBytes;
+    const esp_err_t err = nvs_get_blob(handle, kKeyNames, blob.get(), &length);
+    nvs_close(handle);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return true;
+    }
+    if (err != ESP_OK) {
+        return false;
+    }
+    names.decode(std::span<const std::uint8_t>(blob.get(), length));
+    return true;
+}
+
+[[nodiscard]] bool write_names_blob(const Names& names) {
+    NameBytes blob = name_bytes();
+    if (!blob) {
+        std::printf("sendspin: no memory to write the servers' names\n");
+        return false;
+    }
+    const std::size_t length = names.encode(std::span<std::uint8_t>(blob.get(), Names::kBlobBytes));
+    return write_blob(kKeyNames, blob.get(), length);
+}
+
+// A server's key as the console shows it: its server_id's first eight
+// characters, as the host's own lines do.
+void print_evicted(const Key32& server_key) {
+    std::printf("sendspin: every pairing record is taken; forgot server %s, the least recently used\n",
+                ac3::sendspin::base64url::encode(server_key).substr(0, 8).c_str());
 }
 
 }  // namespace
@@ -88,22 +139,16 @@ bool SendspinStore::load() {
     const bool opened = nvs_open(kNamespace, NVS_READONLY, &handle) == ESP_OK;
     Key32 private_key{};
     bool have_keys = false;
-    record_count_ = 0;
+    records_.clear();
     last_playback_.reset();
     if (opened) {
         have_keys = read_key(handle, kKeyIdentity, private_key) && read_key(handle, kKeyPairingPsk, pairing_psk_);
-        std::array<std::uint8_t, kRecordCapacity * kRecordBytes> blob{};
+        std::array<std::uint8_t, Records::kBlobBytes> blob{};
         std::size_t length = blob.size();
         if (nvs_get_blob(handle, kKeyRecords, blob.data(), &length) == ESP_OK) {
-            record_count_ = std::min(length / kRecordBytes, kRecordCapacity);
-            for (std::size_t i = 0; i < record_count_; ++i) {
-                std::copy_n(blob.begin() + static_cast<std::ptrdiff_t>(i * kRecordBytes), 32,
-                            records_[i].server_key.begin());
-                std::copy_n(blob.begin() + static_cast<std::ptrdiff_t>((i * kRecordBytes) + 32), 32,
-                            records_[i].psk.begin());
-            }
-            ac3::sendspin::crypto::wipe(blob);
+            records_.decode(std::span<const std::uint8_t>(blob).first(length));
         }
+        ac3::sendspin::crypto::wipe(blob);
         Key32 last{};
         if (read_key(handle, kKeyLastPlayback, last)) {
             last_playback_ = last;
@@ -122,12 +167,13 @@ bool SendspinStore::load() {
     }
     // A board's first boot, or an identity that cannot be used: a new pair of
     // keys, and no pairing can outlive them.
-    record_count_ = 0;
+    records_.clear();
     last_playback_.reset();
     if (!create_keys()) {
         return false;
     }
     (void)write_blob(kKeyRecords, nullptr, 0);
+    (void)write_blob(kKeyNames, nullptr, 0);
     (void)write_blob(kKeyLastPlayback, nullptr, 0);
     std::printf("sendspin: a new identity for this board\n");
     return true;
@@ -142,7 +188,7 @@ std::optional<hs::PskCandidate> SendspinStore::find(const ac3::sendspin::crypto:
         }
     }
     if (!category || *category == hs::PskCategory::kLongTerm) {
-        for (std::size_t i = 0; i < record_count_; ++i) {
+        for (std::size_t i = 0; i < records_.size(); ++i) {
             if (hs::psk_id(records_[i].psk) == id) {
                 return hs::PskCandidate{
                     .psk = records_[i].psk, .category = hs::PskCategory::kLongTerm, .server_key = records_[i].server_key};
@@ -153,58 +199,92 @@ std::optional<hs::PskCandidate> SendspinStore::find(const ac3::sendspin::crypto:
 }
 
 bool SendspinStore::save_records() const {
-    std::array<std::uint8_t, kRecordCapacity * kRecordBytes> blob{};
-    for (std::size_t i = 0; i < record_count_; ++i) {
-        std::copy(records_[i].server_key.begin(), records_[i].server_key.end(),
-                  blob.begin() + static_cast<std::ptrdiff_t>(i * kRecordBytes));
-        std::copy(records_[i].psk.begin(), records_[i].psk.end(),
-                  blob.begin() + static_cast<std::ptrdiff_t>((i * kRecordBytes) + 32));
-    }
-    const bool saved = write_blob(kKeyRecords, blob.data(), record_count_ * kRecordBytes);
+    std::array<std::uint8_t, Records::kBlobBytes> blob{};
+    const std::size_t length = records_.encode(blob);
+    const bool saved = write_blob(kKeyRecords, blob.data(), length);
     ac3::sendspin::crypto::wipe(blob);
     return saved;
 }
 
-bool SendspinStore::add_record(const Key32& server_key, const Key32& long_term_psk) {
+bool SendspinStore::add_record(const Key32& server_key, const Key32& long_term_psk, std::span<const Key32> in_use) {
     const std::lock_guard lock(mutex_);
-    std::size_t kept = 0;
-    for (std::size_t i = 0; i < record_count_; ++i) {
-        if (records_[i].server_key != server_key) {
-            records_[kept++] = records_[i];
-        }
+    if (const std::optional<Key32> evicted = records_.add(server_key, long_term_psk, in_use)) {
+        print_evicted(*evicted);
     }
-    record_count_ = kept;
-    if (record_count_ == kRecordCapacity) {
-        // The oldest goes. No record backs an open connection here: a board
-        // has at most three, and eight records.
-        std::copy(records_.begin() + 1, records_.end(), records_.begin());
-        --record_count_;
-    }
-    records_[record_count_++] = Record{.server_key = server_key, .psk = long_term_psk};
     return save_records();
 }
 
-void SendspinStore::remove_record(const Key32& server_key) {
+void SendspinStore::touch(const Key32& server_key) {
     const std::lock_guard lock(mutex_);
-    std::size_t kept = 0;
-    for (std::size_t i = 0; i < record_count_; ++i) {
-        if (records_[i].server_key != server_key) {
-            records_[kept++] = records_[i];
+    if (records_.touch(server_key)) {
+        (void)save_records();
+    }
+}
+
+void SendspinStore::saw(const Key32& server_key) {
+    const std::lock_guard lock(mutex_);
+    records_.mark_seen(server_key);
+}
+
+bool SendspinStore::remove_record(const Key32& server_key) {
+    const std::lock_guard lock(mutex_);
+    if (!records_.remove(server_key)) {
+        return false;
+    }
+    (void)save_records();
+    if (auto names = std::unique_ptr<Names>(new (std::nothrow) Names())) {
+        if (read_names_blob(*names) && names->set(server_key, {})) {
+            (void)write_names_blob(*names);
         }
     }
-    if (kept == record_count_) {
-        return;
+    if (last_playback_ == server_key) {
+        last_playback_.reset();
+        (void)write_blob(kKeyLastPlayback, nullptr, 0);
     }
-    for (std::size_t i = kept; i < record_count_; ++i) {
-        ac3::sendspin::crypto::wipe(records_[i].psk);
-    }
-    record_count_ = kept;
-    (void)save_records();
+    return true;
+}
+
+bool SendspinStore::has_record(const Key32& server_key) const {
+    const std::lock_guard lock(mutex_);
+    return records_.find(server_key).has_value();
 }
 
 std::size_t SendspinStore::records() const {
     const std::lock_guard lock(mutex_);
-    return record_count_;
+    return records_.size();
+}
+
+std::size_t SendspinStore::list(std::span<Listed> out) const {
+    const std::lock_guard lock(mutex_);
+    const std::size_t n = std::min(out.size(), records_.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        const Records::Record& record = records_[records_.size() - 1 - i];
+        out[i] = Listed{.server_key = record.server_key, .seen = record.seen};
+    }
+    return n;
+}
+
+void SendspinStore::set_name(const Key32& server_key, std::string_view name) {
+    const std::lock_guard lock(mutex_);
+    if (!records_.find(server_key)) {
+        return;
+    }
+    auto names = std::unique_ptr<Names>(new (std::nothrow) Names());
+    if (!names || !read_names_blob(*names)) {
+        std::printf("sendspin: could not read the servers' names to name one\n");
+        return;
+    }
+    // The names of records gone since the last write go with this one.
+    const bool pruned = names->keep([this](const Key32& key) { return records_.find(key).has_value(); });
+    const bool named = names->set(server_key, name);
+    if (pruned || named) {
+        (void)write_names_blob(*names);
+    }
+}
+
+bool SendspinStore::read_names(Names& out) const {
+    const std::lock_guard lock(mutex_);
+    return read_names_blob(out);
 }
 
 std::optional<Key32> SendspinStore::last_playback() const {
@@ -223,12 +303,10 @@ void SendspinStore::set_last_playback(const Key32& server_key) {
 
 bool SendspinStore::forget() {
     const std::lock_guard lock(mutex_);
-    for (std::size_t i = 0; i < record_count_; ++i) {
-        ac3::sendspin::crypto::wipe(records_[i].psk);
-    }
-    record_count_ = 0;
+    records_.clear();
     last_playback_.reset();
-    return create_keys() && write_blob(kKeyRecords, nullptr, 0) && write_blob(kKeyLastPlayback, nullptr, 0);
+    return create_keys() && write_blob(kKeyRecords, nullptr, 0) && write_blob(kKeyNames, nullptr, 0) &&
+           write_blob(kKeyLastPlayback, nullptr, 0);
 }
 
 }  // namespace ac3forge

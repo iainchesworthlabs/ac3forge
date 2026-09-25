@@ -72,12 +72,15 @@ elseif(BUILD_SHARED_LIBS)
     # ac3::forge_c (src/capi/CMakeLists.txt) statically embeds ac3::forge_static PRIVATE
     # unconditionally, regardless of BUILD_SHARED_LIBS - see that file's header comment for why
     # (a self-contained C ABI, not one that depends on a separately-shipped forge shared
-    # library). forge_c_objects is an OBJECT library, so that PRIVATE dependency still ends up in
-    # forge_c_objects's own INTERFACE_LINK_LIBRARIES (OBJECT libraries have no link step of their
-    # own to hide it behind) - and since forge_c_objects is itself part of capiTargets whenever
-    # AC3FORGE_BUILD_CAPI is ON, forge_static must be in an export set too, or install(EXPORT
-    # capiTargets) fails with "requires target forge_static that is not in any export set."
-    # forge_shared has no such requirement, so it doesn't need the same treatment here.
+    # library). forge_static used to have to be in an export set here: forge_c_objects is an
+    # OBJECT library, so the PRIVATE dependency ended up in its own INTERFACE_LINK_LIBRARIES
+    # (OBJECT libraries have no link step of their own to hide it behind), and since
+    # forge_c_objects is itself part of capiTargets whenever AC3FORGE_BUILD_CAPI is ON,
+    # install(EXPORT capiTargets) failed with "requires target forge_static that is not in any
+    # export set." That dependency now sits on forge_c_static and forge_c_shared instead, and a
+    # shared library's PRIVATE dependencies are not exported, so nothing in capiTargets names
+    # forge_static in this branch any more. It is still installed, so that a package built this
+    # way keeps shipping the archive it always has. forge_shared never needed the same treatment.
     if(AC3FORGE_BUILD_CAPI)
         set(_ac3forge_forge_install_targets forge_objects forge_static forge_shared)
     else()
@@ -405,7 +408,15 @@ if(AC3FORGE_BUILD_CAPI)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
         COMPONENT library)
 
-    install(FILES "${CMAKE_BINARY_DIR}/src/capi/generated/ac3forge_c/export.h"
+    # ac3forge.h #includes both of these, and neither is in the source include/ tree the
+    # install(DIRECTORY) above copies: export.h is generate_export_header()'s output and
+    # version.h is configure_file()'d from version.h.in (which that install does copy, as the
+    # template), each into src/capi's own binary dir. Without version.h, every
+    # #include <ac3forge_c/ac3forge.h> against an installed prefix fails to compile. Same
+    # reason ac3/version.hpp and ac3/export.hpp are installed by name for ac3::forge above.
+    install(FILES
+            "${CMAKE_BINARY_DIR}/src/capi/generated/ac3forge_c/export.h"
+            "${CMAKE_BINARY_DIR}/src/capi/generated/ac3forge_c/version.h"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ac3forge_c"
         COMPONENT library)
 
@@ -418,10 +429,15 @@ if(AC3FORGE_BUILD_CAPI)
 endif()
 
 # The config file find_package(ac3forge) actually loads. No find_dependency()
-# calls needed in ac3forgeConfig.cmake.in: with the platform-audio code
-# physically in a separate, non-exported target (ac3::audio), the installed
-# package has no third-party or system dependency whatsoever - matches
-# vcpkg.json's own note that the codec itself has none.
+# calls needed in ac3forgeConfig.cmake.in: the platform-audio code is
+# physically in a separate, non-exported target (ac3::audio), and {fmt}, the
+# one third-party library ac3::forge and mp4::mp4 use, is compiled into their
+# object files as a private copy (ac3::fmt_private, cmake/Fmt.cmake) instead of linked. A
+# shared library absorbs a linked {fmt} at its own link step; a static archive
+# cannot, so a linked {fmt} would leave its consumers an undefined fmt:: symbol
+# that this package names nowhere. tools/checks/check_install_consumer.sh links
+# every installed archive whole, so a symbol that neither the package nor the
+# C/C++ runtime supplies fails there.
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ac3forgeConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/ac3forgeConfig.cmake"

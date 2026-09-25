@@ -84,6 +84,21 @@ TEST_CASE("arbiter: with nothing declared on either, the last-playback server wi
     CHECK(rejected(arbiter.activation(4, server(9), Rank::kNone, true)));
 }
 
+TEST_CASE("arbiter: a forgotten last-playback server no longer wins with nothing declared", "[sendspin][arbiter]") {
+    Arbiter arbiter(server(9));
+    // Forgetting another server leaves the last-playback server as it was.
+    arbiter.forget(server(2));
+    CHECK(arbiter.last_playback() == std::optional<Key32>(server(9)));
+    arbiter.forget(server(9));
+    CHECK_FALSE(arbiter.last_playback().has_value());
+    CHECK(admitted(arbiter.activation(1, server(1), Rank::kNone, true)));
+    // Coming back, it is one more server with nothing declared: the holder stays.
+    CHECK(rejected(arbiter.activation(2, server(9), Rank::kNone, true)));
+    // Playing again makes it the last-playback server again.
+    CHECK(displaces(arbiter.activation(3, server(9), Rank::kPlayback, true), 1));
+    CHECK(arbiter.last_playback() == std::optional<Key32>(server(9)));
+}
+
 TEST_CASE("arbiter: one pairing connection beside the playback holder", "[sendspin][arbiter]") {
     Arbiter arbiter;
     CHECK(admitted(arbiter.activation(1, server(1), Rank::kPlayback, true)));

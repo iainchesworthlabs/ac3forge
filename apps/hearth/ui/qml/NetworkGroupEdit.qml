@@ -6,12 +6,12 @@ import Ac3ForgeHearth
 
 // The group editor (planning/hearth-design.md, "Network - editing a group",
 // network-group.png): a group's own name, its members with per-member
-// volume/mute and a way to remove one, adding a paired sink to it, and the
-// group's own volume. Backed by a real ac3::sendspin::Group
-// (NetworkController.selectedGroup) - membership and volume/mute are real,
-// but there is no live programme yet (Player has no network-group output
-// seam - issue #874's own follow-up), so "State" and "Late chunks" below say
-// so rather than showing a number this slice cannot make true.
+// volume/mute and a way to remove one, adding a paired sink to it, the
+// group's own volume, and making it where Hearth plays. Backed by a real
+// ac3::sendspin::Group (NetworkController.selectedGroup), which the engine
+// plays to once it is the output (HearthController.selectOutputGroup(),
+// network_group_sink.hpp); "Late chunks" still says nothing, since no member
+// reports one to this page yet.
 RowLayout {
     id: root
     anchors.fill: parent
@@ -19,8 +19,16 @@ RowLayout {
 
     readonly property var group: NetworkController.selectedGroup ?? ({})
     readonly property var members: root.group.members ?? []
+    // This group is where Hearth plays: pinned as the output, and the engine
+    // playing to it now.
+    readonly property bool isOutput: (root.group.id ?? "") !== "" && HearthController.outputGroupName === root.group.id
+    readonly property bool playingHere: root.isOutput && (HearthController.outputFormat.mode ?? "") === "networkGroup"
+                                        && HearthController.playing
+    readonly property bool anyConnected: root.members.some((m) => m.connected)
 
     // Paired sinks not already in this group - "Add to the group"'s own model.
+    // A paired sink that is not connected right now can still join: it plays
+    // once it is (network_sinks.hpp's own comment).
     readonly property var candidateSinks: {
         const memberIds = root.members.map((m) => m.sinkId);
         return (NetworkController.sinks ?? []).filter((sink) => {
@@ -57,7 +65,39 @@ RowLayout {
                 AppButton {
                     objectName: "networkGroupDelete"
                     text: qsTr("Delete group")
-                    onClicked: NetworkController.deleteGroup(root.group.id)
+                    onClicked: {
+                        if (root.isOutput) {
+                            HearthController.selectOutputGroup("");
+                        }
+                        NetworkController.deleteGroup(root.group.id);
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gap
+
+                AppButton {
+                    objectName: "networkGroupPlayHere"
+                    text: root.isOutput ? qsTr("Hearth plays here") : qsTr("Play to this group")
+                    primary: !root.isOutput
+                    enabled: !root.isOutput && root.members.length > 0
+                    onClicked: HearthController.selectOutputGroup(root.group.id)
+                }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: root.members.length === 0
+                          ? qsTr("Add a paired sink to play to this group.")
+                          : root.isOutput
+                            ? qsTr("Everything the queue plays goes to this group. Pick another output from the "
+                                  + "output picker to stop.")
+                            : qsTr("Makes this group where the queue plays, in place of this computer's own "
+                                  + "output.")
+                    color: Theme.textMuted
+                    font.pixelSize: Theme.fontSmall
+                    wrapMode: Text.WordWrap
                 }
             }
 
@@ -247,8 +287,14 @@ RowLayout {
 
                 Text { text: qsTr("State"); color: Theme.textMuted; font.pixelSize: Theme.fontSmall }
                 Text {
+                    objectName: "networkGroupState"
                     Layout.fillWidth: true
-                    text: qsTr("Not playing yet - this version does not stream to groups.")
+                    text: root.playingHere
+                          ? qsTr("Playing")
+                          : root.isOutput
+                            ? (root.anyConnected ? qsTr("The output - ready to play")
+                                                 : qsTr("The output - waiting for a member to connect"))
+                            : qsTr("Not the output")
                     color: Theme.text
                     font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap

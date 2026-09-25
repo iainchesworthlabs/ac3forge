@@ -10,7 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const { test, expect } = require('@playwright/test');
-const { REPLIES, ROUTES, POLICY, UI_DIR, startStub, idleSendspin, playingSendspin } = require('./stub');
+const { REPLIES, ROUTES, POLICY, UI_DIR, startStub, idleSendspin, playingSendspin, pairedServer } = require('./stub');
 
 const CONTROL = fs.readFileSync(
     path.resolve(__dirname, '../../../../esp-idf/ac3forge/src/control.cpp'),
@@ -91,10 +91,11 @@ test('every request the page makes is to a route the firmware registers', () => 
         (m) => `${m[1]} /${m[2]}`,
     );
     // No POST /play, /stop or /volume: a server owns playback from B2 on, and
-    // the page is what the board itself is. One call each: the three pairing
+    // the page is what the board itself is. One call each: the pairing
     // actions share one, and the layout's presets and its field another.
     expect(made.sort((a, b) => a.localeCompare(b))).toEqual([
         'GET /hardware',
+        'GET /pairing',
         'GET /status',
         'POST /pairing',
         'PUT /layout',
@@ -148,6 +149,29 @@ test("the stand-in writes GET /status's keys in the firmware's order", async () 
             );
             expect(keys).toEqual(firmware);
         }
+    } finally {
+        await stub.close();
+    }
+});
+
+test("the stand-in writes GET /pairing's keys in the firmware's order", async () => {
+    // on_pairing_get writes the object, then each server's keys inside
+    // "servers"; on_pairing, the POST, follows it.
+    const firmware = [
+        ...CONTROL.slice(
+            CONTROL.indexOf('static esp_err_t on_pairing_get'),
+            CONTROL.indexOf('static esp_err_t on_pairing('),
+        ).matchAll(/append_(?:key|number|bool|string)\(out, "([a-z_]+)"/g),
+    ].map((m) => m[1]);
+    expect(firmware).toEqual(['capacity', 'servers', 'server_id', 'name', 'connected', 'last_playback', 'seen']);
+    const stub = await startStub();
+    try {
+        stub.device.pairings = [pairedServer({ server_id: 'Yx3kP0aZtYk4Q9mLr2vNw8sJc1bXe5hGd7fAu3oKp6i', name: 'Hearth on the desk' })];
+        const body = JSON.parse(await (await fetch(`${stub.url}pairing`)).text());
+        const keys = Object.keys(body).flatMap((key) =>
+            key === 'servers' ? [key, ...Object.keys(body.servers[0])] : [key],
+        );
+        expect(keys).toEqual(firmware);
     } finally {
         await stub.close();
     }

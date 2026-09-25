@@ -40,7 +40,8 @@ const REPLIES = {
         'GET  /slot-width    16 or 32; PUT one to change it at the next play',
         'GET  /wiring        1 when a second I2S line is wired; PUT 1 or 0',
         'PUT  /network       body: an SSID, a newline, a passphrase; next boot',
-        'POST /pairing       body: reset, cancel or forget (Sendspin pairing)',
+        'GET  /pairing       the servers this board is paired with, as JSON',
+        'POST /pairing       body: reset, cancel, forget, or forget and a server_id (Sendspin pairing)',
         'GET  /firmware      both app slots, a trial, an upload and the last update, as JSON',
         'PUT  /firmware      body: an app image; flash mode, then a restart into it',
         'PUT  /firmware/mode body: flash, or normal (a restart)',
@@ -73,7 +74,8 @@ const REPLIES = {
     networkEmpty: 'PUT /network wants an SSID, a newline, and a passphrase\n',
     nextPlay: 'ok; takes effect at the next play\n',
     nextBoot: 'ok; takes effect at the next boot\n',
-    pairingBad: 'POST /pairing wants reset, cancel or forget\n',
+    pairingBad: 'POST /pairing wants reset, cancel, forget, or forget and a server_id\n',
+    pairingUnknown: 'this board has no pairing with that server\n',
     pairingRefused: 'this board is not a Sendspin player\n',
     noFirmware: 'this board takes no firmware updates\n',
 };
@@ -96,6 +98,7 @@ const ROUTES = [
     'GET /slot-width',
     'PUT /slot-width',
     'PUT /network',
+    'GET /pairing',
     'POST /pairing',
     'GET /firmware',
     'PUT /firmware',
@@ -302,6 +305,12 @@ function wifiNetwork() {
     return { kind: 'wifi', ssid: 'kitchen', rssi_dbm: -58, address: '192.168.1.23' };
 }
 
+// One of GET /pairing's servers, as on_pairing_get writes it
+// (esp-idf/ac3forge/src/control.cpp): the same keys in the same order.
+function pairedServer(fields) {
+    return { server_id: '', name: '', connected: false, last_playback: false, seen: true, ...fields };
+}
+
 // GET /status as control.cpp writes it: the same keys in the same order, the
 // volume to three places, and a newline at the end. `second_line` is left out
 // for a sink with no second line to wire, as the example leaves it.
@@ -355,6 +364,10 @@ async function startStub() {
         // firmware with no player, whose /status has no "sendspin" key, and
         // null for one whose player did not start.
         sendspin: idleSendspin(),
+        // GET /pairing's servers, the most recently used first (pairedServer).
+        // A test that sets sendspin.paired sets these to agree when the list
+        // matters to it.
+        pairings: [],
         // What /status says the board is joined to: undefined for a firmware
         // that does not report it, null for a build with no network.
         network: wifiNetwork(),
@@ -544,13 +557,35 @@ async function startStub() {
                 device.password = rest.join('\n');
                 return send(res, 200, REPLIES.nextBoot);
             }
+            case 'GET /pairing':
+                if (!device.sendspin) {
+                    return send(res, 404, REPLIES.pairingRefused);
+                }
+                return send(res, 200, JSON.stringify({ capacity: 8, servers: device.pairings }) + '\n', 'application/json');
             case 'POST /pairing': {
-                if (body !== 'reset' && body !== 'cancel' && body !== 'forget') {
+                // "forget " and a server_id, as on_pairing reads it: that one
+                // server. read_body has trimmed the body, so "forget " alone
+                // is "forget", every server, on the board as here.
+                const one = body.startsWith('forget ') ? body.slice('forget '.length) : '';
+                if (!one && body !== 'reset' && body !== 'cancel' && body !== 'forget') {
                     return send(res, 400, REPLIES.pairingBad);
                 }
                 const p = device.sendspin;
                 if (!p) {
                     return send(res, 409, REPLIES.pairingRefused);
+                }
+                if (one) {
+                    const gone = device.pairings.find((s) => s.server_id === one);
+                    if (!gone) {
+                        return send(res, 404, REPLIES.pairingUnknown);
+                    }
+                    device.pairings = device.pairings.filter((s) => s !== gone);
+                    p.paired = device.pairings.length;
+                    // Its connection closes, with client/goodbye user_request.
+                    if (gone.connected) {
+                        device.sendspin = { ...idleSendspin(), client_id: p.client_id, paired: p.paired };
+                    }
+                    return send(res, 200, REPLIES.ok);
                 }
                 if (body === 'reset') {
                     Object.assign(p, { pairing_held: false, pairing_rounds: 0 });
@@ -562,6 +597,7 @@ async function startStub() {
                     // A new identity, and every server's record gone: the
                     // connections close and the player starts again.
                     device.sendspin = { ...idleSendspin(), client_id: 'Q1vGr0WkzZ5c2hXU8eYy0fKp3tNnJmAs7LbD4oHqIwE' };
+                    device.pairings = [];
                 }
                 return send(res, 200, REPLIES.ok);
             }
@@ -675,6 +711,7 @@ module.exports = {
     statusJson,
     idleSendspin,
     playingSendspin,
+    pairedServer,
     wifiNetwork,
     defaultHardware,
     REPLIES,

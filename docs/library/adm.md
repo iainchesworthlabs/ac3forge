@@ -98,8 +98,8 @@ plain-data graph `parse_bw64` produces) into a libadm `adm::Document` (a new tra
 `build_adm_model()`), serializes it with `adm::writeXml()`, and writes the BW64 container
 (`<fmt >`/`<chna>`/`<axml>`/`<data>`) with libbw64's `Bw64Writer` (`bw64::writeFile()`) — the same
 two vendored libraries as the read side, in the other direction. Always 24-bit integer PCM
-(`EBU Tech 3306`'s own framing; libbw64's writer has no IEEE-float path at all, matching its
-reader's refusal — see "PCM formats" below).
+(`ac3adm::kWriteBitDepth`; `EBU Tech 3306`'s own framing). The pinned libbw64 can write IEEE
+float, but `write_bw64` has no option that asks for it.
 
 ```cpp
 ac3adm::AdmDocument document;
@@ -122,6 +122,16 @@ strings for `id`/`uid` fields, not just the `"AO_1001"`-style ones `parse_bw64` 
 the real `trackRef`/`packRef` strings itself, so a caller building a document purely to write it
 may leave both empty.
 
+`AudioTrackUid::has_bit_depth`/`bit_depth` are not read on write either. Every `audioTrackUID` is
+written with `bitDepth` equal to the `<fmt >` chunk's bits per sample (`kWriteBitDepth`), whatever
+the model says, because a value carried over from another file (a 16-bit master the model was
+parsed from, say) would contradict the `<fmt >` chunk written beside it. The Dolby Atmos Master ADM
+Profile expects the two to agree: Dolby Encoding Engine refuses a master whose `audioTrackUID`s
+leave `bitDepth` out ("Mismatched track bit depth between ADM and WAV"). `sampleRate` is written
+from the model wherever `has_sample_rate` is set. On the read side both attributes are optional
+(BS.2076-2 §5.9), and `parse_bw64` reports which were present through `has_sample_rate` and
+`has_bit_depth`.
+
 `write_bw64`'s own translator supports exactly the element shapes [ADM → Atmos bridging](adm-bridge.md)'s
 write direction (`ac3::admbridge::write()`) produces: `audioProgramme` → `audioContent` →
 `audioObject` (no nesting) → `audioPackFormat` (`Objects` or `DirectSpeakers`, no nesting) →
@@ -134,8 +144,12 @@ Id with the value zero and are thereby marked as ADM elements which should be ig
 `adm/utilities/id_assignment.hpp`'s own doc comment), which the shortcut alone triggers; every
 channel this writer produced collapsed to the same `AC_00000000` id before this chain was added.
 `AdmWriteError::kInvalidDocument` covers every case outside that shape: an unresolved `*_refs`
-entry, Matrix/HOA/Binaural pack or channel types, nested references, or a block whose position is
-polar rather than cartesian.
+entry, Matrix/HOA/Binaural pack or channel types, nested references, an `audioTrackUID` that names
+both an `audioTrackFormat` and an `audioChannelFormat`, or a block whose position is polar rather
+than cartesian (a default-constructed `AudioBlockFormat` is one: its `position` starts as
+`PolarPosition{}`). An exception libadm or libbw64 throws once the document is built comes back as
+`kOther` — `adm::formatId()` throws for an ID field that overflows, such as a 256th
+`audioTrackFormat` on one `audioStreamFormat`.
 
 ## Built on the EBU's own reference implementations
 

@@ -51,6 +51,9 @@ class Arbiter {
     void attempt(Id connection, bool in_progress);
     // `connection` closed.
     void ended(Id connection);
+    // The client's operator forgot its pairing with `server`: it is not the last-playback server
+    // any more, if it was, so it no longer takes the client from a holder that declares nothing.
+    void forget(const crypto::Key32& server);
 
     // The server that most recently held the admitted connection while declaring playback.
     [[nodiscard]] std::optional<crypto::Key32> last_playback() const;

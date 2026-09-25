@@ -584,6 +584,8 @@ ac3forge::ControlHandlers control_handlers() {
     if (player::sendspin_built()) {
         h.sendspin = []() { return player::sendspin_status(); };
         h.pairing = [](std::string_view action) { return player::sendspin_pairing(action); };
+        h.pairings = []() { return player::sendspin_pairings(); };
+        h.forget_server = [](std::string_view server_id) { return player::sendspin_forget_server(server_id); };
     }
     h.firmware = &g_firmware;
     return h;

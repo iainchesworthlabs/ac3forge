@@ -19,6 +19,25 @@ LLVM_VERSION=22
 # the running release; override with the env var if a base needs a different repo.
 LLVM_REPO_CODENAME="${LLVM_REPO_CODENAME:-$(lsb_release -cs)}"
 
+# apt-get update, then apt-get install of any packages named, in up to three
+# attempts 30 s apart. Each attempt re-runs the update, so a retry reads a fresh
+# index and may reach another mirror node: Ubuntu's mirrors fail a single attempt
+# outright now and then (a pool 404 for a version the index names, or an index
+# caught mid-sync), and apt's own Acquire::Retries treats a 404 as final. The
+# workflows' own apt steps run the same loop inline. A function in each script
+# rather than one shared file, because the fleet's Packer build uploads and runs
+# each of these scripts on its own.
+apt_retry() {
+    local attempt=1
+    until apt-get update && { [ "$#" -eq 0 ] || apt-get install -y --no-install-recommends "$@"; }
+    do
+        echo "::warning title=apt-get::attempt $attempt of 3 failed"
+        [ "$attempt" -lt 3 ] || return 1
+        attempt=$((attempt + 1))
+        sleep 30
+    done
+}
+
 echo "==> Installing LLVM/Clang ${LLVM_VERSION} toolchain"
 
 PACKAGES=(
@@ -62,7 +81,7 @@ PACKAGES=(
 # the whole template build. Ensure 'universe' is enabled — it already is on a
 # stock Ubuntu Server install; this is an idempotent safety net for trimmed bases.
 add-apt-repository -y universe >/dev/null 2>&1 || true
-apt-get update
+apt_retry
 
 if apt-cache show "clang-${LLVM_VERSION}" >/dev/null 2>&1; then
     echo "==> Installing LLVM ${LLVM_VERSION} from the distribution archive (no apt.llvm.org)"
@@ -102,12 +121,13 @@ else
     echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] https://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-${LLVM_VERSION} main" \
         > /etc/apt/sources.list.d/llvm.list
 
-    # apt-get retries are configured globally in 01-base-packages.sh
-    # (/etc/apt/apt.conf.d/80-retries), so these survive transient apt.llvm.org errors.
-    apt-get update
+    # apt_retry rides out transient apt.llvm.org errors here and in the install
+    # below; on the fleet's own images 01-base-packages.sh adds apt's
+    # Acquire::Retries (/etc/apt/apt.conf.d/80-retries) on top.
+    apt_retry
 fi
 
-apt-get install -y --no-install-recommends "${PACKAGES[@]}"
+apt_retry "${PACKAGES[@]}"
 
 # Set up alternatives, then --set each one explicitly. --install alone is not
 # enough on a machine that already has an older pinned version selected: with

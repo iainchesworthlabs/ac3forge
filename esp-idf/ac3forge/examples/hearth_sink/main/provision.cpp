@@ -224,7 +224,8 @@ std::atomic<ConsoleCommands> g_commands{nullptr};
         }
         if (byte == '\n' || byte == '\r') {
             if (length > 0 && !commands(std::string_view(line.data(), length))) {
-                std::printf("console: commands are pair reset, pair cancel, pair forget, pair token and sendspin\n");
+                std::printf("console: commands are pair list, pair reset, pair cancel, pair forget, pair forget ID, pair token "
+                            "and sendspin\n");
             }
             length = 0;
         } else if (byte >= 0x20 && byte < 0x7F && length < line.size()) {
@@ -246,7 +247,7 @@ void provisioning_start(ConsoleCommands commands) {
         // Its Sendspin player has started since, and the console takes the
         // player's commands from here on.
         if (commands != nullptr && g_commands.exchange(commands) != commands) {
-            std::printf("console: listening for commands (pair reset, pair cancel, pair forget, "
+            std::printf("console: listening for commands (pair list, pair reset, pair cancel, pair forget, "
                         "pair token, sendspin)\n");
         }
         return;
@@ -266,7 +267,7 @@ void provisioning_start(ConsoleCommands commands) {
         return;
     }
     if (network_ready()) {
-        std::printf("console: listening for commands (pair reset, pair cancel, pair forget, pair token, "
+        std::printf("console: listening for commands (pair list, pair reset, pair cancel, pair forget, pair token, "
                     "sendspin)\n");
     } else {
         std::printf("improv: listening on the console for Wi-Fi credentials\n");

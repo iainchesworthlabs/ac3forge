@@ -4,26 +4,24 @@ import QtQuick.Layouts
 
 import Ac3ForgeHearth
 
-// The Network tab (planning/hearth-reference-player.md, A6): discovery and
-// pairing. The list on the left (NetworkSinkList.qml) is shared with every
-// state; which view fills the rest of the page follows the selected sink's
-// own pair state, the same switch DecoderPage.qml makes on stream format.
+// The Network tab (planning/hearth-reference-player.md, A6): discovery,
+// connection and pairing. The list on the left (NetworkSinkList.qml) is
+// shared with every state; which view fills the rest of the page follows the
+// selected sink's own pair state, the same switch DecoderPage.qml makes on
+// stream format.
 //
 // A sink's own speaker and decoder settings pages (NetworkSinkSettings.qml,
 // issue #875) show once NetworkController.selectedSinkSettable is true (a
-// paired, connected Hearth sink), replacing the plain "paired" card below.
+// paired Hearth sink), replacing the plain "paired" card below. A paired
+// sink that is not connected - another server took it, or it is not
+// answering - gets a banner above either, with the way to connect to it now.
 // Groups (NetworkGroupEdit.qml, issue #874: create, add, remove, volume,
-// mute) are real, backed by an actual ac3::sendspin::Group, but not yet a
-// live programme - Player has no network-group output seam yet (#874's own
-// follow-up), so the group editor's "State"/"Late chunks" rows say so
-// honestly rather than showing numbers this slice cannot make true.
+// mute, and playing to one) are backed by an actual ac3::sendspin::Group.
 //
-// Still the rest of A6, not built here: a sink already in use by another
-// server needs ac3::sendspin to grow a way to learn that
-// (network_sinks.hpp's own comment says why it cannot today); a group's
-// reported levels needs that same network-group output seam #874's own
-// follow-up would add. Neither is a UI gap this slice left behind - there is
-// nothing yet for the page to show for either.
+// Still the rest of A6, not built here: a warning BEFORE this computer takes
+// a paired sink another server is playing to needs ac3::sendspin to grow a
+// way to ask without taking (network_sinks.hpp's own comment says why it
+// cannot today); only the after-the-fact notice is here.
 Item {
     id: root
 
@@ -46,34 +44,81 @@ Item {
             Layout.fillHeight: true
         }
 
-        Loader {
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            // Reads the selected sink/group through the maps' members
-            // directly off NetworkController, never through a local
-            // (`const group = NetworkController.selectedGroup; if (group &&
-            // group.id ...)`) - do not "simplify" it back. Under Qt 6.9.3,
-            // qmlcachegen compiles a member read on such a local as a
-            // value-type lookup on QVariant itself: the generated C++ passes
-            // QMetaType::fromName("QVariant").metaObject() - null, QVariant
-            // has no meta-object - to AOTCompiledContext::
-            // initGetValueLookup(), which dereferences it, and ac3hearth
-            // segfaulted on start (Network.qml is built with Main.qml's
-            // StackLayout). A read straight off the singleton's QVariantMap
-            // property is compiled as an ordinary lookup.
-            // tst_network_page_aot.qml builds the page with the compiled
-            // bindings to hold this.
-            sourceComponent: {
-                if (NetworkController.selectedGroup.id !== undefined) {
-                    return groupState;
+            spacing: Theme.gap
+
+            // A paired sink this computer is not connected to (network_view.hpp's
+            // SinkDetail::can_connect). Read straight off the singleton, for the
+            // Loader comment's reason below.
+            Rectangle {
+                objectName: "networkSinkConnectBanner"
+                Layout.fillWidth: true
+                visible: NetworkController.selectedGroup.id === undefined
+                         && NetworkController.selectedSink.canConnect === true
+                implicitHeight: bannerRow.implicitHeight + Theme.gap
+                color: Theme.surface
+                border.color: Theme.border
+                border.width: 1
+
+                RowLayout {
+                    id: bannerRow
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.margins: Theme.gap
+                    spacing: Theme.gap
+
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        text: (NetworkController.selectedSink.notice ?? "").length > 0
+                              ? qsTr("%1 Taking it back stops whatever that server plays to it.")
+                                .arg(NetworkController.selectedSink.notice)
+                              : qsTr("Not connected: %1.").arg(NetworkController.selectedSink.linkText ?? "")
+                        color: Theme.text
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
+                    }
+                    AppButton {
+                        objectName: "networkSinkConnect"
+                        text: (NetworkController.selectedSink.notice ?? "").length > 0 ? qsTr("Take it back")
+                                                                                        : qsTr("Connect now")
+                        onClicked: NetworkController.connectSink(NetworkController.selectedSink.id)
+                    }
                 }
-                if (NetworkController.selectedSink.id === undefined) {
-                    return emptyState;
+            }
+
+            Loader {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                // Reads the selected sink/group through the maps' members
+                // directly off NetworkController, never through a local
+                // (`const group = NetworkController.selectedGroup; if (group &&
+                // group.id ...)`) - do not "simplify" it back. Under Qt 6.9.3,
+                // qmlcachegen compiles a member read on such a local as a
+                // value-type lookup on QVariant itself: the generated C++ passes
+                // QMetaType::fromName("QVariant").metaObject() - null, QVariant
+                // has no meta-object - to AOTCompiledContext::
+                // initGetValueLookup(), which dereferences it, and ac3hearth
+                // segfaulted on start (Network.qml is built with Main.qml's
+                // StackLayout). A read straight off the singleton's QVariantMap
+                // property is compiled as an ordinary lookup.
+                // tst_network_page_aot.qml builds the page with the compiled
+                // bindings to hold this.
+                sourceComponent: {
+                    if (NetworkController.selectedGroup.id !== undefined) {
+                        return groupState;
+                    }
+                    if (NetworkController.selectedSink.id === undefined) {
+                        return emptyState;
+                    }
+                    if (NetworkController.selectedSink.badge !== "paired") {
+                        return pairingState;
+                    }
+                    return NetworkController.selectedSinkSettable ? settingsState : pairedState;
                 }
-                if (NetworkController.selectedSink.badge !== "paired") {
-                    return pairingState;
-                }
-                return NetworkController.selectedSinkSettable ? settingsState : pairedState;
             }
         }
     }
@@ -156,6 +201,11 @@ Item {
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
+                    }
+                    AppButton {
+                        objectName: "networkSinkForget"
+                        text: qsTr("Forget this pairing")
+                        onClicked: NetworkController.forgetSink(NetworkController.selectedSink.id)
                     }
                 }
 

@@ -60,11 +60,27 @@ An installed package has no ambient `BUILD_SHARED_LIBS` default to resolve again
 exports both variants explicitly rather than a bare `ac3::forge` — pick the one you want.
 The package has nothing for a consumer to find: no `find_dependency()` calls, no system or
 third-party library to resolve, static or shared. The codec is not dependency-free, though —
-`ac3::forge` uses {fmt} for formatting (`cmake/Fmt.cmake`, and this repo's own `vcpkg.json`;
-it stands in for `<format>`, which NDK r26's libc++ does not implement). That link is PRIVATE
-and wrapped in `$<BUILD_INTERFACE:...>`, so it is absorbed at build time and never reaches the
-export graph, which is what leaves the installed package with nothing to declare.
-`ac3adm::ac3adm`/`ac3::admbridge` go further than that: they PRIVATE-embed the third-party
+`ac3::forge` and `mp4::mp4` use {fmt} for formatting (`cmake/Fmt.cmake`, and this repo's own
+`vcpkg.json`; it stands in for `<format>`, which NDK r26's libc++ does not implement). Both
+compile a private copy of it into their own object files (`FMT_HEADER_ONLY`, in its own inline
+namespace `fmt::ac3_private`, through the `ac3::fmt_private` target wrapped in
+`$<BUILD_INTERFACE:...>`) and link no {fmt} library, so the export graph names none and the
+archive and the shared library each hold all of {fmt} that they call. That is what leaves the
+installed package with nothing to declare. A consumer needs no {fmt} of its own, and one that has
+its own, of any version, never binds to the private copy. It matters most for the static variants.
+A shared library takes a linked {fmt} in at its own link step, but an archive is not linked at
+all: one that had linked {fmt} would leave every consumer an unresolved `fmt::v12::vprint`, which
+only the same major version of {fmt} can supply.
+
+What a static variant does leave to the consumer's link is the C++ runtime. A CMake project links
+an installed static `ac3::` target with the C++ driver when it enables the CXX language, so a C
+program using `ac3::forge_c_static` needs `project(your_project LANGUAGES C CXX)`; that driver
+supplies libm as well. With only C enabled the link goes through the C driver and stops at C++
+runtime symbols such as `operator new`, although the exported target records that it holds C++
+objects (`IMPORTED_LINK_INTERFACE_LANGUAGES`). A build outside CMake adds the C++ runtime and libm
+to the link line itself (`-lstdc++ -lm` with libstdc++, `-lc++` with libc++).
+
+`ac3adm::ac3adm`/`ac3::admbridge` are the exception: they PRIVATE-embed the third-party
 libbw64/libadm (Apache-2.0, FetchContent'd — see [ADM / BW64 reading](adm.md)), neither of which
 this project installs or exports in its own right, so the installed package only ever exports
 their **shared** variant (`ac3adm::ac3adm_shared`/`ac3::admbridge_shared`, plus the bare

@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 
 #include <adm/adm.hpp>
 #include <boost/variant.hpp>
@@ -377,8 +378,8 @@ adm::Time seconds_to_time(double seconds) {
 adm::AudioBlockFormatObjects to_libadm_block(const AudioBlockFormat& block) {
     // The Dolby Atmos Master ADM Profile - and this writer's only caller, ac3::admbridge's
     // write-side (bridge.cpp) - always produces cartesian blocks; a caller handing this writer a
-    // polar one is a bug in that caller, not a file this function was designed to accept (see
-    // ac3adm.hpp's own AdmWriteError::kInvalidDocument doc comment).
+    // polar one is a bug in that caller, which build_libadm_document() reports as
+    // AdmWriteError::kInvalidDocument before calling this, so `position` is cartesian here.
     const auto& cartesian = std::get<CartesianPosition>(block.position);
     adm::AudioBlockFormatObjects out{
         adm::CartesianPosition(adm::X(static_cast<float>(cartesian.x)), adm::Y(static_cast<float>(cartesian.y)),
@@ -415,7 +416,8 @@ adm::AudioBlockFormatDirectSpeakers to_libadm_direct_speakers_block(const AudioB
     // (Cartesian/Spherical) are read off the same `position`/`cartesian` fields
     // AudioBlockFormatObjects above reads, but AudioBlockFormatDirectSpeakers has no matching
     // constructor overload for either - see audio_block_format_direct_speakers.hpp's own
-    // set(CartesianSpeakerPosition)/set(SphericalSpeakerPosition).
+    // set(CartesianSpeakerPosition)/set(SphericalSpeakerPosition). Cartesian only, as for
+    // to_libadm_block() above: build_libadm_document() has already refused a polar block.
     const auto& cartesian = std::get<CartesianPosition>(block.position);
     out.set(adm::CartesianSpeakerPosition(adm::X(static_cast<float>(cartesian.x)), adm::Y(static_cast<float>(cartesian.y)),
                                           adm::Z(static_cast<float>(cartesian.z))));
@@ -441,7 +443,7 @@ std::expected<std::reference_wrapper<const std::shared_ptr<Value>>, AdmWriteErro
 
 }  // namespace
 
-std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel& model) {
+std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel& model, std::uint16_t bit_depth) {
     auto document = ::adm::Document::create();
 
     std::unordered_map<std::string, std::shared_ptr<::adm::AudioChannelFormat>> channel_formats_by_id;
@@ -458,6 +460,13 @@ std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel
         }
         auto libadm_channel = ::adm::AudioChannelFormat::create(::adm::AudioChannelFormatName(channel_format.name), type);
         for (const auto& block : channel_format.block_formats) {
+            // Both converters below read `position` as a CartesianPosition. A polar one - which a
+            // default-constructed AudioBlockFormat has, as `position` starts as PolarPosition{} -
+            // is outside this writer's scope, and std::get would throw std::bad_variant_access
+            // out of write_bw64() instead of reporting it.
+            if (!std::holds_alternative<CartesianPosition>(block.position)) {
+                return std::unexpected(AdmWriteError::kInvalidDocument);
+            }
             if (channel_format.type == TypeDefinition::kObjects) {
                 libadm_channel->add(to_libadm_block(block));
             } else {
@@ -533,13 +542,20 @@ std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel
 
     std::unordered_map<std::string, std::shared_ptr<::adm::AudioTrackUid>> track_uids_by_id;
     for (const auto& track_uid : model.track_uids) {
+        if (track_uid.track_format_ref && track_uid.channel_format_ref) {
+            // An audioTrackUID refers to an audioTrackFormat or, for plain PCM, straight to an
+            // audioChannelFormat - not both (model.hpp's AudioTrackUid). libadm's setReference()
+            // enforces that by throwing adm::error::AudioTrackUidMutuallyExclusiveReferences on
+            // the second, which would leave write_bw64() as an exception.
+            return std::unexpected(AdmWriteError::kInvalidDocument);
+        }
         auto libadm_track_uid = ::adm::AudioTrackUid::create();
         if (track_uid.has_sample_rate) {
             libadm_track_uid->set(::adm::SampleRate(track_uid.sample_rate));
         }
-        if (track_uid.has_bit_depth) {
-            libadm_track_uid->set(::adm::BitDepth(track_uid.bit_depth));
-        }
+        // Unconditional, and never track_uid.bit_depth: the caller's value may describe some
+        // other file, while this one is always the width write_bw64 writes <fmt > with.
+        libadm_track_uid->set(::adm::BitDepth(bit_depth));
         if (track_uid.track_format_ref) {
             const auto resolved = resolve(track_formats_by_id, *track_uid.track_format_ref);
             if (!resolved) {

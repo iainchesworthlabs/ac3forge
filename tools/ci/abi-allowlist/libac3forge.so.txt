@@ -465,6 +465,9 @@ ac3::plan::route(ac3::plan::LayoutId, unsigned long, ac3::meta::CentreMixLevel, 
 ac3::plan::validate(ac3::plan::Plan const&)
 ac3::plan::wav_order(std::span<ac3::eac3::chanmap::Location const, 18446744073709551615ul>)
 ac3::programme_ids(std::span<std::byte const, 18446744073709551615ul>)
+ac3::quality::BandNoise::reset()
+ac3::quality::BandNoise::total_noise() const
+ac3::quality::BandNoise::total_signal() const
 ac3::quality::PerceptualModel::Impl::build_geometry(ac3::SampleRate)
 ac3::quality::PerceptualModel::PerceptualModel(ac3::SampleRate, int, ac3::quality::PerceptualConfig)
 ac3::quality::PerceptualModel::PerceptualModel(ac3::quality::PerceptualModel&&)
@@ -511,6 +514,7 @@ ac3::verify::Eac3AccessUnitTrace::substreams() const
 ac3::verify::Eac3MirrorEncoder::Eac3MirrorEncoder(ac3::eac3::AccessUnitConfig)
 ac3::verify::Eac3MirrorEncoder::encode_access_unit(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
 ac3::verify::Eac3MirrorEncoder::last_report[abi:cxx11]() const
+ac3::verify::FrameTrace::reset()
 ac3::verify::MirrorEncoder::MirrorEncoder(ac3::EncoderConfig)
 ac3::verify::MirrorEncoder::encode_frame(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
 ac3::verify::MirrorEncoder::last_report[abi:cxx11]() const

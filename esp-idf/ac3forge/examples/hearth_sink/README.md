@@ -683,11 +683,20 @@ once they are paired, which happens one of two ways:
   server. After twenty codes that did not match, the board holds pairing back
   until `pair reset` on the console or *Allow pairing again* on the page.
 
-The board keeps eight pairings in NVS. `pair forget`, or *Forget every server*
-on the page, removes them all and gives the board a new identity, so every
-server has to pair again. Lines typed on the console are commands: `pair
-token`, `pair reset`, `pair cancel`, `pair forget`, and `sendspin`, which
-prints the player's state.
+The board keeps eight pairings in NVS, each with the name its server's hello
+gave, the most recently used first. A ninth pairing replaces the least
+recently used one that no open connection rests on
+([`pairing_records.hpp`](../../include/ac3forge/pairing_records.hpp)). `pair
+list` prints them, and the page's Sendspin section lists them from `GET
+/pairing`, with a *Forget* for each. `pair forget` and a server's ID - its
+server_id, or the first eight or more characters of it that `pair list`
+prints - forgets that server alone: its connection closes with
+`client/goodbye user_request`, the board keeps its identity and its other
+pairings, and that server has to pair again. `pair forget` alone, or *Forget
+every server* on the page, removes them all and gives the board a new
+identity, so every server has to pair again. Lines typed on the console are
+commands: `pair list`, `pair token`, `pair reset`, `pair cancel`, `pair
+forget` with or without an ID, and `sendspin`, which prints the player's state.
 
 A server that has not paired gets nothing to play unless
 `CONFIG_AC3FORGE_EXAMPLE_SENDSPIN_UNPAIRED_ACCESS` is set, and then only once
@@ -940,6 +949,14 @@ co-processor - this part has no radio of its own - and needs nothing extra in
 (`espressif/esp_wifi_remote`, `espressif/esp_hosted`) to `esp32p4`/`esp32h2` by target,
 so they are resolved and linked automatically, unused everywhere else this example
 already builds for.
+
+The board's default name (`hearth-` and the last six hex digits of its MAC address) and
+the `mac_address` it gives a Sendspin server come from the P4's own base MAC, the one its
+USB serial number shows, and not from the C6's radio: ESP-IDF lists a Wi-Fi station MAC
+only for a target with a radio of its own, so `board_mac()` (`main/settings.cpp`) takes
+the base MAC there and the station MAC everywhere else. A P4 that has not been renamed
+and was running an earlier image, which left it `hearth` with no MAC to report, takes the
+new name, and so the new `.local` address, at its next start.
 
 Brought up on a DFRobot FireBeetle 2 ESP32-P4, pre-production silicon (chip revision
 v1.3 - see [ESP32-P4](../../../../docs/platforms/bare-metal/esp32-p4.md) for that
