@@ -94,6 +94,14 @@ class Gate(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("no rule for an image named 'hearth-sink-esp32h2'", output)
 
+    def test_an_image_with_esp_idfs_fallback_version_is_refused(self) -> None:
+        # A CI build whose git describe failed: ESP-IDF names it "1".
+        self.release(**{"hearth-sink-esp32c6-16mb": {"version": "1"}})
+        code, output = self.run_gate()
+        self.assertEqual(code, 1)
+        self.assertIn("hearth-sink-esp32c6-16mb: its version is '1'", output)
+        self.assertNotIn("hearth-sink-esp32s3: its version", output)
+
     def test_an_image_under_another_chips_name_is_refused(self) -> None:
         self.release(**{"hearth-sink-esp32c6": {"target": "esp32s3"}})
         code, output = self.run_gate()
