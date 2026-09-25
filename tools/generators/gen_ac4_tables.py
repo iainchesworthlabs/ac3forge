@@ -552,14 +552,15 @@ def parse_isf(path):
     for config, layout, rows_name, cols_name, body in ISF_MATRIX.findall(source):
         rows = [ISF_FLOAT.findall(row) for row in ISF_ROW.findall(body)]
         leftover = re.sub(r"[\s,{}]", "", ISF_FLOAT.sub("", body))
-        check(not leftover, f"SR{config}_to_{layout}: unexpected {leftover[:20]!r} among its values")
+        check(not leftover,
+              f"SR{config}_to_{layout}: unexpected {leftover[:20]!r} among its values")
         check(rows_name in defines and cols_name in defines,
               f"SR{config}_to_{layout}: {rows_name} or {cols_name} is not defined")
         check(len(rows) == defines[rows_name] and all(len(r) == defines[cols_name] for r in rows),
               f"SR{config}_to_{layout} is not {defines[rows_name]} rows of {defines[cols_name]}")
         check((config, layout) not in matrices, f"SR{config}_to_{layout} is defined twice")
         matrices[config, layout] = rows
-    wanted = {(c, l) for c in ISF_CONFIGS for l in ISF_LAYOUTS}
+    wanted = {(config, layout) for config in ISF_CONFIGS for layout in ISF_LAYOUTS}
     check(set(matrices) == wanted, f"ISF matrices missing {sorted(wanted - set(matrices))[:4]}, "
                                    f"extra {sorted(set(matrices) - wanted)[:4]}")
     return matrices
@@ -1427,18 +1428,21 @@ ISF_HEADER = [
     "",
     "// Part 2 Table 61's stacked ring formats by isf_config, SR3.1.0.0 to",
     "// SR15.9.5.1, and each one's ISF channels.",
-    f"inline constexpr std::array<int, {len(ISF_CONFIGS)}> kIsfChannels = {{4, 8, 10, 14, 15, 30}};",
+    f"inline constexpr std::array<int, {len(ISF_CONFIGS)}> kIsfChannels = "
+    "{4, 8, 10, 14, 15, 30};",
     "",
     "// The output layouts of Tables A.25 and A.26 in the order kIsfMatrices holds",
     "// them - 2.x, 5.x, 7.x, 9.x, 5.x.2, 5.x.4, 7.x.2, 7.x.4, 9.x.2 and 9.x.4 -",
     "// and each one's loudspeakers.",
-    f"inline constexpr std::array<int, {len(ISF_LAYOUTS)}> kIsfOutputs = {{2, 5, 7, 9, 7, 9, 9, 11, 11, 13}};",
+    f"inline constexpr std::array<int, {len(ISF_LAYOUTS)}> kIsfOutputs = "
+    "{2, 5, 7, 9, 7, 9, 9, 11, 11, 13};",
     "",
     "// SR<config>_to_<layout>, [isf_config][layout]: kIsfChannels rows, one per ISF",
     "// channel in the order t = [M1..., U1..., L1..., Z] takes them (clause",
     "// 5.10.3.4), of kIsfOutputs coefficients each, in the float the attachment",
     "// declares.",
-    f"extern const std::array<std::array<std::span<const float>, {len(ISF_LAYOUTS)}>, {len(ISF_CONFIGS)}>",
+    "extern const std::array<std::array<std::span<const float>, "
+    f"{len(ISF_LAYOUTS)}>, {len(ISF_CONFIGS)}>",
     "    kIsfMatrices;",
     "",
     "}  // namespace ac4::detail::tables",
@@ -1457,8 +1461,8 @@ def emit_isf_source(matrices):
             out.append("")
     out.append("}  // namespace")
     out.append("")
-    out.append(f"constinit const std::array<std::array<std::span<const float>, {len(ISF_LAYOUTS)}>, "
-               f"{len(ISF_CONFIGS)}>")
+    out.append("constinit const std::array<std::array<std::span<const float>, "
+               f"{len(ISF_LAYOUTS)}>, {len(ISF_CONFIGS)}>")
     out.append("    kIsfMatrices = {{")
     for config in ISF_CONFIGS:
         names = [f"kSR{config}To{layout}" for layout in ISF_LAYOUTS]

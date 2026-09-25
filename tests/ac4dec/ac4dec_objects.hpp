@@ -84,11 +84,11 @@ struct ExpectedObject {
     // (full scale 1.0); in core decoding the downmix's objects. With
     // `decorrelated`, the object also takes a decorrelator's output, which
     // adds to its tones at a phase the builder does not work out.
-    std::vector<std::array<double, 2>> tones;
+    std::vector<std::array<double, 2>> tones{};
     bool decorrelated = false;
     // pos3D_X, pos3D_Y, pos3D_Z_sign and pos3D_Z of the metadata of each frame
     // (its last block), for a dynamic object; empty for the others.
-    std::vector<std::array<int, 4>> positions;
+    std::vector<std::array<int, 4>> positions{};
 };
 
 struct BuiltObjectStream {

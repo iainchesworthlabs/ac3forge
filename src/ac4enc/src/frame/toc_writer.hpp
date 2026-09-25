@@ -56,7 +56,7 @@ struct TocObjectAssignment {
     Kind kind = Kind::kDynamic;
     int code = 0;           // isf_config or bed_chan_assign_code
     int flags = 0;          // the flag array, as one field
-    std::vector<int> list;  // nonstd_bed_channel_assignment, one per bed signal
+    std::vector<int> list{};  // nonstd_bed_channel_assignment, one per bed signal
 };
 
 // One object audio substream of a group whose b_channel_coded is 0:

@@ -408,7 +408,7 @@ TEST_CASE("object metadata takes effect at its update sample and moves object 0"
                           Catch::Approx((pos[2] != 0 ? 1.0 : -1.0) * pos[3] / 15.0).margin(1e-12));
                 }
             }
-            moving += expected.positions.front() != expected.positions.back() ? 1 : 0;
+            moving += expected.positions.front() != expected.positions.back() ? 1U : 0U;
         }
         CHECK(moving >= 1);
     }
