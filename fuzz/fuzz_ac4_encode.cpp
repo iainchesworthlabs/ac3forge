@@ -208,18 +208,18 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             // Table 161's modes, the third on a profile of its own and the
             // fourth repeating it, and with the next bit gains in each.
             for (int id = 0; id < 4; ++id) {
-                ac4::DrcModeConfig mode;
-                mode.id = id;
+                ac4::DrcModeConfig drc_mode;
+                drc_mode.id = id;
                 if (id == 2) {
-                    mode.profile = kProfiles[static_cast<std::size_t>(values >> 3) % kProfiles.size()];
+                    drc_mode.profile = kProfiles[static_cast<std::size_t>(values >> 3) % kProfiles.size()];
                 }
                 if (id == 3) {
-                    mode.repeat_of = 2;
+                    drc_mode.repeat_of = 2;
                 }
                 if ((metadata & 8) != 0) {
-                    mode.gains_config = (values >> 6) & 3;
+                    drc_mode.gains_config = (values >> 6) & 3;
                 }
-                drc.modes.push_back(mode);
+                drc.modes.push_back(drc_mode);
             }
             config.experimental.drc_gains = (metadata & 8) != 0;
         }
