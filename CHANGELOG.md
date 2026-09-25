@@ -1061,6 +1061,31 @@ The sections below contain the complete change list and fixes.
   `codec-mode=aspx-acpl-1|aspx-acpl-2|aspx-acpl-3` and names the mode in its summary.
   `tools/checks/score_ac4_encode.py` pins nine A-CPL legs and the A-CPL race with
   `score_ac4_decode.py`'s per-band checks, which now take ASPX_ACPL_1, 5.0 and the channel pair.
+- **AC-4 decodes every frame rate, with the output processing a system asks for** (phase D6 of
+  `planning/ac4.md`). A sample rate converter in `src/ac4core`, with its inverse for the encoder,
+  takes every `frame_rate_index`'s internal rate to 48 kHz: a Kaiser-windowed polyphase filter 100 dB
+  down from the lower rate's Nyquist frequency, its phase locked to `sequence_counter` as Part 2 5.11
+  has it, so each frame gives Table 47's count. DEE's immersive stereo at 23.976, 24, 25 and 29.97 fps
+  decodes and scores as it does at `frame_rate_index` 13, and `score_ac4_decode.py` pins it.
+  `ac4::OutputConfig` sets the output level and the DRC decoder mode (Table 161's selection, the
+  default profiles, transmitted curves and gains in dB2, and a BS.1770 K-weighted level detector), the
+  dialogue enhancement gain for all four of Part 1 5.7.8's methods, and the downmix: Part 1 6.2.17's
+  cascade to 5.X, two channels and mono with the stream's gains and loudness corrections, as Lo/Ro,
+  Lt/Rt or Pro Logic II. The output level gain equals 2^((Lout - dialnorm) / 6) to 0.01 dB at
+  dialnorms from -31 to -17 on the encoder's streams and from -24 to -16 on DEE's, each mode's static
+  curve is within 0.5 dB of its profile, dialogue enhancement at 0 dB leaves the output as the tool
+  bypassed does, and one tone per channel through each downmix equals its formula to 0.01 dB.
+  `tools/checks/gain_ac4_decode.py` holds the output level and every downmix of DEE's streams to
+  their formulas with each stream's own values, on the committed streams in CI. With no output level
+  the stream comes out at its coded level, uncompressed. `ac3cli decode` takes `output-level=`, AC-4's own `drcmode=` names,
+  `dialogue-enhancement=`, `channels=` and `downmix=`, and `conceal=`: `ac4::ConcealmentPolicy`
+  repeats and fades, or mutes, a frame that does not decode, through the decoder's own transform and
+  output stages. A decode begun at an I-frame gives the whole stream's output from the frame after it,
+  but for A-SPX's noise and tone phases and A-CPL's decorrelators, which settle within four frames. A
+  change of source now keeps the decoder's signal and forgets only what was read from the stream, so
+  a splice at an I-frame joins the two streams without the gap a restart from silence left, and a
+  frame whose table of contents does not read is taken to be the frame the stream expected, where
+  before it made the next frame a change of source. `src/ac4dec/ERRATA.md` records the readings.
 
 **Browser (WASM)**
 
