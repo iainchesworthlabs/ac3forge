@@ -1174,8 +1174,8 @@ The sections below contain the complete change list and fixes.
   burst's `Pd` to the length its sync frame states, and now read all seven data-type bits of `Pc`,
   so a data type 1 burst with a subdata type is no longer taken for AC-3. `ac3tests` holds every
   row of the tables against a second transcription and against the arithmetic the standard
-  implies, and packs and reads back every frame rate of every type, and DEE's streams at four frame
-  rates, unchanged. `PassthroughSink` takes `BitstreamFormat::kAc4`, `kAc4Hbr4` and `kAc4Hbr16`:
+  implies, and packs and reads back every frame rate of every type, and every committed DEE
+  stream, unchanged; `AC4DEC_STREAM_DIR` points that case at the whole gold set locally. `PassthroughSink` takes `BitstreamFormat::kAc4`, `kAc4Hbr4` and `kAc4Hbr16`:
   ALSA and Android send the first two, since both take IEC 61937 bursts as opaque two-channel
   data, while WASAPI, PipeWire and Core Audio ask for a codec by name, have none for AC-4, and
   refuse it with the new `PassthroughError::kUnsupportedFormat`, as every backend refuses HBR16's
