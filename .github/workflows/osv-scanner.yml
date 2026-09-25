@@ -27,10 +27,13 @@ on:
 # A newer push to a PR supersedes the older push's scan - nothing reads a
 # superseded commit's results, and each one held a GitHub-hosted slot (GitHub
 # Free: 20 at a time, org-wide) until it ran; on 2026-09-25 runs for three
-# superseded commits of one PR were still queued. Every other event gets a
-# group of its own run, so scheduled and main scans never cancel each other.
+# superseded commits of one PR were still queued. Pushes to main share one
+# group without cancel-in-progress, so a scan that has started finishes and
+# only the newest main commit's waits for a runner (docs/ci-lanes.md, "Only
+# the newest main commit runs the hosted jobs"). A scheduled scan or a
+# dispatch gets a group of its own run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.head_ref) || (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Deliberately minimal: every job below declares its own full permissions set
