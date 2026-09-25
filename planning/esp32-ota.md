@@ -885,6 +885,11 @@ on ESP Web Tools. Its supported chips include the ESP32-S3, ESP32-C6 and ESP32-P
   the site's, it says so, and points to that release's page and to the guide's `esptool` steps.
   A page the site has not been republished for since a release is then still correct about
   what it offers.
+- **Keys typed into the installer's dialog.** Material for MkDocs takes bare keys as shortcuts
+  unless a text field has the focus: `s`, `f` and `/` open its search, and `n`, `p`, `.` and `,`
+  turn the page. It cannot see a field inside ESP Web Tools' nested shadow roots. On 2026-09-25 a
+  network name typed into Improv's form lost a letter to the search box. The page now stops keys
+  that come from the dialog at the body, after the field has had them.
 - **Before a release.** `installer_site.py --run <id>` or `--dir <path>` fills the assets from a
   CI run's `esp32-firmware` artifact, or from a directory of the same files, to try the page
   with real images before any release publishes them.
