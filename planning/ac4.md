@@ -1522,6 +1522,23 @@ pinned tolerance; log-spectral distance and ViSQOL pinned. The race at 2.0 and 4
   to 185, chosen per frame by the energy they save; the LFE; one budget shared across the channels;
   A-SPX's channel pairing, within Tables 212 to 214.
 - The 7.X element (7.1) as an option.
+- Since D4 found DEE's 5.1 streams in one form, `coding_config` 0 with `2ch_mode` 0, that form is what
+  the encoder writes by default, with DEE's 5.1 A-SPX configuration (a 12 kHz crossover, 12.75 kHz
+  from 256 kbps, no companding) and its LFE band (three scale factor bands, to 140.6 Hz). The other
+  coding configurations, chosen per frame by the bits their matrices and side information cost, and
+  the 7.X element in its three layouts, are experimental options. Each pair and C switch blocks on
+  their own transients; under the experimental configurations the five channels share one layout.
+- E3 found librempeg reading the default form as the decoder does, and not the experimental ones:
+  its matrices of three to five channels and the 3.0 element's pair come out 6 to 19 dB down, it
+  refuses the 5/2/0 and 3/2/2 layouts, and it writes a 3/4/0 stream's L on every channel. DEE's
+  muxer leaves 3/2/2's top front pair out of the `dac4` channel groups Part 2 Table A.27 and
+  Pseudocode E.3 both give it (`src/ac4enc/ERRATA.md`).
+- In the race, this encoder's SNR below the crossover trails DEE's by 7.3 to 11.6 dB at 192 kbps,
+  where DEE keeps the bass clean and lets the band from 8 kHz go, with ViSQOL at or above DEE's
+  there; above 288 kbps its SNR leads and its ViSQOL is up to 0.05 under DEE's on film. DEE splits a
+  fifth of its frames into two blocks of 1,024 samples, where this encoder's transient detector
+  splits under one in a hundred; splitting more moved ViSQOL by no more than 0.02 and was left out.
+  Both are room for the encoder's tuning later.
 
 **Exit:** one tone per channel lands on its own channel, the LFE included; each channel meets E1's
 and E2's checks; the race at 5.1 from 192 to 768 kbps.

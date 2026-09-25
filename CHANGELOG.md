@@ -1006,6 +1006,24 @@ The sections below contain the complete change list and fixes.
   ViSQOL 4.23 to 4.55; film's 5.1 centre at 192 kbps from 5.2 to 1.9 dB) and move away on speech with
   a 13.5 kHz crossover (2.4 to 3.1 dB, ViSQOL 0.05 to 0.07 lower). Both scorers' ASPX pins are measured
   again; `src/ac4dec/ERRATA.md`, "Pre-flattening's direction", gives the evidence.
+- **The AC-4 encoder writes 5.0 and 5.1** (phase E3 of `planning/ac4.md`), in the 5.X element's form
+  DEE's streams have: L and R a pair and Ls and Rs a pair, each with the stereo processing E1 chooses,
+  C alone and the LFE coded to 140.6 Hz. Each pair and C switch blocks on their own transients, one
+  rate loop shares the frame's bits across every channel, and the ASPX mode, below 384 kbps for 5.1,
+  takes DEE's 5.1 A-SPX configuration: a 12 kHz crossover, 12.75 kHz from 256 kbps, and no
+  companding. `ac3cli ac4-encode` reads five and six channels in the WAV order `decode` writes.
+  Encoded and decoded, one tone per channel lands on its own channel, the LFE's included, and
+  librempeg decodes the streams as the decoder does, to 82.5 dB or better on every channel. Against
+  DEE's 5.1 streams from 192 to 768 kbps ViSQOL is at or above DEE's at 192 and 256 kbps and up to
+  0.05 under it above; SNR below the crossover is 7.3 to 11.6 dB under DEE's at 192 kbps, where this
+  encoder spreads its noise across the band and DEE keeps it out of the bass, and 3.2 to 19 dB over
+  it from 384. `tools/checks/score_ac4_encode.py` pins eight 5.X legs and the 5.1 race. Under
+  `experimental=`: `coding-configs`, the 5.X element's other coding configurations and `2ch_mode` 1,
+  chosen frame by frame by the bits their matrices save, from the encoder's own transcription of
+  Tables 178 and 179 held to every printed matrix; and `7x-back`, `7x-wide` and `7x-top-front`, 7.0 and
+  7.1 in the 7.X element. librempeg does not read those as the decoder does, and DEE's muxer leaves
+  3/2/2's top front pair out of the `dac4` channel groups Table A.27 gives it
+  (`src/ac4enc/ERRATA.md`).
 
 **Browser (WASM)**
 
