@@ -60,17 +60,21 @@ def _decodable(info):
 
 
 def members(toc, p):
-    """(members, decodable): each substream of presentation `p` with its role, classifier and
-    language, in the order the presentation names them; whether every one can be decoded."""
+    """(members, decodable): each substream of presentation `p` with its role, classifier,
+    language, substream index, group (version 1), the position of the ac4_sgi_specifier() or
+    substream info that names it, and ch_mode, in the order the presentation names them;
+    whether every one can be decoded."""
     out = []
     if toc['substream_groups'] is None:  # presentation_version 0 (Part 1 Table 4)
         decodable = bool(p.get('substreams'))
-        for name, info in p.get('substreams', []):
+        for position, (name, info) in enumerate(p.get('substreams', [])):
             decodable = (decodable and _decodable(info)
                          and info.get('hsf_ext_substream_index') is None)
             out.append({'role': ROLES_V0.get(name, 'main'),
                         'classifier': _classifier(info.get('content_type')),
-                        'language': _language(info.get('content_type'))})
+                        'language': _language(info.get('content_type')),
+                        'substream_index': info.get('substream_index'), 'group': None,
+                        'position': position, 'ch_mode': info.get('ch_mode')})
         return out, decodable
     refs = p.get('group_refs', [])
     decodable = bool(refs) and p.get('frame_rate_fraction', 1) == 1
@@ -99,7 +103,9 @@ def members(toc, p):
             decodable = (decodable and _decodable(sub['info'])
                          and sub.get('hsf_ext_substream_index') is None)
             out.append({'role': role, 'classifier': _classifier(group['content_type']),
-                        'language': _language(group['content_type'])})
+                        'language': _language(group['content_type']),
+                        'substream_index': sub['info'].get('substream_index'), 'group': ref,
+                        'position': position, 'ch_mode': sub['info'].get('ch_mode')})
     return out, decodable and bool(out)
 
 

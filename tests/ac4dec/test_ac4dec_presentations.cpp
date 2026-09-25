@@ -256,6 +256,7 @@ Built stream_hybrid() {
         presentation(std::nullopt, {1}, 11, 0, 2),
         presentation(std::nullopt, {2}, 12, 0, 1),
         presentation(std::nullopt, {3}, 13, 0, 1),
+        presentation(std::nullopt, {4}, 14, 0, 3),
     };
     return b;
 }
@@ -903,11 +904,18 @@ TEST_CASE("a hybrid dialogue enhancement method takes its waveform from the dial
     // description's group -1 dB at 30 degrees, the waveform as before.
     {
         const auto [gp, gs] = split(kAlphaIndependent);
-        const Decoded ad = decode_id(file, 11);  // unused as a reference below; the waveform's own decode
-        (void)ad;
+        const Decoded ad = decode_id(file, 14);
         const Decoded on = decode_id(file, 2, 0.0, 0.0, kGain);
         check_tone(on, main51, Speaker::kCentre, kTones51[2], {{Speaker::kCentre, db(1.0 + gp * 0.5)}});
         check_tone(on, waveform, Speaker::kCentre, kToneDe, {{Speaker::kCentre, db(gs)}});
+        check_tone(on, ad, Speaker::kCentre, kToneAd, {{Speaker::kRight, -1.0}});
+        std::vector<std::vector<double>> m = diagonal(6, 1.0);
+        m[2][2] = 1.0 + gp * 0.5;
+        std::vector<std::vector<double>> d = zeros(6, 1);
+        d[2][0] = gs;
+        std::vector<std::vector<double>> described = zeros(6, 1);
+        described[1][0] = from_db(-1.0);
+        CHECK(residual_db(on, {{&main51, m}, {&waveform, d}, {&ad, described}}) < -100.0);
     }
     // The cross-channel method on L and R: (I + g_p r p^T) m + r g_s d, r
     // from de_mix_coef1_idx (Table 172's 0.448 and the rest of a unit
