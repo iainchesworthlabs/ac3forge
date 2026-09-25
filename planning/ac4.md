@@ -22,8 +22,7 @@
     the user when D10 lands. Decisions 13 to 23, which the wider scope raises, were put to the user
     on 2026-09-24 and answered the same day: the four put as questions (13, 14, 20 and 22) took the
     recommendation, and the recommendations stated for the rest were taken without objection.
-    On 2026-09-25 the user said DEE's licence will not be renewed after 2026-11-06; phase G1 made
-    the golden masters the later phases test against before then.
+    Whether DEE's licence is renewed after 2026-11-06 is not yet known.
 
     Shape follows the Hearth plan: design sections say what is proposed and why, each phase carries
     an exit criterion and how it is verified, [Decisions](#decisions) gives the options with a
@@ -1073,7 +1072,7 @@ the channel-based library.
 
 | # | Phase | What it builds | Needs |
 |---|---|---|---|
-| 1 | [G0](#g0-the-gold-set), then G1 | the gold set: every DEE stream the phases need, and G1's golden masters for the phases still to come | |
+| 1 | [G0](#g0-the-gold-set) | the gold set: every DEE stream the phases need | |
 | 2 | [D2](#d2-waveform-coded-stereo-to-pcm) | waveform-coded stereo to PCM, and the shared core | D1 |
 | 3 | [E1](#e1-the-encoder-library-the-frame-writer-and-simple-mono-and-stereo) | the encoder library, the frame writer, SIMPLE mono and stereo | D2 |
 | 4 | [D3](#d3-the-qmf-domain-and-a-spx) | the QMF domain and A-SPX | D2 |
@@ -2237,9 +2236,7 @@ stand. Each lists its options, the recommendation, what each costs, and what was
     legs fixed before the encoder exists, so a leg added later needs the licence. (b) stakes every
     later phase's gold standard on a renewal.
 
-    **Taken: (a)**, as recommended. On 2026-09-25 the user said the licence will not be renewed
-    and asked for golden masters to test against now, which phase G1 made
-    ([G0](#g0-the-gold-set)).
+    **Taken: (a)**, as recommended. Whether the licence is renewed is not yet known.
 
 | # | Question | Recommended | **Taken** |
 |---|---|---|---|
@@ -2253,7 +2250,7 @@ stand. Each lists its options, the recommendation, what each costs, and what was
 | 20 | The applications and their order | CLI, Hearth, GUI, bindings; no Crucible | **CLI, Hearth, GUI, bindings; no Crucible** |
 | 21 | The C API | Functions in the existing C API | **Functions in the existing C API** |
 | 22 | Where this plan lives | A pull request to main | **A pull request to main** |
-| 23 | DEE's licence | G0 now either way | **G0 now**; not renewed, and G1 made the golden masters |
+| 23 | DEE's licence | G0 now either way | **G0 now**; renewal not yet known |
 
 ## What cannot be verified, and why
 
@@ -2277,7 +2274,7 @@ stand. Each lists its options, the recommendation, what each costs, and what was
 | The encoder's quality against DEE's | **yes, through two decoders** | Both decoders' readings of the tools concerned are checked on DEE's own streams first |
 | Objects the encoder writes render as Dolby's renderer would render them | **no** | Object rendering is not normative; listening stands in |
 | Compression-curve DRC from the encoder's streams behaves alike in every decoder | **no** | The level detector is the decoder's own |
-| Any DEE stream after 2026-11-06 | **no** | The licence is not renewed; G0 and G1 made the set before then (decision 23) |
+| Any DEE stream after 2026-11-06 | **no, unless the licence is renewed** | G0 makes the set before then (decision 23) |
 
 ## Coordination
 
