@@ -11,8 +11,10 @@ The PCM comes from the AC-3 harness's generator, imported rather than copied:
 its per-block plan, the `cliff` profile and the correlation modes serve every
 codec. The configuration space is this encoder's: mono, stereo, 5.0 and 5.1,
 and 7.0 and 7.1 in the three 7.X layouts, 48 or 44.1 kHz, a constant rate from
-8 kbps up (20 in 5.X and 7.X), the codec mode the rate picks or either one
-forced, the experimental tools, dialnorm, and raw or MP4 output.
+8 kbps up (20 in 5.X and 7.X), the codec mode the rate picks, SIMPLE or ASPX
+forced, or an A-CPL mode forced (ASPX_ACPL_2 and ASPX_ACPL_3 in 5.X, and with
+experimental=acpl ASPX_ACPL_1 there and both in stereo), the experimental
+tools, dialnorm, and raw or MP4 output.
 
 Each case is held to:
 
@@ -78,6 +80,11 @@ HIGHEST_KBPS = 3000
 # The 5.X and 7.X elements' least rate: from 14 to 19 kbps, by layout and sample rate, the
 # smallest frame holds one with no bands and every aspx_data element's least; 20 holds all.
 MULTICHANNEL_LOWEST_KBPS = 20
+# The A-CPL modes a case may force, by stereo or 5.X, and the least rate each holds in 5.X, a
+# frame with no bands, A-SPX's least and the A-CPL parameters of an I-frame (13 to 25 kbps at 48
+# kHz; --check-envelope measures them). In stereo both hold from LOWEST_KBPS.
+ACPL_MODES = {False: ["aspx-acpl-1", "aspx-acpl-2"], True: ["aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3"]}
+ACPL_LOWEST_KBPS = {"aspx-acpl-1": 16, "aspx-acpl-2": 16, "aspx-acpl-3": 26}
 # The channel counts drawn, stereo and 5.1 twice as often; seven and eight channels take one of the
 # 7.X element's pairs, an experimental option.
 CHANNELS = [1, 2, 2, 5, 6, 6, 7, 8]
@@ -144,13 +151,21 @@ def draw_case(seed):
         options.append("dialnorm=auto")
     elif roll < 0.5:
         options.append(f"dialnorm={rng.randint(1, 31)}")
-    # The rate picks the codec mode (ASPX below 96 kbps a channel); now and
-    # then either is forced, and the experimental A-SPX tools asked for.
+    # The rate picks the codec mode (in 5.X ASPX_ACPL_3 and ASPX_ACPL_2 at
+    # the lowest rates a channel, then ASPX below 96 kbps a channel); now and
+    # then SIMPLE or ASPX is forced, or an A-CPL mode, and the experimental
+    # A-SPX tools asked for.
     roll = rng.random()
+    acpl = None
     if roll < 0.15:
         options.append("codec-mode=simple")
     elif roll < 0.3:
         options.append("codec-mode=aspx")
+    elif roll < 0.42 and channels in (2, 5, 6):
+        acpl = rng.choice(ACPL_MODES[channels > 2])
+        options.append(f"codec-mode={acpl}")
+        if channels > 2 and LOWEST_KBPS <= bitrate < ACPL_LOWEST_KBPS[acpl]:
+            bitrate = ACPL_LOWEST_KBPS[acpl]
     tools = []
     if rng.random() < 0.25:
         tools.append(
@@ -163,7 +178,9 @@ def draw_case(seed):
                 ]
             )
         )
-    if channels > 2 and rng.random() < 0.3:
+    if acpl is not None and (channels == 2 or acpl == "aspx-acpl-1"):
+        tools.append("acpl")
+    if channels > 2 and acpl is None and rng.random() < 0.3:
         tools.append("coding-configs")
     if channels > 6:
         tools.append(rng.choice(SEVEN_X))
@@ -451,9 +468,13 @@ def read_wav_shape(path):
 def check_envelope(cli):
     """The rates the encoder takes, at both sample rates and every layout: in mono and stereo the
     lowest accepted and the one below it refused, in 5.X and 7.X MULTICHANNEL_LOWEST_KBPS accepted,
-    and everywhere the highest accepted and the one above it refused."""
+    and everywhere the highest accepted and the one above it refused; each A-CPL mode likewise,
+    from ACPL_LOWEST_KBPS in 5.X."""
     failures = 0
     layouts = [(1, []), (2, []), (5, []), (6, []), *((8, [f"experimental={p}"]) for p in SEVEN_X)]
+    for channels in (2, 5, 6):
+        for mode in ACPL_MODES[channels > 2]:
+            layouts.append((channels, [f"codec-mode={mode}", "experimental=acpl"]))
     with tempfile.TemporaryDirectory(prefix="ac4envelope_") as tmp:
         for channels, options in layouts:
             for rate in SAMPLE_RATES:
@@ -461,7 +482,9 @@ def check_envelope(cli):
                 ac3space.write_wav(wav, [[0.0] * (4 * FRAME) for _ in range(channels)], rate, False)
                 lowest = [(LOWEST_KBPS - 1, False), (LOWEST_KBPS, True)]
                 if channels > 2:
-                    lowest = [(MULTICHANNEL_LOWEST_KBPS, True)]
+                    forced = [o.split("=", 1)[1] for o in options if o.startswith("codec-mode=")]
+                    least = ACPL_LOWEST_KBPS[forced[0]] if forced else MULTICHANNEL_LOWEST_KBPS
+                    lowest = [(least, True)]
                 for kbps, accepted in (*lowest, (HIGHEST_KBPS, True), (HIGHEST_KBPS + 1, False)):
                     result = _run(
                         [cli, "ac4-encode", wav, Path(tmp) / "out.ac4", kbps, "quiet", *options]

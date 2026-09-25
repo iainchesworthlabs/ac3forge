@@ -18,8 +18,9 @@
 // back by the decoder (planning/ac4.md, the encoder's ladder, items 1 and 8).
 //
 // The first bytes choose the configuration - the channel layout, mono to
-// 7.1, sample rate, bit rate, I-frame interval, dialnorm, codec mode, the
-// experimental tools, and the size of the pieces the input arrives in - and the rest are the
+// 7.1, sample rate, bit rate, I-frame interval, dialnorm, codec mode, the A-CPL
+// ones among them, the experimental tools, and the size of the pieces the input
+// arrives in - and the rest are the
 // samples, as 32-bit floats, one channel after the
 // other: silence, DC, full-scale square waves, clipping far past full scale,
 // denormals and NaNs are all a few bytes away. What is held:
@@ -114,8 +115,9 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     ac4::EncoderConfig config;
     // The first byte's low bit chooses mono or stereo, as it always has; the
     // two bits over it can widen that to 5.0 or 5.1, or to 7.0 or 7.1 in the
-    // 7.X layout the next two bits name (or in none, which is refused), and
-    // the bit over those asks for the experimental coding configurations.
+    // 7.X layout the next two bits name (or in none, which is refused), the
+    // bit over those asks for the experimental coding configurations, and the
+    // one over that for the experimental A-CPL modes.
     constexpr std::array<ac4::AdditionalPair, 4> kPairs = {ac4::AdditionalPair::kNone, ac4::AdditionalPair::kBack,
                                                            ac4::AdditionalPair::kWide, ac4::AdditionalPair::kTopFront};
     const std::uint8_t layout = take.byte();
@@ -133,17 +135,23 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             break;
     }
     config.experimental.coding_configs = (layout & 0x20) != 0;
-    config.sample_rate_hz = (take.byte() & 1) != 0 ? 44100 : 48000;
+    config.experimental.acpl = (layout & 0x40) != 0;
+    // The sample rate byte's low bit; the two over it name the A-CPL mode.
+    const std::uint8_t rate = take.byte();
+    config.sample_rate_hz = (rate & 1) != 0 ? 44100 : 48000;
     // 4 to 1024 kbps, so the refusals below 8 are reached too.
     config.bitrate_kbps = 4 + static_cast<int>(take.byte()) * 4;
     // The interval takes the low five bits of its byte and dialnorm seven of
-    // its; the bits over choose the codec mode, the rate's or either forced,
-    // and the experimental A-SPX tools.
+    // its; the bits over choose the codec mode, the rate's, either forced or an
+    // A-CPL mode, and the experimental A-SPX tools.
     const std::uint8_t interval = take.byte();
     config.iframe_interval = 1 + (interval % 32);
-    constexpr std::array<ac4::CodecMode, 4> kModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kSimple,
-                                                      ac4::CodecMode::kAspx, ac4::CodecMode::kAuto};
-    config.codec_mode = kModes[static_cast<std::size_t>((interval >> 5) & 3)];
+    constexpr std::array<ac4::CodecMode, 3> kModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kSimple,
+                                                      ac4::CodecMode::kAspx};
+    constexpr std::array<ac4::CodecMode, 4> kAcplModes = {ac4::CodecMode::kAspxAcpl1, ac4::CodecMode::kAspxAcpl2,
+                                                          ac4::CodecMode::kAspxAcpl3, ac4::CodecMode::kAspxAcpl2};
+    const auto mode = static_cast<std::size_t>((interval >> 5) & 3);
+    config.codec_mode = mode < kModes.size() ? kModes[mode] : kAcplModes[static_cast<std::size_t>((rate >> 1) & 3)];
     const std::uint8_t dialnorm = take.byte();
     config.dialnorm_db = -static_cast<double>(dialnorm % 128) / 4.0;
     config.experimental.aspx_balance = (dialnorm & 0x80) != 0;
