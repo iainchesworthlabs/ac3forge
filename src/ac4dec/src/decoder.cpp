@@ -752,7 +752,7 @@ detail::MixValues Decoder::Impl::mix_values(const detail::PresentationPlan& plan
                 out.scale_centre = mix.scale_centre;
             }
             // A mono or two-channel dialogue substream takes a pan a channel;
-            // a 3.0 one keeps its channels (ERRATA, "Panning the dialogue").
+            // a 3.0 one keeps its channels (ERRATA, "The dialogue's gain and pans").
             if (state.pan_dialog && (member.ch_mode == 0 || member.ch_mode == 1)) {
                 out.pan[0] = pan_degrees((*state.pan_dialog)[0]);
                 if (member.ch_mode == 1) {

@@ -3,7 +3,8 @@
 // Selection: a table of tables of contents built for it, of version 1 and
 // version 0 presentations, each case a table of contents, a PresentationChoice
 // and a level, and the presentation Part 2 clause 4.8.2 and the readings of
-// src/ac4dec/ERRATA.md ("Selecting a presentation") select. The table is
+// src/ac4dec/ERRATA.md ("Which presentations can be selected", "The order of
+// the preferences") select. The table is
 // committed as tests/golden/ac4dec/presentations/presentation-selection.tsv, which
 // tools/checks/test_ac4_presentation_selection.py holds the Python reference
 // parser's selection to.

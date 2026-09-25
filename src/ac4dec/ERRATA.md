@@ -1339,7 +1339,10 @@ it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.
   music and effects substream does not have goes nowhere, which only a stream the text forbids has. DRC's
   side chain is the mix of the substreams' signals before their dialogue enhancement, with the same
   gains. A presentation needs all of its substreams: a frame in which one is refused or missing fails
-  whole and is concealed, rather than coming out without it.
+  whole and is concealed, rather than coming out without it. The decoder mixes up to eight substreams
+  into the main one, in fixed storage: a presentation within Table 55's track counts (11 at md_compat
+  3, the main substream's channels among them) has no more, and the rest of a larger one, which only
+  md_compat 7 allows, are left out.
 - **Evidence:** Text; against each substream decoded alone, the formula leaves the output 110 dB under it
   or more.
 

@@ -146,8 +146,8 @@ struct OutputConfig {
 // position, or else the one that best meets its preferences, in the order the
 // clause lists them, the first in the table of contents among equals. Where
 // the table of contents changes from one frame to the next, the choice is made
-// again. src/ac4dec/ERRATA.md ("Selecting a presentation") records the
-// readings.
+// again. src/ac4dec/ERRATA.md ("Which presentations can be selected" and "The
+// order of the preferences") records the readings.
 
 // Part 1 Table 92's refinements of associated audio, which an associated
 // substream's language_tag_bytes carry in place of a language.

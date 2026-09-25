@@ -25,7 +25,7 @@
 namespace ac4::detail {
 
 // The most substreams a presentation mixes into its main audio; the rest of a
-// larger one are left out (ERRATA, "The mixer's sum").
+// larger one are left out (ERRATA, "Where the substreams are mixed").
 inline constexpr std::size_t kMaxMixMembers = 8;
 
 // The most channels a layout here has in the horizontal ring a pan moves
