@@ -176,7 +176,9 @@ class OutputLayout {
 
     OutputLayout() = default;
 
-    // "2.0": what every player before this one played.
+    // "2.0": what every player before this one played. named() always knows
+    // "2.0", so the optional is never empty here.
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     [[nodiscard]] static OutputLayout stereo() { return *named("2.0"); }
 
     // A name or a list, as the header describes. std::nullopt for anything
@@ -644,7 +646,7 @@ class OutputLayout {
                     !is_realizable_height(*location)) {
                     return std::nullopt;  // only a height location can be re-tiered
                 }
-                speaker.location = *location;
+                speaker.location = location;
                 speaker.kind = lfe ? Speaker::Kind::kLfe : Speaker::Kind::kSpeaker;
                 speaker.small = small;
                 speaker.realization = realization;
