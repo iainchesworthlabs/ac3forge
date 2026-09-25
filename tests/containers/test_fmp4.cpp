@@ -1009,3 +1009,272 @@ TEST_CASE("build_dash_mpd wraps a Period, static or dynamic", "[dash]") {
         mp4::MpdOptions{.is_static = false, .availability_start_time = "2026-08-23T12:30:00Z"});
     CHECK(no_publish.find("publishTime") == std::string::npos);
 }
+
+// --- Sync samples, a track's timescale and brands (AC-4, ETSI TS 103 190-2
+// Annexes E and H) --------------------------------------------------------
+
+namespace {
+
+// An AC-4 track as ac3cli describes one: the 'ac-4' sample entry, its dac4 as
+// opaque bytes, and a frame of 2 048 samples.
+mp4::AudioTrack ac4_track() {
+    return mp4::AudioTrack{.codec_id = std::string{mp4::kCodecAc4},
+                           .sample_rate = 48000,
+                           .channels = 2,
+                           .samples_per_frame = 2048,
+                           .codec_config = Bytes{std::byte{0x20}, std::byte{0x09}}};
+}
+
+// Frames of distinct lengths and contents, so a sample that lands in the wrong
+// fragment or out of order shows.
+std::vector<Bytes> opaque_frames(std::size_t count) {
+    std::vector<Bytes> frames;
+    for (std::size_t i = 0; i < count; ++i) {
+        frames.emplace_back(20 + i, static_cast<std::byte>(i));
+    }
+    return frames;
+}
+
+// A trun of any flags this file's fragments carry (ISO/IEC 14496-12 §8.8.8):
+// the box's own flags, then sample_count, data_offset, and per sample its size
+// and, where sample-flags-present (0x000400) is set, its flags.
+struct TrunSamples {
+    std::uint32_t box_flags = 0;
+    std::vector<std::uint32_t> sizes;
+    std::vector<std::uint32_t> flags;
+};
+
+TrunSamples read_trun_samples(std::span<const std::byte> file, const Element& trun) {
+    TrunSamples out;
+    out.box_flags = read_fullbox_flags(file, trun);
+    const std::uint32_t count = u32_at(file, trun.payload + 4);
+    const bool with_flags = (out.box_flags & 0x000400U) != 0;
+    std::size_t at = trun.payload + 12;
+    for (std::uint32_t i = 0; i < count; ++i) {
+        out.sizes.push_back(u32_at(file, at));
+        at += 4;
+        if (with_flags) {
+            out.flags.push_back(u32_at(file, at));
+            at += 4;
+        }
+    }
+    return out;
+}
+
+// mdhd's timescale: version+flags(4), creation(4), modification(4), then the
+// timescale (version 0, as mp4:: writes it).
+std::uint32_t read_mdhd_timescale(std::span<const std::byte> file, const Element& mdhd) {
+    return u32_at(file, mdhd.payload + 12);
+}
+
+}  // namespace
+
+TEST_CASE("fragment() starts every fragment at a sync sample and lists each sample's flags",
+          "[fmp4][ac4]") {
+    const auto frames = opaque_frames(10);
+    // I-frames at 0, 3 and 7; at least two frames a fragment, so the fragments
+    // run to the next I-frame after two: [0, 3), [3, 7) and [7, 10).
+    const std::vector<bool> sync = {true,  false, false, true,  false,
+                                    false, false, true,  false, false};
+    const auto out = mp4::fragment(
+        ac4_track(), frames, mp4::FragmentOptions{.frames_per_fragment = 2, .sync_samples = sync});
+    REQUIRE(out.has_value());
+    REQUIRE(out->media_segments.size() == 3);
+    const std::array<std::size_t, 3> starts{0, 3, 7};
+    const std::array<std::uint32_t, 3> counts{3, 4, 3};
+    for (std::size_t s = 0; s < 3; ++s) {
+        CAPTURE(s);
+        const mp4::MediaSegment& segment = out->media_segments[s];
+        CHECK(segment.sample_count == counts[s]);
+        CHECK(segment.base_media_decode_time == starts[s] * 2048U);
+        const auto elements = parse(segment.bytes);
+        const auto* trun = find(elements, "trun");
+        REQUIRE(trun != nullptr);
+        const TrunSamples samples = read_trun_samples(segment.bytes, *trun);
+        // data-offset, sample-size and sample-flags present.
+        CHECK(samples.box_flags == 0x000601U);
+        REQUIRE(samples.flags.size() == counts[s]);
+        for (std::size_t i = 0; i < counts[s]; ++i) {
+            CAPTURE(i);
+            const std::size_t frame = starts[s] + i;
+            CHECK(samples.sizes[i] == frames[frame].size());
+            // A sync sample: sample_depends_on 2 and not a non-sync sample; the
+            // others depend on earlier frames and are not sync samples.
+            CHECK(samples.flags[i] == (sync[frame] ? 0x02000000U : 0x01010000U));
+        }
+        // The fragment's first sample is a sync sample (TS 103 190-2 E.3).
+        CHECK(sync[starts[s]]);
+    }
+}
+
+TEST_CASE("fragment() with every frame a sync sample writes what it writes without flags",
+          "[fmp4][ac4]") {
+    const auto frames = opaque_frames(7);
+    const auto plain = mp4::fragment(ac4_track(), frames, mp4::FragmentOptions{.frames_per_fragment = 3});
+    const auto flagged = mp4::fragment(
+        ac4_track(), frames,
+        mp4::FragmentOptions{.frames_per_fragment = 3, .sync_samples = std::vector<bool>(7, true)});
+    REQUIRE(plain.has_value());
+    REQUIRE(flagged.has_value());
+    CHECK(plain->init_segment == flagged->init_segment);
+    REQUIRE(plain->media_segments.size() == flagged->media_segments.size());
+    for (std::size_t s = 0; s < plain->media_segments.size(); ++s) {
+        CHECK(plain->media_segments[s].bytes == flagged->media_segments[s].bytes);
+    }
+    // No trun lists flags where every sample takes trex's default.
+    const auto elements = parse(plain->media_segments.front().bytes);
+    const auto* trun = find(elements, "trun");
+    REQUIRE(trun != nullptr);
+    CHECK(read_fullbox_flags(plain->media_segments.front().bytes, *trun) == 0x000201U);
+}
+
+TEST_CASE("fragment() refuses sync flags of another length or a first frame that is not one",
+          "[fmp4][ac4]") {
+    const auto frames = opaque_frames(4);
+    const auto refused = [&](std::vector<bool> sync) {
+        const auto out = mp4::fragment(
+            ac4_track(), frames,
+            mp4::FragmentOptions{.frames_per_fragment = 2, .sync_samples = std::move(sync)});
+        return !out.has_value() && out.error() == mp4::MuxError::kInvalidOptions;
+    };
+    CHECK(refused({true, false, true}));
+    CHECK(refused({false, true, false, true}));
+    CHECK_FALSE(refused({true, false, true, false}));
+}
+
+TEST_CASE("a track's timescale reaches its init segment and its decode times and manifests",
+          "[fmp4][ac4]") {
+    // AC-4 at 29.97 fps: 8 008 ticks a frame at 240 000 (TS 103 190-2 Table
+    // E.1), 48 kHz audio.
+    auto track = ac4_track();
+    track.samples_per_frame = 8008;
+    track.timescale = 240000;
+    const auto frames = opaque_frames(5);
+    const auto out = mp4::fragment(track, frames, mp4::FragmentOptions{.frames_per_fragment = 2});
+    REQUIRE(out.has_value());
+    const auto init = parse(out->init_segment);
+    const auto* mdhd = find(init, "mdhd");
+    REQUIRE(mdhd != nullptr);
+    CHECK(read_mdhd_timescale(out->init_segment, *mdhd) == 240000U);
+    const auto* trex = find(init, "trex");
+    REQUIRE(trex != nullptr);
+    CHECK(read_trex(out->init_segment, *trex).default_sample_duration == 8008U);
+    REQUIRE(out->media_segments.size() == 3);
+    CHECK(out->media_segments[1].base_media_decode_time == 2U * 8008U);
+    CHECK(out->media_segments[2].duration_samples == 8008U);
+    const auto segment = parse(out->media_segments[2].bytes);
+    const auto* tfdt = find(segment, "tfdt");
+    REQUIRE(tfdt != nullptr);
+    CHECK(read_tfdt(out->media_segments[2].bytes, *tfdt) == 4U * 8008U);
+
+    // Two frames are 16 016 / 240 000 s, not 16 016 samples at 48 kHz.
+    const auto media = mp4::build_hls_media_playlist(track, out->media_segments);
+    CHECK(media.find(fmt::format("#EXTINF:{:.5f},", 16016.0 / 240000.0)) != std::string::npos);
+    const auto snippet = mp4::build_dash_adaptation_set(track, out->media_segments);
+    CHECK(snippet.find("timescale=\"240000\"") != std::string::npos);
+    CHECK(snippet.find("audioSamplingRate=\"48000\"") != std::string::npos);
+    const auto mpd = mp4::build_dash_mpd(track, out->media_segments, snippet);
+    CHECK(mpd.find(fmt::format("mediaPresentationDuration=\"PT{:.3f}S\"", 5.0 * 8008.0 / 240000.0)) !=
+          std::string::npos);
+}
+
+TEST_CASE("FragmentWriter pushed with sync flags writes fragment()'s segments", "[fmp4][ac4]") {
+    const auto frames = opaque_frames(10);
+    const std::vector<bool> sync = {true,  false, false, true,  false,
+                                    false, false, true,  false, false};
+    const mp4::FragmentOptions options{.frames_per_fragment = 2};
+    auto batch_options = options;
+    batch_options.sync_samples = sync;
+    const auto batch = mp4::fragment(ac4_track(), frames, batch_options);
+    REQUIRE(batch.has_value());
+
+    auto writer = mp4::FragmentWriter::create(ac4_track(), options);
+    REQUIRE(writer.has_value());
+    std::vector<mp4::MediaSegment> written;
+    for (std::size_t i = 0; i < frames.size(); ++i) {
+        CAPTURE(i);
+        auto closed = writer->push(frames[i], sync[i]);
+        REQUIRE(closed.has_value());
+        if (closed->has_value()) {
+            // A segment closes on the push of the sync sample that starts the next.
+            CHECK(sync[i]);
+            written.push_back(std::move(**closed));
+        }
+    }
+    auto last = writer->finalize();
+    REQUIRE(last.has_value());
+    REQUIRE(last->has_value());
+    written.push_back(std::move(**last));
+    REQUIRE(written.size() == batch->media_segments.size());
+    for (std::size_t s = 0; s < written.size(); ++s) {
+        CAPTURE(s);
+        CHECK(written[s].bytes == batch->media_segments[s].bytes);
+    }
+
+    // The first frame of a track starts its first fragment.
+    auto refusing = mp4::FragmentWriter::create(ac4_track(), options);
+    REQUIRE(refusing.has_value());
+    const auto not_sync = refusing->push(frames[0], false);
+    REQUIRE_FALSE(not_sync.has_value());
+    CHECK(not_sync.error() == mp4::MuxError::kInvalidOptions);
+}
+
+TEST_CASE("fragment() lists a caller's brands after the structural ones", "[fmp4][ac4]") {
+    const auto frames = opaque_frames(3);
+    const auto out = mp4::fragment(
+        ac4_track(), frames,
+        mp4::FragmentOptions{.frames_per_fragment = 3, .brands = {"ca4m", "ca4s"}});
+    REQUIRE(out.has_value());
+    const auto init = parse(out->init_segment);
+    const auto* ftyp = find(init, "ftyp");
+    REQUIRE(ftyp != nullptr);
+    const auto brands = read_brand_box(out->init_segment, *ftyp);
+    CHECK(brands.compatible_brands == std::vector<std::string>{"iso6", "cmfc", "ca4m", "ca4s"});
+    const auto segment = parse(out->media_segments.front().bytes);
+    const auto* styp = find(segment, "styp");
+    REQUIRE(styp != nullptr);
+    CHECK(read_brand_box(out->media_segments.front().bytes, *styp).compatible_brands ==
+          brands.compatible_brands);
+
+    const auto short_brand =
+        mp4::fragment(ac4_track(), frames, mp4::FragmentOptions{.brands = {"ca4"}});
+    REQUIRE_FALSE(short_brand.has_value());
+    CHECK(short_brand.error() == mp4::MuxError::kInvalidOptions);
+    const auto long_brand =
+        mp4::FragmentWriter::create(ac4_track(), mp4::FragmentOptions{.brands = {"toolong"}});
+    REQUIRE_FALSE(long_brand.has_value());
+    CHECK(long_brand.error() == mp4::MuxError::kInvalidOptions);
+}
+
+TEST_CASE("DASH writes a caller's channel configuration and supplemental properties",
+          "[dash][ac4]") {
+    const auto frames = opaque_frames(4);
+    auto track = ac4_track();
+    track.rfc6381 = "ac-4.02.01.00";
+    const auto out = mp4::fragment(track, frames, mp4::FragmentOptions{.frames_per_fragment = 2});
+    REQUIRE(out.has_value());
+    const mp4::DashOptions options{
+        .channel_configuration =
+            mp4::Descriptor{.scheme_id_uri = "urn:mpeg:mpegB:cicp:ChannelConfiguration",
+                            .value = "6"},
+        .supplemental_properties = {
+            {.scheme_id_uri = "tag:dolby.com,2017:dash:audio_frame_rate:2017", .value = "375/16"},
+            {.scheme_id_uri = "urn:example:a&b", .value = "<\"x\">"}}};
+    const auto snippet = mp4::build_dash_adaptation_set(track, out->media_segments, options);
+    CHECK(snippet.find("codecs=\"ac-4.02.01.00\"") != std::string::npos);
+    CHECK(snippet.find("<AudioChannelConfiguration "
+                       "schemeIdUri=\"urn:mpeg:mpegB:cicp:ChannelConfiguration\" value=\"6\"/>") !=
+          std::string::npos);
+    // The caller's configuration replaces the default one, not joins it.
+    CHECK(snippet.find("<AudioChannelConfiguration") ==
+          snippet.rfind("<AudioChannelConfiguration"));
+    const auto rate = snippet.find(
+        "<SupplementalProperty schemeIdUri=\"tag:dolby.com,2017:dash:audio_frame_rate:2017\" "
+        "value=\"375/16\"/>");
+    const auto escaped = snippet.find(
+        "<SupplementalProperty schemeIdUri=\"urn:example:a&amp;b\" value=\"&lt;&quot;x&quot;&gt;\"/>");
+    REQUIRE(rate != std::string::npos);
+    REQUIRE(escaped != std::string::npos);
+    CHECK(rate < escaped);
+    CHECK(escaped < snippet.find("<SegmentTemplate"));
+}

@@ -116,7 +116,7 @@ std::string Fmp4FolderWriter::write_manifests(const mp4::FragmentWriter& writer,
             : static_cast<double>(window.back().base_media_decode_time +
                                   window.back().duration_samples -
                                   window.front().base_media_decode_time) /
-                  static_cast<double>(track_.sample_rate);
+                  static_cast<double>(mp4::timescale_of(track_));
     const mp4::MpdOptions mpd_options{.is_static = finished,
                                       .availability_start_time = availability_start_,
                                       .time_shift_buffer_depth_seconds = window_seconds};

@@ -66,10 +66,31 @@ using manifest_detail::segment_infos;
 // SupplementalProperty because ISO/IEC 23009-1's RepresentationBaseType is a
 // sequence, not a choice: both must also precede the SegmentTemplate that
 // follows them.
+// A caller's text as an XML attribute value: the four characters that would
+// end or break one, escaped (XML 1.0 §2.4 and §3.1).
+[[nodiscard]] std::string xml_attribute(std::string_view text) {
+    std::string out;
+    out.reserve(text.size());
+    for (const char c : text) {
+        switch (c) {
+            case '&': out += "&amp;"; break;
+            case '<': out += "&lt;"; break;
+            case '>': out += "&gt;"; break;
+            case '"': out += "&quot;"; break;
+            default: out += c; break;
+        }
+    }
+    return out;
+}
+
 [[nodiscard]] std::string build_representation_descriptors(const AudioTrack& track,
                                                            const DashOptions& options) {
     std::string out;
-    if (options.dolby_channel_configuration.empty()) {
+    if (options.channel_configuration.has_value()) {
+        out += fmt::format("    <AudioChannelConfiguration schemeIdUri=\"{}\" value=\"{}\"/>\n",
+                           xml_attribute(options.channel_configuration->scheme_id_uri),
+                           xml_attribute(options.channel_configuration->value));
+    } else if (options.dolby_channel_configuration.empty()) {
         out += fmt::format(
             "    <AudioChannelConfiguration "
             "schemeIdUri=\"urn:mpeg:mpegB:cicp:ChannelConfiguration\" value=\"{}\"/>\n",
@@ -91,6 +112,10 @@ using manifest_detail::segment_infos;
             "value=\"{}\"/>\n",
             *options.joc_complexity_index);
     }
+    for (const Descriptor& property : options.supplemental_properties) {
+        out += fmt::format("    <SupplementalProperty schemeIdUri=\"{}\" value=\"{}\"/>\n",
+                           xml_attribute(property.scheme_id_uri), xml_attribute(property.value));
+    }
     return out;
 }
 
@@ -99,7 +124,12 @@ using manifest_detail::segment_infos;
 std::string build_dash_adaptation_set(const AudioTrack& track,
                                       std::span<const SegmentInfo> segments,
                                       const DashOptions& options) {
-    const auto bandwidth = manifest_detail::estimate_bandwidth_bps(segments, track.sample_rate);
+    // The segments' durations and decode times count in the track's
+    // timescale, which the SegmentTemplate states; @audioSamplingRate stays
+    // the sample rate (an AC-4 track at 29.97 fps counts at 240 000, ETSI TS
+    // 103 190-2 Table E.1, and is still 48 kHz audio, G.2.2).
+    const std::uint32_t timescale = timescale_of(track);
+    const auto bandwidth = manifest_detail::estimate_bandwidth_bps(segments, timescale);
     // @startNumber is the number $Number$ takes for the timeline's FIRST <S>
     // entry (ISO/IEC 23009-1 §5.3.9.5.3), which for a rolling live window is
     // not 1 - it is whichever segment the window now begins at. Empty-segment
@@ -141,9 +171,8 @@ std::string build_dash_adaptation_set(const AudioTrack& track,
         "  </Representation>\n"
         "</AdaptationSet>\n",
         options.representation_id, hls_codec_string(track), bandwidth, track.sample_rate,
-        build_representation_descriptors(track, options), track.sample_rate,
-        options.init_segment_uri, options.segment_uri_template, start_number,
-        build_segment_timeline(segments));
+        build_representation_descriptors(track, options), timescale, options.init_segment_uri,
+        options.segment_uri_template, start_number, build_segment_timeline(segments));
 }
 
 std::string build_dash_adaptation_set(const AudioTrack& track,
@@ -166,7 +195,7 @@ std::string build_dash_mpd(const AudioTrack& track, std::span<const SegmentInfo>
             total_samples += segment.duration_samples;
         }
         const double total_seconds =
-            static_cast<double>(total_samples) / static_cast<double>(track.sample_rate);
+            static_cast<double>(total_samples) / static_cast<double>(timescale_of(track));
         return fmt::format(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
             "<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" type=\"static\" "
