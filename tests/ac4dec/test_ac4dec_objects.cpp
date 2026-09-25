@@ -270,7 +270,8 @@ TEST_CASE("A-JOC objects carry their dry coefficients' share of each downmix sig
     }
 }
 
-TEST_CASE("a static downmix's core objects are its LFE and its bed at L R C Ls and Rs", "[ac4dec][objects]") {
+TEST_CASE("a static downmix's core objects are its LFE and its bed at L R C Ls and Rs",
+          "[ac4dec][objects]") {
     // src/ac4dec/ERRATA.md, "A static downmix's inputs": in core decoding the
     // objects of an A-JOC substream over a static 5.1 downmix are its bed.
     ObjectCase c;
@@ -283,8 +284,8 @@ TEST_CASE("a static downmix's core objects are its LFE and its bed at L R C Ls a
     const BuiltObjectStream stream = ac4dec_test::build_objects(c, 4);
     const Decoded decoded = decode_all(stream, ac4::DecodingMode::kCore);
     using S = ac4::Speaker;
-    const std::array<S, 6> speakers = {S::kLfe, S::kLeft, S::kRight, S::kCentre, S::kLeftSurround,
-                                       S::kRightSurround};
+    const std::array<S, 6> speakers = {S::kLfe,    S::kLeft,         S::kRight,
+                                       S::kCentre, S::kLeftSurround, S::kRightSurround};
     REQUIRE(decoded.last.size() == speakers.size());
     for (std::size_t o = 0; o < speakers.size(); ++o) {
         CAPTURE(o);
