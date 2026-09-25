@@ -1,10 +1,10 @@
 """Score ac3cli's AC-4 decoding of DEE's streams against the sources they were encoded from.
 
-For each leg the decoder turns into PCM - SIMPLE and ASPX mono, stereo and 5.1, and DEE's
-immersive stereo (IMS), at frame_rate_index 13 (see src/ac4dec/include/ac4dec/decoder.hpp) - this
-decodes the stream with `ac3cli decode`, aligns the output with its reference by
-cross-correlation, fits a least-squares gain per channel, and checks (planning/ac4.md, the
-decoder's ladder, item 3):
+For each leg the decoder turns into PCM - SIMPLE and ASPX mono, stereo and 5.1, 5.1 in ASPX_ACPL_2
+and ASPX_ACPL_3, and DEE's immersive stereo (IMS), at frame_rate_index 13 (see
+src/ac4dec/include/ac4dec/decoder.hpp) - this decodes the stream with `ac3cli decode`, aligns the
+output with its reference by cross-correlation, fits a least-squares gain per channel, and checks
+(planning/ac4.md, the decoder's ladder, item 3):
 
   lag      the output lags the source by the leg's LAG: DEE's encoder delay plus this decoder's,
            1 313 samples at index 13 (Part 1 Table 188's d_pcm, the QMF banks' 577 samples and six
@@ -32,7 +32,23 @@ decoder's ladder, item 3):
   MOS      ViSQOL's MOS-LQO (quality_race.perceptual_score) at or above its floor, the first
            measurement less 0.1, where visqol-python is installed.
   routing  on a tone leg, each channel's own tone at least 40 dB above every other channel's tone
-           in it.
+           in it; in the A-CPL legs, at least the margin first measured less 3 dB, since the
+           parameters are per band and a tone near a band's edge reaches its neighbour.
+
+The A-CPL legs code a pair of downmixes and make the surrounds of them (and in ASPX_ACPL_3 the
+centre), so their channels are scored as A-CPL rebuilds them:
+
+  downmix  the coded downmixes, recovered from the output, against the source's as waveforms, SNR
+           below the crossover at or above its floor, the first measurement less 1 dB: in
+           ASPX_ACPL_2 (L + Ls / sqrt 2) / 2 and its mirror, which the upmix keeps exactly
+           (Part 1 Pseudocode 117), with C and the LFE as they are; in ASPX_ACPL_3 the Lo/Ro
+           downmix over 1 + sqrt 2, which it keeps as closely as gamma's quantisation allows
+           (Pseudocode 118), with the LFE.
+  bands    per A-CPL parameter band (Part 1 Table 197, 15 bands) over 2 048-sample frames, for the
+           pairs A-CPL rebuilds, (L, Ls) and (R, Rs): the mean distance of the output's level
+           difference from the source's, and of its correlation, the larger of the two pairs', at
+           or below ceilings of the first measurement plus 0.5 dB and 0.05. Music and film legs
+           only; a tone leg's bands hold little but its tones.
 
 The crossovers and the subband groups come from the leg's first aspx_config() and the
 aspx_xover_subband_offset of each aspx_data element in that frame, a channel's being the element
@@ -98,6 +114,18 @@ ASPX_CONFIG_FIELDS = ("aspx_master_freq_scale", "aspx_start_freq", "aspx_stop_fr
 # the aspx_data element, in syntax order, that carries each channel, and None for the LFE, which
 # A-SPX leaves out and which is scored over its whole band.
 ASPX_UNIT = {1: (0,), 2: (0, 0), 5: (0, 0, 2, 1, 1), 6: (0, 0, 2, None, 1, 1)}
+# The A-CPL legs' aspx_data elements (Part 1 Table 213, codec modes 3 and 4 of the 5.X element),
+# by the decoder's channel order for 5.1: ASPX_ACPL_2 carries L and R in element 0 and C in element
+# 1; ASPX_ACPL_3 carries L and R alone. The downmixes are scored below element 0's crossover.
+ACPL_UNIT = {"ASPX_ACPL_2": (0, 0, 1, None, None, None),
+             "ASPX_ACPL_3": (0, 0, None, None, None, None)}
+# Table 197's first QMF subband of each of the 15 parameter bands, and the end.
+ACPL_BAND_SUBBANDS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 14, 18, 23, 35, 64]
+# The pairs A-CPL rebuilds from one downmix each, by the decoder's 5.1 channel order.
+ACPL_PAIRS = ((0, 4), (1, 5))
+ACPL_ILD_MARGIN_DB = 0.5
+ACPL_RHO_MARGIN = 0.05
+ACPL_ROUTING_MARGIN_DB = 3.0
 # The LFE of a 5.1 leg, by the decoder's channel order. DEE low-passes the LFE before it codes it:
 # from the source to the decoded LFE the level runs 0.2 to 0.4 dB under unity up to 100 Hz and
 # falls 12 dB by 120 to 160 Hz, with the phase of a filter near 120 Hz (-54 degrees at 110 Hz),
@@ -193,6 +221,76 @@ PINS = {
     "ims-music-144-native": ((13.6, 13.7), 1.43, None, 4.53),
     "ims-music-256-native": ((13.7, 13.9), 0.97, None, 4.55),
     "ims-music-320-native": ((13.7, 13.9), 0.97, None, 4.55),
+}
+# The A-CPL legs: (floors of the downmixes' SNRs, in ASPX_ACPL_2 (L + Ls / sqrt 2) / 2, its mirror,
+# C and the LFE, in ASPX_ACPL_3 Lo and Ro over 1 + sqrt 2 and the LFE; ceilings of the level
+# difference's distance in dB and of the correlation's, per parameter band, or None for a tone
+# leg; the routing floor in dB for a tone leg, else None; the LSD ceiling; the MOS floor or None).
+# Measured 2026-09-25 with the decoder of phase D5: the committed legs, then the gold set's.
+ACPL_PINS = {
+    "ac4-51-film-96": (
+        (23.7, 23.9, -3.3),
+        (3.95, 3.80, 3.93, 4.19, 3.88, 3.49, 3.67, 3.75, 4.10, 3.45, 3.11, 3.66, 4.50, 2.66, None),
+        (0.368, 0.402, 0.328, 0.373, 0.346, 0.331, 0.362, 0.415, 0.438, 0.365, 0.408, 0.413, 0.471,
+         0.334, None),
+        None, 5.17, 4.42),
+    "ac4-51-music-128": (
+        (20.4, 20.9, 23.5, -3.3),
+        (3.14, 3.80, 4.23, 4.45, 3.85, 3.57, 3.51, 3.50, 3.29, 2.93, 2.41, 2.32, 2.29, 2.40, None),
+        (0.404, 0.336, 0.322, 0.392, 0.330, 0.309, 0.318, 0.323, 0.322, 0.304, 0.270, 0.243, 0.226,
+         0.244, None),
+        None, 3.87, 4.48),
+    "51-film-96": (
+        (22.8, 22.8, -3.2),
+        (4.07, 3.75, 3.69, 3.97, 4.04, 3.64, 3.54, 3.76, 3.54, 3.20, 3.15, 3.39, 3.67, 2.92, None),
+        (0.351, 0.378, 0.343, 0.429, 0.352, 0.329, 0.347, 0.407, 0.406, 0.408, 0.454, 0.456, 0.516,
+         0.418, None),
+        None, 5.46, 4.37),
+    "51-film-128": (
+        (16.0, 15.9, 28.6, -3.2),
+        (3.40, 3.47, 3.70, 4.20, 4.04, 3.69, 3.68, 3.36, 3.22, 2.79, 2.47, 2.44, 2.43, 2.42, None),
+        (0.340, 0.316, 0.318, 0.425, 0.335, 0.301, 0.316, 0.320, 0.311, 0.290, 0.249, 0.246, 0.241,
+         0.249, None),
+        None, 4.10, 4.50),
+    "51-film-144": (
+        (18.6, 18.6, 30.7, -3.2),
+        (3.41, 3.47, 3.68, 4.13, 4.01, 3.67, 3.69, 3.44, 3.21, 2.76, 2.49, 2.43, 2.39, 2.44, None),
+        (0.337, 0.316, 0.317, 0.424, 0.335, 0.305, 0.318, 0.310, 0.306, 0.284, 0.255, 0.239, 0.239,
+         0.247, None),
+        None, 4.07, 4.50),
+    "51-music-96": (
+        (21.3, 21.4, -3.2),
+        (3.54, 3.50, 3.66, 3.95, 3.62, 3.60, 3.59, 3.56, 3.34, 2.89, 2.73, 2.88, 2.59, 2.91, None),
+        (0.339, 0.413, 0.355, 0.421, 0.347, 0.355, 0.328, 0.324, 0.327, 0.316, 0.296, 0.334, 0.338,
+         0.346, None),
+        None, 4.93, 4.52),
+    "51-music-128": (
+        (20.2, 20.3, 24.8, -3.2),
+        (3.43, 3.23, 3.52, 3.94, 3.90, 3.71, 3.68, 3.40, 3.21, 2.72, 2.36, 2.30, 2.37, 2.45, None),
+        (0.330, 0.352, 0.366, 0.456, 0.344, 0.329, 0.311, 0.323, 0.302, 0.278, 0.255, 0.246, 0.243,
+         0.248, None),
+        None, 4.07, 4.52),
+    "51-music-144": (
+        (22.3, 22.3, 26.7, -3.2),
+        (3.42, 3.24, 3.47, 3.97, 3.91, 3.76, 3.68, 3.41, 3.21, 2.66, 2.44, 2.32, 2.30, 2.42, None),
+        (0.329, 0.350, 0.368, 0.458, 0.348, 0.328, 0.305, 0.331, 0.302, 0.278, 0.245, 0.243, 0.242,
+         0.244, None),
+        None, 4.04, 4.53),
+    "51-tones-96": (
+        (44.7, 43.3, 18.7),
+        None,
+        None,
+        5.4, 18.19, 4.63),
+    "51-tones-128": (
+        (46.9, 47.2, 52.5, 18.7),
+        None,
+        None,
+        12.4, 15.10, 4.63),
+    "51-tones-144": (
+        (46.9, 47.2, 52.5, 18.7),
+        None,
+        None,
+        12.4, 15.10, 4.63),
 }
 # DEE's 2.0 streams carry the same audio from 256 kbps up, the rest of each frame being fill,
 # so every rate from 256 to 768 decodes to the same samples and takes the same pins.
@@ -401,7 +499,8 @@ def lo_ro(five_one):
 
 
 def chosen(leg):
-    return (leg.get("codec_mode") in ("SIMPLE", "ASPX") and leg.get("frame_rate_index") == 13
+    return (leg.get("codec_mode") in ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
+            and leg.get("frame_rate_index") == 13
             and leg.get("output_channel_layout") in ("stereo", "mono", "IMS", "5.1")
             and any(option.startswith("measure_only") for option in leg.get("options", [])))
 
@@ -436,6 +535,168 @@ def legs_gold(gold):
             for name, leg in sorted(manifest["legs"].items()) if chosen(leg)]
 
 
+def acpl_downmixes(signal, codec_mode):
+    """The signals the A-CPL leg's waveform codes, as the output or the source carries them."""
+    k = 1.0 / np.sqrt(2.0)
+    if codec_mode == "ASPX_ACPL_3":
+        lo = lo_ro(signal) / (1.0 + np.sqrt(2.0))
+        return [lo[:, 0], lo[:, 1], signal[:, 3]]
+    return [(signal[:, 0] + k * signal[:, 4]) / 2.0, (signal[:, 1] + k * signal[:, 5]) / 2.0,
+            signal[:, 2], signal[:, 3]]
+
+
+def acpl_band_scores(ref, out):
+    """Per parameter band, the larger over ACPL_PAIRS of the mean |ILD_out - ILD_ref| in dB and of
+    the mean |rho_out - rho_ref|, over half-overlapped Hann frames where both channels of the
+    source's pair are above TILE_FLOOR_DB per subband; None for a band where no frame is (the
+    sources hold nothing above 13 kHz)."""
+    window = np.hanning(FRAME)
+    bin_hz = RATE / FRAME
+    full_scale = (FRAME / 4.0) ** 2
+    starts = range(0, len(ref) - FRAME, FRAME // 2)
+    spec_r = np.array([np.fft.rfft(window[:, None] * ref[s:s + FRAME], axis=0) for s in starts])
+    spec_o = np.array([np.fft.rfft(window[:, None] * out[s:s + FRAME], axis=0) for s in starts])
+    ild, rho = [], []
+    for low, high in itertools.pairwise(ACPL_BAND_SUBBANDS):
+        first = round(low * subband_hz() / bin_hz)
+        last = round(high * subband_hz() / bin_hz)
+        floor = full_scale * (high - low) * 10.0 ** (TILE_FLOOR_DB / 10.0)
+        band_ild, band_rho = None, None
+        for a, b in ACPL_PAIRS:
+            measures = []
+            for spec in (spec_r, spec_o):
+                xa, xb = spec[:, first:last, a], spec[:, first:last, b]
+                ea, eb = np.sum(np.abs(xa) ** 2, axis=1), np.sum(np.abs(xb) ** 2, axis=1)
+                cross = np.sum((xa * np.conj(xb)).real, axis=1)
+                measures.append((ea, eb, cross))
+            (ea_r, eb_r, c_r), (ea_o, eb_o, c_o) = measures
+            keep = (ea_r > floor) & (eb_r > floor) & (ea_o > 0.0) & (eb_o > 0.0)
+            if not keep.any():
+                continue
+            ild_r = 10.0 * np.log10(ea_r[keep] / eb_r[keep])
+            ild_o = 10.0 * np.log10(ea_o[keep] / eb_o[keep])
+            rho_r = c_r[keep] / np.sqrt(ea_r[keep] * eb_r[keep])
+            rho_o = c_o[keep] / np.sqrt(ea_o[keep] * eb_o[keep])
+            band_ild = max(band_ild or 0.0, float(np.mean(np.abs(ild_o - ild_r))))
+            band_rho = max(band_rho or 0.0, float(np.mean(np.abs(rho_o - rho_r))))
+        ild.append(band_ild)
+        rho.append(band_rho)
+    return ild, rho
+
+
+def routing_margins(out):
+    """Per channel of a tone leg, its own tone's power over the loudest other tone in it, in dB."""
+    margins = []
+    for c in range(out.shape[1]):
+        own = tone_power(out[:, c], baseline.TONE_HZ[c])
+        leak = max(tone_power(out[:, c], baseline.TONE_HZ[other])
+                   for other in range(out.shape[1]) if other != c)
+        margins.append(10.0 * np.log10(own / max(leak, 1e-30)))
+    return margins
+
+
+def acpl_pin_text(name, floors, ild, rho, rest):
+    """An ACPL_PINS entry as --measure prints it, each field on its own lines within 100
+    columns."""
+    indent = " " * 8
+
+    def field(values, last):
+        if values is None:
+            return [f"{indent}None{last}"]
+        lines, line = [], indent + "("
+        for i, value in enumerate(values):
+            closing = "," * (len(values) == 1) + ")" if i == len(values) - 1 else ", "
+            piece = value + closing
+            if len(line) + len(piece.rstrip()) > 99:
+                lines.append(line.rstrip())
+                line = indent + " "
+            line += piece
+        lines.append(line + last)
+        return lines
+
+    text = [f'    "{name}": (']
+    text += field(floors, ",") + field(ild, ",") + field(rho, ",")
+    text.append(f"{indent}{', '.join(rest)}),")
+    return "\n".join(text)
+
+
+def score_acpl(name, codec_mode, source_name, ref, out, offsets, config, args, failures, pins):
+    """An A-CPL leg's downmix, band and routing checks (the docstring's A-CPL paragraph)."""
+    units = ACPL_UNIT[codec_mode]
+    downmix_units = [u for u in units if u is not None]
+    if len(offsets) <= max(downmix_units):
+        failures.append(f"{name}: no aspx_data elements for its channels in its syntax trace")
+        return
+    groups = aspx_groups(config, offsets[0])
+    refs, outs = acpl_downmixes(ref, codec_mode), acpl_downmixes(out, codec_mode)
+    # Which of the downmixes an aspx_data element carries, and the LFE (last) over the whole band.
+    carried = [0, 0, 1] if codec_mode == "ASPX_ACPL_2" else [0, 0]
+    snrs, cells = [], []
+    for i, (r, o) in enumerate(zip(refs, outs, strict=True)):
+        if i < len(carried):
+            top_hz = (aspx_groups(config, offsets[carried[i]])[0] - 1) * subband_hz()
+            snr = band_snr(r, o, band_gain(r, o, top_hz), top_hz)
+        else:
+            gain = float(np.dot(r, o) / np.dot(r, r))
+            error = o - gain * r
+            snr = 10.0 * np.log10(np.dot(gain * r, gain * r) / np.dot(error, error))
+        snrs.append(float(snr))
+        cells.append(f"dmx{i} {snr:.2f} dB")
+    tones = source_name.startswith("tones")
+    ild, rho = (None, None) if tones else acpl_band_scores(ref, out)
+    routing = min(routing_margins(out)) if tones else None
+    lsd, _ = quality_race.spectral_scores(ref, out)
+    mos = quality_race.perceptual_score(ref, out, RATE)
+    bands_text = ("" if ild is None else
+                  f"  ILD {max(v for v in ild if v is not None):.2f} dB, "
+                  f"rho {max(v for v in rho if v is not None):.3f} (worst band)")
+    routing_text = "" if routing is None else f"  routing {routing:.1f} dB"
+    mos_text = "-" if mos is None else f"{mos:.2f}"
+    print(f"{name:<32} {codec_mode}  {'  '.join(cells)}{bands_text}{routing_text}  LSD {lsd:.2f} dB"
+          f"  MOS {mos_text} (xover {groups[0] * subband_hz() / 1000:.2f} kHz)", flush=True)
+    floors = [f"{s - SNR_MARGIN_DB:.1f}" for s in snrs]
+    ild_pin = None if ild is None else ["None" if v is None else f"{v + ACPL_ILD_MARGIN_DB:.2f}"
+                                        for v in ild]
+    rho_pin = None if rho is None else ["None" if v is None else f"{v + ACPL_RHO_MARGIN:.3f}"
+                                        for v in rho]
+    routing_pin = "None" if routing is None else f"{routing - ACPL_ROUTING_MARGIN_DB:.1f}"
+    mos_pin = "None" if mos is None else f"{mos - MOS_MARGIN:.2f}"
+    pins.append(acpl_pin_text(name, floors, ild_pin, rho_pin,
+                              [routing_pin, f"{lsd + LSD_MARGIN_DB:.2f}", mos_pin]))
+    if args.measure:
+        return
+    pin = ACPL_PINS.get(name)
+    if pin is None:
+        failures.append(f"{name}: nothing pinned in ACPL_PINS")
+        return
+    snr_floors, ild_ceilings, rho_ceilings, routing_floor, lsd_ceiling, mos_floor = pin
+    for i, snr in enumerate(snrs):
+        if snr < snr_floors[i]:
+            failures.append(f"{name} downmix {i}: SNR {snr:.2f} dB below its floor {snr_floors[i]}")
+    if ild_ceilings is not None:
+        for band, (value, ceiling) in enumerate(zip(ild, ild_ceilings, strict=True)):
+            if ceiling is None or value is None:
+                if (ceiling is None) != (value is None):
+                    failures.append(f"{name} band {band}: frames to score where none were pinned, "
+                                    "or none where some were")
+                continue
+            if value > ceiling:
+                failures.append(f"{name} band {band}: level difference {value:.2f} dB from the "
+                                f"source's, above its ceiling {ceiling}")
+        for band, (value, ceiling) in enumerate(zip(rho, rho_ceilings, strict=True)):
+            if ceiling is None or value is None:
+                continue
+            if value > ceiling:
+                failures.append(f"{name} band {band}: correlation {value:.3f} from the source's, "
+                                f"above its ceiling {ceiling}")
+    if routing_floor is not None and routing < routing_floor:
+        failures.append(f"{name}: routing margin {routing:.1f} dB below its floor {routing_floor}")
+    if lsd > lsd_ceiling:
+        failures.append(f"{name}: LSD {lsd:.2f} dB above its ceiling {lsd_ceiling}")
+    if mos is not None and mos_floor is not None and mos < mos_floor:
+        failures.append(f"{name}: MOS {mos:.2f} below its floor {mos_floor}")
+
+
 def pin_text(name, snrs, lsd, tiles, mos):
     floors = ", ".join(f"{snr - SNR_MARGIN_DB:.1f}" for snr in snrs)
     tile = "None" if tiles is None else f"{tiles + TILE_MARGIN_DB:.2f}"
@@ -450,12 +711,15 @@ def main():
     parser.add_argument("--work", type=Path, help="scratch directory (default: a temporary one)")
     parser.add_argument("--measure", action="store_true",
                         help="print every leg's measurements and check nothing")
+    parser.add_argument("--only", nargs="+", metavar="LEG", help="score only these legs")
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory() as temporary:
         work = args.work or Path(temporary)
         work.mkdir(parents=True, exist_ok=True)
         legs = legs_gold(args.gold) if args.gold else legs_committed(work)
+        if args.only:
+            legs = [leg for leg in legs if leg[0] in args.only]
         if not legs:
             raise SystemExit("no leg to score")
         failures = []
@@ -473,6 +737,17 @@ def main():
                                 f"{reference.shape[1]}")
                 continue
             lag, ref, out = align(reference, decoded)
+            if not args.measure and lag != LAG[encoder]:
+                failures.append(f"{name}: lag {lag}, expected {LAG[encoder]}")
+            if codec_mode in ACPL_UNIT:
+                found = trace_values(work / f"{name}.trace")
+                if found is None:
+                    failures.append(f"{name}: no aspx_config() in its syntax trace")
+                    continue
+                config, offsets = found
+                score_acpl(name, codec_mode, source_name, ref, out, offsets, config, args, failures,
+                           pins)
+                continue
             channel_groups = [None] * reference.shape[1]
             if codec_mode == "ASPX":
                 found = trace_values(work / f"{name}.trace")
@@ -525,8 +800,6 @@ def main():
             pins.append(pin_text(name, snrs, float(lsd), tile_mean, mos))
             if args.measure:
                 continue
-            if lag != LAG[encoder]:
-                failures.append(f"{name}: lag {lag}, expected {LAG[encoder]}")
             pin = PINS.get(name)
             if pin is None:
                 failures.append(f"{name}: nothing pinned in PINS")
@@ -555,7 +828,7 @@ def main():
                             failures.append(f"{name} ch{c}: its tone only {margin:.1f} dB above "
                                             f"ch{other}'s")
         if args.measure:
-            print("\nPINS lines:")
+            print("\nPINS and ACPL_PINS lines:")
             print("\n".join(pins))
             return 0
         if failures:
@@ -563,7 +836,8 @@ def main():
             for failure in failures:
                 print(f"  {failure}")
             return 1
-        print(f"\n{len(legs)} legs: lag, level, SNR, tiles, LSD, MOS and routing all hold")
+        print(f"\n{len(legs)} legs: lag, level, SNR, tiles, A-CPL's downmixes and bands, LSD, MOS "
+              "and routing all hold")
         return 0
 
 

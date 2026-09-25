@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/2_0-acpl1-stereoproc.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	7	17	0xf54cfa6c
+0	1	audio	666	4750	0xe8685f90
+1	0	presentation	7	17	0xf54cfa6c
+1	1	audio	651	4814	0x4ab6c06b
+2	0	presentation	7	17	0xf54cfa6c
+2	1	audio	649	4614	0x6ffed6dc
+3	0	presentation	7	17	0xf54cfa6c
+3	1	audio	652	4838	0x99be11e0

@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/5_0-acpl2-config0.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	10	20	0x42bc50f5
+0	1	audio	1053	6958	0x796b8aa9
+1	0	presentation	10	20	0x42bc50f5
+1	1	audio	1038	6838	0x1b9ed913
+2	0	presentation	10	20	0x42bc50f5
+2	1	audio	1040	7062	0x74644188
+3	0	presentation	10	20	0x42bc50f5
+3	1	audio	1042	7030	0x90aff3e6

@@ -418,12 +418,24 @@ Later phases add the readings their processing needs.
 
 ## A-CPL
 
+The first two entries are syntax, which both transcriptions read alike. The rest are the decoding of
+clause 5.7.7 (phase D5), the decoder's readings: the Python reference transcribes the syntax only. The
+builder of the constructed A-CPL streams (`tests/ac4dec/ac4dec_constructed.cpp`) works each channel's
+tone back through Pseudocodes 115 to 120 and takes the same readings, as the encoder's A-CPL (phase E4)
+must. The evidence for the decoding's readings is DEE's 5.1 streams in ASPX_ACPL_2 (128 and 144 kbps)
+and ASPX_ACPL_3 (96 kbps), scored per parameter band against their sources
+(`tools/checks/score_ac4_decode.py`), the text, or both. librempeg cannot settle any of them: it
+decodes those streams' coded pair as L and R and leaves Ls and Rs silent.
+
 ### Partial coupling starts at acpl_param_band
 
 - **Where:** Part 1 Pseudocode 121, p. 244, against `acpl_huff_data()` (Table 65, p. 61): the table sends
   bands from `start_band`; the pseudocode's frequency and time differencing run from band 0.
 - **Reading:** the syntax as Table 65 writes it; the pseudocode's differencing starts at `start_band`
-  when `acpl_param_band` is not 0 (PARTIAL mode). Not syntax; recorded for the A-CPL phase.
+  when `acpl_param_band` is not 0 (PARTIAL mode). The bands below it carry no values: 0 after
+  dequantisation, and 0 in the quantised history that DIFF_TIME adds to. Only subbands below
+  `acpl_qmf_band` lie in them, which Pseudocode 116 mid-side decodes without any parameter.
+- **Evidence:** Text; the constructed ASPX_ACPL_1 streams, whose `acpl_param_band` is 4 to 8.
 
 ### Codebook offsets
 
@@ -431,6 +443,120 @@ Later phases add the readings their processing needs.
 - **Reading:** the trace records codebook indices before `cb_off`. Dequantisation subtracts `cb_off` for
   A-CPL's F0 codebooks and every DF and DT codebook, and not for A-SPX's F0 codebooks, whose tables print
   none.
+
+### Values outside the dequantisation tables
+
+- **Where:** Part 1 Pseudocode 121 and Tables 203 to 208, pp. 244 to 246: nothing bounds what differential
+  decoding adds up to.
+- **Reading:** a quantised value outside its table (alpha 0 to 32, beta 0 to 8, beta3 0 to 16 and gamma
+  -20 to 20 at fine quantisation, half those at coarse, the ranges of the F0 codebooks) fails the frame
+  as an invalid stream, as the A-SPX values the syntax cannot follow do. The frame is refused when it is
+  read, before its parameters wait d_ctrl frames, and the history DIFF_TIME adds to moves on only with a
+  frame that is kept.
+- **Evidence:** Text.
+
+### When A-CPL's parameters apply
+
+- **Where:** Part 1 5.7.2 (d_ctrl) and 5.7.7.1, pp. 193 and 232: A-CPL takes A-SPX's output, and its
+  interpolation runs over the frame's time slots; nothing places its parameters in time otherwise.
+- **Reading:** a frame's A-CPL data wait d_ctrl frames with its A-SPX data, and interpolate over the time
+  slots of the matrix A-SPX puts out for that frame, `ts_offset_hfgen` slots behind the QMF analysis.
+- **Evidence:** Observation. On DEE's 5.1 music at 128 kbps the mean distance of the output's level
+  difference from the source's, over the 15 bands and both pairs, is 2.60 dB; applying each frame's
+  parameters a frame earlier gives 3.84 dB and a frame later 3.60 dB, and the film and 96 kbps legs move
+  alike.
+
+### The transient ducker's energy
+
+- **Where:** Part 1 5.7.7.4.3, pp. 236 to 238: Pseudocode 112 names p_energy "the energy per parameter
+  band of the input channel", Pseudocode 113 sums `|x[sb]|^2`, and Pseudocode 114's
+  `applyTransientDucker(x)` scales the decorrelator's output. Which channel is the input is not said: the
+  decorrelator's input, or the ducker's.
+- **Reading:** the ducker's own input, the decorrelator's output that its gains scale, the one signal
+  `applyTransientDucker()` is given.
+- **Evidence:** Observation, and weak. On DEE's 5.1 music at 128 kbps the per-band distances from the
+  source are 2.604 dB and 0.246 in correlation with this reading, and 2.622 dB and 0.249 with the
+  decorrelator's input; the film and 96 kbps legs order alike, by as little. Without the ducker at all
+  the distances are 2.605 dB and 0.245: on these measures it barely acts.
+
+### The transient ducker's time step
+
+- **Where:** Part 1 Pseudocode 112, p. 236, keeps its arrays "of the previous frame"; Pseudocode 113, p.
+  237, computes p_energy from one subsample per subband.
+- **Reading:** the ducker's frame is a QMF time slot: the peak decay, the smoothed energies and the gains
+  move on slot by slot, and each slot's gains scale that slot. ALPHA then decays the peak with a time
+  constant of about four slots, 5 ms.
+- **Evidence:** Text.
+
+### The transient ducker's bands
+
+- **Where:** Part 1 Pseudocodes 112 to 114, pp. 236 to 238: `acpl_max_num_param_bands = 15`, and
+  `sb_to_pb()` by Table 197 without a column.
+- **Reading:** the 15-band column, whatever `acpl_num_param_bands` the data element sends.
+- **Evidence:** Text; DEE sends 15 bands in every frame, so its streams do not decide.
+
+### Products and sums interpolate from their own acpl_param_prev
+
+- **Where:** Part 1 Pseudocodes 118 and 119, pp. 241 and 242, interpolate products and sums of
+  parameters (`g1*a`, `b3*a`, `g1_dq + g3_dq + g5_dq`), and Pseudocode 110, p. 234, keeps acpl_param_prev
+  "for all relevant dequantized advanced coupling parameter arrays".
+- **Reading:** each product or sum is an array of its own, whose acpl_param_prev is its value in the last
+  parameter set of the previous frame. That value is the same product or sum of the parameters' own
+  acpl_param_prev, subband by subband, so only the eleven parameters' are kept. The first frame's are 0.
+- **Evidence:** Text; DEE's ASPX_ACPL_3 legs meet the pins of the per-band script.
+
+### Each module interpolates with its own acpl_data_1ch()
+
+- **Where:** Part 1 Pseudocodes 117 and 120, pp. 239 to 242, pass each module the `acpl_num_param_sets`
+  of its own `acpl_data_1ch()`; Pseudocode 109's `interpolate()` reads `acpl_interpolation_type` and
+  `acpl_param_timeslot` without saying whose.
+- **Reading:** those of the module's own `acpl_data_1ch()`, which sends them in its
+  `acpl_framing_data()`.
+- **Evidence:** Text.
+
+### Channels A-CPL makes are silent before it
+
+- **Where:** Part 1 5.3.4.1 (the channel pair's ASPX_ACPL_2, R = 0), 5.3.4.3.2 (the 5.X element's
+  ASPX_ACPL_2, Ls = Rs = 0), 5.3.4.3.3 (ASPX_ACPL_3, C = Ls = Rs = 0) and Table 185 (the 7.X element's
+  ASPX_ACPL_2, its last pair 0), pp. 179 to 183. Such a channel has no `sf_info()` to give its windows.
+- **Reading:** it passes the inverse transform as one long block of silence, and the QMF analysis as
+  silence, until A-CPL writes it; no output depends on it.
+- **Evidence:** Text.
+
+### add_ch_base in 3/4/0
+
+- **Where:** Part 1 Pseudocode 120, p. 242, scales z0 and z2 by sqrt 2 when `add_ch_base == 1 ||
+  channel_mode == 3/4/0.x`, and z6 and z7 when `add_ch_base == 0`. The 3/4/0 modes send no `add_ch_base`
+  (Part 1 Table 9 and Part 2 6.2.1.8 read it for 5/2/0 and 3/2/2 alone; Table 202, p. 242, marks it N/A).
+- **Reading:** 3/4/0 takes the `add_ch_base` 1 branch in both tests, so its L and R (z6 and z7) pass
+  unscaled.
+- **Why:** Table 202 couples 3/4/0's surrounds with its back pair as `add_ch_base` 1 couples the 5/2/0 and
+  3/2/2 surrounds with their last pair, and the pseudocode's first test groups the two already. Read so,
+  the 7.X element's modes pass L, R and C at unity and scale the rest, as Pseudocode 117 does in the 5.X
+  element, and as Table 219's 7-to-5 downmix passes 3/4/0's L and R.
+- **Evidence:** Text; the constructed 3/4/0 streams take it.
+
+### ASPX_ACPL_1 in the 7.X element
+
+- **Where:** Part 1 5.3.4.4.2, p. 182: "analogously to" SIMPLE with `b_use_sap_add_ch` false, "with the
+  difference that the output channels F and G are derived from two sf_data elements and their
+  associated chparam_info elements".
+- **Reading:** each residual is coded against the channel Table 202 couples it with, by the 5.X
+  element's step (5.3.4.3.2): (base, F) = P (base, residual), with P from the residual's
+  `chparam_info()` read under the residual's own `sf_info()`, in the bands that sends parameters for, and
+  the identity above them. The bases are Ls and Rs in 3/4/0 and with `add_ch_base` 1, else L and R.
+- **Why:** A-CPL's modules pair F and G with those channels (Pseudocode 120), and the syntax already
+  frames the residuals after them ("ASPX_ACPL_1: the framing of the residuals").
+- **Evidence:** Text; the constructed 7.X ASPX_ACPL_1 streams take it.
+
+### A change of codec mode
+
+- **Where:** Part 1 5.7.7.3, p. 234, starts acpl_param_prev at 0 "when decoding the first AC-4 frame",
+  and the NOTE after Pseudocode 112 starts the ducker at 0 "at startup"; nothing says what a change of
+  codec mode, at an I-frame, keeps.
+- **Reading:** a frame in another codec mode than the frame before starts A-CPL as the first frame does:
+  silence in the decorrelators, the duckers at 0, acpl_param_prev and the quantised history 0.
+- **Evidence:** Text.
 
 ## Metadata, DRC and dialogue enhancement
 
@@ -926,9 +1052,11 @@ Decisions about what a record holds, which both transcriptions share (the full c
 
 ## The differential check
 
-No stream here reaches most of the syntax: noise fill, VARVAR framing, time-interleaved A-SPX, the mono,
-3.0 and 7.X elements, ASPX_ACPL_1, transmitted DRC gains, dialogue enhancement methods 1 to 3 and
-alternative presentations among it. To compare the two transcriptions there, both read streams made for
+No stream of DEE's reaches most of the syntax: noise fill, VARVAR framing, time-interleaved A-SPX, the
+mono, 3.0 and 7.X elements, ASPX_ACPL_1 and A-CPL in a channel pair, transmitted DRC gains, dialogue
+enhancement methods 1 to 3 and alternative presentations among it. The constructed streams under
+`tests/golden/ac4dec/constructed/` reach the 3.0 and 7.X elements and every A-CPL mode, and both
+transcriptions read them alike. To compare the two transcriptions on the rest, both read streams made for
 the purpose: DEE frames with one substream altered (a random tail from a random bit, a few flipped bits,
 or a random codec mode), and tables of contents built for the channel modes no encoder here writes, over
 random payloads. Wherever both read a substream to its end their traces must agree record for record,

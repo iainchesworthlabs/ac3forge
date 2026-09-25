@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "acpl/acpl.hpp"
 #include "tables/huffman_tables.hpp"
 
 namespace ac4::detail {
@@ -12,32 +13,6 @@ namespace {
 
 // Table 143: acpl_num_param_bands by acpl_num_param_bands_id.
 constexpr std::array<std::uint8_t, 4> kNumParamBands = {15, 12, 9, 7};
-
-// Table 197, one row per QMF band group: the group's first subband and its
-// parameter band for 15, 12, 9 and 7 parameter bands (the column order is
-// Table 143's acpl_num_param_bands_id order).
-struct SbToPbRow {
-    int first_subband = 0;
-    std::array<std::uint8_t, 4> param_band{};
-};
-
-constexpr std::array<SbToPbRow, 15> kSbToPb = {{
-    {0, {{0, 0, 0, 0}}},
-    {1, {{1, 1, 1, 1}}},
-    {2, {{2, 2, 2, 2}}},
-    {3, {{3, 3, 3, 2}}},
-    {4, {{4, 4, 3, 3}}},
-    {5, {{5, 4, 4, 3}}},
-    {6, {{6, 5, 4, 3}}},
-    {7, {{7, 5, 5, 3}}},
-    {8, {{8, 6, 5, 4}}},
-    {9, {{9, 6, 6, 4}}},     // 9 - 10
-    {11, {{10, 7, 6, 4}}},   // 11 - 13
-    {14, {{11, 8, 7, 5}}},   // 14 - 17
-    {18, {{12, 9, 7, 5}}},   // 18 - 22
-    {23, {{13, 10, 8, 6}}},  // 23 - 34
-    {35, {{14, 11, 8, 6}}},  // 35 - 63
-}};
 
 // Pseudocode 8's codebooks, each as its F0, DF and DT tables, by data type.
 using CodebookSet = std::array<const Codebook*, 3>;
@@ -139,7 +114,7 @@ ParseResult parse_acpl_config_1ch(BitReader& r, AcplConfigKind kind, AcplConfig1
         config.qmf_band = u8(r.read(3, "acpl_qmf_band_minus1") + 1U);
         // acpl_qmf_band is 1 to 8, which Table 197 maps for every band count.
         config.param_band = static_cast<std::uint8_t>(
-            acpl_sb_to_pb(config.num_param_bands, config.qmf_band));
+            acpl::sb_to_pb(config.num_param_bands, config.qmf_band));
     }
     config.valid = !r.overflow();
     out = config;
@@ -169,6 +144,7 @@ ParseResult parse_acpl_data_1ch(BitReader& r, const SubstreamContext& /*ctx*/,
     }
     out.num_bands = config.num_param_bands;
     out.start_band = config.param_band;
+    out.qmf_band = config.qmf_band;
     const std::size_t bands = out.num_bands;
     const std::size_t start = out.start_band;
     if (auto result = parse_acpl_ec_data(r, out.framing, AcplDataType::kAlpha, bands, start,
@@ -226,37 +202,6 @@ ParseResult parse_acpl_data_2ch(BitReader& r, const SubstreamContext& /*ctx*/,
         }
     }
     return check(r);
-}
-
-int acpl_sb_to_pb(int num_param_bands, int qmf_subband) noexcept {
-    std::size_t column = 0;
-    switch (num_param_bands) {
-        case 15:
-            column = 0;
-            break;
-        case 12:
-            column = 1;
-            break;
-        case 9:
-            column = 2;
-            break;
-        case 7:
-            column = 3;
-            break;
-        default:
-            return -1;
-    }
-    if (qmf_subband < 0 || qmf_subband > 63) {
-        return -1;
-    }
-    int param_band = 0;
-    for (const SbToPbRow& row : kSbToPb) {
-        if (row.first_subband > qmf_subband) {
-            break;
-        }
-        param_band = row.param_band[column];
-    }
-    return param_band;
 }
 
 const Codebook& acpl_codebook(AcplDataType data_type, int quant_mode,

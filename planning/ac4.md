@@ -1266,6 +1266,17 @@ channel, and one tone per channel lands on its own channel, the LFE included. Co
   dequantisation.
 - ASPX_ACPL_2 and ASPX_ACPL_3 in the 5.X element. ASPX_ACPL_1, A-CPL in a channel pair, and the
   7.X modes, tested on constructed streams.
+- D5 found that DEE's 5.1 streams send 15 parameter bands at fine quantisation and one parameter set
+  a frame, interpolated smoothly in all but a few frames, and difference along frequency in every
+  I-frame. librempeg puts out their coded pair as L and R and leaves Ls and Rs silent, so the source
+  is the only reference. The decorrelators, the ducker, interpolation and the dequantisation tables
+  are in `src/ac4core` for E4, and the encoder's writer writes A-CPL's syntax for the constructed
+  streams, eight of them committed; E4 builds its parameter extraction on both.
+- Scored against the source, DEE's streams settled two readings the text leaves open: a frame's
+  parameters apply d_ctrl frames later, with its A-SPX data (a frame early or late takes the level
+  difference's distance from the source from 2.6 dB to 3.8 and 3.6), and the transient ducker weighs
+  its own input, the decorrelator's output, though it barely moves these measures
+  (`src/ac4dec/ERRATA.md`, "A-CPL").
 
 **Exit:**
 

@@ -997,6 +997,20 @@ The sections below contain the complete change list and fixes.
   element forms DEE does not write are tested on streams built with the encoder's writer
   (`tests/ac4dec/ac4dec_constructed.cpp`), twelve of them committed with
   `tools/references/ac4_syntax.py`'s digests. `src/ac4dec/ERRATA.md` records the readings taken.
+- **AC-4 decodes the A-CPL codec modes** (phase D5 of `planning/ac4.md`): ASPX_ACPL_1 and 2 in the
+  channel pair, 5.X and 7.X elements and ASPX_ACPL_3 in the 5.X element, with the three decorrelators,
+  the transient ducker, interpolation and dequantisation of Part 1 clause 5.7.7 in `src/ac4core`, where
+  the encoder will reuse them. Each decorrelator's impulse response equals its difference equation and
+  its magnitude response is flat to 1e-9. DEE's 5.1 streams at 96, 128 and 144 kbps decode: the coded
+  downmixes, recovered from the output, meet the source's as waveforms (21 to 25 dB SNR below the
+  crossover on music), and per A-CPL parameter band the level difference and correlation of (L, Ls) and
+  (R, Rs) are held to the source's; `tools/checks/score_ac4_decode.py` scores and pins them, and its
+  `--only` takes a list of legs. librempeg does not rebuild those streams' surrounds, so the source is
+  the only reference. The modes DEE does not write are tested on streams built with the encoder's
+  writer, which now writes A-CPL's syntax (`src/ac4enc/src/acpl/acpl_syntax.hpp`); eight of them are
+  committed with the Python parser's digests. `src/ac4dec/ERRATA.md` records the readings taken: which
+  signal's energy drives the transient ducker, its time step and bands, when the parameters apply, and
+  how the 7.X element's residuals and 3/4/0's scalings go.
 - **A-SPX's pre-flattening flattens the patch.** Part 1 prints the patch multiplied by the inverse of
   the gain that brings the low band's fitted slope to its mean, which doubles the slope and has the
   limiter cut the top of each patch: the top group of DEE's 5.1 film centre came out 4.6 dB under the

@@ -337,21 +337,26 @@ TEST_CASE("Tables 212 and 213 name the channels companding and A-SPX process", "
     namespace mode = ac4::detail::ch_mode;
     using ac4::detail::aspx_units;
     using ac4::detail::companded_speakers;
-    CHECK(companded_speakers(mode::k5_1) == std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
-                                                         Speaker::kLeftSurround, Speaker::kRightSurround});
-    CHECK(companded_speakers(mode::k3_0) == std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre});
-    CHECK(companded_speakers(mode::k7_1_340).empty());  // no companding_control() in 7.X ASPX
+    namespace codec = ac4::detail::codec_mode;
+    CHECK(companded_speakers(mode::k5_1, codec::kAspx) ==
+          std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre, Speaker::kLeftSurround,
+                      Speaker::kRightSurround});
+    CHECK(companded_speakers(mode::k3_0, codec::kAspx) ==
+          std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre});
+    CHECK(companded_speakers(mode::k7_1_340, codec::kAspx).empty());  // no companding_control() in 7.X ASPX
+    CHECK(companded_speakers(mode::k5_1, codec::kSimple).empty());
+    CHECK(aspx_units(mode::k5_1, codec::kSimple).empty());
 
-    const auto five = aspx_units(mode::k5_0);
+    const auto five = aspx_units(mode::k5_0, codec::kAspx);
     REQUIRE(five.size() == 3);
     CHECK((five[0].pair && five[0].index == 0 && five[0].speakers[1] == Speaker::kRight));
     CHECK((five[1].pair && five[1].index == 1 && five[1].speakers[0] == Speaker::kLeftSurround));
     CHECK((!five[2].pair && five[2].index == 0 && five[2].speakers[0] == Speaker::kCentre));
 
     // 7.X: (L, R), then (Ls, Rs) or 5/2/0's (Lw, Rw), C, then the last pair.
-    const auto back = aspx_units(mode::k7_1_340);
-    const auto wide = aspx_units(mode::k7_0_520);
-    const auto top = aspx_units(mode::k7_0_322);
+    const auto back = aspx_units(mode::k7_1_340, codec::kAspx);
+    const auto wide = aspx_units(mode::k7_0_520, codec::kAspx);
+    const auto top = aspx_units(mode::k7_0_322, codec::kAspx);
     REQUIRE(back.size() == 4);
     REQUIRE(wide.size() == 4);
     REQUIRE(top.size() == 4);
@@ -361,4 +366,26 @@ TEST_CASE("Tables 212 and 213 name the channels companding and A-SPX process", "
     CHECK(wide[3].speakers[0] == Speaker::kLeftSurround);
     CHECK(top[3].speakers[1] == Speaker::kTopFrontRight);
     CHECK(back[3].index == 2);
+
+    // The A-CPL modes (codec modes 2 to 4): a pair's L alone; the 5.X
+    // element's L, R and C, or L and R in ASPX_ACPL_3; the 7.X element's five
+    // channels of the 5.X core, companded in its A-CPL modes only.
+    CHECK(companded_speakers(mode::kStereo, codec::kAspxAcpl2) == std::vector{Speaker::kLeft});
+    const auto pair = aspx_units(mode::kStereo, codec::kAspxAcpl1);
+    REQUIRE(pair.size() == 1);
+    CHECK((!pair[0].pair && pair[0].speakers[0] == Speaker::kLeft));
+    CHECK(companded_speakers(mode::k5_1, codec::kAspxAcpl2) ==
+          std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre});
+    const auto five_acpl = aspx_units(mode::k5_1, codec::kAspxAcpl1);
+    REQUIRE(five_acpl.size() == 2);
+    CHECK((five_acpl[0].pair && !five_acpl[1].pair && five_acpl[1].speakers[0] == Speaker::kCentre));
+    CHECK(companded_speakers(mode::k5_0, codec::kAspxAcpl3) == std::vector{Speaker::kLeft, Speaker::kRight});
+    CHECK(aspx_units(mode::k5_0, codec::kAspxAcpl3).size() == 1);
+    CHECK(companded_speakers(mode::k7_0_520, codec::kAspxAcpl2) ==
+          std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre, Speaker::kLeftSurround,
+                      Speaker::kRightSurround});
+    const auto seven_acpl = aspx_units(mode::k7_0_520, codec::kAspxAcpl1);
+    REQUIRE(seven_acpl.size() == 3);
+    CHECK(seven_acpl[1].speakers[0] == Speaker::kLeftSurround);
+    CHECK(seven_acpl[2].speakers[0] == Speaker::kCentre);
 }

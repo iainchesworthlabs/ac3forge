@@ -1369,20 +1369,6 @@ TEST_CASE("A-CPL data refuses a missing configuration and a truncated codeword",
     }
 }
 
-TEST_CASE("acpl_sb_to_pb maps QMF subbands to parameter bands by Table 197", "[ac4dec][channel_elements]") {
-    using ac4::detail::acpl_sb_to_pb;
-    CHECK(acpl_sb_to_pb(15, 0) == 0);
-    CHECK(acpl_sb_to_pb(15, 10) == 9);
-    CHECK(acpl_sb_to_pb(15, 63) == 14);
-    CHECK(acpl_sb_to_pb(12, 20) == 9);
-    CHECK(acpl_sb_to_pb(9, 30) == 8);
-    CHECK(acpl_sb_to_pb(7, 3) == 2);
-    CHECK(acpl_sb_to_pb(7, 40) == 6);
-    CHECK(acpl_sb_to_pb(10, 5) == -1);
-    CHECK(acpl_sb_to_pb(15, 64) == -1);
-    CHECK(acpl_sb_to_pb(15, -1) == -1);
-}
-
 // --- ac4_substream() ---------------------------------------------------------
 
 TEST_CASE("ac4_substream checks audio_size against the substream and the element", "[ac4dec][channel_elements]") {

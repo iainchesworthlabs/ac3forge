@@ -79,6 +79,20 @@ class Walker {
         return first;
     }
 
+    // ASPX_ACPL_1's residuals: two chparam_info(), then two sf_data(), the
+    // tracks of `outputs`, each coded against its `bases` channel under its
+    // own sf_info().
+    void residuals(std::array<Speaker, 2> outputs, std::array<Speaker, 2> bases) {
+        const int first = take_chparams(2);
+        for (std::size_t i = 0; i < 2; ++i) {
+            mono(outputs[i]);
+            out_.steps.push_back({.first = bases[i],
+                                  .second = outputs[i],
+                                  .chparam = first + static_cast<int>(i),
+                                  .framing = outputs[i]});
+        }
+    }
+
     // Whether everything the walk named is what the element holds.
     [[nodiscard]] bool complete() const noexcept {
         return !short_ && static_cast<std::size_t>(track_) == element_.tracks.size() &&
@@ -160,12 +174,20 @@ ParseResult route_element(const SubstreamContext& ctx, const ChannelElement& ele
     const bool lfe = !element.tracks.empty() && element.tracks.front().lfe;
     const auto config = element.coding_config.value_or(-1);
     const bool two_ch_mode = element.two_ch_mode.value_or(false);
+    const int mode = element.codec_mode;
+    const bool acpl =
+        mode == codec_mode::kAspxAcpl1 || mode == codec_mode::kAspxAcpl2 || mode == codec_mode::kAspxAcpl3;
     switch (element.kind) {
         case ElementKind::kSingle:
             walk.mono(S::kCentre);
             break;
         case ElementKind::kPair:
-            walk.pair(S::kLeft, S::kRight);
+            if (mode == codec_mode::kAspxAcpl2) {
+                walk.mono(S::kLeft);
+                out.silent = {S::kRight};
+            } else {
+                walk.pair(S::kLeft, S::kRight);
+            }
             break;
         case ElementKind::k3_0:
             // Clause 5.3.4.2.
@@ -177,10 +199,34 @@ ParseResult route_element(const SubstreamContext& ctx, const ChannelElement& ele
             }
             break;
         case ElementKind::k5X:
-            // Table 180.
             if (lfe) {
                 walk.lfe();
             }
+            if (mode == codec_mode::kAspxAcpl3) {
+                // 5.3.4.3.3: stereo_data() makes L and R.
+                walk.pair(S::kLeft, S::kRight);
+                out.silent = {S::kCentre, S::kLeftSurround, S::kRightSurround};
+                break;
+            }
+            if (acpl) {
+                // Table 181: A and B are L and R, which 5.3.4.3.2's matrix
+                // pairs with the residuals.
+                if (config == 0) {
+                    walk.pair(S::kLeft, S::kRight);
+                } else {
+                    walk.three(S::kLeft, S::kRight, S::kCentre);
+                }
+                if (mode == codec_mode::kAspxAcpl1) {
+                    walk.residuals({S::kLeftSurround, S::kRightSurround}, {S::kLeft, S::kRight});
+                } else {
+                    out.silent = {S::kLeftSurround, S::kRightSurround};
+                }
+                if (config == 0) {
+                    walk.mono(S::kCentre);
+                }
+                break;
+            }
+            // Table 180.
             switch (config) {
                 case 0:
                     walk.pair(S::kLeft, two_ch_mode ? S::kLeftSurround : S::kRight);
@@ -223,51 +269,85 @@ ParseResult route_element(const SubstreamContext& ctx, const ChannelElement& ele
                     walk.five(S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround);
                     break;
             }
-            if (element.b_use_sap_add_ch.value_or(false)) {
+            const bool back = ctx.ch_mode == ch_mode::k7_0_340 || ctx.ch_mode == ch_mode::k7_1_340;
+            if (acpl) {
+                // Tables 184 and 185, and 5.3.4.4.2: ASPX_ACPL_1 codes F and
+                // G as residuals against the pair Table 202 couples them with.
+                if (mode == codec_mode::kAspxAcpl1) {
+                    const bool surround_base = back || ctx.add_ch_base;
+                    walk.residuals({f, g}, surround_base ? std::array{S::kLeftSurround, S::kRightSurround}
+                                                         : std::array{S::kLeft, S::kRight});
+                } else {
+                    out.silent = {f, g};
+                }
+            } else if (element.b_use_sap_add_ch.value_or(false)) {
                 const int first = walk.take_chparams(2);
-                const bool back = ctx.ch_mode == ch_mode::k7_0_340 || ctx.ch_mode == ch_mode::k7_1_340;
-                out.steps.push_back({back ? S::kLeftSurround : S::kLeft, f, first});
-                out.steps.push_back({back ? S::kRightSurround : S::kRight, g, first + 1});
+                const Speaker left = back ? S::kLeftSurround : S::kLeft;
+                const Speaker right = back ? S::kRightSurround : S::kRight;
+                out.steps.push_back({.first = left, .second = f, .chparam = first, .framing = left});
+                out.steps.push_back({.first = right, .second = g, .chparam = first + 1, .framing = right});
             }
-            walk.pair(f, g);
+            if (!acpl) {
+                walk.pair(f, g);
+            }
             if (config == 0 || config == 2) {
                 walk.mono(S::kCentre);
             }
             break;
         }
     }
+    const bool five_x_acpl = element.kind == ElementKind::k5X && acpl;
+    // ASPX_ACPL_3 sends no coding_config: its channel data is stereo_data().
     const bool has_config = element.kind == ElementKind::kSingle || element.kind == ElementKind::kPair ||
-                            element.coding_config.has_value();
+                            element.coding_config.has_value() ||
+                            (five_x_acpl && mode == codec_mode::kAspxAcpl3);
     const bool needs_two_ch_mode =
-        (element.kind == ElementKind::k5X || element.kind == ElementKind::k7X) && config == 0;
+        (element.kind == ElementKind::k5X || element.kind == ElementKind::k7X) && config == 0 && !five_x_acpl;
     const bool lfe_expected = (element.kind == ElementKind::k5X || element.kind == ElementKind::k7X) &&
                               ctx.has_lfe();
+    const bool needs_sap_add_ch = is_7x(ctx.ch_mode) && !acpl;
     if (!has_config || (needs_two_ch_mode && !element.two_ch_mode.has_value()) || lfe != lfe_expected ||
-        (is_7x(ctx.ch_mode) && !element.b_use_sap_add_ch.has_value()) || !walk.complete()) {
+        (needs_sap_add_ch && !element.b_use_sap_add_ch.has_value()) || !walk.complete()) {
         return fail(DecodeError::kInvalidStream, "a channel element whose parts do not match its coding_config");
     }
     return {};
 }
 
-std::vector<AspxUnit> aspx_units(int ch_mode) {
+std::vector<AspxUnit> aspx_units(int ch_mode, int codec_mode) {
+    if (codec_mode == codec_mode::kSimple) {
+        return {};
+    }
+    const AspxUnit front_pair = {.pair = true, .index = 0, .speakers = {S::kLeft, S::kRight}};
+    const AspxUnit centre_single = {.pair = false, .index = 0, .speakers = {S::kCentre, S::kCentre}};
+    const AspxUnit surround_pair = {.pair = true, .index = 1, .speakers = {S::kLeftSurround, S::kRightSurround}};
+    const bool acpl_1_2 = codec_mode == codec_mode::kAspxAcpl1 || codec_mode == codec_mode::kAspxAcpl2;
     switch (ch_mode) {
         case ch_mode::kMono:
-            return {{.pair = false, .index = 0, .speakers = {S::kCentre, S::kCentre}}};
+            return {centre_single};
         case ch_mode::kStereo:
-            return {{.pair = true, .index = 0, .speakers = {S::kLeft, S::kRight}}};
+            if (codec_mode != codec_mode::kAspx) {
+                return {{.pair = false, .index = 0, .speakers = {S::kLeft, S::kLeft}}};
+            }
+            return {front_pair};
         case ch_mode::k3_0:
-            return {{.pair = true, .index = 0, .speakers = {S::kLeft, S::kRight}},
-                    {.pair = false, .index = 0, .speakers = {S::kCentre, S::kCentre}}};
+            return {front_pair, centre_single};
         case ch_mode::k5_0:
         case ch_mode::k5_1:
-            return {{.pair = true, .index = 0, .speakers = {S::kLeft, S::kRight}},
-                    {.pair = true, .index = 1, .speakers = {S::kLeftSurround, S::kRightSurround}},
-                    {.pair = false, .index = 0, .speakers = {S::kCentre, S::kCentre}}};
+            if (codec_mode == codec_mode::kAspxAcpl3) {
+                return {front_pair};
+            }
+            if (acpl_1_2) {
+                return {front_pair, centre_single};
+            }
+            return {front_pair, surround_pair, centre_single};
         default:
             break;
     }
     if (!is_7x(ch_mode)) {
         return {};
+    }
+    if (acpl_1_2) {
+        return {front_pair, surround_pair, centre_single};
     }
     // Table 213: 5/2/0 sends the wide pair second and the surrounds last; the
     // others the surrounds second and their last pair last.
@@ -280,20 +360,37 @@ std::vector<AspxUnit> aspx_units(int ch_mode) {
             {.pair = true, .index = 2, .speakers = wide ? surround : last}};
 }
 
-std::vector<Speaker> companded_speakers(int ch_mode) {
+std::vector<Speaker> companded_speakers(int ch_mode, int codec_mode) {
+    if (codec_mode == codec_mode::kSimple) {
+        return {};
+    }
+    const bool aspx = codec_mode == codec_mode::kAspx;
     switch (ch_mode) {
         case ch_mode::kMono:
             return {S::kCentre};
         case ch_mode::kStereo:
+            if (!aspx) {
+                return {S::kLeft};
+            }
             return {S::kLeft, S::kRight};
         case ch_mode::k3_0:
             return {S::kLeft, S::kRight, S::kCentre};
         case ch_mode::k5_0:
         case ch_mode::k5_1:
+            if (codec_mode == codec_mode::kAspxAcpl3) {
+                return {S::kLeft, S::kRight};
+            }
+            if (!aspx) {
+                return {S::kLeft, S::kRight, S::kCentre};
+            }
             return {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround};
         default:
-            return {};
+            break;
     }
+    if (is_7x(ch_mode) && !aspx) {
+        return {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround};
+    }
+    return {};
 }
 
 }  // namespace ac4::detail

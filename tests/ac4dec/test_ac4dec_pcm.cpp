@@ -288,16 +288,9 @@ TEST_CASE("an ASPX 5.1 stream rebuilds the high band of every channel but the LF
 }
 
 TEST_CASE("decode refuses by name what it does not turn into PCM yet", "[ac4dec][pcm]") {
-    {
-        const auto [error, reason] = first_refusal("ac4-51-music-128");  // ASPX_ACPL_2 5.1
-        CHECK(error == ac4::DecodeError::kUnsupported);
-        CHECK(reason.find("A-CPL") != std::string::npos);
-    }
-    {
-        const auto [error, reason] = first_refusal("ac4-ims-music-128-25");  // frame_rate_index 2
-        CHECK(error == ac4::DecodeError::kUnsupported);
-        CHECK(reason.find("frame_rate_index 13") != std::string::npos);
-    }
+    const auto [error, reason] = first_refusal("ac4-ims-music-128-25");  // frame_rate_index 2
+    CHECK(error == ac4::DecodeError::kUnsupported);
+    CHECK(reason.find("frame_rate_index 13") != std::string::npos);
 }
 
 TEST_CASE("decode reports a table of contents it cannot read", "[ac4dec][pcm]") {
