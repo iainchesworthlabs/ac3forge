@@ -2391,7 +2391,15 @@ struct Encoder::Impl {
             }
         }
         const SubstreamCoder& slack_coder = *substreams[slack].coder;
-        const detail::AudioSubstreamFields slack_fields = slack_coder.pending.fields;
+        detail::AudioSubstreamFields slack_fields = slack_coder.pending.fields;
+        // The slack's metadata() as code() falls back to it: with a stem, the
+        // dialogue enhancement parameters a stream starts from, or the last
+        // frame's kept, which cost no more than the frame's own.
+        const detail::DeFrameParameters least_de =
+            slack_coder.least_parameters(slack_fields.iframe);
+        if (slack_coder.stem()) {
+            slack_fields.de = &least_de;
+        }
         const std::optional<detail::FrameFit> fit =
             detail::fit_frame(frame_layout, sizes, first_audio + slack, frame_bytes,
                               [&slack_fields](std::size_t bytes) {

@@ -185,6 +185,10 @@ REGRESSION_SEEDS = {
     "frame, and the encoder threw bad_optional_access (fixed in phase E7)",
     6658067609366379392: "7.1 music and effects, 3.0 dialogue and stereo associated audio, twelve "
     "tracks, at md-compat=3, which holds eleven: the harness drew a level the encoder refuses",
+    8555004500497304315: "mono at 59.94 fps and 12 kbps with a dialogue stem: a frame between "
+    "I-frames was sized for the stem's parameters coded against the last frame's, which it could "
+    "not hold, where it falls back to the last frame's kept, and the encoder threw "
+    "bad_optional_access (phase E6's, fixed in E7)",
 }
 
 

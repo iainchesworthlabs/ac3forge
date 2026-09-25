@@ -1223,3 +1223,54 @@ TEST_CASE("at the least rate a configuration takes every frame still goes out",
         CHECK(decoded.size() == static_cast<std::size_t>(c.channels));
     }
 }
+
+TEST_CASE("at the least rate a frame between I-frames keeps a stem's last parameters",
+          "[ac4enc][encoder]") {
+    // Between I-frames a stem's dialogue parameters are coded against the
+    // last frame's, and a stem whose share of the channel jumps from frame to
+    // frame makes that dearer than the least frame create() checks: the frame
+    // is then sized for, and sent with, the last frame's parameters kept.
+    // Mono at 59.94 fps in SIMPLE with I-frames besides the interval, as the
+    // encoder-space harness found it.
+    std::uint32_t seed = 59;
+    const auto noise = [&seed] {
+        seed = seed * 1664525U + 1013904223U;
+        return static_cast<double>(seed >> 8) / 16777216.0 - 0.5;
+    };
+    constexpr std::size_t kCount = 24000;
+    std::vector<std::vector<float>> input(1, std::vector<float>(kCount));
+    std::vector<std::vector<float>> dialogue(1, std::vector<float>(kCount));
+    double share = 0.0;
+    for (std::size_t n = 0; n < kCount; ++n) {
+        if (n % 400 == 0) {
+            share = noise() > 0.0 ? 1.0 : 0.0;
+        }
+        input[0][n] = static_cast<float>(0.5 * noise());
+        dialogue[0][n] = static_cast<float>(share) * input[0][n];
+    }
+    ac4::EncoderConfig config;
+    config.channels = 1;
+    config.frame_rate_index = 8;
+    config.codec_mode = ac4::CodecMode::kSimple;
+    config.iframes = {1, 10, 11};
+    ac4::DialogueConfig de;
+    de.source = ac4::DialogueSource::kStem;
+    de.max_gain_db = 6;
+    config.dialogue = de;
+    config.bitrate_kbps = 8;
+    while (config.bitrate_kbps < 64 && !ac4::Encoder::create(config).has_value()) {
+        ++config.bitrate_kbps;
+    }
+    CAPTURE(config.bitrate_kbps);
+    auto encoder = ac4::Encoder::create(config);
+    REQUIRE(encoder.has_value());
+    const std::vector<std::span<const float>> views(input.begin(), input.end());
+    const std::vector<std::span<const float>> stem(dialogue.begin(), dialogue.end());
+    auto frames = encoder->encode(views, stem);
+    REQUIRE(frames.has_value());
+    auto rest = encoder->flush();
+    REQUIRE(rest.has_value());
+    frames->insert(frames->end(), rest->begin(), rest->end());
+    REQUIRE(frames->size() > 20);
+    CHECK(decode(*frames).size() == 1);
+}
