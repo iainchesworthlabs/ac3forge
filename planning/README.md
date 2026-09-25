@@ -25,6 +25,7 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 |---|---|---|
 | [hearth-reference-player.md](hearth-reference-player.md) | Hearth desktop app (`ac3hearth`) and ESP32 Sendspin sinks (`hearth_sink`) | Being built. Engine + S3 sink merged; **window (A5) not started**; Sendspin server not wired into engine yet. See [ROADMAP.md](../ROADMAP.md) Hearth section. |
 | [hearth-sendspin-extension.md](hearth-sendspin-extension.md) | Sendspin conformance, Music Assistant compatibility, `_ac3forge_player@v1` | Draft for review |
+| [esp32-ota.md](esp32-ota.md) | Firmware updates over the network for `hearth_sink` boards (S3, C6, P4): A/B slots, rollback, integrity checks, flash mode; firmware published by CI, and a user guide | Proposed 2026-09-24; nothing built |
 | [recasting.md](recasting.md) | Library / Forge / Crucible family naming and docs | Phases 1–5 in; Phase 6 partly; Phase 7 waits on driver signing |
 
 ---
