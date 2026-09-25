@@ -52,6 +52,7 @@ add_executable(ac3tests
     ac4core/test_ac4core_acpl.cpp
     ac4core/test_ac4core_aspx.cpp
     ac4core/test_ac4core_dsp.cpp
+    ac4core/test_ac4core_resampler.cpp
     ac4dec/test_ac4dec_decoder.cpp
     ac4dec/test_ac4dec_frames.cpp
     ac4dec/test_ac4dec_syntax.cpp
