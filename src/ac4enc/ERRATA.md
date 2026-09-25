@@ -34,6 +34,10 @@ The writer takes the decoder's reading of each of these:
   [The KBD kernel is summed to p = N](../ac4dec/ERRATA.md#the-kbd-kernel-is-summed-to-p-n): the forward
   transform is the transpose of the decoder's, through the same windows, with lines scaled by 2^16 so
   that a full-scale input decodes at full scale.
+- [Partial coupling starts at acpl_param_band](../ac4dec/ERRATA.md#partial-coupling-starts-at-acpl_param_band):
+  the A-CPL writer (`src/ac4enc/src/acpl/acpl_syntax.hpp`, phase D5's, for the constructed streams and
+  for E4) sends each parameter set from `acpl_param_band`, its first value along frequency from the F0
+  codebook, as Table 65 reads it.
 
 ## The QMF domain
 
