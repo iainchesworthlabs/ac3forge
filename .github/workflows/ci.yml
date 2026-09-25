@@ -383,7 +383,12 @@ jobs:
           # from, and the merge queue exists to catch what one PR's own lane
           # subset could not see - so both force every lane on, same as an
           # empty file list above. See classify_changes.py's own header.
-          if [ "$EVENT_NAME" = "merge_group" ] || \
+          # A manual dispatch forces them too: it is how a branch asks for the
+          # legs a pull_request run defers to the merge queue (see
+          # build-and-test's run_macos below), and a dispatch does not arrive
+          # with an empty file list - it gets its head commit's files, which
+          # would otherwise pick lanes from one commit's diff.
+          if [ "$EVENT_NAME" = "merge_group" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || \
              { [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; }; then
             force_lanes=true
           fi
@@ -684,10 +689,15 @@ jobs:
   # through CI Status like every other lane below; each workflow's own
   # `push: tags: v*` trigger (release publishing) is untouched and cannot
   # overlap with this call - see wheels.yml's own comment on its `on:` block.
+  #
+  # Not on a pull_request run: the wheel matrix is five GitHub-hosted runners
+  # (two of them macOS), and it waits for the merge queue instead - see
+  # build-and-test's run_macos comment below for why and how a branch can
+  # still ask for it.
   wheels:
     name: Python wheels
     needs: changes
-    if: needs.changes.outputs.python == 'true'
+    if: needs.changes.outputs.python == 'true' && github.event_name != 'pull_request'
     uses: ./.github/workflows/wheels.yml
     # Ceiling for every job wheels.yml declares, not just the ones this call
     # path actually reaches: GitHub validates a called workflow's nested
@@ -761,11 +771,21 @@ jobs:
       run_core: ${{ needs.changes.outputs.core == 'true' }}
       run_windows: ${{ needs.changes.outputs.windows == 'true' }}
       run_linux: ${{ needs.changes.outputs.linux == 'true' }}
-      run_macos: ${{ needs.changes.outputs.macos == 'true' }}
+      # macOS and the Rust bindings (three GitHub-hosted runners, one of them
+      # macOS) skip pull_request runs and run in the merge queue, on main and
+      # on a dispatch - as does the wheels call above. GitHub Free runs 20
+      # hosted jobs at a time org-wide, and a PR push with every lane set
+      # used to ask for about 25 of them; on 2026-09-25 about 400 sat
+      # queued, some for over five hours, holding every PR's CI Status back.
+      # The merge queue still runs all of them against the exact merge
+      # commit before anything lands. A branch that wants them sooner can
+      # dispatch CI on itself (`gh workflow run ci.yml --ref <branch>`),
+      # which forces every lane on (see the changes job).
+      run_macos: ${{ needs.changes.outputs.macos == 'true' && github.event_name != 'pull_request' }}
       run_android: ${{ needs.changes.outputs.android == 'true' }}
       run_wasm: ${{ needs.changes.outputs.wasm == 'true' }}
       run_esp: ${{ needs.changes.outputs.esp == 'true' }}
-      run_rust: ${{ needs.changes.outputs.rust == 'true' }}
+      run_rust: ${{ needs.changes.outputs.rust == 'true' && github.event_name != 'pull_request' }}
     secrets:
       # Forward the Atmos object-signing key so build-android bundles it and the
       # Shield app signs whenever the secret is set - on ordinary CI builds too,
