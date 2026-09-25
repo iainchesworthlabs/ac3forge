@@ -802,7 +802,16 @@ void NetworkController::poll_firmware(const ac3::hearth::NetworkStatus& status) 
         // A sink that took a new address is asked there, unless an update
         // is following it at the old one.
         const bool moved = shown && !address.empty() && it->second->snapshot().host != address;
-        if ((!shown || moved) && !it->second->busy()) {
+        const bool busy = it->second->busy();
+        // An update puts the board in flash mode, which withdraws its mDNS
+        // service and stops its Sendspin player until it restarts: left
+        // alone, NetworkSinks would drop the sink's row, and the Firmware tab
+        // with it, until the board is back. So the row is kept while anything
+        // is under way here, whether the tab shows it or not, and let go by
+        // the same reading of busy() that lets the client go below, so no
+        // client goes with its sink still kept.
+        sinks_engine_->keep_sink(it->first, busy);
+        if ((!shown || moved) && !busy) {
             it = firmware_.erase(it);
             continue;
         }
@@ -904,7 +913,11 @@ void NetworkController::updateSinkFirmware() {
     // The file was checked for the sink the tab showed then; a selection
     // changed since sends nothing.
     if (client != nullptr && firmware_file_ && firmware_file_sink_id_ == firmware_sink_id_) {
-        (void)client->start_update(std::move(*firmware_file_));
+        if (client->start_update(std::move(*firmware_file_)) && sinks_engine_) {
+            // Kept now rather than from the next poll: the upload can put the
+            // board in flash mode, and so take its row away, before then.
+            sinks_engine_->keep_sink(firmware_sink_id_, true);
+        }
     }
     clearSinkFirmwareFile();
 }

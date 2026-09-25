@@ -275,7 +275,8 @@ signals:
 private:
     void poll();
     // The Firmware tab's half of poll(): a client for the sink it is open
-    // on, and sinkFirmware from that client's latest snapshot.
+    // on, sinkFirmware from that client's latest snapshot, and the row of
+    // each sink with an update under way kept (NetworkSinks::keep_sink()).
     void poll_firmware(const ac3::hearth::NetworkStatus& status);
     [[nodiscard]] ac3::hearth::SinkFirmware* selected_firmware() const;
     // Records whether a settings push to `sink_id` was actually sent
