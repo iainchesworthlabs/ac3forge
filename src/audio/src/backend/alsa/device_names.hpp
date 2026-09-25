@@ -54,10 +54,12 @@ struct ChannelStatus {
 // link has to clock four times as fast to deliver it. Microsoft's
 // "Representing Formats for IEC 61937 Transmissions" states it as a
 // requirement; the Windows backend applies it by building a 4x
-// WAVEFORMATEXTENSIBLE, and this backend by opening the device at 4x.
+// WAVEFORMATEXTENSIBLE, and this backend by opening the device at 4x. AC-4
+// runs its link at the content rate, and its HBR4 bursts at 4x like E-AC-3's
+// (IEC 61937-14 5.3.1 and 5.3.3): audio::carrier_ratio() has every format's.
 [[nodiscard]] constexpr std::uint32_t carrier_rate(audio::BitstreamFormat format,
                                                    std::uint32_t content_rate) {
-    return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
+    return content_rate * audio::carrier_ratio(format);
 }
 
 // Channel status for an IEC 61937 burst stream on a link running at

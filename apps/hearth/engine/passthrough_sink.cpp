@@ -27,10 +27,10 @@ public:
         const std::string& endpoint = format.endpoint_id.empty() ? device_id_ : format.endpoint_id;
         const auto started = sink_.start(endpoint, format.sample_rate, format.format);
         if (!started) {
-            return std::unexpected(fmt::format(
-                "The output would not take {} at {} Hz over IEC 61937: {}.",
-                format.format == audio::BitstreamFormat::kAc3 ? "AC-3" : "E-AC-3",
-                format.sample_rate, audio::describe(started.error())));
+            return std::unexpected(
+                fmt::format("The output would not take {} at {} Hz over IEC 61937: {}.",
+                            audio::format_name(format.format), format.sample_rate,
+                            audio::describe(started.error())));
         }
         return OpenOutputFormat{.sample_rate = format.sample_rate,
                                 .channels = 2,

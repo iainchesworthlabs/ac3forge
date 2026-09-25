@@ -13,13 +13,26 @@ namespace {
 
 using audio::BitstreamFormat;
 
-// Whether `endpoint` will carry `stream` as it is.
+// Whether `endpoint` will carry `stream` as it is. Never AC-4: Hearth sends
+// AC-4 as a bitstream only over the extension role, to sinks that decode it,
+// and decodes it for every local output (planning/ac4.md, I2), no receiver
+// having been found that takes it.
 [[nodiscard]] bool carries_native(const EndpointFacts& endpoint,
                                    std::optional<BitstreamFormat> stream) {
     if (!stream) {
         return false;
     }
-    return *stream == BitstreamFormat::kEac3 ? endpoint.accepts_eac3 : endpoint.accepts_ac3;
+    switch (*stream) {
+        case BitstreamFormat::kAc3:
+            return endpoint.accepts_ac3;
+        case BitstreamFormat::kEac3:
+            return endpoint.accepts_eac3;
+        case BitstreamFormat::kAc4:
+        case BitstreamFormat::kAc4Hbr4:
+        case BitstreamFormat::kAc4Hbr16:
+            break;
+    }
+    return false;
 }
 
 // Whether an E-AC-3 stream could reach `endpoint` as AC-3 instead.
@@ -103,10 +116,8 @@ using audio::BitstreamFormat;
 
 [[nodiscard]] OutputChoice bitstream(const EndpointFacts& endpoint, BitstreamFormat format,
                                       const OutputRequest& request, std::string_view because) {
-    const bool as_ac3 = format == BitstreamFormat::kAc3;
-    std::string reason =
-        fmt::format("Bitstreaming {} to \"{}\" over IEC 61937, untouched.",
-                    as_ac3 ? "AC-3" : "E-AC-3", endpoint.name);
+    std::string reason = fmt::format("Bitstreaming {} to \"{}\" over IEC 61937, untouched.",
+                                     audio::format_name(format), endpoint.name);
     if (!because.empty()) {
         reason += fmt::format(" {}", because);
     }
@@ -265,11 +276,11 @@ OutputChoice choose_output(const OutputRequest& request) {
             needs_transcode && takes_ac3
                 ? fmt::format("{} takes AC-3, but E-AC-3 cannot be transcoded to AC-3 here.{}",
                               preferred != nullptr ? "The chosen output" : "An output", note)
-                : fmt::format("No {} output takes {} over IEC 61937.{}",
-                              preferred != nullptr ? "chosen" : "available",
-                              *request.stream == BitstreamFormat::kEac3 && !want_ac3 ? "E-AC-3"
-                                                                                     : "AC-3",
-                              note);
+                : fmt::format(
+                      "No {} output takes {} over IEC 61937.{}",
+                      preferred != nullptr ? "chosen" : "available",
+                      want_ac3 ? std::string_view{"AC-3"} : audio::format_name(*request.stream),
+                      note);
         if (!request.follow_sink) {
             return nothing(fmt::format("{} follow=off, so this is a refusal rather than a decode.",
                                        why));
@@ -304,7 +315,7 @@ OutputChoice choose_output(const OutputRequest& request) {
     if (!request.follow_sink && request.stream) {
         return nothing(fmt::format(
             "No output takes {} over IEC 61937, and follow=off refuses a decode in its place.{}",
-            *request.stream == BitstreamFormat::kEac3 ? "E-AC-3" : "AC-3",
+            audio::format_name(*request.stream),
             preferred != nullptr ? unknown_note(*preferred) : std::string{}));
     }
     const auto* endpoint = preferred != nullptr ? preferred : best_for_pcm(request.endpoints);
@@ -314,8 +325,7 @@ OutputChoice choose_output(const OutputRequest& request) {
     std::string because;
     if (request.stream) {
         because = fmt::format("No output takes {} over IEC 61937.{}",
-                              *request.stream == BitstreamFormat::kEac3 ? "E-AC-3" : "AC-3",
-                              unknown_note(*endpoint));
+                              audio::format_name(*request.stream), unknown_note(*endpoint));
     }
     return local_pcm(*endpoint, request, because);
 }
