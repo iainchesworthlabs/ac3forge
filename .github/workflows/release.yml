@@ -256,6 +256,8 @@ jobs:
       contents: write
       id-token: write
       attestations: write
+      # The last step's dispatch of docs.yml, for the installer's firmware.
+      actions: write
     env:
       # A step's `if:` cannot read `secrets` directly, only `env` - so the
       # presence check happens once here and every gated step reads this
@@ -650,6 +652,20 @@ jobs:
             echo "::error::expected ${#files[@]} release assets, found $uploaded - upload silently dropped some files"
             exit 1
           fi
+
+      # The documentation site's browser installer serves the newest release's
+      # sink firmware (docs/hearth/sink-installer.md), which docs.yml copies in
+      # when it deploys. A release created with this job's token starts no
+      # workflow by its own event, but a dispatch it sends does, so the site is
+      # redeployed here, once every asset is up.
+      - name: Redeploy the documentation site for the installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run docs.yml --repo "$REPO" --ref main
 
   # Only reachable if github-release ran and failed AFTER pushing the tag
   # (Push release tag succeeded, something later did not) on a dispatched

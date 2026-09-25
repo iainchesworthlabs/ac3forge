@@ -202,6 +202,10 @@ class UsageError(Exception):
     """The command line cannot be carried out; the text says why."""
 
 
+class NoPublishedFirmware(UsageError):
+    """The release named, or every release, publishes no sink firmware (yet)."""
+
+
 # --- the image ---------------------------------------------------------------
 
 
@@ -1393,7 +1397,7 @@ def fetch_release(tag: str, into: Path) -> Published:
             None,
         )
         if release is None:
-            raise UsageError(f"no release of {REPOSITORY} publishes {MANIFEST_NAME} yet")
+            raise NoPublishedFirmware(f"no release of {REPOSITORY} publishes {MANIFEST_NAME} yet")
     else:
         release = json.loads(github_get(f"{GITHUB_API}/repos/{REPOSITORY}/releases/tags/{tag}"))
     urls = {
@@ -1402,7 +1406,9 @@ def fetch_release(tag: str, into: Path) -> Published:
     }
     name = str(release.get("tag_name") or tag)
     if MANIFEST_NAME not in urls:
-        raise UsageError(f"release {name} publishes no {MANIFEST_NAME}: it has no sink firmware")
+        raise NoPublishedFirmware(
+            f"release {name} publishes no {MANIFEST_NAME}: it has no sink firmware"
+        )
     into.mkdir(parents=True, exist_ok=True)
     manifest = json.loads(github_get(urls[MANIFEST_NAME]))
     sums = read_sums(github_get(urls["SHA512SUMS"]).decode("utf-8")) if "SHA512SUMS" in urls else {}

@@ -282,6 +282,12 @@ The sections below contain the complete change list and fixes.
     before upload. `ota.py push --release <tag|latest>` gives each board the image that fits it,
     checked against the manifest and `SHA512SUMS`. `--run <run id>` takes a CI run's
     `esp32-firmware` artifact, which every run keeps for 14 days.
+  - **A guide to the sink firmware, and a browser installer.** `docs/hearth/sink-firmware.md`
+    covers choosing a board's image and checking a download. It also covers installing a new
+    board, moving one that runs an older build, updating over the network, and going back.
+    `docs/hearth/sink-installer.md` flashes a board from Chrome, Edge or Firefox with ESP Web
+    Tools, served by the site itself, then gives it its network over Improv. The documentation
+    deploy copies the newest release's firmware into it, and a release redeploys the site.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot

@@ -850,6 +850,31 @@ on ESP Web Tools. Its supported chips include the ESP32-S3, ESP32-C6 and ESP32-P
 - **On the P4,** the installer has to be on the USB-C connector that carries the console. The
   board's other connector is a separate USB peripheral.
 
+**Built** (O9, 2026-09-25): `docs/hearth/sink-firmware.md` follows the eight steps above, and
+`docs/hearth/sink-installer.md` is the installer. The specifics:
+
+- **ESP Web Tools 10.4.0 is served by the site itself.** `docs.yml`'s deploy job packs it from npm,
+  checks the tarball against the integrity npm published for that version, and unpacks it into
+  the page's assets, with its licence. A reader's browser then loads nothing from a third party on
+  the page that writes their board's flash.
+- **The firmware.** `tools/hearth/installer_site.py` fills the assets in the same job. It reads
+  the newest release that publishes sink firmware with `ota.py`'s own reading of a release,
+  checks each image's `parts.zip` against the manifest and `SHA512SUMS`, unpacks it, and writes
+  ESP Web Tools' manifest for each image.
+- **One manifest for each image.** ESP Web Tools chooses a build by chip family alone, so the two
+  C6 images need a button each, and the page lists the four.
+- **Before any release publishes firmware**, the script writes an index with no images and the
+  page says so. Any other failure, such as the API not answering, fails the deploy rather than
+  publish an empty installer.
+- **After a release.** A release created with a workflow's token starts no other workflow by its
+  own event, so `release.yml`'s `github-release` dispatches `docs.yml` as its last step.
+- The rest of the documentation is brought into line: the Hearth overview, the S3 guide's
+  "Build and flash", `docs/releasing.md` and the site's navigation.
+
+Checked on 2026-09-25: the site builds with `mkdocs build --strict`. With its assets filled from
+the C6's and the P4's real packages, the page served locally lists an install button for each.
+The exit waits for a release that publishes sink firmware, and a blank board.
+
 ## What stays USB-only, and how a board is recovered
 
 **USB only:**
@@ -1020,6 +1045,7 @@ boards leave development, and if that is before O8, O8's images are published si
 - **O9, the user guide.** [The user guide](#the-user-guide), the browser installer if decision 15
   takes it, and the other pages brought into line. **Exit:** someone with only the guide takes a
   blank board to one that plays, then updates it over the network to a newer release.
+  [Built](#the-user-guide); its exit waits for a release that publishes sink firmware.
 
 ## What cannot be verified
 
