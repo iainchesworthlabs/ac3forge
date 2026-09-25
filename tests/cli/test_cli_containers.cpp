@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -530,15 +531,90 @@ TEST_CASE("ac4-encode codes the ASPX mode below 96 kbps a channel, or as codec-m
     CHECK(read_log(log).find("codec-mode") != std::string::npos);
 }
 
+namespace {
+
+// The amplitude of a channel's component at `hz` over `count` samples from
+// `first`, through a Hann window.
+double tone_amplitude(const std::vector<float>& x, std::size_t first, std::size_t count, double hz) {
+    double re = 0.0;
+    double im = 0.0;
+    double weight = 0.0;
+    for (std::size_t n = 0; n < count && first + n < x.size(); ++n) {
+        const double w = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(n) / static_cast<double>(count));
+        const double phase = 2.0 * std::numbers::pi * hz * static_cast<double>(first + n) / 48000.0;
+        re += w * static_cast<double>(x[first + n]) * std::cos(phase);
+        im -= w * static_cast<double>(x[first + n]) * std::sin(phase);
+        weight += w;
+    }
+    return 2.0 * std::hypot(re, im) / weight;
+}
+
+}  // namespace
+
+TEST_CASE("ac4-encode takes 5.1 and 7.1 in the WAV order decode writes them in", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_encode_multichannel.log";
+    // A tone per channel, at gen_ac4_baseline.py's frequencies: in WAV order
+    // FL FR FC LFE BL BR, and SL SR for 7.1, whose BL BR are its back pair.
+    constexpr std::array<double, 8> kHz = {331.0, 457.0, 613.0, 47.0, 787.0, 953.0, 1117.0, 1289.0};
+    constexpr std::size_t kLength = 96000;
+    struct Run {
+        std::size_t channels;
+        const char* args;
+        const char* layout;
+    };
+    for (const Run run : {Run{6, " 384", "5.1, 384 kbps"}, Run{6, " 192", "5.1, 192 kbps"},
+                          Run{8, " 640 experimental=7x-back", "7.1, 3/4/0"}}) {
+        CAPTURE(run.channels, run.args);
+        std::vector<std::vector<float>> channels(run.channels, std::vector<float>(kLength));
+        for (std::size_t c = 0; c < run.channels; ++c) {
+            for (std::size_t i = 0; i < kLength; ++i) {
+                channels[c][i] = static_cast<float>(
+                    0.1 * std::sin(2.0 * std::numbers::pi * kHz[c] * static_cast<double>(i) / 48000.0));
+            }
+        }
+        const auto wav_in = dir / "ac4_multichannel_in.wav";
+        REQUIRE(ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+        const auto out = dir / "ac4_multichannel.ac4";
+        REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(out) + run.args, log) == 0);
+        CHECK(read_log(log).find(run.layout) != std::string::npos);
+        const auto wav_out = dir / "ac4_multichannel_out.wav";
+        REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(wav_out), log) == 0);
+        const auto decoded = ac3::io::read_wav(wav_out.string());
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->channels.size() == run.channels);
+        // Each tone where it went in, 60 dB over every other there.
+        for (std::size_t c = 0; c < run.channels; ++c) {
+            CAPTURE(c);
+            const double own = tone_amplitude(decoded->channels[c], 8192, kLength - 8192, kHz[c]);
+            CHECK(std::abs(20.0 * std::log10(own / 0.1)) < 0.5);
+            for (std::size_t other = 0; other < run.channels; ++other) {
+                if (other != c) {
+                    CAPTURE(other);
+                    const double leak = tone_amplitude(decoded->channels[c], 8192, kLength - 8192, kHz[other]);
+                    CHECK(20.0 * std::log10(own / std::max(leak, 1e-30)) > 60.0);
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_encode_refused.log";
-    const std::vector<std::vector<float>> six(6, std::vector<float>(4800, 0.0F));
-    const auto wav_six = dir / "ac4_six.wav";
-    REQUIRE(ac3::io::write_wav_f32(wav_six.string(), six, 48000).has_value());
+    const std::vector<std::vector<float>> four(4, std::vector<float>(4800, 0.0F));
+    const auto wav_four = dir / "ac4_four.wav";
+    REQUIRE(ac3::io::write_wav_f32(wav_four.string(), four, 48000).has_value());
     const auto out = dir / "ac4_refused.ac4";
-    CHECK(run_cli("ac4-encode " + quoted(wav_six) + " " + quoted(out), log) == 2);  // kExitInput
-    CHECK(read_log(log).find("mono or stereo") != std::string::npos);
+    CHECK(run_cli("ac4-encode " + quoted(wav_four) + " " + quoted(out), log) == 2);  // kExitInput
+    CHECK(read_log(log).find("mono, stereo, 5.0 and 5.1") != std::string::npos);
+    CHECK_FALSE(fs::exists(out));
+    // Seven or eight channels name the 7.X pair they carry.
+    const std::vector<std::vector<float>> eight(8, std::vector<float>(4800, 0.0F));
+    const auto wav_eight = dir / "ac4_eight.wav";
+    REQUIRE(ac3::io::write_wav_f32(wav_eight.string(), eight, 48000).has_value());
+    CHECK(run_cli("ac4-encode " + quoted(wav_eight) + " " + quoted(out), log) == 2);
+    CHECK(read_log(log).find("experimental=7x-back") != std::string::npos);
     CHECK_FALSE(fs::exists(out));
 
     const std::vector<std::vector<float>> stereo(2, std::vector<float>(4800, 0.0F));

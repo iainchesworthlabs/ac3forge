@@ -94,10 +94,10 @@ SBG_TEMPLATE_LOWRES = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 26, 2
 SBG_TEMPLATE_HIGHRES = [18, 19, 20, 21, 22, 23, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 47,
                         50, 53, 56, 59, 62]
 ASPX_CONFIG_FIELDS = ("aspx_master_freq_scale", "aspx_start_freq", "aspx_stop_freq")
-# Part 1 Table 213 by the decoder's channel order (L R C LFE Ls Rs for 5.1): the aspx_data
-# element, in syntax order, that carries each channel, and None for the LFE, which A-SPX leaves
-# out and which is scored over its whole band.
-ASPX_UNIT = {1: (0,), 2: (0, 0), 6: (0, 0, 2, None, 1, 1)}
+# Part 1 Table 213 by the decoder's channel order (L R C Ls Rs for 5.0, L R C LFE Ls Rs for 5.1):
+# the aspx_data element, in syntax order, that carries each channel, and None for the LFE, which
+# A-SPX leaves out and which is scored over its whole band.
+ASPX_UNIT = {1: (0,), 2: (0, 0), 5: (0, 0, 2, 1, 1), 6: (0, 0, 2, None, 1, 1)}
 # The LFE of a 5.1 leg, by the decoder's channel order. DEE low-passes the LFE before it codes it:
 # from the source to the decoded LFE the level runs 0.2 to 0.4 dB under unity up to 100 Hz and
 # falls 12 dB by 120 to 160 Hz, with the phase of a filter near 120 Hz (-54 degrees at 110 Hz),

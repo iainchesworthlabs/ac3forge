@@ -339,11 +339,13 @@ constexpr std::array<Command, 44> kCommands{{
                                 x.str(6, "off"), x.meta, x.str(7));
      }},
     {"ac4-encode", 3, "<in.wav> <out.ac4|out.mp4> [bitrate_kbps]",
-     "mono or stereo at 48 or 44.1 kHz, to AC-4 at frame_rate_index 13 and a constant bit rate: "
-     "raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is "
-     ".mp4/.m4a/.mov. The ASPX codec mode (A-SPX above a crossover, with companding at the lower "
-     "rates) below 96 kbps a channel and SIMPLE from there; codec-mode=simple|aspx picks one, and "
-     "experimental=aspx-balance,aspx-varvar,aspx-interleave adds tools no outside reader has checked yet. "
+     "mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4 at "
+     "frame_rate_index 13 and a constant bit rate: raw sync frames with CRC, or an MP4 with the "
+     "'ac-4' sample entry when the output is .mp4/.m4a/.mov. The ASPX codec mode (A-SPX above a "
+     "crossover, with companding at the lower rates in mono and stereo) below 96 kbps a channel, 76.8 "
+     "in 5.X, and SIMPLE from there; codec-mode=simple|aspx picks one, and experimental=aspx-balance,"
+     "aspx-varvar,aspx-interleave,coding-configs,7x-back|7x-wide|7x-top-front adds tools and layouts "
+     "no outside reader has checked yet. "
      "dialnorm= sets the dialogue level (auto measures it); the other metadata options are not "
      "written to AC-4 yet and are refused. syntax-trace=<file> writes what the encoder writes",
      topic::kStdio | topic::kMeta,

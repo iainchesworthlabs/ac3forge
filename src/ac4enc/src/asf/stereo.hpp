@@ -46,6 +46,16 @@ struct StereoChoice {
 [[nodiscard]] StereoChoice choose_stereo(Grouped& left, Grouped& right, std::vector<std::vector<double>>& allowed_left,
                                          std::vector<std::vector<double>>& allowed_right);
 
+// What choose_stereo() does once it has chosen: the bands `choice` codes as
+// M/S or predicted turned into the tracks in place, and their allowed noise
+// with them.
+void apply_stereo(Grouped& left, Grouped& right, std::vector<std::vector<double>>& allowed_left,
+                  std::vector<std::vector<double>>& allowed_right, const StereoChoice& choice);
+
+// A track's cost as choose_stereo() weighs it: its bands' perceptual entropy,
+// in bits.
+[[nodiscard]] double perceptual_entropy(const Grouped& track, const std::vector<std::vector<double>>& allowed);
+
 // chparam_info() and sap_data() for the choice, over the groups' max_sfb.
 // delta_code_time is always 0: each alpha_q is sent against the pair below it.
 void write_chparam_info(BitWriter& w, const StereoChoice& choice);

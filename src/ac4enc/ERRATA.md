@@ -159,6 +159,21 @@ equal on every ASPX stream they write:
 - **Reading:** 2, for mono as for stereo; the presentation says what the stream holds.
 - **Evidence:** Text. FFmpeg's mov demuxer reads the track.
 
+## The 5.X and 7.X elements
+
+The readings phase E3 takes for 5.0 and 5.1, and for 7.0 and 7.1 as an experimental option. The writer
+takes the decoder's reading of each of these, and the tests and the encoder-space harness hold the three
+traces equal on every 5.X and 7.X stream they write:
+
+- [The LFE's track is not numbered in Tables 180 and 182](../ac4dec/ERRATA.md#the-lfes-track-is-not-numbered-in-tables-180-and-182):
+  the LFE's `mono_data(1)` first, the channel data's tracks counted after it, and in the 7.X element C's
+  `mono_data(0)` after the additional pair where `coding_config` 0 and 2 send it.
+- [The 7.X element's additional channels](../ac4dec/ERRATA.md#the-7x-elements-additional-channels): the
+  encoder sends `b_use_sap_add_ch` 0, so its additional pair is its own two channels and the reading's
+  matrix is not written.
+- Table 213's name for 3/2/2's last pair (the misprints in `src/ac4dec/ERRATA.md`): Tfl and Tfr, as
+  Tables 88 and 183 have them.
+
 ## The MP4 sample entry's dac4
 
 `ac4::build_dac4()` in `src/ac4` writes Annex E.6's `ac4_dsi_v1()` from a table of contents, for the
@@ -166,7 +181,7 @@ encoder's MP4 output and for `ac3cli mp4` alike. The DSI of a presentation of on
 substream in one substream group is derived whole (Annex E.10 and E.11); these are the readings it
 takes. The evidence for each is DEE's MP4 muxer: for the committed DEE streams and for the encoder's,
 the box it writes is the box `build_dac4()` writes, byte for byte (`tests/ac4/test_ac4.cpp`,
-`tools/checks/check_ac4_encode_readers.py`).
+`tools/checks/check_ac4_encode_readers.py`), but for the 3/2/2 layout's top front pair (below).
 
 ### Pseudocode E.3 leaves channel groups out
 
@@ -183,6 +198,20 @@ the box it writes is the box `build_dac4()` writes, byte for byte (`tests/ac4/te
   Lscr/Rscr for 9.0.4 and 9.1.4, and Tsl/Tsr for 22.2. The same for `dsi_substream_channel_groups[]`.
 - **Evidence:** Streams, for 5.1 and 5.1.4: DEE's muxer sets groups 0, 1, 2 and 6 for 5.1, and 0, 1, 2,
   4, 5 and 6 for its 5.1.4. Text for the 9.X layouts and 22.2, which no stream here carries.
+
+### The 3/2/2 layout's top front pair
+
+- **Where:** Part 2 Table A.27, p. 214, and Pseudocode E.3, pp. 235 and 236.
+- **Text:** both give the 7.X element's 3/2/2 modes (`pres_ch_mode` 9 and 10) group 4, Tfl and Tfr.
+- **Reading:** group 4, as printed, in `presentation_v1_channel_groups[]` and
+  `dsi_substream_channel_groups[]`.
+- **Evidence:** Text, which both places agree on, against two readers. Given the encoder's 3/2/2
+  streams (an experimental layout), DEE's muxer writes groups 0, 1 and 2, and 6 for 7.1, and none for
+  the pair, while it writes the 3/4/0 and 5/2/0 modes' pairs (groups 3 and 17) as printed.
+  MediaInfo's trace names the channel mode 7.1 3/2/2.1, and its summary counts seven channels, the
+  pair as Tfc. DEE's encoder writes no 7.X layout, so neither reader has a stream of its own maker's
+  to read there. `tools/checks/check_ac4_encode_readers.py` reports the muxer's box as differing in
+  group 4 alone.
 
 ### b_presentation_core_differs
 

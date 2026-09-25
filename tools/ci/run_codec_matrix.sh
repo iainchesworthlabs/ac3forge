@@ -1138,7 +1138,7 @@ cmp -s atmos_4.ec3 remux_atmos.ec3 || {
 }
 run_ffmpeg_check remux_atmos.ec3
 
-# --- AC-4 (planning/ac4.md, phase E1) -----------------------------------------
+# --- AC-4 (planning/ac4.md, phases E1 to E3) ----------------------------------
 # FFmpeg has no AC-4 decoder, so its part here is framing: its raw AC-4 and mov
 # demuxers must find as many frames as ac3cli's own decoder decodes from what
 # ac4-encode wrote. The audio itself is scored by tools/checks/score_ac4_encode.py
@@ -1163,5 +1163,12 @@ run ac4-encode ac3_mono.wav ac4_mono_64.ac4 64 dialnorm=auto
 run_ac4_frames_check ac4_mono_64.ac4 -f ac4
 run ac4-encode "$FIXTURES/reference_stereo.wav" ac4_stereo_192.mp4 192 dialnorm=24
 run_ac4_frames_check ac4_stereo_192.mp4
+# 5.1, in the ASPX mode below 384 kbps and SIMPLE from there.
+for kbps in 192 384; do
+    run ac4-encode "$FIXTURES/reference_51.wav" "ac4_51_${kbps}.ac4" "$kbps"
+    run_ac4_frames_check "ac4_51_${kbps}.ac4" -f ac4
+done
+run ac4-encode "$FIXTURES/reference_51.wav" ac4_51_256.mp4 256 dialnorm=auto
+run_ac4_frames_check ac4_51_256.mp4
 
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

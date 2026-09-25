@@ -979,9 +979,13 @@ which a shared misreading still passes.
 
 ### The encoder
 
-`src/ac4enc` writes AC-4 from the same two standards: mono or stereo at 48 or 44.1 kHz, at
-`frame_rate_index` 13, at a constant rate, in the SIMPLE codec mode or, below 96 kbps a channel, the
-ASPX mode, with A-SPX above a crossover and companding below 64 kbps a channel. It shares
+`src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz,
+at `frame_rate_index` 13, at a constant rate, in the SIMPLE codec mode or the ASPX mode, with A-SPX
+above a crossover: below 96 kbps a channel in mono and stereo, with companding below 64, and below
+76.8 kbps a channel in 5.X, as DEE's 5.1 streams switch between 320 and 384 kbps. 5.0 and 5.1 take
+the 5.X element in the one form DEE's streams have (`coding_config` 0 and `2ch_mode` 0: L and R a
+pair, Ls and Rs a pair, C alone, the LFE); its other coding configurations, chosen frame by frame by
+the bits they save, and 7.0 and 7.1 in the 7.X element are experimental options. It shares
 `src/ac4core`'s transforms, windows, codebooks, QMF banks and A-SPX tables and high frequency
 generator with the decoder, and writes the syntax through a transcription of the tables of its own.
 `ac3cli ac4-encode` writes it raw or in MP4. Four checks stand behind it (`planning/ac4.md`, the
@@ -993,27 +997,48 @@ encoder's ladder):
   record; the fuzz target also decodes every frame and encodes the input a second time, which must
   give the same bytes. The encoder-space harness (`tools/ci/fuzz_ac4_encoder_space.py`) draws
   configurations and adversarial PCM, and compares the encoder's trace, the decoder's and
-  `tools/references/ac4_syntax.py`'s through `ac3cli`'s `syntax-trace=` option; it draws the codec
-  mode the rate picks or either one forced, and the experimental A-SPX tools. FFmpeg Validate runs it
-  for 120 seconds on each pull request, and the nightly fuzz workflow for 900. The A-SPX writer's
-  tests read every interval class, balance, sinusoids and both kinds of interleaving back through the
-  decoder's parser, and hold the encoder's reading of the interval borders, envelope resolutions and
-  noise borders to the parser's.
+  `tools/references/ac4_syntax.py`'s through `ac3cli`'s `syntax-trace=` option; it draws mono to
+  5.1 and the 7.X layouts, the codec mode the rate picks or either one forced, and the experimental
+  tools. FFmpeg Validate runs it for 120 seconds on each pull request, and the nightly fuzz workflow
+  for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
+  interleaving back through the decoder's parser, and hold the encoder's reading of the interval
+  borders, envelope resolutions and noise borders to the parser's. The encoder undoes the three, four
+  and five channel matrices as the 2 x 2 steps they cascade, in a transcription of Tables 178 and 179
+  and clause 5.3.3.4 of its own, which `test_ac4enc_multichannel.cpp` holds to every printed matrix
+  for every `chel_matsel`, with the steps' parameters chosen or drawn at random.
+- **One tone per channel.** Encoded and decoded, each channel's tone comes back at unity gain on its
+  own channel, 60 dB or more over every other tone there, the LFE's 47 Hz included: 5.0 and 5.1 in
+  SIMPLE and ASPX, and 7.0 and 7.1 in each of the three 7.X layouts (`test_ac4enc_encoder.cpp`, and
+  through `ac3cli` in the WAV order `decode` writes). Noise above the crossover in one channel comes
+  back in that channel alone, so each `aspx_data` element carries the channels Part 1 Table 213 gives
+  it.
 - **Readers outside the project.** FFmpeg's raw AC-4 demuxer finds every frame at the size written,
   and its mov demuxer reads the MP4 track (the harness and the codec matrix). Locally,
   `tools/checks/check_ac4_encode_readers.py` holds MediaInfo's frame-by-frame trace to the
   configuration, field by field, CRC included, and has DEE's MP4 muxer mux the raw output: the `dac4`
-  it writes is the encoder's, byte for byte, for mono and stereo at both sample rates.
+  it writes is the encoder's, byte for byte, for mono and stereo at both sample rates, 5.0 and 5.1,
+  the experimental coding configurations and the 7.X layouts 3/4/0 and 5/2/0. For 3/2/2 the muxer
+  leaves out channel group 4, which Part 2 Table A.27 and Pseudocode E.3 both give its top front
+  pair, and MediaInfo's summary names that pair Tfc (`src/ac4enc/ERRATA.md`).
 - **Decoded against the sources** (`tools/checks/score_ac4_encode.py`, in FFmpeg Validate): the
   programme fixtures, one tone per channel, a sweep, noise, castanet-like bursts and a panned source,
-  mono and stereo, 48 and 44.1 kHz, 24 to 256 kbps, encoded and decoded by the decoder. Every leg
-  lags its source by 4,385 samples, sits within 0.2 dB of unity where its SNR is 20 dB or more, and
-  meets SNR, log-spectral distance and ViSQOL floors pinned at the first measurement; in the ASPX
-  legs SNR and gain are measured below the stream's crossover, and above it each A-SPX tile's energy
-  against the source's, as the decoder's scorer measures DEE's streams. librempeg decodes every one
-  of these streams, its output 736 samples earlier than the decoder's. In SIMPLE, and below the
-  crossover of the ASPX streams without companding, it agrees with the decoder to 83 dB or better;
-  with companding, to 35 to 36 dB, as on DEE's companded streams. Above the crossover its A-SPX
+  mono, stereo, 5.0 and 5.1 (music and film mixes), 48 and 44.1 kHz, 24 to 384 kbps, encoded and
+  decoded by the decoder. Every leg lags its source by 4,385 samples, sits within 0.2 dB of unity
+  where its SNR is 20 dB or more, and meets SNR, log-spectral distance and ViSQOL floors pinned at
+  the first measurement; in the ASPX legs SNR and gain are measured below the crossover of the
+  `aspx_data` element that carries each channel, and above it each A-SPX tile's energy against the
+  source's, as the decoder's scorer measures DEE's streams. A 5.1 leg's LFE is scored over its whole
+  band: it is coded to 140.6 Hz, its first three scale factor bands, as DEE codes it, so what the
+  source's 120 Hz low-pass leaves above that counts as noise. librempeg decodes every one of these
+  streams, its output 736 samples earlier than the decoder's. In SIMPLE, and below the crossover of
+  the ASPX streams without companding, it agrees with the decoder to 83 dB or better, 5.0 and 5.1
+  included (82.5 to 90 dB on every channel, the LFE's too); with companding, to 35 to 36 dB, as on
+  DEE's companded streams. On the experimental options it does not agree. On the coding
+  configurations' streams its channels sit 2 to 42 dB under the decoder's; on D4's constructed
+  streams it reads `coding_config` 0 with `2ch_mode` 1 as the decoder does, to 81 dB or better, and
+  parts from it on every three, four and five channel matrix and on the 3.0 element's pair, 6 to 19
+  dB down, where its pairs of the 5.X element match. It refuses the 5/2/0 and 3/2/2 layouts ("Not
+  yet implemented"), and writes a 3/4/0 stream's L on every channel. Above the crossover its A-SPX
   band strays further from the source than the decoder's, as it does on DEE's streams: on the
   castanet-like bursts at 64 kbps it arrives a block of 1,024 samples after each burst and trails
   it, 27 dB from the source's energy per loud block, where the decoder's output is 1.7 dB from it.
@@ -1030,7 +1055,14 @@ encoder's ladder):
   and 32 dB on the tones, its log-spectral distance is lower on each (1.04 against 1.17 dB on music),
   and ViSQOL is within 0.01 of DEE's. DEE's 2.0 audio stops changing from 256 kbps; the
   encoder's goes on improving with the rate, to 74 dB on music at 768 kbps, where the QMF banks'
-  reconstruction bounds it. Its scores are pinned.
+  reconstruction bounds it. At 5.1, G0's film, music and tones from 192 to 768 kbps, ASPX to 320
+  as DEE writes them: below the crossover the encoder's SNR is 7.3 to 11.6 dB under DEE's at 192
+  kbps and 1.9 to 3.7 under at 256, since DEE keeps 21 to 27 dB below 2 kHz and lets the band from 8
+  kHz fall to 3 dB and under, where this encoder spreads its noise across the band; from 288 kbps it
+  is within 1.6 dB of DEE's, and from 320 above it, by 3.2 to 3.8 dB at 384 and 15 to 19 at 768.
+  ViSQOL is at or above DEE's at 192 and 256 kbps, and from 288 up to 0.05 under it on film and
+  0.02 on music, within 0.01 at 768. The log-spectral distance is lower on every leg, and the A-SPX
+  tiles within 0.07 dB of DEE's distance from the source or closer. Its scores are pinned.
 
 The race changed the encoder before it was pinned. Its first version trailed DEE by 11.7 dB of SNR
 on music at 192 kbps, and removed the top octave of speech and music: its rate loop spent a frame's
@@ -1041,8 +1073,11 @@ it again: below 64 kbps a channel no frame can hold its bands at their masking t
 raising every band's noise over its threshold together left music at 48 kbps with 6 dB of SNR in
 every band, where DEE keeps 19 dB in the bass. Such frames now pull every band toward one level of
 noise and cap each band's noise at 0.7 to 2 times its energy, the tightest cap the frame holds, since
-ViSQOL marks the holes a looser cap leaves more than the noise a tighter one spreads. The readings the
-writer takes, and those it shares with the decoder, are in `src/ac4enc/ERRATA.md`.
+ViSQOL marks the holes a looser cap leaves more than the noise a tighter one spreads. At 5.1 the race
+showed DEE splitting a fifth of its frames into two blocks of 1,024 samples, where this encoder's
+transient detector splits under one in a hundred; splitting on a 3 or 6 dB rise as well moved
+ViSQOL by 0.02 at most, up on some legs and down on others, and was left out. The readings the writer takes, and those it shares with
+the decoder, are in `src/ac4enc/ERRATA.md`.
 
 ## What untrusted input is checked against
 
