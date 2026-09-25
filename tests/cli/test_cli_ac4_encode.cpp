@@ -677,6 +677,32 @@ TEST_CASE("ac4-encode refuses substreams and presentations that do not go togeth
     CHECK(read_log(log).find("the MP4 sample entry's dac4 cannot describe") != std::string::npos);
 }
 
+TEST_CASE("ac4-encode gives the 7.X pair to a 7.X substream beside a mono one", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_seven_dialogue.log";
+    const fs::path out = dir / "ac4_seven_dialogue.ac4";
+    const fs::path seven = tones_wav("ac4_seven_me.wav", 8);
+    const fs::path english = wav_of("ac4_seven_english.wav", {tone(1117.0, kRate)});
+    REQUIRE(
+        run_cli("ac4-encode " + quoted(seven) + " " + quoted(out) +
+                    " 576 experimental=7x-back substream1-content=music-and-effects substream2=" +
+                    quoted(english) +
+                    " substream2-content=dialogue presentation1=1,2 presentation1-config=0",
+                log) == 0);
+    INFO(read_log(log));
+    const std::vector<std::byte> bytes = read_bytes(out);
+    const ac4::Toc toc = first_toc(bytes);
+    REQUIRE(toc.substream_groups.size() == 2);
+    CHECK(toc.substream_groups[0].substreams.at(0).chan->channel_mode_name == "7.1: 3/4/0.1");
+    CHECK(toc.substream_groups[1].substreams.at(0).chan->ch_mode == 0);
+    // Named with no input of seven or eight channels, the pair is refused.
+    CHECK(run_cli("ac4-encode " + quoted(tones_wav("ac4_seven_stereo.wav", 2)) + " " + quoted(out) +
+                      " 128 experimental=7x-wide",
+                  log) == 1);
+    CHECK(read_log(log).find("additional pair without seven or eight channels") !=
+          std::string::npos);
+}
+
 TEST_CASE("fmp4 refuses an AC-4 stream whose presentations keep CMAF's rules as not yet fragmented",
           "[cli][ac4]") {
     // One presentation with its presentation_id: what Part 2 Annex H.1.2.1

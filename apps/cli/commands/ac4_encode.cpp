@@ -89,13 +89,14 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
 }
 
 // The encoder's input channels, in ac4::Decoder's order, for a WAV file of
-// `count` channels, the 7.X element's additional pair and whether the 3.0
-// element is asked for; empty for a count the encoder does not take so.
+// `count` channels, the 7.X element's additional pair, which seven or eight
+// channels need and the other counts leave to another substream, and whether
+// the 3.0 element is asked for; empty for a count the encoder does not take so.
 [[nodiscard]] std::vector<ac4::Speaker> input_speakers(std::size_t count, ac4::AdditionalPair pair,
                                                        bool three_zero) {
     using S = ac4::Speaker;
     const bool seven = count == 7 || count == 8;
-    if (seven != (pair != ac4::AdditionalPair::kNone)) {
+    if (seven && pair == ac4::AdditionalPair::kNone) {
         return {};
     }
     switch (count) {
@@ -122,6 +123,9 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
     }
     out.push_back(S::kLeftSurround);
     out.push_back(S::kRightSurround);
+    if (!seven) {
+        return out;
+    }
     if (pair == ac4::AdditionalPair::kBack) {
         out.insert(out.end(), {S::kLeftBack, S::kRightBack});
     } else if (pair == ac4::AdditionalPair::kWide) {
@@ -301,9 +305,8 @@ struct Input {
         fmt::println(stderr,
                      "error: {}: AC-4 encoding takes mono, stereo, 5.0 and 5.1, 7.0 and 7.1 with "
                      "experimental=7x-back, 7x-wide or 7x-top-front, and 3.0 with "
-                     "experimental=three-zero; substream {} has {} channels{}",
-                     path, number, wav->channels.size(),
-                     pair != ac4::AdditionalPair::kNone ? " and a 7.X pair was named" : "");
+                     "experimental=three-zero; substream {} has {} channels",
+                     path, number, wav->channels.size());
         return std::nullopt;
     }
     if (wav->sample_rate != 48000 && wav->sample_rate != 44100) {

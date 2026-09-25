@@ -2333,10 +2333,12 @@ struct Encoder::Impl {
     // The sizes of a frame of `frame_bytes`: every substream's in index order,
     // the presentation and EMDF payload substreams as written, each audio
     // substream but the slack its share of what they leave, or with `needs`
-    // (an average or variable rate) what it needs, both less where the frame
-    // holds less, and never below `least`; and the slack's, with
-    // payload_base, what makes the frame exactly that long. Nothing where no
-    // slack does.
+    // (an average or variable rate, each need at least `least`) what it needs,
+    // both less where the frame holds less, and never below `least`: with
+    // needs, what the frame holds past every substream's least goes to each
+    // in proportion to what it needs past its own, so that the slack keeps
+    // its least too. And the slack's, with payload_base, what makes the frame
+    // exactly that long. Nothing where no slack does.
     [[nodiscard]] std::optional<std::pair<std::vector<std::size_t>, detail::FrameFit>> sizes_for(
         const detail::TocLayout& frame_layout, std::span<const BitWriter> fixed,
         std::size_t frame_bytes, std::span<const std::size_t> needs,
@@ -2359,9 +2361,11 @@ struct Encoder::Impl {
                 frame_bytes > fixed_bytes + toc_size ? frame_bytes - fixed_bytes - toc_size : 0;
             double total_weight = 0.0;
             std::size_t total_needs = 0;
+            std::size_t total_least = 0;
             for (std::size_t i = 0; i < n; ++i) {
                 total_weight += substreams[i].weight;
                 total_needs += needs.empty() ? 0 : needs[i];
+                total_least += least[i];
             }
             for (std::size_t i = 0; i < n; ++i) {
                 if (i == slack) {
@@ -2373,7 +2377,14 @@ struct Encoder::Impl {
                 } else {
                     share = static_cast<double>(needs[i]);
                     if (total_needs > available) {
-                        share *= static_cast<double>(available) / static_cast<double>(total_needs);
+                        const std::size_t excess = total_needs - total_least;
+                        const std::size_t room =
+                            available > total_least ? available - total_least : 0;
+                        share = static_cast<double>(least[i]);
+                        if (excess > 0) {
+                            share += static_cast<double>(needs[i] - least[i]) *
+                                     static_cast<double>(room) / static_cast<double>(excess);
+                        }
                     }
                 }
                 sizes[first_audio + i] = std::max(least[i], static_cast<std::size_t>(share));
@@ -2474,9 +2485,12 @@ EncodedFrame Encoder::Impl::encode_frame(std::int64_t frame) {
             needs.assign(substreams.size(), 0);
             for (std::size_t i = 0; i < substreams.size(); ++i) {
                 SubstreamCoder& coder = *substreams[i].coder;
-                needs[i] = (detail::audio_substream_overhead_bits(coder.pending.fields, longest) +
-                            coder.needed_bits() + 7) /
-                           8;
+                // Never below its least frame, which the frame then holds.
+                needs[i] =
+                    std::max(least_sizes[i],
+                             (detail::audio_substream_overhead_bits(coder.pending.fields, longest) +
+                              coder.needed_bits() + 7) /
+                                 8);
                 needed += needs[i];
             }
             frame_bytes = std::clamp(needed, std::min(shortest, longest), longest);
@@ -2819,6 +2833,11 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
         if (s.bitrate_kbps && *s.bitrate_kbps < 1) {
             return invalid("a substream's rate below 1 kbps");
         }
+    }
+    // The 7.X element's pair is a substream of seven or eight channels' own.
+    if (config.experimental.seven_x != AdditionalPair::kNone &&
+        std::ranges::none_of(ch_modes, [](int mode) { return mode >= 5; })) {
+        return invalid("experimental.seven_x's additional pair without seven or eight channels");
     }
     // One waveform for each hybrid dialogue enhancement at most.
     for (std::size_t i = 0; i < n; ++i) {
@@ -3220,6 +3239,11 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
         // The substream alone, as a coder takes it.
         EncoderConfig one = config;
         one.channels = *channels_of(i);
+        // The 7.X element's pair goes to a substream of seven or eight
+        // channels; the others code as they would alone.
+        if (one.channels != 7 && one.channels != 8) {
+            one.experimental.seven_x = AdditionalPair::kNone;
+        }
         one.codec_mode = s.codec_mode;
         one.bitrate_kbps = std::max(1, static_cast<int>(std::lround(impl->substreams[i].weight)));
         one.dialogue = s.enhances ? std::nullopt : s.dialogue;

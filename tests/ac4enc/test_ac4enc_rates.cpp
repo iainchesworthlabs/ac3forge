@@ -210,6 +210,37 @@ TEST_CASE("an average rate stream never needs more than the buffer it signals", 
     }
 }
 
+TEST_CASE("an average rate keeps each of several substreams at its least frame or above",
+          "[ac4enc][rate]") {
+    // Mono and two stereo substreams, the stereo ones' channels equal, which
+    // A-SPX's balance coding makes cheap: at an average rate each substream
+    // is sized by what it needs, and one that needs less than its least frame
+    // still gets it, the substream taking what the others leave among them.
+    ac4::EncoderConfig config;
+    config.bitrate_kbps = 104;
+    config.rate_mode = ac4::RateMode::kAverage;
+    config.experimental.aspx_balance = true;
+    for (const int channels : {1, 2, 2}) {
+        ac4::SubstreamConfig substream;
+        substream.channels = channels;
+        config.substreams.push_back(substream);
+        ac4::PresentationConfig presentation;
+        presentation.substreams = {static_cast<int>(config.substreams.size()) - 1};
+        config.presentations.push_back(presentation);
+    }
+    std::vector<std::vector<float>> input = programme(5);
+    input[2] = input[1];
+    input[4] = input[3];
+    const std::vector<ac4::EncodedFrame> frames = encode(config, input);
+    REQUIRE_FALSE(frames.empty());
+    ac4::Decoder decoder(ac4::DecoderConfig{});
+    for (const ac4::EncodedFrame& frame : frames) {
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+    }
+}
+
 TEST_CASE("a variable rate stream sends no wait and keeps its rate over seconds",
           "[ac4enc][rate]") {
     ac4::EncoderConfig config;
