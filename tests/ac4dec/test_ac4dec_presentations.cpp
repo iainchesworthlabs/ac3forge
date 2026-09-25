@@ -13,10 +13,12 @@
 // sources beside them, byte for byte, and hold presentations of several
 // substreams: music and effects with dialogue, main with associated audio,
 // both, by content classifier, and main with a dialogue enhancement substream
-// for the hybrid methods. Each substream carries tones of its own, so each
-// mix is measured tone by tone against its formula (Part 1 clauses 5.7.8.9
-// and 6.2.16, Part 2 clauses 4.8.3.17 to 4.8.4), to 0.01 dB, and as a
-// waveform against the same formula applied to the substreams decoded alone.
+// for the hybrid methods; and version 0 presentations, whose substreams carry
+// their own dialnorms and mixing fields. Each substream carries tones of its
+// own, so each mix is measured tone by tone against its formula (Part 1
+// clauses 5.7.8.9 and 6.2.16, Part 2 clauses 4.8.3.17 to 4.8.5), to 0.01 dB,
+// and as a waveform against the same formula applied to the substreams
+// decoded alone.
 // tools/references/ac4_syntax.py's digests of them are beside the others in
 // tests/golden/ac4dec/. With AC4DEC_WRITE_PRESENTATIONS set to a directory,
 // the streams and the selection table are written there instead of compared,
@@ -261,15 +263,87 @@ Built stream_hybrid() {
     return b;
 }
 
+// presentations-v0: version 0 presentations (bitstream_version 1), whose
+// substreams carry their own dialnorm and mixing fields at sus_ver 0: 5.1
+// music and effects at -31 dBFS, English dialogue at -25 panned to 330
+// degrees, audio description at -27 with the main audio's scales and a pan to
+// 30 degrees, a 2.0 main at -24, and stereo French dialogue at -31. Ids 10 and
+// up are each substream alone.
+constexpr int kDialnormMe = 124;  // -0.25 dB a step
+constexpr int kDialnormEn = 100;
+constexpr int kDialnormAd = 108;
+constexpr int kDialnormStereoMain = 96;
+
+struct BuiltV0 {
+    std::vector<MuxSource> sources;
+    ac4dec_test::MuxLayoutV0 layout;
+};
+
+ac4dec_test::MuxSubstreamV0 substream_v0(std::size_t from, int dialnorm_bits, std::optional<int> classifier = std::nullopt,
+                                         std::string language = {}) {
+    ac4dec_test::MuxSubstreamV0 s;
+    s.source = from;
+    s.dialnorm_bits = dialnorm_bits;
+    s.content_classifier = classifier;
+    s.language = std::move(language);
+    return s;
+}
+
+ac4dec_test::MuxPresentationV0 presentation_v0(std::optional<int> config, std::vector<int> substreams, int id) {
+    ac4dec_test::MuxPresentationV0 p;
+    p.presentation_config = config;
+    p.substreams = std::move(substreams);
+    p.presentation_id = id;
+    return p;
+}
+
+BuiltV0 stream_v0() {
+    BuiltV0 b;
+    b.sources = {dee("ac4-51-tones-384"), dee("ac4-20-tones-192"), encoded("dialogue-en-mono"), encoded("ad-mono"),
+                 encoded("dialogue-fr-stereo")};
+    ac4dec_test::MuxSubstreamV0 english = substream_v0(2, kDialnormEn, 0b100, "en");
+    english.dialogue = ac4::detail::DialogueMixCodes{1, std::array{kPan330, 0}, 0};  // 6 dB, 330
+    ac4dec_test::MuxSubstreamV0 ad = substream_v0(3, kDialnormAd, 0b010, "qad");
+    ad.associated = ac4::detail::AssociatedMixCodes{.scale_main = 20,         // -6 dB
+                                                    .scale_main_centre = 10,  // -3 dB
+                                                    .scale_main_front = 5,    // -1.5 dB
+                                                    .pan_associated = kPan30};
+    ac4dec_test::MuxSubstreamV0 french = substream_v0(4, kDialnormMe, 0b100, "fr");
+    french.dialogue = ac4::detail::DialogueMixCodes{0, std::array{kPan0, kPan30}, 0};  // 3 dB
+    b.layout.substreams = {substream_v0(0, kDialnormMe), english, ad, substream_v0(1, kDialnormStereoMain), french};
+    b.layout.presentations = {
+        presentation_v0(0, {0, 1}, 1),     // M&E + English
+        presentation_v0(2, {0, 2}, 2),     // main + audio description
+        presentation_v0(3, {0, 1, 2}, 3),  // M&E + English + audio description
+        presentation_v0(2, {3, 2}, 4),     // 2.0 main + audio description
+        presentation_v0(0, {0, 4}, 5),     // M&E + stereo French
+        presentation_v0(std::nullopt, {0}, 10),
+        presentation_v0(std::nullopt, {1}, 11),
+        presentation_v0(std::nullopt, {2}, 12),
+        presentation_v0(std::nullopt, {3}, 13),
+        presentation_v0(std::nullopt, {4}, 14),
+    };
+    return b;
+}
+
 std::vector<std::byte> build(const Built& b) {
     const std::vector<std::vector<std::byte>> frames = ac4dec_test::multiplex(b.sources, b.layout, kFrames);
     return ac4dec_test::mux_sync_framed(frames);
 }
 
-const std::vector<std::byte>& committed(const char* name) {
+std::vector<std::byte> build(const BuiltV0& b) {
+    const std::vector<std::vector<std::byte>> frames = ac4dec_test::multiplex_v0(b.sources, b.layout, kFrames);
+    return ac4dec_test::mux_sync_framed(frames);
+}
+
+const std::vector<std::byte>& committed(std::string_view name) {
     static const std::vector<std::byte> five_one = read_file(golden() / "presentations" / "presentations-5_1.ac4");
     static const std::vector<std::byte> hybrid = read_file(golden() / "presentations" / "presentations-hybrid.ac4");
-    return std::string_view{name} == "5_1" ? five_one : hybrid;
+    static const std::vector<std::byte> v0 = read_file(golden() / "presentations" / "presentations-v0.ac4");
+    if (name == "5_1") {
+        return five_one;
+    }
+    return name == "hybrid" ? hybrid : v0;
 }
 
 // --- Decoding and measuring ------------------------------------------------------
@@ -304,13 +378,16 @@ Decoded decode(std::span<const std::byte> file, const ac4::DecoderConfig& config
     return out;
 }
 
+// With `output_level_dbfs`, the output level gain alone, no compression.
 Decoded decode_id(std::span<const std::byte> file, int id, double dialogue_gain_db = 0.0, double associated_gain_db = 0.0,
-                  double dialogue_enhancement_db = 0.0) {
+                  double dialogue_enhancement_db = 0.0, std::optional<double> output_level_dbfs = std::nullopt) {
     ac4::DecoderConfig config;
     config.presentation.presentation_id = id;
     config.output.dialogue_gain_db = dialogue_gain_db;
     config.output.associated_gain_db = associated_gain_db;
     config.output.dialogue_enhancement_db = dialogue_enhancement_db;
+    config.output.output_level_dbfs = output_level_dbfs;
+    config.output.drc = ac4::DrcMode::kOff;
     const Decoded decoded = decode(file, config);
     for (const std::optional<int>& got : decoded.presentation_ids) {
         REQUIRE(got == id);
@@ -700,15 +777,18 @@ TEST_CASE("the committed presentation streams and selection table are the builde
     const std::string table = selection_table();
     const std::vector<std::byte> five_one = build(stream_5_1());
     const std::vector<std::byte> hybrid = build(stream_hybrid());
+    const std::vector<std::byte> v0 = build(stream_v0());
     if (write_to != nullptr) {
         const fs::path out{write_to};
         write_file(out / "presentations" / "presentations-5_1.ac4", five_one);
         write_file(out / "presentations" / "presentations-hybrid.ac4", hybrid);
+        write_file(out / "presentations" / "presentations-v0.ac4", v0);
         std::ofstream(out / "presentations" / "presentation-selection.tsv", std::ios::binary) << table;
         return;
     }
     CHECK(committed("5_1") == five_one);
     CHECK(committed("hybrid") == hybrid);
+    CHECK(committed("v0") == v0);
     std::ifstream in(golden() / "presentations" / "presentation-selection.tsv", std::ios::binary);
     std::string on_disk((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
     // A checkout may give the text file CRLF line ends.
@@ -717,7 +797,7 @@ TEST_CASE("the committed presentation streams and selection table are the builde
 }
 
 TEST_CASE("every presentation of the multiplexed streams reads to its end", "[ac4dec][presentations]") {
-    for (const char* name : {"5_1", "hybrid"}) {
+    for (const char* name : {"5_1", "hybrid", "v0"}) {
         CAPTURE(name);
         ac4::Decoder decoder;
         const ac4::ScanResult scan = ac4::scan(committed(name));
@@ -942,6 +1022,82 @@ TEST_CASE("a hybrid dialogue enhancement method takes its waveform from the dial
         check_tone(on, waveform, Speaker::kCentre, kToneDe,
                    {{Speaker::kLeft, db(gs / 2.0)}, {Speaker::kRight, db(gs / 2.0)}});
     }
+}
+
+TEST_CASE("version 0 presentations mix by their substreams' own metadata and dialnorms", "[ac4dec][presentations]") {
+    const std::vector<std::byte>& file = committed("v0");
+    const Decoded me = decode_id(file, 10);
+    const Decoded english = decode_id(file, 11);
+    const Decoded ad = decode_id(file, 12);
+    const Decoded stereo_main = decode_id(file, 13);
+    const Decoded french = decode_id(file, 14);
+    // The gain 2^((a - b) / 6) from dialnorm b to dialnorm a, in dB.
+    const auto dialnorm_gain_db = [](int a_bits, int b_bits) {
+        return db(std::pow(2.0, (-0.25 * static_cast<double>(a_bits) + 0.25 * static_cast<double>(b_bits)) / 6.0));
+    };
+    // Music and effects with English: the dialogue's fields from its own
+    // extended_metadata(), g_dialog_max 6 dB and a pan to 330 degrees.
+    const Decoded mix = decode_id(file, 1);
+    for (std::size_t c = 0; c < me.speakers.size(); ++c) {
+        check_tone(mix, me, me.speakers[c], kTones51[c], {{me.speakers[c], 0.0}});
+    }
+    check_tone(mix, english, Speaker::kCentre, kToneDialogueEn, {{Speaker::kLeft, 0.0}});
+    check_tone(decode_id(file, 1, 9.0), english, Speaker::kCentre, kToneDialogueEn, {{Speaker::kLeft, 6.0}});
+    std::vector<std::vector<double>> into_left = zeros(6, 1);
+    into_left[0][0] = 1.0;
+    CHECK(residual_db(mix, {{&me, diagonal(6, 1.0)}, {&english, into_left}}) < -100.0);
+    // Main with audio description: the main audio's scales and the pan from
+    // the associated substream's extended_metadata(), and the audio
+    // description levelled from its own dialnorm to the main one's (Part 1
+    // clause 6.2.16.0; Part 2 clause 4.8.5.2 and Table 16).
+    std::vector<double> main_db(6, -6.0);
+    main_db[0] = main_db[1] = -7.5;
+    main_db[2] = -9.0;
+    const Decoded described = decode_id(file, 2);
+    for (std::size_t c = 0; c < me.speakers.size(); ++c) {
+        check_tone(described, me, me.speakers[c], kTones51[c], {{me.speakers[c], main_db[c]}});
+    }
+    const double ad_to_main = dialnorm_gain_db(kDialnormMe, kDialnormAd);
+    check_tone(described, ad, Speaker::kCentre, kToneAd, {{Speaker::kRight, ad_to_main}});
+    check_tone(decode_id(file, 2, 0.0, -10.0), ad, Speaker::kCentre, kToneAd, {{Speaker::kRight, ad_to_main - 10.0}});
+    std::vector<std::vector<double>> main_matrix = zeros(6, 6);
+    for (std::size_t c = 0; c < 6; ++c) {
+        main_matrix[c][c] = from_db(main_db[c]);
+    }
+    std::vector<std::vector<double>> into_right = zeros(6, 1);
+    into_right[1][0] = from_db(ad_to_main);
+    CHECK(residual_db(described, {{&me, main_matrix}, {&ad, into_right}}) < -100.0);
+    // All three: Table 16 takes the dialogue's dialnorm, so the audio
+    // description comes to -25 dBFS; the dialogue is scaled as the main audio
+    // is, its own channel C.
+    const Decoded all = decode_id(file, 3);
+    for (std::size_t c = 0; c < me.speakers.size(); ++c) {
+        check_tone(all, me, me.speakers[c], kTones51[c], {{me.speakers[c], main_db[c]}});
+    }
+    check_tone(all, english, Speaker::kCentre, kToneDialogueEn, {{Speaker::kLeft, -9.0}});
+    check_tone(all, ad, Speaker::kCentre, kToneAd, {{Speaker::kRight, dialnorm_gain_db(kDialnormEn, kDialnormAd)}});
+    // A 2.0 main at -24 dBFS: the audio description at 30 degrees, into R.
+    const Decoded into_stereo = decode_id(file, 4);
+    check_tone(into_stereo, stereo_main, Speaker::kLeft, kTones51[0], {{Speaker::kLeft, -7.5}});
+    check_tone(into_stereo, ad, Speaker::kCentre, kToneAd,
+               {{Speaker::kRight, dialnorm_gain_db(kDialnormStereoMain, kDialnormAd)}});
+    // Stereo French: its L at 0 degrees, its R at 30.
+    const Decoded fr = decode_id(file, 5);
+    check_tone(fr, french, Speaker::kLeft, kToneDialogueFr[0], {{Speaker::kCentre, 0.0}});
+    check_tone(fr, french, Speaker::kRight, kToneDialogueFr[1], {{Speaker::kRight, 0.0}});
+    // At an output level, each substream alone goes to it from its own
+    // dialnorm and a presentation from Table 16's: the music and effects of
+    // presentation 1 follow the English dialogue's -25 dBFS, 6 dB under their
+    // own level, and the audio description, levelled, plays as it does alone.
+    constexpr double kLevel = -31.0;
+    const Decoded me_at = decode_id(file, 10, 0.0, 0.0, 0.0, kLevel);
+    const Decoded english_at = decode_id(file, 11, 0.0, 0.0, 0.0, kLevel);
+    const Decoded ad_at = decode_id(file, 12, 0.0, 0.0, 0.0, kLevel);
+    const Decoded mix_at = decode_id(file, 1, 0.0, 0.0, 0.0, kLevel);
+    check_tone(mix_at, me_at, Speaker::kCentre, kTones51[2],
+               {{Speaker::kCentre, dialnorm_gain_db(kDialnormMe, kDialnormEn)}});
+    check_tone(mix_at, english_at, Speaker::kCentre, kToneDialogueEn, {{Speaker::kLeft, 0.0}});
+    check_tone(decode_id(file, 2, 0.0, 0.0, 0.0, kLevel), ad_at, Speaker::kCentre, kToneAd, {{Speaker::kRight, 0.0}});
 }
 
 TEST_CASE("the decoder selects by its configuration and reports what it decoded", "[ac4dec][presentations]") {
