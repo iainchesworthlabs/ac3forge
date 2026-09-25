@@ -1609,7 +1609,8 @@ meet E1's and E2's checks; the race at 5.1 and 96, 128 and 144 kbps.
 - Dialogue enhancement: the channel-independent method, with its parameters computed from a
   dialogue stem or from channels the caller marks as dialogue
   ([decision 18](#decisions-for-the-encoder-and-the-applications)), and the cap the caller sets. The
-  other methods as options.
+  Mid of L and R and the cross-channel method as options. The hybrid methods, 2 and 3, add a
+  dialogue waveform in a substream of its own, and so go with E6's `presentation_config` 1.
 - Downmix: mixing gains, the preferred method, and custom downmix data.
 - Rates: an average bit rate within the buffer Part 1 6.2.4 sets, with `wait_frames` signalling the
   wait, and a variable bit rate.
@@ -1632,7 +1633,8 @@ meet E1's and E2's checks; the race at 5.1 and 96, 128 and 144 kbps.
 #### E6: presentations and several substreams
 
 - Several substreams and substream groups, and presentations of each `presentation_config` Part 1
-  Table 85 lists: music and effects with dialogue (0), main with dialogue enhancement (1), main with
+  Table 85 lists: music and effects with dialogue (0), main with dialogue enhancement (1), whose
+  dialogue substream the hybrid dialogue enhancement methods (Part 1 Table 170's 2 and 3) take, main with
   associated audio (2), music and effects with dialogue and associated audio (3), main with dialogue
   enhancement and associated audio (4) and main alone (5), and Part 2's EMDF-only presentation (6).
   Alternative presentations; names, languages, content classifiers and group gains; the `md_compat`

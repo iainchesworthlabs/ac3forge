@@ -1071,8 +1071,10 @@ processing" and in "A change of source" and "What an I-frame does not restore".
 
 ### The encoder
 
-`src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz,
-at `frame_rate_index` 13, at a constant rate, in the SIMPLE codec mode or the ASPX mode, with A-SPX
+`src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 kHz at every
+frame rate of Part 1 Table 83 or at 44.1 kHz at `frame_rate_index` 13, at a constant, average or
+variable rate, with I-frames where a caller asks for them, the loudness values, DRC's decoder modes,
+the stereo downmix's values and dialogue enhancement, in the SIMPLE codec mode or the ASPX mode, with A-SPX
 above a crossover: below 96 kbps a channel in mono and stereo, with companding below 64, and below
 76.8 kbps a channel in 5.X, as DEE's 5.1 streams switch between 320 and 384 kbps. Below 33.6 kbps a
 channel in 5.X it writes ASPX_ACPL_2, and below 22.4 ASPX_ACPL_3, as DEE's 5.1 streams are at 128
@@ -1083,8 +1085,8 @@ configurations, chosen frame by frame by the bits they save, 7.0 and 7.1 in the 
 ASPX_ACPL_1 and A-CPL in stereo are experimental options. It shares
 `src/ac4core`'s transforms, windows, codebooks, QMF banks and A-SPX tables and high frequency
 generator with the decoder, and writes the syntax through a transcription of the tables of its own.
-`ac3cli ac4-encode` writes it raw or in MP4. Four checks stand behind it (`planning/ac4.md`, the
-encoder's ladder):
+`ac3cli ac4-encode` writes it raw or in MP4. Five checks stand behind it (`planning/ac4.md`, the
+encoder's ladder, and phase E5's exit):
 
 - **Three transcriptions agree.** The encoder records each element it writes in the shape the decoder
   records what it reads. The encoder's tests and the fuzz target `fuzz_ac4_encode` require the
@@ -1094,7 +1096,10 @@ encoder's ladder):
   configurations and adversarial PCM, and compares the encoder's trace, the decoder's and
   `tools/references/ac4_syntax.py`'s through `ac3cli`'s `syntax-trace=` option; it draws mono to
   5.1 and the 7.X layouts, the codec mode the rate picks, SIMPLE or ASPX forced or an A-CPL mode
-  forced, and the experimental tools, and its `--check-envelope` holds each A-CPL mode's least rate.
+  forced, the experimental tools, every frame rate, the rate modes, the I-frame options and each
+  metadata option, and its `--check-envelope` holds each A-CPL mode's least rate. A refusal of a rate
+  as too low for the frame rate and metadata counts only for frames under 400 bytes, and only if the
+  same case at 400 bytes a frame encodes.
   The fuzz target reaches every A-CPL mode too. FFmpeg Validate runs it for 120 seconds on each pull request, and the nightly fuzz workflow
   for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
   interleaving back through the decoder's parser, and hold the encoder's reading of the interval
@@ -1117,7 +1122,8 @@ encoder's ladder):
   `tools/checks/check_ac4_encode_readers.py` holds MediaInfo's frame-by-frame trace to the
   configuration, field by field, CRC included, and has DEE's MP4 muxer mux the raw output: the `dac4`
   it writes is the encoder's, byte for byte, for mono and stereo at both sample rates, 5.0 and 5.1,
-  the experimental coding configurations and the 7.X layouts 3/4/0 and 5/2/0. For 3/2/2 the muxer
+  the experimental coding configurations and the 7.X layouts 3/4/0 and 5/2/0, and every substream
+  field MediaInfo shows holds the value the encoder's syntax trace wrote. For 3/2/2 the muxer
   leaves out channel group 4, which Part 2 Table A.27 and Pseudocode E.3 both give its top front
   pair, and MediaInfo's summary names that pair Tfc (`src/ac4enc/ERRATA.md`). MediaInfo and the
   muxer read the A-CPL streams as configured as well, ASPX_ACPL_1 and A-CPL in stereo included.
@@ -1152,6 +1158,26 @@ encoder's ladder):
   modes, are scored as `score_ac4_decode.py` scores DEE's: the coded downmixes, recovered from the
   output, as waveforms below the crossover, each parameter band's level difference and correlation
   against the source's, and on the tones the routing margin.
+- **Frame rates, rates and metadata** (phase E5). At every frame rate each frame decodes to the
+  samples Part 2 clause 5.11 gives it, over a second in `test_ac4enc_frame_rates.cpp`, and over
+  100 000 frames at every rate, across 98 wraps of `sequence_counter`, in a test run on demand; the
+  decoded output lags the input by `delay_samples()` and `decoder_delay_samples()`, found by
+  correlation, to within a sample. `score_ac4_encode.py`'s frame-rate legs hold music and speech in
+  stereo and music in 5.1 at the other frame rates within pinned allowances of the same source at
+  index 13 on the log-spectral distance and ViSQOL: to 60 fps within 0.17 dB and 0.012, and at 100 to
+  120 fps music at 128 kbps 0.63 to 0.87 dB over and 0.09 to 0.18 under, where the frames' fixed side
+  information takes five times its share of the rate. An average-rate stream never needs more than
+  the input buffer it signals: `test_ac4enc_rates.cpp` starts a decoder at every frame and runs its
+  buffer. Through the decoder's output processing (`gain_ac4_decode.py --encoder`, in CI) the output
+  level, each downmix and dialogue enhancement's gains on the encoder's streams equal their formulas
+  to 0.01 dB. MediaInfo reads every loudness, DRC, downmix and dialogue enhancement field of 23
+  further configurations as the encoder wrote it, and the table of contents' `wait_frames`, frame
+  rate and I-frames as configured; it reads a DRC gainset no further than `drc_gain_val`, and with
+  `de_ms_proc_flag` twice the parameters Part 1 Table 78 reads. The harness found I-frames at the
+  least rate a configuration takes that the encoder could not write: their A-CPL values, a VARFIX
+  interval and per-frame metadata cost more than the frame `create()` checked. A frame that holds
+  nothing more now sends each as a stream starts it, and `create()` sizes it with the costlier
+  interval, which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
 - **The race against DEE** (`score_ac4_encode.py --gold`, locally): phase G0's 2.0 legs of music,
   speech and tones from 48 to 768 kbps, encoded again here in the mode DEE writes at each rate, and
   both decoded by the decoder. In ASPX, from 48 to 144 kbps, ViSQOL is within 0.03 of DEE's or above

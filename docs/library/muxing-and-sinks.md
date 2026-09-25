@@ -115,9 +115,12 @@ The same codec-blind contract carries **AC-4**: `codec_id = mp4::kCodecAc4`
 selects TS 103 190-2 Annex E.4's `ac-4` sample entry with a `dac4` configuration box, whose
 payload comes from `ac4::build_dac4()` off the stream's own parsed TOC — the AC-4 twin of
 `build_codec_config_box`, in `ac4::` where the codec knowledge lives. An ISOBMFF `ac-4`
-*sample* is the `raw_ac4_frame` alone (no sync word, no CRC), `samples_per_frame` comes from
-`ac4::samples_per_frame()` (Table 84 — the 1000/1001-family rates whose frame length
-alternates are refused, having no single answer), and because AC-4's RFC 6381 string is not
+*sample* is the `raw_ac4_frame` alone (no sync word, no CRC), `samples_per_frame` and
+`AudioTrack::timescale` come from `ac4::media_timing()` (TS 103 190-2 Table E.1: the sample rate,
+or 240 000 for the 1000/1001-family rates whose frame length alternates at 48 kHz, where a frame is
+8 008, 4 004 or 2 002), a stream whose frames are not all I-frames names its I-frames in
+`MuxOptions::sync_samples`, which writes the Sync Sample Box Annex E.2 asks for, and because AC-4's
+RFC 6381 string is not
 its fourcc, `AudioTrack::rfc6381` carries `ac4::rfc6381_codec_string()`'s dotted form
 (`ac-4.02.01.00`) for the HLS/DASH manifests. MPEG-TS carriage is DVB-only — EN 300 468
 Annex D.7's extension descriptor `0x7F/0x15`, with an ISO 13818-1 §2.6.8 registration
