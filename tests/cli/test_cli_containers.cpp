@@ -402,8 +402,9 @@ TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][a
     CHECK(from_mp4->channels == raw->channels);
 }
 
-TEST_CASE("decode writes AC-4's ASPX mode, 5.1 and A-CPL, and refuses what it does not decode, naming it",
-          "[cli][ac4]") {
+TEST_CASE(
+    "decode writes AC-4's ASPX mode, 5.1 and A-CPL, and 25 fps through the sample rate converter",
+    "[cli][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_decode_aspx.log";
     const auto out = dir / "ac4_aspx.wav";
@@ -432,13 +433,148 @@ TEST_CASE("decode writes AC-4's ASPX mode, 5.1 and A-CPL, and refuses what it do
     REQUIRE(decoded_acpl.has_value());
     CHECK(decoded_acpl->channels.size() == 6);
 
-    // 25 frames a second, which needs phase D6's sample rate converter.
-    const auto refused_log = dir / "ac4_decode_refused.log";
-    const auto refused = dir / "ac4_refused.wav";
+    // 25 frames a second, through the sample rate converter: 1 920 samples a
+    // frame at 48 kHz.
+    const auto ims_log = dir / "ac4_decode_ims25.log";
+    const auto ims_wav = dir / "ac4_ims25.wav";
     const fs::path ims = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-ims-music-128-25" / "dee.ac4";
-    CHECK(run_cli("decode " + quoted(ims) + " " + quoted(refused), refused_log) == 2);  // kExitInput
-    CHECK(read_log(refused_log).find("frame_rate_index 13") != std::string::npos);
-    CHECK_FALSE(fs::exists(refused));
+    REQUIRE(run_cli("decode " + quoted(ims) + " " + quoted(ims_wav), ims_log) == 0);
+    const auto decoded_ims = ac3::io::read_wav(ims_wav.string());
+    REQUIRE(decoded_ims.has_value());
+    CHECK(decoded_ims->sample_rate == 48000);
+    REQUIRE(decoded_ims->channels.size() == 2);
+    CHECK(decoded_ims->channels[0].size() % 1920 == 0);
+}
+
+TEST_CASE("decode takes AC-4 to output-level= and compresses it in drcmode='s mode", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_level.log";
+    const fs::path stream =
+        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4";
+    const auto rms_db = [](const std::vector<float>& x) {
+        double sum = 0.0;
+        for (std::size_t n = 16384; n < x.size() - 4096; ++n) {
+            sum += static_cast<double>(x[n]) * static_cast<double>(x[n]);
+        }
+        return 10.0 * std::log10(sum / static_cast<double>(x.size() - 20480));
+    };
+    // Two output levels 12 dB apart, 2^(12 / 6) apart in the output whatever
+    // the stream's dialnorm (ETSI TS 103 190-1 5.7.9.3.3).
+    const auto low_wav = dir / "ac4_level_31.wav";
+    const auto high_wav = dir / "ac4_level_19.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(low_wav) +
+                        " output-level=-31 drcmode=off",
+                    log) == 0);
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(high_wav) +
+                        " output-level=-19 drcmode=off",
+                    log) == 0);
+    const auto low = ac3::io::read_wav(low_wav.string());
+    const auto high = ac3::io::read_wav(high_wav.string());
+    REQUIRE(low.has_value());
+    REQUIRE(high.has_value());
+    CHECK(std::abs(rms_db(high->channels[0]) - rms_db(low->channels[0]) - 20.0 * std::log10(4.0)) <
+          0.01);
+    // A mode at a level decodes; without a level AC-4's DRC has nothing to
+    // work to, and an output level above full scale is no level.
+    const auto drc_wav = dir / "ac4_drc.wav";
+    CHECK(run_cli("decode " + quoted(stream) + " " + quoted(drc_wav) +
+                      " output-level=-10 drcmode=portable-headphones",
+                  log) == 0);
+    CHECK(run_cli("decode " + quoted(stream) + " " + quoted(drc_wav) + " drcmode=home-theatre",
+                  log) == 1);
+    CHECK(read_log(log).find("output-level=") != std::string::npos);
+    CHECK(run_cli("decode " + quoted(stream) + " " + quoted(drc_wav) + " output-level=5", log) ==
+          1);
+}
+
+TEST_CASE("decode raises AC-4's dialogue by dialogue-enhancement=", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_de.log";
+    // DEE's speech stream sends dialogue enhancement parameters for L and R,
+    // capped at 9 dB.
+    const fs::path stream =
+        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-speech-128" / "dee.ac4";
+    const auto plain_wav = dir / "ac4_de_plain.wav";
+    const auto raised_wav = dir / "ac4_de_raised.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(plain_wav), log) == 0);
+    REQUIRE(
+        run_cli("decode " + quoted(stream) + " " + quoted(raised_wav) + " dialogue-enhancement=9",
+                log) == 0);
+    const auto plain = ac3::io::read_wav(plain_wav.string());
+    const auto raised = ac3::io::read_wav(raised_wav.string());
+    REQUIRE(plain.has_value());
+    REQUIRE(raised.has_value());
+    const auto energy = [](const std::vector<float>& x) {
+        double sum = 0.0;
+        for (const float v : x) {
+            sum += static_cast<double>(v) * static_cast<double>(v);
+        }
+        return sum;
+    };
+    CHECK(10.0 * std::log10(energy(raised->channels[0]) / energy(plain->channels[0])) > 1.0);
+}
+
+TEST_CASE("decode folds AC-4 5.1 to stereo and mono with channels= and downmix=", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_downmix.log";
+    const fs::path stream =
+        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-tones-384" / "dee.ac4";
+    struct Case {
+        const char* options;
+        std::size_t channels;
+        const char* layout;
+    };
+    constexpr std::array<Case, 3> kCases{{
+        {"downmix=loro", 2, "(L R, 48000 Hz)"},
+        {"channels=2", 2, "(L R, 48000 Hz)"},
+        {"channels=1", 1, "(C, 48000 Hz)"},
+    }};
+    for (const Case& c : kCases) {
+        CAPTURE(c.options);
+        const auto wav = dir / "ac4_downmix.wav";
+        REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(wav) + " " + c.options, log) ==
+                0);
+        CHECK(read_log(log).find(c.layout) != std::string::npos);
+        const auto decoded = ac3::io::read_wav(wav.string());
+        REQUIRE(decoded.has_value());
+        CHECK(decoded->channels.size() == c.channels);
+    }
+}
+
+TEST_CASE("decode stops on a damaged AC-4 frame and conceal= carries on through it", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_conceal.log";
+    // DEE's stereo tones with the eleventh frame's audio_size_value set past its
+    // audio substream: the table of contents still reads, the substream does not.
+    std::vector<std::byte> bytes =
+        read_file(fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4");
+    const ac4::ScanResult scan = ac4::scan(bytes);
+    REQUIRE(scan.frames.size() == 120);
+    const std::span<const std::byte> raw = scan.frames[10].raw_ac4_frame;
+    const auto parsed = ac4::parse_raw_frame(raw);
+    REQUIRE(parsed.has_value());
+    const auto audio = std::ranges::find_if(parsed->substreams,
+                                            [](const ac4::Substream& s) { return s.is_audio; });
+    REQUIRE(audio != parsed->substreams.end());
+    const auto at = static_cast<std::size_t>(raw.data() - bytes.data()) + audio->offset;
+    bytes[at] = std::byte{0xFF};
+    bytes[at + 1] = std::byte{0xFE};
+    const auto damaged = dir / "ac4_damaged.ac4";
+    write_bytes(damaged, bytes);
+
+    const auto wav = dir / "ac4_conceal.wav";
+    CHECK(run_cli("decode " + quoted(damaged) + " " + quoted(wav), log) == 2);
+    CHECK(read_log(log).find("frame 11") != std::string::npos);
+    for (const char* policy : {"repeat", "mute"}) {
+        CAPTURE(policy);
+        REQUIRE(run_cli("decode " + quoted(damaged) + " " + quoted(wav) + " conceal=" + policy,
+                        log) == 0);
+        CHECK(read_log(log).find("1 of them concealed") != std::string::npos);
+        const auto decoded = ac3::io::read_wav(wav.string());
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->channels.size() == 2);
+        CHECK(decoded->channels[0].size() == 120 * 2048);
+    }
 }
 
 TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "[cli][mp4][ac4]") {

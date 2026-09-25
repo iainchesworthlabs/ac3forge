@@ -404,6 +404,32 @@ top, which puts dialogue at −20 dBFS, and plays any syncframe without a `compr
 mode's level — the same as the Dolby Reference Player's RF mode (see
 [RF mode's level](../../library/decoding.md#rf-modes-level)).
 
+AC-4 has a different model (ETSI TS 103 190-1 clauses 5.7.8 and 5.7.9): the decoder takes the stream's
+dialnorm to an output level the system supplies, cutting or boosting by
+2^((output level − dialnorm) / 6), and compresses in one of the DRC decoder modes the stream
+configures. `output-level=<dBFS>` sets that level; without it `decode` writes the coded level.
+At an output level, `drcmode=` names the mode: `default` (the default) takes the one Table 161
+gives the level (home theatre from −31 to −27 dBFS, flat panel TV from −26 to −17, portable
+speakers from −16 to 0), `home-theatre`, `flat-panel-tv`, `portable-speakers` and
+`portable-headphones` name one, and `off` applies the level alone:
+
+```bash
+ac3cli decode stream.ac4 out.wav output-level=-31                  # home theatre
+ac3cli decode stream.ac4 out.wav output-level=-14 drcmode=portable-headphones
+ac3cli decode stream.ac4 out.wav output-level=-24 drcmode=off      # the level, no compression
+```
+
+`dialogue-enhancement=<dB>` raises the dialogue where the stream sends dialogue enhancement
+parameters (clause 5.7.8), from 0 (the default, which leaves the output alone) to 12 dB, and never
+beyond the cap the stream sets, 3, 6, 9 or 12 dB.
+
+`channels=` and `downmix=` fold AC-4 by clause 6.2.17's matrices with the stream's own mix gains:
+`downmix=loro`, `ltrt` and `mono` as named, and `downmix=auto`, or `channels=2` alone, the method
+the stream's `preferred_dmx_method` names (Lo/Ro where it names none). Lt/Rt takes its Pro Logic
+II form where the stream prefers that; there is no 90-degree phase shift, which in AC-4 describes
+processing before encoding. The LFE goes into the fold at the stream's `lfe_mixgain`, and a 7.X
+stream folds to 5.X on the way.
+
 `monitor` takes all of the same tokens, and additionally folds on its own initiative when the
 output device renders fewer channels than the programme: playing 5.1 on a stereo endpoint
 otherwise means whatever the platform's shared-mode mixer averages together, with none of the
@@ -424,6 +450,12 @@ ac3cli decode recovered.ac3 out.wav conceal=mute     # window-ramped silence
 Either way the run reports how many frames or access units were concealed. Off by default: a
 decode that hides a damaged frame looks exactly like one that had nothing to hide. See
 [Decoding → Concealing it instead](../../library/decoding.md#concealing-it-instead-decoderconfigconcealment).
+
+`decode` takes `conceal=` for AC-4 too. A concealed AC-4 frame is the last good frame's spectrum
+again, faded 20 dB for each 32 ms lost as the AC-3 and E-AC-3 decoders fade, or silence, through
+the decoder's own transform and output stages; the QMF-domain tools pass it through. The frames
+that wait for an I-frame after a change of source, which otherwise write nothing, are concealed
+the same way. A frame that fails before any frame has decoded still stops the run.
 
 #### `probe` — what the stream says about itself
 

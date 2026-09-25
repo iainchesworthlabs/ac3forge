@@ -56,6 +56,37 @@ using ParseResult = std::expected<void, SyntaxError>;
     return kForExternal48[static_cast<std::size_t>(frame_rate_index)];
 }
 
+// Part 1 Table 83's decoder resampling ratio, up / down: 1001/1000 x 25/24 =
+// 1001/960 at the 1000/1001 rates, 25/24, 15/16, and 1/1 at index 13 (and for
+// an index the table reserves).
+struct ResamplingRatio {
+    int up = 1;
+    int down = 1;
+};
+
+[[nodiscard]] inline ResamplingRatio resampling_ratio(int frame_rate_index) noexcept {
+    switch (frame_rate_index) {
+        case 0:
+        case 3:
+        case 5:
+        case 8:
+        case 11:
+            return {1001, 960};
+        case 1:
+        case 4:
+        case 6:
+        case 9:
+        case 12:
+            return {25, 24};
+        case 2:
+        case 7:
+        case 10:
+            return {15, 16};
+        default:
+            return {};
+    }
+}
+
 // Channel modes as ch_mode numbers (Part 1 Table 88, Part 2 Table 56).
 namespace ch_mode {
 inline constexpr int kMono = 0;

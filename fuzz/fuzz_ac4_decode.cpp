@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 
 #include "ac4/ac4.hpp"
@@ -26,7 +27,10 @@
 // pressed too. A second framed decoder, and the whole-input one, decode to
 // PCM: scale factors, band layouts and block lengths the stream chooses reach
 // the reconstruction and the transforms, with the overlap buffers carried
-// from frame to frame.
+// from frame to frame. The second framed decoder's output processing and
+// concealment policy come from the input's last byte, so the DRC, dialogue
+// enhancement and downmix values the stream sends, and the concealment of the
+// frames that fail, are pressed too.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(data), size);
 
@@ -35,7 +39,20 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     ac4::DecoderConfig config;
     config.syntax = count;
     ac4::Decoder framed(config);
-    ac4::Decoder decoding;
+    ac4::DecoderConfig processing;
+    if (size > 0) {
+        const auto pick = static_cast<unsigned>(data[size - 1]);
+        if ((pick & 1U) != 0) {
+            processing.output.output_level_dbfs =
+                -31.0 + static_cast<double>((pick >> 1U) % 8U) * 4.0;
+        }
+        processing.output.drc = static_cast<ac4::DrcMode>((pick >> 1U) % 6U);
+        processing.output.dialogue_enhancement_db = (pick & 8U) != 0 ? 12.0 : 0.0;
+        processing.output.downmix = static_cast<ac4::DownmixTarget>((pick >> 4U) % 6U);
+        processing.output.mix_lfe = (pick & 16U) == 0;
+        processing.concealment = static_cast<ac4::ConcealmentPolicy>((pick >> 6U) % 3U);
+    }
+    ac4::Decoder decoding(processing);
     const ac4::ScanResult scan = ac4::scan(bytes);
     for (const ac4::SyncFrame& frame : scan.frames) {
         (void)framed.parse(frame.raw_ac4_frame);

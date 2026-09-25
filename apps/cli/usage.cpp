@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 60> kOptionTokens{{
+constexpr std::array<OptionToken, 62> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -75,7 +75,9 @@ constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
     {"channels=", "decode/monitor: 2 or 1 apply the §7.8 output stage; as-coded (default) is a no-op"},
     {"ltrt-phase=", "decode/monitor: off skips §7.8.2's real 90° surround phase shift"},
-    {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes"},
+    {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes; AC-4: a DRC decoder mode"},
+    {"output-level=", "decode of AC-4: the level in dBFS dialnorm is taken to (Lout)"},
+    {"dialogue-enhancement=", "decode of AC-4: raise the dialogue by 0 to 12 dB, capped by the stream"},
     {"conceal=", "decode/monitor: repeat or mute, §7.10 error concealment for a bad frame"},
     {"src=", "an additional input source; repeat for more than one"},
     {"map=", "where each source channel goes"},
@@ -353,6 +355,15 @@ void print_decode_topic() {
     fmt::println("       not decode from the previous block's overlap instead of failing the");
     fmt::println("       command; monitor also folds on its own initiative when the output");
     fmt::println("       endpoint renders fewer channels than the programme.");
+    fmt::println("");
+    fmt::println("decode of AC-4 takes output-level=<dBFS>, the level the stream's dialnorm is");
+    fmt::println("       taken to (ETSI TS 103 190-1 5.7.9.3.3, which boosts as well as cuts;");
+    fmt::println("       unset, the default, leaves the coded level), and at that level");
+    fmt::println("       drcmode=default|home-theatre|flat-panel-tv|portable-speakers|");
+    fmt::println("       portable-headphones|off: default takes the mode Table 161 gives the");
+    fmt::println("       output level, off compresses nothing. dialogue-enhancement=<dB> raises");
+    fmt::println("       the dialogue where the stream sends its parameters (5.7.8), 0 to 12 dB");
+    fmt::println("       and no more than the stream's cap.");
 }
 
 void print_qc_topic() {

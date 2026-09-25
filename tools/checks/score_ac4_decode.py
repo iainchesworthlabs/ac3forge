@@ -1,19 +1,23 @@
 """Score ac3cli's AC-4 decoding of DEE's streams against the sources they were encoded from.
 
 For each leg the decoder turns into PCM - SIMPLE and ASPX mono, stereo and 5.1, 5.1 in ASPX_ACPL_2
-and ASPX_ACPL_3, and DEE's immersive stereo (IMS), at frame_rate_index 13 (see
-src/ac4dec/include/ac4dec/decoder.hpp) - this decodes the stream with `ac3cli decode`, aligns the
-output with its reference by cross-correlation, fits a least-squares gain per channel, and checks
-(planning/ac4.md, the decoder's ladder, item 3):
+and ASPX_ACPL_3, and DEE's immersive stereo (IMS), at frame_rate_index 13, and IMS at 23.976, 24,
+25 and 29.97 fps through the sample rate converter (see src/ac4dec/include/ac4dec/decoder.hpp) -
+this decodes the stream with `ac3cli decode`, aligns the output with its reference by
+cross-correlation, fits a least-squares gain per channel, and checks (planning/ac4.md, the
+decoder's ladder, item 3):
 
   lag      the output lags the source by the leg's LAG: DEE's encoder delay plus this decoder's,
            1 313 samples at index 13 (Part 1 Table 188's d_pcm, the QMF banks' 577 samples and six
            QMF slots of history, for every codec mode: src/ac4dec/ERRATA.md, "Every codec mode
            passes through the QMF banks"). DEE's IMS encoder runs a frame shorter than its AC-4
-           encoder.
+           encoder. At the other frame rates, the lag first measured (LAG_AT_RATE); the A-SPX
+           subbands there are the internal rate's.
   gain     every channel of a mono, 2.0 or 5.1 leg within 0.2 dB of unity, fitted below the
-           crossover in ASPX. The streams were made with loudness measured only, and the decoder
-           applies no DRC or output level yet, so the prediction is the source's own level. A 5.1
+           crossover in ASPX. The streams were made with loudness measured only, and they are
+           decoded with no output level, which leaves them at their coded level and uncompressed,
+           so the prediction is the source's own level (gain_ac4_decode.py checks the output
+           level and the downmixes). A 5.1
            leg's LFE, which DEE low-passes before coding it (LFE_CHANNEL's comment), within 0.5 dB,
            from 20 to 100 Hz. An IMS leg, made from 5.1, is compared with the source's Lo/Ro
            downmix (L + C/sqrt 2 + Ls/sqrt 2 and its mirror), which its channels must correlate with
@@ -95,6 +99,19 @@ RATE = 48000
 # (a frame and a half) plus the decoder's 1 313; the IMS encoder a frame less.
 DECODER_DELAY = 352 + 577 + 6 * 64
 LAG = {baseline.AC4: 3072 + DECODER_DELAY, baseline.IMS: 1024 + DECODER_DELAY}
+# Part 1 Table 83's decoder resampling ratio by frame_rate_index, (up, down): a frame is coded at
+# RATE * down / up, and the decoder's sample rate converter makes RATE of it.
+RESAMPLING = {0: (1001, 960), 1: (25, 24), 2: (15, 16), 3: (1001, 960), 4: (25, 24),
+              5: (1001, 960), 6: (25, 24), 7: (15, 16), 8: (1001, 960), 9: (25, 24),
+              10: (15, 16), 11: (1001, 960), 12: (25, 24), 13: (1, 1)}
+# At the other frame rates DEE's IMS encoder writes, the lag by frame_rate_index, as first
+# measured. DEE's IMS encoder delays by half a frame at 48 kHz, as at index 13 (1 024); this
+# decoder by its d_pcm, the QMF banks' 577 samples and 384 of history at the internal rate, and
+# its converter's delay() (src/ac4core/src/dsp/resampler.hpp), taken to 48 kHz. Their sum comes
+# within 1.3 samples of each lag: 1 000 + 1 301.0 + 49.0 at 24 fps, 1 001 + 1 302.4 + 49.1 at
+# 23.976, 960 + 1 230.9 + 46.8 at 25, 800.8 + 1 102.1 + 49.1 at 29.97.
+LAG_AT_RATE = {(baseline.IMS, 0): 2353, (baseline.IMS, 1): 2351, (baseline.IMS, 2): 2239,
+               (baseline.IMS, 3): 1952}
 GAIN_TOLERANCE_DB = 0.2
 ROUTING_MARGIN_DB = 40.0
 IMS_CORRELATION = 0.95
@@ -154,6 +171,10 @@ PINS = {
     "ac4-51-music-192": ((21.4, 22.1, 23.6, -3.3, 22.2, 22.5), 2.64, 3.71, 4.49),
     "ac4-51-music-384": ((30.9, 31.7, 32.8, -3.3, 31.2, 31.5), 2.77, None, 4.62),
     "ac4-51-tones-384": ((48.9, 50.6, 52.8, 18.7, 55.3, 52.5), 11.76, None, 4.63),
+    # The IMS legs at 24, 25 and 29.97 fps, through the sample rate converter (phase D6).
+    "ac4-ims-film-96-24": ((19.8, 19.9), 1.20, 2.17, 4.34),
+    "ac4-ims-music-128-25": ((18.4, 19.2), 1.52, None, 4.59),
+    "ac4-ims-music-64-2997": ((15.7, 16.1), 1.65, 2.07, 4.54),
     "20-music-48": ((15.7, 15.8), 1.82, 2.03, 4.50),
     "20-music-64": ((18.3, 18.3), 1.41, 6.18, 4.50),
     "20-music-96": ((24.3, 24.3), 1.45, 0.61, 4.57),
@@ -226,6 +247,23 @@ PINS = {
     "ims-music-144-native": ((13.6, 13.7), 1.43, None, 4.53),
     "ims-music-256-native": ((13.7, 13.9), 0.97, None, 4.55),
     "ims-music-320-native": ((13.7, 13.9), 0.97, None, 4.55),
+    # At 23.976, 24, 25 and 29.97 fps, through the sample rate converter (phase D6).
+    "ims-film-128-23976": ((12.2, 12.3), 1.19, 3.18, 4.15),
+    "ims-film-128-24": ((12.1, 12.2), 1.20, 3.17, 4.10),
+    "ims-film-128-25": ((11.7, 11.7), 1.21, 3.27, 4.22),
+    "ims-film-128-2997": ((12.2, 12.2), 1.20, 3.28, 4.11),
+    "ims-film-64-23976": ((11.7, 11.8), 1.52, 2.37, 4.16),
+    "ims-film-64-24": ((11.7, 11.7), 1.52, 2.35, 4.15),
+    "ims-film-64-25": ((11.4, 11.5), 1.54, 2.33, 4.20),
+    "ims-film-64-2997": ((11.4, 11.5), 1.64, 2.13, 4.24),
+    "ims-music-128-23976": ((13.4, 13.5), 1.35, 4.17, 4.54),
+    "ims-music-128-24": ((13.4, 13.6), 1.34, 3.13, 4.53),
+    "ims-music-128-25": ((13.0, 13.2), 1.44, 3.62, 4.53),
+    "ims-music-128-2997": ((13.5, 13.6), 1.39, 3.28, 4.54),
+    "ims-music-64-23976": ((12.2, 12.4), 1.53, 2.05, 4.50),
+    "ims-music-64-24": ((12.3, 12.4), 1.53, 1.98, 4.49),
+    "ims-music-64-25": ((12.0, 12.1), 1.53, 2.25, 4.51),
+    "ims-music-64-2997": ((11.9, 11.9), 1.65, 2.18, 4.49),
 }
 # The A-CPL legs: (floors of the downmixes' SNRs, in ASPX_ACPL_2 (L + Ls / sqrt 2) / 2, its mirror,
 # C and the LFE, in ASPX_ACPL_3 Lo and Ro over 1 + sqrt 2 and the LFE; ceilings of the level
@@ -383,9 +421,17 @@ def score(reference, decoded):
     return lag, channels, ref, out
 
 
-def subband_hz():
-    """The width of a QMF subband at RATE: half the sampling rate over 64."""
-    return RATE / 128.0
+def internal_rate(frame_rate_index):
+    """The rate a frame at frame_rate_index is coded at (Part 1 Table 83)."""
+    up, down = RESAMPLING[frame_rate_index]
+    return RATE * down / up
+
+
+def subband_hz(rate=None):
+    """The width of a QMF subband at `rate`, the internal rate the QMF banks run at, RATE where
+    none is given: half the sampling rate over 64. RATE is read at the call, since
+    score_ac4_encode.py sets it for its 44.1 kHz legs."""
+    return (RATE if rate is None else rate) / 128.0
 
 
 def band_gain(ref, out, top_hz):
@@ -463,9 +509,10 @@ def trace_values(trace):
     return values, offsets
 
 
-def tile_error(ref, out, groups):
+def tile_error(ref, out, groups, rate=None):
     """The mean absolute dB difference of out's tile energies from ref's, per frame and
-    low-resolution group above the crossover, over the tiles where ref's is above the floor."""
+    low-resolution group above the crossover, over the tiles where ref's is above the floor; the
+    groups' subbands are the QMF banks' at `rate`, the internal rate (subband_hz's default)."""
     window = np.hanning(FRAME)
     bin_hz = RATE / FRAME
     # A full-scale sine's energy in one frame through the window: (FRAME / 4)^2.
@@ -475,7 +522,8 @@ def tile_error(ref, out, groups):
         r = np.abs(np.fft.rfft(window * ref[start:start + FRAME])) ** 2
         o = np.abs(np.fft.rfft(window * out[start:start + FRAME])) ** 2
         for low, high in itertools.pairwise(groups):
-            first, last = int(low * subband_hz() / bin_hz), int(high * subband_hz() / bin_hz)
+            first = int(low * subband_hz(rate) / bin_hz)
+            last = int(high * subband_hz(rate) / bin_hz)
             er, eo = float(r[first:last].sum()), float(o[first:last].sum())
             per_subband = er / (high - low) / full_scale
             if per_subband > 10.0 ** (TILE_FLOOR_DB / 10.0):
@@ -505,14 +553,14 @@ def lo_ro(five_one):
 
 def chosen(leg):
     return (leg.get("codec_mode") in ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
-            and leg.get("frame_rate_index") == 13
+            and leg.get("frame_rate_index") in RESAMPLING
             and leg.get("output_channel_layout") in ("stereo", "mono", "IMS", "5.1")
             and any(option.startswith("measure_only") for option in leg.get("options", [])))
 
 
 def legs_committed(work):
-    """(name, stream, source WAV path, source name, encoder, codec mode) for every committed leg
-    decode reads.
+    """(name, stream, source WAV path, source name, encoder, codec mode, frame_rate_index) for
+    every committed leg decode reads.
 
     The manifest records what each stream turned out to be and a digest of the source it was
     made from; gen_ac4_baseline.py's LEGS names the source, which is rebuilt here and must
@@ -529,14 +577,14 @@ def legs_committed(work):
             raise SystemExit(f"{name}: the rebuilt source {path.name} does not hash to the "
                              "manifest's source_sha256")
         legs.append((name, BASELINE_DIR / name / "dee.ac4", path, source_of[name], leg["encoder"],
-                     leg["codec_mode"]))
+                     leg["codec_mode"], leg["frame_rate_index"]))
     return legs
 
 
 def legs_gold(gold):
     manifest = json.loads((gold / "gold-manifest.json").read_text(encoding="utf-8"))
     return [(name, gold / "streams" / name / "dee.ac4", gold / "sources" / f"{leg['source']}.wav",
-             leg["source"], leg["encoder"], leg["codec_mode"])
+             leg["source"], leg["encoder"], leg["codec_mode"], leg["frame_rate_index"])
             for name, leg in sorted(manifest["legs"].items()) if chosen(leg)]
 
 
@@ -755,7 +803,7 @@ def main():
             raise SystemExit("no leg to score")
         failures = []
         pins = []
-        for name, stream, source_path, source_name, encoder, codec_mode in legs:
+        for name, stream, source_path, source_name, encoder, codec_mode, rate_index in legs:
             source, source_rate = read_wav(source_path)
             decoded, rate = decode(args.cli, stream, work / f"{name}.wav", work / f"{name}.trace")
             if rate != RATE or source_rate != RATE:
@@ -767,9 +815,12 @@ def main():
                 failures.append(f"{name}: {decoded.shape[1]} channels decoded, the reference has "
                                 f"{reference.shape[1]}")
                 continue
+            internal = internal_rate(rate_index)
             lag, ref, out = align(reference, decoded)
-            if not args.measure and lag != LAG[encoder]:
-                failures.append(f"{name}: lag {lag}, expected {LAG[encoder]}")
+            expected_lag = (LAG[encoder] if rate_index == 13
+                            else LAG_AT_RATE.get((encoder, rate_index)))
+            if not args.measure and lag != expected_lag:
+                failures.append(f"{name}: lag {lag}, expected {expected_lag}")
             if codec_mode in ACPL_UNIT:
                 found = trace_values(work / f"{name}.trace")
                 if found is None:
@@ -799,10 +850,10 @@ def main():
                     error = o - gain * r
                     snr = 10.0 * np.log10(np.dot(gain * r, gain * r) / np.dot(error, error))
                 else:
-                    top_hz = (channel_groups[c][0] - 1) * subband_hz()
+                    top_hz = (channel_groups[c][0] - 1) * subband_hz(internal)
                     gain = band_gain(r, o, top_hz)
                     snr = band_snr(r, o, gain, top_hz)
-                    tiles += tile_error(r, o, channel_groups[c])
+                    tiles += tile_error(r, o, channel_groups[c], internal)
                 snrs.append(float(snr))
                 correlation = float(np.dot(r, o) / np.sqrt(np.dot(r, r) * np.dot(o, o)))
                 lfe = LFE_CHANNEL.get(reference.shape[1]) == c
@@ -825,7 +876,7 @@ def main():
             mos = quality_race.perceptual_score(ref, out, RATE)
             tile_text = "" if tile_mean is None else f"  tiles {tile_mean:.2f} dB ({len(tiles)})"
             mos_text = "-" if mos is None else f"{mos:.2f}"
-            where = f" (xover {groups[0] * subband_hz() / 1000:.2f} kHz)" if groups else ""
+            where = f" (xover {groups[0] * subband_hz(internal) / 1000:.2f} kHz)" if groups else ""
             print(f"{name:<32} lag {lag:5d}  {'  '.join(cells)}{where}  LSD {lsd:.2f} dB"
                   f"{tile_text}  MOS {mos_text}", flush=True)
             pins.append(pin_text(name, snrs, float(lsd), tile_mean, mos))
