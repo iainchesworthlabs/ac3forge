@@ -172,6 +172,10 @@ The sections below contain the complete change list and fixes.
   - `tools/checks/run_sendspin_qemu.sh` has the emulated board list the test server by name and
     then forget it by its `server_id`. The page's budget is 49,152 bytes, up from 45,056
     (planning/esp32-device-ui.md, decision 22).
+  - `hearth_sink` starts its Sendspin player before its host. The player's decode task needs a
+    32 KB stack in internal RAM, which is in pieces by then. An ESP32-S3 with 104,319 bytes free
+    had no block above 31,744 once the host's state had been made first, and the player did not
+    start. A player that cannot start now says so on the console.
 - **The ESP32 web page explains the output layout**, showing this play's fold, each
   channel's speaker or object placement, and the speakers left silent; `GET /status`
   gains `sink_slots`, `stream.layout`, `render`, `coded` and `silent`. A 38-stream set
