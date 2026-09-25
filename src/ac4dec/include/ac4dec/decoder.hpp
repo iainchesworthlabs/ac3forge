@@ -24,7 +24,11 @@
 // frame's substreams - the presentation substream, channel-coded audio
 // substreams in the Part 1 channel elements (their HSF extension substreams,
 // ac4_hsf_ext_substream(), included), and EMDF payload substreams - and
-// reports what a frame carries. It produces no audio yet. The table of
+// reports what a frame carries. It decodes to PCM a mono or stereo substream
+// in the SIMPLE codec mode at frame_rate_index 13 (2 048 samples a frame at
+// 48 or 44.1 kHz, which needs no sample rate converter): the audio spectral
+// frontend, stereo processing, the inverse transform with block switching,
+// and frame alignment (Part 1 clauses 5.1, 5.3, 5.5 and 5.6). The table of
 // contents and the substream framing come from ac4::parse_raw_frame (the
 // inspector, src/ac4); this library starts where the inspector stops.
 //
@@ -32,7 +36,10 @@
 // spectral frontend (Part 1 clause 5.2), immersive and 22.2 channel elements,
 // object substreams, and a 96/192 kHz substream whose HSF extension
 // substream could not be resolved and read alongside it. Refusing is per
-// substream and per frame; the next frame is attempted afresh.
+// substream and per frame; the next frame is attempted afresh. decode()
+// refuses, the same way, everything above that it does not turn into PCM
+// yet: the A-SPX and A-CPL codec modes, the 3.0, 5.X and 7.X elements, other
+// frame rates and 96/192 kHz.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
@@ -128,10 +135,34 @@ struct FrameReport {
     std::vector<SubstreamReport> substreams;
 };
 
+// --- Decoding to PCM ---------------------------------------------------------
+//
+// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names.
+// Later versions add the rest of the layouts.
+enum class Speaker : std::uint8_t {
+    kLeft,
+    kRight,
+    kCentre,
+};
+
+[[nodiscard]] AC4DEC_EXPORT std::string_view describe(Speaker speaker);
+
+// One frame of output.
+struct DecodedFrame {
+    int sample_rate_hz = 0;
+    int sequence_counter = 0;             // of the frame this came from
+    std::vector<Speaker> speakers;        // one per channel, in the order of `channels`
+    // Planar PCM, one vector per channel, all the same length, at full scale
+    // 1.0. The frame alignment delay of Part 1 clause 5.6 is applied.
+    std::vector<std::vector<float>> channels;
+};
+
 // One decoder per stream: configuration sent only in I-frames (A-SPX, A-CPL,
 // DRC, dialogue enhancement) persists from one frame to the next, until a
 // sequence_counter that does not continue the stream marks a change of
-// source (Part 1 clause 4.3.3.2.2), which forgets it as reset() does.
+// source (Part 1 clause 4.3.3.2.2), which forgets it as reset() does. That
+// includes decode()'s overlap buffers and delay lines, which start again from
+// silence.
 class AC4DEC_EXPORT Decoder {
    public:
     Decoder();
@@ -148,6 +179,19 @@ class AC4DEC_EXPORT Decoder {
     // when its table of contents does.
     [[nodiscard]] std::expected<FrameReport, DecodeError> parse(
         std::span<const std::byte> raw_ac4_frame);
+
+    // Reads one raw_ac4_frame as parse() does and decodes the audio of the
+    // first channel-coded substream of the first presentation that has one.
+    // Nothing for a frame that has no output: one whose substream needs
+    // configuration no I-frame has sent yet. The error, when there is one, is
+    // that substream's (or the table of contents'), and refusal_reason() says
+    // why.
+    [[nodiscard]] std::expected<std::optional<DecodedFrame>, DecodeError> decode(
+        std::span<const std::byte> raw_ac4_frame);
+
+    // Why the last decode() failed or returned nothing, a string literal;
+    // empty after a decode() that returned a frame.
+    [[nodiscard]] std::string_view refusal_reason() const noexcept;
 
     // Forgets everything carried between frames.
     void reset();

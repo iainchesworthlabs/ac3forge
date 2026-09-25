@@ -996,6 +996,18 @@ The sections below contain the complete change list and fixes.
   `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
   `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
   rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
+- **AC-4 decodes to PCM for mono and stereo in the SIMPLE codec mode** (phase D2 of
+  `planning/ac4.md`). `ac4::Decoder::decode()` reconstructs the audio spectral frontend
+  (dequantisation, scale factors, noise fill), stereo processing (M/S and prediction), the inverse
+  transform with block switching, and frame alignment, and returns planar PCM for a stream's first
+  channel-coded substream; `ac3cli decode` reads AC-4, raw or in MP4. Other codec modes, layouts and
+  frame rates are refused by name. The transforms and tables sit in a new shared core, `src/ac4core`,
+  which the encoder will link too, and each transform is tested against its formula. DEE's 2.0
+  streams from 192 to 768 kbps decode at unity gain within 0.03 dB, with per-leg SNR floors in
+  `tools/checks/score_ac4_decode.py`, which FFmpeg Validate runs on the committed streams;
+  librempeg's decode of the same 24 streams agrees with this one to 77 dB or better. The readings
+  taken, among them full scale at 2^15 with no factor of two in the overlap-add, are in
+  `src/ac4dec/ERRATA.md`.
 
 **Browser (WASM)**
 

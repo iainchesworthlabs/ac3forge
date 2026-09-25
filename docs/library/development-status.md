@@ -139,7 +139,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | EMDF-only presentations (config 6) | 🟢 | Low | Optional | Synthetic + dual transcription |
 | | `dac4` / RFC 6381 codec string | 🟢 | Medium | Important | MP4 / TS / HLS / DASH wiring |
 | | Audio PCM decode | 🔴 | High | Essential | Inspector by design — content is byte ranges only |
-| **Decoder (`ac4dec::`)** | Presentation + channel-coded syntax | 🟡 | High | Essential | Full syntax trace; **no PCM yet** |
+| **Decoder (`ac4dec::`)** | Presentation + channel-coded syntax | 🟡 | High | Essential | Full syntax trace |
 | | ASF / ASPX / A-CPL / metadata() | 🟡 | High | Essential | DEE digest CI; dual transcription vs Python |
 | | Channel-coded paths without fixtures | 🟡 | Medium | Optional | Noise fill, VARVAR ASPX, time-interleaved ASPX, mono/3.0/7.X, ASPX_ACPL_1, alt presentations, transmitted DRC gains — transcribed, oracle-poor |
 | | EMDF payload substreams (syntax) | 🟡 | Medium | Important | Syntax only |
@@ -148,7 +148,9 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Immersive / 22.2 channel elements | 🔴 | Medium | Important | Refused today |
 | | Object / A-JOC audio substreams | 🔴 | Medium | Important | Refused at TOC |
 | | HSF / 96–192 kHz | 🟡 | Low | Nice-to-have | Extension substream content read when it resolves to its owning channel substream; an unresolved link is refused `kUnsupported` — synthetic frames only, no real HSF stream available |
-| | PCM reconstruction | 🔴 | High | Essential | Next phase after syntax |
+| | PCM: SIMPLE mono and stereo | 🟢 | High | Essential | ASF, stereo processing, block switching, frame alignment at `frame_rate_index` 13; DEE's 2.0 streams at unity gain and pinned SNR floors in CI; librempeg agrees to 77 dB or better |
+| | PCM: other modes, layouts and rates | 🔴 | High | Essential | A-SPX, A-CPL, 3.0 to 7.X, the sample rate converter: refused by name until plan phases D3 to D6 |
+| | Transforms (`ac4core`: FFT, MDCT pair, KBD) | 🟢 | High | Essential | Each against its formula to 1e-12; shared with the encoder to come |
 
 ---
 
@@ -290,7 +292,8 @@ this register is the checklist that those bounds appear here too.
 | Dialogue enhancement | PCM apply | 🔴 |
 | SSF / immersive / objects | Decode | 🔴 |
 | §4.2.4.3 | HSF extension substream content (syntax only; synthetic frames only) | 🟡 |
-| Whole codec | PCM reconstruction | 🔴 |
+| Whole codec | PCM reconstruction beyond SIMPLE mono and stereo | 🔴 |
+| §5.1.4 | Spectral noise fill: decoded, but no stream here sets it | 🟡 |
 
 ### SMPTE ST 2098-2 / ST 2067-201 (IAB)
 

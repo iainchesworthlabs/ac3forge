@@ -814,7 +814,8 @@ in `tools/references/ac4_parse.py`.
 ### The decoder's syntax
 
 `src/ac4dec` is the start of an AC-4 decoder written from the same two standards. It reads every
-syntax element of a frame's substreams and produces no audio yet: the presentation substream,
+syntax element of a frame's substreams, and decodes the audio of some of them (see "The decoder's
+output" below): the presentation substream,
 channel-coded audio substreams in the Part 1 channel elements (ASF spectral data, stereo processing,
 companding, A-SPX and A-CPL data, and `metadata()` with its DRC and dialogue enhancement), a
 channel-coded substream's HSF extension substream where one resolves to a distinct, readable
@@ -866,6 +867,42 @@ programme fixtures, with its SHA-256, so a decode can be scored against the exac
 The generator also makes a larger local set, never committed: every layout and rate DEE writes, from
 2.0 at 48 kbps to 5.1.4 at 768, immersive stereo at every frame rate, and DRC, downmix, loudness and
 I-frame settings, each with MediaInfo's frame-by-frame trace beside it.
+
+### The decoder's output
+
+The decoder turns a mono or stereo substream in the SIMPLE codec mode, at `frame_rate_index` 13, into
+PCM: the audio spectral frontend, stereo processing, the inverse transform with block switching, and
+frame alignment (Part 1 clauses 5.1, 5.3, 5.5 and 5.6). The transforms are in `src/ac4core`, the core
+the decoder shares with the encoder to come. Three checks stand in for the reference output neither
+part defines:
+
+- **Each transform against its formula** (`tests/ac4core/test_ac4core_dsp.cpp`): the FFT against the
+  DFT; the inverse MDCT against a verbatim transcription of Pseudocodes 60 to 63 and against the cosine
+  sum they come to, at every transform length of clause 5.5.3; the forward MDCT against its own sum; the
+  KBD windows against numpy's Kaiser window, cumulated; all to 1e-12. Blocks windowed and transformed
+  by an analysis written in the test from the same windows reconstruct their input to 1e-12 across
+  every block transition Part 1 Table 187 allows, within a frame and across frames.
+- **DEE's streams against their sources** (`tools/checks/score_ac4_decode.py`): the decoded output is
+  aligned with the source by cross-correlation and fitted with a gain per channel. Every leg must lag
+  its source by the same 3,424 samples (DEE's encoder and this decoder's, `d_pcm` included), sit within
+  0.2 dB of unity gain, and meet per-channel SNR floors pinned at the first measurement less 1 dB; each
+  tone must land on its own channel. FFmpeg Validate runs it on the two committed SIMPLE legs; locally
+  it runs over phase G0's 24 SIMPLE 2.0 legs, 192 to 768 kbps of music, speech and tones, all within
+  0.03 dB of unity (music 34.6 to 36.8 dB, speech 39.4 dB, tones 50 to 51 dB SNR). DEE's 2.0 streams
+  carry the same audio from 256 kbps up, the rest of each frame being fill, so those rates decode to
+  the same samples.
+- **librempeg on the same streams**: over the 24 legs its output and this decoder's agree to 77.4 to
+  93.1 dB SNR at unity gain, the difference spread across the spectrum at -107 to -111 dBFS, and
+  librempeg's output is 225 samples later. 225 is 577, the delay of the QMF analysis and synthesis
+  pair, less 352, this decoder's `d_pcm`: consistent with librempeg running the QMF pair without the
+  frame alignment. Part 1 5.7.3.1 feeds the frame-aligned output to the QMF analysis bank, which
+  phase D3 adds here.
+
+The level check settles one question the text leaves open: the pseudocode as printed, without the
+factor of two its informative example mentions, decodes DEE's streams at unity gain with full scale at
+2^15. That and the other readings reconstruction takes are in `src/ac4dec/ERRATA.md`, under
+"Reconstruction". None of the streams here, from DEE or anyone else, sets `b_snf_data_exists`, so the
+noise fill is decoded from the text alone.
 
 **Locally, over the census.** With `AC4DEC_GOLDEN_DIR` and `AC4DEC_STREAM_DIR` set, the same test
 compares the decoder with the Python parser's digests of any other set of streams. Over the 107 DEE

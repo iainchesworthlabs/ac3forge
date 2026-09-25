@@ -373,6 +373,42 @@ TEST_CASE("mp4 and ts carry a real AC-4 stream, and demux round-trips it",
     }
 }
 
+TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode.log";
+    // SIMPLE stereo, one tone per channel: what ac4::Decoder decodes today.
+    const fs::path stream = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4";
+    const auto raw_wav = dir / "ac4_raw.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(raw_wav), log) == 0);
+    const auto report = read_log(log);
+    CHECK(report.find("decoded 120 AC-4 frames") != std::string::npos);
+    CHECK(report.find("(L R, 48000 Hz)") != std::string::npos);
+    const auto raw = ac3::io::read_wav(raw_wav.string());
+    REQUIRE(raw.has_value());
+    CHECK(raw->sample_rate == 48000);
+    REQUIRE(raw->channels.size() == 2);
+    CHECK(raw->frame_count() == 120U * 2048U);
+
+    // The same frames in an MP4 file, whose samples decode re-frames.
+    const auto mp4_out = dir / "ac4_tones.mp4";
+    REQUIRE(run_cli("mp4 " + quoted(stream) + " " + quoted(mp4_out), log) == 0);
+    const auto mp4_wav = dir / "ac4_mp4.wav";
+    REQUIRE(run_cli("decode " + quoted(mp4_out) + " " + quoted(mp4_wav), log) == 0);
+    const auto from_mp4 = ac3::io::read_wav(mp4_wav.string());
+    REQUIRE(from_mp4.has_value());
+    CHECK(from_mp4->channels == raw->channels);
+}
+
+TEST_CASE("decode refuses AC-4 it does not decode yet, naming what", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_refused.log";
+    const auto out = dir / "ac4_refused.wav";
+    CHECK(run_cli("decode " + quoted(ac4_fixture()) + " " + quoted(out), log) == 2);  // kExitInput
+    const auto report = read_log(log);
+    CHECK(report.find("A-SPX") != std::string::npos);
+    CHECK_FALSE(fs::exists(out));
+}
+
 TEST_CASE("ts refuses AC-4 under the atsc profile with a real reason", "[cli][ts][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_atsc.log";

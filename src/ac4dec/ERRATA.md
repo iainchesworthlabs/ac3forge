@@ -556,6 +556,112 @@ Later phases add the readings their processing needs.
 - Part 2 Table 48, p. 111, cites Part 1 clauses 4.2.4.2 and 4.2.4.3 for `ac4_hsf_ext_substream` and
   `emdf_payloads_substream`, which V1.4.1 numbers 4.2.4.3 and 4.2.4.4.
 - Part 1 Table B.2, p. 283, lists a 96 kHz transform length of 920 where the other tables have 960.
+- Part 1 Pseudocode 21, p. 142, lacks the brace that closes `if (first_scf_found == 1)` before its
+  `else`.
+- Part 1 5.1.4.2, p. 143, has the noise fill replace silent bands "if noise fill data is present as
+  indicated when b_snf_data_exists is false", and the next sentence makes the tool inactive when it is
+  false. It runs when `b_snf_data_exists` is true, the only case in which `asf_snf_data()` (Table 42,
+  p. 48) reads any noise fill data.
+
+## Reconstruction
+
+The readings the decoding of clause 5 takes. Phase D2 of `planning/ac4.md` decodes the audio spectral
+frontend, stereo processing, the inverse transform and frame alignment for mono and stereo in the SIMPLE
+codec mode; later phases add theirs. The Python reference transcribes the syntax only, so these are the
+decoder's readings alone, and the evidence for each is DEE's streams scored against their sources and
+against librempeg (`docs/verification.md`, "The decoder's output"), the text, or a test against the
+clause's formula.
+
+### Full scale, and the overlap-add's factor of two
+
+- **Where:** Part 1 5.5.2.2, p. 186: Pseudocode 62 divides by N, and Pseudocode 64 adds the windowed
+  blocks as they are. The informative example after Table 187, p. 190, adds each block's windowed
+  samples to the overlap buffer "using a factor of 2". Neither part says what sample value is full scale.
+- **Reading:** Pseudocodes 60 to 64 as printed, with no factor of two, and full scale at 2^15: the
+  decoder divides its output by 32 768. The two are one constant in the output, so the measurement
+  below fixes their product, and this pair is the one that needs no factor the pseudocode does not
+  print.
+- **Evidence:** Streams. DEE's 2.0 tone leg (`ac4-20-tones-192`, a -20 dBFS sine on each channel,
+  loudness measured only) decodes at 0.005 dB below its source, and the 2.0 music leg at 0.02 dB below;
+  with the example's factor both would be 6.02 dB above. librempeg decodes both at the same level,
+  within 0.001 dB of this decoder. Through the literal transform and a forward MDCT without scaling, a
+  windowed round trip has a gain of 1/2 (`tests/ac4core/test_ac4core_dsp.cpp`), which is what a factor of
+  two in the example would restore.
+
+### KBD_RIGHT's argument
+
+- **Where:** Part 1 5.5.2.2 step 6, p. 188, windows the previous block's second half with
+  KBD_RIGHT(NW, n - Nskip) for Nskip <= n < NW + Nskip, an argument from 0 to NW - 1. 5.5.3, p. 189,
+  defines KBD_RIGHT(N, n) for N <= n < 2N only.
+- **Reading:** KBD_RIGHT(NW, NW + n - Nskip): the right half of the window at the same position, which is
+  the left half reversed.
+- **Evidence:** Streams, and the text's own condition. DEE switches block lengths in 31 of the 120 frames
+  of the 2.0 music leg, which decodes at the SNR librempeg reaches. With this reading the windows meet
+  the Princen-Bradley condition and blocks reconstruct their input to 1e-12 across every transition
+  Table 187 allows (`tests/ac4core/test_ac4core_dsp.cpp`); the argument as printed lies outside the
+  function's domain.
+
+### The KBD kernel is summed to p = N
+
+- **Where:** Part 1 5.5.3, p. 189, defines the kernel W(N, n, alpha) "for 0 <= n < N", and the sums in
+  both KBD_LEFT and KBD_RIGHT run to p = N.
+- **Reading:** the kernel's formula at n = N as well, which makes it a Kaiser window of N + 1 points,
+  symmetric about N/2, with W(N, N) = W(N, 0).
+- **Evidence:** Text. With the term at p = N the halves meet the Princen-Bradley condition exactly; the
+  windows equal numpy's Kaiser window of N + 1 points, cumulated, to 1e-12
+  (`tests/ac4core/test_ac4core_dsp.cpp`).
+
+### The overlap buffer before the first block
+
+- **Where:** Part 1 5.5.2.1, p. 185, describes `overlap` and `Nprev` as state carried from the previous
+  block, and says nothing of their value before the first one.
+- **Reading:** silence, and a previous block of full length, so that the first block takes its
+  unmodified left window. A change of source (Part 1 4.3.3.2.2) starts from the same state.
+- **Evidence:** Text; the first frame's output differs from a mid-stream decode only in the half block
+  the missing predecessor would have filled.
+
+### Pseudocode 59's stray block
+
+- **Where:** Part 1 5.3.2, p. 174. After the branches for `sap_mode` 0, 1 and 2, Pseudocode 59 prints an
+  `if (sap_used[g][sfb]) { ... } else { ... }` pair that sets a, b, c and d again, followed by an
+  `else { // sap_mode == 3` with no `if` of its own. Taken as printed, the pair would reset every M/S
+  band to the identity, since `sap_used` is only set in the `sap_mode` 3 branch.
+- **Reading:** the pair is a stray copy of the end of the `sap_mode` 3 branch and belongs to no branch.
+  `sap_mode` 0, and 1 where `ms_used` is 0, give the identity; 2, and 1 where `ms_used` is 1, give M/S
+  (a = b = c = 1, d = -1); 3 gives the prediction of its own branch. `0.1f` is taken as written, a
+  float. An `alpha_q` a later delta refers to, in a band `sap_data()` sent no coefficient for, is 0.
+- **Evidence:** Streams. DEE's 2.0 streams use all three modes (the tone leg `sap_mode` 3 in 119 of 120
+  frames, the music leg mostly 2), and decode at 50 dB (tones) and 35 dB (music) SNR against their
+  source, the SNR librempeg reaches, with the two decoders' outputs 78 to 93 dB apart.
+
+### Scale factors outside 0 to 255
+
+- **Where:** Part 1 5.1.3.2, p. 142: "Only scale factor values sfn in the range 0 to 255 are valid".
+- **Reading:** a scale factor that the deltas take outside that range fails the substream as
+  `kInvalidStream`.
+- **Evidence:** Text; no stream here does it.
+
+### x = x++ in Pseudocode 57
+
+- **Where:** Part 1 5.2.8.3, pp. 171 and 172: Pseudocodes 56 and 57 update the generator's state with
+  `psS->uiStateIdx = psS->uiStateIdx++;` and, on a wrap, `psS->uiCurrentIdx = psS->uiCurrentIdx++;`,
+  which C leaves undefined and C++17 makes a no-op.
+- **Reading:** an increment.
+- **Evidence:** Text. Pseudocode 24 gives the state after 255 x (sequence_counter mod 256) steps in closed
+  form; stepping the generator from Pseudocode 55's state reaches that closed form at all 65,286 offsets
+  with the increment and at 2 with the no-op. `tests/ac4dec/test_ac4dec_pcm.cpp` steps it for every
+  counter. No stream here sets `b_snf_data_exists`, so no stream exercises the generator: not DEE's, the
+  census's or the third-party ones.
+
+### When the noise fill's generator starts
+
+- **Where:** Part 1 5.1.4.2, p. 145: the generator "is initialized at the beginning of the decoding of an
+  Audio Spectral Front end (ASF) frame, using the sequence_counter value".
+- **Reading:** once for each audio substream in each frame, before its first `sf_data()`, and drawn from
+  in the order the substream's `sf_data()` elements occur. Started again for every track, it would give
+  every track of a frame the same sequence, since `sequence_counter` is the frame's, and the noise of the
+  two channels of a pair would be the same noise at two levels.
+- **Evidence:** Text; no stream here sets `b_snf_data_exists`.
 
 ## Tables
 
