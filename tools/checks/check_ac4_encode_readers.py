@@ -257,8 +257,17 @@ CODE = re.compile(r"^[0-9A-F]{4,}\s+(de_par_code) \(\d+ bytes\)$")
 FRAME = re.compile(r"^([0-9A-F]{4,}) ac4_syncframe - (\d+) ")
 
 
-def run(command):
-    result = subprocess.run([str(c) for c in command], capture_output=True, text=True, check=False)
+def run(command, timeout=600):
+    # A timeout for every tool: DEE's muxer can hang on a stream (src/ac4enc/ERRATA.md, "An
+    # alternative presentation's dac4").
+    try:
+        result = subprocess.run(
+            [str(c) for c in command], capture_output=True, text=True, check=False, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        raise SystemExit(
+            f"{' '.join(str(c) for c in command)} did not finish in {timeout} s"
+        ) from None
     if result.returncode != 0:
         raise SystemExit(f"{' '.join(str(c) for c in command)} failed ({result.returncode}):\n"
                          f"{result.stdout}{result.stderr}")
