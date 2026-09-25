@@ -83,7 +83,8 @@ MULTICHANNEL_LOWEST_KBPS = 20
 # The A-CPL modes a case may force, by stereo or 5.X, and the least rate each holds in 5.X, a
 # frame with no bands, A-SPX's least and the A-CPL parameters of an I-frame (13 to 25 kbps at 48
 # kHz; --check-envelope measures them). In stereo both hold from LOWEST_KBPS.
-ACPL_MODES = {False: ["aspx-acpl-1", "aspx-acpl-2"], True: ["aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3"]}
+ACPL_MODES = {False: ["aspx-acpl-1", "aspx-acpl-2"],
+              True: ["aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3"]}
 ACPL_LOWEST_KBPS = {"aspx-acpl-1": 16, "aspx-acpl-2": 16, "aspx-acpl-3": 26}
 # The channel counts drawn, stereo and 5.1 twice as often; seven and eight channels take one of the
 # 7.X element's pairs, an experimental option.

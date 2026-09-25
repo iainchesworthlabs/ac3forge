@@ -701,7 +701,8 @@ def committed_run(args, work):
 
 def acpl_gaps(ours, dee):
     """The encoder's A-CPL scores less DEE's, as a line."""
-    snrs = "  ".join(f"dmx{i} {o - d:+.2f} dB" for i, (o, d) in enumerate(zip(ours["snrs"], dee["snrs"])))
+    pairs = enumerate(zip(ours["snrs"], dee["snrs"], strict=True))
+    snrs = "  ".join(f"dmx{i} {o - d:+.2f} dB" for i, (o, d) in pairs)
     text = f"SNR {snrs}, LSD {ours['lsd'] - dee['lsd']:+.2f} dB"
     if ours["ild"] is not None and dee["ild"] is not None:
         mean = lambda values: float(np.mean([v for v in values if v is not None]))  # noqa: E731
@@ -745,7 +746,8 @@ def gold_run(args, work):
                 decoded, _ = decoding.decode(args.cli, stream, out_wav, trace)
                 # DEE's scores are printed, not checked.
                 checked = failures if label == "ours" else []
-                table = {f"{leg_name} ours": pin for leg_name, pin in RACE_ACPL.items()} if label == "ours" else {}
+                table = ({f"{leg_name} ours": pin for leg_name, pin in RACE_ACPL.items()}
+                         if label == "ours" else {})
                 scores[label] = score_acpl_leg(args, f"{name} {label}", leg["source"], original,
                                                decoded, trace, checked,
                                                acpl_pins if label == "ours" else [], table)
