@@ -723,7 +723,8 @@ class AC4DEC_EXPORT Decoder {
     // it completes them, the samples left over held for the next frame. The
     // decoder keeps the frame's storage, so a stream decoded this way
     // allocates nothing per frame once its layout is set. A change of layout
-    // or rate first hands over what is held, as a shorter block.
+    // or rate first hands over what is held, as a shorter block. It hands
+    // over channels alone: a presentation's objects come from decode().
     [[nodiscard]] std::expected<std::optional<FrameInfo>, DecodeError> decode_by_block(
         std::span<const std::byte> raw_ac4_frame, BlockSink sink);
 
