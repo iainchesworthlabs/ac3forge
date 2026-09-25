@@ -20,6 +20,7 @@
 #include "ac4/ac4.hpp"
 #include "ac4/ac4_toc_writer.hpp"
 #include "ac4dec/decoder.hpp"
+#include "tables/huffman_codes.hpp"
 
 namespace {
 
@@ -350,7 +351,8 @@ TEST_CASE("the decoder refuses a reserved channel mode and an index past the tab
                        [](const SubstreamReport& s) { return s.index == 1; }));
 }
 
-TEST_CASE("object, A-JOC and object metadata substreams are refused as not decoded yet", "[ac4dec][frames]") {
+TEST_CASE("object, A-JOC and object metadata substreams are read by their own syntax",
+          "[ac4dec][frames]") {
     BitWriter toc;
     ac4_toc_test::toc_start(toc, {});
     PresV1 p;
@@ -391,9 +393,17 @@ TEST_CASE("object, A-JOC and object metadata substreams are refused as not decod
     toc.align();
     const auto report = decode(ac4_toc_test::assemble(toc, substreams));
     REQUIRE(report.substreams.size() == 4);
-    for (const int index : {0, 1, 2}) {
-        check_refused(find(report, index), DecodeError::kUnsupported);
-    }
+    // Each is read by the syntax its element names (Part 2 Table 50): four zero
+    // bytes end the audio substreams' elements early, and the OAMD substream,
+    // which sends no oamd_timing_data() and has none from an earlier frame,
+    // cannot read its oamd_dyndata_multi() (src/ac4dec/ERRATA.md, "Which
+    // oamd_timing_data() applies").
+    CHECK(find(report, 0).kind == SubstreamReport::Kind::kAudio);
+    CHECK(find(report, 1).kind == SubstreamReport::Kind::kAudio);
+    check_refused(find(report, 0), DecodeError::kTruncated);
+    check_refused(find(report, 1), DecodeError::kTruncated);
+    CHECK(find(report, 2).kind == SubstreamReport::Kind::kOamd);
+    check_refused(find(report, 2), DecodeError::kMissingIFrame);
     check_read(find(report, 3), SubstreamReport::Kind::kPresentation);
 }
 
@@ -675,7 +685,278 @@ TEST_CASE("a series whose first substream index is INT_MAX names nothing past it
     check_refused(find(report, 2147483647), DecodeError::kInvalidStream);
 }
 
-TEST_CASE("a substream named by two object elements is refused as the first names it", "[ac4dec][frames]") {
+namespace {
+
+// The element of a one-signal SIMPLE downmix or a one-object direct-coded
+// substream after its codec mode: mono_data(0) of one long-frame track with
+// max_sfb 0, as mono_audio() writes it.
+void mono_track(BitWriter& w) {
+    w.put(0, 1);    // spec_frontend: ASF
+    w.flag(true);   // b_long_frame
+    w.put(0, 6);    // max_sfb
+    w.put(0, 8);    // reference_scale_factor
+    w.flag(false);  // b_snf_data_exists
+}
+
+// metadata() of an object substream at sus_ver 1 with nothing optional: its
+// channel_mode is negative, so basic_metadata() and extended_metadata() read
+// only their presence flags.
+void object_metadata(BitWriter& w) {
+    w.flag(false);  // b_more_basic_metadata
+    w.flag(false);  // b_dialog
+    w.flag(false);  // b_channels_classifier
+    w.flag(false);  // b_event_probability
+    w.put(1, 7);    // tools_metadata_size_value
+    w.flag(false);  // b_more_bits
+    w.flag(false);  // b_de_data_present
+    w.flag(false);  // b_emdf_payloads_substream
+}
+
+// One object_info_block() of a dynamic object with b_no_delta: its basic and
+// render info new, at `x` (pos3D_X), with default zone and other properties.
+void new_block(BitWriter& w, int x) {
+    w.flag(false);                            // b_object_not_active
+    w.flag(true);                             // b_default_basic_info_md
+    w.put(static_cast<std::uint64_t>(x), 6);  // pos3D_X
+    w.put(0, 6);                              // pos3D_Y
+    w.flag(true);                             // pos3D_Z_sign
+    w.put(0, 4);                              // pos3D_Z
+    w.flag(true);                             // b_grouped_zone_defaults
+    w.flag(true);                             // b_grouped_other_defaults
+    w.flag(false);                            // b_add_table_data
+}
+
+// An A-JOC substream of one downmix signal and one object: a SIMPLE
+// var_channel_element(), the timing and dynamic data of both OAMD portions,
+// ajoc() with one data point of one parameter band at the dry matrix's centre
+// (0), and ajoc_dmx_de_data() with no dialogue objects.
+std::vector<std::byte> ajoc_audio() {
+    BitWriter w;
+    w.put(0, 15);  // audio_size_value, rewritten below
+    w.flag(false);
+    const std::size_t start = w.size();
+    w.flag(false);  // b_some_signals_inactive
+    w.put(0, 1);    // var_codec_mode: SIMPLE
+    mono_track(w);  // n_dmx_signals 1: mono_data(0)
+    w.flag(true);   // b_dmx_timing
+    w.put(0, 1);    // oa_sample_offset_type 0b0
+    w.put(1, 3);    // num_obj_info_blocks
+    w.put(0, 6);    // block_offset_factor
+    w.put(0, 2);    // ramp_duration_code
+    new_block(w, 31);
+    w.flag(false);  // b_oamd_extension_present
+    w.put(0, 3);    // ajoc_num_decorr
+    w.flag(true);   // ajoc_object_present
+    w.put(1, 2);    // ajoc_num_dpoints
+    w.put(0, 5);    // ajoc_start_pos
+    w.put(0, 6);    // ajoc_ramp_len_minus1
+    w.put(7, 3);    // ajoc_num_bands_code: one band
+    w.put(1, 1);    // ajoc_quant_select: coarse
+    w.put(0, 1);    // ajoc_sparse_select
+    w.flag(true);   // ajoc_b_nodt: the first data point frequency-differential only
+    const ac4::detail::HuffCode centre = ac4::detail::tables::kAjocHcbDryCoarseF0Codes[25];
+    w.put(centre.code, centre.bits);  // ajoc_hcw
+    w.flag(true);                     // b_dmx_de_cfg
+    w.flag(false);                    // b_keep_dmx_de_coeffs
+    w.put(0, 2);                      // de_max_gain
+    w.put(0, 1);                      // de_main_dlg_flag[]: no dialogue objects
+    w.flag(false);                    // b_umx_timing
+    w.flag(true);                     // b_derive_timing_from_dmx
+    new_block(w, 62);
+    const std::size_t audio_bits = w.size() - start;
+    while ((w.size() - start) % 8 != 0) {
+        w.flag(false);  // fill_bits
+    }
+    object_metadata(w);
+    w.align();
+    std::vector<std::byte> bytes = w.bytes();
+    const std::size_t audio_bytes = (audio_bits + 7) / 8;
+    bytes[0] = static_cast<std::byte>(audio_bytes >> 7U);
+    bytes[1] = static_cast<std::byte>((audio_bytes << 1U) & 0xFEU);
+    return bytes;
+}
+
+// A direct-coded substream of one dynamic object: audio_data_objs(1, 0) is a
+// SIMPLE single_channel_element().
+std::vector<std::byte> object_audio() {
+    BitWriter w;
+    w.put(3, 15);  // audio_size_value: 3 bytes
+    w.flag(false);
+    w.put(0, 1);  // mono_codec_mode: SIMPLE
+    mono_track(w);
+    while (w.size() < 16 + 24) {
+        w.flag(false);  // fill_bits
+    }
+    object_metadata(w);
+    w.align();
+    return w.bytes();
+}
+
+// The OAMD substream of that group: common data with headphone data in its
+// add_data, the timing of two blocks, and the direct-coded object's two
+// blocks, the second a partial reuse with a differential position.
+std::vector<std::byte> oamd_substream() {
+    BitWriter w;
+    w.flag(true);     // b_oamd_common_data_present
+    w.flag(false);    // b_default_screen_size_ratio
+    w.put(9, 5);      // master_screen_size_ratio_code
+    w.flag(true);     // b_bed_object_chan_distribute
+    w.flag(true);     // b_additional_data
+    w.put(0, 1);      // add_data_bytes_minus1: one byte
+    w.flag(false);    // trim(): b_trim_present
+    w.flag(false);    // bed_render_info(): b_bed_render_info
+    w.flag(true);     // headphone(): b_headphone
+    w.put(0b001, 3);  // hp_operation_mode
+    w.flag(true);     // b_head_track_disable_all
+    w.put(0, 1);      // add_data: the byte's last bit
+    w.flag(true);     // b_oamd_timing_present
+    w.put(0b11, 2);   // oa_sample_offset_type
+    w.put(17, 5);     // oa_sample_offset
+    w.put(2, 3);      // num_obj_info_blocks
+    w.put(3, 6);      // block_offset_factor
+    w.put(0b11, 2);   // ramp_duration_code
+    w.flag(true);     // b_use_ramp_table
+    w.put(10, 4);     // ramp_duration_table: 1 601
+    w.put(40, 6);     // block_offset_factor
+    w.put(0b01, 2);   // ramp_duration_code: 512
+    // oamd_dyndata_multi(): the A-JOC object is passed over; the direct-coded
+    // one's two blocks, the first with b_no_delta (b_oamd_ndot).
+    w.flag(false);     // b_object_not_active
+    w.flag(false);     // b_default_basic_info_md
+    w.put(0b10, 2);    // basic_info_md: gain and priority
+    w.put(0, 1);       // object_gain_code 0b0
+    w.put(20, 6);      // object_gain_value
+    w.put(31, 5);      // object_priority_code
+    w.put(10, 6);      // pos3D_X
+    w.put(20, 6);      // pos3D_Y
+    w.flag(false);     // pos3D_Z_sign
+    w.put(5, 4);       // pos3D_Z
+    w.flag(false);     // b_grouped_zone_defaults
+    w.put(0b101, 3);   // group_zone_flag[]: zone_mask sent, snap
+    w.put(4, 3);       // zone_mask
+    w.flag(false);     // b_grouped_other_defaults
+    w.put(0b1111, 4);  // group_other_mask
+    w.put(1, 1);       // object_width_mode
+    w.put(1, 5);       // object_width_X_code
+    w.put(2, 5);       // object_width_Y_code
+    w.put(3, 5);       // object_width_Z_code
+    w.put(2, 3);       // object_screen_factor_code
+    w.put(1, 2);       // object_depth_factor
+    w.flag(false);     // b_obj_at_infinity
+    w.put(6, 4);       // obj_distance_factor_code
+    w.put(0b10, 2);    // object_div_mode
+    w.put(26, 6);      // object_div_code
+    w.flag(true);      // b_add_table_data
+    w.put(1, 4);       // add_table_data_size_minus1: two bytes
+    w.flag(true);      // b_obj_trim_disable
+    w.flag(true);      // b_ext_prec_pos
+    w.put(0b110, 3);   // ext_prec_pos_presence[]: X and Y
+    w.put(1, 2);       // ext_prec_pos3D_X
+    w.put(3, 2);       // ext_prec_pos3D_Y
+    w.flag(false);     // b_headphone
+    w.put(0, 6);       // add_table_data: the two bytes' last 6 bits
+    // The second block.
+    w.flag(false);    // b_object_not_active
+    w.flag(true);     // b_basic_info_reuse
+    w.flag(false);    // b_render_info_reuse
+    w.flag(true);     // b_render_info_partial_reuse
+    w.flag(false);    // b_obj_render_otherprops_present
+    w.flag(false);    // b_obj_render_zone_present
+    w.flag(true);     // b_obj_render_position_present
+    w.flag(true);     // b_diff_pos_coding
+    w.put(0b011, 3);  // diff_pos3D_X: +3
+    w.put(0b100, 3);  // diff_pos3D_Y: -4
+    w.put(0b000, 3);  // diff_pos3D_Z
+    w.flag(false);    // b_add_table_data
+    w.align();
+    return w.bytes();
+}
+
+}  // namespace
+
+TEST_CASE("an object group of A-JOC and direct-coded substreams and OAMD reads each to its end",
+          "[ac4dec][frames]") {
+    BitWriter toc;
+    ac4_toc_test::toc_start(toc, {});
+    PresV1 p;
+    p.presentation_substream = 3;
+    ac4_toc_test::presentation_v1(toc, p);
+    toc.flag(true);   // b_substreams_present
+    toc.flag(false);  // b_hsf_ext
+    toc.flag(false);  // b_single_substream
+    toc.put(0, 2);    // two substreams
+    toc.flag(false);  // b_channel_coded
+    toc.flag(true);   // b_oamd_substream
+    toc.flag(true);   // b_oamd_ndot
+    ac4_toc_test::substream_index(toc, 2);
+    toc.flag(true);   // b_ajoc
+    toc.flag(false);  // b_lfe
+    toc.flag(false);  // b_static_dmx
+    toc.put(0, 4);    // n_fullband_dmx_signals_minus1: one signal
+    toc.flag(true);   // bed_dyn_obj_assignment(): b_dyn_objects_only
+    toc.flag(false);  // b_oamd_common_data_present
+    toc.put(0, 4);    // n_fullband_upmix_signals_minus1: one object
+    toc.flag(true);   // b_dyn_objects_only
+    toc.flag(false);  // b_sf_multiplier
+    toc.flag(false);  // b_bitrate_info
+    toc.flag(true);   // b_audio_ndot
+    ac4_toc_test::substream_index(toc, 0);
+    toc.flag(false);  // b_ajoc: a direct-coded substream
+    toc.put(1, 3);    // n_objects_code: one object
+    toc.flag(true);   // b_dynamic_objects
+    toc.flag(false);  // b_lfe
+    toc.flag(false);  // b_sf_multiplier
+    toc.flag(false);  // b_bitrate_info
+    toc.flag(true);   // b_audio_ndot
+    ac4_toc_test::substream_index(toc, 1);
+    toc.flag(false);  // b_content_type
+    const std::vector<std::vector<std::byte>> substreams = {
+        ajoc_audio(), object_audio(), oamd_substream(), presentation(1, true)};
+    ac4_toc_test::index_table(toc, ac4_toc_test::sizes_of(substreams));
+    toc.align();
+
+    std::vector<ac4::SyntaxRecord> records;
+    // A named callable: the sink refers to it and does not own it.
+    const auto keep = [&records](const ac4::SyntaxRecord& record) { records.push_back(record); };
+    ac4::DecoderConfig config;
+    config.syntax = keep;
+    ac4::Decoder decoder(config);
+    const auto report = decoder.parse(ac4_toc_test::assemble(toc, substreams));
+    REQUIRE(report.has_value());
+    REQUIRE(report->substreams.size() == 4);
+    check_read(find(*report, 0), SubstreamReport::Kind::kAudio);
+    check_read(find(*report, 1), SubstreamReport::Kind::kAudio);
+    check_read(find(*report, 2), SubstreamReport::Kind::kOamd);
+    check_read(find(*report, 3), SubstreamReport::Kind::kPresentation);
+
+    const auto value_of = [&records](int substream, std::string_view name,
+                                     int nth = 0) -> std::optional<std::uint64_t> {
+        for (const ac4::SyntaxRecord& record : records) {
+            if (record.substream == substream && record.name == name && nth-- == 0) {
+                return record.value;
+            }
+        }
+        return std::nullopt;
+    };
+    // The prefix codes, one record of the bits read (src/ac4dec/ERRATA.md,
+    // "Prefix codes in the trace").
+    CHECK(value_of(2, "oa_sample_offset_type") == 0b11);
+    CHECK(value_of(2, "basic_info_md") == 0b10);
+    CHECK(value_of(2, "object_gain_code") == 0b0);
+    CHECK(value_of(2, "ramp_duration_table") == 10);
+    CHECK(value_of(2, "zone_mask") == 4);
+    CHECK(value_of(2, "ext_prec_pos3D_Y") == 3);
+    CHECK(value_of(2, "diff_pos3D_Y") == 0b100);
+    CHECK(value_of(2, "b_head_track_disable_all") == 1);
+    // The A-JOC substream's two portions, the second on the first's timing.
+    CHECK(value_of(0, "pos3D_X", 0) == 31);
+    CHECK(value_of(0, "pos3D_X", 1) == 62);
+    CHECK(value_of(0, "ajoc_hcw") == 25);
+    CHECK(value_of(0, "b_derive_timing_from_dmx") == 1);
+}
+
+TEST_CASE("a substream named by two object elements is read as the first names it",
+          "[ac4dec][frames]") {
     BitWriter toc;
     ac4_toc_test::toc_start(toc, {});
     PresV1 p;
@@ -702,6 +983,9 @@ TEST_CASE("a substream named by two object elements is refused as the first name
     toc.align();
     const auto report = decode(ac4_toc_test::assemble(toc, substreams));
     REQUIRE(report.substreams.size() == 2);
-    check_refused(find(report, 0), DecodeError::kUnsupported);
-    CHECK(find(report, 0).refused_reason.find("metadata") != std::string_view::npos);
+    // The OAMD substream's element comes first: substream 0 is read as one,
+    // whose two zero bytes send no timing for its oamd_dyndata_multi().
+    CHECK(find(report, 0).kind == SubstreamReport::Kind::kOamd);
+    check_refused(find(report, 0), DecodeError::kMissingIFrame);
+    CHECK(find(report, 0).refused_reason.find("oamd_timing_data") != std::string_view::npos);
 }

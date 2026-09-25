@@ -850,7 +850,7 @@ TEST_CASE("probe reports a hand-built AC-4 stream's Obj substream and its bed/dy
     write_ac4_preamble(w);
     w.put(0, 1);  // b_oamd_substream = 0
     w.put(0, 1);  // b_ajoc = 0 -> ac4_substream_info_obj()
-    w.put(2, 3);  // n_objects_code = 2 -> num_objects = 2
+    w.put(2, 3);  // n_objects_code = 2 -> 2 + b_lfe objects (Table 60)
     w.put(1, 1);  // b_dynamic_objects
     w.put(1, 1);  // b_lfe
     w.put(0, 1);  // b_bitrate_info
@@ -882,5 +882,7 @@ TEST_CASE("probe reports a hand-built AC-4 stream's Obj substream and its bed/dy
     REQUIRE(run_cli("probe \"" + path.string() + "\"", table_log) == 0);
     const auto table = read_log(table_log);
     INFO(table);
-    CHECK(table.find("object, 2 object(s) (dynamic)") != std::string::npos);
+    // The LFE on top of n_objects_code's two (src/ac4dec/ERRATA.md,
+    // "n_objects_code and the LFE").
+    CHECK(table.find("object, 3 object(s) (dynamic)") != std::string::npos);
 }

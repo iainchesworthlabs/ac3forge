@@ -107,6 +107,11 @@ inline constexpr int k9_1_4 = 14;
 inline constexpr int k22_2 = 15;
 }  // namespace ch_mode
 
+// Part 2 clause 6.2.2.2: how an ac4_substream() codes its audio -
+// audio_data_chan(), audio_data_ajoc() or audio_data_objs(), by the info
+// element that names it (Part 2 Table 50).
+enum class AudioCoding : std::uint8_t { kChannel, kAjoc, kObjects };
+
 // Everything the table of contents says about one ac4_substream() that its
 // syntax depends on. Filled by the decoder from ac4::Toc before the substream
 // is read.
@@ -133,6 +138,19 @@ struct SubstreamContext {
     bool b_4_back_channels_present = true;
     bool b_centre_present = true;
     int top_channels_present = 3;
+
+    // An object substream's: ac4_substream_info_ajoc()'s (Part 2 clause
+    // 6.2.1.9) b_lfe, b_static_dmx, n_fullband_dmx_signals and
+    // n_fullband_upmix_signals, or ac4_substream_info_obj()'s (6.2.1.11) b_lfe
+    // and fullband object count, which audio_data_objs() takes (src/ac4dec/
+    // ERRATA.md, "n_objects_code and the LFE"). Its channel_mode is negative
+    // (6.2.2.2's NOTE 2): ch_mode is -1.
+    AudioCoding coding = AudioCoding::kChannel;
+    bool b_lfe = false;
+    bool b_static_dmx = false;
+    int n_fullband_dmx = 0;
+    int n_fullband_umx = 0;
+    int n_objects = 0;
 
     [[nodiscard]] bool has_lfe() const noexcept {
         switch (ch_mode) {

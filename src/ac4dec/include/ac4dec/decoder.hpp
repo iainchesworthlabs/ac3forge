@@ -277,7 +277,10 @@ struct DecoderConfig {
 
 // What one substream of a frame turned out to be.
 struct SubstreamReport {
-    enum class Kind : std::uint8_t { kAudio, kPresentation, kEmdfPayloads, kHsfExt, kOther };
+    // kAudio covers channel-coded, A-JOC coded and direct-coded object
+    // substreams alike (ac4_substream(), Part 2 Table 50); kOamd is an
+    // oamd_substream() (Part 2 clause 6.2.2.4).
+    enum class Kind : std::uint8_t { kAudio, kPresentation, kEmdfPayloads, kHsfExt, kOther, kOamd };
     int index = 0;
     Kind kind = Kind::kOther;
     std::size_t size_bits = 0;           // the substream's size in substream_index_table(), in bits

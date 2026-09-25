@@ -53,8 +53,10 @@ target_sources(ac4dec_objects
         src/syntax/aspx.cpp
         src/syntax/acpl.cpp
         src/syntax/ajcc.cpp
+        src/syntax/ajoc.cpp
         src/syntax/channel_elements.cpp
         src/syntax/metadata.cpp
+        src/syntax/oamd.cpp
         src/syntax/presentation.cpp
         src/syntax/substream.cpp)
 
