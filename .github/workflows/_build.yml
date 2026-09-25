@@ -716,6 +716,12 @@ jobs:
     needs: [toolchain-versions]
     if: inputs.run_linux
     runs-on: ubuntu-latest
+    # GitHub-hosted, so on a push to main only the newest main commit's run
+    # waits for a runner - docs/ci-lanes.md, "Only the newest main commit runs
+    # the hosted jobs". Every other event gets a group of its own run.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'appimage-main' || format('appimage-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     # See _ci-linux.yml's container comment for why this is pinned at all;
     # unlike that matrix, this is the one Linux leg that pins an
     # OLDER base on purpose.
@@ -1281,6 +1287,10 @@ jobs:
     name: Android (Shield)
     if: inputs.run_android
     runs-on: ubuntu-latest
+    # Newest main commit only (linux-appimage's concurrency comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'android-main' || format('android-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     # The split desktop workflows allow 90 minutes for their slowest legs;
     # this job had no bound at
     # all before the emulator step below existed. An emulator boot that
@@ -1530,6 +1540,10 @@ jobs:
     name: WASM (browser demos)
     if: inputs.run_wasm
     runs-on: ubuntu-latest
+    # Newest main commit only (linux-appimage's concurrency comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'wasm-main' || format('wasm-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     permissions:
       contents: read
     steps:
@@ -1651,6 +1665,10 @@ jobs:
     name: Device web page (Chromium)
     if: inputs.run_wasm
     runs-on: ubuntu-latest
+    # Newest main commit only (linux-appimage's concurrency comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'device-ui-main' || format('device-ui-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     permissions:
       contents: read
     steps:
@@ -1712,11 +1730,10 @@ jobs:
     name: Rust bindings (${{ matrix.os }})
     if: inputs.run_rust
     runs-on: ${{ matrix.os }}
-    # The macOS leg keeps only the newest main commit's run, as
-    # _ci-macos.yml's build job does - see its concurrency comment. The
-    # other two legs, and every non-main event, get a group of their own run.
+    # All three legs are GitHub-hosted, so each keeps only the newest main
+    # commit's run (linux-appimage's concurrency comment).
     concurrency:
-      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && matrix.os == 'macos-latest' && 'rust-macos-main' || format('rust-run-{0}-{1}', github.run_id, matrix.os) }}
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('rust-main-{0}', matrix.os) || format('rust-run-{0}-{1}', github.run_id, matrix.os) }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -1776,6 +1793,10 @@ jobs:
     name: Windows null-sink driver (WDK NuGet)
     if: inputs.run_windows
     runs-on: windows-latest
+    # Newest main commit only (linux-appimage's concurrency comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'windows-driver-main' || format('windows-driver-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     permissions:
       contents: read
     defaults:
@@ -1894,6 +1915,13 @@ jobs:
     needs: check-runners
     if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
+    # Newest main commit only when check-runners sent this leg to its
+    # GitHub-hosted fallback (linux-appimage's concurrency comment); on the
+    # self-hosted fleet it runs for every commit. hearth-esp32s3 needs this
+    # job, so it follows the same way.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(needs.check-runners.outputs.linux_runner_6, 'self-hosted') && 'esp32s3-main' || format('esp32s3-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     container: espressif/idf:v6.1
     permissions:
       contents: read
@@ -3104,6 +3132,10 @@ jobs:
     needs: check-runners
     if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_7) }}
+    # Newest main commit only on the hosted fallback (build-esp32s3's comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(needs.check-runners.outputs.linux_runner_7, 'self-hosted') && 'esp32c3-main' || format('esp32c3-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     container: espressif/idf:v6.1
     permissions:
       contents: read
@@ -3284,6 +3316,11 @@ jobs:
     needs: [check-runners, build-esp32s3, build-esp32c3]
     if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
+    # Newest main commit only when it lands on the GitHub-hosted fallback, as
+    # build-esp32s3's leg does (its concurrency comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(needs.check-runners.outputs.linux_runner_6, 'self-hosted') && 'esp32-firmware-main' || format('esp32-firmware-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     # For its Python, which the two scripts need and nothing else.
     container: espressif/idf:v6.1
     permissions:
@@ -3343,6 +3380,10 @@ jobs:
     needs: check-runners
     if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_5) }}
+    # Newest main commit only on the hosted fallback (build-esp32s3's comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(needs.check-runners.outputs.linux_runner_5, 'self-hosted') && 'footprint-main' || format('footprint-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     container: ubuntu:26.04
     permissions:
       contents: read
@@ -3502,18 +3543,27 @@ jobs:
   # job-calls below is ever skipped for a lane reason. A skip here would
   # still mean what it always has: something upstream did not run clean.
   #
-  # The one exception: on a push to main a macOS leg can give way to a newer
-  # main run (_ci-macos.yml's concurrency comment), leaving build-macos
-  # "cancelled" rather than failed. This merge's Windows and Linux numbers
-  # are still published then, and the macOS series just has a gap -
-  # append_quality_history.py records whichever legs' artifacts exist. A leg
-  # that failed still skips the publish.
+  # The one exception: on a push to main a GitHub-hosted leg (both macOS
+  # legs, the arm64 legs, any leg on its hosted fallback) can give way to a
+  # newer main run - docs/ci-lanes.md, "Only the newest main commit runs the
+  # hosted jobs" - leaving its platform's job-call "cancelled" rather than
+  # failed. This merge's self-hosted numbers are still published then, and
+  # the hosted legs' series just have a gap - append_quality_history.py
+  # records whichever legs' artifacts exist. A leg that failed still skips
+  # the publish: a job-call with a failed leg reads "failure" even when
+  # another of its legs was cancelled.
+  #
+  # This job itself has no such group, though it is GitHub-hosted: it
+  # publishes the self-hosted legs' numbers too, so giving way to a newer
+  # run would drop the whole commit from the trend, and it takes about a
+  # minute.
   quality-trend:
     name: Publish quality trend
     needs: [build-windows, build-linux, build-macos]
     if: >-
       ${{ !cancelled() && inputs.persist_quality_trend
-      && needs.build-windows.result == 'success' && needs.build-linux.result == 'success'
+      && (needs.build-windows.result == 'success' || needs.build-windows.result == 'cancelled')
+      && (needs.build-linux.result == 'success' || needs.build-linux.result == 'cancelled')
       && (needs.build-macos.result == 'success' || needs.build-macos.result == 'cancelled') }}
     runs-on: ubuntu-latest
     permissions:

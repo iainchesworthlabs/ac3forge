@@ -1,9 +1,13 @@
 # Install a Hearth sink from the browser
 
-This page puts `hearth_sink` onto an ESP32 board over its USB cable, from the newest release,
-with nothing to install on the computer. It uses [ESP Web Tools](https://esphome.github.io/esp-web-tools/)
-and the browser's Web Serial, so it needs Chrome, Edge or Firefox on a computer. Safari cannot
-do it, and neither can anything on iOS.
+This page puts `hearth_sink` onto an ESP32-S3, ESP32-C6 or ESP32-P4 board over its USB cable,
+from the newest release, with nothing to install on the computer. It uses
+[ESP Web Tools](https://esphome.github.io/esp-web-tools/) and the browser's Web Serial, so it
+needs Chrome, Edge or Firefox on a computer. Safari cannot do it, and neither can anything on iOS.
+
+The site copies the images from the release when it is published, and each release publishes it
+again. A browser cannot fetch a release's files from another site, so they are served from here.
+The page also asks GitHub whether a newer release has firmware, and says so if one does.
 
 [The sink firmware guide](sink-firmware.md) covers the same steps with `esptool` and without a
 browser, updating a board over its network afterwards, and what to do when a board does not come
@@ -18,15 +22,30 @@ back.
 
 <div id="sink-installer" markdown="0">
   <p id="sink-installer-status"><em>Looking for the newest release's firmware…</em></p>
-  <ul id="sink-installer-images"></ul>
+  <p id="sink-installer-newer" hidden></p>
+  <div id="sink-installer-boards"></div>
 </div>
 
 <script>
 (async () => {
   const base = "../../assets/sink-installer/";
+  // Every chip the firmware is published for, in the order the page shows
+  // them. Each is always listed, so a chip with no image says so rather than
+  // going missing.
+  const chips = ["ESP32-S3", "ESP32-C6", "ESP32-P4"];
   const status = document.getElementById("sink-installer-status");
-  const list = document.getElementById("sink-installer-images");
-  let index;
+  const newer = document.getElementById("sink-installer-newer");
+  const boards = document.getElementById("sink-installer-boards");
+  const link = (href, text) => {
+    const a = document.createElement("a");
+    a.href = href;
+    a.textContent = text;
+    return a;
+  };
+  const day = (stamp) => (stamp || "").slice(0, 10);
+
+  let index = null;
+  let problem = "";
   try {
     const response = await fetch(base + "index.json", { cache: "no-store" });
     if (!response.ok) {
@@ -34,37 +53,96 @@ back.
     }
     index = await response.json();
   } catch (error) {
-    status.textContent = "This copy of the site carries no installer firmware (" + error.message +
-      "). The published site has it once a release publishes sink firmware.";
-    return;
+    problem = error.message;
   }
-  if (!Array.isArray(index.images) || index.images.length === 0) {
+  const images = index && Array.isArray(index.images) ? index.images : [];
+  const release = index ? index.tag || index.version || "" : "";
+
+  status.textContent = "";
+  if (index === null) {
+    status.textContent = "This copy of the site carries no installer firmware (" + problem +
+      "). The published site takes it from the newest release that has sink firmware.";
+  } else if (images.length === 0) {
     status.textContent = "No release publishes sink firmware yet. Until one does, build the " +
       "firmware as the board's guide describes.";
-    return;
+  } else {
+    status.append("Firmware from ");
+    status.append(index.page ? link(index.page, "release " + release) : release || "the newest release");
+    if (index.published) {
+      status.append(", published " + day(index.published));
+    }
+    status.append(". Choose your board:");
   }
-  status.textContent = index.version
-    ? "Firmware from release " + index.version + ". Choose your board:"
-    : "Firmware from the newest release. Choose your board:";
-  for (const image of index.images) {
-    const item = document.createElement("li");
-    const button = document.createElement("esp-web-install-button");
-    button.setAttribute("manifest", base + image.manifest);
-    const activate = document.createElement("button");
-    activate.setAttribute("slot", "activate");
-    activate.className = "md-button md-button--primary";
-    activate.textContent = "Install on an " + image.title;
-    button.appendChild(activate);
-    const unsupported = document.createElement("span");
-    unsupported.setAttribute("slot", "unsupported");
-    unsupported.textContent = "This browser has no Web Serial: use Chrome, Edge or Firefox on a computer.";
-    button.appendChild(unsupported);
-    const notAllowed = document.createElement("span");
-    notAllowed.setAttribute("slot", "not-allowed");
-    notAllowed.textContent = "Web Serial works only on a page served over HTTPS.";
-    button.appendChild(notAllowed);
-    item.appendChild(button);
-    list.appendChild(item);
+
+  for (const chip of chips) {
+    const section = document.createElement("section");
+    const heading = document.createElement("h3");
+    heading.textContent = chip;
+    section.appendChild(heading);
+    const mine = images.filter((image) => image.chip === chip);
+    if (mine.length === 0) {
+      const none = document.createElement("p");
+      none.textContent = images.length === 0
+        ? "No image yet."
+        : (release ? "Release " + release : "This release") + " has no image for the " + chip + ".";
+      section.appendChild(none);
+    }
+    const list = document.createElement("ul");
+    list.style.listStyle = "none";
+    list.style.marginLeft = "0";
+    list.style.paddingLeft = "0";
+    for (const image of mine) {
+      const item = document.createElement("li");
+      item.style.marginLeft = "0";
+      const button = document.createElement("esp-web-install-button");
+      button.setAttribute("manifest", base + image.manifest);
+      const activate = document.createElement("button");
+      activate.setAttribute("slot", "activate");
+      activate.className = "md-button md-button--primary";
+      activate.textContent = "Install on an " + image.title;
+      button.appendChild(activate);
+      const unsupported = document.createElement("span");
+      unsupported.setAttribute("slot", "unsupported");
+      unsupported.textContent = "This browser has no Web Serial: use Chrome, Edge or Firefox on a computer.";
+      button.appendChild(unsupported);
+      const notAllowed = document.createElement("span");
+      notAllowed.setAttribute("slot", "not-allowed");
+      notAllowed.textContent = "Web Serial works only on a page served over HTTPS.";
+      button.appendChild(notAllowed);
+      item.appendChild(button);
+      list.appendChild(item);
+    }
+    if (mine.length > 0) {
+      section.appendChild(list);
+    }
+    boards.appendChild(section);
+  }
+
+  // Whether a release newer than the one the site took has firmware: GitHub's
+  // API answers other sites, which its release files do not. The page works
+  // without this, so a failure here says nothing.
+  if (index && index.repository && index.manifest) {
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${index.repository}/releases?per_page=30`,
+        { headers: { Accept: "application/vnd.github+json" } });
+      if (response.ok) {
+        const newest = (await response.json()).find((entry) =>
+          (entry.assets || []).some((asset) => asset.name === index.manifest));
+        if (newest && newest.tag_name !== index.tag) {
+          newer.textContent = "";
+          newer.append(link(newest.html_url, "Release " + newest.tag_name));
+          newer.append(", published " + day(newest.published_at) + ", has newer firmware than " +
+            "this page. The site takes it when it is next published, which the release sets " +
+            "off. Until then its images are on the release's page, and ");
+          newer.append(link("../sink-firmware/", "the sink firmware guide"));
+          newer.append(" installs them with esptool.");
+          newer.hidden = false;
+        }
+      }
+    } catch (error) {
+      // No answer from GitHub: the page offers what it has.
+    }
   }
 })();
 </script>

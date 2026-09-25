@@ -74,6 +74,15 @@ jobs:
     # gap in that logic can't silently hand a fork PR a self-hosted runner.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON(matrix.runner) }}
+    # On a push to main, a leg on a GitHub-hosted runner keeps only the newest
+    # main commit's run - docs/ci-lanes.md, "Only the newest main commit runs
+    # the hosted jobs". That is the arm64 leg, plus any leg decide-runner sent
+    # to its hosted fallback; its self-hosted labels always include
+    # "self-hosted". Self-hosted legs and every other event get a group of
+    # their own run, so they run for every commit as before.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(matrix.runner, 'self-hosted') && format('windows-main-{0}', matrix.name) || format('windows-run-{0}-{1}', github.run_id, matrix.name) }}
+      cancel-in-progress: false
     # A backstop against GitHub's own 360-minute default: the macos-llvm
     # leg's first-ever GUI run hung in the Test step and silently consumed
     # the full 6 hours before being force-cancelled (see
