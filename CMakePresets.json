@@ -242,7 +242,7 @@
     {
       "name": "shared-libs",
       "hidden": true,
-      "description": "BUILD_SHARED_LIBS=ON, proving ac3::forge_shared/matroska::matroska_shared actually work - not just that the CMake topology configures, but that every in-tree consumer (ac3cli/ac3gui/ac3tests/examples) links and runs against the real .so, including the one example that also needs matroska's .so alongside ac3forge's. See .github/workflows/_build.yml's 'Configure, build and test with BUILD_SHARED_LIBS=ON' step, which runs this as an extra pass inside the existing linux-llvm leg rather than a new matrix entry - the same shape as the alsa_fallback step below it.",
+      "description": "BUILD_SHARED_LIBS=ON, proving ac3::forge_shared/matroska::matroska_shared actually work - not just that the CMake topology configures, but that every in-tree consumer (ac3cli/ac3gui/ac3tests/examples) links and runs against the real .so, including the one example that also needs matroska's .so alongside ac3forge's. For ac3tests that is checked rather than assumed: tools/checks/check_shared_forge_binding.sh fails the pass if the test binary binds an ac3:: symbol anywhere but libac3forge.so or carries a copy of the codec itself. The few tests that reach library internals (the AC-4 syntax cases, core/test_fixed32_ecpl.cpp) are built only against the static libraries, since a .so exports none of that. See .github/workflows/_build.yml's 'Configure, build and test with BUILD_SHARED_LIBS=ON' step, which runs this as an extra pass inside the existing linux-llvm leg rather than a new matrix entry - the same shape as the alsa_fallback step below it.",
       "cacheVariables": {
         "BUILD_SHARED_LIBS": "ON"
       }
