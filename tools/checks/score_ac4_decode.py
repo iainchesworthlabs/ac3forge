@@ -425,10 +425,11 @@ def internal_rate(frame_rate_index):
     return RATE * down / up
 
 
-def subband_hz(rate=RATE):
-    """The width of a QMF subband at `rate`, the internal rate the QMF banks run at: half the
-    sampling rate over 64."""
-    return rate / 128.0
+def subband_hz(rate=None):
+    """The width of a QMF subband at `rate`, the internal rate the QMF banks run at, RATE where
+    none is given: half the sampling rate over 64. RATE is read at the call, since
+    score_ac4_encode.py sets it for its 44.1 kHz legs."""
+    return (RATE if rate is None else rate) / 128.0
 
 
 def band_gain(ref, out, top_hz):
@@ -506,10 +507,10 @@ def trace_values(trace):
     return values, offsets
 
 
-def tile_error(ref, out, groups, rate=RATE):
+def tile_error(ref, out, groups, rate=None):
     """The mean absolute dB difference of out's tile energies from ref's, per frame and
     low-resolution group above the crossover, over the tiles where ref's is above the floor; the
-    groups' subbands are the QMF banks' at `rate`, the internal rate."""
+    groups' subbands are the QMF banks' at `rate`, the internal rate (subband_hz's default)."""
     window = np.hanning(FRAME)
     bin_hz = RATE / FRAME
     # A full-scale sine's energy in one frame through the window: (FRAME / 4)^2.
