@@ -57,6 +57,22 @@ jobs:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON(matrix.runner) }}
     timeout-minutes: 90
+    # Only the newest main commit is guaranteed its macOS legs. On a push to
+    # main each leg shares one concurrency group across every main run, so a
+    # newer merge replaces an older run's still-waiting macOS job; one that
+    # is already building finishes (cancel-in-progress: false), so a burst
+    # of merges costs at most one building and one waiting job per leg.
+    # GitHub-hosted macOS is this org's scarcest capacity (GitHub Free runs a
+    # handful of macOS jobs at a time, org-wide), and each merged commit's
+    # macOS legs already ran on its PR and in the merge queue - left
+    # unbounded, every main push's legs queued behind the last one's and
+    # 158 macOS jobs sat waiting on 2026-09-24. ci.yml's CI Status accepts
+    # the resulting "cancelled" only on a commit main has already moved past.
+    # Every other event gets a group of its own run, so PRs, the merge queue,
+    # tags and dispatches are unchanged.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('macos-main-{0}', matrix.name) || format('macos-run-{0}-{1}', github.run_id, matrix.name) }}
+      cancel-in-progress: false
     # A failing experimental leg would annotate the run but not fail it - the
     # mechanism _ci-windows.yml's continue-on-error still uses for
     # windows-msvc-arm64. No macOS leg sets `experimental: true` today, so
