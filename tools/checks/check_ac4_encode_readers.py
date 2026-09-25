@@ -1,7 +1,8 @@
 """Readers outside this project against ac3cli's AC-4 encoder: MediaInfo and DEE's muxer.
 
-planning/ac4.md, the encoder's ladder, item 3, as phase E1 needs it. For each configuration below,
-`ac3cli ac4-encode` writes a raw stream and an MP4 file, and:
+planning/ac4.md, the encoder's ladder, item 3, as phases E1 to E3 need it. For each configuration
+below, mono to 5.1 and the experimental options of 5.X and 7.X, `ac3cli ac4-encode` writes a raw
+stream and an MP4 file, and:
 
   MediaInfo  its frame-by-frame trace (`--Details=1`) of the raw stream holds the values the encoder
              was configured with, field by field, in every frame it details: the sync word and
@@ -11,7 +12,8 @@ planning/ac4.md, the encoder's ladder, item 3, as phase E1 needs it. For each co
              loudness fields, the audio substream's metadata() with no dialogue enhancement or EMDF
              payloads, and each frame's crc_word, computed again here;
   DEE's muxer  dee_mp4muxer takes the raw stream and writes an MP4 file whose 'dac4' box is the one
-             the encoder's MP4 file carries.
+             the encoder's MP4 file carries; for the 3/2/2 layout, but for channel group 4, which
+             the muxer leaves out (src/ac4enc/ERRATA.md, "The 3/2/2 layout's top front pair").
 
 MediaInfo and DEE's muxer come from DEE's install, so this runs locally, never in CI
 (tools/generators/gen_ac4_baseline.py's DEE_DIR).
@@ -37,14 +39,35 @@ import fuzz_encoder_space as ac3space  # noqa: E402  (write_wav)
 DEE_DIR = Path(r"C:\Program Files\Dolby\Dolby Media Encoder\resources\dee-dir")
 IFRAME_INTERVAL = 24  # the encoder's default, which ac4-encode keeps
 
-# (channels, sample rate, kbps, dialnorm)
+# (channels, sample rate, kbps, dialnorm, ac4-encode's options)
 CONFIGURATIONS = [
-    (2, 48000, 192, 24),
-    (2, 48000, 64, 31),
-    (1, 48000, 96, 18),
-    (2, 44100, 256, 27),
-    (1, 44100, 48, 1),
+    (2, 48000, 192, 24, ()),
+    (2, 48000, 64, 31, ()),
+    (1, 48000, 96, 18, ()),
+    (2, 44100, 256, 27, ()),
+    (1, 44100, 48, 1, ()),
+    (6, 48000, 384, 27, ()),
+    (6, 48000, 192, 20, ()),
+    (5, 44100, 320, 31, ()),
+    (6, 48000, 256, 24, ("experimental=coding-configs",)),
+    (8, 48000, 640, 24, ("experimental=7x-back",)),
+    (8, 48000, 448, 24, ("experimental=7x-wide",)),
+    (7, 48000, 448, 24, ("experimental=7x-top-front",)),
+    (8, 48000, 512, 24, ("experimental=7x-top-front",)),
 ]
+
+# The channel mode MediaInfo names for each configuration: Part 1 Table 88's, as its trace
+# prints it.
+MODES = {1: "Mono", 2: "Stereo", 5: "5.0", 6: "5.1"}
+SEVEN_X_MODES = {"7x-back": "3/4/0", "7x-wide": "5/2/0", "7x-top-front": "3/2/2"}
+
+
+def channel_mode(channels, options):
+    for option in options:
+        for tool, layout in SEVEN_X_MODES.items():
+            if tool in option:
+                return f"7.{channels - 7} {layout}" + (".1" if channels == 8 else "")
+    return MODES[channels]
 
 # The fields check_frame() holds to the configuration.
 FIELDS = ("sync_word", "frame_size", "bitstream_version", "sequence_counter", "b_wait_frames",
@@ -86,7 +109,7 @@ def expected_counter(frame):
     return 0 if frame == 0 else (frame - 1) % 1020 + 1
 
 
-def check_frame(index, fields, raw, crc, channels, rate, dialnorm):
+def check_frame(index, fields, raw, crc, mode, rate, dialnorm):
     """What is wrong with one frame's MediaInfo fields, as a list of messages."""
     wrong = []
     seen = {}
@@ -110,7 +133,6 @@ def check_frame(index, fields, raw, crc, channels, rate, dialnorm):
     iframe = index % IFRAME_INTERVAL == 0
     want("b_iframe_global", lambda v: v == ("Yes" if iframe else "No"), "Yes" if iframe else "No")
     want("presentation_version", lambda v: number(v) == 1, "1")
-    mode = "Stereo" if channels == 2 else "Mono"
     want("channel_mode", lambda v: v.endswith(mode), mode)
     want("dialnorm_bits", lambda v: number(v) == 4 * dialnorm, str(4 * dialnorm))
     want("b_further_loudness_info", lambda v: v == "No", "No")
@@ -121,6 +143,18 @@ def check_frame(index, fields, raw, crc, channels, rate, dialnorm):
     want("b_emdf_payloads_substream", lambda v: v == "No", "No")
     want("crc_word", lambda v: number(v) == crc, f"0x{crc:04X}")
     return wrong, set(seen)
+
+
+# The channel groups (Part 2 Table A.27) of the 7.X 3/2/2 layouts, 7.0 and 7.1, which DEE's muxer
+# writes without group 4, their top front pair.
+TOP_FRONT_GROUPS = {7: 0x17, 8: 0x57}
+
+
+def without_group_4(box, groups):
+    """`box` with each 24-bit channel group mask `groups` in it written without group 4."""
+    bits = "".join(f"{b:08b}" for b in box)
+    bits = bits.replace(f"{groups:024b}", f"{groups & ~(1 << 4):024b}")
+    return bytes(int(bits[i : i + 8], 2) for i in range(0, len(bits), 8))
 
 
 def dac4(path):
@@ -149,16 +183,20 @@ def main():
     with tempfile.TemporaryDirectory() as temporary:
         work = args.work or Path(temporary)
         work.mkdir(parents=True, exist_ok=True)
-        for channels, rate, kbps, dialnorm in CONFIGURATIONS:
-            name = f"{channels}ch-{rate}-{kbps}-dn{dialnorm}"
+        for channels, rate, kbps, dialnorm, options in CONFIGURATIONS:
+            name = f"{channels}ch-{rate}-{kbps}-dn{dialnorm}" + "".join(
+                f"-{o.split('=')[1]}" for o in options
+            )
             rng = random.Random(kbps * 7 + channels)
             pcm = ac3space.generate_pcm(rng, channels, 30 * 8, rate, "chaotic", "pairs")
             wav = work / f"{name}.wav"
             ac3space.write_wav(wav, pcm, rate, False)
             stream = work / f"{name}.ac4"
             ours_mp4 = work / f"{name}.mp4"
-            run([args.cli, "ac4-encode", wav, stream, kbps, f"dialnorm={dialnorm}", "quiet"])
-            run([args.cli, "ac4-encode", wav, ours_mp4, kbps, f"dialnorm={dialnorm}", "quiet"])
+            command = [args.cli, "ac4-encode", wav, stream, kbps, f"dialnorm={dialnorm}", "quiet"]
+            run([*command, *options])
+            command[3] = ours_mp4
+            run([*command, *options])
 
             data = stream.read_bytes()
             raw_frames, why = space.sync_frames(data)
@@ -171,7 +209,9 @@ def main():
             for index, fields in enumerate(frames[:len(raw_frames)]):
                 raw = raw_frames[index]
                 crc = space.crc16(len(raw).to_bytes(2, "big") + raw)
-                wrong, seen = check_frame(index, fields, raw, crc, channels, rate, dialnorm)
+                wrong, seen = check_frame(
+                    index, fields, raw, crc, channel_mode(channels, options), rate, dialnorm
+                )
                 failures += [f"{name}: {w}" for w in wrong]
                 covered |= seen
                 detailed += len(seen) > 3
@@ -187,7 +227,11 @@ def main():
             run([muxer, "--track", stream, "-o", theirs, "--overwrite", "1"])
             ours_box, their_box = dac4(ours_mp4), dac4(theirs)
             same = ours_box == their_box
-            print(f"{name}: dac4 {'equal' if same else 'DIFFERS'} ({len(ours_box)} bytes)"
+            note = ""
+            if not same and any("7x-top-front" in o for o in options):
+                same = without_group_4(ours_box, TOP_FRONT_GROUPS[channels]) == their_box
+                note = ", but for group 4, which DEE's muxer leaves out of 3/2/2" if same else ""
+            print(f"{name}: dac4 {'equal' if same else 'DIFFERS'} ({len(ours_box)} bytes){note}"
                   + ("" if same else f": ours {ours_box.hex()}, DEE's muxer {their_box.hex()}"))
             if not same:
                 failures.append(f"{name}: the dac4 boxes differ")

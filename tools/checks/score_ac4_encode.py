@@ -1,7 +1,7 @@
 """Score ac3cli's AC-4 encoding: the encoder's streams, decoded, against their sources.
 
-planning/ac4.md, the encoder's ladder, items 4 and 5, as phases E1 and E2 need them: SIMPLE and
-ASPX, mono and stereo, at frame_rate_index 13. Each leg encodes a source with `ac3cli
+planning/ac4.md, the encoder's ladder, items 4 and 5, as phases E1 to E3 need them: SIMPLE and
+ASPX, mono, stereo, 5.0 and 5.1, at frame_rate_index 13. Each leg encodes a source with `ac3cli
 ac4-encode`, which picks the codec mode from the rate, decodes the stream with `ac3cli decode`,
 aligns the output with the source by cross-correlation, fits a least-squares gain per channel,
 and checks, as score_ac4_decode.py scores DEE's streams:
@@ -10,10 +10,12 @@ and checks, as score_ac4_decode.py scores DEE's streams:
            and the decoder's, 1 313 at frame_rate_index 13 (score_ac4_decode.py);
   gain     every channel within 0.2 dB of unity, where its SNR is 20 dB or more: below that the
            least-squares gain of a coarse quantiser's output is no measure of level. In ASPX the
-           gain is fitted below the crossover, where the output is the source's waveform;
+           gain is fitted below the crossover, where the output is the source's waveform, and a
+           5.1 leg's LFE's is taken from 20 to 100 Hz, as score_ac4_decode.py takes it;
   SNR      every channel's signal-to-noise ratio at or above its floor, the first measurement
-           less 1 dB (FLOORS): over the whole band in SIMPLE, below the crossover in ASPX, which
-           the stream's own aspx_config() gives;
+           less 1 dB (FLOORS): over the whole band in SIMPLE and for the LFE, and in ASPX below the
+           crossover of the aspx_data element that carries the channel, which the stream's own
+           aspx_config() and aspx_data elements give (score_ac4_decode.py's ASPX_UNIT);
   tiles    in ASPX, above the crossover, the mean absolute difference between the A-SPX tiles'
            energy and the source's at or below its ceiling, the first measurement plus 0.5 dB;
   LSD      tools/ci/quality_race.py's log-spectral distance at or below its ceiling, the first
@@ -22,17 +24,21 @@ and checks, as score_ac4_decode.py scores DEE's streams:
            measurement less 0.1, where visqol-python is installed;
   routing  on a tone leg, each channel's tone at least 40 dB above the other channel's in it.
 
-The sources are 5 s long: the committed programme fixtures' 2.0 cuts and one tone per channel,
-rebuilt by tools/generators/gen_ac4_baseline.py (which reads the FLAC fixtures with ffmpeg, so
-ffmpeg must be on PATH); their mono downmixes; and synthetic signals made here: a sweep, noise,
-castanet-like bursts after silence, and a source panned between the channels, which the
-encoder's stereo prediction codes.
+The sources are 5 s long: the committed programme fixtures' 2.0 cuts, their 5.1 music and film
+mixes and one tone per channel, rebuilt by tools/generators/gen_ac4_baseline.py (which reads the
+FLAC fixtures with ffmpeg, so ffmpeg must be on PATH); the mono downmixes and the 5.1 music
+without its LFE; and synthetic signals made here: a sweep, noise, castanet-like bursts after
+silence, and a source panned between the channels, which the encoder's stereo prediction codes.
+A leg may name ac4-encode's options after its rate: the -configs legs take the experimental coding
+configurations.
 
 --gold DIR runs the race instead, locally: for each of phase G0's 2.0 legs, ASPX from 48 to 144
-kbps and SIMPLE from 192 to 768, DEE's stream (DIR/streams/<leg>/dee.ac4) and this encoder's
-stream of the same source (DIR/sources/<source>.wav) at the same rate are both decoded and scored
-as above. The encoder's scores are checked against RACE, pinned the same way, and its gaps to
-DEE's are printed.
+kbps and SIMPLE from 192 to 768, and its 5.1 legs from 192 to 768, ASPX to 320 kbps, DEE's stream
+(DIR/streams/<leg>/dee.ac4) and this encoder's stream of the same source (DIR/sources/<source>.wav)
+at the same rate are both decoded and scored as above. The encoder's scores are checked against
+RACE, pinned the same way, and its gaps to DEE's are printed.
+
+--only TEXT runs only the legs whose names contain TEXT.
 
 --librempeg PATH also decodes every stream with librempeg's ffmpeg, run in WSL (the path is the
 WSL one), and reports its scores against the source and how far its output is from the
@@ -102,6 +108,14 @@ LEGS = {
     "20-sweep-64-44k": ("sweep_20", 44100, 64),
     "20-tones-192-44k": ("tones_20", 44100, 192),
     "20-sweep-192-44k": ("sweep_20", 44100, 192),
+    "51-music-192": ("music_51", 48000, 192),
+    "51-music-384": ("music_51", 48000, 384),
+    "51-film-256": ("film_51", 48000, 256),
+    "51-tones-192": ("tones_51", 48000, 192),
+    "51-tones-384": ("tones_51", 48000, 384),
+    "50-music-320": ("music_50", 48000, 320),
+    "51-music-192-configs": ("music_51", 48000, 192, "experimental=coding-configs"),
+    "51-music-384-configs": ("music_51", 48000, 384, "experimental=coding-configs"),
 }
 
 # Per leg: (SNR floor per channel in dB, LSD ceiling in dB, A-SPX tile ceiling in dB or None for
@@ -109,7 +123,11 @@ LEGS = {
 # Measured 2026-09-25 with the encoder of phase E2 and the decoder of phase D4, whose QMF banks
 # every decode passes through: they reconstruct to about 78 dB, which bounds the sweeps' SNR.
 # Phase D4's reading of pre-flattening (src/ac4dec/ERRATA.md, "Pre-flattening's direction") moved
-# the ASPX legs' pins from those phase E2 took.
+# the ASPX legs' pins from those phase E2 took. The 5.0 and 5.1 legs, measured with the encoder of
+# phase E3, are scored per channel below its own crossover, and a 5.1 leg's LFE over its whole band,
+# where the 140.6 Hz the LFE is coded to (three scale factor bands, as DEE's) leaves the source's
+# content above it, from its 120 Hz low-pass, as noise. The -configs legs take the experimental
+# coding configurations.
 FLOORS = {
     "20-music-48": ((14.1, 14.9), 2.02, 2.25, 4.40),
     "20-music-64": ((17.5, 18.1), 1.56, 2.40, 4.50),
@@ -134,6 +152,14 @@ FLOORS = {
     "20-sweep-64-44k": ((47.1, 47.2), 16.02, 12.82, 4.63),
     "20-tones-192-44k": ((81.4, 79.1), 8.95, None, 4.63),
     "20-sweep-192-44k": ((75.9, 75.9), 13.16, None, 4.63),
+    "51-music-192": ((11.1, 12.2, 13.7, 7.8, 12.8, 13.2), 2.35, 4.03, 4.58),
+    "51-music-384": ((33.1, 33.8, 36.6, 16.3, 36.3, 36.6), 2.19, None, 4.61),
+    "51-film-256": ((18.5, 19.4, 31.3, 14.3, 24.1, 24.3), 1.89, 2.23, 4.59),
+    "51-tones-192": ((80.3, 80.4, 79.9, 69.1, 81.1, 78.7), 10.80, None, 4.63),
+    "51-tones-384": ((81.4, 81.7, 80.5, 69.1, 82.1, 79.3), 10.52, None, 4.63),
+    "50-music-320": ((28.5, 29.2, 31.9, 31.6, 31.9), 0.93, 5.22, 4.62),
+    "51-music-192-configs": ((10.7, 11.8, 13.0, 7.9, 13.2, 13.5), 2.37, 4.30, 4.58),
+    "51-music-384-configs": ((32.8, 33.5, 35.7, 16.3, 36.5, 36.8), 2.20, None, 4.61),
 }
 
 # The race, per G0 leg: the encoder's scores, pinned as FLOORS are. What it measured against DEE's
@@ -149,6 +175,15 @@ FLOORS = {
 # log-spectral distance lower on each, and ViSQOL within 0.01 of DEE's 4.70 to 4.73.
 # From 256 kbps DEE's audio stops changing and the encoder's goes on improving, to 74 dB on music
 # at 768 kbps, where the QMF banks' reconstruction bounds it.
+# The 5.1 legs, measured 2026-09-25 with the encoder of phase E3, ASPX to 320 kbps and SIMPLE
+# from 384 as DEE's are. Below the crossover the encoder's SNR is 7.3 to 11.6 dB under DEE's at
+# 192 kbps and 1.9 to 3.7 under at 256: DEE keeps 21 to 27 dB below 2 kHz and lets the band from
+# 8 kHz fall to 3 dB and under, where this encoder spreads its noise across the band. From 288
+# kbps it is within 1.6 dB of DEE's, and from 320 over it: 3.2 to 3.8 dB at 384 and 15 to 19 at
+# 768. ViSQOL is at or above DEE's at 192 and 256 kbps; from 288 it is up to 0.05 under on film
+# and 0.02 on music, and within 0.01 at 768. The log-spectral distance is lower on every leg, the
+# A-SPX tiles land within 0.07 dB of DEE's distance from the source's energy or closer, and the
+# LFE, which DEE low-passes, comes back 15 to 29 dB over its noise by the rate.
 RACE = {
     "20-music-48": ((12.4, 12.6), 2.05, 2.23, 4.44),
     "20-music-64": ((14.9, 15.1), 1.59, 2.75, 4.55),
@@ -189,8 +224,33 @@ RACE = {
     "20-tones-448": ((81.3, 82.2), 8.48, None, 4.63),
     "20-tones-512": ((81.3, 82.2), 8.48, None, 4.63),
     "20-tones-768": ((81.3, 82.2), 8.48, None, 4.63),
+    "51-film-192": ((11.3, 11.0, 18.8, 15.2, 10.3, 10.5), 2.73, 2.31, 4.45),
+    "51-film-256": ((21.4, 21.4, 31.0, 24.9, 20.3, 20.4), 2.24, 2.28, 4.53),
+    "51-film-288": ((25.0, 25.0, 34.9, 26.3, 24.0, 24.1), 2.13, 2.28, 4.53),
+    "51-film-320": ((27.9, 28.0, 37.9, 27.0, 27.0, 27.1), 2.06, 2.30, 4.53),
+    "51-film-384": ((32.4, 32.5, 42.5, 27.4, 31.4, 31.6), 2.58, None, 4.57),
+    "51-film-448": ((36.2, 36.3, 46.4, 27.5, 35.3, 35.4), 2.53, None, 4.58),
+    "51-film-512": ((39.4, 39.5, 49.7, 27.6, 38.6, 38.7), 2.49, None, 4.60),
+    "51-film-768": ((49.6, 49.7, 60.0, 27.6, 48.8, 48.9), 2.33, None, 4.62),
+    "51-music-192": ((13.1, 13.1, 14.6, 13.9, 10.1, 10.0), 2.73, 3.22, 4.58),
+    "51-music-256": ((24.3, 24.4, 26.6, 23.9, 20.9, 21.0), 2.21, 4.10, 4.60),
+    "51-music-288": ((27.9, 27.9, 30.3, 25.7, 24.4, 24.6), 2.10, 4.11, 4.61),
+    "51-music-320": ((30.8, 30.9, 33.2, 26.6, 27.4, 27.5), 2.04, 4.10, 4.61),
+    "51-music-384": ((35.6, 35.6, 38.0, 27.3, 32.0, 32.1), 2.64, None, 4.61),
+    "51-music-448": ((39.4, 39.5, 41.9, 27.5, 35.9, 35.9), 2.59, None, 4.60),
+    "51-music-512": ((42.7, 42.8, 45.2, 27.6, 39.1, 39.2), 2.55, None, 4.62),
+    "51-music-768": ((53.1, 53.2, 55.6, 27.6, 49.6, 49.6), 2.38, None, 4.63),
+    "51-tones-192": ((80.2, 80.7, 80.0, 69.0, 81.3, 78.8), 10.67, None, 4.63),
+    "51-tones-256": ((80.8, 81.5, 80.4, 69.0, 81.9, 79.2), 10.57, None, 4.63),
+    "51-tones-288": ((81.0, 81.7, 80.5, 69.0, 82.0, 79.3), 10.51, None, 4.63),
+    "51-tones-320": ((81.1, 81.9, 80.6, 69.0, 82.1, 79.4), 10.44, None, 4.63),
+    "51-tones-384": ((81.1, 82.0, 80.6, 69.0, 82.1, 79.3), 10.42, None, 4.63),
+    "51-tones-448": ((81.2, 82.1, 80.6, 69.0, 82.2, 79.4), 10.34, None, 4.63),
+    "51-tones-512": ((81.2, 82.1, 80.6, 69.0, 82.2, 79.4), 10.30, None, 4.63),
+    "51-tones-768": ((81.3, 82.2, 80.7, 69.0, 82.3, 79.5), 10.17, None, 4.63),
 }
-# The G0 legs the race runs, by rate: ASPX where DEE writes it, SIMPLE from 192 kbps.
+# The G0 legs the race runs, by rate: 2.0 in ASPX where DEE writes it and in SIMPLE from 192 kbps,
+# and 5.1 from 192 kbps, below which DEE writes A-CPL.
 RACE_RATES = (48, 64, 96, 128, 144, 192, 256, 288, 320, 384, 448, 512, 768)
 
 
@@ -246,15 +306,19 @@ def synthetic(name, rate, programme):
         return [0.8 * mono, 0.3 * mono]
     if name in ("music_10", "speech_10"):
         return [programme[f"{name[:-3]}_20"].mean(axis=1)]
+    if name == "music_50":
+        return [programme["music_51"][:, c] for c in (0, 1, 2, 4, 5)]
     raise SystemExit(f"unknown source {name}")
 
 
 def build_sources(work):
     """Every leg's source WAV, by (source, rate)."""
-    rebuilt = baseline.build_sources(work / "fixtures", SECONDS, ["music_20", "speech_20"])
+    rebuilt = baseline.build_sources(
+        work / "fixtures", SECONDS, ["music_20", "speech_20", "music_51", "film_51", "tones_51"]
+    )
     programme = {name: decoding.read_wav(path)[0] for name, path in rebuilt.items()}
     paths = {}
-    for source, rate, _ in LEGS.values():
+    for source, rate, *_ in LEGS.values():
         if (source, rate) in paths:
             continue
         path = work / f"{source}-{rate}.wav"
@@ -310,16 +374,22 @@ def decode_librempeg(args, stream, out_wav):
 
 
 def decode_with_groups(cli, stream, out_wav):
-    """ac3cli's decode of `stream`, and the low-resolution A-SPX subband groups its first
-    aspx_config() gives (score_ac4_decode.py's aspx_groups), or None for a SIMPLE stream. The
-    encoder writes mono and stereo, whose one aspx_data element carries every channel."""
+    """ac3cli's decode of `stream`, and per channel the low-resolution A-SPX subband groups its
+    first aspx_config() gives with the crossover offset of the aspx_data element carrying that
+    channel (score_ac4_decode.py's aspx_groups and ASPX_UNIT), or None for a SIMPLE stream and
+    for the LFE, which A-SPX leaves out."""
     trace = Path(str(out_wav) + ".trace")
     decoded, rate = decoding.decode(cli, stream, out_wav, trace)
     found = decoding.trace_values(trace)
     if found is None:
-        return decoded, rate, None
+        return decoded, rate, [None] * decoded.shape[1]
     config, offsets = found
-    return decoded, rate, decoding.aspx_groups(config, offsets[0])
+    units = decoding.ASPX_UNIT[decoded.shape[1]]
+    return (
+        decoded,
+        rate,
+        [None if u is None else decoding.aspx_groups(config, offsets[u]) for u in units],
+    )
 
 
 @dataclass
@@ -333,8 +403,10 @@ class Measured:
 
 
 def measure(source, decoded, rate, groups):
-    """The scores above, of `decoded` against `source`: SNR over the whole band where `groups` is
-    None (SIMPLE), and below the crossover, with the A-SPX tiles above it, otherwise."""
+    """The scores above, of `decoded` against `source`: each channel's SNR over the whole band
+    where its entry in `groups` is None (SIMPLE, and the LFE), and below the crossover, with the
+    A-SPX tiles above it, otherwise. The LFE's level is taken from 20 to 100 Hz, as
+    score_ac4_decode.py takes it."""
     decoding.RATE = rate  # tone_power's, band_snr's and tile_error's rate
     lag, reference, aligned = decoding.align(source, decoded)
     channels = []
@@ -342,14 +414,16 @@ def measure(source, decoded, rate, groups):
     for c in range(reference.shape[1]):
         r, o = reference[:, c], aligned[:, c]
         gain = float(np.dot(r, o) / np.dot(r, r))
-        if groups is None:
+        if groups[c] is None:
             error = o - gain * r
             snr = 10.0 * np.log10(np.dot(gain * r, gain * r) / np.dot(error, error))
+            if decoding.LFE_CHANNEL.get(reference.shape[1]) == c:
+                gain = decoding.lfe_gain(r, o)
         else:
-            top_hz = (groups[0] - 1) * decoding.subband_hz()
+            top_hz = (groups[c][0] - 1) * decoding.subband_hz()
             gain = decoding.band_gain(r, o, top_hz)
             snr = decoding.band_snr(r, o, gain, top_hz)
-            tiles += decoding.tile_error(r, o, groups)
+            tiles += decoding.tile_error(r, o, groups[c])
         channels.append((20.0 * np.log10(abs(gain)), float(snr)))
     lsd, _ = quality_race.spectral_scores(reference, aligned)
     mos = quality_race.perceptual_score(reference, aligned, rate)
@@ -414,17 +488,18 @@ def pin_text(name, m):
     return f'    "{name}": (({snrs}), {m.lsd + LSD_MARGIN_DB:.2f}, {tiles}, {mos_text}),'
 
 
-def encode(cli, source_path, kbps, out):
-    run([cli, "ac4-encode", source_path, out, kbps, "quiet"])
+def encode(cli, source_path, kbps, out, options=()):
+    run([cli, "ac4-encode", source_path, out, kbps, "quiet", *options])
 
 
 def committed_run(args, work):
     paths = build_sources(work)
     failures = []
     pins = []
-    for name, (source, rate, kbps) in LEGS.items():
+    legs = {name: leg for name, leg in LEGS.items() if args.only is None or args.only in name}
+    for name, (source, rate, kbps, *options) in legs.items():
         stream = work / f"{name}.ac4"
-        encode(args.cli, paths[(source, rate)], kbps, stream)
+        encode(args.cli, paths[(source, rate)], kbps, stream, options)
         original, _ = decoding.read_wav(paths[(source, rate)])
         decoded, decoded_rate, groups = decode_with_groups(args.cli, stream, work / f"{name}.wav")
         if decoded_rate != rate or decoded.shape[1] != original.shape[1]:
@@ -444,7 +519,7 @@ def committed_run(args, work):
             failures += routing_failures(name, m.aligned, rate)
     if args.measure:
         print("\nFLOORS = {\n" + "\n".join(pins) + "\n}")
-    return failures, len(LEGS)
+    return failures, len(legs)
 
 
 def gold_run(args, work):
@@ -452,13 +527,15 @@ def gold_run(args, work):
     legs = [
         (name, leg)
         for name, leg in sorted(manifest["legs"].items())
-        if name.startswith("20-")
+        if name.split("-")[0] in ("20", "51")
+        and len(name.split("-")) == 3
         and leg.get("codec_mode") in ("SIMPLE", "ASPX")
         and leg.get("frame_rate_index") == 13
         and leg.get("bitrate_kbps") in RACE_RATES
+        and (args.only is None or args.only in name)
     ]
     if not legs:
-        raise SystemExit(f"no 2.0 leg at the race's rates in {args.gold}")
+        raise SystemExit(f"no 2.0 or 5.1 leg at the race's rates in {args.gold}")
     failures = []
     pins = []
     for name, leg in legs:
@@ -512,6 +589,7 @@ def main():
     parser.add_argument(
         "--measure", action="store_true", help="print the measurements, check nothing"
     )
+    parser.add_argument("--only", help="run only the legs whose names contain this")
     args = parser.parse_args()
     with tempfile.TemporaryDirectory() as temporary:
         work = args.work or Path(temporary)

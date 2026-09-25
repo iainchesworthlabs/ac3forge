@@ -9,10 +9,10 @@ ladder, item 7.
 
 The PCM comes from the AC-3 harness's generator, imported rather than copied:
 its per-block plan, the `cliff` profile and the correlation modes serve every
-codec. The configuration space is this encoder's: mono or stereo, 48 or
-44.1 kHz, a constant rate from 8 kbps up, the codec mode the rate picks or
-either one forced, the experimental A-SPX tools, dialnorm, and raw or MP4
-output.
+codec. The configuration space is this encoder's: mono, stereo, 5.0 and 5.1,
+and 7.0 and 7.1 in the three 7.X layouts, 48 or 44.1 kHz, a constant rate from
+8 kbps up (20 in 5.X and 7.X), the codec mode the rate picks or either one
+forced, the experimental tools, dialnorm, and raw or MP4 output.
 
 Each case is held to:
 
@@ -75,6 +75,13 @@ SAMPLE_RATES = [48000, 44100]
 RATES = [8, 12, 16, 24, 32, 48, 64, 96, 128, 144, 192, 256, 320, 384, 448, 512, 640, 768, 1024]
 LOWEST_KBPS = 8
 HIGHEST_KBPS = 3000
+# The 5.X and 7.X elements' least rate: from 14 to 19 kbps, by layout and sample rate, the
+# smallest frame holds one with no bands and every aspx_data element's least; 20 holds all.
+MULTICHANNEL_LOWEST_KBPS = 20
+# The channel counts drawn, stereo and 5.1 twice as often; seven and eight channels take one of the
+# 7.X element's pairs, an experimental option.
+CHANNELS = [1, 2, 2, 5, 6, 6, 7, 8]
+SEVEN_X = ["7x-back", "7x-wide", "7x-top-front"]
 # The encoder's delay (a frame and a half) and the decoder's at frame_rate_index 13, which the
 # encoder's last frame covers: d_pcm (Part 1 Table 188), the QMF banks' 577 samples and six QMF
 # slots.
@@ -120,6 +127,7 @@ class Result:
 
 def draw_case(seed):
     rng = random.Random(seed)
+    channels = rng.choice(CHANNELS)
     roll = rng.random()
     if roll < 0.04:
         bitrate = rng.choice([1, 4, 7, 3001, 4000])  # outside the range: must be refused
@@ -128,6 +136,8 @@ def draw_case(seed):
     else:
         weights = [1.0 / (1.0 + 0.3 * i) for i in range(len(RATES))]
         bitrate = rng.choices(RATES, weights=weights, k=1)[0]
+    if channels > 2 and LOWEST_KBPS <= bitrate < MULTICHANNEL_LOWEST_KBPS:
+        bitrate = MULTICHANNEL_LOWEST_KBPS
     options = []
     roll = rng.random()
     if roll < 0.2:
@@ -141,16 +151,24 @@ def draw_case(seed):
         options.append("codec-mode=simple")
     elif roll < 0.3:
         options.append("codec-mode=aspx")
+    tools = []
     if rng.random() < 0.25:
-        tools = rng.choice(
-            [
-                "aspx-balance",
-                "aspx-varvar",
-                "aspx-interleave",
-                "aspx-balance,aspx-varvar,aspx-interleave",
-            ]
+        tools.append(
+            rng.choice(
+                [
+                    "aspx-balance",
+                    "aspx-varvar",
+                    "aspx-interleave",
+                    "aspx-balance,aspx-varvar,aspx-interleave",
+                ]
+            )
         )
-        options.append(f"experimental={tools}")
+    if channels > 2 and rng.random() < 0.3:
+        tools.append("coding-configs")
+    if channels > 6:
+        tools.append(rng.choice(SEVEN_X))
+    if tools:
+        options.append(f"experimental={','.join(tools)}")
     sample_rate = rng.choice(SAMPLE_RATES)
     # Two to ten frames of input: several frames, never one, so that block
     # switching and the stereo choice change between frames. dialnorm=auto
@@ -160,7 +178,7 @@ def draw_case(seed):
         shortest = -(-sample_rate * 3 // 5 // BLOCK)
     return Case(
         seed=seed,
-        channels=rng.choice([1, 2, 2]),
+        channels=channels,
         sample_rate=sample_rate,
         bitrate=bitrate,
         blocks=rng.randint(shortest, max(shortest, 10 * FRAME // BLOCK)),
@@ -431,27 +449,29 @@ def read_wav_shape(path):
 
 
 def check_envelope(cli):
-    """The rates the encoder takes, at both sample rates and channel counts: the lowest accepted and
-    the one below it refused, the highest accepted and the one above it refused."""
+    """The rates the encoder takes, at both sample rates and every layout: in mono and stereo the
+    lowest accepted and the one below it refused, in 5.X and 7.X MULTICHANNEL_LOWEST_KBPS accepted,
+    and everywhere the highest accepted and the one above it refused."""
     failures = 0
+    layouts = [(1, []), (2, []), (5, []), (6, []), *((8, [f"experimental={p}"]) for p in SEVEN_X)]
     with tempfile.TemporaryDirectory(prefix="ac4envelope_") as tmp:
-        for channels in (1, 2):
+        for channels, options in layouts:
             for rate in SAMPLE_RATES:
                 wav = Path(tmp) / f"{channels}-{rate}.wav"
                 ac3space.write_wav(wav, [[0.0] * (4 * FRAME) for _ in range(channels)], rate, False)
-                for kbps, accepted in (
-                    (LOWEST_KBPS - 1, False),
-                    (LOWEST_KBPS, True),
-                    (HIGHEST_KBPS, True),
-                    (HIGHEST_KBPS + 1, False),
-                ):
-                    result = _run([cli, "ac4-encode", wav, Path(tmp) / "out.ac4", kbps, "quiet"])
+                lowest = [(LOWEST_KBPS - 1, False), (LOWEST_KBPS, True)]
+                if channels > 2:
+                    lowest = [(MULTICHANNEL_LOWEST_KBPS, True)]
+                for kbps, accepted in (*lowest, (HIGHEST_KBPS, True), (HIGHEST_KBPS + 1, False)):
+                    result = _run(
+                        [cli, "ac4-encode", wav, Path(tmp) / "out.ac4", kbps, "quiet", *options]
+                    )
                     ok = (result.returncode == 0) == accepted
                     expected = "accepted" if accepted else "refused"
                     if not accepted:
                         ok = ok and REFUSALS["rate out of range"] in result.stderr
                     print(
-                        f"  {channels} ch {rate} Hz {kbps:5d} kbps: "
+                        f"  {channels} ch {' '.join(options)} {rate} Hz {kbps:5d} kbps: "
                         f"{'accepted' if result.returncode == 0 else 'refused'}"
                         f"{'' if ok else '  <- expected ' + expected}"
                     )

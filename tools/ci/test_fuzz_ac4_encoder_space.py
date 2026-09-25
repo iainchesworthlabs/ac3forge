@@ -98,7 +98,15 @@ class DrawCase(unittest.TestCase):
 
     def test_the_space_drawn(self):
         cases = [fa4.draw_case(seed) for seed in range(2000)]
-        self.assertEqual({c.channels for c in cases}, {1, 2})
+        self.assertEqual({c.channels for c in cases}, set(fa4.CHANNELS))
+        # Seven and eight channels always name a 7.X pair, and nothing else does; 5.X and 7.X
+        # never draw a rate in range below their least.
+        for case in cases:
+            pairs = [p for o in case.options for p in fa4.SEVEN_X if p in o]
+            self.assertEqual(len(pairs), 1 if case.channels > 6 else 0)
+            if case.channels > 2 and case.in_range:
+                self.assertGreaterEqual(case.bitrate, fa4.MULTICHANNEL_LOWEST_KBPS)
+        self.assertTrue(any("coding-configs" in o for c in cases for o in c.options))
         self.assertEqual({c.sample_rate for c in cases}, set(fa4.SAMPLE_RATES))
         self.assertTrue(any(not c.in_range for c in cases))
         self.assertTrue(any(c.mp4 for c in cases))
