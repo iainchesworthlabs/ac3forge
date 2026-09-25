@@ -57,8 +57,8 @@ struct Rig {
     Rig() {
         const auto identity = ss::noise::KeyPair::generate();
         REQUIRE(identity.has_value());
-        // No firewall exception: see test_network_sinks.cpp's own header comment.
-        sinks.emplace(*identity, "Test Hearth", store, /*request_firewall_exception=*/false);
+        // No mDNS browsing: see test_network_sinks.cpp's own header comment.
+        sinks.emplace(*identity, "Test Hearth", store, ac3::hearth::NetworkSinksOptions{.browse = false});
         REQUIRE(sinks->started());
     }
 };

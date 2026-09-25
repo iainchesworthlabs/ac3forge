@@ -121,16 +121,19 @@ public:
     // into the pairing store) before the members it uses go.
     ~NetworkController() override;
 
-    // Whether start() asks Windows for a firewall exception for its mDNS
-    // socket (sendspin::discovery::mdns::Options::request_firewall_exception):
-    // true for the window. The Qt Quick suites (ui/tests/qml_test_main.cpp)
-    // turn it off before any suite starts the network - ac3hearth_qmltests has
-    // no main() of its own to finish the elevated relaunch the request makes,
-    // so left on, every suite that opens Main.qml would ask for elevation on
-    // every run.
-    static void set_firewall_exception_requested(bool requested);
+    // Whether start() browses the network for sinks at all
+    // (NetworkSinksOptions::browse): true for the window. The Qt Quick suites
+    // (ui/tests/qml_test_main.cpp) turn it off before any suite starts the
+    // network, so the only sinks a suite sees are the ones it hands
+    // sinks_for_test() itself - left on, every suite that opens Main.qml
+    // would find and dial the real sinks on whatever network it runs on.
+    // Off, there is no mDNS socket either, so no firewall exception is asked
+    // for: ac3hearth_qmltests has no main() of its own to finish the elevated
+    // relaunch that request makes.
+    static void set_network_discovery(bool discovery);
 
-    // Starts the Sendspin server and mDNS browsing. Called from Main.qml's
+    // Starts the Sendspin server and, unless set_network_discovery(false) came
+    // first, mDNS browsing. Called from Main.qml's
     // Component.onCompleted, the same reason HearthController::start() is:
     // not the constructor, so a singleton QML creates before the window is
     // on screen does not open a socket with nothing yet shown for it.

@@ -22,14 +22,14 @@
 // actual ac3::sendspin::ServerHost (with browse off and no listening port,
 // as NetworkSinks always configures it) and dial a real, refused loopback
 // port - both fast and deterministic, unlike anything that touches multicast
-// or another process. Every construction below also passes
-// request_firewall_exception=false: NetworkSinks still opens a real mDNS
-// browse socket (its own on_found()/on_lost() are what this file drives
-// synthetically, not the socket's existence), and left at its true default
-// that socket asks Windows for a firewall exception - which, run as plain
-// ac3tests.exe rather than one of the two main()s that can finish that
-// handshake, means a UAC prompt on every single test case here instead of
-// once, ever (see ac3::sendspin::discovery::mdns::Options::
+// or another process. Every construction below also turns NetworkSinks' own
+// mDNS browsing off ({.browse = false}), so the rows are only the ones each
+// test makes: a real browse would add every sink on the network the test
+// runs on - as rows the checks below do not expect, and as dials, reaching
+// whoever's sinks share that network (CI's self-hosted runners sit on
+// someone's home network). With no browse socket, nothing asks Windows for a
+// firewall exception either, which plain ac3tests.exe could not finish
+// adding (ac3::sendspin::discovery::mdns::Options::
 // request_firewall_exception's own comment).
 
 namespace ss = ac3::sendspin;
@@ -60,7 +60,7 @@ TEST_CASE("network sinks: starts with discovery off from ServerHost's own browsi
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
     CHECK(sinks.started());
     CHECK(sinks.status().sinks.empty());
 }
@@ -70,7 +70,7 @@ TEST_CASE("network sinks: a found sink is a row before any connection exists", "
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     // Port 1 is a real, immediately-refused loopback connection - the dial
     // on_found() makes fails fast and asynchronously, and is never awaited
@@ -89,7 +89,7 @@ TEST_CASE("network sinks: hello fills in a Hearth sink's capabilities", "[hearth
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-kitchen", 1);
     sinks.on_found(service);
@@ -123,7 +123,7 @@ TEST_CASE("network sinks: selecting a sink only selects it, and pairing one asks
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-study", 1);
     sinks.on_found(service);
@@ -156,7 +156,7 @@ TEST_CASE("network sinks: pairing a sink with no connection dials to pair it", "
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     sinks.on_found(test_service("hearth-s3-study", 1));
     sinks.select_sink("hearth-s3-study");
@@ -195,7 +195,7 @@ TEST_CASE("network sinks: commands on an id nothing has ever found are quietly r
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     sinks.select_sink("no-such-sink");
     sinks.submit_pairing_code("no-such-sink", "123456");
@@ -211,7 +211,7 @@ TEST_CASE("network sinks: push_sink_settings refuses a sink with no _ac3forge_pl
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("kitchen-speaker", 1);
     sinks.on_found(service);
@@ -237,7 +237,7 @@ TEST_CASE("network sinks: creating a group selects it and clears a sink selectio
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     sinks.on_found(test_service("hearth-s3-study", 1));
     sinks.select_sink("hearth-s3-study");
@@ -259,7 +259,7 @@ TEST_CASE("network sinks: renaming a group is bookkeeping only", "[hearth][netwo
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const std::string group_id = sinks.create_group("New group");
     sinks.rename_group(group_id, "Kitchen and lounge");
@@ -276,7 +276,7 @@ TEST_CASE("network sinks: only a connected sink can be added to a group", "[hear
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const std::string group_id = sinks.create_group("Downstairs");
     // hearth-s3-study is found but never says hello - no client_id yet.
@@ -320,7 +320,7 @@ TEST_CASE("network sinks: a member's row survives its sink disconnecting", "[hea
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const std::string group_id = sinks.create_group("Downstairs");
     const ss::discovery::Service service = test_service("hearth-s3-kitchen", 1);
@@ -360,7 +360,7 @@ TEST_CASE("network sinks: a sink that has said hello joins a group whether or no
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const std::string group_id = sinks.create_group("Downstairs");
     const ss::discovery::Service service = test_service("hearth-s3-kitchen", 1);
@@ -388,7 +388,7 @@ TEST_CASE("network sinks: selecting a group clears a sink selection and back aga
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     sinks.on_found(test_service("hearth-s3-study", 1));
     const std::string group_id = sinks.create_group("Downstairs");
@@ -409,7 +409,7 @@ TEST_CASE("network sinks: push_sink_settings reaches ac3forge_command for a sink
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-kitchen", 1);
     sinks.on_found(service);
@@ -450,7 +450,7 @@ TEST_CASE("network sinks: push_sink_settings and push_sink_identify on an id not
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     CHECK_FALSE(sinks.push_sink_settings("no-such-sink", ss::ac3forge::Settings{}));
     CHECK_FALSE(sinks.push_sink_identify("no-such-sink", std::nullopt));
@@ -463,7 +463,7 @@ TEST_CASE("network sinks: deleting the selected group clears the selection",
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const std::string group_id = sinks.create_group("Downstairs");
     sinks.delete_group(group_id);
@@ -481,7 +481,7 @@ TEST_CASE("network sinks: group commands on an id nothing has made are quietly r
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     sinks.add_group_member("no-such-group", "no-such-sink");
     sinks.remove_group_member("no-such-group", "no-such-sink");
@@ -506,7 +506,7 @@ TEST_CASE("network sinks: volume and mute on a real group reach a synthetic, una
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-kitchen", 1);
     sinks.on_found(service);
@@ -530,7 +530,7 @@ TEST_CASE("network sinks: a client going away keeps its row, and it is dialled a
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-lounge", 1);
     sinks.on_found(service);
@@ -576,7 +576,7 @@ TEST_CASE("network sinks: another server taking the sink holds its row until the
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-study", 1);
     sinks.on_found(service);
@@ -629,7 +629,7 @@ TEST_CASE("network sinks: a sink another server holds refusing this computer is 
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-study", 1);
     sinks.on_found(service);
@@ -671,7 +671,7 @@ TEST_CASE("network sinks: a refusal that arrives after a pairing was asked for d
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-study", 1);
     sinks.on_found(service);
@@ -700,7 +700,7 @@ TEST_CASE("network sinks: a dial that fails is tried again, and a pairing waitin
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-attic", 1);
     const std::string url = *service.url();
@@ -731,7 +731,7 @@ TEST_CASE("network sinks: the host's trail is taken once", "[hearth][network-sin
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     (void)sinks.take_log();
     sinks.on_log("first");
@@ -752,7 +752,7 @@ TEST_CASE("network sinks: a goodbye reason that is not about another server leav
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     const ss::discovery::Service service = test_service("hearth-s3-study", 1);
     sinks.on_found(service);
@@ -776,7 +776,7 @@ TEST_CASE("network sinks: on_client_goodbye on an id nothing has ever found is q
     PairingStore store{settings, today};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    NetworkSinks sinks{*identity, "Test Hearth", store, /*request_firewall_exception=*/false};
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
 
     sinks.on_client_goodbye("no-such-client", ss::messages::GoodbyeReason::kAnotherServer);
     CHECK(sinks.status().sinks.empty());

@@ -214,7 +214,8 @@ TEST_CASE("network sinks live: the sinks on this network are found, paired, play
     ac3::hearth::PairingStore store{settings, [] { return std::string("live"); }};
     const auto identity = ss::noise::KeyPair::generate();
     REQUIRE(identity.has_value());
-    ac3::hearth::NetworkSinks sinks{*identity, "Hearth live test", store, /*request_firewall_exception=*/false};
+    // Browsing, unlike every other NetworkSinks test: finding the real sinks is this case's point.
+    ac3::hearth::NetworkSinks sinks{*identity, "Hearth live test", store, {.request_firewall_exception = false}};
     REQUIRE(sinks.started());
 
     // 1. Found over mDNS, and read: each has said hello at least once.

@@ -65,9 +65,9 @@ constexpr std::uint32_t kPairingDialsBeforeError = 3;
 }  // namespace
 
 NetworkSinks::NetworkSinks(ss::noise::KeyPair identity, std::string name, PairingStore& store,
-                           bool request_firewall_exception)
+                           NetworkSinksOptions options)
     : store_(store) {
-    ss::ServerHostOptions options{
+    ss::ServerHostOptions host_options{
         .identity = identity,
         .name = std::move(name),
         .languages = {"en"},
@@ -85,13 +85,18 @@ NetworkSinks::NetworkSinks(ss::noise::KeyPair identity, std::string name, Pairin
         .browse = false,
         .mdns_interfaces = {},
     };
-    auto started = ss::ServerHost::start(std::move(options), store, *this);
+    auto started = ss::ServerHost::start(std::move(host_options), store, *this);
     if (!started.has_value()) {
         return;
     }
     host_ = std::move(*started);
-    browser_ = ss::discovery::mdns::browse(std::string(ss::discovery::kPlayerService), *this,
-                                           {.request_firewall_exception = request_firewall_exception});
+    // With browsing off there is no socket, and the only sinks are the ones
+    // the owner hands on_found() itself. browser_ stays null, as it already
+    // does when no interface's socket opens.
+    if (options.browse) {
+        browser_ = ss::discovery::mdns::browse(std::string(ss::discovery::kPlayerService), *this,
+                                               {.request_firewall_exception = options.request_firewall_exception});
+    }
 }
 
 NetworkSinks::~NetworkSinks() {
