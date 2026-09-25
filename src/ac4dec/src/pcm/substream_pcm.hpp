@@ -14,6 +14,7 @@
 #include "pcm/acpl.hpp"
 #include "pcm/aspx.hpp"
 #include "pcm/de.hpp"
+#include "pcm/downmix.hpp"
 #include "pcm/drc.hpp"
 #include "pcm/routing.hpp"
 #include "pcm/stereo.hpp"
@@ -46,9 +47,10 @@
 // Before the synthesis, the output processing the system configures
 // (OutputConfig): dialogue enhancement (clause 5.7.8, pcm/de.hpp), then the
 // output level and DRC (clause 5.7.9, pcm/drc.hpp), whose level is measured on
-// the signal before dialogue enhancement (6.2.13). Their values are held with
-// the rest of the frame's control data until its signal reaches the QMF domain
-// (5.7.2).
+// the signal before dialogue enhancement (6.2.13), then the downmix (6.2.17,
+// pcm/downmix.hpp), after which only the channels that come out are
+// synthesised. Their values are held with the rest of the frame's control data
+// until its signal reaches the QMF domain (5.7.2).
 
 namespace ac4::detail {
 
@@ -61,6 +63,7 @@ struct FrameInputs {
     OutputConfig output{};
     DrcFrameValues drc{};
     DeFrameValues de{};
+    DownmixValues downmix{};
 };
 
 class SubstreamPcm {
@@ -93,13 +96,18 @@ class SubstreamPcm {
         dsp::ChannelSynthesis<double> synthesis;
         std::vector<double> delay;  // the last d_pcm samples of the previous frame
         dsp::QmfAnalysis<double> analysis;
-        dsp::QmfSynthesis<double> qmf_synthesis;
         // Q_low_ext (pcm/aspx.hpp): kTsOffsetHfadj + ts_offset_hfgen slots of
         // the previous frames' processed QMF matrix, then this frame's.
         std::vector<QmfValue> ext;
-        std::vector<QmfValue> out;  // what the synthesis bank takes
+        std::vector<QmfValue> out;  // the QMF domain's matrix, which the output stages take
         AspxChannelState aspx;
-        std::optional<dsp::Resampler<double>> converter;  // at every frame_rate_index but 13
+    };
+
+    // A channel that comes out, after the downmix: its synthesis bank and, at
+    // every frame_rate_index but 13, its sample rate converter.
+    struct Output {
+        dsp::QmfSynthesis<double> synthesis;
+        std::optional<dsp::Resampler<double>> converter;
     };
 
     // The QMF-domain control data of one frame, held d_ctrl frames until the
@@ -115,6 +123,7 @@ class SubstreamPcm {
         std::optional<AcplFrameValues> acpl;  // dequantised when the frame was read
         DrcFrameValues drc;                   // the frame's DRC and dialnorm
         DeFrameValues de;                     // its dialogue enhancement
+        DownmixValues downmix;                // its downmix gains
     };
 
     // One aspx_data element's frame parameters and its channels' data and
@@ -127,6 +136,10 @@ class SubstreamPcm {
     };
 
     [[nodiscard]] ParseResult configure(const SubstreamContext& ctx);
+    // The output stages - DRC's channel groups, the downmix, and each channel
+    // out's synthesis bank and converter - for add_ch_base and the output the
+    // system asks for, rebuilt only where one of them changes.
+    void configure_outputs(const SubstreamContext& ctx, const OutputConfig& output);
     [[nodiscard]] ParseResult check_control(const SubstreamContext& ctx, const ChannelElement& element) const;
     [[nodiscard]] UnitIo unit_io(const AspxUnit& unit, const Control& control, bool master_reset);
     [[nodiscard]] int channel_of(Speaker speaker) const noexcept;
@@ -167,6 +180,15 @@ class SubstreamPcm {
     std::optional<int> converter_phase_;
     DeStage de_;
     DrcStage drc_;
+    DownmixStage downmix_;
+    double internal_rate_ = 48000.0;  // the rate the QMF banks run at
+    bool outputs_valid_ = false;
+    bool add_ch_base_ = false;
+    DownmixTarget downmix_target_ = DownmixTarget::kAsCoded;
+    bool mix_lfe_ = true;
+    std::vector<Output> outputs_;               // in downmix_.speakers()'s order
+    std::vector<std::vector<QmfValue>> mixed_;  // the downmix's matrices
+    std::vector<std::vector<QmfValue>*> mixed_matrices_;
     // The matrices before dialogue enhancement, DRC's side chain, where both act.
     std::vector<std::vector<QmfValue>> side_;
     std::vector<std::vector<QmfValue>*> side_matrices_;

@@ -1035,9 +1035,9 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 
 ## Output processing
 
-What the QMF domain's matrices go through before synthesis, dialogue enhancement (Part 1 5.7.8) and
-the output level and DRC (5.7.9), and after it, the sample rate converter of Part 1 6.2.15, whose phase
-Part 2 5.11 locks to `sequence_counter`.
+What the QMF domain's matrices go through before synthesis, dialogue enhancement (Part 1 5.7.8), the
+output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample rate converter of Part 1
+6.2.15, whose phase Part 2 5.11 locks to `sequence_counter`.
 
 ### DRC's units
 
@@ -1090,13 +1090,54 @@ Part 2 5.11 locks to `sequence_counter`.
   them, and multiplies the output level gain. A gains configuration of 0 is one gain for all channels.
 - **Evidence:** Text; no stream DEE writes sends gains.
 
-### When dialogue enhancement's and DRC's values apply
+### When dialogue enhancement's, DRC's and the downmix's values apply
 
-- **Where:** Part 1 5.7.2 and Table 188 hold the QMF domain's control data d_ctrl frames; 5.7.8 and 5.7.9
-  do not say when a frame's dialogue enhancement, dialnorm and DRC reach the audio.
+- **Where:** Part 1 5.7.2 and Table 188 hold the QMF domain's control data d_ctrl frames; 5.7.8, 5.7.9 and
+  6.2.17 do not say when a frame's dialogue enhancement, dialnorm, DRC and mix gains reach the audio.
 - **Reading:** with the rest of the frame's control data, so they apply to that frame's signal. Until the
   first frame's reach the QMF domain there is no dialnorm, and the output level gain is 1.
 - **Evidence:** Text.
+
+### Where the downmix runs
+
+- **Where:** Part 2 4.8, pp. 50 to 53, renders each substream (4.8.3.19) before loudness correction and
+  the compression curves' DRC (4.8.6); Part 1 6.2.17 does not place the downmix in the QMF domain or after
+  synthesis.
+- **Reading:** in the QMF domain after DRC and before synthesis. A curve's gain is one gain for every
+  channel at each QMF sample and a downmix is a fixed matrix, so the two commute, and the transmitted
+  gains, which are per channel group, still come before it; only the channels that come out are
+  synthesised.
+- **Evidence:** Text; `tests/ac4dec/test_ac4dec_downmix.cpp` measures DEE's tones through each downmix.
+
+### The downmix gains
+
+- **Where:** Part 1 Tables 149 and 149a, pp. 109 and 110, give each mix gain code both a linear value
+  (0.707 for -3 dB) and a value in dB, which differ by up to 0.012 dB; Table 219, p. 271, and 6.2.17.6
+  print 0.707 alone; 4.3.12.2.11 and 4.3.12.2.16 give the downmix loudness corrections in dB2.
+- **Reading:** the mix gains and `lfe_mixgain` in dB, 10^(dB/20); Table 219's fold and the mono upmix at
+  0.707 as printed; the loudness corrections in dB2, 2^(x/6). Without mix gains, -3 dB each, as Tables 149
+  and 149a say; a surround code the table reserves reads the same.
+- **Evidence:** Text.
+
+### The listener's Lt/Rt and the stream's Pro Logic II form
+
+- **Where:** Part 1 6.2.17.4, p. 271: the matrix follows the user-selected downmix method or, with none
+  selected, `preferred_dmx_method`, whose codes 2 and 3 are both Lt/Rt (Table 150) and give Table 218 two
+  Lt/Rt rows.
+- **Reading:** a listener who asks for Lt/Rt gets the Pro Logic II row where the stream prefers code 3,
+  and the plain Lt/Rt row otherwise; one who asks for stereo without naming a method gets the stream's
+  preference, Lo/Ro where it prefers none (code 0). The Lo/Ro correction goes with Lo/Ro and the Lt/Rt
+  correction with both Lt/Rt rows.
+- **Evidence:** Text.
+
+### The LFE in a downmix
+
+- **Where:** Part 1 4.3.12.2.18, p. 111, NOTE: after start-up or a splice "a value of -inf dB may be used
+  for lfe_mg until an AC-4 frame with b_lfe_mixinfo = 1 is received"; Table 218 mixes the LFE at lfe_mg.
+- **Reading:** the LFE stays out of a downmix until the stream sends `lfe_mixgain`, and then goes in at
+  it; a stream that never sends it leaves the LFE out. The system may keep it out regardless
+  (`OutputConfig::mix_lfe`).
+- **Evidence:** Text; DEE's 5.1 streams send `b_lfe_mixinfo` 0.
 
 ### Dialogue enhancement's front channels
 

@@ -83,11 +83,13 @@ void SubstreamPcm::reset() {
         channel.synthesis.reset();
         std::ranges::fill(channel.delay, 0.0);
         channel.analysis.reset();
-        channel.qmf_synthesis.reset();
         std::ranges::fill(channel.ext, QmfValue{});
         channel.aspx = AspxChannelState{};
-        if (channel.converter) {
-            channel.converter->reset();
+    }
+    for (Output& output : outputs_) {
+        output.synthesis.reset();
+        if (output.converter) {
+            output.converter->reset();
         }
     }
     held_.clear();
@@ -99,6 +101,7 @@ void SubstreamPcm::reset() {
     converter_phase_.reset();
     de_.reset();
     drc_.reset();
+    downmix_.reset();
 }
 
 int SubstreamPcm::channel_of(Speaker speaker) const noexcept {
@@ -108,6 +111,29 @@ int SubstreamPcm::channel_of(Speaker speaker) const noexcept {
         }
     }
     return -1;
+}
+
+void SubstreamPcm::configure_outputs(const SubstreamContext& ctx, const OutputConfig& output) {
+    if (outputs_valid_ && add_ch_base_ == ctx.add_ch_base && downmix_target_ == output.downmix &&
+        mix_lfe_ == output.mix_lfe) {
+        return;
+    }
+    add_ch_base_ = ctx.add_ch_base;
+    downmix_target_ = output.downmix;
+    mix_lfe_ = output.mix_lfe;
+    drc_.configure(internal_rate_, slots_, speakers_, add_ch_base_);
+    downmix_.configure(speakers_, add_ch_base_, downmix_target_, mix_lfe_);
+    outputs_.clear();
+    for (std::size_t o = 0; o < downmix_.speakers().size(); ++o) {
+        Output out{.synthesis = {}, .converter = {}};
+        if (converter_filter_) {
+            out.converter.emplace(converter_filter_);
+        }
+        outputs_.push_back(std::move(out));
+    }
+    // New converters start their grid at the next frame's phase.
+    converter_phase_.reset();
+    outputs_valid_ = true;
 }
 
 ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
@@ -146,14 +172,9 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
         Channel channel{.synthesis = dsp::ChannelSynthesis<double>(full_length_),
                         .delay = std::vector<double>(static_cast<std::size_t>(delay_), 0.0),
                         .analysis = {},
-                        .qmf_synthesis = {},
                         .ext = std::vector<QmfValue>(at(ext_slots) * kSubbands),
                         .out = std::vector<QmfValue>(at(slots_) * kSubbands),
-                        .aspx = {},
-                        .converter = {}};
-        if (converter_filter_) {
-            channel.converter.emplace(converter_filter_);
-        }
+                        .aspx = {}};
         channels_.push_back(std::move(channel));
     }
     held_.clear();
@@ -166,8 +187,9 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
     de_.configure(slots_, speakers_);
     // The QMF banks run at the internal rate.
     const double base_rate = ctx.fs_index == 0 ? 44100.0 : 48000.0;
-    drc_.configure(base_rate * static_cast<double>(ratio.down) / static_cast<double>(ratio.up),
-                   slots_, speakers_, ctx.add_ch_base);
+    internal_rate_ = base_rate * static_cast<double>(ratio.down) / static_cast<double>(ratio.up);
+    // The output stages follow on the frame's first configure_outputs().
+    outputs_valid_ = false;
     return {};
 }
 
@@ -443,6 +465,7 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     if (auto ok = configure(ctx); !ok) {
         return ok;
     }
+    configure_outputs(ctx, frame_inputs.output);
     const std::size_t channel_count = channels_.size();
 
     // Everything that can fail is checked before any channel's overlap buffer
@@ -539,15 +562,18 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
                             .aspx_2ch = element.aspx_2ch,
                             .acpl = acpl,
                             .drc = frame_inputs.drc,
-                            .de = frame_inputs.de});
-    // The DRC, dialnorm and dialogue enhancement of the frame whose signal
-    // this is; none before the first one's arrives.
+                            .de = frame_inputs.de,
+                            .downmix = frame_inputs.downmix});
+    // The DRC, dialnorm, dialogue enhancement and downmix gains of the frame
+    // whose signal this is; none before the first one's arrives.
     DrcFrameValues drc;
     DeFrameValues de;
+    DownmixValues downmix;
     if (held_.size() > static_cast<std::size_t>(control_delay_)) {
         apply(held_.front());
         drc = held_.front().drc;
         de = held_.front().de;
+        downmix = held_.front().downmix;
         held_.pop_front();
     } else {
         pass_through();
@@ -576,37 +602,52 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     }
     drc_.process(frame_inputs.output, drc, matrices_, side);
 
-    channels.resize(channel_count);
+    // Clause 6.2.17: the downmix, and the channels that come out of it.
+    std::span<std::vector<QmfValue>* const> rendered = matrices_;
+    if (!downmix_.passes_through()) {
+        downmix_.process(downmix, matrices_, mixed_);
+        mixed_matrices_.clear();
+        for (std::vector<QmfValue>& mixed : mixed_) {
+            mixed_matrices_.push_back(&mixed);
+        }
+        rendered = mixed_matrices_;
+    }
+    for (Channel& channel : channels_) {
+        // The last slots become the next frame's history.
+        std::copy(channel.ext.end() - static_cast<std::ptrdiff_t>(history), channel.ext.end(),
+                  channel.ext.begin());
+    }
+
+    channels.resize(outputs_.size());
     // Part 2 clause 5.11: the converter's grid starts at the frame's phase,
     // and moves where the phase jumps, so that each frame gives the count
     // Table 47 gives its phi_t.
     const auto grid = static_cast<std::int64_t>(converter_phase) * full_length_;
     const bool jumped = converter_phase_ && converter_phase != (*converter_phase_ + 1) % 5;
-    for (std::size_t c = 0; c < channel_count; ++c) {
-        Channel& channel = channels_[c];
-        channel.qmf_synthesis.process(channel.out, pcm_);
+    for (std::size_t o = 0; o < outputs_.size(); ++o) {
+        Output& output = outputs_[o];
+        output.synthesis.process(*rendered[o], pcm_);
         std::span<const double> produced = pcm_;
-        if (channel.converter) {
+        if (output.converter) {
             if (!converter_phase_) {
-                channel.converter->reset(grid);
+                output.converter->reset(grid);
             } else if (jumped) {
-                channel.converter->rephase(grid);
+                output.converter->rephase(grid);
             }
             converted_.clear();
-            channel.converter->process(pcm_, converted_);
+            output.converter->process(pcm_, converted_);
             produced = converted_;
         }
-        std::vector<float>& out = channels[c];
+        std::vector<float>& out = channels[o];
         out.resize(produced.size());
         for (std::size_t n = 0; n < produced.size(); ++n) {
             out[n] = static_cast<float>(
                 std::clamp(produced[n] / kFullScale, -kOutputLimit, kOutputLimit));
         }
-        // The last slots become the next frame's history.
-        std::copy(channel.ext.end() - static_cast<std::ptrdiff_t>(history), channel.ext.end(), channel.ext.begin());
     }
     converter_phase_ = converter_phase;
-    speakers.assign(speakers_.begin(), speakers_.end());
+    const std::span<const Speaker> out_speakers = downmix_.speakers();
+    speakers.assign(out_speakers.begin(), out_speakers.end());
     return {};
 }
 

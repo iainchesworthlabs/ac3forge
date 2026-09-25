@@ -68,6 +68,24 @@ std::string_view describe(Speaker speaker) {
     return "?";
 }
 
+std::string_view describe(DownmixTarget target) {
+    switch (target) {
+        case DownmixTarget::kAsCoded:
+            return "as coded";
+        case DownmixTarget::k5X:
+            return "5.X";
+        case DownmixTarget::kStereo:
+            return "stereo";
+        case DownmixTarget::kLoRo:
+            return "Lo/Ro";
+        case DownmixTarget::kLtRt:
+            return "Lt/Rt";
+        case DownmixTarget::kMono:
+            return "mono";
+    }
+    return "?";
+}
+
 std::string_view describe(DrcMode mode) {
     switch (mode) {
         case DrcMode::kOff:
@@ -575,6 +593,8 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     }
     inputs.drc = detail::drc_frame_values(impl_->config.output, dialnorm, drc_state, drc_frame);
     inputs.de = detail::de_frame_values(capture.content.metadata.dialog_enhancement);
+    inputs.downmix = detail::downmix_values(
+        capture.presentation_read ? &capture.presentation : nullptr, capture.content.metadata);
     const detail::ParseResult decoded = impl_->pcm[capture.state_key].decode(
         capture.context, capture.content, inputs, frame.channels, frame.speakers);
     if (!decoded) {

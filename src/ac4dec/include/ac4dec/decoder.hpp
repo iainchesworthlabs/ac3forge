@@ -69,7 +69,21 @@ enum class DecodeError : std::uint8_t {
 //
 // What decode() does to the decoded channels as a system configures it:
 // dialogue enhancement (Part 1 clause 5.7.8), then the output level and
-// dynamic range control (5.7.9).
+// dynamic range control (5.7.9), then the downmix (6.2.17).
+
+// The layout decode() renders the decoded channels to (Part 1 clause 6.2.17).
+enum class DownmixTarget : std::uint8_t {
+    kAsCoded,  // the channels as coded
+    k5X,       // a 7.X element's channels folded to 5.X (Table 219)
+    // Two channels, Lo/Ro or Lt/Rt as the stream's preferred_dmx_method says,
+    // Lo/Ro where it says neither.
+    kStereo,
+    kLoRo,
+    kLtRt,  // in its Pro Logic II form where the stream prefers that
+    kMono,  // L + R of the stereo downmix
+};
+
+[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DownmixTarget target);
 
 // Part 1 Table 161's DRC decoder modes, and how decode() chooses one.
 enum class DrcMode : std::uint8_t {
@@ -99,6 +113,13 @@ struct OutputConfig {
     // the stream sends dialogue enhancement parameters, up to the stream's cap
     // of 3, 6, 9 or 12 dB. 0 leaves the output as the tool bypassed would.
     double dialogue_enhancement_db = 0.0;
+    // The layout the channels come out in; a stream narrower than the target
+    // comes out as coded, except mono, which a two-channel target takes to
+    // both channels.
+    DownmixTarget downmix = DownmixTarget::kAsCoded;
+    // Whether a two-channel or mono downmix takes the LFE, at the stream's
+    // lfe_mixgain, as Part 1 does; off drops it, outside the text.
+    bool mix_lfe = true;
 };
 
 struct DecoderConfig {
