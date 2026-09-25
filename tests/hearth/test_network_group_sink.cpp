@@ -286,8 +286,17 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
 
     // The PCM sink's WAV is the tone, sample for sample - the float to
     // int32 conversion round-tripped through a real 16-bit player@v1
-    // stream and back without a scale or a sign error.
-    const auto wav = ac3::io::read_wav((scratch / "pcm" / "out" / "stream-1-1.wav").string());
+    // stream and back without a scale or a sign error. The sink writes the
+    // WAV's length when its stream ends, on its own thread, which close()'s
+    // stream/end and the host's going only set off: a read straight after can
+    // find the header still saying no frames (Linux GCC in CI, 2026-09-25).
+    const std::string wav_path = (scratch / "pcm" / "out" / "stream-1-1.wav").string();
+    auto wav = ac3::io::read_wav(wav_path);
+    const auto wav_deadline = std::chrono::steady_clock::now() + 10s;
+    while ((!wav || wav->frame_count() != kFrames) && std::chrono::steady_clock::now() < wav_deadline) {
+        std::this_thread::sleep_for(20ms);
+        wav = ac3::io::read_wav(wav_path);
+    }
     REQUIRE(wav.has_value());
     REQUIRE(wav->frame_count() == kFrames);
     std::size_t different = 0;
