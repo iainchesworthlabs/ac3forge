@@ -253,15 +253,33 @@ jobs:
       # posix/ directory and CI would go green having compiled none of
       # src/audio/src/backend/alsa/. The alsa_fallback step at the end covers
       # the other half of that switch on purpose.
+      #
+      # The update/install pair is retried: three attempts, 30 s apart, and
+      # each one re-runs the update, so a retry reads a fresh index and may
+      # reach another mirror node. Ubuntu's mirrors fail a single attempt
+      # outright now and then - a pool 404 for a version the index names (on
+      # 2026-09-24 some security.ubuntu.com nodes answered 404 for libexpat1
+      # 2.7.4-1ubuntu0.2 while others served it) or an index caught mid-sync
+      # ("File has unexpected size ... Mirror sync in progress?") - and apt's
+      # own Acquire::Retries treats a 404 as final. This step runs before
+      # checkout, so the loop cannot live in a repository script; every apt
+      # step in the workflows repeats it inline, and .github/toolchain/*.sh
+      # carry it as apt_retry.
       - name: Bootstrap container
         if: matrix.container
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
-          apt-get update -qq
-          apt-get install -y -qq --no-install-recommends \
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
             build-essential ca-certificates cmake curl file git gnupg libasound2-dev lsb-release \
             ninja-build pkg-config rpm software-properties-common tar unzip wget zip
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
 
       # Qt is a prebuilt dependency (cmake/FindQt6.cmake), never a vcpkg port -
       # see that file's own header. qt6-declarative-dev-tools/qt6-base-dev-tools
@@ -306,13 +324,20 @@ jobs:
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
-          apt-get install -y -qq --no-install-recommends \
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
             qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
             qt6-l10n-tools qt6-tools-dev \
             qml6-module-qtcore qml6-module-qtqml-models qml6-module-qtqml-workerscript \
             qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-templates \
             qml6-module-qtquick-dialogs qml6-module-qtquick-layouts \
             qml6-module-qtquick-window qml6-module-qt-labs-folderlistmodel
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -352,29 +377,26 @@ jobs:
       # which also uses ffmpeg as its independent oracle regardless of the
       # gold-reference gate being skipped on this leg.
       #
-      # A fresh package index before each try, and three tries. ffmpeg pulls in
-      # a long list of codec libraries, and the arm64 mirror
-      # (ports.ubuntu.com) has served an index naming a file it did not have:
-      # on 2026-09-16 libaom3 3.13.1-2ubuntu0.1 came back 404 here, minutes
-      # after the bootstrap step's update, and failed the Linux GCC (arm64)
-      # leg before anything was built. A later index, or the same one a
-      # minute later, names a file the mirror has.
+      # A fresh package index before each try, and three tries - the loop the
+      # bootstrap step describes. ffmpeg pulls in a long list of codec
+      # libraries, and the arm64 mirror (ports.ubuntu.com) has served an index
+      # naming a file it did not have: on 2026-09-16 libaom3 3.13.1-2ubuntu0.1
+      # came back 404 here, minutes after the bootstrap step's update, and
+      # failed the Linux GCC (arm64) leg before anything was built. A later
+      # index, or the same one a minute later, names a file the mirror has.
       - name: Install ffmpeg (Linux)
         if: (matrix.gold_reference || matrix.sanitizer) && runner.os == 'Linux'
         run: |
           set -eu
           export DEBIAN_FRONTEND=noninteractive
-          for attempt in 1 2 3; do
-            if apt-get update -qq && apt-get install -y -qq --no-install-recommends ffmpeg; then
-              exit 0
-            fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "::warning title=Install ffmpeg::attempt $attempt did not complete; retrying in 30 s with a fresh package index"
-              sleep 30
-            fi
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends ffmpeg
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
           done
-          echo "::error title=Install ffmpeg::apt could not install ffmpeg in three attempts"
-          exit 1
 
       # CMakePresets.json declares the project's real minimum (cmakeMinimumRequired);
       # this asserts the RUNNER actually meets it rather than letting a stale image
@@ -731,7 +753,15 @@ jobs:
       # needs it.
       - name: Install python3 (conformance vectors)
         if: matrix.conformance_vectors
-        run: apt-get install -y -qq --no-install-recommends python3
+        run: |
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends python3
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
 
       - name: Generate conformance vectors
         if: matrix.conformance_vectors
@@ -838,7 +868,6 @@ jobs:
           set -euo pipefail
           if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
           export DEBIAN_FRONTEND=noninteractive
-          $SUDO apt-get update -qq
           # libpipewire for the engine, libxcb for its X11 full-screen check
           # (apps/crucible/CMakeLists.txt, AC3FORGE_CRUCIBLE_X11; asserted on
           # below, since AUTO would quietly leave it out), dpkg-dev for the
@@ -855,7 +884,8 @@ jobs:
           # without them the window builds and every test fails at import.
           # qt6-svg-dev is the optional Qt SVG the window links for icon
           # themes whose application icons are SVG only.
-          $SUDO apt-get install -y -qq --no-install-recommends \
+          attempt=1
+          until $SUDO apt-get update -qq && $SUDO apt-get install -y -qq --no-install-recommends \
             libpipewire-0.3-dev libxcb1-dev dpkg-dev \
             qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declarative-dev-tools \
             qt6-l10n-tools qt6-tools-dev qt6-quick3d-dev qt6-shadertools-dev \
@@ -865,6 +895,12 @@ jobs:
             qml6-module-qtquick-dialogs qml6-module-qt-labs-folderlistmodel \
             qml6-module-qt-labs-platform qml6-module-qtqml-workerscript qml6-module-qtqml-models \
             qml6-module-qtquick3d qml6-module-qttest
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
           # Passed unconditionally rather than through the optional-argument
           # array the other two configure sites build up: they accumulate
           # several optional arguments, this has exactly one, and an EMPTY
