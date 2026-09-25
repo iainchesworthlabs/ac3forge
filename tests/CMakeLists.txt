@@ -373,11 +373,12 @@ endif()
 
 # core/test_simd_kernels.cpp's own AVX2_REQUIRE knob reads std::getenv too -
 # same C4996 reasoning as cpu_features.cpp above - and so do
-# ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories, and
-# ac4dec/test_ac4dec_constructed.cpp, for where to write its streams.
+# ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories,
+# ac4dec/test_ac4dec_constructed.cpp, for where to write its streams, and
+# iec61937/test_iec61937_ac4.cpp, for the census directory it packs.
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
-        ac4dec/test_ac4dec_constructed.cpp
+        ac4dec/test_ac4dec_constructed.cpp iec61937/test_iec61937_ac4.cpp
         PROPERTIES COMPILE_OPTIONS "/wd4996")
 endif()
 

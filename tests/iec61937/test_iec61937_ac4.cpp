@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -26,7 +27,9 @@
 // frame rate each burst type has, read them back, and check that every frame
 // comes back unchanged with the repetition period, sequence and Pc fields the
 // tables give: constructed frames, whose table of contents is written here,
-// and the Dolby Encoding Engine's streams at 23.44, 24, 25 and 29.97 fps.
+// the Dolby Encoding Engine's streams at 23.44, 24, 25 and 29.97 fps, and
+// every DEE leg of a directory, the committed ones unless AC4DEC_STREAM_DIR
+// names another.
 
 namespace {
 
@@ -915,5 +918,55 @@ TEST_CASE("Ac4BurstPacker: DEE's streams at four frame rates pack and read back 
         const ac4::ScanResult scanned = ac4::scan(*back);
         CHECK(scanned.frames.size() == frames.size());
         CHECK_FALSE(scanned.stopped_at.has_value());
+    }
+}
+
+TEST_CASE("Ac4BurstPacker: every DEE leg of a directory packs and reads back unchanged",
+          "[iec61937][ac4]") {
+    // The committed legs; AC4DEC_STREAM_DIR points it at another directory of DEE legs, such as
+    // the whole gold set, as it does the decoder's syntax test. Each stream goes in the smallest
+    // burst type its largest frame fits, at the rate its first frame states.
+    const char* const elsewhere = std::getenv("AC4DEC_STREAM_DIR");
+    const std::filesystem::path root =
+        elsewhere != nullptr ? std::filesystem::path{elsewhere}
+                             : std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR};
+    std::vector<std::filesystem::path> legs;
+    for (const std::filesystem::directory_entry& entry :
+         std::filesystem::directory_iterator(root)) {
+        if (entry.is_directory() && std::filesystem::exists(entry.path() / "dee.ac4")) {
+            legs.push_back(entry.path());
+        }
+    }
+    std::sort(legs.begin(), legs.end());
+    REQUIRE_FALSE(legs.empty());
+    for (const std::filesystem::path& leg : legs) {
+        CAPTURE(leg.filename().string());
+        const std::vector<std::vector<std::byte>> frames = frames_of_file(leg / "dee.ac4");
+        const std::optional<iec::Ac4SyncFrame> first = iec::read_ac4_sync_frame(frames.front());
+        REQUIRE(first.has_value());
+        std::size_t largest = 0;
+        for (const std::vector<std::byte>& frame : frames) {
+            largest = std::max(largest, frame.size());
+        }
+        const std::optional<BurstDataType> type =
+            iec::ac4_burst_type_for(largest, first->fs_index, first->frame_rate_index);
+        REQUIRE(type.has_value());
+        const std::optional<iec::Ac4BurstTiming> timing =
+            iec::ac4_burst_timing(*type, first->fs_index, first->frame_rate_index);
+        REQUIRE(timing.has_value());
+        // TS 103 190-2 5.11's phase: sequence_counter's, or after a splice (a counter of 0) the
+        // last frame's plus one, and 0 for a first frame with a counter of 0.
+        std::vector<std::uint32_t> expected;
+        std::optional<int> phase;
+        for (const std::vector<std::byte>& frame : frames) {
+            const std::optional<iec::Ac4SyncFrame> read = iec::read_ac4_sync_frame(frame);
+            REQUIRE(read.has_value());
+            REQUIRE(read->frame_rate_index == first->frame_rate_index);
+            phase = read->sequence_counter != 0 ? phase_of(read->sequence_counter)
+                    : phase                     ? (*phase + 1) % 5
+                                                : 0;
+            expected.push_back(timing->periods[static_cast<std::size_t>(*phase)]);
+        }
+        pack_and_read_back(*type, frames, expected, timing->code);
     }
 }
