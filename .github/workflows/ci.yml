@@ -411,6 +411,13 @@ jobs:
     # same follow-the-toolchain rule as build-wasm/android/rust in
     # _build.yml.
     runs-on: ubuntu-latest
+    # GitHub-hosted, so on a push to main only the newest main commit's run
+    # waits for a runner - docs/ci-lanes.md, "Only the newest main commit runs
+    # the hosted jobs". CI Status accepts the resulting "cancelled" only on a
+    # commit main has moved past. Every other event gets a group of its own run.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'platform-macros-main' || format('platform-macros-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -840,10 +847,17 @@ jobs:
     name: Publish performance trend
     needs: [build-and-test, toolchain-versions, performance-trend-arm64]
     # Explicit results under !cancelled() instead of the implicit success():
-    # build-and-test reads "cancelled" whenever one of its macOS legs gave way
-    # to a newer main run (_ci-macos.yml's concurrency comment), which says
-    # nothing about the Linux build this job measures. A real failure there
-    # still skips the publish.
+    # build-and-test reads "cancelled" whenever one of its GitHub-hosted legs
+    # gave way to a newer main run (docs/ci-lanes.md, "Only the newest main
+    # commit runs the hosted jobs"), which says nothing about the Linux build
+    # this job measures. A real failure there still skips the publish.
+    #
+    # No newest-main-only group here or on performance-trend-arm64, though
+    # both are GitHub-hosted: each records this commit's own point in the
+    # trend and takes a few minutes. Both also start only once build-and-test
+    # finishes, so an older commit's run can reach them after a newer one's,
+    # and a shared group hands the waiting place to the latest arrival, not
+    # to the newest commit.
     if: >-
       ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
       && needs.toolchain-versions.result == 'success'
@@ -1163,8 +1177,9 @@ jobs:
     name: Publish performance trend (arm64 measurements)
     needs: [build-and-test, toolchain-versions]
     # Same explicit-results condition as persist-performance-trend's, for the
-    # same reason: a macOS leg giving way to a newer main run leaves
-    # build-and-test "cancelled", not failed.
+    # same reason: a GitHub-hosted leg giving way to a newer main run leaves
+    # build-and-test "cancelled", not failed. No concurrency group either -
+    # see persist-performance-trend's comment.
     if: >-
       ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main'
       && needs.toolchain-versions.result == 'success'
@@ -1294,11 +1309,11 @@ jobs:
           R_WHEELS: ${{ needs.wheels.result }}
           R_NPM: ${{ needs.npm.result }}
           R_ESP_COMPONENT: ${{ needs.esp-component.result }}
-          # For the superseded-main check below: on a push to main,
-          # build-and-test and wheels each carry macOS legs that give way to a
-          # newer main run's (see _ci-macos.yml's concurrency comment), and a
-          # "cancelled" from exactly those two is expected once main has moved
-          # past this commit.
+          # For the superseded-main check below: on a push to main, a
+          # GitHub-hosted job gives way to a newer main run's (docs/ci-lanes.md,
+          # "Only the newest main commit runs the hosted jobs"), and a
+          # "cancelled" from a job that carries one is expected once main has
+          # moved past this commit. The script's newest_only list names them.
           GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           REF: ${{ github.ref }}
@@ -1313,7 +1328,7 @@ jobs:
               "https://api.github.com/repos/$REPO/commits/main" || true)"
             if [ -n "$tip" ] && [ "$tip" != "$SHA" ]; then
               superseded=true
-              echo "main has moved on to ${tip:0:8}; a 'cancelled' from build-and-test or wheels here is a macOS leg that gave way to the newer run."
+              echo "main has moved on to ${tip:0:8}; a 'cancelled' below from a job with GitHub-hosted legs is one that gave way to the newer run."
             fi
           fi
           for pair in "branch-name:$R_BRANCH" "no-quarantine:$R_QUARANTINE" \
@@ -1335,8 +1350,14 @@ jobs:
             job="${pair%%:*}"; result="${pair#*:}"
             echo "  $job: $result"
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
-              if [ "$result" = "cancelled" ] && [ "$superseded" = true ] \
-                 && { [ "$job" = "build-and-test" ] || [ "$job" = "wheels" ]; }; then
+              # The jobs that carry GitHub-hosted legs with a newest-main-only
+              # group. coverage and the core validate jobs report through step
+              # outputs instead, which come back empty when a job never starts.
+              case "$job" in
+                platform-macros|build-and-test|wheels|npm|esp-component) newest_only=true ;;
+                *) newest_only=false ;;
+              esac
+              if [ "$result" = "cancelled" ] && [ "$superseded" = true ] && [ "$newest_only" = true ]; then
                 echo "::notice::$job reported 'cancelled' on a main commit a newer merge has superseded - accepted."
                 continue
               fi
