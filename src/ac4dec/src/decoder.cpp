@@ -68,6 +68,24 @@ std::string_view describe(Speaker speaker) {
     return "?";
 }
 
+std::string_view describe(DrcMode mode) {
+    switch (mode) {
+        case DrcMode::kOff:
+            return "off";
+        case DrcMode::kDefault:
+            return "default";
+        case DrcMode::kHomeTheatre:
+            return "home theatre";
+        case DrcMode::kFlatPanelTv:
+            return "flat panel TV";
+        case DrcMode::kPortableSpeakers:
+            return "portable speakers";
+        case DrcMode::kPortableHeadphones:
+            return "portable headphones";
+    }
+    return "?";
+}
+
 namespace {
 
 using detail::AudioSubstream;
@@ -393,10 +411,16 @@ void assign_v0(const Toc& toc, std::map<int, Assignment>& out) {
         }
     }
 }
-// The substream decode() turns into PCM: the first channel-coded substream of
-// the first presentation that has one, in the order the table of contents
-// lists presentations and, within one, its substream groups.
-[[nodiscard]] std::optional<int> decode_target(const Toc& toc) {
+// What decode() turns into PCM: the first channel-coded substream of the first
+// presentation that has one, in the order the table of contents lists
+// presentations and, within one, its substream groups; and that
+// presentation's presentation substream, where it has one.
+struct Target {
+    std::optional<int> audio;
+    std::optional<int> presentation;
+};
+
+[[nodiscard]] Target decode_target(const Toc& toc) {
     if (toc.bitstream_version >= 2) {
         for (const PresentationInfoV1& p : toc.presentations_v1) {
             for (const int group_index : p.group_refs) {
@@ -409,24 +433,25 @@ void assign_v0(const Toc& toc, std::map<int, Assignment>& out) {
                 }
                 for (const GroupSubstream& sub : group.substreams) {
                     if (sub.kind == GroupSubstream::Kind::kChan && sub.chan && sub.chan->substream_index) {
-                        return *sub.chan->substream_index;
+                        return {.audio = *sub.chan->substream_index,
+                                .presentation = p.presentation_substream_index};
                     }
                 }
             }
         }
-        return std::nullopt;
+        return {};
     }
     for (const PresentationInfoV0& p : toc.presentations_v0) {
         for (const auto& [role, chan] : p.substreams) {
             if (chan.substream_index) {
-                return *chan.substream_index;
+                return {.audio = *chan.substream_index, .presentation = std::nullopt};
             }
         }
     }
-    return std::nullopt;
+    return {};
 }
 
-// What decode() keeps of the substream it decodes, from the walk parse()
+// What decode() keeps of the substreams it decodes, from the walk parse()
 // makes of the whole frame.
 struct Capture {
     std::optional<int> index;
@@ -434,6 +459,10 @@ struct Capture {
     SubstreamContext context{};
     AudioSubstream content{};
     bool read = false;  // read to its end, with no refusal
+    // The presentation substream of the presentation decoded.
+    std::optional<int> presentation_index;
+    PresentationSubstream presentation{};
+    bool presentation_read = false;
 };
 
 }  // namespace
@@ -520,9 +549,33 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     DecodedFrame frame;
     frame.sample_rate_hz = capture.context.fs_index == 0 ? 44100 : 48000;
     frame.sequence_counter = report->sequence_counter;
+    // Dialnorm and DRC come from the presentation substream where the
+    // presentation has one, and otherwise from the audio substream's
+    // metadata() (Part 2 clauses 4.8.5.2 and 4.8.6).
+    detail::FrameInputs inputs{.sequence_counter = report->sequence_counter,
+                               .converter_phase = phase,
+                               .output = impl_->config.output,
+                               .drc = {}};
+    std::optional<double> dialnorm;
+    const detail::DrcState* drc_state = nullptr;
+    const detail::DrcFrame* drc_frame = nullptr;
+    if (capture.presentation_read && capture.presentation_index) {
+        dialnorm = -0.25 * static_cast<double>(capture.presentation.dialnorm_bits);
+        drc_state = &impl_->presentation[*capture.presentation_index].drc;
+        drc_frame = &capture.presentation.drc;
+    } else {
+        const detail::Metadata& metadata = capture.content.metadata;
+        if (metadata.basic.dialnorm_bits) {
+            dialnorm = -0.25 * static_cast<double>(*metadata.basic.dialnorm_bits);
+        }
+        if (metadata.drc) {
+            drc_state = &impl_->audio[capture.state_key].metadata.drc;
+            drc_frame = &*metadata.drc;
+        }
+    }
+    inputs.drc = detail::drc_frame_values(impl_->config.output, dialnorm, drc_state, drc_frame);
     const detail::ParseResult decoded = impl_->pcm[capture.state_key].decode(
-        capture.context, capture.content, report->sequence_counter, phase, frame.channels,
-        frame.speakers);
+        capture.context, capture.content, inputs, frame.channels, frame.speakers);
     if (!decoded) {
         impl_->refusal = decoded.error().reason;
         return std::unexpected(decoded.error().error);
@@ -539,7 +592,9 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
     apply_observed_stereo_rule(frame->toc);
     const Toc& toc = frame->toc;
     if (capture != nullptr) {
-        capture->index = decode_target(toc);
+        const Target target = decode_target(toc);
+        capture->index = target.audio;
+        capture->presentation_index = target.presentation;
     }
 
     // Part 1 4.3.3.2.2: a frame continues the stream when its sequence_counter
@@ -748,6 +803,10 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                 PresentationSubstream parsed;
                 result = detail::parse_presentation_substream(reader, *assignment.presentation,
                                                               presentation[index], parsed);
+                if (result && capture != nullptr && capture->presentation_index == index) {
+                    capture->presentation = std::move(parsed);
+                    capture->presentation_read = true;
+                }
                 break;
             }
             case SubstreamReport::Kind::kEmdfPayloads: {

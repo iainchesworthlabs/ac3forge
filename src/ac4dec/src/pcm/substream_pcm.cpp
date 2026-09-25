@@ -97,6 +97,7 @@ void SubstreamPcm::reset() {
     decoded_mode_.reset();
     applied_mode_.reset();
     converter_phase_.reset();
+    drc_.reset();
 }
 
 int SubstreamPcm::channel_of(Speaker speaker) const noexcept {
@@ -161,6 +162,10 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
     decoded_mode_.reset();
     applied_mode_.reset();
     converter_phase_.reset();
+    // The QMF banks run at the internal rate.
+    const double base_rate = ctx.fs_index == 0 ? 44100.0 : 48000.0;
+    drc_.configure(base_rate * static_cast<double>(ratio.down) / static_cast<double>(ratio.up),
+                   slots_, speakers_, ctx.add_ch_base);
     return {};
 }
 
@@ -421,9 +426,11 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
 }
 
 ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstream& substream,
-                                 int sequence_counter, int converter_phase,
+                                 const FrameInputs& frame_inputs,
                                  std::vector<std::vector<float>>& channels,
                                  std::vector<Speaker>& speakers) {
+    const int sequence_counter = frame_inputs.sequence_counter;
+    const int converter_phase = frame_inputs.converter_phase;
     const ChannelElement& element = substream.element;
     if (ctx.sf_multiplier.has_value()) {
         return fail(DecodeError::kUnsupported, "96 and 192 kHz decoding (the HSF extension) is not decoded yet");
@@ -528,13 +535,27 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
                             .companding = element.companding,
                             .aspx_1ch = element.aspx_1ch,
                             .aspx_2ch = element.aspx_2ch,
-                            .acpl = acpl});
+                            .acpl = acpl,
+                            .drc = frame_inputs.drc});
+    // The DRC and dialnorm of the frame whose signal this is; none before the
+    // first one's arrives.
+    DrcFrameValues drc;
     if (held_.size() > static_cast<std::size_t>(control_delay_)) {
         apply(held_.front());
+        drc = held_.front().drc;
         held_.pop_front();
     } else {
         pass_through();
     }
+
+    // Clause 5.7.9: the output level and DRC, on the channels' matrices, their
+    // level measured on the same matrices (no dialogue enhancement comes
+    // between).
+    matrices_.clear();
+    for (Channel& channel : channels_) {
+        matrices_.push_back(&channel.out);
+    }
+    drc_.process(frame_inputs.output, drc, matrices_, matrices_);
 
     channels.resize(channel_count);
     // Part 2 clause 5.11: the converter's grid starts at the frame's phase,

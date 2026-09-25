@@ -65,9 +65,41 @@ enum class DecodeError : std::uint8_t {
 // ac4/syntax.hpp, whose comment states what a record holds. The encoder writes
 // records of the same shape, and so does tools/references/ac4_syntax.py.
 
+// --- Output processing -------------------------------------------------------
+//
+// What decode() does to the decoded channels as a system configures it: the
+// output level and dynamic range control of Part 1 clause 5.7.9.
+
+// Part 1 Table 161's DRC decoder modes, and how decode() chooses one.
+enum class DrcMode : std::uint8_t {
+    kOff,                 // no compression: the output level gain alone
+    kDefault,             // the mode clause 5.7.9.2 selects for the output level
+    kHomeTheatre,         // decoder mode 0
+    kFlatPanelTv,         // 1
+    kPortableSpeakers,    // 2
+    kPortableHeadphones,  // 3
+};
+
+[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DrcMode mode);
+
+struct OutputConfig {
+    // Lout of Part 1 clause 5.7.9.3.3, in dBFS: the level the stream's
+    // dialnorm is taken to, by 2^((Lout - dialnorm) / 6), which cuts or
+    // boosts. Part 1 gives no default, the system supplies it; unset leaves the
+    // stream at its coded level and compresses nothing.
+    std::optional<double> output_level_dbfs;
+    // With an output level: the mode that compresses. A mode the stream does
+    // not configure compresses nothing.
+    DrcMode drc = DrcMode::kDefault;
+    // Where kDefault's output level falls in the portable modes' range (-16 to
+    // 0 dBFS), whether it takes portable headphones or portable speakers.
+    bool headphones = false;
+};
+
 struct DecoderConfig {
     // Null by default, at the cost of one branch per syntax element read.
     SyntaxSink syntax{};
+    OutputConfig output{};
 };
 
 // What one substream of a frame turned out to be.

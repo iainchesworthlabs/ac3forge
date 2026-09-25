@@ -36,6 +36,7 @@ target_sources(ac4dec_objects
         src/pcm/asf_reconstruct.cpp
         src/pcm/aspx.cpp
         src/pcm/companding.cpp
+        src/pcm/drc.cpp
         src/pcm/multichannel.cpp
         src/pcm/routing.cpp
         src/pcm/snf_random.cpp

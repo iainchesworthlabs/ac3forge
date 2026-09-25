@@ -13,6 +13,7 @@
 #include "dsp/synthesis.hpp"
 #include "pcm/acpl.hpp"
 #include "pcm/aspx.hpp"
+#include "pcm/drc.hpp"
 #include "pcm/routing.hpp"
 #include "pcm/stereo.hpp"
 #include "syntax/channel_elements.hpp"
@@ -40,8 +41,23 @@
 // the sample rate converter (Part 1 clause 6.2.15, src/ac4core/src/dsp/
 // resampler.hpp) takes the synthesis's output to 48 kHz, its phase locked to
 // sequence_counter as Part 2 clause 5.11 locks it.
+//
+// Before the synthesis, the output processing the system configures
+// (OutputConfig): the output level and DRC (clause 5.7.9, pcm/drc.hpp), their
+// values held with the rest of the frame's control data until its signal
+// reaches the QMF domain (5.7.2).
 
 namespace ac4::detail {
+
+// What decode() takes besides the substream: the frame's place in the stream,
+// the output processing the system asks for, and what the frame's metadata
+// gives it.
+struct FrameInputs {
+    int sequence_counter = 0;
+    int converter_phase = 0;  // Part 2 clause 5.11's phi_t
+    OutputConfig output{};
+    DrcFrameValues drc{};
+};
 
 class SubstreamPcm {
    public:
@@ -49,11 +65,11 @@ class SubstreamPcm {
     // `channels` (one vector per output channel, full scale 1.0) and names the
     // channels in `speakers`, in speakers_of()'s order. A frame is
     // frame_len_base samples at frame_rate_index 13, and otherwise as many as
-    // the converter gives at `converter_phase`, Part 2 clause 5.11's phi_t: at
-    // 29.97 fps 1 601 or 1 602. A substream whose channel mode or frame length
-    // differs from the last frame's starts from silence.
+    // the converter gives at the frame's phase: at 29.97 fps 1 601 or 1 602. A
+    // substream whose channel mode or frame length differs from the last
+    // frame's starts from silence.
     [[nodiscard]] ParseResult decode(const SubstreamContext& ctx, const AudioSubstream& substream,
-                                     int sequence_counter, int converter_phase,
+                                     const FrameInputs& frame,
                                      std::vector<std::vector<float>>& channels,
                                      std::vector<Speaker>& speakers);
 
@@ -93,6 +109,7 @@ class SubstreamPcm {
         std::vector<AspxData1ch> aspx_1ch;
         std::vector<AspxData2ch> aspx_2ch;
         std::optional<AcplFrameValues> acpl;  // dequantised when the frame was read
+        DrcFrameValues drc;                   // the frame's DRC and dialnorm
     };
 
     // One aspx_data element's frame parameters and its channels' data and
@@ -143,6 +160,7 @@ class SubstreamPcm {
     // shares, and the phase of the last frame converted.
     std::shared_ptr<const dsp::ResamplerFilter> converter_filter_;
     std::optional<int> converter_phase_;
+    DrcStage drc_;
 
     // Scratch, kept to save an allocation per frame.
     ElementRoute route_;

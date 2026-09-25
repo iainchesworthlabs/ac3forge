@@ -1035,8 +1035,69 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 
 ## Output processing
 
-What follows the QMF domain: the sample rate converter of Part 1 6.2.15, whose phase Part 2 5.11 locks
-to `sequence_counter`.
+What the QMF domain's matrices go through before synthesis, the output level and DRC of Part 1 5.7.9,
+and after it, the sample rate converter of Part 1 6.2.15, whose phase Part 2 5.11 locks to
+`sequence_counter`.
+
+### DRC's units
+
+- **Where:** Part 1 5.7.9.3.1.2, p. 256, converts the curve's gains "expressed in units of dB" by
+  10^(G/20); 4.3.13.4.1, p. 127, gives the control points in dB2, which clause 3.4, p. 26, defines as 6 dB2
+  to a factor of 2; 5.7.9.3.2 adjusts the transmitted gains "to reflect dB2 values"; 5.7.9.3.3's output level
+  gain is 2^((Lout - Lin) / 6).
+- **Reading:** dB2 throughout: a curve's gain G is 2^(G/6), as the transmitted gains and the output level
+  gain are. The two conversions are 0.34 % apart, 0.08 dB at a 24 dB cut.
+- **Evidence:** Text.
+
+### The level DRC measures
+
+- **Where:** Part 1 5.7.9.3.1.1 and 5.7.9.3.1.2, pp. 256 and 257: the level L is the curve's argument, in
+  dB relative to dialnorm, is smoothed as L~ = alpha L~ + (1 - alpha) L, and in adaptive smoothing enters
+  10 x log10(L / L~), which takes it as a power; the method of measuring it is the implementation's.
+- **Reading:** L is a power, the curve takes it in dB relative to dialnorm, and L~ smooths the power. The
+  measurement is ITU-R BS.1770's: the K-weighted power of the channels, with BS.1770's channel weights (1
+  at the front, 1.41 at the sides, 0 for the LFE), one wideband value per QMF time slot, the K-weighting
+  read at each subband's centre and the analysis's energy gain (the sum of QWIN's squares) taken out, in
+  LKFS. The gain comes from each slot's level and is then smoothed, as the text orders it.
+- **Evidence:** Text; `tests/ac4dec/test_ac4dec_drc.cpp` measures each profile's static curve to 0.5 dB
+  with stepped tones whose levels come from BS.1770's own calibration.
+
+### Choosing a DRC decoder mode
+
+- **Where:** Part 1 5.7.9.2, p. 255: by default the mode "with the largest mode ID value for which
+  Lout,min < Lout < Lout,max"; Table 161, p. 123, gives the default modes' ranges as whole dB, -31 to -27,
+  -26 to -17 and -16 to 0.
+- **Reading:** the ranges include their edges, so that -31 selects home theatre, and an output level
+  between two ranges is taken to its nearest whole dB. Portable speakers and portable headphones share a
+  range; the system says which. A mode the stream does not configure, whether asked for by name or
+  chosen, compresses nothing, and no mode applies below -31 or above 0 unless the stream adds one there.
+- **Evidence:** Text; planning/ac4.md's decision 12 records the edges as inclusive.
+
+### The default profiles' smoothing
+
+- **Where:** Part 1 Table 162, p. 124, gives each (E-)AC-3 profile but None its fast time constants and
+  thresholds; Table 167's default smoothing, p. 129, turns adaptive smoothing off, and neither says
+  whether a default profile smooths adaptively.
+- **Reading:** a default profile smooths adaptively with its Table 162 values; a transmitted curve does
+  as its `drc_adaptive_smoothing_flag` says.
+- **Evidence:** Text. DEE sends its curves with the flag set and Table 162's values.
+
+### Transmitted DRC gains
+
+- **Where:** Part 1 5.7.9.3.2, p. 257, maps `drc_gain[chg][sf][band]` to the QMF samples of the band, the
+  subframe and the group's channels.
+- **Reading:** each gain holds across its band, subframe and channel group, with no smoothing between
+  them, and multiplies the output level gain. A gains configuration of 0 is one gain for all channels.
+- **Evidence:** Text; no stream DEE writes sends gains.
+
+### When DRC's values apply
+
+- **Where:** Part 1 5.7.2 and Table 188 hold the QMF domain's control data d_ctrl frames; 5.7.9 does not
+  say when a frame's dialnorm and DRC reach the audio.
+- **Reading:** with the rest of the frame's control data, so a frame's dialnorm and DRC apply to that
+  frame's signal. Until the first frame's reach the QMF domain there is no dialnorm, and the output level
+  gain is 1.
+- **Evidence:** Text.
 
 ### The sample rate converter's filter and output grid
 
