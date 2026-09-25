@@ -39,15 +39,20 @@ on:
         description: "Forwarded to check-runners' decide-runner call, same as ci.yml's own call to _build.yml. Optional - see that job's own description."
         required: false
 
-# Keyed on the commit as well as the ref on main. Called from ci.yml, every push
-# to main evaluates a ref-only key to the same wheels-CI-refs/heads/main, so each
-# merge cancelled the previous merge's wheels jobs mid-run - and CI Status counts
-# "cancelled" as a failure. ci.yml keys its own push runs by SHA for the same
-# reason. Everywhere else (a PR, a merge-queue entry, a tag, a dispatch on a
-# branch) a newer run on the same ref still supersedes the older one.
+# On a push to main every main commit's run shares one group, without
+# cancel-in-progress: a running instance finishes, each newer merge takes the
+# one waiting place, and only the newest main commit's run waits for the
+# GitHub-hosted runners - docs/ci-lanes.md, "Only the newest main commit runs
+# the hosted jobs". The whole workflow gives way as one, so Python coverage
+# never waits for a wheel whose row was dropped, and ci.yml's CI Status accepts
+# the resulting "cancelled" only on a commit main has moved past. (The key used
+# to name the commit on main because cancel-in-progress cut the previous
+# merge's jobs off mid-run and failed its CI Status.) A dispatch on main keeps
+# a group of its own commit. Everywhere else (a PR, a merge-queue entry, a tag,
+# a dispatch on a branch) a newer run on the same ref still cancels the older.
 concurrency:
-  group: wheels-${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
-  cancel-in-progress: true
+  group: wheels-${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' && '-newest' || format('-{0}', github.sha)) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -97,13 +102,6 @@ jobs:
     # only matters if a gap ever opened up in that logic.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON(matrix.runner) }}
-    # The two macOS rows keep only the newest main commit's run, as
-    # _ci-macos.yml's build job does - see its concurrency comment. Every
-    # other row, and every non-main event (a release tag included), gets a
-    # group of its own run.
-    concurrency:
-      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(matrix.name, 'macos') && format('wheels-macos-main-{0}', matrix.name) || format('wheels-run-{0}-{1}', github.run_id, matrix.name) }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
@@ -182,10 +180,6 @@ jobs:
   python-coverage:
     name: Python coverage
     needs: build
-    # Only the Linux wheel is used below, so a macOS row that gave way to a
-    # newer main run (the build job's concurrency comment) - which leaves
-    # `build` "cancelled", not failed - does not skip this.
-    if: ${{ !cancelled() && (needs.build.result == 'success' || needs.build.result == 'cancelled') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

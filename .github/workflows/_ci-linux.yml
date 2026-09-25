@@ -75,6 +75,15 @@ jobs:
     # gap in that logic can't silently hand a fork PR a self-hosted runner.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ${{ fromJSON(matrix.runner) }}
+    # On a push to main, a leg on a GitHub-hosted runner keeps only the newest
+    # main commit's run - docs/ci-lanes.md, "Only the newest main commit runs
+    # the hosted jobs". That is the two arm64 legs, plus any leg decide-runner
+    # sent to its hosted fallback; its self-hosted labels always include
+    # "self-hosted". Self-hosted legs and every other event get a group of
+    # their own run, so they run for every commit as before.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(matrix.runner, 'self-hosted') && format('linux-main-{0}', matrix.name) || format('linux-run-{0}-{1}', github.run_id, matrix.name) }}
+      cancel-in-progress: false
     timeout-minutes: 90
     # Ubuntu 26.04 for the Linux legs, where the distro archive carries
     # gcc-16 (universe component - 02-gcc-toolchain.sh enables it) and LLVM 22
