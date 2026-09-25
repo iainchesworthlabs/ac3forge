@@ -441,8 +441,11 @@ void write_drc_frame(BitWriter& w, const DrcCodes* codes, bool iframe,
     for (std::size_t m = 0; m < codes->modes.size(); ++m) {
         const DrcModeCodes* mode = &codes->modes[m];
         if (mode->repeat_id) {
+            // The id is read once: the mode found repeats nothing, so its own
+            // repeat_id is empty.
+            const int repeated = *mode->repeat_id;
             for (const DrcModeCodes& other : codes->modes) {
-                if (other.id == *mode->repeat_id) {
+                if (other.id == repeated) {
                     mode = &other;
                 }
             }
