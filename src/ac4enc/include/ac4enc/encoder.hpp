@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -21,8 +22,10 @@
 // What this version writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, at every
 // frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples
 // (frame_rate_index 13, the one Table 84 has), as one presentation of one
-// channel-coded substream, at a constant, average or variable bit rate
-// (RateMode). At every frame rate but index 13's the input is
+// channel-coded substream, or as several channel-coded substreams, each in a
+// substream group of its own, and the presentations of Part 2 Table 53 made of
+// them (SubstreamConfig, PresentationConfig), at a constant, average or
+// variable bit rate (RateMode). At every frame rate but index 13's the input is
 // converted to the rate the frames are coded at, the inverse of the
 // decoder's conversion (Tables 83 and 84's resampling ratio). The codec
 // mode is SIMPLE, the audio spectral frontend with block switching and
@@ -35,12 +38,17 @@
 // L and R as a pair, Ls and Rs as a pair, C alone, and the LFE); its other
 // coding configurations, 7.0 and 7.1 in the 7.X element, ASPX_ACPL_1, and
 // A-CPL in stereo are experimental. The table of contents is bitstream
-// version 2 with presentation version 1, and the presentation substream
-// carries the dialogue normalisation it is given and, as configured, further
-// loudness values, DRC's decoder modes and the stereo downmix's values; the
-// audio substream's metadata() carries dialogue enhancement's parameters.
-// Everything else in the plan's later phases (immersive layouts, several
-// presentations) is refused by name as an invalid configuration.
+// version 2 with presentation version 1, every presentation with a
+// presentation_id and the least md_compat its tracks need (Part 2 Table 55),
+// and each presentation substream carries the dialogue normalisation it is
+// given and, as configured, further loudness values, DRC's decoder modes, the
+// stereo downmix's values, the substream groups' gains and the associated
+// audio's mixing values; each audio substream's metadata() carries its
+// dialogue enhancement's parameters and a dialogue substream's mixing values.
+// The table of contents keeps CMAF's rules (Part 2 Annex H.1.2): at most 64
+// presentations, each with a presentation_id of its own, and one
+// configuration throughout. Everything else in the plan's later phases
+// (immersive layouts, objects) is refused as an invalid configuration.
 //
 // src/ac4enc/ERRATA.md records the readings the writer alone needs; where the
 // decoder depends on the same reading, src/ac4dec/ERRATA.md has it.
@@ -245,8 +253,8 @@ enum class DialogueSource : std::uint8_t {
 };
 
 // How dialogue enhancement's parameters raise the dialogue (Part 1 Table 170
-// and clause 5.7.8). The hybrid methods, 2 and 3, add a dialogue waveform in
-// a substream of its own, which phase E6's presentations bring.
+// and clause 5.7.8). DialogueConfig::hybrid adds the dialogue itself as a
+// waveform, in a substream of its own (Table 170's methods 2 and 3).
 enum class DialogueMethod : std::uint8_t {
     // de_method 0: each channel scaled, band by band, by its own parameter,
     // the dialogue's share of it.
@@ -272,6 +280,158 @@ struct DialogueConfig {
     bool centre = true;
     // The most a decoder may raise the dialogue: 3, 6, 9 or 12 dB (de_max_gain).
     int max_gain_db = 9;
+    // The hybrid methods (Part 1 clause 5.7.8.9, Table 170's 2 and 3): the
+    // method above, and beside its parameters the dialogue itself, coded in a
+    // dialogue enhancement substream (SubstreamConfig::enhances) that
+    // presentation_config 1 and 4 carry: with kChannelIndependent the dialogue
+    // in each channel it raises, one channel each in L, R, C order (a 3.0
+    // substream for all three, experimental.three_zero); with kMid the
+    // dialogue in L and R summed, and with kCrossChannel its projection on the
+    // dialogue's panning, one channel either way. A presentation without the
+    // substream raises the dialogue by the parameters alone.
+    bool hybrid = false;
+    // The waveform's share of the enhancement, de_signal_contribution / 31
+    // (clause 4.3.14.4.6), 0 to 1 in steps of 1/31: the parameters raise the
+    // dialogue by the rest.
+    double waveform_share = 1.0;
+};
+
+// extended_metadata()'s dialogue fields (Part 2 clause 6.2.7.4; Part 1
+// clauses 4.3.12.4.10 to 4.3.12.4.14), which make a substream a dialogue
+// substream (b_dialog) and say how it is mixed.
+struct DialogueMix {
+    // g_dialog_max, the most a listener may raise the dialogue: 3, 6, 9 or 12
+    // dB (dialog_max_gain); unset for 0 dB.
+    std::optional<int> max_gain_db;
+    // Where a mono dialogue's channel sits, or each of a stereo one's two
+    // (pan_dialog): degrees clockwise from the front, 0 to 358.5 in steps of
+    // 1.5, 330 being L and 30 R. Empty sends none: a mono dialogue then sits
+    // at 0 degrees, and a stereo one goes channel to channel.
+    std::vector<double> pan_degrees;
+};
+
+// Part 1 Table 91: what a substream group carries (content_classifier).
+enum class ContentClassifier : std::uint8_t {
+    kCompleteMain = 0,
+    kMusicAndEffects = 1,
+    kVisuallyImpaired = 2,
+    kHearingImpaired = 3,
+    kDialogue = 4,
+    kCommentary = 5,
+    kEmergency = 6,
+    kVoiceOver = 7,
+};
+
+// One EMDF payload (Part 1 clause 4.2.4.4 and Table 79), written as given:
+// its id, emdf_payload_config()'s fields, and its bytes.
+struct EmdfPayload {
+    int id = 1;  // emdf_payload_id, 1 and up: 0 ends a list
+    std::vector<std::uint8_t> bytes;
+    std::optional<int> sample_offset;  // smpoffst, 0 and up
+    std::optional<int> duration;       // duration, 0 and up
+    std::optional<int> group_id;       // groupid, 0 and up
+    std::optional<int> codec_data;     // codecdata, 0 to 255
+    bool discard_unknown = true;       // b_discard_unknown_payload
+    // Where the payload is not discarded: without a sample offset, whether it
+    // is aligned to the frame and may be duplicated or removed by a
+    // processor; and, with a sample offset or aligned, its priority (0 to 31)
+    // and what processing it allows (proc_allowed, 0 to 3).
+    bool frame_aligned = false;
+    bool create_duplicate = false;
+    bool remove_duplicate = false;
+    int priority = 0;
+    int processing_allowed = 0;
+};
+
+// --- Substreams and presentations --------------------------------------------
+//
+// A stream of several substreams (Part 2 clause 4.5.1): each substream codes
+// its own input channels, in a substream group of its own that carries its
+// content_type(), and each presentation names the substreams it plays
+// together, in the roles Part 2 Table 53 gives presentation_config. With
+// EncoderConfig::substreams empty the stream is one substream of
+// EncoderConfig::channels, codec_mode and dialogue.
+
+struct SubstreamConfig {
+    // Its input channels, in the order EncoderConfig::channels takes them: 1,
+    // 2, 5 or 6; 7 or 8 with experimental.seven_x; and 3, L R C, with
+    // experimental.three_zero, which Part 1 clause 4.3.3.7.1 allows only for
+    // the dialogue of a music and effects presentation.
+    int channels = 2;
+    // Its share of the stream's rate; unset shares what the set ones leave in
+    // proportion to the full-band channels.
+    std::optional<int> bitrate_kbps;
+    CodecMode codec_mode = CodecMode::kAuto;
+    // Its group's content_type() (Part 1 clause 4.2.3.7): the classifier, and
+    // an IETF BCP 47 language tag of at most 63 bytes, empty for none; unset
+    // sends no content_type().
+    std::optional<ContentClassifier> content;
+    std::string language;
+    // Its dialogue enhancement.
+    std::optional<DialogueConfig> dialogue;
+    // A dialogue substream's mixing values (b_dialog).
+    std::optional<DialogueMix> dialogue_mix;
+    // A dialogue enhancement substream: the waveform of substream `enhances`'
+    // hybrid dialogue enhancement, which takes no input channels of its own;
+    // `channels` is then ignored.
+    std::optional<int> enhances;
+    // Payloads its metadata() carries in every frame
+    // (b_emdf_payloads_substream).
+    std::vector<EmdfPayload> emdf;
+};
+
+// The associated audio's mixing values (Part 2 clause 6.2.2.3, Part 1 clauses
+// 4.3.12.4.4 to 4.3.12.4.9), for a presentation with associated audio.
+struct AssociatedMix {
+    // The main audio's gains while the associated audio plays: every channel
+    // (scale_main), C (scale_main_centre) and L and R (scale_main_front), 0 to
+    // -76.2 dB in steps of 0.3, or -infinity; unset sends none.
+    std::optional<double> main_db;
+    std::optional<double> main_centre_db;
+    std::optional<double> main_front_db;
+    // Where a mono associated substream sits (pan_associated), as
+    // DialogueMix::pan_degrees; unset leaves it at 0 degrees.
+    std::optional<double> pan_degrees;
+};
+
+struct PresentationConfig {
+    // Part 2 Table 53: 0 music and effects with dialogue, 1 main with
+    // dialogue enhancement, 2 main with associated audio, 3 music and effects
+    // with dialogue and associated audio, 4 main with dialogue enhancement
+    // and associated audio, 5 roles by each group's content classifier (Table
+    // 54), 6 EMDF payloads alone; unset for one substream alone.
+    std::optional<int> config;
+    // The substreams it plays, indices into EncoderConfig::substreams, in
+    // Table 53's order; none for configuration 6.
+    std::vector<int> substreams;
+    // Unset: the presentation's index. Every presentation that carries audio
+    // has one, as CMAF asks (Part 2 Annex H.1.2.1), and no two the same.
+    std::optional<int> presentation_id;
+    // The decoder compatibility level (Part 2 Table 55); unset takes the
+    // least its tracks allow, which a value set may not be below.
+    std::optional<int> md_compat;
+    // b_enable_presentation, where it is set.
+    std::optional<bool> enabled;
+    bool pre_virtualized = false;  // b_pre_virtualized
+    // An alternative presentation of this name (b_alternative; Part 2 clause
+    // 6.3.3.1.4), UTF-8, at most 31 bytes; empty for a presentation that is
+    // not one.
+    std::string name;
+    // Its values where they are not the stream's: EncoderConfig's
+    // dialnorm_db, loudness, drc and downmix.
+    std::optional<double> dialnorm_db;
+    std::optional<FurtherLoudness> loudness;
+    std::optional<DrcConfig> drc;
+    std::optional<DownmixConfig> downmix;
+    // Each of `substreams`' groups' gain (sg_gain, Part 2 Table 70): 0 to
+    // -15.5 dB in steps of 0.25, or -infinity; empty for 0 dB throughout.
+    // Configuration 1, and configuration 4's dialogue enhancement substream,
+    // take none (src/ac4dec/ERRATA.md, "Substream group gains").
+    std::vector<double> gains_db;
+    std::optional<AssociatedMix> associated;
+    // Payloads in an EMDF payloads substream its emdf_info() names, in every
+    // frame; configuration 6 carries these alone.
+    std::vector<EmdfPayload> emdf;
 };
 
 struct EncoderConfig {
@@ -306,11 +466,22 @@ struct EncoderConfig {
     double dialnorm_db = -31.0;
     // The metadata above, each written where it is set: the programme's
     // further loudness values, DRC's decoder modes, the stereo downmix's
-    // values (5.X and 7.X only) and dialogue enhancement.
+    // values (5.X and 7.X only) and dialogue enhancement. With several
+    // presentations, dialnorm_db, loudness, drc and downmix are every
+    // presentation's but where it sets its own, the downmix going only to
+    // those of 5.X and 7.X.
     std::optional<FurtherLoudness> loudness;
     std::optional<DrcConfig> drc;
     std::optional<DownmixConfig> downmix;
     std::optional<DialogueConfig> dialogue;
+    // Several substreams, and the presentations made of them. With substreams
+    // set, encode() takes every substream's input channels one substream
+    // after the other (a dialogue enhancement substream takes none), and
+    // `channels`, `codec_mode` and `dialogue` are the substreams' own. With
+    // presentations alone, they are of the one substream above. Empty: one
+    // presentation of the one substream.
+    std::vector<SubstreamConfig> substreams;
+    std::vector<PresentationConfig> presentations;
     // One record per syntax element written, in the shape ac4/syntax.hpp
     // states, for comparing what was written with what a reader reads. The
     // callable must outlive the Encoder.
@@ -347,6 +518,10 @@ struct EncoderConfig {
         // DRC modes that send gains (DrcModeConfig::gains_config), which no
         // DEE stream has.
         bool drc_gains = false;
+        // A 3.0 substream (SubstreamConfig::channels 3, or a hybrid dialogue
+        // enhancement's waveform of L, R and C), in the 3.0 element's form
+        // coding_config 0: L and R as a pair and C alone.
+        bool three_zero = false;
     };
     Experimental experimental{};
 };
@@ -383,7 +558,8 @@ class AC4ENC_EXPORT Encoder {
     [[nodiscard]] std::expected<std::vector<EncodedFrame>, EncodeError> encode(
         std::span<const std::span<const float>> channels);
     // With DialogueSource::kStem: the programme and, sample for sample, the
-    // dialogue in it, in the programme's channels.
+    // dialogue in it, in the programme's channels (in every input channel,
+    // with several substreams, a substream without a stem ignoring its own).
     [[nodiscard]] std::expected<std::vector<EncodedFrame>, EncodeError> encode(
         std::span<const std::span<const float>> channels,
         std::span<const std::span<const float>> dialogue);

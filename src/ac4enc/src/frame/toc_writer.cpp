@@ -19,14 +19,33 @@ void write_escaped(BitWriter& w, unsigned bits, unsigned n_bits, std::uint64_t v
     w.write_variable_bits(n_bits, value - escape, name);
 }
 
-// Part 1 Table 8, emdf_info(), with Table 80's emdf_protection() (headed
-// emdf_reserved()) carrying no reserved bytes.
-void write_emdf_info(BitWriter& w) {
+// Part 1 Table 8, emdf_info(), with Table 13's emdf_payloads_substream_info()
+// where it names an EMDF payloads substream, and Table 80's
+// emdf_protection() (headed emdf_reserved()) carrying no reserved bytes.
+void write_emdf_info(BitWriter& w, std::optional<int> payloads_substream) {
     w.write(2, 0, "emdf_version");
     w.write(3, 0, "key_id");
-    w.write(1, 0, "b_emdf_payloads_substream_info");
+    w.write(1, payloads_substream ? 1U : 0U, "b_emdf_payloads_substream_info");
+    if (payloads_substream) {
+        write_escaped(w, 2, 2, static_cast<std::uint64_t>(*payloads_substream), "substream_index");
+    }
     w.write(2, 0, "n_skip_bytes_length_primary");
     w.write(2, 0, "n_skip_bytes_length_secondary");
+}
+
+// b_add_emdf_substreams' list (clause 6.2.1.3): n_add_emdf_substreams, 1 to 3
+// as they are and from 4 as 0 and variable_bits(2), then an emdf_info() for
+// each.
+void write_add_emdf(BitWriter& w, std::span<const int> substreams) {
+    if (substreams.size() < 4) {
+        w.write(2, substreams.size(), "n_add_emdf_substreams");
+    } else {
+        w.write(2, 0, "n_add_emdf_substreams");
+        w.write_variable_bits(2, substreams.size() - 4, "n_add_emdf_substreams");
+    }
+    for (const int substream : substreams) {
+        write_emdf_info(w, substream);
+    }
 }
 
 // Clause 6.2.1.7 at bitstream_version 2: the group's index.
@@ -54,6 +73,11 @@ void write_presentation_v1_info(BitWriter& w, const TocLayout& layout, const Toc
         write_escaped(w, 3, 2, static_cast<std::uint64_t>(*p.presentation_config), "presentation_config");
     }
     write_presentation_version(w, p.presentation_version);
+    if (p.presentation_config == 6) {
+        // EMDF payloads alone: b_add_emdf_substreams is 1 without being sent.
+        write_add_emdf(w, p.add_emdf);
+        return;
+    }
     w.write(3, static_cast<std::uint64_t>(p.md_compat), "md_compat");
     w.write(1, p.presentation_id ? 1U : 0U, "b_presentation_id");
     if (p.presentation_id) {
@@ -70,7 +94,7 @@ void write_presentation_v1_info(BitWriter& w, const TocLayout& layout, const Toc
     if (index >= 5 && index <= 12) {
         w.write(1, 0, "b_frame_rate_fraction");
     }
-    write_emdf_info(w);
+    write_emdf_info(w, p.emdf_substream);
     w.write(1, p.enable ? 1U : 0U, "b_presentation_filter");
     if (p.enable) {
         w.write(1, *p.enable ? 1U : 0U, "b_enable_presentation");
@@ -89,11 +113,14 @@ void write_presentation_v1_info(BitWriter& w, const TocLayout& layout, const Toc
         }
     }
     w.write(1, p.pre_virtualized ? 1U : 0U, "b_pre_virtualized");
-    w.write(1, 0, "b_add_emdf_substreams");
+    w.write(1, p.add_emdf.empty() ? 0U : 1U, "b_add_emdf_substreams");
     // ac4_presentation_substream_info(), 6.2.1.12.
-    w.write(1, 0, "b_alternative");
+    w.write(1, p.alternative ? 1U : 0U, "b_alternative");
     w.write(1, p.pres_ndot ? 1U : 0U, "b_pres_ndot");
     write_escaped(w, 2, 2, static_cast<std::uint64_t>(p.presentation_substream), "substream_index");
+    if (!p.add_emdf.empty()) {
+        write_add_emdf(w, p.add_emdf);
+    }
 }
 
 // Table 56's channel_mode code for a Part 1 channel mode: 0b0 mono, 0b10
@@ -178,15 +205,30 @@ void write_substream_index_table(BitWriter& w, std::span<const std::size_t> size
         return false;
     }
     std::vector<bool> named(layout.groups.size(), false);
+    const auto names_substream = [count](int index) {
+        return index >= 0 && static_cast<std::size_t>(index) < count;
+    };
     for (const TocPresentation& p : layout.presentations) {
+        if (!std::ranges::all_of(p.add_emdf, names_substream) ||
+            (p.emdf_substream && !names_substream(*p.emdf_substream))) {
+            return false;
+        }
+        if (p.presentation_config == 6) {
+            // EMDF payloads alone, at least one substream of them.
+            if (!p.groups.empty() || p.add_emdf.empty() || p.emdf_substream ||
+                p.presentation_version < 0) {
+                return false;
+            }
+            continue;
+        }
         const std::size_t specifiers =
             !p.presentation_config ? 1
             : *p.presentation_config <= 4 ? specifiers_of(*p.presentation_config)
                                           : std::max<std::size_t>(p.groups.size(), 2);
         if ((p.presentation_config && (*p.presentation_config < 0 || *p.presentation_config > 5)) ||
             p.groups.size() != specifiers || p.md_compat < 0 || p.md_compat > 7 ||
-            p.presentation_version < 0 || p.presentation_substream < 0 ||
-            static_cast<std::size_t>(p.presentation_substream) >= count) {
+            p.presentation_version < 0 || !names_substream(p.presentation_substream) ||
+            (p.presentation_id && *p.presentation_id < 0)) {
             return false;
         }
         for (const int group : p.groups) {
@@ -262,8 +304,13 @@ std::size_t toc_bytes(const TocLayout& layout, std::size_t payload_base, std::sp
     return w.byte_size();
 }
 
-std::optional<std::vector<std::byte>> assemble_frame(const TocLayout& layout,
-                                                     std::span<const std::vector<std::byte>> substreams) {
+bool writable(const TocLayout& layout, std::size_t substreams) {
+    return valid(layout, substreams);
+}
+
+std::optional<std::vector<std::byte>> assemble_frame(
+    const TocLayout& layout, std::span<const std::vector<std::byte>> substreams,
+    std::size_t payload_base) {
     if (!valid(layout, substreams.size())) {
         return std::nullopt;
     }
@@ -274,10 +321,11 @@ std::optional<std::vector<std::byte>> assemble_frame(const TocLayout& layout,
         total += substream.size();
     }
     BitWriter toc;
-    write_toc(toc, layout, 0, sizes);
+    write_toc(toc, layout, payload_base, sizes);
     std::vector<std::byte> frame;
-    frame.reserve(toc.byte_size() + total);
+    frame.reserve(toc.byte_size() + payload_base + total);
     frame.insert(frame.end(), toc.bytes().begin(), toc.bytes().end());
+    frame.insert(frame.end(), payload_base, std::byte{0});
     for (const std::vector<std::byte>& substream : substreams) {
         frame.insert(frame.end(), substream.begin(), substream.end());
     }
