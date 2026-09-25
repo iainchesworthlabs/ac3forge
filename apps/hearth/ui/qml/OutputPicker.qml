@@ -5,23 +5,23 @@ import QtQuick.Layouts
 import Ac3ForgeHearth
 
 // The output picker (issue #828): a modal listing this computer's PCM
-// devices, what they can carry over passthrough, and - once the network
-// issue lands - the Sendspin sinks and groups
-// (planning/hearth-design.md's own artboard,
+// devices, what they can carry over passthrough, and the Sendspin groups
+// made on the Network page (planning/hearth-design.md's own artboard,
 // docs/hearth/design/screenshots/output-picker.png). Modelled on
 // AboutDialog.qml's shape (modal, centred, squared border) rather than
 // introducing a second dialog style.
 //
-// Only "This computer · PCM" is actionable here: HearthController.
-// outputDevices comes straight from ac3::audio::enumerate_render_devices(),
-// the same enumeration `ac3cli outputs` prints, and "Play here" pins the
-// engine to whichever row is selected (HearthController.selectOutputDevice).
-// The passthrough rows read that same enumeration's own live probe of each
-// endpoint (RenderDeviceInfo::supports_ac3_passthrough/eac3 - "checked by
-// opening it", not guessed) but stay read-only: no passthrough sink is wired
-// into this engine yet, so picking one would have nothing to do. The network
-// section has no data source at all yet, so it says so rather than
-// inventing sinks and groups that are not there.
+// "This computer · PCM" and "Network · Sendspin" are actionable here:
+// HearthController.outputDevices comes straight from
+// ac3::audio::enumerate_render_devices(), the same enumeration `ac3cli
+// outputs` prints, and "Play here" pins the engine to whichever row is
+// selected (HearthController.selectOutputDevice); a group row pins it to the
+// group instead (HearthController.selectOutputGroup), whose members each get
+// the stream to decode for themselves. The passthrough rows read that same
+// enumeration's own live probe of each endpoint (RenderDeviceInfo::
+// supports_ac3_passthrough/eac3 - "checked by opening it", not guessed) but
+// stay read-only here. A single sink plays as a group of one: groups are
+// where the Network page puts sinks together.
 Dialog {
     id: root
 
@@ -43,8 +43,10 @@ Dialog {
     // The row about to be confirmed - not necessarily the one actually
     // playing (currentDeviceId), so that clicking a row is a proposal the
     // user still has to confirm with "Play here" rather than an immediate
-    // switch.
+    // switch. At most one of the two is set: a device of this computer, or
+    // a network group (NetworkController.groups's own id).
     property string selectedDeviceId: ""
+    property string selectedGroupId: ""
 
     background: Rectangle {
         color: Theme.bg
@@ -54,7 +56,22 @@ Dialog {
 
     onOpened: {
         HearthController.refreshOutputDevices();
-        selectedDeviceId = root.defaultSelection();
+        if (HearthController.outputGroupName.length > 0) {
+            selectedGroupId = HearthController.outputGroupName;
+            selectedDeviceId = "";
+        } else {
+            selectedGroupId = "";
+            selectedDeviceId = root.defaultSelection();
+        }
+    }
+
+    function selectDevice(id) {
+        root.selectedDeviceId = id;
+        root.selectedGroupId = "";
+    }
+    function selectGroup(id) {
+        root.selectedGroupId = id;
+        root.selectedDeviceId = "";
     }
 
     readonly property var passthroughDevices: HearthController.outputDevices.filter(
@@ -207,11 +224,11 @@ Dialog {
                             Accessible.name: deviceRow.modelData.name
                             Accessible.checkable: true
                             Accessible.checked: deviceRow.selected
-                            Accessible.onPressAction: root.selectedDeviceId = deviceRow.modelData.id
+                            Accessible.onPressAction: root.selectDevice(deviceRow.modelData.id)
 
                             activeFocusOnTab: true
-                            Keys.onSpacePressed: root.selectedDeviceId = deviceRow.modelData.id
-                            Keys.onReturnPressed: root.selectedDeviceId = deviceRow.modelData.id
+                            Keys.onSpacePressed: root.selectDevice(deviceRow.modelData.id)
+                            Keys.onReturnPressed: root.selectDevice(deviceRow.modelData.id)
 
                             Rectangle {
                                 anchors.fill: parent
@@ -256,7 +273,7 @@ Dialog {
                             MouseArea {
                                 anchors.fill: parent
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.selectedDeviceId = deviceRow.modelData.id
+                                onClicked: root.selectDevice(deviceRow.modelData.id)
                             }
                         }
                     }
@@ -334,13 +351,105 @@ Dialog {
                     wrapMode: Text.WordWrap
                 }
 
-                // --- network - not built yet (a separate issue) -----------
+                // --- network - the groups made on the Network page ---------
                 SectionHeading { text: qsTr("Network · Sendspin") }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.space1
+
+                    Repeater {
+                        model: NetworkController.groups
+                        delegate: Rectangle {
+                            id: groupRow
+                            required property var modelData
+                            required property int index
+                            objectName: "outputGroupRow-" + index
+                            Layout.fillWidth: true
+                            readonly property bool selected: modelData.id === root.selectedGroupId
+                            readonly property bool playingHere: modelData.id === HearthController.outputGroupName
+                            implicitHeight: groupLine.implicitHeight + Theme.gap
+                            color: selected ? Theme.accent100 : Theme.surface
+                            border.color: selected ? Theme.accent : Theme.border
+                            border.width: selected ? 2 : 1
+                            radius: Theme.radius
+
+                            Accessible.role: Accessible.RadioButton
+                            Accessible.name: qsTr("%1, group").arg(groupRow.modelData.name)
+                            Accessible.checkable: true
+                            Accessible.checked: groupRow.selected
+                            Accessible.onPressAction: root.selectGroup(groupRow.modelData.id)
+
+                            activeFocusOnTab: true
+                            Keys.onSpacePressed: root.selectGroup(groupRow.modelData.id)
+                            Keys.onReturnPressed: root.selectGroup(groupRow.modelData.id)
+
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: -Theme.focusRingOffset
+                                visible: groupRow.activeFocus
+                                color: "transparent"
+                                border.color: Theme.focusRing
+                                border.width: Theme.focusRingWidth
+                                z: 100
+                            }
+
+                            RowLayout {
+                                id: groupLine
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                anchors.margins: Theme.gap
+                                spacing: Theme.gap
+
+                                Text {
+                                    Layout.preferredWidth: 280
+                                    Layout.maximumWidth: 280
+                                    text: groupRow.modelData.name
+                                    color: Theme.text
+                                    font.bold: true
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 120
+                                    text: (groupRow.modelData.membersText ?? "").length > 0
+                                          ? qsTr("%1 · %2").arg(groupRow.modelData.subtitle)
+                                                           .arg(groupRow.modelData.membersText)
+                                          : groupRow.modelData.subtitle
+                                    color: Theme.textMuted
+                                    font.family: Theme.monoFamily
+                                    font.pixelSize: Theme.fontSmall
+                                    elide: Text.ElideRight
+                                }
+                                StatusPill { text: groupRow.playingHere ? qsTr("playing here") : "" }
+                            }
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.selectGroup(groupRow.modelData.id)
+                            }
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        visible: NetworkController.groups.length === 0
+                        text: qsTr("No groups yet. On the Network page, pair a sink and add it to a group - "
+                                  + "a group of one plays to a single sink.")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
+                    }
+                }
 
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Network sinks and Sendspin groups are not available from this build "
-                              + "yet. The Network page will list them once that lands.")
+                    visible: NetworkController.groups.length > 0
+                    text: qsTr("Each sink in a group decodes the stream for itself, to its own speakers. "
+                              + "A group plays to the members connected when it starts, and to others as "
+                              + "they connect.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap
@@ -367,9 +476,13 @@ Dialog {
                 objectName: "outputPickerPlayHere"
                 text: qsTr("Play here")
                 highlighted: true
-                enabled: root.selectedDeviceId.length > 0
+                enabled: root.selectedDeviceId.length > 0 || root.selectedGroupId.length > 0
                 onClicked: {
-                    HearthController.selectOutputDevice(root.selectedDeviceId);
+                    if (root.selectedGroupId.length > 0) {
+                        HearthController.selectOutputGroup(root.selectedGroupId);
+                    } else {
+                        HearthController.selectOutputDevice(root.selectedDeviceId);
+                    }
                     root.close();
                 }
             }

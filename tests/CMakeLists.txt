@@ -1026,15 +1026,18 @@ if(AC3FORGE_BUILD_HEARTH)
             hearth/test_pairing_store.cpp
             hearth/test_network_sinks.cpp
             hearth/test_network_sinks_rows.cpp
+            hearth/test_network_live.cpp
+            hearth/test_server_host_dialling.cpp
+            hearth/test_server_identity.cpp
             hearth/test_network_group_sink.cpp
             hearth/test_engine_network_group.cpp)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
         # as core/test_simd_kernels.cpp's. test_aiosendspin_group.cpp's own environment() helper
-        # takes the same address the same way.
+        # takes the same address the same way, and test_network_live.cpp its sinks' names.
         if(AC3FORGE_IS_MSVC_LIKE)
             set_source_files_properties(
-                hearth/test_aiosendspin.cpp hearth/test_aiosendspin_group.cpp
+                hearth/test_aiosendspin.cpp hearth/test_aiosendspin_group.cpp hearth/test_network_live.cpp
                 PROPERTIES COMPILE_OPTIONS "/wd4996")
         endif()
     endif()
@@ -1057,6 +1060,17 @@ target_link_libraries(ac3tests
         ac3::coverage
         ac3::fmt
         Catch2::Catch2WithMain)
+
+# core/test_fixed32_ecpl.cpp calls the fixed-point tier's enhanced-coupling
+# functions, which are internal to the library: declared under src/forge/src/
+# rather than in the installed include tree, and so not exported from
+# libac3forge.so. With BUILD_SHARED_LIBS=ON there is nothing for it to link
+# against, and linking the static archive in as well would put a second copy of
+# the codec in the executable that the shared pass exists to keep out. It tests
+# the tier's arithmetic, not the linkage, and every static leg runs it.
+if(NOT BUILD_SHARED_LIBS)
+    target_sources(ac3tests PRIVATE core/test_fixed32_ecpl.cpp)
+endif()
 
 include(Catch)
 

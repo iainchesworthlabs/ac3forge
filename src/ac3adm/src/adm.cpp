@@ -494,14 +494,6 @@ std::string_view describe(AdmWriteError error) {
 
 namespace {
 
-// 24-bit: the only integer width libbw64's FormatInfoChunk validates that real ADM BWF masters
-// actually use (EBU Tech 3306 §2's own PCM-only framing settles for 16- or 24-bit; 24 keeps
-// headroom this project's own float32 pipeline already exceeds). The pinned libbw64 (unlike the
-// EBU's own upstream) does have an IEEE-float write path (Bw64Writer's useFloat), but this
-// function does not use it - write_bw64() has no parameter for a caller to ask for float output,
-// and 32 here would otherwise mean 32-bit INTEGER, a worse choice than 24 for no benefit.
-constexpr std::uint16_t kWriteBitDepth = 24;
-
 std::vector<float> interleave(const PcmAudio& audio) {
     const auto frame_count = audio.frame_count();
     const auto channel_count = audio.channels.size();
@@ -539,7 +531,9 @@ std::expected<bw64::AudioId, AdmWriteError> to_audio_id(
 }  // namespace
 
 std::expected<void, AdmWriteError> write_bw64(const std::string& path, const AdmDocument& document) {
-    auto built = detail::build_libadm_document(document.model);
+    // kWriteBitDepth goes to both halves of the file from here - every audioTrackUID's bitDepth
+    // and, below, the <fmt > chunk - so the two cannot drift apart.
+    auto built = detail::build_libadm_document(document.model, kWriteBitDepth);
     if (!built) {
         return std::unexpected(built.error());
     }

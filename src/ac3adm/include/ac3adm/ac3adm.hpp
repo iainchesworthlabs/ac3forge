@@ -107,12 +107,17 @@ enum class AdmWriteError : std::uint8_t {
 
 [[nodiscard]] AC3ADM_EXPORT std::string_view describe(AdmWriteError error);
 
+// The bits per sample write_bw64() stores <data> at: the width its <fmt > chunk declares, and the
+// bitDepth attribute every audioTrackUID it writes carries. 24-bit integer PCM is what real ADM
+// BWF masters use (EBU Tech 3306 settles for 16 or 24), and 24 keeps headroom this project's own
+// float32 pipeline already exceeds. The pinned libbw64 does have an IEEE-float write path
+// (Bw64Writer's useFloat), but write_bw64() takes no parameter asking for float output, and 32
+// here would mean 32-bit INTEGER, a worse choice than 24 for no benefit.
+inline constexpr std::uint16_t kWriteBitDepth = 24;
+
 // Writes `document` to `path` as a BW64 file carrying an <axml> chunk (the ADM XML built from
 // `document.model`), a <chna> chunk (from `document.chna`) and the interleaved PCM `document.audio`
-// carries, at 24-bit PCM - the bit depth real-world ADM BWF masters (EBU Tech 3306) almost always
-// use, and the only integer width libbw64's own FormatInfoChunk accepts alongside 16/32 (it has no
-// IEEE-float write path at all, matching its own read-side refusal - see model.hpp's PcmAudio
-// comment).
+// carries, as kWriteBitDepth-bit integer PCM.
 //
 // One asymmetry from the read side, worth stating plainly: `document.model`'s own ID strings
 // (AudioObject::id, AudioPackFormat::id, ChnaEntry::uid, ...) are used here ONLY as correlation
@@ -125,6 +130,14 @@ enum class AdmWriteError : std::uint8_t {
 // produces. `ChnaEntry::track_ref`/`pack_ref` are read-path-only fields for this same reason: this
 // function derives the real trackRef/packRef strings itself from the resolved AudioTrackUid's own
 // references, so a caller populating an AdmDocument purely to write it may leave both empty.
+//
+// `AudioTrackUid::has_bit_depth`/`bit_depth` are not read here either. Every audioTrackUID is
+// written with bitDepth = kWriteBitDepth, the width <fmt > declares and <data> is stored at,
+// whatever the model says: a value describing some other file (a 16-bit master the model was
+// parsed from, say) would contradict the <fmt > chunk written beside it. The Dolby Atmos Master
+// ADM Profile expects the two to agree - Dolby Encoding Engine refuses a master whose
+// audioTrackUIDs leave bitDepth out ("Mismatched track bit depth between ADM and WAV"). sampleRate
+// is still written from the model, and only where `has_sample_rate` is set.
 [[nodiscard]] AC3ADM_EXPORT std::expected<void, AdmWriteError> write_bw64(const std::string& path,
                                                                           const AdmDocument& document);
 

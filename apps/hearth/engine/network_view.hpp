@@ -56,6 +56,20 @@ enum class PairState : std::uint8_t {
     kPaired,
 };
 
+// How this computer's connection to a sink stands (NetworkSinks keeps it).
+enum class SinkLink : std::uint8_t {
+    // Not connected, and nothing is due: a sink found but not dialled yet, one
+    // another server holds, or one whose connection ended and is not dialled
+    // again by itself.
+    kIdle,
+    // A dial is out, or the connection has not said hello yet.
+    kConnecting,
+    // Said hello; the connection is live.
+    kConnected,
+    // The last dial or connection failed; another dial is due shortly.
+    kRetrying,
+};
+
 // What NetworkSinks knows about one discovered player, gathered from mDNS and,
 // once dialled, `client/hello` and `_ac3forge_player@v1_support`/
 // `player@v1_support`. A field the sink has not told this run about yet is
@@ -99,12 +113,39 @@ struct SinkFacts {
     // Set only when pair_state is kPaired: the date the pairing record was
     // made (PairingRecordView::paired_on).
     std::string paired_on{};
-    // Set for a while after this sink's connection ended with client/goodbye
-    // kAnotherServer or kConcurrentAttempt (network_sinks.hpp's own comment):
-    // another server took, or already held, playback here. Cleared once a
-    // fresh connection to it succeeds, or it is not heard from again at all;
-    // empty when nothing of the kind has happened.
+    // What the row says about the sink beyond its kind and pair state: that
+    // another server holds it (held_elsewhere), or that it has lost the
+    // pairing this computer holds for it (lost_pairing); empty when nothing of
+    // the kind applies.
     std::string notice{};
+
+    // --- the connection (NetworkSinks) -----------------------------------
+    SinkLink link = SinkLink::kIdle;
+    // Dials in a row that failed, or connections that ended on their own -
+    // what the next dial waits for (NetworkSinks' own back-off).
+    std::uint32_t failed_dials = 0;
+    // The last dial failed (nothing answered, or the connection ended before
+    // hello), rather than a live connection ending: "not answering" rather
+    // than "reconnecting".
+    bool dial_failed = false;
+    // This computer's last connection ended with client/goodbye another_server
+    // or concurrent_attempt: another server took the sink, or already held it
+    // when this computer asked for nothing more than to stay connected. Not
+    // dialled again until the person asks (pair, take it back, look again).
+    bool held_elsewhere = false;
+    // The sink fell back to the Sentinel under the pairing this computer holds
+    // for it (connection.md, Sentinel Fallback): it has to be paired again.
+    bool lost_pairing = false;
+    // Pairing, from this computer's side: asked for and waiting for a
+    // connection to run on (requested), running (active), and the sink
+    // showing its code and waiting for the person's digits (wants_code).
+    bool pairing_requested = false;
+    bool pairing_active = false;
+    bool wants_code = false;
+    // Whether the sink offers pairing by a dynamic code, the one method the
+    // page can take (six digits typed from the sink's own page or console);
+    // unknown, and taken as offered, before it has said hello.
+    bool offers_code_pairing = true;
 
     // --- a Hearth sink's own settings pages -----------------------------
     // The sink's own support object (client/hello's `_ac3forge_player@v1_
@@ -145,7 +186,14 @@ struct SinkRow {
     std::string badge_text{};
     // SinkFacts::notice, verbatim; empty when there is none to show.
     std::string notice{};
+    // "connected", "connecting…", "not answering, trying again" - the
+    // connection in words (link_text()); empty when there is nothing to say.
+    std::string link_text{};
+    bool connected = false;
 };
+
+// The connection in words, for a row and the info panel.
+[[nodiscard]] std::string link_text(const SinkFacts& facts);
 
 [[nodiscard]] SinkRow to_row(const SinkFacts& facts);
 
@@ -167,6 +215,22 @@ struct SinkDetail {
     std::string paired_on_text{};
     // SinkFacts::notice, verbatim; empty when there is none to show.
     std::string notice{};
+    // link_text(), and whether the sink is connected now.
+    std::string link_text{};
+    bool connected = false;
+    // "http://192.168.1.52/" - a Hearth sink's own page, where it shows its
+    // pairing code; empty without an address.
+    std::string page_url{};
+    // "none" | "requested" | "code" | "active" - where pairing stands, as the
+    // pairing view switches on it (QML's own key, never translated): not
+    // asked for, asked for and waiting for a connection, the sink waiting
+    // for the digits, and running past them.
+    std::string pairing{};
+    // What the page may offer: to pair (a sink that is not paired and offers
+    // a code), and to take a paired sink back from another server or connect
+    // to one that is not connected.
+    bool can_pair = false;
+    bool can_connect = false;
 };
 
 [[nodiscard]] SinkDetail to_detail(const SinkFacts& facts);
@@ -212,6 +276,12 @@ struct GroupRow {
     std::string subtitle{};
     std::string badge = "group";
     std::string badge_text = "group";
+    // "2 of 3 connected" - what the output picker shows beside a group, since
+    // it can play only to the members connected; empty for a group with no
+    // members, which the subtitle already says.
+    std::string members_text{};
+    // At least one member connected: somewhere for the programme to go now.
+    bool ready = false;
 };
 
 [[nodiscard]] GroupRow to_group_row(const GroupFacts& facts);

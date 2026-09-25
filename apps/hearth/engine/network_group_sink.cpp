@@ -9,6 +9,7 @@
 #include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/messages.hpp"
 #include "ac3/sendspin/server_host.hpp"
+#include "ac3/sendspin/session_driver.hpp"
 
 // The NetworkGroupSink over a real ac3::sendspin::Group: everything here is a
 // translation between the two interfaces, as passthrough_sink.cpp and
@@ -70,7 +71,9 @@ public:
         }
         group_ = std::move(group);
         channels_ = static_cast<std::size_t>(channels);
+        sample_rate_ = format.sample_rate;
         taken_ = 0;
+        flushed_ = 0;
         return OpenOutputFormat{.sample_rate = format.sample_rate,
                                 .channels = static_cast<std::uint16_t>(channels),
                                 .mode = OutputMode::kNetworkGroup,
@@ -84,6 +87,7 @@ public:
         group_.reset();
         channels_ = 0;
         taken_ = 0;
+        flushed_ = 0;
     }
 
     [[nodiscard]] bool is_open() const override { return group_ != nullptr; }
@@ -122,10 +126,28 @@ public:
         if (!group_) {
             return std::nullopt;
         }
-        return audio::MonitorPosition{.frames_played = taken_, .frames_queued = 0, .latency_frames = 0};
+        // Played is what the group's timeline has run through - the frame
+        // every member is playing now - and never more than has been taken.
+        std::uint64_t played = 0;
+        if (const std::optional<std::int64_t> start = group_->start_time()) {
+            const std::int64_t elapsed_us = clock_.now_us() - *start;
+            if (elapsed_us > 0) {
+                const auto elapsed =
+                    static_cast<std::uint64_t>((static_cast<double>(elapsed_us) * static_cast<double>(sample_rate_)) / 1e6);
+                // The timeline runs on through a flush; what came before it is
+                // not this count's.
+                played = elapsed > flushed_ ? std::min(elapsed - flushed_, taken_) : 0;
+            }
+        }
+        return audio::MonitorPosition{.frames_played = played, .frames_queued = taken_ - played, .latency_frames = 0};
     }
 
-    void flush() override { taken_ = 0; }
+    void flush() override {
+        // The group's own frame count goes on from where it was: the next
+        // frame taken is frame flushed_ of its timeline.
+        flushed_ += taken_;
+        taken_ = 0;
+    }
 
     bool pause() override { return true; }
     bool resume() override { return true; }
@@ -134,7 +156,12 @@ private:
     GroupResolver resolve_;
     std::shared_ptr<sendspin::Group> group_;
     std::size_t channels_ = 0;
+    std::uint32_t sample_rate_ = 0;
     std::uint64_t taken_ = 0;
+    // Frames taken before the last flush() since open().
+    std::uint64_t flushed_ = 0;
+    // The clock a group's timeline is on (ServerHost's own).
+    sendspin::SteadyClock clock_;
     // Reused across submit_pcm() calls so steady playback allocates nothing
     // once it has grown to the largest block it has seen, the same reason
     // Player::Pending's own buffers are reused (player.hpp).

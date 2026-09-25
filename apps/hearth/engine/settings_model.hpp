@@ -33,12 +33,13 @@
 //   queue/...              the queue kept for the next start
 //   speakers/...           the speaker setup kept for the next start
 //   pairing/...            the pairing records (pairing_store.hpp)
+//   identity/server        this computer's Sendspin server key (server_identity.hpp)
 // Lists use QSettings' own array layout ("queue/size", then "queue/1/path"
 // and so on, counted from 1), so the window can read them with its array
 // functions as well. The diagnostics file withholds everything under
-// "queue/" and "pairing/" (diagnostics_report.hpp) - "speakers/" holds
-// nothing a person typed (numbers and a layout/routing description), so it
-// is not withheld.
+// "queue/", "pairing/" and "identity/" (diagnostics_report.hpp) - "speakers/"
+// holds nothing a person typed (numbers and a layout/routing description), so
+// it is not withheld.
 
 namespace ac3::hearth {
 

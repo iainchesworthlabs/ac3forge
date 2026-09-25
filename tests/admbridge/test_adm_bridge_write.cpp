@@ -148,6 +148,15 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
     CHECK(built->model.objects.size() == 2);
     CHECK(built->audio.channels.size() == 2);
     CHECK(built->audio.sample_rate == 48000);
+    // Every audioTrackUID states the width write_bw64 stores the PCM at - the Dolby Atmos Master
+    // ADM Profile expects it, and Dolby Encoding Engine refuses a master without it.
+    CHECK(built->audio.bits_per_sample == ac3adm::kWriteBitDepth);
+    REQUIRE(built->model.track_uids.size() == 2);
+    for (const auto& track_uid : built->model.track_uids) {
+        CAPTURE(track_uid.uid);
+        CHECK(track_uid.has_bit_depth);
+        CHECK(track_uid.bit_depth == built->audio.bits_per_sample);
+    }
 
     const auto scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("admbridge_write_" + scratch_pid_suffix());
     fs::create_directories(scratch);
@@ -167,6 +176,14 @@ TEST_CASE("a real decoded Atmos programme survives write_bw64 -> parse_bw64 -> b
     REQUIRE(parsed.has_value());
     REQUIRE(parsed->audio.channels.size() == 2);
     REQUIRE(parsed->audio.frame_count() == accumulator.object_pcm.size());
+    // The same on disk: each audioTrackUID's bitDepth matches the <fmt > chunk the PCM was read at.
+    CHECK(parsed->audio.bits_per_sample == ac3adm::kWriteBitDepth);
+    REQUIRE(parsed->model.track_uids.size() == 2);
+    for (const auto& track_uid : parsed->model.track_uids) {
+        CAPTURE(track_uid.uid);
+        CHECK(track_uid.has_bit_depth);
+        CHECK(track_uid.bit_depth == parsed->audio.bits_per_sample);
+    }
 
     const auto bridged = ac3::admbridge::build(*parsed);
     REQUIRE(bridged.has_value());
