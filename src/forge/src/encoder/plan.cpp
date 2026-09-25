@@ -858,15 +858,56 @@ std::string_view describe(PlanError error) {
             return "24, 22.05 and 16 kHz (fscod2) only exist in E-AC-3; AC-3 has no such field";
         case PlanError::kVbrNeedsEac3:
             return "variable bit rate needs E-AC-3 - AC-3's frame size indexes Table 5.18 "
-                   "and cannot vary freely";
+                   "and cannot vary freely, and AC-4 has rate modes of its own";
         case PlanError::kTimecodeNeedsBsid8:
             return "Annex D's alternate syntax reuses the two time code fields (§D1), so a "
                    "bsid-6 stream cannot carry a time code as well";
+        case PlanError::kLayoutNotInAc4:
+            return "the AC-4 encoder takes mono, stereo, 5.0 and 5.1 from a plan: it has no dual "
+                   "mono, 7.0 and 7.1 are ac4-encode's experimental option, and it does not "
+                   "encode immersive layouts yet";
+        case PlanError::kSampleRateNotInAc4:
+            return "the AC-4 encoder takes 48 or 44.1 kHz (ETSI TS 103 190-1 Table 82)";
+        case PlanError::kUnknownCodec:
+            return "a codec this build does not know";
     }
     return "";
 }
 
-std::optional<PlanError> validate(const Plan& plan) {
+namespace {
+
+// A Codec::kAc4 plan: the layouts carries() gives AC-4, or a channel list that
+// is one of the channel modes the AC-4 encoder takes (ETSI TS 103 190-1 Table
+// 88's mono, stereo, 5.0 and 5.1), at one of the rates it takes. The rate and
+// everything else the encoder decides for itself (its least frame, the codec
+// mode) are ac4::Encoder::refusal_reason()'s to name.
+std::optional<PlanError> validate_ac4(const Plan& plan) {
+    if (plan.custom_locations.has_value()) {
+        const auto allocated = eac3::chanmap::allocate(*plan.custom_locations);
+        if (!allocated.has_value()) {
+            return PlanError::kInvalidChannels;
+        }
+        const bool narrow = (allocated->bed_acmod == Acmod::k1_0 ||
+                             allocated->bed_acmod == Acmod::k2_0) &&
+                            !allocated->bed_lfe;
+        const bool five = allocated->bed_acmod == Acmod::k3_2;
+        if (!allocated->dependents.empty() || !(narrow || five)) {
+            return PlanError::kLayoutNotInAc4;
+        }
+    } else if (!carries(Codec::kAc4, plan.layout)) {
+        return PlanError::kLayoutNotInAc4;
+    }
+    if (plan.sample_rate != SampleRate::k48000 && plan.sample_rate != SampleRate::k44100) {
+        return PlanError::kSampleRateNotInAc4;
+    }
+    if (plan.vbr.has_value()) {
+        return PlanError::kVbrNeedsEac3;
+    }
+    return std::nullopt;
+}
+
+// AC-3's and E-AC-3's plans.
+std::optional<PlanError> validate_a52(const Plan& plan) {
     if (plan.custom_locations.has_value()) {
         const auto allocated = eac3::chanmap::allocate(*plan.custom_locations);
         if (!allocated.has_value()) {
@@ -935,6 +976,19 @@ std::optional<PlanError> validate(const Plan& plan) {
         }
     }
     return std::nullopt;
+}
+
+}  // namespace
+
+std::optional<PlanError> validate(const Plan& plan) {
+    switch (plan.codec) {
+        case Codec::kAc3:
+        case Codec::kEac3:
+            return validate_a52(plan);
+        case Codec::kAc4:
+            return validate_ac4(plan);
+    }
+    return PlanError::kUnknownCodec;
 }
 
 ChannelPlan resolve(const Plan& plan) {

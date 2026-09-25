@@ -190,6 +190,79 @@ TEST_CASE("the layout list a front end prints is the list the parser accepts") {
     }
 }
 
+TEST_CASE("each codec names itself and its name parses back", "[ac4]") {
+    using ac3::plan::Codec;
+    for (const Codec codec : {Codec::kAc3, Codec::kEac3, Codec::kAc4}) {
+        const auto name = ac3::plan::codec_name(codec);
+        INFO("codec " << name);
+        REQUIRE_FALSE(name.empty());
+        CHECK_FALSE(ac3::plan::codec_label(codec).empty());
+        CHECK_FALSE(ac3::plan::codec_suffix(codec).empty());
+        CHECK(ac3::plan::parse_codec(name) == codec);
+    }
+    CHECK(ac3::plan::codec_label(Codec::kAc4) == "AC-4");
+    CHECK(ac3::plan::codec_suffix(Codec::kAc4) == "ac4");
+    CHECK(ac3::plan::parse_codec("ec3") == Codec::kEac3);
+    CHECK_FALSE(ac3::plan::parse_codec("ac-4").has_value());
+    CHECK_FALSE(ac3::plan::parse_codec("").has_value());
+}
+
+TEST_CASE("a codec outside the enum names nothing and plans nothing", "[ac4]") {
+    // Two-way tests read any codec but AC-3 as E-AC-3; every helper now names
+    // nothing for a value it does not know.
+    const auto unknown = static_cast<ac3::plan::Codec>(7);
+    CHECK(ac3::plan::codec_name(unknown).empty());
+    CHECK(ac3::plan::codec_label(unknown).empty());
+    CHECK(ac3::plan::codec_suffix(unknown).empty());
+    for (const auto& info : ac3::plan::kLayouts) {
+        INFO("layout " << info.name);
+        CHECK_FALSE(ac3::plan::carries(unknown, info.id));
+    }
+    CHECK(ac3::plan::layout_names(unknown).empty());
+    const ac3::plan::Plan plan{.codec = unknown};
+    CHECK(ac3::plan::validate(plan) == ac3::plan::PlanError::kUnknownCodec);
+    CHECK_FALSE(ac3::plan::describe(ac3::plan::PlanError::kUnknownCodec).empty());
+}
+
+TEST_CASE("an AC-4 plan takes mono stereo 5.0 and 5.1 at 48 or 44.1 kHz", "[ac4]") {
+    using ac3::plan::Codec;
+    using ac3::plan::LayoutId;
+    using ac3::plan::PlanError;
+    namespace cm = ac3::eac3::chanmap;
+    CHECK(ac3::plan::layout_names(Codec::kAc4) == "mono | stereo | 51");
+    for (const LayoutId id : {LayoutId::kMono, LayoutId::kStereo, LayoutId::k51}) {
+        const ac3::plan::Plan plan{.codec = Codec::kAc4, .layout = id};
+        INFO("layout " << ac3::plan::layout(id).name);
+        CHECK_FALSE(ac3::plan::validate(plan).has_value());
+    }
+    for (const LayoutId id : {LayoutId::kDualMono, LayoutId::k71, LayoutId::k514}) {
+        const ac3::plan::Plan plan{.codec = Codec::kAc4, .layout = id};
+        INFO("layout " << ac3::plan::layout(id).name);
+        CHECK(ac3::plan::validate(plan) == PlanError::kLayoutNotInAc4);
+    }
+    // 5.0 has no named layout; a channel list reaches it, where one of a channel
+    // mode the encoder does not take (3.0, or 2.0 with an LFE) is refused.
+    const auto five = static_cast<std::uint16_t>(cm::kLeftBit | cm::kCentreBit | cm::kRightBit |
+                                                 cm::kLeftSurroundBit | cm::kRightSurroundBit);
+    const ac3::plan::Plan five_zero{.codec = Codec::kAc4, .custom_locations = five};
+    CHECK_FALSE(ac3::plan::validate(five_zero).has_value());
+    for (const auto bits : {static_cast<std::uint16_t>(cm::kLeftBit | cm::kCentreBit | cm::kRightBit),
+                            static_cast<std::uint16_t>(cm::kLeftBit | cm::kRightBit | cm::kLfeBit)}) {
+        const ac3::plan::Plan plan{.codec = Codec::kAc4, .custom_locations = bits};
+        INFO("locations " << ac3::plan::format_channels(bits));
+        CHECK(ac3::plan::validate(plan) == PlanError::kLayoutNotInAc4);
+    }
+    const ac3::plan::Plan at_44{.codec = Codec::kAc4, .sample_rate = ac3::SampleRate::k44100};
+    CHECK_FALSE(ac3::plan::validate(at_44).has_value());
+    const ac3::plan::Plan at_32{.codec = Codec::kAc4, .sample_rate = ac3::SampleRate::k32000};
+    CHECK(ac3::plan::validate(at_32) == PlanError::kSampleRateNotInAc4);
+    const ac3::plan::Plan vbr{.codec = Codec::kAc4, .vbr = ac3::eac3::VbrConfig{.quality = 0.5}};
+    CHECK(ac3::plan::validate(vbr) == PlanError::kVbrNeedsEac3);
+    for (const PlanError error : {PlanError::kLayoutNotInAc4, PlanError::kSampleRateNotInAc4}) {
+        CHECK_FALSE(ac3::plan::describe(error).empty());
+    }
+}
+
 TEST_CASE("Table E2.5 location lists parse and format symmetrically") {
     // Every case round-trips through parse_channels/format_channels exactly
     // as it read - format_channels emits Table E2.5 bit order, so these are

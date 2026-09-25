@@ -37,24 +37,64 @@
 namespace ac3::plan {
 
 // --- codec ------------------------------------------------------------------
+//
+// Every helper here that answers by codec is a switch over all three, with no
+// default: a codec added to the enum is then a compile error (-Wswitch) at each
+// until it has an answer, and a value outside the enum, which a cast can make,
+// names nothing - an empty string, or false. They were two-way tests once, under
+// which any codec but AC-3 read as E-AC-3.
 
 enum class Codec : std::uint8_t {
     kAc3,   // bsid 8, A/52 §5
     kEac3,  // bsid 16, A/52 Annex E
+    // ETSI TS 103 190. ac3::forge does not encode it: a plan names it for a front
+    // end that hands the plan's channels, rate and metadata to ac4::Encoder
+    // (src/ac4enc), and ac3_config()/eac3_config() have nothing to say about it.
+    kAc4,
 };
 
 [[nodiscard]] constexpr std::string_view codec_name(Codec codec) {
-    return codec == Codec::kAc3 ? "ac3" : "eac3";
+    switch (codec) {
+        case Codec::kAc3: return "ac3";
+        case Codec::kEac3: return "eac3";
+        case Codec::kAc4: return "ac4";
+    }
+    return {};
 }
 
 [[nodiscard]] constexpr std::string_view codec_label(Codec codec) {
-    return codec == Codec::kAc3 ? "AC-3" : "E-AC-3";
+    switch (codec) {
+        case Codec::kAc3: return "AC-3";
+        case Codec::kEac3: return "E-AC-3";
+        case Codec::kAc4: return "AC-4";
+    }
+    return {};
 }
 
 // The file extension a bare elementary stream of this codec conventionally
 // takes. Both front ends name output files, and they must agree.
 [[nodiscard]] constexpr std::string_view codec_suffix(Codec codec) {
-    return codec == Codec::kAc3 ? "ac3" : "ec3";
+    switch (codec) {
+        case Codec::kAc3: return "ac3";
+        case Codec::kEac3: return "ec3";
+        case Codec::kAc4: return "ac4";
+    }
+    return {};
+}
+
+// The inverse of codec_name(), which is what a codec= option takes: "ac3",
+// "eac3" (or "ec3", the suffix) and "ac4". Nothing for any other spelling.
+[[nodiscard]] constexpr std::optional<Codec> parse_codec(std::string_view name) {
+    if (name == "ac3") {
+        return Codec::kAc3;
+    }
+    if (name == "eac3" || name == "ec3") {
+        return Codec::kEac3;
+    }
+    if (name == "ac4") {
+        return Codec::kAc4;
+    }
+    return std::nullopt;
 }
 
 // --- layouts ----------------------------------------------------------------
@@ -121,9 +161,20 @@ inline constexpr std::array<LayoutInfo, 8> kLayouts{{
 // parser that rejects a bad token cannot list different sets.
 [[nodiscard]] AC3FORGE_EXPORT std::string layout_names(Codec codec = Codec::kEac3);
 
-// Whether this codec can carry this layout at all: AC-3 stops at 5.1.
+// Whether this codec can carry this layout at all. AC-3 stops at 5.1, as the
+// layouts without a dependent substream do; E-AC-3 carries every one. AC-4 takes
+// what its encoder takes from a plan: mono, stereo and 5.1. It has no dual mono,
+// ac4-encode codes 7.0 and 7.1 only as an experimental option, and immersive
+// layouts wait for the encoder's immersive element (planning/ac4.md, E8). A
+// channel list that is 5.0 reaches AC-4 through validate().
 [[nodiscard]] constexpr bool carries(Codec codec, LayoutId id) {
-    return codec == Codec::kEac3 || layout(id).dependents == 0;
+    switch (codec) {
+        case Codec::kAc3: return layout(id).dependents == 0;
+        case Codec::kEac3: return true;
+        case Codec::kAc4:
+            return id == LayoutId::kMono || id == LayoutId::kStereo || id == LayoutId::k51;
+    }
+    return false;
 }
 
 // --- the general channel model -----------------------------------------------
@@ -467,8 +518,9 @@ struct Plan {
     // replaces bitrate_kbps-driven CBR sizing. AC-3 has no free-form frame
     // size to vary (frmsizecod indexes Table 5.18), so validate() rejects
     // this alongside Codec::kAc3 the same way it rejects an immersive layout
-    // there. Shared across every substream eac3_config() builds, the same
-    // way tools/meta already are.
+    // there, and alongside Codec::kAc4, whose rate modes are its encoder's.
+    // Shared across every substream eac3_config() builds, the same way
+    // tools/meta already are.
     std::optional<eac3::VbrConfig> vbr = std::nullopt;
 };
 
@@ -479,10 +531,18 @@ enum class PlanError : std::uint8_t {
     kNoSourceLayout,       // no standard speaker layout has that many channels
     kInvalidChannels,      // custom_locations is not a channel selection allocate() can satisfy
     kSampleRateNeedsEac3,  // fscod2 (24/22.05/16 kHz) asked of AC-3, which has no such field
-    kVbrNeedsEac3,         // vbr was set alongside Codec::kAc3
+    kVbrNeedsEac3,         // vbr was set alongside Codec::kAc3 or kAc4
     // Annex D's xbsi1/xbsi2 and the time code occupy the same 28 bits (§D1),
     // so a plan asking for both is asking for a frame twice the size it has.
     kTimecodeNeedsBsid8,
+    // Codec::kAc4: a layout or channel selection other than mono, stereo, 5.0
+    // and 5.1 (see carries()).
+    kLayoutNotInAc4,
+    // Codec::kAc4: a sample rate other than 48 and 44.1 kHz, the two the AC-4
+    // encoder takes (ETSI TS 103 190-1 Table 82).
+    kSampleRateNotInAc4,
+    // A value outside the Codec enum.
+    kUnknownCodec,
 };
 
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(PlanError error);
@@ -526,7 +586,9 @@ enum class PlanError : std::uint8_t {
 // ac3_config/eac3_config: a config either of those produces from a plan this
 // refuses is one no encoder can report on, because a constructor has nowhere
 // to return a verdict to. eac3::AccessUnitEncoder's simply builds no
-// substreams, which leaves its channel_count() at zero.
+// substreams, which leaves its channel_count() at zero. A Codec::kAc4 plan is
+// held to what this library can know of AC-4, its layout and sample rate;
+// ac4::Encoder::refusal_reason() names what the AC-4 encoder refuses beyond them.
 [[nodiscard]] AC3FORGE_EXPORT std::optional<PlanError> validate(const Plan& plan);
 
 // --- routing a source onto a plan -------------------------------------------
