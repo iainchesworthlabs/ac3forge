@@ -344,7 +344,10 @@ RACE = {
 # ViSQOL is 0.01 to 0.06 above DEE's, except on film at 128 kbps, 0.12 under, where the coded C's
 # band below 2 kHz trails DEE's by 9.5 dB of SNR. On the tones the routing margin is 1.2 dB (at 96)
 # and 2.9 dB over DEE's. The coded downmixes' SNR trails DEE's by 3.4 to 9.5 dB, the E3 rate loop's
-# spread of noise across the band.
+# spread of noise across the band. Phase E6 gave every presentation a presentation_id, as DEE's
+# streams and CMAF have it: three bits of the table of contents that take a byte of the audio from
+# each frame at 128 kbps, which moved film's coded C from 21.4 to 20.2 dB and its other downmixes by
+# 0.1 to 0.4 dB, ViSQOL unchanged; its C floor is pinned again from there.
 RACE_ACPL = {
     "51-music-96": (
         (17.7, 17.7, 21.9),
@@ -371,7 +374,7 @@ RACE_ACPL = {
          0.368, None),
         None, 5.15, 4.43),
     "51-film-128": (
-        (11.2, 11.3, 20.4, 17.3),
+        (11.2, 11.3, 19.2, 17.3),
         (3.60, 3.40, 3.58, 3.73, 3.68, 3.61, 3.32, 3.37, 3.28, 2.91, 2.61, 2.38, 2.23, 2.31, None),
         (0.314, 0.317, 0.328, 0.431, 0.342, 0.307, 0.329, 0.320, 0.305, 0.298, 0.254, 0.247, 0.235,
          0.230, None),
