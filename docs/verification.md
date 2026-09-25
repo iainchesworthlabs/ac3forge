@@ -438,10 +438,11 @@ takes, and 60 and 300 s programmes. Each keeps MediaInfo's trace, DEE's MP4 of i
 `ac3cli` and FFmpeg make of it. `ac3cli`'s decoder reads every AC-3 and E-AC-3 elementary stream
 in it but the 23 that use transient pre-noise processing, whose correction reaches further back
 than the one frame of history the decoder keeps, and which it reports as unimplemented; FFmpeg
-reports errors in 67 of the E-AC-3 streams, most of them exponents out of range in the first frame,
-as below. DEE uses coupling, spectral extension and the AHT by rate and never enhanced coupling.
-At 48 kHz, FFmpeg's decode of each TrueHD stream equals its source sample for sample, but for one
-LSB at −1 dBFS; at 96 kHz it matches to 24 kHz and rolls off above, 14 dB down by 30 to 40 kHz.
+reports errors in 67 of the E-AC-3 streams, most of them exponents out of range, as below. DEE
+uses coupling, spectral extension and the AHT by rate and never enhanced coupling. At 48 kHz,
+FFmpeg's decode of each TrueHD stream DEE was not asked to alter equals its source sample for
+sample, but for one LSB at −1 dBFS; at 96 kHz it matches to 24 kHz and rolls off above, 14 dB
+down by 30 to 40 kHz.
 
 Wiring up the first tier found **five separate Annex E decoder defects** in a single sitting, on
 syntax that no stream this project can encode is able to reach — the three AHT-in-use flags read
