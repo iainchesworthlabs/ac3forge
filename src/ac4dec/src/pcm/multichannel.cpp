@@ -10,12 +10,17 @@ namespace {
 
 constexpr int kMatselCount = 12;
 
-// A tile's parameter sets, a, b, c and d each.
+// The parameter sets the matrix of N channels takes: Table 178's two for
+// three channels, clause 5.3.3.4's four for four and Table 179's five for five.
 template <std::size_t N>
-[[nodiscard]] std::array<Abcd, N> tile(std::span<const StereoParameters> parameters, std::size_t g,
-                                       std::size_t sfb) noexcept {
-    std::array<Abcd, N> out{};
-    for (std::size_t i = 0; i < N; ++i) {
+inline constexpr std::size_t kSets = N == 3 ? 2 : N;
+
+// A tile's parameter sets, a, b, c and d each.
+template <std::size_t Sets>
+[[nodiscard]] std::array<Abcd, Sets> tile(std::span<const StereoParameters> parameters, std::size_t g,
+                                          std::size_t sfb) noexcept {
+    std::array<Abcd, Sets> out{};
+    for (std::size_t i = 0; i < Sets; ++i) {
         out[i] = parameters[i].abcd[g][sfb];
     }
     return out;
@@ -40,7 +45,7 @@ void multiply(const Matrix<N>& m, std::span<std::vector<double>* const> tracks, 
 }
 
 template <std::size_t N>
-[[nodiscard]] std::optional<Matrix<N>> matrix_of(int chel_matsel, const std::array<Abcd, N>& p) {
+[[nodiscard]] std::optional<Matrix<N>> matrix_of(int chel_matsel, const std::array<Abcd, kSets<N>>& p) {
     if constexpr (N == 3) {
         return three_channel_matrix(chel_matsel, p[0], p[1]);
     } else if constexpr (N == 4) {
@@ -58,7 +63,7 @@ template <std::size_t N>
         const auto gi = static_cast<std::size_t>(g);
         for (int sfb = 0; sfb < layout.max_sfb[gi]; ++sfb) {
             const auto si = static_cast<std::size_t>(sfb);
-            const auto m = matrix_of<N>(chel_matsel, tile<N>(parameters, gi, si));
+            const auto m = matrix_of<N>(chel_matsel, tile<kSets<N>>(parameters, gi, si));
             if (!m) {
                 return fail(DecodeError::kInvalidStream, "a chel_matsel Tables 178 and 179 do not define");
             }

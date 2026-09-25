@@ -147,6 +147,43 @@ TEST_CASE("every chel_matsel's matrix is the identity when its parameters are", 
     }
 }
 
+TEST_CASE("three_channel_data() takes its two parameter sets and reads no third", "[ac4dec][multichannel]") {
+    // One long group of two bands, M/S in both sets, and the sets in a vector
+    // of exactly two: a read of a third set leaves it, which a sanitised or
+    // bounds-checked build stops at.
+    ac4::detail::SfInfo info;
+    info.psy.num_window_groups = 1;
+    ac4::detail::SfData layout;
+    layout.max_sfb[0] = 2;
+    layout.sect_sfb_offset[0][1] = 4;
+    layout.sect_sfb_offset[0][2] = 8;
+    std::vector<ac4::detail::StereoParameters> sets(2);
+    for (ac4::detail::StereoParameters& set : sets) {
+        set.abcd[0][0] = {1.0, 1.0, 1.0, -1.0};
+        set.abcd[0][1] = {1.0, 1.0, 1.0, -1.0};
+    }
+    std::vector<std::vector<double>> lines(3, std::vector<double>(8));
+    for (std::size_t t = 0; t < 3; ++t) {
+        for (std::size_t k = 0; k < 8; ++k) {
+            lines[t][k] = static_cast<double>(10 * t + k);
+        }
+    }
+    const std::vector<std::vector<double>> tracks_in = lines;
+    const std::array<std::vector<double>*, 3> tracks = {&lines[0], &lines[1], &lines[2]};
+    REQUIRE(static_cast<bool>(ac4::detail::apply_channel_data(info, layout, 0, sets, tracks)));
+    // chel_matsel 0 with M/S in both sets: O0 = I0 + I1 + I2, O1 = I0 - I1,
+    // O2 = I0 + I1 - I2.
+    for (std::size_t k = 0; k < 8; ++k) {
+        CAPTURE(k);
+        const double i0 = tracks_in[0][k];
+        const double i1 = tracks_in[1][k];
+        const double i2 = tracks_in[2][k];
+        CHECK(lines[0][k] == i0 + i1 + i2);
+        CHECK(lines[1][k] == i0 - i1);
+        CHECK(lines[2][k] == i0 + i1 - i2);
+    }
+}
+
 TEST_CASE("chel_matsel 12 to 15, which the tables leave out, make no matrix", "[ac4dec][multichannel]") {
     const Abcd one = {1.0, 0.0, 0.0, 1.0};
     const std::array<Abcd, 5> ones = {one, one, one, one, one};
