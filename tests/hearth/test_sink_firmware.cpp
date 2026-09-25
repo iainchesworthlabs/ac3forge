@@ -97,6 +97,8 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
     status.partitions = {{.label = "nvs", .type = 1, .subtype = 2, .offset = 0x9000, .size = 0x6000},
                          {.label = "ota_0", .type = 0, .subtype = 0x10, .offset = 0x20000, .size = 0x400000}};
     status.bootloader_version = "v6.1";
+    status.reset_reason = "sw";
+    status.uptime_ms = 61'234;
 
     const std::optional<ac3forge::FirmwareStatus> parsed =
         ac3::hearth::parse_firmware_status(ac3forge::render_firmware_status(status));
@@ -141,6 +143,8 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
     CHECK(parsed->partitions[1].offset == 0x20000);
     CHECK(parsed->partitions[1].size == 0x400000);
     CHECK(parsed->bootloader_version == "v6.1");
+    CHECK(parsed->reset_reason == "sw");
+    CHECK(parsed->uptime_ms == 61'234);
 
     SECTION("nulls stay absent") {
         ac3forge::FirmwareStatus bare;

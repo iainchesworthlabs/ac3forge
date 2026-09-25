@@ -297,6 +297,8 @@ std::optional<ac3forge::FirmwareStatus> parse_firmware_status(std::string_view t
         });
     }
     status.bootloader_version = text_at(root, "bootloader_version");
+    status.reset_reason = text_at(root, "reset_reason");
+    status.uptime_ms = number_at(root, "uptime_ms");
     return status;
 }
 

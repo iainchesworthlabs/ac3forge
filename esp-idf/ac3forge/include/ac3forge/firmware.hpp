@@ -69,6 +69,11 @@ struct FirmwareConfig {
     std::size_t task_stack_bytes = 8192;
     // The receive buffer, from internal RAM.
     std::size_t buffer_bytes = 4096;
+    // The longest an upload may take, from its first byte to its last: a
+    // client that sends a byte every few seconds never stalls for long enough
+    // to be dropped, and would otherwise keep the board busy - refusing
+    // restarts, rollbacks and leaving flash mode - until its power was cut.
+    std::uint32_t upload_deadline_ms = 600'000;
     // CI's switches: an image that never reports healthy, and one that panics
     // as it starts a trial, for the rollback tests under QEMU. Never set in a
     // board's build.
