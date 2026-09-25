@@ -548,11 +548,13 @@ jobs:
       # these is a package. Reporting what the gates measure is part of the
       # same contract as running them - a badge that disagreed with the page it
       # links to is what put a suite in tools/ci in the first place.
+      # tools/hearth holds ota.py, which updates boards over the network
+      # (planning/esp32-ota.md): its suite runs it against a stand-in board.
       - name: Oracle unit tests
         shell: bash
         run: |
           set -euo pipefail
-          for suite in tools/checks tools/ci; do
+          for suite in tools/checks tools/ci tools/hearth; do
             printf '\n=== %s ===\n' "$suite"
             python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
           done
