@@ -402,7 +402,10 @@ void print_decode_topic() {
     fmt::println("       stream has one, with the stream's custom downmix gains and loudness");
     fmt::println("       correction; core decoding renders to 5.1.2 at most. Without it the");
     fmt::println("       element comes out in its source's layout, and channels= and downmix=");
-    fmt::println("       folds win over it.");
+    fmt::println("       folds win over it. A presentation with objects (A-JOC or direct-coded,");
+    fmt::println("       190-2 4.8.3) comes out rendered to speakers by the layout renderer,");
+    fmt::println("       each object at the position and gain its metadata sets: to the layout");
+    fmt::println("       speakers=, channels= or downmix= names, and to 7.1.4 without them.");
     fmt::println("       A stream of several presentations decodes the one presentation=<n>");
     fmt::println("       (its position) or presentation-id=<id> names, or else the one that");
     fmt::println("       best meets language=<BCP 47 tag> and associated=visually-impaired|");
