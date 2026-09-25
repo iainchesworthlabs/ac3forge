@@ -201,9 +201,11 @@ struct SendspinHost::Impl {
     bool pending_reset_rounds = false;
     bool pending_cancel = false;
     bool pending_queued = false;
-    // Servers whose pairing was forgotten, whose connections are to close.
-    std::array<ss::crypto::Key32, SendspinStore::kRecordCapacity> pending_forget{};
-    std::size_t pending_forget_count = 0;
+    // A pairing was forgotten: a connection its record authenticated closes.
+    // One flag rather than the servers' keys, since the store says which
+    // records have gone; this is held in internal RAM for as long as the
+    // board runs.
+    bool pending_prune = false;
 
     // What status() and server_time() read.
     mutable std::mutex status_mutex;
@@ -807,8 +809,7 @@ void SendspinHost::Impl::pending_work(void* arg) {
     bool reset_rounds = false;
     bool cancel = false;
     std::uint32_t generation = 0;
-    std::array<ss::crypto::Key32, SendspinStore::kRecordCapacity> forgotten{};
-    std::size_t forgotten_count = 0;
+    bool prune = false;
     {
         const std::lock_guard lock(host->pending_mutex);
         player_state.swap(host->pending_player_state);
@@ -817,15 +818,15 @@ void SendspinHost::Impl::pending_work(void* arg) {
         config = std::exchange(host->pending_config, false);
         reset_rounds = std::exchange(host->pending_reset_rounds, false);
         cancel = std::exchange(host->pending_cancel, false);
-        forgotten = host->pending_forget;
-        forgotten_count = std::exchange(host->pending_forget_count, 0);
+        prune = std::exchange(host->pending_prune, false);
         generation = host->player_generation;
         host->pending_queued = false;
     }
+    // A long-term connection whose record the store no longer has: its server
+    // was forgotten (forget_server()).
     const auto was_forgotten = [&](const ss::PlayerSession& session) {
-        const auto end = forgotten.begin() + static_cast<std::ptrdiff_t>(forgotten_count);
-        return session.psk_category() == ss::handshake::PskCategory::kLongTerm &&
-               std::find(forgotten.begin(), end, session.server_key()) != end;
+        return prune && session.psk_category() == ss::handshake::PskCategory::kLongTerm &&
+               !host->store.has_record(session.server_key());
     };
     if (player_state) {
         host->player_state = *player_state;
@@ -1072,9 +1073,7 @@ bool SendspinHost::forget_server(const SendspinStore::Key32& server_key) {
                 ss::base64url::encode(server_key).substr(0, 8).c_str());
     {
         const std::lock_guard lock(im.pending_mutex);
-        if (im.pending_forget_count < im.pending_forget.size()) {
-            im.pending_forget[im.pending_forget_count++] = server_key;
-        }
+        im.pending_prune = true;
     }
     im.queue_pending();
     return true;

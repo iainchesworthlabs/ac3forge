@@ -122,6 +122,8 @@ struct Running {
 };
 Running g_started;  // start_player's until g_running points at it
 std::atomic<const Running*> g_running{nullptr};
+// The host whose clock the player reads, from when start_player() has made it.
+std::atomic<const ac3forge::SendspinHost*> g_clock{nullptr};
 
 std::atomic<bool> g_external{false};
 std::mutex g_mutex;  // guards what follows
@@ -458,8 +460,15 @@ void sendspin_start(const ac3::render::OutputLayout& layout) {
 namespace {
 
 void start_player(const ac3::render::OutputLayout& layout) {
-    // The host is made first and started last: the player's clock reads it.
-    auto host = std::make_unique<ac3forge::SendspinHost>();
+    // The player starts first, and the host after it. The player's task
+    // stack (kDecodeStackBytes, 32 KB on an ESP32-S3) is the largest block
+    // anything here asks internal RAM for. By now the network, mDNS, the
+    // control surface and the sink's DMA buffers have left that RAM in
+    // pieces: on 2026-09-25 an ESP32-S3 had 104,319 bytes free but no block
+    // above 31,744 once the host's state had been made first, and the player
+    // did not start. The player reads the host's clock only once a server
+    // plays to it, which is after the host has started; until then g_clock
+    // is null and there is no server time to convert.
     ac3forge::BurstPlayerConfig config;
     config.sample_rate = kSampleRate;
     config.ring_bytes = kRingBytes;
@@ -476,7 +485,10 @@ void start_player(const ac3::render::OutputLayout& layout) {
     config.core = kDecodeCore;
     config.stack_bytes = kDecodeStackBytes;
     config.report_every_chunks = kReportEveryChunks;
-    config.local_time = [clock = host.get()](std::int64_t server_us) { return clock->local_time(server_us); };
+    config.local_time = [](std::int64_t server_us) -> std::optional<std::int64_t> {
+        const ac3forge::SendspinHost* const clock = g_clock.load();
+        return clock != nullptr ? clock->local_time(server_us) : std::nullopt;
+    };
     config.layout = layout;
     {
         // A layout the control surface set after the caller read its own:
@@ -493,8 +505,11 @@ void start_player(const ac3::render::OutputLayout& layout) {
     config.objects = kObjects;
     auto player = std::make_unique<ac3forge::BurstPlayer>(config, g_sink);
     if (!player->start()) {
+        std::printf("sendspin: no player: it could not start (the lines above say why)\n");
         return;
     }
+    auto host = std::make_unique<ac3forge::SendspinHost>();
+    g_clock.store(host.get());
     g_events.player = player.get();
     g_events.host = host.get();
     ac3forge::SendspinHostConfig host_config;
@@ -510,6 +525,7 @@ void start_player(const ac3::render::OutputLayout& layout) {
     host_config.player = player_config(*player);
     if (!host->start(std::move(host_config), g_events)) {
         // The player's task reads the host's clock, so it goes first.
+        g_clock.store(nullptr);
         player.reset();
         return;
     }
