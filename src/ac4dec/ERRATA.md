@@ -12,8 +12,9 @@ reading. The evidence for a reading is one of:
 - **Streams**: encoded streams reach the syntax. Both transcriptions read every frame of the 107 local
   census streams (50,728 frames of DEE 6.5.4 output), of the committed streams, and of the public
   channel-based streams from DASH-IF, CTA WAVE and Chromium (6,670 frames from other Dolby encoders) to
-  the end of every substream, apart from the refused 5.1.4 audio, with every size check holding, and
-  their traces agree.
+  the end of every substream, with every size check holding, and their traces agree. Since phase D9
+  that includes the 5.1.4 audio of the gold set's 22 legs and the census's 12 5.1.4 encodes (10,866
+  frames).
 - **Text**: no stream here reaches the syntax. Both transcriptions take the reading, and their traces
   agree where the differential check (see the end of this page) reaches it, which shows they read it
   alike; whether the reading is the intended one rests on the text.
@@ -357,6 +358,40 @@ Later phases add the readings their processing needs.
   against: F and G against D and E (Ls and Rs) for 3/4/0, and against A and B (L and R) for 5/2/0 and
   3/2/2. `add_ch_base` plays no part here; Table 183 does not use it.
 - **Evidence:** Text. As above, the two transcriptions had first differed.
+
+## The immersive element
+
+Part 2's immersive_channel_element (6.2.4.1), which codes the 7.X.4 channel modes, and A-JCC's
+ajcc_data() (6.2.6). The 9.X.4 modes pass the element b_5fronts 1 (6.2.3.1) and are refused by name,
+as the 22.2 element is. DEE codes 5.1.4 as 7.1.4 with the back pair absent, in ASPX_ACPL_2 from 192
+to 448 kbps, ASPX_SCPL at 512 and SCPL at 768, always with core_5ch_grouping 0, 2ch_mode 0 and
+b_use_sap_add_ch 0; the constructed streams of `tests/ac4dec/ac4dec_constructed.cpp` reach the rest.
+
+### immersive_codec_mode_code in the trace
+
+- **Where:** Part 2 6.3.5.1 and Table 73, p. 174: one bit, and after a 0 two more; Table 73 lists the
+  codes 0b000 to 0b011 and 0b1.
+- **Reading:** one record for the code, of 1 or 3 bits, valued at the bits read: 1 for ASPX_AJCC, 0 to
+  3 for SCPL to ASPX_ACPL_2, as `aspx_int_class` records its code.
+- **Evidence:** Streams, for the three modes DEE writes.
+
+### The framing of the immersive element's chparam_info()
+
+- **Where:** Part 2 6.2.4.1, pp. 128 and 129: two `chparam_info()` after `b_use_sap_add_ch`, before the
+  `two_channel_data()` that carries F and G; and in SCPL, ASPX_SCPL and ASPX_ACPL_1 four more after the
+  two `two_channel_data()` that carry H to K. `chparam_info()` needs `num_window_groups` and
+  `get_max_sfb()` (Part 1 Table 47), and nothing names the `sf_info()` it takes them from.
+- **Reading:** each follows the framing of the track the step it parameterises codes the other against,
+  as the 7_X element's do ("b_use_sap_add_ch: the framing of its chparam_info()"): the first two are
+  5.2.3.2 step 4's, which codes F and G against D and E, and take D's and E's; the four are Table 20's
+  a'_0 to a'_3, which predict H, I, J and K from D', E', F' and G', and take D's, E's, F's and G's. Table
+  19 places D and E among the core's tracks by `core_5ch_grouping` and `2ch_mode`, counted from the first
+  track after the LFE's.
+- **Why:** each step is a two-track matrix, `(D'', H'') = [[1, 0], [a', 1]] (D', H')` for Table 20's, whose
+  first input is the track the other is coded against, as in Part 1's Table 183; reading it under the
+  first input's framing gives the parameters for every band that input carries.
+- **Evidence:** Text. DEE's ASPX_SCPL and SCPL streams parse alike, with identical digests, under this
+  reading and under the other (the framing of H to K): their tracks share one framing in every frame.
 
 ## A-SPX
 

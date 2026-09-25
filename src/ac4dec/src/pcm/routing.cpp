@@ -295,6 +295,8 @@ ParseResult route_element(const SubstreamContext& ctx, const ChannelElement& ele
             }
             break;
         }
+        case ElementKind::kImmersive:
+            return fail(DecodeError::kUnsupported, "the immersive channel element is not decoded to PCM yet");
     }
     const bool five_x_acpl = element.kind == ElementKind::k5X && acpl;
     // ASPX_ACPL_3 sends no coding_config: its channel data is stereo_data().

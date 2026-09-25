@@ -143,12 +143,18 @@ class Bits:
         return bytes(out)
 
 
-# Part 2 Table 56 channel_mode codes as (code, width).
+# Part 2 Table 56 channel_mode codes as (code, width). The 7.X.4 modes are
+# listed twice, since only their immersive element is read (9.X.4's is refused
+# by both, which the two still have to agree on).
 SYNTHETIC_MODES = [
     (0b0, 1), (0b10, 2), (0b1100, 4), (0b1101, 4), (0b1110, 4),
     (0b1111000, 7), (0b1111001, 7), (0b1111010, 7), (0b1111011, 7), (0b1111100, 7),
-    (0b1111101, 7),
+    (0b1111101, 7), (0b11111100, 8), (0b11111101, 8), (0b11111100, 8), (0b11111101, 8),
+    (0b111111100, 9), (0b111111101, 9),
 ]
+# The immersive codes, which carry b_4_back_channels_present, b_centre_present
+# and top_channels_present (Part 2 6.2.1.8).
+IMMERSIVE_CODES = (0b11111100, 0b11111101, 0b111111100, 0b111111101)
 
 
 def synthetic(rng):
@@ -198,6 +204,10 @@ def synthetic(rng):
     for value in (1, 0, 1, 1):          # b_substreams_present, b_hsf_ext,
         w.put(value, 1)                 # b_single_substream, b_channel_coded
     w.put(code, width)                  # channel_mode
+    if code in IMMERSIVE_CODES:
+        w.put(rng.randrange(2), 1)      # b_4_back_channels_present
+        w.put(rng.randrange(2), 1)      # b_centre_present
+        w.put(rng.randrange(4), 2)      # top_channels_present
     w.put(0, 1)                         # b_sf_multiplier
     w.put(0, 1)                         # b_bitrate_info
     if code in (0b1111010, 0b1111011, 0b1111100, 0b1111101):

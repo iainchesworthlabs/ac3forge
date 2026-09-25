@@ -36,12 +36,13 @@
 // this library starts where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
-// spectral frontend (Part 1 clause 5.2), immersive and 22.2 channel elements,
-// object substreams, and a 96/192 kHz substream whose HSF extension
-// substream could not be resolved and read alongside it. Refusing is per
-// substream and per frame; the next frame is attempted afresh. decode()
-// refuses, the same way, everything above that it does not turn into PCM
-// yet: 96/192 kHz.
+// spectral frontend (Part 1 clause 5.2), the 9.X.4 channel modes (Part 2's
+// immersive element with b_5fronts) and the 22.2 channel element, object
+// substreams, and a 96/192 kHz substream whose HSF extension substream could
+// not be resolved and read alongside it. Refusing is per substream and per
+// frame; the next frame is attempted afresh. decode() refuses, the same way,
+// everything above that it does not turn into PCM yet: 96/192 kHz, and the
+// immersive element of the 7.X.4 channel modes, which it reads.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.

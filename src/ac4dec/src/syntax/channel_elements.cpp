@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <initializer_list>
 #include <utility>
 
 #include "tables/sfb_tables.hpp"
@@ -23,6 +25,7 @@ class ElementParser {
     ParseResult element_3_0();
     ParseResult element_5_x(bool b_has_lfe);
     ParseResult element_7_x();
+    ParseResult immersive_element(bool b_lfe);
 
    private:
     // --- configuration from I-frames ---
@@ -837,6 +840,171 @@ ParseResult ElementParser::element_7_x() {
     return {};
 }
 
+// Part 2 6.2.4.1 immersive_channel_element(b_lfe, b_5fronts, b_iframe) with
+// b_5fronts 0, the 7.X.4 channel modes, and immers_cfg() (6.2.4.2).
+// core_channel_config is 7CH_STATIC in every codec mode but ASPX_AJCC's
+// 5CH_DYNAMIC (Table 74).
+//
+// The syntax names no framing for its chparam_info() elements, which need one
+// (Part 1 Table 47). The reading taken, recorded in the errata register: each
+// has the framing of the track the step it parameterises codes the other
+// against, as the 7_X element's do. The two b_use_sap_add_ch sends are Part 2
+// 5.2.3.2 step 4's, which codes F and G against D and E; the four after the
+// tracks H to K are Table 20's a'_0 to a'_3, which predict H, I, J and K from
+// D, E, F and G.
+ParseResult ElementParser::immersive_element(bool b_lfe) {
+    // immersive_codec_mode_code (6.3.5.1, Table 73): a 1 is ASPX_AJCC, and
+    // after a 0 two more bits give SCPL to ASPX_ACPL_2. One record, of one or
+    // three bits, valued at the bits read.
+    const std::size_t start = r_.position();
+    int mode = immersive_mode::kAspxAjcc;
+    if (r_.peek_raw(1) != 0) {
+        r_.consume(1);
+        r_.emit(start, 1, 1, "immersive_codec_mode_code");
+    } else {
+        mode = static_cast<int>(r_.peek_raw(3));
+        r_.consume(3);
+        r_.emit(start, 3, static_cast<std::uint64_t>(mode), "immersive_codec_mode_code");
+    }
+    if (auto ok = check(r_); !ok) {
+        return ok;
+    }
+    std::optional<AcplConfigKind> acpl;
+    if (mode == immersive_mode::kAspxAcpl1) {
+        acpl = AcplConfigKind::kPartial;
+    } else if (mode == immersive_mode::kAspxAcpl2) {
+        acpl = AcplConfigKind::kFull;
+    }
+    if (auto ok = begin(ElementKind::kImmersive, mode, mode != immersive_mode::kScpl, acpl, false); !ok) {
+        return ok;
+    }
+    if (b_lfe) {
+        if (auto ok = mono_data(true); !ok) {
+            return ok;
+        }
+    }
+    if (mode == immersive_mode::kAspxAjcc) {
+        if (auto ok = companding_control(5); !ok) {
+            return ok;
+        }
+    }
+    const int grouping = static_cast<int>(r_.read(2, "core_5ch_grouping"));
+    out_.core_5ch_grouping = grouping;
+    const size_t track_mark = out_.tracks.size();
+    ParseResult ok;
+    switch (grouping) {
+        case 0:
+            out_.two_ch_mode = r_.read_flag("2ch_mode");
+            ok = two_channel_data();
+            if (ok) {
+                ok = two_channel_data();
+            }
+            if (ok) {
+                ok = mono_data(false);
+            }
+            break;
+        case 1:
+            ok = three_channel_data();
+            if (ok) {
+                ok = two_channel_data();
+            }
+            break;
+        case 2:
+            ok = four_channel_data();
+            if (ok) {
+                ok = mono_data(false);
+            }
+            break;
+        default:
+            ok = five_channel_data();
+            break;
+    }
+    if (!ok) {
+        return ok;
+    }
+    // Part 2 Table 19: the tracks D and E among the core's, counted from the
+    // first after the LFE's; F and G follow them in the 7CH_STATIC
+    // two_channel_data(), the fifth and sixth.
+    int pos_d = 2;
+    int pos_e = 3;
+    if (grouping == 0 && out_.two_ch_mode.value_or(false)) {
+        pos_d = 1;
+    } else if (grouping == 1 || grouping == 3) {
+        pos_d = 3;
+        pos_e = 4;
+    }
+    constexpr int kPosF = 5;
+    constexpr int kPosG = 6;
+    const auto chparams_after = [&](std::initializer_list<int> positions) -> ParseResult {
+        for (const int position : positions) {
+            int info = 0;
+            if (auto next = track_info(track_mark, position, info); !next) {
+                return next;
+            }
+            if (auto next = chparam_infos(1, info); !next) {
+                return next;
+            }
+        }
+        return {};
+    };
+    const bool seven_static = mode != immersive_mode::kAspxAjcc;
+    if (seven_static) {
+        const bool use_sap = r_.read_flag("b_use_sap_add_ch");
+        out_.b_use_sap_add_ch = use_sap;
+        if (use_sap) {
+            if (auto next = chparams_after({pos_d, pos_e}); !next) {
+                return next;
+            }
+        }
+        if (auto next = two_channel_data(); !next) {
+            return next;
+        }
+    }
+    if (mode == immersive_mode::kAspxScpl) {
+        // Table 8: (Ls, Lb), (Rs, Rb), C, (L, R), (Tfl, Tbl) and (Tfr, Tbr).
+        for (const bool pair : {true, true, false, true, true, true}) {
+            if (auto next = pair ? aspx_2ch() : aspx_1ch(); !next) {
+                return next;
+            }
+        }
+    } else if (mode != immersive_mode::kScpl) {
+        const int pairs = seven_static ? 3 : 2;
+        for (int k = 0; k < pairs; ++k) {
+            if (auto next = aspx_2ch(); !next) {
+                return next;
+            }
+        }
+        if (auto next = aspx_1ch(); !next) {
+            return next;
+        }
+    }
+    if (mode == immersive_mode::kAspxAjcc) {
+        AjccData data;
+        if (auto next = parse_ajcc_data(r_, data); !next) {
+            return next;
+        }
+        out_.ajcc = data;
+    }
+    if (mode == immersive_mode::kScpl || mode == immersive_mode::kAspxScpl || mode == immersive_mode::kAspxAcpl1) {
+        for (int k = 0; k < 2; ++k) {
+            if (auto next = two_channel_data(); !next) {
+                return next;
+            }
+        }
+        if (auto next = chparams_after({pos_d, pos_e, kPosF, kPosG}); !next) {
+            return next;
+        }
+    }
+    if (mode == immersive_mode::kAspxAcpl1 || mode == immersive_mode::kAspxAcpl2) {
+        for (int k = 0; k < 4; ++k) {
+            if (auto next = acpl_1ch(); !next) {
+                return next;
+            }
+        }
+    }
+    return check(r_);
+}
+
 }  // namespace
 
 ParseResult parse_audio_data_chan(BitReader& r, const SubstreamContext& ctx, ChannelElementState& state,
@@ -862,10 +1030,13 @@ ParseResult parse_audio_data_chan(BitReader& r, const SubstreamContext& ctx, Cha
         case ch_mode::k7_1_322:
             return parser.element_7_x();
         case ch_mode::k7_0_4:
+            return parser.immersive_element(false);
         case ch_mode::k7_1_4:
+            return parser.immersive_element(true);
         case ch_mode::k9_0_4:
         case ch_mode::k9_1_4:
-            return fail(DecodeError::kUnsupported, "immersive_channel_element() is not decoded yet");
+            return fail(DecodeError::kUnsupported,
+                        "9.X.4, the immersive_channel_element() with b_5fronts, is not decoded");
         case ch_mode::k22_2:
             return fail(DecodeError::kUnsupported, "22_2_channel_element() is not decoded");
         default:
