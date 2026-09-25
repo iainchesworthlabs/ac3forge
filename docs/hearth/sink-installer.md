@@ -88,8 +88,12 @@ back.
       section.appendChild(none);
     }
     const list = document.createElement("ul");
+    list.style.listStyle = "none";
+    list.style.marginLeft = "0";
+    list.style.paddingLeft = "0";
     for (const image of mine) {
       const item = document.createElement("li");
+      item.style.marginLeft = "0";
       const button = document.createElement("esp-web-install-button");
       button.setAttribute("manifest", base + image.manifest);
       const activate = document.createElement("button");

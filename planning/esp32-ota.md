@@ -884,8 +884,14 @@ on ESP Web Tools. Its supported chips include the ESP32-S3, ESP32-C6 and ESP32-P
 - The rest of the documentation is brought into line: the Hearth overview, the S3 guide's
   "Build and flash", `docs/releasing.md` and the site's navigation.
 
-Checked on 2026-09-25: the site builds with `mkdocs build --strict`. With its assets filled from
-the C6's and the P4's real packages, the page served locally lists an install button for each.
+Checked on 2026-09-25: the site builds with `mkdocs build --strict`. The four images were built
+the way CI builds them and passed `check_firmware_package.py`. With the assets filled from them by
+`installer_site.py --dir`, the page served locally lists the S3, the C6 (4 MB and 16 MB) and the
+P4, each with its install button. Then with stand-in indexes:
+- **An older release without the S3:** the page names and links that release, and says the S3
+  has no image. Asked for a release file every release carries, the real GitHub API showed
+  v0.10.0-beta.1 as newer, and the page said so.
+- **No images:** every chip says it has none yet.
 The exit waits for a release that publishes sink firmware, and a blank board.
 
 ## What stays USB-only, and how a board is recovered
