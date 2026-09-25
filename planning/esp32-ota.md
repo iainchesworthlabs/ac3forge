@@ -342,8 +342,9 @@ On the new image:
   still rolls back. It has no task of its own. A task kept for the whole trial took 6 KiB of
   internal RAM as the board started, and on the S3 board that left the Sendspin player without
   the 32 KiB block it starts with, so no update could pass its trial there (found by O2).
-  - Accepting writes otadata and NVS from `esp_timer`'s own task. On the S3 board that left
-    2,192 of the task's 3,584 bytes of stack unused. A task made for it could fail on a board
+  - Accepting writes otadata and NVS from `esp_timer`'s own task. That left 2,192 of the task's
+    3,584 bytes of stack unused on the S3 board, 2,680 on the C6 and 2,660 on the P4. A task
+    made for it could fail on a board
     whose internal RAM a stream had taken by then, such as one a server resumed as the board came
     back, and the guard would then roll back a good image.
   - Giving up makes a short-lived task, since it tells servers the board is going. If it cannot
@@ -1282,7 +1283,7 @@ S3s' and the C6's consoles were recorded throughout. The images were the stack a
   server close the least recently used connection at once with nothing queued, 300 lost none, and
   the Sendspin player still started and took Music Assistant's connection. The example now sets
   it (`sdkconfig.defaults`). The cost is that `httpd_queue_work()` waits for room in a full queue
-  rather than failing. `ota.py` also sends an upload that breaks off once more.
+  rather than failing. `ota.py` and ac3hearth also send an upload that breaks off once more.
 
 **A review of the code.** It ran the same night, and found the cases these fixes answer:
 - a reset during an upload leaving no trace (the P4's, most likely `esp_hosted` restarting it),
@@ -1298,16 +1299,17 @@ S3s' and the C6's consoles were recorded throughout. The images were the stack a
 - the trial's acceptance needing a new 4 KiB task, which a heavy stream started during the S3's
   hold could leave no room for, now done from `esp_timer`'s task;
 - a rollback asked for at the very end of a trial's hold racing its acceptance, now refused
-  while the acceptance is written.
+  while the acceptance is written;
+- ac3hearth's Firmware tab losing its sink when flash mode withdrew the board's mDNS record and
+  ended its Sendspin connection, so the progress and the outcome went unseen. The sink is now
+  kept while the update runs and while the tab shows how it ended.
 
 Tested on the S3 board: a reset over USB 5.1 s into an upload produced the `interrupted` record,
 `ota.py` said so, sent the image again, and it was accepted.
 
-**Still open**, from the same review:
-- ac3hearth's Firmware panel can lose a sink whose mDNS record flash mode withdrew;
-- the NVS record is three writes, which a reset can tear. That needs power lost during those
-  writes, and it can only leave a report that mixes two updates: NVS decides nothing about which
-  image boots.
+**Still open**, from the same review: the NVS record is three writes, which a reset can tear.
+That needs power lost during those writes, and it can only leave a report that mixes two
+updates: NVS decides nothing about which image boots.
 
 **Tested and not reproduced:** polls during an S3's boot splitting the internal RAM its player's
 32 KiB block needs. Three updates to the S3 board were each pushed while 4 or 8 clients polled

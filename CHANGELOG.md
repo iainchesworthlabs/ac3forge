@@ -315,6 +315,10 @@ The sections below contain the complete change list and fixes.
       ESP-IDF v6.1 could close the connection it had just taken for an upload, before reading
       any of it. The example now has the server close its least recently used connection at
       once (`CONFIG_HTTPD_QUEUE_WORK_BLOCKING`).
+    - **ac3hearth follows an update to its end.** The Firmware tab stays up while the board is
+      in flash mode, off mDNS, and shows how the update ended. As `ota.py` does, it sends an
+      upload that breaks off once more, and tells a board a failed update left in flash mode to
+      leave it.
     - **Tested.** An overnight soak of the four boards, with faults injected, found no board
       left stuck.
 
