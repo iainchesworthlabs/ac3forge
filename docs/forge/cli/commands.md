@@ -496,6 +496,10 @@ ac3cli decode stream.ac4 out.wav output-level=-14 drcmode=portable-headphones
 ac3cli decode stream.ac4 out.wav output-level=-24 drcmode=off      # the level, no compression
 ```
 
+`headphones` says the listener is on headphones: at an output level in the portable range,
+`drcmode=default` takes portable headphones rather than portable speakers, and of a stream's
+presentations one rendered for headphones before it was encoded comes first.
+
 `dialogue-enhancement=<dB>` raises the dialogue where the stream sends dialogue enhancement
 parameters (clause 5.7.8), from 0 (the default, which leaves the output alone) to 12 dB, and never
 beyond the cap the stream sets, 3, 6, 9 or 12 dB.
@@ -504,8 +508,14 @@ beyond the cap the stream sets, 3, 6, 9 or 12 dB.
 `downmix=loro`, `ltrt` and `mono` as named, and `downmix=auto`, or `channels=2` alone, the method
 the stream's `preferred_dmx_method` names (Lo/Ro where it names none). Lt/Rt takes its Pro Logic
 II form where the stream prefers that; there is no 90-degree phase shift, which in AC-4 describes
-processing before encoding. The LFE goes into the fold at the stream's `lfe_mixgain`, and a 7.X
-stream folds to 5.X on the way.
+processing before encoding. The LFE goes into the fold at the stream's `lfe_mixgain`, which
+`mix-lfe=off` leaves out, and a 7.X stream folds to 5.X on the way. `channels=5.1` stops there: a
+7.X stream's extra pair folded into its 5.X channels by Table 219, and any other stream as coded.
+
+```bash
+ac3cli decode stream.ac4 out.wav channels=2 mix-lfe=off   # Lo/Ro or Lt/Rt without the LFE
+ac3cli decode stream_71.ac4 out.wav channels=5.1
+```
 
 `monitor` takes all of the same tokens, and additionally folds on its own initiative when the
 output device renders fewer channels than the programme: playing 5.1 on a stereo endpoint
@@ -537,6 +547,9 @@ ac3cli decode broadcast.ac4 out.wav presentation-id=3
 Table 91's associated audio), and Table 92's services: `audio-description`,
 `audio-description-subtitles`, `spoken-subtitles` and `emergency-information`.
 
+`md-compat=<0..7>` sets the compatibility level the decoder claims, 3 by default: a presentation
+whose `md_compat` is above it is not chosen (ETSI TS 103 190-2 Table 55).
+
 A presentation of several substreams is mixed as ETSI TS 103 190-1 clause 6.2.16 gives, with the
 stream's own gains and pans. `dialogue-gain=<dB>` sets the dialogue against the music and effects,
 up to the maximum the stream allows (0 dB where it allows none, and at most 12), and
@@ -546,6 +559,17 @@ was mixed in before encoding:
 ```bash
 ac3cli decode broadcast.ac4 out.wav language=en dialogue-gain=6
 ac3cli decode broadcast.ac4 out.wav associated=audio-description associated-gain=-6
+```
+
+Each format's decode reads options the other's does not. Given an AC-4 stream, `decode` names
+the AC-3 and E-AC-3 ones it was given (`drc=`, `heavy`, `ltrt-phase=`, `fast-imdct`, `mode=`,
+`programme=`, `bed-only`, `joc-domain=`) in a warning and ignores them, as it does the object
+options, and given an AC-3 or E-AC-3 stream it does the same with AC-4's. The options that promise
+what the other format cannot give stop the run: `bap-census=` and `verify-objects` for AC-4, and
+`channels=5.1` and `syntax-trace=` for AC-3 and E-AC-3.
+
+```text
+warning: stream.ac4 is AC-4: heavy is AC-3's and E-AC-3's, and ignored
 ```
 
 ### Damaged frames: `conceal=`
@@ -731,14 +755,15 @@ coded channel, LFE last) and `coupling_exponent_strategy`.
 
 ##### AC-4
 
-`probe` auto-detects AC-4 (`ac4::`) by its first byte — `0xAC` rather than AC-3/
+`probe` auto-detects AC-4 (`ac4::ac4`) by its first byte — `0xAC` rather than AC-3/
 E-AC-3's `0x0B` — so `ac3cli probe stream.ac4` needs no extra flag, and works on `-` (stdin) the
 same way. It reads the sync frame, table of contents, presentation and substream-group framing —
-channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike; audio content is
-reported by byte range, never decoded, and there is no `detail=frames`/`detail=blocks`
-equivalent — there is no per-block audio-layer walk to show, by scope (see
-[Verification](../../verification.md#ac-4) for exactly what that does and does not cover, including
-the narrower evidence behind the A-JOC/object/OAMD path).
+channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike — and has every
+frame read by the decoder (`ac4::decoder`) without decoding its audio, for what only the
+substreams carry: each presentation as the decoder sees it, and the metadata of the one it would
+decode. There is no `detail=frames`/`detail=blocks` equivalent (see
+[Verification](../../verification.md#ac-4) for what the inspector's reading does and does not
+cover, including the narrower evidence behind the A-JOC/object/OAMD path).
 
 ```bash
 ac3cli probe stream.ac4
@@ -747,13 +772,29 @@ ac3cli probe stream.ac4
 ```text
 file            stream.ac4
 codec           AC-4
-access units    73 (73 sync frame(s)), 25939 bytes
-CRC             73 of 73 valid
+access units    120 (120 sync frame(s)), 62160 bytes
+CRC             120 of 120 valid
 bs version      2
 sample rate     48000 Hz
+frame rate      23.438 fps, 2048 samples a frame at 48000.00 Hz
+bit rate        96.0 kbps
+I-frames        7, every 1 to 24 frames
+splices         0
 presentations   1
-                Stereo
+                5.1
+presentation 0  id 0, md_compat 1, L R C LFE Ls Rs; main; selected
+dialnorm        -19 dBFS
+loudness        -18.6 LKFS integrated
+true peak       -5.7 dBTP
+DRC             profile 2, modes 0 default profile, 1 default profile, 2 default profile, 3 default profile
+dialogue enh.   method 0, C up to 9 dB
+downmix         Lo/Ro centre -3 dB, surround -3 dB; Lt/Rt centre -3 dB, surround -3 dB
 ```
+
+`frame rate` is Part 1 Tables 83 and 84's, with the frame length and the rate a frame is coded
+at; `I-frames` counts the frames whose substreams need nothing from an earlier one, and the
+spacing between them; `splices` counts the frames whose `sequence_counter` does not continue the
+stream, where a decoder forgets what it held.
 
 `json=1` writes `stream.codec == "ac4"` and a dedicated `stream.ac4` object — deliberately not
 the AC-3/E-AC-3 `stream` shape above with its acmod/bsmod/numblkscod/etc. fields nulled out one
@@ -766,7 +807,9 @@ Verification link above). Each `presentations_v0[]` entry carries `presentation_
 `substreams[]`, whose entries are a `chan` substream's members (below) with its `role` beside
 them. Each `substream_groups[]` entry carries `b_substreams_present`,
 `b_channel_coded`, `oamd` (null unless the group is object-coded and carries an OAMD substream:
-`b_oamd_ndot`, `substream_index`), and `substreams[]`. Each substream entry is a tagged union —
+`b_oamd_ndot`, `substream_index`), and `substreams[]`. Each `presentations_v0[]` entry also carries
+`decoded`, the decoder's reading of it, with the members of a `presentations_v1[]` entry (below).
+Each substream entry is a tagged union —
 `kind` (`"chan"`, `"ajoc"` or `"obj"`) says which one of `chan`/`ajoc`/`obj` is non-null, the
 other two `null`:
 - `chan`: `channel_mode`, `channel_mode_name`, `ch_mode`, `bitrate_kbps`, `substream_index`,
@@ -779,6 +822,26 @@ other two `null`:
 - `obj`: `objects[]`, `b_dynamic_objects`, `sf_multiplier`, `bitrate_kbps`, `substream_index`.
 - Every object list entry (`static_objects`/`upmix_objects`/`objects`) is `{kind: "bed"|"dyn"|
   "isf", lfe, ajoc_coded}`.
+
+The decoder's reading adds, after those:
+
+- `frame_rate`: `fps`, `frame_length` and `internal_sample_rate_hz`; `bitrate_kbps`, over the
+  whole stream; `iframes` and `iframe_interval_frames` (`min` and `max`, null for fewer than two
+  I-frames); `splices`.
+- `presentations_v1[]`, one per presentation of the last frame's table of contents: `index`,
+  `presentation_id`, `presentation_version`, `presentation_config`, `md_compat`, `enabled`,
+  `alternative`, `pre_virtualized`, `name`, `language`, `channels` (the speakers it decodes to,
+  `L`, `R`, `C`, `LFE`, `Ls`, `Rs` and so on), `substream_groups`, `decodable`, `selectable`, and
+  `members[]`: `substream`, `role` (`main`, `music_and_effects`, `dialogue`,
+  `dialogue_enhancement` or `associated`), `group`, `content_classifier`, `language`, `channels`.
+- `selected_presentation`: the index of the presentation the decoder would decode by default, null
+  where it would decode none.
+- `metadata`, that presentation's as the stream sent it up to its last frame: `loudness` (`dialnorm_dbfs` and
+  Part 1 clause 4.3.12.3's further values, each null where the stream sends none), `drc`
+  (`eac3_profile`, `modes[]` with each decoder mode's output level range and how it compresses,
+  `applied_mode`), `dialogue_enhancement` (`method`, `left`, `right`, `centre`, `max_gain_db`) and
+  `downmix` (the Lo/Ro and Lt/Rt centre and surround gains, `lfe_db`, `preferred`, the loudness
+  corrections), each null where the stream sends none.
 
 An A-JOC substream's `oamd_common_data()` (§6.2.8.1), present when its
 `b_oamd_common_data_present` flag is set, is read as part of the table of contents: the fields
