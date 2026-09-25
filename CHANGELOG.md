@@ -1216,6 +1216,28 @@ The sections below contain the complete change list and fixes.
   and threw on: the frame that holds nothing more now sends A-CPL's values, DRC's gains and a
   stem's dialogue parameters as a stream starts them, and `create()` sizes it with a VARFIX interval,
   which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
+- **AC-4 decodes streams of several presentations and mixes their substreams** (phase D7 of
+  `planning/ac4.md`). `ac4::DecoderConfig::presentation` chooses as Part 2 4.8.2 has it, for version 0
+  and version 1 presentations: by `presentation_id`, by position, or by language, associated audio
+  (Part 1 Table 91's classifiers and Table 92's services) and `b_pre_virtualized`, among those the
+  decoder decodes, the stream enables and the decoder's level (`md_compat`) allows;
+  `ac4::select_presentation()` gives the choice for a table of contents, and each `DecodedFrame` names
+  the presentation it holds. Music and effects with dialogue, main with associated audio, both, and
+  `presentation_config` 5's by content classifier mix in the QMF domain as Part 1 6.2.16 and Part 2
+  4.8.3.17 to 4.8.5 give: substream group gains, the main audio's scaling, the dialogue's g_dialog up
+  to the stream's g_dialog_max, g_assoc, pans at Table 216's angles and linearly between, and version
+  0's levelling of associated audio by its own dialnorm; summed, where Part 2 4.8.4's equation divides
+  by the number of substreams. The hybrid dialogue enhancement methods take their waveform from the
+  presentation's dialogue enhancement substream. The encoder's frame writer gains general tables of
+  contents and the mixing fields, with which a test multiplexer builds such streams from DEE's
+  substreams and the encoder's: every mix, measured with one tone per substream, equals its formula to
+  0.01 dB, and a table of 34 constructed tables of contents selects as 4.8.2 requires, in the decoder
+  and in the Python reference alike (`tools/references/ac4_presentations.py`,
+  `tools/checks/mix_ac4_decode.py`, in CI). `ac3cli decode` takes `presentation=`, `presentation-id=`,
+  `language=`, `associated=`, `dialogue-gain=` and `associated-gain=`, and `fuzz_ac4_decode` chooses
+  the presentation and the gains from its input. librempeg decodes a presentation's first substream
+  alone, and MediaInfo reads a second parameter set after `de_ms_proc_flag` that the text does not
+  send; `src/ac4dec/ERRATA.md` records the readings.
 
 **Browser (WASM)**
 
