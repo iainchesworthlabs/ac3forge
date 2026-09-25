@@ -61,6 +61,10 @@ struct ElementCase {
     // The channel pair in ASPX_ACPL_2 with alpha 0 and this beta_q: L and R
     // each the downmix and half its decorrelated copy, of opposite signs.
     int acpl_beta_q = 0;
+    // The channel pair's ASPX_ACPL_1 with stereo processing: max_sfb_side,
+    // the side track's bands, where it is fewer than the mid's; -1 sends the
+    // mid's.
+    int side_bands = -1;
 };
 
 struct BuiltStream {

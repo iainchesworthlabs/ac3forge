@@ -291,25 +291,32 @@ class ElementWriter {
     }
 
     // The channel pair's ASPX_ACPL_1 data (Table 21): with stereo processing
-    // one sf_info() with b_dual_maxsfb and its chparam_info(); without, the
-    // mid track's sf_info() and the side track's, b_side_limited. One long
-    // block, n_msfb_bits 6 and n_side_bits 5 (Table 106).
+    // one sf_info() with b_dual_maxsfb and its chparam_info(), the side track
+    // in c_.side_bands bands where that is set; without, the mid track's
+    // sf_info() and the side track's, b_side_limited. One long block,
+    // n_msfb_bits 6 and n_side_bits 5 (Table 106).
     void acpl_1_pair(Speaker a, Speaker b) {
         const auto max_sfb = static_cast<std::uint64_t>(max_sfb_);
         w_.write(1, c_.stereo_proc ? 1U : 0U, "b_enable_mdct_stereo_proc");
-        if (c_.stereo_proc) {
-            w_.write(1, 1, "b_long_frame");
-            w_.write(6, max_sfb, "max_sfb");
-            w_.write(6, max_sfb, "max_sfb_side");
-            chparam(c_.sap_mode);
-        } else {
+        if (!c_.stereo_proc) {
             w_.write(1, 0, "spec_frontend_m");
             sf_info();
             w_.write(1, 0, "spec_frontend_s");
             w_.write(1, 1, "b_long_frame");
             w_.write(5, max_sfb, "max_sfb_side");
+            pair_tracks(a, b);
+            return;
         }
-        pair_tracks(a, b);
+        const int side = c_.side_bands >= 0 ? c_.side_bands : max_sfb_;
+        w_.write(1, 1, "b_long_frame");
+        w_.write(6, max_sfb, "max_sfb");
+        w_.write(6, static_cast<std::uint64_t>(side), "max_sfb_side");
+        chparam(c_.sap_mode);
+        const std::array<Abcd, 1> p = {parameters_of(c_.sap_mode)};
+        const std::vector<Lines> tracks =
+            tracks_for(printed_matrix("a0 b0 | c0 d0", p), {&lines_.at(a), &lines_.at(b)});
+        sf_data(tracks[0]);
+        ac4::detail::write_sf_data(w_, code(tracks[1], layout_, side), layout_);
     }
 
     // ASPX_ACPL_1's residuals (Tables 25 and 33): max_sfb_master at the long

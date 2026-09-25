@@ -1010,7 +1010,9 @@ The sections below contain the complete change list and fixes.
   writer, which now writes A-CPL's syntax (`src/ac4enc/src/acpl/acpl_syntax.hpp`); eight of them are
   committed with the Python parser's digests. `src/ac4dec/ERRATA.md` records the readings taken: which
   signal's energy drives the transient ducker, its time step and bands, when the parameters apply, and
-  how the 7.X element's residuals and 3/4/0's scalings go.
+  how the 7.X element's residuals and 3/4/0's scalings go. A channel pair whose side sends fewer bands
+  than its mid (`b_dual_maxsfb`) is laid out band for band before its stereo processing; the decoder
+  had read the side's lines at the mid's offsets, past the end of the side's.
 - **A-SPX's pre-flattening flattens the patch.** Part 1 prints the patch multiplied by the inverse of
   the gain that brings the low band's fitted slope to its mean, which doubles the slope and has the
   limiter cut the top of each patch: the top group of DEE's 5.1 film centre came out 4.6 dB under the

@@ -331,6 +331,8 @@ void SubstreamPcm::apply(const Control& control) {
 // 7.X element's Table 183 steps, which pair channels of different elements.
 ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelElement& element) {
     parameters_.resize(kMaxChparams);
+    dual_layouts_.clear();
+    dual_layout_of_.assign(element.tracks.size(), -1);
     for (const DataElementRoute& part : route_.data) {
         if (!part.processed) {
             continue;
@@ -347,9 +349,19 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
             parameters_[i] = stereo_parameters(ctx, info, element.chparams[at(part.first_chparam) + i]);
         }
         if (part.count == 2) {
-            // Clause 5.3.3.2.
-            apply_stereo(info, first.data, parameters_[0], scaled_[at(part.first_track)],
-                         scaled_[at(part.first_track + 1)]);
+            // Clause 5.3.3.2, on tracks laid out alike: with b_dual_maxsfb
+            // their bands differ.
+            const std::size_t t0 = at(part.first_track);
+            const SfData& second = element.tracks[t0 + 1].data;
+            if (first.data.max_sfb != second.max_sfb) {
+                align_tracks(ctx, info.psy, first.data, second, scaled_[t0], scaled_[t0 + 1],
+                             dual_layouts_.emplace_back());
+                dual_layout_of_[t0] = static_cast<int>(dual_layouts_.size()) - 1;
+                dual_layout_of_[t0 + 1] = dual_layout_of_[t0];
+            }
+            const int dual = dual_layout_of_[t0];
+            const SfData& layout = dual >= 0 ? dual_layouts_[at(dual)] : first.data;
+            apply_stereo(info, layout, parameters_[0], scaled_[t0], scaled_[t0 + 1]);
             continue;
         }
         std::array<std::vector<double>*, 5> tracks{};
@@ -372,7 +384,9 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
         }
         const Track& track = element.tracks[at(track_of_[c])];
         const SfInfo& info = element.infos[at(track.info)];
-        ungroup(ctx, info.psy, track.data, lengths_[c], scaled_[at(track_of_[c])], spectra_[c]);
+        const int dual = dual_layout_of_[at(track_of_[c])];
+        ungroup(ctx, info.psy, dual >= 0 ? dual_layouts_[at(dual)] : track.data, lengths_[c],
+                scaled_[at(track_of_[c])], spectra_[c]);
     }
 
     for (const PairStep& step : route_.steps) {

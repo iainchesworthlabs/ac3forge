@@ -2,6 +2,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <utility>
+
+#include "tables/sfb_tables.hpp"
 
 namespace ac4::detail {
 namespace {
@@ -65,6 +69,9 @@ StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& in
                 }
             }
         }
+        for (int sfb = std::max(max_sfb_g, 0); sfb < kMaxSfb; ++sfb) {
+            out.abcd[gi][static_cast<std::size_t>(sfb)] = kIdentity;
+        }
         max_sfb_prev = max_sfb_g;
     }
     return out;
@@ -87,6 +94,48 @@ void apply_stereo(const SfInfo& info, const SfData& layout, const StereoParamete
             }
         }
     }
+}
+
+void align_tracks(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& first,
+                  const SfData& second, std::vector<double>& track0, std::vector<double>& track1,
+                  SfData& common) {
+    std::vector<double> out0;
+    std::vector<double> out1;
+    std::size_t k0 = 0;
+    std::size_t k1 = 0;
+    std::size_t line = 0;
+    // A band's lines from a track that sends it, or zeros.
+    const auto take = [](const std::vector<double>& from, std::size_t& k, bool sent,
+                         std::size_t lines, std::vector<double>& to) {
+        for (std::size_t i = 0; i < lines; ++i) {
+            to.push_back(sent && k < from.size() ? from[k++] : 0.0);
+        }
+    };
+    common.max_sfb = {};
+    for (int g = 0; g < psy.num_window_groups; ++g) {
+        const auto gi = static_cast<std::size_t>(g);
+        const std::span<const std::uint16_t> offsets =
+            tables::sfb_offsets_48(transform_length_samples(ctx, get_transf_length(ctx, psy, g)));
+        const std::size_t windows = psy.num_win_in_group[gi];
+        // Each track's max_sfb was checked against its transform's bands when
+        // it was read.
+        const int bands = std::min(std::max(first.max_sfb[gi], second.max_sfb[gi]),
+                                   static_cast<int>(offsets.size()) - 1);
+        common.max_sfb[gi] = std::max(bands, 0);
+        for (int sfb = 0; sfb < bands; ++sfb) {
+            const auto si = static_cast<std::size_t>(sfb);
+            common.sect_sfb_offset[gi][si] = static_cast<std::uint16_t>(line);
+            const std::size_t lines =
+                static_cast<std::size_t>(offsets[si + 1] - offsets[si]) * windows;
+            take(track0, k0, sfb < first.max_sfb[gi], lines, out0);
+            take(track1, k1, sfb < second.max_sfb[gi], lines, out1);
+            line += lines;
+        }
+        common.sect_sfb_offset[gi][static_cast<std::size_t>(common.max_sfb[gi])] =
+            static_cast<std::uint16_t>(line);
+    }
+    track0 = std::move(out0);
+    track1 = std::move(out1);
 }
 
 }  // namespace ac4::detail

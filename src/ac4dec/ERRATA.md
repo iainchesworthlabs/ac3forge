@@ -230,10 +230,16 @@ Later phases add the readings their processing needs.
 
 ### get_max_sfb() with b_dual_maxsfb
 
-- **Where:** Part 1 Pseudocode 5, p. 91, returns `max_sfb_side` only "when decoding the side channel".
+- **Where:** Part 1 Pseudocode 5, p. 91, returns `max_sfb_side` only "when decoding the side channel";
+  4.3.6.2.3, p. 89, makes it the side's count of "transmitted scale factor bands", and clause 5.3.3.2,
+  p. 175, gives the stereo matrix per band without saying what it takes where the two tracks send
+  different bands.
 - **Reading:** in stereo ASPX_ACPL_1 with `b_enable_mdct_stereo_proc`, the `chparam_info()` uses
-  `max_sfb`, and the second `sf_data()` uses `max_sfb_side`.
-- **Evidence:** Text.
+  `max_sfb`, and the second `sf_data()` uses `max_sfb_side`. The stereo processing runs over the bands
+  the `chparam_info()` covers, the first track's, with the side's lines 0 in a band it does not send; a
+  band the side sends above the first track's is left as it is. Each track holds its lines group after
+  group up to its own count, so the decoder lays the two out alike before the matrix.
+- **Evidence:** Text; a constructed stream whose side sends 16 bands to the mid's 22.
 
 ### ext_code is at most 21 bits
 

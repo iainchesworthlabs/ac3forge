@@ -133,6 +133,10 @@ class SubstreamPcm {
     ElementRoute route_;
     std::vector<StereoParameters> parameters_;  // one channel data element's, 32 KiB each
     std::vector<std::vector<double>> scaled_;   // per track, in bitstream order
+    // The layouts align_tracks() gives a pair with b_dual_maxsfb, and per
+    // track the one it takes, or -1 for its own.
+    std::vector<SfData> dual_layouts_;
+    std::vector<int> dual_layout_of_;
     std::vector<std::vector<double>> spectra_;  // per channel, in window order
     std::vector<int> track_of_;                 // per channel, the track its lines are in
     std::vector<double> pcm_;

@@ -14,6 +14,7 @@
 #include <fstream>
 #include <iterator>
 #include <numbers>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -24,7 +25,11 @@
 #include "ac4dec/decoder.hpp"
 #include "dsp/qmf.hpp"
 #include "pcm/snf_random.hpp"
+#include "pcm/stereo.hpp"
+#include "syntax/asf.hpp"
+#include "syntax/context.hpp"
 #include "tables/noise_tables.hpp"
+#include "tables/sfb_tables.hpp"
 
 namespace {
 
@@ -159,6 +164,75 @@ TEST_CASE("GetRandomNoiseValue adds two table entries and then steps", "[ac4dec]
     CHECK(state.current_idx == 1);
     CHECK(ac4::detail::get_random_noise_value(state) ==
           ac4::detail::tables::kRandomNoiseTable[1] + ac4::detail::tables::kRandomNoiseTable[3]);
+}
+
+TEST_CASE("a pair with b_dual_maxsfb is laid out alike before its stereo processing",
+          "[ac4dec][pcm]") {
+    // Two windows of 1 024 lines in groups of their own; the first track
+    // sends 10 and 8 bands, the second 4 and 6. Each line holds its group,
+    // band and place: 1000 (track) + 100 g + the line's index in its band's
+    // run.
+    ac4::detail::SubstreamContext ctx;
+    ac4::detail::AsfPsyInfo psy;
+    psy.b_long_frame = false;
+    psy.transf_length = {3, 3};
+    psy.num_windows = 2;
+    psy.num_window_groups = 2;
+    psy.window_to_group = {0, 1};
+    psy.num_win_in_group = {1, 1};
+    const std::span<const std::uint16_t> offsets = ac4::detail::tables::sfb_offsets_48(1024);
+    REQUIRE(offsets.size() > 11);
+    ac4::detail::SfData first;
+    ac4::detail::SfData second;
+    first.max_sfb = {10, 8};
+    second.max_sfb = {4, 6};
+    const auto lines_of = [&](const ac4::detail::SfData& data, double track) {
+        std::vector<double> lines;
+        for (int g = 0; g < 2; ++g) {
+            for (int sfb = 0; sfb < data.max_sfb[static_cast<std::size_t>(g)]; ++sfb) {
+                const auto si = static_cast<std::size_t>(sfb);
+                for (int k = offsets[si]; k < offsets[si + 1]; ++k) {
+                    lines.push_back(1000.0 * track + 100.0 * g + (k - offsets[si]) + 0.01 * sfb);
+                }
+            }
+        }
+        return lines;
+    };
+    std::vector<double> track0 = lines_of(first, 1.0);
+    std::vector<double> track1 = lines_of(second, 2.0);
+    ac4::detail::SfData common;
+    ac4::detail::align_tracks(ctx, psy, first, second, track0, track1, common);
+    CHECK(common.max_sfb[0] == 10);
+    CHECK(common.max_sfb[1] == 8);
+    REQUIRE(track0.size() == static_cast<std::size_t>(offsets[10] + offsets[8]));
+    REQUIRE(track1.size() == track0.size());
+    for (int g = 0; g < 2; ++g) {
+        const auto gi = static_cast<std::size_t>(g);
+        for (int sfb = 0; sfb < common.max_sfb[gi]; ++sfb) {
+            const auto si = static_cast<std::size_t>(sfb);
+            const std::size_t at = common.sect_sfb_offset[gi][si];
+            INFO("group " << g << ", band " << sfb);
+            CHECK(track0[at] == 1000.0 + 100.0 * g + 0.01 * sfb);
+            const bool sent = sfb < second.max_sfb[gi];
+            CHECK(track1[at] == (sent ? 2000.0 + 100.0 * g + 0.01 * sfb : 0.0));
+        }
+    }
+
+    // M/S over the first track's bands: in the bands the second leaves out,
+    // both outputs are the first track's lines.
+    ac4::detail::SfInfo info;
+    info.psy = psy;
+    ac4::detail::StereoParameters parameters;
+    for (auto& group : parameters.abcd) {
+        group.fill({1.0, 1.0, 1.0, -1.0});
+    }
+    ac4::detail::apply_stereo(info, common, parameters, track0, track1);
+    const std::size_t sixth = common.sect_sfb_offset[0][6];
+    CHECK(track0[sixth] == 1000.0 + 0.01 * 6);
+    CHECK(track1[sixth] == 1000.0 + 0.01 * 6);
+    const std::size_t second_band = common.sect_sfb_offset[1][2];
+    CHECK(track0[second_band] == (1100.0 + 0.01 * 2) + (2100.0 + 0.01 * 2));
+    CHECK(track1[second_band] == (1100.0 + 0.01 * 2) - (2100.0 + 0.01 * 2));
 }
 
 TEST_CASE("a SIMPLE stereo stream decodes each tone to its own channel", "[ac4dec][pcm]") {

@@ -225,6 +225,10 @@ TEST_CASE("the channel pair's A-CPL modes put each tone on its channel", "[ac4de
             check_case({.ch_mode = 1, .sap_mode = sap, .stereo_proc = proc, .acpl = 2});
         }
     }
+    // b_dual_maxsfb with the side in fewer bands than the mid, 16 of 22 (to
+    // 984 Hz, above both tones): the two tracks' lines do not line up until
+    // the decoder lays them out alike.
+    check_case({.ch_mode = 1, .sap_mode = 0, .stereo_proc = true, .acpl = 2, .side_bands = 16});
     for (const bool second : {false, true}) {
         for (int id = 0; id < 4; ++id) {
             check_case({.ch_mode = 1, .acpl = 3, .acpl_second = second, .acpl_bands_id = id, .acpl_quant = id % 2});
