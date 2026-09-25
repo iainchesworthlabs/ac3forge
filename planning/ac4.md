@@ -1175,7 +1175,7 @@ makes each leg from committed material and groups them by the phases they serve:
   5.1; and immersive stereo's DRC profiles, music mode and loudness presets.
 - D7 and E6: substreams for the test multiplexer, a dialogue tone, an associated tone, and dialogue
   and associated speech in 2.0, on the I-frame grid of G0's 2.0 and 5.1 legs; immersive stereo with
-  a language tag on content of its own for each of seven tags.
+  seven language tags, on six sources.
 - D12, D13 and I6: 60 s programmes, 2.0 from 48 to 256 kbps, 5.1 from 96 to 448, 5.1.4 at 192,
   256, 512 and 768, and immersive stereo at five frame rates.
 - I1 and I5: E-AC-3 and AC-3 from `dee_ddp_encoder`, and E-AC-3 JOC from `dee_ddpjoc_encoder`'s
@@ -1198,9 +1198,9 @@ What DEE could not be made to write:
   `dee_ac4ajoc_encoder` at both levels, `dee_ac4ims_encoder`, `dee_ddpjoc_encoder` and
   `atmos_info` all stop at the next: "Content was not authored with Dolby tools"
   (`dlb::isAtmosMezzFile`), for G0's music master and for the committed reference objects at their
-  authored positions alike. A bare IAB file is
-  "ATMOS_STORAGE_RES_UNSUPPORTED_MASTER_TYPE". The check is on provenance and is not worked around;
-  no defect of the ADM writer lies behind it. D10 and E9 rest on the evidence their sections name;
+  authored positions alike; a bare IAB file gets "ATMOS_STORAGE_RES_UNSUPPORTED_MASTER_TYPE". The
+  check is on provenance and is not worked around, and DEE reports nothing about a master past it,
+  so no defect of the ADM writer is known. D10 and E9 rest on the evidence their sections name;
   the object-coded material DEE does write is E-AC-3 JOC from channel beds, a bed of 12 objects
   from 5.1.4 or 7.1.4 and of 16 from 9.1.6, with no dynamic objects.
 - **7.1 and above.** `dee_ac4_encoder` writes 7.1 input as 5.1, each surround the average of its
@@ -1216,11 +1216,12 @@ What DEE could not be made to write:
   `eng` as `en`.
 
 Worth knowing from the same runs: the immersive stereo encoder levels input it measures above
-about −16 LKFS, so its sources in G1 are 6 dB down where the plain encoder's would be leveled; a
-forced I-frame lands one frame after the index its list names, since DEE's frame 0 is a priming
-frame; under `measure_only` with a loudness preset, dialnorm is the preset's −24 whatever the
-measurement (−20.9 on the 2.0 music); and DEE's encode-time downmix of 5.1 to 2.0 is Lo/Ro at the
-default −3 dB levels with the LFE dropped.
+about −16 LKFS, so G1's sources for it are 6 dB below the plain encoder's; a forced I-frame lands
+one frame after the index its list names, since DEE's frame 0 is a priming frame; under
+`measure_only` with a loudness preset, the plain encoder writes the preset's target as dialnorm
+(−24, or −23 for R128) whatever the measurement (−20.9 on the 2.0 music), while the immersive
+stereo encoder writes its measurement and A/85's practice whatever the preset; and DEE's
+encode-time downmix of 5.1 to 2.0 is Lo/Ro at the default −3 dB levels with the LFE dropped.
 
 A phase after 2026-11-06 cannot get a DEE stream of any configuration outside the set, DEE's MP4
 muxer's `dac4` for the encoder's own streams if the muxer stops with the licence (the encoder's

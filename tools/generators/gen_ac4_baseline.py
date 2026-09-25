@@ -162,9 +162,9 @@ from them. Each G1 leg names its group and the phases it serves (G1_GROUPS):
   metadata-51         D6 E5        5.1: every mix level on one tone per channel, stepped tones
                                    under each DRC profile, the other loudness presets and
                                    targets, dialogue intelligence, forced I-frames
-  metadata-ims        D6 E5 D7     immersive stereo: each DRC profile, loudness presets, language
-                                   tags on distinct content, music mode at the video frame rates
-                                   (refused: DEE's message is the record), and a leveled leg
+  metadata-ims        D6 E5 D7     immersive stereo: each DRC profile, loudness presets, seven
+                                   language tags on six sources, music mode at the video frame
+                                   rates (refused: DEE's message is the record), and a leveled leg
   presentations       D7 E6        substreams for the test multiplexer: a dialogue tone, an
                                    associated tone, dialogue and associated speech in 2.0, 10 s
                                    on the same I-frame grid as G0's 2.0 and 5.1 legs
