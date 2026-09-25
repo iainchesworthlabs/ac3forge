@@ -50,6 +50,7 @@ add_executable(ac3tests
     ac4/test_ac4_presentation_configs.cpp
     ac4/test_ac4_toc_syntax.cpp
     ac4core/test_ac4core_acpl.cpp
+    ac4core/test_ac4core_ajoc.cpp
     ac4core/test_ac4core_aspx.cpp
     ac4core/test_ac4core_dsp.cpp
     ac4core/test_ac4core_resampler.cpp

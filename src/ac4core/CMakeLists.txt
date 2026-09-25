@@ -21,6 +21,7 @@ target_sources(ac4core
     PRIVATE
         src/acpl/acpl.cpp
         src/ajcc/ajcc.cpp
+        src/ajoc/ajoc.cpp
         src/aspx/frequency_tables.cpp
         src/aspx/hf_generator.cpp
         src/dsp/fft.cpp
