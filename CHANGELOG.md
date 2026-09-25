@@ -213,8 +213,9 @@ The sections below contain the complete change list and fixes.
     application image, this chip and revision range, this project and this flash size.
   - **Checks after it is written.** The image's own SHA-256, read back from flash; the
     request's `Content-Digest` (RFC 9530); and every byte read back and hashed again.
-  - **Both slots checked at each boot.** Each slot is read through and its image checked
-    against its own SHA-256, and `GET /firmware` says whether each is intact.
+  - **Both slots checked once any trial is over.** Each slot is read through and its image
+    checked against its own SHA-256, and `GET /firmware` says whether each is intact. The
+    check stops before an update writes anything.
   - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
     address, the HTTP server and the Sendspin player. It goes back to the previous image if
     it does not get there within 5 minutes, or if it resets first.

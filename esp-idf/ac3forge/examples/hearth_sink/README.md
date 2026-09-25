@@ -191,9 +191,10 @@ On the board, the update goes like this:
    image before it. A panic, a watchdog and a power cut are all resets.
 
 `GET /firmware` reports both slots, a trial in progress, an upload's progress
-and how the last update ended. After each boot the board reads both slots
-through and checks each image against its own SHA-256, as the bootloader does,
-and `GET /firmware` says whether each is intact. `PUT /firmware/rollback` goes back to the other
+and how the last update ended. Once no trial is left to decide, the board
+reads both slots through and checks each image against its own SHA-256, as the
+bootloader does, and `GET /firmware` says whether each is intact. The check
+stops before an update writes anything. `PUT /firmware/rollback` goes back to the other
 slot's image, and `POST /restart` restarts. `PUT /firmware/mode` with body
 `flash` enters flash mode, and with `normal` leaves it; leaving is a restart.
 

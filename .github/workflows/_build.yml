@@ -2826,6 +2826,8 @@ jobs:
             test_switch="${rest#*:}"
             idf.py "-DPROJECT_VER=$version" "-DAC3FORGE_FIRMWARE_TEST=$test_switch" build
             cp build/ac3forge_hearth_sink.bin "$images/$name.bin"
+            # For run_ota_qemu.py's report of where a hung board is.
+            cp build/ac3forge_hearth_sink.elf "$images/$name.elf"
             if [ "$name" = a ]; then
               (cd build && esptool --chip esp32s3 merge-bin --output "$images/qemu_flash.bin" --pad-to-size 16MB @flash_args >/dev/null)
               PYTHONPATH="$IDF_PATH/tools" IMAGE="$images" python3 -c "import os; from idf_py_actions.qemu_ext import QEMU_TARGETS; open(os.path.join(os.environ['IMAGE'], 'qemu_efuse.bin'), 'wb').write(QEMU_TARGETS['esp32s3'].default_efuse)"

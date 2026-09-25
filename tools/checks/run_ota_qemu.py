@@ -42,7 +42,10 @@ Standard library only, as the other scripts here are.
   python3 tools/checks/run_ota_qemu.py --qemu QEMU --images DIR [--out DIR]
 
 --images holds a.bin, b.bin, unhealthy.bin, panic.bin, qemu_flash.bin and
-qemu_efuse.bin. Exit status 0 when every step passes, 1 otherwise.
+qemu_efuse.bin, and may hold each image's ELF beside it (a.elf, ...). When a
+step fails, QEMU's monitor says where both CPUs are and what task each runs,
+resolved against the ELF of the image that booted last when the toolchain is on
+PATH. Exit status 0 when every step passes, 1 otherwise.
 """
 
 from __future__ import annotations
@@ -52,6 +55,7 @@ import base64
 import hashlib
 import http.client
 import json
+import re
 import shutil
 import socket
 import subprocess
@@ -71,6 +75,9 @@ OTA_0_OFFSET = 0x20000
 # What the board prints once an update is written and checked, before it
 # restarts into it (see Board).
 RESTART_INTO_NEW_IMAGE = "firmware: restarting into the new image"
+# QEMU's monitor, which says where each CPU is when a step fails: a board that
+# hangs says nothing on its console.
+MONITOR_PORT = 14444
 
 
 class Failure(Exception):
@@ -129,6 +136,8 @@ class Board:
         self.boots += 1
         log = self.out / f"qemu-ota-{self.boots}.txt"
         self.console = log
+        # What QEMU itself says, which a crash of QEMU's own leaves nowhere else.
+        stderr = (self.out / f"qemu-ota-{self.boots}.stderr.txt").open("wb")
         self.process = subprocess.Popen(
             [
                 self.qemu,
@@ -138,11 +147,13 @@ class Board:
                 "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
                 "-global", "driver=timer.esp32s3.timg,property=wdt_disable,value=true",
                 "-nic", f"user,model=open_eth,hostfwd=tcp:127.0.0.1:{PORT}-:80",
-                "-nographic", "-monitor", "none", "-serial", f"file:{log}",
+                "-monitor", f"tcp:127.0.0.1:{MONITOR_PORT},server,nowait",
+                "-nographic", "-serial", f"file:{log}",
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stderr=stderr,
         )  # fmt: skip
+        stderr.close()  # the child has its own handle
 
     def _stop(self) -> None:
         if self.process is not None and self.process.poll() is None:
@@ -405,6 +416,115 @@ def image_version(image: bytes) -> str:
     return field.split(b"\0", 1)[0].decode("utf-8", "replace")
 
 
+# --- where the board is when a step fails ---------------------------------------------
+
+
+def read_until_quiet(sock: socket.socket, seconds: float) -> str:
+    sock.settimeout(0.5)
+    data = b""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            chunk = sock.recv(65536)
+        except TimeoutError:
+            if data:
+                break
+            continue
+        if not chunk:
+            break
+        data += chunk
+    return data.decode("latin-1")
+
+
+def monitor(command: str) -> str:
+    """One command to QEMU's monitor, and its answer without the terminal's escapes."""
+    with socket.create_connection(("127.0.0.1", MONITOR_PORT), timeout=10) as sock:
+        read_until_quiet(sock, 2.0)  # the banner and the prompt
+        sock.sendall(command.encode() + b"\n")
+        answer = read_until_quiet(sock, 10.0)
+    return re.sub(r"\x1b\[[0-9;]*[A-Za-z]", "", answer)
+
+
+def toolchain(program: str, *args: str) -> str:
+    """An ESP-IDF toolchain program's output, or nothing when it is not on PATH."""
+    path = shutil.which(f"xtensa-esp32s3-elf-{program}")
+    if path is None:
+        return ""
+    result = subprocess.run([path, *args], capture_output=True, text=True, timeout=120, check=False)
+    return result.stdout
+
+
+def running_elf(board: Board, images: Path) -> Path | None:
+    """The ELF of the image the board's console last booted, when the images carry ELFs."""
+    try:
+        console = board.console.read_text("utf-8", "replace")
+    except OSError:
+        return None
+    booted = re.findall(r"App version:\s+(\S+)", console)
+    if not booted:
+        return None
+    for image in images.glob("*.bin"):
+        if image.name.startswith("qemu_"):
+            continue
+        if image_version(image.read_bytes()) == booted[-1]:
+            elf = image.with_suffix(".elf")
+            return elf if elf.is_file() else None
+    return None
+
+
+def where_the_board_is(board: Board, images: Path) -> str:
+    """Each CPU's program counter and exception state, and the task each runs.
+
+    A board that hangs, or that faults while its stack is gone, prints nothing
+    more on its console; QEMU's monitor still says where both CPUs are. When
+    QEMU itself has exited, its exit status and what it wrote say why.
+    """
+    with board.lock:
+        process = board.process
+        boots = board.boots
+    if process is not None and process.poll() is not None:
+        stderr = board.out / f"qemu-ota-{boots}.stderr.txt"
+        said = stderr.read_text("utf-8", "replace").strip() if stderr.is_file() else ""
+        return f"QEMU exited with status {process.returncode}: {said or '(it wrote nothing)'}"
+    try:
+        registers = monitor("info registers -a")
+    except OSError as error:
+        return f"QEMU's monitor did not answer: {error}"
+    elf = running_elf(board, images)
+    lines = [f"Where the board is (symbols from {elf.name if elf else 'no ELF'}):"]
+    addresses: list[str] = []
+    for number, block in re.findall(r"CPU#(\d+)(.*?)(?=CPU#\d+|\Z)", registers, re.S):
+        fields = dict(re.findall(r"\b(PC|EPC1|EXCCAUSE|EXCVADDR|A00|A01)=([0-9a-f]{8})", block))
+        lines.append(f"  CPU{number}: " + " ".join(f"{k}={v}" for k, v in fields.items()))
+        for name in ("PC", "EPC1"):
+            if name in fields:
+                addresses.append(fields[name])
+        if "A00" in fields:
+            # A windowed call's return address, its top two bits the window size.
+            addresses.append(f"{(int(fields['A00'], 16) & 0x3FFFFFFF) | 0x40000000:08x}")
+    if elf is None:
+        return "\n".join(lines)
+    resolved = toolchain("addr2line", "-pfiaC", "-e", str(elf), *(f"0x{a}" for a in addresses))
+    lines += [f"  {line}" for line in resolved.splitlines()]
+    symbol = re.search(r"^([0-9a-f]{8}) \w pxCurrentTCBs$", toolchain("nm", str(elf)), re.M)
+    offset = re.search(
+        r"= (0x[0-9a-f]+)",
+        toolchain("gdb", "-batch", "-ex", "p/x (int)&((TCB_t*)0)->pcTaskName", str(elf)),
+    )
+    if symbol and offset:
+        current = [
+            int(w, 16)
+            for w in re.findall(r"0x([0-9a-f]{8})", monitor(f"xp /2wx 0x{symbol[1]}"))[-2:]
+        ]
+        for cpu, tcb in enumerate(current):
+            words = re.findall(
+                r"0x([0-9a-f]{8})", monitor(f"xp /4wx 0x{tcb + int(offset[1], 16):08x}")
+            )[-4:]
+            name = b"".join(int(w, 16).to_bytes(4, "little") for w in words).split(b"\0", 1)[0]
+            lines.append(f"  CPU{cpu} task: 0x{tcb:08x} {name.decode('latin-1')!r}")
+    return "\n".join(lines)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--qemu", required=True)
@@ -425,8 +545,14 @@ def main() -> int:
         run(board, args.images)
     except Failure as failure:
         print(f"::error title={TITLE}::{failure}", file=sys.stderr)
+        print(where_the_board_is(board, args.images), file=sys.stderr)
         for log in sorted(args.out.glob("qemu-ota-*.txt")):
             lines = log.read_text("utf-8", "replace").splitlines()
+            if log.name.endswith(".stderr.txt"):
+                if lines:
+                    print(f"--- {log.name}", file=sys.stderr)
+                    print("\n".join(lines[-20:]), file=sys.stderr)
+                continue
             keep = [
                 line for line in lines if "firmware:" in line or "boot:" in line or "abort" in line
             ]

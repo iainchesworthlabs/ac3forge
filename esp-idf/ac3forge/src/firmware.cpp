@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <initializer_list>
@@ -200,13 +201,24 @@ esp_err_t reply_text(httpd_req_t* req, const char* status, std::string_view text
 }
 
 // A slot's image hashed as it lies in flash, over its first `length` bytes.
+// With `stop`, the background check's: it gives up, with nothing, once `stop`
+// is set, and waits a tick between reads so that it never keeps the flash
+// from anything else for long.
 std::optional<std::array<std::uint8_t, 32>> hash_slot(const esp_partition_t* slot, std::size_t length,
-                                                      std::span<std::uint8_t> buffer) {
+                                                      std::span<std::uint8_t> buffer,
+                                                      const std::atomic<bool>* stop = nullptr) {
     psa_hash_operation_t op = PSA_HASH_OPERATION_INIT;
     if (psa_hash_setup(&op, PSA_ALG_SHA_256) != PSA_SUCCESS) {
         return std::nullopt;
     }
     for (std::size_t at = 0; at < length;) {
+        if (stop != nullptr) {
+            vTaskDelay(1);
+            if (stop->load()) {
+                (void)psa_hash_abort(&op);
+                return std::nullopt;
+            }
+        }
         const std::size_t n = std::min(buffer.size(), length - at);
         if (esp_partition_read(slot, at, buffer.data(), n) != ESP_OK ||
             psa_hash_update(&op, buffer.data(), n) != PSA_SUCCESS) {
@@ -231,11 +243,12 @@ std::optional<std::array<std::uint8_t, 32>> hash_slot(const esp_partition_t* slo
 // the running image's flash being unmapped.
 struct SlotCheck {
     bool intact = false;
-    std::string sha256;  // the appended SHA-256, hex; empty when there is none to read
-    std::string why;     // why it does not check out
+    bool stopped = false;  // stopped part-way, so it says nothing about the slot
+    std::string sha256;    // the appended SHA-256, hex; empty when there is none to read
+    std::string why;       // why it does not check out
 };
 
-SlotCheck check_slot(const esp_partition_t* slot, std::span<std::uint8_t> buffer) {
+SlotCheck check_slot(const esp_partition_t* slot, std::span<std::uint8_t> buffer, const std::atomic<bool>& stop) {
     SlotCheck check;
     const WalkedImage walked = walk_image(
         [slot](std::size_t offset, std::span<std::uint8_t> out) {
@@ -256,8 +269,9 @@ SlotCheck check_slot(const esp_partition_t* slot, std::span<std::uint8_t> buffer
         return check;
     }
     check.sha256 = hex(stored);
-    const auto computed = hash_slot(slot, walked.extent->hashed_bytes, buffer);
+    const auto computed = hash_slot(slot, walked.extent->hashed_bytes, buffer, &stop);
     if (!computed) {
+        check.stopped = stop.load();
         check.why = "it could not be read to the end";
         return check;
     }
@@ -290,6 +304,11 @@ struct Firmware::Impl {
     std::optional<FirmwareLastUpdate> last_update;
     std::optional<Trial> trial;
     std::vector<std::string> waiting_for;
+    // Each slot as slot_report() read it at boot, and again after whatever
+    // this code changes about it: GET /firmware answers from these, so that
+    // a client polling it never has the board read flash.
+    FirmwareSlot running_report;
+    std::optional<FirmwareSlot> other_report;
     // What the background check found: each slot's image SHA-256 and whether
     // it checked out. Until it has run, nothing. An upload that erases the
     // other slot makes it "not intact" and counts a rewrite, so that a check
@@ -299,6 +318,14 @@ struct Firmware::Impl {
     std::optional<bool> running_intact;
     std::optional<bool> other_intact;
     unsigned other_generation = 0;
+
+    // The background check reads both slots through, one at a time, and only
+    // while nothing else writes flash: it starts once no trial is left to
+    // decide, and stop_check() ends it before an upload, flash mode or a
+    // rollback writes anything. Under QEMU, its reads beside an upload's
+    // writes hung the emulated board.
+    std::atomic<bool> check_running{false};
+    std::atomic<bool> check_stop{false};
 
     esp_timer_handle_t idle_timer = nullptr;
     esp_timer_handle_t guard_timer = nullptr;
@@ -323,11 +350,14 @@ struct Firmware::Impl {
         std::string body;
         bool json = false;
         bool restart = false;
+        bool erased = false;  // the other slot was erased, so its report is out of date
         std::string version;
     };
     Outcome run_upload(UploadJob& job);
     static void upload_task(void* arg);
     static void trial_task(void* arg);
+    void start_check();
+    void stop_check();
     void check_slots(std::span<std::uint8_t> buffer);
     static void check_task(void* arg);
     static void on_idle(void* arg);
@@ -361,23 +391,17 @@ FirmwareSlot Firmware::Impl::slot_report(const esp_partition_t* slot, bool is_ru
 
 FirmwareStatus Firmware::Impl::status() const {
     FirmwareStatus s;
-    s.running = slot_report(running, true);
-    if (other != nullptr) {
-        s.other = slot_report(other, false);
-    }
     s.network = hooks.network_source ? hooks.network_source() : "none";
     s.slot_bytes = other != nullptr ? other->size : running->size;
     s.flash_bytes = flash_bytes;
     s.partitions = partitions;
     s.bootloader_version = bootloader_version;
     const std::lock_guard lock(mutex);
-    // The slots' own reports were read without the lock; what the tasks
-    // change is copied under it.
     s.mode = flash_mode ? "flash" : "normal";
-    if (s.running) {
-        s.running->image_sha256 = running_sha;
-        s.running->intact = running_intact;
-    }
+    s.running = running_report;
+    s.running->image_sha256 = running_sha;
+    s.running->intact = running_intact;
+    s.other = other_report;
     if (s.other && s.other->state != "empty") {
         s.other->image_sha256 = other_sha;
         s.other->intact = other_intact;
@@ -454,6 +478,7 @@ void Firmware::Impl::enter_flash_mode() {
         }
     }
     std::printf("firmware: flash mode - stopping everything that plays; the board restarts to leave it\n");
+    stop_check();
     if (hooks.enter_flash_mode) {
         hooks.enter_flash_mode();
     }
@@ -551,8 +576,11 @@ void Firmware::Impl::accept_trial() {
         trial.reset();
         waiting_for.clear();
         last_update = FirmwareLastUpdate{version, "accepted", ""};
+        running_report.state = "valid";
     }
     std::printf("firmware: %s accepted after its trial\n", version.c_str());
+    // Nothing is left to decide, so the slots can be read through now.
+    start_check();
 }
 
 void Firmware::Impl::give_up_trial(const std::vector<std::string>& waiting) {
@@ -585,8 +613,32 @@ void Firmware::Impl::on_guard(void* arg) {
 
 // --- the background check of both slots -------------------------------------------
 
+void Firmware::Impl::start_check() {
+    if (check_running.exchange(true)) {
+        return;
+    }
+    check_stop = false;
+    // 4 KiB: the check used under 1.9 KiB of it under QEMU.
+    if (xTaskCreate(&Impl::check_task, "fw_check", 4096, this, tskIDLE_PRIORITY + 1, nullptr) != pdPASS) {
+        check_running = false;
+        std::printf("firmware: could not start the check of the slots\n");
+    }
+}
+
+// Before anything writes flash. The check gives up at its next read, a tick
+// or two away, and this waits until it has.
+void Firmware::Impl::stop_check() {
+    check_stop = true;
+    for (int i = 0; i < 500 && check_running.load(); ++i) {
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
 void Firmware::Impl::check_slots(std::span<std::uint8_t> buffer) {
-    const SlotCheck mine = check_slot(running, buffer);
+    const SlotCheck mine = check_slot(running, buffer, check_stop);
+    if (mine.stopped) {
+        return;
+    }
     if (!mine.intact) {
         std::printf("firmware: the running image in %s does not check out: %s\n", running->label, mine.why.c_str());
     }
@@ -605,10 +657,10 @@ void Firmware::Impl::check_slots(std::span<std::uint8_t> buffer) {
         const std::lock_guard lock(mutex);
         generation = other_generation;
     }
-    const SlotCheck theirs = check_slot(other, buffer);
+    const SlotCheck theirs = check_slot(other, buffer, check_stop);
     const std::lock_guard lock(mutex);
     // An upload that erased the slot meanwhile has made this out of date.
-    if (generation != other_generation) {
+    if (theirs.stopped || generation != other_generation) {
         return;
     }
     other_intact = theirs.intact;
@@ -629,6 +681,7 @@ void Firmware::Impl::check_task(void* arg) {
     } else {
         std::printf("firmware: no buffer to check the slots with; GET /firmware leaves them unchecked\n");
     }
+    im->check_running = false;
     vTaskDelete(nullptr);
 }
 
@@ -731,6 +784,7 @@ Firmware::Impl::Outcome Firmware::Impl::run_upload(UploadJob& job) {
         out.body = std::string("the slot could not be prepared: ") + esp_err_to_name(begun);
         return out;
     }
+    out.erased = true;
     {
         // Erased: what the check found there no longer describes it.
         const std::lock_guard lock(mutex);
@@ -840,11 +894,20 @@ void Firmware::Impl::upload_task(void* arg) {
         const char* result = out.status[0] == '4' ? "refused" : "failed";
         std::printf("firmware: upload %s (%s): %s\n", result, out.status, out.body.c_str());
         record_last(out.version, result, out.body);
+        // What the erased slot holds now: nothing, or the head of an image
+        // that stopped part-way or did not check out.
+        std::optional<FirmwareSlot> theirs;
+        if (out.erased) {
+            theirs = im.slot_report(im.other, false);
+        }
         {
             const std::lock_guard lock(im.mutex);
             im.busy = false;
             im.upload.reset();
             im.last_update = FirmwareLastUpdate{out.version, result, out.body};
+            if (theirs) {
+                im.other_report = std::move(theirs);
+            }
         }
         // Still in flash mode: a corrected image can follow, and the idle
         // timer starts again from here.
@@ -927,6 +990,11 @@ bool Firmware::start(FirmwareHooks hooks, FirmwareConfig config) {
     }
 
     im->read_last_update();
+    // Before any task of this or the board's starts, so read without the lock.
+    im->running_report = im->slot_report(im->running, true);
+    if (im->other != nullptr) {
+        im->other_report = im->slot_report(im->other, false);
+    }
 
     const esp_timer_create_args_t idle_args = {.callback = &Impl::on_idle,
                                                .arg = im,
@@ -959,10 +1027,9 @@ bool Firmware::start(FirmwareHooks hooks, FirmwareConfig config) {
         if (xTaskCreate(&Impl::trial_task, "fw_trial", 6144, im, tskIDLE_PRIORITY + 5, nullptr) != pdPASS) {
             std::printf("firmware: could not start the trial; the guard goes back at the deadline\n");
         }
-    }
-    // 4 KiB: the check used under 1.9 KiB of it under QEMU.
-    if (xTaskCreate(&Impl::check_task, "fw_check", 4096, im, tskIDLE_PRIORITY + 1, nullptr) != pdPASS) {
-        std::printf("firmware: could not start the check of the slots\n");
+    } else {
+        // On trial, accept_trial() starts it.
+        im->start_check();
     }
     impl_ = im;
     std::printf("firmware: running %s from %s; %s\n", field_text(esp_app_get_description()->version).c_str(),
@@ -1117,16 +1184,15 @@ int Firmware::on_rollback(httpd_req* req) {
     if (im.other == nullptr) {
         return reply_text(req, "409 Conflict", "this board has one app slot, so there is nothing to go back to");
     }
-    esp_app_desc_t desc{};
-    esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
-    const bool has_image = esp_ota_get_partition_description(im.other, &desc) == ESP_OK;
-    const bool usable = has_image && (esp_ota_get_state_partition(im.other, &state) != ESP_OK ||
-                                      (state != ESP_OTA_IMG_INVALID && state != ESP_OTA_IMG_ABORTED));
+    FirmwareSlot theirs;
     std::optional<bool> intact;
     {
         const std::lock_guard lock(im.mutex);
+        theirs = im.other_report.value_or(FirmwareSlot{});
         intact = im.other_intact;
     }
+    const bool has_image = !theirs.state.empty() && theirs.state != "empty";
+    const bool usable = has_image && theirs.state != "invalid" && theirs.state != "aborted";
     if (!usable || intact == std::optional<bool>(false)) {
         return reply_text(req, "409 Conflict",
                           std::string("there is no image to go back to in ") + im.other->label +
@@ -1134,13 +1200,14 @@ int Firmware::on_rollback(httpd_req* req) {
     }
     // esp_ota_set_boot_partition checks the image again, and makes it the
     // next boot, on trial like any image an update writes.
+    im.stop_check();
     const esp_err_t selected = esp_ota_set_boot_partition(im.other);
     if (selected != ESP_OK) {
         return reply_text(req, "409 Conflict",
                           std::string("the image in ") + im.other->label + " cannot boot: " + esp_err_to_name(selected));
     }
-    const std::string version = field_text(desc.version);
-    nvs_set_texts({{kKeyPending, hex(desc.app_elf_sha256)}, {kKeyPendingVersion, version}, {kKeyWhy, ""}});
+    const std::string& version = theirs.version;
+    nvs_set_texts({{kKeyPending, theirs.elf_sha256}, {kKeyPendingVersion, version}, {kKeyWhy, ""}});
     record_last(version, "rollback requested", "");
     (void)reply_text(req, "200 OK", "going back to " + version + "; the board restarts into it, on trial");
     im.restart_now("into the image before this one");
