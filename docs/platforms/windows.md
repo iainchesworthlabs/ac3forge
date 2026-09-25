@@ -43,7 +43,9 @@ On Windows, the three features that touch sound hardware are all implemented ove
 - **`ac3::iec61937::PassthroughDetector`** — recognising, from that same capture, that the
   endpoint is handing over IEC 61937 bursts rather than PCM.
 - **`ac3::audio::PassthroughSink`** — exclusive-mode/direct bitstream output, for both AC-3 and
-  E-AC-3 burst framing (IEC 61937).
+  E-AC-3 burst framing (IEC 61937). AC-4 (IEC 61937-14) is refused here with
+  `kUnsupportedFormat`: WASAPI asks for a compressed format by its `KSDATAFORMAT_SUBTYPE_IEC61937_*`
+  subformat, and the Windows SDK (`ksmedia.h`, 10.0.26100) defines none for AC-4.
 - **`ac3::audio::MonitorSink`** — shared-mode PCM playback: a non-bitstreamed preview/monitor
   path that decodes what is being encoded and plays it back on an ordinary output.
 - **`ac3::audio::SpatialObjectSink`** — `ISpatialAudioObjectRenderStream`: decoded

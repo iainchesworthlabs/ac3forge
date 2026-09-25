@@ -366,3 +366,129 @@ TEST_CASE("chunks: burst chunk errors", "[sendspin][chunks]") {
     std::array<std::uint8_t, 16> small{};
     CHECK_FALSE(ac3::sendspin::write_burst_chunk_header(small, 0, 0, 1, 0));
 }
+
+namespace {
+
+// An AC-4 sync frame (IEC 61937-14 Annex A) whose raw frame starts with a table of contents that
+// says bitstream_version 2, sequence_counter 1, no wait_frames, 48 kHz, frame_rate_index 13 and an
+// I-frame (0x80 0x17 0x60), followed by `raw` - 3 bytes of filler, which nothing here reads.
+std::vector<std::byte> ac4_sync_frame(std::size_t raw, bool crc = false) {
+    std::vector<std::byte> frame{std::byte{0xAC},
+                                 crc ? std::byte{0x41} : std::byte{0x40},
+                                 static_cast<std::byte>(raw >> 8U),
+                                 static_cast<std::byte>(raw & 0xFFU),
+                                 std::byte{0x80},
+                                 std::byte{0x17},
+                                 std::byte{0x60}};
+    for (std::size_t i = 3; i < raw; ++i) {
+        frame.push_back(static_cast<std::byte>((i * 29U + 7U) & 0xFFU));
+    }
+    if (crc) {
+        frame.push_back(std::byte{0x12});
+        frame.push_back(std::byte{0x34});
+    }
+    return frame;
+}
+
+}  // namespace
+
+TEST_CASE("chunks: an AC-4 burst chunk carries Ac4BurstPacker's Pc and Pd and its sync frame",
+          "[sendspin][chunks][ac4]") {
+    // Even and odd lengths, with and without the CRC word.
+    using Case = std::pair<std::size_t, bool>;
+    for (const auto& [raw, crc] : {Case{600, false}, Case{601, false}, Case{321, true}}) {
+        CAPTURE(raw, crc);
+        const std::vector<std::byte> frame = ac4_sync_frame(raw, crc);
+        ac3::iec61937::Ac4BurstPacker packer;
+        const auto burst = packer.push(frame);
+        REQUIRE(burst.has_value());
+        const std::uint16_t pc = le16(*burst, 4);
+        const std::uint16_t pd = le16(*burst, 6);
+        // Data type 24, subdata type 0, the code of 2 048 IEC 60958 frames (IEC 61937-14 Table
+        // 7), and the frame's length in bits.
+        CHECK(pc == 0x0D18);
+        CHECK(pd == frame.size() * 8);
+
+        const std::vector<std::uint8_t> message = burst_chunk(96000, 250000, pc, pd, frame);
+        if (frame.size() % 2 == 0) {
+            check_against_burst(message, *burst, frame);
+        }
+        const auto chunk = ac3::sendspin::parse_burst_chunk(message);
+        REQUIRE(chunk.has_value());
+        CHECK(chunk->data_type() == BurstDataType::kAc4);
+        CHECK(ac3::sendspin::is_ac4(chunk->data_type()));
+        CHECK(chunk->pd == ac3::sendspin::burst_length_code(BurstDataType::kAc4, frame.size()));
+        REQUIRE(chunk->chunk.data.size() == frame.size());
+        CHECK(chunk->chunk.data.back() == std::to_integer<std::uint8_t>(frame.back()));
+    }
+}
+
+TEST_CASE("chunks: AC-4 HBR4 counts in bytes and HBR16 in 8-byte units with the last one padded",
+          "[sendspin][chunks][ac4]") {
+    using ac3::sendspin::parse_burst_chunk;
+    const std::vector<std::byte> frame = ac4_sync_frame(9001);
+    REQUIRE(frame.size() == 9005);
+
+    ac3::iec61937::Ac4BurstPacker hbr4(ac3::iec61937::BurstDataType::kAc4Hbr4);
+    REQUIRE(hbr4.push(frame).has_value());
+    CHECK(hbr4.last()->pc == 0x0D38);
+    CHECK(hbr4.last()->pd == 9005);
+    const auto four = parse_burst_chunk(burst_chunk(0, 0, hbr4.last()->pc, hbr4.last()->pd, frame));
+    REQUIRE(four.has_value());
+    CHECK(four->data_type() == BurstDataType::kAc4Hbr4);
+
+    // HBR16's payload is the frame and three zeros: 1 126 units of 8 bytes.
+    ac3::iec61937::Ac4BurstPacker hbr16(ac3::iec61937::BurstDataType::kAc4Hbr16);
+    REQUIRE(hbr16.push(frame).has_value());
+    CHECK(hbr16.last()->pc == 0x0D58);
+    CHECK(hbr16.last()->pd == 1126);
+    CHECK(hbr16.last()->payload_bytes == 9008);
+    std::vector<std::byte> padded = frame;
+    padded.resize(9008, std::byte{0});
+    const auto sixteen =
+        parse_burst_chunk(burst_chunk(0, 0, hbr16.last()->pc, hbr16.last()->pd, padded));
+    REQUIRE(sixteen.has_value());
+    CHECK(sixteen->data_type() == BurstDataType::kAc4Hbr16);
+    // Not a whole number of units, and a whole unit of padding too many.
+    CHECK(parse_burst_chunk(burst_chunk(0, 0, 0x0D58, 1126, frame)).error() ==
+          ChunkError::kLengthMismatch);
+    std::vector<std::byte> over = padded;
+    over.resize(9016, std::byte{0});
+    CHECK(parse_burst_chunk(burst_chunk(0, 0, 0x0D58, 1127, over)).error() ==
+          ChunkError::kLengthMismatch);
+}
+
+TEST_CASE("chunks: AC-4 burst chunk errors", "[sendspin][chunks][ac4]") {
+    using ac3::sendspin::parse_burst_chunk;
+    const std::vector<std::byte> frame = ac4_sync_frame(200);
+    const auto bits = static_cast<std::uint16_t>(frame.size() * 8);
+    CHECK(parse_burst_chunk(burst_chunk(0, 0, 0x0D18, bits, frame)).has_value());
+    // Bits 5 and 6 are AC-4's subdata type, so AC-4 LD (3) is no reserved-bit error; its bursts
+    // take at most 1 912 bytes.
+    CHECK(parse_burst_chunk(burst_chunk(0, 0, 0x0A78, bits, frame)).has_value());
+    const std::vector<std::byte> long_ld = ac4_sync_frame(1909);
+    CHECK(parse_burst_chunk(
+              burst_chunk(0, 0, 0x0A78, static_cast<std::uint16_t>(long_ld.size() * 8), long_ld))
+              .error() == ChunkError::kPayloadTooLarge);
+    CHECK(ac3::sendspin::max_burst_payload(BurstDataType::kAc4Ld) == 1912);
+    CHECK(ac3::sendspin::max_burst_payload(BurstDataType::kAc4) == 8184);
+    // Pd in bytes, which the role does not use for AC-4.
+    CHECK(parse_burst_chunk(
+              burst_chunk(0, 0, 0x0D18, static_cast<std::uint16_t>(frame.size()), frame))
+              .error() == ChunkError::kLengthMismatch);
+    // Another syncword, and a frame_size that disagrees with the payload.
+    std::vector<std::byte> other = frame;
+    other[1] = std::byte{0x42};
+    CHECK(parse_burst_chunk(burst_chunk(0, 0, 0x0D18, bits, other)).error() ==
+          ChunkError::kNoSyncword);
+    std::vector<std::byte> shorter = frame;
+    shorter[3] = static_cast<std::byte>(std::to_integer<unsigned>(shorter[3]) - 1U);
+    CHECK(parse_burst_chunk(burst_chunk(0, 0, 0x0D18, bits, shorter)).error() ==
+          ChunkError::kLengthMismatch);
+    // An AC-3 syncframe in an AC-4 burst.
+    std::vector<std::byte> ac3_sync = frame;
+    ac3_sync[0] = std::byte{0x0B};
+    ac3_sync[1] = std::byte{0x77};
+    CHECK(parse_burst_chunk(burst_chunk(0, 0, 0x0D18, bits, ac3_sync)).error() ==
+          ChunkError::kNoSyncword);
+}

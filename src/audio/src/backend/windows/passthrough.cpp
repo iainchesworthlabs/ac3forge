@@ -140,14 +140,12 @@ WaveFormatIec61937 make_eac3_format(std::uint32_t sample_rate, DWORD encoded_cha
     return format;
 }
 
+// AC-3 or E-AC-3 only: start() refuses AC-4 before it gets here, there being
+// no subformat to name it by (see passthrough.hpp's header comment).
 WaveFormatIec61937 make_format(BitstreamFormat format, std::uint32_t sample_rate,
                                DWORD encoded_channels) {
     return format == BitstreamFormat::kEac3 ? make_eac3_format(sample_rate, encoded_channels)
                                             : make_ac3_format(sample_rate, encoded_channels);
-}
-
-std::size_t burst_bytes_for(BitstreamFormat format) {
-    return format == BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes : iec61937::kBurstBytes;
 }
 
 std::string to_utf8(const wchar_t* wide) {
@@ -264,6 +262,9 @@ std::string_view describe(PassthroughError error) {
                    "mode is disabled for it in Sound settings)";
         case PassthroughError::kAlreadyRunning: return "passthrough is already running";
         case PassthroughError::kNotRunning: return "passthrough is not running";
+        case PassthroughError::kUnsupportedFormat:
+            return "Windows defines no IEC 61937 subformat for AC-4 (the SDK's ksmedia.h has "
+                   "none), so WASAPI cannot be asked to send it";
     }
     return "unknown passthrough error";
 }
@@ -540,6 +541,9 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    if (is_ac4(format_kind)) {
+        return std::unexpected(PassthroughError::kUnsupportedFormat);
+    }
     // A render thread that ended because its device went away still holds
     // its client until it is joined, and an exclusive hold can refuse the
     // next Initialize until then. stop() joins it; with nothing started it
@@ -574,7 +578,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
 
     // Room for roughly a second of bursts, so a caller encoding slightly
     // ahead of real time never has to spin.
-    impl_->burst_bytes = burst_bytes_for(format_kind);
+    impl_->burst_bytes = max_burst_bytes(format_kind);
     impl_->queue = std::make_unique<ByteRingBuffer>(impl_->burst_bytes * 40);
     impl_->frame_bytes = frame_bytes;
     impl_->ratio = carrier_ratio(format_kind);
