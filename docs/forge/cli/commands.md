@@ -451,6 +451,12 @@ Either way the run reports how many frames or access units were concealed. Off b
 decode that hides a damaged frame looks exactly like one that had nothing to hide. See
 [Decoding → Concealing it instead](../../library/decoding.md#concealing-it-instead-decoderconfigconcealment).
 
+`decode` takes `conceal=` for AC-4 too. A concealed AC-4 frame is the last good frame's spectrum
+again, faded 20 dB for each 32 ms lost as the AC-3 and E-AC-3 decoders fade, or silence, through
+the decoder's own transform and output stages; the QMF-domain tools pass it through. The frames
+that wait for an I-frame after a change of source, which otherwise write nothing, are concealed
+the same way. A frame that fails before any frame has decoded still stops the run.
+
 #### `probe` — what the stream says about itself
 
 Every other inspection here goes through the audio: `levels` and `qc` decode the whole

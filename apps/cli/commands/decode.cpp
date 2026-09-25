@@ -439,13 +439,46 @@ ac4::DownmixTarget ac4_downmix(const ac3cli::Options& meta) {
     return ac4::DownmixTarget::kAsCoded;
 }
 
+// conceal='s policy, which AC-4's decoder offers as AC-3's and E-AC-3's do.
+ac4::ConcealmentPolicy ac4_concealment(ac3::ConcealmentPolicy policy) {
+    switch (policy) {
+        case ac3::ConcealmentPolicy::kNone:
+            return ac4::ConcealmentPolicy::kNone;
+        case ac3::ConcealmentPolicy::kRepeatFade:
+            return ac4::ConcealmentPolicy::kRepeatFade;
+        case ac3::ConcealmentPolicy::kMute:
+            return ac4::ConcealmentPolicy::kMute;
+    }
+    return ac4::ConcealmentPolicy::kNone;
+}
+
+// What an AC-4 decode did to the decoded channels, for its status line.
+std::string ac4_processing(const ac4::OutputConfig& output) {
+    std::string done;
+    const auto add = [&done](const std::string& part) {
+        done += (done.empty() ? "" : "; ") + part;
+    };
+    if (output.output_level_dbfs.has_value()) {
+        add(fmt::format("dialnorm to {:g} dBFS, DRC {}", *output.output_level_dbfs,
+                        ac4::describe(output.drc)));
+    }
+    if (output.dialogue_enhancement_db > 0.0) {
+        add(fmt::format("dialogue raised {:g} dB where the stream allows",
+                        output.dialogue_enhancement_db));
+    }
+    if (output.downmix != ac4::DownmixTarget::kAsCoded) {
+        add(fmt::format("downmixed to {}", ac4::describe(output.downmix)));
+    }
+    return done.empty() ? "the coded channels, with no DRC, downmix or dialogue processing" : done;
+}
+
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the channel-coded substream
 // its decode() picks, with the dialogue raised by dialogue-enhancement= (ETSI
 // TS 103 190-1 clause 5.7.8), at the output level output-level= names and
 // compressed in the DRC decoder mode drcmode= names (clause 5.7.9), in the
-// layout channels= and downmix= ask for (6.2.17). The object options are
-// output processing the AC-4 decoder does not do yet, and are reported rather
-// than applied.
+// layout channels= and downmix= ask for (6.2.17), and a damaged frame
+// concealed as conceal= says. The object options are output processing the
+// AC-4 decoder does not do yet, and are reported rather than applied.
 int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
                    const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
     const auto status = status_stream(out_path);
@@ -490,6 +523,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     config.output.drc = ac4_drc_mode(meta.ac4_drc_mode);
     config.output.dialogue_enhancement_db = meta.ac4_dialogue_enhancement;
     config.output.downmix = ac4_downmix(meta);
+    config.concealment = ac4_concealment(meta.concealment);
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {
@@ -505,6 +539,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     ac4::DecodedFrame first;
     std::size_t decoded_frames = 0;
     std::size_t waiting_frames = 0;
+    std::size_t concealed_frames = 0;  // under conceal=, frames made in place of ones that failed
     Progress progress;
     progress.start("decoding", scan.frames.size());
     std::uint64_t frames_done = 0;
@@ -518,11 +553,15 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
             return kExitInput;
         }
         if (!decoded->has_value()) {
-            // Before the stream's first I-frame: nothing to write yet.
+            // A frame waiting for an I-frame, at the start or after a change
+            // of source: nothing to write.
             ++waiting_frames;
             continue;
         }
         const ac4::DecodedFrame& pcm = **decoded;
+        if (pcm.concealed.has_value()) {
+            ++concealed_frames;
+        }
         if (!sink.is_open()) {
             first = pcm;
             if (!sink.open(out_path, static_cast<std::uint32_t>(pcm.sample_rate_hz), pcm.channels.size(),
@@ -582,9 +621,15 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     status_println(status, "decoded {} AC-4 frames -> {} ({}, {} Hz)", decoded_frames, out_path, layout,
                    first.sample_rate_hz);
     if (waiting_frames > 0) {
-        status_println(status, "          {} frames before the first I-frame produced no output", waiting_frames);
+        status_println(status, "          {} frames waiting for an I-frame produced no output",
+                       waiting_frames);
     }
-    status_println(status, "          the coded channels, with no DRC, downmix or dialogue processing");
+    if (concealed_frames > 0) {
+        status_println(
+            status, "          {} of them concealed ({})", concealed_frames,
+            config.concealment == ac4::ConcealmentPolicy::kMute ? "muted" : "repeated and faded");
+    }
+    status_println(status, "          {}", ac4_processing(config.output));
     // Emplaced with the first decoded frame, and decoded_frames > 0 here.
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     print_channel_summary(*meter, status);
