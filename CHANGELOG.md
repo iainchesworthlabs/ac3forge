@@ -1373,6 +1373,22 @@ The sections below contain the complete change list and fixes.
     whether or not there is a network to join.
   - The QEMU Ethernet network set itself up again on a second call too, and is now
     set up once as well.
+- **An ESP32-P4 Hearth sink kept the name `hearth` and gave Sendspin no MAC address.**
+  `hearth_sink` made its default name (`hearth-` and the last six hex digits of the MAC)
+  and the `mac_address` in its `client/hello` from the WiFi station MAC. ESP-IDF's MAC
+  table has a station entry only on a target with a radio of its own, and the P4's WiFi is
+  an ESP32-C6 across SDIO, so the read failed on every boot and logged
+  `mac type is incorrect (not found)` as an error. The board stayed `hearth`, at
+  `hearth.local`, with an empty `mac_address`, beside S3 and C6 boards with names like
+  `hearth-eb2c64`.
+  - One `board_mac()` now serves both: the station MAC where the target has one, the
+    chip's base MAC (its eFuse MAC, and the serial number its USB port reports) where it
+    has not. The target is asked first, so nothing is logged. An S3 or C6 reads the same
+    six bytes as before.
+  - A P4 that nobody has renamed takes `hearth-<last three bytes of its MAC>`, and the
+    matching `.local` address, at its next start; a name stored through the board's page
+    is kept. The address is the P4's own, not that of the C6 radio, so it is not the one
+    an access point lists for the board.
 - **Over an ESP32-S3's USB console, a Hearth sink's Improv answers waited for the next
   line it printed.** ESP-IDF's driverless USB-Serial-JTAG console sends its buffer to
   the host only at a newline, and an Improv packet has none. On an idle board, or after
