@@ -5,12 +5,14 @@
 #include <cmath>
 #include <cstdint>
 #include <deque>
+#include <limits>
 #include <optional>
 #include <utility>
 
 #include "asf/analysis.hpp"
 #include "asf/coder.hpp"
 #include "asf/layout.hpp"
+#include "asf/multichannel.hpp"
 #include "asf/psycho.hpp"
 #include "asf/stereo.hpp"
 #include "aspx/aspx_encoder.hpp"
@@ -71,9 +73,20 @@ constexpr double kSilencedAllowance = 1e200;
 // together. Measured on the race's sources, 2026-09-25.
 constexpr double kLevelWeight = 0.75;
 
-// Below this rate a channel, CodecMode::kAuto codes in the ASPX mode, as DEE
-// does from 144 kbps in stereo down.
+// Below this rate a channel, CodecMode::kAuto codes in the ASPX mode: in mono
+// and stereo as DEE does from 144 kbps in stereo down, and in the 5.X and 7.X
+// elements as DEE's 5.1 streams do up to 320 kbps, SIMPLE from 384. The LFE
+// is not counted.
 constexpr double kAspxBelowKbps = 96.0;
+constexpr double kAspxBelowKbpsMultichannel = 76.8;
+
+// The LFE's coded band: the scale factor bands that start below 120 Hz, the
+// first three at 2 048 samples, to 140.6 Hz at 48 kHz, which is what DEE's
+// 5.1 streams send.
+constexpr double kLfeCutoffHz = 120.0;
+// sf_info_lfe()'s max_sfb: Part 1 Table 106's n_msfbl_bits at a transform of
+// 2 048 samples.
+constexpr int kLfeMaxSfbBits = 3;
 
 // The bandwidth the SIMPLE mode codes, by bit rate per channel.
 [[nodiscard]] double cutoff_hz(double kbps_per_channel) {
@@ -89,8 +102,9 @@ constexpr double kAspxBelowKbps = 96.0;
     return 11000.0;
 }
 
-// The first bands of a transform whose lines start below `cutoff`.
-[[nodiscard]] int bands_below(int transform_length, double cutoff, int sample_rate) {
+// The first bands of a transform whose lines start below `cutoff`, at most
+// `limit`.
+[[nodiscard]] int bands_below(int transform_length, double cutoff, int sample_rate, int limit) {
     const std::span<const std::uint16_t> offsets = detail::band_offsets(transform_length);
     const double line_hz = static_cast<double>(sample_rate) / (2.0 * transform_length);
     int bands = 0;
@@ -98,7 +112,11 @@ constexpr double kAspxBelowKbps = 96.0;
            static_cast<double>(offsets[static_cast<std::size_t>(bands)]) * line_hz < cutoff) {
         ++bands;
     }
-    return std::min(bands, (1 << detail::max_sfb_bits(transform_length)) - 1);
+    return std::min(bands, limit);
+}
+
+[[nodiscard]] int bands_below(int transform_length, double cutoff, int sample_rate) {
+    return bands_below(transform_length, cutoff, sample_rate, (1 << detail::max_sfb_bits(transform_length)) - 1);
 }
 
 // sequence_counter: 0 in the first frame (Part 1 Annex E.1), then 1 to 1020
@@ -107,10 +125,203 @@ constexpr double kAspxBelowKbps = 96.0;
     return frame == 0 ? 0 : static_cast<int>((frame - 1) % 1020) + 1;
 }
 
+// Where the input's channels go: Part 1 Table 88's channel mode, each channel
+// by name (its input index, -1 where the mode has none), the channels that
+// share a transform layout, A-SPX's aspx_data elements in the syntax's order
+// with the channels each carries (Table 213), and the channels
+// companding_control() lists, in its order (Table 212).
+struct Plan {
+    int ch_mode = 1;
+    int l = -1;
+    int r = -1;
+    int c = -1;
+    int lfe = -1;
+    int ls = -1;
+    int rs = -1;
+    int x1 = -1;  // the 7.X element's additional pair
+    int x2 = -1;
+    std::vector<std::vector<int>> groups{};
+    std::vector<std::vector<int>> aspx_elements{};
+    std::vector<int> companded{};
+
+    [[nodiscard]] bool five_x() const noexcept { return ch_mode == 3 || ch_mode == 4; }
+    [[nodiscard]] bool seven_x() const noexcept { return ch_mode >= 5; }
+};
+
+[[nodiscard]] std::optional<Plan> plan_for(const EncoderConfig& config) {
+    Plan p;
+    const AdditionalPair pair = config.experimental.seven_x;
+    const bool seven = config.channels == 7 || config.channels == 8;
+    if (seven != (pair != AdditionalPair::kNone)) {
+        return std::nullopt;
+    }
+    switch (config.channels) {
+        case 1:
+            p.ch_mode = 0;
+            p.c = 0;
+            p.groups = {{0}};
+            p.aspx_elements = {{0}};
+            p.companded = {0};
+            return p;
+        case 2:
+            p.ch_mode = 1;
+            p.l = 0;
+            p.r = 1;
+            p.groups = {{0, 1}};
+            p.aspx_elements = {{0, 1}};
+            p.companded = {0, 1};
+            return p;
+        case 5:
+        case 6:
+        case 7:
+        case 8:
+            break;
+        default:
+            return std::nullopt;
+    }
+    const bool lfe = config.channels % 2 == 0;
+    p.l = 0;
+    p.r = 1;
+    p.c = 2;
+    p.lfe = lfe ? 3 : -1;
+    p.ls = lfe ? 4 : 3;
+    p.rs = p.ls + 1;
+    if (seven) {
+        p.x1 = p.rs + 1;
+        p.x2 = p.rs + 2;
+        const int base = pair == AdditionalPair::kBack ? 5 : (pair == AdditionalPair::kWide ? 7 : 9);
+        p.ch_mode = base + (lfe ? 1 : 0);
+    } else {
+        p.ch_mode = lfe ? 4 : 3;
+    }
+    if (config.experimental.coding_configs) {
+        p.groups = {{p.l, p.r, p.c, p.ls, p.rs}};
+    } else {
+        p.groups = {{p.l, p.r}, {p.ls, p.rs}, {p.c}};
+    }
+    if (seven) {
+        p.groups.push_back({p.x1, p.x2});
+    }
+    if (lfe) {
+        p.groups.push_back({p.lfe});
+    }
+    if (!seven) {
+        p.aspx_elements = {{p.l, p.r}, {p.ls, p.rs}, {p.c}};
+        p.companded = {p.l, p.r, p.c, p.ls, p.rs};
+    } else if (pair == AdditionalPair::kWide) {
+        // 5/2/0: the wide pair second and the surrounds last.
+        p.aspx_elements = {{p.l, p.r}, {p.x1, p.x2}, {p.c}, {p.ls, p.rs}};
+    } else {
+        p.aspx_elements = {{p.l, p.r}, {p.ls, p.rs}, {p.c}, {p.x1, p.x2}};
+    }
+    return p;
+}
+
+// A coding unit: one channel data element, with its one sf_info() and its
+// tracks. Its outputs are the input channels its matrix gives, in the order
+// of the matrix's outputs, O0 first; once its matrix is undone they hold its
+// tracks, I0 first.
+enum class UnitKind : std::uint8_t {
+    kLfe,    // mono_data(1)
+    kMono,   // mono_data(0)
+    kPair,   // stereo_data() or two_channel_data(), stereo processing on
+    kThree,  // three_channel_data()
+    kFour,   // four_channel_data()
+    kFive,   // five_channel_data()
+};
+
+struct Unit {
+    UnitKind kind = UnitKind::kMono;
+    std::vector<int> outputs{};
+    bool additional = false;  // the 7.X element's additional pair
+    detail::UnitChoice choice{};
+};
+
+// A frame's channel data: the 5.X and 7.X elements' coding_config and
+// 2ch_mode, and the units in the syntax's order, the LFE's first.
+struct Structure {
+    int coding_config = 0;
+    bool two_ch_mode = false;
+    int chel_matsel = 0;
+    std::vector<Unit> units{};
+};
+
+// Part 1 Tables 25 and 33 with Tables 180 and 182: the units of a coding
+// configuration, in the syntax's order, their outputs as the tables place
+// them, the 7.X element's preliminary channels A to G taken as L, R, C, Ls,
+// Rs and the additional pair, which they are where b_use_sap_add_ch is 0.
+[[nodiscard]] Structure structure_for(const Plan& p, int coding_config, bool two_ch_mode, int chel_matsel) {
+    Structure s;
+    s.coding_config = coding_config;
+    s.two_ch_mode = two_ch_mode;
+    s.chel_matsel = chel_matsel;
+    if (p.ch_mode == 0) {
+        s.units.push_back({.kind = UnitKind::kMono, .outputs = {p.c}});
+        return s;
+    }
+    if (p.ch_mode == 1) {
+        s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.l, p.r}});
+        return s;
+    }
+    if (p.lfe >= 0) {
+        s.units.push_back({.kind = UnitKind::kLfe, .outputs = {p.lfe}});
+    }
+    bool centre_last = false;
+    switch (coding_config) {
+        case 0:
+            if (two_ch_mode) {
+                s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.l, p.ls}});
+                s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.r, p.rs}});
+            } else {
+                s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.l, p.r}});
+                s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.ls, p.rs}});
+            }
+            centre_last = true;
+            break;
+        case 1:
+            s.units.push_back({.kind = UnitKind::kThree, .outputs = {p.l, p.r, p.c}});
+            s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.ls, p.rs}});
+            break;
+        case 2:
+            s.units.push_back({.kind = UnitKind::kFour, .outputs = {p.l, p.r, p.ls, p.rs}});
+            centre_last = true;
+            break;
+        default:
+            s.units.push_back({.kind = UnitKind::kFive, .outputs = {p.l, p.r, p.c, p.ls, p.rs}});
+            break;
+    }
+    if (p.seven_x()) {
+        s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.x1, p.x2}, .additional = true});
+    }
+    if (centre_last) {
+        s.units.push_back({.kind = UnitKind::kMono, .outputs = {p.c}});
+    }
+    return s;
+}
+
+// The coding configurations the experimental option weighs: coding_config 0
+// with either 2ch_mode, 1 with each chel_matsel, 2, and 3 with each
+// chel_matsel.
+struct Candidate {
+    int coding_config = 0;
+    bool two_ch_mode = false;
+    int chel_matsel = 0;
+};
+
+[[nodiscard]] std::vector<Candidate> candidates() {
+    std::vector<Candidate> out = {{0, false, 0}, {0, true, 0}, {2, false, 0}};
+    for (int m = 0; m < 12; ++m) {
+        out.push_back({1, false, m});
+        out.push_back({3, false, m});
+    }
+    return out;
+}
+
 }  // namespace
 
 struct Encoder::Impl {
     EncoderConfig config{};
+    Plan plan{};
     detail::Analysis analysis{kFrameLength, 1};
     detail::Psychoacoustics psycho{48000, kFrameLength};
     Toc toc{};
@@ -128,15 +339,44 @@ struct Encoder::Impl {
     bool flushed = false;
 
     std::int64_t frames_out = 0;
-    std::deque<FrameLayout> layouts;  // decided, for frames_out and after
-    int previous_last = kFrameLength;
 
-    // The ASPX mode: the stream's A-SPX configuration, and each channel's
-    // QMF domain. With interleaving, each channel's QMF subbands the last
-    // frame's A-SPX data had the spectral frontend code.
+    // Each layout group's transform layouts, decided for frames_out and the
+    // frame after, and the length of the last window of the frame before.
+    struct Group {
+        std::vector<int> channels;
+        bool lfe = false;  // sf_info_lfe(): always one long block
+        std::deque<FrameLayout> layouts;
+        int previous_last = kFrameLength;
+    };
+    std::vector<Group> groups;
+    std::vector<std::size_t> group_of;  // per input channel
+
+    // The ASPX mode: the stream's A-SPX configuration, and the QMF domain of
+    // each channel A-SPX codes (all but the LFE), with qmf_of mapping an input
+    // channel to its own, or -1. With interleaving, each channel's QMF
+    // subbands the last frame's A-SPX data had the spectral frontend code.
     std::optional<detail::AspxSetup> aspx;
     std::vector<detail::AspxChannelEncoder> qmf;
+    std::vector<int> qmf_of;
+    std::vector<int> qmf_channel;
     std::vector<std::vector<std::pair<int, int>>> interleaved_prev;
+
+    // A frame's A-SPX data: companding_control()'s fields and each aspx_data
+    // element's, in the syntax's order.
+    struct AspxFrame {
+        detail::CompandingFields companding;
+        std::vector<detail::AspxElement> elements;
+    };
+
+    // What a frame's channel element is written from.
+    struct Coding {
+        bool iframe = false;
+        Structure structure;
+        std::vector<FrameLayout> layout;           // per group
+        std::vector<std::array<int, 2>> max_sfb;   // per group
+        std::vector<detail::CodedTrack> tracks;    // per input channel: the track its unit leaves there
+        std::optional<AspxFrame> aspx;
+    };
 
     // With interleaving, the bands above the crossover the spectral frontend
     // leaves silent: all but those that meet `waveform_hz`, the frequency
@@ -180,8 +420,8 @@ struct Encoder::Impl {
     // What the spectral frontend codes: the signal, or with companding its
     // compressed low band.
     [[nodiscard]] double coded_sample(std::size_t c, std::int64_t s) const noexcept {
-        if (aspx && aspx->companding) {
-            return qmf[c].companded(s);
+        if (aspx && aspx->companding && qmf_of[c] >= 0) {
+            return qmf[static_cast<std::size_t>(qmf_of[c])].companded(s);
         }
         return sample(c, s);
     }
@@ -196,41 +436,62 @@ struct Encoder::Impl {
             end = std::max(end, (window_last + detail::kCompandedLag) / kQmfSlot + 1);
         }
         std::array<double, kQmfSlot> chunk{};
-        for (std::size_t c = 0; c < qmf.size(); ++c) {
-            while (qmf[c].slots() < end) {
-                const std::int64_t from = kQmfSlot * qmf[c].slots() - detail::kAnalysisLead;
+        for (std::size_t q = 0; q < qmf.size(); ++q) {
+            const auto c = static_cast<std::size_t>(qmf_channel[q]);
+            while (qmf[q].slots() < end) {
+                const std::int64_t from = kQmfSlot * qmf[q].slots() - detail::kAnalysisLead;
                 for (std::size_t i = 0; i < chunk.size(); ++i) {
                     chunk[i] = sample(c, from + static_cast<std::int64_t>(i));
                 }
-                qmf[c].push_slot(chunk);
+                qmf[q].push_slot(chunk);
             }
         }
     }
 
-    [[nodiscard]] std::size_t aspx_bits(bool iframe, const detail::AspxElement& element) const {
-        BitWriter w = BitWriter::buffered();
-        detail::write_aspx_head(w, iframe, *aspx, element);
-        detail::write_aspx_tail(w, iframe, *aspx, element);
-        return w.bit_position();
-    }
-
-    [[nodiscard]] detail::AspxElement aspx_element() const {
-        detail::AspxElement element;
-        element.companding.num_chan = config.channels;
-        for (int c = 0; c < config.channels; ++c) {
-            element.companding.compand_on[static_cast<std::size_t>(c)] = aspx->companding;
+    // A frame's A-SPX data before the rate loop: each channel's proposal,
+    // with companding as the stream has it; or with `fallback`, what costs
+    // least (AspxChannelEncoder::fallback()).
+    [[nodiscard]] AspxFrame aspx_frame(std::int64_t frame, bool iframe, std::optional<bool> fallback) {
+        AspxFrame out;
+        out.companding.num_chan = static_cast<int>(plan.companded.size());
+        for (std::size_t i = 0; i < plan.companded.size(); ++i) {
+            out.companding.compand_on[i] = aspx->companding;
         }
-        return element;
+        for (const std::vector<int>& channels : plan.aspx_elements) {
+            detail::AspxElement element;
+            element.companding = out.companding;
+            for (const int c : channels) {
+                const auto q = static_cast<std::size_t>(qmf_of[static_cast<std::size_t>(c)]);
+                element.channels.push_back(fallback ? qmf[q].fallback(iframe, *fallback) : qmf[q].propose(frame, iframe));
+            }
+            if (!fallback && channels.size() == 2 && aspx->balance) {
+                const auto q0 = static_cast<std::size_t>(qmf_of[static_cast<std::size_t>(channels[0])]);
+                const auto q1 = static_cast<std::size_t>(qmf_of[static_cast<std::size_t>(channels[1])]);
+                const auto pair =
+                    qmf[q0].balanced_with(qmf[q1], {element.channels[0], element.channels[1]}, iframe);
+                if (pair) {
+                    element.channels = {(*pair)[0], (*pair)[1]};
+                    element.balance = true;
+                }
+            }
+            out.elements.push_back(std::move(element));
+        }
+        return out;
     }
 
     // Transient detection over the frame's centre, where its blocks are:
-    // the first difference's energy per sub-block against the four before.
-    [[nodiscard]] FrameLayout decide(std::int64_t frame) const {
+    // the first difference's energy per sub-block against the four before,
+    // summed over the group's channels.
+    [[nodiscard]] FrameLayout decide(std::int64_t frame, const Group& group) const {
+        if (group.lfe) {
+            return detail::long_layout(kFrameLength);
+        }
         const std::int64_t centre = frame * kFrameLength + kFrameLength / 2;
         std::array<double, kSubBlocks + 4> energy{};
         for (int k = -4; k < kSubBlocks; ++k) {
             double e = 0.0;
-            for (std::size_t c = 0; c < signal.size(); ++c) {
+            for (const int channel : group.channels) {
+                const auto c = static_cast<std::size_t>(channel);
                 const std::int64_t start = centre + static_cast<std::int64_t>(k) * kSubBlock;
                 for (std::int64_t s = start; s < start + kSubBlock; ++s) {
                     const double d = sample(c, s) - sample(c, s - 1);
@@ -240,7 +501,7 @@ struct Encoder::Impl {
             energy[static_cast<std::size_t>(k + 4)] = e;
         }
         std::array<int, 2> attack{-1, -1};
-        const double quietest = kAttackFloor * kSubBlock * static_cast<double>(signal.size());
+        const double quietest = kAttackFloor * kSubBlock * static_cast<double>(group.channels.size());
         for (int k = 0; k < kSubBlocks; ++k) {
             const auto i = static_cast<std::size_t>(k + 4);
             const double before = (energy[i - 1] + energy[i - 2] + energy[i - 3] + energy[i - 4]) / 4.0;
@@ -260,7 +521,11 @@ struct Encoder::Impl {
         return detail::split_layout(kFrameLength, transf_length, attack);
     }
 
-    [[nodiscard]] std::array<int, 2> max_sfb_for(const FrameLayout& layout) const {
+    [[nodiscard]] std::array<int, 2> max_sfb_for(const FrameLayout& layout, const Group& group) const {
+        if (group.lfe) {
+            const int bands = bands_below(kFrameLength, kLfeCutoffHz, config.sample_rate_hz, (1 << kLfeMaxSfbBits) - 1);
+            return {bands, bands};
+        }
         const int first = layout.window_length.front();
         const int last = layout.window_length.back();
         return {bands_below(first, cutoff, config.sample_rate_hz), bands_below(last, cutoff, config.sample_rate_hz)};
@@ -272,150 +537,341 @@ struct Encoder::Impl {
         fields.iframe = frame % config.iframe_interval == 0;
         fields.fs_index = fs_index;
         fields.frame_rate_index = 13;
-        fields.ch_mode = config.channels == 2 ? 1 : 0;
+        fields.ch_mode = plan.ch_mode;
         fields.dialnorm_bits = dialnorm_bits;
         return fields;
     }
 
-    // The channel element for a frame: the bits of audio_data_chan(), for a
-    // global scale factor offset.
-    struct Coded {
-        std::vector<detail::CodedTrack> tracks;
-        detail::StereoChoice stereo;
-        std::array<int, 2> max_sfb{};
-    };
-
-    // The channel element with no bands: what a frame falls back to when no
-    // step of the rate loop fits it, and what create() checks the rate holds.
-    [[nodiscard]] Coded silent(const FrameLayout& layout) const {
-        Coded coded;
-        coded.max_sfb = {0, 0};
-        for (int c = 0; c < config.channels; ++c) {
-            const detail::Grouped grouped = detail::regroup({}, layout, coded.max_sfb);
-            coded.tracks.push_back(
-                detail::code_track(grouped, std::vector<std::vector<int>>(grouped.offset.size()), 0, layout));
+    // Undoes each unit's matrix: `spectra`, per input channel, then holds each
+    // unit's tracks where its outputs were.
+    static void undo(Structure& s, std::vector<detail::Channel>& spectra) {
+        for (Unit& unit : s.units) {
+            const auto at = [&](std::size_t k) { return &spectra[static_cast<std::size_t>(unit.outputs[k])]; };
+            switch (unit.kind) {
+                case UnitKind::kPair:
+                    unit.choice = detail::undo_pair({at(0), at(1)});
+                    break;
+                case UnitKind::kThree:
+                    unit.choice = detail::undo_three(s.chel_matsel, {at(0), at(1), at(2)});
+                    break;
+                case UnitKind::kFour:
+                    unit.choice = detail::undo_four({at(0), at(1), at(2), at(3)});
+                    break;
+                case UnitKind::kFive:
+                    unit.choice = detail::undo_five(s.chel_matsel, {at(0), at(1), at(2), at(3), at(4)});
+                    break;
+                case UnitKind::kLfe:
+                case UnitKind::kMono:
+                    unit.choice.bits = detail::perceptual_entropy(at(0)->grouped, at(0)->allowed);
+                    break;
+            }
         }
-        return coded;
     }
 
-    // Part 1 Tables 20 and 22: single_channel_element() and
-    // channel_pair_element() in the SIMPLE mode, or with `aspx_data` the ASPX
-    // mode, whose aspx_config() (in an I-frame) and companding_control()
-    // come before the channel data and its aspx_data element after.
-    void write_element(BitWriter& w, const FrameLayout& layout, const Coded& coded, bool iframe,
-                       const detail::AspxElement* aspx_data) const {
-        const int mode = aspx_data != nullptr ? 1 : 0;
-        if (config.channels == 2) {
-            w.write(2, static_cast<std::uint64_t>(mode), "stereo_codec_mode");
-            if (aspx_data != nullptr) {
-                detail::write_aspx_head(w, iframe, *aspx, *aspx_data);
+    // The experimental coding configurations: each candidate's matrices
+    // undone on a copy of the five channels, and the one whose tracks and side
+    // information cost fewest bits kept, its tracks put back in `spectra`. The
+    // five share one layout group, so every candidate's sf_info()s are alike.
+    [[nodiscard]] Structure choose_structure(std::vector<detail::Channel>& spectra, const FrameLayout& layout,
+                                             std::array<int, 2> max_sfb) const {
+        const std::array<int, 5> five = {plan.l, plan.r, plan.c, plan.ls, plan.rs};
+        const double sf_info = static_cast<double>(detail::sf_info_bits(layout, max_sfb));
+        std::optional<Structure> best;
+        double best_bits = std::numeric_limits<double>::max();
+        std::vector<detail::Channel> best_spectra;
+        std::vector<detail::Channel> trial = spectra;
+        for (const Candidate& candidate : candidates()) {
+            for (const int c : five) {
+                trial[static_cast<std::size_t>(c)] = spectra[static_cast<std::size_t>(c)];
             }
-            // Table 23, stereo_data() with one sf_info() for both tracks.
-            w.write(1, 1, "b_enable_mdct_stereo_proc");
-            detail::write_sf_info(w, layout, coded.max_sfb);
-            detail::write_chparam_info(w, coded.stereo);
-            detail::write_sf_data(w, coded.tracks[0], layout);
-            detail::write_sf_data(w, coded.tracks[1], layout);
+            Structure s = structure_for(plan, candidate.coding_config, candidate.two_ch_mode, candidate.chel_matsel);
+            std::erase_if(s.units, [](const Unit& u) { return u.kind == UnitKind::kLfe || u.additional; });
+            undo(s, trial);
+            // coding_config, 2ch_mode, and each unit's sf_info() with a pair's
+            // b_enable_mdct_stereo_proc and a mono_data()'s spec_frontend.
+            double bits = 2.0 + (candidate.coding_config == 0 ? 1.0 : 0.0);
+            for (const Unit& unit : s.units) {
+                bits += unit.choice.bits + sf_info;
+                if (unit.kind == UnitKind::kPair || unit.kind == UnitKind::kMono) {
+                    bits += 1.0;
+                }
+            }
+            if (bits < best_bits) {
+                best_bits = bits;
+                best = structure_for(plan, candidate.coding_config, candidate.two_ch_mode, candidate.chel_matsel);
+                for (Unit& unit : best->units) {
+                    const auto same = std::ranges::find_if(s.units, [&](const Unit& u) { return u.outputs == unit.outputs; });
+                    if (same != s.units.end()) {
+                        unit.choice = same->choice;
+                    }
+                }
+                best_spectra = trial;
+            }
+        }
+        for (const int c : five) {
+            spectra[static_cast<std::size_t>(c)] = std::move(best_spectra[static_cast<std::size_t>(c)]);
+        }
+        // The LFE and the additional pair, which every candidate shares.
+        for (Unit& unit : best->units) {
+            if (unit.kind == UnitKind::kLfe || unit.additional) {
+                Structure one;
+                one.units.push_back(unit);
+                undo(one, spectra);
+                unit.choice = one.units.front().choice;
+            }
+        }
+        return *best;
+    }
+
+    // One unit: its channel data element, and without `data` all of it but
+    // the sf_data() elements.
+    void write_unit(BitWriter& w, const Unit& unit, const Coding& f, bool data) const {
+        const std::size_t group = group_of[static_cast<std::size_t>(unit.outputs.front())];
+        const FrameLayout& layout = f.layout[group];
+        const std::array<int, 2> max_sfb = f.max_sfb[group];
+        switch (unit.kind) {
+            case UnitKind::kLfe:
+                // sf_info_lfe() (Table 35): one long block, max_sfb alone.
+                w.write(kLfeMaxSfbBits, static_cast<std::uint64_t>(max_sfb[0]), "max_sfb");
+                break;
+            case UnitKind::kMono:
+                // Table 21, mono_data(0) with the ASF.
+                w.write(1, 0, "spec_frontend");
+                detail::write_sf_info(w, layout, max_sfb);
+                break;
+            case UnitKind::kPair:
+                // Table 23's stereo_data() and Table 26's two_channel_data():
+                // one sf_info() for both tracks.
+                w.write(1, 1, "b_enable_mdct_stereo_proc");
+                detail::write_sf_info(w, layout, max_sfb);
+                detail::write_chparam_info(w, unit.choice.sets.at(0));
+                break;
+            case UnitKind::kThree:
+            case UnitKind::kFive:
+                // Tables 27 and 29, with three_channel_info() and
+                // five_channel_info() (Tables 30 and 32).
+                detail::write_sf_info(w, layout, max_sfb);
+                w.write(4, static_cast<std::uint64_t>(unit.choice.chel_matsel), "chel_matsel");
+                for (const detail::StereoChoice& set : unit.choice.sets) {
+                    detail::write_chparam_info(w, set);
+                }
+                break;
+            case UnitKind::kFour:
+                // Table 28, with four_channel_info() (Table 31).
+                detail::write_sf_info(w, layout, max_sfb);
+                for (const detail::StereoChoice& set : unit.choice.sets) {
+                    detail::write_chparam_info(w, set);
+                }
+                break;
+        }
+        if (data) {
+            for (const int c : unit.outputs) {
+                detail::write_sf_data(w, f.tracks[static_cast<std::size_t>(c)], layout);
+            }
+        }
+    }
+
+    // Part 1 Tables 20, 22, 25 and 33: the channel element, audio_data_chan()
+    // of the substream. Without `data`, all of it but the sf_data() elements:
+    // the side information the rate loop's budget leaves out.
+    void write_element(BitWriter& w, const Coding& f, bool data) const {
+        const bool with_aspx = f.aspx.has_value();
+        const auto units = [&](const auto& pick) {
+            for (const Unit& unit : f.structure.units) {
+                if (pick(unit)) {
+                    write_unit(w, unit, f, data);
+                }
+            }
+        };
+        const auto tails = [&]() {
+            if (with_aspx) {
+                for (const detail::AspxElement& element : f.aspx->elements) {
+                    detail::write_aspx_tail(w, f.iframe, *aspx, element);
+                }
+            }
+        };
+        if (plan.ch_mode <= 1) {
+            // Tables 20 and 22, single_channel_element() and
+            // channel_pair_element(): aspx_config() (in an I-frame) and
+            // companding_control() before the channel data, aspx_data after.
+            if (plan.ch_mode == 1) {
+                w.write(2, with_aspx ? 1U : 0U, "stereo_codec_mode");
+            } else {
+                w.write(1, with_aspx ? 1U : 0U, "mono_codec_mode");
+            }
+            if (with_aspx) {
+                detail::write_aspx_head(w, f.iframe, *aspx, f.aspx->elements.front());
+            }
+            units([](const Unit&) { return true; });
+            tails();
+            return;
+        }
+        const bool five = plan.five_x();
+        if (five) {
+            w.write(3, with_aspx ? 1U : 0U, "5_X_codec_mode");
         } else {
-            w.write(1, static_cast<std::uint64_t>(mode), "mono_codec_mode");
-            if (aspx_data != nullptr) {
-                detail::write_aspx_head(w, iframe, *aspx, *aspx_data);
+            w.write(2, with_aspx ? 1U : 0U, "7_X_codec_mode");
+        }
+        if (with_aspx && f.iframe) {
+            detail::write_aspx_config(w, aspx->config);
+        }
+        units([](const Unit& u) { return u.kind == UnitKind::kLfe; });
+        if (with_aspx && five) {
+            detail::write_companding_control(w, f.aspx->companding);
+        }
+        w.write(2, static_cast<std::uint64_t>(f.structure.coding_config), "coding_config");
+        if (f.structure.coding_config == 0) {
+            w.write(1, f.structure.two_ch_mode ? 1U : 0U, "2ch_mode");
+        }
+        // The coding configuration's units; in 7.X the additional pair, and
+        // then C's mono_data() where coding_config 0 and 2 send one.
+        const auto additional = std::ranges::find_if(f.structure.units, [](const Unit& u) { return u.additional; });
+        for (auto it = f.structure.units.begin(); it != f.structure.units.end(); ++it) {
+            if (it->kind == UnitKind::kLfe) {
+                continue;
             }
-            // Table 21, mono_data(0) with the ASF.
-            w.write(1, 0, "spec_frontend");
-            detail::write_sf_info(w, layout, coded.max_sfb);
-            detail::write_sf_data(w, coded.tracks[0], layout);
+            if (it == additional) {
+                w.write(1, 0, "b_use_sap_add_ch");
+            }
+            write_unit(w, *it, f, data);
         }
-        if (aspx_data != nullptr) {
-            detail::write_aspx_tail(w, iframe, *aspx, *aspx_data);
-        }
+        tails();
     }
 
-    [[nodiscard]] EncodedFrame encode_frame(std::int64_t frame, const FrameLayout& layout, int next_first) {
+    // The frame's channel element with no bands, sap_mode 0 in every
+    // chparam_info() and coding_config 0: what a frame falls back to when no
+    // step of the rate loop fits it, and what create() checks the rate holds.
+    [[nodiscard]] Coding silent(bool iframe, const std::vector<FrameLayout>& layout) const {
+        Coding f;
+        f.iframe = iframe;
+        f.structure = structure_for(plan, 0, false, 0);
+        for (Unit& unit : f.structure.units) {
+            if (unit.kind == UnitKind::kPair) {
+                unit.choice.sets = {detail::StereoChoice{}};
+            }
+        }
+        f.layout = layout;
+        f.max_sfb.assign(groups.size(), {0, 0});
+        f.tracks.resize(signal.size());
+        for (std::size_t c = 0; c < signal.size(); ++c) {
+            const FrameLayout& l = layout[group_of[c]];
+            const detail::Grouped grouped = detail::regroup({}, l, {0, 0});
+            f.tracks[c] = detail::code_track(grouped, std::vector<std::vector<int>>(grouped.offset.size()), 0, l);
+        }
+        return f;
+    }
+
+    [[nodiscard]] EncodedFrame encode_frame(std::int64_t frame) {
         const std::size_t channels = signal.size();
         const std::int64_t start = frame * kFrameLength;
         const detail::FrameFields fields = fields_for(frame);
-        Coded coded;
-        coded.max_sfb = max_sfb_for(layout);
+        Coding f;
+        f.iframe = fields.iframe;
+        std::vector<int> next_first(groups.size());
+        for (std::size_t g = 0; g < groups.size(); ++g) {
+            f.layout.push_back(groups[g].layouts[0]);
+            next_first[g] = groups[g].layouts[1].window_length.front();
+            f.max_sfb.push_back(max_sfb_for(f.layout[g], groups[g]));
+        }
 
         // A-SPX's parameters for the frame's interval, and with companding
         // the compressed low band its transform window takes.
-        std::optional<detail::AspxElement> aspx_data;
         if (aspx) {
             analyse_qmf(frame);
-            aspx_data = aspx_element();
-            for (std::size_t c = 0; c < channels; ++c) {
-                aspx_data->channels.push_back(qmf[c].propose(frame, fields.iframe));
-            }
-            if (channels == 2 && aspx->balance) {
-                const auto pair = qmf[0].balanced_with(qmf[1], {aspx_data->channels[0], aspx_data->channels[1]},
-                                                       fields.iframe);
-                if (pair) {
-                    aspx_data->channels = {(*pair)[0], (*pair)[1]};
-                    aspx_data->balance = true;
+            f.aspx = aspx_frame(frame, fields.iframe, std::nullopt);
+        }
+        const auto aspx_fields = [&](std::size_t c) -> const detail::AspxChannelFields& {
+            for (std::size_t e = 0; e < plan.aspx_elements.size(); ++e) {
+                for (std::size_t i = 0; i < plan.aspx_elements[e].size(); ++i) {
+                    if (static_cast<std::size_t>(plan.aspx_elements[e][i]) == c) {
+                        return f.aspx->elements[e].channels[i];
+                    }
                 }
             }
-        }
+            return f.aspx->elements.front().channels.front();
+        };
 
         // With interleaving, the spectral frontend codes above the crossover
         // the groups this frame's A-SPX data marks and the last frame's,
-        // whose slots its transform window overlaps, and nothing else there.
-        std::vector<std::pair<double, double>> waveform_hz;
+        // whose slots its transform window overlaps, and nothing else there,
+        // in each layout group's channels.
+        std::vector<std::vector<std::pair<double, double>>> waveform_hz(groups.size());
         std::vector<std::vector<std::pair<int, int>>> interleaved(channels);
         if (aspx && aspx->interleave) {
             const double subband_hz = static_cast<double>(config.sample_rate_hz) / 128.0;
-            for (std::size_t c = 0; c < channels; ++c) {
-                interleaved[c] = qmf[c].interleaved_subbands(aspx_data->channels[c]);
-                for (const auto& ranges : {interleaved[c], interleaved_prev[c]}) {
-                    for (const auto& [first, last] : ranges) {
-                        waveform_hz.emplace_back(first * subband_hz, last * subband_hz);
+            for (std::size_t g = 0; g < groups.size(); ++g) {
+                for (const int channel : groups[g].channels) {
+                    const auto c = static_cast<std::size_t>(channel);
+                    if (qmf_of[c] < 0) {
+                        continue;
+                    }
+                    interleaved[c] = qmf[static_cast<std::size_t>(qmf_of[c])].interleaved_subbands(aspx_fields(c));
+                    for (const auto& ranges : {interleaved[c], interleaved_prev[c]}) {
+                        for (const auto& [first, last] : ranges) {
+                            waveform_hz[g].emplace_back(first * subband_hz, last * subband_hz);
+                        }
                     }
                 }
+                double top = 0.0;
+                for (const auto& range : waveform_hz[g]) {
+                    top = std::max(top, range.second);
+                }
+                const int first_length = f.layout[g].window_length.front();
+                const int last_length = f.layout[g].window_length.back();
+                f.max_sfb[g] = {std::max(f.max_sfb[g][0], bands_below(first_length, top, config.sample_rate_hz)),
+                                std::max(f.max_sfb[g][1], bands_below(last_length, top, config.sample_rate_hz))};
             }
-            double top = 0.0;
-            for (const auto& range : waveform_hz) {
-                top = std::max(top, range.second);
-            }
-            const int first_length = layout.window_length.front();
-            const int last_length = layout.window_length.back();
-            coded.max_sfb = {std::max(coded.max_sfb[0], bands_below(first_length, top, config.sample_rate_hz)),
-                             std::max(coded.max_sfb[1], bands_below(last_length, top, config.sample_rate_hz))};
         }
 
-        std::vector<detail::Grouped> grouped(channels);
-        std::vector<std::vector<std::vector<double>>> allowed(channels);
+        std::vector<detail::Channel> spectra(channels);
         std::vector<std::vector<std::vector<bool>>> silenced(channels);
         std::vector<double> window(2 * kFrameLength);
         std::vector<double> spectrum;
-        for (std::size_t c = 0; c < channels; ++c) {
-            for (std::size_t i = 0; i < window.size(); ++i) {
-                window[i] = coded_sample(c, start + static_cast<std::int64_t>(i));
-            }
-            analysis.transform(window, layout, previous_last, next_first, spectrum);
-            grouped[c] = detail::regroup(spectrum, layout, coded.max_sfb);
-            allowed[c] = psycho.thresholds(grouped[c], layout);
-            silenced[c] = silenced_bands(grouped[c], layout, waveform_hz);
-            for (std::size_t g = 0; g < allowed[c].size(); ++g) {
-                for (std::size_t b = 0; b < allowed[c][g].size(); ++b) {
-                    if (silenced[c][g][b]) {
-                        allowed[c][g][b] = kSilencedAllowance;
+        for (std::size_t g = 0; g < groups.size(); ++g) {
+            for (const int channel : groups[g].channels) {
+                const auto c = static_cast<std::size_t>(channel);
+                for (std::size_t i = 0; i < window.size(); ++i) {
+                    window[i] = coded_sample(c, start + static_cast<std::int64_t>(i));
+                }
+                analysis.transform(window, f.layout[g], groups[g].previous_last, next_first[g], spectrum);
+                spectra[c].grouped = detail::regroup(spectrum, f.layout[g], f.max_sfb[g]);
+                spectra[c].allowed = psycho.thresholds(spectra[c].grouped, f.layout[g]);
+                silenced[c] = silenced_bands(spectra[c].grouped, f.layout[g], waveform_hz[g]);
+                for (std::size_t gr = 0; gr < spectra[c].allowed.size(); ++gr) {
+                    for (std::size_t b = 0; b < spectra[c].allowed[gr].size(); ++b) {
+                        if (silenced[c][gr][b]) {
+                            spectra[c].allowed[gr][b] = kSilencedAllowance;
+                        }
                     }
                 }
             }
         }
-        if (channels == 2) {
-            coded.stereo = detail::choose_stereo(grouped[0], grouped[1], allowed[0], allowed[1]);
+        if (config.experimental.coding_configs && plan.ch_mode >= 3) {
+            const std::size_t g = group_of[static_cast<std::size_t>(plan.l)];
+            f.structure = choose_structure(spectra, f.layout[g], f.max_sfb[g]);
+        } else {
+            f.structure = structure_for(plan, 0, false, 0);
+            undo(f.structure, spectra);
         }
-        // The frame's size, and the bits the channel element may take.
+        // The tracks in the syntax's order, each where its unit left it.
+        std::vector<std::size_t> order;
+        for (const Unit& unit : f.structure.units) {
+            for (const int c : unit.outputs) {
+                order.push_back(static_cast<std::size_t>(c));
+            }
+        }
+
+        // The frame's size, and the bits the channel element's sf_data() may
+        // take.
         const double exact = byte_carry + bytes_per_frame;
         const auto frame_bytes = static_cast<std::size_t>(exact);
         const std::size_t overhead = detail::frame_overhead_bits(fields, frame_bytes);
-        std::size_t element = channels == 2 ? 3 + detail::chparam_info_bits(coded.stereo) : 2;
-        element += detail::sf_info_bits(layout, coded.max_sfb);
-        if (aspx_data) {
-            element += aspx_bits(fields.iframe, *aspx_data);
-        }
-        const std::size_t budget = 8 * frame_bytes > overhead + element ? 8 * frame_bytes - overhead - element : 0;
+        f.tracks.resize(channels);
+        BitWriter side = BitWriter::buffered();
+        write_element(side, f, false);
+        const std::size_t side_bits = side.bit_position();
+        const std::size_t budget =
+            8 * frame_bytes > overhead + side_bits ? 8 * frame_bytes - overhead - side_bits : 0;
 
         // The rate loop: a level of noise per line, top_level * 10^(kStepDb p
         // / 10) at step p, and two laws that bring the bands' allowances to
@@ -430,19 +886,20 @@ struct Encoder::Impl {
         // leave a hole, until the last steps (kCapSteps on) relax that too.
         double top_level = 0.0;  // the highest allowance per line
         std::vector<std::vector<std::vector<double>>> energy(channels);
-        for (std::size_t c = 0; c < channels; ++c) {
-            energy[c].resize(allowed[c].size());
-            for (std::size_t g = 0; g < allowed[c].size(); ++g) {
-                energy[c][g].assign(allowed[c][g].size(), 0.0);
-                for (std::size_t b = 0; b < allowed[c][g].size(); ++b) {
+        for (const std::size_t c : order) {
+            const detail::Channel& track = spectra[c];
+            energy[c].resize(track.allowed.size());
+            for (std::size_t g = 0; g < track.allowed.size(); ++g) {
+                energy[c][g].assign(track.allowed[g].size(), 0.0);
+                for (std::size_t b = 0; b < track.allowed[g].size(); ++b) {
                     if (silenced[c][g][b]) {
                         continue;
                     }
-                    const std::size_t begin = grouped[c].offset[g][b];
-                    const std::size_t end = grouped[c].offset[g][b + 1];
-                    top_level = std::max(top_level, allowed[c][g][b] / static_cast<double>(end - begin));
+                    const std::size_t begin = track.grouped.offset[g][b];
+                    const std::size_t end = track.grouped.offset[g][b + 1];
+                    top_level = std::max(top_level, track.allowed[g][b] / static_cast<double>(end - begin));
                     for (std::size_t k = begin; k < end; ++k) {
-                        energy[c][g][b] += grouped[c].lines[k] * grouped[c].lines[k];
+                        energy[c][g][b] += track.grouped.lines[k] * track.grouped.lines[k];
                     }
                 }
             }
@@ -453,14 +910,15 @@ struct Encoder::Impl {
         const auto set_step = [&](bool pull, int step) {
             const double level = top_level * std::pow(10.0, kStepDb * step / 10.0);
             const double cap = kappa * (step > kCapSteps ? std::pow(10.0, kStepDb * (step - kCapSteps) / 10.0) : 1.0);
-            for (std::size_t c = 0; c < channels; ++c) {
-                capped = allowed[c];
+            for (const std::size_t c : order) {
+                const detail::Channel& track = spectra[c];
+                capped = track.allowed;
                 for (std::size_t g = 0; g < capped.size(); ++g) {
                     for (std::size_t b = 0; b < capped[g].size(); ++b) {
                         if (silenced[c][g][b]) {
                             continue;
                         }
-                        const auto lines = static_cast<double>(grouped[c].offset[g][b + 1] - grouped[c].offset[g][b]);
+                        const auto lines = static_cast<double>(track.grouped.offset[g][b + 1] - track.grouped.offset[g][b]);
                         double& allowance = capped[g][b];
                         if (!pull) {
                             if (allowance > level * lines) {
@@ -474,14 +932,15 @@ struct Encoder::Impl {
                         }
                     }
                 }
-                sf[c] = detail::scale_factors_for(grouped[c], capped);
+                sf[c] = detail::scale_factors_for(track.grouped, capped);
             }
         };
+        const auto layout_of = [&](std::size_t c) -> const FrameLayout& { return f.layout[group_of[c]]; };
         const auto bits_at = [&](bool pull, int step) {
             set_step(pull, step);
             std::size_t total = 0;
-            for (std::size_t c = 0; c < channels; ++c) {
-                total += detail::code_track(grouped[c], sf[c], 0, layout).bits();
+            for (const std::size_t c : order) {
+                total += detail::code_track(spectra[c].grouped, sf[c], 0, layout_of(c)).bits();
             }
             return total;
         };
@@ -499,14 +958,13 @@ struct Encoder::Impl {
         };
         const auto write = [&]() {
             BitWriter audio = BitWriter::buffered();
-            write_element(audio, layout, coded, fields.iframe, aspx_data ? &*aspx_data : nullptr);
+            write_element(audio, f, true);
             return detail::write_frame(fields, audio, frame_bytes, config.trace);
         };
         const auto write_at = [&](bool pull, int step) {
             set_step(pull, step);
-            coded.tracks.clear();
-            for (std::size_t c = 0; c < channels; ++c) {
-                coded.tracks.push_back(detail::code_track(grouped[c], sf[c], 0, layout));
+            for (const std::size_t c : order) {
+                f.tracks[c] = detail::code_track(spectra[c].grouped, sf[c], 0, layout_of(c));
             }
             return write();
         };
@@ -546,28 +1004,34 @@ struct Encoder::Impl {
             // more than the frame holds, or A-SPX data that leave too little:
             // the frame goes out with no bands, and then with the A-SPX data
             // that cost least.
-            coded = silent(layout);
+            std::optional<AspxFrame> proposed = std::move(f.aspx);
+            f = silent(fields.iframe, f.layout);
+            f.aspx = std::move(proposed);
             raw = write();
             for (const bool silence : {false, true}) {
-                if (raw || !aspx_data) {
+                if (raw || !f.aspx) {
                     break;
                 }
-                for (std::size_t c = 0; c < channels; ++c) {
-                    aspx_data->channels[c] = qmf[c].fallback(fields.iframe, silence);
-                }
-                aspx_data->balance = false;
+                f.aspx = aspx_frame(frame, fields.iframe, silence);
                 raw = write();
             }
         }
-        if (aspx_data) {
-            for (std::size_t c = 0; c < channels; ++c) {
-                qmf[c].commit(frame, aspx_data->channels[c], aspx_data->balance && c == 1);
-                qmf[c].drop_before_frame(frame + 1);
-                interleaved_prev[c] = qmf[c].interleaved_subbands(aspx_data->channels[c]);
+        if (f.aspx) {
+            for (std::size_t e = 0; e < plan.aspx_elements.size(); ++e) {
+                const detail::AspxElement& element = f.aspx->elements[e];
+                for (std::size_t i = 0; i < plan.aspx_elements[e].size(); ++i) {
+                    const auto c = static_cast<std::size_t>(plan.aspx_elements[e][i]);
+                    detail::AspxChannelEncoder& channel = qmf[static_cast<std::size_t>(qmf_of[c])];
+                    channel.commit(frame, element.channels[i], element.balance && i == 1);
+                    channel.drop_before_frame(frame + 1);
+                    interleaved_prev[c] = channel.interleaved_subbands(element.channels[i]);
+                }
             }
         }
         byte_carry = exact - static_cast<double>(frame_bytes);
-        previous_last = layout.window_length.back();
+        for (std::size_t g = 0; g < groups.size(); ++g) {
+            groups[g].previous_last = f.layout[g].window_length.back();
+        }
         EncodedFrame out;
         out.raw_ac4_frame = std::move(raw).value();
         out.samples = kFrameLength;
@@ -588,13 +1052,15 @@ struct Encoder::Impl {
             if (!flushed && signal_end() < needed) {
                 break;
             }
-            while (static_cast<std::int64_t>(layouts.size()) < 2) {
-                layouts.push_back(decide(frame + static_cast<std::int64_t>(layouts.size())));
+            for (Group& group : groups) {
+                while (static_cast<std::int64_t>(group.layouts.size()) < 2) {
+                    group.layouts.push_back(decide(frame + static_cast<std::int64_t>(group.layouts.size()), group));
+                }
             }
-            const FrameLayout layout = layouts.front();
-            const int next_first = layouts[1].window_length.front();
-            frames.push_back(encode_frame(frame, layout, next_first));
-            layouts.pop_front();
+            frames.push_back(encode_frame(frame));
+            for (Group& group : groups) {
+                group.layouts.pop_front();
+            }
             ++frames_out;
             // Nothing before the next frame's window is read again.
             const std::int64_t keep_from = (frames_out * kFrameLength) - kSubBlock * 5;
@@ -611,7 +1077,8 @@ struct Encoder::Impl {
 };
 
 std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config) {
-    if (config.channels != 1 && config.channels != 2) {
+    const std::optional<Plan> plan = plan_for(config);
+    if (!plan) {
         return std::unexpected(EncodeError::kInvalidConfig);
     }
     if (config.sample_rate_hz != 48000 && config.sample_rate_hz != 44100) {
@@ -629,32 +1096,52 @@ std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config)
     }
     auto impl = std::make_unique<Impl>();
     impl->config = config;
+    impl->plan = *plan;
     impl->psycho = detail::Psychoacoustics(config.sample_rate_hz, kFrameLength);
     impl->fs_index = config.sample_rate_hz == 48000 ? 1 : 0;
     impl->dialnorm_bits = static_cast<int>(std::lround(-config.dialnorm_db * 4.0));
     impl->bytes_per_frame = static_cast<double>(config.bitrate_kbps) * 1000.0 * kFrameLength /
                             (static_cast<double>(config.sample_rate_hz) * 8.0);
-    const double kbps_per_channel = static_cast<double>(config.bitrate_kbps) / config.channels;
+    const auto channels = static_cast<std::size_t>(config.channels);
+    const int full_channels = config.channels - (plan->lfe >= 0 ? 1 : 0);
+    const double kbps_per_channel = static_cast<double>(config.bitrate_kbps) / full_channels;
+    const bool multichannel = plan->ch_mode >= 3;
     impl->cutoff = cutoff_hz(kbps_per_channel);
+    impl->group_of.assign(channels, 0);
+    for (std::size_t g = 0; g < plan->groups.size(); ++g) {
+        Impl::Group group;
+        group.channels = plan->groups[g];
+        group.lfe = group.channels.size() == 1 && group.channels.front() == plan->lfe;
+        for (const int c : group.channels) {
+            impl->group_of[static_cast<std::size_t>(c)] = g;
+        }
+        impl->groups.push_back(std::move(group));
+    }
+    const double aspx_below = multichannel ? kAspxBelowKbpsMultichannel : kAspxBelowKbps;
     if (config.codec_mode == CodecMode::kAspx ||
-        (config.codec_mode == CodecMode::kAuto && kbps_per_channel < kAspxBelowKbps)) {
-        impl->aspx = detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz);
+        (config.codec_mode == CodecMode::kAuto && kbps_per_channel < aspx_below)) {
+        impl->aspx = detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz, multichannel);
         if (!impl->aspx) {
             return std::unexpected(EncodeError::kInvalidConfig);
         }
         impl->aspx->varvar = config.experimental.aspx_varvar;
         impl->aspx->balance = config.experimental.aspx_balance;
         impl->aspx->interleave = config.experimental.aspx_interleave;
-        impl->interleaved_prev.resize(static_cast<std::size_t>(config.channels));
+        impl->interleaved_prev.resize(channels);
         // The spectral frontend codes up to the crossover, subband sbx of 64
         // across half the sampling rate.
         impl->cutoff = static_cast<double>(impl->aspx->groups.sbx) * config.sample_rate_hz / 128.0;
-        for (int c = 0; c < config.channels; ++c) {
+        impl->qmf_of.assign(channels, -1);
+        for (std::size_t c = 0; c < channels; ++c) {
+            if (static_cast<int>(c) == plan->lfe) {
+                continue;
+            }
+            impl->qmf_of[c] = static_cast<int>(impl->qmf.size());
+            impl->qmf_channel.push_back(static_cast<int>(c));
             impl->qmf.emplace_back(*impl->aspx);
         }
     }
-    impl->signal.assign(static_cast<std::size_t>(config.channels),
-                        std::vector<double>(static_cast<std::size_t>(kDelay), 0.0));
+    impl->signal.assign(channels, std::vector<double>(static_cast<std::size_t>(kDelay), 0.0));
 
     // The rate must hold a frame with no bands and no A-SPX energy, in the
     // smaller of the sizes it gives frames, whatever the frame's blocks: that
@@ -663,19 +1150,22 @@ std::expected<Encoder, EncodeError> Encoder::create(const EncoderConfig& config)
     // sizes.
     const detail::FrameFields fields = impl->fields_for(0);
     const auto frame_bytes = static_cast<std::size_t>(impl->bytes_per_frame);
-    std::optional<detail::AspxElement> aspx_data;
+    std::optional<Impl::AspxFrame> aspx_data;
     if (impl->aspx) {
-        aspx_data = impl->aspx_element();
-        for (const detail::AspxChannelEncoder& channel : impl->qmf) {
-            aspx_data->channels.push_back(channel.fallback(true, true));
-        }
+        aspx_data = impl->aspx_frame(0, true, true);
     }
     std::optional<std::vector<std::byte>> raw;
     for (const FrameLayout& layout :
          {detail::long_layout(kFrameLength), detail::split_layout(kFrameLength, {0, 0}, {0, 0})}) {
-        BitWriter silent = BitWriter::buffered();
-        impl->write_element(silent, layout, impl->silent(layout), fields.iframe, aspx_data ? &*aspx_data : nullptr);
-        auto written = detail::write_frame(fields, silent, frame_bytes, {});
+        std::vector<FrameLayout> layouts;
+        for (const Impl::Group& group : impl->groups) {
+            layouts.push_back(group.lfe ? detail::long_layout(kFrameLength) : layout);
+        }
+        Impl::Coding silent = impl->silent(fields.iframe, layouts);
+        silent.aspx = aspx_data;
+        BitWriter audio = BitWriter::buffered();
+        impl->write_element(audio, silent, true);
+        auto written = detail::write_frame(fields, audio, frame_bytes, {});
         if (!written) {
             return std::unexpected(EncodeError::kInvalidConfig);  // the rate cannot hold a frame
         }

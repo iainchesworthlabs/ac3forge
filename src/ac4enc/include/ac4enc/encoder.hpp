@@ -17,18 +17,22 @@
 // personalized audio", written from the published texts. Clause numbers below
 // name the part that defines the element.
 //
-// What this version writes: mono or stereo PCM at 48 kHz, or 44.1 kHz, in
-// frames of 2 048 samples (frame_rate_index 13, which needs no sample rate
-// converter), as one presentation of one channel-coded substream, at a
+// What this version writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, or 44.1
+// kHz, in frames of 2 048 samples (frame_rate_index 13, which needs no sample
+// rate converter), as one presentation of one channel-coded substream, at a
 // constant bit rate (wait_frames 0), each frame filled to its size. The codec
-// mode is SIMPLE, the audio spectral frontend with block switching and, for
-// stereo, MDCT-domain stereo processing; or ASPX, which codes the spectral
-// frontend up to a crossover and recreates the band above it with A-SPX, with
-// companding at the lower rates. The table of contents is bitstream version 2
-// with presentation version 1, and the presentation substream carries the
-// dialogue normalisation it is given. Everything else in the plan's later
-// phases (A-CPL, more channels, other frame rates, DRC and dialogue
-// enhancement data) is refused by name as an invalid configuration.
+// mode is SIMPLE, the audio spectral frontend with block switching and
+// MDCT-domain stereo processing for each channel pair; or ASPX, which codes
+// the spectral frontend up to a crossover and recreates the band above it
+// with A-SPX, with companding at the lower rates in mono and stereo. 5.0 and
+// 5.1 take the 5.X element in the form DEE's streams have it (coding_config
+// 0 and 2ch_mode 0: L and R as a pair, Ls and Rs as a pair, C alone, and the
+// LFE); its other coding configurations, and 7.0 and 7.1 in the 7.X element,
+// are experimental. The table of contents is bitstream version 2 with
+// presentation version 1, and the presentation substream carries the dialogue
+// normalisation it is given. Everything else in the plan's later phases
+// (A-CPL, immersive layouts, other frame rates, DRC and dialogue enhancement
+// data) is refused by name as an invalid configuration.
 //
 // src/ac4enc/ERRATA.md records the readings the writer alone needs; where the
 // decoder depends on the same reading, src/ac4dec/ERRATA.md has it.
@@ -44,16 +48,33 @@ enum class EncodeError : std::uint8_t {
 
 // The channel element's codec mode (Part 1 clause 4.3.6.1).
 enum class CodecMode : std::uint8_t {
-    kAuto,    // ASPX below 96 kbps a channel, SIMPLE from there
+    // ASPX below 96 kbps a channel in mono and stereo and below 76.8 in the
+    // 5.X and 7.X elements (5.1's LFE not counted), as DEE's streams switch at
+    // 192 kbps in stereo and 384 in 5.1; SIMPLE from there.
+    kAuto,
     kSimple,  // the audio spectral frontend over the whole band
-    // The spectral frontend up to A-SPX's crossover and A-SPX above it:
-    // 7.5 kHz below 32 kbps a channel, 10.5 kHz below 48 and 13.5 kHz from
-    // there; companding below 64 kbps a channel.
+    // The spectral frontend up to A-SPX's crossover and A-SPX above it. In
+    // mono and stereo 7.5 kHz below 32 kbps a channel, 10.5 kHz below 48 and
+    // 13.5 kHz from there, with companding below 64 kbps a channel; in 5.X and
+    // 7.X 12 kHz from 38.4 kbps a channel and 12.75 kHz from 51.2, without
+    // companding.
     kAspx,
 };
 
+// The 7.X element's pair beyond L, R, C, Ls and Rs (Part 1 Table 88).
+enum class AdditionalPair : std::uint8_t {
+    kNone,
+    kBack,      // 3/4/0: Lb and Rb
+    kWide,      // 5/2/0: Lw and Rw
+    kTopFront,  // 3/2/2: Tfl and Tfr
+};
+
 struct EncoderConfig {
-    int channels = 2;              // 1 (mono) or 2 (stereo)
+    // The input's channels, in the order ac4::Decoder writes them: 1, mono; 2,
+    // stereo, L R; 5, 5.0, L R C Ls Rs; 6, 5.1, L R C LFE Ls Rs; and with
+    // experimental.seven_x, 7 or 8, 7.0 or 7.1, L R C, the LFE of 7.1, Ls Rs
+    // and the additional pair.
+    int channels = 2;
     int sample_rate_hz = 48000;    // 48 000, or 44 100
     int bitrate_kbps = 192;        // the stream's rate, over whole raw_ac4_frame()s
     CodecMode codec_mode = CodecMode::kAuto;
@@ -83,6 +104,16 @@ struct EncoderConfig {
         // tone above the crossover that A-SPX would not recreate is coded by
         // the spectral frontend, and A-SPX adds nothing there.
         bool aspx_interleave = false;
+        // In the 5.X and 7.X elements, coding_config 1 to 3 and 2ch_mode 1
+        // besides DEE's coding_config 0 with 2ch_mode 0 (Part 1 Tables 25,
+        // 33 and 180), with each three and five channel matrix's chel_matsel
+        // (Tables 178 and 179): each frame takes the one whose matrices and
+        // side information cost fewest bits. The five channels then share
+        // one transform layout.
+        bool coding_configs = false;
+        // Seven or eight input channels in the 7.X element, with this pair
+        // beyond L, R, C, Ls and Rs.
+        AdditionalPair seven_x = AdditionalPair::kNone;
     };
     Experimental experimental{};
 };

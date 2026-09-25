@@ -11,7 +11,6 @@
 #include <fmt/format.h>
 #include <fstream>
 #include <ios>
-#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -19,6 +18,7 @@
 #include <system_error>
 #include <vector>
 
+#include "../ac4_channels.hpp"
 #include "../adm/atmos_adm.hpp"
 #include "../adm/decode_adm.hpp"
 #include "../exit_codes.hpp"
@@ -366,37 +366,6 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
     }
 }
 
-// Where an AC-4 channel goes in a WAV file: the WAVEFORMATEXTENSIBLE speaker
-// order the E-AC-3 path writes in (plan::wav_order: FL FR FC LFE BL BR, then
-// SL SR and the top front pair), with Ls and Rs at SL and SR, Lb and Rb at BL
-// and BR, and Lw and Rw, which that order has no place for, last.
-[[nodiscard]] int ac4_wav_rank(ac4::Speaker speaker) {
-    switch (speaker) {
-        case ac4::Speaker::kLeft:
-            return 0;
-        case ac4::Speaker::kRight:
-            return 1;
-        case ac4::Speaker::kCentre:
-            return 2;
-        case ac4::Speaker::kLfe:
-            return 3;
-        case ac4::Speaker::kLeftBack:
-            return 4;
-        case ac4::Speaker::kRightBack:
-            return 5;
-        case ac4::Speaker::kLeftSurround:
-            return 9;
-        case ac4::Speaker::kRightSurround:
-            return 10;
-        case ac4::Speaker::kTopFrontLeft:
-            return 12;
-        case ac4::Speaker::kTopFrontRight:
-            return 14;
-        default:
-            return 99;
-    }
-}
-
 // The level meter's order, A/52's: L C R Ls Rs, the LFE, then any other.
 [[nodiscard]] int ac4_meter_rank(ac4::Speaker speaker) {
     switch (speaker) {
@@ -415,15 +384,6 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
         default:
             return 99;
     }
-}
-
-// The decoded channels' indices ordered by `rank`, ties in decoder order.
-template <typename Rank>
-[[nodiscard]] std::vector<std::size_t> ac4_order(std::span<const ac4::Speaker> speakers, Rank rank) {
-    std::vector<std::size_t> order(speakers.size());
-    std::iota(order.begin(), order.end(), std::size_t{0});
-    std::ranges::stable_sort(order, {}, [&](std::size_t c) { return rank(speakers[c]); });
-    return order;
 }
 
 // The coding mode that names an AC-4 layout's bed for the meter: 1/0, 2/0,

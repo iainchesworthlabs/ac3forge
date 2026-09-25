@@ -29,6 +29,7 @@ target_sources(ac4enc_objects
         src/asf/analysis.cpp
         src/asf/coder.cpp
         src/asf/layout.cpp
+        src/asf/multichannel.cpp
         src/asf/psycho.cpp
         src/asf/stereo.cpp
         src/aspx/aspx_encoder.cpp

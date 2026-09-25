@@ -695,7 +695,8 @@ clause's formula.
   `max_sfb`.
 - **Evidence:** Text, and the constructed 7.X streams of `tests/ac4dec/ac4dec_constructed.cpp`, whose
   tracks are the channels through the inverse of Table 183's matrix and which decode with each tone on its
-  channel. No encoder here writes the element.
+  channel. The encoder writes the element as an experimental option, with `b_use_sap_add_ch` 0, so its
+  streams do not reach the matrix.
 
 ## The QMF domain
 

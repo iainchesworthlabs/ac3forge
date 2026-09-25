@@ -6,6 +6,7 @@
 // each channel's tone on its own channel.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -144,7 +145,14 @@ void check_frames_read_back(const Encoded& encoded) {
 
 TEST_CASE("the encoder refuses what it does not write", "[ac4enc][encoder]") {
     ac4::EncoderConfig config;
+    for (const int channels : {0, 3, 4, 7, 8, 9}) {
+        CAPTURE(channels);
+        config.channels = channels;
+        CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    }
+    // A 7.X pair wants seven or eight channels.
     config.channels = 6;
+    config.experimental.seven_x = ac4::AdditionalPair::kBack;
     CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
     config = {};
     config.sample_rate_hz = 32000;
@@ -540,5 +548,254 @@ TEST_CASE("sequence_counter starts at 0 and I-frames come at the configured inte
         CHECK(parsed->toc.sequence_counter == static_cast<int>(f));
         CHECK(parsed->toc.b_iframe_global == (f % 5 == 0));
         CHECK(encoded.frames[f].iframe == (f % 5 == 0));
+    }
+}
+
+namespace {
+
+// gen_ac4_baseline.py's tones, L R C LFE Ls Rs, and the next two primes for
+// a 7.X layout's additional pair: no tone sits on another's harmonic.
+constexpr std::array<double, 8> kToneHz = {331.0, 457.0, 613.0, 47.0, 787.0, 953.0, 1117.0, 1289.0};
+
+// The tones of a layout's channels, in the decoder's order: L R C, the LFE if
+// `lfe`, Ls Rs, and `extra` more.
+std::vector<double> layout_tones(bool lfe, int extra) {
+    std::vector<double> hz = {kToneHz[0], kToneHz[1], kToneHz[2]};
+    if (lfe) {
+        hz.push_back(kToneHz[3]);
+    }
+    hz.insert(hz.end(), {kToneHz[4], kToneHz[5]});
+    for (int k = 0; k < extra; ++k) {
+        hz.push_back(kToneHz[static_cast<std::size_t>(6 + k)]);
+    }
+    return hz;
+}
+
+// The amplitude of x's component at `hz` over `count` samples from `first`,
+// through a Hann window: another tone's sidelobes are far below what this
+// measures, which a plain projection's are not over a finite span.
+double tone_amplitude(std::span<const float> x, std::size_t first, std::size_t count, double hz, int rate) {
+    double re = 0.0;
+    double im = 0.0;
+    double weight = 0.0;
+    for (std::size_t n = 0; n < count && first + n < x.size(); ++n) {
+        const double w = 0.5 - 0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(n) / static_cast<double>(count));
+        const double phase = 2.0 * std::numbers::pi * hz * static_cast<double>(first + n) / rate;
+        re += w * static_cast<double>(x[first + n]) * std::cos(phase);
+        im -= w * static_cast<double>(x[first + n]) * std::sin(phase);
+        weight += w;
+    }
+    return 2.0 * std::hypot(re, im) / weight;
+}
+
+// Each channel's own tone at unity gain and 40 dB of SNR, and every other
+// channel's tone 60 dB under it there: planning/ac4.md, E3's exit.
+void check_routing(const std::vector<double>& hz, const std::vector<std::vector<float>>& input,
+                   const std::vector<std::vector<float>>& decoded) {
+    REQUIRE(decoded.size() == hz.size());
+    const std::size_t lag = 3072 + kDecoderDelay;
+    const std::size_t first = lag + 4096;
+    const std::size_t span = input.front().size() - 8192;
+    for (std::size_t c = 0; c < hz.size(); ++c) {
+        CAPTURE(c, hz[c]);
+        const Score own = score(input[c], decoded[c], lag);
+        CHECK(std::abs(own.gain_db) < 0.2);
+        CHECK(own.snr_db > 40.0);
+        const double level = tone_amplitude(decoded[c], first, span, hz[c], 48000);
+        for (std::size_t other = 0; other < hz.size(); ++other) {
+            if (other != c) {
+                CAPTURE(other, hz[other]);
+                const double leak = tone_amplitude(decoded[c], first, span, hz[other], 48000);
+                CHECK(20.0 * std::log10(level / std::max(leak, 1e-30)) > 60.0);
+            }
+        }
+    }
+}
+
+// Noise over 13 to 20 kHz: above every 5.X and 7.X crossover.
+std::vector<float> high_noise(std::size_t count) {
+    std::vector<float> x(count, 0.0F);
+    std::uint32_t seed = 4242;
+    std::vector<double> white(count);
+    for (double& w : white) {
+        seed = seed * 1664525U + 1013904223U;
+        w = static_cast<double>(seed >> 8) / 16777216.0 - 0.5;
+    }
+    // White noise less its smoothed self keeps the top.
+    for (std::size_t n = 6; n < count; ++n) {
+        double sum = 0.0;
+        for (std::size_t k = 0; k < 6; ++k) {
+            sum += white[n - k];
+        }
+        x[n] = static_cast<float>(0.3 * (white[n] - sum / 6.0));
+    }
+    return x;
+}
+
+}  // namespace
+
+TEST_CASE("5.0 and 5.1 put each channel's tone on its own channel in SIMPLE and ASPX, the LFE's included",
+          "[ac4enc][encoder][multichannel]") {
+    const std::size_t count = 48000 * 2;
+    for (const bool lfe : {true, false}) {
+        // ASPX below 76.8 kbps a channel, SIMPLE from there.
+        for (const int kbps : {192, 384}) {
+            CAPTURE(lfe, kbps);
+            const std::vector<double> hz = layout_tones(lfe, 0);
+            std::vector<std::vector<float>> input;
+            for (const double f : hz) {
+                input.push_back(tone(f, 0.1, count, 48000));
+            }
+            ac4::EncoderConfig config;
+            config.channels = static_cast<int>(hz.size());
+            config.bitrate_kbps = kbps;
+            const Encoded encoded = encode(config, input, 3333);
+            CHECK(count_records(encoded, "5_X_codec_mode", kbps < 384 ? 1U : 0U) == encoded.frames.size());
+            // DEE's form: coding_config 0 and 2ch_mode 0 in every frame.
+            CHECK(count_records(encoded, "coding_config", 0) == encoded.frames.size());
+            CHECK(count_records(encoded, "2ch_mode", 0) == encoded.frames.size());
+            check_frames_read_back(encoded);
+            check_routing(hz, input, decode(encoded.frames));
+        }
+    }
+}
+
+TEST_CASE("the encoder's 5.1 table of contents and MP4 description", "[ac4enc][encoder][multichannel]") {
+    ac4::EncoderConfig config;
+    config.channels = 6;
+    config.bitrate_kbps = 384;
+    auto encoder = ac4::Encoder::create(config);
+    REQUIRE(encoder.has_value());
+    const auto& chan = encoder->toc().substream_groups.at(0).substreams.at(0).chan;
+    REQUIRE(chan.has_value());
+    CHECK(chan->ch_mode == 4);
+    CHECK(encoder->codec_mode() == ac4::CodecMode::kSimple);
+    CHECK_FALSE(ac4::build_dac4(encoder->toc()).empty());
+}
+
+TEST_CASE("each aspx_data element fills the high band of the channels Table 213 gives it",
+          "[ac4enc][encoder][multichannel][aspx]") {
+    // Noise above the crossover in one channel: after decoding only that
+    // channel carries it, so the encoder's pairing of A-SPX channels is the
+    // decoder's, element by element.
+    const std::size_t count = 48000;
+    struct Case {
+        ac4::AdditionalPair pair;
+        int channels;
+        int kbps;
+        std::size_t noisy;
+    };
+    for (const Case c : {Case{ac4::AdditionalPair::kNone, 6, 192, 2}, Case{ac4::AdditionalPair::kNone, 6, 256, 4},
+                         Case{ac4::AdditionalPair::kNone, 5, 192, 1}, Case{ac4::AdditionalPair::kWide, 8, 320, 6},
+                         Case{ac4::AdditionalPair::kWide, 8, 320, 4}, Case{ac4::AdditionalPair::kBack, 7, 320, 5}}) {
+        CAPTURE(static_cast<int>(c.pair), c.channels, c.kbps, c.noisy);
+        std::vector<std::vector<float>> input;
+        for (int ch = 0; ch < c.channels; ++ch) {
+            input.push_back(tone(kToneHz[static_cast<std::size_t>(ch)], 0.05, count, 48000));
+        }
+        const std::vector<float> noise = high_noise(count);
+        for (std::size_t n = 0; n < count; ++n) {
+            input[c.noisy][n] += noise[n];
+        }
+        ac4::EncoderConfig config;
+        config.channels = c.channels;
+        config.bitrate_kbps = c.kbps;
+        config.experimental.seven_x = c.pair;
+        const Encoded encoded = encode(config, input, 4096);
+        const std::string_view mode = c.pair == ac4::AdditionalPair::kNone ? "5_X_codec_mode" : "7_X_codec_mode";
+        REQUIRE(count_records(encoded, mode, 1) == encoded.frames.size());
+        check_frames_read_back(encoded);
+        const auto decoded = decode(encoded.frames);
+        const std::size_t lag = 3072 + kDecoderDelay;
+        const double source = band_energy(noise, 8192, 6, 14000.0, 19000.0, 48000);
+        for (std::size_t ch = 0; ch < decoded.size(); ++ch) {
+            CAPTURE(ch);
+            const double output = band_energy(decoded[ch], 8192 + lag, 6, 14000.0, 19000.0, 48000);
+            const double db = 10.0 * std::log10(std::max(output, 1e-30) / source);
+            if (ch == c.noisy) {
+                CHECK(std::abs(db) < 3.0);
+            } else {
+                CHECK(db < -30.0);
+            }
+        }
+    }
+}
+
+TEST_CASE("the 7.X element's three layouts put each tone on its own channel", "[ac4enc][encoder][multichannel]") {
+    const std::size_t count = 48000 * 2;
+    for (const ac4::AdditionalPair pair : {ac4::AdditionalPair::kBack, ac4::AdditionalPair::kWide,
+                                           ac4::AdditionalPair::kTopFront}) {
+        for (const bool lfe : {true, false}) {
+            // ASPX below 76.8 kbps a channel, SIMPLE from there.
+            for (const int kbps : {448, 640}) {
+                CAPTURE(static_cast<int>(pair), lfe, kbps);
+                const std::vector<double> hz = layout_tones(lfe, 2);
+                std::vector<std::vector<float>> input;
+                for (const double f : hz) {
+                    input.push_back(tone(f, 0.1, count, 48000));
+                }
+                ac4::EncoderConfig config;
+                config.channels = static_cast<int>(hz.size());
+                config.bitrate_kbps = kbps;
+                config.experimental.seven_x = pair;
+                const Encoded encoded = encode(config, input, 5000);
+                CHECK(count_records(encoded, "7_X_codec_mode", kbps < 7 * 76.8 ? 1U : 0U) == encoded.frames.size());
+                CHECK(count_records(encoded, "b_use_sap_add_ch", 0) == encoded.frames.size());
+                check_frames_read_back(encoded);
+                check_routing(hz, input, decode(encoded.frames));
+            }
+        }
+    }
+}
+
+TEST_CASE("the experimental coding configurations choose frame by frame and decode where they should",
+          "[ac4enc][encoder][multichannel]") {
+    // A second of each: independent tones; one signal in L, R and C at three
+    // levels; and L again in Ls and R in Rs. Frames choose among the coding
+    // configurations, and every channel comes back as its input.
+    const std::size_t second = 48000;
+    const std::vector<float> shared = mixed(second, 48000, 1).front();
+    std::vector<std::vector<float>> input(6, std::vector<float>(3 * second, 0.0F));
+    for (std::size_t c = 0; c < 6; ++c) {
+        const std::vector<float> t = tone(kToneHz[c], 0.1, second, 48000);
+        for (std::size_t n = 0; n < second; ++n) {
+            input[c][n] = t[n];
+        }
+    }
+    const std::vector<float> left = tone(kToneHz[0], 0.1, second, 48000);
+    const std::vector<float> right = tone(kToneHz[1], 0.1, second, 48000);
+    for (std::size_t n = 0; n < second; ++n) {
+        input[0][second + n] = shared[n];
+        input[1][second + n] = 0.8F * shared[n];
+        input[2][second + n] = 0.6F * shared[n];
+        input[0][2 * second + n] = left[n] + shared[n];
+        input[1][2 * second + n] = right[n] - shared[n];
+        input[4][2 * second + n] = input[0][2 * second + n];
+        input[5][2 * second + n] = input[1][2 * second + n];
+    }
+    for (const int kbps : {256, 448}) {
+        CAPTURE(kbps);
+        ac4::EncoderConfig config;
+        config.channels = 6;
+        config.bitrate_kbps = kbps;
+        config.experimental.coding_configs = true;
+        const Encoded encoded = encode(config, input, 4800);
+        std::size_t configs = 0;
+        for (const std::uint64_t value : {0U, 1U, 2U, 3U}) {
+            configs += count_records(encoded, "coding_config", value) > 0 ? 1U : 0U;
+        }
+        CHECK(configs >= 2);
+        check_frames_read_back(encoded);
+        const auto decoded = decode(encoded.frames);
+        REQUIRE(decoded.size() == 6);
+        for (std::size_t c = 0; c < 6; ++c) {
+            if (c == 3) {
+                continue;  // the LFE is silent after the first second
+            }
+            CAPTURE(c);
+            const Score s = score(input[c], decoded[c], 3072 + kDecoderDelay);
+            CHECK(std::abs(s.gain_db) < 0.5);
+            CHECK(s.snr_db > 15.0);
+        }
     }
 }

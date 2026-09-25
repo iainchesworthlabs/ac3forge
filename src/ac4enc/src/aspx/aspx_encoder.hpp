@@ -66,11 +66,17 @@ struct AspxSetup {
 };
 
 // DEE's configuration for a channel's share of the rate, which this encoder
-// takes: below 32 kbps a channel the low resolution table from 7.5 to
-// 17.25 kHz, below 48 the high resolution one from 10.5 to 21 kHz, above
-// that from 13.5 to 21 kHz; companding below 64 kbps a channel. std::nullopt
-// for a sample rate these do not cover.
-[[nodiscard]] std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate_hz);
+// takes. In mono and stereo: below 32 kbps a channel the low resolution table
+// from 7.5 to 17.25 kHz, below 48 the high resolution one from 10.5 to 21
+// kHz, above that from 13.5 to 21 kHz; companding below 64 kbps a channel.
+// With `multichannel`, the 5.X and 7.X elements, as DEE's 5.1 streams have
+// it: from 38.4 kbps a channel (192 kbps in 5.X) the high resolution table
+// from 12 to 21 kHz, and from 51.2 (256 kbps) to 23.25 kHz with the crossover
+// a band up, at 12.75 kHz; below 38.4 the mono and stereo tables; never
+// companding.
+// std::nullopt for a sample rate these do not cover.
+[[nodiscard]] std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate_hz,
+                                                      bool multichannel = false);
 
 // One channel's QMF domain: the analysis of its signal slot by slot, the
 // compressed low band synthesised back, and A-SPX's parameters frame by

@@ -171,17 +171,26 @@ StereoChoice choose_stereo(Grouped& left, Grouped& right, std::vector<std::vecto
         choice = std::move(predicted);
     }
     choice.sap_mode = mode;
-
-    for (std::size_t g = 0; g < groups; ++g) {
-        if (mode == 1) {
+    if (mode == 1) {
+        for (std::size_t g = 0; g < groups; ++g) {
             choice.ms_used[g].assign(bands[g].size(), false);
+            for (std::size_t b = 0; b < bands[g].size(); ++b) {
+                choice.ms_used[g][b] = bands[g][b].ms < bands[g][b].lr;
+            }
         }
-        for (std::size_t b = 0; b < bands[g].size(); ++b) {
-            const Band& band = bands[g][b];
+    }
+    apply_stereo(left, right, allowed_left, allowed_right, choice);
+    return choice;
+}
+
+void apply_stereo(Grouped& left, Grouped& right, std::vector<std::vector<double>>& allowed_left,
+                  std::vector<std::vector<double>>& allowed_right, const StereoChoice& choice) {
+    const int mode = choice.sap_mode;
+    for (std::size_t g = 0; g < left.offset.size(); ++g) {
+        for (std::size_t b = 0; b < static_cast<std::size_t>(left.max_sfb[g]); ++b) {
             const double smaller = std::min(allowed_left[g][b], allowed_right[g][b]);
             bool mid_side = mode == 2;
-            if (mode == 1 && band.ms < band.lr) {
-                choice.ms_used[g][b] = true;
+            if (mode == 1 && choice.ms_used[g][b]) {
                 mid_side = true;
             }
             double a = 0.0;
@@ -192,7 +201,7 @@ StereoChoice choose_stereo(Grouped& left, Grouped& right, std::vector<std::vecto
             if (!mid_side) {
                 continue;
             }
-            for (std::size_t k = band.begin; k < band.end; ++k) {
+            for (std::size_t k = left.offset[g][b]; k < left.offset[g][b + 1]; ++k) {
                 const double m = 0.5 * (left.lines[k] + right.lines[k]);
                 const double s = 0.5 * (left.lines[k] - right.lines[k]);
                 left.lines[k] = m;
@@ -202,7 +211,20 @@ StereoChoice choose_stereo(Grouped& left, Grouped& right, std::vector<std::vecto
             allowed_right[g][b] = smaller;
         }
     }
-    return choice;
+}
+
+double perceptual_entropy(const Grouped& track, const std::vector<std::vector<double>>& allowed) {
+    double bits = 0.0;
+    for (std::size_t g = 0; g < track.offset.size(); ++g) {
+        for (std::size_t b = 0; b < static_cast<std::size_t>(track.max_sfb[g]); ++b) {
+            double energy = 0.0;
+            for (std::size_t k = track.offset[g][b]; k < track.offset[g][b + 1]; ++k) {
+                energy += track.lines[k] * track.lines[k];
+            }
+            bits += entropy(energy, allowed[g][b], static_cast<double>(track.offset[g][b + 1] - track.offset[g][b]));
+        }
+    }
+    return bits;
 }
 
 void write_chparam_info(BitWriter& w, const StereoChoice& choice) {

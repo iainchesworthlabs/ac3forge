@@ -17,9 +17,9 @@
 // ac4::Encoder (src/ac4enc) over the configurations and input it takes, read
 // back by the decoder (planning/ac4.md, the encoder's ladder, items 1 and 8).
 //
-// The first bytes choose the configuration - channels, sample rate, bit rate,
-// I-frame interval, dialnorm, codec mode, the experimental A-SPX tools, and
-// the size of the pieces the input arrives in - and the rest are the
+// The first bytes choose the configuration - the channel layout, mono to
+// 7.1, sample rate, bit rate, I-frame interval, dialnorm, codec mode, the
+// experimental tools, and the size of the pieces the input arrives in - and the rest are the
 // samples, as 32-bit floats, one channel after the
 // other: silence, DC, full-scale square waves, clipping far past full scale,
 // denormals and NaNs are all a few bytes away. What is held:
@@ -112,7 +112,27 @@ Run encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     Take take{std::span<const std::uint8_t>(data, size)};
     ac4::EncoderConfig config;
-    config.channels = 1 + (take.byte() & 1);
+    // The first byte's low bit chooses mono or stereo, as it always has; the
+    // two bits over it can widen that to 5.0 or 5.1, or to 7.0 or 7.1 in the
+    // 7.X layout the next two bits name (or in none, which is refused), and
+    // the bit over those asks for the experimental coding configurations.
+    constexpr std::array<ac4::AdditionalPair, 4> kPairs = {ac4::AdditionalPair::kNone, ac4::AdditionalPair::kBack,
+                                                           ac4::AdditionalPair::kWide, ac4::AdditionalPair::kTopFront};
+    const std::uint8_t layout = take.byte();
+    const bool lfe = (layout & 1) != 0;
+    switch ((layout >> 1) & 3) {
+        case 1:
+            config.channels = lfe ? 6 : 5;
+            break;
+        case 2:
+            config.channels = lfe ? 8 : 7;
+            config.experimental.seven_x = kPairs[static_cast<std::size_t>((layout >> 3) & 3)];
+            break;
+        default:
+            config.channels = lfe ? 2 : 1;
+            break;
+    }
+    config.experimental.coding_configs = (layout & 0x20) != 0;
     config.sample_rate_hz = (take.byte() & 1) != 0 ? 44100 : 48000;
     // 4 to 1024 kbps, so the refusals below 8 are reached too.
     config.bitrate_kbps = 4 + static_cast<int>(take.byte()) * 4;

@@ -479,6 +479,26 @@ TEST_CASE("the encoder's A-SPX configurations are DEE's", "[ac4enc][aspx]") {
         }
     }
     CHECK_FALSE(ac4::detail::aspx_setup_for(48.0, 32000).has_value());
+
+    // The 5.X and 7.X elements, as DEE's 5.1 streams have them: subband 32
+    // from 192 kbps (38.4 a channel), and with aspx_xover_subband_offset 1
+    // subband 34 from 256; below 192 the tables above; never companding.
+    struct Multichannel {
+        double kbps;
+        int sbx;
+        int xover;
+    };
+    for (const Multichannel row : {Multichannel{24.0, 20, 0}, Multichannel{36.0, 28, 0}, Multichannel{38.4, 32, 0},
+                                   Multichannel{51.2, 34, 1}, Multichannel{76.0, 34, 1}}) {
+        CAPTURE(row.kbps);
+        for (const int rate : {48000, 44100}) {
+            const auto setup = ac4::detail::aspx_setup_for(row.kbps, rate, true);
+            REQUIRE(setup.has_value());
+            CHECK(setup->groups.sbx == row.sbx);
+            CHECK(setup->xover_subband_offset == row.xover);
+            CHECK_FALSE(setup->companding);
+        }
+    }
 }
 
 TEST_CASE("the QMF front end's compressed low band is the signal again after the decoder's expansion",
