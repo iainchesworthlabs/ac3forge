@@ -43,7 +43,8 @@ Each case is held to:
 
 A configuration outside the encoder's range - a rate below 8 or above 3000
 kbps, or at 44.1 kHz a frame rate other than the native one - must be refused
-with the encoder's own message, and is drawn on purpose now and then. --check-envelope re-measures that range.
+with the encoder's own message, and is drawn on purpose now and then.
+--check-envelope re-measures that range.
 
 Every case is a pure function of one 64-bit case seed, printed with any
 failure; --replay reruns it, and REGRESSION_SEEDS holds the seeds that ever

@@ -4,12 +4,15 @@
 // input come out at their level.
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <numbers>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -382,5 +385,81 @@ TEST_CASE("frame rates the sample rate does not have are refused", "[ac4enc][fra
     for (const int reserved : {-1, 14, 15}) {
         config.frame_rate_index = reserved;
         CHECK_FALSE(ac4::Encoder::create(config).has_value());
+    }
+}
+
+TEST_CASE(
+    "over 100 000 frames at each frame rate every frame decodes to the samples counted for it",
+    "[ac4enc][frame-rate][.long]") {
+    // Hidden, run on demand (planning/ac4.md, phase E5's exit): 98 wraps of
+    // sequence_counter, from 1 020 to 1, each keeping the phase Part 2 clause
+    // 5.11 locks the frame lengths to. Mono silence in pieces, each frame
+    // decoded as it comes; every rate on its own thread.
+    constexpr std::int64_t kFrames = 100000;
+    // The samples a frame decodes to at 48 kHz, num / den.
+    // clang-format off
+    constexpr std::array<std::pair<std::int64_t, std::int64_t>, 13> kPerFrame = {{
+        {2002, 1}, {2000, 1}, {1920, 1}, {8008, 5}, {1600, 1}, {1001, 1}, {1000, 1},
+        {960, 1}, {4004, 5}, {800, 1}, {480, 1}, {2002, 5}, {400, 1}}};
+    // clang-format on
+    struct Count {
+        std::int64_t frames = 0;
+        std::int64_t mismatched = 0;
+        std::int64_t decoded = 0;
+        std::int64_t counted = 0;
+        bool failed = false;
+    };
+    const auto run = [](int index) {
+        Count out;
+        ac4::EncoderConfig config;
+        config.channels = 1;
+        config.bitrate_kbps = 96;
+        config.frame_rate_index = index;
+        auto encoder = ac4::Encoder::create(config);
+        if (!encoder) {
+            out.failed = true;
+            return out;
+        }
+        ac4::Decoder decoder(ac4::DecoderConfig{});
+        const std::vector<float> silence(48000, 0.0F);
+        const std::vector<std::span<const float>> views = {silence};
+        while (out.frames < kFrames && !out.failed) {
+            auto frames = encoder->encode(views);
+            if (!frames) {
+                out.failed = true;
+                break;
+            }
+            for (const ac4::EncodedFrame& frame : *frames) {
+                if (out.frames == kFrames) {
+                    break;
+                }
+                const auto decoded = decoder.decode(frame.raw_ac4_frame);
+                if (!decoded || !decoded->has_value()) {
+                    out.failed = true;
+                    break;
+                }
+                const auto samples = static_cast<std::int64_t>((**decoded).channels.front().size());
+                out.mismatched += samples != frame.samples ? 1 : 0;
+                out.decoded += samples;
+                out.counted += frame.samples;
+                ++out.frames;
+            }
+        }
+        return out;
+    };
+    std::vector<std::future<Count>> runs;
+    for (int index = 0; index < 13; ++index) {
+        runs.push_back(std::async(std::launch::async, run, index));
+    }
+    for (int index = 0; index < 13; ++index) {
+        CAPTURE(index);
+        const Count count = runs[static_cast<std::size_t>(index)].get();
+        REQUIRE_FALSE(count.failed);
+        CHECK(count.frames == kFrames);
+        CHECK(count.mismatched == 0);
+        CHECK(count.decoded == count.counted);
+        // floor(n R) over the n frames from sequence_counter 0.
+        const auto [num, den] = kPerFrame[static_cast<std::size_t>(index)];
+        CHECK(count.decoded == kFrames * num / den);
     }
 }

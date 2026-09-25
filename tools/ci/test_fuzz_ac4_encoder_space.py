@@ -176,9 +176,10 @@ class RunCase(unittest.TestCase):
         ):
             result = fa4.run_case("ac3cli", None, case, tmp)
         self.assertEqual(result.status, "refused")
+        encoded = completed(0, stdout="encoded 3 AC-4 frames")
         with (
             tempfile.TemporaryDirectory() as tmp,
-            mock.patch.object(fa4, "_run", return_value=completed(0, stdout="encoded 3 AC-4 frames")),
+            mock.patch.object(fa4, "_run", return_value=encoded),
         ):
             result = fa4.run_case("ac3cli", None, case, tmp)
         self.assertEqual(result.status, "fail")

@@ -1,7 +1,8 @@
 """Score ac3cli's AC-4 encoding: the encoder's streams, decoded, against their sources.
 
-planning/ac4.md, the encoder's ladder, items 4 and 5, as phases E1 to E3 need them: SIMPLE and
-ASPX, mono, stereo, 5.0 and 5.1, at frame_rate_index 13. Each leg encodes a source with `ac3cli
+planning/ac4.md, the encoder's ladder, items 4 and 5, as phases E1 to E5 need them: SIMPLE, ASPX
+and A-CPL, mono, stereo, 5.0 and 5.1, at frame_rate_index 13 and, in the frame-rate legs, the
+others. Each leg encodes a source with `ac3cli
 ac4-encode`, which picks the codec mode from the rate, decodes the stream with `ac3cli decode`,
 aligns the output with the source by cross-correlation, fits a least-squares gain per channel,
 and checks, as score_ac4_decode.py scores DEE's streams:
@@ -39,6 +40,13 @@ without its LFE; and synthetic signals made here: a sweep, noise, castanet-like 
 silence, and a source panned between the channels, which the encoder's stereo prediction codes.
 A leg may name ac4-encode's options after its rate: the -configs legs take the experimental coding
 configurations.
+
+The frame-rate legs (phase E5) encode music and speech in stereo and music in 5.1 at the other
+frame rates of Part 1 Table 83 and at index 13, in the same run, and hold each to the index-13
+stream of the same source and rate on the log-spectral distance and MOS alone: at the other frame
+rates the delay is a fraction of a sample off the output's grid, which SNR and the lag would read
+as error. Their pins, FRAME_RATE_PINS, are how far above index 13's LSD and below its MOS each may
+land: the first measurement plus 0.25 dB and less 0.05.
 
 --gold DIR runs the race instead, locally: for each of phase G0's 2.0 legs, ASPX from 48 to 144
 kbps and SIMPLE from 192 to 768, and its 5.1 legs from 96 to 768, ASPX_ACPL_3 at 96, ASPX_ACPL_2 at
@@ -397,6 +405,46 @@ RACE_RATES = (48, 64, 96, 128, 144, 192, 256, 288, 320, 384, 448, 512, 768)
 # and 97).
 ACPL_MODES = {2: "ASPX_ACPL_1", 3: "ASPX_ACPL_2", 4: "ASPX_ACPL_3"}
 
+# The frame-rate legs: name: (source, kbps, the frame_rate_index values scored against index 13).
+# frame-rate= spells each index as Table 83 prints its rate.
+FRAME_RATE_SOURCES = {
+    "20-music-128": ("music_20", 128, tuple(range(13))),
+    "20-speech-192": ("speech_20", 192, (0, 3, 7, 12)),
+    "51-music-256": ("music_51", 256, (2, 5, 10)),
+}
+FRAME_RATE_NAMES = ("23.976", "24", "25", "29.97", "30", "47.95", "48", "50", "59.94", "60", "100",
+                    "119.88", "120")
+FRAME_RATE_LSD_MARGIN_DB = 0.25
+FRAME_RATE_MOS_MARGIN = 0.05
+# Per leg: (how far the LSD may land above index 13's, in dB; how far the MOS may land below index
+# 13's, as a negative number). Measured 2026-09-25 with the encoder of phase E5: to 60 fps the LSD
+# is within 0.17 dB of index 13's and the MOS within 0.012; at 100 to 120 fps, where a second holds
+# five times as many frames' tables of contents, metadata and side information, music at 128 kbps
+# is 0.63 to 0.87 dB over and 0.09 to 0.18 under, 5.1 at 256 kbps at 100 fps 1.28 dB and 0.11,
+# and speech at 192 kbps 0.09 dB and 0.01 at 120 fps.
+FRAME_RATE_PINS = {
+    "20-music-128-fr0": (0.26, -0.05),
+    "20-music-128-fr1": (0.26, -0.04),
+    "20-music-128-fr2": (0.27, -0.05),
+    "20-music-128-fr3": (0.29, -0.05),
+    "20-music-128-fr4": (0.29, -0.05),
+    "20-music-128-fr5": (0.35, -0.05),
+    "20-music-128-fr6": (0.36, -0.05),
+    "20-music-128-fr7": (0.36, -0.04),
+    "20-music-128-fr8": (0.42, -0.04),
+    "20-music-128-fr9": (0.42, -0.06),
+    "20-music-128-fr10": (0.88, -0.14),
+    "20-music-128-fr11": (1.10, -0.23),
+    "20-music-128-fr12": (1.12, -0.21),
+    "20-speech-192-fr0": (0.25, -0.05),
+    "20-speech-192-fr3": (0.25, -0.05),
+    "20-speech-192-fr7": (0.26, -0.06),
+    "20-speech-192-fr12": (0.34, -0.06),
+    "51-music-256-fr2": (0.34, -0.05),
+    "51-music-256-fr5": (0.37, -0.06),
+    "51-music-256-fr10": (1.53, -0.16),
+}
+
 
 # --- Sources ----------------------------------------------------------------------------------
 
@@ -696,7 +744,58 @@ def committed_run(args, work):
     if args.measure:
         print("\nFLOORS = {\n" + "\n".join(pins) + "\n}")
         print("\nACPL_FLOORS = {\n" + "\n".join(acpl_pins) + "\n}")
-    return failures, len(legs)
+    rate_failures, rate_legs = frame_rate_run(args, work, paths)
+    return failures + rate_failures, len(legs) + rate_legs
+
+
+def frame_rate_scores(args, work, source_path, kbps, index):
+    """The log-spectral distance and MOS of `source_path` encoded at `kbps` and frame_rate_index
+    `index`, decoded and aligned by cross-correlation."""
+    stream = work / f"fr-{index}.ac4"
+    options = () if index == 13 else (f"frame-rate={FRAME_RATE_NAMES[index]}",)
+    encode(args.cli, source_path, kbps, stream, options)
+    original, rate = decoding.read_wav(source_path)
+    decoded, _ = decoding.decode(args.cli, stream, work / f"fr-{index}.wav")
+    _, reference, aligned = decoding.align(original, decoded)
+    lsd, _ = quality_race.spectral_scores(reference, aligned)
+    return float(lsd), quality_race.perceptual_score(reference, aligned, rate)
+
+
+def frame_rate_run(args, work, paths):
+    """The frame-rate legs: each against the same source and rate at index 13."""
+    failures = []
+    pins = []
+    count = 0
+    for base, (source, kbps, indices) in FRAME_RATE_SOURCES.items():
+        if args.only is not None and args.only not in base:
+            continue
+        path = paths[(source, 48000)]
+        lsd13, mos13 = frame_rate_scores(args, work, path, kbps, 13)
+        for index in indices:
+            name = f"{base}-fr{index}"
+            count += 1
+            lsd, mos = frame_rate_scores(args, work, path, kbps, index)
+            lsd_delta = lsd - lsd13
+            mos_delta = None if mos is None or mos13 is None else mos - mos13
+            mos_text = "-" if mos_delta is None else f"{mos_delta:+.3f}"
+            print(f"{name:<26} {FRAME_RATE_NAMES[index]:>7} fps  LSD {lsd:5.2f} dB "
+                  f"({lsd_delta:+.2f} on index 13)  MOS {mos_text} on index 13", flush=True)
+            pins.append(f'    "{name}": ({lsd_delta + FRAME_RATE_LSD_MARGIN_DB:.2f}, '
+                        + ("None" if mos_delta is None
+                           else f"{mos_delta - FRAME_RATE_MOS_MARGIN:.2f}") + "),")
+            if args.measure:
+                continue
+            pin = FRAME_RATE_PINS.get(name)
+            if pin is None:
+                failures.append(f"{name}: nothing pinned")
+                continue
+            if lsd_delta > pin[0]:
+                failures.append(f"{name}: LSD {lsd_delta:+.2f} dB on index 13's, beyond {pin[0]}")
+            if mos_delta is not None and pin[1] is not None and mos_delta < pin[1]:
+                failures.append(f"{name}: MOS {mos_delta:+.3f} on index 13's, below {pin[1]}")
+    if args.measure and pins:
+        print("\nFRAME_RATE_PINS = {\n" + "\n".join(pins) + "\n}")
+    return failures, count
 
 
 def acpl_gaps(ours, dee):
