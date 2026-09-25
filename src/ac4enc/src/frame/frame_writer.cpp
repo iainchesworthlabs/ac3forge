@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <initializer_list>
 #include <span>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -129,57 +130,71 @@ void write_toc(BitWriter& w, const FrameFields& f, std::size_t payload_base, std
     return w.byte_size();
 }
 
+// Part 1 Table 88's channel modes with an LFE: 5.1 and the three 7.1s.
+[[nodiscard]] bool has_lfe(int ch_mode) noexcept {
+    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10;
+}
+
+// A size field of `bits` bits, and variable_bits(3) for what is above them
+// (drc_metadata_size, tools_metadata_size), then the element it sizes.
+void write_sized(BitWriter& w, const BitWriter& element, unsigned bits, std::string_view value_name,
+                 std::string_view extension_name) {
+    const std::size_t size = element.bit_position();
+    const std::uint64_t low = size & ((1U << bits) - 1U);
+    const std::uint64_t high = size >> bits;
+    w.write(bits, low, value_name);
+    w.write(1, high > 0 ? 1U : 0U, "b_more_bits");
+    if (high > 0) {
+        w.write_variable_bits(3, high, extension_name);
+    }
+    w.append(element);
+}
+
 // Part 2 clause 6.2.2.3, ac4_presentation_substream(), without b_alternative:
-// dialogue normalisation, no further loudness information, a drc_frame()
-// without DRC, no associated audio, and custom_dmx_data() and loud_corr()
-// (6.2.9.2, 6.2.9.1) with nothing present: they read nothing for a mono or
-// stereo presentation, and flags that say so for the others.
+// dialogue normalisation, further_loudness_info() where it is configured, a
+// drc_frame() (with DRC's configuration in I-frames where it is configured),
+// no associated audio, and custom_dmx_data() and loud_corr() (6.2.9.2,
+// 6.2.9.1), which read nothing for a mono or stereo presentation, and for the
+// others the stereo coefficients and their corrections in I-frames where they
+// are configured.
 void write_presentation_substream(BitWriter& w, const FrameFields& f) {
+    const StreamMetadata* m = f.metadata;
     w.write(1, 0, "b_additional_data");
     w.write(7, static_cast<std::uint64_t>(f.dialnorm_bits), "dialnorm_bits");
-    w.write(1, 0, "b_further_loudness_info");
-    // drc_metadata_size counts the bits of the drc_frame() after it: here the
-    // one bit of b_drc_present.
-    w.write(5, 1, "drc_metadata_size_value");
-    w.write(1, 0, "b_more_bits");
-    w.write(1, 0, "b_drc_present");  // Part 1 Table 70, drc_frame()
+    const LoudnessCodes* loudness = m != nullptr && m->loudness ? &*m->loudness : nullptr;
+    w.write(1, loudness != nullptr ? 1U : 0U, "b_further_loudness_info");
+    if (loudness != nullptr) {
+        write_further_loudness_info(w, *loudness, f.iframe);
+    }
+    BitWriter drc = BitWriter::buffered();
+    write_drc_frame(drc, m != nullptr && m->drc ? &*m->drc : nullptr, f.iframe);
+    write_sized(w, drc, 5, "drc_metadata_size_value", "drc_metadata_size");
     w.write(1, 0, "b_associated");
-    if (f.ch_mode >= 3) {
-        w.write(1, 0, "b_stereo_dmx_coeff");
-    }
-    if (f.ch_mode > 4) {
-        w.write(1, 0, "b_corr_for_immersive_out");
-    }
-    if (f.ch_mode > 1) {
-        w.write(1, 0, "b_loro_loud_comp");
-        w.write(1, 0, "b_ltrt_loud_comp");
-    }
-    if (f.ch_mode > 4) {
-        w.write(1, 0, "b_loud_comp");  // loud_corr_5_X
-    }
+    write_downmix(w, f.ch_mode, has_lfe(f.ch_mode),
+                  m != nullptr && m->downmix ? &*m->downmix : nullptr, f.iframe);
     w.align();
 }
 
 // Part 2 clause 6.2.7.1, metadata(), for a channel-coded substream at sus_ver
 // 1 without b_alternative: basic_metadata() (6.2.7.2) and extended_metadata()
-// (6.2.7.4) with nothing optional, and dialog_enhancement() (6.2.7.5) without
-// data.
-void write_metadata(BitWriter& w) {
+// (6.2.7.4) with nothing optional, and dialog_enhancement() (6.2.7.5), with
+// data where dialogue enhancement is configured.
+void write_metadata(BitWriter& w, const FrameFields& f) {
     w.write(1, 0, "b_more_basic_metadata");
     w.write(1, 0, "b_dialog");
     w.write(1, 0, "b_channels_classifier");
     w.write(1, 0, "b_event_probability");
-    // tools_metadata_size counts the bits of dialog_enhancement(): one.
-    w.write(7, 1, "tools_metadata_size_value");
-    w.write(1, 0, "b_more_bits");
-    w.write(1, 0, "b_de_data_present");
+    BitWriter tools = BitWriter::buffered();
+    const DeConfigCodes* de = f.metadata != nullptr && f.metadata->de ? &*f.metadata->de : nullptr;
+    write_dialog_enhancement(tools, de, f.de, f.de_previous, f.iframe);
+    write_sized(w, tools, 7, "tools_metadata_size_value", "tools_metadata_size");
     w.write(1, 0, "b_emdf_payloads_substream");
     w.align();
 }
 
-[[nodiscard]] std::size_t metadata_bytes() {
+[[nodiscard]] std::size_t metadata_bytes(const FrameFields& f) {
     BitWriter w;
-    write_metadata(w);
+    write_metadata(w, f);
     return w.byte_size();
 }
 
@@ -239,7 +254,8 @@ struct AudioLayout {
     return std::nullopt;
 }
 
-void write_audio_substream(BitWriter& w, const BitWriter& audio, std::size_t audio_size) {
+void write_audio_substream(BitWriter& w, const FrameFields& f, const BitWriter& audio,
+                           std::size_t audio_size) {
     w.write(15, audio_size & 0x7FFFU, "audio_size_value");
     const bool more = audio_size >= 0x8000;
     w.write(1, more ? 1U : 0U, "b_more_bits");
@@ -252,7 +268,7 @@ void write_audio_substream(BitWriter& w, const BitWriter& audio, std::size_t aud
     while (w.bit_position() < start + 8 * audio_size) {
         w.write_unrecorded(1, 0);
     }
-    write_metadata(w);
+    write_metadata(w, f);
 }
 
 }  // namespace
@@ -261,14 +277,14 @@ std::size_t frame_overhead_bits(const FrameFields& fields, std::size_t audio_sub
     const std::size_t presentation = presentation_bytes(fields);
     const std::array<std::size_t, 2> sizes{presentation, audio_substream_bytes};
     // One byte of alignment ahead of metadata(), at most, on top.
-    return 8 * (toc_bytes(fields, 0, sizes) + presentation + audio_header_bytes(audio_substream_bytes) +
-                metadata_bytes() + 1);
+    return 8 * (toc_bytes(fields, 0, sizes) + presentation +
+                audio_header_bytes(audio_substream_bytes) + metadata_bytes(fields) + 1);
 }
 
 std::optional<std::vector<std::byte>> write_frame(const FrameFields& fields, const BitWriter& audio,
                                                   std::size_t frame_bytes, SyntaxSink sink) {
     const std::size_t presentation = presentation_bytes(fields);
-    const std::size_t metadata = metadata_bytes();
+    const std::size_t metadata = metadata_bytes(fields);
     const std::size_t audio_bytes_needed = (audio.bit_position() + 7) / 8;
 
     AudioLayout layout;
@@ -294,7 +310,7 @@ std::optional<std::vector<std::byte>> write_frame(const FrameFields& fields, con
     BitWriter presentation_writer = BitWriter::buffered();
     write_presentation_substream(presentation_writer, fields);
     BitWriter audio_writer = BitWriter::buffered();
-    write_audio_substream(audio_writer, audio, layout.audio_size);
+    write_audio_substream(audio_writer, fields, audio, layout.audio_size);
 
     const std::array<std::size_t, 2> sizes{presentation_writer.byte_size(), audio_writer.byte_size()};
     BitWriter toc;

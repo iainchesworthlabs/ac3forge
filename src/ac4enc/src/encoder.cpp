@@ -19,7 +19,9 @@
 #include "asf/stereo.hpp"
 #include "aspx/aspx_encoder.hpp"
 #include "bit_writer.hpp"
+#include "frame/dialogue.hpp"
 #include "frame/frame_writer.hpp"
+#include "frame/metadata.hpp"
 #include "tables/sfb_tables.hpp"
 
 namespace ac4 {
@@ -501,6 +503,23 @@ struct Encoder::Impl {
     std::int64_t input_samples = 0;
     bool flushed = false;
 
+    // The metadata beside the audio (frame/metadata.hpp). With dialogue
+    // enhancement: the input channels its parameters are for, in
+    // de_channel_config's order; with a stem, those channels and the dialogue
+    // in them on the signal's axis; and the parameters of the frame being
+    // coded and of the last one sent, which the next codes against.
+    detail::StreamMetadata metadata;
+    std::vector<std::size_t> de_channels;
+    std::vector<std::vector<double>> de_programme;
+    std::vector<std::vector<double>> de_dialogue;
+    detail::DeFrameParameters de_current{};
+    detail::DeFrameParameters de_previous{};
+    bool de_sent = false;
+
+    [[nodiscard]] bool stem() const noexcept {
+        return config.dialogue && config.dialogue->source == DialogueSource::kStem;
+    }
+
     std::int64_t frames_out = 0;
 
     // Each layout group's transform layouts, decided for frames_out and the
@@ -772,7 +791,35 @@ struct Encoder::Impl {
         fields.frame_rate_index = 13;
         fields.ch_mode = plan.ch_mode;
         fields.dialnorm_bits = dialnorm_bits;
+        fields.metadata = &metadata;
+        fields.de = &de_current;
+        fields.de_previous = de_sent ? &de_previous : nullptr;
         return fields;
+    }
+
+    // Dialogue enhancement's parameters for frame f from the stem: the
+    // long-block spectra of each channel and of its dialogue over the frame's
+    // transform window, which is centred where the decoder's interpolation
+    // reaches the frame's parameters.
+    void estimate_dialogue(std::int64_t frame) {
+        const std::int64_t start = frame * kFrameLength;
+        const FrameLayout layout = detail::long_layout(kFrameLength);
+        std::vector<double> window(2 * kFrameLength);
+        std::vector<double> programme;
+        std::vector<double> dialogue;
+        for (std::size_t i = 0; i < de_channels.size(); ++i) {
+            for (const auto& [from, to] :
+                 {std::pair{&de_programme[i], &programme}, std::pair{&de_dialogue[i], &dialogue}}) {
+                for (std::size_t n = 0; n < window.size(); ++n) {
+                    const std::int64_t s = start + static_cast<std::int64_t>(n);
+                    window[n] = s >= base && s < signal_end()
+                                    ? (*from)[static_cast<std::size_t>(s - base)]
+                                    : 0.0;
+                }
+                analysis.transform(window, layout, kFrameLength, kFrameLength, *to);
+            }
+            de_current[i] = detail::de_parameters(programme, dialogue, kFrameLength);
+        }
     }
 
     // Undoes each unit's matrix: `spectra`, per input channel, then holds each
@@ -1073,6 +1120,9 @@ struct Encoder::Impl {
     [[nodiscard]] EncodedFrame encode_frame(std::int64_t frame) {
         const std::size_t channels = signal.size();
         const std::int64_t start = frame * kFrameLength;
+        if (stem()) {
+            estimate_dialogue(frame);
+        }
         const detail::FrameFields fields = fields_for(frame);
         Coding f;
         f.iframe = fields.iframe;
@@ -1365,12 +1415,22 @@ struct Encoder::Impl {
         for (std::size_t g = 0; g < groups.size(); ++g) {
             groups[g].previous_last = f.layout[g].window_length.back();
         }
+        if (metadata.de) {
+            de_previous = de_current;
+            de_sent = true;
+        }
         EncodedFrame out;
         out.raw_ac4_frame = std::move(raw).value();
         out.samples = kFrameLength;
         out.iframe = fields.iframe;
         return out;
     }
+
+    // Takes the input, and with a stem the dialogue in it, and returns the
+    // frames it completes.
+    [[nodiscard]] std::expected<std::vector<EncodedFrame>, EncodeError> push(
+        std::span<const std::span<const float>> channels,
+        std::span<const std::span<const float>> dialogue);
 
     // The frames the input read so far lets through. A frame needs the input
     // to half a frame past its window, where the next frame's transients are.
@@ -1404,6 +1464,12 @@ struct Encoder::Impl {
                 }
                 for (std::vector<double>& channel : source) {
                     channel.erase(channel.begin(), channel.begin() + static_cast<std::ptrdiff_t>(drop));
+                }
+                for (auto* buffers : {&de_programme, &de_dialogue}) {
+                    for (std::vector<double>& channel : *buffers) {
+                        channel.erase(channel.begin(),
+                                      channel.begin() + static_cast<std::ptrdiff_t>(drop));
+                    }
                 }
                 base += static_cast<std::int64_t>(drop);
             }
@@ -1494,6 +1560,36 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
     }
     impl->signal.assign(channels, std::vector<double>(static_cast<std::size_t>(kDelay), 0.0));
 
+    const std::optional<detail::StreamMetadata> metadata =
+        detail::resolve_metadata(config, plan->ch_mode);
+    if (!metadata) {
+        return std::unexpected(EncodeError::kInvalidConfig);
+    }
+    impl->metadata = *metadata;
+    if (metadata->de) {
+        // de_channel_config's L, R and C (Table 171) as input channels: C
+        // alone in mono, L and R in stereo, and L, R and C the first three
+        // otherwise.
+        const int channel_config = metadata->de->channel_config;
+        for (const auto& [bit, input] :
+             {std::pair{4, 0}, std::pair{2, 1}, std::pair{1, config.channels == 1 ? 0 : 2}}) {
+            if ((channel_config & bit) != 0) {
+                impl->de_channels.push_back(static_cast<std::size_t>(input));
+            }
+        }
+        if (impl->stem()) {
+            impl->de_programme.assign(impl->de_channels.size(),
+                                      std::vector<double>(static_cast<std::size_t>(kDelay), 0.0));
+            impl->de_dialogue = impl->de_programme;
+        } else {
+            // Marked channels carry dialogue alone: 1 in every band.
+            const int one = detail::de_parameter_index(1.0);
+            for (std::size_t i = 0; i < impl->de_channels.size(); ++i) {
+                impl->de_current[i].fill(one);
+            }
+        }
+    }
+
     // The rate must hold a frame with no bands and no A-SPX energy, in the
     // smaller of the sizes it gives frames, whatever the frame's blocks: that
     // is what a frame falls back to. The table of contents is read back from
@@ -1532,10 +1628,11 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
         return std::unexpected(EncodeError::kInvalidConfig);
     }
     impl->toc = parsed->toc;
-    // What the table of contents does not carry, for build_dac4(): the
-    // encoder writes no dialogue enhancement data and no immersive audio.
+    // What the table of contents does not carry, for build_dac4(): whether
+    // the stream sends dialogue enhancement data, and that it has no
+    // immersive audio.
     for (PresentationInfoV1& presentation : impl->toc.presentations_v1) {
-        presentation.de_indicator = false;
+        presentation.de_indicator = impl->metadata.de.has_value();
         presentation.immersive_audio_indicator = false;
     }
     return impl;
@@ -1574,26 +1671,29 @@ Encoder::~Encoder() = default;
 Encoder::Encoder(Encoder&&) noexcept = default;
 Encoder& Encoder::operator=(Encoder&&) noexcept = default;
 
-std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
-    std::span<const std::span<const float>> channels) {
-    if (impl_->flushed || channels.size() != static_cast<std::size_t>(impl_->config.channels)) {
+std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::Impl::push(
+    std::span<const std::span<const float>> channels,
+    std::span<const std::span<const float>> dialogue) {
+    if (flushed || channels.size() != static_cast<std::size_t>(config.channels) ||
+        (stem() && dialogue.size() != channels.size())) {
         return std::unexpected(EncodeError::kInvalidInput);
     }
     const std::size_t count = channels.front().size();
-    for (const std::span<const float> channel : channels) {
-        if (channel.size() != count) {
-            return std::unexpected(EncodeError::kInvalidInput);
-        }
-        for (const float x : channel) {
-            if (!std::isfinite(x)) {
+    for (const auto& input : {channels, dialogue}) {
+        for (const std::span<const float> channel : input) {
+            if (channel.size() != count) {
                 return std::unexpected(EncodeError::kInvalidInput);
+            }
+            for (const float x : channel) {
+                if (!std::isfinite(x)) {
+                    return std::unexpected(EncodeError::kInvalidInput);
+                }
             }
         }
     }
-    const Plan& plan = impl_->plan;
     if (!plan.acpl) {
         for (std::size_t c = 0; c < channels.size(); ++c) {
-            std::vector<double>& buffer = impl_->signal[c];
+            std::vector<double>& buffer = signal[c];
             buffer.reserve(buffer.size() + count);
             for (const float x : channels[c]) {
                 buffer.push_back(static_cast<double>(x));
@@ -1606,26 +1706,53 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
         for (std::size_t n = 0; n < count; ++n) {
             for (std::size_t k = 0; k < input.size(); ++k) {
                 input[k] = static_cast<double>(channels[static_cast<std::size_t>(plan.source[k])][n]);
-                impl_->source[k].push_back(input[k]);
+                source[k].push_back(input[k]);
             }
             const std::vector<double> coded = detail::acpl_downmix(*plan.acpl, input);
             for (std::size_t c = 0; c < coded.size(); ++c) {
-                impl_->signal[c].push_back(coded[c]);
+                signal[c].push_back(coded[c]);
             }
             if (plan.lfe >= 0) {
-                impl_->signal[static_cast<std::size_t>(plan.lfe)].push_back(
+                signal[static_cast<std::size_t>(plan.lfe)].push_back(
                     static_cast<double>(channels[static_cast<std::size_t>(plan.input_lfe)][n]));
             }
             if (!plan.residuals.empty()) {
                 const std::vector<double> residuals = detail::acpl_residuals(*plan.acpl, input);
                 for (std::size_t i = 0; i < residuals.size(); ++i) {
-                    impl_->signal[static_cast<std::size_t>(plan.residuals[i])].push_back(residuals[i]);
+                    signal[static_cast<std::size_t>(plan.residuals[i])].push_back(residuals[i]);
                 }
             }
         }
     }
-    impl_->input_samples += static_cast<std::int64_t>(count);
-    return impl_->drain();
+    if (stem()) {
+        for (std::size_t i = 0; i < de_channels.size(); ++i) {
+            for (const auto& [from, to] :
+                 {std::pair{channels, &de_programme[i]}, std::pair{dialogue, &de_dialogue[i]}}) {
+                for (const float x : from[de_channels[i]]) {
+                    to->push_back(static_cast<double>(x));
+                }
+            }
+        }
+    }
+    input_samples += static_cast<std::int64_t>(count);
+    return drain();
+}
+
+std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
+    std::span<const std::span<const float>> channels) {
+    if (impl_->stem()) {
+        return std::unexpected(EncodeError::kInvalidInput);  // the stem goes with the programme
+    }
+    return impl_->push(channels, {});
+}
+
+std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
+    std::span<const std::span<const float>> channels,
+    std::span<const std::span<const float>> dialogue) {
+    if (!impl_->stem()) {
+        return std::unexpected(EncodeError::kInvalidInput);
+    }
+    return impl_->push(channels, dialogue);
 }
 
 std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::flush() {

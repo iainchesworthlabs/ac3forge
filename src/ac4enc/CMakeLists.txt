@@ -38,7 +38,9 @@ target_sources(ac4enc_objects
         src/aspx/aspx_syntax.cpp
         src/bit_writer.cpp
         src/encoder.cpp
+        src/frame/dialogue.cpp
         src/frame/frame_writer.cpp
+        src/frame/metadata.cpp
         src/frame/sync_frame.cpp)
 
 target_include_directories(ac4enc_objects

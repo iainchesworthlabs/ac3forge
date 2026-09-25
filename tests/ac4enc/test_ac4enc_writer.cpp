@@ -7,6 +7,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -20,7 +21,9 @@
 #include "bit_reader.hpp"
 #include "bit_writer.hpp"
 #include "frame/frame_writer.hpp"
+#include "frame/metadata.hpp"
 #include "huffman.hpp"
+#include "pcm/drc.hpp"
 #include "tables/huffman_codes.hpp"
 #include "tables/huffman_tables.hpp"
 
@@ -218,5 +221,55 @@ TEST_CASE("Table 109's grouping bit counts are what the layouts write", "[ac4enc
             }
             CHECK(total == 2048);
         }
+    }
+}
+
+TEST_CASE("a DRC profile sent as a curve is the profile the decoder's Table 162 gives",
+          "[ac4enc][writer][drc]") {
+    // The writer's Table 162 in Table 166's terms, read back through the
+    // decoder's Table 166, against the decoder's own Table 162: two
+    // transcriptions of each table meeting.
+    using P = ac4::DrcProfile;
+    for (const P profile :
+         {P::kFilmStandard, P::kFilmLight, P::kMusicStandard, P::kMusicLight, P::kSpeech}) {
+        CAPTURE(static_cast<int>(profile));
+        const ac4::detail::CurveCodes c = ac4::detail::curve_codes(profile);
+        const ac4::detail::DrcCurve sent = ac4::detail::drc_curve(
+            ac4::detail::DrcCompressionCurve{.drc_lev_nullband_low = c.lev_nullband_low,
+                                             .drc_lev_nullband_high = c.lev_nullband_high,
+                                             .drc_gain_max_boost = c.gain_max_boost,
+                                             .drc_lev_max_boost = c.lev_max_boost,
+                                             .drc_nr_boost_sections = c.nr_boost_sections,
+                                             .drc_gain_section_boost = c.gain_section_boost,
+                                             .drc_lev_section_boost = c.lev_section_boost,
+                                             .drc_gain_max_cut = c.gain_max_cut,
+                                             .drc_lev_max_cut = c.lev_max_cut,
+                                             .drc_nr_cut_sections = c.nr_cut_sections,
+                                             .drc_gain_section_cut = c.gain_section_cut,
+                                             .drc_lev_section_cut = c.lev_section_cut,
+                                             .drc_tc_default_flag = c.tc_default,
+                                             .drc_tc_attack = c.tc_attack,
+                                             .drc_tc_release = c.tc_release,
+                                             .drc_tc_attack_fast = c.tc_attack_fast,
+                                             .drc_tc_release_fast = c.tc_release_fast,
+                                             .drc_adaptive_smoothing_flag = c.adaptive_smoothing,
+                                             .drc_attack_threshold = c.attack_threshold,
+                                             .drc_release_threshold = c.release_threshold});
+        const std::optional<ac4::detail::DrcCurve> table =
+            ac4::detail::drc_default_curve(static_cast<int>(profile));
+        REQUIRE(table.has_value());
+        // The curves agree at every level, from far below the null band to
+        // far above.
+        for (int level = -60; level <= 50; ++level) {
+            CAPTURE(level);
+            CHECK(sent.gain(level) == table->gain(level));
+        }
+        CHECK(sent.attack_ms == table->attack_ms);
+        CHECK(sent.release_ms == table->release_ms);
+        CHECK(sent.attack_fast_ms == table->attack_fast_ms);
+        CHECK(sent.release_fast_ms == table->release_fast_ms);
+        CHECK(sent.adaptive == table->adaptive);
+        CHECK(sent.attack_threshold == table->attack_threshold);
+        CHECK(sent.release_threshold == table->release_threshold);
     }
 }
