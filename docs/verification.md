@@ -1248,6 +1248,53 @@ Four items of the review of #700 have a test each, and each test failed before i
   them. Each turns `AC3FORGE_BUILD_AC4` off until phase I4 binds them, and
   `tools/checks/test_ac4_build_configurations.py` reads the three configurations.
 
+### The decoder's objects
+
+Phase D10 adds object audio (Part 2 4.8.3): A-JOC substreams in full and core decoding (5.7),
+direct-coded objects, their object audio metadata (6.3.9, 5.9) and the intermediate spatial format
+renderer (5.10.3). Where the text leaves a choice open, the reading is in `src/ac4dec/ERRATA.md`,
+under "Object audio syntax", "A-JOC" and "Object audio metadata and the ISF renderer".
+
+- **The syntax, in both transcriptions**: `audio_data_ajoc()` with `var_channel_element()` and
+  `ajoc()`, `audio_data_objs()`, the metadata of 6.2.8 and `oamd_substream()`, in the decoder and in
+  `ac4_syntax.py`, each read against what the encoder's writer wrote, record for record, on
+  constructed streams of every `var_channel_element()` shape (one to seven signals, SIMPLE and ASPX,
+  each `var_coding_config`, with and without the LFE). Eight of them are committed with the Python
+  parser's digests, and the differential check mutates them. Chromium's `ac4-ajoc.ac4`, the one
+  encoded A-JOC stream here, reads to the end of every substream of its 64 frames in both.
+- **A-JOC on known input** (`tests/ac4core/test_ac4core_ajoc.cpp`): Table 28's bands, Tables 29 to
+  32's dequantisation, Pseudocode 16's differential decoding, the ramp of Pseudocodes 17 and 18 over
+  one and two data points and across frames, the decorrelation input matrix of objects of different
+  band counts, the wet path against the decorrelators and duckers run by hand, and dialogue
+  enhancement in both modes, each against its formula.
+- **The constructed streams** (`tests/ac4dec/test_ac4dec_objects.cpp`): each object's coefficients
+  are whole quantisation steps, so each object is a known sum of the downmix's tones; in full
+  decoding every object carries its tones to 0.1 dB and no other, through Pseudocode 14a's order,
+  several bands, two data points, differential decoding in time and an object not present, and in
+  core decoding every object is its downmix signal, or the static bed's channel. Direct-coded
+  dynamic objects, a 5.1 bed and an SR3.1.0.0 intermediate spatial format, over two substreams with
+  an OAMD substream, carry their own tones. Each block's update comes out at its sample plus the
+  decoder's delay of 1,313 samples, with the position 6.3.9.8.4 gives it, differences and extended
+  precision included. Dialogue enhancement raises A-JOC's dialogue object by 10^(G_DE/20) in full
+  decoding and adds its share to the downmix in core decoding, and a direct-coded dialogue
+  substream's objects by the same gain, each capped by the stream.
+- **The intermediate spatial format**: rendered to 7.X.4, 7.X.2, 7.X.0, 5.X.4, 5.X.2, 5.X, two
+  channels and mono, each object's tone reaches each speaker at its coefficient in the attachment's
+  matrix, and 5 dB up where its metadata sets that gain.
+- **Chromium's `ac4-ajoc.ac4`** (a local test, `AC4DEC_AJOC_STREAM`): every frame decodes in both
+  modes, seventeen objects in full decoding and ten in core, the kinds and speakers its table of
+  contents lists, each a frame long and finite, its updates inside the frame and in order. Its
+  metadata puts every object at the front of the room on the floor (X 0.5, Y 0, Z −1) in every
+  frame. The public API's engine test decodes it and the other 15 third-party streams, 16 of 16.
+- **Rendered** (`tests/ac4dec/test_ac4dec_object_render.cpp`): `ac3cli decode`'s rendering, through
+  the layout renderer Hearth plays E-AC-3's objects with, puts each tone at each speaker at the sum
+  of the objects' components at the gains the layout renderer gives their positions, frame by frame,
+  in full and core decoding, as object 0 crosses the front from the left wall to the right. Listening
+  to it is the user's, on ten-second versions the test writes with `AC4DEC_WRITE_LISTENING`.
+- **No second decoder.** librempeg (git 2026-09-24) refuses every object substream ("object coding
+  is not implemented"), Chromium's and the eight constructed ones alike, and DEE's A-JOC encoder
+  takes no master this project writes, so no reading here rests on another decoder.
+
 ### The encoder
 
 `src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 kHz at every

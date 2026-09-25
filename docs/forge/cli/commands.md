@@ -582,6 +582,26 @@ ac3cli decode film_514.ac4 out.wav speakers=7.1.4      # the silent backs as wel
 A-CPL's and A-JCC's work. Core decoding renders to 5.1.2 and 5.1 alone, so `speakers=` with top
 channels gives 5.1.2 and without them 5.1. The other channel elements decode alike in both modes.
 
+### AC-4 objects
+
+An AC-4 presentation of object audio, A-JOC or direct-coded objects, decodes to objects, each
+with the position and gain its metadata sets. `decode` renders them to speakers through the layout
+renderer Hearth plays E-AC-3's objects with: each object panned from its position and moving as its
+metadata moves it, to the layout `speakers=`, `channels=` or `downmix=` names, and to 7.1.4 without
+one. `decoding=core` decodes an A-JOC substream's core instead, its downmix signals as the objects.
+An intermediate spatial format is rendered by the decoder itself (ETSI TS 103 190-2 clause 5.10.3),
+to the same layouts.
+
+```bash
+ac3cli decode ajoc.ac4 out.wav                   # 7.1.4
+ac3cli decode ajoc.ac4 out.wav speakers=5.1      # 5.1
+ac3cli decode ajoc.ac4 out.wav channels=2        # two channels
+ac3cli decode ajoc.ac4 out.wav decoding=core     # the downmix's signals as the objects
+```
+
+`decode`'s objects directory and ADM output write E-AC-3's objects; given an AC-4 stream they
+write nothing, and a warning says so.
+
 Each format's decode reads options the other's does not. Given an AC-4 stream, `decode` names
 the AC-3 and E-AC-3 ones it was given (`drc=`, `heavy`, `ltrt-phase=`, `fast-imdct`, `mode=`,
 `programme=`, `bed-only`, `joc-domain=`) in a warning and ignores them, as it does the object
