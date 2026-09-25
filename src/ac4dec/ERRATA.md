@@ -1415,12 +1415,12 @@ it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.
 ### Levelling before the mix
 
 - **Where:** Part 1 6.2.16.0, p. 268: substreams "need to be at the same reference level", by
-  10^((Lout - dialnorm)/20) unless DRC processing (5.7.9.3.3) has done it, and not "if both the
-  presentation_version is 0 and the dialnorm values of the music and effects and dialogue substreams
-  differ"; Part 2 4.8.5.2 and Table 16, pp. 51 and 52: in version 0 the dialnorm comes from "the
-  basic_metadata of the associated substream for presentations containing associated audio; and the
-  substream indicated in table 16 for main audio decoding", Table 16 naming a substream for
-  configurations 2 to 4 as well, which contain associated audio; 4.8.6, p. 53, takes DRC from the
+  10^((Lout - dialnorm)/20) unless DRC processing (5.7.9.3.3) has done it, and this levelling "shall not
+  be done if both the presentation_version is 0 and the dialnorm values of the music and effects and
+  dialogue substreams differ"; Part 2 4.8.5.2 and Table 16, pp. 51 and 52: in version 0 the dialnorm
+  comes from "the basic_metadata of the associated substream for presentations containing associated
+  audio; and the substream indicated in table 16 for main audio decoding", Table 16 naming a substream
+  for configurations 2 to 4 as well, which contain associated audio; 4.8.6, p. 53, takes DRC from the
   substream that gives the dialnorm. In version 1 the presentation substream carries the one dialnorm.
 - **Reading:** a version 0 presentation's dialnorm, which its output level and DRC take, is Table 16's
   substream's: the dialogue's in configurations 0 and 3, the main one's otherwise. The music and effects
