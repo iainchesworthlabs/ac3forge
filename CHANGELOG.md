@@ -311,6 +311,10 @@ The sections below contain the complete change list and fixes.
     - **Uploads have a limit.** An upload may take ten minutes at most.
     - **A short-of-RAM board says so.** The upload's task is made after the teardown, and a
       board that cannot make it answers `503` rather than dropping the connection.
+    - **Uploads survive other clients.** With every socket of the board's HTTP server in use,
+      ESP-IDF v6.1 could close the connection it had just taken for an upload, before reading
+      any of it. The example now has the server close its least recently used connection at
+      once (`CONFIG_HTTPD_QUEUE_WORK_BLOCKING`).
     - **Tested.** An overnight soak of the four boards, with faults injected, found no board
       left stuck.
 

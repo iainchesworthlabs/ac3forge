@@ -1254,16 +1254,35 @@ After every step the soak read `GET /firmware`, kept any core dump and saved `GE
 S3s' and the C6's consoles were recorded throughout. The images were the stack as it goes to
 `main` with #1034's trial fix, before the fixes below.
 
-- **Result** (results table to follow): every step on every board went as designed. None of the
+- **Result:** every kind of step went as designed on every board but one: an upload sent while
+  three other clients poll, which the board's HTTP server sometimes reset (below). None of the
   faults left a board stuck, and none needed a power cycle. The P4 came through dozens of
   restarts without its co-processor hang.
 - **A second upload during one** is refused by `ota.py` before it sends anything ("an update is
   already under way"), from `GET /firmware`. A client that skips that check, and a raw second
   `PUT`, get their connection dropped rather than a `409`: the board's HTTP server cannot answer
   before the body, and the client is still sending it.
-- **The upload's socket is not purged** when a fourth client connects: ESP-IDF v6.1 exempts a
-  connection held by an asynchronous request from its least-recently-used purge. The
-  three-poller step confirmed it on the boards.
+- **An upload sent while three other clients poll** was sometimes reset before the board read
+  any of it: `ConnectionResetError` after 69,632 bytes, nothing in the board's log, and the board
+  as it was. The P4 lost 2 of its 3 tries at that step, an S3 1 of 4, and the C6 none of 3. It is
+  a race in ESP-IDF v6.1's HTTP server:
+  - The control server keeps three sockets. For a fourth connection it queues a close of the
+    least recently used, and takes the new connection once that close has run.
+  - A server that goes round again before the close has run queues a second close of the same
+    slot. The first frees the slot, the new connection takes it, and the second closes the new
+    connection.
+  - `httpd_sess_close()` has a check meant to skip such a close. It looks for a session that has
+    never been used, and v6.1 starts every new session at the server's current count, so it
+    never skips.
+  - An upload is the connection most likely to lose: its own burst of data keeps lwIP busy, which
+    holds up the queued close. Once the upload has begun, the server no longer purges its socket.
+
+  On the S3 board, 300 connections made as that step makes them, with a 64 KiB body the board
+  refuses with `415`, lost 16 to a reset. With `CONFIG_HTTPD_QUEUE_WORK_BLOCKING`, which makes the
+  server close the least recently used connection at once with nothing queued, 300 lost none, and
+  the Sendspin player still started and took Music Assistant's connection. The example now sets
+  it (`sdkconfig.defaults`). The cost is that `httpd_queue_work()` waits for room in a full queue
+  rather than failing. `ota.py` also sends an upload that breaks off once more.
 
 **A review of the code.** It ran the same night, and found the cases these fixes answer:
 - a reset during an upload leaving no trace (the P4's, most likely `esp_hosted` restarting it),
@@ -1284,10 +1303,18 @@ S3s' and the C6's consoles were recorded throughout. The images were the stack a
 Tested on the S3 board: a reset over USB 5.1 s into an upload produced the `interrupted` record,
 `ota.py` said so, sent the image again, and it was accepted.
 
-**Still open**, from the same review, each needing a board test first:
+**Still open**, from the same review:
 - ac3hearth's Firmware panel can lose a sink whose mDNS record flash mode withdrew;
-- the NVS record is three writes, which a reset can tear;
-- while the S3 boots, polls can split the internal RAM the player's 32 KiB block needs.
+- the NVS record is three writes, which a reset can tear. That needs power lost during those
+  writes, and it can only leave a report that mixes two updates: NVS decides nothing about which
+  image boots.
+
+**Tested and not reproduced:** polls during an S3's boot splitting the internal RAM its player's
+32 KiB block needs. Three updates to the S3 board were each pushed while 4 or 8 clients polled
+`GET /firmware`, `/status` and `/hardware` on new connections every 50 to 100 ms, from before the
+restart until after the trial: 1,000 to 2,400 requests each. Every one started the player with
+the heap of a quiet boot (largest free block 31,744) and was accepted. That build keeps lwIP's
+buffers in PSRAM (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`).
 
 ## What cannot be verified
 
