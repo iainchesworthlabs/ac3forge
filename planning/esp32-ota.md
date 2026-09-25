@@ -739,6 +739,12 @@ and keeps it in NVS. CI refuses to publish an image whose `sdkconfig` sets
 - `hearth-sink-manifest.json`: every image of the release, with its chip, table, revision range
   and SHA-256, which `ota.py` reads to choose an image for each board.
 
+`<version>` is the release's tag. In CI's other runs it is `git describe` of the commit, which on
+their shallow checkout is the commit's hash. The build steps run that `describe` themselves:
+ESP-IDF's own fails in the build container, whose user does not own the checkout, and ESP-IDF
+then names the image "1". Found on 2026-09-25, when an image from a PR's run reported "1" on the
+C6. CI now refuses to publish an image named "1".
+
 **When.**
 
 - **On every CI run** that builds the ESP lane: the images are uploaded as a workflow artifact
@@ -793,6 +799,12 @@ machine before upload. O7 decides which.
   it needs neither the GitHub CLI nor a token for a public repository. It downloads the manifest
   and `SHA512SUMS` first, and then only the image each board takes. `--run` uses `gh run
   download`, since workflow artifacts need a token.
+
+Checked on 2026-09-25 against this PR's own CI run (36130182488):
+- **Packaging.** `package-esp32-firmware` published the four images.
+- **Onto a board.** `ota.py push --run` chose the 16 MB C6's image for the C6 on COM9 and sent it
+  over Wi-Fi. The board checked it and accepted it after its trial, in 67 s.
+- **What it found.** The image called itself "1", which led to the version fix above.
 
 ## The user guide
 

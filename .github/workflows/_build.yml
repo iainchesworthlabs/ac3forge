@@ -2820,8 +2820,11 @@ jobs:
       # (planning/esp32-ota.md, O8). tools/hearth/package_firmware.py writes
       # its app image, factory image, parts and ELF, and package-esp32-firmware
       # checks them and publishes them with the C6's and the P4's. On a release
-      # the image carries the release's tag as its version; otherwise ESP-IDF's
-      # own `git describe` of the checkout.
+      # the image carries the release's tag as its version; otherwise `git
+      # describe` of the checkout, which on a shallow checkout is the commit.
+      # The step asks git itself: ESP-IDF's own describe fails in this
+      # container, whose user does not own the checkout, and it then names
+      # the image "1" (the C6 and P4 steps in build-esp32c3 do the same).
       - name: Build the S3 board's Sendspin player and package its image
         shell: bash
         env:
@@ -2831,11 +2834,10 @@ jobs:
           . "$IDF_PATH/export.sh"
           cd esp-idf/ac3forge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth-sink-esp32s3"
-          version=()
-          if [ -n "$VERSION_TAG" ]; then version=("-DPROJECT_VER=$VERSION_TAG"); fi
+          version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32s3 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin" \
-            "${version[@]}" build >/dev/null
+            "-DPROJECT_VER=$version" build >/dev/null
           python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
             --name hearth-sink-esp32s3 --out "$GITHUB_WORKSPACE/esp32-firmware"
 
@@ -3220,11 +3222,10 @@ jobs:
           . "$IDF_PATH/export.sh"
           cd esp-idf/ac3forge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-c6-sendspin"
-          version=()
-          if [ -n "$VERSION_TAG" ]; then version=("-DPROJECT_VER=$VERSION_TAG"); fi
+          version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6" \
-            "${version[@]}" build
+            "-DPROJECT_VER=$version" build
           python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
             --name hearth-sink-esp32c6 --out "$GITHUB_WORKSPACE/esp32-firmware"
 
@@ -3242,11 +3243,10 @@ jobs:
           . "$IDF_PATH/export.sh"
           cd esp-idf/ac3forge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-c6-16mb-sendspin"
-          version=()
-          if [ -n "$VERSION_TAG" ]; then version=("-DPROJECT_VER=$VERSION_TAG"); fi
+          version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32c6 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6;sdkconfig.flash16mb" \
-            "${version[@]}" build >/dev/null
+            "-DPROJECT_VER=$version" build >/dev/null
           python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
             --name hearth-sink-esp32c6-16mb --out "$GITHUB_WORKSPACE/esp32-firmware"
 
@@ -3269,11 +3269,10 @@ jobs:
           . "$IDF_PATH/export.sh"
           cd esp-idf/ac3forge/examples/hearth_sink
           dir="$RUNNER_TEMP/hearth_sink-p4-sendspin"
-          version=()
-          if [ -n "$VERSION_TAG" ]; then version=("-DPROJECT_VER=$VERSION_TAG"); fi
+          version="${VERSION_TAG:-$(git -c safe.directory='*' -C "$GITHUB_WORKSPACE" describe --tags --always)}"
           idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 \
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin" \
-            "${version[@]}" build
+            "-DPROJECT_VER=$version" build
           python3 "$GITHUB_WORKSPACE/tools/hearth/package_firmware.py" package --build-dir "$dir" \
             --name hearth-sink-esp32p4-rev1 --out "$GITHUB_WORKSPACE/esp32-firmware"
 
