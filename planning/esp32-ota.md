@@ -1,9 +1,8 @@
 # Firmware over the network for Hearth sinks
 
 **Status, 2026-09-25:** O1 is built and merged, and all four boards are on the two-slot layout
-and have passed O2's checks, except a power cut during a trial, which waits for someone at the
-desk. O3, O4, O5, O8 and O9 are built and in review, O6 is studied, and O7 waits for the boards
-to leave development ([Phases](#phases)).
+and have passed O2's checks. O3, O4, O5, O8 and O9 are built and in review, O6 is studied, and O7
+waits for the boards to leave development ([Phases](#phases)).
 
 This plan was written on 2026-09-24, when every `hearth_sink` layout on `main` (`b49a966c`) was a
 single `factory` app and nothing in the tree called `esp_ota_*`. The ESP-IDF facts below were read
@@ -1124,9 +1123,11 @@ that image has to be able to take the next update.
   - the C6's internal heap low-water mark during an upload (114,308 bytes, read with O4's line);
   - on the P4, a v3.1 image is refused before anything is written.
 
-  Passed on all four boards on 2026-09-25, with USB resets standing in for the power cut, which
-  waits for someone at the desk. The P4's run needed its power cycled part-way
-  ([The P4's co-processor](#the-p4s-co-processor-o6)).
+  Passed on all four boards on 2026-09-25. The power cut was made by hand on the C6: an image
+  built with a 600 s hold (`CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S`), so that there was time to
+  pull the plug, lost its power 15 s into its trial. The board was back 8 s later on the image
+  before it, with the reason "the power went off before it had proved itself". The P4's run
+  needed its power cycled part-way ([The P4's co-processor](#the-p4s-co-processor-o6)).
 - **O3.** The page's Firmware section ([built](#the-web-page-o3)).
 - **O4, diagnostics without a cable.** Core dumps to the `coredump` partition, fetched with
   `GET /firmware/coredump` and read with `idf.py coredump-info`. Also a ring of recent console
