@@ -1,0 +1,66 @@
+name: Setup embeddable Python
+description: >-
+  Put python.org's embeddable Python, with pip, on PATH for a Windows job - the
+  bare `python` that jurplel/install-qt-action v4.4.0's bootstrap check and its
+  aqtinstall step both need, and that this fleet's self-hosted Windows runners
+  never provide. A plain zip extracted into $RUNNER_TEMP rather than an
+  installer: actions/setup-python and choco's python package have both failed
+  outright on these persistent, reused runners (see the comment above
+  _ci-windows.yml's "Setup Python (for install-qt-action)" step for the CI
+  failures behind that). Shared by _ci-windows.yml and msvc-analysis.yml so the
+  two stop drifting apart - msvc-analysis.yml kept the choco install after
+  _ci-windows.yml moved off it, and its nightly failed on
+  "python: command not found".
+
+runs:
+  using: composite
+  steps:
+    # zizmor's github-env audit (docs.zizmor.sh/audits/#github-env) targets
+    # workflows an attacker can trigger with elevated permissions/secrets -
+    # pull_request_target, workflow_run - where a value written to
+    # GITHUB_PATH could carry attacker-controlled content into a later,
+    # privileged step. Neither caller fits that shape: _ci-windows.yml runs
+    # under ci.yml's push/pull_request/merge_group/workflow_dispatch
+    # triggers, and msvc-analysis.yml under schedule/workflow_dispatch only.
+    # Nor is the value attacker-influenceable: it is the directory python.exe
+    # lands in under $RUNNER_TEMP, extracted from a pinned python.org URL.
+    # Putting python on PATH for install-qt-action's later steps is exactly
+    # what GITHUB_PATH is for - the same reasoning as setup-emscripten.
+    - name: Setup Python (embeddable)
+      shell: powershell
+      run: | # zizmor: ignore[github-env] the PATH entry is $RUNNER_TEMP-derived, not attacker-influenced - see above
+        $ErrorActionPreference = 'Stop'
+        $ProgressPreference = 'SilentlyContinue'
+        $zip = Join-Path $env:RUNNER_TEMP 'python-embed.zip'
+        $dest = Join-Path $env:RUNNER_TEMP 'python-embed'
+        Invoke-WebRequest -Uri 'https://www.python.org/ftp/python/3.12.7/python-3.12.7-embed-amd64.zip' -OutFile $zip
+        Expand-Archive -Path $zip -DestinationPath $dest
+        $exe = Get-ChildItem -Path $dest -Filter 'python.exe' | Select-Object -First 1
+        if (-not $exe) {
+            throw "python.exe not found anywhere under $dest after extracting $zip"
+        }
+        # The embeddable package ships with `import site` commented out in
+        # its own ._pth file, for a smaller/faster default - confirmed
+        # against a real CI run: install-qt-action's own bootstrap check
+        # calls the bare `exit()` builtin (not sys.exit()), which only
+        # exists once the site module has actually run. Uncommenting is
+        # the documented way to turn that back on, and pip's own installer
+        # needs site enabled too (it imports sysconfig, which needs site's
+        # path setup) - one flip serves both.
+        $pth = Get-ChildItem -Path $dest -Filter '*._pth' | Select-Object -First 1
+        if (-not $pth) {
+            throw "no *._pth file found under $dest to enable the site module in"
+        }
+        (Get-Content $pth.FullName) -replace '^#import site$', 'import site' | Set-Content $pth.FullName
+        # get-pip.py, not `-m ensurepip`: the embeddable zip does not carry
+        # ensurepip's own bundled wheels (python.org's own embeddable-package
+        # docs name this exact script as the fix), so ensurepip has nothing
+        # to install from and fails differently on this distribution.
+        $getPip = Join-Path $env:RUNNER_TEMP 'get-pip.py'
+        Invoke-WebRequest -Uri 'https://bootstrap.pypa.io/get-pip.py' -OutFile $getPip
+        & $exe.FullName $getPip --quiet
+        if ($LASTEXITCODE -ne 0) {
+            throw "get-pip.py exited $LASTEXITCODE installing pip into $($exe.FullName)"
+        }
+        Write-Host "Found python.exe at $($exe.FullName)"
+        $exe.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
