@@ -39,8 +39,14 @@ on:
         description: "Forwarded to check-runners' decide-runner call, same as ci.yml's own call to _build.yml. Optional - see that job's own description."
         required: false
 
+# Keyed on the commit as well as the ref on main. Called from ci.yml, every push
+# to main evaluates a ref-only key to the same wheels-CI-refs/heads/main, so each
+# merge cancelled the previous merge's wheels jobs mid-run - and CI Status counts
+# "cancelled" as a failure. ci.yml keys its own push runs by SHA for the same
+# reason. Everywhere else (a PR, a merge-queue entry, a tag, a dispatch on a
+# branch) a newer run on the same ref still supersedes the older one.
 concurrency:
-  group: wheels-${{ github.workflow }}-${{ github.ref }}
+  group: wheels-${{ github.workflow }}-${{ github.ref }}${{ github.ref == 'refs/heads/main' && format('-{0}', github.sha) || '' }}
   cancel-in-progress: true
 
 permissions:
