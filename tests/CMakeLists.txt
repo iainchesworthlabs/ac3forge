@@ -633,7 +633,7 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 # `ctest -L concurrency` (ThreadSanitizer leg).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
+        cli/test_cli.cpp cli/test_cli_ac4_decode.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
         cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp
         cli/test_cli_options.cpp cli/test_cli_synth.cpp cli/test_cli_analysis.cpp
         cli/test_cli_encode_paths.cpp cli/test_cli_stream_edges.cpp

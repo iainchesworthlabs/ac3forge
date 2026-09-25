@@ -399,6 +399,16 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
     return ac3::Acmod::k1_0;
 }
 
+// Options for a warning, space-separated.
+std::string joined(const std::vector<std::string>& tokens) {
+    std::string out;
+    for (const std::string& token : tokens) {
+        out += out.empty() ? "" : " ";
+        out += token;
+    }
+    return out;
+}
+
 // AC-4's DRC decoder mode by drcmode='s name (parse_options checked it).
 ac4::DrcMode ac4_drc_mode(std::string_view name) {
     if (name == "off") {
@@ -423,6 +433,9 @@ ac4::DrcMode ac4_drc_mode(std::string_view name) {
 // named, and downmix=auto or channels=2 alone the stream's preferred method
 // (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send.
 ac4::DownmixTarget ac4_downmix(const ac3cli::Options& meta) {
+    if (meta.ac4_fold_5x) {
+        return ac4::DownmixTarget::k5X;
+    }
     if (meta.downmix_auto) {
         return ac4::DownmixTarget::kStereo;
     }
@@ -467,7 +480,11 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
                         output.dialogue_enhancement_db));
     }
     if (output.downmix != ac4::DownmixTarget::kAsCoded) {
-        add(fmt::format("downmixed to {}", ac4::describe(output.downmix)));
+        add(fmt::format("downmixed to {}{}", ac4::describe(output.downmix),
+                        output.mix_lfe ? "" : " without the LFE"));
+    }
+    if (output.headphones) {
+        add("for headphones");
     }
     if (output.dialogue_gain_db != 0.0) {
         add(fmt::format("dialogue substreams at {:+g} dB where the stream allows", output.dialogue_gain_db));
@@ -510,6 +527,19 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         fmt::println(stderr, "warning: {} is AC-4, whose objects are not decoded yet - the object options are ignored",
                      in_path);
     }
+    // Options AC-3's and E-AC-3's decode reads: said, not silently dropped.
+    // The two that promise a result AC-4 cannot give are refused.
+    if (!meta.bap_census_path.empty() || meta.verify_objects) {
+        fmt::println(stderr, "error: {} is AC-4: {} AC-3's and E-AC-3's", in_path,
+                     meta.verify_objects ? "verify-objects checks the EMDF object signatures of"
+                                         : "bap-census= counts the bit allocation of");
+        return kExitUsage;
+    }
+    if (!meta.eac3_decode_tokens.empty()) {
+        fmt::println(stderr, "warning: {} is AC-4: {} {} AC-3's and E-AC-3's, and ignored", in_path,
+                     joined(meta.eac3_decode_tokens),
+                     meta.eac3_decode_tokens.size() == 1 ? "is" : "are");
+    }
     const ac4::ScanResult scan = ac4::scan(stream);
     if (scan.frames.empty()) {
         fmt::println(stderr, "error: {} holds no AC-4 sync frame", in_path);
@@ -534,12 +564,16 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     config.output.downmix = ac4_downmix(meta);
     config.output.dialogue_gain_db = meta.ac4_dialogue_gain;
     config.output.associated_gain_db = meta.ac4_associated_gain;
+    config.output.mix_lfe = meta.ac4_mix_lfe;
+    config.output.headphones = meta.ac4_headphones;
     config.concealment = ac4_concealment(meta.concealment);
     config.presentation.index = meta.ac4_presentation;
     config.presentation.presentation_id = meta.ac4_presentation_id;
     config.presentation.language = meta.ac4_language;
     config.presentation.associated = meta.ac4_associated;
     config.presentation.associated_type = meta.ac4_associated_type;
+    config.presentation.headphones = meta.ac4_headphones;
+    config.level = meta.ac4_level;
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {
@@ -1132,6 +1166,17 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     if (!requested.syntax_trace_path.empty()) {
         fmt::println(stderr, "error: syntax-trace= records AC-4 syntax, and {} is AC-3 or E-AC-3", in_path);
         return kExitUsage;
+    }
+    if (requested.ac4_fold_5x) {
+        fmt::println(
+            stderr, "error: channels=5.1 folds an AC-4 7.X stream to 5.X, and {} is AC-3 or E-AC-3",
+            in_path);
+        return kExitUsage;
+    }
+    if (!requested.ac4_decode_tokens.empty()) {
+        fmt::println(stderr, "warning: {} is AC-3 or E-AC-3: {} {} AC-4's, and ignored", in_path,
+                     joined(requested.ac4_decode_tokens),
+                     requested.ac4_decode_tokens.size() == 1 ? "is" : "are");
     }
     // downmix=auto becomes a concrete fold here, once, from what the stream
     // itself prefers; everything below sees only the fold it settled on.

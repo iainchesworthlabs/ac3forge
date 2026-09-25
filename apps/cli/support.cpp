@@ -1122,6 +1122,29 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         const std::string_view value =
             eq == std::string_view::npos ? std::string_view{} : token.substr(eq + 1);
 
+        // 'decode' reads these for one format only; run_decode says which it
+        // ignores once it knows what the stream is. drcmode=line and rf, and
+        // the object options, AC-4's decode already names.
+        if (command == "decode") {
+            constexpr std::array<std::string_view, 8> kEac3Only = {
+                "drc",  "heavy",     "ltrt-phase", "fast-imdct",
+                "mode", "programme", "bed-only",   "joc-domain"};
+            constexpr std::array<std::string_view, 10> kAc4Only = {
+                "output-level",  "dialogue-enhancement",
+                "presentation",  "presentation-id",
+                "language",      "associated",
+                "dialogue-gain", "associated-gain",
+                "headphones",    "md-compat"};
+            const bool ac4_drcmode = key == "drcmode" && value != "line" && value != "rf" &&
+                                     value != "none" && !value.empty();
+            if (std::ranges::find(kEac3Only, key) != kEac3Only.end()) {
+                out.eac3_decode_tokens.emplace_back(token);
+            } else if (std::ranges::find(kAc4Only, key) != kAc4Only.end() || ac4_drcmode ||
+                       (key == "channels" && value == "5.1")) {
+                out.ac4_decode_tokens.emplace_back(token);
+            }
+        }
+
         if (command == "ac4-encode" && eq != std::string_view::npos) {
             switch (parse_ac4_encode_option(key, value, token, out)) {
                 case MetadataOptionResult::kOk:
@@ -1420,6 +1443,34 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.output.mix_lfe = true;
             continue;
         }
+        if (key == "mix-lfe") {
+            // The valued form: on is the flag above; off keeps the LFE out of
+            // a downmix, which AC-3 and E-AC-3 do by default and AC-4, whose
+            // downmix takes it at the stream's lfe_mixgain, does only when
+            // asked (ETSI TS 103 190-1 clause 6.2.17).
+            if (value == "on" || value == "off") {
+                out.output.mix_lfe = value == "on";
+                out.ac4_mix_lfe = value == "on";
+                continue;
+            }
+            fmt::println(stderr, "error: mix-lfe is 'on' or 'off' (got '{}')", token);
+            return false;
+        }
+        if (token == "headphones" && command == "decode") {
+            out.ac4_headphones = true;
+            continue;
+        }
+        if (key == "md-compat" && command == "decode") {
+            // The md_compat level an AC-4 decoder claims (ETSI TS 103 190-2
+            // Table 55, 0 to 3 and 7 unrestricted).
+            const std::uint32_t level = parse_u32_or(value, 0xFFFFFFFFU);
+            if (level > 7U) {
+                fmt::println(stderr, "error: md-compat is a level from 0 to 7 (got '{}')", token);
+                return false;
+            }
+            out.ac4_level = static_cast<int>(level);
+            continue;
+        }
         if (key == "channels") {
             // How many channels to LEAVE, which is the question an operator
             // actually has ("this has to play on a stereo device"). Which
@@ -1428,14 +1479,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             if (value == "as-coded") {
                 out.output.target = ac3::DownmixTarget::kAsCoded;
                 out.downmix_auto = false;
+                out.ac4_fold_5x = false;
                 continue;
             }
             if (value == "1") {
                 out.output.target = ac3::DownmixTarget::kMono;
                 out.downmix_auto = false;
+                out.ac4_fold_5x = false;
                 continue;
             }
             if (value == "2") {
+                out.ac4_fold_5x = false;
                 // A downmix= earlier on the same command line already chose
                 // the matrix; channels=2 only confirms the width.
                 if (!out.downmix_named) {
@@ -1443,9 +1497,18 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 }
                 continue;
             }
+            if (value == "5.1" && command == "decode") {
+                // AC-4's 7.X element folded to 5.X (ETSI TS 103 190-1 Table
+                // 219); decode refuses it for AC-3 and E-AC-3.
+                out.output.target = ac3::DownmixTarget::kAsCoded;
+                out.downmix_auto = false;
+                out.ac4_fold_5x = true;
+                continue;
+            }
             fmt::println(stderr,
                          "error: channels is '2' (§7.8 stereo), '1' (mono) or 'as-coded' (the "
-                         "default - no downmix at all) (got '{}')",
+                         "default - no downmix at all), and for AC-4 '5.1' (a 7.X stream folded "
+                         "to 5.X) (got '{}')",
                          token);
             return false;
         }
@@ -1462,15 +1525,19 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 out.output.target = ac3::DownmixTarget::kLoRo;
                 out.downmix_named = true;
                 out.downmix_auto = false;
+                out.ac4_fold_5x = false;
             } else if (value == "ltrt") {
                 out.output.target = ac3::DownmixTarget::kLtRt;
                 out.downmix_named = true;
                 out.downmix_auto = false;
+                out.ac4_fold_5x = false;
             } else if (value == "mono") {
                 out.output.target = ac3::DownmixTarget::kMono;
                 out.downmix_named = true;
                 out.downmix_auto = false;
+                out.ac4_fold_5x = false;
             } else if (value == "auto") {
+                out.ac4_fold_5x = false;
                 // §D3.1.1's automatic choice, which needs the stream -
                 // resolve_output() settles it. Lo/Ro stands in until then, so
                 // a channels=2 either side of it sees a stereo target.

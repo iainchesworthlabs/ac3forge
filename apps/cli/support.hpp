@@ -162,6 +162,25 @@ struct Options {
     ac4::AssociatedType ac4_associated_type = ac4::AssociatedType::kAny;
     double ac4_dialogue_gain = 0.0;
     double ac4_associated_gain = 0.0;
+    // 'decode' of AC-4 only: whether a downmix takes the LFE, as AC-4 does
+    // unless mix-lfe=off (ac4::OutputConfig::mix_lfe); headphones, a listener
+    // on headphones, which takes the portable headphones DRC mode where the
+    // output level falls in the portable range and prefers a pre-virtualized
+    // presentation (OutputConfig::headphones, PresentationChoice::headphones);
+    // md-compat=, the md_compat level the decoder claims (DecoderConfig::
+    // level); and channels=5.1, a 7.X element folded to 5.X
+    // (DownmixTarget::k5X).
+    bool ac4_mix_lfe = true;
+    bool ac4_headphones = false;
+    int ac4_level = 3;
+    bool ac4_fold_5x = false;
+    // 'decode' only: the options given that one format's decode reads and
+    // the other's does not, so that decode says which it ignores for the
+    // stream it finds rather than ignoring them silently: AC-3's and
+    // E-AC-3's (drc=, heavy, ltrt-phase=, fast-imdct, mode=, programme=,
+    // bed-only, joc-domain=), and AC-4's.
+    std::vector<std::string> eac3_decode_tokens;
+    std::vector<std::string> ac4_decode_tokens;
     // 'ac4-encode' only: the frame rate, rate mode, I-frames and metadata
     // (ac4::EncoderConfig) as its options set them; print_meta_usage says
     // what each takes. Where a key other commands also read (dialnorm=, drc=,
