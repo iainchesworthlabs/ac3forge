@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <vector>
@@ -112,12 +113,14 @@ struct DownmixCodes {
 };
 
 // de_config() (Table 77), and de_ms_proc_flag, which the channel-independent
-// method sets for L and R's Mid.
+// method sets for L and R's Mid. The hybrid methods (2 and 3) send
+// `signal_contribution` in every frame's parameters.
 struct DeConfigCodes {
     int method = 0;
     int max_gain = 2;
     int channel_config = 1;  // Table 171: L, R and C as bits 4, 2 and 1
     bool mid = false;
+    int signal_contribution = 0;
 };
 
 // One frame's dialogue enhancement parameters: Table 209's indices (Table
@@ -172,6 +175,33 @@ struct StreamMetadata {
     std::optional<DeConfigCodes> de;
 };
 
+// One EMDF payload (Part 1 Table 18's loop, Table 79's
+// emdf_payload_config()), as the syntax sends it.
+struct EmdfPayloadCodes {
+    std::uint64_t id = 1;
+    std::optional<std::uint64_t> smpoffst;
+    std::optional<std::uint64_t> duration;
+    std::optional<std::uint64_t> groupid;
+    std::optional<int> codecdata;
+    bool discard_unknown = true;
+    bool frame_aligned = false;
+    bool create_duplicate = false;
+    bool remove_duplicate = false;
+    int priority = 0;
+    int proc_allowed = 0;
+    std::vector<std::uint8_t> bytes;
+};
+
+// An alternative presentation's fields in its presentation substream (Part 2
+// clause 6.2.2.3): its name's bytes, sent whole with a 0 after them (clause
+// 6.3.3.1.4), and one target, which src/ac4enc/ERRATA.md ("An alternative
+// presentation's target") reads.
+struct AlternativeCodes {
+    std::vector<std::uint8_t> name;  // without the terminating 0; empty for no name
+    int target_level = 0;            // the presentation's md_compat
+    int substreams = 1;              // n_substreams_in_presentation
+};
+
 // The channels de_channel_config names (Table 171).
 [[nodiscard]] int de_channel_count(int channel_config) noexcept;
 
@@ -179,12 +209,33 @@ struct StreamMetadata {
 // mode's profile that is not the stream's default one.
 [[nodiscard]] CurveCodes curve_codes(DrcProfile profile) noexcept;
 
-// The stream's metadata as codes, or nothing where a value is not one the
-// syntax can send. `ch_mode` is Part 1 Table 88's; the downmix's values are
-// sent for 5.X and 7.X alone, and dialogue enhancement's channels must be
-// ones the channel mode has.
+// Each element's codes, or nothing where a value is not one the syntax can
+// send. `ch_mode` is Part 1 Table 88's: the downmix's values are sent for 5.X
+// and 7.X alone, and dialogue enhancement's channels must be ones the channel
+// mode has.
+[[nodiscard]] std::optional<LoudnessCodes> resolve_loudness(const FurtherLoudness& loudness);
+[[nodiscard]] std::optional<DrcCodes> resolve_drc(const DrcConfig& drc, bool experimental_gains);
+[[nodiscard]] std::optional<DownmixCodes> resolve_downmix(const DownmixConfig& downmix,
+                                                          int ch_mode);
+[[nodiscard]] std::optional<DeConfigCodes> resolve_dialogue(const DialogueConfig& dialogue,
+                                                            int ch_mode);
+[[nodiscard]] std::optional<DialogueMixCodes> resolve_dialogue_mix(const DialogueMix& mix,
+                                                                   int ch_mode);
+[[nodiscard]] std::optional<EmdfPayloadCodes> resolve_emdf(const EmdfPayload& payload);
+
+// The stream's metadata as codes for one presentation of one substream, or
+// nothing where a value is not one the syntax can send.
 [[nodiscard]] std::optional<StreamMetadata> resolve_metadata(const EncoderConfig& config,
                                                              int ch_mode);
+
+// Part 1 clause 4.3.12.4.9's angle code for a pan in degrees, 1.5 degrees a
+// step clockwise from the front; nothing for an angle that is not one.
+[[nodiscard]] std::optional<int> pan_code(double degrees) noexcept;
+
+// The payload loop of emdf_payloads_substream() (Part 1 Table 18), its closing
+// 0 id and byte_align: an EMDF payloads substream whole, or what metadata()
+// carries after b_emdf_payloads_substream.
+void write_emdf_payloads(BitWriter& w, std::span<const EmdfPayloadCodes> payloads);
 
 // further_loudness_info(1, 1) in a presentation substream: the header in
 // every frame, the values in I-frames, as DEE's streams have it.
@@ -216,5 +267,9 @@ void write_presentation_mix(BitWriter& w, const PresentationMixCodes& codes);
 // extended_metadata(channel_mode, 1): b_dialog, and with `dialogue` the
 // dialogue fields; no channel classification or event probability.
 void write_extended_metadata(BitWriter& w, int ch_mode, const DialogueMixCodes* dialogue);
+
+// The fields of an alternative presentation's presentation substream, from
+// b_name_present to the last target's substreams.
+void write_alternative(BitWriter& w, const AlternativeCodes& codes);
 
 }  // namespace ac4::detail

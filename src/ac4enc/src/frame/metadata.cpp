@@ -167,194 +167,298 @@ CurveCodes curve_codes(DrcProfile profile) noexcept {
     return c;
 }
 
+std::optional<LoudnessCodes> resolve_loudness(const FurtherLoudness& l) {
+    if (l.practice == LoudnessPractice::kNotIndicated &&
+        (l.corrected_with_gating || l.corrected_in_real_time)) {
+        return std::nullopt;  // the correction's flags follow a practice
+    }
+    LoudnessCodes codes;
+    codes.loud_prac_type = static_cast<int>(l.practice);
+    if (l.corrected_with_gating) {
+        codes.dialgate_prac_type = static_cast<int>(*l.corrected_with_gating);
+    }
+    codes.loudcorr_type = l.corrected_in_real_time;
+    const auto code = [](std::optional<double> value, std::optional<int>& to) {
+        if (!value) {
+            return true;
+        }
+        to = loudness_code(value);
+        return to.has_value();
+    };
+    if (!code(l.integrated_lkfs, codes.loudrelgat) ||
+        !code(l.speech_gated_lkfs, codes.loudspchgat) ||
+        !code(l.max_short_term_lufs, codes.max_loudstrm3s) ||
+        !code(l.max_true_peak_dbtp, codes.max_truepk) ||
+        !code(l.max_momentary_lufs, codes.max_loudmntry)) {
+        return std::nullopt;
+    }
+    codes.speech_dialgate_prac_type = static_cast<int>(l.speech_gating);
+    if (l.loudness_range_lu) {
+        const double lra = std::floor(*l.loudness_range_lu * 10.0 + 0.5);
+        if (!(lra >= 0.0 && lra <= 1023.0)) {
+            return std::nullopt;
+        }
+        codes.lra = static_cast<int>(lra);
+    }
+    codes.lra_prac_type = l.loudness_range_v2 ? 1 : 0;
+    return codes;
+}
+
+std::optional<DrcCodes> resolve_drc(const DrcConfig& d, bool experimental_gains) {
+    DrcCodes codes;
+    codes.eac3_profile = static_cast<int>(d.profile);
+    std::vector<DrcModeConfig> modes = d.modes;
+    if (modes.empty()) {
+        for (int id = 0; id < 4; ++id) {
+            modes.push_back(DrcModeConfig{.id = id,
+                                          .output_level_from_db = 0,
+                                          .output_level_to_db = 0,
+                                          .profile = std::nullopt,
+                                          .repeat_of = std::nullopt,
+                                          .gains_config = std::nullopt});
+        }
+    }
+    if (modes.size() > 8) {
+        return std::nullopt;
+    }
+    for (std::size_t m = 0; m < modes.size(); ++m) {
+        const DrcModeConfig& mode = modes[m];
+        if (mode.id < 0 || mode.id > 7) {
+            return std::nullopt;
+        }
+        for (std::size_t other = 0; other < m; ++other) {
+            if (modes[other].id == mode.id) {
+                return std::nullopt;
+            }
+        }
+        DrcModeCodes c;
+        c.id = mode.id;
+        if (mode.id > 3) {
+            // Part 1 clause 4.3.13.3.2: L_out,min is -drc_output_level_from
+            // and L_out,max -drc_output_level_to.
+            if (!(mode.output_level_from_db >= -31 &&
+                  mode.output_level_from_db <= mode.output_level_to_db &&
+                  mode.output_level_to_db <= 0)) {
+                return std::nullopt;
+            }
+            c.output_level_from = -mode.output_level_from_db;
+            c.output_level_to = -mode.output_level_to_db;
+        }
+        if (mode.repeat_of) {
+            const bool known = std::ranges::any_of(modes, [&](const DrcModeConfig& o) {
+                return o.id == *mode.repeat_of && o.id != mode.id && !o.repeat_of;
+            });
+            if (!known) {
+                return std::nullopt;
+            }
+            c.repeat_id = *mode.repeat_of;
+            c.default_profile = false;
+        } else if (mode.gains_config) {
+            // Transmitted gains, experimental (planning/ac4.md, "What
+            // the encoder writes by default").
+            if (!experimental_gains || *mode.gains_config < 0 || *mode.gains_config > 3) {
+                return std::nullopt;
+            }
+            c.default_profile = false;
+            c.gains_config = mode.gains_config;
+            c.gains_curve = curve_codes(mode.profile.value_or(d.profile));
+            codes.gains = true;
+        } else if (mode.profile && *mode.profile != d.profile) {
+            c.default_profile = false;
+            c.curve = curve_codes(*mode.profile);
+        }
+        codes.modes.push_back(c);
+    }
+    return codes;
+}
+
+std::optional<DownmixCodes> resolve_downmix(const DownmixConfig& m, int ch_mode) {
+    if (ch_mode < 3) {
+        return std::nullopt;  // custom_dmx_data() sends coefficients for 5.X and 7.X
+    }
+    DownmixCodes codes;
+    const std::optional<int> centre = centre_code(m.loro_centre_db);
+    const std::optional<int> surround = surround_code(m.loro_surround_db);
+    if (!centre || !surround) {
+        return std::nullopt;
+    }
+    codes.loro_centre_mixgain = *centre;
+    codes.loro_surround_mixgain = *surround;
+    if (m.ltrt_centre_db || m.ltrt_surround_db) {
+        const std::optional<int> ltrt_centre =
+            centre_code(m.ltrt_centre_db.value_or(m.loro_centre_db));
+        const std::optional<int> ltrt_surround =
+            surround_code(m.ltrt_surround_db.value_or(m.loro_surround_db));
+        if (!ltrt_centre || !ltrt_surround) {
+            return std::nullopt;
+        }
+        codes.ltrt_mixgain = std::array<int, 2>{*ltrt_centre, *ltrt_surround};
+    }
+    if (m.lfe_db) {
+        const double code = 5.5 - *m.lfe_db;
+        if (!(code >= 0.0 && code <= 31.0) || code != std::floor(code)) {
+            return std::nullopt;
+        }
+        codes.lfe_mixgain = static_cast<int>(code);
+    }
+    codes.preferred_dmx_method = static_cast<int>(m.preferred);
+    if (m.loro_correction_db2) {
+        codes.loro_dmx_loud_corr = correction_code(*m.loro_correction_db2);
+        if (!codes.loro_dmx_loud_corr) {
+            return std::nullopt;
+        }
+    }
+    if (m.ltrt_correction_db2) {
+        codes.ltrt_dmx_loud_corr = correction_code(*m.ltrt_correction_db2);
+        if (!codes.ltrt_dmx_loud_corr) {
+            return std::nullopt;
+        }
+    }
+    return codes;
+}
+
+std::optional<DeConfigCodes> resolve_dialogue(const DialogueConfig& de, int ch_mode) {
+    DeConfigCodes codes;
+    codes.channel_config = (de.left ? 4 : 0) | (de.right ? 2 : 0) | (de.centre ? 1 : 0);
+    for (const int bit : {4, 2, 1}) {
+        if ((codes.channel_config & bit) != 0 && !channel_mode_has(ch_mode, bit)) {
+            return std::nullopt;
+        }
+    }
+    if (de.max_gain_db != 3 && de.max_gain_db != 6 && de.max_gain_db != 9 && de.max_gain_db != 12) {
+        return std::nullopt;
+    }
+    codes.max_gain = de.max_gain_db / 3 - 1;
+    switch (de.method) {
+        case DialogueMethod::kChannelIndependent:
+            break;
+        case DialogueMethod::kMid:
+            // de_ms_proc_flag is sent for two channels alone: L and R.
+            if (codes.channel_config != 6) {
+                return std::nullopt;
+            }
+            codes.mid = true;
+            break;
+        case DialogueMethod::kCrossChannel:
+            // Panning needs two channels or three, and marked channels,
+            // dialogue alone, are the channel-independent method's.
+            if (de_channel_count(codes.channel_config) < 2 || de.source != DialogueSource::kStem) {
+                return std::nullopt;
+            }
+            codes.method = 1;
+            break;
+    }
+    if (de.hybrid) {
+        // Table 170: the hybrid methods are 2 and 3, the channel-independent
+        // and cross-channel ones with the waveform beside them, whose share
+        // de_signal_contribution sends in thirty-firsts.
+        if (!(de.waveform_share >= 0.0 && de.waveform_share <= 1.0) ||
+            de_channel_count(codes.channel_config) == 0) {
+            return std::nullopt;
+        }
+        codes.method += 2;
+        codes.signal_contribution = static_cast<int>(std::lround(de.waveform_share * 31.0));
+    }
+    return codes;
+}
+
+std::optional<int> pan_code(double degrees) noexcept {
+    // 0 to 239: codes 0xf0 to 0xff are not to be used (clause 4.3.12.4.9).
+    const double code = degrees / 1.5;
+    if (!(code >= 0.0 && code <= 239.0) || code != std::floor(code)) {
+        return std::nullopt;
+    }
+    return static_cast<int>(code);
+}
+
+std::optional<DialogueMixCodes> resolve_dialogue_mix(const DialogueMix& mix, int ch_mode) {
+    DialogueMixCodes codes;
+    if (mix.max_gain_db) {
+        const int gain = *mix.max_gain_db;
+        if (gain != 3 && gain != 6 && gain != 9 && gain != 12) {
+            return std::nullopt;
+        }
+        codes.dialog_max_gain = gain / 3 - 1;
+    }
+    if (!mix.pan_degrees.empty()) {
+        // One angle for a mono dialogue, one for each of a stereo one's two
+        // channels (Part 1 clause 6.2.16.1); a 3.0 dialogue's two angles are
+        // the simplified decoding's, which this encoder does not send.
+        const std::size_t angles = ch_mode == 0 ? 1 : (ch_mode == 1 ? 2 : 0);
+        if (mix.pan_degrees.size() != angles) {
+            return std::nullopt;
+        }
+        std::array<int, 2> pan{};
+        for (std::size_t i = 0; i < angles; ++i) {
+            const std::optional<int> code = pan_code(mix.pan_degrees[i]);
+            if (!code) {
+                return std::nullopt;
+            }
+            pan[i] = *code;
+        }
+        codes.pan_dialog = pan;
+    }
+    return codes;
+}
+
+std::optional<EmdfPayloadCodes> resolve_emdf(const EmdfPayload& payload) {
+    // Table 79's values: the variable_bits() ones from 0 up, codecdata in 8
+    // bits, priority in 5, proc_allowed in 2; and an id from 1, 0 ending a
+    // list.
+    if (payload.id < 1 || payload.sample_offset.value_or(0) < 0 ||
+        payload.duration.value_or(0) < 0 || payload.group_id.value_or(0) < 0 ||
+        payload.codec_data.value_or(0) < 0 || payload.codec_data.value_or(0) > 255 ||
+        payload.priority < 0 || payload.priority > 31 || payload.processing_allowed < 0 ||
+        payload.processing_allowed > 3) {
+        return std::nullopt;
+    }
+    EmdfPayloadCodes codes;
+    codes.id = static_cast<std::uint64_t>(payload.id);
+    if (payload.sample_offset) {
+        codes.smpoffst = static_cast<std::uint64_t>(*payload.sample_offset);
+    }
+    if (payload.duration) {
+        codes.duration = static_cast<std::uint64_t>(*payload.duration);
+    }
+    if (payload.group_id) {
+        codes.groupid = static_cast<std::uint64_t>(*payload.group_id);
+    }
+    codes.codecdata = payload.codec_data;
+    codes.discard_unknown = payload.discard_unknown;
+    codes.frame_aligned = payload.frame_aligned;
+    codes.create_duplicate = payload.create_duplicate;
+    codes.remove_duplicate = payload.remove_duplicate;
+    codes.priority = payload.priority;
+    codes.proc_allowed = payload.processing_allowed;
+    codes.bytes = payload.bytes;
+    return codes;
+}
+
 std::optional<StreamMetadata> resolve_metadata(const EncoderConfig& config, int ch_mode) {
     StreamMetadata out;
     if (config.loudness) {
-        const FurtherLoudness& l = *config.loudness;
-        if (l.practice == LoudnessPractice::kNotIndicated &&
-            (l.corrected_with_gating || l.corrected_in_real_time)) {
-            return std::nullopt;  // the correction's flags follow a practice
-        }
-        LoudnessCodes codes;
-        codes.loud_prac_type = static_cast<int>(l.practice);
-        if (l.corrected_with_gating) {
-            codes.dialgate_prac_type = static_cast<int>(*l.corrected_with_gating);
-        }
-        codes.loudcorr_type = l.corrected_in_real_time;
-        const auto code = [](std::optional<double> value, std::optional<int>& to) {
-            if (!value) {
-                return true;
-            }
-            to = loudness_code(value);
-            return to.has_value();
-        };
-        if (!code(l.integrated_lkfs, codes.loudrelgat) ||
-            !code(l.speech_gated_lkfs, codes.loudspchgat) ||
-            !code(l.max_short_term_lufs, codes.max_loudstrm3s) ||
-            !code(l.max_true_peak_dbtp, codes.max_truepk) ||
-            !code(l.max_momentary_lufs, codes.max_loudmntry)) {
+        out.loudness = resolve_loudness(*config.loudness);
+        if (!out.loudness) {
             return std::nullopt;
         }
-        codes.speech_dialgate_prac_type = static_cast<int>(l.speech_gating);
-        if (l.loudness_range_lu) {
-            const double lra = std::floor(*l.loudness_range_lu * 10.0 + 0.5);
-            if (!(lra >= 0.0 && lra <= 1023.0)) {
-                return std::nullopt;
-            }
-            codes.lra = static_cast<int>(lra);
-        }
-        codes.lra_prac_type = l.loudness_range_v2 ? 1 : 0;
-        out.loudness = codes;
     }
     if (config.drc) {
-        const DrcConfig& d = *config.drc;
-        DrcCodes codes;
-        codes.eac3_profile = static_cast<int>(d.profile);
-        std::vector<DrcModeConfig> modes = d.modes;
-        if (modes.empty()) {
-            for (int id = 0; id < 4; ++id) {
-                modes.push_back(DrcModeConfig{.id = id,
-                                              .output_level_from_db = 0,
-                                              .output_level_to_db = 0,
-                                              .profile = std::nullopt,
-                                              .repeat_of = std::nullopt,
-                                              .gains_config = std::nullopt});
-            }
-        }
-        if (modes.size() > 8) {
+        out.drc = resolve_drc(*config.drc, config.experimental.drc_gains);
+        if (!out.drc) {
             return std::nullopt;
         }
-        for (std::size_t m = 0; m < modes.size(); ++m) {
-            const DrcModeConfig& mode = modes[m];
-            if (mode.id < 0 || mode.id > 7) {
-                return std::nullopt;
-            }
-            for (std::size_t other = 0; other < m; ++other) {
-                if (modes[other].id == mode.id) {
-                    return std::nullopt;
-                }
-            }
-            DrcModeCodes c;
-            c.id = mode.id;
-            if (mode.id > 3) {
-                // Part 1 clause 4.3.13.3.2: L_out,min is -drc_output_level_from
-                // and L_out,max -drc_output_level_to.
-                if (!(mode.output_level_from_db >= -31 &&
-                      mode.output_level_from_db <= mode.output_level_to_db &&
-                      mode.output_level_to_db <= 0)) {
-                    return std::nullopt;
-                }
-                c.output_level_from = -mode.output_level_from_db;
-                c.output_level_to = -mode.output_level_to_db;
-            }
-            if (mode.repeat_of) {
-                const bool known = std::ranges::any_of(modes, [&](const DrcModeConfig& o) {
-                    return o.id == *mode.repeat_of && o.id != mode.id && !o.repeat_of;
-                });
-                if (!known) {
-                    return std::nullopt;
-                }
-                c.repeat_id = *mode.repeat_of;
-                c.default_profile = false;
-            } else if (mode.gains_config) {
-                // Transmitted gains, experimental (planning/ac4.md, "What
-                // the encoder writes by default").
-                if (!config.experimental.drc_gains || *mode.gains_config < 0 ||
-                    *mode.gains_config > 3) {
-                    return std::nullopt;
-                }
-                c.default_profile = false;
-                c.gains_config = mode.gains_config;
-                c.gains_curve = curve_codes(mode.profile.value_or(d.profile));
-                codes.gains = true;
-            } else if (mode.profile && *mode.profile != d.profile) {
-                c.default_profile = false;
-                c.curve = curve_codes(*mode.profile);
-            }
-            codes.modes.push_back(c);
-        }
-        out.drc = codes;
     }
     if (config.downmix) {
-        const DownmixConfig& m = *config.downmix;
-        if (ch_mode < 3) {
-            return std::nullopt;  // custom_dmx_data() sends coefficients for 5.X and 7.X
-        }
-        DownmixCodes codes;
-        const std::optional<int> centre = centre_code(m.loro_centre_db);
-        const std::optional<int> surround = surround_code(m.loro_surround_db);
-        if (!centre || !surround) {
+        out.downmix = resolve_downmix(*config.downmix, ch_mode);
+        if (!out.downmix) {
             return std::nullopt;
         }
-        codes.loro_centre_mixgain = *centre;
-        codes.loro_surround_mixgain = *surround;
-        if (m.ltrt_centre_db || m.ltrt_surround_db) {
-            const std::optional<int> ltrt_centre =
-                centre_code(m.ltrt_centre_db.value_or(m.loro_centre_db));
-            const std::optional<int> ltrt_surround =
-                surround_code(m.ltrt_surround_db.value_or(m.loro_surround_db));
-            if (!ltrt_centre || !ltrt_surround) {
-                return std::nullopt;
-            }
-            codes.ltrt_mixgain = std::array<int, 2>{*ltrt_centre, *ltrt_surround};
-        }
-        if (m.lfe_db) {
-            const double code = 5.5 - *m.lfe_db;
-            if (!(code >= 0.0 && code <= 31.0) || code != std::floor(code)) {
-                return std::nullopt;
-            }
-            codes.lfe_mixgain = static_cast<int>(code);
-        }
-        codes.preferred_dmx_method = static_cast<int>(m.preferred);
-        if (m.loro_correction_db2) {
-            codes.loro_dmx_loud_corr = correction_code(*m.loro_correction_db2);
-            if (!codes.loro_dmx_loud_corr) {
-                return std::nullopt;
-            }
-        }
-        if (m.ltrt_correction_db2) {
-            codes.ltrt_dmx_loud_corr = correction_code(*m.ltrt_correction_db2);
-            if (!codes.ltrt_dmx_loud_corr) {
-                return std::nullopt;
-            }
-        }
-        out.downmix = codes;
     }
     if (config.dialogue) {
-        const DialogueConfig& de = *config.dialogue;
-        DeConfigCodes codes;
-        codes.channel_config = (de.left ? 4 : 0) | (de.right ? 2 : 0) | (de.centre ? 1 : 0);
-        for (const int bit : {4, 2, 1}) {
-            if ((codes.channel_config & bit) != 0 && !channel_mode_has(ch_mode, bit)) {
-                return std::nullopt;
-            }
-        }
-        if (de.max_gain_db != 3 && de.max_gain_db != 6 && de.max_gain_db != 9 &&
-            de.max_gain_db != 12) {
+        out.de = resolve_dialogue(*config.dialogue, ch_mode);
+        if (!out.de) {
             return std::nullopt;
         }
-        codes.max_gain = de.max_gain_db / 3 - 1;
-        switch (de.method) {
-            case DialogueMethod::kChannelIndependent:
-                break;
-            case DialogueMethod::kMid:
-                // de_ms_proc_flag is sent for two channels alone: L and R.
-                if (codes.channel_config != 6) {
-                    return std::nullopt;
-                }
-                codes.mid = true;
-                break;
-            case DialogueMethod::kCrossChannel:
-                // Panning needs two channels or three, and marked channels,
-                // dialogue alone, are the channel-independent method's.
-                if (de_channel_count(codes.channel_config) < 2 ||
-                    de.source != DialogueSource::kStem) {
-                    return std::nullopt;
-                }
-                codes.method = 1;
-                break;
-        }
-        out.de = codes;
     }
     return out;
 }
@@ -692,6 +796,94 @@ void write_extended_metadata(BitWriter& w, int ch_mode, const DialogueMixCodes* 
     }
     w.write(1, 0, "b_channels_classifier");
     w.write(1, 0, "b_event_probability");
+}
+
+void write_emdf_payloads(BitWriter& w, std::span<const EmdfPayloadCodes> payloads) {
+    const auto escaped = [&w](unsigned bits, std::uint64_t value, std::string_view name) {
+        // A 5-bit id whose all-ones value escapes to variable_bits(5) for
+        // what is above it.
+        const std::uint64_t escape = (std::uint64_t{1} << bits) - 1;
+        w.write(bits, std::min(value, escape), name);
+        if (value >= escape) {
+            w.write_variable_bits(bits, value - escape, name);
+        }
+    };
+    for (const EmdfPayloadCodes& p : payloads) {
+        escaped(5, p.id, "emdf_payload_id");
+        // emdf_payload_config() (Part 1 Table 79).
+        w.write(1, p.smpoffst ? 1U : 0U, "b_smpoffst");
+        if (p.smpoffst) {
+            w.write_variable_bits(11, *p.smpoffst, "smpoffst");
+        }
+        w.write(1, p.duration ? 1U : 0U, "b_duration");
+        if (p.duration) {
+            w.write_variable_bits(11, *p.duration, "duration");
+        }
+        w.write(1, p.groupid ? 1U : 0U, "b_groupid");
+        if (p.groupid) {
+            w.write_variable_bits(2, *p.groupid, "groupid");
+        }
+        w.write(1, p.codecdata ? 1U : 0U, "b_codecdata");
+        if (p.codecdata) {
+            w.write(8, static_cast<std::uint64_t>(*p.codecdata), "codecdata");
+        }
+        w.write(1, p.discard_unknown ? 1U : 0U, "b_discard_unknown_payload");
+        if (!p.discard_unknown) {
+            bool aligned = false;
+            if (!p.smpoffst) {
+                aligned = p.frame_aligned;
+                w.write(1, aligned ? 1U : 0U, "b_payload_frame_aligned");
+                if (aligned) {
+                    w.write(1, p.create_duplicate ? 1U : 0U, "b_create_duplicate");
+                    w.write(1, p.remove_duplicate ? 1U : 0U, "b_remove_duplicate");
+                }
+            }
+            if (p.smpoffst || aligned) {
+                w.write(5, static_cast<std::uint64_t>(p.priority), "priority");
+                w.write(2, static_cast<std::uint64_t>(p.proc_allowed), "proc_allowed");
+            }
+        }
+        w.write_variable_bits(8, p.bytes.size(), "emdf_payload_size");
+        for (const std::uint8_t b : p.bytes) {
+            w.write(8, b, "emdf_payload_byte");
+        }
+    }
+    // while (emdf_payload_id != 0): the 0 that ends the list, and nothing
+    // after it but the alignment (src/ac4dec/ERRATA.md, "The end of an EMDF
+    // payload list").
+    w.write(5, 0, "emdf_payload_id");
+    w.align();
+}
+
+void write_alternative(BitWriter& w, const AlternativeCodes& codes) {
+    // The name as one chunk (Part 2 clause 6.3.3.1.4): its bytes and a 0, so
+    // that byte[name_len - 1] = 0 says the name is whole; name_len in 5 bits,
+    // or 32 bytes without it.
+    w.write(1, codes.name.empty() ? 0U : 1U, "b_name_present");
+    if (!codes.name.empty()) {
+        const std::size_t name_len = codes.name.size() + 1;
+        w.write(1, name_len < 32 ? 1U : 0U, "b_length");
+        if (name_len < 32) {
+            w.write(5, name_len, "name_len");
+        }
+        for (const std::uint8_t b : codes.name) {
+            w.write(8, b, "presentation_name");
+        }
+        w.write(8, 0, "presentation_name");
+    }
+    // One target: the presentation's level, every device category, and every
+    // substream active with no alternative data set (src/ac4enc/ERRATA.md,
+    // "An alternative presentation's target").
+    w.write(2, 0, "n_targets_minus1");
+    w.write(3, static_cast<std::uint64_t>(codes.target_level), "target_level");
+    w.write(4, 0b1111, "target_device_category");
+    w.write(1, 0, "b_tdc_extension");
+    w.write(1, 0, "b_ducking_depth_present");
+    w.write(1, 0, "b_loud_corr_target");
+    for (int sus = 0; sus < codes.substreams; ++sus) {
+        w.write(1, 1, "b_active");
+        w.write(1, 0, "alt_data_set_index");
+    }
 }
 
 }  // namespace ac4::detail

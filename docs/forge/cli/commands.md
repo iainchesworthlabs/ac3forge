@@ -227,6 +227,12 @@ programme's channels and sample for sample, and each band's parameter is its sha
 dialogue and pans it back as the dialogue is panned. `dialogue-max-gain=` caps what a decoder may
 add: 3, 6, 9 (the default) or 12 dB.
 
+**Presentations.** The output is one substream in one presentation, with `presentation_id` 0 and
+the `md_compat` level its layout needs. Several substreams and the presentations of Part 2 Table 53
+(music and effects with dialogue, associated audio, the hybrid dialogue enhancement methods'
+waveform, alternative presentations and EMDF payloads) are in the library,
+`ac4::EncoderConfig::substreams` and `presentations`; the options that take them follow in phase E7.
+
 `syntax-trace=<file>` writes every syntax element the encoder writes, one per line. The summary
 names the codec mode, the frame rate and the rate mode, and how far the decoder's output lags the
 input, to the nearest sample away from the native frame rate.
