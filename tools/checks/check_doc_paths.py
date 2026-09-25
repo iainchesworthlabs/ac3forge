@@ -162,6 +162,9 @@ PROSE_PATHS_UNCHECKED = {
         "plan; proposes firmware sources, sdkconfig overlays, a host tool and tests that do not "
         "exist yet"
     ),
+    "planning/ac4.md": (
+        "plan; proposes decoder, encoder and core libraries and sources that do not exist yet"
+    ),
     "planning/roadmap-inventory.md": (
         "inventory; a dated snapshot (tree as of 2026-09-17) that names gaps against the "
         "tree, which go stale as work lands"
