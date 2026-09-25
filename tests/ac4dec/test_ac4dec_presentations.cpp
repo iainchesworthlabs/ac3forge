@@ -419,12 +419,6 @@ double db(double x) {
     return 20.0 * std::log10(x);
 }
 
-// A tone's level in the mix against its level in `reference`, where it is on
-// channel `from`, in dB.
-double relative_db(const Decoded& mix, Speaker into, const Decoded& reference, Speaker from, double hz) {
-    return db(tone_amplitude(mix, into, hz) / tone_amplitude(reference, from, hz));
-}
-
 // The tone is where the formula puts it at `expected_db` against the
 // reference, and 60 dB under that in every other channel of the mix;
 // `expected_db` unset puts it nowhere.
@@ -1114,19 +1108,17 @@ TEST_CASE("the decoder selects by its configuration and reports what it decoded"
 }
 
 TEST_CASE("a mixed presentation conceals a lost frame with all its substreams", "[ac4dec][presentations]") {
-    std::vector<std::byte> file = committed("5_1");
+    const std::vector<std::byte>& file = committed("5_1");
     ac4::DecoderConfig config;
     config.presentation.presentation_id = 1;
     config.concealment = ac4::ConcealmentPolicy::kRepeatFade;
     ac4::Decoder decoder(config);
     const ac4::ScanResult scan = ac4::scan(file);
     std::size_t concealed = 0;
+    // bitstream_version 3 and more: a table of contents that does not read.
+    const std::vector<std::byte> unreadable{std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}};
     for (std::size_t f = 0; f < scan.frames.size(); ++f) {
-        std::vector<std::byte> raw(scan.frames[f].raw_ac4_frame.begin(), scan.frames[f].raw_ac4_frame.end());
-        if (f == 12) {
-            raw[0] = std::byte{0xFF};  // bitstream_version 3 and more: the table of contents does not read
-        }
-        const auto decoded = decoder.decode(raw);
+        const auto decoded = decoder.decode(f == 12 ? std::span<const std::byte>(unreadable) : scan.frames[f].raw_ac4_frame);
         REQUIRE(decoded.has_value());
         REQUIRE(decoded->has_value());
         CHECK((**decoded).speakers.size() == 6);

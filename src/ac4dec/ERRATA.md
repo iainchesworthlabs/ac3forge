@@ -642,6 +642,17 @@ decodes those streams' coded pair as L and R and leaves Ls and Rs silent.
   is unaffected. A DEE stream with `de_channel_config` 6 and `de_ms_proc_flag` 0 takes this path in every
   I-frame; the phase that applies dialogue enhancement checks the reading there.
 
+### de_ms_proc_flag leaves one parameter set
+
+- **Where:** Part 1 Table 78, p. 69: with `de_ms_proc_flag` set, `de_data()` reads parameters for
+  `ch < de_nr_channels - de_ms_proc_flag`; 5.7.8.7, p. 253: "only one parameter subset is transmitted
+  for application to the Mid signal".
+- **Reading:** as printed, the syntax and the semantics agreeing: one parameter set, the Mid's.
+- **Evidence:** Text. No DEE stream sets the flag. MediaInfo (MediaInfoLib 26.05, as DEE 6.5.4 ships it)
+  reads two sets after it: on a stream with the Mid, the encoder's (`dialogue-method=mid`) and the test
+  multiplexer's alike, it reports "NOK: tools_metadata", and it reports nothing when a second set
+  follows the flag, which the text does not send.
+
 ### Dialogue enhancement and DRC configuration across I-frames
 
 - **Where:** Part 2 4.5.2, pp. 35 and 36; Part 1 Tables 70 and 76; 4.3.14.5.3, p. 133.
