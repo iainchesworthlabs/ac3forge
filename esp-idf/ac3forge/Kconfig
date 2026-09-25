@@ -38,4 +38,31 @@ config AC3FORGE_SENDSPIN_SUITE
         25519_ChaChaPoly_SHA256 is software on every part;
         25519_AESGCM_SHA256 uses the part's AES accelerator where it has one.
 
+# UPDATES OVER THE NETWORK - include/ac3forge/firmware.hpp and
+# planning/esp32-ota.md. Ints rather than bools, so they reach C++ as plain
+# constants.
+config AC3FORGE_FIRMWARE_TRIAL_HOLD_S
+    int "Seconds an updated image has to stay healthy before it is accepted"
+    default 30
+    range 1 3600
+    help
+        An image an update wrote boots on trial. It is accepted once every
+        condition its owner names (for a Hearth sink: a network address, the
+        HTTP server and the Sendspin player) has held this long without a
+        break.
+
+config AC3FORGE_FIRMWARE_TRIAL_DEADLINE_S
+    int "Seconds after boot an updated image has to get there"
+    default 300
+    range 10 3600
+    help
+        An image not accepted this long after it booted gives up, and the
+        bootloader boots the image before it. So does any reset before then:
+        a panic, a watchdog, a power cut.
+
+config AC3FORGE_FIRMWARE_FLASH_MODE_IDLE_S
+    int "Seconds in flash mode with no upload before the board restarts"
+    default 600
+    range 30 86400
+
 endmenu

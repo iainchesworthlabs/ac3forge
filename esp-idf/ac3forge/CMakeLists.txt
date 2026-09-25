@@ -61,7 +61,11 @@
 # lwIP hook a project installs from lwip_hooks/ac3forge_lwip_hooks.h, which
 # lwIP then needs to link. How it finds a socket's IPv4 peer depends on
 # whether lwIP has IPv6 (src/peer/ipv4_peer.hpp).
-set(AC3FORGE_COMPONENT_SRCS "src/player.cpp" "src/control.cpp" "src/tcp_arrivals.cpp")
+# src/firmware.cpp is the update over the network behind Control's firmware
+# routes (include/ac3forge/firmware.hpp, planning/esp32-ota.md): like the rest
+# of this archive it reaches a firmware only when something in it makes a
+# Firmware.
+set(AC3FORGE_COMPONENT_SRCS "src/player.cpp" "src/control.cpp" "src/firmware.cpp" "src/tcp_arrivals.cpp")
 if(CONFIG_LWIP_IPV6)
     list(APPEND AC3FORGE_COMPONENT_SRCS "src/peer/dual_stack/ipv4_peer.cpp")
 else()
@@ -85,7 +89,10 @@ idf_component_register(
     # by everything above, the same way provision.cpp's own call to it is.
     # esp_app_format: the same handler's firmware version, from
     # esp_app_get_description().
-    PRIV_REQUIRES lwip esp_psram esp_app_format
+    # app_update, esp_partition, spi_flash and hal: src/firmware.cpp's
+    # esp_ota_* calls, its reads of a slot, the flash's size, and the chip
+    # revision the image checks hold an image against (hal/efuse_hal.h).
+    PRIV_REQUIRES lwip esp_psram esp_app_format app_update esp_partition spi_flash hal
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
 # ac3forge_lwip_ip4_input (src/tcp_arrivals.cpp) is called only from lwIP's own

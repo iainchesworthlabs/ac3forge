@@ -48,6 +48,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
@@ -59,6 +60,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3forge/control.hpp"
+#include "ac3forge/firmware.hpp"
 #include "ac3forge/player.hpp"
 
 #include "audio_sink.hpp"
@@ -198,7 +200,7 @@ class MeteredSink final : public ac3forge::PcmSink {
 // meet in a queue for commands and a mutex for the player's snapshot. Nothing
 // the server's task does touches the player directly.
 
-enum class CommandKind : std::uint8_t { kPlay, kStop, kVolume, kLayout };
+enum class CommandKind : std::uint8_t { kPlay, kStop, kVolume, kLayout, kFlashMode };
 
 struct Command {
     CommandKind kind = CommandKind::kStop;
@@ -220,6 +222,14 @@ ac3::render::OutputLayout g_layout;
 // begin_play, which is always a reconfigure since a real layout needs at
 // least one. Written only from begin_play, on the task that owns the player.
 int g_sink_channels_open = 0;
+
+// Updates over the network (ac3forge/firmware.hpp, planning/esp32-ota.md).
+// Its routes are the control surface's; flash mode's teardown runs here, on
+// app_main's task, which owns the player, and the firmware's task waits for
+// it on g_flash_mode_done. g_control_started is one of the trial's conditions.
+ac3forge::Firmware g_firmware;
+SemaphoreHandle_t g_flash_mode_done = nullptr;
+std::atomic<bool> g_control_started{false};
 
 // --- reporting -------------------------------------------------------------------
 
@@ -575,7 +585,51 @@ ac3forge::ControlHandlers control_handlers() {
         h.sendspin = []() { return player::sendspin_status(); };
         h.pairing = [](std::string_view action) { return player::sendspin_pairing(action); };
     }
+    h.firmware = &g_firmware;
     return h;
+}
+
+// What only this board knows about an update (ac3forge::FirmwareHooks).
+ac3forge::FirmwareHooks firmware_hooks() {
+    ac3forge::FirmwareHooks hooks;
+    // On the firmware's task: the teardown itself is app_main's, which owns
+    // the player (CommandKind::kFlashMode below).
+    hooks.enter_flash_mode = [] {
+        Command c;
+        c.kind = CommandKind::kFlashMode;
+        (void)xQueueSend(g_commands, &c, portMAX_DELAY);
+        if (xSemaphoreTake(g_flash_mode_done, pdMS_TO_TICKS(15000)) != pdTRUE) {
+            std::printf("firmware: the player had not stopped after 15 s; going on without it\n");
+        }
+    };
+    // What a Hearth sink has to hold before an updated image is accepted: the
+    // network it was on, the page and the REST routes, and the Sendspin player
+    // its servers reach it through.
+    hooks.trial_conditions = [] {
+        std::vector<std::pair<std::string, bool>> conditions;
+        conditions.emplace_back("a network address", player::network_ready());
+        conditions.emplace_back("the HTTP server", g_control_started.load());
+        if (player::sendspin_built()) {
+            conditions.emplace_back("the Sendspin player", player::sendspin_running());
+        }
+        return conditions;
+    };
+    hooks.host_names = [] { return std::vector<std::string>{player::discovery_host_name()}; };
+    hooks.network_source = [] { return player::network_source(); };
+    // Servers hear the board is restarting, rather than finding it gone.
+    hooks.before_restart = [] { player::sendspin_leave(); };
+    return hooks;
+}
+
+ac3forge::FirmwareConfig firmware_config() {
+    ac3forge::FirmwareConfig config;
+    config.trial.hold_ms = static_cast<std::uint32_t>(CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S) * 1000U;
+    config.trial.deadline_ms = static_cast<std::uint32_t>(CONFIG_AC3FORGE_FIRMWARE_TRIAL_DEADLINE_S) * 1000U;
+    config.flash_mode_idle_ms = static_cast<std::uint32_t>(CONFIG_AC3FORGE_FIRMWARE_FLASH_MODE_IDLE_S) * 1000U;
+    // CI's rollback tests only: main/CMakeLists.txt's AC3FORGE_FIRMWARE_TEST.
+    config.test_unhealthy = AC3FORGE_FIRMWARE_TEST_UNHEALTHY != 0;
+    config.test_panic_at_trial = AC3FORGE_FIRMWARE_TEST_PANIC_ON_TRIAL != 0;
+    return config;
 }
 
 }  // namespace
@@ -624,6 +678,14 @@ extern "C" void app_main() {
                     "one it can take\n",
                     player::sink_slot_bits(), player::settings().slot_bits);
     }
+    // A network built into this image is stored, so the board keeps it through
+    // an update to an image without one (network.hpp).
+    player::network_adopt_built_in();
+
+    // Updates over the network, before anything else starts: an image on trial
+    // starts its clock here (ac3forge/firmware.hpp).
+    g_flash_mode_done = xSemaphoreCreateBinary();
+    (void)g_firmware.start(firmware_hooks(), firmware_config());
 
     // The network, if this build has one, before anything plays: a sink is
     // found before it is played to, so the control surface has to answer and
@@ -668,7 +730,7 @@ extern "C" void app_main() {
     const auto start_control = [&control, &control_started] {
         if (kControlPort != 0 && !control_started) {
             control_started = true;
-            (void)control.start(control_handlers(), kControlPort);
+            g_control_started = control.start(control_handlers(), kControlPort);
         }
     };
     //
@@ -753,6 +815,19 @@ extern "C" void app_main() {
                         std::printf("control: layout %s for the next play\n",
                                     g_layout.text().data());
                     }
+                    break;
+                case CommandKind::kFlashMode:
+                    // Flash mode (planning/esp32-ota.md): every play stops,
+                    // servers hear the board is going, the sink closes and the
+                    // Sendspin service is withdrawn. Nothing starts any of it
+                    // again: the board restarts to leave flash mode.
+                    end_play();
+                    player::sendspin_leave();
+                    player::sink_close();
+                    g_sink_channels_open = 0;
+                    player::discovery_withdraw();
+                    g_state.store("flash");
+                    xSemaphoreGive(g_flash_mode_done);
                     break;
             }
         }

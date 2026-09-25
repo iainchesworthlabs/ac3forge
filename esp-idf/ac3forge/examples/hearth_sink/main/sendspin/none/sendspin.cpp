@@ -22,6 +22,8 @@ bool sendspin_set_layout(const ac3::render::OutputLayout& /*layout*/) { return t
 
 void sendspin_board_changed() {}
 
+void sendspin_leave() {}
+
 std::optional<ac3forge::ControlSendspin> sendspin_status() { return std::nullopt; }
 
 bool sendspin_pairing(std::string_view /*action*/) { return false; }

@@ -47,6 +47,11 @@
 // And the board's own settings, which ControlHandlers lists: GET and PUT
 // /name, /slot-width and /wiring, and PUT /network.
 //
+// And updates over the network, which Control hands to the owner's Firmware
+// (firmware.hpp, planning/esp32-ota.md): GET and PUT /firmware, PUT
+// /firmware/mode and /firmware/rollback, and POST /restart. In flash mode
+// every route that would play something or change a setting answers 409.
+//
 // Every handler below runs on esp_http_server's task. Nothing here touches a
 // Player: the callbacks hand the request to whichever task owns the player -
 // a queue, in the streaming example - and answer from what that task
@@ -54,6 +59,8 @@
 // already makes safe from any task.
 
 namespace ac3forge {
+
+class Firmware;
 
 // GET /status's "sendspin" object, for a board that is a Sendspin player
 // (sendspin_host.hpp, burst_player.hpp). Plain values, so that the control
@@ -214,6 +221,11 @@ struct ControlHandlers {
     // nothing (a build with no network), and left out when the handler is
     // empty. Called for every GET /status, on the server's task.
     std::function<std::optional<ControlNetwork>()> network;
+
+    // The firmware routes (firmware.hpp), and flash mode's refusals. Null
+    // leaves the routes answering that the board takes no updates. The owner
+    // keeps it alive for as long as Control runs.
+    Firmware* firmware = nullptr;
 };
 
 class Control {

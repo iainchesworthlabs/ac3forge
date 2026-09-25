@@ -84,6 +84,9 @@ add_executable(ac3tests
     decoder/test_eac3_programmes.cpp
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
+    io/test_firmware_image.cpp
+    io/test_firmware_status.cpp
+    io/test_firmware_trial.cpp
     io/test_hardware_info.cpp
     io/test_improv.cpp
     io/test_interleave.cpp

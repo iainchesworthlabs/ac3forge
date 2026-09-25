@@ -24,4 +24,8 @@ std::string network_address() { return {}; }
 
 NetworkLink network_link() { return {}; }
 
+const char* network_source() { return "none"; }
+
+void network_adopt_built_in() {}
+
 }  // namespace player

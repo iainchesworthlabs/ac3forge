@@ -166,6 +166,14 @@ class SendspinHost final {
     [[nodiscard]] bool start(SendspinHostConfig config, SendspinEvents& events);
     void stop();
 
+    // The board is going away for an update or a restart
+    // (planning/esp32-ota.md): every connection past its handshake is told
+    // so with client/goodbye restart, and its server dials again once the
+    // board is back. Then the server stops, as stop() stops it. Waits up to
+    // `wait_ms` for the goodbyes to go out on the server's task. Safe from
+    // any task but the server's own.
+    void leave(std::uint32_t wait_ms = 500);
+
     // Safe from any task; queued onto the server's task, and a later call
     // replaces an earlier one that has not been applied yet.
     //

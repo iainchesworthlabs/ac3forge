@@ -61,6 +61,13 @@ void sendspin_set_external(bool external);
 // player that is starting takes the change up before it has started.
 void sendspin_board_changed();
 
+// The board is going away, into flash mode or through a restart
+// (planning/esp32-ota.md): every server is told the board is restarting,
+// the player stops writing to the sink, and the server stops listening. The
+// player and its host stay in memory, since other tasks hold pointers to
+// them; nothing starts them again, because the board restarts next.
+void sendspin_leave();
+
 // GET /status's "sendspin" object, or nothing without a player.
 [[nodiscard]] std::optional<ac3forge::ControlSendspin> sendspin_status();
 

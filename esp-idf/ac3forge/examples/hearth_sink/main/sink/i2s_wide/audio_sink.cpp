@@ -465,6 +465,8 @@ std::uint64_t sink_frames_written() { return g_model.writes(); }
 
 void sink_begin_play() { g_model.restart(); }
 
+void sink_close() { close_line(g_line); }
+
 void sink_report() { g_model.report(); }
 
 }  // namespace player

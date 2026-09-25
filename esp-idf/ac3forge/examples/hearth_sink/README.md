@@ -135,9 +135,8 @@ partition that says which of them boots: `partitions.csv` for a board with
 bootloader is built with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE`
 (`sdkconfig.defaults`). An image an update writes into the other slot boots on
 trial, and a reset before that image accepts itself boots the previous one
-again. Updates over the network build on this
-([planning/esp32-ota.md](../../../../planning/esp32-ota.md)); the updates
-themselves come later.
+again. Updates over the network, in the next section, build on this
+([planning/esp32-ota.md](../../../../planning/esp32-ota.md)).
 
 A USB flash - `idf.py flash`, or `esptool write-flash @flash_args` from the
 build directory - writes these:
@@ -158,6 +157,52 @@ An ESP32-C6 with 16 MB of flash takes `partitions.csv` and its 4 MiB slots:
 add `sdkconfig.flash16mb` after the C6's own overlays. `partitions_c6.csv`'s
 slots are 1.75 MiB, for any C6 module. The ESP32-P4 uses `partitions.csv`, as
 the S3 does.
+
+### Updating over the network
+
+A board on these tables takes a new image over its network. Any of these
+sends the application image, `ac3forge_hearth_sink.bin`, not the merged
+factory image:
+
+```bash
+python tools/hearth/ota.py push --build-dir <build dir> --host hearth-eb2c64.local
+idf.py -C <this directory> -B <build dir> ... build ota --host hearth-eb2c64.local
+curl -T <build dir>/ac3forge_hearth_sink.bin http://hearth-eb2c64.local/firmware
+```
+
+`ota.py` checks the image and the board before it sends anything, sends the
+file's SHA-256 with it, and waits for the board to accept the new image or go
+back to the old one.
+
+On the board, the update goes like this:
+
+1. **Flash mode.** Every play stops, servers are told the board is restarting,
+   the sink closes and the Sendspin service is withdrawn.
+2. **The other slot.** The image is written there. The board then checks it
+   three ways: the image's own SHA-256, read back from flash; the request's
+   `Content-Digest`, when there is one; and every byte read back and hashed
+   again.
+3. **The restart.** The board restarts into the new image, which boots on
+   trial.
+4. **The trial.** The image is accepted once it has held a network address, the
+   HTTP server and the Sendspin player for 30 s without a break
+   (`CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S`). If it does not get there within
+   5 minutes (`_DEADLINE_S`), or it resets first, the board goes back to the
+   image before it. A panic, a watchdog and a power cut are all resets.
+
+`GET /firmware` reports both slots, a trial in progress, an upload's progress
+and how the last update ended. After each boot the board reads both slots
+through and checks each image against its own SHA-256, as the bootloader does,
+and `GET /firmware` says whether each is intact. `PUT /firmware/rollback` goes back to the other
+slot's image, and `POST /restart` restarts. `PUT /firmware/mode` with body
+`flash` enters flash mode, and with `normal` leaves it; leaving is a restart.
+
+The firmware PUTs answer only requests addressed to the board's IP address or
+its own `.local` name, which keeps a web page elsewhere from sending them
+through a browser on this network. Images are not signed while the boards are
+in development: anyone on the network can update a board, as anyone with a USB
+cable can. [planning/esp32-ota.md](../../../../planning/esp32-ota.md) has the
+reasons, and what later phases add.
 
 ## What it prints
 

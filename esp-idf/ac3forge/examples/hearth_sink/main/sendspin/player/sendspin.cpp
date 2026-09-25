@@ -549,6 +549,17 @@ void start_player(const ac3::render::OutputLayout& layout) {
 
 bool sendspin_running() { return running() != nullptr; }
 
+void sendspin_leave() {
+    const Running* const r = running();
+    if (r == nullptr) {
+        return;
+    }
+    r->host->leave();
+    if (!r->player->hold(true)) {
+        std::printf("sendspin: the player did not stop writing in time\n");
+    }
+}
+
 bool sendspin_playing() {
     const Running* const r = running();
     return r != nullptr && r->player->active();

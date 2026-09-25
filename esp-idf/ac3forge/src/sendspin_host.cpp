@@ -24,6 +24,7 @@
 #include "esp_http_server.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lwip/sockets.h"
 
@@ -200,7 +201,10 @@ struct SendspinHost::Impl {
     bool pending_config = false;
     bool pending_reset_rounds = false;
     bool pending_cancel = false;
+    bool pending_goodbye = false;
     bool pending_queued = false;
+    // Given on the server's task once leave()'s goodbyes have gone out.
+    SemaphoreHandle_t goodbye_sent = nullptr;
 
     // What status() and server_time() read.
     mutable std::mutex status_mutex;
@@ -764,6 +768,7 @@ void SendspinHost::Impl::pending_work(void* arg) {
     bool config = false;
     bool reset_rounds = false;
     bool cancel = false;
+    bool goodbye = false;
     std::uint32_t generation = 0;
     {
         const std::lock_guard lock(host->pending_mutex);
@@ -773,8 +778,23 @@ void SendspinHost::Impl::pending_work(void* arg) {
         config = std::exchange(host->pending_config, false);
         reset_rounds = std::exchange(host->pending_reset_rounds, false);
         cancel = std::exchange(host->pending_cancel, false);
+        goodbye = std::exchange(host->pending_goodbye, false);
         generation = host->player_generation;
         host->pending_queued = false;
+    }
+    if (goodbye) {
+        // leave(): the board is going, so nothing else is worth sending.
+        for (HostConnection* connection : host->connections) {
+            if (connection != nullptr && !connection->closing() &&
+                connection->session().phase() != ss::PlayerSession::Phase::kHandshake) {
+                host->deliver(*connection, connection->session().goodbye(m::GoodbyeReason::kRestart));
+            }
+        }
+        host->after_call();
+        if (host->goodbye_sent != nullptr) {
+            (void)xSemaphoreGive(host->goodbye_sent);
+        }
+        return;
     }
     if (player_state) {
         host->player_state = *player_state;
@@ -824,7 +844,12 @@ void SendspinHost::Impl::pending_work(void* arg) {
 
 SendspinHost::SendspinHost() : impl_(std::make_unique<Impl>()) {}
 
-SendspinHost::~SendspinHost() { stop(); }
+SendspinHost::~SendspinHost() {
+    stop();
+    if (impl_->goodbye_sent != nullptr) {
+        vSemaphoreDelete(impl_->goodbye_sent);
+    }
+}
 
 bool SendspinHost::start(SendspinHostConfig config, SendspinEvents& events) {
     Impl& im = *impl_;
@@ -930,6 +955,28 @@ void SendspinHost::stop() {
     im.status.connections = 0;
     im.status.connected = false;
     im.clock_map.valid = false;
+}
+
+void SendspinHost::leave(std::uint32_t wait_ms) {
+    Impl& im = *impl_;
+    if (im.server == nullptr) {
+        return;
+    }
+    if (im.goodbye_sent == nullptr) {
+        im.goodbye_sent = xSemaphoreCreateBinary();
+    }
+    {
+        const std::lock_guard lock(im.pending_mutex);
+        im.pending_goodbye = true;
+    }
+    im.queue_pending();
+    if (im.goodbye_sent != nullptr) {
+        (void)xSemaphoreTake(im.goodbye_sent, pdMS_TO_TICKS(wait_ms));
+    }
+    // The goodbyes are in their sockets by now, and lwIP sends what a socket
+    // holds before the FIN that closing it makes.
+    stop();
+    std::printf("sendspin: told the servers the board is restarting, and stopped\n");
 }
 
 void SendspinHost::set_player_state(const m::PlayerState& state) {
