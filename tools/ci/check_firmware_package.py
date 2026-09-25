@@ -16,7 +16,7 @@ had built in. So each image is opened and held to its name:
   (IMAGES below);
 - it is an application image whose segments, checksum and appended SHA-256
   check out, as the bootloader checks them, and it carries the version its
-  file names do;
+  file names do, one that names its build rather than ESP-IDF's fallback, "1";
 - it fits the smallest app slot of the partition table it ships with;
 - its parts.zip, laid out as its own flash_args says, is byte for byte its
   factory.bin, and writes the same app image as the .bin beside it;
@@ -189,6 +189,11 @@ def check_image(directory: Path, image: dict[str, Any]) -> list[str]:
     if embedded != version:
         problems.append(
             f"the image carries version '{embedded}', and the manifest says '{version}'"
+        )
+    if embedded == "1":
+        problems.append(
+            "its version is '1', which ESP-IDF gives a build with no PROJECT_VER whose "
+            "git describe failed: no board, page or tool could tell it from another build"
         )
     if image.get("network_built_in") is not False:
         problems.append("it has a Wi-Fi network built in")
