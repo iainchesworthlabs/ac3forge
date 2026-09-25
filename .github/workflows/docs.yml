@@ -53,10 +53,13 @@ on:
   workflow_dispatch: {}
 
 # A newer push to a PR supersedes the older push's docs build - see
-# osv-scanner.yml's identical block for why. Pushes to main and dispatches get
-# a group of their own run, so a deploy is never cancelled by the next one.
+# osv-scanner.yml's identical block for why. Pushes to main share one group
+# without cancel-in-progress, so a deploy that has started always finishes and
+# only the newest main commit's run waits for a runner (docs/ci-lanes.md, "Only
+# the newest main commit runs the hosted jobs"). A dispatch gets a group of its
+# own run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.head_ref) || (github.event_name == 'push' && github.ref == 'refs/heads/main') && 'main-push' || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:

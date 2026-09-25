@@ -207,6 +207,17 @@ namespace {
     return true;
 }
 
+// The HF generator takes the tna_mode values as bytes, as the decoder reads
+// them, while the encoder's fields keep ints (0 to 3). Each is converted
+// explicitly: std::vector's range constructor would narrow int to
+// std::uint8_t inside the standard library, which MSVC reports as C4244 in
+// the Windows wheel build (/W4 /WX).
+[[nodiscard]] std::vector<std::uint8_t> tna_bytes(std::span<const int> tna_mode) {
+    std::vector<std::uint8_t> bytes(tna_mode.size());
+    std::ranges::transform(tna_mode, bytes.begin(), [](int mode) { return static_cast<std::uint8_t>(mode); });
+    return bytes;
+}
+
 }  // namespace
 
 std::optional<AspxSetup> aspx_setup_for_acpl(bool coupling, int sample_rate_hz) {
@@ -403,7 +414,7 @@ void AspxChannelEncoder::choose_interleaving(std::span<const QmfSample> ext, Asp
         return;
     }
     const aspx::SubbandGroups& g = setup_->groups;
-    std::vector<std::uint8_t> modes(fields.tna_mode.begin(), fields.tna_mode.end());
+    const std::vector<std::uint8_t> modes = tna_bytes(fields.tna_mode);
     aspx::HfGeneratorState<double> state = hf_;
     std::vector<QmfSample> q_high;
     generate(ext, modes, state, q_high);
@@ -452,7 +463,7 @@ std::vector<std::pair<int, int>> AspxChannelEncoder::interleaved_subbands(const 
 // interval carried stays on a lower threshold.
 void AspxChannelEncoder::choose_sinusoids(std::span<const QmfSample> ext, AspxChannelFields& fields) const {
     const aspx::SubbandGroups& g = setup_->groups;
-    std::vector<std::uint8_t> modes(fields.tna_mode.begin(), fields.tna_mode.end());
+    const std::vector<std::uint8_t> modes = tna_bytes(fields.tna_mode);
     aspx::HfGeneratorState<double> state = hf_;
     std::vector<QmfSample> q_high;
     generate(ext, modes, state, q_high);
@@ -552,7 +563,7 @@ void AspxChannelEncoder::commit(long long frame, const AspxChannelFields& sent, 
     // detector keeps the band's last four slots.
     std::vector<QmfSample> ext;
     gather(frame, ext);
-    std::vector<std::uint8_t> modes(sent.tna_mode.begin(), sent.tna_mode.end());
+    const std::vector<std::uint8_t> modes = tna_bytes(sent.tna_mode);
     std::vector<QmfSample> q_high;
     generate(ext, modes, hf_, q_high);
     for (int t = 0; t < 4; ++t) {
