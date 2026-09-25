@@ -14,6 +14,8 @@
 #include <numbers>
 #include <span>
 #include <string_view>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -797,5 +799,234 @@ TEST_CASE("the experimental coding configurations choose frame by frame and deco
             CHECK(std::abs(s.gain_db) < 0.5);
             CHECK(s.snr_db > 15.0);
         }
+    }
+}
+namespace {
+
+// A tone at the centre of QMF subband k, 375 Hz wide at 48 kHz: A-CPL's
+// first nine parameter bands are one subband each (Part 1 Table 197).
+double subband_centre(int k) {
+    return (k + 0.5) * 375.0;
+}
+
+// The 5.X channels' tones for the A-CPL modes, in the decoder's order L R C,
+// the LFE if `lfe`, Ls Rs: each in a parameter band of its own, and a pair's
+// two a band apart or more, so that each module sees one channel a band.
+std::vector<double> acpl_tones(bool lfe) {
+    std::vector<double> hz = {subband_centre(1), subband_centre(2), subband_centre(8)};
+    if (lfe) {
+        hz.push_back(47.0);
+    }
+    hz.insert(hz.end(), {subband_centre(4), subband_centre(6)});
+    return hz;
+}
+
+// A-CPL rebuilds the channels from the downmix band by band: each channel's
+// tone within `gain_db` of the 0.1 it went in at, and every other channel's
+// `isolation_db` under it there.
+void check_acpl_routing(const std::vector<double>& hz, const std::vector<std::vector<float>>& decoded,
+                        double gain_db, double isolation_db) {
+    REQUIRE(decoded.size() == hz.size());
+    const std::size_t first = 3072 + kDecoderDelay + 8192;
+    REQUIRE(decoded.front().size() > first + 16384);
+    const std::size_t span = decoded.front().size() - first - 8192;
+    for (std::size_t c = 0; c < hz.size(); ++c) {
+        CAPTURE(c, hz[c]);
+        const double level = tone_amplitude(decoded[c], first, span, hz[c], 48000);
+        CHECK(std::abs(20.0 * std::log10(level / 0.1)) < gain_db);
+        for (std::size_t other = 0; other < hz.size(); ++other) {
+            if (other != c) {
+                CAPTURE(other, hz[other]);
+                const double leak = tone_amplitude(decoded[c], first, span, hz[other], 48000);
+                CHECK(20.0 * std::log10(level / std::max(leak, 1e-30)) > isolation_db);
+            }
+        }
+    }
+}
+
+// Noise, flat to 24 kHz, from `seed`.
+std::vector<float> noise(std::size_t count, std::uint32_t seed, double amplitude) {
+    std::vector<float> x(count);
+    for (float& v : x) {
+        seed = seed * 1664525U + 1013904223U;
+        v = static_cast<float>(amplitude * (static_cast<double>(seed >> 8) / 16777216.0 - 0.5));
+    }
+    return x;
+}
+
+// Over the middle of a delayed span: a over b in dB, and their correlation.
+struct PairMeasure {
+    double level_db = 0.0;
+    double correlation = 0.0;
+};
+
+PairMeasure measure_pair(std::span<const float> a, std::span<const float> b, std::size_t first, std::size_t count) {
+    double aa = 0.0;
+    double bb = 0.0;
+    double ab = 0.0;
+    for (std::size_t n = first; n < first + count && n < a.size() && n < b.size(); ++n) {
+        aa += static_cast<double>(a[n]) * static_cast<double>(a[n]);
+        bb += static_cast<double>(b[n]) * static_cast<double>(b[n]);
+        ab += static_cast<double>(a[n]) * static_cast<double>(b[n]);
+    }
+    return {10.0 * std::log10(aa / bb), ab / std::sqrt(aa * bb)};
+}
+
+ac4::CodecMode mode_of(const ac4::EncoderConfig& config) {
+    auto encoder = ac4::Encoder::create(config);
+    REQUIRE(encoder.has_value());
+    return encoder->codec_mode();
+}
+
+}  // namespace
+
+TEST_CASE("kAuto codes 5.X in ASPX_ACPL_3 and ASPX_ACPL_2 at the rates DEE does", "[ac4enc][encoder][acpl]") {
+    // 5.1: ASPX_ACPL_3 below 22.4 kbps a channel, ASPX_ACPL_2 below 33.6.
+    struct Rate {
+        int channels;
+        int kbps;
+        ac4::CodecMode mode;
+    };
+    for (const Rate rate : {Rate{6, 96, ac4::CodecMode::kAspxAcpl3}, Rate{6, 128, ac4::CodecMode::kAspxAcpl2},
+                            Rate{6, 144, ac4::CodecMode::kAspxAcpl2}, Rate{6, 192, ac4::CodecMode::kAspx},
+                            Rate{6, 384, ac4::CodecMode::kSimple}, Rate{5, 112, ac4::CodecMode::kAspxAcpl2},
+                            Rate{5, 80, ac4::CodecMode::kAspxAcpl3}, Rate{2, 32, ac4::CodecMode::kAspx}}) {
+        CAPTURE(rate.channels, rate.kbps);
+        ac4::EncoderConfig config;
+        config.channels = rate.channels;
+        config.bitrate_kbps = rate.kbps;
+        CHECK(mode_of(config) == rate.mode);
+    }
+    // The experimental coding configurations code all five channels.
+    ac4::EncoderConfig config;
+    config.channels = 6;
+    config.bitrate_kbps = 128;
+    config.experimental.coding_configs = true;
+    CHECK(mode_of(config) == ac4::CodecMode::kAspx);
+}
+
+TEST_CASE("the A-CPL modes the encoder does not write are refused", "[ac4enc][encoder][acpl]") {
+    struct Refused {
+        int channels;
+        ac4::CodecMode mode;
+        bool acpl;
+    };
+    // Mono; stereo without experimental.acpl, and ASPX_ACPL_3 with it; 5.1's
+    // ASPX_ACPL_1 without it.
+    for (const Refused r : {Refused{1, ac4::CodecMode::kAspxAcpl2, true}, Refused{2, ac4::CodecMode::kAspxAcpl2, false},
+                            Refused{2, ac4::CodecMode::kAspxAcpl1, false}, Refused{2, ac4::CodecMode::kAspxAcpl3, true},
+                            Refused{6, ac4::CodecMode::kAspxAcpl1, false}}) {
+        CAPTURE(r.channels, static_cast<int>(r.mode), r.acpl);
+        ac4::EncoderConfig config;
+        config.channels = r.channels;
+        config.codec_mode = r.mode;
+        config.experimental.acpl = r.acpl;
+        CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    }
+    // The experimental coding configurations, and the 7.X element.
+    ac4::EncoderConfig config;
+    config.channels = 6;
+    config.codec_mode = ac4::CodecMode::kAspxAcpl2;
+    config.experimental.coding_configs = true;
+    CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+    config = {};
+    config.channels = 8;
+    config.codec_mode = ac4::CodecMode::kAspxAcpl2;
+    config.experimental.seven_x = ac4::AdditionalPair::kBack;
+    config.experimental.acpl = true;
+    CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);
+}
+
+TEST_CASE("the 5.X element's A-CPL modes put each channel's tone on its own channel", "[ac4enc][encoder][acpl]") {
+    struct Leg {
+        int kbps;
+        ac4::CodecMode mode;
+        std::uint64_t written;  // 5_X_codec_mode
+    };
+    const std::size_t count = 48000 * 2;
+    for (const bool lfe : {true, false}) {
+        for (const Leg leg : {Leg{128, ac4::CodecMode::kAuto, 3}, Leg{96, ac4::CodecMode::kAuto, 4},
+                              Leg{160, ac4::CodecMode::kAspxAcpl1, 2}}) {
+            CAPTURE(lfe, leg.kbps, leg.written);
+            const std::vector<double> hz = acpl_tones(lfe);
+            std::vector<std::vector<float>> input;
+            for (const double f : hz) {
+                input.push_back(tone(f, 0.1, count, 48000));
+            }
+            ac4::EncoderConfig config;
+            config.channels = static_cast<int>(hz.size());
+            config.bitrate_kbps = leg.kbps;
+            config.codec_mode = leg.mode;
+            config.experimental.acpl = leg.mode == ac4::CodecMode::kAspxAcpl1;
+            const Encoded encoded = encode(config, input, 3333);
+            CHECK(count_records(encoded, "5_X_codec_mode", leg.written) == encoded.frames.size());
+            check_frames_read_back(encoded);
+            check_acpl_routing(hz, decode(encoded.frames), 0.5, 40.0);
+        }
+    }
+}
+
+TEST_CASE("A-CPL in stereo, experimental, puts each channel's tone on its own channel", "[ac4enc][encoder][acpl]") {
+    // L's tone below ASPX_ACPL_1's residual top, 3 kHz, and R's above it, in
+    // parameter band 10.
+    const std::vector<double> hz = {subband_centre(1), subband_centre(12)};
+    const std::size_t count = 48000 * 2;
+    const std::vector<std::vector<float>> input = {tone(hz[0], 0.1, count, 48000), tone(hz[1], 0.1, count, 48000)};
+    for (const auto& [mode, written] :
+         {std::pair{ac4::CodecMode::kAspxAcpl1, 2U}, std::pair{ac4::CodecMode::kAspxAcpl2, 3U}}) {
+        CAPTURE(written);
+        ac4::EncoderConfig config;
+        config.channels = 2;
+        config.bitrate_kbps = 48;
+        config.codec_mode = mode;
+        config.experimental.acpl = true;
+        const Encoded encoded = encode(config, input, 3333);
+        CHECK(count_records(encoded, "stereo_codec_mode", written) == encoded.frames.size());
+        check_frames_read_back(encoded);
+        check_acpl_routing(hz, decode(encoded.frames), 0.5, 40.0);
+    }
+}
+
+TEST_CASE("A-CPL keeps a pair's level difference and correlation", "[ac4enc][encoder][acpl]") {
+    // L and Ls: a second of one noise at a 6 dB level difference, then a
+    // second of two independent noises at one level; the other channels
+    // quieter noises of their own.
+    const std::size_t second = 48000;
+    std::vector<std::vector<float>> input;
+    for (std::uint32_t c = 0; c < 6; ++c) {
+        input.push_back(noise(2 * second, 100 + c, c == 3 ? 0.0 : 0.02));
+    }
+    const std::vector<float> shared = noise(second, 7, 0.2);
+    const std::vector<float> left = noise(second, 8, 0.2);
+    const std::vector<float> surround = noise(second, 9, 0.2);
+    for (std::size_t n = 0; n < second; ++n) {
+        input[0][n] = shared[n];
+        input[4][n] = 0.5F * shared[n];
+        input[0][second + n] = left[n];
+        input[4][second + n] = surround[n];
+    }
+    for (const auto& [kbps, mode, residuals] :
+         {std::tuple{128, ac4::CodecMode::kAspxAcpl2, false}, std::tuple{96, ac4::CodecMode::kAspxAcpl3, false},
+          std::tuple{160, ac4::CodecMode::kAspxAcpl1, true}}) {
+        CAPTURE(kbps);
+        ac4::EncoderConfig config;
+        config.channels = 6;
+        config.bitrate_kbps = kbps;
+        config.codec_mode = mode;
+        config.experimental.acpl = residuals;
+        const Encoded encoded = encode(config, input, 4800);
+        const auto decoded = decode(encoded.frames);
+        REQUIRE(decoded.size() == 6);
+        const std::size_t lag = 3072 + kDecoderDelay;
+        const PairMeasure source_one = measure_pair(input[0], input[4], 8192, second - 16384);
+        const PairMeasure out_one = measure_pair(decoded[0], decoded[4], lag + 8192, second - 16384);
+        const PairMeasure source_two = measure_pair(input[0], input[4], second + 8192, second - 16384);
+        const PairMeasure out_two = measure_pair(decoded[0], decoded[4], lag + second + 8192, second - 16384);
+        CAPTURE(source_one.level_db, out_one.level_db, out_one.correlation, source_two.level_db, out_two.level_db,
+                out_two.correlation);
+        CHECK(std::abs(out_one.level_db - source_one.level_db) < 1.0);
+        CHECK(out_one.correlation > 0.9);
+        CHECK(std::abs(out_two.level_db - source_two.level_db) < 1.0);
+        CHECK(std::abs(out_two.correlation) < 0.3);
     }
 }

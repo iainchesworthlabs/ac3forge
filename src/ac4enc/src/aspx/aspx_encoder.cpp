@@ -177,6 +177,54 @@ constexpr int kPanOffset = 12;
 
 }  // namespace
 
+namespace {
+
+// The rest of aspx_config() as DEE sends it, and the tables the configuration
+// gives; false where they do not derive.
+[[nodiscard]] bool complete(AspxSetup& setup, int sample_rate_hz) {
+    AspxConfigFields& c = setup.config;
+    c.quant_mode_env = 1;
+    c.interpolation = true;
+    c.preflat = true;
+    c.limiter = true;
+    c.noise_sbg = 3;
+    c.num_env_bits_fixfix = 0;
+    c.freq_res_mode = 2;
+    setup.base_48k = sample_rate_hz == 48000;
+    const aspx::FrequencyConfig frequency{.master_freq_scale = c.master_freq_scale,
+                                          .start_freq = c.start_freq,
+                                          .stop_freq = c.stop_freq,
+                                          .noise_sbg = c.noise_sbg,
+                                          .xover_subband_offset = setup.xover_subband_offset};
+    if (aspx::derive_subband_groups(frequency, setup.groups) != aspx::GroupsError::kNone ||
+        !aspx::derive_patch_tables(setup.groups, c.master_freq_scale, setup.base_48k, setup.patches)) {
+        return false;
+    }
+    setup.counts = AspxCounts{.num_sbg_sig_highres = setup.groups.num_sbg_sig_highres,
+                              .num_sbg_sig_lowres = setup.groups.num_sbg_sig_lowres,
+                              .num_sbg_noise = setup.groups.num_sbg_noise,
+                              .num_aspx_timeslots = kAspxTimeslots};
+    return true;
+}
+
+}  // namespace
+
+std::optional<AspxSetup> aspx_setup_for_acpl(bool coupling, int sample_rate_hz) {
+    if (sample_rate_hz != 48000 && sample_rate_hz != 44100) {
+        return std::nullopt;
+    }
+    AspxSetup setup;
+    setup.config.master_freq_scale = 1;
+    setup.config.start_freq = 5;
+    setup.config.stop_freq = coupling ? 2 : 0;
+    setup.xover_subband_offset = coupling ? 0 : 1;
+    setup.companding = false;
+    if (!complete(setup, sample_rate_hz)) {
+        return std::nullopt;
+    }
+    return setup;
+}
+
 std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate_hz, bool multichannel) {
     if (sample_rate_hz != 48000 && sample_rate_hz != 44100) {
         return std::nullopt;
@@ -209,29 +257,10 @@ std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate
         c.start_freq = 6;
         c.stop_freq = 1;
     }
-    c.quant_mode_env = 1;
-    c.interpolation = true;
-    c.preflat = true;
-    c.limiter = true;
-    c.noise_sbg = 3;
-    c.num_env_bits_fixfix = 0;
-    c.freq_res_mode = 2;
     setup.companding = !multichannel && kbps_per_channel < 64.0;
-    setup.base_48k = sample_rate_hz == 48000;
-    const aspx::FrequencyConfig frequency{.master_freq_scale = c.master_freq_scale,
-                                          .start_freq = c.start_freq,
-                                          .stop_freq = c.stop_freq,
-                                          .noise_sbg = c.noise_sbg,
-                                          .xover_subband_offset = setup.xover_subband_offset};
-    if (aspx::derive_subband_groups(frequency, setup.groups) != aspx::GroupsError::kNone ||
-        !aspx::derive_patch_tables(setup.groups, c.master_freq_scale, setup.base_48k,
-                                   setup.patches)) {
+    if (!complete(setup, sample_rate_hz)) {
         return std::nullopt;
     }
-    setup.counts = AspxCounts{.num_sbg_sig_highres = setup.groups.num_sbg_sig_highres,
-                              .num_sbg_sig_lowres = setup.groups.num_sbg_sig_lowres,
-                              .num_sbg_noise = setup.groups.num_sbg_noise,
-                              .num_aspx_timeslots = kAspxTimeslots};
     return setup;
 }
 

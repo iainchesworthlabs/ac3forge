@@ -78,6 +78,13 @@ struct AspxSetup {
 [[nodiscard]] std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate_hz,
                                                       bool multichannel = false);
 
+// DEE's configuration in the 5.X element's A-CPL modes, as G0's 5.1 legs have
+// it: the high resolution table from subband 32, in ASPX_ACPL_1 and 2 (128 and
+// 144 kbps) to 23.25 kHz with the crossover a band up, at 12.75 kHz, and in
+// ASPX_ACPL_3 (`coupling`, 96 kbps) to 18.75 kHz from 12 kHz; never
+// companding. std::nullopt for a sample rate these do not cover.
+[[nodiscard]] std::optional<AspxSetup> aspx_setup_for_acpl(bool coupling, int sample_rate_hz);
+
 // One channel's QMF domain: the analysis of its signal slot by slot, the
 // compressed low band synthesised back, and A-SPX's parameters frame by
 // frame, with what the decoder keeps from one frame to the next.

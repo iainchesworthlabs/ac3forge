@@ -40,6 +40,10 @@ struct FrameLayout {
 // Table 106, at 44.1 and 48 kHz: the width of max_sfb for a transform length.
 [[nodiscard]] int max_sfb_bits(int transform_length) noexcept;
 
+// Table 106's n_side_bits: the width of max_sfb_master, and of a side-limited
+// max_sfb_side, for a transform length.
+[[nodiscard]] int side_bits(int transform_length) noexcept;
+
 // A long frame.
 [[nodiscard]] FrameLayout long_layout(int frame_length);
 

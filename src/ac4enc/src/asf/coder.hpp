@@ -66,6 +66,11 @@ struct CodedTrack {
 // asf_transform_info() and asf_psy_info(0, 0) (Tables 37 and 38).
 void write_sf_info(BitWriter& w, const FrameLayout& layout, std::array<int, 2> max_sfb);
 
+// asf_transform_info() and asf_psy_info(1, 0): with b_dual_maxsfb, the second
+// track's max_sfb_side after each max_sfb.
+void write_sf_info_dual(BitWriter& w, const FrameLayout& layout, std::array<int, 2> max_sfb,
+                        std::array<int, 2> max_sfb_side);
+
 // The bits write_sf_info() takes.
 [[nodiscard]] std::size_t sf_info_bits(const FrameLayout& layout, std::array<int, 2> max_sfb);
 

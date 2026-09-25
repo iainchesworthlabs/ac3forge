@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <vector>
 
 #include "bit_writer.hpp"
@@ -81,5 +82,9 @@ void write_acpl_data_2ch(BitWriter& w, const AcplConfig2chFields& config, const 
 // `kind` at `quant_mode`: the F0 codebook's for the first band along
 // frequency, the DF or DT codebook's otherwise.
 [[nodiscard]] bool acpl_codable(AcplKind kind, int quant_mode, int diff_type, bool first_band, int value) noexcept;
+
+// The bits one acpl_huff_data() takes: diff_type and its codewords. Every
+// value must be codable.
+[[nodiscard]] std::size_t acpl_set_bits(AcplKind kind, int quant_mode, const AcplSetFields& set) noexcept;
 
 }  // namespace ac4::detail

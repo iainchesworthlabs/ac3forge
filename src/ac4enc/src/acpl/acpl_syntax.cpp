@@ -141,6 +141,15 @@ void write_acpl_data_2ch(BitWriter& w, const AcplConfig2chFields& config, const 
     }
 }
 
+std::size_t acpl_set_bits(AcplKind kind, int quant_mode, const AcplSetFields& set) noexcept {
+    std::size_t bits = 1;  // diff_type
+    for (std::size_t i = 0; i < set.values.size(); ++i) {
+        const CodebookRef cb = codebook(kind, quant_mode, type_of(set.diff_type, i == 0));
+        bits += cb.codes[static_cast<std::size_t>(set.values[i] + cb.cb_off)].bits;
+    }
+    return bits;
+}
+
 bool acpl_codable(AcplKind kind, int quant_mode, int diff_type, bool first_band, int value) noexcept {
     const CodebookRef cb = codebook(kind, quant_mode, type_of(diff_type, first_band));
     const int index = value + cb.cb_off;
