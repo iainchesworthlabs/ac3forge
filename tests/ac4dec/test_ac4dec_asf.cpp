@@ -18,6 +18,7 @@
 
 #include "ac4dec_bits.hpp"
 #include "bit_reader.hpp"
+#include "huffman.hpp"
 #include "syntax/asf.hpp"
 #include "syntax/context.hpp"
 #include "tables/huffman_tables.hpp"
@@ -706,4 +707,163 @@ TEST_CASE("max_sfb_from_master maps a master max_sfb to shorter transforms", "[a
     CHECK(max_sfb_from_master(2048, 3, 1920) == -1);   // another family's length
     CHECK(max_sfb_from_master(1024, 3, 2048) == -1);   // longer than the master
     CHECK(max_sfb_from_master(128, 3, 96) == -1);      // no table for 128
+}
+
+// --- A codeword cut short by the end of its substream ------------------------
+
+namespace {
+
+// A longest codeword of `codebook`: `sorted` is ordered by length.
+int longest_index(const Codebook& codebook) {
+    return codebook.sorted.back().index;
+}
+
+// `w`'s bytes up to the first byte boundary after bit `start`, which the
+// codeword starting there and `bits` long must straddle: a codeword of nine
+// bits or more does wherever it starts, a shorter one where it starts off a
+// byte boundary.
+std::vector<std::byte> cut_inside(const BitWriter& w, std::size_t start, int bits) {
+    const std::size_t cut = start / 8 + 1;
+    REQUIRE(cut * 8 < start + static_cast<std::size_t>(bits));
+    std::vector<std::byte> bytes = w.bytes();
+    bytes.resize(cut);
+    return bytes;
+}
+
+template <typename F>
+ParseResult read_cut(const std::vector<std::byte>& bytes, F&& parse) {
+    Recorder rec;
+    BitReader reader(bytes, 0, rec);
+    return parse(reader);
+}
+
+}  // namespace
+
+TEST_CASE("an ASF codeword the substream ends inside fails as truncated, as in every tool",
+          "[ac4dec][asf]") {
+    // Each element's longest codeword, placed so that a byte boundary falls
+    // inside it; the substream ends there. The
+    // A-SPX, A-CPL and dialogue enhancement codewords always reported this
+    // as kTruncated, the ASF ones as kInvalidStream (review of #700).
+    SfData out;
+    HsfSfData hsf;
+    const auto sf_data = [&](const SfInfo& info) {
+        return [&out, &hsf, info](BitReader& r) {
+            return ac4::detail::parse_sf_data(r, context(2048), info, false, nullptr, out, hsf);
+        };
+    };
+    std::size_t start = 0;
+    int bits = 0;
+    const auto write_longest = [&start, &bits](BitWriter& w, const Codebook& codebook) {
+        start = w.size();
+        w.code(codebook, longest_index(codebook));
+        bits = static_cast<int>(w.size() - start);
+        w.put(0, 64);
+    };
+    SECTION("asf_qspec_hcw") {
+        BitWriter w;
+        w.put(11, 4);  // sect_cb 11
+        w.put(0, 5);   // one band
+        write_longest(w, *tables::kAsfSpectrumCodebooks[11]);
+        const auto result = read_cut(cut_inside(w, start, bits), sf_data(long_info(1)));
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().error == DecodeError::kTruncated);
+        CHECK(result.error().reason ==
+              "an ASF spectrum codeword runs past the end of the substream");
+    }
+    SECTION("asf_sf_hcw") {
+        BitWriter w;
+        w.put(1, 4);  // sect_cb 1
+        w.put(1, 5);  // two bands
+        const auto offsets = tables::sfb_offsets_48(2048);
+        for (int k = 0; k < offsets[2] - offsets[0]; k += 4) {
+            put_lines(w, 1, {1, -1, 0, 1});
+        }
+        w.put(100, 8);  // reference_scale_factor, for the first band
+        write_longest(w, tables::kAsfHcbScalefac);
+        const auto result = read_cut(cut_inside(w, start, bits), sf_data(long_info(2)));
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().error == DecodeError::kTruncated);
+        CHECK(result.error().reason ==
+              "an ASF scale factor codeword runs past the end of the substream");
+    }
+    SECTION("asf_snf_hcw") {
+        BitWriter w;
+        w.put(0, 4);    // sect_cb 0
+        w.put(0, 5);    // one band
+        w.put(100, 8);  // reference_scale_factor
+        w.flag(true);   // b_snf_data_exists
+        write_longest(w, tables::kAsfHcbSnf);
+        const auto result = read_cut(cut_inside(w, start, bits), sf_data(long_info(1)));
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().error == DecodeError::kTruncated);
+        CHECK(result.error().reason ==
+              "an ASF noise fill codeword runs past the end of the substream");
+    }
+    SECTION("sap_hcw") {
+        BitWriter c;
+        c.put(3, 2);   // sap_mode 3
+        c.flag(true);  // sap_coeff_all
+        write_longest(c, tables::kAsfHcbScalefac);
+        const SfInfo info = long_info(3);
+        ChparamInfo chparam;
+        const auto result = read_cut(cut_inside(c, start, bits), [&](BitReader& r) {
+            return ac4::detail::parse_chparam_info(r, context(2048), info, chparam);
+        });
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().error == DecodeError::kTruncated);
+        CHECK(result.error().reason == "a SAP codeword runs past the end of the substream");
+    }
+}
+
+TEST_CASE("huff_codeword reports a codeword cut short as truncated in every codebook",
+          "[ac4dec][asf]") {
+    // Every tool reads its codewords through huff_codeword(): each codebook's
+    // longest codeword with its last bit cut off by the end of the substream
+    // is a miss the syntax reports as truncated, consuming nothing.
+    const std::vector<const Codebook*> books = {
+        &tables::kAsfHcbScalefac,
+        &tables::kAsfHcb1,
+        &tables::kAsfHcb2,
+        &tables::kAsfHcb3,
+        &tables::kAsfHcb4,
+        &tables::kAsfHcb5,
+        &tables::kAsfHcb6,
+        &tables::kAsfHcb7,
+        &tables::kAsfHcb8,
+        &tables::kAsfHcb9,
+        &tables::kAsfHcb10,
+        &tables::kAsfHcb11,
+        &tables::kAsfHcbSnf,
+        &tables::kAspxHcbEnvLevel15F0,
+        &tables::kAspxHcbEnvLevel30Dt,
+        &tables::kAspxHcbNoiseBalanceDf,
+        &tables::kAcplHcbAlphaFineF0,
+        &tables::kAcplHcbBetaCoarseDt,
+        &tables::kAcplHcbGammaFineDf,
+        &tables::kDeHcbAbs0,
+        &tables::kDeHcbDiff0,
+    };
+    const ac4::detail::CodewordReasons reasons{.truncated = "cut", .invalid = "none"};
+    for (const Codebook* book : books) {
+        INFO(book->name);
+        BitWriter w;
+        const int bits = book->sorted.back().bits;
+        REQUIRE(bits >= 2);
+        // Padding so that the codeword's last bit starts a byte, which the
+        // substream then leaves out.
+        const int pad = ((8 - (bits - 1) % 8) % 8);
+        w.put(0, pad);
+        w.code(*book, longest_index(*book));
+        std::vector<std::byte> bytes = w.bytes();
+        bytes.resize((static_cast<std::size_t>(pad + bits) - 1) / 8);
+        Recorder rec;
+        BitReader reader(bytes, 0, rec);
+        reader.skip(static_cast<std::size_t>(pad));
+        const auto result = ac4::detail::huff_codeword(reader, *book, "hcw", reasons);
+        REQUIRE_FALSE(result.has_value());
+        CHECK(result.error().error == DecodeError::kTruncated);
+        CHECK(result.error().reason == "cut");
+        CHECK(reader.position() == static_cast<std::size_t>(pad));
+    }
 }

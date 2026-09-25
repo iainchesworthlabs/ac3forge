@@ -537,7 +537,8 @@ TEST_CASE("an HSF extension is refused alone when its own data is malformed", "[
             decode(single_group_frame({}, p, {info}, {hsf_owner(63), ext.bytes(), presentation()}));
         check_read(find(report, 0), SubstreamReport::Kind::kAudio);
         CHECK(find(report, 1).kind == SubstreamReport::Kind::kHsfExt);
-        check_refused(find(report, 1), DecodeError::kInvalidStream);
+        // A codeword the substream ends inside, truncated as in every tool.
+        check_refused(find(report, 1), DecodeError::kTruncated);
     }
     SECTION("it is longer than its data") {
         BitWriter ext;
