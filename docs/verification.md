@@ -722,8 +722,9 @@ checks apply.
 for AC-3/E-AC-3, just with no third-party corpus to fall back on either, since neither ATSC nor
 ETSI publish AC-4 conformance vectors. The substitute is the same tool this project already
 treats as a licensed, local-only, never-in-CI oracle for the AC-3/E-AC-3 "Committed" tier: Dolby
-Encoding Engine 6.5.4, whose install here also carries `dee_ac4_encoder.exe` (2.0/5.1/7.1 and
-5.1.4 channel-based-immersive) and `dee_ac4ajoc_encoder.exe`/`dee_ac4ims_encoder.exe` (A-JOC and
+Encoding Engine 6.5.4, whose install here also carries `dee_ac4_encoder.exe` (2.0, 5.1 and 5.1.4
+channel-based-immersive; 7.1 input is written as 5.1) and
+`dee_ac4ajoc_encoder.exe`/`dee_ac4ims_encoder.exe` (A-JOC and
 object-based encodes this parser does not read — see below). `tools/generators/gen_ac4_baseline.py`
 generates `tests/golden/external-baseline/ac4-*/dee.ac4` from it, the same local-generation,
 committed-output pattern `gen_external_baseline.py` uses.
@@ -852,9 +853,11 @@ extended (`audio_size_value` and its `variable_bits(7)`) is two records.
 **Digests, in CI.** For each frame and substream with records, one line: frame, substream, kind
 (`presentation`, `audio` or `emdf_payloads`), record count, the bit where the last record ends, and
 zlib's CRC-32 over the records packed as `struct.pack('<IHQ', offset, width, value)`.
-`tests/golden/ac4dec/` holds the Python parser's digests of every committed DEE stream: SIMPLE, ASPX,
+`tests/golden/ac4dec/` holds the Python parser's digests of the committed DEE streams: SIMPLE, ASPX,
 ASPX_ACPL_2 and ASPX_ACPL_3 at 2.0 and 5.1, one tone per channel at 2.0 and 5.1, DRC curves with an
-Lt/Rt downmix, and immersive stereo at three frame rates. `tests/ac4dec/test_ac4dec_syntax.cpp` requires
+Lt/Rt downmix, and immersive stereo at three frame rates. The three 5.1.4 streams, one tone per channel
+in each immersive codec mode DEE writes, have none until both transcriptions read the immersive
+element (phase D9). `tests/ac4dec/test_ac4dec_syntax.cpp` requires
 the decoder to produce the same lines, to read every substream to its exact end and to refuse nothing,
 and `tools/checks/test_ac4_syntax_digests.py` requires the Python parser to reproduce the same files, so
 neither transcription can change alone.
@@ -864,9 +867,16 @@ loudness measured and not corrected (`gen_ac4_baseline.py`'s baseline version 3)
 normalises to −24 LKFS and runs a true-peak limiter, which changes the audio in a way a gain fit does
 not undo. `ac4-manifest.json` records each stream's source, rebuilt by the generator from the committed
 programme fixtures, with its SHA-256, so a decode can be scored against the exact source DEE encoded.
-The generator also makes a larger local set, never committed: every layout and rate DEE writes, from
-2.0 at 48 kbps to 5.1.4 at 768, immersive stereo at every frame rate, and DRC, downmix, loudness and
-I-frame settings, each with MediaInfo's frame-by-frame trace beside it.
+The generator also makes a larger local set, never committed. Phase G0 made every layout and rate DEE
+writes, from 2.0 at 48 kbps to 5.1.4 at 768, immersive stereo at every frame rate, and DRC, downmix,
+loudness and I-frame settings, each with MediaInfo's frame-by-frame trace beside it. Phase G1 added
+the streams the phases still to come test against, since DEE's licence ends on 2026-11-06: sweeps,
+noise and transients at every 2.0, 5.1 and 5.1.4 rate, film and speech at 5.1.4, 7.1 input, immersive
+stereo at every rate and frame rate and in gapless parts, metadata at 2.0, 5.1, 5.1.4 and immersive
+stereo, substreams for presentations, 60 s programmes, and E-AC-3 and E-AC-3 JOC from the same
+sources, each with DEE's MP4 of it and what `ac3cli` made of it. DEE writes no AC-4 from objects: its
+object encoders take only an Atmos master, and refuse every master this project writes as "not
+authored with Dolby tools" (`planning/ac4.md`, phase G0).
 
 ### The decoder's output
 

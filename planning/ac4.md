@@ -186,12 +186,12 @@ evidence for that reading.
 - **Encoders.** The local, licensed Dolby Encoding Engine 6.5.4 (`6.5.4-dme+b56bc97e`) has
   `dee_ac4_encoder` and `dee_ac4ims_encoder`. Its `dee_ac4ajoc_encoder` accepts only an Atmos
   master. DEE's ADM BWF input refused the master this project authored for its E-AC-3 JOC fixture,
-  on provenance rather than syntax (`docs/verification.md`); the ADM BWF masters `ac3cli decode` has
-  written since IM2 have not been tried with it. What the first two write is in
-  [What DEE writes](#what-dee-writes).
+  on provenance rather than syntax (`docs/verification.md`), and G0 and G1 found it refuses the ADM
+  BWF masters `ac3cli decode` writes on the same check ([G0](#g0-the-gold-set)). What the first two
+  write is in [What DEE writes](#what-dee-writes).
   - **The licence runs out on 2026-11-06** (`dee_ac4ajoc_encoder --morehelp license`; the plain
     encoder has no licence topic, and all three are one install). After that date nothing here
-    encodes AC-4 unless the licence is renewed
+    encodes AC-4 with DEE: the user said on 2026-09-25 that the licence will not be renewed
     ([decision 23](#decisions-for-the-encoder-and-the-applications)).
   - **What it can be asked for.** `dee_ac4_encoder` takes 48 kHz WAV, per-channel WAVs, 5.1.4 as
     `cbi_wav` or raw PCM, and writes 2.0 (48 to 768 kbps), 5.1 (96 to 768) or 5.1.4 (192 to 768),
@@ -200,7 +200,8 @@ evidence for that reading.
     preferred downmix and its mix levels, the height downmix for 5.1.4, and loudness measured and
     corrected (the default) or measured only. `dee_ac4ims_encoder` takes 5.1 WAV or an Atmos master,
     at 64 to 320 kbps, at 23.976, 24, 25 or 29.97 fps or the native rate, in a general or a music
-    mode (music sends no dialogue enhancement), with DRC profiles including none.
+    mode (music sends no dialogue enhancement), with DRC profiles including none and a language
+    tag.
     `dee_ac4ajoc_encoder` writes level 3 (320, 448 or 768 kbps) or level 4 (128 to 1,500). None of
     them can be asked for several presentations, associated audio, dialogue enhancement parameters,
     the CRC or the bitstream version. `--temp-dir` defaults to the install's own directory, so every
@@ -975,9 +976,9 @@ which is what moves a tool out of the encoder's experimental set
 ([decision 16](#decisions-for-the-encoder-and-the-applications)). It runs locally, from DEE's
 install.
 
-**DEE's licence runs out on 2026-11-06.** DEE is the gold standard in both directions, so phase
-[G0](#g0-the-gold-set) makes every DEE stream the later phases need before that date, whatever
-decision 23 says about renewing it.
+**DEE's licence runs out on 2026-11-06.** DEE is the gold standard in both directions, so phases
+G0 and G1 ([G0](#g0-the-gold-set)) make every DEE stream the later phases need before that date;
+the licence is not renewed.
 
 The Dolby Reference Player's `dlbac4dec` stays installed and unused ([decision 5](#decisions)).
 
@@ -1192,6 +1193,83 @@ is saved beside each.
 
 **Verified by:** the generator's own checks; the census comparison in `test_ac4dec_syntax.cpp` over
 the set.
+
+**G1, the golden masters (2026-09-26).** On 2026-09-25 the user said DEE's licence will not be
+renewed and asked for golden masters to test against now. G1 made 439 legs beside G0's in
+`D:\ac3bld\ac4-gold` (433 streams, 188 MB, gold version 4), listed under the manifest's `g1_legs`.
+G0's legs, sources and files are as G0 left them, and the scorers that read `legs` fail a leg they
+have not pinned, so a phase takes G1's legs into its scorer as it pins them. `gen_ac4_baseline.py`
+makes each leg from committed material and groups them by the phases they serve:
+
+- D2 to D5 and E1 to E4: sweeps, pink noise and silence-then-transient at every 2.0 and 5.1 rate.
+- D9 and E8: film, speech, sweeps, noise and transients at every 5.1.4 rate; stepped tones under
+  each DRC profile, the preferred downmixes, and every mix level and every height downmix mode and
+  gain on one tone per channel; the loudness presets and I-frame settings. In all 40 streams of the
+  five sources, the immersive codec mode follows the rate alone: ASPX_ACPL_2 from 192 to 448 kbps,
+  ASPX_SCPL at 512 and SCPL at 768.
+- D6, E5 and D11: immersive stereo at every rate at each frame rate, from music, film, tones,
+  sweeps, noise and transients, with the I-frame intervals each frame rate allows; and one
+  programme through the immersive stereo encoder's gapless encoding, in three parts at the native
+  rate, 25 and 29.97 fps, whose streams meet at splices DEE made.
+- D6 and E5: stepped tones under each DRC profile at 2.0 and 5.1; loudness corrected to targets
+  from −31 to −10, where dialnorm equals the target; the four loudness presets, dialogue
+  intelligence and the speech threshold; I-frame intervals and forced I-frames; every mix level at
+  5.1; and immersive stereo's DRC profiles, music mode and loudness presets.
+- D7 and E6: substreams for the test multiplexer, a dialogue tone, an associated tone, and dialogue
+  and associated speech in 2.0, on the I-frame grid of G0's 2.0 and 5.1 legs; immersive stereo with
+  seven language tags, on six sources.
+- D12, D13 and I6: 60 s programmes, 2.0 from 48 to 256 kbps, 5.1 from 96 to 448, 5.1.4 at 192,
+  256, 512 and 768, and immersive stereo at five frame rates.
+- I1 and I5: E-AC-3 and AC-3 from `dee_ddp_encoder`, and E-AC-3 JOC from `dee_ddpjoc_encoder`'s
+  channel-based immersive input at 5.1.4, 7.1.4 and 9.1.6, of the same sources; 7.1 input; and
+  DEE's own downmix of 5.1 and 7.1 input to 2.0.
+
+Each leg keeps DEE's command and log, MediaInfo's trace with a table of contents for every frame
+(`--ParseSpeed=1`) and its summary, and DEE's MP4 of the stream; the manifest holds the SHA-256s
+and what main's `ac3cli` made of each stream, and G0's streams have their MP4s under `mp4\`. Both
+transcriptions agree on all 396 AC-4 streams (the census comparison), and main's decoder decodes
+each 2.0 and 5.1 stream at index 13; it refuses the 5.1.4 streams' immersive element (D9) and the
+other frame rates (D6, not yet on main), which is where those phases start. Three 5 s streams of
+one tone per channel at 5.1.4, one in each immersive codec mode, are committed, with their digests
+left to D9.
+
+What DEE could not be made to write:
+
+- **Objects.** `dee_ac4ajoc_encoder` and `dee_ac4ims_encoder` take objects only in an Atmos master.
+  With #1007's `bitDepth`, the masters `ac3cli` writes pass the check G0 failed, and
+  `dee_ac4ajoc_encoder` at both levels, `dee_ac4ims_encoder`, `dee_ddpjoc_encoder` and
+  `atmos_info` all stop at the next: "Content was not authored with Dolby tools"
+  (`dlb::isAtmosMezzFile`), for G0's music master and for the committed reference objects at their
+  authored positions alike; a bare IAB file gets "ATMOS_STORAGE_RES_UNSUPPORTED_MASTER_TYPE". The
+  check is on provenance and is not worked around, and DEE reports nothing about a master past it,
+  so no defect of the ADM writer is known. D10 and E9 rest on the evidence their sections name;
+  the object-coded material DEE does write is E-AC-3 JOC from channel beds, a bed of 12 objects
+  from 5.1.4 or 7.1.4 and of 16 from 9.1.6, with no dynamic objects.
+- **7.1 and above.** `dee_ac4_encoder` writes 7.1 input as 5.1, each surround the average of its
+  side and back channels (−6 dB each), L, R and C unchanged; it refuses 7.1.4 and 9.1.6
+  (`cbi_wav` of 12 and 16 channels) and input of 1, 3, 4 or 5 channels, so mono, 3.0 and 5.0 are
+  not available either. The 7.X element stays with the encoder's constructed streams (D4, E3).
+- **Frame rates.** Only the immersive stereo encoder writes a rate other than index 13, indices 0
+  to 3, and its music mode refuses them ("Music mode requires native frame rate").
+- **Presentations.** No encoder, option or template writes several presentations, music and
+  effects with dialogue, associated audio or a dialogue enhancement substream. The immersive stereo
+  encoder's language tag is the one presentation field a caller sets: it sends the whole tag in
+  I-frames and its primary subtag in the others (`fr` in the frames between `fr-CA`), and writes
+  `eng` as `en`.
+
+Worth knowing from the same runs: the immersive stereo encoder levels input it measures above
+about −16 LKFS, so G1's sources for it are 6 dB below the plain encoder's; a forced I-frame lands
+one frame after the index its list names, since DEE's frame 0 is a priming frame; under
+`measure_only` with a loudness preset, the plain encoder writes the preset's target as dialnorm
+(−24, or −23 for R128) whatever the measurement (−20.9 on the 2.0 music), while the immersive
+stereo encoder writes its measurement and A/85's practice whatever the preset; and DEE's
+encode-time downmix of 5.1 to 2.0 is Lo/Ro at the default −3 dB levels with the LFE dropped.
+
+A phase after 2026-11-06 cannot get a DEE stream of any configuration outside the set, DEE's MP4
+muxer's `dac4` for the encoder's own streams if the muxer stops with the licence (the encoder's
+ladder item 3; the set holds DEE's MP4 of each DEE stream, so a configuration's `dac4` can still be
+compared), or new E-AC-3 and AC-3 encodes for `gen_external_baseline.py`, whose encoders are the
+same install.
 
 ### Decoder phases
 
