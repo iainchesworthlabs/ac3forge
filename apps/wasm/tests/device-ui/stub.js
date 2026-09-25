@@ -53,7 +53,10 @@ const REPLIES = {
         'PUT  /firmware      body: an app image; flash mode, then a restart into it',
         'PUT  /firmware/mode body: flash, or normal (a restart)',
         'PUT  /firmware/rollback  the image before this one boots next',
+        "GET  /firmware/coredump  the last crash's core dump, as it lies in flash",
+        'DELETE /firmware/coredump  erase it',
         'POST /restart       restart into the image that runs now',
+        'GET  /log           recent console output; ?from=N for what came after byte N',
         '',
     ].join('\n'),
     playEmpty: 'POST /play wants the location as the body\n',
@@ -85,6 +88,7 @@ const REPLIES = {
     pairingUnknown: 'this board has no pairing with that server\n',
     pairingRefused: 'this board is not a Sendspin player\n',
     noFirmware: 'this board takes no firmware updates\n',
+    noLog: 'this board keeps no log\n',
 };
 
 // firmware.cpp's reply texts, and firmware_image.hpp's for an image it
@@ -110,6 +114,8 @@ const FIRMWARE = {
     restartOnTrial:
         'the running image is still on trial, and a restart now goes back to the image before it; to do that, PUT /firmware/rollback\n',
     restarting: 'restarting\n',
+    noCoredump: 'there is no core dump: nothing has crashed since the last was erased\n',
+    erased: 'erased\n',
 };
 const FIRMWARE_PARTS = {
     tooBig: ['that image is ', ' bytes, and the slot holds '],
@@ -141,7 +147,10 @@ const ROUTES = [
     'PUT /firmware',
     'PUT /firmware/mode',
     'PUT /firmware/rollback',
+    'GET /firmware/coredump',
+    'DELETE /firmware/coredump',
     'POST /restart',
+    'GET /log',
 ];
 
 // The streams the model plays, with the channels each codes. The E-AC-3 one is
@@ -403,6 +412,7 @@ function defaultFirmware() {
         trial: null,
         upload: null,
         last_update: null,
+        coredump: null,
         network: 'stored',
         slot_bytes: 0x400000,
         flash_bytes: 16 * 1024 * 1024,
@@ -491,6 +501,9 @@ async function startStub() {
         // GET /firmware's body (defaultFirmware), or undefined for a firmware
         // that takes no updates.
         firmware: defaultFirmware(),
+        // What GET /firmware/coredump sends while firmware.coredump says
+        // there is a core dump.
+        coredumpBytes: Buffer.alloc(0),
         // Requests left to drop while the board restarts; the page and its
         // script are not counted, so that a page loaded then still loads.
         down: 0,
@@ -506,13 +519,25 @@ async function startStub() {
     let payload = null; // a fixed GET /status body, instead of the model's
     let statusInFlight = 0;
     let statusInFlightMost = 0;
+    // Drops scripted and not yet made. Until they are, and while the board is
+    // restarting, every answer closes its connection: a request that meets a
+    // drop then meets it on a connection Chromium did not reuse, and is not
+    // sent again (see next()).
+    let dropsPending = 0;
+    const closing = (res) => {
+        if (dropsPending > 0 || device.down > 0) {
+            res.setHeader('Connection', 'close');
+        }
+    };
 
     const send = (res, code, body, type = 'text/plain') => {
+        closing(res);
         res.writeHead(code, { 'Content-Type': type });
         res.end(body);
     };
 
     const file = (res, name, type) => {
+        closing(res);
         res.writeHead(200, {
             'Content-Type': type,
             'Cache-Control': 'no-cache',
@@ -882,6 +907,29 @@ async function startStub() {
                 }
                 send(res, 200, FIRMWARE.restarting);
                 return restart(() => (fw.mode = 'normal'));
+            // The last crash's core dump (O4): the bytes are the model's
+            // `coredumpBytes`, and GET /firmware's `coredump` says there is one.
+            case 'GET /firmware/coredump':
+                if (!fw) {
+                    return send(res, 404, REPLIES.noFirmware);
+                }
+                if (!fw.coredump) {
+                    return send(res, 404, FIRMWARE.noCoredump);
+                }
+                return send(res, 200, device.coredumpBytes, 'application/octet-stream');
+            case 'DELETE /firmware/coredump':
+                if (!fw) {
+                    return send(res, 404, REPLIES.noFirmware);
+                }
+                if (fw.upload) {
+                    return send(res, 409, FIRMWARE.busy);
+                }
+                fw.coredump = null;
+                return send(res, 200, FIRMWARE.erased);
+            // Recent console output (O4): a firmware that keeps no ring, as
+            // the page's own tests have no use for one.
+            case 'GET /log':
+                return send(res, 404, REPLIES.noLog);
             default: {
                 // esp_http_server's own answers, after which it closes the
                 // connection.
@@ -916,6 +964,7 @@ async function startStub() {
             }
             const next = (scripted.get(route) || []).shift();
             if (next === 'drop') {
+                dropsPending -= 1;
                 req.socket.destroy();
             } else if (next === 'hang') {
                 // Never answered: the page's own timeout has to notice.
@@ -953,6 +1002,7 @@ async function startStub() {
             }
             scripted.get(route).push(reply);
             if (reply === 'drop') {
+                dropsPending += 1;
                 server.closeIdleConnections();
             }
         },

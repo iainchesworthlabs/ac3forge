@@ -438,6 +438,9 @@ signed with its key. That includes one sent by a hostile web page ([Routes](#rou
 | `PUT /firmware/mode` | Body: `flash` enters flash mode; `normal` leaves it with a restart into the running image, and outside flash mode does nothing | `200`; `409` on trial |
 | `PUT /firmware/rollback` | Makes the other slot's image, if it is valid, the next to boot, and restarts into it, on trial as an update's image is. On trial, gives up the trial instead | `200`; `409` nothing valid to roll back to |
 | `POST /restart` | Restarts into the running image | `200`; `409` on trial, where a restart would roll back |
+| `GET /firmware/coredump` | The core dump the last crash left, as it lies in flash (O4) | `200`, `application/octet-stream`; `404` none, or a build that keeps none |
+| `DELETE /firmware/coredump` | Erases it | `200`; `403` the `Host` is not the board's; `409` an update is under way |
+| `GET /log` | The console's recent output, oldest first; `?from=N` for what was written since byte N, with `X-Log-From` and `X-Log-Next` saying where the text starts and where to ask next (O4) | `200`, text; `404` a build that keeps no log |
 
 `curl -T build/ac3forge_hearth_sink.bin http://hearth-eb2c64.local/firmware` is a whole update,
 since `curl -T` sends a PUT.
@@ -545,6 +548,78 @@ three changes to the sketch:
   has the reasoning.
 
 The budget is 57,344 bytes, against 55,454 used.
+
+## Diagnostics without a cable (O4)
+
+A board updated over its network is usually a board with no cable on it. When one panics, or
+does something odd, its console is where the cause is written, and nobody is reading it. O4 keeps
+two things the console would have shown, where the network can reach them.
+
+**The last crash.** A panic writes a core dump to the `coredump` partition, which O1 put in both
+tables for this ([decision 8](#decisions)). The board keeps it through the restart that follows,
+and through a rollback: the image that goes back reads the dump the failed image wrote.
+
+- `GET /firmware` says whether there is one: its size, the task that crashed and where, and
+  which image wrote it, by the ELF SHA-256 the dump carries. That image is usually one of the
+  two slots.
+- `GET /firmware/coredump` sends the dump as it lies in the partition.
+- `DELETE /firmware/coredump` erases it, so the next crash is not mistaken for this one.
+- `ota.py coredump --host H` saves it to a file. With `--elf`, the ELF of the image that wrote
+  it, it runs ESP-IDF's `esp_coredump info_corefile` on it: every task's backtrace, which
+  `idf.py coredump-info` would show at the desk.
+
+**Recent console lines.** A ring of the console's last few kilobytes, in RAM:
+
+- `GET /log` sends it as text, oldest first. `GET /log?from=N` sends only what was written since
+  byte N, and each reply says where the next read starts, in `X-Log-Next`. So a client can
+  follow the console the way a terminal would.
+- `ota.py log --host H` prints it, and `--follow` keeps printing what is new.
+
+**How the console is kept.** ESP-IDF has no public way to add an output to its console, and
+picolibc, its C library in v6.1, has one `stdout` for every task. So the component reopens
+`stdout` and `stderr` on a device of its own, `/dev/ac3log`, whose writes go on to
+`/dev/console` as before and into the ring as well ([decision 17](#decisions)). That covers a
+`printf` from any task, and the `ESP_LOGx` that reach `stdout`. It does not cover:
+
+- what was printed before `log_start`, first thing in `app_main`;
+- what `esp_rom_printf` writes, which includes a panic's registers and backtrace. The core dump is
+  the record of a crash.
+
+**What the network does not get.** The console prints the Sendspin pairing token, which pairs a
+server with no code. It is printed for whoever holds the board, and the page and `/status` never
+carry it. `GET /log` is for anyone on the network, so the token's line is printed inside a
+`ConsoleOnly` scope, which keeps that task's writes out of the ring ([decision 18](#decisions)).
+Improv's packets are kept out the same way: they are binary, not lines.
+
+A core dump holds what was on each task's stack when the board crashed. That can include key
+material a task was working with. The network is already the boundary for everything else this
+API does ([Routes](#routes)), and it is for this too. `DELETE /firmware/coredump` takes the same
+`Host` check as the firmware PUTs.
+
+**What each board keeps** ([decision 16](#decisions)):
+
+| Build | Core dump | Its static internal SRAM | Console ring |
+|---|---|---|---|
+| S3 board (`sdkconfig.psram`) | off | 4,016 bytes | 16 KiB, in PSRAM |
+| C6 | on | 1,140 bytes | 2 KiB, internal |
+| P4 | on | 3,652 bytes, of 418 KiB left | 16 KiB, in PSRAM |
+| CI's update test (`sdkconfig.ci-ota`) | on | 2,128 bytes | 2 KiB, internal |
+| CI's 7.1.4 stream set (`sdkconfig.ci-http714`) | off | 2,128 bytes | none |
+
+Each cost is `idf.py size`'s, against the same build with `CONFIG_ESP_COREDUMP_ENABLE_TO_NONE`
+(2026-09-25). A build whose task stacks may be in PSRAM, the S3 board and the P4, costs more:
+ESP-IDF gives the dump a stack of its own in internal SRAM (`ESP_COREDUMP_USE_STACK_SIZE`, 1,792
+bytes at the least). A JOC stream has left the S3 board 43 bytes of internal SRAM (hearth_sink's
+README). A crash there still says it panicked, in `GET /firmware`'s last update, and the ring
+keeps what the console said before it.
+
+The core dump's code adds 16 to 17 KB to an image. The C6's on the 4 MB table, the tightest, is
+now 1,665,856 bytes, which leaves 169,152 (9%) of its 1.75 MiB slot.
+
+**The upload's least free heap.** O2 asks for the C6's internal heap low-water mark during an
+upload. The upload now measures it from the moment flash mode has stopped the player to the
+upload's end, and prints it (`firmware: the upload's least free internal heap was N bytes`). The
+ring keeps that line, so `ota.py log` reads it back without a cable.
 
 ## ac3hearth (O5)
 
@@ -832,6 +907,7 @@ that image has to be able to take the next update.
 - **O4, diagnostics without a cable.** Core dumps to the `coredump` partition, fetched with
   `GET /firmware/coredump` and read with `idf.py coredump-info`. Also a ring of recent console
   lines at `GET /log`, since flashing without a cable also means reading the console without one.
+  [Built](#diagnostics-without-a-cable-o4).
 - **O5.** The firmware panel in `ac3hearth`.
 - **O6.** The P4's co-processor firmware, as a study first ([decision 9](#decisions)).
 - **O7, when the boards leave development.** Signed images, switched on over the network
@@ -952,3 +1028,22 @@ boards leave development, and if that is before O8, O8's images are published si
     Cost: a third-party script on one page of the site; a browser with Web Serial (not Safari or
     iOS); and `docs.yml` copying each release's images into the site, because a page cannot fetch
     release assets directly.
+16. **Which boards keep a core dump** ([Diagnostics](#diagnostics-without-a-cable-o4)). (a)
+    **every build, except the S3 board and the widest CI shape, where internal SRAM is what runs
+    out**; (b) every build; (c) none, and a crash read over USB. **Recommend (a).** The C6 and
+    the P4 have internal SRAM to spare, and the S3 board has none: 4,016 bytes, against a JOC
+    stream that left 43. Cost: a crash on the S3 board says it panicked and no more; reading
+    one takes a USB cable and ESP-IDF's monitor.
+17. **How the console reaches the ring.** (a) **`stdout` and `stderr` reopened on a device of
+    the component's own, which writes on to `/dev/console`**; (b) `esp_log_set_vprintf`; (c)
+    ESP-IDF's ROM output channel (`esp_rom_install_channel_putc`). **Recommend (a).** The
+    example's lines, the ones that say what an update or a trial is doing, are `printf`, which
+    (b) never sees; (c) runs from interrupts and with the cache off, where the ring's lock
+    cannot be taken, and it sees only ROM output. Cost: a device registered with ESP-IDF's VFS,
+    one more step on every console write, and nothing kept from before `app_main`.
+18. **The pairing token and the log.** (a) **a scope, `ConsoleOnly`, around the few writes
+    that are the console's alone**; (b) filter the ring for known secrets; (c) no ring on a
+    Sendspin board. **Recommend (a).** The code that prints the token knows it is one; a
+    filter would have to recognise every secret that might ever be printed. Cost: a new line
+    that ought to stay off the network has to be written inside the scope, and a line some
+    other task prints is kept.

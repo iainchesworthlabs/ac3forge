@@ -180,6 +180,7 @@ def firmware(**changes: Any) -> dict[str, Any]:
         "trial": None,
         "upload": None,
         "last_update": None,
+        "coredump": None,
         "network": "stored",
         "slot_bytes": 0x400000,
         "flash_bytes": 16 << 20,
@@ -263,6 +264,12 @@ class FakeBoard:
         self.upload_headers: dict[str, str] = {}
         self.received = b""
         self.uploaded = False
+        # GET /firmware/coredump's bytes, None for a board with no dump; GET
+        # /log's whole text, None for a board that keeps no log. The log
+        # route sends at most log_reply bytes a request, as the board does.
+        self.coredump: bytes | None = None
+        self.log: str | None = None
+        self.log_reply = 4096
         self.lock = threading.Lock()
         handler = type("Handler", (BoardHandler,), {"board": self})
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -312,6 +319,9 @@ class BoardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         board = self.board
+        if self.path == "/firmware/coredump" or self.path.startswith("/log"):
+            self._diagnostics()
+            return
         with board.lock:
             board.requests.append(("GET", self.path))
             if self.path == "/firmware" and board.uploaded and board.after_upload:
@@ -377,6 +387,45 @@ class BoardHandler(BaseHTTPRequestHandler):
             board.requests.append(("POST", self.path))
             board.bodies[("POST", self.path)] = body
         self._text(*board.answers.get(("POST", self.path), (200, "restarting")))
+
+    def do_DELETE(self) -> None:
+        board = self.board
+        with board.lock:
+            board.requests.append(("DELETE", self.path))
+            if self.path == "/firmware/coredump":
+                board.coredump = None
+        self._text(*board.answers.get(("DELETE", self.path), (200, "erased")))
+
+    def _diagnostics(self) -> None:
+        """GET /firmware/coredump and GET /log?from=N, as firmware.cpp and control.cpp answer."""
+        board = self.board
+        with board.lock:
+            board.requests.append(("GET", self.path))
+            dump = board.coredump
+            log = board.log
+        if self.path == "/firmware/coredump":
+            if dump is None:
+                self._text(
+                    404, "there is no core dump: nothing has crashed since the last was erased"
+                )
+            else:
+                self._send(200, dump, "application/octet-stream")
+            return
+        if log is None:
+            self._text(404, "this board keeps no log")
+            return
+        data = log.encode()
+        start = min(int(self.path.partition("from=")[2] or 0), len(data))
+        chunk = data[start : start + board.log_reply]
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(chunk)))
+        self.send_header("X-Log-From", str(start))
+        self.send_header("X-Log-Next", str(start + len(chunk)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(chunk)
+        self.close_connection = True
 
 
 def run_ota(*argv: str) -> tuple[int, str]:
@@ -1017,6 +1066,196 @@ class OtherCommands(Case):
         code, out = run_ota("restart", "--host", board.host)
         self.assertEqual(code, ota.REFUSED, out)
         self.assertIn("restart: 409 the running image is still on trial", out)
+
+
+DUMP = {
+    "bytes": 23_456,
+    "intact": True,
+    "task": "fw_trial",
+    "pc": "0x4037a1b2",
+    "reason": "abort() was called at PC 0x4200abcd on core 0",
+    "elf_sha256": NEW_ELF.hex()[:9],
+}
+
+
+class Diagnostics(Case):
+    """The last crash's core dump and the console's recent output (O4)."""
+
+    def test_status_names_the_image_that_wrote_a_core_dump(self) -> None:
+        board = FakeBoard(self)
+        board.firmware = rolled_back("it panicked")
+        board.firmware["coredump"] = DUMP
+        code, out = run_ota("status", "--host", board.host)
+        self.assertEqual(code, 0, out)
+        self.assertIn(
+            "  core dump    23,456 bytes, fw_trial at 0x4037a1b2, abort() was called at PC "
+            "0x4200abcd on core 0, written by v1.1.0 in ota_1",
+            out,
+        )
+        # An image neither slot holds, and a dump that does not check out.
+        board.firmware["coredump"] = {
+            **DUMP,
+            "intact": False,
+            "task": "",
+            "reason": "",
+            "elf_sha256": "0123abcd9",
+        }
+        code, out = run_ota("status", "--host", board.host)
+        self.assertIn(
+            "  core dump    23,456 bytes, which do not check out, written by an image neither slot "
+            "holds now (ELF SHA-256 0123abcd9...)",
+            out,
+        )
+        board.firmware["coredump"] = {**DUMP, "elf_sha256": ""}
+        code, out = run_ota("status", "--host", board.host)
+        self.assertIn("written by an image the dump does not name", out)
+        board.firmware["coredump"] = None
+        code, out = run_ota("status", "--host", board.host)
+        self.assertIn("  core dump    none", out)
+
+    def test_coredump_saves_the_dump_and_erases_it_when_asked(self) -> None:
+        board = FakeBoard(self)
+        board.firmware = {**rolled_back("it panicked"), "coredump": DUMP}
+        board.coredump = bytes(range(256)) * 10
+        out_file = self.tmp / "dump.bin"
+        code, out = run_ota("coredump", "--host", board.host, "--out", str(out_file))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out_file.read_bytes(), bytes(range(256)) * 10)
+        self.assertIn(f"saved 2,560 bytes to {out_file}: 23,456 bytes, fw_trial", out)
+        self.assertNotIn(("DELETE", "/firmware/coredump"), board.requests)
+        code, out = run_ota("coredump", "--host", board.host, "--out", str(out_file), "--erase")
+        self.assertEqual(code, 0, out)
+        self.assertIn(("DELETE", "/firmware/coredump"), board.requests)
+        self.assertIn("erase: 200 erased", out)
+        # Nothing left: the board's own words.
+        code, out = run_ota("coredump", "--host", board.host, "--out", str(out_file))
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("GET /firmware/coredump answered 404: there is no core dump", out)
+
+    def test_coredump_reads_the_dump_with_the_elf_that_wrote_it(self) -> None:
+        board = FakeBoard(self)
+        board.firmware = {
+            **rolled_back("it panicked"),
+            "coredump": {**DUMP, "elf_sha256": hashlib.sha256(b"elf").hexdigest()[:9]},
+        }
+        board.coredump = b"a core dump"
+        elf = self.tmp / "panic.elf"
+        elf.write_bytes(b"elf")
+        out_file = self.tmp / "dump.bin"
+        ran = mock.Mock(return_value=subprocess.CompletedProcess([], 0))
+        with mock.patch.object(ota.subprocess, "run", ran):
+            code, out = run_ota(
+                "coredump", "--host", board.host, "--out", str(out_file), "--elf", str(elf)
+            )
+        self.assertEqual(code, 0, out)
+        command = ran.call_args.args[0]
+        self.assertEqual(command[1:4], ["-m", "esp_coredump", "info_corefile"])
+        self.assertEqual(command[4:], ["--core", str(out_file), "--core-format", "raw", str(elf)])
+        # esp_coredump failing, or not there at all.
+        with mock.patch.object(
+            ota.subprocess, "run", mock.Mock(return_value=subprocess.CompletedProcess([], 2))
+        ):
+            code, out = run_ota(
+                "coredump", "--host", board.host, "--out", str(out_file), "--elf", str(elf)
+            )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("esp_coredump exited 2; run it in the ESP-IDF environment", out)
+        with mock.patch.object(ota.subprocess, "run", mock.Mock(side_effect=OSError("no python"))):
+            code, out = run_ota(
+                "coredump", "--host", board.host, "--out", str(out_file), "--elf", str(elf)
+            )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("esp_coredump did not run: OSError: no python", out)
+
+    def test_coredump_refuses_an_elf_that_did_not_write_the_dump(self) -> None:
+        board = FakeBoard(self)
+        board.firmware = {**rolled_back("it panicked"), "coredump": DUMP}
+        board.coredump = b"a core dump"
+        elf = self.tmp / "other.elf"
+        elf.write_bytes(b"another image")
+        ran = mock.Mock()
+        with mock.patch.object(ota.subprocess, "run", ran):
+            code, out = run_ota(
+                "coredump",
+                "--host",
+                board.host,
+                "--out",
+                str(self.tmp / "d.bin"),
+                "--elf",
+                str(elf),
+            )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn(f"{elf} is not the image that wrote the dump", out)
+        ran.assert_not_called()
+        code, out = run_ota(
+            "coredump",
+            "--host",
+            board.host,
+            "--out",
+            str(self.tmp / "d.bin"),
+            "--elf",
+            str(self.tmp / "missing.elf"),
+        )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("--elf", out)
+
+    def test_coredump_from_a_board_that_does_not_answer(self) -> None:
+        board = FakeBoard(self)
+        host = board.host
+        board.close()
+        code, out = run_ota("coredump", "--host", host)
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("GET /firmware got no answer", out)
+
+    def test_log_prints_what_the_board_holds_a_reply_at_a_time(self) -> None:
+        board = FakeBoard(self)
+        board.log = "firmware: running v1.0.0 from ota_0\n" * 20
+        board.log_reply = 64
+        code, out = run_ota("log", "--host", board.host)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out, board.log)
+        froms = [path for method, path in board.requests if path.startswith("/log")]
+        self.assertEqual(froms[:3], ["/log?from=0", "/log?from=64", "/log?from=128"])
+        board.log = None
+        code, out = run_ota("log", "--host", board.host)
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("GET /log answered 404: this board keeps no log", out)
+
+    def test_log_follow_keeps_asking_and_says_what_it_missed(self) -> None:
+        board = FakeBoard(self)
+        board.log = "one\n"
+        rounds = []
+
+        def sleep(_: float) -> None:
+            rounds.append(1)
+            if len(rounds) == 1:
+                # The board wrote on, and moved past what was asked for next.
+                board.log = "one\ntwo\n"
+                board.log_reply = 4096
+            elif len(rounds) == 2:
+                raise KeyboardInterrupt
+
+        with mock.patch.object(ota.time, "sleep", sleep):
+            code, out = run_ota("log", "--host", board.host, "--follow")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out, "one\ntwo\n")
+
+    def test_log_follow_waits_through_a_board_that_does_not_answer(self) -> None:
+        board = FakeBoard(self)
+        host = board.host
+        board.close()
+        calls = []
+
+        def sleep(_: float) -> None:
+            calls.append(1)
+            raise KeyboardInterrupt
+
+        with mock.patch.object(ota.time, "sleep", sleep):
+            code, out = run_ota("log", "--host", host, "--follow")
+        self.assertEqual(code, 0, out)
+        self.assertIn("GET /log got no answer", out)
+        code, out = run_ota("log", "--host", host)
+        self.assertEqual(code, ota.REFUSED, out)
 
 
 class CommandLine(Case):

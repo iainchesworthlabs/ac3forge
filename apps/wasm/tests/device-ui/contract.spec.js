@@ -107,7 +107,7 @@ test("the stand-in has the firmware's routes and no others", () => {
     // how long the route's name is, so the gap between them is any whitespace
     // rather than one space - a route whose name pushed it onto two lines was
     // silently not checked here.
-    const registered = [...CONTROL.matchAll(/\.uri = "([^"]+)",\s*\.method = HTTP_(GET|POST|PUT)/g)].map(
+    const registered = [...CONTROL.matchAll(/\.uri = "([^"]+)",\s*\.method = HTTP_(GET|POST|PUT|DELETE)/g)].map(
         (m) => `${m[2]} ${m[1]}`,
     );
     const byName = (a, b) => a.localeCompare(b);
@@ -161,7 +161,12 @@ test('the page asks for nothing the device does not serve', () => {
     const inline = links.filter((link) => link.startsWith('data:'));
     expect(inline).toEqual([expect.stringMatching(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/)]);
     const routes = links.filter((link) => !inline.includes(link));
-    expect(routes.sort((a, b) => a.localeCompare(b))).toEqual(['api', 'api', 'status', 'ui.js']);
+    // The core dump and the console's recent output are links: the browser
+    // saves the one and shows the other as text.
+    expect(routes.sort((a, b) => a.localeCompare(b))).toEqual(['api', 'api', 'firmware/coredump', 'log', 'status', 'ui.js']);
+    for (const route of ['GET /firmware/coredump', 'GET /log']) {
+        expect(ROUTES).toContain(route);
+    }
     expect(PAGE).not.toMatch(/url\(|@import|https?:\/\//);
 });
 
@@ -238,17 +243,19 @@ test("the stand-in writes GET /firmware's keys in the firmware's order", async (
         trial: render('trial'),
         upload: render('upload'),
         last: render('last'),
+        dump: render('dump'),
         part: render('part'),
     };
     expect(firmware.body).toEqual(expect.arrayContaining(['mode', 'running', 'other', 'partitions']));
     expect(firmware.slot.length).toBe(8);
     const stub = await startStub();
     try {
-        // Every part present: a trial, an upload and a last update.
+        // Every part present: a trial, an upload, a last update and a core dump.
         Object.assign(stub.device.firmware, {
             trial: firmwareTrial(),
             upload: { received: 0, total: 4096, stage: 'waiting' },
             last_update: { version: 'v0.11.0', result: 'refused', reason: 'no' },
+            coredump: { bytes: 23456, intact: true, task: 'fw_trial', pc: '0x4037a1b2', reason: 'abort()', elf_sha256: '2366bde99' },
         });
         const body = JSON.parse(await (await fetch(`${stub.url}firmware`)).text());
         expect(Object.keys(body)).toEqual(firmware.body);
@@ -257,6 +264,7 @@ test("the stand-in writes GET /firmware's keys in the firmware's order", async (
         expect(Object.keys(body.trial)).toEqual(firmware.trial);
         expect(Object.keys(body.upload)).toEqual(firmware.upload);
         expect(Object.keys(body.last_update)).toEqual(firmware.last);
+        expect(Object.keys(body.coredump)).toEqual(firmware.dump);
         expect(Object.keys(body.partitions[0])).toEqual(firmware.part);
     } finally {
         await stub.close();

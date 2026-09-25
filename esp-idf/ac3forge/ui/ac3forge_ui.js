@@ -417,6 +417,10 @@
     row('fw-trial', t ? Math.floor(t.healthy_for_ms / 1000) + ' of ' + t.hold_ms / 1000 + ' s held, ' + minutes(Math.ceil(t.remaining_ms / 1000)) + ' left' + (t.waiting_for.length ? '; waiting for ' + t.waiting_for.join(', ') : '') : undefined);
     if (!sending) row('fw-upload', u ? (STAGE[u.stage] || u.stage) + ': ' + count(u.received) + ' of ' + bytes(u.total) : undefined);
     row('fw-last', l ? [l.version, l.result].filter(Boolean).join(', ') + (l.reason ? ': ' + l.reason : '') : undefined);
+    // The core dump a crash left (O4), which the link saves.
+    const d = f.coredump;
+    row('fw-crash', d ? [d.task && d.task + ' at ' + d.pc, d.reason, bytes(d.bytes) + (d.intact ? '' : ', damaged')].filter(Boolean).join('; ') : undefined);
+    $('fw-dump').hidden = !d;
     $('fw-pick').hidden = !o || !!t || !idle;
     $('fw-restart').hidden = !!t || !idle;
     $('fw-rollback').hidden = !(back || t) || !idle;

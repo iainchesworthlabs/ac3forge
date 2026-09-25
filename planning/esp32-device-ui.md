@@ -77,6 +77,7 @@
     Each asks first, in the dialog that asked before forgetting servers. When the board comes
     back running another image, the page loads again. [Firmware](#firmware) has the detail, and
     decision 29 the choices. The budget was re-derived: **57,344 bytes**, against 55,454 used.
+    O4 added the last crash's core dump and a link to the console's recent output: 55,926.
 
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
@@ -468,6 +469,9 @@ page then has no section.
   or does not check out says so.
 - **Update**, while one is under way from another client: its stage and the bytes received.
 - **Last update**: its version, how it ended, and why.
+- **Last crash** (O4), when a core dump is kept: the task, where, the panic's words and the
+  dump's size, with a link that saves the dump (`GET /firmware/coredump`). A link beside it
+  shows the console's recent output (`GET /log`) as the browser shows any text.
 - In flash mode, a line saying that nothing plays until the board restarts, and Now's state
   reads Flash mode (`/status`'s `flash`).
 
@@ -616,7 +620,7 @@ mark after each handler, then reverted.
 
 | Item | Budget | Measured |
 |---|---|---|
-| Flash: the page and its script together, as stored | 57,344 bytes ([decision 22](#decisions)); 49,152 before the firmware section, 45,056 before the list of paired servers, 28,672 before the redesign, 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 55,454 (21,069 + 34,385); 45,957 at the list of paired servers, 42,846 at the redesign, 28,317 before it, 25,594 at B3, 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
+| Flash: the page and its script together, as stored | 57,344 bytes ([decision 22](#decisions)); 49,152 before the firmware section, 45,056 before the list of paired servers, 28,672 before the redesign, 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 55,926 (21,265 + 34,661); 55,454 at the firmware section, 45,957 at the list of paired servers, 42,846 at the redesign, 28,317 before it, 25,594 at B3, 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
 | Internal heap held once the server is up: two more route registrations and handler slots | 256 bytes | 76, from the `heap:` line: 290,428 free against the base's 290,504 |
 | Internal heap held while a browser has the page open | - | 376, the keep-alive connection |
 | Internal heap at the peak of one `GET /status` | 3,072 bytes | 4,700 to 7,700 from the page's keep-alive connection; 5,100 from `curl`, a new connection each time |

@@ -23,3 +23,11 @@ CONFIG_AC3FORGE_EXAMPLE_DRC_MODE=2
 # left 1,872 bytes of the decode task's stack. sdkconfig.ci-render places objects
 # from FAT, where there is no network sharing the heap.
 CONFIG_AC3FORGE_EXAMPLE_OBJECTS=1
+
+# Neither of O4's diagnostics (planning/esp32-ota.md): the widest shape CI
+# plays has no internal RAM to spare above its free-heap floor, and each would
+# take some - the core dump 2,128 bytes of static SRAM on the S3, the console
+# ring its buffer. The other QEMU shapes keep both; sdkconfig.ci-ota's update
+# test reads them back.
+CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y
+CONFIG_AC3FORGE_LOG_BYTES=0

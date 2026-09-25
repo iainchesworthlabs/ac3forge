@@ -100,6 +100,9 @@ class Firmware {
     int on_mode(httpd_req* req);
     int on_rollback(httpd_req* req);
     int on_restart(httpd_req* req);
+    // The last crash's core dump (O4): sent as it lies in flash, and erased.
+    int on_coredump(httpd_req* req);
+    int on_coredump_erase(httpd_req* req);
 
     struct Impl;
 
