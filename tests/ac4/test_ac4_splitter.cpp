@@ -192,7 +192,10 @@ TEST_CASE("SyncFrameSplitter reads an escaped frame size and checks the CRC", "[
     REQUIRE(first.frames.front().sync_word == 0xAC41);
     const std::size_t end = first.frames.size() > 1 ? first.frames[1].offset : good.size();
     std::vector<std::byte> crc_frame(good.begin(), good.begin() + static_cast<std::ptrdiff_t>(end));
-    crc_frame[10] ^= std::byte{0x01};
+    REQUIRE(crc_frame.size() > 10);
+    // at(), not [], which GCC 16's -Wnull-dereference takes to reach an empty
+    // vector's null data().
+    crc_frame.at(10) ^= std::byte{0x01};
     stream.insert(stream.end(), crc_frame.begin(), crc_frame.end());
 
     const Outcome out = split(stream, 1000, 80'000);
