@@ -43,7 +43,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     if (size > 0) {
         const auto pick = static_cast<unsigned>(data[size - 1]);
         if ((pick & 1U) != 0) {
-            processing.output.output_level_dbfs = -31.0 + static_cast<double>((pick >> 1U) % 8U) * 4.0;
+            processing.output.output_level_dbfs =
+                -31.0 + static_cast<double>((pick >> 1U) % 8U) * 4.0;
         }
         processing.output.drc = static_cast<ac4::DrcMode>((pick >> 1U) % 6U);
         processing.output.dialogue_enhancement_db = (pick & 8U) != 0 ? 12.0 : 0.0;
