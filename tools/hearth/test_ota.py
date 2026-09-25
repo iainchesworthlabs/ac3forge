@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import types
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -362,6 +363,13 @@ class BoardHandler(BaseHTTPRequestHandler):
         if answer is DROP or answer is IGNORE:
             if answer is IGNORE:
                 self._body()
+            else:
+                # A real board takes a while to give an upload up. Without this
+                # a dropped upload and the status read after it can both finish
+                # inside a millisecond on a fast machine, and ota.py then reads
+                # an uptime of 1 ms as no shorter than the upload has been going
+                # (a CI run of the restarted-during-it case failed on that).
+                time.sleep(0.02)
             self.close_connection = True
             return
         if board.refuse_after_head:
