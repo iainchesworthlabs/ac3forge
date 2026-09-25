@@ -64,6 +64,24 @@ std::string_view describe(Speaker speaker) {
             return "Tfl";
         case Speaker::kTopFrontRight:
             return "Tfr";
+        case Speaker::kTopBackLeft:
+            return "Tbl";
+        case Speaker::kTopBackRight:
+            return "Tbr";
+        case Speaker::kTopSideLeft:
+            return "Tsl";
+        case Speaker::kTopSideRight:
+            return "Tsr";
+    }
+    return "?";
+}
+
+std::string_view describe(DecodingMode mode) {
+    switch (mode) {
+        case DecodingMode::kFull:
+            return "full";
+        case DecodingMode::kCore:
+            return "core";
     }
     return "?";
 }
@@ -557,7 +575,8 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::Impl::conceal_o
                                      .output = config.output,
                                      .drc = {},
                                      .de = {},
-                                     .downmix = {}};
+                                     .downmix = {},
+                                     .decoding = config.decoding};
     if (!source->conceal(config.concealment, inputs, frame.channels, frame.speakers)) {
         return std::unexpected(error);
     }
@@ -645,7 +664,10 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
                                .converter_phase = phase,
                                .new_source = impl_->new_source,
                                .output = impl_->config.output,
-                               .drc = {}};
+                               .drc = {},
+                               .de = {},
+                               .downmix = {},
+                               .decoding = impl_->config.decoding};
     std::optional<double> dialnorm;
     const detail::DrcState* drc_state = nullptr;
     const detail::DrcFrame* drc_frame = nullptr;

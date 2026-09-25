@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 81> kOptionTokens{{
+constexpr std::array<OptionToken, 82> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -78,6 +78,7 @@ constexpr std::array<OptionToken, 81> kOptionTokens{{
     {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes; AC-4: a DRC decoder mode"},
     {"output-level=", "decode of AC-4: the level in dBFS dialnorm is taken to (Lout)"},
     {"dialogue-enhancement=", "decode of AC-4: raise the dialogue by 0 to 12 dB, capped by the stream"},
+    {"decoding=", "decode of AC-4: full (default) or core, the immersive element's 5.X.2 core"},
     {"syntax-trace=", "ac4-encode, and decode of AC-4: write every syntax element written or read"},
     {"codec-mode=", "ac4-encode: simple, aspx, aspx-acpl-1, aspx-acpl-2 or aspx-acpl-3"},
     {"experimental=", "ac4-encode: tools and layouts no outside reader has checked yet"},
@@ -382,7 +383,9 @@ void print_decode_topic() {
     fmt::println("       portable-headphones|off: default takes the mode Table 161 gives the");
     fmt::println("       output level, off compresses nothing. dialogue-enhancement=<dB> raises");
     fmt::println("       the dialogue where the stream sends its parameters (5.7.8), 0 to 12 dB");
-    fmt::println("       and no more than the stream's cap.");
+    fmt::println("       and no more than the stream's cap. decoding=core decodes an immersive");
+    fmt::println("       element's core, 5.X.2, as a low-complexity decoder does (ETSI TS 103");
+    fmt::println("       190-2 4.7); decoding=full, the default, decodes every channel.");
 }
 
 void print_ac4_encode_topic() {

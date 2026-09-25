@@ -31,7 +31,10 @@
 // companding, A-SPX and A-CPL (Part 1 clauses 5.1, 5.3, 5.5, 5.6 and 5.7),
 // and at every frame_rate_index but 13 the sample rate converter from the
 // internal rate to 48 kHz (clause 6.2.15), its phase locked to
-// sequence_counter (Part 2 clause 5.11). The table of contents and the
+// sequence_counter (Part 2 clause 5.11). It decodes the immersive element of
+// the 7.X.4 channel modes (Part 2 clause 6.2.4) in full or core decoding
+// (DecodingMode), with Part 2's stereo and multichannel processing, S-CPL,
+// A-SPX and A-CPL (clauses 5.2 to 5.5). The table of contents and the
 // substream framing come from ac4::parse_raw_frame (the inspector, src/ac4);
 // this library starts where the inspector stops.
 //
@@ -42,7 +45,7 @@
 // not be resolved and read alongside it. Refusing is per substream and per
 // frame; the next frame is attempted afresh. decode() refuses, the same way,
 // everything above that it does not turn into PCM yet: 96/192 kHz, and the
-// immersive element of the 7.X.4 channel modes, which it reads.
+// immersive element in ASPX_AJCC, which it reads.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
@@ -158,11 +161,27 @@ struct Concealment {
     ConcealmentAction action = ConcealmentAction::kMute;
 };
 
+// --- Decoding modes ----------------------------------------------------------
+//
+// Part 2 clause 4.7: full decoding, in which A-CPL and A-JCC reconstruct every
+// channel an immersive element codes, or core decoding, which gives the
+// element's core, 5.X.2, with those tools replaced or reduced, for
+// low-complexity platforms. The Part 1 channel elements have no core (Part 2
+// Table 71) and decode alike in both (src/ac4dec/ERRATA.md, "Core decoding of
+// the Part 1 elements").
+enum class DecodingMode : std::uint8_t {
+    kFull,
+    kCore,
+};
+
+[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DecodingMode mode);
+
 struct DecoderConfig {
     // Null by default, at the cost of one branch per syntax element read.
     SyntaxSink syntax{};
     OutputConfig output{};
     ConcealmentPolicy concealment = ConcealmentPolicy::kNone;
+    DecodingMode decoding = DecodingMode::kFull;
 };
 
 // What one substream of a frame turned out to be.
@@ -184,9 +203,9 @@ struct FrameReport {
 
 // --- Decoding to PCM ---------------------------------------------------------
 //
-// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names:
-// those of the channel modes of Part 1 Table 88. Later versions add the
-// immersive layouts'.
+// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names
+// and Part 2 clause A.3's: those of the channel modes of Part 1 Table 88, and
+// the immersive layouts' (Part 2 Table A.27).
 enum class Speaker : std::uint8_t {
     kLeft,
     kRight,
@@ -194,12 +213,16 @@ enum class Speaker : std::uint8_t {
     kLfe,            // Low-Frequency Effects
     kLeftSurround,   // Left Side/Surround, Ls: a side speaker in the 7.X modes
     kRightSurround,  // Right Side/Surround, Rs
-    kLeftBack,       // Lb, in 7.X 3/4/0
+    kLeftBack,       // Lb, in 7.X 3/4/0 and 7.X.4
     kRightBack,      // Rb
     kLeftWide,       // Lw, in 7.X 5/2/0
     kRightWide,      // Rw
-    kTopFrontLeft,   // Tfl, in 7.X 3/2/2
+    kTopFrontLeft,   // Tfl, in 7.X 3/2/2 and the X.4 layouts
     kTopFrontRight,  // Tfr
+    kTopBackLeft,    // Tbl, in the X.4 layouts
+    kTopBackRight,   // Tbr
+    kTopSideLeft,    // Tsl, the top pair of the X.2 layouts: 5.X.2, the core layout
+    kTopSideRight,   // Tsr
 };
 
 [[nodiscard]] AC4DEC_EXPORT std::string_view describe(Speaker speaker);
@@ -211,7 +234,9 @@ struct DecodedFrame {
     // contents did not read, the counter the stream expected.
     int sequence_counter = 0;
     // One per channel, in the order of `channels`: L, R, C, the LFE, Ls, Rs,
-    // then a 7.X mode's last pair, each where the channel mode has it.
+    // then a 7.X mode's last pair, or the 7.X.4 modes' Lb, Rb, Tfl, Tfr, Tbl
+    // and Tbr (their core's Tsl and Tsr in core decoding), each where the
+    // layout has it.
     std::vector<Speaker> speakers;
     // Planar PCM, one vector per channel, all the same length, at full scale
     // 1.0: a frame's worth, which at 29.97, 59.94 and 119.88 fps alternates

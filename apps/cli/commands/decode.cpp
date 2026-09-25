@@ -472,6 +472,11 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
     return done.empty() ? "the coded channels, with no DRC, downmix or dialogue processing" : done;
 }
 
+// The decoding mode, for the status line where it is not the default.
+std::string ac4_decoding(ac4::DecodingMode decoding) {
+    return decoding == ac4::DecodingMode::kCore ? " in core decoding" : "";
+}
+
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the channel-coded substream
 // its decode() picks, with the dialogue raised by dialogue-enhancement= (ETSI
 // TS 103 190-1 clause 5.7.8), at the output level output-level= names and
@@ -524,6 +529,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     config.output.dialogue_enhancement_db = meta.ac4_dialogue_enhancement;
     config.output.downmix = ac4_downmix(meta);
     config.concealment = ac4_concealment(meta.concealment);
+    config.decoding = meta.ac4_core_decoding ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {
@@ -618,8 +624,8 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         layout += layout.empty() ? "" : " ";
         layout += ac4::describe(first.speakers[c]);
     }
-    status_println(status, "decoded {} AC-4 frames -> {} ({}, {} Hz)", decoded_frames, out_path, layout,
-                   first.sample_rate_hz);
+    status_println(status, "decoded {} AC-4 frames{} -> {} ({}, {} Hz)", decoded_frames,
+                   ac4_decoding(config.decoding), out_path, layout, first.sample_rate_hz);
     if (waiting_frames > 0) {
         status_println(status, "          {} frames waiting for an I-frame produced no output",
                        waiting_frames);

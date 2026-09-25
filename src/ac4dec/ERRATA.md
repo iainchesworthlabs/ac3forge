@@ -1103,6 +1103,122 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
   it becomes `float`: no stream DEE writes comes near, and every value the decoder computes stays finite.
 - **Evidence:** Text; `fuzz_ac4_decode`.
 
+## Immersive decoding
+
+The readings phase D9 takes to decode the immersive element (Part 2 clauses 5.2 to 5.5), in full and in
+core decoding (4.7). They are the decoder's alone, as under "Reconstruction". The evidence is DEE's
+5.1.4 legs, scored against their sources (`tools/checks/score_ac4_decode.py`): in SCPL and ASPX_SCPL
+every one of the ten tones comes out on its own channel to 0.02 dB (the LFE's 0.26 dB is DEE's
+low-pass), and in core decoding at the core's gains; the constructed streams of
+`tests/ac4dec/ac4dec_constructed.cpp` reach the groupings, steps and modes DEE does not write. librempeg,
+the one other decoder here, does not decode the element: its L, R and C come out 6 to 9 dB down, its
+surrounds 12 to 15 dB down, all four top tones in its Lb at -15 dB, and its top channels silent, so no
+reading below rests on it.
+
+### Table 19's track numbers are labels
+
+- **Where:** Part 2 Table 19, p. 60: each row gives an element's input tracks as `[i]`, "Tracks Oi" by NOTE
+  1, and its outputs. For `core_5ch_grouping` 0 and 2 the numbers do not follow the order the syntax reads
+  the elements in: the `mono_data()` read third is `[6]`, and the two-channel elements after it `[4,5]`,
+  `[7,8]` and `[9,10]`.
+- **Reading:** the numbers are names. Each element's outputs go to the signals its row gives, in the order
+  the syntax reads the elements, as step 1's reference to Part 1 5.3.3 makes them: grouping 0 with
+  `2ch_mode` 0 gives [A, B], [D, E], C, [F, G], [H, I], [J, K]; `2ch_mode` 1 [A, D] and [B, E] first.
+- **Evidence:** Streams, for grouping 0 with `2ch_mode` 0, DEE's only one; Text for the rest.
+
+### The EXAMPLE after Table 19
+
+- **Where:** Part 2 5.2.3.2, p. 60: "Let core_5ch_grouping = 1. Processing the first two_channel_data
+  element ... produces outputs O0,O1. The outputs are assigned to tracks E, D."
+- **Reading:** Table 19's row: in grouping 1 the first `two_channel_data()`, read after
+  `three_channel_data()`, gives [3,4], D and E in that order. The example contradicts the row twice, in
+  the outputs' numbers and in their order.
+- **Evidence:** Text.
+
+### Step 4's NOTE 2 names F' for H'
+
+- **Where:** Part 2 5.2.3.2, NOTE 2, p. 60: "Only the signals D, E, F, and G are modified in this step; all
+  others are passed through into A' through C' and F' through M'."
+- **Reading:** H' through M': F' and G' are two of the four the step modifies.
+- **Evidence:** Text.
+
+### Table 20's prediction gains
+
+- **Where:** Part 2 5.2.3.2 step 5, p. 60: "If the sap_mode = full SAP, the parameters a'j shall be
+  extracted from n_elem chparam_info elements ... Otherwise, the parameters a'j shall be set to 0." Nothing
+  says how a gain is extracted from a `chparam_info()`, which carries a 2 x 2 matrix per band (Part 1
+  5.3.2).
+- **Reading:** a'_j is Pseudocode 59's `sap_gain`, alpha_q times 0.1, band by band: in the bands whose
+  `sap_coeff_used` is set when `sap_mode` is 3 (full SAP), and 0 in the other bands and for every other
+  `sap_mode`, M/S included. Table 20 then applies H'' = H' + a'_0 D' band by band as a 2 x 2 step (1, 0,
+  a'_0, 1) under the framing of D ("The framing of the immersive element's chparam_info()"), and alike for
+  I, J and K.
+- **Why:** full SAP's matrix is Part 1's prediction of the second channel from the first, (1 + g, 1; 1 - g,
+  -1); its gain is the one value per band the step can take.
+- **Evidence:** Text. DEE sends these four `chparam_info()` with `sap_mode` 0 in every frame.
+
+### ASPX_ACPL_2 and step 4
+
+- **Where:** Part 2 5.2.3.3, p. 61, assigns A to G to A' to G' and silences H' to K', with no step 4; the
+  syntax (6.2.4.1) reads `b_use_sap_add_ch` and step 4's two `chparam_info()` in every 7CH_STATIC mode,
+  ASPX_ACPL_2 among them.
+- **Reading:** where ASPX_ACPL_2 sends step 4's parameters, the step applies as in 5.2.3.2: D, E, F and G
+  come out of it before A-CPL takes D'' to G''.
+- **Why:** the parameters describe how F and G were coded against D and E; A' to G' without the step would
+  be the coded tracks, not the channels' signals.
+- **Evidence:** Text. DEE sets `b_use_sap_add_ch` 0 in ASPX_ACPL_2.
+
+### Which channel holds which intermediate signal
+
+- **Where:** Part 2 5.2.2.2 and NOTE 3 after step 6, p. 60: the tool's outputs A'' to K'' "are not assigned
+  to dedicated channels until they have passed either one of the coupling tools (S-CPL/A-CPL) or the A-JCC
+  tool"; Table 8, p. 46, names the A-SPX inputs by channel in ASPX_SCPL and as A'' to G'' otherwise.
+- **Reading:** A'' is held in L, B'' in R, C'' in C, D'' in Ls, E'' in Rs, F'' in Tfl, G'' in Tfr, H'' in
+  Lb, I'' in Rb, J'' in Tbl and K'' in Tbr, the channel each becomes: S-CPL's Table 23 makes (Ls, Lb) of D''
+  and H'' and alike, Table 25 gives A-CPL's modules (Ls, Lb), (Rs, Rb), (Tfl, Tbl) and (Tfr, Tbr) from x5,
+  x6, x9 and x10, and core decoding's Table 24 makes L to Tfr of A'' to G''.
+- **Evidence:** Streams: DEE's legs decode each tone to its own channel in all three of its modes.
+
+### S-CPL on the inverse transform's own frame
+
+- **Where:** Part 2 5.3.1, p. 63: S-CPL "operates in the time domain, processing the output of the IMDCT";
+  Part 1 5.6 then aligns that output by `d_pcm` samples before the QMF analysis.
+- **Reading:** S-CPL takes each frame's inverse transform output with that frame's codec mode, before the
+  frame alignment. Within a codec mode the order makes no difference; where the mode changes at an I-frame,
+  each frame's samples take their own frame's gains. A concealed frame takes the last decoded frame's.
+- **Evidence:** Text.
+
+### The core's top pair is Tsl and Tsr
+
+- **Where:** Part 2 Table 24, p. 64, names S-CPL's core outputs L, R, C, Ls, Rs, Tfl and Tfr; A-JCC's core
+  outputs (5.6.3.5.3, p. 77) end with Tsl and Tsr; Tables 45 and 46, p. 108, render a 7.X.X input's core
+  from r12,12 and r13,13, the indices of Tsl and Tsr (5.10.2.2).
+- **Reading:** core decoding's top pair is Tsl and Tsr in every mode, F'' and G'' times the mode's gain:
+  the core is a 5.X.2 layout (Table 71), whose top pair is the side pair (Table A.27), and each of its two
+  channels carries the sum of a front and a back top channel.
+- **Evidence:** Streams: DEE's legs in core decoding put the Tfl and Tbl tones in the first of the pair,
+  3 dB down, as Table 45's +3 dB expects.
+
+### Core decoding's A-SPX on the first channel of a pair
+
+- **Where:** Part 2 Table 8, p. 46, NOTE 6: in core decoding in ASPX_SCPL, "Channels in square brackets are
+  processed with the first of two channels of one aspx_data_2ch() element": [Ls], [Rs], [Tfl], [Tfr].
+- **Reading:** each such `aspx_data_2ch()` is decoded whole: its second channel's envelopes are decoded
+  into state kept for it, since the next frame's differences along time and `aspx_balance`'s level and
+  balance need them, with a silent low band, and its output is not used. The first channel's output is the
+  core channel's, which the A-SPX post-processing (5.4) and the gain of 2 (4.8.3.11.2) then take.
+- **Evidence:** Streams: DEE's ASPX_SCPL leg in core decoding.
+
+### Core decoding of the Part 1 elements
+
+- **Where:** Part 2 4.8.3.1, p. 41: in core decoding, for A-CPL "gain factors shall be applied instead";
+  4.8.3.14, p. 48, gives the factor, 2, for the immersive element alone, and says the decoder "shall
+  utilize the A-CPL tool" of Part 1 for the other elements. Table 71, p. 171, gives no core channel mode for
+  the Part 1 channel modes.
+- **Reading:** core decoding changes only the immersive element; the Part 1 elements decode as in full
+  decoding, A-CPL included.
+- **Evidence:** Text.
+
 ## Output processing
 
 What the QMF domain's matrices go through before synthesis, dialogue enhancement (Part 1 5.7.8), the

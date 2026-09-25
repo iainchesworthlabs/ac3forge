@@ -1,9 +1,9 @@
 // ac4::Decoder::decode() and the reconstruction behind it (src/ac4dec/src/pcm):
 // the noise fill's random number generator against the text's own closed
 // form, and the committed DEE streams decoded to PCM - each channel's tone on
-// its own channel in stereo and 5.1, the LFE's included, an ASPX stream's high
-// band rebuilt, and the IMS streams' frame rates through the sample rate
-// converter.
+// its own channel in stereo, 5.1 and 5.1.4, the LFE's included, in full and
+// core decoding, an ASPX stream's high band rebuilt, and the IMS streams'
+// frame rates through the sample rate converter.
 
 #include <algorithm>
 #include <array>
@@ -54,11 +54,13 @@ struct Decoded {
     std::size_t frames = 0;
 };
 
-Decoded decode_all(const std::string& leg) {
+Decoded decode_all(const std::string& leg, ac4::DecodingMode decoding = ac4::DecodingMode::kFull) {
     const std::vector<std::byte> stream = read_stream(leg);
     const ac4::ScanResult scan = ac4::scan(stream);
     REQUIRE_FALSE(scan.frames.empty());
-    ac4::Decoder decoder;
+    ac4::DecoderConfig config;
+    config.decoding = decoding;
+    ac4::Decoder decoder(config);
     Decoded out;
     for (const ac4::SyncFrame& frame : scan.frames) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
@@ -317,6 +319,145 @@ TEST_CASE("a SIMPLE 5.1 stream decodes each tone to its own channel, the LFE's i
         // 0.3 dB (tools/checks/score_ac4_decode.py, LFE_CHANNEL).
         const double level_db = 20.0 * std::log10(std::sqrt(4.0 * own) / 0.1);
         CHECK(std::abs(level_db) < (c == 3 ? 0.5 : 0.2));
+    }
+}
+
+namespace {
+
+// tones_514: L R C LFE Ls Rs Tfl Tfr Tbl Tbr, each at -20 dBFS
+// (gen_ac4_baseline.py's TONE_HZ), coded by DEE as 7.1.4 with its backs
+// silent (b_4_back_channels_present 0).
+constexpr std::array<double, 10> kTones514 = {331.0, 457.0,  613.0,  47.0,   787.0,
+                                              953.0, 1117.0, 1289.0, 1453.0, 1621.0};
+constexpr std::array<ac4::Speaker, 10> kTone514Speakers = {
+    ac4::Speaker::kLeft,         ac4::Speaker::kRight,         ac4::Speaker::kCentre,
+    ac4::Speaker::kLfe,          ac4::Speaker::kLeftSurround,  ac4::Speaker::kRightSurround,
+    ac4::Speaker::kTopFrontLeft, ac4::Speaker::kTopFrontRight, ac4::Speaker::kTopBackLeft,
+    ac4::Speaker::kTopBackRight};
+
+// Each tone's level in each channel, in dB relative to -20 dBFS, past the
+// first and last half second: [channel][tone].
+std::vector<std::array<double, 10>> tone_levels(const Decoded& decoded) {
+    const std::size_t skip = 24000;
+    std::vector<std::array<double, 10>> out(decoded.channels.size());
+    for (std::size_t c = 0; c < decoded.channels.size(); ++c) {
+        REQUIRE(decoded.channels[c].size() > 4 * skip);
+        const auto middle = std::span<const float>(decoded.channels[c])
+                                .subspan(skip, decoded.channels[c].size() - 2 * skip);
+        for (std::size_t t = 0; t < kTones514.size(); ++t) {
+            const double power = tone_power(middle, kTones514[t], 48000);
+            out[c][t] = 20.0 * std::log10(std::sqrt(4.0 * power + 1e-30) / 0.1);
+        }
+    }
+    return out;
+}
+
+std::size_t channel_of(const Decoded& decoded, ac4::Speaker speaker) {
+    const auto it = std::ranges::find(decoded.speakers, speaker);
+    REQUIRE(it != decoded.speakers.end());
+    return static_cast<std::size_t>(it - decoded.speakers.begin());
+}
+
+}  // namespace
+
+TEST_CASE("the immersive element's SCPL and ASPX_SCPL streams decode each tone to its own channel",
+          "[ac4dec][pcm][immersive]") {
+    using S = ac4::Speaker;
+    for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512"}) {
+        CAPTURE(leg);
+        const Decoded decoded = decode_all(leg);
+        REQUIRE(decoded.speakers ==
+                std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe, S::kLeftSurround,
+                               S::kRightSurround, S::kLeftBack, S::kRightBack, S::kTopFrontLeft,
+                               S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight});
+        const auto levels = tone_levels(decoded);
+        for (std::size_t t = 0; t < kTones514.size(); ++t) {
+            CAPTURE(t);
+            const std::size_t own = channel_of(decoded, kTone514Speakers[t]);
+            // DEE's LFE low-pass costs the 47 Hz tone 0.3 dB, as in 5.1.
+            CHECK(std::abs(levels[own][t]) < (kTone514Speakers[t] == S::kLfe ? 0.5 : 0.2));
+            for (std::size_t c = 0; c < levels.size(); ++c) {
+                if (c != own) {
+                    CAPTURE(c);
+                    CHECK(levels[c][t] < -50.0);
+                }
+            }
+        }
+        // The backs the source leaves out.
+        for (const S back : {S::kLeftBack, S::kRightBack}) {
+            for (const double level : levels[channel_of(decoded, back)]) {
+                CHECK(level < -90.0);
+            }
+        }
+    }
+}
+
+TEST_CASE("the immersive element's ASPX_ACPL_2 stream makes its top pairs by A-CPL",
+          "[ac4dec][pcm][immersive]") {
+    // At 256 kbps DEE codes F'' and G'', each top pair's sum, and A-CPL makes
+    // Tfl and Tbl, Tfr and Tbr of them with its parameters: each top tone
+    // keeps its level across its pair and is loudest in its own channel, and
+    // stays out of every other channel. The rest are coded as in SCPL.
+    using S = ac4::Speaker;
+    const Decoded decoded = decode_all("ac4-514-tones-256");
+    REQUIRE(decoded.speakers.size() == 12);
+    const auto levels = tone_levels(decoded);
+    const auto power = [](double db) { return std::pow(10.0, db / 10.0); };
+    for (std::size_t t = 0; t < kTones514.size(); ++t) {
+        CAPTURE(t);
+        const S speaker = kTone514Speakers[t];
+        const std::size_t own = channel_of(decoded, speaker);
+        const bool top = t >= 6;
+        if (!top) {
+            CHECK(std::abs(levels[own][t]) < (speaker == S::kLfe ? 0.5 : 0.2));
+        }
+        const std::size_t partner =
+            top ? channel_of(decoded, kTone514Speakers[t < 8 ? t + 2 : t - 2]) : own;
+        if (top) {
+            CHECK(levels[own][t] > levels[partner][t]);
+            const double pair_db =
+                10.0 * std::log10(power(levels[own][t]) + power(levels[partner][t]));
+            CHECK(std::abs(pair_db) < 2.5);
+        }
+        for (std::size_t c = 0; c < levels.size(); ++c) {
+            if (c != own && c != partner) {
+                CAPTURE(c);
+                CHECK(levels[c][t] < -50.0);
+            }
+        }
+    }
+}
+
+TEST_CASE("core decoding gives the immersive element's 5.X.2 core at the core gains",
+          "[ac4dec][pcm][immersive]") {
+    // Table 24 and clauses 4.8.3.11.2 and 4.8.3.14: L, R and C as coded; Ls,
+    // Rs, Tsl and Tsr each the sum of the pair full decoding makes, over the
+    // square root of 2, so every tone of those pairs 3 dB down, in every mode.
+    using S = ac4::Speaker;
+    const double down = 20.0 * std::log10(std::numbers::sqrt2 / 2.0);
+    for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512", "ac4-514-tones-256"}) {
+        CAPTURE(leg);
+        const Decoded decoded = decode_all(leg, ac4::DecodingMode::kCore);
+        REQUIRE(decoded.speakers == std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe,
+                                                   S::kLeftSurround, S::kRightSurround,
+                                                   S::kTopSideLeft, S::kTopSideRight});
+        const auto levels = tone_levels(decoded);
+        const std::array<S, 10> core = {S::kLeft,        S::kRight,        S::kCentre,
+                                        S::kLfe,         S::kLeftSurround, S::kRightSurround,
+                                        S::kTopSideLeft, S::kTopSideRight, S::kTopSideLeft,
+                                        S::kTopSideRight};
+        for (std::size_t t = 0; t < kTones514.size(); ++t) {
+            CAPTURE(t);
+            const std::size_t own = channel_of(decoded, core[t]);
+            const double expected = t < 4 ? 0.0 : down;
+            CHECK(std::abs(levels[own][t] - expected) < (core[t] == S::kLfe ? 0.5 : 0.2));
+            for (std::size_t c = 0; c < levels.size(); ++c) {
+                if (c != own) {
+                    CAPTURE(c);
+                    CHECK(levels[c][t] < -50.0);
+                }
+            }
+        }
     }
 }
 

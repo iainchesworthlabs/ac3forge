@@ -63,10 +63,11 @@ using Matrix = std::array<std::array<double, N>, N>;
 // channels of the tracks of two different channel data elements: O0 = a I0 +
 // b I1, O1 = c I0 + d I1, on the tracks' lines in window order (after
 // ungrouping), with the parameters of a chparam_info() read under `base`'s
-// sf_info(), the first input's. The inputs must be transformed alike, window
-// for window (src/ac4dec/ERRATA.md, "The 7.X element's additional channels");
-// it fails otherwise. `lengths` are each input's window lengths
-// (window_lengths()).
+// sf_info(), the first input's. The immersive element's step 4 and Table 20
+// (ETSI TS 103 190-2 V1.3.1 clause 5.2.3.2) are such steps too. The inputs
+// must be transformed alike, window for window (src/ac4dec/ERRATA.md, "The 7.X
+// element's additional channels"); it fails otherwise. `lengths` are each
+// input's window lengths (window_lengths()).
 [[nodiscard]] ParseResult apply_additional_pair(const SubstreamContext& ctx, const AsfPsyInfo& base,
                                                 const StereoParameters& parameters,
                                                 std::span<const int> base_lengths,

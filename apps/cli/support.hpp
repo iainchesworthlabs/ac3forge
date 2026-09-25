@@ -147,6 +147,9 @@ struct Options {
     // 'decode' of AC-4 only: dialogue-enhancement=, G_DE in dB, 0 to 12
     // (ac4::OutputConfig::dialogue_enhancement_db).
     double ac4_dialogue_enhancement = 0.0;
+    // 'decode' of AC-4 only: decoding=core, core decoding (ac4::DecodingMode);
+    // full decoding by default.
+    bool ac4_core_decoding = false;
     // 'ac4-encode' only: the frame rate, rate mode, I-frames and metadata
     // (ac4::EncoderConfig) as its options set them; print_meta_usage says
     // what each takes. Where a key other commands also read (dialnorm=, drc=,

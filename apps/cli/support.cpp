@@ -1571,6 +1571,18 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.ac4_dialogue_enhancement = gain;
             continue;
         }
+        if (key == "decoding") {
+            // AC-4's full or core decoding (ETSI TS 103 190-2 clause 4.7).
+            if (value == "full") {
+                out.ac4_core_decoding = false;
+            } else if (value == "core") {
+                out.ac4_core_decoding = true;
+            } else {
+                fmt::println(stderr, "error: decoding is 'full' or 'core' (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
         // Scoped to `decode`, which is the only command that builds a census -
         // run_decode is reached from nowhere else, and the loudness commands
         // run their own decode loop that never accumulates one. Unscoped, this

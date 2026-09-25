@@ -28,9 +28,13 @@
 // block switching (5.5) and frame alignment (5.6), then the QMF domain (5.7):
 // analysis, companding, A-SPX, A-CPL and synthesis, for what this version
 // decodes: the mono, pair, 3.0, 5.X and 7.X elements in every codec mode Part
-// 1 gives them, SIMPLE, ASPX and the A-CPL modes. What it does not decode yet
-// it refuses with DecodeError::kUnsupported and the phase of planning/ac4.md
-// that brings it.
+// 1 gives them, SIMPLE, ASPX and the A-CPL modes; and the immersive element of
+// the 7.X.4 modes along Part 2 Figure 5 of ETSI TS 103 190-2 V1.3.1, with its
+// SMP (clause 5.2), S-CPL between the inverse transform and the analysis
+// (5.3, pcm/immersive.hpp), A-SPX with its gains (4.8.3.11), and A-CPL
+// (5.5), in full or core decoding (4.7). What it does not decode yet it
+// refuses with DecodeError::kUnsupported and the phase of planning/ac4.md that
+// brings it.
 //
 // Every codec mode passes through the QMF banks, SIMPLE included, as Figure
 // 9 draws it, so the decoder's delay is one for all of them: d_pcm, the QMF
@@ -67,6 +71,7 @@ struct FrameInputs {
     DrcFrameValues drc{};
     DeFrameValues de{};
     DownmixValues downmix{};
+    DecodingMode decoding = DecodingMode::kFull;  // Part 2 clause 4.7
 };
 
 class SubstreamPcm {
@@ -145,8 +150,19 @@ class SubstreamPcm {
         DownmixValues downmix;                // its downmix gains
     };
 
+    // The second channel of an aspx_data_2ch() core decoding takes the first
+    // of alone (AspxUnit::first_only): its A-SPX state, which its data's
+    // differences along time need, silence for its low band, and a matrix for
+    // the high band nothing uses.
+    struct Ghost {
+        std::vector<QmfValue> ext;
+        std::vector<QmfValue> out;
+        AspxChannelState aspx;
+    };
+
     // One aspx_data element's frame parameters and its channels' data and
-    // matrices, for one of the units aspx_units() lists.
+    // matrices, for one of the units aspx_units() lists; a channel of -1 is a
+    // ghost.
     struct UnitIo {
         AspxFrame frame;
         std::array<AspxChannelIo, 2> io{};
@@ -161,7 +177,7 @@ class SubstreamPcm {
     [[nodiscard]] ParseResult render(Control control, const FrameInputs& frame_inputs,
                                      std::vector<std::vector<float>>& channels,
                                      std::vector<Speaker>& speakers);
-    [[nodiscard]] ParseResult configure(const SubstreamContext& ctx);
+    [[nodiscard]] ParseResult configure(const SubstreamContext& ctx, DecodingMode decoding);
     // The output stages - DRC's channel groups, the downmix, and each channel
     // out's synthesis bank and converter - for add_ch_base and the output the
     // system asks for, rebuilt only where one of them changes.
@@ -171,11 +187,16 @@ class SubstreamPcm {
     [[nodiscard]] int channel_of(Speaker speaker) const noexcept;
     [[nodiscard]] ParseResult matrix(const SubstreamContext& ctx, const ChannelElement& element);
     void apply(const Control& control);
+    // The immersive element's A-SPX gains and core decoding's gain in place of
+    // A-CPL (pcm/immersive.hpp), after A-SPX made `units`.
+    void apply_immersive_gains(const Control& control, std::span<const UnitIo> units,
+                               std::span<const aspx::SubbandGroups> groups);
     void pass_through();
     void pass_through(Channel& channel) const;
 
     int full_length_ = 0;
     int ch_mode_ = -1;
+    DecodingMode decoding_ = DecodingMode::kFull;
     int frame_rate_index_ = -1;
     int fs_index_ = 1;
     int delay_ = 0;
@@ -186,6 +207,12 @@ class SubstreamPcm {
     std::optional<dsp::TransformSet<double>> transforms_;
     std::span<const Speaker> speakers_;  // the channel mode's, speakers_of()
     std::vector<Channel> channels_;      // in speakers_'s order
+    // Core decoding's ASPX_SCPL, by aspx_data_2ch() index; empty otherwise.
+    std::vector<Ghost> ghosts_;
+    // The immersive element's codec mode of the last frame decoded, whose
+    // spectra S-CPL takes after the inverse transform, concealment's included;
+    // unset for the other elements.
+    std::optional<int> scpl_mode_;
     std::vector<AspxUnit> units_;        // aspx_units() of the control being applied
     std::vector<int> companded_;         // its companded_speakers(), as channel indices
     std::deque<Control> held_;
@@ -239,6 +266,7 @@ class SubstreamPcm {
     std::vector<std::vector<double>> spectra_;  // per channel, in window order
     std::vector<int> track_of_;                 // per channel, the track its lines are in
     std::vector<double> pcm_;
+    std::vector<std::vector<double>> time_;  // per channel, the inverse transform's frame
     std::vector<double> converted_;
     std::vector<double> aligned_;
     std::vector<std::vector<int>> lengths_;  // per channel, its blocks' lengths

@@ -249,6 +249,7 @@ TEST_CASE("a malformed coding, decoding or routing option is refused with its ow
         {"dialogue-enhancement=13",
          "dialogue-enhancement is a gain in dB from 0 to 12 (got 'dialogue-enhancement=13')"},
         {"dialogue-enhancement=-3", "dialogue-enhancement is a gain in dB from 0 to 12"},
+        {"decoding=partial", "decoding is 'full' or 'core' (got 'decoding=partial')"},
         {"conceal=hide",
          "conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
          "silence) or 'off' (the default) (got 'conceal=hide')"},
@@ -342,6 +343,8 @@ TEST_CASE("every documented spelling of a valued option gets past parsing to the
         "output-level=-14.5",
         "dialogue-enhancement=9",
         "dialogue-enhancement=0",
+        "decoding=full",
+        "decoding=core",
         "conceal=repeat",
         "conceal=mute",
         "conceal=off",

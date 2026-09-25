@@ -39,6 +39,7 @@ target_sources(ac4dec_objects
         src/pcm/de.cpp
         src/pcm/downmix.cpp
         src/pcm/drc.cpp
+        src/pcm/immersive.cpp
         src/pcm/multichannel.cpp
         src/pcm/routing.cpp
         src/pcm/snf_random.cpp
