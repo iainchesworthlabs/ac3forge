@@ -242,7 +242,13 @@ jobs:
 
       # SonarQube's generic coverage XML, from the same gcov data
       # tools/checks/coverage_report.sh reads, with the same flags for
-      # throw/unreachable branches and the mdct.cpp suspicious-hits gcov bug.
+      # throw/unreachable branches and for gcov's suspicious- and negative-hit
+      # parse errors (both gcc.gnu.org/bugzilla#68080; that script's comment
+      # names the sites). Keep the parse-error flags in step with the script's.
+      # This step once lacked negative_hits.warn after the script had gained
+      # it, and a negative count on eac3_decoder.cpp:3370 made gcovr abort
+      # here: the scan never ran, and SonarCloud kept showing the last
+      # analysis that did.
       # No component --filter, unlike that script: Sonar treats a compiled file
       # with no coverage entry as 0% rather than as unmeasured, so every
       # instrumented file is reported and sonar-project.properties'
@@ -256,6 +262,7 @@ jobs:
             --exclude-throw-branches --exclude-unreachable-branches \
             --gcov-ignore-errors=no_working_dir_found \
             --gcov-ignore-parse-errors=suspicious_hits.warn \
+            --gcov-ignore-parse-errors=negative_hits.warn \
             --exclude "${BUILD_DIR}/.*" \
             --object-directory "${BUILD_DIR}" \
             --sonarqube "${BUILD_DIR}/coverage-sonarqube.xml"

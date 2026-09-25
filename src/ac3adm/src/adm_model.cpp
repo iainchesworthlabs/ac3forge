@@ -443,7 +443,7 @@ std::expected<std::reference_wrapper<const std::shared_ptr<Value>>, AdmWriteErro
 
 }  // namespace
 
-std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel& model) {
+std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel& model, std::uint16_t bit_depth) {
     auto document = ::adm::Document::create();
 
     std::unordered_map<std::string, std::shared_ptr<::adm::AudioChannelFormat>> channel_formats_by_id;
@@ -553,9 +553,9 @@ std::expected<BuiltDocument, AdmWriteError> build_libadm_document(const AdmModel
         if (track_uid.has_sample_rate) {
             libadm_track_uid->set(::adm::SampleRate(track_uid.sample_rate));
         }
-        if (track_uid.has_bit_depth) {
-            libadm_track_uid->set(::adm::BitDepth(track_uid.bit_depth));
-        }
+        // Unconditional, and never track_uid.bit_depth: the caller's value may describe some
+        // other file, while this one is always the width write_bw64 writes <fmt > with.
+        libadm_track_uid->set(::adm::BitDepth(bit_depth));
         if (track_uid.track_format_ref) {
             const auto resolved = resolve(track_formats_by_id, *track_uid.track_format_ref);
             if (!resolved) {

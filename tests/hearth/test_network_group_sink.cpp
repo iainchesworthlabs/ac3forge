@@ -217,6 +217,16 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
         offset += taken;
     }
     REQUIRE(offset == kFrames);
+    // Taken is not played: the group reads ahead of its own timeline, which
+    // starts a lead after the first push, so the tone is all still queued -
+    // Player waits on this before it closes the output, or the programme's
+    // last second or so would never be heard.
+    {
+        const auto position = sink->position();
+        REQUIRE(position.has_value());
+        CHECK(position->frames_played + position->frames_queued == kFrames);
+        CHECK(position->frames_played < kFrames);
+    }
 
     // A burst: one real AC-3 frame, wrapped exactly as Player's own
     // send_unit() would, pc/pd read back from the wrap the same way
@@ -257,6 +267,18 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     CHECK(played_pcm() == kFrames);
     CHECK(played_burst() >= 1);
     CHECK(burst_sink->totals().burst_frames >= static_cast<std::uint64_t>(ac3::kSamplesPerFrame));
+    // The group's timeline runs through it within its lead (a sink may count
+    // a chunk as it arrives, before its time).
+    {
+        const auto timeline_deadline = std::chrono::steady_clock::now() + 10s;
+        while (sink->position()->frames_played < kFrames && std::chrono::steady_clock::now() < timeline_deadline) {
+            std::this_thread::sleep_for(20ms);
+        }
+        const auto position = sink->position();
+        REQUIRE(position.has_value());
+        CHECK(position->frames_played == kFrames);
+        CHECK(position->frames_queued == 0);
+    }
 
     sink->close();
     group.reset();
@@ -264,8 +286,17 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
 
     // The PCM sink's WAV is the tone, sample for sample - the float to
     // int32 conversion round-tripped through a real 16-bit player@v1
-    // stream and back without a scale or a sign error.
-    const auto wav = ac3::io::read_wav((scratch / "pcm" / "out" / "stream-1-1.wav").string());
+    // stream and back without a scale or a sign error. The sink writes the
+    // WAV's length when its stream ends, on its own thread, which close()'s
+    // stream/end and the host's going only set off: a read straight after can
+    // find the header still saying no frames (Linux GCC in CI, 2026-09-25).
+    const std::string wav_path = (scratch / "pcm" / "out" / "stream-1-1.wav").string();
+    auto wav = ac3::io::read_wav(wav_path);
+    const auto wav_deadline = std::chrono::steady_clock::now() + 10s;
+    while ((!wav || wav->frame_count() != kFrames) && std::chrono::steady_clock::now() < wav_deadline) {
+        std::this_thread::sleep_for(20ms);
+        wav = ac3::io::read_wav(wav_path);
+    }
     REQUIRE(wav.has_value());
     REQUIRE(wav->frame_count() == kFrames);
     std::size_t different = 0;

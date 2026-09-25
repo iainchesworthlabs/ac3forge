@@ -222,6 +222,9 @@ master, in any order — and returns an `ac3adm::AdmDocument` ready for `ac3adm:
 channel is either a bed channel (`bed_label` set — written as a static `DirectSpeakers` channel
 pinned at `ac3::oba::bed_label_position()`, `updates` unused) or a dynamic object (`bed_label`
 empty — written as an `Objects` channel whose `audioBlockFormat` sequence comes from `updates`).
+Each `audioTrackUID` carries the input's `sampleRate` and a `bitDepth` of `ac3adm::kWriteBitDepth`,
+the width `write_bw64()` stores the PCM at, and `audio.bits_per_sample` holds the same width, so
+the returned document already describes the master it becomes.
 
 Scoped to exactly what this project's own decoder ever produces: a dynamic-object-only-or-single-
 bed-instance programme (`Eac3Decoder` never emits ISF objects, several bed instances, or

@@ -743,23 +743,19 @@ The sections below contain the complete change list and fixes.
 - **Hearth's Network page: discovery and pairing** (A6, its first slice). `ac3hearth` browses
   `_sendspin._tcp` and lists every player it finds, live: a Hearth sink's roles, the codecs and
   data types it takes, its output slot count and width; a standard Sendspin player's codecs.
-  Selecting an unpaired sink starts a dynamic pairing code attempt at once — the sink shows a
-  six-digit code on its own console or page, entered here — and a wrong or expired code says so
-  without losing the attempt. `apps/hearth/engine/network_sinks.hpp` wraps `ac3::sendspin::
-  ServerHost` and its own `_sendspin._tcp` browse (kept apart from `ServerHost`'s own, so
-  `NetworkController`'s "Look again" is a real re-query); `network_view.hpp` turns what it learns
-  into the page's rows and labels, tested the way `output_decision.hpp` is. Groups, a sink's own
-  settings pages and reported levels are later slices — a sink already in use by another server
-  needs `ac3::sendspin` to grow a way to learn that at all, which pairing alone does not give it.
+  An unpaired sink's pairing view asks for a dynamic pairing code attempt with its own button —
+  the sink shows a six-digit code on its own console or page, entered here — and a wrong or
+  expired code says so without losing the attempt. `apps/hearth/engine/network_sinks.hpp` wraps
+  `ac3::sendspin::ServerHost` and its own `_sendspin._tcp` browse (kept apart from `ServerHost`'s
+  own, so `NetworkController`'s "Look again" is a real re-query); `network_view.hpp` turns what it
+  learns into the page's rows and labels, tested the way `output_decision.hpp` is.
 - **Hearth's Network page: making and editing a group** (A6). The list now shows the groups
   alongside the sinks; "+ New group…" makes a real one, backed by `ac3::sendspin::Group`, and its
   own editor adds and removes members, sets a member's volume and mute directly, and sets the
   group's own volume and mute (redistributed across the members that support it, the same
   arithmetic a `controller@v1` client's own command already uses). `Group` gains
   `set_member_volume`/`set_member_muted`, `set_group_volume`/`set_group_muted` and
-  `member_player` for this. Not in this slice: actually streaming a programme to a group, which
-  needs a network-group output seam in `Player` — the editor says so rather than showing a
-  number it cannot yet make true.
+  `member_player` for this.
 - **`ac3hearth` and `ac3hearth-testsink` register their own Windows Firewall exception before
   their first mDNS or Sendspin socket binds**, rather than leaving it to Windows' own "these
   features have been blocked" prompt. `ac3::sendspin::firewall::ensure_inbound_rule()`
@@ -768,6 +764,46 @@ The sections below contain the complete change list and fixes.
   public — the first time it finds none there, elevating once through a UAC prompt if the process
   is not already elevated; every later run finds the rule already in place. A loopback-only bind
   needs none of this and skips it; Linux and macOS do nothing at all.
+- **Hearth's Network page keeps every sink it finds, pairs with one when asked, and plays to a
+  group of them** (A6). Before this, the page showed none of four sinks Music Assistant held: a
+  row lasted only as long as its connection, and a sink another server holds closes a new
+  server's waiting connection at once (`client/goodbye` `concurrent_attempt`) — Music Assistant
+  holds every Sendspin player it knows, playing or not.
+  - A row now lasts while mDNS lists the sink or a connection to it is live, and keeps what the
+    sink last said about itself. A sink held elsewhere says "In use by another server." and is
+    not dialled again until asked: "Pair with this computer" for an unpaired one, "Take it back"
+    for a paired one, whose playback activation displaces the holder. Any other failure is
+    dialled again after 1, 2, 4, 8, 15 and then every 30 seconds, and the row and the detail
+    panel say which state the connection is in ("connecting…", "not answering - trying again").
+  - Pairing starts from the pairing view's own button, never from selecting a row.
+    `ServerHost::dial_to_pair()` opens a connection whose first activation is the pairing,
+    which a sink admits beside or over another server's connection instead of refusing, so a
+    held sink pairs without being released first. The view shows the address of the sink's own
+    page, where the code appears, and a code typed wrong empties the boxes and says so.
+  - The server's Noise identity is kept in settings (`identity/server`) instead of made new at
+    each start. A long-term pairing key is bound to the server identity it was made with (E8),
+    so no pairing survived Hearth restarting. The diagnostics report withholds the key with the
+    pairing records.
+  - The Network and Settings pages share one pairing store. With one each, a pairing made on the
+    Network page was missing from Settings until a restart, and one forgotten in Settings was
+    still used, and written back, by the network side. A paired sink's card gains "Forget this
+    pairing".
+  - The output picker lists the network groups, each with how many of its members are
+    connected, and its "Play here" — or the group editor's "Play to this group" — sends Hearth's
+    playback to the group. The editor's State says whether the group is playing, ready, or
+    waiting for a member to connect.
+  - `NetworkGroupSink::position()` counts what has played from the group's own timeline rather
+    than what has been handed to the group, so the end of a programme is no longer cut off when
+    the queue moves on.
+  - `ServerHost` reports a dial that failed or closed before its hello
+    (`ServerHostEvents::on_dial_failed()`), and a client's second connection closing no longer
+    reports the client gone while its first is still live.
+  - Checked against four Hearth sinks held by Music Assistant: each was listed, paired by code
+    through the page's own path, and the four played one E-AC-3 programme as a group from
+    `ac3hearth`'s engine — 312 of 312 bursts each, no errors, and every frame within 0.6 ms of
+    when it was due on each board (its own `worst_error_us`). A hidden `ac3tests` case,
+    `[hearth-network-live]`, repeats that against the sinks named in `AC3HEARTH_LIVE_SINKS`, and
+    withdraws its pairings afterwards.
 
 **Audio outputs**
 
@@ -1216,6 +1252,14 @@ The sections below contain the complete change list and fixes.
   at an acmod other than 1/0 — a *main* service per A/52 Table 5.7) the same as bsmod 7's other
   meaning, voice-over. The MPEG-TS descriptor writer already got this split right; the `dec3`
   writer now shares its rule, `ac3::meta::is_associated_service`.
+- **ADM BWF masters had no `bitDepth` on their `audioTrackUID`s.** `ac3adm::write_bw64()`, and
+  with it `ac3cli decode <in> <out> [objects_dir] [adm_out]`, wrote each `audioTrackUID` with
+  `UID` and `sampleRate` alone while its `<fmt >` chunk declares 24-bit PCM, and Dolby Encoding
+  Engine 6.5.4 refused the master ("Mismatched track bit depth between ADM and WAV"). Every
+  `audioTrackUID` now carries `bitDepth` equal to the `<fmt >` chunk's bits per sample: both come
+  from one constant, `ac3adm::kWriteBitDepth`, whatever the model's own `bit_depth` says.
+  `ac3::admbridge::write()` sets the same value in the document it returns. `parse_bw64()` reads
+  `audioTrackUID`s with or without the attribute, as before.
 
 **Command line and GUI**
 
@@ -1373,6 +1417,22 @@ The sections below contain the complete change list and fixes.
     whether or not there is a network to join.
   - The QEMU Ethernet network set itself up again on a second call too, and is now
     set up once as well.
+- **An ESP32-P4 Hearth sink kept the name `hearth` and gave Sendspin no MAC address.**
+  `hearth_sink` made its default name (`hearth-` and the last six hex digits of the MAC)
+  and the `mac_address` in its `client/hello` from the WiFi station MAC. ESP-IDF's MAC
+  table has a station entry only on a target with a radio of its own, and the P4's WiFi is
+  an ESP32-C6 across SDIO, so the read failed on every boot and logged
+  `mac type is incorrect (not found)` as an error. The board stayed `hearth`, at
+  `hearth.local`, with an empty `mac_address`, beside S3 and C6 boards with names like
+  `hearth-eb2c64`.
+  - One `board_mac()` now serves both: the station MAC where the target has one, the
+    chip's base MAC (its eFuse MAC, and the serial number its USB port reports) where it
+    has not. The target is asked first, so nothing is logged. An S3 or C6 reads the same
+    six bytes as before.
+  - A P4 that nobody has renamed takes `hearth-<last three bytes of its MAC>`, and the
+    matching `.local` address, at its next start; a name stored through the board's page
+    is kept. The address is the P4's own, not that of the C6 radio, so it is not the one
+    an access point lists for the board.
 - **Over an ESP32-S3's USB console, a Hearth sink's Improv answers waited for the next
   line it printed.** ESP-IDF's driverless USB-Serial-JTAG console sends its buffer to
   the host only at a newline, and an Improv packet has none. On an idle board, or after
@@ -1772,6 +1832,20 @@ The sections below contain the complete change list and fixes.
 
 **Build system**
 
+- **`libac3forge_c.so` exported the codec it embeds, and the `BUILD_SHARED_LIBS=ON` test pass ran
+  on that copy instead of `libac3forge.so`.** On Linux the C library exported the C++ symbols of
+  the static codec inside it (346 of the 562 lines in its ABI allowlist, beside its 216 C
+  functions), and linking `ac3::forge_c_shared` put `libac3forge_static.a` on the consumer's link
+  line. In the shared pass `ac3tests` bound none of its `ac3::` symbols to `libac3forge.so`: 231
+  went to `libac3forge_c.so`, 244 were linked in from the archive, and `libac3forge.so`'s own
+  internal calls resolved to those copies. A C program linking the shared library was also linked
+  with the C++ driver and the archive. The archive no longer reaches consumers of the shared
+  library, and on Linux the library exports the 216 C functions and nothing else; macOS and
+  Windows are unchanged. Four member functions a shared-library user could not call are now
+  exported from `libac3forge.so`: `quality::BandNoise::reset`, `total_signal` and `total_noise`,
+  and `verify::FrameTrace::reset`. The two C examples name libm themselves, and
+  `tools/checks/check_shared_forge_binding.sh` fails the shared pass if `ac3tests` stops binding
+  to `libac3forge.so`.
 - **macOS cross-builds compiled the wrong architecture's SIMD kernels.**
   `AC3FORGE_SIMD`'s `auto` keyed on `CMAKE_SYSTEM_PROCESSOR`, which on Apple platforms
   describes the host, not `CMAKE_OSX_ARCHITECTURES`'s target — building arm64 from an

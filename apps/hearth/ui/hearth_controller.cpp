@@ -58,6 +58,7 @@
 #include "pcm_sink.hpp"
 #include "probe_json.hpp"
 #include "qsettings_store.hpp"
+#include "shared_pairing_store.hpp"
 #include "test_outputs.hpp"
 #include "queue.hpp"
 #include "settings_model.hpp"
@@ -805,8 +806,7 @@ HearthController::HearthController(QObject* parent)
       settings_(QSettings::defaultFormat(), QSettings::UserScope, QStringLiteral("ac3forge"),
                QStringLiteral("Hearth")),
       store_(std::make_unique<QSettingsStore>(settings_)),
-      pairing_(std::make_unique<ac3::hearth::PairingStore>(
-          *store_, [] { return QDate::currentDate().toString(Qt::ISODate).toStdString(); })) {
+      pairing_(shared_pairing_store()) {
     poll_timer_.setInterval(kPollMs);
     connect(&poll_timer_, &QTimer::timeout, this, &HearthController::poll);
     // A window close runs this; a session logout or a killed process does

@@ -247,6 +247,9 @@ class ServerSession {
     [[nodiscard]] bool burst_streaming() const { return burst_stream_.has_value(); }
     // A pairing activity is declared on the connection.
     [[nodiscard]] bool pairing() const;
+    // A pairing attempt is running: activated and not yet ended. The activity stays declared
+    // after an attempt ends without pairing, until the next activation.
+    [[nodiscard]] bool pairing_attempt_running() const { return attempt_running(); }
     // A pairing attempt waits for the operator's code.
     [[nodiscard]] bool pairing_wants_code() const { return attempt_ && attempt_->wants_code(); }
 
