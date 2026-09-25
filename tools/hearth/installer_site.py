@@ -3,6 +3,9 @@
 
     python tools/hearth/installer_site.py --release latest --out docs/assets/sink-installer
 
+(--run N or --dir PATH take a CI run's images, or a directory of them, instead:
+a way to try the page before a release publishes any.)
+
 docs/hearth/sink-installer.md is a page on the documentation site built on ESP
 Web Tools, which flashes a board over Web Serial from a manifest of parts. A
 page cannot fetch GitHub release assets, which carry no CORS headers, so
@@ -17,8 +20,11 @@ the manifest's SHA-256 and the release's SHA512SUMS, and writes into OUT:
   new_install_prompt_erase, so the person installing chooses whether to erase:
   a new board is erased, and a board already in use keeps its NVS and moves to
   this layout;
-- index.json: the release's version and each image's name, title and
-  manifest, which the page reads to show what it offers.
+- index.json: the release (its tag, its page and when it was published), the
+  repository and the manifest's name, and each image's name, title, chip and
+  manifest. The page reads it to show what it offers, board by board, and
+  asks GitHub's API whether a newer release has firmware than the one the
+  site took.
 
 A release that publishes no sink firmware yet leaves an index.json with no
 images, and the page says so. Standard library only, and ota.py's own reading
@@ -60,6 +66,31 @@ class SiteError(Exception):
     """Why the installer's firmware cannot be written; main() prints it."""
 
 
+def read_directory(directory: Path) -> ota.Published:
+    """A set of images already on disk: a release's files, or CI's esp32-firmware artifact."""
+    try:
+        manifest = json.loads((directory / ota.MANIFEST_NAME).read_text("utf-8"))
+    except (OSError, ValueError) as error:
+        raise SiteError(f"{directory} has no readable {ota.MANIFEST_NAME}: {error}") from None
+    sums = directory / "SHA512SUMS"
+    return ota.Published(
+        manifest,
+        directory,
+        f"directory {directory}",
+        ota.read_sums(sums.read_text("utf-8")) if sums.is_file() else {},
+    )
+
+
+def read_file(published: ota.Published, file_name: str) -> bytes:
+    """A published file: downloaded from the release, or read where the run or directory has it."""
+    if file_name in published.urls:
+        return ota.github_get(published.urls[file_name])
+    path = published.directory / file_name
+    if not file_name or not path.is_file():
+        raise SiteError(f"{published.source} names {file_name}, which it does not publish")
+    return path.read_bytes()
+
+
 def unpack_parts(
     published: ota.Published, image: dict[str, Any], out: Path
 ) -> list[dict[str, Any]]:
@@ -67,9 +98,7 @@ def unpack_parts(
     name = str(image["name"])
     entry = (image.get("files") or {}).get("parts") or {}
     file_name = str(entry.get("name", ""))
-    if file_name not in published.urls:
-        raise SiteError(f"{published.source} names {file_name}, which it does not publish")
-    data = ota.github_get(published.urls[file_name])
+    data = read_file(published, file_name)
     if hashlib.sha256(data).hexdigest() != entry.get("sha256"):
         raise SiteError(f"{file_name}'s SHA-256 is not the one {ota.MANIFEST_NAME} gives")
     if published.sums and published.sums.get(file_name) != hashlib.sha512(data).hexdigest():
@@ -90,10 +119,29 @@ def unpack_parts(
     return parts
 
 
+def empty_index() -> dict[str, Any]:
+    """What the page reads when no release has sink firmware yet."""
+    return {
+        "repository": ota.REPOSITORY,
+        "manifest": ota.MANIFEST_NAME,
+        "version": "",
+        "tag": "",
+        "page": "",
+        "published": "",
+        "images": [],
+    }
+
+
 def write_site(published: ota.Published, out: Path) -> dict[str, Any]:
     out.mkdir(parents=True, exist_ok=True)
     manifest = published.manifest
-    index: dict[str, Any] = {"version": manifest.get("version", ""), "images": []}
+    index = empty_index()
+    index.update(
+        version=str(manifest.get("version", "")),
+        tag=published.tag,
+        page=published.page,
+        published=published.published,
+    )
     for image in manifest.get("images") or []:
         name = str(image["name"])
         family = CHIP_FAMILIES.get(str(image.get("target", "")))
@@ -109,7 +157,12 @@ def write_site(published: ota.Published, out: Path) -> dict[str, Any]:
         }
         (out / f"{name}.json").write_text(json.dumps(installer, indent=2) + "\n", "utf-8")
         index["images"].append(
-            {"name": name, "title": TITLES.get(name, name), "manifest": f"{name}.json"}
+            {
+                "name": name,
+                "title": TITLES.get(name, name),
+                "chip": family,
+                "manifest": f"{name}.json",
+            }
         )
     (out / "index.json").write_text(json.dumps(index, indent=2) + "\n", "utf-8")
     return index
@@ -117,8 +170,15 @@ def write_site(published: ota.Published, out: Path) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument(
+    source = parser.add_mutually_exclusive_group()
+    source.add_argument(
         "--release", default="latest", help="a release tag, or latest (the default)"
+    )
+    source.add_argument(
+        "--run", help="a CI run's number: its esp32-firmware artifact, to try the page early"
+    )
+    source.add_argument(
+        "--dir", type=Path, help="a directory with a release's firmware files, for the same"
     )
     parser.add_argument(
         "--out", type=Path, required=True, help="where the site's installer assets go"
@@ -126,16 +186,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         with tempfile.TemporaryDirectory(prefix="installer-") as temporary:
-            published = ota.fetch_release(args.release, Path(temporary))
+            if args.run:
+                published = ota.fetch_run(args.run, Path(temporary))
+            elif args.dir:
+                published = read_directory(args.dir)
+            else:
+                published = ota.fetch_release(args.release, Path(temporary))
             index = write_site(published, args.out)
     except ota.NoPublishedFirmware as error:
         # No release carries sink firmware yet: the page says so. Anything
         # else - the API not answering, a download that does not check out -
         # fails the deploy rather than publish an installer with nothing in it.
         args.out.mkdir(parents=True, exist_ok=True)
-        (args.out / "index.json").write_text(
-            json.dumps({"version": "", "images": []}) + "\n", "utf-8"
-        )
+        (args.out / "index.json").write_text(json.dumps(empty_index(), indent=2) + "\n", "utf-8")
         print(f"installer_site: {error}; the installer offers nothing yet")
         return 0
     except (SiteError, ota.UsageError, KeyError, zipfile.BadZipFile) as error:

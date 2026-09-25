@@ -847,6 +847,8 @@ on ESP Web Tools. Its supported chips include the ESP32-S3, ESP32-C6 and ESP32-P
   Safari, and nothing on iOS.
 - **Hosting.** The page cannot fetch GitHub release assets, which carry no CORS headers, so
   `docs.yml` copies the latest release's images and manifest into the site when it deploys.
+  Tried in a browser on 2026-09-25: a page on another site can read GitHub's release list from
+  its API, but not a release's files, through their download links or through the API.
 - **On the P4,** the installer has to be on the USB-C connector that carries the console. The
   board's other connector is a separate USB peripheral.
 
@@ -862,7 +864,18 @@ on ESP Web Tools. Its supported chips include the ESP32-S3, ESP32-C6 and ESP32-P
   checks each image's `parts.zip` against the manifest and `SHA512SUMS`, unpacks it, and writes
   ESP Web Tools' manifest for each image.
 - **One manifest for each image.** ESP Web Tools chooses a build by chip family alone, so the two
-  C6 images need a button each, and the page lists the four.
+  C6 images need a button each.
+- **Every chip, every time.** The page lists the ESP32-S3, the ESP32-C6 and the ESP32-P4, each
+  with a button for each of its images. A chip the release has no image for says so, rather
+  than going missing.
+- **Which release.** The page names the release its images came from, with its date and a link.
+  It also asks GitHub's API which is the newest release with firmware. When that is newer than
+  the site's, it says so, and points to that release's page and to the guide's `esptool` steps.
+  A page the site has not been republished for since a release is then still correct about
+  what it offers.
+- **Before a release.** `installer_site.py --run <id>` or `--dir <path>` fills the assets from a
+  CI run's `esp32-firmware` artifact, or from a directory of the same files, to try the page
+  with real images before any release publishes them.
 - **Before any release publishes firmware**, the script writes an index with no images and the
   page says so. Any other failure, such as the API not answering, fails the deploy rather than
   publish an empty installer.

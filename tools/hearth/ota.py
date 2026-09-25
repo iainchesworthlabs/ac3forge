@@ -1349,6 +1349,10 @@ class Published:
     sums: dict[str, str] = field(default_factory=dict)
     # A file that is not in `directory` yet, and where to fetch it.
     urls: dict[str, str] = field(default_factory=dict)
+    # For a release: its tag, its page on GitHub and when it was published.
+    tag: str = ""
+    page: str = ""
+    published: str = ""
 
 
 def github_request(url: str) -> urllib.request.Request:
@@ -1412,7 +1416,16 @@ def fetch_release(tag: str, into: Path) -> Published:
     into.mkdir(parents=True, exist_ok=True)
     manifest = json.loads(github_get(urls[MANIFEST_NAME]))
     sums = read_sums(github_get(urls["SHA512SUMS"]).decode("utf-8")) if "SHA512SUMS" in urls else {}
-    return Published(manifest, into, f"release {name}", sums, urls)
+    return Published(
+        manifest,
+        into,
+        f"release {name}",
+        sums,
+        urls,
+        tag=name,
+        page=str(release.get("html_url") or ""),
+        published=str(release.get("published_at") or ""),
+    )
 
 
 def fetch_run(run_id: str, into: Path) -> Published:
