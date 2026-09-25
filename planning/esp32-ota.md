@@ -316,9 +316,13 @@ On the new image:
 - A panic, a watchdog reset, a brownout or a power cut before acceptance also rolls back, through
   the bootloader. A board that hangs during its trial can therefore be unplugged and plugged back
   in, and it comes back on the previous image.
-- The 5-minute deadline runs on an `esp_timer`, not in app_main's loop, so a stuck loop still
-  rolls back. During the trial the task watchdog is set to panic (`esp_task_wdt_reconfigure`).
-  None of the board builds set `CONFIG_ESP_TASK_WDT_PANIC` today.
+- The trial runs on a task of its own, not in app_main's loop, so a stuck loop still rolls back.
+  An `esp_timer` 30 s past the deadline restarts the board if that task has not acted, and a
+  restart while on trial is itself a rollback.
+- The task watchdog is left as the builds set it: it reports and does not panic
+  (`CONFIG_ESP_TASK_WDT_PANIC` is off in every board build). A decode that keeps the idle task
+  from running for 5 s makes it fire. That is a problem of load, not a broken image, and a trial
+  that panicked on it would roll back a good image because of what a server happened to play.
 - While the image is on trial:
   - `PUT /firmware` is refused. ESP-IDF refuses too: `esp_ota_begin` returns
     `ESP_ERR_OTA_ROLLBACK_INVALID_STATE`, because the other slot holds the image to fall back to.
@@ -430,9 +434,9 @@ signed with its key. That includes one sent by a hostile web page ([Routes](#rou
 | Route | What it does | Replies |
 |---|---|---|
 | `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended; an upload's progress; slot size, flash size and the partition table as the board has it; the bootloader's version; whether the board's network is stored or built into its image | `200`, JSON |
-| `PUT /firmware` | Body: an app image (`ac3forge_hearth_sink.bin`, not the merged image), with an optional `Content-Digest`. Enters flash mode, writes the other slot, checks it, restarts into it | `200` then a restart; `400` not an app image, the wrong chip, a revision this chip does not meet, cut short, or damaged (a SHA-256 does not match, and the reply says which); `403` the `Host` is not one of the board's own names ([decision 13](#decisions)); `409` on trial, or an update already running; `411` no length; `413` larger than the slot; `415` not `application/octet-stream` |
+| `PUT /firmware` | Body: an app image (`ac3forge_hearth_sink.bin`, not the merged image), with an optional `Content-Digest`. Enters flash mode, writes the other slot, checks it, restarts into it | `200` then a restart; `400` not an app image, the wrong chip, a revision this chip does not meet, cut short, or damaged (a SHA-256 does not match, and the reply says which); `403` the `Host` is not one of the board's own names ([decision 13](#decisions)); `409` on trial, or an update already running; `411` no length; `413` larger than the slot; `415` a `Content-Type` other than `application/octet-stream` (none at all is fine: `curl -T` sends none) |
 | `PUT /firmware/mode` | Body: `flash` enters flash mode; `normal` leaves it with a restart into the running image | `200`; `409` on trial |
-| `PUT /firmware/rollback` | Makes the other slot's image, if it is valid, the running one, and restarts | `200`; `409` nothing valid to roll back to |
+| `PUT /firmware/rollback` | Makes the other slot's image, if it is valid, the next to boot, and restarts into it, on trial as an update's image is. On trial, gives up the trial instead | `200`; `409` nothing valid to roll back to |
 | `POST /restart` | Restarts into the running image | `200`; `409` on trial, where a restart would roll back |
 
 `curl -T build/ac3forge_hearth_sink.bin http://hearth-eb2c64.local/firmware` is a whole update,
@@ -758,13 +762,18 @@ different versions. It boots A, then:
 3. pushes B with a `Content-Digest` that does not match: `400`, and A keeps running;
 4. pushes a C6 image: `400` before anything is written;
 5. cuts an upload short: refused, and the next full upload is accepted;
-6. pushes an image built with `AC3FORGE_FIRMWARE_TEST_UNHEALTHY`, which never reports healthy: it
-   rolls back at the (shortened) deadline, and `last_update` says why;
-7. pushes one built with `AC3FORGE_FIRMWARE_TEST_PANIC_AT_BOOT`: the bootloader rolls it back;
+6. pushes an image built with `AC3FORGE_FIRMWARE_TEST=unhealthy`, which never reports healthy:
+   it rolls back at the (shortened) deadline, and `last_update` says why;
+7. pushes one built with `AC3FORGE_FIRMWARE_TEST=panic`, which panics as its trial starts: the
+   bootloader rolls it back;
 8. damages the running slot's image in the flash file between two boots: the bootloader boots
    the other slot;
 9. sends `PUT /firmware/rollback`, then `POST /restart`;
 10. sends a firmware PUT with a `Host` that is not the board's: `403`.
+
+`AC3FORGE_FIRMWARE_TEST` is a CMake variable, not a Kconfig option, and so is `PROJECT_VER` for
+image B. Each variant is then a rebuild of A's build directory that recompiles a file or two, so
+the step costs one full build.
 
 QEMU writes to the flash image it was given and survives `esp_restart()`, but O1 has to show both
 before relying on them.
