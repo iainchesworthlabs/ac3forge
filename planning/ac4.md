@@ -30,8 +30,9 @@
     the ESP32-P4, the family's part with the most CPU and memory, is AC-4's first ESP32 target, with
     the S3 and the C6 to follow as the decoder is optimised, which [D14](#d14-ac-4-on-the-esp32s)
     plans in place of D12 and D13; AC-4 follows AC-3's and E-AC-3's arithmetic, `double`, `float`
-    and fixed point by target; and the `ac3` names stay, with the wording that says AC-3 and E-AC-3
-    alone corrected ([N1](#n1-the-names)). Decisions 24 to 35, under
+    and fixed point by target; and the programs named `ac3` are renamed, since `ac3cli` doing AC-4
+    reads wrongly, while the family's name and the library's identifiers stay
+    ([N1](#n1-the-names)). Decisions 24 to 35, under
     [Decisions of 2026-09-25](#decisions-of-2026-09-25), record them.
 
     Shape follows the Hearth plan: design sections say what is proposed and why, each phase carries
@@ -1893,22 +1894,35 @@ Asked by the user on 2026-09-25, since libraries and programs named `ac3` now do
 the tree found `ac3forge` already the family's name for parts with no AC-3 in them (Hearth,
 Sendspin, Crucible, the ADM and IAB readers), the recasting plan's decisions of 2026-09-05 keeping
 the identifiers until the 1.0 freeze and the program names through 0.x
-(`planning/recasting.md`), and AC-4 named `ac4` on purpose
-([decision 15](#decisions-for-the-encoder-and-the-applications)). What is wrong is wording: the man
-page, the CLI's banner, the CMake project's description (which reaches pkg-config and the Debian
-packages), README, the site's description, the Homebrew formula, the desktop entries and the
-Windows file-type label say AC-3 and E-AC-3 alone, and a few pages describe `ac4dec::` and
-`ac4enc::` namespaces the code does not have.
+(`planning/recasting.md`, decision 6 there), and AC-4 named `ac4` on purpose
+([decision 15](#decisions-for-the-encoder-and-the-applications)). The man page, the CLI's banner,
+the CMake project's description (which reaches pkg-config and the Debian packages), README, the
+site's description, the Homebrew formula, the desktop entries and the Windows file-type label say
+AC-3 and E-AC-3 alone, and a few pages describe `ac4dec::` and `ac4enc::` namespaces the code does
+not have. The user found a program called `ac3cli` doing AC-4 wrong in itself, and took renaming the
+programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's scheme S3 costed.
 
+- New names for the programs: `ac3cli`, `ac3gui`, `ac3hearth` and `ac3crucible`, and Hearth's test
+  sink and server; the internal ones (`ac3tests`, the benchmarks, the probe) follow or stay, as the
+  user chooses with the names.
+- The old names kept working through a stated period, printing the new name; the completions for
+  four shells, the man page, the Homebrew formula and cask, winget's aliases, the desktop entries
+  and bundle identifiers, the Windows file-type command lines, the firewall rules' names and the
+  translation catalogues named after the programs; `ac3forge <version>` as the version line, as
+  now.
 - Wording that names the formats the family handles, AC-4 among them, wherever it says AC-3 and
   E-AC-3 alone.
-- No identifier changes ([decision 35](#decisions-of-2026-09-25)).
+- The family's name, the library's identifiers, the packages' names and the C API stay.
 
-**Exit:** no page or package description names AC-3 and E-AC-3 as the family's only formats; the
-documentation gates pass.
+The names are the user's to choose. At a point where few phase branches are open, since every
+branch touches the programs' names.
 
-**Verified by:** a search for the stale phrases; `mkdocs build --strict` and
-`tools/checks/check_doc_paths.py`.
+**Exit:** the programs build and install under their new names, the old names still run and say the
+new one, every test and document uses the new names, and no page or package description names AC-3
+and E-AC-3 as the family's only formats; the documentation gates pass.
+
+**Verified by:** `ac3tests` and the CLI tests under the new names; the package checks; a search for
+the old names and the stale phrases; `mkdocs build --strict` and `tools/checks/check_doc_paths.py`.
 
 ## Decisions
 
@@ -2412,8 +2426,14 @@ words, asked for 25 in their own words, and took the recommendations for the res
     keeps identifiers to 1.0. A rename's cost has about doubled since that plan counted it: about a
     thousand files, the published PyPI and Homebrew names, Hearth's stored settings and pairing
     keys, the ESP32 updater's check of an image's project name, and the Sendspin extension role's
-    name at both ends. AC-4's own installed names follow decisions 15 and 21, and are harder to
-    change once D8, E7 and I4 export them. **Taken: (a).**
+    name at both ends. Cost of (b): `ac3cli` in about 355 files and `ac3gui` in 121, the
+    completions, the man page, the formula and cask, winget's aliases, the desktop entries and every
+    user's scripts, which the old names kept for a period soften. AC-4's own installed names follow
+    decisions 15 and 21, and are harder to change once D8, E7 and I4 export them.
+
+    **Taken: (b)**, against the recommendation, in the user's words: "Let’s take option b on the
+    names. I feel that “ac3cli” doing ac4 stuff seems incorrect". The new names are the user's to
+    choose; N1 does the rest.
 
 | # | Question | Recommended | **Taken** |
 |---|---|---|---|
@@ -2428,7 +2448,7 @@ words, asked for 25 in their own words, and took the recommendations for the res
 | 32 | AC-4 on the C6 | Measured, with PCM where it misses | **Measured, with PCM where it misses** |
 | 33 | The converter on the ESP32s | The host's design, measured | **The host's design, measured** |
 | 34 | The encoder on an ESP32 | Never | **Never** |
-| 35 | The names | Keep them; correct the wording | **Keep them; correct the wording** |
+| 35 | The names | Keep them; correct the wording | **Rename the programs** ← against, in the user's words; the names to come |
 
 ## What cannot be verified, and why
 

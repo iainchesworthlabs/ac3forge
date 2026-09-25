@@ -27,7 +27,7 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 | [hearth-sendspin-extension.md](hearth-sendspin-extension.md) | Sendspin conformance, Music Assistant compatibility, `_ac3forge_player@v1` | Draft for review |
 | [esp32-ota.md](esp32-ota.md) | Firmware updates over the network for `hearth_sink` boards (S3, C6, P4): A/B slots, rollback, integrity checks, flash mode; firmware published by CI, and a user guide | Proposed 2026-09-24; nothing built |
 | [recasting.md](recasting.md) | Library / Forge / Crucible family naming and docs | Phases 1–5 in; Phase 6 partly; Phase 7 waits on driver signing |
-| [ac4.md](ac4.md) | AC-4 in full: a decoder beside the inspector, an encoder, and both in the applications; the oracles, the phases and the decisions | 2026-09-25: D1 to D5 and E1 to E4 merged, D6 and E5 open; the rest built in parallel; G1 adds the DEE streams still needed before the licence ends on 2026-11-06; D14 takes AC-4 to the ESP32s, the P4 first; N1 corrects the family's wording |
+| [ac4.md](ac4.md) | AC-4 in full: a decoder beside the inspector, an encoder, and both in the applications; the oracles, the phases and the decisions | 2026-09-25: D1 to D5 and E1 to E4 merged, D6 and E5 open; the rest built in parallel; G1 adds the DEE streams still needed before the licence ends on 2026-11-06; D14 takes AC-4 to the ESP32s, the P4 first; N1 renames the programs named `ac3` |
 
 ---
 
