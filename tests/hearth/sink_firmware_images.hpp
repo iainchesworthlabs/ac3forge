@@ -34,6 +34,15 @@ struct ImageSpec {
     std::uint32_t segment_bytes = 1024;
 };
 
+// esp_app_desc_t, which starts the first segment.
+inline constexpr std::size_t kDescriptionBytes = 256;
+
+// The segment an image made from `spec` has: never shorter than the
+// description it starts with.
+inline std::size_t segment_length(const ImageSpec& spec) {
+    return std::max<std::size_t>(spec.segment_bytes, kDescriptionBytes);
+}
+
 inline void put16(std::vector<std::uint8_t>& bytes, std::size_t at, std::uint16_t value) {
     bytes[at] = static_cast<std::uint8_t>(value & 0xFF);
     bytes[at + 1] = static_cast<std::uint8_t>(value >> 8);
@@ -84,7 +93,7 @@ inline std::string hex(std::span<const std::uint8_t> bytes) {
 // Where the checksum byte of an image made from `spec` sits: the last byte
 // of the 16-byte block after the segment.
 inline std::size_t checksum_at(const ImageSpec& spec) {
-    const std::size_t end = 24 + 8 + spec.segment_bytes;
+    const std::size_t end = 24 + 8 + segment_length(spec);
     return ((end + 1 + 15) & ~std::size_t{15}) - 1;
 }
 
@@ -100,9 +109,9 @@ inline std::vector<std::uint8_t> make_image(const ImageSpec& spec) {
     put16(image, 17, spec.max_rev);
     image[23] = spec.hash_appended ? 1 : 0;
     put32(image, 24, 0x3C000020);  // the segment's load address
-    put32(image, 28, spec.segment_bytes);
+    put32(image, 28, static_cast<std::uint32_t>(segment_length(spec)));
 
-    std::vector<std::uint8_t> segment(spec.segment_bytes, 0);
+    std::vector<std::uint8_t> segment(segment_length(spec), 0);
     put32(segment, 0, 0xABCD5432);  // esp_app_desc_t's magic word
     put_text(segment, 16, spec.version);
     put_text(segment, 48, spec.project);
@@ -110,7 +119,7 @@ inline std::vector<std::uint8_t> make_image(const ImageSpec& spec) {
     for (std::size_t i = 0; i < 32; ++i) {
         segment[144 + i] = static_cast<std::uint8_t>(spec.elf_seed + i);
     }
-    for (std::size_t i = 256; i < segment.size(); ++i) {
+    for (std::size_t i = kDescriptionBytes; i < segment.size(); ++i) {
         segment[i] = static_cast<std::uint8_t>(i * 7 + spec.elf_seed);
     }
     std::uint8_t checksum = 0xEF;
