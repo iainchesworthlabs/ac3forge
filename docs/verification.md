@@ -1017,10 +1017,13 @@ which a shared misreading still passes.
 `src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz,
 at `frame_rate_index` 13, at a constant rate, in the SIMPLE codec mode or the ASPX mode, with A-SPX
 above a crossover: below 96 kbps a channel in mono and stereo, with companding below 64, and below
-76.8 kbps a channel in 5.X, as DEE's 5.1 streams switch between 320 and 384 kbps. 5.0 and 5.1 take
-the 5.X element in the one form DEE's streams have (`coding_config` 0 and `2ch_mode` 0: L and R a
-pair, Ls and Rs a pair, C alone, the LFE); its other coding configurations, chosen frame by frame by
-the bits they save, and 7.0 and 7.1 in the 7.X element are experimental options. It shares
+76.8 kbps a channel in 5.X, as DEE's 5.1 streams switch between 320 and 384 kbps. Below 33.6 kbps a
+channel in 5.X it writes ASPX_ACPL_2, and below 22.4 ASPX_ACPL_3, as DEE's 5.1 streams are at 128
+and 96 kbps: a downmix coded in the ASPX way and A-CPL's parameters, from which the decoder rebuilds
+the channels. 5.0 and 5.1 take the 5.X element in the one form DEE's streams have (`coding_config` 0
+and `2ch_mode` 0: L and R a pair, Ls and Rs a pair, C alone, the LFE); its other coding
+configurations, chosen frame by frame by the bits they save, 7.0 and 7.1 in the 7.X element,
+ASPX_ACPL_1 and A-CPL in stereo are experimental options. It shares
 `src/ac4core`'s transforms, windows, codebooks, QMF banks and A-SPX tables and high frequency
 generator with the decoder, and writes the syntax through a transcription of the tables of its own.
 `ac3cli ac4-encode` writes it raw or in MP4. Four checks stand behind it (`planning/ac4.md`, the
@@ -1033,8 +1036,9 @@ encoder's ladder):
   give the same bytes. The encoder-space harness (`tools/ci/fuzz_ac4_encoder_space.py`) draws
   configurations and adversarial PCM, and compares the encoder's trace, the decoder's and
   `tools/references/ac4_syntax.py`'s through `ac3cli`'s `syntax-trace=` option; it draws mono to
-  5.1 and the 7.X layouts, the codec mode the rate picks or either one forced, and the experimental
-  tools. FFmpeg Validate runs it for 120 seconds on each pull request, and the nightly fuzz workflow
+  5.1 and the 7.X layouts, the codec mode the rate picks, SIMPLE or ASPX forced or an A-CPL mode
+  forced, and the experimental tools, and its `--check-envelope` holds each A-CPL mode's least rate.
+  The fuzz target reaches every A-CPL mode too. FFmpeg Validate runs it for 120 seconds on each pull request, and the nightly fuzz workflow
   for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
   interleaving back through the decoder's parser, and hold the encoder's reading of the interval
   borders, envelope resolutions and noise borders to the parser's. The encoder undoes the three, four
@@ -1046,7 +1050,11 @@ encoder's ladder):
   SIMPLE and ASPX, and 7.0 and 7.1 in each of the three 7.X layouts (`test_ac4enc_encoder.cpp`, and
   through `ac3cli` in the WAV order `decode` writes). Noise above the crossover in one channel comes
   back in that channel alone, so each `aspx_data` element carries the channels Part 1 Table 213 gives
-  it.
+  it. In the A-CPL modes, whose parameters rebuild the channels band by band, a tone at the centre of
+  each channel's own parameter band comes back within 0.5 dB, 40 dB over every other tone, in
+  ASPX_ACPL_1 to 3 and in stereo. A pair's level difference and correlation come back with it: for one
+  noise at a 6 dB difference within 1 dB and above 0.9, and for two independent noises within 1 dB and
+  under 0.3.
 - **Readers outside the project.** FFmpeg's raw AC-4 demuxer finds every frame at the size written,
   and its mov demuxer reads the MP4 track (the harness and the codec matrix). Locally,
   `tools/checks/check_ac4_encode_readers.py` holds MediaInfo's frame-by-frame trace to the
@@ -1054,7 +1062,12 @@ encoder's ladder):
   it writes is the encoder's, byte for byte, for mono and stereo at both sample rates, 5.0 and 5.1,
   the experimental coding configurations and the 7.X layouts 3/4/0 and 5/2/0. For 3/2/2 the muxer
   leaves out channel group 4, which Part 2 Table A.27 and Pseudocode E.3 both give its top front
-  pair, and MediaInfo's summary names that pair Tfc (`src/ac4enc/ERRATA.md`).
+  pair, and MediaInfo's summary names that pair Tfc (`src/ac4enc/ERRATA.md`). MediaInfo and the
+  muxer read the A-CPL streams as configured as well, ASPX_ACPL_1 and A-CPL in stereo included.
+  librempeg decodes the ASPX_ACPL_2 and ASPX_ACPL_3 streams' coded channels to within 69 dB of the
+  decoder's recovered downmixes and leaves the channels A-CPL rebuilds silent, as it does DEE's; it
+  refuses the ASPX_ACPL_1 streams, whose residuals and side send fewer bands than the channels they
+  pair with, and reads D5's constructed ones, which send as many.
 - **Decoded against the sources** (`tools/checks/score_ac4_encode.py`, in FFmpeg Validate): the
   programme fixtures, one tone per channel, a sweep, noise, castanet-like bursts and a panned source,
   mono, stereo, 5.0 and 5.1 (music and film mixes), 48 and 44.1 kHz, 24 to 384 kbps, encoded and
@@ -1077,6 +1090,10 @@ encoder's ladder):
   band strays further from the source than the decoder's, as it does on DEE's streams: on the
   castanet-like bursts at 64 kbps it arrives a block of 1,024 samples after each burst and trails
   it, 27 dB from the source's energy per loud block, where the decoder's output is 1.7 dB from it.
+  The A-CPL legs, 5.1 at 96 and 128 kbps, 5.0 at 112, 5.1 in ASPX_ACPL_1 at 160 and stereo in both
+  modes, are scored as `score_ac4_decode.py` scores DEE's: the coded downmixes, recovered from the
+  output, as waveforms below the crossover, each parameter band's level difference and correlation
+  against the source's, and on the tones the routing margin.
 - **The race against DEE** (`score_ac4_encode.py --gold`, locally): phase G0's 2.0 legs of music,
   speech and tones from 48 to 768 kbps, encoded again here in the mode DEE writes at each rate, and
   both decoded by the decoder. In ASPX, from 48 to 144 kbps, ViSQOL is within 0.03 of DEE's or above
@@ -1097,7 +1114,13 @@ encoder's ladder):
   is within 1.6 dB of DEE's, and from 320 above it, by 3.2 to 3.8 dB at 384 and 15 to 19 at 768.
   ViSQOL is at or above DEE's at 192 and 256 kbps, and from 288 up to 0.05 under it on film and
   0.02 on music, within 0.01 at 768. The log-spectral distance is lower on every leg, and the A-SPX
-  tiles within 0.07 dB of DEE's distance from the source or closer. Its scores are pinned.
+  tiles within 0.07 dB of DEE's distance from the source or closer. At 96, 128 and 144 kbps, in DEE's
+  A-CPL modes, each band's level difference lands 0.02 to 0.13 dB nearer the source's than DEE's on
+  music and film, the correlation within 0.007 of DEE's distance, the log-spectral distance lower on
+  every leg, and ViSQOL 0.01 to 0.06 above DEE's but for film at 128 kbps, 0.12 under, where the
+  coded centre's band below 2 kHz trails DEE's by 9.5 dB of SNR; the tones route 1.2 to 2.9 dB more
+  cleanly than DEE's. The coded downmixes' SNR trails DEE's by 3.4 to 9.5 dB, the same spread of
+  noise across the band as at 192 kbps. Its scores are pinned.
 
 The race changed the encoder before it was pinned. Its first version trailed DEE by 11.7 dB of SNR
 on music at 192 kbps, and removed the top octave of speech and music: its rate loop spent a frame's
@@ -1111,8 +1134,15 @@ noise and cap each band's noise at 0.7 to 2 times its energy, the tightest cap t
 ViSQOL marks the holes a looser cap leaves more than the noise a tighter one spreads. At 5.1 the race
 showed DEE splitting a fifth of its frames into two blocks of 1,024 samples, where this encoder's
 transient detector splits under one in a hundred; splitting on a 3 or 6 dB rise as well moved
-ViSQOL by 0.02 at most, up on some legs and down on others, and was left out. The readings the writer takes, and those it shares with
-the decoder, are in `src/ac4enc/ERRATA.md`.
+ViSQOL by 0.02 at most, up on some legs and down on others, and was left out. The A-CPL race
+changed the estimate. Estimating each band from its subbands' whole spectrum, the encoder's
+ASPX_ACPL_3 routed the 5.1 tones at -3.7 dB, a channel carrying another's tone louder than its own:
+the L and Ls tones, within 44 Hz of subband 1's edges, reach into it through the QMF prototype's
+transition band, and the centre's prediction there came out 0.5 and 0.2 where C alone is in Lo. A
+subband's own band lies in half of its spectrum, so the estimate now takes a DFT of each subband's
+slots and reads the bins of its own band, all of them where its neighbours' components carry the
+band; the prediction is 1 and 0 there (DEE's 0.9 and 0), and the routing 9.7 dB. The readings the
+writer takes, and those it shares with the decoder, are in `src/ac4enc/ERRATA.md`.
 
 ## What untrusted input is checked against
 

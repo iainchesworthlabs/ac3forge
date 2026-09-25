@@ -1040,6 +1040,27 @@ The sections below contain the complete change list and fixes.
   7.1 in the 7.X element. librempeg does not read those as the decoder does, and DEE's muxer leaves
   3/2/2's top front pair out of the `dac4` channel groups Table A.27 gives it
   (`src/ac4enc/ERRATA.md`).
+- **The AC-4 encoder writes A-CPL** (phase E4 of `planning/ac4.md`): 5.0 and 5.1 in ASPX_ACPL_3 below
+  22.4 kbps a channel and ASPX_ACPL_2 below 33.6, as DEE's 5.1 streams are at 96 kbps and at 128 and
+  144, with DEE's A-SPX configuration in those modes. It codes the downmixes the upmix keeps, (L + Ls /
+  sqrt 2) / 2 and its mirror with C, or Lo and Ro over 1 + sqrt 2, and estimates each frame's
+  parameters per parameter band from the QMF analysis of the channels A-CPL rebuilds: alpha and beta
+  by least squares against Part 1's upmix, and in ASPX_ACPL_3 the centre's prediction from Lo and Ro,
+  with the other gammas following it as DEE's streams have them. The estimate reads 48 slots centred
+  on the frame's last, and each subband within its own band, so that a tone near a subband's edge no
+  longer pulls the next band's parameters towards its own channel. Against DEE's 5.1 streams at 96,
+  128 and 144 kbps, both decoded by the decoder, each band's level difference lands 0.02 to 0.13 dB
+  nearer the source's, the correlation within 0.007 of DEE's distance, ViSQOL 0.01 to 0.06 above
+  DEE's but for film at 128 kbps (0.12 under, where the coded centre's low band trails DEE's by 9.5
+  dB), and the tones route 1.2 to 2.9 dB more cleanly. `CodecMode::kAuto` moves down to ASPX_ACPL_2,
+  then ASPX, where the rate cannot hold a mode's least frame, so 5.1 still encodes from 20 kbps.
+  MediaInfo and DEE's muxer read the streams as configured, and librempeg decodes their coded
+  channels to within 69 dB of the decoder's. Under `experimental=acpl`: ASPX_ACPL_1 in 5.X, whose
+  residuals code each pair's difference from the downmix to 3 kHz, and A-CPL in stereo in both modes;
+  librempeg refuses the ASPX_ACPL_1 streams. `ac3cli ac4-encode` takes
+  `codec-mode=aspx-acpl-1|aspx-acpl-2|aspx-acpl-3` and names the mode in its summary.
+  `tools/checks/score_ac4_encode.py` pins nine A-CPL legs and the A-CPL race with
+  `score_ac4_decode.py`'s per-band checks, which now take ASPX_ACPL_1, 5.0 and the channel pair.
 
 **Browser (WASM)**
 
