@@ -1,6 +1,6 @@
 # AC-4: a decoder, an encoder and the applications
 
-!!! note "Status as of 2026-09-24: D1 merged; the scope extended to an encoder and the applications"
+!!! note "Status as of 2026-09-25: D1 to D5 and E1 to E4 merged; the rest built in parallel; the ESP32 work is D14, the P4 first"
     Written on 2026-09-15 as phase D0 of chip D in the Hearth plan, as a plan for a decoder.
     Extended on 2026-09-24, when the user widened the scope to a decoder, an encoder and their
     integration into the applications: [What encoding AC-4 involves](#what-encoding-ac-4-involves),
@@ -22,7 +22,17 @@
     the user when D10 lands. Decisions 13 to 23, which the wider scope raises, were put to the user
     on 2026-09-24 and answered the same day: the four put as questions (13, 14, 20 and 22) took the
     recommendation, and the recommendations stated for the rest were taken without objection.
-    Whether DEE's licence is renewed after 2026-11-06 is not yet known.
+
+    D2 to D5 and E1 to E4 merged by 2026-09-25; D6 and E5 are open as #1037 and #1046. That day the
+    user asked for the remaining phases to be built in parallel, D11 and the ESP32 phases included,
+    and answered four more questions: DEE's licence will not be renewed, so G1 makes the golden
+    masters the remaining phases need before it ends ([decision 23](#decisions-for-the-encoder-and-the-applications));
+    the ESP32-P4, the family's part with the most CPU and memory, is AC-4's first ESP32 target, with
+    the S3 and the C6 to follow as the decoder is optimised, which [D14](#d14-ac-4-on-the-esp32s)
+    plans in place of D12 and D13; AC-4 follows AC-3's and E-AC-3's arithmetic, `double`, `float`
+    and fixed point by target; and the `ac3` names stay, with the wording that says AC-3 and E-AC-3
+    alone corrected ([N1](#n1-the-names)). Decisions 24 to 35, under
+    [Decisions of 2026-09-25](#decisions-of-2026-09-25), record them.
 
     Shape follows the Hearth plan: design sections say what is proposed and why, each phase carries
     an exit criterion and how it is verified, [Decisions](#decisions) gives the options with a
@@ -78,7 +88,7 @@ facts the decoder and the encoder meet:
   (`apps/common/probe_json.cpp:622`). Every stream DEE writes has v1 presentations.
 - `ac4::build_dac4()` and `ac4::rfc6381_codec_string()` take an `ac4::Toc`, so they can describe a
   stream the encoder writes as well as one the inspector reads.
-- The ESP-IDF component forces `AC3FORGE_BUILD_AC4` off (`esp-idf/ac3forge/CMakeLists.txt:210`),
+- The ESP-IDF component forces `AC3FORGE_BUILD_AC4` off (`esp-idf/ac3forge/CMakeLists.txt:217`),
   and the root `CMakeLists.txt` refuses it in the minimal profile.
 - The two defects found while planning are fixed: `fuzz_ac4_parse` now links an instrumented
   inspector (`fuzz/CMakeLists.txt:117-118`), and an EMDF-only presentation reads its EMDF substream
@@ -572,7 +582,7 @@ stream the encoder writes is therefore read by the decoder, which shares only th
 kernels with it, and by the Python parser, which shares nothing with it, down to its own tables.
 
 `AC3FORGE_BUILD_AC4` gates all of them. They stay out of the ESP-IDF component and the minimal
-profile until D12 brings the decoder and the core in; the encoder never goes there. Each is added
+profile until D14 brings the decoder and the core in; the encoder never goes there. Each is added
 where the peer libraries are: its own `CMakeLists.txt`, the root option and subdirectory,
 `tests/CMakeLists.txt`, an instrumented fuzz target, an ABI allowlist, the coverage table,
 `docs/building.md`, `docs/library/` and `docs/verification.md`. Once their APIs are stable, D8 and
@@ -630,12 +640,24 @@ point ([decision 8](#decisions)). So from D2 the DSP is written against a scalar
 floating type and a fixed-point type can instantiate, in the pattern of forge's decode path
 (`planning/arithmetic-tiers.md`): arithmetic through the type's operators, functions through
 overload sets, and a block exponent carried with each block of coefficients where a fixed store
-would otherwise lose a small value's bits. Only `double` is built until D12 adds `float` and D13
-adds fixed point. The QMF-domain tools make the fixed tier harder than forge's was: every codec
-mode except SIMPLE runs a complex filterbank, A-SPX's envelope estimates and, in the A-CPL modes,
-IIR decorrelators on every channel, and forge's own JOC reconstruction still runs in `float` in
-every build because of the same filterbank. The speech frontend's arithmetic decoder uses integer
-arithmetic in every build, as the text specifies.
+would otherwise lose a small value's bits. Only `double` is built until D14 adds `float`, for the
+P4 and then the S3, and fixed point, for the C6. The QMF-domain tools make the fixed tier harder
+than forge's was: every codec mode except SIMPLE runs a complex filterbank, A-SPX's envelope
+estimates and, in the A-CPL modes, IIR decorrelators on every channel, and forge's own JOC
+reconstruction still runs in `float` in every build because of the same filterbank. The speech
+frontend's arithmetic decoder uses integer arithmetic in every build, as the text specifies.
+
+As built by D6, the pattern holds for about a third of the DSP: `src/ac4core`'s kernels are
+templates on `Real`, instantiated only at `double` and over `std::complex<Real>`, which a
+fixed-point type cannot instantiate, and the reconstruction in `src/ac4dec/src/pcm` spells `double`
+directly. On 2026-09-25 the user asked that AC-4 follow AC-3's and E-AC-3's approach, `double`,
+`float` and fixed point by target ([decision 25](#decisions-of-2026-09-25)): D14's first part puts
+the reconstruction on the scalar, with a complex type of the project's own, and AC-4 joins
+`AC3FORGE_DECODE_SCALAR` and the ESP-IDF component's choice by `CONFIG_SOC_CPU_HAS_FPU`. Until then,
+new kernels in `src/ac4core` are templates on `Real` like their neighbours, new QMF-domain code in
+`src/ac4dec/src/pcm` names its sample through one alias (`QmfValue`), and no phase adds a
+function-local static, a stack object over 4 KiB, or a heap allocation each frame where a member
+buffer would do.
 
 The encoder runs on computers only. It is built at `double`, on the same scalar type as the core it
 shares, with no `float` or fixed-point tier and no place in the ESP32 builds. Its output is
@@ -877,20 +899,32 @@ properties. `ac3cli probe json=1` writes the same fields.
 
 ### The ESP32
 
-The S3 in `float` (D12) and the C6 in fixed point (D13), after D10 and confirmed with the user
-then. The ESP-IDF component and the minimal profile build without AC-4 today. Both parts decode
-only; the encoder is not built for either.
+D14, after D10: the P4 first, in `float`, since it has the most CPU and memory of the family's
+parts; then the S3 in `float` and the C6 in fixed point, as the decoder's optimisation lets them
+([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component and the minimal profile build
+without AC-4 today. The parts decode only; the encoder is built for none of them
+([decision 34](#decisions-of-2026-09-25)).
 
-- **What they face.** Every AC-4 codec mode except SIMPLE runs QMF analysis and synthesis and
-  A-SPX on each channel, and the A-CPL modes add three decorrelators per band. In E-AC-3, forge's
-  JOC reconstruction through its QMF bank peaked at 449,826 bytes on the ESP32-S3, where a decode
-  leaves a largest free block of 116,736 (`docs/platforms/bare-metal/esp32-s3.md`). A frame at
-  index 13 lasts 42.7 ms.
-- **The S3** has a single-precision FPU, and 8 MB of PSRAM on the N16R8 development boards. D12
-  measures decode time and peak memory for 2.0, 5.1 and 5.1.4 in full and core decoding.
-- **The C6** has no FPU, no PSRAM, 512 KB of SRAM shared with WiFi, and one 160 MHz core. Core
-  decoding ([decision 3](#decisions)) is the mode that part is most likely to manage. D13 measures
-  what fits and what keeps up, with the network up, and states which streams do not.
+- **What they face.** Every AC-4 codec mode, SIMPLE included, runs QMF analysis and synthesis on
+  each channel (D3), and the A-CPL modes add three decorrelators per band. Read from the code as
+  D6 left it, the QMF pair is about three quarters of a frame's arithmetic at 2.0 and 5.1, and a
+  decoder holds about 1 MB at 2.0 and 2 MB at 5.1 in `double`, where the S3's probe allows a heap
+  of 245,000 bytes. In E-AC-3, forge's JOC reconstruction through its QMF bank peaked at 449,826
+  bytes on the ESP32-S3, where a decode leaves a largest free block of 116,736
+  (`docs/platforms/bare-metal/esp32-s3.md`). A frame at index 13 lasts 42.7 ms.
+- **What AC-3 and E-AC-3 manage on each part is the guide** to what AC-4 aims for there, less what
+  AC-4's heavier frame costs. AC-4's estimates are read from the code, before D14's work on it; the
+  boards measure.
+
+| Part | Arithmetic | AC-3 and E-AC-3 on the board, per 32 ms frame | AC-4's aim |
+|---|---|---|---|
+| **P4**: 2 × RV32 at 360 MHz on this board's v1.3 silicon, single-precision FPU, 768 KB SRAM, 32 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.18 of real time, 7.1.4 at 0.43 | 2.0, 5.1 and 5.1.4 in full decoding in real time, first |
+| **S3**: 2 × LX7 at 240 MHz, single-precision FPU, 512 KB SRAM, 8 MB PSRAM | `float` | every fixture in real time: E-AC-3 5.1 at 0.34, 7.1.4 at 0.90 | 2.0 and 5.1; 5.1.4 measured, heard through core decoding or folded to 2.0 |
+| **C6**: 1 × RV32 at 160 MHz, no FPU, 512 KB SRAM shared with WiFi, no PSRAM | fixed point | 5.1 with WiFi at 0.82 (AC-3) and 0.96 (E-AC-3); 7.1.4 misses, at 1.88 | 2.0 in core decoding if it keeps up with WiFi; otherwise Hearth sends it PCM |
+
+- **The P4 here** is pre-production silicon: 400 MHz takes its CPLL down, and its I2S has no PLL
+  clock, so it plays one or two channels over standard I2S and no TDM. On this board AC-4's
+  multichannel decodes are heard folded to 2.0 until later silicon arrives.
 
 ## Verification
 
@@ -1092,8 +1126,11 @@ the channel-based library.
 | 19 | [D10](#d10-a-joc-objects) | A-JOC objects | D9 |
 | 20 | [E9](#e9-a-joc-objects) | A-JOC objects | D10, E8 |
 | 21 | [I5](#i5-immersive-and-object-content-in-the-applications) | immersive and object content in the applications | D10, E9 |
+| 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 |
+| 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures |
+| 24 | [N1](#n1-the-names) | the names | I5 |
+| | [G1](#g0-the-gold-set) | the golden masters, extending G0's set | any time before DEE's licence ends on 2026-11-06 |
 | | [D11](#d11-ac-4-over-iec-61937) | AC-4 over IEC 61937 | D1; any time |
-| | [D12](#d12-the-float-tier-and-the-esp32-s3), [D13](#d13-the-fixed-point-tier-and-the-esp32-c6), [I6](#i6-the-esp32-sinks) | the ESP32 tiers and sinks | D10, and the user's confirmation then |
 
 Hearth's AC-4 pages activate for channel-based content in I2, for immersive content and objects in
 I5.
@@ -1116,6 +1153,11 @@ How each phase is run:
 - Before pushing: the MSVC `/W4 /WX` build, the touched translation units under clang-cl, and the
   WSL GCC and Clang `-Werror` gates; for documentation, `tools/checks/check_doc_paths.py` and
   `mkdocs build --strict`.
+- From 2026-09-25 the phases left run in parallel, as agents under one session that coordinates
+  them, each in a worktree of its own made at its base and working from a common brief of these
+  rules. A phase whose predecessor is still open branches from it and says so at the top of its
+  pull request; a phase built beside the one the order puts first (D9 beside D7) takes that phase
+  in by merging. Pull requests are merged when their checks pass, the lowest of a stack first.
 
 ### G0: the gold set
 
@@ -1432,30 +1474,75 @@ sink decodes an AC-4 stream sent through the extension role.
 **Verified by:** `ac3tests`, with the tables' cases transcribed from the standard; the loopback test
 of Hearth's phase A4. No device here accepts AC-4, so passthrough to one is not checked.
 
-#### D12: the `float` tier and the ESP32-S3
+#### D12 and D13: taken into D14
 
-- The `float` build of the DSP and a gate against the `double` build.
-- The decoder in the ESP-IDF component and the minimal profile for the S3, and a probe row per
-  layout.
-- Decode time and peak memory for 2.0, 5.1 and 5.1.4, in full and core decoding, on an ESP32-S3
-  board.
+Planned on 2026-09-15 as the `float` tier on the ESP32-S3 (D12) and the fixed-point tier on the
+ESP32-C6 (D13). The P4 joined the family's sinks on 2026-09-21, after them, and on 2026-09-25 the
+user made it AC-4's first ESP32 target, with the S3 and the C6 to follow as the decoder is
+optimised ([decision 24](#decisions-of-2026-09-25)). D14 carries both phases' work in that order.
 
-**Exit:** the gate states the agreement measured on every committed stream, and the board figures
-are recorded with a statement of which AC-4 streams an S3 sink decodes in real time.
+#### D14: AC-4 on the ESP32s
 
-**Verified by:** the gate in CI; the S3 probe under QEMU in CI; the board.
+After D10. One implementation with three scalars, as `ac3::forge`'s decoder has
+(`planning/arithmetic-tiers.md`, [decision 25](#decisions-of-2026-09-25)): `double` on computers,
+`float` on parts with a floating-point unit, fixed point on parts without, chosen by
+`AC3FORGE_DECODE_SCALAR` and, in the ESP-IDF component, by `CONFIG_SOC_CPU_HAS_FPU`. The P4 comes
+first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3 manage on each part
+([The ESP32](#the-esp32)) sets what AC-4 aims for there. One pull request per part.
 
-#### D13: the fixed-point tier and the ESP32-C6
+- **D14a, the scalar and the decoder's size, on the host.**
+  - `src/ac4dec/src/pcm` on the decoder's scalar, as `src/ac4core` is, with a complex type of the
+    project's own in place of `std::complex<Real>`; AC-4 in `AC3FORGE_DECODE_SCALAR`, the `float`
+    build compiling with `-Wdouble-promotion` as an error; `ac3::forge`'s `Fixed32`, vector types
+    and `float` functions shared through a header-only target
+    ([decision 31](#decisions-of-2026-09-25)).
+  - The QMF bank, three quarters of a frame's arithmetic, with real and imaginary parts in separate
+    planes, delay lines that move an index rather than their contents, and a 64-point transform;
+    held, as D3's pair is, to the direct formula and to its reconstruction.
+  - What a decoder holds, about 1 MB at 2.0 and 2 MB at 5.1 in `double` as D6 left it: one
+    transform scratch per substream, tables in flash, the A-CPL and decorrelator state only in the
+    modes that use it, no guarded function-local static and no stack object over 4 KiB.
+  - A cached bit reader and a table-driven Huffman decoder, with every syntax digest unchanged.
+  - Vector kernels on the host (`f32x4`, `f64x2`) on the split planes, each identical bit for bit
+    to the loop it replaces.
 
-- A fixed-point build of the DSP, with the block exponent where a fixed store would lose a small
-  value's bits, and a gate against the `double` build.
-- The decoder built for the C6, following Hearth's phase C1 bring-up.
-- Decode time and peak memory, in core decoding first, with WiFi connected, on an ESP32-C6 board.
+  **Exit:** on every committed stream, the `float` build's agreement with the `double` build
+  stated below and above the crossover and pinned; the scorers at their pins with a `float` CLI;
+  the probe's AC-4 rows with peak heap, allocations per frame, stack and the Cortex-M3 leg's
+  instruction counts pinned. The `double` output moves in its last bits, and the encoder's with it:
+  both are scored again.
 
-**Exit:** the gate states the agreement measured; the board figures are recorded with a statement
-of which AC-4 streams, in which decoding mode, fit the C6 and keep up, and of those that do not.
+  **Verified by:** `ac3tests`; the `float` gate and the scorers in CI; `run_baremetal_probe.sh`.
+- **D14b, the P4.** The component builds the inspector, the core and the decoder in `float`,
+  behind a switch off by default. On the board, at 360 MHz with the network up: 2.0, 5.1 and 5.1.4
+  in full and core decoding, in each mode DEE writes, and the converter's three ratios, with stage
+  timers per part of the decode. The `float` output is identical on the host, the Cortex-M3 leg and
+  the P4 ([decision 26](#decisions-of-2026-09-25)).
 
-**Verified by:** the gate in CI; the board.
+  **Exit:** per stream, the time per frame against real time, peak heap and stack left, and a
+  statement of what the P4 decodes in real time, in which mode and to which layout, beside what
+  AC-3 and E-AC-3 do there.
+
+  **Verified by:** the gates in CI; the board (no QEMU runs the P4).
+- **D14c, the S3.** The same build under the S3's limits: 2.0 in internal RAM, checked under QEMU
+  in CI within the probe's limits; 5.1 and wider with PSRAM, on the board
+  ([decision 29](#decisions-of-2026-09-25)). 5.1.4 in full decoding is measured, not aimed at
+  ([decision 28](#decisions-of-2026-09-25)). A PIE kernel, integer and so fixed point inside the
+  `float` decode, only where the board's timers show one kernel holding back a stream
+  ([decision 30](#decisions-of-2026-09-25)).
+
+  **Exit and verified by:** as D14b for the S3, with the QEMU rows in CI.
+- **D14d, the C6.** `Fixed32` with a block exponent per QMF slot and per transform block; A-SPX's
+  energies, gains and limiter and the decorrelators' energies as a mantissa and a power of two; the
+  decorrelators and the converter's taps on 64-bit accumulators; AC-4 rows in the fixed-point
+  hashes, identical on x86, the Cortex-M3 leg and the C3 under QEMU. On the board with WiFi, core
+  decoding first; where 2.0 does not keep up, Hearth sends the C6 PCM
+  ([decision 32](#decisions-of-2026-09-25)). Follows Hearth's phase C1 bring-up.
+
+  **Exit:** the fixed tier's agreement with `double` stated; hashes equal on every architecture;
+  which streams fit the C6 and keep up with WiFi, and how the rest reach a C6 sink.
+
+  **Verified by:** the fixed gate and the C3 probe in CI; the board.
 
 ### Encoder phases
 
@@ -1652,9 +1739,9 @@ languages and levels as configured.
 
 - `EncoderConfig` and `Encoder` in their final form, and the function that wraps a frame in a sync
   frame.
-- `ac3cli encode` options for layout, bit rate and rate control, frame rate, codec mode,
-  presentations, loudness, DRC, dialogue enhancement, downmix, I-frames, CRC and the experimental
-  tools.
+- `ac3cli ac4-encode`, which E1 to E5 grew, in its final form: options for layout, bit rate and
+  rate control, frame rate, codec mode, presentations, loudness, DRC, dialogue enhancement,
+  downmix, I-frames, CRC and the experimental tools.
 - The encoder installed and exported beside the decoder, with an ABI allowlist and the package
   check; the documentation pages; the status table's encoder rows; CHANGELOG and a ROADMAP entry.
 
@@ -1785,17 +1872,43 @@ After D9, E8, D10 and E9.
 
 #### I6: the ESP32 sinks
 
-With D12 and D13, once the user confirms them.
+On each part after its D14 figures: the P4 first, then the S3 and the C6.
 
 - The ESP-IDF component carries the inspector, the decoder and the core; `hearth_sink` decodes AC-4
-  on the S3 in `float` and on the C6 in fixed point, and lists AC-4 among its Sendspin data types.
+  on the P4 and the S3 in `float` and on the C6 in fixed point, and lists AC-4 among its Sendspin
+  data types. On the P4 here, whose I2S has no clock for TDM, it plays to two channels.
+- AC-4's frames last from 16 to 43 ms across its frame rates, where the sink's queue and its hold
+  of the first unit were sized for E-AC-3's 32 ms.
 
-**Exit:** D12's and D13's board figures, and a sink playing an AC-4 stream Hearth sends it.
+**Exit:** D14's board figures, and a sink playing an AC-4 stream Hearth sends it.
 
 **Verified by:** the QEMU probes in CI; the boards.
 
 Crucible takes no AC-4. It captures applications into Atmos objects for receivers, and no receiver
 accepts AC-4 ([decision 20](#decisions-for-the-encoder-and-the-applications)).
+
+#### N1: the names
+
+Asked by the user on 2026-09-25, since libraries and programs named `ac3` now do AC-4. A survey of
+the tree found `ac3forge` already the family's name for parts with no AC-3 in them (Hearth,
+Sendspin, Crucible, the ADM and IAB readers), the recasting plan's decisions of 2026-09-05 keeping
+the identifiers until the 1.0 freeze and the program names through 0.x
+(`planning/recasting.md`), and AC-4 named `ac4` on purpose
+([decision 15](#decisions-for-the-encoder-and-the-applications)). What is wrong is wording: the man
+page, the CLI's banner, the CMake project's description (which reaches pkg-config and the Debian
+packages), README, the site's description, the Homebrew formula, the desktop entries and the
+Windows file-type label say AC-3 and E-AC-3 alone, and a few pages describe `ac4dec::` and
+`ac4enc::` namespaces the code does not have.
+
+- Wording that names the formats the family handles, AC-4 among them, wherever it says AC-3 and
+  E-AC-3 alone.
+- No identifier changes ([decision 35](#decisions-of-2026-09-25)).
+
+**Exit:** no page or package description names AC-3 and E-AC-3 as the family's only formats; the
+documentation gates pass.
+
+**Verified by:** a search for the stale phrases; `mkdocs build --strict` and
+`tools/checks/check_doc_paths.py`.
 
 ## Decisions
 
@@ -1920,6 +2033,9 @@ recommendation, what each costs, and what was taken; the table at the end sums t
    ([Arithmetic](#arithmetic)), D12 is the `float` tier on the S3 and D13 the fixed-point tier on
    the C6. Both follow D10 and are confirmed with the user then, since decision 1 approved D1 to
    D10.
+
+   On 2026-09-25 the user confirmed the ESP32 work, made the P4 its first target, and D14 took
+   D12's and D13's work ([decisions 24 and 25](#decisions-of-2026-09-25)).
 
 9. **AC-4 in IEC 61937 and the extension role.**
    - (a) **The extension role carries AC-4 as `Pc` data type 24 bursts of one sync frame each**,
@@ -2158,7 +2274,9 @@ stand. Each lists its options, the recommendation, what each costs, and what was
     legs fixed before the encoder exists, so a leg added later needs the licence. (b) stakes every
     later phase's gold standard on a renewal.
 
-    **Taken: (a)**, as recommended. Whether the licence is renewed is not yet known.
+    **Taken: (a)**, as recommended. On 2026-09-25 the user said the licence will not be renewed,
+    and asked for golden masters to test against now: G1 extends G0's set with every stream the
+    remaining phases need from DEE, made before the licence ends.
 
 | # | Question | Recommended | **Taken** |
 |---|---|---|---|
@@ -2172,7 +2290,145 @@ stand. Each lists its options, the recommendation, what each costs, and what was
 | 20 | The applications and their order | CLI, Hearth, GUI, bindings; no Crucible | **CLI, Hearth, GUI, bindings; no Crucible** |
 | 21 | The C API | Functions in the existing C API | **Functions in the existing C API** |
 | 22 | Where this plan lives | A pull request to main | **A pull request to main** |
-| 23 | DEE's licence | G0 now either way | **G0 now**; renewal not yet known |
+| 23 | DEE's licence | G0 now either way | **G0 now**; not renewed, so G1 before 2026-11-06 |
+
+### Decisions of 2026-09-25
+
+Put to the user on 2026-09-25, from a study of the AC-4 code as D6 and E5 left it and of the
+AC-3 and E-AC-3 work on the ESP32s, and a survey of the names. The user answered 24 in their own
+words, asked for 25 in their own words, and took the recommendations for the rest.
+
+24. **When the ESP32 work runs, and which part first.**
+    - (a) **D14, in place of D12 and D13, after D10**, with new code in D9 and D10 written so the
+      later work stays small (kernels templated on `Real`, QMF samples through one alias, no
+      function-local statics or large stack objects).
+    - (b) D14's first part after D8 and before D9 and D10, so that their QMF-domain code is written
+      on the scalar from the start.
+    - (c) D12 and D13 as planned, the S3 and the C6.
+
+    The study recommended (b); D9 was by then being built beside D7. **Recommend (a).** Cost of (a):
+    D9's and D10's QMF-domain code converted in D14 with the rest.
+
+    **Taken: (a), the P4 first**, in the user's words: "we have the P4 as the "best" which has the
+    most cpu and ram so that's our ac-4 target i guess until we can optimise for the s3 and c6".
+
+25. **One implementation or two.**
+    - (a) **`ac3::forge`'s pattern, one implementation with three scalars**: the faster QMF bank and
+      a complex type of the project's own go into the shared core for every tier, `double`
+      included.
+    - (b) Kernels for the ESP32s only, beside today's.
+
+    **Recommend (a).** Cost of (a): the `double` output moves in its last bits, and the encoder's
+    arithmetic with it, so both are scored again. Cost of (b): two QMF banks and two FFTs kept in
+    step.
+
+    **Taken: (a)**; the user asked that AC-4 follow AC-3's and E-AC-3's approach, `double`, `float`
+    and fixed point by target.
+
+26. **What the `float` tier promises.**
+    - (a) **Identical output on the host, the Cortex-M3 leg, the S3 and the P4**, with fused
+      multiply-add off, as `ac3::forge`'s `float` tier promises.
+    - (b) An agreement in decibels only, which admits fused multiply-add kernels.
+
+    **Recommend (a):** the emulators then stand in for the boards on correctness. Cost: the
+    fastest `float` kernels stay out of the portable tier. **Taken: (a).**
+
+27. **The P4's role.**
+    - (a) **The `float` tier's part for 5.1 and full 5.1.4.**
+    - (b) A tier of its own.
+    - (c) Left until the sink tiers plan's phases for it land.
+
+    **Recommend (a):** it needs no arithmetic of its own and has the most memory. Cost: its figures
+    come from a board only, at 360 MHz on early silicon. **Taken: (a)**, and first (decision 24).
+
+28. **Full 5.1.4 decoding on the S3.**
+    - (a) **Measured and recorded only**: the S3 aims at 2.0 and 5.1, and 5.1.4 reaches it through
+      core decoding or folded to 2.0.
+    - (b) A real-time goal on the S3.
+
+    **Recommend (a):** a 5.1.4 frame is about twice a 5.1 frame's work, and 5.1 is estimated at the
+    line on one S3 core. Cost of (b): the decode split across two cores, PSRAM, and kernels of its
+    own. **Taken: (a).**
+
+29. **The S3's memory.**
+    - (a) **2.0 in internal RAM, checked under QEMU in CI; 5.1 and wider with PSRAM, on the
+      board.**
+    - (b) Everything in internal RAM, which needs a QMF bank run one slot at a time.
+    - (c) PSRAM for everything, which QEMU does not emulate, so CI checks nothing.
+
+    **Taken: (a)**, as recommended.
+
+30. **PIE, the S3's and P4's vector instructions.**
+    - (a) **A kernel only where the board's timers show one holding back a stream.**
+    - (b) PIE kernels for the QMF bank and the FFT now.
+    - (c) Never.
+
+    **Recommend (a).** PIE is integer only, so it serves fixed-point kernels inside a `float`
+    decode, each written per part and checked on a board. **Taken: (a).**
+
+31. **Sharing `ac3::forge`'s arithmetic.**
+    - (a) **A header-only target** holding `Fixed32`, the vector types and the `float` functions,
+      used by `ac3::forge` and `src/ac4core`.
+    - (b) Copies in `src/ac4core`.
+    - (c) `ac3::forge`'s private headers included by path.
+
+    **Recommend (a):** decision 7 kept the DSP kernels apart, not the types, and a copied `Fixed32`
+    would drift. **Taken: (a).**
+
+32. **AC-4 on the C6.**
+    - (a) **Fixed-point 2.0 measured with WiFi; where it misses, Hearth sends the C6 PCM**, which it
+      plays today.
+    - (b) Real-time 2.0 as a goal.
+    - (c) No AC-4 decoder on the C6.
+
+    **Recommend (a):** read from the code, 2.0 is near real time before WiFi and near the part's
+    largest free block. **Taken: (a).**
+
+33. **The frame-rate converter on the ESP32s.**
+    - (a) **The host's design, its phases computed per output sample, measured**; a shorter filter
+      only if a board needs one.
+    - (b) A shorter filter from the start.
+    - (c) Index 13 only on the ESP32s, other frame rates as PCM.
+
+    **Recommend (a):** broadcast AC-4 at 29.97 fps needs the converter, whose phase table alone is
+    752,752 bytes in `double` as D6 left it. **Taken: (a).**
+
+34. **The encoder on an ESP32.**
+    - (a) **Never**, as decision 15 has it.
+    - (b) One measurement on the P4.
+    - (c) A product.
+
+    **Recommend (a):** nothing but this project's own sinks takes AC-4 (decision 20), and the
+    encoder is `double` throughout. **Taken: (a).**
+
+35. **The names, now that `ac3` libraries and programs do AC-4.**
+    - (a) **Keep them, and correct the wording** that names AC-3 and E-AC-3 as the family's only
+      formats ([N1](#n1-the-names)).
+    - (b) Also rename the programs (`ac3cli`, `ac3gui` and the rest).
+    - (c) Rename the family, with the old names kept as aliases.
+    - (d) Rename `ac3::`, at 1.0's `inline namespace v1`.
+
+    **Recommend (a).** `ac3forge` already names parts with no AC-3 in them, and the recasting plan
+    keeps identifiers to 1.0. A rename's cost has about doubled since that plan counted it: about a
+    thousand files, the published PyPI and Homebrew names, Hearth's stored settings and pairing
+    keys, the ESP32 updater's check of an image's project name, and the Sendspin extension role's
+    name at both ends. AC-4's own installed names follow decisions 15 and 21, and are harder to
+    change once D8, E7 and I4 export them. **Taken: (a).**
+
+| # | Question | Recommended | **Taken** |
+|---|---|---|---|
+| 24 | When the ESP32 work runs | D14 after D10 | **D14 after D10, the P4 first** (the user's words) |
+| 25 | One implementation or two | Three scalars, as `ac3::forge` | **Three scalars, as AC-3 and E-AC-3** (the user's words) |
+| 26 | What the `float` tier promises | Identical output everywhere | **Identical output everywhere** |
+| 27 | The P4's role | The `float` tier's part for 5.1 and 5.1.4 | **That, and first** |
+| 28 | Full 5.1.4 on the S3 | Measured only | **Measured only** |
+| 29 | The S3's memory | 2.0 internal, wider with PSRAM | **2.0 internal, wider with PSRAM** |
+| 30 | PIE | Where a board's timers ask | **Where a board's timers ask** |
+| 31 | Sharing forge's arithmetic | A header-only target | **A header-only target** |
+| 32 | AC-4 on the C6 | Measured, with PCM where it misses | **Measured, with PCM where it misses** |
+| 33 | The converter on the ESP32s | The host's design, measured | **The host's design, measured** |
+| 34 | The encoder on an ESP32 | Never | **Never** |
+| 35 | The names | Keep them; correct the wording | **Keep them; correct the wording** |
 
 ## What cannot be verified, and why
 
@@ -2190,13 +2446,13 @@ stand. Each lists its options, the recommendation, what each costs, and what was
 | Immersive stereo (`presentation_version` 2) | **by observation** | V1.3.1 names the version without defining it |
 | Core decoding matches what a core decoder of Dolby's produces | **partly** | Checked against the text's matrices and gains on DEE and constructed streams; nothing here decodes the core otherwise |
 | AC-4 over IEC 61937 to a device | **no** | No device found that accepts it; D11 is checked against IEC 61937-14's tables only |
-| Real time on an ESP32-S3 in `float` and an ESP32-C6 in fixed point | **on boards, in D12 and D13** | QEMU has no cache model and a fabricated clock; the boards measure time |
+| Real time on the ESP32-P4 and S3 in `float` and the C6 in fixed point | **on boards, in D14** | QEMU has no cache model and a fabricated clock, and none runs the P4 or the C6; the boards measure time |
 | The encoder's streams decode as a Dolby decoder would decode them | **no** | No Dolby AC-4 decoder runs here; the decoder and librempeg stand in, and the decoder is checked on DEE's streams first |
 | The encoder's syntax outside DEE's set is read as Dolby reads it | **partly** | MediaInfo's trace covers the table of contents, the presentation substream and `metadata()`; audio data has only librempeg, which is experimental |
 | The encoder's quality against DEE's | **yes, through two decoders** | Both decoders' readings of the tools concerned are checked on DEE's own streams first |
 | Objects the encoder writes render as Dolby's renderer would render them | **no** | Object rendering is not normative; listening stands in |
 | Compression-curve DRC from the encoder's streams behaves alike in every decoder | **no** | The level detector is the decoder's own |
-| Any DEE stream after 2026-11-06 | **no, unless the licence is renewed** | G0 makes the set before then (decision 23) |
+| Any DEE stream after 2026-11-06 | **no** | The licence is not renewed; G0 and G1 make the set before then (decision 23) |
 
 ## Coordination
 
@@ -2207,7 +2463,7 @@ stand. Each lists its options, the recommendation, what each costs, and what was
 - Hearth: phase A0 drew the AC-4 pages with dynamic range and output level separate from E-AC-3's
   (decision 12); I2 enables them through A3's engine; A4's extension page gains the AC-4 data type
   in D11; A1 moves the renderer that D10 and I5 hand objects to; C1's bring-up of the C6 comes
-  before D13 and I6.
+  before D14's C6 part and I6 there.
 - Files other chips edit: the root `CMakeLists.txt`, `tests/CMakeLists.txt`, `fuzz/CMakeLists.txt`,
   `cmake/InstallLibrary.cmake`, `tools/ci/classify_changes.py`, `CHANGELOG.md`,
   `docs/verification.md`, `tools/checks/check_doc_paths.py`; and, from the encoder and application
@@ -2241,6 +2497,6 @@ stand. Each lists its options, the recommendation, what each costs, and what was
   (decision 10).
 - Protected (encrypted) AC-4 tracks.
 - MPEG-2 TS under ATSC A/342-2's profile, which `ac3cli ts` refuses; DVB's is carried.
-- AC-4 on the ESP32-C3 and the other ESP32 parts; D12 and D13 cover the S3 and the C6. The encoder
+- AC-4 on the ESP32-C3 and the other ESP32 parts; D14 covers the P4, the S3 and the C6. The encoder
   on any ESP32.
 - AC-4 in Crucible (decision 20).
