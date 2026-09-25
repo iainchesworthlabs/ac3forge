@@ -13,6 +13,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <mutex>
@@ -117,13 +118,34 @@ class FakeBoard {
             }
             response.set_content(ac3forge::render_firmware_status(status_), "application/json");
         });
-        server_.Put("/firmware", [this](const httplib::Request& request, httplib::Response& response) {
+        server_.Put("/firmware", [this](const httplib::Request& request, httplib::Response& response,
+                                        const httplib::ContentReader& content_reader) {
+            {
+                const std::lock_guard<std::mutex> lock(mutex_);
+                ++uploads_;
+                if (drops_ > 0) {
+                    // Cut off: none of the image is read, and the connection
+                    // closes under a client still sending it, which finds it
+                    // reset. What that did to the board is the test's to say.
+                    --drops_;
+                    if (after_drop_) {
+                        after_drop_(status_);
+                    }
+                    response.status = 503;
+                    response.set_header("Connection", "close");
+                    return;
+                }
+            }
+            std::string received;
+            content_reader([&received](const char* data, std::size_t length) {
+                received.append(data, length);
+                return true;
+            });
             {
                 std::unique_lock<std::mutex> lock(mutex_);
-                ++uploads_;
                 host_ = request.get_header_value("Host");
                 digest_ = request.get_header_value("Content-Digest");
-                body_ = request.body;
+                body_ = received;
                 if (answer_delay_ > 0ms) {
                     // Interrupted when the stand-in goes, so that the server
                     // stops without waiting the delay out.
@@ -134,7 +156,7 @@ class FakeBoard {
                     response.set_content(refusal_ + "\n", "text/plain");
                     return;
                 }
-                const std::vector<std::uint8_t> bytes(request.body.begin(), request.body.end());
+                const std::vector<std::uint8_t> bytes(received.begin(), received.end());
                 ac3::hearth::ReadFirmwareFile read = ac3::hearth::read_firmware_file(bytes);
                 uploaded_ = std::move(read.file);
                 uploaded_image_sha256_ = uploaded_ ? uploaded_->image_sha256 : std::string();
@@ -143,7 +165,7 @@ class FakeBoard {
                     .received = bytes.size(), .total = bytes.size(), .stage = "restarting"};
                 step_ = 1;
             }
-            const std::vector<std::uint8_t> bytes(request.body.begin(), request.body.end());
+            const std::vector<std::uint8_t> bytes(received.begin(), received.end());
             response.set_content(fmt_answer(sink_firmware_test::hex(sink_firmware_test::sha256(bytes))),
                                  "application/json");
         });
@@ -184,6 +206,13 @@ class FakeBoard {
     void delay_answer(std::chrono::milliseconds delay) {
         const std::lock_guard<std::mutex> lock(mutex_);
         answer_delay_ = delay;
+    }
+    // The next `count` uploads are cut off, and `after` is what each one did
+    // to the board: what GET /firmware answers from then on.
+    void drop_uploads(int count, std::function<void(ac3forge::FirmwareStatus&)> after) {
+        const std::lock_guard<std::mutex> lock(mutex_);
+        drops_ = count;
+        after_drop_ = std::move(after);
     }
     template <class Change>
     void change(Change change_status) {
@@ -250,6 +279,8 @@ class FakeBoard {
     AfterUpload after_upload_ = AfterUpload::kAccept;
     std::string refusal_;
     std::chrono::milliseconds answer_delay_{0};
+    int drops_ = 0;
+    std::function<void(ac3forge::FirmwareStatus&)> after_drop_;
     int step_ = 0;  // 0: no upload yet; 1 to 3: before the restart; 4 on: after it
     int trial_reads_ = 0;
     int firmware_reads_ = 0;
@@ -272,6 +303,28 @@ ac3::hearth::FirmwareFile update_file() {
     ac3::hearth::ReadFirmwareFile read = ac3::hearth::read_firmware_file(sink_firmware_test::make_image(spec));
     REQUIRE(read.file.has_value());
     return std::move(*read.file);
+}
+
+// Too large for the sockets' buffers to take all of before a connection
+// closed under it resets: the client is still sending when it finds out, as
+// a client sending to a board is. The stand-in's slot is made room for it.
+ac3::hearth::FirmwareFile large_update_file(FakeBoard& board) {
+    board.change([](ac3forge::FirmwareStatus& status) { status.slot_bytes = 16 * 1024 * 1024; });
+    ImageSpec spec;
+    spec.elf_seed = 40;
+    spec.version = "v0.11.0";
+    spec.segment_bytes = 8'000'000;
+    ac3::hearth::ReadFirmwareFile read = ac3::hearth::read_firmware_file(sink_firmware_test::make_image(spec));
+    REQUIRE(read.file.has_value());
+    return std::move(*read.file);
+}
+
+// What a board records when it gives an upload up: flash mode, and why.
+std::function<void(ac3forge::FirmwareStatus&)> gave_up(std::string result, std::string reason) {
+    return [result = std::move(result), reason = std::move(reason)](ac3forge::FirmwareStatus& status) {
+        status.mode = "flash";
+        status.last_update = ac3forge::FirmwareLastUpdate{.version = "v0.11.0", .result = result, .reason = reason};
+    };
 }
 
 std::optional<SinkFirmware::Update> finished(const SinkFirmware& firmware) {
@@ -368,6 +421,63 @@ TEST_CASE("sink firmware board: a refusal is reported in the board's own words",
         CHECK(update->text.starts_with("refused: the running image is still on trial"));
         CHECK(board.uploads() == 0);
     }
+}
+
+TEST_CASE("sink firmware board: an upload that broke off is sent again, and the second one goes through",
+          "[hearth][sink-firmware]") {
+    FakeBoard board;
+    const ac3::hearth::FirmwareFile file = large_update_file(board);
+    SECTION("the board never started it: its connection was reset before the board read any of it") {
+        board.drop_uploads(1, nullptr);
+    }
+    SECTION("the board gave it up when the connection went, and says so from flash mode") {
+        board.drop_uploads(1, gave_up("refused", "the upload stopped after 65536 of 8000080 bytes"));
+    }
+    SinkFirmware firmware("127.0.0.1", board.port(), kFast);
+    REQUIRE(firmware.start_update(file));
+    const std::optional<SinkFirmware::Update> update = finished(firmware);
+    REQUIRE(update.has_value());
+    INFO(update->text);
+    CHECK(update->outcome == UpdateOutcome::kUpdated);
+    CHECK(update->text.starts_with("updated: runs v0.11.0 from ota_1, accepted"));
+    CHECK(update->attempt == 2);
+    CHECK(update->sent == file.data.size());
+    CHECK(board.uploads() == 2);
+    const bool whole = board.body() == std::string(file.data.begin(), file.data.end());
+    CHECK(whole);
+}
+
+TEST_CASE("sink firmware board: an upload the board gave up for another reason is not sent again",
+          "[hearth][sink-firmware]") {
+    FakeBoard board;
+    const ac3::hearth::FirmwareFile file = large_update_file(board);
+    board.drop_uploads(1, gave_up("failed", "writing the slot failed after 4096 bytes"));
+    SinkFirmware firmware("127.0.0.1", board.port(), kFast);
+    REQUIRE(firmware.start_update(file));
+    const std::optional<SinkFirmware::Update> update = finished(firmware);
+    REQUIRE(update.has_value());
+    INFO(update->text);
+    CHECK(update->outcome == UpdateOutcome::kFailed);
+    CHECK(update->text.starts_with(
+        "failed: the image was not taken; the board gave it up: writing the slot failed after 4096 bytes."));
+    CHECK(update->attempt == 1);
+    CHECK(board.uploads() == 1);
+}
+
+TEST_CASE("sink firmware board: a second break ends the update, with no third try", "[hearth][sink-firmware]") {
+    FakeBoard board;
+    const ac3::hearth::FirmwareFile file = large_update_file(board);
+    board.drop_uploads(2, gave_up("refused", "the upload stopped after 65536 of 8000080 bytes"));
+    SinkFirmware firmware("127.0.0.1", board.port(), kFast);
+    REQUIRE(firmware.start_update(file));
+    const std::optional<SinkFirmware::Update> update = finished(firmware);
+    REQUIRE(update.has_value());
+    INFO(update->text);
+    CHECK(update->outcome == UpdateOutcome::kFailed);
+    CHECK(update->text.starts_with("failed: the image was not taken; the board gave it up: the upload stopped after "
+                                   "65536 of 8000080 bytes."));
+    CHECK(update->attempt == 2);
+    CHECK(board.uploads() == 2);
 }
 
 TEST_CASE("sink firmware board: a board that never decides is reported when the wait runs out",

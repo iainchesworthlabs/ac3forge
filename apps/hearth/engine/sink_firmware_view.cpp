@@ -124,9 +124,12 @@ FirmwarePanel to_firmware_panel(const SinkFirmware::Snapshot& snapshot, std::str
             panel.progress = update.stage == "sending" && update.total > 0
                                  ? static_cast<double>(update.sent) / static_cast<double>(update.total)
                                  : -1.0;
+            // The second try at an upload that broke off says so, as ota.py
+            // says "sending it again".
             panel.progress_text = update.stage == "sending" && update.total > 0
-                                      ? fmt::format("Sending {}: {} of {} bytes", update.version,
-                                                    grouped_number(update.sent), grouped_number(update.total))
+                                      ? fmt::format("Sending {}{}: {} of {} bytes", update.version,
+                                                    update.attempt > 1 ? " again" : "", grouped_number(update.sent),
+                                                    grouped_number(update.total))
                                       : sentence(update.text);
         } else {
             panel.outcome = outcome_name(update.outcome);
