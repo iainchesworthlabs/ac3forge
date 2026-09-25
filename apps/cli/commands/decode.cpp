@@ -399,17 +399,53 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
     return ac3::Acmod::k1_0;
 }
 
+// AC-4's DRC decoder mode by drcmode='s name (parse_options checked it).
+ac4::DrcMode ac4_drc_mode(std::string_view name) {
+    if (name == "off") {
+        return ac4::DrcMode::kOff;
+    }
+    if (name == "home-theatre") {
+        return ac4::DrcMode::kHomeTheatre;
+    }
+    if (name == "flat-panel-tv") {
+        return ac4::DrcMode::kFlatPanelTv;
+    }
+    if (name == "portable-speakers") {
+        return ac4::DrcMode::kPortableSpeakers;
+    }
+    if (name == "portable-headphones") {
+        return ac4::DrcMode::kPortableHeadphones;
+    }
+    return ac4::DrcMode::kDefault;
+}
+
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the channel-coded substream
-// its decode() picks, written as its coded channels. What the
-// options change on AC-3 and E-AC-3 - a downmix, DRC, the dialogue level - is
-// output processing the AC-4 decoder does not do yet, and the object options
-// have no AC-4 counterpart yet either; each is reported rather than applied.
+// its decode() picks, written as its coded channels, at the output level
+// output-level= names and compressed in the DRC decoder mode drcmode= names
+// (ETSI TS 103 190-1 clause 5.7.9). The downmix and the object options are
+// output processing the AC-4 decoder does not do yet; each is reported rather
+// than applied.
 int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
                    const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
     const auto status = status_stream(out_path);
     if (meta.output.target != ac3::DownmixTarget::kAsCoded || meta.downmix_auto) {
         fmt::println(stderr, "warning: {} is AC-4, whose downmixes are not decoded yet - writing its coded channels",
                      in_path);
+    }
+    if (meta.output.mode != ac3::OperatingMode::kCustom) {
+        fmt::println(
+            stderr,
+            "warning: {} is AC-4: drcmode=line and drcmode=rf are AC-3's and E-AC-3's; AC-4 takes "
+            "output-level= and its own drcmode= names",
+            in_path);
+    }
+    if (!meta.ac4_drc_mode.empty() && meta.ac4_drc_mode != "off" &&
+        !meta.ac4_output_level.has_value()) {
+        fmt::println(
+            stderr,
+            "error: AC-4's DRC works at an output level: add output-level=<dBFS> to drcmode={}",
+            meta.ac4_drc_mode);
+        return kExitUsage;
     }
     if (!objects_dir.empty() || !adm_out.empty()) {
         fmt::println(stderr, "warning: {} is AC-4, whose objects are not decoded yet - the object options are ignored",
@@ -433,6 +469,8 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
                    << r.value << '\t' << r.name << '\n';
     };
     ac4::DecoderConfig config;
+    config.output.output_level_dbfs = meta.ac4_output_level;
+    config.output.drc = ac4_drc_mode(meta.ac4_drc_mode);
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {

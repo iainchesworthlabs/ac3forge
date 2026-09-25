@@ -1227,19 +1227,41 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // normalisation AND which of dynrng/compr applies, which is what
             // distinguishes them from drc=/heavy - those are the individual
             // switches, these are the two combinations that have names.
+            // AC-4's are the DRC decoder modes of ETSI TS 103 190-1 Table 161.
+            constexpr std::array<std::string_view, 6> kAc4Modes = {
+                "off",           "default",           "home-theatre",
+                "flat-panel-tv", "portable-speakers", "portable-headphones"};
             if (value == "line") {
                 out.output.mode = ac3::OperatingMode::kLine;
             } else if (value == "rf") {
                 out.output.mode = ac3::OperatingMode::kRf;
             } else if (value == "none") {
                 out.output.mode = ac3::OperatingMode::kCustom;
+            } else if (std::ranges::find(kAc4Modes, value) != kAc4Modes.end()) {
+                out.ac4_drc_mode = std::string{value};
             } else {
+                fmt::println(
+                    stderr,
+                    "error: drcmode is 'line' (§7.7.1), 'rf' (§7.7.2, with downmix "
+                    "overload protection) or 'none' (the default) for AC-3 and E-AC-3, and "
+                    "'off', 'default', 'home-theatre', 'flat-panel-tv', 'portable-speakers' or "
+                    "'portable-headphones' for AC-4 (got '{}')",
+                    token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "output-level") {
+            // AC-4's Lout (ETSI TS 103 190-1 clause 5.7.9.3.3), in dBFS.
+            double level = 0.0;
+            if (!parse_double(value, level) || !std::isfinite(level) || level > 0.0 ||
+                level < -60.0) {
                 fmt::println(stderr,
-                             "error: drcmode is 'line' (§7.7.1), 'rf' (§7.7.2, with downmix "
-                             "overload protection) or 'none' (the default) (got '{}')",
+                             "error: output-level is a level in dBFS from -60 to 0 (got '{}')",
                              token);
                 return false;
             }
+            out.ac4_output_level = level;
             continue;
         }
         // Scoped to `decode`, which is the only command that builds a census -

@@ -228,8 +228,12 @@ TEST_CASE("a malformed coding, decoding or routing option is refused with its ow
         {"ltrt-phase=on", "the Lt/Rt surround phase shift is the default; 'ltrt-phase=off' "
                           "selects the sign-only matrix (got 'ltrt-phase=on')"},
         {"drcmode=film", "drcmode is 'line' (\xC2\xA7" "7.7.1), 'rf' (\xC2\xA7" "7.7.2, with "
-                         "downmix overload protection) or 'none' (the default) "
+                         "downmix overload protection) or 'none' (the default) for AC-3 and "
+                         "E-AC-3, and 'off', 'default', 'home-theatre', 'flat-panel-tv', "
+                         "'portable-speakers' or 'portable-headphones' for AC-4 "
                          "(got 'drcmode=film')"},
+        {"output-level=5", "output-level is a level in dBFS from -60 to 0 (got 'output-level=5')"},
+        {"output-level=loud", "output-level is a level in dBFS from -60 to 0"},
         {"conceal=hide", "conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
                          "silence) or 'off' (the default) (got 'conceal=hide')"},
         {"codec=mp3", "codec must be ac3 or eac3 (got 'codec=mp3')"},
@@ -304,7 +308,9 @@ TEST_CASE("every documented spelling of a valued option gets past parsing to the
     static constexpr std::string_view kTokens[] = {
         "search=off", "search=distortion", "search=perceptual", "delta=off",
         "channels=2", "channels=1", "channels=as-coded", "mix-lfe",
-        "ltrt-phase=off", "drcmode=line", "drcmode=rf", "drcmode=none",
+        "ltrt-phase=off", "drcmode=line", "drcmode=rf", "drcmode=none", "drcmode=default",
+        "drcmode=home-theatre", "drcmode=portable-headphones", "output-level=-31",
+        "output-level=-14.5",
         "conceal=repeat", "conceal=mute", "conceal=off", "drc=0.5",
         "drc=film-light", "drc2=speech", "ceiling=-1", "dialogue=-20",
         "ceiling2=-1.5", "dialogue2=-24", "dialnorm2=5", "dialnorm2=auto",

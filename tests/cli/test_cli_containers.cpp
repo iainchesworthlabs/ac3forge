@@ -402,8 +402,9 @@ TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][a
     CHECK(from_mp4->channels == raw->channels);
 }
 
-TEST_CASE("decode writes AC-4's ASPX mode, 5.1 and A-CPL, and refuses what it does not decode, naming it",
-          "[cli][ac4]") {
+TEST_CASE(
+    "decode writes AC-4's ASPX mode, 5.1 and A-CPL, and 25 fps through the sample rate converter",
+    "[cli][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_decode_aspx.log";
     const auto out = dir / "ac4_aspx.wav";
@@ -443,6 +444,47 @@ TEST_CASE("decode writes AC-4's ASPX mode, 5.1 and A-CPL, and refuses what it do
     CHECK(decoded_ims->sample_rate == 48000);
     REQUIRE(decoded_ims->channels.size() == 2);
     CHECK(decoded_ims->channels[0].size() % 1920 == 0);
+}
+
+TEST_CASE("decode takes AC-4 to output-level= and compresses it in drcmode='s mode", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_level.log";
+    const fs::path stream =
+        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4";
+    const auto rms_db = [](const std::vector<float>& x) {
+        double sum = 0.0;
+        for (std::size_t n = 16384; n < x.size() - 4096; ++n) {
+            sum += static_cast<double>(x[n]) * static_cast<double>(x[n]);
+        }
+        return 10.0 * std::log10(sum / static_cast<double>(x.size() - 20480));
+    };
+    // Two output levels 12 dB apart, 2^(12 / 6) apart in the output whatever
+    // the stream's dialnorm (ETSI TS 103 190-1 5.7.9.3.3).
+    const auto low_wav = dir / "ac4_level_31.wav";
+    const auto high_wav = dir / "ac4_level_19.wav";
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(low_wav) +
+                        " output-level=-31 drcmode=off",
+                    log) == 0);
+    REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(high_wav) +
+                        " output-level=-19 drcmode=off",
+                    log) == 0);
+    const auto low = ac3::io::read_wav(low_wav.string());
+    const auto high = ac3::io::read_wav(high_wav.string());
+    REQUIRE(low.has_value());
+    REQUIRE(high.has_value());
+    CHECK(std::abs(rms_db(high->channels[0]) - rms_db(low->channels[0]) - 20.0 * std::log10(4.0)) <
+          0.01);
+    // A mode at a level decodes; without a level AC-4's DRC has nothing to
+    // work to, and an output level above full scale is no level.
+    const auto drc_wav = dir / "ac4_drc.wav";
+    CHECK(run_cli("decode " + quoted(stream) + " " + quoted(drc_wav) +
+                      " output-level=-10 drcmode=portable-headphones",
+                  log) == 0);
+    CHECK(run_cli("decode " + quoted(stream) + " " + quoted(drc_wav) + " drcmode=home-theatre",
+                  log) == 1);
+    CHECK(read_log(log).find("output-level=") != std::string::npos);
+    CHECK(run_cli("decode " + quoted(stream) + " " + quoted(drc_wav) + " output-level=5", log) ==
+          1);
 }
 
 TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "[cli][mp4][ac4]") {
