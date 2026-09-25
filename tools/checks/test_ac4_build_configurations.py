@@ -11,7 +11,6 @@ with it.
 
 import json
 import re
-import tomllib
 import unittest
 from pathlib import Path
 
@@ -41,9 +40,13 @@ class Ac4BuildConfigurations(unittest.TestCase):
         self.assertEqual(wasm["cacheVariables"].get("AC3FORGE_BUILD_AC4"), "OFF")
 
     def test_wheel_turns_ac4_off(self):
-        pyproject = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
-        define = pyproject["tool"]["scikit-build"]["cmake"]["define"]
-        self.assertEqual(define.get("AC3FORGE_BUILD_AC4"), "OFF")
+        # The [tool.scikit-build.cmake.define] table, up to the next table: read as text, since
+        # tomllib is newer than the Python 3.10 these scripts support.
+        text = PYPROJECT.read_text(encoding="utf-8")
+        header = r"^\[tool\.scikit-build\.cmake\.define\]\n"
+        table = re.search(header + r"(.*?)(?=^\[)", text, re.M | re.S)
+        self.assertIsNotNone(table)
+        self.assertRegex(table.group(1), r'(?m)^AC3FORGE_BUILD_AC4 = "OFF"$')
 
     def test_none_of_them_links_ac4(self):
         for path in LINKERS:
