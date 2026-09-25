@@ -52,6 +52,13 @@ on:
       - ".github/actions/setup-emscripten/**"
   workflow_dispatch: {}
 
+# A newer push to a PR supersedes the older push's docs build - see
+# osv-scanner.yml's identical block for why. Pushes to main and dispatches get
+# a group of their own run, so a deploy is never cancelled by the next one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 

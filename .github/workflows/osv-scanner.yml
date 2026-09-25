@@ -24,6 +24,15 @@ on:
     - cron: "45 3 * * 1"
   workflow_dispatch:
 
+# A newer push to a PR supersedes the older push's scan - nothing reads a
+# superseded commit's results, and each one held a GitHub-hosted slot (GitHub
+# Free: 20 at a time, org-wide) until it ran; on 2026-09-25 runs for three
+# superseded commits of one PR were still queued. Every other event gets a
+# group of its own run, so scheduled and main scans never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 # Deliberately minimal: every job below declares its own full permissions set
 # (actions/contents read, security-events write, to upload SARIF), so this
 # top-level block is only ever a fallback for a future job that forgets to -
