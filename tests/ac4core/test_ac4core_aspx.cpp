@@ -286,6 +286,50 @@ TEST_CASE("with no tonal adjustment the generator copies each patch's source sub
     CHECK(q_high[32 * 64 + 40] == Complex(7.0, 7.0));
 }
 
+TEST_CASE("pre-flattening patches a low band whose envelope is a cubic in dB flat", "[ac4core][aspx]") {
+    // Pseudocode 85 fits the cubic exactly, and every subband the patches
+    // fill comes out at the fit's mean: the patch is flattened, the reading
+    // src/ac4dec/ERRATA.md takes under "Pre-flattening's direction". Applied
+    // as printed, the gain's inverse would double the slope instead.
+    const aspx::SubbandGroups g = groups_for({.master_freq_scale = 1,
+                                              .start_freq = 6,
+                                              .stop_freq = 1,
+                                              .noise_sbg = 3,
+                                              .xover_subband_offset = 0});
+    aspx::PatchTables p;
+    REQUIRE(aspx::derive_patch_tables(g, 1, true, p));
+    const auto level = [](double sb) { return 60.0 + 1.5 * sb - 0.12 * sb * sb + 0.002 * sb * sb * sb; };
+    std::vector<Complex> ext(42 * 64);
+    double mean = 0.0;
+    for (int sb = 0; sb < g.sbx; ++sb) {
+        mean += level(sb) / g.sbx;
+        for (int ts = 0; ts < 42; ++ts) {
+            ext[static_cast<std::size_t>(ts) * 64 + static_cast<std::size_t>(sb)] =
+                std::polar(std::sqrt(std::pow(10.0, level(sb) / 10.0) - 1.0), 0.1 * ts * sb);
+        }
+    }
+    std::vector<Complex> q_high(38 * 64);
+    const std::array<std::uint8_t, 5> none{};
+    aspx::HfGeneratorState<double> state;
+    const aspx::HfGeneratorInput<double> in{
+        .q_low_ext = ext,
+        .num_qmf_timeslots = 32,
+        .ts_offset_hfgen = 6,
+        .ts_begin = 0,
+        .ts_end = 32,
+        .preflat = true,
+        .tna_mode = std::span<const std::uint8_t>(none).first(2)};
+    aspx::generate_high_band<double>(g, p, in, state, q_high);
+    for (int sb = g.sbx; sb < g.sbx + g.num_sb_aspx; ++sb) {
+        CAPTURE(sb);
+        double energy = 0.0;
+        for (int ts = 0; ts < 32; ++ts) {
+            energy += std::norm(q_high[static_cast<std::size_t>(ts) * 64 + static_cast<std::size_t>(sb)]) / 32.0;
+        }
+        CHECK(std::abs(10.0 * std::log10(energy) - mean) < 1e-3);
+    }
+}
+
 TEST_CASE("the chirp factors follow Table 195 and Pseudocode 88's smoothing", "[ac4core][aspx]") {
     const aspx::SubbandGroups g = groups_for({.master_freq_scale = 1,
                                               .start_freq = 6,

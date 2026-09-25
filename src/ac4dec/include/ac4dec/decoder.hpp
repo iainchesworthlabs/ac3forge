@@ -23,13 +23,15 @@
 // frame's substreams - the presentation substream, channel-coded audio
 // substreams in the Part 1 channel elements (their HSF extension substreams,
 // ac4_hsf_ext_substream(), included), and EMDF payload substreams - and
-// reports what a frame carries. It decodes to PCM a mono or stereo substream
-// in the SIMPLE codec mode at frame_rate_index 13 (2 048 samples a frame at
-// 48 or 44.1 kHz, which needs no sample rate converter): the audio spectral
-// frontend, stereo processing, the inverse transform with block switching,
-// and frame alignment (Part 1 clauses 5.1, 5.3, 5.5 and 5.6). The table of
-// contents and the substream framing come from ac4::parse_raw_frame (the
-// inspector, src/ac4); this library starts where the inspector stops.
+// reports what a frame carries. It decodes to PCM the mono, stereo, 3.0, 5.X
+// and 7.X channel elements in the SIMPLE and ASPX codec modes at
+// frame_rate_index 13 (2 048 samples a frame at 48 or 44.1 kHz, which needs no
+// sample rate converter): the audio spectral frontend, stereo and
+// multichannel processing, the inverse transform with block switching, frame
+// alignment, and the QMF domain's companding and A-SPX (Part 1 clauses 5.1,
+// 5.3, 5.5, 5.6 and 5.7). The table of contents and the substream framing
+// come from ac4::parse_raw_frame (the inspector, src/ac4); this library starts
+// where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
 // spectral frontend (Part 1 clause 5.2), immersive and 22.2 channel elements,
@@ -37,8 +39,7 @@
 // substream could not be resolved and read alongside it. Refusing is per
 // substream and per frame; the next frame is attempted afresh. decode()
 // refuses, the same way, everything above that it does not turn into PCM
-// yet: the A-SPX and A-CPL codec modes, the 3.0, 5.X and 7.X elements, other
-// frame rates and 96/192 kHz.
+// yet: the A-CPL codec modes, other frame rates and 96/192 kHz.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
@@ -86,12 +87,22 @@ struct FrameReport {
 
 // --- Decoding to PCM ---------------------------------------------------------
 //
-// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names.
-// Later versions add the rest of the layouts.
+// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names:
+// those of the channel modes of Part 1 Table 88. Later versions add the
+// immersive layouts'.
 enum class Speaker : std::uint8_t {
     kLeft,
     kRight,
     kCentre,
+    kLfe,            // Low-Frequency Effects
+    kLeftSurround,   // Left Side/Surround, Ls: a side speaker in the 7.X modes
+    kRightSurround,  // Right Side/Surround, Rs
+    kLeftBack,       // Lb, in 7.X 3/4/0
+    kRightBack,      // Rb
+    kLeftWide,       // Lw, in 7.X 5/2/0
+    kRightWide,      // Rw
+    kTopFrontLeft,   // Tfl, in 7.X 3/2/2
+    kTopFrontRight,  // Tfr
 };
 
 [[nodiscard]] AC4DEC_EXPORT std::string_view describe(Speaker speaker);
@@ -100,7 +111,9 @@ enum class Speaker : std::uint8_t {
 struct DecodedFrame {
     int sample_rate_hz = 0;
     int sequence_counter = 0;             // of the frame this came from
-    std::vector<Speaker> speakers;        // one per channel, in the order of `channels`
+    // One per channel, in the order of `channels`: L, R, C, the LFE, Ls, Rs,
+    // then a 7.X mode's last pair, each where the channel mode has it.
+    std::vector<Speaker> speakers;
     // Planar PCM, one vector per channel, all the same length, at full scale
     // 1.0. The decoder's delay is applied: Part 1's frame alignment (clause
     // 5.6), the QMF banks and the QMF domain's history (5.7.1), 1 313 samples

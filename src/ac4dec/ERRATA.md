@@ -560,6 +560,8 @@ Later phases add the readings their processing needs.
 - Part 1 Table B.2, p. 283, lists a 96 kHz transform length of 920 where the other tables have 960.
 - Part 1 Pseudocode 21, p. 142, lacks the brace that closes `if (first_scf_found == 1)` before its
   `else`.
+- Part 1 Table 213, p. 267, names the last pair of 7.X 3/2/2 (Lth, Rth); Table 88, p. 77, and Table 183,
+  p. 182, name it Tfl and Tfr, as the decoder does.
 - Part 1 5.1.4.2, p. 143, has the noise fill replace silent bands "if noise fill data is present as
   indicated when b_snf_data_exists is false", and the next sentence makes the tool inactive when it is
   false. It runs when `b_snf_data_exists` is true, the only case in which `asf_snf_data()` (Table 42,
@@ -665,6 +667,36 @@ clause's formula.
   two channels of a pair would be the same noise at two levels.
 - **Evidence:** Text; no stream here sets `b_snf_data_exists`.
 
+### The LFE's track is not numbered in Tables 180 and 182
+
+- **Where:** Part 1 5.3.4.3.0 and 5.3.4.4.0, pp. 180 and 181: Tables 180 and 182 number the tracks "according
+  to the bitstream order of the channel data elements", five or seven of them, and name no LFE, though the
+  5_X and 7_X elements read the LFE's `mono_data(1)` before any channel data (Tables 25 and 33).
+- **Reading:** the tables count from the first track after the LFE's. The LFE's `mono_data(1)` gives the
+  LFE channel by 5.3.3.1 (O0 = I0), and the LFE goes through the QMF banks with the other channels,
+  untouched there: 6.2.10 leaves it out of A-SPX and Table 212 out of companding.
+- **Evidence:** Streams. DEE's 5.1 streams from 192 to 768 kbps decode with each channel's tone on its own
+  channel, the LFE's included, and agree with librempeg's decode to 83 dB channel by channel.
+
+### The 7.X element's additional channels
+
+- **Where:** Part 1 5.3.4.4.1, p. 181, and Table 183, p. 182: with `b_use_sap_add_ch`, a 2 x 2 matrix
+  makes two channels of an output of one channel data element (D or E, or A or B) and one of the
+  additional `two_channel_data()` (F or G), "after the creation of the preliminary outputs". The two come
+  from different elements, each with its own `sf_info()`, and nothing makes their time/frequency tiles
+  the same.
+- **Reading:** the matrix applies tile by tile under the framing its `chparam_info()` was read with, the
+  first input's ("b_use_sap_add_ch: the framing of its chparam_info()" above), to the two inputs' lines in
+  window order after ungrouping: in each window, the bands below that framing's `max_sfb` for the window's
+  group, at the window's own band offsets. The inputs must be transformed alike, window for window, and a
+  frame whose inputs are not is refused as invalid. Bands above `max_sfb` are left as they are.
+- **Why:** a tile of one input has no counterpart in the other unless their windows match, and window
+  order is where the two elements' lines meet: in bitstream order each keeps its own grouping and
+  `max_sfb`.
+- **Evidence:** Text, and the constructed 7.X streams of `tests/ac4dec/ac4dec_constructed.cpp`, whose
+  tracks are the channels through the inverse of Table 183's matrix and which decode with each tone on its
+  channel. No encoder here writes the element.
+
 ## The QMF domain
 
 The readings phase D3 of `planning/ac4.md` takes for the QMF banks, companding and A-SPX decoding (Part 1
@@ -736,8 +768,10 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 - **Reading:** the length in QMF slots, which makes `est_sig_sb` the mean energy per QMF subsample that
   clause 3.1 makes a signal scale factor: "average energy of the signal within the region in a QMF matrix".
 - **Evidence:** Observation. Where the source has content above the crossover (DEE's music at 48 kbps and
-  speech at 48, 64 and 128 kbps), the divisor as printed decodes the A-SPX tiles 3.5 to 4.8 dB below the
-  source's on average; this one 1.3 to 2.2 dB below, of which the limiter accounts for up to 1 dB.
+  speech at 48, 64 and 128 kbps), the divisor as printed decoded the A-SPX tiles 3.5 to 4.8 dB below the
+  source's on average when phase D3 measured them, and this one 1.3 to 2.2 dB below, of which the limiter
+  accounted for up to 1 dB. With the pre-flattening phase D4 reads ("Pre-flattening's direction", below),
+  this one decodes them 0.5 to 1.0 dB below.
 
 ### alpha0's parentheses
 
@@ -750,6 +784,31 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 - **Evidence:** Text. The gold legs set `aspx_tna_mode` Light to Heavy in most noise groups, but decode to
   the same tile energies and log-spectral distance, within 0.1 dB, under either sign, so they do not decide
   it.
+
+### Pre-flattening's direction
+
+- **Where:** Part 1 5.7.6.4.1, pp. 217 to 220: pre-flattening derives "a gain value ... from a coarse
+  approximation of the slope of the source range", and "the inverse of this gain value is applied during the
+  patching process". Pseudocode 85 defines `gain_vec[sb] = pow(10, (mean_energy - slope[sb])/20)`, the gain
+  that brings each subband of the fitted slope to the mean, and Pseudocode 89 multiplies the patch by
+  `1/gain_vec[p]`. Together the two double the low band's slope in the patch, where the clause names the
+  step pre-flattening and describes the fit as the slope to take out.
+- **Reading:** the patch is multiplied by `gain_vec[p]`: the fitted slope is taken out of the low band as it
+  is copied up, and each patched subband starts from the fit's mean level.
+- **Why:** with `aspx_interpolation` set, as in every stream here, the envelope adjuster gains each subband
+  to its envelope whatever the patch's shape; what the patch's slope changes is the limiter, which cuts a
+  gain more than 3 dB over its limiter group's (Pseudocodes 96 to 101). A patch whose slope is doubled needs
+  its largest gains at the top of each patch, where the limiter cuts them.
+- **Evidence:** Streams, not all one way. Over G0's legs with content above the crossover, this reading
+  brings the A-SPX tiles nearer the source's energy: 2.0 speech at 48 and 64 kbps from 2.4 and 2.8 dB to
+  1.3 and 1.6 dB, with ViSQOL from 4.23 and 4.40 to 4.55 and 4.50; 2.0 music at 48 kbps from 2.7 to 1.5 dB;
+  immersive stereo at 64 kbps from 3.1 to 1.7 dB; 5.1 film's centre from 5.2 to 1.9 dB at 192 kbps and from
+  2.7 to 1.7 dB at 256 to 320. As printed, film's centre loses 4.6 to 10.9 dB in its first patch's top
+  group, and at 256 kbps the limiter takes it all: the envelope adjuster's output before the limiter is
+  within 0.3 dB of the envelope there, and 3.9 dB under it after. It takes them a little further on 2.0 music at 64 kbps and immersive stereo at 96,
+  0.3 and 0.2 dB, and on 2.0 speech at 96 to 144 kbps, whose crossover is 13.5 kHz, from 2.4 to 3.1 dB,
+  with ViSQOL 0.05 to 0.07 lower. librempeg's decodes of these legs sit level across the subband groups,
+  1.2 to 2.2 dB under the source, in every one.
 
 ### The first signal scale factor below zero
 

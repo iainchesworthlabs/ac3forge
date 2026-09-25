@@ -1055,12 +1055,32 @@ The sections below contain the complete change list and fixes.
   synthesised back for the spectral frontend to code. Where a frame's budget cannot hold every band at
   its masking threshold, the rate loop now pulls every band toward one level of noise, with a cap that
   keeps a band from falling silent. Against DEE's streams of the same sources, both decoded here,
-  ViSQOL is within 0.02 of DEE's or above it from 64 to 144 kbps and 0.06 under it on music at 48 kbps;
-  `tools/checks/score_ac4_encode.py` pins SNR below the crossover, the A-SPX tiles, log-spectral
-  distance and ViSQOL for 13 ASPX legs, and the race at 48 to 144 kbps. Balance coding, VARVAR framing
-  and frequency interleaved waveform coding are written only under `experimental=`, since no reader
-  outside this project has read them from the encoder yet. `src/ac4enc/ERRATA.md` records the
-  readings taken.
+  ViSQOL is within 0.03 of DEE's or above it from 64 to 144 kbps and 0.06 and 0.09 under it on music
+  and speech at 48 kbps; `tools/checks/score_ac4_encode.py` pins SNR below the crossover, the A-SPX
+  tiles, log-spectral distance and ViSQOL for 13 ASPX legs, and the race at 48 to 144 kbps. Balance
+  coding, VARVAR framing and frequency interleaved waveform coding are written only under
+  `experimental=`, since no reader outside this project has read them from the encoder yet.
+  `src/ac4enc/ERRATA.md` records the readings taken.
+- **AC-4 decodes the 3.0, 5.X and 7.X channel elements** (phase D4 of `planning/ac4.md`) in the SIMPLE
+  and ASPX codec modes: the LFE, the multichannel matrices of Part 1 Tables 178 and 179 and clause
+  5.3.3.4, the routing of Tables 180 and 182 with `2ch_mode`, Table 183's additional channels, and
+  companding and A-SPX over the channels Tables 212 and 213 give them. `ac4::Speaker` names the channels
+  of every Part 1 channel mode, and `ac3cli decode` writes them in WAV order and meters them. DEE's 5.1
+  streams from 192 to 768 kbps decode with each channel's tone on its own channel, the LFE's included,
+  and agree with librempeg's decode to 83 dB below the crossover; `tools/checks/score_ac4_decode.py`
+  scores and pins them, taking the LFE's level from 20 to 100 Hz, since DEE low-passes the LFE. The
+  element forms DEE does not write are tested on streams built with the encoder's writer
+  (`tests/ac4dec/ac4dec_constructed.cpp`), twelve of them committed with
+  `tools/references/ac4_syntax.py`'s digests. `src/ac4dec/ERRATA.md` records the readings taken.
+- **A-SPX's pre-flattening flattens the patch.** Part 1 prints the patch multiplied by the inverse of
+  the gain that brings the low band's fitted slope to its mean, which doubles the slope and has the
+  limiter cut the top of each patch: the top group of DEE's 5.1 film centre came out 4.6 dB under the
+  source at 256 kbps, all of it the limiter's, and 10.9 dB under at 192. The decoder, and the encoder's
+  A-SPX analysis through it, now multiply by the gain itself. DEE's A-SPX
+  tiles come nearer the source where the crossover is low (2.0 speech at 48 kbps from 2.4 to 1.3 dB,
+  ViSQOL 4.23 to 4.55; film's 5.1 centre at 192 kbps from 5.2 to 1.9 dB) and move away on speech with
+  a 13.5 kHz crossover (2.4 to 3.1 dB, ViSQOL 0.05 to 0.07 lower). Both scorers' ASPX pins are measured
+  again; `src/ac4dec/ERRATA.md`, "Pre-flattening's direction", gives the evidence.
 
 **Browser (WASM)**
 

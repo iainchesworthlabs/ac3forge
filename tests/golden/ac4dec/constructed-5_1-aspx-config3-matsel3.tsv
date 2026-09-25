@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/5_1-aspx-config3-matsel3.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	10	20	0x42bc50f5
+0	1	audio	1618	10998	0x63d93c87
+1	0	presentation	10	20	0x42bc50f5
+1	1	audio	1603	11118	0x48f32260
+2	0	presentation	10	20	0x42bc50f5
+2	1	audio	1602	11342	0x0de404ad
+3	0	presentation	10	20	0x42bc50f5
+3	1	audio	1605	10982	0xf99fe4d5

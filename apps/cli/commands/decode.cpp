@@ -11,6 +11,7 @@
 #include <fmt/format.h>
 #include <fstream>
 #include <ios>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -365,6 +366,79 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
     }
 }
 
+// Where an AC-4 channel goes in a WAV file: the WAVEFORMATEXTENSIBLE speaker
+// order the E-AC-3 path writes in (plan::wav_order: FL FR FC LFE BL BR, then
+// SL SR and the top front pair), with Ls and Rs at SL and SR, Lb and Rb at BL
+// and BR, and Lw and Rw, which that order has no place for, last.
+[[nodiscard]] int ac4_wav_rank(ac4::Speaker speaker) {
+    switch (speaker) {
+        case ac4::Speaker::kLeft:
+            return 0;
+        case ac4::Speaker::kRight:
+            return 1;
+        case ac4::Speaker::kCentre:
+            return 2;
+        case ac4::Speaker::kLfe:
+            return 3;
+        case ac4::Speaker::kLeftBack:
+            return 4;
+        case ac4::Speaker::kRightBack:
+            return 5;
+        case ac4::Speaker::kLeftSurround:
+            return 9;
+        case ac4::Speaker::kRightSurround:
+            return 10;
+        case ac4::Speaker::kTopFrontLeft:
+            return 12;
+        case ac4::Speaker::kTopFrontRight:
+            return 14;
+        default:
+            return 99;
+    }
+}
+
+// The level meter's order, A/52's: L C R Ls Rs, the LFE, then any other.
+[[nodiscard]] int ac4_meter_rank(ac4::Speaker speaker) {
+    switch (speaker) {
+        case ac4::Speaker::kLeft:
+            return 0;
+        case ac4::Speaker::kCentre:
+            return 1;
+        case ac4::Speaker::kRight:
+            return 2;
+        case ac4::Speaker::kLeftSurround:
+            return 3;
+        case ac4::Speaker::kRightSurround:
+            return 4;
+        case ac4::Speaker::kLfe:
+            return 5;
+        default:
+            return 99;
+    }
+}
+
+// The decoded channels' indices ordered by `rank`, ties in decoder order.
+template <typename Rank>
+[[nodiscard]] std::vector<std::size_t> ac4_order(std::span<const ac4::Speaker> speakers, Rank rank) {
+    std::vector<std::size_t> order(speakers.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
+    std::ranges::stable_sort(order, {}, [&](std::size_t c) { return rank(speakers[c]); });
+    return order;
+}
+
+// The coding mode that names an AC-4 layout's bed for the meter: 1/0, 2/0,
+// 3/0 or 3/2; a 7.X layout's last pair is metered past it.
+[[nodiscard]] ac3::Acmod ac4_bed_acmod(std::span<const ac4::Speaker> speakers) {
+    const auto has = [&](ac4::Speaker s) { return std::ranges::find(speakers, s) != speakers.end(); };
+    if (has(ac4::Speaker::kLeftSurround)) {
+        return ac3::Acmod::k3_2;
+    }
+    if (has(ac4::Speaker::kLeft)) {
+        return has(ac4::Speaker::kCentre) ? ac3::Acmod::k3_0 : ac3::Acmod::k2_0;
+    }
+    return ac3::Acmod::k1_0;
+}
+
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the channel-coded substream
 // its decode() picks, written as its coded channels. What the
 // options change on AC-3 and E-AC-3 - a downmix, DRC, the dialogue level - is
@@ -410,6 +484,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     ac4::Decoder decoder(config);
     PlanarWavSink sink;
     std::optional<ac3::analysis::LevelMeter> meter;
+    std::vector<std::size_t> meter_order;  // the decoded channel at each of the meter's places
     ac4::DecodedFrame first;
     std::size_t decoded_frames = 0;
     std::size_t waiting_frames = 0;
@@ -433,14 +508,17 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         const ac4::DecodedFrame& pcm = **decoded;
         if (!sink.is_open()) {
             first = pcm;
-            if (!sink.open(out_path, static_cast<std::uint32_t>(pcm.sample_rate_hz), pcm.channels.size(), {})) {
+            if (!sink.open(out_path, static_cast<std::uint32_t>(pcm.sample_rate_hz), pcm.channels.size(),
+                           ac4_order(pcm.speakers, ac4_wav_rank))) {
                 fmt::println(stderr, "error: cannot open {} for writing", out_path);
                 return kExitOutput;
             }
-            meter.emplace(pcm.channels.size() == 1 ? ac3::Acmod::k1_0 : ac3::Acmod::k2_0, false,
-                          pcm.sample_rate_hz);
+            meter_order = ac4_order(pcm.speakers, ac4_meter_rank);
+            const bool lfe = std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
+            meter.emplace(ac4_bed_acmod(pcm.speakers), lfe, static_cast<std::uint32_t>(pcm.sample_rate_hz),
+                          static_cast<int>(pcm.channels.size()));
         }
-        if (pcm.channels.size() != first.channels.size() || pcm.sample_rate_hz != first.sample_rate_hz) {
+        if (pcm.speakers != first.speakers || pcm.sample_rate_hz != first.sample_rate_hz) {
             fmt::println(stderr, "error: {}: frame {}: the channel layout or sample rate changes mid-stream",
                          in_path, frames_done);
             sink.abort();
@@ -454,7 +532,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
                 sink.abort();
                 return kExitOutput;
             }
-            views.emplace_back(pcm.channels[ch]);
+            views.emplace_back(pcm.channels[meter_order[ch]]);
         }
         // Emplaced with the sink's opening, a few lines up.
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
@@ -478,10 +556,11 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
             return kExitOutput;
         }
     }
+    // The channels in the order the file holds them.
     std::string layout;
-    for (const ac4::Speaker speaker : first.speakers) {
+    for (const std::size_t c : ac4_order(first.speakers, ac4_wav_rank)) {
         layout += layout.empty() ? "" : " ";
-        layout += ac4::describe(speaker);
+        layout += ac4::describe(first.speakers[c]);
     }
     status_println(status, "decoded {} AC-4 frames -> {} ({}, {} Hz)", decoded_frames, out_path, layout,
                    first.sample_rate_hz);

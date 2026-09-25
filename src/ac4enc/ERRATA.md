@@ -55,6 +55,9 @@ equal on every ASPX stream they write:
 - [The sinusoid's subband](../ac4dec/ERRATA.md#the-sinusoids-subband), [b_sine_at_end](../ac4dec/ERRATA.md#b_sine_at_end)
   and [Before the first interval](../ac4dec/ERRATA.md#before-the-first-interval): what the encoder keeps
   of the decoder's state to choose delta coding and sinusoids.
+- [Pre-flattening's direction](../ac4dec/ERRATA.md#pre-flattenings-direction): the encoder runs the
+  decoder's high frequency generator on its input's low band to choose inverse filtering, noise floors and
+  sinusoids, and flattens the patch as the decoder does. Phase D4 changed the reading.
 
 ### Where the encoder's QMF slots fall
 

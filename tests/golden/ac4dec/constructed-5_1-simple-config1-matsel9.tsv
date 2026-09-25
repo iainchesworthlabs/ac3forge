@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/5_1-simple-config1-matsel9.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	10	20	0x42bc50f5
+0	1	audio	1515	11254	0xbae883df
+1	0	presentation	10	20	0x42bc50f5
+1	1	audio	1509	11326	0xaba8ec66
+2	0	presentation	10	20	0x42bc50f5
+2	1	audio	1506	11246	0xd80b81fa
+3	0	presentation	10	20	0x42bc50f5
+3	1	audio	1515	11126	0x6eb80892

@@ -9,6 +9,7 @@
 #include "aspx/hf_generator.hpp"
 #include "pcm/asf_reconstruct.hpp"
 #include "pcm/companding.hpp"
+#include "pcm/multichannel.hpp"
 #include "pcm/snf_random.hpp"
 #include "pcm/stereo.hpp"
 
@@ -41,8 +42,29 @@ constexpr double kOutputLimit = 1e9;
 
 constexpr std::size_t kSubbands = dsp::kQmfSubbands;
 
+// The most channels an element here has (7.1), and aspx_data elements (7.X's
+// four).
+constexpr std::size_t kMaxChannels = 8;
+constexpr std::size_t kMaxUnits = 4;
+
+// The chparam_info()s one channel data element holds: five_channel_data()'s.
+constexpr std::size_t kMaxChparams = 5;
+
 [[nodiscard]] std::size_t at(int index) noexcept {
     return static_cast<std::size_t>(index);
+}
+
+// The chparam_info()s a processed channel data element of `count` tracks
+// holds: one for a pair, two for three tracks, four and five for the others.
+[[nodiscard]] std::size_t chparams_of(int count) noexcept {
+    switch (count) {
+        case 2:
+            return 1;
+        case 3:
+            return 2;
+        default:
+            return static_cast<std::size_t>(count);
+    }
 }
 
 }  // namespace
@@ -64,9 +86,22 @@ void SubstreamPcm::reset() {
     master_.reset();
 }
 
-ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, std::size_t channel_count) {
+int SubstreamPcm::channel_of(Speaker speaker) const noexcept {
+    for (std::size_t c = 0; c < speakers_.size(); ++c) {
+        if (speakers_[c] == speaker) {
+            return static_cast<int>(c);
+        }
+    }
+    return -1;
+}
+
+ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
+    const std::span<const Speaker> speakers = speakers_of(ctx.ch_mode);
+    if (speakers.empty()) {
+        return fail(DecodeError::kUnsupported, "this channel mode is not decoded to PCM yet");
+    }
     if (full_length_ == ctx.frame_len_base && ch_mode_ == ctx.ch_mode && frame_rate_index_ == ctx.frame_rate_index &&
-        fs_index_ == ctx.fs_index && channels_.size() == channel_count && transforms_.has_value()) {
+        fs_index_ == ctx.fs_index && transforms_.has_value()) {
         return {};
     }
     transforms_.emplace(ctx.frame_len_base, 1);
@@ -84,8 +119,9 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, std::size_t cha
     ts_in_ats_ = aspx::num_ts_in_ats(full_length_);
     hfgen_ = aspx::ts_offset_hfgen(full_length_);
     const int ext_slots = aspx::kTsOffsetHfadj + hfgen_ + slots_;
+    speakers_ = speakers;
     channels_.clear();
-    for (std::size_t c = 0; c < channel_count; ++c) {
+    for (std::size_t c = 0; c < speakers_.size(); ++c) {
         Channel channel{.synthesis = dsp::ChannelSynthesis<double>(full_length_),
                         .delay = std::vector<double>(static_cast<std::size_t>(delay_), 0.0),
                         .analysis = {},
@@ -95,50 +131,102 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, std::size_t cha
                         .aspx = {}};
         channels_.push_back(std::move(channel));
     }
+    units_ = aspx_units(ctx.ch_mode);
+    companded_.clear();
+    for (const Speaker speaker : companded_speakers(ctx.ch_mode)) {
+        companded_.push_back(channel_of(speaker));
+    }
     held_.clear();
     master_.reset();
     return {};
 }
 
 // What one frame's A-SPX data would fail on when applied a frame later is
-// checked now, before anything moves on: its tables and its interval.
+// checked now, before anything moves on: that the element carries the
+// aspx_data elements and companding_control() Tables 212 and 213 give it,
+// and each one's tables and interval.
 ParseResult SubstreamPcm::check_control(const SubstreamContext& ctx, const ChannelElement& element) const {
     if (element.codec_mode != codec_mode::kAspx) {
         return {};
     }
-    const bool pair = element.kind == ElementKind::kPair;
-    const std::size_t expected = pair ? 2 : 1;
-    if (!element.aspx_config || !element.companding || element.companding->num_chan != static_cast<int>(expected) ||
-        (pair ? element.aspx_2ch.size() != 1 || !element.aspx_1ch.empty()
-              : element.aspx_1ch.size() != 1 || !element.aspx_2ch.empty())) {
+    const auto pairs = static_cast<std::size_t>(std::ranges::count_if(units_, &AspxUnit::pair));
+    const std::size_t singles = units_.size() - pairs;
+    const bool companding = !companded_.empty();
+    if (!element.aspx_config || element.aspx_2ch.size() != pairs || element.aspx_1ch.size() != singles ||
+        element.companding.has_value() != companding ||
+        (companding && element.companding->num_chan != static_cast<int>(companded_.size()))) {
         return fail(DecodeError::kInvalidStream, "an ASPX channel element without its A-SPX or companding data");
     }
-    AspxFrame frame{.config = &*element.aspx_config,
-                    .xover_subband_offset = pair ? element.aspx_2ch[0].xover_subband_offset
-                                                 : element.aspx_1ch[0].xover_subband_offset,
-                    .balance = pair && element.aspx_2ch[0].balance,
-                    .master_reset = false,
-                    .base_48k = ctx.fs_index == 1,
-                    .num_qmf_timeslots = slots_,
-                    .num_ts_in_ats = ts_in_ats_,
-                    .ts_offset_hfgen = hfgen_};
-    std::array<const AspxChannel*, 2> data{};
-    if (pair) {
-        data = {&element.aspx_2ch[0].channels[0], &element.aspx_2ch[0].channels[1]};
-    } else {
-        data[0] = &element.aspx_1ch[0].channel;
+    for (const AspxUnit& unit : units_) {
+        AspxFrame frame{.config = &*element.aspx_config,
+                        .xover_subband_offset = 0,
+                        .balance = false,
+                        .master_reset = false,
+                        .base_48k = ctx.fs_index == 1,
+                        .num_qmf_timeslots = slots_,
+                        .num_ts_in_ats = ts_in_ats_,
+                        .ts_offset_hfgen = hfgen_};
+        std::array<const AspxChannel*, 2> data{};
+        if (unit.pair) {
+            const AspxData2ch& two = element.aspx_2ch[at(unit.index)];
+            frame.xover_subband_offset = two.xover_subband_offset;
+            frame.balance = two.balance;
+            data = {&two.channels[0], &two.channels[1]};
+        } else {
+            const AspxData1ch& one = element.aspx_1ch[at(unit.index)];
+            frame.xover_subband_offset = one.xover_subband_offset;
+            data[0] = &one.channel;
+        }
+        if (auto ok = check_aspx(frame, std::span<const AspxChannel* const>(data).first(unit.pair ? 2 : 1)); !ok) {
+            return ok;
+        }
     }
-    return check_aspx(frame, std::span<const AspxChannel* const>(data).first(expected));
+    return {};
 }
 
 // Below the crossover and everywhere in SIMPLE mode: the analysis delayed by
 // ts_offset_hfgen slots, the history the synthesis works behind (5.7.1).
+void SubstreamPcm::pass_through(Channel& channel) const {
+    std::copy_n(channel.ext.begin() + static_cast<std::ptrdiff_t>(at(aspx::kTsOffsetHfadj) * kSubbands),
+                at(slots_) * kSubbands, channel.out.begin());
+    channel.aspx.y_prev_slots = 0;
+}
+
 void SubstreamPcm::pass_through() {
     for (Channel& channel : channels_) {
-        std::copy_n(channel.ext.begin() + static_cast<std::ptrdiff_t>(at(aspx::kTsOffsetHfadj) * kSubbands),
-                    at(slots_) * kSubbands, channel.out.begin());
-        channel.aspx.y_prev_slots = 0;
+        pass_through(channel);
     }
+}
+
+SubstreamPcm::UnitIo SubstreamPcm::unit_io(const AspxUnit& unit, const Control& control, bool master_reset) {
+    UnitIo out;
+    out.frame = AspxFrame{.config = &*control.aspx_config,
+                          .xover_subband_offset = 0,
+                          .balance = false,
+                          .master_reset = master_reset,
+                          .base_48k = fs_index_ == 1,
+                          .num_qmf_timeslots = slots_,
+                          .num_ts_in_ats = ts_in_ats_,
+                          .ts_offset_hfgen = hfgen_};
+    std::array<const AspxChannel*, 2> data{};
+    if (unit.pair) {
+        const AspxData2ch& two = control.aspx_2ch[at(unit.index)];
+        out.frame.xover_subband_offset = two.xover_subband_offset;
+        out.frame.balance = two.balance;
+        data = {&two.channels[0], &two.channels[1]};
+    } else {
+        const AspxData1ch& one = control.aspx_1ch[at(unit.index)];
+        out.frame.xover_subband_offset = one.xover_subband_offset;
+        data[0] = &one.channel;
+    }
+    out.count = unit.pair ? 2 : 1;
+    for (std::size_t c = 0; c < out.count; ++c) {
+        const int index = channel_of(unit.speakers[c]);
+        Channel& channel = channels_[at(index)];
+        out.channels[c] = index;
+        out.io[c] = AspxChannelIo{.data = data[c], .state = &channel.aspx, .ext = channel.ext, .out = channel.out};
+    }
+    return out;
 }
 
 void SubstreamPcm::apply(const Control& control) {
@@ -153,48 +241,114 @@ void SubstreamPcm::apply(const Control& control) {
     const bool master_reset = !master_ || *master_ != master;
     master_ = master;
 
-    const bool pair = !control.aspx_2ch.empty();
-    AspxFrame frame{.config = &config,
-                    .xover_subband_offset = pair ? control.aspx_2ch[0].xover_subband_offset
-                                                 : control.aspx_1ch[0].xover_subband_offset,
-                    .balance = pair && control.aspx_2ch[0].balance,
-                    .master_reset = master_reset,
-                    .base_48k = fs_index_ == 1,
-                    .num_qmf_timeslots = slots_,
-                    .num_ts_in_ats = ts_in_ats_,
-                    .ts_offset_hfgen = hfgen_};
-    const std::size_t count = pair ? 2 : 1;
-    std::array<AspxChannelIo, 2> io{};
-    for (std::size_t c = 0; c < count; ++c) {
-        Channel& channel = channels_[c];
-        io[c] = AspxChannelIo{.data = pair ? &control.aspx_2ch[0].channels[c] : &control.aspx_1ch[0].channel,
-                              .state = &channel.aspx,
-                              .ext = channel.ext,
-                              .out = channel.out};
+    std::array<UnitIo, kMaxUnits> units{};
+    std::array<aspx::SubbandGroups, kMaxUnits> groups{};
+    std::array<aspx::PatchTables, kMaxUnits> patches{};
+    for (std::size_t u = 0; u < units_.size(); ++u) {
+        units[u] = unit_io(units_[u], control, master_reset);
+        if (!aspx_tables(units[u].frame, groups[u], patches[u])) {
+            pass_through();  // check_control() refused this a frame ago
+            return;
+        }
     }
 
     // Companding first (Figure 6), over each channel's own crossover and
-    // interval. Table 212: C for a single channel element, L and R for a
-    // pair, in companding_control()'s order.
-    aspx::SubbandGroups groups;
-    aspx::PatchTables patches;
-    if (!aspx_tables(frame, groups, patches)) {
-        pass_through();  // check_control() refused this a frame ago
-        return;
-    }
-    if (control.companding) {
-        std::array<CompandingChannel, 2> companded{};
-        for (std::size_t c = 0; c < count; ++c) {
-            companded[c] = CompandingChannel{.ext = channels_[c].ext,
-                                             .sb1 = groups.sbx,
-                                             .interval = aspx_interval(io[c].data->framing, ts_in_ats_)};
+    // interval, in companding_control()'s order (Table 212).
+    if (control.companding && !companded_.empty()) {
+        std::array<CompandingChannel, 5> companded{};
+        for (std::size_t k = 0; k < companded_.size(); ++k) {
+            for (std::size_t u = 0; u < units_.size(); ++u) {
+                for (std::size_t c = 0; c < units[u].count; ++c) {
+                    if (units[u].channels[c] == companded_[k]) {
+                        companded[k] =
+                            CompandingChannel{.ext = channels_[at(companded_[k])].ext,
+                                              .sb1 = groups[u].sbx,
+                                              .interval = aspx_interval(units[u].io[c].data->framing, ts_in_ats_)};
+                    }
+                }
+            }
         }
         apply_companding(*control.companding, 0, kFullScale,
-                         std::span<const CompandingChannel>(companded).first(count));
+                         std::span<const CompandingChannel>(companded).first(companded_.size()));
     }
-    if (!decode_aspx(frame, std::span<AspxChannelIo>(io).first(count))) {
-        pass_through();
+
+    // A-SPX for each aspx_data element's channels; what none carries (the
+    // LFE) passes through.
+    std::array<bool, kMaxChannels> carried{};
+    for (std::size_t u = 0; u < units_.size(); ++u) {
+        UnitIo& unit = units[u];
+        const bool decoded = static_cast<bool>(decode_aspx(unit.frame, std::span<AspxChannelIo>(unit.io).first(unit.count)));
+        for (std::size_t c = 0; c < unit.count; ++c) {
+            carried[at(unit.channels[c])] = true;
+            if (!decoded) {
+                pass_through(channels_[at(unit.channels[c])]);
+            }
+        }
     }
+    for (std::size_t c = 0; c < channels_.size(); ++c) {
+        if (!carried[c]) {
+            pass_through(channels_[c]);
+        }
+    }
+}
+
+// Clause 5.3: each channel data element's matrix on its tracks, in bitstream
+// order; then every channel's lines in window order (Pseudocode 25); then the
+// 7.X element's Table 183 steps, which pair channels of different elements.
+ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelElement& element) {
+    parameters_.resize(kMaxChparams);
+    for (const DataElementRoute& part : route_.data) {
+        if (!part.processed) {
+            continue;
+        }
+        const Track& first = element.tracks[at(part.first_track)];
+        const SfInfo& info = element.infos[at(first.info)];
+        for (int k = 1; k < part.count; ++k) {
+            if (element.tracks[at(part.first_track + k)].info != first.info) {
+                return fail(DecodeError::kInvalidStream, "stereo processing over tracks of different sf_info()s");
+            }
+        }
+        const std::size_t needed = chparams_of(part.count);
+        for (std::size_t i = 0; i < needed; ++i) {
+            parameters_[i] = stereo_parameters(ctx, info, element.chparams[at(part.first_chparam) + i]);
+        }
+        if (part.count == 2) {
+            // Clause 5.3.3.2.
+            apply_stereo(info, first.data, parameters_[0], scaled_[at(part.first_track)],
+                         scaled_[at(part.first_track + 1)]);
+            continue;
+        }
+        std::array<std::vector<double>*, 5> tracks{};
+        for (int k = 0; k < part.count; ++k) {
+            tracks[at(k)] = &scaled_[at(part.first_track + k)];
+        }
+        if (auto ok = apply_channel_data(info, first.data, part.chel_matsel,
+                                         std::span<const StereoParameters>(parameters_).first(needed),
+                                         std::span<std::vector<double>* const>(tracks).first(at(part.count)));
+            !ok) {
+            return ok;
+        }
+    }
+
+    spectra_.resize(channels_.size());
+    for (std::size_t c = 0; c < channels_.size(); ++c) {
+        const Track& track = element.tracks[at(track_of_[c])];
+        const SfInfo& info = element.infos[at(track.info)];
+        ungroup(ctx, info.psy, track.data, lengths_[c], scaled_[at(track_of_[c])], spectra_[c]);
+    }
+
+    for (const PairStep& step : route_.steps) {
+        const auto first = at(channel_of(step.first));
+        const auto second = at(channel_of(step.second));
+        const SfInfo& info = element.infos[at(element.tracks[at(track_of_[first])].info)];
+        parameters_[0] = stereo_parameters(ctx, info, element.chparams[at(step.chparam)]);
+        if (auto ok = apply_additional_pair(ctx, info.psy, parameters_[0], lengths_[first], lengths_[second],
+                                            spectra_[first], spectra_[second]);
+            !ok) {
+            return ok;
+        }
+    }
+    return {};
 }
 
 ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstream& substream, int sequence_counter,
@@ -207,27 +361,37 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
         return fail(DecodeError::kUnsupported,
                     "frame rates other than frame_rate_index 13 need the sample rate converter, not built yet");
     }
-    if (element.kind != ElementKind::kSingle && element.kind != ElementKind::kPair) {
-        return fail(DecodeError::kUnsupported, "only mono and stereo substreams are decoded yet");
-    }
     if (element.codec_mode != codec_mode::kSimple && element.codec_mode != codec_mode::kAspx) {
         return fail(DecodeError::kUnsupported,
                     "the A-CPL codec modes are not decoded yet; SIMPLE and ASPX are");
     }
-    const std::size_t channel_count = element.kind == ElementKind::kPair ? 2 : 1;
-    if (element.tracks.size() != channel_count) {
-        return fail(DecodeError::kInvalidStream, "a channel element with an unexpected number of tracks");
-    }
-    if (auto ok = configure(ctx, channel_count); !ok) {
+    if (auto ok = route_element(ctx, element, route_); !ok) {
         return ok;
     }
+    if (auto ok = configure(ctx); !ok) {
+        return ok;
+    }
+    const std::size_t channel_count = channels_.size();
 
     // Everything that can fail is checked before any channel's overlap buffer
     // moves on, so a refused frame leaves the substream as it was.
+    track_of_.assign(channel_count, -1);
+    for (const DataElementRoute& part : route_.data) {
+        for (int k = 0; k < part.count; ++k) {
+            const int channel = channel_of(part.outputs[at(k)]);
+            if (channel < 0 || track_of_[at(channel)] >= 0) {
+                return fail(DecodeError::kInvalidStream, "a channel element that codes one channel twice");
+            }
+            track_of_[at(channel)] = part.first_track + k;
+        }
+    }
     lengths_.resize(channel_count);
-    for (std::size_t t = 0; t < channel_count; ++t) {
-        const SfInfo& info = element.infos[static_cast<std::size_t>(element.tracks[t].info)];
-        if (auto ok = window_lengths(ctx, info.psy, lengths_[t]); !ok) {
+    for (std::size_t c = 0; c < channel_count; ++c) {
+        if (track_of_[c] < 0) {
+            return fail(DecodeError::kInvalidStream, "a channel element that leaves a channel uncoded");
+        }
+        const SfInfo& info = element.infos[at(element.tracks[at(track_of_[c])].info)];
+        if (auto ok = window_lengths(ctx, info.psy, lengths_[c]); !ok) {
             return ok;
         }
     }
@@ -235,25 +399,18 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
         return ok;
     }
     // Clause 5.1.4.2: the noise fill's generator starts each frame from the
-    // frame's sequence_counter.
+    // frame's sequence_counter, and runs through the tracks in syntax order.
     RandGenState noise = reset_rand_gen_state_snf(sequence_counter);
-    scaled_.resize(channel_count);
-    for (std::size_t t = 0; t < channel_count; ++t) {
+    scaled_.resize(element.tracks.size());
+    for (std::size_t t = 0; t < element.tracks.size(); ++t) {
         const Track& track = element.tracks[t];
         const SfInfo& info = element.infos[static_cast<std::size_t>(track.info)];
         if (auto ok = reconstruct_track(info, track.data, noise, scaled_[t]); !ok) {
             return ok;
         }
     }
-    // Clause 5.3.3.2: a stereo_data() with b_enable_mdct_stereo_proc shares
-    // one sf_info() between its tracks, and its chparam_info() sets the matrix.
-    if (channel_count == 2 && !element.b_enable_mdct_stereo_proc.empty() && element.b_enable_mdct_stereo_proc[0]) {
-        if (element.chparams.empty() || element.tracks[0].info != element.tracks[1].info) {
-            return fail(DecodeError::kInvalidStream, "stereo processing without its chparam_info()");
-        }
-        const SfInfo& info = element.infos[static_cast<std::size_t>(element.tracks[0].info)];
-        const StereoParameters parameters = stereo_parameters(ctx, info, element.chparams[0]);
-        apply_stereo(info, element.tracks[0].data, parameters, scaled_[0], scaled_[1]);
+    if (auto ok = matrix(ctx, element); !ok) {
+        return ok;
     }
 
     const auto frame = static_cast<std::size_t>(full_length_);
@@ -261,14 +418,11 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     pcm_.resize(frame);
     aligned_.resize(frame);
     for (std::size_t c = 0; c < channel_count; ++c) {
-        const Track& track = element.tracks[c];
-        const SfInfo& info = element.infos[static_cast<std::size_t>(track.info)];
-        ungroup(ctx, info.psy, track.data, lengths_[c], scaled_[c], spectrum_);
         std::size_t offset = 0;
         for (const int length : lengths_[c]) {
             const auto n = static_cast<std::size_t>(length);
             // window_lengths() allows only lengths the transform set has.
-            (void)channels_[c].synthesis.block(*transforms_, std::span<const double>(spectrum_).subspan(offset, n),
+            (void)channels_[c].synthesis.block(*transforms_, std::span<const double>(spectra_[c]).subspan(offset, n),
                                                std::span<double>(pcm_).subspan(offset, n));
             offset += n;
         }
@@ -309,13 +463,7 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
         // The last slots become the next frame's history.
         std::copy(channel.ext.end() - static_cast<std::ptrdiff_t>(history), channel.ext.end(), channel.ext.begin());
     }
-    speakers.clear();
-    if (channel_count == 1) {
-        speakers.push_back(Speaker::kCentre);
-    } else {
-        speakers.push_back(Speaker::kLeft);
-        speakers.push_back(Speaker::kRight);
-    }
+    speakers.assign(speakers_.begin(), speakers_.end());
     return {};
 }
 

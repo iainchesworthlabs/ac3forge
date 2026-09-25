@@ -401,7 +401,8 @@ TEST_CASE("decode reads raw AC-4 and AC-4 in MP4 to the same PCM", "[cli][mp4][a
     CHECK(from_mp4->channels == raw->channels);
 }
 
-TEST_CASE("decode writes AC-4's ASPX mode and refuses what it does not decode, naming it", "[cli][ac4]") {
+TEST_CASE("decode writes AC-4's ASPX mode and 5.1, and refuses what it does not decode, naming it",
+          "[cli][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_decode_aspx.log";
     const auto out = dir / "ac4_aspx.wav";
@@ -411,11 +412,22 @@ TEST_CASE("decode writes AC-4's ASPX mode and refuses what it does not decode, n
     CHECK(decoded->channels.size() == 2);
     CHECK(decoded->frame_count() % 2048 == 0);
 
+    // 5.1 in SIMPLE mode: six channels, in WAV order.
+    const auto five_one_log = dir / "ac4_decode_51.log";
+    const auto five_one_wav = dir / "ac4_51.wav";
+    const fs::path five_one = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-384" / "dee.ac4";
+    REQUIRE(run_cli("decode " + quoted(five_one) + " " + quoted(five_one_wav), five_one_log) == 0);
+    CHECK(read_log(five_one_log).find("(L R C LFE Ls Rs, 48000 Hz)") != std::string::npos);
+    const auto decoded_51 = ac3::io::read_wav(five_one_wav.string());
+    REQUIRE(decoded_51.has_value());
+    CHECK(decoded_51->channels.size() == 6);
+
+    // 5.1 in ASPX_ACPL_2, which phase D5 decodes.
     const auto refused_log = dir / "ac4_decode_refused.log";
     const auto refused = dir / "ac4_refused.wav";
-    const fs::path five_one = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-384" / "dee.ac4";
-    CHECK(run_cli("decode " + quoted(five_one) + " " + quoted(refused), refused_log) == 2);  // kExitInput
-    CHECK(read_log(refused_log).find("mono and stereo") != std::string::npos);
+    const fs::path acpl = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-music-128" / "dee.ac4";
+    CHECK(run_cli("decode " + quoted(acpl) + " " + quoted(refused), refused_log) == 2);  // kExitInput
+    CHECK(read_log(refused_log).find("A-CPL") != std::string::npos);
     CHECK_FALSE(fs::exists(refused));
 }
 

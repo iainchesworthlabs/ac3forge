@@ -350,8 +350,9 @@ constexpr std::array<Command, 44> kCommands{{
      Needs::kNothing,
      [](const Args& x) { return run_ac4_encode(x.str(1), x.str(2), x.u32(3, 192), x.meta); }},
     {"decode", 3, "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out]",
-     "AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: mono and stereo in "
-     "the SIMPLE and ASPX codec modes so far, and syntax-trace=<file> writes what the decoder reads. "
+     "AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: mono, stereo, 3.0, "
+     "5.X and 7.X in the SIMPLE and ASPX codec modes so far, and syntax-trace=<file> writes what the "
+     "decoder reads. "
      "objects_dir (E-AC-3 Atmos only): "
      "export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 "
      "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "

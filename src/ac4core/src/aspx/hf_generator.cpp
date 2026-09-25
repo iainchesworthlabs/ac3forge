@@ -207,8 +207,11 @@ void generate_high_band(const SubbandGroups& groups, const PatchTables& patches,
                 const Real c = chirp[at(g)];
                 Complex value = source(n) + c * alpha0[at(p)] * source(n - 2) +
                                 c * c * alpha1[at(p)] * source(n - 4);
+                // Pre-flattening: the gain that flattens the low band's
+                // fitted slope, where the text prints its inverse
+                // (src/ac4dec/ERRATA.md, "Pre-flattening's direction").
                 if (in.preflat) {
-                    value *= Real{1} / gain_vec[at(p)];
+                    value *= gain_vec[at(p)];
                 }
                 slot[at(sb_high)] = value;
             }

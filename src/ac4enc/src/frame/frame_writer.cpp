@@ -55,16 +55,24 @@ void write_substream_group_info(BitWriter& w, const FrameFields& f) {
     w.write(1, 0, "b_hsf_ext");
     w.write(1, 1, "b_single_substream");
     w.write(1, 1, "b_channel_coded");
-    // Table 56: 0b0 mono, 0b10 stereo.
-    if (f.stereo) {
-        w.write(2, 0b10, "channel_mode");
-    } else {
+    // Table 56: 0b0 mono, 0b10 stereo, 0b1100 to 0b1110 3.0, 5.0 and 5.1,
+    // 0b1111000 to 0b1111101 the 7.X modes.
+    if (f.ch_mode == 0) {
         w.write(1, 0b0, "channel_mode");
+    } else if (f.ch_mode == 1) {
+        w.write(2, 0b10, "channel_mode");
+    } else if (f.ch_mode <= 4) {
+        w.write(4, 0b1100U + static_cast<unsigned>(f.ch_mode - 2), "channel_mode");
+    } else {
+        w.write(7, 0b1111000U + static_cast<unsigned>(f.ch_mode - 5), "channel_mode");
     }
     if (f.fs_index == 1) {
         w.write(1, 0, "b_sf_multiplier");
     }
     w.write(1, 0, "b_bitrate_info");
+    if (f.ch_mode >= 7) {
+        w.write(1, f.add_ch_base ? 1U : 0U, "add_ch_base");
+    }
     // frame_rate_factor is 1.
     w.write(1, f.iframe ? 1U : 0U, "b_audio_ndot");
     w.write(2, kAudioSubstream, "substream_index");
@@ -123,8 +131,9 @@ void write_toc(BitWriter& w, const FrameFields& f, std::size_t payload_base, std
 
 // Part 2 clause 6.2.2.3, ac4_presentation_substream(), without b_alternative:
 // dialogue normalisation, no further loudness information, a drc_frame()
-// without DRC, no associated audio. custom_dmx_data() and loud_corr() read
-// nothing for a mono or stereo presentation (6.2.9.1, 6.2.9.2).
+// without DRC, no associated audio, and custom_dmx_data() and loud_corr()
+// (6.2.9.2, 6.2.9.1) with nothing present: they read nothing for a mono or
+// stereo presentation, and flags that say so for the others.
 void write_presentation_substream(BitWriter& w, const FrameFields& f) {
     w.write(1, 0, "b_additional_data");
     w.write(7, static_cast<std::uint64_t>(f.dialnorm_bits), "dialnorm_bits");
@@ -135,6 +144,19 @@ void write_presentation_substream(BitWriter& w, const FrameFields& f) {
     w.write(1, 0, "b_more_bits");
     w.write(1, 0, "b_drc_present");  // Part 1 Table 70, drc_frame()
     w.write(1, 0, "b_associated");
+    if (f.ch_mode >= 3) {
+        w.write(1, 0, "b_stereo_dmx_coeff");
+    }
+    if (f.ch_mode > 4) {
+        w.write(1, 0, "b_corr_for_immersive_out");
+    }
+    if (f.ch_mode > 1) {
+        w.write(1, 0, "b_loro_loud_comp");
+        w.write(1, 0, "b_ltrt_loud_comp");
+    }
+    if (f.ch_mode > 4) {
+        w.write(1, 0, "b_loud_comp");  // loud_corr_5_X
+    }
     w.align();
 }
 

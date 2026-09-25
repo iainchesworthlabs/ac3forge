@@ -11,7 +11,8 @@
 // 4.2.1): the table of contents at bitstream_version 2 with one version 1
 // presentation over one substream group of one channel-coded substream, then
 // the substreams it indexes: the presentation substream (index 0) and the audio
-// substream (index 1). What this version of the encoder writes, and no more.
+// substream (index 1). The encoder writes mono and stereo; the decoder's tests
+// build frames of the other channel modes of Part 1 Table 88 with it.
 
 namespace ac4::detail {
 
@@ -20,7 +21,8 @@ struct FrameFields {
     bool iframe = true;         // b_iframe_global, b_pres_ndot and b_audio_ndot
     int fs_index = 1;           // Part 1 Table 82: 1 = 48 kHz, 0 = 44.1 kHz
     int frame_rate_index = 13;
-    bool stereo = true;         // channel_mode stereo, or mono
+    int ch_mode = 1;            // Part 1 Table 88: 0 mono, 1 stereo, 2 3.0, 3 and 4 5.X, 5 to 10 7.X
+    bool add_ch_base = false;   // for 7.X 5/2/0 and 3/2/2 (Part 2 clause 6.3.2.7)
     int dialnorm_bits = 124;    // Part 1 clause 4.3.12.2.1: -dialnorm_bits / 4 dBFS
 };
 

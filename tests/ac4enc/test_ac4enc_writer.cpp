@@ -146,7 +146,7 @@ TEST_CASE("a frame of the writer's reads to the end of every substream, with the
         for (const std::size_t frame_bytes : {std::size_t{0}, std::size_t{400}, std::size_t{1029}}) {
             CAPTURE(stereo, frame_bytes);
             ac4::detail::FrameFields fields;
-            fields.stereo = stereo;
+            fields.ch_mode = stereo ? 1 : 0;
             fields.sequence_counter = 17;
             fields.dialnorm_bits = 96;
             // An element that codes nothing: a long frame with no bands.
