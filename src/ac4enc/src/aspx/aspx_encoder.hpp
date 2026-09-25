@@ -118,8 +118,11 @@ class AspxChannelEncoder {
     // What a frame whose bits hold no more sends: the last frame's envelopes
     // and inverse filtering again, which cost least to send; with `silent`,
     // or with no last frame, envelopes at F0's smallest value, 64 per QMF
-    // subsample, and no noise.
-    [[nodiscard]] AspxChannelFields fallback(bool iframe, bool silent) const;
+    // subsample, and no noise. One envelope from where the last interval
+    // stopped, or from `start` slots into the frame, where the encoder sizes
+    // the frame a VARFIX interval gives (Part 1 clause 4.3.10.4).
+    [[nodiscard]] AspxChannelFields fallback(bool iframe, bool silent,
+                                             std::optional<int> start = std::nullopt) const;
 
     // Moves what the decoder keeps on to the fields sent for frame f.
     // `balance_values`: the second channel of a pair sent with aspx_balance,

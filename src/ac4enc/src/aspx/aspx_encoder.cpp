@@ -527,13 +527,14 @@ void AspxChannelEncoder::choose_sinusoids(std::span<const QmfSample> ext, AspxCh
     fields.add_harmonic = any ? harmonic : std::vector<bool>{};
 }
 
-AspxChannelFields AspxChannelEncoder::fallback(bool iframe, bool silent) const {
+AspxChannelFields AspxChannelEncoder::fallback(bool iframe, bool silent,
+                                               std::optional<int> start) const {
     // One envelope from where the last interval stopped to the frame's end.
     AspxFramingFields framing;
-    const int start = stop_prev_ - setup_->timing.aspx_slots;
-    if (start > 0) {
+    const int left = start.value_or(stop_prev_ - setup_->timing.aspx_slots);
+    if (left > 0) {
         framing.int_class = AspxIntervalClass::kVarFix;
-        framing.var_bord_left = start;
+        framing.var_bord_left = left;
     }
     AspxChannelFields fields = framed(framing);
     const bool high = fields.envelope_freq_res.front() != 0;

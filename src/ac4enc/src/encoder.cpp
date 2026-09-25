@@ -575,6 +575,10 @@ struct Encoder::Impl {
         return config.dialogue && config.dialogue->source == DialogueSource::kStem;
     }
 
+    // Each DRC mode's gains as a stream starts them, 0 dB throughout: what a
+    // frame whose bits hold nothing more sends, and what create() checks the
+    // rate holds.
+    std::vector<detail::DrcModeGains> least_drc_gains;
     // DRC modes that send gains (frame/drc_gains.hpp): a computer for each,
     // by the mode's place in drc_config(), the input they analyse on the
     // signal's axis, and each mode's gains for the frame being coded.
@@ -813,8 +817,11 @@ struct Encoder::Impl {
 
     // A frame's A-SPX data before the rate loop: each channel's proposal,
     // with companding as the stream has it; or with `fallback`, what costs
-    // least (AspxChannelEncoder::fallback()).
-    [[nodiscard]] AspxFrame aspx_frame(std::int64_t frame, bool iframe, std::optional<bool> fallback) {
+    // least (AspxChannelEncoder::fallback()), its interval from `start`
+    // where that is given.
+    [[nodiscard]] AspxFrame aspx_frame(std::int64_t frame, bool iframe,
+                                       std::optional<bool> fallback,
+                                       std::optional<int> start = std::nullopt) {
         AspxFrame out;
         out.companding.num_chan = static_cast<int>(plan.companded.size());
         for (std::size_t i = 0; i < plan.companded.size(); ++i) {
@@ -825,7 +832,8 @@ struct Encoder::Impl {
             element.companding = out.companding;
             for (const int c : channels) {
                 const auto q = static_cast<std::size_t>(qmf_of[static_cast<std::size_t>(c)]);
-                element.channels.push_back(fallback ? qmf[q].fallback(iframe, *fallback) : qmf[q].propose(frame, iframe));
+                element.channels.push_back(fallback ? qmf[q].fallback(iframe, *fallback, start)
+                                                    : qmf[q].propose(frame, iframe));
             }
             if (!fallback && channels.size() == 2 && aspx->balance) {
                 const auto q0 = static_cast<std::size_t>(qmf_of[static_cast<std::size_t>(channels[0])]);
@@ -1280,6 +1288,10 @@ struct Encoder::Impl {
         return f;
     }
 
+    // What encode_frame() lowers, in turn, when not even a frame with no
+    // bands fits.
+    enum class Fallback : std::uint8_t { kProposed, kHeld, kLeast, kLeastMetadata };
+
     [[nodiscard]] EncodedFrame encode_frame(std::int64_t frame) {
         const std::size_t channels = signal.size();
         const std::int64_t start = frame * frame_length;
@@ -1551,18 +1563,30 @@ struct Encoder::Impl {
             // Lines so far past full scale that the coarsest step still codes
             // more than the frame holds, or A-SPX data that leave too little:
             // the frame goes out with no bands, and then with the A-SPX data
-            // that cost least.
-            // With A-CPL, the parameters as proposed, then those the decoder
-            // holds already, which cost least.
+            // that cost least. With A-CPL, the parameters as proposed, then
+            // those the decoder holds already, then in an I-frame those a
+            // stream starts from. Last, the per-frame metadata a stream
+            // starts from too, or kept from the last frame: this is the frame
+            // create() checks the rate holds, whatever the frame's content.
             const std::optional<AspxFrame> proposed = std::move(f.aspx);
             std::optional<detail::AcplFrameFields> parameters = std::move(f.acpl);
+            const bool coupled = parameters.has_value();
             f = silent(fields.iframe, f.layout);
-            for (const bool held : {false, true}) {
-                if (held) {
-                    if (!parameters) {
-                        break;
+            for (const Fallback step : {Fallback::kProposed, Fallback::kHeld, Fallback::kLeast,
+                                        Fallback::kLeastMetadata}) {
+                if (step == Fallback::kHeld || step == Fallback::kLeast) {
+                    if (!coupled) {
+                        continue;
                     }
-                    parameters = acpl->held(fields.iframe);
+                    parameters = step == Fallback::kHeld ? acpl->held(fields.iframe)
+                                                         : acpl->least(fields.iframe);
+                }
+                if (step == Fallback::kLeastMetadata) {
+                    if (stem()) {
+                        de_current =
+                            fields.iframe || !de_sent ? detail::DeFrameParameters{} : de_previous;
+                    }
+                    fields.drc_gains = least_drc_gains;
                 }
                 f.acpl = parameters;
                 f.aspx = proposed;
@@ -1921,6 +1945,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
                 }
             }
         }
+        impl->least_drc_gains = impl->drc_gains;
         impl->drc_input.assign(static_cast<std::size_t>(config.channels),
                                std::vector<double>(static_cast<std::size_t>(impl->delay), 0.0));
     }
@@ -1956,9 +1981,12 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
     // sizes.
     const detail::FrameFields fields = impl->fields_for(0);
     const auto frame_bytes = static_cast<std::size_t>(impl->bytes_per_frame);
-    std::optional<Impl::AspxFrame> aspx_data;
+    // A silent frame's A-SPX data with its interval from the frame's start,
+    // and from a slot into it, as where the last frame's interval ran on,
+    // which costs the more.
+    std::vector<std::optional<Impl::AspxFrame>> aspx_data = {std::nullopt};
     if (impl->aspx) {
-        aspx_data = impl->aspx_frame(0, true, true);
+        aspx_data = {impl->aspx_frame(0, true, true), impl->aspx_frame(0, true, true, 1)};
     }
     std::optional<std::vector<std::byte>> raw;
     const int n = timing->frame_length;
@@ -1969,19 +1997,22 @@ std::expected<std::unique_ptr<Encoder::Impl>, EncodeError> Encoder::Impl::make(c
         for (const Impl::Group& group : impl->groups) {
             layouts.push_back(group.lfe ? detail::long_layout(n) : layout);
         }
-        Impl::Coding silent = impl->silent(fields.iframe, layouts);
-        silent.aspx = aspx_data;
-        if (impl->acpl) {
-            silent.acpl = impl->acpl->held(fields.iframe);
-        }
-        BitWriter audio = BitWriter::buffered();
-        impl->write_element(audio, silent, true);
-        auto written = detail::write_frame(fields, audio, frame_bytes, {});
-        if (!written) {
-            return std::unexpected(EncodeError::kInvalidConfig);  // the rate cannot hold a frame
-        }
-        if (!raw) {
-            raw = std::move(written);
+        for (const std::optional<Impl::AspxFrame>& aspx : aspx_data) {
+            Impl::Coding silent = impl->silent(fields.iframe, layouts);
+            silent.aspx = aspx;
+            if (impl->acpl) {
+                silent.acpl = impl->acpl->least(fields.iframe);
+            }
+            BitWriter audio = BitWriter::buffered();
+            impl->write_element(audio, silent, true);
+            auto written = detail::write_frame(fields, audio, frame_bytes, {});
+            if (!written) {
+                // The rate cannot hold the frame.
+                return std::unexpected(EncodeError::kInvalidConfig);
+            }
+            if (!raw) {
+                raw = std::move(written);
+            }
         }
     }
     const auto parsed = parse_raw_frame(*raw);

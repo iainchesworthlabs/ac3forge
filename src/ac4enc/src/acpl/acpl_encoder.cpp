@@ -468,12 +468,23 @@ AcplFrameFields AcplEncoder::propose(long long frame, bool iframe) const {
 }
 
 AcplFrameFields AcplEncoder::held(bool iframe) const {
+    return sent_as(module_history_, coupling_history_, iframe);
+}
+
+AcplFrameFields AcplEncoder::least(bool iframe) const {
+    return iframe ? sent_as({}, {}, true) : held(false);
+}
+
+AcplFrameFields AcplEncoder::sent_as(const std::array<std::array<Values, 2>, 2>& modules,
+                                     const std::array<Values, 11>& coupling, bool iframe) const {
     AcplFrameFields out;
     if (layout_ != AcplLayout::kCoupling) {
         const std::size_t count = layout_ == AcplLayout::kPair ? 1 : 2;
         for (std::size_t m = 0; m < count; ++m) {
-            out.modules[m].alpha1 = code(AcplKind::kAlpha, module_history_[m][0], module_history_[m][0], iframe);
-            out.modules[m].beta1 = code(AcplKind::kBeta, module_history_[m][1], module_history_[m][1], iframe);
+            out.modules[m].alpha1 =
+                code(AcplKind::kAlpha, modules[m][0], module_history_[m][0], iframe);
+            out.modules[m].beta1 =
+                code(AcplKind::kBeta, modules[m][1], module_history_[m][1], iframe);
         }
         return out;
     }
@@ -485,7 +496,7 @@ AcplFrameFields AcplEncoder::held(bool iframe) const {
                                                &data.beta3,    &data.gamma[0], &data.gamma[1], &data.gamma[2],
                                                &data.gamma[3], &data.gamma[4], &data.gamma[5]};
     for (std::size_t p = 0; p < fields.size(); ++p) {
-        *fields[p] = code(kinds[p], coupling_history_[p], coupling_history_[p], iframe);
+        *fields[p] = code(kinds[p], coupling[p], coupling_history_[p], iframe);
     }
     return out;
 }

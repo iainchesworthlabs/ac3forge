@@ -100,6 +100,12 @@ class AcplEncoder {
     // holds, again, which cost least.
     [[nodiscard]] AcplFrameFields held(bool iframe) const;
 
+    // What a frame sends whose bits hold not even those: in an I-frame,
+    // which codes its values whole, the values a stream starts from, 0 in
+    // every band, which is what create() checks the rate holds; elsewhere the
+    // held values.
+    [[nodiscard]] AcplFrameFields least(bool iframe) const;
+
     // Moves what the decoder holds on to the values sent.
     void commit(const AcplFrameFields& sent);
 
@@ -120,6 +126,11 @@ class AcplEncoder {
     // One parameter set sent as it costs least: along frequency, or along
     // time from `previous` outside I-frames.
     [[nodiscard]] AcplParamFields code(AcplKind kind, const Values& q, const Values& previous, bool iframe) const;
+    // Every parameter set of the layout sent as `modules` or `coupling` has
+    // it, against the values held.
+    [[nodiscard]] AcplFrameFields sent_as(const std::array<std::array<Values, 2>, 2>& modules,
+                                          const std::array<Values, 11>& coupling,
+                                          bool iframe) const;
 
     AcplLayout layout_;
     FrameTiming timing_;
