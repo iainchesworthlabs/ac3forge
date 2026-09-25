@@ -429,10 +429,15 @@ if(AC3FORGE_BUILD_CAPI)
 endif()
 
 # The config file find_package(ac3forge) actually loads. No find_dependency()
-# calls needed in ac3forgeConfig.cmake.in: with the platform-audio code
-# physically in a separate, non-exported target (ac3::audio), the installed
-# package has no third-party or system dependency whatsoever - matches
-# vcpkg.json's own note that the codec itself has none.
+# calls needed in ac3forgeConfig.cmake.in: the platform-audio code is
+# physically in a separate, non-exported target (ac3::audio), and {fmt}, the
+# one third-party library ac3::forge and mp4::mp4 use, is compiled into their
+# object files as a private copy (ac3::fmt_private, cmake/Fmt.cmake) instead of linked. A
+# shared library absorbs a linked {fmt} at its own link step; a static archive
+# cannot, so a linked {fmt} would leave its consumers an undefined fmt:: symbol
+# that this package names nowhere. tools/checks/check_install_consumer.sh links
+# every installed archive whole, so a symbol that neither the package nor the
+# C/C++ runtime supplies fails there.
 configure_package_config_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/ac3forgeConfig.cmake.in"
     "${CMAKE_CURRENT_BINARY_DIR}/ac3forgeConfig.cmake"

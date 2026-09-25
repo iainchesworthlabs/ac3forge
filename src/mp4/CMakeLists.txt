@@ -53,10 +53,12 @@ target_compile_features(mp4_objects PUBLIC cxx_std_23)
 # forge_objects treatment for why a plain PRIVATE link isn't enough for
 # an OBJECT library that's part of an install(EXPORT) set. ac3::coverage is a
 # no-op unless AC3FORGE_ENABLE_COVERAGE is on (see cmake/Coverage.cmake).
+# ac3::fmt_private compiles {fmt} into hls.cpp and dash.cpp instead of linking it, so
+# mp4_static carries no undefined {fmt} reference into a consumer's link - see cmake/Fmt.cmake.
 target_link_libraries(mp4_objects PRIVATE
     "$<BUILD_INTERFACE:ac3::warnings>"
     "$<BUILD_INTERFACE:ac3::coverage>"
-    "$<BUILD_INTERFACE:ac3::fmt>")
+    "$<BUILD_INTERFACE:ac3::fmt_private>")
 
 set_target_properties(mp4_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON

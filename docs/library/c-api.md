@@ -30,6 +30,14 @@ Linux the shared library exports the C API and nothing else, so a program that l
 Built by default (`-DAC3FORGE_BUILD_CAPI=OFF` to skip it); it needs nothing `ac3::forge` itself
 doesn't.
 
+Linking `ac3::forge_c_static` from a C project takes one more step than the snippet above,
+because the archive holds C++ objects: enable the CXX language beside C
+(`project(your_project LANGUAGES C CXX)`), so that CMake links with the C++ driver, which supplies
+the C++ runtime and libm. With only C enabled the link goes through the C driver and stops at C++
+runtime symbols such as `operator new`. `ac3::forge_c_shared` carries its own runtime dependency
+and links from a C-only project as it is. Neither variant needs {fmt}, and
+[Using ac3::forge](index.md) says why.
+
 ## Conventions
 
 **Every fallible function returns `ac3forge_status_t`.** `AC3FORGE_OK` is always zero, so
