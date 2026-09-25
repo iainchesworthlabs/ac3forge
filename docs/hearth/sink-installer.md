@@ -27,6 +27,18 @@ back.
 </div>
 
 <script>
+// Material for MkDocs reads bare keys as shortcuts, "s", "f" and "/" for its
+// search and "n", "p", "." and "," to turn the page, unless a text field has
+// the focus. It cannot see a field inside ESP Web Tools' dialog, whose shadow
+// roots nest, so a network's name or password typed there lost its letters to
+// the search box, or the page. Keys from the dialog stop at the body, after
+// the field has had them.
+document.body.addEventListener("keydown", (event) => {
+  if (event.composedPath().some((node) => (node.localName || "").startsWith("ewt-"))) {
+    event.stopPropagation();
+  }
+});
+
 (async () => {
   const base = "../../assets/sink-installer/";
   // Every chip the firmware is published for, in the order the page shows
