@@ -2660,6 +2660,64 @@ TEST_CASE("build_dac4 writes nothing for what it cannot describe whole and dac4_
     CHECK(ac4::dac4_refusal(legacy).find("bitstream_version 0 or 1") != std::string_view::npos);
 }
 
+TEST_CASE("cmaf_refusal names the rule of Part 2 Annex H.1.2.1 a stream breaks",
+          "[ac4][carriage]") {
+    // Every presentation with a presentation_id of its own: the rules hold.
+    CHECK(ac4::cmaf_refusal(configurations_toc()).empty());
+    ac4::Toc one = one_substream_toc(1);
+    CHECK(ac4::cmaf_refusal(one) == "a presentation without a presentation_id");
+    one.presentations_v1[0].presentation_id = 0;
+    CHECK(ac4::cmaf_refusal(one).empty());
+
+    struct Case {
+        const char* name;
+        std::function<void(ac4::Toc&)> change;
+        std::string_view says;
+    };
+    const std::vector<Case> cases = {
+        {"a version 1 table of contents", [](ac4::Toc& t) { t.bitstream_version = 1; },
+         "bitstream_version other than 2"},
+        {"65 presentations", [](ac4::Toc& t) { t.n_presentations = 65; }, "more than 64"},
+        {"a presentation_version 2",
+         [](ac4::Toc& t) { t.presentations_v1[1].presentation_version = 2; },
+         "presentation_version other than 1"},
+        {"EMDF payloads alone",
+         [](ac4::Toc& t) {
+             ac4::PresentationInfoV1 emdf;
+             emdf.presentation_version = 1;
+             emdf.presentation_config = 6;
+             emdf.b_add_emdf_substreams = true;
+             emdf.add_emdf = {{.emdf_version = 0, .key_id = 0}};
+             t.presentations_v1.push_back(emdf);
+             t.n_presentations = static_cast<int>(t.presentations_v1.size());
+         },
+         "configuration 6, EMDF payloads alone"},
+        {"a presentation without an id",
+         [](ac4::Toc& t) { t.presentations_v1[2].presentation_id.reset(); },
+         "without a presentation_id"},
+        {"two presentations with one id",
+         [](ac4::Toc& t) { t.presentations_v1[3].presentation_id = 2; },
+         "two presentations with one presentation_id"},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        ac4::Toc toc = configurations_toc();
+        c.change(toc);
+        CHECK(ac4::cmaf_refusal(toc).find(c.says) != std::string_view::npos);
+    }
+
+    // The encoder's EMDF stream: an MP4 carries its presentation of
+    // configuration 6, and a CMAF track cannot.
+    const auto raw = read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." /
+                               "ac4dec" / "presentations" / "encoder-emdf.ac4");
+    const auto scanned = ac4::scan(raw);
+    REQUIRE_FALSE(scanned.frames.empty());
+    const auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+    REQUIRE(frame.has_value());
+    CHECK(ac4::dac4_refusal(frame->toc).empty());
+    CHECK(ac4::cmaf_refusal(frame->toc).find("configuration 6") != std::string_view::npos);
+}
+
 TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",
           "[ac4][carriage]") {
     ac4::Toc toc;

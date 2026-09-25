@@ -581,6 +581,17 @@ struct RawFrame {
 // cannot describe; empty where it describes every presentation whole.
 [[nodiscard]] AC4_EXPORT std::string_view dac4_refusal(const Toc& toc);
 
+// Why a CMAF track (TS 103 190-2 Annex H.1.2.1) cannot carry the stream `toc`
+// describes, a string literal naming the first rule it breaks; empty where it
+// keeps them: bitstream_version 2, presentation_version 1, at most 64
+// presentations, and a presentation_id in every presentation, no two the
+// same. A presentation of configuration 6, EMDF payloads alone, has no field
+// for a presentation_id, so a stream with one is refused; an MP4 that is not
+// fragmented carries it (build_dac4()). The rules for a presentation whose
+// groups several tracks carry (H.1.2.2 and H.1.2.3), and for the samples'
+// equivalent configurations (H.1.2.4), are the muxer's to keep.
+[[nodiscard]] AC4_EXPORT std::string_view cmaf_refusal(const Toc& toc);
+
 // Samples per AC-4 frame at the stream's own sample rate - what
 // mp4::AudioTrack::samples_per_frame and an MPEG-TS PTS cadence need.
 // Table 84: most frame rates divide the sample rate exactly; the

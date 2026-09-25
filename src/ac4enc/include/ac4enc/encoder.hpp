@@ -48,12 +48,15 @@
 // dialogue enhancement's parameters and a dialogue substream's mixing values.
 // The table of contents keeps CMAF's rules (Part 2 Annex H.1.2): at most 64
 // presentations, each that carries audio with a presentation_id of its own,
-// and one configuration throughout. Immersive layouts and objects, which the
-// plan's phases E8 and E9 add, are refused, as is every configuration outside
-// the rules this header states; Encoder::refusal_reason() names the rule a
-// configuration breaks. Each frame comes out as a raw_ac4_frame, which an MP4
-// sample holds as it is (ac4::build_dac4() describes the track from toc()),
-// and which sync_frame() wraps for a raw .ac4 file or MPEG-2 TS.
+// and one configuration throughout. A configuration 6 presentation has no
+// field for one, so a CMAF track cannot carry a stream that has it
+// (ac4::cmaf_refusal()), where an MP4 can. Immersive layouts and objects,
+// which the plan's phases E8 and E9 add, are refused, as is every
+// configuration outside the rules this header states;
+// Encoder::refusal_reason() names the rule a configuration breaks. Each frame
+// comes out as a raw_ac4_frame, which an MP4 sample holds as it is
+// (ac4::build_dac4() describes the track from toc()), and which sync_frame()
+// wraps for a raw .ac4 file or MPEG-2 TS.
 //
 // Every field of the configuration structures has a default, so a designated
 // initializer names only the fields it sets.

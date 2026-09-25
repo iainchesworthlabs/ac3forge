@@ -235,8 +235,9 @@ takes. Where the evidence is DEE's MP4 muxer, the box it writes is the box `buil
 byte (`tests/ac4/test_ac4.cpp`, `tools/checks/check_ac4_encode_readers.py`): for the committed DEE
 streams and the encoder's single-presentation streams (but for the 3/2/2 layout's top front pair, below),
 and for Chromium's A-JOC stream and DASH-IF's 5.1 test vectors, whose program identifier it copies from
-the table of contents. The muxer refuses a stream of more than one presentation; MediaInfo's trace of
-the encoder's presentation streams' boxes reads every configuration's substream groups as written.
+the table of contents. The muxer refuses a stream of more than one presentation and does not finish one
+of an alternative presentation; MediaInfo's trace of the encoder's presentation streams' boxes reads
+every configuration's substream groups as written.
 
 ### Pseudocode E.3 leaves channel groups out
 
@@ -336,7 +337,8 @@ the encoder's presentation streams' boxes reads every configuration's substream 
   `b_tdc_extension` is 0. The table of contents does not carry them, so `build_dac4()` refuses an
   alternative presentation whose writer has not given them.
 - **Evidence:** Text. MediaInfo reads the name and the first target as written, then a second target:
-  it takes `n_targets` for `n_targets_minus1`.
+  it takes `n_targets` for `n_targets_minus1`. DEE's muxer, given the encoder's stream of one alternative
+  presentation, writes nothing in 60 seconds and has to be stopped, so it settles nothing here.
 
 ## The presentation substream
 
@@ -450,8 +452,11 @@ these:
   6.
 - **Reading:** every presentation of configurations 0 to 5, and every presentation of one substream
   group, carries a `presentation_id` in every frame, no two the same; a configuration 6 presentation,
-  EMDF payloads alone, has no field for one. The writer takes configuration 6 as Part 2's syntax has it;
-  whether a CMAF track may carry one is for the muxer to decide (phase E7).
+  EMDF payloads alone, has no field for one. The writer takes configuration 6 as Part 2's syntax has it,
+  and an MP4 that is not fragmented carries it (Annex E.10). A CMAF track cannot, since "every
+  presentation" includes it: `ac4::cmaf_refusal()` refuses a stream with one, and `ac3cli fmp4` with it
+  (phase E7). A writer that wants a CMAF track carries the payloads in a presentation that plays audio,
+  in the EMDF payloads substream its `emdf_info()` names.
 - **Evidence:** Text. DEE's muxer, given the encoder's EMDF stream, warns that its second presentation "is
   missing a presentation_id", and refuses the stream, as it refuses every stream of more than one
   presentation.

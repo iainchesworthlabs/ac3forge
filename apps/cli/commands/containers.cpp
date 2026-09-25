@@ -517,6 +517,24 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned.has_value()) {
+        // AC-4: a CMAF track keeps TS 103 190-2 Annex H.1.2's rules, which a
+        // stream's table of contents alone can break, such as a configuration
+        // 6 presentation's missing presentation_id. Fragmenting AC-4 itself
+        // is planning/ac4.md's phase I1.
+        if (const auto ac4_in = try_ac4_input(raw)) {
+            const std::string_view refusal = ac4::cmaf_refusal(ac4_in->toc);
+            if (!refusal.empty()) {
+                fmt::println(stderr,
+                             "error: {}: a CMAF track cannot carry {} (TS 103 190-2 Annex H.1.2)",
+                             in_path, refusal);
+                return kExitInput;
+            }
+            fmt::println(stderr,
+                         "error: {}: fmp4 does not fragment AC-4 yet; ac3cli mp4 carries it in an "
+                         "MP4 that is not fragmented",
+                         in_path);
+            return kExitInput;
+        }
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }

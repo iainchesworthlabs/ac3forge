@@ -594,6 +594,14 @@ TEST_CASE("ac4-encode's dialogue enhancement substreams stems and EMDF-only pres
         const std::vector<std::uint64_t> ids = first_frame(read_trace(trace), "emdf_payload_id");
         CHECK(std::ranges::count(ids, 1U) == 1);
         CHECK(std::ranges::count(ids, 20U) == 1);
+        // An MP4 carries the presentation, and a CMAF track cannot: it has no
+        // field for the presentation_id Part 2 Annex H.1.2.1 asks of each.
+        CHECK(run_cli("mp4 " + quoted(out) + " " + quoted(dir / "ac4_emdf.mp4"), log) == 0);
+        const fs::path fragments = dir / "ac4_emdf_fmp4";
+        CHECK(run_cli("fmp4 " + quoted(out) + " " + quoted(fragments), log) == 2);
+        CHECK(read_log(log).find("a CMAF track cannot carry a presentation of configuration 6") !=
+              std::string::npos);
+        CHECK_FALSE(fs::exists(fragments / "init.mp4"));
     }
     SECTION("3.0 dialogue beside music and effects, with experimental=three-zero") {
         const fs::path three = tones_wav("ac4_three.wav", 3);
@@ -667,4 +675,21 @@ TEST_CASE("ac4-encode refuses substreams and presentations that do not go togeth
                       " 192 presentation1=1 presentation1-id=600",
                   log) == 1);
     CHECK(read_log(log).find("the MP4 sample entry's dac4 cannot describe") != std::string::npos);
+}
+
+TEST_CASE("fmp4 refuses an AC-4 stream whose presentations keep CMAF's rules as not yet fragmented",
+          "[cli][ac4]") {
+    // One presentation with its presentation_id: what Part 2 Annex H.1.2.1
+    // asks. Fragmenting AC-4 is planning/ac4.md's phase I1; the refusal for a
+    // configuration 6 presentation is in the EMDF section above.
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_fmp4.log";
+    const fs::path out = dir / "ac4_fmp4.ac4";
+    REQUIRE(run_cli("ac4-encode " + quoted(tones_wav("ac4_fmp4_stereo.wav", 2)) + " " +
+                        quoted(out) + " 128",
+                    log) == 0);
+    const fs::path fragments = dir / "ac4_fmp4";
+    CHECK(run_cli("fmp4 " + quoted(out) + " " + quoted(fragments), log) == 2);
+    CHECK(read_log(log).find("fmp4 does not fragment AC-4 yet") != std::string::npos);
+    CHECK_FALSE(fs::exists(fragments / "init.mp4"));
 }

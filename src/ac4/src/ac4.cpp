@@ -2366,6 +2366,35 @@ std::string_view dac4_refusal(const Toc& toc) {
     return dac4 ? std::string_view{} : dac4.error();
 }
 
+std::string_view cmaf_refusal(const Toc& toc) {
+    // Part 2 Annex H.1.2.1's constraints, as one table of contents shows them.
+    if (toc.bitstream_version != 2) {
+        return "a bitstream_version other than 2";
+    }
+    if (toc.n_presentations > 64) {
+        return "more than 64 presentations";
+    }
+    std::vector<int> ids;
+    for (const PresentationInfoV1& pres : toc.presentations_v1) {
+        if (pres.presentation_version != 1) {
+            return "a presentation_version other than 1";
+        }
+        // 6.2.1.3 reads no b_presentation_id for an EMDF-only presentation.
+        if (pres.presentation_config == 6) {
+            return "a presentation of configuration 6, EMDF payloads alone, which has no field for "
+                   "the presentation_id every presentation needs";
+        }
+        if (!pres.presentation_id) {
+            return "a presentation without a presentation_id";
+        }
+        if (std::ranges::find(ids, *pres.presentation_id) != ids.end()) {
+            return "two presentations with one presentation_id";
+        }
+        ids.push_back(*pres.presentation_id);
+    }
+    return {};
+}
+
 std::optional<std::uint32_t> samples_per_frame(const Toc& toc) {
     // Table 83/84. At 44,1 kHz only the 2048-sample frame exists; at 48 kHz
     // the 1000/1001-family entries with a NON-integer sample count per frame
