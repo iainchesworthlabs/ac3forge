@@ -3316,6 +3316,11 @@ jobs:
     needs: [check-runners, build-esp32s3, build-esp32c3]
     if: inputs.run_esp
     runs-on: ${{ fromJSON(needs.check-runners.outputs.linux_runner_6) }}
+    # Newest main commit only when it lands on the GitHub-hosted fallback, as
+    # build-esp32s3's leg does (its concurrency comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(needs.check-runners.outputs.linux_runner_6, 'self-hosted') && 'esp32-firmware-main' || format('esp32-firmware-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     # For its Python, which the two scripts need and nothing else.
     container: espressif/idf:v6.1
     permissions:
