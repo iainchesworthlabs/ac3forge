@@ -431,7 +431,10 @@ AcplFrameFields AcplEncoder::propose(long long frame, bool iframe) const {
         // y2 decorrelating v3 = gamma1 Lo + gamma4 Ro.
         const double error = std::max(0.0, k.cc - 2.0 * g[4] * k.cl - 2.0 * g[5] * k.cr + g[4] * g[4] * k.ll +
                                                2.0 * g[4] * g[5] * k.lr + g[5] * g[5] * k.rr);
-        const auto energy_of = [&](double x, double y) { return x * x * k.ll + 2.0 * x * y * k.lr + y * y * k.rr; };
+        // The energy of on_lo Lo + on_ro Ro.
+        const auto energy_of = [&](double on_lo, double on_ro) {
+            return on_lo * on_lo * k.ll + 2.0 * on_lo * on_ro * k.lr + on_ro * on_ro * k.rr;
+        };
         const double v3 = energy_of(g[0], g[3]);
         if (v3 > kSilence) {
             q[4][b] = std::clamp(static_cast<int>(std::lround(2.0 * std::sqrt(error / v3) / acpl::beta3_step(quant))),
