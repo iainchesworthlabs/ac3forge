@@ -220,7 +220,33 @@ using DftWeights = std::array<std::array<std::complex<double>, kWindowSlots>, kW
     return out;
 }
 
+// The input channels a layout's analysis reads.
+[[nodiscard]] std::size_t analysed_channels(AcplLayout layout) noexcept {
+    switch (layout) {
+        case AcplLayout::kPair:
+            return 2;
+        case AcplLayout::kImmersive:
+            return 8;
+        default:
+            return 5;
+    }
+}
+
 }  // namespace
+
+std::size_t acpl_modules(AcplLayout layout) noexcept {
+    switch (layout) {
+        case AcplLayout::kPair:
+            return 1;
+        case AcplLayout::kFiveX:
+            return 2;
+        case AcplLayout::kImmersive:
+            return 4;
+        case AcplLayout::kCoupling:
+            break;
+    }
+    return 0;
+}
 
 AcplEncoder::AcplEncoder(AcplLayout layout, int num_param_bands_id, int quant_mode, int qmf_band,
                          const FrameTiming& timing)
@@ -230,7 +256,7 @@ AcplEncoder::AcplEncoder(AcplLayout layout, int num_param_bands_id, int quant_mo
       num_bands_(acpl_num_param_bands(num_param_bands_id)),
       quant_mode_(quant_mode),
       qmf_band_(qmf_band),
-      analyses_(layout == AcplLayout::kPair ? 2 : 5) {
+      analyses_(analysed_channels(layout)) {
     start_band_ = acpl_param_band(config_1ch());
 }
 
@@ -308,21 +334,26 @@ AcplFrameFields AcplEncoder::propose(long long frame, bool iframe) const {
     // them, [1].
     const std::vector<Spectrum> x = spectra(first);
     if (layout_ != AcplLayout::kCoupling) {
-        // One module on (L, R), or two on (L, Ls / sqrt 2) and (R, Rs / sqrt 2),
-        // from acpl_qmf_band up: below it the residuals rebuild the pairs.
-        const std::size_t count = layout_ == AcplLayout::kPair ? 1 : 2;
-        std::array<std::array<std::array<ModuleSums, kMaxParamBands>, 2>, 2> split{};
+        // One module on (L, R), two on (L, Ls / sqrt 2) and (R, Rs / sqrt 2),
+        // or the immersive element's four on its coupled pairs, from
+        // acpl_qmf_band up: below it the residuals rebuild the pairs. A module's
+        // estimate takes its pair at any one scale: the immersive element's are
+        // over sqrt 2 in the upmix, which scales both alike.
+        const std::size_t count = acpl_modules(layout_);
+        std::array<std::array<std::array<ModuleSums, kMaxParamBands>, 2>, 4> split{};
         for (int sb = qmf_band_; sb < kSubbands; ++sb) {
             const std::size_t pb = band_of(sb);
             const auto s = at(sb);
             for (int bin = 0; bin < kWindowSlots; ++bin) {
                 const auto k = at(bin);
-                std::array<ModuleSums, 2> one{};
-                if (count == 1) {
-                    one[0].add(x[0][s][k], x[1][s][k]);
-                } else {
+                std::array<ModuleSums, 4> one{};
+                if (layout_ == AcplLayout::kFiveX) {
                     one[0].add(x[0][s][k], kHalfRoot2 * x[3][s][k]);
                     one[1].add(x[1][s][k], kHalfRoot2 * x[4][s][k]);
+                } else {
+                    for (std::size_t m = 0; m < count; ++m) {
+                        one[m].add(x[2 * m][s][k], x[2 * m + 1][s][k]);
+                    }
                 }
                 for (std::size_t m = 0; m < count; ++m) {
                     split[m][1][pb] += one[m];
@@ -332,7 +363,7 @@ AcplFrameFields AcplEncoder::propose(long long frame, bool iframe) const {
                 }
             }
         }
-        std::array<std::array<ModuleSums, kMaxParamBands>, 2> sums{};
+        std::array<std::array<ModuleSums, kMaxParamBands>, 4> sums{};
         for (std::size_t m = 0; m < count; ++m) {
             for (std::size_t b = 0; b < kMaxParamBands; ++b) {
                 const bool own = own_bins_carry(split[m][0][b].gg, split[m][1][b].gg);
@@ -475,11 +506,11 @@ AcplFrameFields AcplEncoder::least(bool iframe) const {
     return iframe ? sent_as({}, {}, true) : held(false);
 }
 
-AcplFrameFields AcplEncoder::sent_as(const std::array<std::array<Values, 2>, 2>& modules,
+AcplFrameFields AcplEncoder::sent_as(const std::array<std::array<Values, 2>, 4>& modules,
                                      const std::array<Values, 11>& coupling, bool iframe) const {
     AcplFrameFields out;
     if (layout_ != AcplLayout::kCoupling) {
-        const std::size_t count = layout_ == AcplLayout::kPair ? 1 : 2;
+        const std::size_t count = acpl_modules(layout_);
         for (std::size_t m = 0; m < count; ++m) {
             out.modules[m].alpha1 =
                 code(AcplKind::kAlpha, modules[m][0], module_history_[m][0], iframe);
@@ -503,7 +534,7 @@ AcplFrameFields AcplEncoder::sent_as(const std::array<std::array<Values, 2>, 2>&
 
 void AcplEncoder::commit(const AcplFrameFields& sent) {
     if (layout_ != AcplLayout::kCoupling) {
-        const std::size_t count = layout_ == AcplLayout::kPair ? 1 : 2;
+        const std::size_t count = acpl_modules(layout_);
         for (std::size_t m = 0; m < count; ++m) {
             module_history_[m][0] = decode_set(sent.modules[m].alpha1.front(), start_band_, module_history_[m][0]);
             module_history_[m][1] = decode_set(sent.modules[m].beta1.front(), start_band_, module_history_[m][1]);
@@ -529,11 +560,17 @@ void AcplEncoder::drop_before_frame(long long frame) {
 }
 
 std::vector<double> acpl_downmix(AcplLayout layout, std::span<const double> input) {
+    // The immersive element's pairs over 2 sqrt 2 (Pseudocode 2's x5in = 2 x5
+    // and sqrt 2 on the outputs).
+    constexpr double kCoupled = 1.0 / (2.0 * kRoot2);
     switch (layout) {
         case AcplLayout::kPair:
             return {0.5 * (input[0] + input[1])};
         case AcplLayout::kFiveX:
             return {0.5 * (input[0] + kHalfRoot2 * input[3]), 0.5 * (input[1] + kHalfRoot2 * input[4]), input[2]};
+        case AcplLayout::kImmersive:
+            return {kCoupled * (input[0] + input[1]), kCoupled * (input[2] + input[3]),
+                    kCoupled * (input[4] + input[5]), kCoupled * (input[6] + input[7])};
         case AcplLayout::kCoupling:
             break;
     }
@@ -543,8 +580,13 @@ std::vector<double> acpl_downmix(AcplLayout layout, std::span<const double> inpu
 }
 
 std::vector<double> acpl_residuals(AcplLayout layout, std::span<const double> input) {
+    constexpr double kCoupled = 1.0 / (2.0 * kRoot2);
     if (layout == AcplLayout::kPair) {
         return {0.5 * (input[0] - input[1])};
+    }
+    if (layout == AcplLayout::kImmersive) {
+        return {kCoupled * (input[0] - input[1]), kCoupled * (input[2] - input[3]),
+                kCoupled * (input[4] - input[5]), kCoupled * (input[6] - input[7])};
     }
     return {0.5 * (input[0] - kHalfRoot2 * input[3]), 0.5 * (input[1] - kHalfRoot2 * input[4])};
 }

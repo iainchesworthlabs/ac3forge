@@ -161,7 +161,18 @@ BitWriter write_presentation_substream(const PresentationSubstreamFields& f) {
     if (f.alternative != nullptr) {
         write_alternative(w, *f.alternative);
     }
-    w.write(1, 0, "b_additional_data");
+    w.write(1, f.immersive_audio_indicator ? 1U : 0U, "b_additional_data");
+    if (f.immersive_audio_indicator) {
+        // One byte (add_data_bytes_minus1 0) after the byte_align: the
+        // indicator, b_advanced_de_data_present, and the rest add_data. A
+        // channel-based presentation has a pres_ch_mode, so no
+        // b_oamd_common_timing.
+        w.write(4, 0, "add_data_bytes_minus1");
+        w.align();
+        w.write(1, 1, "immersive_audio_indicator");
+        w.write(1, 0, "b_advanced_de_data_present");
+        w.write_zero_run(6, "add_data");
+    }
     w.write(7, static_cast<std::uint64_t>(f.dialnorm_bits), "dialnorm_bits");
     w.write(1, f.loudness != nullptr ? 1U : 0U, "b_further_loudness_info");
     if (f.loudness != nullptr) {

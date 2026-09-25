@@ -2,6 +2,7 @@
 
 #include <array>
 #include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <deque>
 #include <span>
@@ -47,7 +48,15 @@
 //     gamma3 = -gamma5 and gamma4 + gamma6 = 1, in the quantiser's steps. Each
 //     pair's module then works on Lo less the predicted centre, and beta3
 //     gives the centre the energy the prediction leaves out
-//     (src/ac4enc/ERRATA.md, "ASPX_ACPL_3's gammas").
+//     (src/ac4enc/ERRATA.md, "ASPX_ACPL_3's gammas");
+//   the immersive element, ASPX_ACPL_1 and 2 (ETSI TS 103 190-2 V1.3.1
+//     clause 5.5.2, Pseudocode 2): four modules on the coupled pairs (Ls, Lb),
+//     (Rs, Rb), (Tfl, Tbl) and (Tfr, Tbr), each as the channel pair's on the
+//     pair over sqrt 2: the coded channel D'' = (Ls + Lb) / (2 sqrt 2), which
+//     Pseudocode 2 doubles into the module and whose outputs it raises by
+//     sqrt 2, so that Ls + Lb = 2 sqrt 2 D'' exactly, and ASPX_ACPL_1's
+//     residual H'' = (Ls - Lb) / (2 sqrt 2), which below acpl_qmf_band makes
+//     the pair as simple coupling does.
 
 namespace ac4::detail {
 
@@ -58,12 +67,18 @@ enum class AcplLayout : std::uint8_t {
     kPair,       // the channel pair: L R
     kFiveX,      // the 5.X element's ASPX_ACPL_1 and 2: L R C Ls Rs
     kCoupling,   // the 5.X element's ASPX_ACPL_3: L R C Ls Rs
+    kImmersive,  // the immersive element's ASPX_ACPL_1 and 2: Ls Lb Rs Rb Tfl Tbl Tfr Tbr
 };
+
+// The acpl_data_1ch() modules of a layout: 1, 2 or 4; none for kCoupling.
+[[nodiscard]] std::size_t acpl_modules(AcplLayout layout) noexcept;
 
 // A frame's A-CPL data, as the writer takes them.
 struct AcplFrameFields {
-    std::array<AcplData1chFields, 2> modules{};  // the channel pair's one, or the 5.X element's two
-    AcplData2chFields coupling{};                // ASPX_ACPL_3
+    // The channel pair's one, the 5.X element's two, or the immersive
+    // element's four.
+    std::array<AcplData1chFields, 4> modules{};
+    AcplData2chFields coupling{};  // ASPX_ACPL_3
 };
 
 class AcplEncoder {
@@ -128,7 +143,7 @@ class AcplEncoder {
     [[nodiscard]] AcplParamFields code(AcplKind kind, const Values& q, const Values& previous, bool iframe) const;
     // Every parameter set of the layout sent as `modules` or `coupling` has
     // it, against the values held.
-    [[nodiscard]] AcplFrameFields sent_as(const std::array<std::array<Values, 2>, 2>& modules,
+    [[nodiscard]] AcplFrameFields sent_as(const std::array<std::array<Values, 2>, 4>& modules,
                                           const std::array<Values, 11>& coupling,
                                           bool iframe) const;
 
@@ -145,20 +160,22 @@ class AcplEncoder {
     // What the decoder holds for DIFF_TIME (Pseudocode 121's acpl_SET_q_prev):
     // the modules' alpha and beta, and acpl_data_2ch()'s eleven parameters in
     // Table 62's order.
-    std::array<std::array<Values, 2>, 2> module_history_{};
+    std::array<std::array<Values, 2>, 4> module_history_{};
     std::array<Values, 11> coupling_history_{};
 };
 
 // The channels the spectral frontend codes for a layout, from one sample of
 // the input's channels in the layout's order: the channel pair's x0; the 5.X
-// element's two downmixes and C; or ASPX_ACPL_3's Lo and Ro over 1 + sqrt 2.
+// element's two downmixes and C; ASPX_ACPL_3's Lo and Ro over 1 + sqrt 2; or
+// the immersive element's four sums, D'' to G''.
 [[nodiscard]] std::vector<double> acpl_downmix(AcplLayout layout, std::span<const double> input);
 
 // ASPX_ACPL_1's residuals, from one sample of the input's channels in the
-// layout's order: the channel pair's (L - R) / 2, or the 5.X element's
-// (L - Ls / sqrt 2) / 2 and its mirror. Below acpl_qmf_band the decoder takes
-// each module's output as the coded channel plus and minus its residual
-// (Pseudocode 116), which gives the pair back as it was.
+// layout's order: the channel pair's (L - R) / 2, the 5.X element's
+// (L - Ls / sqrt 2) / 2 and its mirror, or the immersive element's four
+// differences, H'' to K''. Below acpl_qmf_band the decoder takes each module's
+// output as the coded channel plus and minus its residual (Pseudocode 116),
+// which gives the pair back as it was.
 [[nodiscard]] std::vector<double> acpl_residuals(AcplLayout layout, std::span<const double> input);
 
 }  // namespace ac4::detail

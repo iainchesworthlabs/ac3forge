@@ -1,6 +1,7 @@
 #include "asf/stereo.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -211,6 +212,111 @@ void apply_stereo(Grouped& left, Grouped& right, std::vector<std::vector<double>
             allowed_right[g][b] = smaller;
         }
     }
+}
+
+StereoChoice choose_coupled(Grouped& left, Grouped& right,
+                            std::vector<std::vector<double>>& allowed_left,
+                            std::vector<std::vector<double>>& allowed_right) {
+    // Each pair of bands as choose_stereo()'s prediction weighs it, against M
+    // and S (left and right being no choice here): predicted where that costs
+    // less, a sent against the pair below.
+    const std::size_t groups = left.offset.size();
+    StereoChoice predicted;
+    predicted.sap_mode = 3;
+    predicted.sap_used.resize(groups);
+    predicted.alpha_q.resize(groups);
+    double cost_ms = 2.0;                                      // sap_mode
+    double cost_prediction = 3.0 + (groups != 1 ? 1.0 : 0.0);  // and sap_coeff_all, delta_code_time
+    double pair_flags = 0.0;
+    bool all_used = true;
+    bool any_used = false;
+    for (std::size_t g = 0; g < groups; ++g) {
+        const auto count = static_cast<std::size_t>(left.max_sfb[g]);
+        const std::size_t pairs = (count + 1) / 2;
+        predicted.sap_used[g].assign(pairs, false);
+        predicted.alpha_q[g].assign(pairs, 0);
+        int below = 0;
+        for (std::size_t p = 0; p < pairs; ++p) {
+            const std::size_t last = std::min(2 * p + 2, count);
+            double e_m = 0.0;
+            double c_ms = 0.0;
+            double ms = 0.0;
+            std::array<Band, 2> bands{};
+            for (std::size_t b = 2 * p; b < last; ++b) {
+                Band& band = bands[b - 2 * p];
+                band.begin = left.offset[g][b];
+                band.end = left.offset[g][b + 1];
+                for (std::size_t k = band.begin; k < band.end; ++k) {
+                    const double m = 0.5 * (left.lines[k] + right.lines[k]);
+                    const double s = 0.5 * (left.lines[k] - right.lines[k]);
+                    band.e_m += m * m;
+                    band.e_s += s * s;
+                    band.c_ms += m * s;
+                }
+                const auto lines = static_cast<double>(band.end - band.begin);
+                const double smaller = std::min(allowed_left[g][b], allowed_right[g][b]);
+                band.ms = entropy(band.e_m, smaller, lines) + entropy(band.e_s, smaller, lines);
+                e_m += band.e_m;
+                c_ms += band.c_ms;
+                ms += band.ms;
+            }
+            const double best = e_m > 0.0 ? c_ms / e_m : 0.0;
+            const int q = static_cast<int>(std::clamp(std::lround(best * 10.0),
+                                                      -static_cast<long>(kMaxAlphaQ),
+                                                      static_cast<long>(kMaxAlphaQ)));
+            const double a = alpha_of(q);
+            double cost = static_cast<double>(sap_codeword_bits(q - below));
+            for (std::size_t b = 2 * p; b < last; ++b) {
+                const Band& band = bands[b - 2 * p];
+                const auto lines = static_cast<double>(band.end - band.begin);
+                const double residual =
+                    std::max(0.0, band.e_s - 2.0 * a * band.c_ms + a * a * band.e_m);
+                cost += entropy(band.e_m, allowed_x0(allowed_left[g][b], allowed_right[g][b], a),
+                                lines) +
+                        entropy(residual, std::min(allowed_left[g][b], allowed_right[g][b]), lines);
+            }
+            cost_ms += ms;
+            pair_flags += 1.0;
+            if (q != 0 && cost < ms) {
+                predicted.sap_used[g][p] = true;
+                predicted.alpha_q[g][p] = q;
+                cost_prediction += cost;
+                below = q;
+                any_used = true;
+            } else {
+                all_used = false;
+                cost_prediction += ms;
+                below = 0;
+            }
+        }
+    }
+    predicted.sap_coeff_all = all_used;
+    if (!all_used) {
+        cost_prediction += pair_flags;
+    }
+    StereoChoice choice;
+    if (any_used && cost_prediction < cost_ms) {
+        choice = std::move(predicted);
+    }
+    // Every band M and S, less a M where it is predicted.
+    for (std::size_t g = 0; g < groups; ++g) {
+        for (std::size_t b = 0; b < static_cast<std::size_t>(left.max_sfb[g]); ++b) {
+            const double smaller = std::min(allowed_left[g][b], allowed_right[g][b]);
+            double a = 0.0;
+            if (choice.sap_mode == 3 && choice.sap_used[g][b / 2]) {
+                a = alpha_of(choice.alpha_q[g][b / 2]);
+            }
+            for (std::size_t k = left.offset[g][b]; k < left.offset[g][b + 1]; ++k) {
+                const double m = 0.5 * (left.lines[k] + right.lines[k]);
+                const double s = 0.5 * (left.lines[k] - right.lines[k]);
+                left.lines[k] = m;
+                right.lines[k] = s - a * m;
+            }
+            allowed_left[g][b] = allowed_x0(allowed_left[g][b], allowed_right[g][b], a);
+            allowed_right[g][b] = smaller;
+        }
+    }
+    return choice;
 }
 
 double perceptual_entropy(const Grouped& track, const std::vector<std::vector<double>>& allowed) {
