@@ -311,6 +311,65 @@ TEST_CASE("I-frames fall where the caller names them and a decoder can start at 
     CHECK_FALSE(ac4::Encoder::create(config).has_value());
 }
 
+TEST_CASE("the decoded output lags the input by the encoder's and the decoder's delays",
+          "[ac4enc][frame-rate]") {
+    // Noise through SIMPLE at a high rate: the lag at which the decoded
+    // signal best matches the input is the sum of the two delays, to within
+    // a sample, at index 13 and at frame rates with each converter ratio.
+    const std::size_t count = static_cast<std::size_t>(kRate);
+    std::uint32_t seed = 777;
+    std::vector<float> input(count);
+    for (float& x : input) {
+        seed = seed * 1664525U + 1013904223U;
+        x = static_cast<float>(0.2 * (static_cast<double>(seed >> 8) / 16777216.0 - 0.5));
+    }
+    for (const int index : {13, 0, 2, 3, 5, 10, 12}) {
+        CAPTURE(index);
+        ac4::EncoderConfig config;
+        config.channels = 1;
+        config.bitrate_kbps = 160;
+        config.codec_mode = ac4::CodecMode::kSimple;
+        config.frame_rate_index = index;
+        auto encoder = ac4::Encoder::create(config);
+        REQUIRE(encoder.has_value());
+        const std::vector<std::span<const float>> views = {input};
+        auto frames = encoder->encode(views);
+        REQUIRE(frames.has_value());
+        auto rest = encoder->flush();
+        REQUIRE(rest.has_value());
+        frames->insert(frames->end(), rest->begin(), rest->end());
+        ac4::Decoder decoder(ac4::DecoderConfig{});
+        std::vector<float> decoded;
+        for (const ac4::EncodedFrame& frame : *frames) {
+            const auto result = decoder.decode(frame.raw_ac4_frame);
+            REQUIRE(result.has_value());
+            REQUIRE(result->has_value());
+            const std::vector<float>& pcm = (**result).channels.front();
+            decoded.insert(decoded.end(), pcm.begin(), pcm.end());
+        }
+        const int predicted = encoder->delay_samples() + encoder->decoder_delay_samples();
+        if (index == 13) {
+            CHECK(predicted == 3072 + 1313);
+        }
+        REQUIRE(decoded.size() > count + static_cast<std::size_t>(predicted) + 16);
+        int best = 0;
+        double best_score = 0.0;
+        for (int lag = predicted - 16; lag <= predicted + 16; ++lag) {
+            double score = 0.0;
+            for (std::size_t n = 8000; n + 8000 < count; ++n) {
+                score += static_cast<double>(input[n]) *
+                         static_cast<double>(decoded[n + static_cast<std::size_t>(lag)]);
+            }
+            if (score > best_score) {
+                best_score = score;
+                best = lag;
+            }
+        }
+        CAPTURE(predicted, best);
+        CHECK(std::abs(best - predicted) <= 1);
+    }
+}
+
 TEST_CASE("frame rates the sample rate does not have are refused", "[ac4enc][frame-rate]") {
     ac4::EncoderConfig config;
     config.sample_rate_hz = 44100;

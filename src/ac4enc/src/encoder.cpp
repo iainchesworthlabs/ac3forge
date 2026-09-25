@@ -2182,4 +2182,15 @@ int Encoder::delay_samples() const noexcept {
     return static_cast<int>(std::lround(delay));
 }
 
+int Encoder::decoder_delay_samples() const noexcept {
+    // The decoder's delay at the internal rate and its converter's, which is
+    // in the converter's input samples, both converted by its ratio.
+    const detail::FrameTiming& t = impl_->timing;
+    double delay = t.decoder_delay();
+    if (t.resampled()) {
+        delay += detail::dsp::ResamplerFilter(t.decoder_up, t.decoder_down).delay();
+    }
+    return static_cast<int>(std::lround(delay * t.decoder_up / t.decoder_down));
+}
+
 }  // namespace ac4

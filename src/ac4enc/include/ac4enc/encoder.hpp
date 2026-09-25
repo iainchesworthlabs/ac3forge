@@ -403,14 +403,22 @@ class AC4ENC_EXPORT Encoder {
     // never kAuto.
     [[nodiscard]] CodecMode codec_mode() const noexcept;
 
-    // Samples of silence the encoder puts before the input: an input sample at
-    // index n is at index n + delay_samples() of the decoded output before the
-    // decoder's own delay is added: at frame_rate_index 13, 1 313 samples
-    // (Part 1 Table 188's d_pcm, 352, the QMF banks' 577 and six QMF slots).
-    // At the other frame rates, a frame and a half at the internal rate and
-    // the converter's delay, at the input's rate to the nearest sample: the
-    // delay itself is a fraction of a sample off it.
+    // Samples of silence the encoder puts before the input, at the input's
+    // rate: a frame and a half, 3 072 samples at frame_rate_index 13. At the
+    // other frame rates, a frame and a half at the internal rate and the
+    // converter's delay, to the nearest sample: the delay itself is a
+    // fraction of a sample off it. An input sample at index n is at index n +
+    // delay_samples() of the decoded output before the decoder's own delay is
+    // added.
     [[nodiscard]] int delay_samples() const noexcept;
+
+    // The delay ac4::Decoder adds, at the input's rate: at frame_rate_index
+    // 13, 1 313 samples (Part 1 Table 188's d_pcm, 352, the QMF banks' 577 and
+    // six QMF slots); at the other frame rates, the same at the internal rate
+    // and the decoder's converter's delay, to the nearest sample. An input
+    // sample at index n is at index n + delay_samples() +
+    // decoder_delay_samples() of ac4::Decoder's output, to within a sample.
+    [[nodiscard]] int decoder_delay_samples() const noexcept;
 
    private:
     struct Impl;
