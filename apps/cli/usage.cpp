@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 83> kOptionTokens{{
+constexpr std::array<OptionToken, 89> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -80,6 +80,12 @@ constexpr std::array<OptionToken, 83> kOptionTokens{{
     {"dialogue-enhancement=", "decode of AC-4: raise the dialogue by 0 to 12 dB, capped by the stream"},
     {"decoding=", "decode of AC-4: full (default) or core, the immersive element's 5.X.2 core"},
     {"speakers=", "decode of AC-4: 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4, an immersive element's layout"},
+    {"presentation=", "decode of AC-4: the presentation at this position of the table of contents"},
+    {"presentation-id=", "decode of AC-4: the presentation with this presentation_id"},
+    {"language=", "decode of AC-4: prefer the presentation in this language, a BCP 47 tag"},
+    {"associated=", "decode of AC-4: prefer the presentation with this associated audio service"},
+    {"dialogue-gain=", "decode of AC-4: g_dialog, the dialogue against music and effects, dB"},
+    {"associated-gain=", "decode of AC-4: g_assoc, the associated audio's level, 0 dB or less"},
     {"syntax-trace=", "ac4-encode, and decode of AC-4: write every syntax element written or read"},
     {"codec-mode=", "ac4-encode: simple, aspx, aspx-acpl-1, aspx-acpl-2 or aspx-acpl-3"},
     {"experimental=", "ac4-encode: tools and layouts no outside reader has checked yet"},
@@ -393,6 +399,15 @@ void print_decode_topic() {
     fmt::println("       correction; core decoding renders to 5.1.2 at most. Without it the");
     fmt::println("       element comes out in its source's layout, and channels= and downmix=");
     fmt::println("       folds win over it.");
+    fmt::println("       A stream of several presentations decodes the one presentation=<n>");
+    fmt::println("       (its position) or presentation-id=<id> names, or else the one that");
+    fmt::println("       best meets language=<BCP 47 tag> and associated=visually-impaired|");
+    fmt::println("       audio-description|audio-description-subtitles|spoken-subtitles|");
+    fmt::println("       emergency-information|hearing-impaired|commentary, and without either");
+    fmt::println("       the first without associated audio (ETSI TS 103 190-2 4.8.2). Its");
+    fmt::println("       substreams are mixed (TS 103 190-1 6.2.16): dialogue-gain=<dB> sets the");
+    fmt::println("       dialogue against the music and effects, up to the stream's maximum,");
+    fmt::println("       and associated-gain=<dB>, 0 or less, the associated audio.");
 }
 
 void print_ac4_encode_topic() {

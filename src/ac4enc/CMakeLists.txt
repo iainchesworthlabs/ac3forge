@@ -44,7 +44,8 @@ target_sources(ac4enc_objects
         src/frame/frame_writer.cpp
         src/frame/metadata.cpp
         src/frame/sync_frame.cpp
-        src/frame/timing.cpp)
+        src/frame/timing.cpp
+        src/frame/toc_writer.cpp)
 
 target_include_directories(ac4enc_objects
     PUBLIC

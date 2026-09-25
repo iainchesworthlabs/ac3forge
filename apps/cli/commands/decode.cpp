@@ -510,6 +510,12 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
             add(fmt::format("downmixed to {}", ac4::describe(output.downmix)));
             break;
     }
+    if (output.dialogue_gain_db != 0.0) {
+        add(fmt::format("dialogue substreams at {:+g} dB where the stream allows", output.dialogue_gain_db));
+    }
+    if (output.associated_gain_db != 0.0) {
+        add(fmt::format("associated audio at {:+g} dB", output.associated_gain_db));
+    }
     return done.empty() ? "the coded channels, with no DRC, downmix or dialogue processing" : done;
 }
 
@@ -518,13 +524,18 @@ std::string ac4_decoding(ac4::DecodingMode decoding) {
     return decoding == ac4::DecodingMode::kCore ? " in core decoding" : "";
 }
 
-// AC-4 (ETSI TS 103 190), through ac4::Decoder: the channel-coded substream
-// its decode() picks, with the dialogue raised by dialogue-enhancement= (ETSI
+// AC-4 (ETSI TS 103 190), through ac4::Decoder: the presentation presentation=,
+// presentation-id=, language= and associated= choose (ETSI TS 103 190-2 clause
+// 4.8.2), its substreams mixed with the dialogue and associated audio at
+// dialogue-gain= and associated-gain= (TS 103 190-1 clause 6.2.16), in full or
+// core decoding as decoding= says (TS 103 190-2 clause 4.7), with the
+// dialogue raised by dialogue-enhancement= (ETSI
 // TS 103 190-1 clause 5.7.8), at the output level output-level= names and
 // compressed in the DRC decoder mode drcmode= names (clause 5.7.9), in the
-// layout channels= and downmix= ask for (6.2.17), and a damaged frame
-// concealed as conceal= says. The object options are output processing the
-// AC-4 decoder does not do yet, and are reported rather than applied.
+// layout channels=, downmix= and speakers= ask for (6.2.17, TS 103 190-2
+// clause 5.10.2), and a damaged frame concealed as conceal= says. The object
+// options are output processing the AC-4 decoder does not do yet, and are
+// reported rather than applied.
 int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
                    const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
     const auto status = status_stream(out_path);
@@ -569,8 +580,15 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     config.output.drc = ac4_drc_mode(meta.ac4_drc_mode);
     config.output.dialogue_enhancement_db = meta.ac4_dialogue_enhancement;
     config.output.downmix = ac4_downmix(meta);
+    config.output.dialogue_gain_db = meta.ac4_dialogue_gain;
+    config.output.associated_gain_db = meta.ac4_associated_gain;
     config.concealment = ac4_concealment(meta.concealment);
     config.decoding = meta.ac4_core_decoding ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
+    config.presentation.index = meta.ac4_presentation;
+    config.presentation.presentation_id = meta.ac4_presentation_id;
+    config.presentation.language = meta.ac4_language;
+    config.presentation.associated = meta.ac4_associated;
+    config.presentation.associated_type = meta.ac4_associated_type;
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {
@@ -667,6 +685,9 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     }
     status_println(status, "decoded {} AC-4 frames{} -> {} ({}, {} Hz)", decoded_frames,
                    ac4_decoding(config.decoding), out_path, layout, first.sample_rate_hz);
+    status_println(status, "          presentation {}{}", first.presentation,
+                   first.presentation_id ? fmt::format(" (presentation_id {})", *first.presentation_id)
+                                         : std::string{});
     if (waiting_frames > 0) {
         status_println(status, "          {} frames waiting for an I-frame produced no output",
                        waiting_frames);

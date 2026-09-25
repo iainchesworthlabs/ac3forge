@@ -30,6 +30,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
 #include "matroska/matroska.hpp"
 #include "mp4/dash.hpp"
@@ -155,6 +156,20 @@ struct Options {
     // "7.1.4" (ac4::DownmixTarget), empty for the source's own; a fold that
     // channels= or downmix= asks for wins.
     std::string ac4_speakers;
+    // 'decode' of AC-4 only: which presentation (ac4::PresentationChoice):
+    // presentation=, a position in the table of contents; presentation-id=,
+    // a presentation_id; language=, a BCP 47 tag; associated=, the associated
+    // audio service, as a Table 91 content_classifier and its Table 92
+    // refinement. And the mix: dialogue-gain= and associated-gain=, g_dialog
+    // and g_assoc in dB (ac4::OutputConfig::dialogue_gain_db and
+    // associated_gain_db).
+    std::optional<std::size_t> ac4_presentation;
+    std::optional<int> ac4_presentation_id;
+    std::string ac4_language;
+    std::optional<int> ac4_associated;
+    ac4::AssociatedType ac4_associated_type = ac4::AssociatedType::kAny;
+    double ac4_dialogue_gain = 0.0;
+    double ac4_associated_gain = 0.0;
     // 'ac4-encode' only: the frame rate, rate mode, I-frames and metadata
     // (ac4::EncoderConfig) as its options set them; print_meta_usage says
     // what each takes. Where a key other commands also read (dialnorm=, drc=,

@@ -41,12 +41,14 @@ target_sources(ac4dec_objects
         src/pcm/downmix.cpp
         src/pcm/drc.cpp
         src/pcm/immersive.cpp
+        src/pcm/mixer.cpp
         src/pcm/multichannel.cpp
         src/pcm/renderer.cpp
         src/pcm/routing.cpp
         src/pcm/snf_random.cpp
         src/pcm/stereo.cpp
         src/pcm/substream_pcm.cpp
+        src/presentations.cpp
         src/syntax/asf.cpp
         src/syntax/aspx.cpp
         src/syntax/acpl.cpp

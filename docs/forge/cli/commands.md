@@ -371,7 +371,7 @@ requirements ask for beside an Atmos one.
 
 | Command | What it does |
 |---|---|
-| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes so far, written in WAV speaker order). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
+| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes so far, written in WAV speaker order, and of a stream of several presentations the one [`presentation=`, `language=` and `associated=`](#ac-4-presentations-presentation-language-associated) choose, its substreams mixed). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
 | `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. Auto-detects AC-4 too (TOC/presentation/substream-group framing only) |
 | `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or a Matroska/MP4/MPEG-TS container carrying one |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
@@ -512,6 +512,41 @@ output device renders fewer channels than the programme: playing 5.1 on a stereo
 otherwise means whatever the platform's shared-mode mixer averages together, with none of the
 stream's levels and none of §7.8.1's normalisation. An explicit `channels=`/`downmix=` always
 wins, and a backend that cannot report its endpoint width leaves the audio alone.
+
+### AC-4 presentations: `presentation=`, `language=`, `associated=`
+
+An AC-4 stream can carry several presentations of its substreams: music and effects with the
+dialogue in one language or another, the main audio with audio description, and so on (ETSI TS 103
+190-2 clause 4.8). `decode` decodes one of them. `presentation=<n>` names it by its position in the
+table of contents and `presentation-id=<id>` by its `presentation_id`, which stays with the
+presentation as the table of contents changes over time; otherwise `language=<BCP 47 tag>` and
+`associated=<service>` say
+what the listener wants, and `decode` takes the presentation that best meets them, the language
+first, then the associated audio. With neither it takes the first presentation without associated
+audio. A presentation the decoder cannot decode, one the stream disables, and one above the
+decoder's compatibility level (`md_compat`) are never chosen, and the status output names the
+presentation decoded:
+
+```bash
+ac3cli decode broadcast.ac4 out.wav language=de
+ac3cli decode broadcast.ac4 out.wav associated=audio-description
+ac3cli decode broadcast.ac4 out.wav presentation-id=3
+```
+
+`associated=` takes `visually-impaired`, `hearing-impaired` and `commentary` (ETSI TS 103 190-1
+Table 91's associated audio), and Table 92's services: `audio-description`,
+`audio-description-subtitles`, `spoken-subtitles` and `emergency-information`.
+
+A presentation of several substreams is mixed as ETSI TS 103 190-1 clause 6.2.16 gives, with the
+stream's own gains and pans. `dialogue-gain=<dB>` sets the dialogue against the music and effects,
+up to the maximum the stream allows (0 dB where it allows none, and at most 12), and
+`associated-gain=<dB>`, 0 or less, the associated audio, except where the stream says that audio
+was mixed in before encoding:
+
+```bash
+ac3cli decode broadcast.ac4 out.wav language=en dialogue-gain=6
+ac3cli decode broadcast.ac4 out.wav associated=audio-description associated-gain=-6
+```
 
 ### Damaged frames: `conceal=`
 

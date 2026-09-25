@@ -1408,6 +1408,23 @@ channel, and one tone per channel lands on its own channel, the LFE included. Co
   register reads it), and the dialogue and associated gains.
 - The test multiplexer that builds such presentations from DEE substreams, writing their tables of
   contents with E1's frame writer, which E6 extends to the encoder's own presentations.
+- D7 found the mixer's sum and the pan law settled by Part 1: Part 2 4.8.4's equation divides by the
+  number of substreams where its prose and Part 1 6.2.16 add, and Table 216's 0.5 to each of L and R
+  at 0 degrees fixes a law linear between neighbouring channels. The pan clause puts L and R at 330
+  and 30 degrees, clockwise, and Table D.1 at 45 degrees, counting the other way; the pan takes the
+  clause's angles for L, C and R and D.1's, turned clockwise, for the rest. Configuration 1 sends no substream group gains, since
+  n_substream_groups is 1, and configuration 4 two for three groups, the dialogue enhancement group
+  taking the main one's. A version 0 presentation takes Table 16's dialnorm and levels its associated
+  audio from its own, in dB2 as the output level gain is, so that the audio description plays as it
+  does alone at any output level.
+- DEE writes no presentation of several substreams, so the multiplexer takes the substreams of DEE's
+  tone legs and of six encoder streams by the offsets the decoder's syntax trace gives, rewrites
+  their mixing fields and dialogue enhancement, and writes version 0 presentations as well, at sus_ver
+  0. librempeg decodes a presentation's first substream alone, refuses a table of contents of more
+  than 16 presentations, and refuses `bitstream_version` 1. MediaInfo reads the streams' tables of
+  contents, and a second parameter set after `de_ms_proc_flag`, which E5's Mid streams and the
+  multiplexer's show as "NOK: tools_metadata"; the text sends one (`src/ac4dec/ERRATA.md`,
+  "Presentations" and "de_ms_proc_flag leaves one parameter set").
 
 **Exit:** a table of constructed tables of contents selects as Part 2 4.8.2 requires; every mix,
 measured with one tone per substream, equals its formula to 0.01 dB; associated audio pans at the
