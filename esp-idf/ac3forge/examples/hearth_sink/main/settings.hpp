@@ -21,6 +21,7 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 #include <string_view>
 
 namespace player {
@@ -35,7 +36,8 @@ inline constexpr std::size_t kMaxPasswordBytes = 63;
 struct Settings {
     // What the board calls itself: the mDNS instance name, the name a server
     // shows in a list of sinks. Defaults to "hearth-xxxxxx" from the low three
-    // bytes of the WiFi MAC, so two boards out of the same box differ.
+    // bytes of the board's MAC (board_mac()), so two boards out of the same box
+    // differ.
     std::array<char, kMaxNameBytes + 1> name{};
     // The network to join. Empty SSID means "none stored" - the board has
     // never been told, and waits for Improv (B2) to tell it.
@@ -56,6 +58,14 @@ void settings_load();
 
 // What was loaded, with whatever has been stored since.
 [[nodiscard]] const Settings& settings();
+
+// The board's MAC address, which its default name and the address it gives a
+// Sendspin server are both made from: the WiFi station's where the chip has a
+// radio, and the chip's own base MAC where it has none - the ESP32-P4, whose
+// WiFi is an ESP32-C6 across SDIO, so the address is the P4's and not that of
+// the radio it borrows. False, with `mac` unspecified, if ESP-IDF cannot read
+// one at all.
+[[nodiscard]] bool board_mac(std::span<std::uint8_t, 6> mac);
 
 // Store one field and keep it in `settings()`. Each returns false if the value
 // is not one this board can hold - a name longer than kMaxNameBytes, a slot

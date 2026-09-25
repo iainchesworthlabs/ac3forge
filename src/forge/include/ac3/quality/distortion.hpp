@@ -85,7 +85,7 @@ enum class Criterion : std::uint8_t {
 // ratio and their difference is meaningful. Accumulating: a caller
 // measuring a whole frame calls accumulate_block() once per block into one
 // of these, and the six blocks sum.
-struct BandNoise {
+struct AC3FORGE_EXPORT BandNoise {
     std::array<double, kBands> signal{};
     std::array<double, kBands> noise{};
 

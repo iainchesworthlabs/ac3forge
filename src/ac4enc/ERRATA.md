@@ -188,12 +188,16 @@ the box it writes is the box `build_dac4()` writes, byte for byte (`tests/ac4/te
 - **Where:** Part 2 E.10.3, pp. 235 and 236, against Table A.27, p. 214.
 - **Text:** Pseudocode E.3 sets no LFE group for any channel mode, and for `pres_ch_mode` 11 and up
   sets neither L/R nor Ls/Rs, and sets group 2 where its comment says C, which Table A.27 numbers 1.
+  It never sets group 16, Lscr/Rscr: its condition is `if (0)`, "not present in any supported channel
+  configuration", where Table A.27 gives the pair to the 9.X layouts, `pres_ch_mode` 13 and 14. For
+  22.2 it sets group 7, Tsl/Tsr, only where `pres_top_channel_pairs` is 1, where Table A.27 has them in
+  22.2 whatever the top pairs.
 - **Reading:** the groups Table A.27 gives each mode: group 6 wherever the mode has an LFE (5.1, the
   7.1 modes, 7.1.4, 9.1.4 and 22.2), and for 11 and up L/R, Ls/Rs, C where `b_pres_centre_present`,
-  Lb/Rb where `b_pres_4_back_channels_present` and the top pairs `pres_top_channel_pairs` names. The
-  same for `dsi_substream_channel_groups[]`.
-- **Evidence:** Streams. DEE's muxer sets groups 0, 1, 2 and 6 for 5.1, and 0, 1, 2, 4, 5 and 6 for its
-  5.1.4.
+  Lb/Rb where `b_pres_4_back_channels_present` and the top pairs `pres_top_channel_pairs` names;
+  Lscr/Rscr for 9.0.4 and 9.1.4, and Tsl/Tsr for 22.2. The same for `dsi_substream_channel_groups[]`.
+- **Evidence:** Streams, for 5.1 and 5.1.4: DEE's muxer sets groups 0, 1, 2 and 6 for 5.1, and 0, 1, 2,
+  4, 5 and 6 for its 5.1.4. Text for the 9.X layouts and 22.2, which no stream here carries.
 
 ### The 3/2/2 layout's top front pair
 
