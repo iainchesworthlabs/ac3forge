@@ -577,10 +577,12 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         std::vector<std::span<const std::byte>> samples;
         mp4::MuxOptions options;
         samples.reserve(frames->size());
-        options.sync_samples.reserve(frames->size());
-        for (const ac4::EncodedFrame& frame : *frames) {
-            samples.emplace_back(frame.raw_ac4_frame);
-            options.sync_samples.push_back(frame.iframe);
+        // Sized, not reserved: GCC 16's -Wnull-dereference flags vector<bool>::reserve on an
+        // empty vector.
+        options.sync_samples = std::vector<bool>(frames->size());
+        for (std::size_t i = 0; i < frames->size(); ++i) {
+            samples.emplace_back((*frames)[i].raw_ac4_frame);
+            options.sync_samples[i] = (*frames)[i].iframe;
         }
         const ac4::Toc& toc = encoder->toc();
         const auto timing = ac4::media_timing(toc);

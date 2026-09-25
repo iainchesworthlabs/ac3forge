@@ -159,12 +159,14 @@ std::optional<Ac4Input> try_ac4_input(std::span<const std::byte> raw) {
     out.toc = std::move(first->toc);
     out.mp4_samples.reserve(scanned.frames.size());
     out.ts_units.reserve(scanned.frames.size());
-    out.iframes.reserve(scanned.frames.size());
+    // Sized, not reserved: GCC 16's -Wnull-dereference flags vector<bool>::reserve on an
+    // empty vector.
+    out.iframes = std::vector<bool>(scanned.frames.size());
     for (std::size_t i = 0; i < scanned.frames.size(); ++i) {
         const auto& frame = scanned.frames[i];
         out.mp4_samples.push_back(frame.raw_ac4_frame);
         const auto parsed = ac4::parse_raw_frame(frame.raw_ac4_frame);
-        out.iframes.push_back(parsed.has_value() && parsed->toc.b_iframe_global);
+        out.iframes[i] = parsed.has_value() && parsed->toc.b_iframe_global;
         const std::size_t end =
             i + 1 < scanned.frames.size() ? scanned.frames[i + 1].offset : raw.size();
         out.ts_units.push_back(raw.subspan(frame.offset, end - frame.offset));
