@@ -506,13 +506,25 @@ async function startStub() {
     let payload = null; // a fixed GET /status body, instead of the model's
     let statusInFlight = 0;
     let statusInFlightMost = 0;
+    // Drops scripted and not yet made. Until they are, and while the board is
+    // restarting, every answer closes its connection: a request that meets a
+    // drop then meets it on a connection Chromium did not reuse, and is not
+    // sent again (see next()).
+    let dropsPending = 0;
+    const closing = (res) => {
+        if (dropsPending > 0 || device.down > 0) {
+            res.setHeader('Connection', 'close');
+        }
+    };
 
     const send = (res, code, body, type = 'text/plain') => {
+        closing(res);
         res.writeHead(code, { 'Content-Type': type });
         res.end(body);
     };
 
     const file = (res, name, type) => {
+        closing(res);
         res.writeHead(200, {
             'Content-Type': type,
             'Cache-Control': 'no-cache',
@@ -916,6 +928,7 @@ async function startStub() {
             }
             const next = (scripted.get(route) || []).shift();
             if (next === 'drop') {
+                dropsPending -= 1;
                 req.socket.destroy();
             } else if (next === 'hang') {
                 // Never answered: the page's own timeout has to notice.
@@ -953,6 +966,7 @@ async function startStub() {
             }
             scripted.get(route).push(reply);
             if (reply === 'drop') {
+                dropsPending += 1;
                 server.closeIdleConnections();
             }
         },

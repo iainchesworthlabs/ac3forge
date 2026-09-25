@@ -55,6 +55,8 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
 });
 
 test('every action from the keyboard, in page order', async ({ page, stub }) => {
+    // The firmware section shows once GET /firmware has answered.
+    await expect(page.getByRole('region', { name: 'Firmware' })).toBeVisible();
     await page.locator('body').click({ position: { x: 1, y: 1 } });
     // A radio group is one stop, at its chosen radio.
     const order = ['ss-forget', 'wiring', 'slot-width=32', 'layout=2.0', 'layout-input', 'Apply', 'What an output layout does', 'name-input', 'Save', 'ssid-input', 'pass-input', 'pass-show', 'Save', 'fw-pick', 'fw-restart', 'Counters'];
