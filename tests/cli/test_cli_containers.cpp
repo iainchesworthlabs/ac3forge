@@ -541,6 +541,42 @@ TEST_CASE("decode folds AC-4 5.1 to stereo and mono with channels= and downmix="
     }
 }
 
+TEST_CASE("decode stops on a damaged AC-4 frame and conceal= carries on through it", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_conceal.log";
+    // DEE's stereo tones with the eleventh frame's audio_size_value set past its
+    // audio substream: the table of contents still reads, the substream does not.
+    std::vector<std::byte> bytes =
+        read_file(fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4");
+    const ac4::ScanResult scan = ac4::scan(bytes);
+    REQUIRE(scan.frames.size() == 120);
+    const std::span<const std::byte> raw = scan.frames[10].raw_ac4_frame;
+    const auto parsed = ac4::parse_raw_frame(raw);
+    REQUIRE(parsed.has_value());
+    const auto audio = std::ranges::find_if(parsed->substreams,
+                                            [](const ac4::Substream& s) { return s.is_audio; });
+    REQUIRE(audio != parsed->substreams.end());
+    const auto at = static_cast<std::size_t>(raw.data() - bytes.data()) + audio->offset;
+    bytes[at] = std::byte{0xFF};
+    bytes[at + 1] = std::byte{0xFE};
+    const auto damaged = dir / "ac4_damaged.ac4";
+    write_bytes(damaged, bytes);
+
+    const auto wav = dir / "ac4_conceal.wav";
+    CHECK(run_cli("decode " + quoted(damaged) + " " + quoted(wav), log) == 2);
+    CHECK(read_log(log).find("frame 11") != std::string::npos);
+    for (const char* policy : {"repeat", "mute"}) {
+        CAPTURE(policy);
+        REQUIRE(run_cli("decode " + quoted(damaged) + " " + quoted(wav) + " conceal=" + policy,
+                        log) == 0);
+        CHECK(read_log(log).find("1 of them concealed") != std::string::npos);
+        const auto decoded = ac3::io::read_wav(wav.string());
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->channels.size() == 2);
+        CHECK(decoded->channels[0].size() == 120 * 2048);
+    }
+}
+
 TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "[cli][mp4][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_encode.log";
