@@ -43,7 +43,7 @@ job-level conditions.
 |---|---|
 | `android` | `build-android` |
 | `wasm` | `build-wasm`, `device-ui` |
-| `esp` | `build-esp32s3`, `hearth-esp32s3` (Hearth Sendspin sink under QEMU), `build-esp32c3` (also builds the ESP32-C6 probe), `build-footprint`, `ci.yml`'s `esp-component` job-call (`.github/workflows/esp-component.yml`: `pack`, `esphome`) |
+| `esp` | `build-esp32s3` (also builds the S3 sink image), `hearth-esp32s3` (Hearth Sendspin sink under QEMU), `build-esp32c3` (also builds the ESP32-C6 probe, and the C6 and P4 sink images), `package-esp32-firmware` (the four published sink images and their manifest), `build-footprint`, `ci.yml`'s `esp-component` job-call (`.github/workflows/esp-component.yml`: `pack`, `esphome`) |
 | `rust` | `build-rust` |
 | `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
 | `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
@@ -232,16 +232,18 @@ their lane is true:
 - `rust`: `build-rust`, three runners, one of them macOS
 - `python`: the `wheels` call, five runners, two of them macOS
 
-They run in the `merge_group` run, on every push to `main` and on a dispatch.
-`CI Status` reads their `skipped` as a pass, as it does for any lane-skipped job.
+They run in the `merge_group` run, on a push to `main` (for the newest `main`
+commit only, see the next section) and on a dispatch. `CI Status` reads their
+`skipped` as a pass, as it does for any lane-skipped job.
 
 **Why:** GitHub Free runs 20 GitHub-hosted jobs at a time, org-wide. A PR push with
 every lane set used to ask for about 25. On 2026-09-25 about 400 were queued, some
 for over five hours, holding back every PR's `CI Status`.
 
 **What still guards merges:** the merge queue runs these legs against the exact
-merge commit before it lands. A PR that bypasses the queue gets them only from
-the push-to-`main` run afterwards.
+merge commit before it lands. A PR that bypasses the queue gets them only from a
+later push-to-`main` run: the newest `main` commit's, which includes every merge
+before it.
 
 **Running them on a branch before queueing:** `gh workflow run ci.yml --ref <branch>`
 runs the full set, since a dispatch forces every lane on.
@@ -250,6 +252,64 @@ Windows on Arm (`windows-msvc-arm64`) still runs on pull requests. It is one
 entry in `_ci-windows.yml`'s static matrix, beside the two x64 legs, and a
 job-level `if` cannot see matrix values. Deferring it means restructuring
 that matrix, which is left for a follow-up.
+
+## Only the newest main commit runs the hosted jobs
+
+On a push to `main`, each job on a GitHub-hosted runner shares one concurrency
+group with the same job in every other `main` run, with `cancel-in-progress:
+false`. A job that is already running finishes. A newer merge's job takes the
+single waiting place and cancels the job waiting there, so a burst of merges
+costs at most one running and one waiting job per leg, and the newest `main`
+commit always gets its run.
+
+The groups cover:
+- fixed GitHub-hosted jobs: both macOS legs, the Linux and Windows arm64 legs,
+  Rust, AppImage, Android, WASM, the device web page, the null-sink driver,
+  coverage and `Platform Macros`
+- a leg that `check-runners` (or `ci.yml`'s `check-runner`) sent to its hosted
+  fallback. The group applies only when the leg's runner labels lack
+  `self-hosted`, so the same leg on the fleet runs for every commit.
+- whole workflows: `wheels.yml`, `npm.yml` and `esp-component.yml`, and the
+  `main` pushes of `docs.yml` and `osv-scanner.yml`. A whole workflow gives way
+  as one, so Python coverage never waits for a wheel row that was dropped.
+
+Every other event (pull requests, the merge queue, tags, dispatches,
+schedules) gets a group of its own run from these blocks, so nothing changes
+there. Fuzz, Zizmor and Scorecard already kept only the newest `main` push's
+run through their own workflow-level groups.
+
+**Why:** a push to `main` asked for about 24 GitHub-hosted jobs, and GitHub
+Free runs 20 at a time, org-wide. On 2026-09-25 twenty merges landed within
+ten minutes, and minutes later 219 hosted jobs from `main` pushes sat in the
+queue, nearly all for commits a newer merge had already superseded.
+
+**The cost:** a superseded commit gets no results from those jobs. The
+hosted legs' quality series (macOS, arm64, any hosted fallback) have gaps,
+and that commit has no coverage or wheel results. The newest commit's run
+includes every merge before it.
+
+**`CI Status`:** a superseded run reads `cancelled` from the job-calls that
+carry these legs. `CI Status` accepts that only from `platform-macros`,
+`build-and-test`, `wheels`, `npm` and `esp-component`, and only on a push to
+`main` whose commit `main` has already moved past, found with one request for
+`main`'s tip SHA. A real failure still fails it: a job-call with a failed leg
+reads `failure` even when another of its legs was cancelled. Coverage and the
+core validate jobs report through step outputs, which come back empty for a job
+that never started, and `CI Status` reads empty as a pass.
+
+**Per-commit, though GitHub-hosted:** `Publish quality trend`, the two
+`persist-*-trend` jobs in `_ci-core.yml`, `Publish performance trend` and its
+arm64 measurements. Each records the commit's own trend point, including the
+self-hosted legs' numbers, and takes one to three minutes. The two performance
+jobs also start only once `Build & Test` finishes, so an older run can reach
+them after a newer one, and a shared group hands the waiting place to the
+latest arrival, not to the newest commit.
+
+**Known gap:** every other job in a group becomes ready once the control jobs
+on the self-hosted fleet finish, which is roughly, not strictly, in push order.
+If an older run's job arrives after the newest commit's, it takes the waiting
+place. The tip's job then reads `cancelled`, and `CI Status` fails on the tip.
+Re-run the cancelled job.
 
 ## Known simplifications
 
