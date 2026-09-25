@@ -1849,6 +1849,15 @@ The sections below contain the complete change list and fixes.
   is skipped and named in the configure output, and the `FetchContent` fallback (or the
   `AC3FORGE_FETCH_FMT=OFF` error) applies. A build directory that had already cached
   the old copy recovers on its next configure.
+- **The installed C API header could not be included.** `ac3forge_c/ac3forge.h` includes
+  `ac3forge_c/version.h`, which is generated into the build tree from `version.h.in`, and
+  `cmake/InstallLibrary.cmake` installed only the source `include/` directory (which holds the
+  template) and the generated `export.h`. A C program built against an installed prefix, through
+  `find_package(ac3forge)` and `ac3::forge_c_shared` or `ac3::forge_c_static`, stopped at
+  `'ac3forge_c/version.h' file not found`. The in-tree examples and the Rust crate compile against
+  the build tree, so neither saw it. The generated header is now installed beside `export.h`. The
+  linux-llvm leg also installs its default and `BUILD_SHARED_LIBS=ON` build trees and builds a C
+  program against each (`tools/checks/check_install_consumer.sh`).
 
 **Audio backend and object signing**
 

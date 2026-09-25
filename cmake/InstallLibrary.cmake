@@ -408,7 +408,15 @@ if(AC3FORGE_BUILD_CAPI)
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
         COMPONENT library)
 
-    install(FILES "${CMAKE_BINARY_DIR}/src/capi/generated/ac3forge_c/export.h"
+    # ac3forge.h #includes both of these, and neither is in the source include/ tree the
+    # install(DIRECTORY) above copies: export.h is generate_export_header()'s output and
+    # version.h is configure_file()'d from version.h.in (which that install does copy, as the
+    # template), each into src/capi's own binary dir. Without version.h, every
+    # #include <ac3forge_c/ac3forge.h> against an installed prefix fails to compile. Same
+    # reason ac3/version.hpp and ac3/export.hpp are installed by name for ac3::forge above.
+    install(FILES
+            "${CMAKE_BINARY_DIR}/src/capi/generated/ac3forge_c/export.h"
+            "${CMAKE_BINARY_DIR}/src/capi/generated/ac3forge_c/version.h"
         DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ac3forge_c"
         COMPONENT library)
 
