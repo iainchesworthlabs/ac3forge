@@ -21,11 +21,12 @@ on:
 env:
   # PyPI yanked 1.27.0 for GHSA-f42p-wjw5-97qh: given a GitHub token, its
   # debug logging (-v, or a RUST_LOG directive) printed the token to stderr.
-  # 1.28.0 is the first release with the fix. This job passes zizmor no
-  # token and no -v, so its logs never carried one. 1.30.0 added the
-  # self-repository audit, which flags every local `uses: ./...` action and
-  # reusable-workflow reference in this repo (58 of them on 2026-09-25), so
-  # moving past 1.29.x needs a decision on that audit as well.
+  # 1.28.0 is the first release with the fix. The Run zizmor step passes a
+  # token outside pull requests, so keep this at 1.28.0 or later and don't
+  # add -v. 1.30.0 added the self-repository audit, which flags every local
+  # `uses: ./...` action and reusable-workflow reference in this repo (58 of
+  # them on 2026-09-25), so moving past 1.29.x needs a decision on that audit
+  # as well.
   ZIZMOR_VERSION: "1.28.0"
 
 permissions: {}
@@ -61,6 +62,20 @@ jobs:
         # continue-on-error: findings should surface in the Security tab, not
         # turn every workflow-touching PR red.
         continue-on-error: true
+        env:
+          # A token turns on zizmor's online audits (impostor-commit,
+          # known-vulnerable-actions, ref-confusion, ref-version-mismatch,
+          # stale-action-refs). They make about one REST call per pinned
+          # action version, 21 on 2026-09-25. github.token gets 1,000 REST
+          # calls an hour for the whole repo, and ci.yml's `changes` job, which
+          # CI Status needs, draws on the same budget. Pull requests therefore
+          # stay offline, since a burst of PR pushes could use that budget up;
+          # main pushes, the weekly run and manual runs go online.
+          # ZIZMOR_OFFLINE rather than an empty GH_TOKEN: zizmor exits with an
+          # error on an empty token. If an API call fails, zizmor writes no
+          # SARIF and the upload step below fails for that run.
+          GH_TOKEN: ${{ github.token }}
+          ZIZMOR_OFFLINE: ${{ github.event_name == 'pull_request' }}
         run: uvx "zizmor@${ZIZMOR_VERSION}" --format=sarif . > results.sarif
 
       - name: Upload SARIF
