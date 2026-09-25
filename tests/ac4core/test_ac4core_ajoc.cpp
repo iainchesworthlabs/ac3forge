@@ -269,6 +269,55 @@ TEST_CASE("A-JOC's wet path is the ducked decorrelator of D x, D = |C_wet| C_dry
     }
 }
 
+TEST_CASE("A-JOC's decorrelation input matrix takes each object at its own bands",
+          "[ac4core][ajoc]") {
+    // Two objects of 23 bands and of 1 on one decorrelator (src/ac4dec/
+    // ERRATA.md, "The decorrelation input matrix"): in subband sb, D is
+    // |wet_0| dry_0 at object 0's band of sb plus |wet_1| dry_1, object 1's
+    // one band covering every subband.
+    ajoc::FrameParameters p = parameters({{0.0}, {0.5}}, 1, 0, 1);
+    p.num_bands[0] = 23;
+    for (int pb = 0; pb < 23; ++pb) {
+        p.dry_at(0, 0, 0, pb) = pb / 20.0;
+        p.wet_at(0, 0, 0, pb) = -0.2;  // its magnitude counts
+    }
+    p.num_decorr = 1;
+    p.decorr_enable[0] = true;
+    p.wet_at(1, 0, 0, 0) = 0.3;
+    auto r = std::make_unique<ajoc::Reconstruction<double>>();
+    std::vector<Complex> x(kValues);
+    for (std::size_t k = 0; k < kValues; ++k) {
+        x[k] = std::polar(1.0 + 0.5 * std::cos(0.07 * static_cast<double>(k)),
+                          0.2 * static_cast<double>(k));
+    }
+    Run run({x}, 2);
+    auto decorrelator = std::make_unique<acpl::Decorrelator<double>>(0);
+    auto ducker = std::make_unique<acpl::TransientDucker<double>>();
+    for (int frame = 0; frame < 2; ++frame) {
+        r->reconstruct(p, kSlots, run.in, run.out, 1.0, {});
+        std::vector<Complex> u(kValues);
+        for (int ts = 0; ts < kSlots; ++ts) {
+            for (int sb = 0; sb < kSubbands; ++sb) {
+                const double d = 0.2 * (ajoc::sb_to_pb(23, sb) / 20.0) + 0.3 * 0.5;
+                u[at(ts) * kSubbands + at(sb)] =
+                    (frame == 0 && ts == 0 ? 0.0 : d) * x[at(ts) * kSubbands + at(sb)];
+            }
+        }
+        std::vector<Complex> y(kValues);
+        decorrelator->process(u, y, kSlots);
+        ducker->process(y, kSlots);
+        for (int ts = 0; ts < kSlots; ++ts) {
+            for (int sb = 0; sb < kSubbands; sb += 3) {
+                const std::size_t k = at(ts) * kSubbands + at(sb);
+                const double scale = frame == 0 && ts == 0 ? 0.0 : 1.0;
+                const Complex want = scale * (0.5 * x[k] + 0.3 * y[k]);
+                CAPTURE(frame, ts, sb);
+                CHECK(std::abs(run.z[1][k] - want) < 1e-12);
+            }
+        }
+    }
+}
+
 TEST_CASE("A-JOC dialogue enhancement scales the dialogue objects after D is taken",
           "[ac4core][ajoc]") {
     // Pseudocode 22 in full decoding: the dialogue object's dry and wet times
