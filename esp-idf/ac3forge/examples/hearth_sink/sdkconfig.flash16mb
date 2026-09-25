@@ -1,0 +1,13 @@
+# Overlay for an ESP32-C6 on a board with 16 MB of flash: partitions.csv's
+# 16 MB table, with 4 MiB application slots, in place of the 4 MB table
+# sdkconfig.c6 chooses for any C6 module (partitions_c6.csv, 1.75 MiB slots).
+# After sdkconfig.c6 and sdkconfig.sendspin-c6:
+#
+#   "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6;sdkconfig.flash16mb"
+#
+# Check the flash before using it: `esptool --chip esp32c6 flash-id` prints the
+# size. A bootloader told the flash is larger than it is cannot reach the
+# partitions past the end of it. The S3 and P4 need no such overlay, since
+# sdkconfig.defaults is already 16 MB with this table.
+CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"

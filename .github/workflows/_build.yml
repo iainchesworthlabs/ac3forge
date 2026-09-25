@@ -3062,6 +3062,24 @@ jobs:
             "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6" \
             build
 
+      # hearth_sink's Sendspin player for the ESP32-P4, built and not run, for the reason the C6
+      # step above gives: qemu-riscv32 has no machine for this part either. It is built for its
+      # bootloader as much as its application. The bootloader starts at 0x2000 on this part,
+      # below the partition table at 0x8000, and with rollback on (sdkconfig.defaults) it leaves
+      # 1,152 of those 24,576 bytes spare (sdkconfig.p4, planning/esp32-ota.md). An ESP-IDF
+      # update that grows it past the window then fails here rather than in the next board
+      # build for a P4. Same container and toolchain as the steps above.
+      - name: Build hearth_sink's Sendspin player for the ESP32-P4 (no emulator for this part)
+        shell: bash
+        run: |
+          set -eu
+          . "$IDF_PATH/export.sh"
+          cd esp-idf/ac3forge/examples/hearth_sink
+          dir="$RUNNER_TEMP/hearth_sink-p4-sendspin"
+          idf.py -B "$dir" -DSDKCONFIG="$dir/sdkconfig" -DIDF_TARGET=esp32p4 \
+            "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.p4;sdkconfig.sendspin" \
+            build
+
       # The ESP32-P4 probe project (planning/esp32-sink-tiers.md's Phase P1),
       # built and not run, for the same reason as the ESP32-C6 step above:
       # qemu-system-riscv32 has no machine for this part either, so its

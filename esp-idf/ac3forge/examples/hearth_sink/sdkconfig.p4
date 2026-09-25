@@ -48,11 +48,20 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
 # together, for a feature this build was never going to reach anyway.
 CONFIG_PM_SLEEP_CLK_ICG_ENABLE=n
 
-# The audio and storage partitions need more room here than partitions.csv or
-# partitions_c6.csv give - see partitions_p4.csv's own comment for why.
-# CONFIG_ESPTOOLPY_FLASHSIZE_16MB is already sdkconfig.defaults' own setting
-# and matches this board too, so it is not repeated here.
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions_p4.csv"
+# The partition table is sdkconfig.defaults' own, partitions.csv, and so is
+# CONFIG_ESPTOOLPY_FLASHSIZE_16MB, which matches this board. Its two 4 MiB
+# application slots hold this build - 1.46 MB in September 2026, with
+# espressif/esp_wifi_remote and espressif/esp_hosted in it where the S3 and C6
+# link plain esp_wifi - with the same room the single 4 MB slot of the P4's
+# own table used to give it.
+#
+# The bootloader starts at 0x2000 on this part rather than 0x0, so it has the
+# 24,576 bytes below the partition table at 0x8000, where the S3's and C6's
+# have 32,768. With rollback on (sdkconfig.defaults) it measured 23,424 bytes
+# on 2026-09-24 at the Info log level, 1,152 short of the window. A later
+# ESP-IDF that grows it past the window fails the build and says so;
+# CONFIG_BOOTLOADER_LOG_LEVEL_WARN took it to 20,896 bytes in the same
+# measurement. planning/esp32-ota.md has the table.
 
 # PSRAM, on: this board has 32 MB of it (docs/platforms/bare-metal/esp32-p4.md),
 # unlike the minimum-footprint bare-metal probe that deliberately leaves it off
