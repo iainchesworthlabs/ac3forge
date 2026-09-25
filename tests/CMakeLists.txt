@@ -49,6 +49,7 @@ add_executable(ac3tests
     ac4/test_ac4.cpp
     ac4/test_ac4_presentation_configs.cpp
     ac4/test_ac4_toc_syntax.cpp
+    ac4core/test_ac4core_aspx.cpp
     ac4core/test_ac4core_dsp.cpp
     ac4dec/test_ac4dec_decoder.cpp
     ac4dec/test_ac4dec_frames.cpp
@@ -247,6 +248,7 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src"
 if(NOT BUILD_SHARED_LIBS)
     target_sources(ac3tests PRIVATE
         ac4dec/test_ac4dec_asf.cpp
+        ac4dec/test_ac4dec_aspx.cpp
         ac4dec/test_ac4dec_channel_elements.cpp
         ac4dec/test_ac4dec_metadata.cpp
         ac4dec/test_ac4dec_pcm.cpp

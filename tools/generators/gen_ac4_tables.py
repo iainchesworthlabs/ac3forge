@@ -1,4 +1,4 @@
-"""Generate the AC-4 Huffman codebooks, scale factor band tables and noise table.
+"""Generate the AC-4 Huffman codebooks, scale factor band tables, noise and QMF tables.
 
 ETSI TS 103 190-1 V1.4.1 prints its Huffman codebooks only by name. Annex
 A.0 says the lengths and codewords are in the accompanying
@@ -11,7 +11,9 @@ tables are read from the text.
 
 Reads, from --spec-dir (default spec/ in the repo root):
   ts_10319001_attach/ts_103190_tables.c  every <name>_LEN and <name>_CW array,
-                                         and RANDOM_NOISE_TABLE (Annex C.11).
+                                         RANDOM_NOISE_TABLE (Annex C.11),
+                                         ASPX_NOISE (Annex D.2) and QWIN
+                                         (Annex D.3).
   ts_10319001v010401p.txt                Annex A's codebook tables and Tables
                                          A.14 and A.15; Annex B's Table B.1,
                                          the 44.1/48 kHz columns of Tables B.4
@@ -23,9 +25,11 @@ codebook, its entries sorted by length and then codeword, as
 huffman_codebook.hpp's Codebook wants them for reading), huffman_codes.hpp and
 .cpp (the same codebooks in index order, the codeword and its length for each
 index, for writing), sfb_tables.hpp and .cpp (Annex
-B at 44.1 and 48 kHz) and noise_tables.hpp and .cpp (Annex C.11, which the
-spectral noise fill of clause 5.1.4 reads through Pseudocode 57). src/ac4core
-is what the AC-4 decoder and encoder share.
+B at 44.1 and 48 kHz), noise_tables.hpp and .cpp (Annex C.11, which the
+spectral noise fill of clause 5.1.4 reads through Pseudocode 57) and
+qmf_tables.hpp and .cpp (Annex D.3, the QMF banks' window of clauses 5.7.3 and
+5.7.4, and Annex D.2, A-SPX's noise generator table of clause 5.7.6.4.3).
+src/ac4core is what the AC-4 decoder and encoder share.
 
 Checks, all of them before anything is written, every one failing the run:
   Huffman  Annex A names the same codebooks as the attachment, with the
@@ -46,6 +50,10 @@ Checks, all of them before anything is written, every one failing the run:
   Noise    RANDOM_NOISE_TABLE holds 256 float literals, and the negation of
            every entry is also an entry, so the table's mean is exactly zero;
            its mean square is printed.
+  QMF      QWIN holds 640 numbers, QWIN[0] is 0, and |QWIN[n]| equals
+           |QWIN[640 - n]| for every other n (the signs are the table's own);
+           ASPX_NOISE holds 512 pairs, whose mean energy clause 5.7.6.4.3 says
+           is 1, and is printed.
   Annex B  Table B.1 lists the fifteen 44.1/48 kHz transform lengths, as
            Table 106 does; every row of Tables B.1 and B.4 to B.19 has
            exactly one reading (see read_row) with its sfb or max_sfb_master
@@ -119,6 +127,16 @@ NOISE_TABLE = re.compile(
     r"\bconst\s+float32\s+RANDOM_NOISE_TABLE\s*\[\s*(\d+)\s*\]\s*=\s*\{([^{}]*)\}\s*;")
 FLOAT_LITERAL = re.compile(r"-?\d+\.\d+f")
 NOISE_ENTRIES = 256
+QWIN_TABLE = re.compile(r"\bconst\s+float\s+QWIN\s*\[\s*(\d+)\s*\]\s*=\s*\{([^{}]*)\}\s*;")
+QWIN_ENTRIES = 640
+ASPX_NOISE_TABLE = re.compile(
+    r"\bconst\s+float\s+ASPX_NOISE\s*\[\s*(\d+)\s*\]\s*\[\s*2\s*\]\s*=\s*\{(.*?)\}\s*;",
+    re.S)
+ASPX_NOISE_ENTRIES = 512
+# A number as Annex D prints it: "0", "-0.70912", "1.990318758627504e-004".
+D_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:e[-+]\d+)?")
+ASPX_NOISE_PAIR = re.compile(r"\{\s*(" + D_NUMBER.pattern + r")\s*,\s*(" + D_NUMBER.pattern
+                             + r")\s*\}")
 # A printed number: its first group of digits, then any groups of three after
 # a single space.
 NUMBER = r"\d{1,3}(?: \d{3})*"
@@ -316,6 +334,46 @@ def parse_noise_table(path):
     unpaired = [text for text, value in zip(literals, values, strict=True) if -value not in present]
     check(not unpaired, f"RANDOM_NOISE_TABLE: no negation of {unpaired[:4]}")
     return literals
+
+
+def float_literal(text):
+    """A number Annex D prints, as a C++ float literal that keeps every digit printed."""
+    return f"{text}f" if "." in text or "e" in text else f"{text}.0f"
+
+
+def parse_qwin(path):
+    """QWIN's 640 entries (Annex D.3), as the numbers the attachment prints."""
+    source = path.read_text(encoding="utf-8")
+    check("Annex D.3 QWIN" in source, "the attachment has no 'Annex D.3 QWIN' heading")
+    match = QWIN_TABLE.search(source)
+    check(match is not None, "the attachment has no QWIN array")
+    size, body = match.groups()
+    numbers = D_NUMBER.findall(body)
+    leftover = re.sub(r"[\s,]", "", D_NUMBER.sub("", body))
+    check(not leftover, f"QWIN: unexpected {leftover[:20]!r} among its values")
+    check(int(size) == QWIN_ENTRIES and len(numbers) == QWIN_ENTRIES,
+          f"QWIN[{size}] holds {len(numbers)} values, not {QWIN_ENTRIES}")
+    values = [Fraction(text) for text in numbers]
+    check(values[0] == 0, f"QWIN[0] is {numbers[0]}, not 0")
+    asymmetric = [n for n in range(1, QWIN_ENTRIES)
+                  if abs(values[n]) != abs(values[QWIN_ENTRIES - n])]
+    check(not asymmetric, f"QWIN: |QWIN[n]| != |QWIN[640 - n]| at n = {asymmetric[:4]}")
+    return numbers
+
+
+def parse_aspx_noise(path):
+    """ASPX_NOISE's 512 (real, imaginary) pairs (Annex D.2), as the attachment prints them."""
+    source = path.read_text(encoding="utf-8")
+    check("Annex D.2 ASPX_NOISE" in source, "the attachment has no 'Annex D.2 ASPX_NOISE' heading")
+    match = ASPX_NOISE_TABLE.search(source)
+    check(match is not None, "the attachment has no ASPX_NOISE array")
+    size, body = match.groups()
+    pairs = ASPX_NOISE_PAIR.findall(body)
+    leftover = re.sub(r"[\s,]", "", ASPX_NOISE_PAIR.sub("", body))
+    check(not leftover, f"ASPX_NOISE: unexpected {leftover[:20]!r} among its values")
+    check(int(size) == ASPX_NOISE_ENTRIES and len(pairs) == ASPX_NOISE_ENTRIES,
+          f"ASPX_NOISE[{size}][2] holds {len(pairs)} pairs, not {ASPX_NOISE_ENTRIES}")
+    return pairs
 
 
 def attach_codes(codebooks, arrays):
@@ -1119,6 +1177,43 @@ def emit_noise_source(literals):
             "}  // namespace ac4::detail::tables"]
 
 
+QMF_HEADER = [
+    "#pragma once",
+    "",
+    "#include <array>",
+    "",
+    "// ETSI TS 103 190-1 V1.4.1 Annex D.3, QWIN, and Annex D.2, ASPX_NOISE. GENERATED",
+    "// by tools/generators/gen_ac4_tables.py from the attachment ts_103190_tables.c;",
+    "// do not edit by hand.",
+    "",
+    "namespace ac4::detail::tables {",
+    "",
+    "// The window of the QMF analysis and synthesis banks (clauses 5.7.3 and",
+    "// 5.7.4), in the float the attachment declares. It carries its own signs.",
+    f"extern const std::array<float, {QWIN_ENTRIES}> kQwin;",
+    "",
+    "// NoiseTable of A-SPX's noise generator (clause 5.7.6.4.3): complex numbers",
+    "// of random phase and mean energy 1, {real, imaginary}, in the float the",
+    "// attachment declares.",
+    f"extern const std::array<std::array<float, 2>, {ASPX_NOISE_ENTRIES}> kAspxNoise;",
+    "",
+    "}  // namespace ac4::detail::tables",
+]
+
+
+def emit_qmf_source(qwin, aspx_noise):
+    noise = [f"{{{float_literal(re)}, {float_literal(im)}}}" for re, im in aspx_noise]
+    return ['#include "qmf_tables.hpp"', "",
+            "namespace ac4::detail::tables {", "",
+            f"const std::array<float, {QWIN_ENTRIES}> kQwin = {{",
+            *wrap([float_literal(text) for text in qwin], "   "),
+            "};", "",
+            f"const std::array<std::array<float, 2>, {ASPX_NOISE_ENTRIES}> kAspxNoise = {{{{",
+            *wrap(noise, "   "),
+            "}};", "",
+            "}  // namespace ac4::detail::tables"]
+
+
 def report_codebooks(codebooks):
     print(f"{'codebook':<28} {'table':>6} {'entries':>7} {'bits':>6}  Kraft sum")
     for cb in codebooks:
@@ -1153,11 +1248,17 @@ def main():
                                                                    n_side_bits)
 
     noise = parse_noise_table(tables_c)
+    qwin = parse_qwin(tables_c)
+    aspx_noise = parse_aspx_noise(tables_c)
 
     report_codebooks(codebooks)
     mean_square = sum(Fraction(text[:-1]) ** 2 for text in noise) / len(noise)
     print(f"\nRANDOM_NOISE_TABLE: {len(noise)} entries, mean 0, mean square "
           f"{float(mean_square):.6f}")
+    energy = sum(Fraction(re) ** 2 + Fraction(im) ** 2 for re, im in aspx_noise) / len(aspx_noise)
+    print(f"ASPX_NOISE: {len(aspx_noise)} entries, mean energy {float(energy):.9f}")
+    print(f"QWIN: {len(qwin)} entries, |QWIN[n]| == |QWIN[640 - n]|, "
+          f"{sum(1 for text in qwin if text.startswith('-'))} negative")
     print(f"\nAnnex B: num_sfb and offsets for {len(offsets)} transform lengths at 48 kHz, "
           f"{len(hsf.offsets_96)} at 96 kHz, {len(hsf.offsets_192)} at 192 kHz, "
           f"{len(mappings)} max_sfb_master tables")
@@ -1171,6 +1272,8 @@ def main():
         "sfb_tables.cpp": emit_sfb_source(num_sfb, offsets, mappings, offset_tables, hsf),
         "noise_tables.hpp": NOISE_HEADER,
         "noise_tables.cpp": emit_noise_source(noise),
+        "qmf_tables.hpp": QMF_HEADER,
+        "qmf_tables.cpp": emit_qmf_source(qwin, aspx_noise),
     }
     for name, out in outputs.items():
         for number, text in enumerate(out, start=1):

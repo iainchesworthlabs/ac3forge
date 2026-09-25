@@ -9,17 +9,12 @@
 #include <span>
 #include <string_view>
 
+#include "aspx/frequency_tables.hpp"
 #include "tables/huffman_tables.hpp"
 
 namespace ac4::detail {
 
 namespace {
-
-// 5.7.6.3.1.1: the template subband group tables the master table is cut from.
-constexpr std::array<std::uint8_t, 21> kSbgTemplateLowres = {
-    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 24, 26, 28, 30, 32, 35, 38, 42, 46};
-constexpr std::array<std::uint8_t, 23> kSbgTemplateHighres = {
-    18, 19, 20, 21, 22, 23, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 44, 47, 50, 53, 56, 59, 62};
 
 // Table 194 (tab_border): FIXFIX time slot group borders for two and four
 // groups; one group is always {0, num_aspx_timeslots}.
@@ -510,52 +505,33 @@ ParseResult parse_aspx_config(BitReader& r, AspxConfig& out) {
 
 ParseResult derive_aspx_subband_groups(const AspxConfig& config, int xover_subband_offset,
                                        AspxSubbandGroups& out) {
-    // Pseudocode 67. However master_reset falls, the master table follows
-    // from these three values, so it is rebuilt from them each time.
-    const bool highres = config.master_freq_scale == 1;
-    const std::span<const std::uint8_t> sbg_template =
-        highres ? std::span<const std::uint8_t>(kSbgTemplateHighres)
-                : std::span<const std::uint8_t>(kSbgTemplateLowres);
-    const int num_sbg_master =
-        (highres ? 22 : 20) - 2 * config.start_freq - 2 * config.stop_freq;
-    // Pseudocode 68 indexes sbg_master[aspx_xover_subband_offset] up to
-    // sbg_master[num_sbg_master]; an offset at or past the end leaves no
-    // A-SPX range to send envelopes for.
-    if (xover_subband_offset < 0 || xover_subband_offset >= num_sbg_master) {
-        return fail(DecodeError::kInvalidStream,
-                    "aspx_xover_subband_offset is past the master subband groups (Pseudocode 68)");
+    aspx::SubbandGroups tables;
+    const aspx::FrequencyConfig frequency{.master_freq_scale = config.master_freq_scale,
+                                          .start_freq = config.start_freq,
+                                          .stop_freq = config.stop_freq,
+                                          .noise_sbg = config.noise_sbg,
+                                          .xover_subband_offset = xover_subband_offset};
+    switch (aspx::derive_subband_groups(frequency, tables)) {
+        case aspx::GroupsError::kNone:
+            break;
+        case aspx::GroupsError::kXoverOffset:
+            // Pseudocode 68 indexes sbg_master[aspx_xover_subband_offset] up
+            // to sbg_master[num_sbg_master]; an offset at or past the end
+            // leaves no A-SPX range to send envelopes for.
+            return fail(DecodeError::kInvalidStream,
+                        "aspx_xover_subband_offset is past the master subband groups (Pseudocode 68)");
+        case aspx::GroupsError::kNoiseGroups:
+            return fail(DecodeError::kInvalidStream, "num_sbg_noise exceeds 5 (5.7.6.3.1.3)");
     }
-    const auto first = static_cast<std::size_t>(2 * config.start_freq);
     AspxSubbandGroups groups;
-    groups.num_sbg_master = u8(static_cast<std::uint32_t>(num_sbg_master));
-    groups.sba = sbg_template[first];
-    groups.sbz = sbg_template[first + static_cast<std::size_t>(num_sbg_master)];
-    groups.sbx = sbg_template[first + static_cast<std::size_t>(xover_subband_offset)];
-    groups.num_sb_aspx = u8(static_cast<std::uint32_t>(groups.sbz - groups.sbx));
-    const int num_highres = num_sbg_master - xover_subband_offset;
-    groups.num_sbg_sig_highres = u8(static_cast<std::uint32_t>(num_highres));
-    // Pseudocode 69.
-    groups.num_sbg_sig_lowres = u8(static_cast<std::uint32_t>(num_highres - num_highres / 2));
-
-    // Pseudocode 70: max(1, floor(aspx_noise_sbg * log2(sbz/sbx) + 0.5)). That
-    // floor is the largest k with k - 0.5 <= aspx_noise_sbg * log2(sbz/sbx),
-    // i.e. with 2^(2k-1) * sbx^(2*aspx_noise_sbg) <= sbz^(2*aspx_noise_sbg),
-    // which integers decide exactly (sbz <= 62, so the powers stay below
-    // 2^36 and the shifts below 2^50).
-    std::uint64_t sbz_power = 1;
-    std::uint64_t sbx_power = 1;
-    for (int i = 0; i < 2 * config.noise_sbg; ++i) {
-        sbz_power *= std::uint64_t{groups.sbz};
-        sbx_power *= std::uint64_t{groups.sbx};
-    }
-    int count = 0;
-    while (count <= kAspxMaxSbgNoise && (sbx_power << (2 * count + 1)) <= sbz_power) {
-        ++count;
-    }
-    if (count > kAspxMaxSbgNoise) {
-        return fail(DecodeError::kInvalidStream, "num_sbg_noise exceeds 5 (5.7.6.3.1.3)");
-    }
-    groups.num_sbg_noise = u8(static_cast<std::uint32_t>(std::max(1, count)));
+    groups.num_sbg_master = u8(static_cast<std::uint32_t>(tables.num_sbg_master));
+    groups.sba = u8(static_cast<std::uint32_t>(tables.sba));
+    groups.sbz = u8(static_cast<std::uint32_t>(tables.sbz));
+    groups.sbx = u8(static_cast<std::uint32_t>(tables.sbx));
+    groups.num_sb_aspx = u8(static_cast<std::uint32_t>(tables.num_sb_aspx));
+    groups.num_sbg_sig_highres = u8(static_cast<std::uint32_t>(tables.num_sbg_sig_highres));
+    groups.num_sbg_sig_lowres = u8(static_cast<std::uint32_t>(tables.num_sbg_sig_lowres));
+    groups.num_sbg_noise = u8(static_cast<std::uint32_t>(tables.num_sbg_noise));
     out = groups;
     return {};
 }

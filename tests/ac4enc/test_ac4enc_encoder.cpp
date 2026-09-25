@@ -23,7 +23,9 @@
 
 namespace {
 
-constexpr int kDecoderDelay = 352;  // Part 1 Table 188 at frame_rate_index 13
+// The decoder's delay at frame_rate_index 13: d_pcm (Part 1 Table 188), the
+// QMF banks' 577 samples and six QMF slots (5.7.1).
+constexpr int kDecoderDelay = 352 + 577 + 6 * 64;
 
 struct Encoded {
     std::vector<ac4::EncodedFrame> frames;

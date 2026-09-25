@@ -6,7 +6,9 @@
 // numpy's Kaiser window (a Bessel function written by others). Then the
 // synthesis's windows and overlap-add, fed by an analysis written here from
 // the same windows, reconstruct their input across every block transition
-// Part 1 Table 187 allows.
+// Part 1 Table 187 allows. The QMF analysis and synthesis banks are held to
+// Pseudocodes 65 and 66 as printed, and the pair to its delay and
+// reconstruction.
 
 #include <algorithm>
 #include <array>
@@ -23,7 +25,9 @@
 #include "dsp/fft.hpp"
 #include "dsp/kbd.hpp"
 #include "dsp/mdct.hpp"
+#include "dsp/qmf.hpp"
 #include "dsp/synthesis.hpp"
+#include "tables/qmf_tables.hpp"
 
 namespace {
 
@@ -534,4 +538,195 @@ TEST_CASE("the synthesis refuses a block length its transform set does not have"
     std::vector<double> out(960, 0.0);
     CHECK_FALSE(synthesis.block(other, block, out));
     CHECK_FALSE(dsp::TransformSet<double>(2000, 1).valid());
+}
+
+namespace {
+
+// Pseudocode 65 as printed, one slot at a time, with the complex sum written
+// out term by term.
+std::vector<Complex> qmf_analysis_as_printed(std::span<const double> pcm) {
+    std::array<double, 640> qmf_filt{};
+    std::vector<Complex> q;
+    for (std::size_t ts = 0; ts < pcm.size() / 64; ++ts) {
+        for (std::size_t sb = 639; sb >= 64; --sb) {
+            qmf_filt[sb] = qmf_filt[sb - 64];
+        }
+        for (std::size_t sb = 0; sb < 64; ++sb) {
+            qmf_filt[sb] = pcm[ts * 64 + 63 - sb];
+        }
+        std::array<double, 640> z{};
+        for (std::size_t n = 0; n < 640; ++n) {
+            z[n] = qmf_filt[n] * static_cast<double>(ac4::detail::tables::kQwin[n]);
+        }
+        std::array<double, 128> u{};
+        for (std::size_t n = 0; n < 128; ++n) {
+            u[n] = z[n];
+            for (std::size_t k = 1; k < 5; ++k) {
+                u[n] = u[n] + z[n + k * 128];
+            }
+        }
+        for (std::size_t sb = 0; sb < 64; ++sb) {
+            const double f = (std::numbers::pi / 128.0) * (static_cast<double>(sb) + 0.5);
+            Complex value = u[0] * std::exp(Complex(0.0, f * -1.0));
+            for (std::size_t n = 1; n < 128; ++n) {
+                value += u[n] * std::exp(Complex(0.0, f * (2.0 * static_cast<double>(n) - 1.0)));
+            }
+            q.push_back(value);
+        }
+    }
+    return q;
+}
+
+// Pseudocode 66 as printed.
+std::vector<double> qmf_synthesis_as_printed(std::span<const Complex> q) {
+    std::array<double, 1280> qsyn_filt{};
+    std::vector<double> pcm;
+    for (std::size_t ts = 0; ts < q.size() / 64; ++ts) {
+        for (std::size_t n = 1279; n >= 128; --n) {
+            qsyn_filt[n] = qsyn_filt[n - 128];
+        }
+        for (std::size_t n = 0; n < 128; ++n) {
+            const double m = 2.0 * static_cast<double>(n) - 255.0;
+            const double f0 = (std::numbers::pi / 128.0) * 0.5;
+            qsyn_filt[n] = (q[ts * 64] / 64.0 * std::exp(Complex(0.0, f0 * m))).real();
+            for (std::size_t sb = 1; sb < 64; ++sb) {
+                const double f = (std::numbers::pi / 128.0) * (static_cast<double>(sb) + 0.5);
+                qsyn_filt[n] += (q[ts * 64 + sb] / 64.0 * std::exp(Complex(0.0, f * m))).real();
+            }
+        }
+        std::array<double, 640> g{};
+        for (std::size_t n = 0; n < 5; ++n) {
+            for (std::size_t sb = 0; sb < 64; ++sb) {
+                g[128 * n + sb] = qsyn_filt[256 * n + sb];
+                g[128 * n + 64 + sb] = qsyn_filt[256 * n + 192 + sb];
+            }
+        }
+        std::array<double, 640> w{};
+        for (std::size_t n = 0; n < 640; ++n) {
+            w[n] = g[n] * static_cast<double>(ac4::detail::tables::kQwin[n]);
+        }
+        for (std::size_t sb = 0; sb < 64; ++sb) {
+            double temp = w[sb];
+            for (std::size_t n = 1; n < 10; ++n) {
+                temp = temp + w[64 * n + sb];
+            }
+            pcm.push_back(temp);
+        }
+    }
+    return pcm;
+}
+
+double max_abs(std::span<const Complex> values) {
+    double peak = 0.0;
+    for (const Complex& v : values) {
+        peak = std::max(peak, std::abs(v));
+    }
+    return peak;
+}
+
+}  // namespace
+
+TEST_CASE("the QMF analysis equals Pseudocode 65 as printed", "[ac4core][dsp][qmf]") {
+    const std::vector<double> pcm = random_values(64 * 24, 65);
+    // Two calls, to carry qmf_filt across them as a frame boundary does.
+    dsp::QmfAnalysis<double> analysis;
+    std::vector<Complex> fast(pcm.size());
+    const std::span<const double> all(pcm);
+    analysis.process(all.first(64 * 10), std::span<Complex>(fast).first(64 * 10));
+    analysis.process(all.subspan(64 * 10), std::span<Complex>(fast).subspan(64 * 10));
+    const std::vector<Complex> printed = qmf_analysis_as_printed(pcm);
+    REQUIRE(printed.size() == fast.size());
+    double error = 0.0;
+    for (std::size_t i = 0; i < fast.size(); ++i) {
+        error = std::max(error, std::abs(fast[i] - printed[i]));
+    }
+    CHECK(error <= 1e-12 * max_abs(printed));
+}
+
+TEST_CASE("the QMF synthesis equals Pseudocode 66 as printed", "[ac4core][dsp][qmf]") {
+    const std::vector<double> re = random_values(64 * 24, 66);
+    const std::vector<double> im = random_values(64 * 24, 67);
+    std::vector<Complex> q(re.size());
+    for (std::size_t i = 0; i < q.size(); ++i) {
+        q[i] = Complex(re[i], im[i]);
+    }
+    dsp::QmfSynthesis<double> synthesis;
+    std::vector<double> fast(q.size());
+    const std::span<const Complex> all(q);
+    synthesis.process(all.first(64 * 7), std::span<double>(fast).first(64 * 7));
+    synthesis.process(all.subspan(64 * 7), std::span<double>(fast).subspan(64 * 7));
+    const std::vector<double> printed = qmf_synthesis_as_printed(q);
+    REQUIRE(printed.size() == fast.size());
+    CHECK(max_abs_difference(fast, printed) <= 1e-12 * max_abs(std::span<const double>(printed)));
+}
+
+TEST_CASE("the QMF pair gives back its input 577 samples later, to 78 dB", "[ac4core][dsp][qmf]") {
+    const std::vector<double> x = random_values(64 * 400, 577);
+    dsp::QmfAnalysis<double> analysis;
+    dsp::QmfSynthesis<double> synthesis;
+    std::vector<Complex> q(x.size());
+    std::vector<double> y(x.size());
+    analysis.process(x, q);
+    synthesis.process(q, y);
+    // The delay is where the output correlates best with the input.
+    const auto correlation = [&](std::size_t delay) {
+        double sum = 0.0;
+        for (std::size_t n = 0; n + delay < x.size(); ++n) {
+            sum += x[n] * y[n + delay];
+        }
+        return sum;
+    };
+    std::size_t best = 0;
+    double best_value = correlation(0);
+    for (std::size_t delay = 1; delay < 1200; ++delay) {
+        const double value = correlation(delay);
+        if (value > best_value) {
+            best = delay;
+            best_value = value;
+        }
+    }
+    CHECK(best == 577);
+    double signal = 0.0;
+    double noise = 0.0;
+    for (std::size_t n = 1280; n + 577 < x.size(); ++n) {
+        signal += x[n] * x[n];
+        noise += (y[n + 577] - x[n]) * (y[n + 577] - x[n]);
+    }
+    CHECK(10.0 * std::log10(signal / noise) >= 78.0);
+}
+
+TEST_CASE("the QMF banks leave their output alone when given the wrong sizes, and reset",
+          "[ac4core][dsp][qmf]") {
+    dsp::QmfAnalysis<double> analysis;
+    const std::vector<double> ragged(100, 1.0);
+    std::vector<Complex> q(128, Complex(-1.0, 0.0));
+    analysis.process(ragged, q);
+    CHECK(q == std::vector<Complex>(128, Complex(-1.0, 0.0)));
+    const std::vector<double> two_slots(128, 1.0);
+    std::vector<Complex> one_slot(64, Complex(-1.0, 0.0));
+    analysis.process(two_slots, one_slot);
+    CHECK(one_slot == std::vector<Complex>(64, Complex(-1.0, 0.0)));
+
+    dsp::QmfSynthesis<double> synthesis;
+    std::vector<double> pcm(64, -1.0);
+    synthesis.process(std::vector<Complex>(100), pcm);
+    CHECK(pcm == std::vector<double>(64, -1.0));
+
+    // After reset() the banks start from silence again: the same input gives
+    // the same output.
+    const std::vector<double> input = random_values(64 * 12, 3);
+    std::vector<Complex> first(input.size());
+    std::vector<Complex> again(input.size());
+    analysis.reset();
+    analysis.process(input, first);
+    analysis.reset();
+    analysis.process(input, again);
+    CHECK(first == again);
+    std::vector<double> out_first(input.size());
+    std::vector<double> out_again(input.size());
+    synthesis.reset();
+    synthesis.process(first, out_first);
+    synthesis.reset();
+    synthesis.process(first, out_again);
+    CHECK(out_first == out_again);
 }

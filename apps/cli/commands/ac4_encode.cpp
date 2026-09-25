@@ -176,9 +176,12 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     status_println(status, "encoded {} AC-4 frames -> {} ({} Hz, {}, {} kbps, dialnorm -{} dB{})", frames->size(),
                    out_path, config.sample_rate_hz, config.channels == 2 ? "stereo" : "mono", bitrate, dialnorm,
                    to_mp4 ? fmt::format(", MP4, codecs {}", rfc6381) : std::string{", raw with CRC"});
+    // A decoder's own delay at frame_rate_index 13: d_pcm (Part 1 Table 188),
+    // the QMF banks' 577 samples and six QMF slots (5.7.1).
+    constexpr int kDecoderDelay = 352 + 577 + 6 * 64;
     status_println(status, "          SIMPLE mode at frame_rate_index 13; the decoder's output lags the input by {} "
                            "samples",
-                   encoder->delay_samples() + 352);
+                   encoder->delay_samples() + kDecoderDelay);
     return kExitOk;
 }
 

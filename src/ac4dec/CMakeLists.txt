@@ -33,6 +33,8 @@ target_sources(ac4dec_objects
         src/decoder.cpp
         src/huffman.cpp
         src/pcm/asf_reconstruct.cpp
+        src/pcm/aspx.cpp
+        src/pcm/companding.cpp
         src/pcm/snf_random.cpp
         src/pcm/stereo.cpp
         src/pcm/substream_pcm.cpp

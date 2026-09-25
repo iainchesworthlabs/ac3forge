@@ -1,11 +1,13 @@
 // ac4::Decoder::decode() and the reconstruction behind it (src/ac4dec/src/pcm):
 // the noise fill's random number generator against the text's own closed
 // form, and the committed DEE streams decoded to PCM - each channel's tone on
-// its own channel, and the modes this version refuses refused by name.
+// its own channel, an ASPX stream's high band rebuilt, and the modes this
+// version refuses refused by name.
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -20,6 +22,7 @@
 
 #include "ac4/ac4.hpp"
 #include "ac4dec/decoder.hpp"
+#include "dsp/qmf.hpp"
 #include "pcm/snf_random.hpp"
 #include "tables/noise_tables.hpp"
 
@@ -86,6 +89,25 @@ double tone_power(std::span<const float> samples, double hz, int sample_rate_hz)
     const double power = s1 * s1 + s2 * s2 - coeff * s1 * s2;
     const auto n = static_cast<double>(samples.size());
     return power / (n * n);
+}
+
+// Each QMF subband's mean energy over `samples` (Part 1 5.7.3's analysis).
+std::vector<double> subband_energy(std::span<const float> samples) {
+    ac4::detail::dsp::QmfAnalysis<double> analysis;
+    const std::size_t slots = samples.size() / 64;
+    std::vector<double> pcm(slots * 64);
+    for (std::size_t n = 0; n < pcm.size(); ++n) {
+        pcm[n] = static_cast<double>(samples[n]);
+    }
+    std::vector<std::complex<double>> q(pcm.size());
+    analysis.process(pcm, q);
+    std::vector<double> energy(64, 0.0);
+    for (std::size_t ts = 0; ts < slots; ++ts) {
+        for (std::size_t sb = 0; sb < 64; ++sb) {
+            energy[sb] += std::norm(q[ts * 64 + sb]) / static_cast<double>(slots);
+        }
+    }
+    return energy;
 }
 
 // The DEE stream's refusal on the first frame, with its reason.
@@ -182,12 +204,31 @@ TEST_CASE("a SIMPLE stereo music stream decodes every frame", "[ac4dec][pcm]") {
     CHECK(peak < 0.3F);
 }
 
-TEST_CASE("decode refuses by name what it does not turn into PCM yet", "[ac4dec][pcm]") {
-    {
-        const auto [error, reason] = first_refusal("ac4-stereo-64");  // ASPX
-        CHECK(error == ac4::DecodeError::kUnsupported);
-        CHECK(reason.find("A-SPX") != std::string::npos);
+TEST_CASE("an ASPX stereo stream decodes every frame with its high band rebuilt", "[ac4dec][pcm]") {
+    // DEE's 2.0 speech at 128 kbps: A-SPX recreates QMF subbands 36 (13.5
+    // kHz) to 55 from the waveform-coded band below. Its source speech has
+    // content up to 16 kHz, 10 to 25 dB under the 7.5 to 11 kHz band.
+    const Decoded decoded = decode_all("ac4-20-speech-128");
+    REQUIRE(decoded.speakers == std::vector<ac4::Speaker>{ac4::Speaker::kLeft, ac4::Speaker::kRight});
+    for (const auto& channel : decoded.channels) {
+        REQUIRE(channel.size() == decoded.frames * 2048);
+        const std::vector<double> energy = subband_energy(channel);
+        const auto band = [&](std::size_t first, std::size_t last) {
+            double sum = 0.0;
+            for (std::size_t sb = first; sb < last; ++sb) {
+                sum += energy[sb];
+            }
+            return 10.0 * std::log10(sum / static_cast<double>(last - first) + 1e-30);
+        };
+        const double waveform = band(20, 30);   // 7.5 to 11.25 kHz
+        const double extension = band(36, 43);  // 13.5 to 16.1 kHz, A-SPX's
+        CAPTURE(waveform, extension);
+        CHECK(extension < waveform);
+        CHECK(extension > waveform - 30.0);
     }
+}
+
+TEST_CASE("decode refuses by name what it does not turn into PCM yet", "[ac4dec][pcm]") {
     {
         const auto [error, reason] = first_refusal("ac4-51-music-384");  // SIMPLE 5.1
         CHECK(error == ac4::DecodeError::kUnsupported);

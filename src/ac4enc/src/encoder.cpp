@@ -39,7 +39,10 @@ constexpr int kFrameLength = 2048;  // frame_rate_index 13, at 44.1 and 48 kHz
 // the frame's last window, inside the input read before the frame is coded.
 // A frame and a half, which is also what DEE's encoder gives.
 constexpr int kDelay = kFrameLength * 3 / 2;
-constexpr int kDecoderDelay = 352;  // Part 1 Table 188, d_pcm at index 13
+// The decoder's delay at index 13, which flush() codes enough frames to
+// cover: d_pcm (Part 1 Table 188), the QMF banks' 577 samples and the six
+// QMF slots the synthesis works behind (5.7.1).
+constexpr int kDecoderDelay = 352 + 577 + 6 * 64;
 constexpr int kSubBlocks = 16;      // transient detection, a sixteenth of a frame each
 constexpr int kSubBlock = kFrameLength / kSubBlocks;
 constexpr double kAttackRatio = 10.0;     // 10 dB over the sub-blocks before

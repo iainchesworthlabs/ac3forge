@@ -1029,6 +1029,20 @@ The sections below contain the complete change list and fixes.
   contents does not carry; `ac3cli mp4` carries it.
 - **`ac3cli decode` and `ac3cli ac4-encode` take `syntax-trace=<file>`** for AC-4, writing one line
   per syntax element read or written, in the shape `tools/references/ac4_syntax.py trace` prints.
+- **AC-4 decodes the ASPX codec mode, and every mode passes through the QMF domain** (phase D3 of
+  `planning/ac4.md`). The decoder runs Part 1's QMF analysis and synthesis banks with Annex D's
+  window, companding, and A-SPX in full: the subband group, patch and limiter tables, envelope decoding
+  and dequantisation with balance, the high frequency generator with pre-flattening and tonal
+  adjustment, the envelope adjuster and its limiter, the noise and tone generators, and interleaved
+  waveform coding, with the QMF-domain control data held the frames Table 188 gives. SIMPLE streams
+  pass through the banks as well, as Part 1 Figure 9 draws it, so the decoder's delay is 1,313 samples
+  at `frame_rate_index` 13 in every codec mode, where SIMPLE's was 352; `ac3cli ac4-encode` reports the
+  lag with it, and the encoder's last frame covers it. DEE's 2.0 streams from 48 to 144 kbps and its
+  immersive stereo decode at unity gain, and `tools/checks/score_ac4_decode.py` pins, besides SNR (below
+  the crossover for ASPX), each A-SPX tile's energy against the source's, log-spectral distance and
+  ViSQOL. The QMF banks, A-SPX's tables and its high frequency generator sit in `src/ac4core` for the
+  encoder. The readings taken, among them companding's full scale and the divisor of A-SPX's envelope
+  estimate, are in `src/ac4dec/ERRATA.md`.
 
 **Browser (WASM)**
 

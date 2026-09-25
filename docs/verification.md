@@ -870,39 +870,59 @@ I-frame settings, each with MediaInfo's frame-by-frame trace beside it.
 
 ### The decoder's output
 
-The decoder turns a mono or stereo substream in the SIMPLE codec mode, at `frame_rate_index` 13, into
-PCM: the audio spectral frontend, stereo processing, the inverse transform with block switching, and
-frame alignment (Part 1 clauses 5.1, 5.3, 5.5 and 5.6). The transforms are in `src/ac4core`, the core
-the decoder shares with the encoder to come. Three checks stand in for the reference output neither
-part defines:
+The decoder turns a mono or stereo substream in the SIMPLE or ASPX codec mode, at `frame_rate_index`
+13, into PCM: the audio spectral frontend, stereo processing, the inverse transform with block
+switching and frame alignment (Part 1 clauses 5.1, 5.3, 5.5 and 5.6), then the QMF domain (5.7): the
+analysis bank, companding, A-SPX and the synthesis bank. Every codec mode passes through the QMF banks,
+SIMPLE included, as Part 1 Figure 9 draws the chain, so the decoder has one delay, 1,313 samples at
+index 13: `d_pcm`'s 352, the banks' 577 and six QMF slots of history. The transforms, the QMF banks,
+and A-SPX's tables and high frequency generator are in `src/ac4core`, the core the decoder shares with
+the encoder. Four checks stand in for the reference output neither part defines:
 
 - **Each transform against its formula** (`tests/ac4core/test_ac4core_dsp.cpp`): the FFT against the
   DFT; the inverse MDCT against a verbatim transcription of Pseudocodes 60 to 63 and against the cosine
   sum they come to, at every transform length of clause 5.5.3; the forward MDCT against its own sum; the
-  KBD windows against numpy's Kaiser window, cumulated; all to 1e-12. Blocks windowed and transformed
-  by an analysis written in the test from the same windows reconstruct their input to 1e-12 across
-  every block transition Part 1 Table 187 allows, within a frame and across frames.
+  KBD windows against numpy's Kaiser window, cumulated; the QMF analysis and synthesis banks against
+  Pseudocodes 65 and 66 as printed; all to 1e-12. Blocks windowed and transformed by an analysis written
+  in the test from the same windows reconstruct their input to 1e-12 across every block transition Part
+  1 Table 187 allows, within a frame and across frames, and the QMF pair gives back its input 577
+  samples later to 78 dB, a property of its window, `QWIN`.
+- **A-SPX's parts on known input** (`tests/ac4core/test_ac4core_aspx.cpp`,
+  `tests/ac4dec/test_ac4dec_aspx.cpp`): the subband group, patch and limiter tables of DEE's two 2.0
+  configurations, worked through Pseudocodes 67 to 74 by hand, and their invariants over all 2,811
+  configurations a stream can select; the linear prediction finding a two-slot recursion; pre-flattening
+  an envelope that is a cubic in dB; Table 195's chirp factors; and, on hand-built A-SPX data, the paths
+  DEE's streams do not take: frequency and time interleaved waveform coding, a balanced pair, the tone
+  generator's phase, the noise generator's index across intervals, an interval running past its frame,
+  and companding's gains.
 - **DEE's streams against their sources** (`tools/checks/score_ac4_decode.py`): the decoded output is
   aligned with the source by cross-correlation and fitted with a gain per channel. Every leg must lag
-  its source by the same 3,424 samples (DEE's encoder and this decoder's, `d_pcm` included), sit within
-  0.2 dB of unity gain, and meet per-channel SNR floors pinned at the first measurement less 1 dB; each
-  tone must land on its own channel. FFmpeg Validate runs it on the two committed SIMPLE legs; locally
-  it runs over phase G0's 24 SIMPLE 2.0 legs, 192 to 768 kbps of music, speech and tones, all within
-  0.03 dB of unity (music 34.6 to 36.8 dB, speech 39.4 dB, tones 50 to 51 dB SNR). DEE's 2.0 streams
-  carry the same audio from 256 kbps up, the rest of each frame being fill, so those rates decode to
-  the same samples.
-- **librempeg on the same streams**: over the 24 legs its output and this decoder's agree to 77.4 to
-  93.1 dB SNR at unity gain, the difference spread across the spectrum at -107 to -111 dBFS, and
-  librempeg's output is 225 samples later. 225 is 577, the delay of the QMF analysis and synthesis
-  pair, less 352, this decoder's `d_pcm`: consistent with librempeg running the QMF pair without the
-  frame alignment. Part 1 5.7.3.1 feeds the frame-aligned output to the QMF analysis bank, which
-  phase D3 adds here.
+  its source by the same 4,385 samples (DEE's encoder's 3,072 and this decoder's 1,313; DEE's immersive
+  stereo encoder runs a frame shorter, 2,337), sit within 0.2 dB of unity gain, and meet floors pinned
+  at the first measurement: per-channel SNR over the whole band for SIMPLE and below the A-SPX crossover
+  for ASPX; above the crossover, each frame's energy in each A-SPX subband group against the source's;
+  log-spectral distance and ViSQOL. Each tone must land on its own channel. FFmpeg Validate runs it on
+  the three committed legs, one of them ASPX; locally it runs over phase G0's 48 legs at index 13, 2.0
+  from 48 to 768 kbps and immersive stereo from 64 to 320, every 2.0 leg within 0.17 dB of unity. Where
+  the source has content above the crossover, the A-SPX tiles' energy sits 1.3 to 2.2 dB below the
+  source's on average. The immersive stereo legs, made from 5.1, are compared with the source's Lo/Ro
+  downmix, which they correlate with at 0.977 to 0.984. DEE's 2.0 streams carry the same audio from 256
+  kbps up, the rest of each frame being fill, so those rates decode to the same samples.
+- **librempeg on the same streams**: its output is 736 samples earlier than this decoder's on SIMPLE
+  and ASPX streams alike, the 352 of frame alignment and the 384 of history it does not delay by, and
+  on SIMPLE streams the two agree to 83 to 90 dB SNR at unity gain. Below an ASPX stream's crossover
+  they agree to 83 dB where companding is off and to 33 to 35 dB where it is on, where this decoder's
+  output is 0.5 to 0.9 dB closer to the source. Above the crossover they part: librempeg's A-SPX tiles
+  sit 2.6 to 7.4 dB below the source's on average where this decoder's sit 1.3 to 1.9 dB below, while
+  its log-spectral distance there is 0.4 to 2.8 dB lower. On the tone legs, where A-SPX adds noise
+  alone, the two agree to 30 dB, noise included: they index the noise table alike.
 
-The level check settles one question the text leaves open: the pseudocode as printed, without the
-factor of two its informative example mentions, decodes DEE's streams at unity gain with full scale at
-2^15. That and the other readings reconstruction takes are in `src/ac4dec/ERRATA.md`, under
-"Reconstruction". None of the streams here, from DEE or anyone else, sets `b_snf_data_exists`, so the
-noise fill is decoded from the text alone.
+The level check settled one question the text leaves open in phase D2: the pseudocode as printed,
+without the factor of two its informative example mentions, decodes DEE's streams at unity gain with
+full scale at 2^15. Phase D3 settled two more: A-SPX's envelopes read at that scale, and companding
+measures its levels against full scale 1.0. Those and the other readings reconstruction takes are in
+`src/ac4dec/ERRATA.md`, under "Reconstruction" and "The QMF domain". None of the streams here, from DEE
+or anyone else, sets `b_snf_data_exists`, so the noise fill is decoded from the text alone.
 
 **Locally, over the census.** With `AC4DEC_GOLDEN_DIR` and `AC4DEC_STREAM_DIR` set, the same test
 compares the decoder with the Python parser's digests of any other set of streams. Over the 107 DEE
@@ -954,15 +974,17 @@ the tables of its own. `ac3cli ac4-encode` writes it raw or in MP4. Four checks 
 - **Decoded against the sources** (`tools/checks/score_ac4_encode.py`, in FFmpeg Validate): the
   programme fixtures, one tone per channel, a sweep, noise, castanet-like bursts and a panned source,
   mono and stereo, 48 and 44.1 kHz, 48 to 256 kbps, encoded and decoded by the decoder. Every leg
-  lags its source by 3,424 samples, sits within 0.2 dB of unity where its SNR is 20 dB or more, and
+  lags its source by 4,385 samples, sits within 0.2 dB of unity where its SNR is 20 dB or more, and
   meets SNR, log-spectral distance and ViSQOL floors pinned at the first measurement. librempeg
-  decodes the same streams to the same scores; its output and the decoder's agree to 77 dB.
+  decodes the same streams to the same scores, its output 736 samples earlier than the decoder's and
+  agreeing with it to 80 dB or better.
 - **The race against DEE** (`score_ac4_encode.py --gold`, locally): phase G0's 2.0 legs of music,
   speech and tones from 192 to 768 kbps, where DEE writes SIMPLE, encoded again here, and both
   decoded by the decoder. At 192 kbps the encoder's SNR is 5.6 dB above DEE's on music, 14.9 dB on
-  speech and 33 dB on the tones, its log-spectral distance is lower on each (2.06 against 2.42 dB on
-  music), and ViSQOL is within 0.02 of DEE's. DEE's 2.0 audio stops changing from 256 kbps; the
-  encoder's goes on improving with the rate. Its scores are pinned.
+  speech and 32 dB on the tones, its log-spectral distance is lower on each (1.04 against 1.17 dB on
+  music), and ViSQOL is within 0.01 of DEE's. DEE's 2.0 audio stops changing from 256 kbps; the
+  encoder's goes on improving with the rate, to 74 dB on music at 768 kbps, where the QMF banks'
+  reconstruction bounds it. Its scores are pinned.
 
 The race changed the encoder before it was pinned. Its first version trailed DEE by 11.7 dB of SNR
 on music at 192 kbps, and removed the top octave of speech and music: its rate loop spent a frame's

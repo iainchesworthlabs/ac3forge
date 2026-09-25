@@ -62,6 +62,9 @@ struct ChannelElement {
     std::vector<int> chel_matsel;             // one per three_channel_info / five_channel_info, in order
     std::optional<int> max_sfb_master;
     std::optional<CompandingControl> companding;
+    // The aspx_config() the element's A-SPX data was read with: this I-frame's,
+    // or the last I-frame's. Set in the codec modes that use A-SPX.
+    std::optional<AspxConfig> aspx_config;
 
     std::vector<SfInfo> infos;
     std::vector<Track> tracks;

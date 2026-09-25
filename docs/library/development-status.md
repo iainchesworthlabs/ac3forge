@@ -148,9 +148,10 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Immersive / 22.2 channel elements | 🔴 | Medium | Important | Refused today |
 | | Object / A-JOC audio substreams | 🔴 | Medium | Important | Refused at TOC |
 | | HSF / 96–192 kHz | 🟡 | Low | Nice-to-have | Extension substream content read when it resolves to its owning channel substream; an unresolved link is refused `kUnsupported` — synthetic frames only, no real HSF stream available |
-| | PCM: SIMPLE mono and stereo | 🟢 | High | Essential | ASF, stereo processing, block switching, frame alignment at `frame_rate_index` 13; DEE's 2.0 streams at unity gain and pinned SNR floors in CI; librempeg agrees to 77 dB or better |
-| | PCM: other modes, layouts and rates | 🔴 | High | Essential | A-SPX, A-CPL, 3.0 to 7.X, the sample rate converter: refused by name until plan phases D3 to D6 |
-| | Transforms (`ac4core`: FFT, MDCT pair, KBD) | 🟢 | High | Essential | Each against its formula to 1e-12; shared by the decoder and the encoder |
+| | PCM: SIMPLE mono and stereo | 🟢 | High | Essential | ASF, stereo processing, block switching, frame alignment and the QMF banks at `frame_rate_index` 13; DEE's 2.0 streams at unity gain and pinned SNR floors in CI; librempeg agrees to 83 dB or better |
+| | PCM: ASPX mono and stereo | 🟢 | High | Essential | Companding and A-SPX in the QMF domain; DEE's 2.0 streams from 48 to 144 kbps at unity gain and its immersive stereo against Lo/Ro, with SNR below the crossover, A-SPX tile energies, LSD and ViSQOL pinned; interleaved waveform coding, balance and VARVAR tested on constructed data |
+| | PCM: other modes, layouts and rates | 🔴 | High | Essential | A-CPL, 3.0 to 7.X, the sample rate converter: refused by name until plan phases D4 to D6 |
+| | Transforms (`ac4core`: FFT, MDCT pair, KBD, QMF banks) | 🟢 | High | Essential | Each against its formula to 1e-12; shared by the decoder and the encoder, with A-SPX's tables and high frequency generator |
 | **Encoder (`ac4enc::`)** | SIMPLE mono and stereo | 🟢 | High | Essential | 48 and 44.1 kHz at `frame_rate_index` 13, a constant rate from 8 kbps; block switching, M/S and prediction; SNR, LSD and ViSQOL floors in CI; ahead of DEE on SNR and LSD at 192 kbps |
 | | Frame writer, sync frame, MP4 and `dac4` | 🟢 | High | Essential | Encoder, decoder and Python traces agree record for record (tests, `fuzz_ac4_encode`, encoder-space harness); FFmpeg frames it; MediaInfo and DEE's MP4 muxer read it as configured |
 | | Other codec modes, layouts, rates and metadata | 🔴 | High | Essential | A-SPX, A-CPL, 3.0 to 7.X, other frame rates, DRC, dialogue enhancement: plan phases E2 to E7 |
@@ -295,7 +296,7 @@ this register is the checklist that those bounds appear here too.
 | Dialogue enhancement | PCM apply | 🔴 |
 | SSF / immersive / objects | Decode | 🔴 |
 | §4.2.4.3 | HSF extension substream content (syntax only; synthetic frames only) | 🟡 |
-| Whole codec | PCM reconstruction beyond SIMPLE mono and stereo | 🔴 |
+| Whole codec | PCM reconstruction beyond SIMPLE and ASPX mono and stereo | 🔴 |
 | Whole codec | Encoding beyond SIMPLE mono and stereo | 🔴 |
 | §5.1.4 | Spectral noise fill: decoded, but no stream here sets it | 🟡 |
 
