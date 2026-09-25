@@ -1138,4 +1138,30 @@ cmp -s atmos_4.ec3 remux_atmos.ec3 || {
 }
 run_ffmpeg_check remux_atmos.ec3
 
+# --- AC-4 (planning/ac4.md, phase E1) -----------------------------------------
+# FFmpeg has no AC-4 decoder, so its part here is framing: its raw AC-4 and mov
+# demuxers must find as many frames as ac3cli's own decoder decodes from what
+# ac4-encode wrote. The audio itself is scored by tools/checks/score_ac4_encode.py
+# and read three ways by tools/ci/fuzz_ac4_encoder_space.py.
+run_ac4_frames_check() {
+    count=$((count + 1))
+    echo "[$count] AC-4 frames: ac3cli decode and ffprobe agree on $1"
+    local decoded packets
+    decoded=$("$CLI" decode "$1" "$1.wav" | sed -n 's/^decoded \([0-9]*\) AC-4 frames.*/\1/p')
+    packets=$(ffprobe -v error "${@:2}" -count_packets -show_entries stream=nb_read_packets \
+        -of csv=p=0 "$1")
+    if [ -z "$decoded" ] || [ "$decoded" != "$packets" ]; then
+        echo "ac3cli decoded '$decoded' AC-4 frames from $1 and ffprobe read '$packets'" >&2
+        exit 1
+    fi
+}
+for kbps in 96 192 384; do
+    run ac4-encode "$FIXTURES/reference_stereo.wav" "ac4_stereo_${kbps}.ac4" "$kbps"
+    run_ac4_frames_check "ac4_stereo_${kbps}.ac4" -f ac4
+done
+run ac4-encode ac3_mono.wav ac4_mono_64.ac4 64 dialnorm=auto
+run_ac4_frames_check ac4_mono_64.ac4 -f ac4
+run ac4-encode "$FIXTURES/reference_stereo.wav" ac4_stereo_192.mp4 192 dialnorm=24
+run_ac4_frames_check ac4_stereo_192.mp4
+
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

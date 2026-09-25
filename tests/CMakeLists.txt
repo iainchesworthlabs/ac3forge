@@ -53,6 +53,7 @@ add_executable(ac3tests
     ac4dec/test_ac4dec_decoder.cpp
     ac4dec/test_ac4dec_frames.cpp
     ac4dec/test_ac4dec_syntax.cpp
+    ac4enc/test_ac4enc_encoder.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
@@ -227,19 +228,21 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/forge/src/d
 # tests/ac4dec/test_ac4dec_{asf,metadata,presentation,channel_elements}.cpp reach the
 # AC-4 decoder's syntax functions (src/ac4dec/src/syntax/) to hold each branch of
 # the syntax to a hand-built bitstream - the committed streams reach only the
-# branches DEE writes - and test_ac4dec_pcm.cpp its noise fill's generator
-# (src/ac4dec/src/pcm/). Same pattern as the forge headers above, with one
-# difference: those headers are inline, and these functions are compiled into
-# ac4dec_objects under CXX_VISIBILITY_PRESET hidden. With BUILD_SHARED_LIBS=ON,
-# ac4::decoder is libac4dec.so, which exports none of them, so these tests link
-# only against the static library and are built only when that is what
-# ac4::decoder names. They test the syntax and the arithmetic, not the linkage:
-# every static leg runs them, and the shared-libs pass (config-linux-llvm-shared)
-# still runs test_ac4dec_{decoder,frames,syntax}.cpp against the real .so.
-# Linking ac4::decoder_static here instead would let those three bind to a
-# static copy of the decoder too, and stop testing the .so at all. The shared
-# core's headers (src/ac4core/src, for tests/ac4core/ and the tables) come with
-# linking ac4::core below, a static library in every build.
+# branches DEE writes - and the other tests in the block below reach its PCM
+# functions (src/ac4dec/src/pcm/) and the encoder's writer (src/ac4enc/src/).
+# Same pattern as the forge headers above, with one difference: those headers
+# are inline, and these functions are compiled into ac4dec_objects and
+# ac4enc_objects under CXX_VISIBILITY_PRESET hidden. With BUILD_SHARED_LIBS=ON,
+# ac4::decoder is libac4dec.so and ac4::encoder libac4enc.so, which export none
+# of them, so these tests link only against the static libraries and are built
+# only when that is what ac4::decoder and ac4::encoder name. They test the
+# syntax and the arithmetic, not the linkage: every static leg runs them, and
+# the shared-libs pass (config-linux-llvm-shared) still runs the tests of the
+# public API, test_ac4dec_{decoder,frames,syntax}.cpp and test_ac4enc_encoder.cpp,
+# against the real .so files. Linking the static libraries here instead would
+# let those bind to a static copy too, and stop testing the .so files at all.
+# The shared core's headers (src/ac4core/src, for tests/ac4core/ and the
+# tables) come with linking ac4::core below, a static library in every build.
 target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src")
 if(NOT BUILD_SHARED_LIBS)
     target_sources(ac3tests PRIVATE
@@ -247,8 +250,13 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/test_ac4dec_channel_elements.cpp
         ac4dec/test_ac4dec_metadata.cpp
         ac4dec/test_ac4dec_pcm.cpp
-        ac4dec/test_ac4dec_presentation.cpp)
+        ac4dec/test_ac4dec_presentation.cpp
+        ac4enc/test_ac4enc_writer.cpp)
 endif()
+# tests/ac4enc/ reach the encoder's writer (src/ac4enc/src/) the same way; the
+# two libraries' internal headers keep distinct names (bit_reader.hpp and
+# syntax/ against bit_writer.hpp, asf/ and frame/).
+target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4enc/src")
 
 # test_simd_kernels.cpp (SIMD kernels) needs the ONE architecture directory
 # CMake selected in src/forge/CMakeLists.txt, so the test exercises the
@@ -1065,6 +1073,7 @@ target_link_libraries(ac3tests
         ac4::ac4
         ac4::core
         ac4::decoder
+        ac4::encoder
         ac3::warnings
         ac3::coverage
         ac3::fmt

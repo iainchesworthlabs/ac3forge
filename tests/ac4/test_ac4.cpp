@@ -5,9 +5,12 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <optional>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -1555,54 +1558,533 @@ TEST_CASE("describe returns a distinct, non-empty string for every Error", "[ac4
 // Carriage helpers (AC-4 bitstream inspector): the 'dac4' box, per-frame timing and the
 // RFC 6381 string, all against the real DEE fixture's own parsed TOC.
 
-TEST_CASE("build_dac4 carries the TOC's stream-level facts", "[ac4][carriage]") {
-    const auto data = read_file(fixture_path());
-    const auto scanned = ac4::scan(data);
-    REQUIRE_FALSE(scanned.frames.empty());
-    const auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
-    REQUIRE(frame.has_value());
+TEST_CASE("build_dac4 writes the dac4 DEE's MP4 muxer writes for DEE's streams", "[ac4][carriage]") {
+    // What dee_mp4muxer (DEE 6.5.4) writes in the 'dac4' box when it muxes
+    // each committed stream: ac4_dsi_v1 with the average bit rate mode
+    // DEE's wait_frames imply, and one presentation of one channel-coded
+    // substream, described in full, dialogue enhancement indicated.
+    struct Leg {
+        const char* name;
+        const char* dac4;
+    };
+    const std::vector<Leg> legs = {
+        {"ac4-stereo-64", "20ba01400000001fffffffe0010ff88000004200000250100000030080"},
+        {"ac4-20-music-192", "20ba01400000001fffffffe0010ff88000004200000250100000030080"},
+        {"ac4-20-tones-192", "20ba01400000001fffffffe0010ff88000004200000250100000030080"},
+        {"ac4-51-music-384", "20ba01400000001fffffffe0010ff98000004800008e501000008f0080"},
+        {"ac4-51-film-96", "20ba01400000001fffffffe0010ff98000004800008e501000008f0080"},
+        {"ac4-51-drc-ltrt-192", "20ba01400000001fffffffe0010ff98000004800008e501000008f0080"},
+    };
+    const auto hex = [](const std::vector<std::byte>& bytes) {
+        std::string out;
+        for (const std::byte b : bytes) {
+            constexpr std::string_view kDigits = "0123456789abcdef";
+            out += kDigits[std::to_integer<unsigned>(b) >> 4U];
+            out += kDigits[std::to_integer<unsigned>(b) & 15U];
+        }
+        return out;
+    };
+    for (const Leg& leg : legs) {
+        CAPTURE(leg.name);
+        const auto data =
+            read_file(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg.name / "dee.ac4");
+        const auto scanned = ac4::scan(data);
+        REQUIRE_FALSE(scanned.frames.empty());
+        auto frame = ac4::parse_raw_frame(scanned.frames.front().raw_ac4_frame);
+        REQUIRE(frame.has_value());
+        REQUIRE(frame->toc.presentations_v1.size() == 1);
 
-    const auto dsi = ac4::build_dac4(frame->toc);
-    REQUIRE_FALSE(dsi.empty());
+        // The indicators are no part of the table of contents: unset, the
+        // DSI closes before them, one byte short of the muxer's.
+        const std::string without = hex(ac4::build_dac4(frame->toc));
+        const std::string expected = leg.dac4;
+        CHECK(without.size() == expected.size() - 2);
+        CHECK(without.substr(0, 26) == expected.substr(0, 26));
+        CHECK(without.substr(26, 2) == "0e");  // pres_bytes, 15 less the byte
+        CHECK(without.substr(28) == expected.substr(28, without.size() - 28));
 
-    // Read the header back with an independent bit walk (this file's own
-    // pattern: neither the writer nor a shared reader validates itself).
-    std::size_t pos = 0;
-    const auto get = [&](int bits) {
+        frame->toc.presentations_v1[0].de_indicator = true;
+        frame->toc.presentations_v1[0].immersive_audio_indicator = false;
+        CHECK(hex(ac4::build_dac4(frame->toc)) == expected);
+    }
+}
+
+namespace {
+
+// Part 2 Annex E read back for the tests of build_dac4() below: ac4_dsi_v1()
+// (E.6), ac4_bitrate_dsi() (E.7), and for a presentation of one channel-coded
+// substream group ac4_presentation_v1_dsi() (E.10) and its
+// ac4_substream_group_dsi() (E.11), transcribed from the annex apart from the
+// writer.
+class DsiBits {
+   public:
+    explicit DsiBits(const std::vector<std::byte>& bytes) : bytes_(bytes) {}
+
+    std::uint32_t read(int n) {
         std::uint32_t value = 0;
-        for (int i = 0; i < bits; ++i) {
-            const std::size_t byte_at = pos >> 3U;
-            REQUIRE(byte_at < dsi.size());
-            const auto bit = (std::to_integer<std::uint32_t>(dsi[byte_at]) >>
-                              (7U - (pos & 7U))) & 1U;
-            value = (value << 1U) | bit;
-            ++pos;
+        for (int i = 0; i < n; ++i) {
+            REQUIRE(pos_ / 8 < bytes_.size());
+            const unsigned byte = std::to_integer<unsigned>(bytes_[pos_ / 8]);
+            value = (value << 1U) | ((byte >> (7U - static_cast<unsigned>(pos_ % 8))) & 1U);
+            ++pos_;
         }
         return value;
+    }
+    bool flag() { return read(1) != 0; }
+    void align() { pos_ = (pos_ + 7) / 8 * 8; }
+    [[nodiscard]] std::size_t bit() const { return pos_; }
+
+   private:
+    const std::vector<std::byte>& bytes_;
+    std::size_t pos_ = 0;
+};
+
+struct BitrateDsi {
+    std::uint32_t mode = 0;
+    std::uint32_t rate = 0;
+    std::uint32_t precision = 0;
+};
+
+BitrateDsi read_bitrate(DsiBits& r) {
+    BitrateDsi out;
+    out.mode = r.read(2);
+    out.rate = r.read(32);
+    out.precision = r.read(32);
+    return out;
+}
+
+struct PresentationDsi {
+    std::uint32_t md_compat = 0;
+    std::optional<std::uint32_t> presentation_id;
+    std::uint32_t multiply = 0;
+    std::uint32_t fraction = 0;
+    std::uint32_t emdf_version = 0;
+    std::uint32_t key_id = 0;
+    std::uint32_t ch_mode = 0;
+    std::optional<bool> four_back;
+    std::optional<std::uint32_t> top_pairs;
+    std::uint32_t groups = 0;
+    std::optional<std::uint32_t> core;
+    std::optional<bool> enable;
+    // ac4_substream_group_dsi()
+    bool substreams_present = false;
+    bool hsf_ext = false;
+    std::uint32_t sf_multiplier = 0;
+    std::optional<std::uint32_t> bitrate_indicator;
+    std::uint32_t substream_groups = 0;
+    std::optional<std::uint32_t> content_classifier;
+    std::optional<std::vector<std::byte>> language;
+    bool pre_virtualized = false;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> add_emdf;  // version, key_id
+    std::optional<BitrateDsi> bitrate;
+    std::optional<bool> de_indicator;
+    std::optional<bool> immersive_audio;
+    std::optional<std::uint32_t> extended_id;
+};
+
+// ac4_presentation_v1_dsi(pres_bytes) for presentation_config_v1 0x1f, one
+// channel-coded substream group of one substream.
+PresentationDsi read_presentation(DsiBits& r, std::size_t pres_bytes) {
+    const std::size_t start = r.bit();
+    PresentationDsi p;
+    REQUIRE(r.read(5) == 0x1FU);  // presentation_config_v1
+    p.md_compat = r.read(3);
+    if (r.flag()) {  // b_presentation_id
+        p.presentation_id = r.read(5);
+    }
+    p.multiply = r.read(2);
+    p.fraction = r.read(2);
+    p.emdf_version = r.read(5);
+    p.key_id = r.read(10);
+    REQUIRE(r.flag());  // b_presentation_channel_coded
+    p.ch_mode = r.read(5);
+    if (p.ch_mode >= 11 && p.ch_mode <= 14) {
+        p.four_back = r.flag();
+        p.top_pairs = r.read(2);
+    }
+    CHECK(r.read(6) == 0U);  // reserved_zero
+    p.groups = r.read(18);
+    if (r.flag() && r.flag()) {  // b_presentation_core_differs, b_presentation_core_channel_coded
+        p.core = r.read(2);
+    }
+    if (r.flag()) {  // b_presentation_filter
+        p.enable = r.flag();
+        const std::uint32_t n_filter_bytes = r.read(8);
+        for (std::uint32_t i = 0; i < n_filter_bytes; ++i) {
+            r.read(8);
+        }
+    }
+    p.substreams_present = r.flag();
+    p.hsf_ext = r.flag();
+    REQUIRE(r.flag());         // b_channel_coded
+    REQUIRE(r.read(8) == 1U);  // n_substreams
+    p.sf_multiplier = r.read(2);
+    if (r.flag()) {  // b_substream_bitrate_indicator
+        p.bitrate_indicator = r.read(5);
+    }
+    CHECK(r.read(6) == 0U);  // reserved_zero
+    p.substream_groups = r.read(18);
+    if (r.flag()) {  // b_content_type
+        p.content_classifier = r.read(3);
+        if (r.flag()) {  // b_language_indicator
+            std::vector<std::byte> tag(r.read(6));
+            for (std::byte& b : tag) {
+                b = static_cast<std::byte>(r.read(8));
+            }
+            p.language = tag;
+        }
+    }
+    p.pre_virtualized = r.flag();
+    if (r.flag()) {  // b_add_emdf_substreams
+        const std::uint32_t n = r.read(7);
+        for (std::uint32_t j = 0; j < n; ++j) {
+            const std::uint32_t version = r.read(5);
+            p.add_emdf.emplace_back(version, r.read(10));
+        }
+    }
+    if (r.flag()) {  // b_presentation_bitrate_info
+        p.bitrate = read_bitrate(r);
+    }
+    REQUIRE_FALSE(r.flag());  // b_alternative
+    r.align();
+    if (r.bit() - start <= (pres_bytes - 1) * 8) {
+        p.de_indicator = r.flag();
+        p.immersive_audio = r.flag();
+        r.read(4);       // reserved
+        if (r.flag()) {  // b_extended_presentation_id
+            p.extended_id = r.read(9);
+        } else {
+            r.read(1);  // reserved
+        }
+    }
+    CHECK(r.bit() - start == pres_bytes * 8);
+    return p;
+}
+
+struct Dac4 {
+    std::uint32_t bitstream_version = 0;
+    std::uint32_t fs_index = 0;
+    std::uint32_t frame_rate_index = 0;
+    BitrateDsi bitrate;
+    std::vector<std::uint32_t> versions;
+    std::vector<std::size_t> sizes;  // pres_bytes
+    std::vector<std::optional<PresentationDsi>> presentations;
+};
+
+// ac4_dsi_v1(), with each presentation's body read where it has one.
+Dac4 read_dac4(const std::vector<std::byte>& bytes) {
+    DsiBits r(bytes);
+    Dac4 out;
+    REQUIRE(r.read(3) == 1U);  // ac4_dsi_version
+    out.bitstream_version = r.read(7);
+    out.fs_index = r.read(1);
+    out.frame_rate_index = r.read(4);
+    const std::uint32_t n_presentations = r.read(9);
+    if (out.bitstream_version > 1) {
+        REQUIRE_FALSE(r.flag());  // b_program_id
+    }
+    out.bitrate = read_bitrate(r);
+    r.align();
+    for (std::uint32_t i = 0; i < n_presentations; ++i) {
+        out.versions.push_back(r.read(8));
+        std::size_t pres_bytes = r.read(8);
+        if (pres_bytes == 255) {
+            pres_bytes += r.read(16);  // add_pres_bytes
+        }
+        out.sizes.push_back(pres_bytes);
+        if (pres_bytes > 0) {
+            out.presentations.emplace_back(read_presentation(r, pres_bytes));
+        } else {
+            out.presentations.emplace_back(std::nullopt);
+        }
+    }
+    CHECK(r.bit() == bytes.size() * 8);
+    return out;
+}
+
+// A table of contents with one presentation of one substream group of one
+// channel-coded substream in `ch_mode`, at 48 kHz and frame_rate_index 13.
+ac4::Toc one_substream_toc(int ch_mode) {
+    ac4::Toc toc;
+    toc.bitstream_version = 2;
+    toc.sample_rate_hz = 48000;
+    toc.frame_rate_index = 13;
+    toc.wait_frames = 0;
+    toc.n_presentations = 1;
+    ac4::PresentationInfoV1 pres;
+    pres.presentation_version = 1;
+    pres.group_refs = {0};
+    toc.presentations_v1.push_back(pres);
+    ac4::ChannelSubstreamInfo chan;
+    chan.ch_mode = ch_mode;
+    ac4::GroupSubstream substream;
+    substream.chan = chan;
+    ac4::SubstreamGroupInfo group;
+    group.substreams.push_back(substream);
+    toc.substream_groups.push_back(group);
+    return toc;
+}
+
+std::uint32_t groups_of(std::initializer_list<int> groups) {
+    std::uint32_t mask = 0;
+    for (const int g : groups) {
+        mask |= 1U << static_cast<unsigned>(g);
+    }
+    return mask;
+}
+
+PresentationDsi presentation_of(const ac4::Toc& toc) {
+    const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+    REQUIRE(dac4.presentations.size() == 1);
+    REQUIRE(dac4.presentations.front().has_value());
+    return *dac4.presentations.front();
+}
+
+}  // namespace
+
+TEST_CASE("build_dac4 gives each channel mode the channel groups Table A.27 lists",
+          "[ac4][carriage]") {
+    // Table A.27's layouts by Table A.28's channel modes, in both channel
+    // group arrays: L/R 0, C 1, Ls/Rs 2, Lb/Rb 3, Tfl/Tfr 4, the LFE 6, Lw/Rw 17.
+    struct Mode {
+        int ch_mode;
+        std::uint32_t groups;
     };
-
-    CHECK(get(3) == 1);  // ac4_dsi_version
-    CHECK(get(7) == static_cast<std::uint32_t>(frame->toc.bitstream_version));
-    CHECK(get(1) == (frame->toc.sample_rate_hz == 48000 ? 1U : 0U));  // fs_index
-    CHECK(get(4) == static_cast<std::uint32_t>(frame->toc.frame_rate_index));
-    CHECK(get(9) == static_cast<std::uint32_t>(frame->toc.n_presentations));
-    if (frame->toc.bitstream_version > 1) {
-        CHECK(get(1) == 0);  // b_program_id
+    const std::vector<Mode> modes = {
+        {0, groups_of({1})},
+        {1, groups_of({0})},
+        {2, groups_of({0, 1})},
+        {3, groups_of({0, 1, 2})},
+        {4, groups_of({0, 1, 2, 6})},
+        {5, groups_of({0, 1, 2, 3})},
+        {6, groups_of({0, 1, 2, 3, 6})},
+        {7, groups_of({0, 1, 2, 17})},
+        {8, groups_of({0, 1, 2, 6, 17})},
+        {9, groups_of({0, 1, 2, 4})},
+        {10, groups_of({0, 1, 2, 4, 6})},
+        // 22.2: every group but the 9.X layouts' Lscr/Rscr (16) and the
+        // reserved 8.
+        {15, groups_of({0, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 15, 17})},
+    };
+    for (const Mode& m : modes) {
+        CAPTURE(m.ch_mode);
+        const PresentationDsi p = presentation_of(one_substream_toc(m.ch_mode));
+        CHECK(p.ch_mode == static_cast<std::uint32_t>(m.ch_mode));
+        CHECK(p.groups == m.groups);
+        CHECK(p.substream_groups == m.groups);
+        CHECK_FALSE(p.four_back.has_value());
+        CHECK_FALSE(p.core.has_value());
     }
-    CHECK(get(2) == 0);           // bit_rate_mode: unknown
-    CHECK(get(32) == 0xFFFFFFFF);  // bit_rate: unknown
-    CHECK(get(32) == 0xFFFFFFFF);  // bit_rate_precision: unknown
-    // byte_align, then one (version, pres_bytes=0) pair per presentation.
-    pos = (pos + 7U) & ~std::size_t{7};
-    for (int p = 0; p < frame->toc.n_presentations; ++p) {
-        (void)get(8);            // presentation_version - value checked for p=0 below
-        CHECK(get(8) == 0);      // pres_bytes: the slice's stated boundary
-    }
-    CHECK(pos == dsi.size() * 8);  // nothing after the last entry
 
-    // The DEE fixture is bitstream_version 2 with one presentation.
-    CHECK(frame->toc.bitstream_version == 2);
-    CHECK(frame->toc.n_presentations == 1);
+    // 5.X.x and 7.X.x (11 and 12) and 9.X.x (13 and 14): C where the source
+    // has it, Lb/Rb with the four back channels, Tsl/Tsr (7) for one top pair
+    // and Tfl/Tfr with Tbl/Tbr (4 and 5) for two, and the 9.X layouts'
+    // Lscr/Rscr (16). The core is 5.0.2's or 5.1.2's, Table E.14's 2 and 3.
+    for (int ch_mode = 11; ch_mode <= 14; ++ch_mode) {
+        for (const bool centre : {false, true}) {
+            for (const bool back : {false, true}) {
+                for (int top = 0; top <= 3; ++top) {
+                    CAPTURE(ch_mode, centre, back, top);
+                    ac4::Toc toc = one_substream_toc(ch_mode);
+                    toc.substream_groups[0].substreams[0].chan->original_content =
+                        ac4::OriginalContent{.b_4_back_channels_present = back,
+                                             .b_centre_present = centre,
+                                             .top_channels_present = top};
+                    const std::uint32_t pairs = top == 0 ? 0U : (top == 3 ? 2U : 1U);
+                    std::uint32_t expected = groups_of({0, 2});
+                    expected |= centre ? groups_of({1}) : 0U;
+                    expected |= back ? groups_of({3}) : 0U;
+                    expected |= pairs == 1 ? groups_of({7}) : (pairs == 2 ? groups_of({4, 5}) : 0U);
+                    expected |= ch_mode >= 13 ? groups_of({16}) : 0U;
+                    expected |= ch_mode % 2 == 0 ? groups_of({6}) : 0U;
+                    const PresentationDsi p = presentation_of(toc);
+                    CHECK(p.groups == expected);
+                    CHECK(p.substream_groups == expected);
+                    CHECK(p.four_back == back);
+                    CHECK(p.top_pairs == pairs);
+                    CHECK(p.core == (ch_mode % 2 == 0 ? 3U : 2U));
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE(
+    "build_dac4's bit rate DSI follows wait_frames, and carries the substream's rate indicator",
+    "[ac4][carriage]") {
+    // Table E.7: constant with wait_frames 0, average with 1 to 6, variable
+    // otherwise; the rate itself unknown.
+    struct Wait {
+        std::optional<int> wait_frames;
+        std::uint32_t mode;
+    };
+    for (const Wait w : {Wait{0, 1}, Wait{1, 2}, Wait{6, 2}, Wait{7, 3}, Wait{std::nullopt, 3}}) {
+        CAPTURE(w.wait_frames.value_or(-1));
+        ac4::Toc toc = one_substream_toc(1);
+        toc.wait_frames = w.wait_frames;
+        toc.substream_groups[0].substreams[0].chan->brate_ind = 13;
+        const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+        CHECK(dac4.bitrate.mode == w.mode);
+        CHECK(dac4.bitrate.rate == 0);
+        CHECK(dac4.bitrate.precision == 0xFFFFFFFFU);
+        REQUIRE(dac4.presentations.front().has_value());
+        const PresentationDsi& p = *dac4.presentations.front();
+        CHECK(p.bitrate_indicator == 13U);
+        REQUIRE(p.bitrate.has_value());
+        CHECK(p.bitrate->mode == w.mode);
+    }
+    // Without the substream's rate indicator, neither is sent.
+    const PresentationDsi p = presentation_of(one_substream_toc(1));
+    CHECK_FALSE(p.bitrate_indicator.has_value());
+    CHECK_FALSE(p.bitrate.has_value());
+}
+
+TEST_CASE("build_dac4 carries a presentation's identity, filter, EMDF, content type and indicators",
+          "[ac4][carriage]") {
+    ac4::Toc toc = one_substream_toc(4);
+    ac4::PresentationInfoV1& pres = toc.presentations_v1[0];
+    pres.md_compat = 3;
+    pres.presentation_id = 17;
+    pres.emdf = {.emdf_version = 5, .key_id = 700};
+    pres.enable_presentation = false;
+    pres.b_pre_virtualized = true;
+    pres.b_add_emdf_substreams = true;
+    pres.add_emdf = {{.emdf_version = 1, .key_id = 2}, {.emdf_version = 31, .key_id = 1023}};
+    pres.de_indicator = true;
+    pres.immersive_audio_indicator = false;
+    ac4::SubstreamGroupInfo& group = toc.substream_groups[0];
+    group.b_substreams_present = true;
+    const std::vector<std::byte> english = {std::byte{'e'}, std::byte{'n'}, std::byte{'g'}};
+    group.content_type = ac4::ContentType{.content_classifier = 2, .language_tag = english};
+    group.substreams[0].hsf_ext_substream_index = 3;
+    group.substreams[0].chan->sf_multiplier = 1;
+
+    PresentationDsi p = presentation_of(toc);
+    CHECK(p.md_compat == 3U);
+    CHECK(p.presentation_id == 17U);
+    CHECK(p.emdf_version == 5U);
+    CHECK(p.key_id == 700U);
+    CHECK(p.enable == false);
+    CHECK(p.pre_virtualized);
+    CHECK(p.add_emdf == std::vector<std::pair<std::uint32_t, std::uint32_t>>{{1, 2}, {31, 1023}});
+    CHECK(p.substreams_present);
+    CHECK(p.hsf_ext);
+    CHECK(p.sf_multiplier == 2U);  // sf_multiplier 1: 192 kHz
+    CHECK(p.content_classifier == 2U);
+    CHECK(p.language == english);
+    CHECK(p.de_indicator == true);
+    CHECK(p.immersive_audio == false);
+    CHECK_FALSE(p.extended_id.has_value());
+
+    // A content type with no language, an enabled filter, and an id past
+    // presentation_id's five bits, which the extended id carries whole.
+    group.content_type = ac4::ContentType{.content_classifier = 7, .language_tag = std::nullopt};
+    pres.enable_presentation = true;
+    pres.presentation_id = 300;
+    p = presentation_of(toc);
+    CHECK(p.content_classifier == 7U);
+    CHECK_FALSE(p.language.has_value());
+    CHECK(p.enable == true);
+    CHECK(p.presentation_id == 300U % 32U);
+    CHECK(p.extended_id == 300U);
+}
+
+TEST_CASE(
+    "build_dac4 codes the frame rate factor and fraction where Tables E.12 and E.13 have them",
+    "[ac4][carriage]") {
+    struct Rate {
+        int index;
+        int factor;
+        int fraction;
+        std::uint32_t multiply;
+        std::uint32_t fraction_code;
+    };
+    const std::vector<Rate> rates = {
+        {0, 2, 1, 1, 0}, {1, 4, 1, 2, 0}, {2, 1, 1, 0, 0},  {4, 4, 1, 2, 0},  {5, 1, 2, 0, 1},
+        {7, 2, 4, 1, 2}, {9, 4, 2, 2, 1}, {12, 1, 4, 0, 2}, {13, 2, 2, 0, 0},
+    };
+    for (const Rate& rate : rates) {
+        CAPTURE(rate.index, rate.factor, rate.fraction);
+        ac4::Toc toc = one_substream_toc(1);
+        toc.frame_rate_index = rate.index;
+        toc.presentations_v1[0].frame_rate_factor = rate.factor;
+        toc.presentations_v1[0].frame_rate_fraction = rate.fraction;
+        const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+        CHECK(dac4.frame_rate_index == static_cast<std::uint32_t>(rate.index));
+        REQUIRE(dac4.presentations.front().has_value());
+        CHECK(dac4.presentations.front()->multiply == rate.multiply);
+        CHECK(dac4.presentations.front()->fraction == rate.fraction_code);
+    }
+}
+
+TEST_CASE("build_dac4 sends a presentation of 255 bytes or more with add_pres_bytes",
+          "[ac4][carriage]") {
+    ac4::Toc toc = one_substream_toc(1);
+    ac4::PresentationInfoV1& pres = toc.presentations_v1[0];
+    pres.b_add_emdf_substreams = true;
+    for (int j = 0; j < 127; ++j) {
+        pres.add_emdf.push_back({.emdf_version = j % 32, .key_id = j * 8});
+    }
+    toc.substream_groups[0].content_type = ac4::ContentType{
+        .content_classifier = 1, .language_tag = std::vector<std::byte>(63, std::byte{'a'})};
+    const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+    REQUIRE(dac4.sizes.size() == 1);
+    CHECK(dac4.sizes.front() > 255U);
+    REQUIRE(dac4.presentations.front().has_value());
+    const PresentationDsi& p = *dac4.presentations.front();
+    REQUIRE(p.add_emdf.size() == 127);
+    CHECK(p.add_emdf.back() == std::pair<std::uint32_t, std::uint32_t>{126 % 32, 126 * 8});
+    CHECK(p.language == std::vector<std::byte>(63, std::byte{'a'}));
+}
+
+TEST_CASE("build_dac4 leaves a presentation it cannot describe whole without a body",
+          "[ac4][carriage]") {
+    const auto size_of = [](const ac4::Toc& toc) {
+        const Dac4 dac4 = read_dac4(ac4::build_dac4(toc));
+        REQUIRE(dac4.sizes.size() == 1);
+        return dac4.sizes.front();
+    };
+    REQUIRE(size_of(one_substream_toc(1)) > 0U);
+    const std::vector<std::pair<const char*, std::function<void(ac4::Toc&)>>> cases = {
+        {"a presentation_config",
+         [](ac4::Toc& t) { t.presentations_v1[0].presentation_config = 1; }},
+        {"two substream groups", [](ac4::Toc& t) { t.presentations_v1[0].group_refs = {0, 0}; }},
+        {"an alternative", [](ac4::Toc& t) { t.presentations_v1[0].b_alternative = true; }},
+        {"a group the TOC lacks", [](ac4::Toc& t) { t.presentations_v1[0].group_refs = {5}; }},
+        {"an object-coded group",
+         [](ac4::Toc& t) { t.substream_groups[0].b_channel_coded = false; }},
+        {"two substreams",
+         [](ac4::Toc& t) {
+             t.substream_groups[0].substreams.push_back(t.substream_groups[0].substreams[0]);
+         }},
+        {"no channel substream",
+         [](ac4::Toc& t) { t.substream_groups[0].substreams[0].chan.reset(); }},
+        {"a reserved channel mode",
+         [](ac4::Toc& t) { t.substream_groups[0].substreams[0].chan->ch_mode.reset(); }},
+        {"an EMDF version past 5 bits",
+         [](ac4::Toc& t) { t.presentations_v1[0].emdf.emdf_version = 32; }},
+        {"a key_id past 10 bits", [](ac4::Toc& t) { t.presentations_v1[0].emdf.key_id = 1024; }},
+        {"an id past 5 bits with no indicators",
+         [](ac4::Toc& t) { t.presentations_v1[0].presentation_id = 40; }},
+    };
+    for (const auto& [name, change] : cases) {
+        CAPTURE(name);
+        ac4::Toc toc = one_substream_toc(1);
+        change(toc);
+        CHECK(size_of(toc) == 0U);
+    }
+
+    // A version 0 presentation, and one the TOC does not describe, take no
+    // body either.
+    ac4::Toc legacy;
+    legacy.bitstream_version = 1;
+    legacy.frame_rate_index = 13;
+    legacy.n_presentations = 2;
+    legacy.presentations_v0.push_back(ac4::PresentationInfoV0{});
+    const Dac4 dac4 = read_dac4(ac4::build_dac4(legacy));
+    CHECK(dac4.bitstream_version == 1U);
+    CHECK(dac4.versions == std::vector<std::uint32_t>{0, 0});
+    CHECK(dac4.sizes == std::vector<std::size_t>{0, 0});
 }
 
 TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",

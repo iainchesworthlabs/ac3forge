@@ -130,6 +130,7 @@ struct ChannelSubstreamInfo {
     std::optional<OriginalContent> original_content;
     std::optional<int> sf_multiplier;
     std::optional<int> bitrate_kbps;          // nullopt if unmapped ("unlimited" or reserved)
+    std::optional<int> brate_ind;             // Table 90's brate_ind, 0-19, when b_bitrate_info
     std::optional<ContentType> content_type;  // presentation_version 0 only
     std::optional<int> substream_index;       // index into Toc::substream_sizes
     // §4.3.3.7.6: which channel pair the additional channels of a 5/2/0 or
@@ -312,6 +313,13 @@ struct PresentationInfoV0 {
 
 // --- §6.2.1.3 ac4_presentation_v1_info (bitstream_version >= 2) ------------
 
+// An emdf_info()'s version and authentication ID (Part 1 4.3.3.6), which
+// TS 103 190-2 Annex E.10's DSI repeats.
+struct EmdfVersionKey {
+    int emdf_version = 0;
+    int key_id = 0;
+};
+
 // presentation_config 6 is an EMDF-only presentation (Table 53): md_compat,
 // enable_presentation and group_refs stay empty, and frame_rate_factor stays
 // 1 because the presentation does not transmit one.
@@ -336,6 +344,17 @@ struct PresentationInfoV1 {
     // Substreams holding emdf_payloads_substream() (§4.2.4.4), from the
     // presentation's emdf_info() and its additional EMDF substream list.
     std::vector<int> emdf_payloads_substream_indices;
+    // The presentation's emdf_info(), and each additional EMDF substream's.
+    EmdfVersionKey emdf{};
+    bool b_add_emdf_substreams = false;
+    std::vector<EmdfVersionKey> add_emdf;
+    // Annex E.10's de_indicator and immersive_audio_indicator. They describe
+    // the substreams (metadata()'s dialogue enhancement, the presentation
+    // substream's immersive_audio_indicator), which the table of contents
+    // does not carry, so parse_raw_frame() leaves them unset. A writer that
+    // knows them sets them, and build_dac4() then writes them.
+    std::optional<bool> de_indicator;
+    std::optional<bool> immersive_audio_indicator;
 };
 
 // --- §4.2.1 / §6.2.1.1 ac4_toc ---------------------------------------------
@@ -403,15 +422,18 @@ struct RawFrame {
 //
 // TOC-level fields are carried in full: ac4_dsi_version 1, the stream's own
 // bitstream_version / fs_index / frame_rate_index, n_presentations, and (for
-// bitstream_version > 1) b_program_id = 0. The bit-rate DSI (Annex E.7) is
-// written as mode 0 with both fields 0xFFFFFFFF - "unknown", the honest
-// value for a muxer that was handed frames rather than an encoder's rate
-// plan. Each presentation entry carries its presentation_version and
-// pres_bytes = 0 - a syntactically complete DSI whose per-presentation
-// detail (Annex E.10/E.11's ~twenty conditional fields) is deliberately not
-// reproduced from the TOC in this slice; a reader gets the stream-level
-// facts from the box and the presentation detail from the TOC every frame
-// still carries. Recorded here as the boundary rather than discovered.
+// bitstream_version > 1) b_program_id = 0. The bit-rate DSI (Annex E.7) takes
+// its mode from wait_frames, as Table E.7 asks, with the rate unknown: 0,
+// and a precision of 0xFFFFFFFF.
+//
+// A presentation of one channel-coded substream in one substream group, with
+// no alternative, gets the whole of Annex E.10's ac4_presentation_v1_dsi()
+// and E.11's ac4_substream_group_dsi(): everything they hold is in the table
+// of contents, and src/ac4enc/ERRATA.md records the readings they take. Its
+// closing de_indicator and immersive_audio_indicator are written where the
+// Toc carries them (see PresentationInfoV1), and left out otherwise, which
+// the syntax allows. Any other presentation gets its presentation_version
+// and pres_bytes = 0, as before: its DSI is not derived from the TOC here.
 [[nodiscard]] AC4_EXPORT std::vector<std::byte> build_dac4(const Toc& toc);
 
 // Samples per AC-4 frame at the stream's own sample rate - what

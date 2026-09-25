@@ -481,7 +481,8 @@ ChannelSubstreamInfo parse_substream_info_v0(Reader& r, int fs_index, int frame_
         info.sf_multiplier = static_cast<int>(r.bits(1));
     }
     if (r.bits(1)) {  // b_bitrate_info
-        info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
+        info.brate_ind = read_bitrate_indicator(r);
+        info.bitrate_kbps = bitrate_kbps(*info.brate_ind);
     }
     if (cm == 0b1111010 || cm == 0b1111011 || cm == 0b1111100 || cm == 0b1111101) {
         info.add_ch_base = r.bits(1) != 0;
@@ -546,7 +547,8 @@ ChannelSubstreamInfo parse_substream_info_chan(Reader& r, int fs_index, int fram
         info.sf_multiplier = static_cast<int>(r.bits(1));
     }
     if (r.bits(1)) {  // b_bitrate_info
-        info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
+        info.brate_ind = read_bitrate_indicator(r);
+        info.bitrate_kbps = bitrate_kbps(*info.brate_ind);
     }
     if (cm == 0b1111010 || cm == 0b1111011 || cm == 0b1111100 || cm == 0b1111101) {
         info.add_ch_base = r.bits(1) != 0;
@@ -576,14 +578,19 @@ int parse_presentation_version(Reader& r) {
 // `presentation_config == 6` if/else, so both branches reach it: an EMDF-only
 // presentation sets b_add_emdf_substreams without transmitting it, then
 // transmits the count and every emdf_info() the same as any other.
-void parse_add_emdf_substreams(Reader& r, std::vector<int>& payloads_substream_indices) {
+void parse_add_emdf_substreams(Reader& r, std::vector<int>& payloads_substream_indices,
+                               std::vector<EmdfVersionKey>* versions = nullptr) {
     std::uint32_t n = r.bits(2);  // n_add_emdf_substreams
     if (n == 0) {
         n = variable_bits(r, 2) + 4;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
-        if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+        const EmdfInfo emdf = parse_emdf_info(r);
+        if (emdf.payloads_substream_index) {
             payloads_substream_indices.push_back(*emdf.payloads_substream_index);
+        }
+        if (versions != nullptr) {
+            versions->push_back({emdf.emdf_version, emdf.key_id});
         }
         // n reaches here through variable_bits() and so runs to 2^32.
         // parse_emdf_info() does real work per iteration, so without
@@ -1252,9 +1259,11 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
         pres.frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index);
         pres.frame_rate_fraction =
             parse_frame_rate_fractions_info(r, frame_rate_index, pres.frame_rate_factor);
-        if (const EmdfInfo emdf = parse_emdf_info(r); emdf.payloads_substream_index) {
+        const EmdfInfo emdf = parse_emdf_info(r);
+        if (emdf.payloads_substream_index) {
             pres.emdf_payloads_substream_indices.push_back(*emdf.payloads_substream_index);
         }
+        pres.emdf = {emdf.emdf_version, emdf.key_id};
         if (r.bits(1)) {  // b_presentation_filter
             pres.enable_presentation = r.bits(1) != 0;
         }
@@ -1292,8 +1301,9 @@ PresentationInfoV1 parse_presentation_v1_info(Reader& r, int bitstream_version,
         pres.b_pres_ndot = r.bits(1) != 0;
         pres.presentation_substream_index = parse_substream_index_ref(r);
     }
+    pres.b_add_emdf_substreams = b_add_emdf_substreams;
     if (b_add_emdf_substreams) {
-        parse_add_emdf_substreams(r, pres.emdf_payloads_substream_indices);
+        parse_add_emdf_substreams(r, pres.emdf_payloads_substream_indices, &pres.add_emdf);
     }
     return pres;
 }
@@ -1640,11 +1650,215 @@ class DsiWriter {
     return 0;
 }
 
+// Annex E.7's ac4_bitrate_dsi(): the mode wait_frames implies, the rate unknown.
+void put_bitrate_dsi(DsiWriter& w, const Toc& toc) {
+    std::uint32_t mode = 3;
+    if (toc.wait_frames == 0) {
+        mode = 1;
+    } else if (toc.wait_frames && *toc.wait_frames >= 1 && *toc.wait_frames <= 6) {
+        mode = 2;
+    }
+    w.put(mode, 2);
+    w.put(0, 32);            // bit_rate: unknown
+    w.put(0xFFFFFFFFu, 32);  // bit_rate_precision: unknown
+}
+
+// Annex E.10.3's audio channel groups of a channel mode (Table A.27's right
+// column, group g at bit g). Pseudocode E.3 as printed sets no LFE, above
+// ch_mode 10 no L/R or Ls/Rs and the centre as group 2, never the 9.X layouts'
+// Lscr/Rscr, and 22.2's Tsl/Tsr only for one top pair; the groups here are the
+// ones Table A.27 gives each mode, which is what DEE's muxer writes
+// (src/ac4enc/ERRATA.md).
+std::uint32_t channel_groups(int ch_mode, bool centre, bool four_back, int top_pairs) {
+    std::uint32_t groups = 0;
+    const auto set = [&groups](int g) { groups |= 1u << g; };
+    const bool lfe = ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10 || ch_mode == 12 ||
+                     ch_mode == 14 || ch_mode == 15;
+    if (ch_mode == 15) {
+        for (const int g : {17, 15, 14, 13, 12, 11, 10, 9, 7, 5, 4, 3, 1}) {
+            set(g);
+        }
+    }
+    if (ch_mode == 13 || ch_mode == 14) {
+        set(16);  // Lscr Rscr
+    }
+    if (ch_mode >= 11) {
+        set(0);  // L R
+        set(2);  // Ls Rs
+        if (top_pairs == 1) {
+            set(7);  // Tsl Tsr
+        }
+        if (top_pairs == 2) {
+            set(4);  // Tfl Tfr
+            set(5);  // Tbl Tbr
+        }
+        if (four_back) {
+            set(3);  // Lb Rb
+        }
+        if (centre) {
+            set(1);  // C
+        }
+    }
+    if (ch_mode >= 2 && ch_mode <= 10) {
+        if (ch_mode >= 3) {
+            set(2);  // Ls Rs
+        }
+        if (ch_mode == 5 || ch_mode == 6) {
+            set(3);  // Lb Rb
+        }
+        if (ch_mode == 7 || ch_mode == 8) {
+            set(17);  // Lw Rw
+        }
+        if (ch_mode == 9 || ch_mode == 10) {
+            set(4);  // Tfl Tfr
+        }
+        set(0);  // L R
+        set(1);  // C
+    }
+    if (ch_mode == 1) {
+        set(0);
+    }
+    if (ch_mode == 0) {
+        set(1);
+    }
+    if (lfe) {
+        set(6);
+    }
+    return groups;
+}
+
+// ac4_presentation_v1_dsi() and its ac4_substream_group_dsi() (Annex E.10 and
+// E.11) for a presentation the table of contents describes whole: one
+// substream group of one channel-coded substream, and no alternative. Empty
+// for any other.
+std::vector<std::byte> presentation_v1_dsi(const Toc& toc, const PresentationInfoV1& pres) {
+    if (pres.presentation_config || pres.group_refs.size() != 1 || pres.b_alternative) {
+        return {};
+    }
+    const auto group_index = static_cast<std::size_t>(pres.group_refs.front());
+    if (group_index >= toc.substream_groups.size()) {
+        return {};
+    }
+    const SubstreamGroupInfo& group = toc.substream_groups[group_index];
+    if (!group.b_channel_coded || group.substreams.size() != 1 || !group.substreams.front().chan ||
+        !group.substreams.front().chan->ch_mode) {
+        return {};
+    }
+    const GroupSubstream& substream = group.substreams.front();
+    const ChannelSubstreamInfo& chan = *substream.chan;
+    const int ch_mode = *chan.ch_mode;
+    const bool indicators = pres.de_indicator.has_value() || pres.immersive_audio_indicator.has_value();
+    const int presentation_id = pres.presentation_id.value_or(0);
+    if (pres.emdf.emdf_version > 31 || pres.emdf.key_id > 1023 || (presentation_id > 31 && !indicators)) {
+        return {};
+    }
+
+    DsiWriter w;
+    w.put(0x1F, 5);  // presentation_config_v1: a single substream group
+    w.put(static_cast<std::uint32_t>(pres.md_compat.value_or(0)), 3);
+    w.put(pres.presentation_id ? 1u : 0u, 1);  // b_presentation_id
+    if (pres.presentation_id) {
+        w.put(static_cast<std::uint32_t>(presentation_id & 0x1F), 5);
+    }
+    // Tables E.12 and E.13, from the factor and fraction the TOC gave.
+    const int index = toc.frame_rate_index;
+    std::uint32_t multiply = 0;
+    if ((index >= 2 && index <= 4) || index == 0 || index == 1 || (index >= 7 && index <= 9)) {
+        multiply = pres.frame_rate_factor == 2 ? 1u : (pres.frame_rate_factor == 4 ? 2u : 0u);
+    }
+    std::uint32_t fraction = 0;
+    if (index >= 5 && index <= 12) {
+        fraction = pres.frame_rate_fraction == 2 ? 1u : (pres.frame_rate_fraction == 4 ? 2u : 0u);
+    }
+    w.put(multiply, 2);
+    w.put(fraction, 2);
+    w.put(static_cast<std::uint32_t>(pres.emdf.emdf_version), 5);
+    w.put(static_cast<std::uint32_t>(pres.emdf.key_id), 10);
+
+    // The presentation's channel mode (Pseudocode 25) and core (Pseudocode 26,
+    // Table 71) are the one substream's.
+    const OriginalContent content = chan.original_content.value_or(OriginalContent{});
+    const int top_pairs = content.top_channels_present == 0 ? 0 : (content.top_channels_present == 3 ? 2 : 1);
+    w.put(1, 1);  // b_presentation_channel_coded
+    w.put(static_cast<std::uint32_t>(ch_mode), 5);
+    if (ch_mode >= 11 && ch_mode <= 14) {
+        w.put(content.b_4_back_channels_present ? 1u : 0u, 1);
+        w.put(static_cast<std::uint32_t>(top_pairs), 2);
+    }
+    const std::uint32_t groups =
+        channel_groups(ch_mode, content.b_centre_present, content.b_4_back_channels_present, top_pairs);
+    w.put(0, 6);  // reserved_zero
+    w.put(groups, 18);
+    // b_presentation_core_differs where the core mode is not -1 (Table E.11
+    // prints "is -1"; src/ac4enc/ERRATA.md), and Table E.14's code for it.
+    const int core = (ch_mode == 11 || ch_mode == 13) ? 5 : ((ch_mode == 12 || ch_mode == 14) ? 6 : -1);
+    w.put(core >= 0 ? 1u : 0u, 1);
+    if (core >= 0) {
+        w.put(1, 1);  // b_presentation_core_channel_coded
+        w.put(static_cast<std::uint32_t>(core - 3), 2);
+    }
+    w.put(pres.enable_presentation ? 1u : 0u, 1);  // b_presentation_filter
+    if (pres.enable_presentation) {
+        w.put(*pres.enable_presentation ? 1u : 0u, 1);
+        w.put(0, 8);  // n_filter_bytes
+    }
+
+    // ac4_substream_group_dsi()
+    w.put(group.b_substreams_present ? 1u : 0u, 1);
+    w.put(substream.hsf_ext_substream_index ? 1u : 0u, 1);  // b_hsf_ext
+    w.put(1, 1);                                            // b_channel_coded
+    w.put(1, 8);                                            // n_substreams
+    w.put(chan.sf_multiplier ? static_cast<std::uint32_t>(*chan.sf_multiplier + 1) : 0u, 2);
+    w.put(chan.brate_ind ? 1u : 0u, 1);
+    if (chan.brate_ind) {
+        w.put(static_cast<std::uint32_t>(*chan.brate_ind), 5);
+    }
+    w.put(0, 6);  // reserved_zero
+    w.put(groups, 18);
+    w.put(group.content_type ? 1u : 0u, 1);
+    if (group.content_type) {
+        w.put(static_cast<std::uint32_t>(group.content_type->content_classifier), 3);
+        const auto& tag = group.content_type->language_tag;
+        w.put(tag ? 1u : 0u, 1);
+        if (tag) {
+            w.put(static_cast<std::uint32_t>(tag->size()), 6);
+            for (const std::byte b : *tag) {
+                w.put(std::to_integer<std::uint32_t>(b), 8);
+            }
+        }
+    }
+
+    w.put(pres.b_pre_virtualized ? 1u : 0u, 1);
+    w.put(pres.b_add_emdf_substreams ? 1u : 0u, 1);
+    if (pres.b_add_emdf_substreams) {
+        w.put(static_cast<std::uint32_t>(pres.add_emdf.size()), 7);
+        for (const EmdfVersionKey& emdf : pres.add_emdf) {
+            w.put(static_cast<std::uint32_t>(emdf.emdf_version), 5);
+            w.put(static_cast<std::uint32_t>(emdf.key_id), 10);
+        }
+    }
+    w.put(chan.brate_ind ? 1u : 0u, 1);  // b_presentation_bitrate_info
+    if (chan.brate_ind) {
+        put_bitrate_dsi(w, toc);
+    }
+    w.put(0, 1);  // b_alternative
+    w.byte_align();
+    if (indicators) {
+        w.put(pres.de_indicator.value_or(false) ? 1u : 0u, 1);
+        w.put(pres.immersive_audio_indicator.value_or(false) ? 1u : 0u, 1);
+        w.put(0, 4);  // reserved
+        w.put(presentation_id > 31 ? 1u : 0u, 1);  // b_extended_presentation_id
+        w.put(presentation_id > 31 ? static_cast<std::uint32_t>(presentation_id) : 0u,
+              presentation_id > 31 ? 9 : 1);
+    }
+    return w.take();
+}
+
 }  // namespace
 
 std::vector<std::byte> build_dac4(const Toc& toc) {
     DsiWriter w;
-    // ac4_dsi_v1 (Annex E.5).
+    // ac4_dsi_v1 (Annex E.6).
     w.put(1, 3);  // ac4_dsi_version
     w.put(static_cast<std::uint32_t>(toc.bitstream_version), 7);
     w.put(toc.sample_rate_hz == 48000 ? 1u : 0u, 1);  // fs_index (Table 82)
@@ -1655,31 +1869,34 @@ std::vector<std::byte> build_dac4(const Toc& toc) {
         // Toc (it rides ahead of the presentation list), so none is claimed.
         w.put(0, 1);
     }
-    // ac4_bitrate_dsi (Annex E.7): mode 0 with both fields 0xFFFFFFFF -
-    // "unknown", the honest value for a muxer handed frames rather than an
-    // encoder's rate plan.
-    w.put(0, 2);
-    w.put(0xFFFFFFFFu, 32);
-    w.put(0xFFFFFFFFu, 32);
+    put_bitrate_dsi(w, toc);
     w.byte_align();
 
-    // One entry per presentation: its version, and pres_bytes = 0 - see the
-    // header's own comment for why the per-presentation DSI body is this
-    // slice's stated boundary.
-    const auto version_of = [&](int index) {
-        if (!toc.presentations_v1.empty() &&
-            index < static_cast<int>(toc.presentations_v1.size())) {
-            return toc.presentations_v1[static_cast<std::size_t>(index)].presentation_version;
-        }
-        if (!toc.presentations_v0.empty() &&
-            index < static_cast<int>(toc.presentations_v0.size())) {
-            return toc.presentations_v0[static_cast<std::size_t>(index)].presentation_version;
-        }
-        return 0;
-    };
     for (int p = 0; p < toc.n_presentations; ++p) {
-        w.put(static_cast<std::uint32_t>(version_of(p)), 8);
-        w.put(0, 8);  // pres_bytes
+        const auto index = static_cast<std::size_t>(p);
+        std::vector<std::byte> body;
+        int version = 0;
+        if (index < toc.presentations_v1.size()) {
+            version = toc.presentations_v1[index].presentation_version;
+            // A version 2 presentation's DSI is a skip area to this annex;
+            // DEE's muxer fills it with the version 1 structure, and so does
+            // this.
+            if (version >= 1) {
+                body = presentation_v1_dsi(toc, toc.presentations_v1[index]);
+            }
+        } else if (index < toc.presentations_v0.size()) {
+            version = toc.presentations_v0[index].presentation_version;
+        }
+        w.put(static_cast<std::uint32_t>(version), 8);
+        if (body.size() >= 255) {
+            w.put(255, 8);
+            w.put(static_cast<std::uint32_t>(body.size() - 255), 16);
+        } else {
+            w.put(static_cast<std::uint32_t>(body.size()), 8);  // pres_bytes
+        }
+        for (const std::byte b : body) {
+            w.put(std::to_integer<std::uint32_t>(b), 8);
+        }
     }
     return w.take();
 }

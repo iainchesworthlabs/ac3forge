@@ -1008,6 +1008,27 @@ The sections below contain the complete change list and fixes.
   librempeg's decode of the same 24 streams agrees with this one to 77 dB or better. The readings
   taken, among them full scale at 2^15 with no factor of two in the overlap-add, are in
   `src/ac4dec/ERRATA.md`.
+- **An AC-4 encoder, for mono and stereo in the SIMPLE codec mode** (phase E1 of
+  `planning/ac4.md`). `src/ac4enc` (`ac4::Encoder`) writes 48 and 44.1 kHz PCM at
+  `frame_rate_index` 13 and a constant rate from 8 kbps: the audio spectral frontend with block
+  switching, M/S and per-band prediction for stereo, a psychoacoustic model of its own, and a table
+  of contents, presentation substream and `metadata()` written from the standard through a
+  transcription of its own tables, sharing `src/ac4core`'s transforms with the decoder.
+  `ac3cli ac4-encode` writes raw sync frames with their CRC, or MP4. What it writes is read back
+  three ways - the encoder's own trace, the decoder's and `tools/references/ac4_syntax.py`'s agree
+  record for record in the tests, a new fuzz target (`fuzz_ac4_encode`) and a new encoder-space
+  harness (`tools/ci/fuzz_ac4_encoder_space.py`), which CI runs - and FFmpeg frames it, MediaInfo
+  reads it as configured and DEE's MP4 muxer writes the same `dac4` for it. Decoded, its streams of
+  music, speech, tones, sweeps, noise and transients meet SNR, log-spectral distance and ViSQOL
+  floors in `tools/checks/score_ac4_encode.py`; against DEE's streams of the same sources at 192
+  kbps its SNR is 5.6 dB higher on music and 14.9 dB on speech, with ViSQOL within 0.02.
+- **`ac4::build_dac4()` describes a presentation of one channel-coded substream in full**, with
+  Annex E.10's `ac4_presentation_v1_dsi()` and E.11's `ac4_substream_group_dsi()` where it wrote
+  `pres_bytes` 0 before, and the bit rate mode `wait_frames` implies. For DEE's committed streams
+  it writes the box DEE's MP4 muxer writes, less the closing byte of indicators the table of
+  contents does not carry; `ac3cli mp4` carries it.
+- **`ac3cli decode` and `ac3cli ac4-encode` take `syntax-trace=<file>`** for AC-4, writing one line
+  per syntax element read or written, in the shape `tools/references/ac4_syntax.py trace` prints.
 
 **Browser (WASM)**
 

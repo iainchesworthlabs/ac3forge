@@ -1263,6 +1263,18 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.bap_census_path = std::string{value};
             continue;
         }
+        // Scoped like bap-census, and for the same reason: only these two
+        // record an AC-4 syntax trace. 'decode' refuses it for AC-3 and E-AC-3
+        // input itself, since which syntax a stream holds is known only once
+        // it is read.
+        if (key == "syntax-trace" && (command == "ac4-encode" || command == "decode")) {
+            if (value.empty()) {
+                fmt::println(stderr, "error: syntax-trace needs an output path");
+                return false;
+            }
+            out.syntax_trace_path = std::string{value};
+            continue;
+        }
         if (key == "conceal") {
             // §7.10. Off by default: a decode that hits a damaged frame says
             // so and stops, which is what a verification tool should do.
