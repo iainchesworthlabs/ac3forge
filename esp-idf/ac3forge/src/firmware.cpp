@@ -1143,6 +1143,24 @@ bool Firmware::flash_mode() const {
     return impl_->flash_mode;
 }
 
+void Firmware::restart(const char* why) {
+    if (impl_ == nullptr) {
+        std::printf("firmware: restarting %s\n", why);
+        esp_restart();
+    }
+    Impl& im = *impl_;
+    bool on_trial = false;
+    {
+        const std::lock_guard lock(im.mutex);
+        on_trial = im.trial.has_value();
+    }
+    if (on_trial) {
+        // The image that runs next reads this as why this one went back.
+        nvs_set_texts({{kKeyWhy, why}});
+    }
+    im.restart_now(why);
+}
+
 int Firmware::on_status(httpd_req* req) {
     if (impl_ == nullptr) {
         return reply_text(req, "404 Not Found", "this board takes no firmware updates");

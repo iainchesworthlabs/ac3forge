@@ -55,7 +55,6 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
-#include "esp_system.h"
 #include "freertos/task.h"
 
 #include "ac3/core/tables.hpp"
@@ -752,8 +751,12 @@ extern "C" void app_main() {
     }
 
     // The boot play's source asks for the network too, and can be what brings
-    // it up when the call above could not; mDNS then starts here.
-    if (player::network_ready()) {
+    // it up when the call above could not; mDNS then starts here. Read once:
+    // a network that came up between two reads would start neither mDNS nor
+    // the player for this boot, and still count as there from the start, so
+    // the loop below would not start them either.
+    const bool networked_at_start = player::network_ready();
+    if (networked_at_start) {
         player::discovery_start();
     }
 
@@ -768,7 +771,7 @@ extern "C" void app_main() {
     // control surface is already listening. A network that drops after this
     // and comes back needs none of them again: the servers keep listening,
     // and mDNS announces the board again when it has an address.
-    bool networked = player::network_ready();
+    bool networked = networked_at_start;
     player::provisioning_start(player::sendspin_running() ? &player::sendspin_console : nullptr);
 
     // Everything from here is reporting and command handling. The player runs
@@ -790,11 +793,12 @@ extern "C" void app_main() {
                 // A boot with the network stored starts the player before
                 // those, so restart into one, once the Improv client has had
                 // its answer. That boot has its network from the start, so it
-                // never comes back here.
-                std::printf("sendspin: the player could not start now the network is up; "
-                            "restarting, which starts it first\n");
-                vTaskDelay(pdMS_TO_TICKS(2000));
-                esp_restart();
+                // never comes back here. Through Firmware, as a route's
+                // restart is: servers hear the board is going, and an image
+                // still on trial records why it went back.
+                std::printf("sendspin: the player could not start now the network is up\n");
+                vTaskDelay(pdMS_TO_TICKS(1500));
+                g_firmware.restart("because the Sendspin player could not start once the network came up");
             }
         }
         player::sendspin_poll();
