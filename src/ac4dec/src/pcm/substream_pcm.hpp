@@ -60,6 +60,9 @@ namespace ac4::detail {
 struct FrameInputs {
     int sequence_counter = 0;
     int converter_phase = 0;  // Part 2 clause 5.11's phi_t
+    // The first frame decoded since a change of source (Part 1 clause
+    // 4.3.3.2.2), which is read without the values of the frames before it.
+    bool new_source = false;
     OutputConfig output{};
     DrcFrameValues drc{};
     DeFrameValues de{};
@@ -79,6 +82,21 @@ class SubstreamPcm {
                                      const FrameInputs& frame,
                                      std::vector<std::vector<float>>& channels,
                                      std::vector<Speaker>& speakers);
+
+    // A frame of output for a frame that would not decode, as `policy` says:
+    // silence, or the last good frame repeated, fading 20 dB for each 32 ms
+    // lost in a row, through the frame's own inverse transform and output
+    // stages, the QMF domain passing it through. Fails before any frame has
+    // decoded.
+    [[nodiscard]] ParseResult conceal(ConcealmentPolicy policy, const FrameInputs& frame,
+                                      std::vector<std::vector<float>>& channels,
+                                      std::vector<Speaker>& speakers);
+
+    // Whether a frame has decoded since the last configuration, which
+    // concealment needs.
+    [[nodiscard]] bool can_conceal() const noexcept {
+        return !last_spectra_.empty() && last_spectra_.size() == channels_.size();
+    }
 
     // Silence in every overlap buffer, delay line and filter bank, and no
     // control data held.
@@ -116,6 +134,7 @@ class SubstreamPcm {
         int codec_mode = codec_mode::kSimple;
         ElementKind kind = ElementKind::kPair;
         bool add_ch_base = false;
+        bool new_source = false;  // FrameInputs::new_source, for A-SPX's time differences
         std::optional<AspxConfig> aspx_config;
         std::optional<CompandingControl> companding;
         std::vector<AspxData1ch> aspx_1ch;
@@ -135,6 +154,13 @@ class SubstreamPcm {
         std::size_t count = 1;
     };
 
+    // From the frame's spectra (spectra_ and lengths_) to its output: the
+    // inverse transform, frame alignment and QMF analysis, the QMF domain with
+    // `control` queued d_ctrl frames, the output stages, synthesis and the
+    // converter.
+    [[nodiscard]] ParseResult render(Control control, const FrameInputs& frame_inputs,
+                                     std::vector<std::vector<float>>& channels,
+                                     std::vector<Speaker>& speakers);
     [[nodiscard]] ParseResult configure(const SubstreamContext& ctx);
     // The output stages - DRC's channel groups, the downmix, and each channel
     // out's synthesis bank and converter - for add_ch_base and the output the
@@ -187,6 +213,15 @@ class SubstreamPcm {
     DownmixTarget downmix_target_ = DownmixTarget::kAsCoded;
     bool mix_lfe_ = true;
     std::vector<Output> outputs_;               // in downmix_.speakers()'s order
+    // The last good frame, which concealment repeats, and the frames lost
+    // since it.
+    std::vector<std::vector<double>> last_spectra_;
+    std::vector<std::vector<int>> last_lengths_;
+    ElementKind last_kind_ = ElementKind::kPair;
+    DrcFrameValues last_drc_;
+    DeFrameValues last_de_;
+    DownmixValues last_downmix_;
+    int losses_ = 0;
     std::vector<std::vector<QmfValue>> mixed_;  // the downmix's matrices
     std::vector<std::vector<QmfValue>*> mixed_matrices_;
     // The matrices before dialogue enhancement, DRC's side chain, where both act.

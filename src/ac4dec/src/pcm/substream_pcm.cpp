@@ -102,6 +102,9 @@ void SubstreamPcm::reset() {
     de_.reset();
     drc_.reset();
     downmix_.reset();
+    last_spectra_.clear();
+    last_lengths_.clear();
+    losses_ = 0;
 }
 
 int SubstreamPcm::channel_of(Speaker speaker) const noexcept {
@@ -190,6 +193,9 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
     internal_rate_ = base_rate * static_cast<double>(ratio.down) / static_cast<double>(ratio.up);
     // The output stages follow on the frame's first configure_outputs().
     outputs_valid_ = false;
+    last_spectra_.clear();
+    last_lengths_.clear();
+    losses_ = 0;
     return {};
 }
 
@@ -284,6 +290,16 @@ SubstreamPcm::UnitIo SubstreamPcm::unit_io(const AspxUnit& unit, const Control& 
 }
 
 void SubstreamPcm::apply(const Control& control) {
+    if (control.new_source) {
+        // The new source's first frame takes none of the old one's envelopes
+        // as the base of its differences along time (ERRATA.md, "A change of
+        // source"); the signal and the generators carry on.
+        for (Channel& channel : channels_) {
+            channel.aspx.have_previous = false;
+            channel.aspx.qscf_sig_prev = {};
+            channel.aspx.qscf_noise_prev = {};
+        }
+    }
     if (control.codec_mode == codec_mode::kSimple || !control.aspx_config) {
         pass_through();
         applied_mode_ = control.codec_mode;
@@ -454,7 +470,6 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
                                  std::vector<std::vector<float>>& channels,
                                  std::vector<Speaker>& speakers) {
     const int sequence_counter = frame_inputs.sequence_counter;
-    const int converter_phase = frame_inputs.converter_phase;
     const ChannelElement& element = substream.element;
     if (ctx.sf_multiplier.has_value()) {
         return fail(DecodeError::kUnsupported, "96 and 192 kHz decoding (the HSF extension) is not decoded yet");
@@ -502,7 +517,8 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     // Clause 5.7.7.7 now, so that a value outside its table refuses the
     // frame; the history DIFF_TIME refers to moves on once the frame is kept.
     std::optional<AcplFrameValues> acpl;
-    AcplQuantHistory acpl_history = decoded_mode_ == element.codec_mode ? acpl_history_ : AcplQuantHistory{};
+    const bool fresh = frame_inputs.new_source || decoded_mode_ != element.codec_mode;
+    AcplQuantHistory acpl_history = fresh ? AcplQuantHistory{} : acpl_history_;
     if (uses_acpl(element.codec_mode)) {
         AcplFrameValues values;
         if (auto ok = acpl_values(element, acpl_history, values); !ok) {
@@ -526,7 +542,79 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     }
     acpl_history_ = acpl_history;
     decoded_mode_ = element.codec_mode;
+    // What concealment repeats: this frame's spectra and blocks, and the
+    // values its output stages take.
+    last_spectra_ = spectra_;
+    last_lengths_ = lengths_;
+    last_kind_ = element.kind;
+    last_drc_ = frame_inputs.drc;
+    last_drc_.reset = false;
+    last_de_ = frame_inputs.de;
+    last_downmix_ = frame_inputs.downmix;
+    losses_ = 0;
 
+    return render(Control{.codec_mode = element.codec_mode,
+                          .kind = element.kind,
+                          .add_ch_base = ctx.add_ch_base,
+                          .new_source = frame_inputs.new_source,
+                          .aspx_config = element.aspx_config,
+                          .companding = element.companding,
+                          .aspx_1ch = element.aspx_1ch,
+                          .aspx_2ch = element.aspx_2ch,
+                          .acpl = acpl,
+                          .drc = frame_inputs.drc,
+                          .de = frame_inputs.de,
+                          .downmix = frame_inputs.downmix},
+                  frame_inputs, channels, speakers);
+}
+
+ParseResult SubstreamPcm::conceal(ConcealmentPolicy policy, const FrameInputs& frame_inputs,
+                                  std::vector<std::vector<float>>& channels,
+                                  std::vector<Speaker>& speakers) {
+    if (!can_conceal()) {
+        return fail(DecodeError::kInvalidStream, "no frame has decoded to conceal from");
+    }
+    ++losses_;
+    // Silence, or the last good frame's spectra faded at the rate forge's
+    // AC-3 and E-AC-3 decoders fade a repeat, 20 dB for each 32 ms lost, to
+    // the level that fade reaches at the frame's end; either way through the
+    // frame's own inverse transform, so the overlap with the last good frame
+    // fades rather than cuts.
+    constexpr double kSecondsPer20Db = 0.032;
+    const double lost =
+        static_cast<double>(losses_) * static_cast<double>(full_length_) / internal_rate_;
+    const double gain =
+        policy == ConcealmentPolicy::kRepeatFade ? std::pow(10.0, -lost / kSecondsPer20Db) : 0.0;
+    spectra_ = last_spectra_;
+    for (std::vector<double>& spectrum : spectra_) {
+        for (double& v : spectrum) {
+            v *= gain;
+        }
+    }
+    lengths_ = last_lengths_;
+    // No control data came with the frame: the QMF domain passes it through,
+    // the d_ctrl queue keeps its place, and the output stages hold the last
+    // good frame's values.
+    return render(Control{.codec_mode = codec_mode::kSimple,
+                          .kind = last_kind_,
+                          .add_ch_base = add_ch_base_,
+                          .new_source = false,
+                          .aspx_config = std::nullopt,
+                          .companding = std::nullopt,
+                          .aspx_1ch = {},
+                          .aspx_2ch = {},
+                          .acpl = std::nullopt,
+                          .drc = last_drc_,
+                          .de = last_de_,
+                          .downmix = last_downmix_},
+                  frame_inputs, channels, speakers);
+}
+
+ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_inputs,
+                                 std::vector<std::vector<float>>& channels,
+                                 std::vector<Speaker>& speakers) {
+    const int converter_phase = frame_inputs.converter_phase;
+    const std::size_t channel_count = channels_.size();
     const auto frame = static_cast<std::size_t>(full_length_);
     const std::size_t history = at(aspx::kTsOffsetHfadj + hfgen_) * kSubbands;
     pcm_.resize(frame);
@@ -553,17 +641,7 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
 
     // Clause 5.7.2: this frame's control data waits d_ctrl frames; the
     // signal now in the QMF domain is the frame's d_ctrl frames back.
-    held_.push_back(Control{.codec_mode = element.codec_mode,
-                            .kind = element.kind,
-                            .add_ch_base = ctx.add_ch_base,
-                            .aspx_config = element.aspx_config,
-                            .companding = element.companding,
-                            .aspx_1ch = element.aspx_1ch,
-                            .aspx_2ch = element.aspx_2ch,
-                            .acpl = acpl,
-                            .drc = frame_inputs.drc,
-                            .de = frame_inputs.de,
-                            .downmix = frame_inputs.downmix});
+    held_.push_back(std::move(control));
     // The DRC, dialnorm, dialogue enhancement and downmix gains of the frame
     // whose signal this is; none before the first one's arrives.
     DrcFrameValues drc;

@@ -496,18 +496,77 @@ struct Decoder::Impl {
     // change of source does not forget: the 0 a splicer writes continues it.
     std::optional<int> converter_phase;
     std::string_view refusal;
+    // The key in `pcm` of the substream decode() last output, and its rate.
+    std::optional<int> last_key;
+    int last_rate = 0;
+    // Set by a change of source until a frame decodes.
+    bool new_source = false;
 
-    void forget() {
+    // A change of source (Part 1 clause 4.3.3.2.2): what was read from the
+    // stream goes, and the signal of the substream that output last carries
+    // on, so that its audio comes out to its end and overlaps the new
+    // source's first frame (src/ac4dec/ERRATA.md, "A change of source").
+    void forget_stream() {
         audio.clear();
         presentation.clear();
-        pcm.clear();
+        std::erase_if(pcm, [this](const auto& entry) { return entry.first != last_key; });
+        new_source = true;
     }
+
+    // Drops the signal too, so that the next frame decoded starts from
+    // silence.
+    void forget_signal() {
+        pcm.clear();
+        last_key.reset();
+    }
+
+    // The substream a concealed frame comes from, the one that output last;
+    // null without a concealment policy or a frame decoded to conceal from.
+    [[nodiscard]] detail::SubstreamPcm* concealment_source() {
+        if (config.concealment == ConcealmentPolicy::kNone || !last_key) {
+            return nullptr;
+        }
+        const auto it = pcm.find(*last_key);
+        return it != pcm.end() && it->second.can_conceal() ? &it->second : nullptr;
+    }
+
+    // A frame of concealed output in place of the frame that failed with
+    // `error`, at the sequence_counter and phase decode() took it to have; the
+    // error where there is no concealment source.
+    [[nodiscard]] std::expected<std::optional<DecodedFrame>, DecodeError> conceal_or(
+        DecodeError error);
 
     // Reads every substream of the frame; with `capture`, keeps the content of
     // decode()'s substream as well.
     [[nodiscard]] std::expected<FrameReport, DecodeError> read(std::span<const std::byte> raw_ac4_frame,
                                                                Capture* capture);
 };
+
+std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::Impl::conceal_or(
+    DecodeError error) {
+    detail::SubstreamPcm* const source = concealment_source();
+    if (source == nullptr) {
+        return std::unexpected(error);
+    }
+    DecodedFrame frame;
+    frame.sample_rate_hz = last_rate;
+    frame.sequence_counter = previous_sequence_counter.value_or(0);
+    const detail::FrameInputs inputs{.sequence_counter = frame.sequence_counter,
+                                     .converter_phase = converter_phase.value_or(0),
+                                     .new_source = false,
+                                     .output = config.output,
+                                     .drc = {},
+                                     .de = {},
+                                     .downmix = {}};
+    if (!source->conceal(config.concealment, inputs, frame.channels, frame.speakers)) {
+        return std::unexpected(error);
+    }
+    frame.concealed = Concealment{.error = error,
+                                  .action = config.concealment == ConcealmentPolicy::kRepeatFade
+                                                ? ConcealmentAction::kRepeatFade
+                                                : ConcealmentAction::kMute};
+    return std::optional<DecodedFrame>{std::move(frame)};
+}
 
 Decoder::Decoder() : Decoder(DecoderConfig{}) {}
 
@@ -520,8 +579,12 @@ Decoder::Decoder(Decoder&&) noexcept = default;
 Decoder& Decoder::operator=(Decoder&&) noexcept = default;
 
 void Decoder::reset() {
-    impl_->forget();
+    impl_->forget_signal();
+    impl_->forget_stream();
+    impl_->new_source = false;
     impl_->converter_phase.reset();
+    impl_->previous_sequence_counter.reset();
+    impl_->last_rate = 0;
 }
 
 std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte> raw_ac4_frame) {
@@ -538,7 +601,12 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     auto report = impl_->read(raw_ac4_frame, &capture);
     if (!report) {
         impl_->refusal = describe(report.error());
-        return std::unexpected(report.error());
+        // read() took the frame to be the one the stream expected; its phase
+        // follows the last frame's.
+        if (impl_->converter_phase) {
+            impl_->converter_phase = (*impl_->converter_phase + 1) % 5;
+        }
+        return impl_->conceal_or(report.error());
     }
     // Part 2 clause 5.11: phi_t is sequence_counter modulo 5, but where a
     // splicer wrote 0 it goes on from the frame before, and it is 0 for a
@@ -550,19 +618,22 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     impl_->converter_phase = phase;
     if (!capture.index) {
         impl_->refusal = "no presentation has a channel-coded substream";
-        return std::unexpected(DecodeError::kUnsupported);
+        return impl_->conceal_or(DecodeError::kUnsupported);
     }
     const auto it = std::ranges::find(report->substreams, *capture.index, &SubstreamReport::index);
     if (it != report->substreams.end() && it->refused) {
         impl_->refusal = it->refused_reason;
-        if (*it->refused == DecodeError::kMissingIFrame) {
+        if (*it->refused == DecodeError::kMissingIFrame && impl_->concealment_source() == nullptr) {
+            // Nothing comes out for this frame, so the signal before it is
+            // dropped rather than resumed a gap later.
+            impl_->forget_signal();
             return std::optional<DecodedFrame>{};
         }
-        return std::unexpected(*it->refused);
+        return impl_->conceal_or(*it->refused);
     }
     if (!capture.read) {
         impl_->refusal = "the substream to decode is not in the frame";
-        return std::unexpected(DecodeError::kInvalidStream);
+        return impl_->conceal_or(DecodeError::kInvalidStream);
     }
     DecodedFrame frame;
     frame.sample_rate_hz = capture.context.fs_index == 0 ? 44100 : 48000;
@@ -572,6 +643,7 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     // metadata() (Part 2 clauses 4.8.5.2 and 4.8.6).
     detail::FrameInputs inputs{.sequence_counter = report->sequence_counter,
                                .converter_phase = phase,
+                               .new_source = impl_->new_source,
                                .output = impl_->config.output,
                                .drc = {}};
     std::optional<double> dialnorm;
@@ -599,8 +671,11 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         capture.context, capture.content, inputs, frame.channels, frame.speakers);
     if (!decoded) {
         impl_->refusal = decoded.error().reason;
-        return std::unexpected(decoded.error().error);
+        return impl_->conceal_or(decoded.error().error);
     }
+    impl_->last_key = capture.state_key;
+    impl_->last_rate = frame.sample_rate_hz;
+    impl_->new_source = false;
     return std::optional<DecodedFrame>{std::move(frame)};
 }
 
@@ -608,6 +683,13 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                                                             Capture* capture) {
     auto frame = ac4::parse_raw_frame(raw_ac4_frame);
     if (!frame) {
+        // The frame is taken to be the one the stream expected next, so that
+        // one damaged frame is not a change of source. After a splice mark
+        // any counter but 0 continues, and still does.
+        if (previous_sequence_counter && *previous_sequence_counter != 0) {
+            previous_sequence_counter =
+                *previous_sequence_counter == 1020 ? 1 : *previous_sequence_counter + 1;
+        }
         return std::unexpected(DecodeError::kInvalidToc);
     }
     apply_observed_stereo_rule(frame->toc);
@@ -620,7 +702,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
 
     // Part 1 4.3.3.2.2: a frame continues the stream when its sequence_counter
     // is the previous one plus 1, wraps from 1020 to 1, or follows a 0 (the
-    // splice mark). Anything else is a change of source, and nothing carried
+    // splice mark). Anything else is a change of source, and nothing read
     // from before it may be used; frames that need configuration wait for
     // the next I-frame.
     if (previous_sequence_counter) {
@@ -629,7 +711,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
         const bool continues = counter == previous + 1 || (counter == 1 && previous == 1020) ||
                                (counter != 0 && previous == 0);
         if (!continues) {
-            forget();
+            forget_stream();
         }
     }
     previous_sequence_counter = toc.sequence_counter;

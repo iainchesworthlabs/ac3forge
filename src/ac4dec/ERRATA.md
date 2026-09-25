@@ -130,17 +130,31 @@ Later phases add the readings their processing needs.
 - **Where:** Part 1 4.3.3.2.2, p. 72: a frame continues the stream when its `sequence_counter` is the
   previous frame's plus 1, wraps from 1020 to 1, or follows a 0, which a splicing device writes into the
   first frame after a splice; anything else is a change of source, and a decoder bridges the gap "until
-  the next independently decodable frame".
-- **Reading:** at a change of source, everything carried between frames is forgotten: I-frame
-  configuration, A-SPX offsets and borders, DRC and dialogue enhancement state. A frame that needs
-  configuration before the next I-frame fails as missing its I-frame. Only a frame whose table of
-  contents holds together counts as the predecessor of the next: a frame whose substream sizes run past
-  it leaves the counter where it was, so the frame after it reads as a change of source. The text does
-  not say whether a counter transmitted in an unreadable frame still counts, and forgetting what such a
-  frame might have carried is the safer half of the choice.
+  the next independently decodable frame". Part 1 6.2.19, p. 272: a switch of streams at an I-frame
+  "shall produce a flawless output", and the decoder "shall use this splice indication to ignore any
+  information from previous frames when decoding the first frame after a splice". Part 2 5.11, p. 110,
+  delays a change in the converter's phase "with the signal" until the new source's first sample
+  reaches the converter's output.
+- **Reading:** a change of source forgets what was read from the stream: I-frame configuration, A-SPX
+  offsets and borders, DRC and dialogue enhancement configuration, and the values A-SPX's and A-CPL's
+  differences along time start from. A frame that needs configuration before the next I-frame fails as
+  missing its I-frame. The signal carries on: the overlap, the frame alignment's delay line, the QMF
+  banks and their history, A-SPX's generators, A-CPL's decorrelators, the output stages and the
+  converter. The old stream's audio comes out to its end and overlaps the new stream's first frame,
+  which is what makes a switch at an I-frame flawless and gives 5.11's delay a signal to travel with. A
+  frame that returns nothing while it waits for an I-frame drops the signal, so the frame decoded after
+  the wait starts from silence rather than from audio a gap old; under a concealment policy the wait is
+  concealed instead. A frame whose table of contents does not read is taken to be the frame the stream
+  expected: its counter is the previous one plus 1 (after a 0, any counter but 0 continues, and still
+  does), and phi_t moves on with it. The text does not say whether an unreadable frame counts. Taking it
+  as the expected frame keeps one damaged frame from costing every frame up to the next I-frame, and the
+  checks of "Configuration belongs to the codec mode it was sent for" still refuse a frame that needed
+  an I-frame the damage took.
 - **Evidence:** Streams: DEE starts counting at 1019, so every stream here passes the wrap to 1 in its
-  third frame. `tests/ac4dec/test_ac4dec_decoder.cpp` checks a jump and a 0. Text for the frame that
-  does not parse.
+  third frame. `tests/ac4dec/test_ac4dec_decoder.cpp` splices DEE streams at an I-frame, marked 0 and
+  with the counter jumping, and between I-frames: the output is the first stream's decoded alone up to
+  the joint and the second's decoded alone from the frame after it. Text for the frame that does not
+  parse.
 
 ### oamd_common_data() has two call sites; only one is read
 
@@ -752,7 +766,9 @@ clause's formula.
 - **Where:** Part 1 5.5.2.1, p. 185, describes `overlap` and `Nprev` as state carried from the previous
   block, and says nothing of their value before the first one.
 - **Reading:** silence, and a previous block of full length, so that the first block takes its
-  unmodified left window. A change of source (Part 1 4.3.3.2.2) starts from the same state.
+  unmodified left window. A change of source keeps the overlap ("A change of source"); a frame that
+  returns nothing while it waits for an I-frame drops it, and the frame decoded after the wait starts
+  from this state.
 - **Evidence:** Text; the first frame's output differs from a mid-stream decode only in the half block
   the missing predecessor would have filled.
 
@@ -1004,6 +1020,25 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 - **Evidence:** Text. Either way the noise and the tones take the same sequences; which entry a subband
   gets cannot be measured against a source.
 
+### What an I-frame does not restore
+
+- **Where:** Part 1 4.3.3.2.2, p. 72, calls an I-frame "independently decodable". Pseudocodes 103 and
+  105, pp. 228 and 229, run A-SPX's noise and tone indices on from "the previous A-SPX interval", from
+  `master_reset` and from "the codec initialization stage"; Pseudocode 111, p. 235, keeps A-CPL's
+  decorrelator "filter states from previously processed frames", and the transient ducker (5.7.7.4.3)
+  keeps its energies.
+- **Reading:** a decoder that starts at an I-frame starts those states as at a stream's first frame: the
+  indices at their first values, the filters and the ducker silent. Nothing in the stream restores them.
+  The I-frame's own audio overlaps a frame the decoder never had. From the next frame's audio on, the
+  waveform-coded signal is the one a decoder running from the stream's start gives; A-SPX's noise and
+  tones come out at the same levels at another phase of their tables, and A-CPL's decorrelated signal
+  converges on the other decoder's over a few frames.
+- **Evidence:** Streams: `tests/ac4dec/test_ac4dec_decoder.cpp` decodes the committed DEE streams from
+  each of their I-frames. The frame after the I-frame matches the decode from the start to under -100
+  dBFS in SIMPLE, the QMF banks' transient, and to -50 dBFS in ASPX; in A-CPL the output is within -54
+  dBFS of it by the fourth frame. DEE's first frame is a priming frame, and it and the second are both
+  I-frames, so a decode from the second gives the stream's audio from the third frame on.
+
 ### Interleaved waveform coding
 
 - **Where:** Part 1 5.7.6.5.2, p. 231, counts `aspx_tic_used_in_slot` in A-SPX slots "starting at the A-SPX
@@ -1192,11 +1227,15 @@ output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample 
 - **Where:** Part 2 5.11, p. 110: phi_t goes on from phi_t-1 where `sequence_counter` is 0 and the frame is
   not the first, and a change of source that moves the sequence "shall only be applied at the time the
   first frame of the new source is returned".
-- **Reading:** a change of source (Part 1 4.3.3.2.2) resets the decoder but not phi_t. The frame a
+- **Reading:** a change of source keeps phi_t and the converter ("A change of source"). The frame a
   splicer marks 0 takes phi_t-1 + 1, so its sample count goes on in the old sequence; the frame after it
   takes its own counter's phase. Where that jumps, the converter's grid moves by the jump and keeps the
-  input it holds, so the jump neither drops samples nor inserts silence.
-- **Evidence:** Text.
+  input it holds, so the jump neither drops samples nor inserts silence. The count changes with the
+  frame that brings the new source's first samples out, whose first samples are still the old source's:
+  the grid moves at that frame's start, which shifts the old source's last samples by less than one
+  output sample.
+- **Evidence:** Text; `tests/ac4dec/test_ac4dec_decoder.cpp` holds the counts across a jump and a 0 at
+  29.97 fps.
 
 ## Tables
 

@@ -2493,18 +2493,42 @@ class StreamWalker:
         self.state = {}
         self.previous_counter = None
 
+    def skip_frame(self):
+        """A frame whose table of contents does not read is taken to be the
+        frame the stream expected; after a 0 any counter but 0 continues, and
+        still does (src/ac4dec/ERRATA.md, "A change of source")."""
+        previous = self.previous_counter
+        if previous not in (None, 0):
+            self.previous_counter = 1 if previous == 1020 else previous + 1
+
     def frame(self, raw):
         """Returns [(index, kind, recs, error_or_None)] for one raw_ac4_frame()."""
         r = ac4_parse.Reader(raw)
-        toc = ac4_parse.parse_ac4_toc(r)
+        try:
+            toc = ac4_parse.parse_ac4_toc(r)
+            # Substreams that run past the frame make the frame's table of
+            # contents wrong, so none of them is read: the decoder's
+            # ac4::parse_raw_frame() reports no table of contents at all.
+            offset = toc['toc_bytes'] + toc['payload_base']
+            sizes = toc['substream_sizes'] if toc['b_size_present'] else [max(0, len(raw) - offset)]
+            end = offset
+            for size in sizes:
+                end += size
+                if end > len(raw):
+                    raise ValueError(
+                        f'substreams run past the end of the frame ({end} > {len(raw)} bytes)')
+        except (ValueError, IndexError):
+            self.skip_frame()
+            raise
         # Part 1 4.3.3.2.2: the stream continues when sequence_counter is the
         # previous value plus 1, wraps from 1020 to 1, or follows a 0; anything
-        # else is a change of source, after which nothing carried is used.
+        # else is a change of source, after which nothing read before it is used.
         counter, previous = toc['sequence_counter'], self.previous_counter
         if previous is not None and not (counter == previous + 1
                                          or (counter == 1 and previous == 1020)
                                          or (counter != 0 and previous == 0)):
             self.state.clear()
+        self.previous_counter = counter
         if self.ims_rule:
             apply_ims_rule(toc)
         # Tables 83 and 84: index 13 is the only frame rate Table 84 defines at
@@ -2522,23 +2546,6 @@ class StreamWalker:
         fragmented = any(p.get('frame_rate_fraction', 1) != 1 for p in toc['presentations'])
         roles = substream_roles(toc)
         out = []
-        offset = toc['toc_bytes'] + toc['payload_base']
-        sizes = toc['substream_sizes'] if toc['b_size_present'] else [max(0, len(raw) - offset)]
-        # Substreams that run past the frame make the frame's table of
-        # contents wrong, so none of them is read.
-        end = offset
-        for size in sizes:
-            end += size
-            if end > len(raw):
-                raise ValueError(
-                    f'substreams run past the end of the frame ({end} > {len(raw)} bytes)')
-        # Only a frame that parses this far counts as the predecessor of the
-        # next one: the decoder takes its counter from ac4::parse_raw_frame(),
-        # which reports no table of contents at all when the substreams overrun,
-        # so a frame rejected here leaves the counter where it was and the next
-        # frame reads as a change of source (src/ac4dec/ERRATA.md, "A change of
-        # source").
-        self.previous_counter = counter
         datas = []
         o = offset
         for size in sizes:

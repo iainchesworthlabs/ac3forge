@@ -122,10 +122,46 @@ struct OutputConfig {
     bool mix_lfe = true;
 };
 
+// --- Concealment ---------------------------------------------------------------
+//
+// What decode() does with a frame that will not decode, the policies forge's
+// AC-3 and E-AC-3 decoders offer. kNone, the default, returns the error; the
+// others return a frame's worth of audio instead, made by the decoder's own
+// inverse transform and output stages, so the overlap with the frames either
+// side stays continuous. The QMF-domain tools (A-SPX, A-CPL) pass a concealed
+// frame through, and the frame after it resumes them. A frame that fails before
+// any frame has decoded still returns its error: there is nothing to conceal
+// from.
+//
+// After a change of source, the frames that wait for the new source's first
+// I-frame are concealed the same way, from the old source's last frame, where
+// without a policy they return nothing.
+enum class ConcealmentPolicy : std::uint8_t {
+    kNone,
+    // The last good frame again, fading at the rate forge's decoders fade a
+    // repeat, 20 dB for each 32 ms lost in a row: each concealed frame at the
+    // level the fade reaches at its end.
+    kRepeatFade,
+    // Silence, the last good frame's overlap playing out through it.
+    kMute,
+};
+
+// What a concealed frame's decode() did, on the frame.
+enum class ConcealmentAction : std::uint8_t {
+    kRepeatFade,
+    kMute,
+};
+
+struct Concealment {
+    DecodeError error = DecodeError::kInvalidStream;  // why the frame did not decode
+    ConcealmentAction action = ConcealmentAction::kMute;
+};
+
 struct DecoderConfig {
     // Null by default, at the cost of one branch per syntax element read.
     SyntaxSink syntax{};
     OutputConfig output{};
+    ConcealmentPolicy concealment = ConcealmentPolicy::kNone;
 };
 
 // What one substream of a frame turned out to be.
@@ -170,7 +206,9 @@ enum class Speaker : std::uint8_t {
 // One frame of output.
 struct DecodedFrame {
     int sample_rate_hz = 0;
-    int sequence_counter = 0;             // of the frame this came from
+    // Of the frame this came from; for a concealed frame whose table of
+    // contents did not read, the counter the stream expected.
+    int sequence_counter = 0;
     // One per channel, in the order of `channels`: L, R, C, the LFE, Ls, Rs,
     // then a 7.X mode's last pair, each where the channel mode has it.
     std::vector<Speaker> speakers;
@@ -182,14 +220,23 @@ struct DecodedFrame {
     // (5.7.1), 1 313 samples at frame_rate_index 13 in every codec mode, and
     // at the other indices the sample rate converter's too.
     std::vector<std::vector<float>> channels;
+    // Set only on a frame DecoderConfig::concealment made in place of one that
+    // did not decode.
+    std::optional<Concealment> concealed;
 };
 
 // One decoder per stream: configuration sent only in I-frames (A-SPX, A-CPL,
 // DRC, dialogue enhancement) persists from one frame to the next, until a
 // sequence_counter that does not continue the stream marks a change of
-// source (Part 1 clause 4.3.3.2.2), which forgets it as reset() does. That
-// includes decode()'s overlap buffers and delay lines, which start again from
-// silence.
+// source (Part 1 clause 4.3.3.2.2), which forgets it, so that frames wait for
+// the new source's first I-frame. decode()'s signal carries on across the
+// change: the old source's audio still in the decoder comes out to its end,
+// overlapping the new source's first frame, which makes a splice or a switch
+// of streams at an I-frame seamless (Part 1 clause 6.2.19). A frame that
+// returns nothing while it waits drops that signal, so that the first frame
+// decoded after the wait starts from silence. A frame whose table of contents
+// does not read is taken to be the frame the stream expected, so one damaged
+// frame is not a change of source.
 class AC4DEC_EXPORT Decoder {
    public:
     Decoder();
@@ -212,12 +259,13 @@ class AC4DEC_EXPORT Decoder {
     // Nothing for a frame that has no output: one whose substream needs
     // configuration no I-frame has sent yet. The error, when there is one, is
     // that substream's (or the table of contents'), and refusal_reason() says
-    // why.
+    // why. Under a concealment policy, a concealed frame in place of either,
+    // once a frame has decoded.
     [[nodiscard]] std::expected<std::optional<DecodedFrame>, DecodeError> decode(
         std::span<const std::byte> raw_ac4_frame);
 
-    // Why the last decode() failed or returned nothing, a string literal;
-    // empty after a decode() that returned a frame.
+    // Why the last decode() failed, returned nothing or returned a concealed
+    // frame, a string literal; empty after a decode() that decoded its frame.
     [[nodiscard]] std::string_view refusal_reason() const noexcept;
 
     // Forgets everything carried between frames.
