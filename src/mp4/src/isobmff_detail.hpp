@@ -283,6 +283,18 @@ inline Bytes build_stsd(const AudioTrack& track) {
     return out;
 }
 
+// §8.6.2: the sync samples, numbered from 1.
+inline Bytes build_stss(std::span<const std::uint32_t> sync_samples) {
+    Bytes body;
+    put_u32(body, static_cast<std::uint32_t>(sync_samples.size()));
+    for (const std::uint32_t sample : sync_samples) {
+        put_u32(body, sample);
+    }
+    Bytes out;
+    put_fullbox(out, "stss", 0, 0, body);
+    return out;
+}
+
 // entry_count 0 (sample_count/sample_delta unused) is exactly what a
 // fragmented track's init-segment stbl needs: this trak's own stts
 // describes zero samples, since every sample lives in a moof/trun instead

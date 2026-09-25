@@ -395,6 +395,54 @@ TEST_CASE("MP4 muxer refuses an edit outside the frames", "[mp4]") {
     CHECK(with(100, 0).error() == mp4::MuxError::kInvalidOptions);
 }
 
+TEST_CASE("MP4 muxer names the sync samples, and counts in the track's own timescale", "[mp4]") {
+    // Six frames at 29.97 fps as AC-4 carries them: a timescale of 240 000
+    // and 8 008 a frame (ETSI TS 103 190-2 Table E.1), I-frames first, fourth
+    // and sixth.
+    const std::vector<Bytes> frames(6, frame_of(64, 0x3C));
+    mp4::AudioTrack track = sample_track(2);
+    track.timescale = 240000;
+    track.samples_per_frame = 8008;
+    mp4::MuxOptions options;
+    options.sync_samples = {true, false, false, true, false, true};
+    const auto file = mp4::mux(track, frames, options);
+    REQUIRE(file.has_value());
+    const auto elements = parse(*file);
+
+    // §8.6.2's stss: version+flags, entry_count, then the sync samples from 1.
+    const auto* stss = find(elements, "stss");
+    REQUIRE(stss != nullptr);
+    CHECK(u32_at(*file, stss->payload + 4) == 3);
+    CHECK(u32_at(*file, stss->payload + 8) == 1);
+    CHECK(u32_at(*file, stss->payload + 12) == 4);
+    CHECK(u32_at(*file, stss->payload + 16) == 6);
+
+    // The media and the movie count in the timescale; the sample entry keeps
+    // the audio's rate.
+    const auto* mdhd = find(elements, "mdhd");
+    const auto* mvhd = find(elements, "mvhd");
+    const auto* stts = find(elements, "stts");
+    const auto* stsd = find(elements, "stsd");
+    REQUIRE(mdhd != nullptr);
+    REQUIRE(mvhd != nullptr);
+    REQUIRE(stts != nullptr);
+    REQUIRE(stsd != nullptr);
+    CHECK(read_mdhd(*file, *mdhd).timescale == 240000);
+    CHECK(read_mdhd(*file, *mdhd).duration == 6U * 8008U);
+    CHECK(u32_at(*file, mvhd->payload + 12) == 240000);
+    CHECK(read_stts_first(*file, *stts) == std::pair<std::uint32_t, std::uint32_t>{6, 8008});
+    CHECK(read_sample_entry(*file, *stsd).samplerate_fixed == (48000U << 16));
+
+    // Every frame a sync sample needs no box; a list of another length is
+    // refused.
+    options.sync_samples.assign(6, true);
+    const auto all = mp4::mux(track, frames, options);
+    REQUIRE(all.has_value());
+    CHECK(find(parse(*all), "stss") == nullptr);
+    options.sync_samples.assign(5, true);
+    CHECK(mp4::mux(track, frames, options).error() == mp4::MuxError::kInvalidOptions);
+}
+
 // --- ac3::io::build_codec_config_box: the dec3/dac3 payload itself ---------
 //
 // These read the box's raw bytes directly rather than through mp4::mux(), so
