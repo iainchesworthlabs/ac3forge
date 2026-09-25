@@ -64,12 +64,14 @@ jobs:
     # of merges costs at most one building and one waiting job per leg.
     # GitHub-hosted macOS is this org's scarcest capacity (GitHub Free runs a
     # handful of macOS jobs at a time, org-wide), and each merged commit's
-    # macOS legs already ran on its PR and in the merge queue - left
-    # unbounded, every main push's legs queued behind the last one's and
-    # 158 macOS jobs sat waiting on 2026-09-24. ci.yml's CI Status accepts
-    # the resulting "cancelled" only on a commit main has already moved past.
-    # Every other event gets a group of its own run, so PRs, the merge queue,
-    # tags and dispatches are unchanged.
+    # macOS legs already ran in the merge queue - left unbounded, every main
+    # push's legs queued behind the last one's and 158 macOS jobs sat waiting
+    # on 2026-09-24. ci.yml's CI Status accepts the resulting "cancelled" only
+    # on a commit main has already moved past. Every other event gets a group
+    # of its own run, so PRs, the merge queue, tags and dispatches are
+    # unchanged. The other GitHub-hosted jobs follow the same rule, bar the
+    # trend publishers - docs/ci-lanes.md, "Only the newest main commit runs
+    # the hosted jobs".
     concurrency:
       group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && format('macos-main-{0}', matrix.name) || format('macos-run-{0}-{1}', github.run_id, matrix.name) }}
       cancel-in-progress: false

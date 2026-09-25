@@ -1264,17 +1264,42 @@
 <context>
     <name>Network</name>
     <message>
-        <location filename="../qml/Network.qml" line="95"/>
+        <location filename="../qml/Network.qml" line="77"/>
+        <source>%1 Taking it back stops whatever that server plays to it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="79"/>
+        <source>Not connected: %1.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="86"/>
+        <source>Take it back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="87"/>
+        <source>Connect now</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="140"/>
         <source>Select a sink on the left to pair it, or to see what it is.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="153"/>
+        <location filename="../qml/Network.qml" line="198"/>
         <source>A standard Sendspin player: it takes stereo only, with no speaker or decoder settings of its own to show here. Add it to a group from the list on the left, or make a new one.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/Network.qml" line="144"/>
+        <location filename="../qml/Network.qml" line="207"/>
+        <source>Forget this pairing</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/Network.qml" line="189"/>
         <source>Paired with this computer on %1. It takes streams from Hearth without a code until the pairing is forgotten.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1282,113 +1307,153 @@
 <context>
     <name>NetworkGroupEdit</name>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="39"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="47"/>
         <source>Group · %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="46"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="54"/>
         <source>Name</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="59"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="67"/>
         <source>Delete group</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="67"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="83"/>
+        <source>Hearth plays here</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkGroupEdit.qml" line="83"/>
+        <source>Play to this group</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkGroupEdit.qml" line="92"/>
+        <source>Add a paired sink to play to this group.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkGroupEdit.qml" line="94"/>
+        <source>Everything the queue plays goes to this group. Pick another output from the output picker to stop.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkGroupEdit.qml" line="96"/>
+        <source>Makes this group where the queue plays, in place of this computer&apos;s own output.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkGroupEdit.qml" line="107"/>
         <source>MEMBER</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="68"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="108"/>
         <source>GETS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="69"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="109"/>
         <source>VOLUME</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="71"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="111"/>
         <source>MUTE</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="104"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="144"/>
         <source>not connected</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="144"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="184"/>
         <source>Remove %1 from the group</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="168"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="208"/>
         <source>Add to the group</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="179"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="219"/>
         <source>Group volume</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="193"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="233"/>
         <source>%1 · the mean of the members</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="202"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="242"/>
         <source>✓ Every member plays the same item at the same moment. A Hearth sink renders it to its own speakers; a Sendspin player gets stereo.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="211"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="251"/>
         <source>✓ Every member has synchronised its clock with this computer. A member reports itself ready only once it has.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="220"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="260"/>
         <source>This computer&apos;s own outputs are not group members in this version. A receiver fed a bitstream cannot be one, because it reports no decode latency.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="240"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="280"/>
         <source>Group</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="248"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="288"/>
         <source>State</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="251"/>
-        <source>Not playing yet - this version does not stream to groups.</source>
+        <location filename="../qml/NetworkGroupEdit.qml" line="293"/>
+        <source>Playing</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="256"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="295"/>
+        <source>The output - ready to play</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkGroupEdit.qml" line="296"/>
+        <source>The output - waiting for a member to connect</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkGroupEdit.qml" line="297"/>
+        <source>Not the output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkGroupEdit.qml" line="302"/>
         <source>Members</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="263"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="309"/>
         <source>Lead time</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="266"/>
-        <location filename="../qml/NetworkGroupEdit.qml" line="272"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="312"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="318"/>
         <source>—</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkGroupEdit.qml" line="271"/>
+        <location filename="../qml/NetworkGroupEdit.qml" line="317"/>
         <source>Late chunks</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1396,42 +1461,63 @@
 <context>
     <name>NetworkPairing</name>
     <message>
-        <location filename="../qml/NetworkPairing.qml" line="29"/>
+        <location filename="../qml/NetworkPairing.qml" line="40"/>
         <source>Pair %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkPairing.qml" line="40"/>
+        <location filename="../qml/NetworkPairing.qml" line="51"/>
         <source>%1 has not been paired with this computer. Pairing makes a key that both keep; after it, the sink takes streams from Hearth without a code.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkPairing.qml" line="48"/>
+        <location filename="../qml/NetworkPairing.qml" line="62"/>
+        <source>%1 Pairing takes it from the other server.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkPairing.qml" line="75"/>
+        <source>Pair with this computer</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkPairing.qml" line="95"/>
+        <source>Asking %1 to pair…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkPairing.qml" line="108"/>
         <source>THE CODE THE SINK SHOWS</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkPairing.qml" line="74"/>
+        <location filename="../qml/NetworkPairing.qml" line="135"/>
         <source>Digit %1 of %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkPairing.qml" line="94"/>
-        <source>The sink prints a new six-digit code on its serial console for each attempt. A sink with a fixed code has eight digits, printed on the device.</source>
-        <translation type="unfinished"></translation>
-    </message>
-    <message>
-        <location filename="../qml/NetworkPairing.qml" line="117"/>
+        <location filename="../qml/NetworkPairing.qml" line="181"/>
         <source>Pair</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkPairing.qml" line="123"/>
+        <location filename="../qml/NetworkPairing.qml" line="100"/>
+        <location filename="../qml/NetworkPairing.qml" line="187"/>
         <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkPairing.qml" line="132"/>
+        <location filename="../qml/NetworkPairing.qml" line="156"/>
+        <source>The sink shows a new six-digit code for each attempt, on its own page (%1) and on its serial console.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkPairing.qml" line="158"/>
+        <source>The sink shows a new six-digit code for each attempt, on its own page and on its serial console.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkPairing.qml" line="196"/>
         <source>✓ The connection to the sink is encrypted before any code is typed.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1588,51 +1674,56 @@
     <name>NetworkSinkInfo</name>
     <message>
         <location filename="../qml/NetworkSinkInfo.qml" line="23"/>
-        <source>Kind</source>
+        <source>Connection</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkInfo.qml" line="24"/>
-        <source>Address</source>
+        <source>Kind</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkInfo.qml" line="25"/>
-        <source>Roles</source>
+        <source>Address</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkInfo.qml" line="26"/>
-        <source>Takes</source>
+        <source>Roles</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkInfo.qml" line="27"/>
-        <source>Outputs</source>
+        <source>Takes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkInfo.qml" line="28"/>
-        <source>Latency</source>
+        <source>Outputs</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkInfo.qml" line="29"/>
+        <source>Latency</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkInfo.qml" line="30"/>
         <source>Clock</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkSinkInfo.qml" line="32"/>
+        <location filename="../qml/NetworkSinkInfo.qml" line="33"/>
         <source>Status</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkSinkInfo.qml" line="40"/>
+        <location filename="../qml/NetworkSinkInfo.qml" line="41"/>
         <source>This sink</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkSinkInfo.qml" line="72"/>
+        <location filename="../qml/NetworkSinkInfo.qml" line="73"/>
         <source>—</source>
         <translation type="unfinished"></translation>
     </message>
@@ -1675,7 +1766,7 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkSinkList.qml" line="302"/>
+        <location filename="../qml/NetworkSinkList.qml" line="311"/>
         <source>Sendspin players announce themselves on this network. A Hearth sink takes the E-AC-3 stream itself; any other Sendspin player takes stereo.</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2015,108 +2106,124 @@
 <context>
     <name>OutputPicker</name>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="82"/>
+        <location filename="../qml/OutputPicker.qml" line="99"/>
         <source>rates not reported</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="92"/>
+        <location filename="../qml/OutputPicker.qml" line="109"/>
         <source>%1 kHz</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="92"/>
+        <location filename="../qml/OutputPicker.qml" line="109"/>
         <source>%1–%2 kHz</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="96"/>
+        <location filename="../qml/OutputPicker.qml" line="113"/>
         <source>%1 ch</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="97"/>
+        <location filename="../qml/OutputPicker.qml" line="114"/>
         <source>channels not reported</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="102"/>
+        <location filename="../qml/OutputPicker.qml" line="119"/>
         <source> · </source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="106"/>
+        <location filename="../qml/OutputPicker.qml" line="123"/>
         <source>AC-3 %1 · E-AC-3 %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="150"/>
-        <location filename="../qml/OutputPicker.qml" line="162"/>
+        <location filename="../qml/OutputPicker.qml" line="167"/>
+        <location filename="../qml/OutputPicker.qml" line="179"/>
         <source>Where Hearth plays</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="156"/>
+        <location filename="../qml/OutputPicker.qml" line="173"/>
         <source>OUTPUT</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="182"/>
+        <location filename="../qml/OutputPicker.qml" line="199"/>
         <source>This computer · PCM</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="238"/>
+        <location filename="../qml/OutputPicker.qml" line="255"/>
         <source>%1 · default</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="253"/>
+        <location filename="../qml/OutputPicker.qml" line="270"/>
+        <location filename="../qml/OutputPicker.qml" line="425"/>
         <source>playing here</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="267"/>
+        <location filename="../qml/OutputPicker.qml" line="284"/>
         <source>No output devices were found on this computer.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="274"/>
+        <location filename="../qml/OutputPicker.qml" line="291"/>
         <source>Passthrough · the receiver decodes</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="321"/>
+        <location filename="../qml/OutputPicker.qml" line="338"/>
         <source>No passthrough-capable outputs were found.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="329"/>
+        <location filename="../qml/OutputPicker.qml" line="346"/>
         <source>Read by asking each endpoint whether it accepts AC-3 and E-AC-3 over IEC 61937 in exclusive mode. Hearth does not bitstream yet in this build, so picking a row here has no effect.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="338"/>
+        <location filename="../qml/OutputPicker.qml" line="355"/>
         <source>Network · Sendspin</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="342"/>
-        <source>Network sinks and Sendspin groups are not available from this build yet. The Network page will list them once that lands.</source>
+        <location filename="../qml/OutputPicker.qml" line="378"/>
+        <source>%1, group</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="357"/>
+        <location filename="../qml/OutputPicker.qml" line="417"/>
+        <source>%1 · %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/OutputPicker.qml" line="439"/>
+        <source>No groups yet. On the Network page, pair a sink and add it to a group - a group of one plays to a single sink.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/OutputPicker.qml" line="450"/>
+        <source>Each sink in a group decodes the stream for itself, to its own speakers. A group plays to the members connected when it starts, and to others as they connect.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/OutputPicker.qml" line="466"/>
         <source>Network page…</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="363"/>
+        <location filename="../qml/OutputPicker.qml" line="472"/>
         <source>Cancel</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/OutputPicker.qml" line="368"/>
+        <location filename="../qml/OutputPicker.qml" line="477"/>
         <source>Play here</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2603,96 +2710,96 @@ Drop AC-3 or E-AC-3 files or a folder here.</source>
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../network_controller.cpp" line="325"/>
+        <location filename="../network_controller.cpp" line="331"/>
         <source>not sent: the sink refused the settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="326"/>
+        <location filename="../network_controller.cpp" line="332"/>
         <source>not sent: the sink does not take settings from Hearth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="328"/>
+        <location filename="../network_controller.cpp" line="334"/>
         <source>The sink does not take settings from Hearth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="332"/>
+        <location filename="../network_controller.cpp" line="338"/>
         <source>revision %1 sent, not reported yet</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="334"/>
+        <location filename="../network_controller.cpp" line="340"/>
         <source>revision %1 refused: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="338"/>
+        <location filename="../network_controller.cpp" line="344"/>
         <source>revision %1 · applied</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="340"/>
+        <location filename="../network_controller.cpp" line="346"/>
         <source>revision %1 sent · sink on %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="345"/>
+        <location filename="../network_controller.cpp" line="351"/>
         <source>Nothing playing.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="346"/>
-        <location filename="../network_controller.cpp" line="359"/>
+        <location filename="../network_controller.cpp" line="352"/>
+        <location filename="../network_controller.cpp" line="365"/>
         <source>none</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="347"/>
-        <location filename="../network_controller.cpp" line="388"/>
+        <location filename="../network_controller.cpp" line="353"/>
         <location filename="../network_controller.cpp" line="394"/>
-        <location filename="../network_controller.cpp" line="396"/>
+        <location filename="../network_controller.cpp" line="400"/>
+        <location filename="../network_controller.cpp" line="402"/>
         <source>not reported</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="352"/>
+        <location filename="../network_controller.cpp" line="358"/>
         <source>%1 · %2%3 · %4 substream%5</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="360"/>
+        <location filename="../network_controller.cpp" line="366"/>
         <source>%1 carried · %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="361"/>
+        <location filename="../network_controller.cpp" line="367"/>
         <source>placed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="362"/>
+        <location filename="../network_controller.cpp" line="368"/>
         <source>not placed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="363"/>
+        <location filename="../network_controller.cpp" line="369"/>
         <source>dialnorm %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="370"/>
+        <location filename="../network_controller.cpp" line="376"/>
         <source>%1 bursts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="371"/>
+        <location filename="../network_controller.cpp" line="377"/>
         <source>%1 underruns · %2 late · %3 dropped · %4 invalid</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="387"/>
+        <location filename="../network_controller.cpp" line="393"/>
         <source>%1-bit · %2 slots</source>
         <translation type="unfinished"></translation>
     </message>

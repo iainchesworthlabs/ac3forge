@@ -123,6 +123,14 @@ jobs:
     # `journalctl -u github-runner.service` off the affected VM before the
     # fleet replaces it - that is the missing evidence.
     runs-on: ubuntu-latest
+    # GitHub-hosted, so on a push to main only the newest main commit's run
+    # waits for a runner - docs/ci-lanes.md, "Only the newest main commit runs
+    # the hosted jobs". Every other event gets a group of its own run. A run
+    # whose coverage gave way never starts it, so coverage_result comes back
+    # empty, which ci.yml's CI Status already reads as a pass.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'coverage-main' || format('coverage-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     container: ubuntu:26.04
     outputs:
       result: ${{ steps.record-result.outputs.status }}
@@ -297,6 +305,13 @@ jobs:
   adm-validate:
     name: ADM Module (Linux, GCC)
     runs-on: ${{ fromJSON(inputs.runner) }}
+    # Newest main commit only when ci.yml's check-runner sent this to its
+    # GitHub-hosted fallback (coverage's concurrency comment); its self-hosted
+    # labels always include "self-hosted", and there it runs for every commit.
+    # hearth-validate, abi-gate and ffmpeg-validate below carry the same block.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(inputs.runner, 'self-hosted') && 'adm-validate-main' || format('adm-validate-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     container: ubuntu:26.04
     outputs:
       result: ${{ steps.record-result.outputs.status }}
@@ -436,6 +451,10 @@ jobs:
   hearth-validate:
     name: Hearth Sendspin (Linux, GCC)
     runs-on: ${{ fromJSON(inputs.runner) }}
+    # Newest main commit only on the hosted fallback (adm-validate's comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(inputs.runner, 'self-hosted') && 'hearth-validate-main' || format('hearth-validate-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     container: ubuntu:26.04
     outputs:
       result: ${{ steps.record-result.outputs.status }}
@@ -1090,6 +1109,10 @@ jobs:
     # the PR run.
     if: github.event_name != 'merge_group'
     runs-on: ${{ fromJSON(inputs.runner) }}
+    # Newest main commit only on the hosted fallback (adm-validate's comment).
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(inputs.runner, 'self-hosted') && 'abi-gate-main' || format('abi-gate-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     container: ubuntu:26.04
     env:
       # AP1 promotion: flip to 'true' when the API freeze ships. Nothing
@@ -1369,6 +1392,12 @@ jobs:
   ffmpeg-validate:
     name: FFmpeg Validate
     runs-on: ${{ fromJSON(inputs.runner) }}
+    # Newest main commit only on the hosted fallback (adm-validate's comment).
+    # The two persist-*-trend jobs need this one, so they skip when it gives
+    # way; on the fleet it runs, and feeds them, for every commit.
+    concurrency:
+      group: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(inputs.runner, 'self-hosted') && 'ffmpeg-validate-main' || format('ffmpeg-validate-run-{0}', github.run_id) }}
+      cancel-in-progress: false
     container: ubuntu:26.04
     outputs:
       result: ${{ steps.record-result.outputs.status }}
