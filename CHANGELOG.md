@@ -1043,6 +1043,24 @@ The sections below contain the complete change list and fixes.
   ViSQOL. The QMF banks, A-SPX's tables and its high frequency generator sit in `src/ac4core` for the
   encoder. The readings taken, among them companding's full scale and the divisor of A-SPX's envelope
   estimate, are in `src/ac4dec/ERRATA.md`.
+- **The AC-4 encoder writes the ASPX codec mode** (phase E2 of `planning/ac4.md`), below 96 kbps a
+  channel by default and wherever `codec-mode=aspx` asks: the audio spectral frontend up to A-SPX's
+  crossover, and A-SPX above it, with the crossovers and tables DEE's streams use at each rate and
+  companding below 64 kbps a channel. Each channel is analysed with the decoder's own QMF bank on the
+  decoder's slot axis; the encoder frames each interval FIXFIX, or FIXVAR and VARFIX around an attack,
+  estimates its envelopes, chooses inverse filtering and noise floors by running the decoder's high
+  frequency generator on the input's low band, adds sinusoids where the patch lacks a steady tone, and
+  codes envelopes along frequency or time, whichever is shorter, below the F0 codebooks' floor where the
+  band is quiet. The compressor inverts the decoder's expander on the input's analysis and is
+  synthesised back for the spectral frontend to code. Where a frame's budget cannot hold every band at
+  its masking threshold, the rate loop now pulls every band toward one level of noise, with a cap that
+  keeps a band from falling silent. Against DEE's streams of the same sources, both decoded here,
+  ViSQOL is within 0.02 of DEE's or above it from 64 to 144 kbps and 0.06 under it on music at 48 kbps;
+  `tools/checks/score_ac4_encode.py` pins SNR below the crossover, the A-SPX tiles, log-spectral
+  distance and ViSQOL for 13 ASPX legs, and the race at 48 to 144 kbps. Balance coding, VARVAR framing
+  and frequency interleaved waveform coding are written only under `experimental=`, since no reader
+  outside this project has read them from the encoder yet. `src/ac4enc/ERRATA.md` records the
+  readings taken.
 
 **Browser (WASM)**
 

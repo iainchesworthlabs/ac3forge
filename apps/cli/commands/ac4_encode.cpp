@@ -24,7 +24,7 @@
 // of sync frames with the CRC of TS 103 190-2 Annex G, or in an MP4 file with
 // Annex E's 'ac-4' sample entry when the output is named .mp4, .m4a or .mov.
 // What the encoder writes so far: mono or stereo at 48 or 44.1 kHz,
-// frame_rate_index 13, SIMPLE mode, a constant bit rate.
+// frame_rate_index 13, the SIMPLE or ASPX codec mode, a constant bit rate.
 
 namespace ac3cli::commands {
 namespace {
@@ -69,6 +69,14 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     config.channels = static_cast<int>(wav->channels.size());
     config.sample_rate_hz = static_cast<int>(wav->sample_rate);
     config.bitrate_kbps = static_cast<int>(bitrate);
+    if (meta.ac4_codec_mode == "simple") {
+        config.codec_mode = ac4::CodecMode::kSimple;
+    } else if (meta.ac4_codec_mode == "aspx") {
+        config.codec_mode = ac4::CodecMode::kAspx;
+    }
+    config.experimental.aspx_balance = meta.ac4_experimental_balance;
+    config.experimental.aspx_varvar = meta.ac4_experimental_varvar;
+    config.experimental.aspx_interleave = meta.ac4_experimental_interleave;
     // The rate is checked before dialnorm=auto reads the whole file.
     if (!ac4::Encoder::create(config).has_value()) {
         fmt::println(stderr, "error: {}", ac4::describe(ac4::EncodeError::kInvalidConfig));
@@ -179,8 +187,9 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     // A decoder's own delay at frame_rate_index 13: d_pcm (Part 1 Table 188),
     // the QMF banks' 577 samples and six QMF slots (5.7.1).
     constexpr int kDecoderDelay = 352 + 577 + 6 * 64;
-    status_println(status, "          SIMPLE mode at frame_rate_index 13; the decoder's output lags the input by {} "
+    status_println(status, "          {} mode at frame_rate_index 13; the decoder's output lags the input by {} "
                            "samples",
+                   encoder->codec_mode() == ac4::CodecMode::kAspx ? "ASPX" : "SIMPLE",
                    encoder->delay_samples() + kDecoderDelay);
     return kExitOk;
 }

@@ -10,11 +10,12 @@ least-squares gain per channel, and checks (planning/ac4.md, the decoder's ladde
            QMF slots of history, for every codec mode: src/ac4dec/ERRATA.md, "Every codec mode
            passes through the QMF banks"). DEE's IMS encoder runs a frame shorter than its AC-4
            encoder.
-  gain     every channel of a 2.0 or mono leg within 0.2 dB of unity. The streams were made with
-           loudness measured only, and the decoder applies no DRC or output level yet, so the
-           prediction is the source's own level. An IMS leg, made from 5.1, is compared with the
-           source's Lo/Ro downmix (L + C/sqrt 2 + Ls/sqrt 2 and its mirror), which its channels must
-           correlate with at 0.95 or better; its render is DEE's, so its level is only reported.
+  gain     every channel of a 2.0 or mono leg within 0.2 dB of unity, fitted below the crossover
+           in ASPX. The streams were made with loudness measured only, and the decoder applies no
+           DRC or output level yet, so the prediction is the source's own level. An IMS leg, made
+           from 5.1, is compared with the source's Lo/Ro downmix (L + C/sqrt 2 + Ls/sqrt 2 and its
+           mirror), which its channels must correlate with at 0.95 or better; its render is DEE's,
+           so its level is only reported.
   SNR      every channel's signal-to-noise ratio against the gain-scaled reference at or above its
            floor, the first measurement less 1 dB: over the whole band for SIMPLE, and below the
            A-SPX crossover for ASPX, from 2 048-point STFT frames.
@@ -213,6 +214,25 @@ def score(reference, decoded):
     return lag, channels, ref, out
 
 
+def subband_hz():
+    """The width of a QMF subband at RATE: half the sampling rate over 64."""
+    return RATE / 128.0
+
+
+def band_gain(ref, out, top_hz):
+    """The least-squares gain of out against ref below top_hz, over band_snr's STFT frames: in
+    ASPX, where above the crossover only the energy is the source's, the level below it."""
+    window = np.hanning(FRAME)
+    top = int(top_hz / (RATE / FRAME))
+    cross = power = 0.0
+    for start in range(0, len(ref) - FRAME, FRAME // 2):
+        r = np.fft.rfft(window * ref[start:start + FRAME])[:top]
+        o = np.fft.rfft(window * out[start:start + FRAME])[:top]
+        cross += float(np.sum((np.conj(r) * o).real))
+        power += float(np.sum(np.abs(r) ** 2))
+    return cross / power
+
+
 def band_snr(ref, out, gain, top_hz):
     """SNR in dB of out against gain * ref below top_hz, over half-overlapped Hann STFT frames."""
     window = np.hanning(FRAME)
@@ -264,7 +284,7 @@ def tile_error(ref, out, groups):
         r = np.abs(np.fft.rfft(window * ref[start:start + FRAME])) ** 2
         o = np.abs(np.fft.rfft(window * out[start:start + FRAME])) ** 2
         for low, high in itertools.pairwise(groups):
-            first, last = int(low * 375 / bin_hz), int(high * 375 / bin_hz)
+            first, last = int(low * subband_hz() / bin_hz), int(high * subband_hz() / bin_hz)
             er, eo = float(r[first:last].sum()), float(o[first:last].sum())
             per_subband = er / (high - low) / full_scale
             if per_subband > 10.0 ** (TILE_FLOOR_DB / 10.0):
@@ -380,7 +400,9 @@ def main():
                     error = o - gain * r
                     snr = 10.0 * np.log10(np.dot(gain * r, gain * r) / np.dot(error, error))
                 else:
-                    snr = band_snr(r, o, gain, groups[0] * 375 - 375)
+                    top_hz = (groups[0] - 1) * subband_hz()
+                    gain = band_gain(r, o, top_hz)
+                    snr = band_snr(r, o, gain, top_hz)
                     tiles += tile_error(r, o, groups)
                 snrs.append(float(snr))
                 correlation = float(np.dot(r, o) / np.sqrt(np.dot(r, r) * np.dot(o, o)))
@@ -400,7 +422,7 @@ def main():
             mos = quality_race.perceptual_score(ref, out, RATE)
             tile_text = "" if tile_mean is None else f"  tiles {tile_mean:.2f} dB ({len(tiles)})"
             mos_text = "-" if mos is None else f"{mos:.2f}"
-            where = f" (xover {groups[0] * 375 / 1000:.2f} kHz)" if groups else ""
+            where = f" (xover {groups[0] * subband_hz() / 1000:.2f} kHz)" if groups else ""
             print(f"{name:<32} lag {lag:5d}  {'  '.join(cells)}{where}  LSD {lsd:.2f} dB"
                   f"{tile_text}  MOS {mos_text}", flush=True)
             pins.append(pin_text(name, snrs, float(lsd), tile_mean, mos))

@@ -253,6 +253,7 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/test_ac4dec_metadata.cpp
         ac4dec/test_ac4dec_pcm.cpp
         ac4dec/test_ac4dec_presentation.cpp
+        ac4enc/test_ac4enc_aspx.cpp
         ac4enc/test_ac4enc_writer.cpp)
 endif()
 # tests/ac4enc/ reach the encoder's writer (src/ac4enc/src/) the same way; the

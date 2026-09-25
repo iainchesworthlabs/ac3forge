@@ -35,6 +35,94 @@ The writer takes the decoder's reading of each of these:
   transform is the transpose of the decoder's, through the same windows, with lines scaled by 2^16 so
   that a full-scale input decodes at full scale.
 
+## The QMF domain
+
+The readings phase E2 takes for the ASPX codec mode: companding and A-SPX, written. The writer takes the
+decoder's reading of each of these, and the tests and the encoder-space harness hold the three traces
+equal on every ASPX stream they write:
+
+- [Every codec mode passes through the QMF banks](../ac4dec/ERRATA.md#every-codec-mode-passes-through-the-qmf-banks):
+  an ASPX stream lags its input by the SIMPLE mode's delay, 4,385 samples at `frame_rate_index` 13.
+- [Companding measures against full scale 1.0](../ac4dec/ERRATA.md#companding-measures-against-full-scale-10),
+  [Companding's slots are Q_low's](../ac4dec/ERRATA.md#compandings-slots-are-q_lows) and
+  [The companding average](../ac4dec/ERRATA.md#the-companding-average): the compressor below inverts the
+  expander those readings give; the writer sends `b_compand_on` per channel and never `sync_flag`.
+- [The estimated envelope's time divisor](../ac4dec/ERRATA.md#the-estimated-envelopes-time-divisor): a
+  signal envelope is the input's mean energy per QMF subsample over its groups and slots.
+- [The first signal scale factor below zero](../ac4dec/ERRATA.md#the-first-signal-scale-factor-below-zero):
+  an envelope coded along frequency whose first value is below the F0 codebooks' floor sends 0 there, and
+  the second group's value takes it over.
+- [The sinusoid's subband](../ac4dec/ERRATA.md#the-sinusoids-subband), [b_sine_at_end](../ac4dec/ERRATA.md#b_sine_at_end)
+  and [Before the first interval](../ac4dec/ERRATA.md#before-the-first-interval): what the encoder keeps
+  of the decoder's state to choose delta coding and sinusoids.
+
+### Where the encoder's QMF slots fall
+
+- **Where:** Part 1 Table 188's `d_pcm` and `d_ctrl`, 5.7.3's analysis, and 5.7.6.3.2's
+  `ts_offset_hfgen`, read from the writer's side: which input samples a frame's A-SPX data describes.
+- **Reading:** the decoder's QMF slot g covers the 64 samples of the encoder's delayed input from
+  `64 g - 352`, since the output of the inverse transform is held `d_pcm` = 352 samples before the
+  analysis; frame f's control data arrives `d_ctrl` = 1 frame later, behind `ts_offset_hfgen` = 6 slots,
+  so its interval's slot i is QMF slot `32 (f + 1) - 6 + i`. The encoder analyses its input with the
+  decoder's own bank on that axis and estimates each frame's envelopes, noise floors and inverse
+  filtering over those slots.
+- **Evidence:** Streams and Readers. The encoder's ASPX streams decode at the lag of DEE's, and above
+  the crossover the decoded A-SPX tiles land as close to the source's energy as DEE's do
+  (`tools/checks/score_ac4_encode.py --gold`).
+
+### The compressor
+
+- **Where:** Part 1 5.7.5 gives the expander only: each slot of the low band times `2^(1/alpha)
+  L^((1 - alpha)/alpha)`, `alpha` 0.65, with L the slot's level.
+- **Reading:** the compressor multiplies each slot of the input's low band, below `sbx`, by `0.5
+  L^(alpha - 1)`, L measured as the expander measures it on the input's own analysis: expanded, the
+  slot's level is L again. The compressed slots, with nothing above `sbx`, are synthesised back by the
+  decoder's synthesis bank, whose output runs 352 + 577 = 929 samples behind the analysis's input; the
+  spectral frontend codes that output 929 samples on, so that the decoder's analysis of what it decodes
+  sees the compressed slots on the same axis.
+- **Evidence:** Observation. A 1 kHz tone whose level steps by 30 dB steps by 0.65 of that, 19.5 dB,
+  compressed (`tests/ac4enc/test_ac4enc_aspx.cpp`), and the encoder's companded streams decode within
+  0.4 dB of their source's level.
+
+### A sinusoid's group carries its energy
+
+- **Where:** Part 1 Pseudocodes 92 to 94, pp. 222 and 223: a group with `aspx_add_harmonic` set puts its
+  sinusoid in its middle subband, at the level `scf_sig / (1 + scf_noise)` of the whole group, and scales
+  the rest of the group to the noise.
+- **Reading:** the encoder sends, for a group whose sinusoid an envelope carries, the energy per QMF
+  subsample of the subband it stands for, not the group's mean, which would set the sinusoid a group's
+  width low.
+- **Evidence:** Text.
+
+### Balance values are sent halved
+
+- **Where:** Part 1 Pseudocodes 80 and 81 add each value of a balance channel twice (`delta` 2), and
+  Pseudocode 84 reads the pair as a sum, `2^(qa/a + 1)` times 64, and a ratio, `2^(qb/a - PAN_OFFSET)`,
+  with `PAN_OFFSET` 12. The balance F0 codebooks hold 0 to 24 at 1.5 dB and 0 to 12 at 3 dB.
+- **Reading:** the sum's value is `a (log2(2^(qL/a) + 2^(qR/a)) - 1)`, and the value sent for the balance
+  is half of `a (PAN_OFFSET + (qL - qR)/a)`, so that the F0 range is centred on equal channels; the noise
+  floors likewise, without `a`. A balance channel's values are coded along time only from the last
+  frame's balance values, which the doubling leaves even.
+- **Evidence:** Readers. The encoder writes `aspx_balance` only when asked (`experimental=aspx-balance`),
+  since no reader outside this project has read it from the encoder yet.
+
+### A FIX end, a FIX start
+
+- **Where:** Part 1 Pseudocode 76 starts a VARFIX or VARVAR interval where the last one stopped, which a
+  FIXVAR or VARVAR interval's `aspx_var_bord_right` moves up to three A-SPX slots past its frame's end,
+  and starts a FIXFIX or FIXVAR interval at the frame's start whatever the last did.
+- **Reading:** an interval that ends with its frame is followed by one that starts with its frame, and
+  one that runs on by one that starts where it stopped, so that the intervals tile the QMF slots.
+- **Evidence:** Text.
+
+### No time deltas into an I-frame
+
+- **Where:** Part 1 4.3.10.3: `aspx_sig_delta_dir` and `aspx_noise_delta_dir` code an envelope along time
+  from the one before, which for an interval's first envelope is the last frame's.
+- **Reading:** an I-frame's first signal and noise envelopes are coded along frequency, so that a decoder
+  can start there; later envelopes may be coded along time.
+- **Evidence:** Text.
+
 ## Table of contents and framing
 
 ### sequence_counter

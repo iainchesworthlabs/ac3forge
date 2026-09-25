@@ -124,6 +124,12 @@ struct Options {
     // `trace` command writes, so the three can be compared line by line
     // (planning/ac4.md, the encoder's ladder, item 1).
     std::string syntax_trace_path;
+    // 'ac4-encode' only: codec-mode=, "auto" (or empty), "simple" or "aspx"
+    // (ac4::CodecMode), and experimental=, the experimental tools asked for.
+    std::string ac4_codec_mode;
+    bool ac4_experimental_balance = false;
+    bool ac4_experimental_varvar = false;
+    bool ac4_experimental_interleave = false;
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in

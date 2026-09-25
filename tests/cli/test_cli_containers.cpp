@@ -478,6 +478,46 @@ TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "
     CHECK(from_mp4->channels == decoded->channels);
 }
 
+TEST_CASE("ac4-encode codes the ASPX mode below 96 kbps a channel, or as codec-mode= says", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_encode_aspx.log";
+    // A second of a 1 kHz tone per channel, under every crossover.
+    constexpr std::size_t kLength = 48000;
+    std::vector<std::vector<float>> channels(2, std::vector<float>(kLength));
+    for (std::size_t i = 0; i < kLength; ++i) {
+        const double t = static_cast<double>(i) / 48000.0;
+        channels[0][i] = static_cast<float>(0.1 * std::sin(2.0 * std::numbers::pi * 1000.0 * t));
+        channels[1][i] = channels[0][i];
+    }
+    const auto wav_in = dir / "ac4_aspx_in.wav";
+    REQUIRE(ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+    const auto out = dir / "ac4_aspx.ac4";
+    struct Run {
+        const char* args;
+        const char* mode;
+    };
+    for (const Run run : {Run{" 64", "ASPX mode"}, Run{" 64 codec-mode=simple", "SIMPLE mode"},
+                          Run{" 192", "SIMPLE mode"}, Run{" 192 codec-mode=aspx", "ASPX mode"}}) {
+        CAPTURE(run.args);
+        REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(out) + run.args, log) == 0);
+        CHECK(read_log(log).find(run.mode) != std::string::npos);
+        const auto wav_out = dir / "ac4_aspx_out.wav";
+        REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(wav_out), log) == 0);
+        const auto decoded = ac3::io::read_wav(wav_out.string());
+        REQUIRE(decoded.has_value());
+        double signal = 0.0;
+        double noise = 0.0;
+        for (std::size_t i = 4800; i + 4800 < kLength; ++i) {
+            const double error = static_cast<double>(decoded->channels[0][i + 4385]) - static_cast<double>(channels[0][i]);
+            signal += static_cast<double>(channels[0][i]) * static_cast<double>(channels[0][i]);
+            noise += error * error;
+        }
+        CHECK(10.0 * std::log10(signal / noise) > 25.0);
+    }
+    CHECK(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(out) + " 64 codec-mode=acpl", log) != 0);
+    CHECK(read_log(log).find("codec-mode") != std::string::npos);
+}
+
 TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_encode_refused.log";

@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -17,8 +18,9 @@
 // back by the decoder (planning/ac4.md, the encoder's ladder, items 1 and 8).
 //
 // The first bytes choose the configuration - channels, sample rate, bit rate,
-// I-frame interval, dialnorm, and the size of the pieces the input arrives
-// in - and the rest are the samples, as 32-bit floats, one channel after the
+// I-frame interval, dialnorm, codec mode, the experimental A-SPX tools, and
+// the size of the pieces the input arrives in - and the rest are the
+// samples, as 32-bit floats, one channel after the
 // other: silence, DC, full-scale square waves, clipping far past full scale,
 // denormals and NaNs are all a few bytes away. What is held:
 //
@@ -114,8 +116,19 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     config.sample_rate_hz = (take.byte() & 1) != 0 ? 44100 : 48000;
     // 4 to 1024 kbps, so the refusals below 8 are reached too.
     config.bitrate_kbps = 4 + static_cast<int>(take.byte()) * 4;
-    config.iframe_interval = 1 + (take.byte() % 32);
-    config.dialnorm_db = -static_cast<double>(take.byte() % 128) / 4.0;
+    // The interval takes the low five bits of its byte and dialnorm seven of
+    // its; the bits over choose the codec mode, the rate's or either forced,
+    // and the experimental A-SPX tools.
+    const std::uint8_t interval = take.byte();
+    config.iframe_interval = 1 + (interval % 32);
+    constexpr std::array<ac4::CodecMode, 4> kModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kSimple,
+                                                      ac4::CodecMode::kAspx, ac4::CodecMode::kAuto};
+    config.codec_mode = kModes[static_cast<std::size_t>((interval >> 5) & 3)];
+    const std::uint8_t dialnorm = take.byte();
+    config.dialnorm_db = -static_cast<double>(dialnorm % 128) / 4.0;
+    config.experimental.aspx_balance = (dialnorm & 0x80) != 0;
+    config.experimental.aspx_interleave = (interval & 0x80) != 0;
+    config.experimental.aspx_varvar = (dialnorm & 0x80) != 0 && (interval & 0x80) != 0;
     const std::size_t piece = 1 + static_cast<std::size_t>(take.byte()) * 37;
 
     const std::size_t floats = take.data.size() / sizeof(float);

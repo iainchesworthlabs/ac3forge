@@ -10,7 +10,9 @@ ladder, item 7.
 The PCM comes from the AC-3 harness's generator, imported rather than copied:
 its per-block plan, the `cliff` profile and the correlation modes serve every
 codec. The configuration space is this encoder's: mono or stereo, 48 or
-44.1 kHz, a constant rate from 8 kbps up, dialnorm, and raw or MP4 output.
+44.1 kHz, a constant rate from 8 kbps up, the codec mode the rate picks or
+either one forced, the experimental A-SPX tools, dialnorm, and raw or MP4
+output.
 
 Each case is held to:
 
@@ -132,6 +134,23 @@ def draw_case(seed):
         options.append("dialnorm=auto")
     elif roll < 0.5:
         options.append(f"dialnorm={rng.randint(1, 31)}")
+    # The rate picks the codec mode (ASPX below 96 kbps a channel); now and
+    # then either is forced, and the experimental A-SPX tools asked for.
+    roll = rng.random()
+    if roll < 0.15:
+        options.append("codec-mode=simple")
+    elif roll < 0.3:
+        options.append("codec-mode=aspx")
+    if rng.random() < 0.25:
+        tools = rng.choice(
+            [
+                "aspx-balance",
+                "aspx-varvar",
+                "aspx-interleave",
+                "aspx-balance,aspx-varvar,aspx-interleave",
+            ]
+        )
+        options.append(f"experimental={tools}")
     sample_rate = rng.choice(SAMPLE_RATES)
     # Two to ten frames of input: several frames, never one, so that block
     # switching and the stereo choice change between frames. dialnorm=auto

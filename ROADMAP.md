@@ -62,7 +62,7 @@ fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https
 | Syntax transcription (`src/ac4dec`) | **Shipped** — reads channel-coded substream syntax, cross-checked against a second transcription |
 | PCM decode | **In progress** — mono and stereo in the SIMPLE and ASPX codec modes decode to PCM (phases D2 and D3), through the QMF banks, companding and A-SPX; A-CPL, 5.X and the other frame rates follow in D4 to D6 |
 | Immersive paths, objects | **Not started** — plan phases D9 and D10; the speech frontend waits for a stream that uses it |
-| Encoder (`src/ac4enc`) | **In progress** — mono and stereo in the SIMPLE codec mode (phase E1), `ac3cli ac4-encode`; A-SPX, A-CPL, 5.X and the other frame rates follow in E2 to E7 |
+| Encoder (`src/ac4enc`) | **In progress** — mono and stereo in the SIMPLE and ASPX codec modes (phases E1 and E2), with companding and A-SPX below 96 kbps a channel, `ac3cli ac4-encode`; A-CPL, 5.X and the other frame rates follow in E3 to E7 |
 | Applications (`ac3cli`, Hearth, Forge GUI, bindings) | **Not started** — plan phases I1 to I6, after the channel-based library |
 
 Hearth and Forge playback of AC-4 waits on PCM decode. Plan:

@@ -31,6 +31,8 @@ target_sources(ac4enc_objects
         src/asf/layout.cpp
         src/asf/psycho.cpp
         src/asf/stereo.cpp
+        src/aspx/aspx_encoder.cpp
+        src/aspx/aspx_syntax.cpp
         src/bit_writer.cpp
         src/encoder.cpp
         src/frame/frame_writer.cpp
