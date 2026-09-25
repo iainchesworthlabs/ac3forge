@@ -36,11 +36,11 @@ void copy_into(std::span<char> field, std::string_view text) {
     field[taken] = '\0';
 }
 
-// "hearth-a1b2c3" from the low three bytes of the WiFi station MAC: two boards
-// from the same box answer to different names without anyone naming them.
+// "hearth-a1b2c3" from the low three bytes of the board's MAC: two boards from
+// the same box answer to different names without anyone naming them.
 void default_name(std::span<char> field) {
     std::array<std::uint8_t, 6> mac{};
-    if (esp_read_mac(mac.data(), ESP_MAC_WIFI_STA) != ESP_OK) {
+    if (!board_mac(mac)) {
         copy_into(field, "hearth");
         return;
     }
@@ -173,6 +173,20 @@ void settings_load() {
 }
 
 const Settings& settings() { return g_settings; }
+
+bool board_mac(std::span<std::uint8_t, 6> mac) {
+    // Ask before reading, not read and fall back: esp_read_mac() logs an error
+    // for a MAC type the target has none of, and a P4 would print one on every
+    // boot for a MAC it was never going to have. ESP-IDF's MAC table
+    // (components/esp_hw_support/mac_addr.c) lists the station MAC only where
+    // SOC_WIFI_SUPPORTED is set, and the P4's WiFi is a second chip's;
+    // esp_mac_addr_len_get() gives 0 for a type the table lacks, and says
+    // nothing. A station MAC is the base MAC unchanged (generate_mac), so the
+    // base MAC is what a chip without a radio has in its place.
+    const esp_mac_type_t type =
+        esp_mac_addr_len_get(ESP_MAC_WIFI_STA) != 0 ? ESP_MAC_WIFI_STA : ESP_MAC_BASE;
+    return esp_read_mac(mac.data(), type) == ESP_OK;
+}
 
 bool settings_set_name(std::string_view name) {
     if (name.empty()) {
