@@ -4205,7 +4205,7 @@ TEST_CASE("cli: unspdif refuses ordinary PCM and leaves no output behind", "[cli
     const auto out = dir / "unspdif_pcm_out.ac3";
     fs::remove(out);
     CHECK(run_cli("unspdif \"" + pcm.string() + "\" \"" + out.string() + "\"", log) != 0);
-    CHECK(read_log(log).find("no AC-3 or E-AC-3 bursts") != std::string::npos);
+    CHECK(read_log(log).find("no AC-3, E-AC-3 or AC-4 bursts") != std::string::npos);
     // A failed run leaves no half-written stream to be mistaken for output.
     CHECK_FALSE(fs::exists(out));
 

@@ -233,7 +233,7 @@ SessionOutput PlayerSession::on_message(std::span<const std::uint8_t> message, s
             return {};
         }
         const auto chunk = parse_burst_chunk(message);
-        if (!chunk || chunk->data_type() != ac3forge::burst_data_type(burst_stream_->data_type)) {
+        if (!chunk || !ac3forge::carries(burst_stream_->data_type, chunk->data_type())) {
             listener_->on_invalid_burst();
             return {};
         }

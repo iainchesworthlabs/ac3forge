@@ -57,9 +57,6 @@ constexpr std::int64_t kReadAhead = 1'500'000;
 constexpr std::int64_t kNetworkLead = 100'000;
 // A unit's longest play time, which a group counts each queued unit as lasting.
 constexpr std::int64_t kLongestUnit = 150'000;
-// The samples in every _ac3forge_player@v1 burst (planning/hearth-sendspin-extension.md, Burst
-// chunks).
-constexpr std::int64_t kSamplesPerBurst = 1536;
 constexpr std::chrono::seconds kRedialAfter{10};
 
 [[nodiscard]] bool contains(const std::vector<std::string>& roles, std::string_view role) {
@@ -1729,8 +1726,8 @@ bool Group::push_burst(const Burst& burst) {
         return false;
     }
     const std::int64_t timestamp = state.time_of(burst.frame);
-    // A sink holds each chunk until its 1,536 samples have played.
-    const std::int64_t played = state.time_of(burst.frame + kSamplesPerBurst);
+    // A sink holds each chunk until its samples have played.
+    const std::int64_t played = state.time_of(burst.frame + burst.frames);
     for (State::Member& member : state.members) {
         if (!member.started || !member.bursts) {
             continue;

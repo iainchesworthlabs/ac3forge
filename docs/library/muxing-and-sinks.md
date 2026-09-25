@@ -633,22 +633,46 @@ Microsoft's own IEC 61937 documentation (both fetched live and cross-checked aga
 other, not recalled), plus round-trip and real-audio unit tests. This header only produces the
 framed bytes; getting them onto real hardware is `PassthroughSink`, below.
 
+**AC-4** travels in four burst types of its own, from IEC 61937-14: `Pc` data type 24 with
+subdata types 0 to 3, which are AC-4, AC-4 HBR4, AC-4 HBR16 and AC-4 LD. `Ac4BurstPacker` packs one
+sync frame to a burst, and a burst lasts as long as its frame, so the repetition period follows
+the stream's frame rate. At 29.97, 59.94 and 119.88 fps a frame is not a whole number of IEC 60958
+frames, and the periods of five bursts in a row follow the sequence Part 14's tables give. The type
+sets the link: the content rate for AC-4 and AC-4 LD (48 kHz only), four times it for HBR4, and
+sixteen times it on eight channels for HBR16. `ac4_burst_type_for()` picks the smallest type a
+stream's largest frame fits. After each burst, `last()` reports its `Pc`, `Pd`, period, place in
+its sequence and link rate; `wrap_ac4_stream` is the batch form. The packer is written from the
+standard's text, and `ac3tests` checks its periods, sequences and `Pc` codes against a second
+transcription of the tables. No device here accepts AC-4.
+
+Part 14 leaves two choices, and the header says which reading the packer takes. It numbers the
+five bursts of a sequence without saying which frame is data-burst 0: the packer places a frame by
+its phase in the five-frame cycle of ETSI TS 103 190-2 clause 5.11, from its `sequence_counter`,
+so a stream packed from any frame gives each frame the same period. And it gives `Pd` in bits for
+AC-4 and AC-4 LD, where IEC 61937-2 Table 2 says bytes: the packer writes bits, and the reader
+takes either, since the sync frame states its own length.
+
 **De-framing** (the other direction) is `BurstReader`, `unwrap_stream` and
 `PassthroughDetector`. `BurstReader` is a streaming `Pa`/`Pb`/`Pc`/`Pd` parser: data types 0x01
-and 0x15, both 16-bit word orders, the stuffing between bursts, `Pd`'s two different units, and
-E-AC-3's 4× carrier with its multi-syncframe bursts. Feed it carrier bytes in whatever chunks
-the source produces and take elementary-stream bytes out; it holds one burst plus the caller's
-chunk and nothing more, so a two-hour capture costs what a two-second one does. `unwrap_stream`
-is the batch form, mirroring `wrap_stream`.
+and 0x15 and AC-4's four types, both 16-bit word orders, the stuffing between bursts, `Pd`'s
+different units, and E-AC-3's 4× carrier with its multi-syncframe bursts. Feed it carrier bytes in
+whatever chunks the source produces and take elementary-stream bytes out; it holds one burst plus
+the caller's chunk and nothing more, so a two-hour capture costs what a two-second one does.
+`unwrap_stream` is the batch form, mirroring `wrap_stream`. `last_header()` gives each burst's
+`Pc` fields, its `Pd` as written, and where in the carrier it started, which for AC-4 is how its
+period can be measured.
 
 The input is by definition untrusted — a burst carrier comes off a wire or out of a capture
 device — so nothing taken from `Pd` is believed past its data type's repetition period, and a
-preamble not backed by a `0x0B77` syncframe is treated as a false match to resync past rather
-than a fatal error. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that accurate.
+preamble not backed by a syncframe (`0x0B77`, or AC-4's `0xAC40` or `0xAC41`) is treated as a false
+match to resync past rather than a fatal error. An AC-4 burst's `Pd` also has to agree with the
+length its sync frame states. `fuzz/fuzz_iec61937_unwrap.cpp` keeps that accurate, and feeds the
+same bytes to the AC-4 packer.
 
 This is also what closes the loop on the wrap side: bursts written by this project *and* by
 FFmpeg's `spdif` muxer read back byte-exactly to the streams that went in, AC-3 and E-AC-3,
-little-endian and big-endian carriers alike. Backs `ac3cli unspdif`.
+little-endian and big-endian carriers alike, and AC-4 bursts from `Ac4BurstPacker` read back to the
+sync frames that went in, in all four types and at every frame rate. Backs `ac3cli unspdif`.
 
 `PassthroughDetector` answers the capture-side question — is this endpoint delivering PCM, or
 somebody's bursts? — from the same interleaved float frames `ac3::audio::Capture` delivers,
@@ -668,6 +692,19 @@ Like `MonitorSink` below, it reports where the device has got to (`position()`),
 either format, although an E-AC-3 link runs at four times the content's rate. A pause stops the
 link, and a receiver drops its lock when that happens, so the first moments after a resume can
 be silent.
+
+**AC-4.** `BitstreamFormat` names AC-4's three links: `kAc4` for AC-4 and AC-4 LD bursts at the
+content rate, `kAc4Hbr4` at four times it, and `kAc4Hbr16` at sixteen times it on eight channels.
+An AC-4 burst is as long as its frame's repetition period, so `submit()` takes any whole number of
+link frames up to the longest (`burst_size_fits()`). Two platforms can send it: ALSA, and Android
+through an `ENCODING_IEC61937` track, both of which take IEC 61937 bursts as opaque two-channel
+data with the non-audio flag set, whatever codec they hold. WASAPI, PipeWire and Core Audio are
+asked for a codec by name (a `KSDATAFORMAT_SUBTYPE_IEC61937_*` subformat, a SPA IEC 958 codec, an
+`AudioFormatID`), and none of the three has a name for AC-4 in its current SDK, so `start()`
+refuses AC-4 there with `kUnsupportedFormat`. Every backend refuses `kAc4Hbr16` the same way,
+since none opens the eight-channel high-bit-rate link it needs.
+`RenderDeviceInfo::supports_ac4_passthrough` says whether an endpoint takes the base link; no
+platform reports whether the receiver decodes AC-4, and no receiver found so far does.
 
 When the device goes away mid-stream (the cable pulled, the receiver switched off, the endpoint
 disabled), the sink stops itself. `running()` turns false, `position()` reports nothing,

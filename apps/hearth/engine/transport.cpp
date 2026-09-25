@@ -69,7 +69,7 @@ namespace {
     if (!stream) {
         return "not a bitstream";
     }
-    return *stream == audio::BitstreamFormat::kAc3 ? "AC-3" : "E-AC-3";
+    return audio::format_name(*stream);
 }
 
 // Why an item that did not join reopens the output, for the status line.

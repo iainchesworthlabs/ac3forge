@@ -861,8 +861,9 @@ properties. `ac3cli probe json=1` writes the same fields.
   61937-2 Amendment 2 (2018) assigned `Pc` data type 24, with subdata types 0 (AC-4), 1 (HBR4),
   2 (HBR16) and 3 (LD), and not the extended data type mechanism. The base type fits a two-channel
   48 kHz link. The repetition periods and the AC-4 fields in `Pc` bits 8 to 11 are in Part 14's
-  tables, which are not public. ATSC A/342-2's maximum frame sizes match one sync frame per burst,
-  repeating once per audio frame, exactly at every frame rate; that is an inference.
+  tables. ATSC A/342-2's maximum frame sizes match one sync frame per burst, repeating once per
+  audio frame, exactly at every frame rate; D11 read Part 14, which says so (Annex A, and the
+  repetition periods of Tables 7, 8, 13, 14, 19, 20 and 25).
 - **Devices.** No receiver, soundbar or processor was found that accepts an AC-4 bitstream. Dolby
   wrote in 2021 that none existed, and that televisions and set-top boxes decode AC-4 and send PCM
   or Dolby MAT onward. No IEC 61937 AC-4 format exists in FFmpeg's S/PDIF muxer, Android's S/PDIF
@@ -1421,9 +1422,29 @@ into the tree.
 
 - The four AC-4 burst types (`Pc` data type 24, subdata types 0 to 3) in `ac3::iec61937`, with
   Part 14's repetition periods, burst sequences at the 1000/1001 frame rates, maximum burst lengths
-  and the AC-4 fields of `Pc` bits 8 to 11; `BurstReader` recognising them.
+  and the AC-4 fields of `Pc` bits 8 to 11; `BurstReader` recognising them. `Ac4BurstPacker` packs
+  one sync frame to a burst in any of the four types, with Part 14's tables transcribed as data and
+  checked against renders of its pages; `ac4_burst_type_for()` picks the smallest type a stream's
+  largest frame fits, since the type sets the link's rate. The reader checks an AC-4 burst's `Pd`
+  against the sync frame's own size, and now reads all seven data-type bits of `Pc`, so data type
+  1 with a subdata type is no longer taken for AC-3.
 - An AC-4 format in `PassthroughSink`, on the backends whose operating system has a way to send it.
-- The AC-4 data type on the extension page Hearth's phase A4 writes, and in the test sink.
+  D11 found two that do: ALSA and Android take IEC 61937 bursts as opaque two-channel data with the
+  non-audio flag set, and send AC-4 on a link at the content rate and AC-4 HBR4 at four times it.
+  WASAPI names a codec's subformat and the Windows SDK has none for AC-4, PipeWire's IEC 958 codecs
+  have no AC-4, and Core Audio has no AC-4 format ID, so those three refuse it with
+  `kUnsupportedFormat`; so does AC-4 HBR16 everywhere, whose eight-channel link no backend opens.
+- The AC-4 data type on the extension page Hearth's phase A4 writes, and in the test sink: `"ac4"`,
+  a burst chunk of one sync frame, which the test sink decodes with `ac4::Decoder` and renders.
+- Part 14 leaves two choices, recorded in `iec61937.cpp` and the pull request. It numbers the five
+  bursts of a sequence without saying which frame is data-burst 0; the packer takes the frame's
+  phase in the five-frame cycle TS 103 190-2 clause 5.11 locks the decoder's converter to, set by
+  `sequence_counter`. Part 14's sequences start at the same frame of that cycle, so each burst
+  starts within a sample of its frame's first decoded sample, and a stream packed from any frame
+  gives each frame the same period. And it gives `Pd` in bits for AC-4 and AC-4 LD where IEC
+  61937-2 Table 2 says bytes; the packer writes bits, as the part that defines the data-burst says,
+  and the reader takes either. Its AC-4 LD rate of 187.5 fps has no `frame_rate_index` in
+  TS 103 190-1 V1.4.1, so no frame reaches that row.
 
 **Exit:** for every frame rate, a stream packed and read back returns every frame unchanged, with
 each burst's repetition period, sequence and `Pc` fields as Part 14's tables give them; the test

@@ -50,6 +50,14 @@
 // supports_eac3_passthrough false while supports_ac3_passthrough is true. An
 // optical or coaxial link is not specified past 96 kHz; HDMI is where E-AC-3
 // actually goes.
+//
+// AC-4 (IEC 61937-14) needs nothing ALSA does not already do: the channel
+// status says "not audio" whatever the codec, so AC-4's bursts go out the way
+// AC-3's do, on a link at the content rate, and its HBR4 bursts at 4x the way
+// E-AC-3's do. An AC-4 burst is as long as its frame, which follows the
+// stream's frame rate, so the queue holds bursts of different lengths and the
+// counts below are kept in bytes. AC-4 HBR16 needs the eight-channel
+// high-bit-rate link, which this backend does not open, and is refused.
 
 #include <alsa/asoundlib.h>
 
@@ -96,10 +104,6 @@ constexpr int kWaitMs = 100;
 // How many recoveries one burst's write may need before the rest of it is
 // given up on; see MonitorSink's ALSA backend.
 constexpr int kWriteRetries = 4;
-
-std::size_t burst_bytes_for(BitstreamFormat format) {
-    return format == BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes : iec61937::kBurstBytes;
-}
 
 // Why snd_pcm_open() said no.
 //
@@ -340,6 +344,9 @@ std::string_view describe(PassthroughError error) {
                    "this user has no permission on it, which means the `audio` group)";
         case PassthroughError::kAlreadyRunning: return "passthrough is already running";
         case PassthroughError::kNotRunning: return "passthrough is not running";
+        case PassthroughError::kUnsupportedFormat:
+            return "AC-4 HBR16 travels on an eight-channel high-bit-rate link, and this backend "
+                   "opens a two-channel one";
     }
     return "unknown passthrough error";
 }
@@ -373,14 +380,18 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
         // reasoning in that header's DigitalOutput comment holds only for a
         // name that would carry channel status, which a plug name cannot.
         const bool digital = candidate.kind != DigitalOutput::kNone;
+        const bool ac3_link =
+            digital && probe_format(candidate.name, BitstreamFormat::kAc3, sample_rate);
         RenderDeviceInfo info{
             .id = candidate.name,
             .name = candidate.friendly,
             .is_default = false,
-            .supports_ac3_passthrough =
-                digital && probe_format(candidate.name, BitstreamFormat::kAc3, sample_rate),
+            .supports_ac3_passthrough = ac3_link,
             .supports_eac3_passthrough =
                 digital && probe_format(candidate.name, BitstreamFormat::kEac3, sample_rate),
+            // AC-4's link is AC-3's - two channels at the content rate, the
+            // same channel status - so one probe answers both.
+            .supports_ac4_passthrough = ac3_link,
             // The control probe: the same carrier format on the raw hardware
             // device, with no channel status. A device that takes this but
             // neither of the above cannot bitstream; one that takes none of
@@ -416,9 +427,12 @@ struct PassthroughSink::Impl {
     std::unique_ptr<ByteRingBuffer> queue;
     std::jthread worker;
     snd_pcm_t* pcm = nullptr;
-    // Set by start() and read by submit(): the two burst sizes are four times
-    // apart, and a caller that hands over the wrong one is handing over a
-    // frame boundary in the wrong place rather than a slightly odd length.
+    // Set by start() and read by submit(): the AC-3 and E-AC-3 burst sizes are
+    // four times apart, and a caller that hands over the wrong one is handing
+    // over a frame boundary in the wrong place rather than a slightly odd
+    // length. An AC-4 burst is any whole number of link frames up to the
+    // longest (burst_size_fits()).
+    BitstreamFormat format = BitstreamFormat::kAc3;
     std::size_t burst_bytes = iec61937::kBurstBytes;
     // Link frames to a content frame (carrier_ratio()), for position().
     std::uint32_t ratio = 1;
@@ -426,7 +440,10 @@ struct PassthroughSink::Impl {
     // when the device goes away under it (see the end of its loop).
     std::atomic_bool running{false};
     std::atomic<std::uint64_t> submitted{0};
-    std::atomic<std::uint64_t> rendered{0};
+    // In bytes, the bursts not all being one length: stats() turns them into
+    // bursts.
+    std::atomic<std::uint64_t> submitted_bytes{0};
+    std::atomic<std::uint64_t> rendered_bytes{0};
     std::atomic<std::uint64_t> underruns{0};
     // What the render thread last read from the device, in link frames, for
     // position(): snd_pcm_delay() against the frames handed over. Only the
@@ -454,8 +471,19 @@ bool PassthroughSink::running() const {
 }
 
 PassthroughStats PassthroughSink::stats() const {
-    return {.bursts_submitted = impl_->submitted.load(),
-            .bursts_rendered = impl_->rendered.load(),
+    const std::uint64_t submitted = impl_->submitted.load();
+    const std::uint64_t submitted_bytes = impl_->submitted_bytes.load();
+    const std::uint64_t rendered_bytes = impl_->rendered_bytes.load();
+    // Whole bursts heard. Exact for AC-3 and E-AC-3, whose bursts are all one
+    // length, and for AC-4 once everything submitted has been heard, which is
+    // what a caller draining the queue waits for; part-way, by their mean
+    // length.
+    const std::uint64_t rendered = submitted_bytes == 0 ? 0
+                                   : rendered_bytes >= submitted_bytes
+                                       ? submitted
+                                       : rendered_bytes * submitted / submitted_bytes;
+    return {.bursts_submitted = submitted,
+            .bursts_rendered = rendered,
             .underruns = impl_->underruns.load()};
 }
 
@@ -523,7 +551,7 @@ bool PassthroughSink::can_submit() const {
 }
 
 bool PassthroughSink::submit(std::span<const std::byte> burst) {
-    if (!running() || !impl_->queue || burst.size() != impl_->burst_bytes) {
+    if (!running() || !impl_->queue || !burst_size_fits(impl_->format, burst.size())) {
         return false;
     }
     if (!can_submit()) {
@@ -534,6 +562,7 @@ bool PassthroughSink::submit(std::span<const std::byte> burst) {
         return false;
     }
     impl_->submitted.fetch_add(1);
+    impl_->submitted_bytes.fetch_add(burst.size());
     return true;
 }
 
@@ -558,17 +587,23 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    if (format_kind == BitstreamFormat::kAc4Hbr16) {
+        return std::unexpected(PassthroughError::kUnsupportedFormat);
+    }
     // A render thread that ended because its device went away still has the
     // device open, and a hw: device opens for one process at a time. stop()
     // joins the thread and closes the handle; with nothing started it does
     // nothing.
     stop();
 
-    // The link rate, not the content rate: the same for AC-3 and 4x it for
-    // E-AC-3. Everything below - the channel status, the device parameters,
-    // the burst size - is expressed in the carrier's terms from here on.
+    // The link rate, not the content rate: the same for AC-3 and AC-4, and 4x
+    // it for E-AC-3 and AC-4 HBR4. Everything below - the channel status, the
+    // device parameters, the burst size - is expressed in the carrier's terms
+    // from here on. For AC-4 the burst size is the longest one, which the
+    // period and the write chunk are sized to; shorter bursts run on in the
+    // queue behind each other.
     const std::uint32_t carrier = alsa::carrier_rate(format_kind, sample_rate);
-    const std::size_t burst_bytes = burst_bytes_for(format_kind);
+    const std::size_t burst_bytes = max_burst_bytes(format_kind);
     const std::size_t burst_frames = burst_bytes / kCarrierFrameBytes;
 
     // Pick the device before touching it. An empty id means "the default
@@ -620,10 +655,12 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     // ahead of real time never has to spin. Counted in bursts rather than
     // bytes so an E-AC-3 session gets the same second, not a quarter of one.
     impl_->queue = std::make_unique<ByteRingBuffer>(burst_bytes * 40);
+    impl_->format = format_kind;
     impl_->burst_bytes = burst_bytes;
     impl_->ratio = carrier_ratio(format_kind);
     impl_->submitted.store(0);
-    impl_->rendered.store(0);
+    impl_->submitted_bytes.store(0);
+    impl_->rendered_bytes.store(0);
     impl_->underruns.store(0);
     impl_->counter.restart();
     impl_->paused.store(false);
@@ -683,7 +720,8 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
                 impl_->queue->discard_to(impl_->flush_mark.load(std::memory_order_acquire));
                 handed_over = 0;
                 impl_->counter.restart();
-                impl_->rendered.store(0, std::memory_order_relaxed);
+                impl_->rendered_bytes.store(0, std::memory_order_relaxed);
+                impl_->submitted_bytes.store(0, std::memory_order_relaxed);
                 impl_->submitted.store(0, std::memory_order_relaxed);
                 impl_->flushes.fetch_add(1, std::memory_order_release);
                 if (device_paused) {
@@ -754,7 +792,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
             if (lost) {
                 break;
             }
-            impl_->rendered.fetch_add(got / burst_bytes);
+            impl_->rendered_bytes.fetch_add(got);
         }
 
         if (lost) {

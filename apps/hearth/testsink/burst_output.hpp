@@ -20,14 +20,23 @@
 #include "ac3/render/serving.hpp"
 #include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/chunks.hpp"
+#include "ac4dec/decoder.hpp"
 
 // A test sink's output for _ac3forge_player@v1 (planning/hearth-sendspin-extension.md): each
-// stream's bursts decoded, AC-3 or E-AC-3 with any object layer, and rendered to the sink's speaker
-// layout by ac3::render, to a float WAV file with one channel per slot and a play-time log beside
-// it. The log's lines are `local_time_us,first_frame,frames` for each burst, first_frame being the
-// burst's first decoded sample counted from the stream's start, and `clear,<frames>` where
-// stream/clear dropped what was buffered, as WavOutput's are for player@v1. With no directory it
-// decodes and counts.
+// stream's bursts decoded, AC-3 or E-AC-3 with any object layer, or AC-4, and rendered to the
+// sink's speaker layout by ac3::render, to a float WAV file with one channel per slot and a
+// play-time log beside it. The log's lines are `local_time_us,first_frame,frames` for each burst,
+// first_frame being the burst's first decoded sample counted from the stream's start, and
+// `clear,<frames>` where stream/clear dropped what was buffered, as WavOutput's are for player@v1.
+// With no directory it decodes and counts.
+//
+// AC-4 (planning/ac4.md, D11): a burst is one AC-4 sync frame (IEC 61937-14 Annex A), zero-padded
+// to a whole 8-byte unit in an HBR16 burst, which ac4::Decoder decodes to its own channels; those
+// are rendered by the bed ac4_bed() makes of the decoder's speakers, in blocks of 256 samples, a
+// two-speaker layout included, since the AC-4 decoder has no fold of its own yet. A burst's
+// duration on the log is its frame's at the base sampling frequency, which IEC 61937-14 Tables 5
+// and 6 give as the AC-4 data-burst's repetition period. The decoder on main decodes 48 kHz at
+// frame_rate_index 13 only, and refuses the other rates, which count as undecodable.
 //
 // How it decodes, which a local reference decode repeats to compare: DecoderConfig's defaults in
 // line mode, served by render::serve(layout, Lo/Ro, ObjectsPolicy::kAuto) and
@@ -41,6 +50,12 @@
 // Not thread-safe: the sink calls it from the session's callbacks, under the session's lock.
 
 namespace ac3::hearth::testsink {
+
+// The coded layout an AC-4 decoder's channels make, for the renderer: each speaker at the E-AC-3
+// channel map's location of the same place. Ls and Rs stay the surround pair, which a 7.X mode
+// keeps at the sides; Lb and Rb, Lw and Rw, and Tfl and Tfr are the rear, wide and front height
+// pairs (ETSI TS 103 190-1 clause D.1; A/52 Table E2.5).
+[[nodiscard]] eac3::chanmap::Layout ac4_bed(std::span<const ac4::Speaker> speakers);
 
 class BurstOutput {
    public:
@@ -73,6 +88,10 @@ class BurstOutput {
     void reset_decoding();
     void decode_unit(std::span<const std::byte> unit);
     void place(const PcmBlock& block);
+    void write_ac4(const sendspin::BurstChunk& chunk, std::int64_t local_time);
+    void render_ac4(const ac4::DecodedFrame& frame);
+    // Writes the first `n` samples of every slot of block_.
+    void emit(std::size_t n);
 
     std::filesystem::path directory_;
     std::string prefix_;
@@ -83,6 +102,9 @@ class BurstOutput {
     std::optional<sendspin::ac3forge::StreamStart> stream_;
     std::optional<FrameDecoder> ac3_decoder_;
     std::optional<Eac3Decoder> eac3_decoder_;
+    std::optional<ac4::Decoder> ac4_decoder_;
+    // One span per decoded AC-4 channel, a block's worth of it at a time.
+    std::vector<std::span<const float>> ac4_block_;
     std::optional<int> programme_;
     // The bed each unit given to the decoder is placed by, oldest first: a unit's first block takes
     // the oldest, whichever call delivers it.
