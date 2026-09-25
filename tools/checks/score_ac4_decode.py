@@ -12,9 +12,10 @@ least-squares gain per channel, and checks (planning/ac4.md, the decoder's ladde
            encoder.
   gain     every channel of a 2.0 or mono leg within 0.2 dB of unity, fitted below the crossover
            in ASPX. The streams were made with loudness measured only, and the decoder applies no
-           DRC or output level yet, so the prediction is the source's own level. An IMS leg, made from 5.1, is compared with the
-           source's Lo/Ro downmix (L + C/sqrt 2 + Ls/sqrt 2 and its mirror), which its channels must
-           correlate with at 0.95 or better; its render is DEE's, so its level is only reported.
+           DRC or output level yet, so the prediction is the source's own level. An IMS leg, made
+           from 5.1, is compared with the source's Lo/Ro downmix (L + C/sqrt 2 + Ls/sqrt 2 and its
+           mirror), which its channels must correlate with at 0.95 or better; its render is DEE's,
+           so its level is only reported.
   SNR      every channel's signal-to-noise ratio against the gain-scaled reference at or above its
            floor, the first measurement less 1 dB: over the whole band for SIMPLE, and below the
            A-SPX crossover for ASPX, from 2 048-point STFT frames.
