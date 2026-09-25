@@ -137,6 +137,7 @@ struct Options {
     bool ac4_experimental_interleave = false;
     bool ac4_experimental_coding_configs = false;
     bool ac4_experimental_acpl = false;
+    bool ac4_experimental_three_zero = false;
     std::string ac4_experimental_seven_x;
     // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
     // dialnorm is taken to (ac4::OutputConfig::output_level_dbfs), unset to
@@ -211,12 +212,65 @@ struct Options {
         std::optional<ac4::PreferredDownmix> preferred_downmix;  // dmixmod=
         std::optional<double> loro_correction_db;                // loro-correction=
         std::optional<double> ltrt_correction_db;                // ltrt-correction=
-        // Dialogue enhancement: dialogue-channels= (any of l, r and c),
-        // dialogue-stem=, dialogue-method= and dialogue-max-gain=.
-        std::optional<std::string> dialogue_channels;
-        std::string dialogue_stem;
-        ac4::DialogueMethod dialogue_method = ac4::DialogueMethod::kChannelIndependent;
-        int dialogue_max_gain_db = 9;
+        // crc=on|off: whether a raw stream's sync frames carry Part 2 Annex
+        // G's CRC (sync word 0xAC41), which they do unless crc=off.
+        std::optional<bool> crc;
+        // A substream's dialogue enhancement (ac4::DialogueConfig):
+        // dialogue-channels= (any of l, r and c), dialogue-stem=,
+        // dialogue-method=, dialogue-max-gain= and dialogue-hybrid= (the
+        // waveform's share, 0 to 1, which a dialogue enhancement substream
+        // carries), for the positional input, and as substreamN-dialogue-...=
+        // for substream N.
+        struct Dialogue {
+            std::optional<std::string> channels{};
+            std::string stem{};
+            ac4::DialogueMethod method = ac4::DialogueMethod::kChannelIndependent;
+            int max_gain_db = 9;
+            std::optional<double> hybrid_share{};
+        };
+        // Substreams, from 1, the first being the positional input:
+        // substreamN= (N from 2) names another input WAV, whose channel count
+        // is its layout, and substreamN-<key>= sets what ac4::SubstreamConfig
+        // takes of substream N. Substream 1's dialogue enhancement and codec
+        // mode are the bare dialogue-...= and codec-mode= keys, which its
+        // substream1-... spellings set too.
+        struct Substream {
+            std::string path{};                               // substreamN=
+            std::optional<int> bitrate_kbps{};                // -bitrate=
+            std::string codec_mode{};                         // -codec-mode=, as codec-mode=
+            std::optional<ac4::ContentClassifier> content{};  // -content=
+            std::string language{};                           // -language=
+            std::optional<int> enhances{};                    // -enhances=, a substream from 1
+            Dialogue dialogue{};                              // -dialogue-...=
+            std::optional<int> max_dialogue_gain_db{};        // -max-dialogue-gain=
+            std::vector<double> pan_degrees{};                // -pan=
+            std::vector<ac4::EmdfPayload> emdf{};             // -emdf=, one a token
+            bool named = false;                               // any substreamN token
+        };
+        std::vector<Substream> substreams{Substream{}};  // [N - 1]
+        // Presentations, from 1: presentationN= lists the substreams it plays,
+        // from 1, in Table 53's order, and presentationN-<key>= sets what
+        // ac4::PresentationConfig takes of presentation N.
+        struct Presentation {
+            std::vector<int> substreams{};        // presentationN=
+            std::optional<int> config{};          // -config=, Table 53
+            std::optional<int> id{};              // -id=
+            std::optional<int> md_compat{};       // -md-compat=
+            std::optional<bool> enabled{};        // -enabled=
+            bool pre_virtualized = false;         // -pre-virtualized=
+            std::string name{};                   // -name=
+            std::optional<double> dialnorm_db{};  // -dialnorm=
+            std::vector<double> gains_db{};       // -gains=
+            // -main-gain=, -main-centre-gain=, -main-front-gain= and
+            // -associated-pan=: the associated audio's mixing values.
+            std::optional<double> main_db{};
+            std::optional<double> main_centre_db{};
+            std::optional<double> main_front_db{};
+            std::optional<double> associated_pan{};
+            std::vector<ac4::EmdfPayload> emdf{};  // -emdf=, one a token
+            bool named = false;                    // any presentationN token
+        };
+        std::vector<Presentation> presentations{};  // [N - 1]
     };
     Ac4Encode ac4enc{};
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).

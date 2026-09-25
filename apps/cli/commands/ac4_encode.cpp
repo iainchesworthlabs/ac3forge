@@ -26,15 +26,18 @@
 #include "mp4/mp4.hpp"
 
 // ac4-encode: WAV to AC-4 through ac4::Encoder (src/ac4enc), as a raw stream
-// of sync frames with the CRC of TS 103 190-2 Annex G, or in an MP4 file with
-// Annex E's 'ac-4' sample entry when the output is named .mp4, .m4a or .mov.
-// What the encoder writes so far: mono, stereo, 5.0 and 5.1, and with
-// experimental=7x-... 7.0 and 7.1, at 48 kHz at every frame rate of Part 1
-// Table 83 or at 44.1 kHz in 2 048-sample frames, the SIMPLE, ASPX or A-CPL
-// codec modes, at a constant, average or variable rate, with the loudness,
-// DRC, downmix and dialogue enhancement metadata the options configure. The
-// WAV file's channels are taken in the order `decode` writes them
-// (ac4_channels.hpp).
+// of sync frames with the CRC of TS 103 190-2 Annex G (without it where
+// crc=off), or in an MP4 file with Annex E's 'ac-4' sample entry when the
+// output is named .mp4, .m4a or .mov. What the encoder writes: mono, stereo,
+// 5.0 and 5.1, and with experimental=7x-... 7.0 and 7.1 and with
+// experimental=three-zero 3.0, at 48 kHz at every frame rate of Part 1 Table
+// 83 or at 44.1 kHz in 2 048-sample frames, the SIMPLE, ASPX or A-CPL codec
+// modes, at a constant, average or variable rate, with the loudness, DRC,
+// downmix and dialogue enhancement metadata the options configure; and, with
+// substreamN= and presentationN=, several substreams, each an input of its
+// own or a hybrid dialogue enhancement's waveform, and the presentations of
+// Part 2 Table 53 made of them. Each WAV file's channels are taken in the
+// order `decode` writes them (ac4_channels.hpp).
 
 namespace ac3cli::commands {
 namespace {
@@ -86,10 +89,10 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
 }
 
 // The encoder's input channels, in ac4::Decoder's order, for a WAV file of
-// `count` channels and the 7.X element's additional pair; empty for a count
-// the encoder does not take with that pair.
-[[nodiscard]] std::vector<ac4::Speaker> input_speakers(std::size_t count,
-                                                       ac4::AdditionalPair pair) {
+// `count` channels, the 7.X element's additional pair and whether the 3.0
+// element is asked for; empty for a count the encoder does not take so.
+[[nodiscard]] std::vector<ac4::Speaker> input_speakers(std::size_t count, ac4::AdditionalPair pair,
+                                                       bool three_zero) {
     using S = ac4::Speaker;
     const bool seven = count == 7 || count == 8;
     if (seven != (pair != ac4::AdditionalPair::kNone)) {
@@ -100,6 +103,11 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
             return {S::kCentre};
         case 2:
             return {S::kLeft, S::kRight};
+        case 3:
+            if (three_zero) {
+                return {S::kLeft, S::kRight, S::kCentre};
+            }
+            return {};
         case 5:
         case 6:
         case 7:
@@ -130,6 +138,8 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
             return "mono";
         case 2:
             return "stereo";
+        case 3:
+            return "3.0";
         case 5:
             return "5.0";
         case 6:
@@ -169,8 +179,9 @@ struct Measured {
     const std::size_t count = channels.size();
     const std::size_t bed = count > 6 ? count - 2 : count;
     const bool lfe = bed == 6;
-    const auto acmod =
-        bed == 1 ? ac3::Acmod::k1_0 : (bed == 2 ? ac3::Acmod::k2_0 : ac3::Acmod::k3_2);
+    const auto acmod = bed == 1   ? ac3::Acmod::k1_0
+                       : bed == 2 ? ac3::Acmod::k2_0
+                                  : (bed == 3 ? ac3::Acmod::k3_0 : ac3::Acmod::k3_2);
     const auto rate = sample_rate == 48000 ? ac3::SampleRate::k48000 : ac3::SampleRate::k44100;
     ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
     // The meter takes AC-3's coded order, L C R Ls Rs and the LFE last, and
@@ -243,6 +254,125 @@ struct Measured {
     return false;
 }
 
+// codec-mode='s values as ac4::CodecMode, kAuto for "auto" and none.
+[[nodiscard]] ac4::CodecMode codec_mode_of(std::string_view name) {
+    if (name == "simple") {
+        return ac4::CodecMode::kSimple;
+    }
+    if (name == "aspx") {
+        return ac4::CodecMode::kAspx;
+    }
+    if (name == "aspx-acpl-1") {
+        return ac4::CodecMode::kAspxAcpl1;
+    }
+    if (name == "aspx-acpl-2") {
+        return ac4::CodecMode::kAspxAcpl2;
+    }
+    if (name == "aspx-acpl-3") {
+        return ac4::CodecMode::kAspxAcpl3;
+    }
+    return ac4::CodecMode::kAuto;
+}
+
+// One input of the stream: a substream's WAV file, its channels in the
+// encoder's order, and its dialogue stem where it has one.
+struct Input {
+    ac3::io::WavData wav;
+    std::vector<ac4::Speaker> speakers;
+    std::vector<std::size_t> wav_index;  // the WAV file's channel of each encoder channel
+    ac3::io::WavData stem;
+    bool has_stem = false;
+};
+
+// Reads substream `number`'s WAV file and its dialogue stem, and checks them
+// against what the encoder takes; nothing, the message printed, where they are
+// not.
+[[nodiscard]] std::optional<Input> read_input(std::string_view path, std::size_t number,
+                                              const Options::Ac4Encode::Dialogue& dialogue,
+                                              ac4::AdditionalPair pair, bool three_zero) {
+    auto wav = read_wav_arg(path);
+    if (!wav.has_value()) {
+        fmt::println(stderr, "error: {}: {}", path, ac3::io::describe(wav.error()));
+        return std::nullopt;
+    }
+    Input input;
+    input.speakers = input_speakers(wav->channels.size(), pair, three_zero);
+    if (input.speakers.empty()) {
+        fmt::println(stderr,
+                     "error: {}: AC-4 encoding takes mono, stereo, 5.0 and 5.1, 7.0 and 7.1 with "
+                     "experimental=7x-back, 7x-wide or 7x-top-front, and 3.0 with "
+                     "experimental=three-zero; substream {} has {} channels{}",
+                     path, number, wav->channels.size(),
+                     pair != ac4::AdditionalPair::kNone ? " and a 7.X pair was named" : "");
+        return std::nullopt;
+    }
+    if (wav->sample_rate != 48000 && wav->sample_rate != 44100) {
+        fmt::println(stderr, "error: {}: AC-4 encoding takes 48 or 44.1 kHz; the source is {} Hz",
+                     path, wav->sample_rate);
+        return std::nullopt;
+    }
+    const std::vector<std::size_t> wav_order = ac4_order(std::span{input.speakers}, ac4_wav_rank);
+    input.wav_index.resize(input.speakers.size());
+    for (std::size_t w = 0; w < wav_order.size(); ++w) {
+        input.wav_index[wav_order[w]] = w;
+    }
+    // dialogue-stem=: the dialogue in the programme's channels, sample for
+    // sample.
+    if (!dialogue.stem.empty()) {
+        auto stem = read_wav_arg(dialogue.stem);
+        if (!stem.has_value()) {
+            fmt::println(stderr, "error: {}: {}", dialogue.stem, ac3::io::describe(stem.error()));
+            return std::nullopt;
+        }
+        if (stem->channels.size() != wav->channels.size() ||
+            stem->sample_rate != wav->sample_rate || stem->frame_count() != wav->frame_count()) {
+            fmt::println(stderr,
+                         "error: {}: a dialogue stem has the programme's channels, rate and "
+                         "length: {} channels at {} Hz, {} samples",
+                         dialogue.stem, wav->channels.size(), wav->sample_rate, wav->frame_count());
+            return std::nullopt;
+        }
+        input.stem = std::move(*stem);
+        input.has_stem = true;
+    }
+    input.wav = std::move(*wav);
+    return input;
+}
+
+// A substream's dialogue enhancement, from its dialogue-...= options, for a
+// substream of `channels` input channels; nothing where none is asked for.
+[[nodiscard]] std::optional<ac4::DialogueConfig> dialogue_config(
+    const Options::Ac4Encode::Dialogue& options, std::size_t channels) {
+    const bool stem = !options.stem.empty();
+    if (!options.channels && !stem) {
+        return std::nullopt;
+    }
+    ac4::DialogueConfig dialogue;
+    dialogue.method = options.method;
+    dialogue.source = stem ? ac4::DialogueSource::kStem : ac4::DialogueSource::kMarkedChannels;
+    dialogue.max_gain_db = options.max_gain_db;
+    if (options.channels) {
+        dialogue.left = names_channel(*options.channels, "l");
+        dialogue.right = names_channel(*options.channels, "r");
+        dialogue.centre = names_channel(*options.channels, "c");
+    } else {
+        // A stem's parameters go to each of L, R and C the layout has.
+        dialogue.left = channels > 1;
+        dialogue.right = channels > 1;
+        dialogue.centre = channels != 2;
+    }
+    if (options.hybrid_share) {
+        dialogue.hybrid = true;
+        dialogue.waveform_share = *options.hybrid_share;
+    }
+    return dialogue;
+}
+
+// Whether a substream's options ask for dialogue enhancement.
+[[nodiscard]] bool asks_dialogue(const Options::Ac4Encode::Dialogue& d) {
+    return d.channels.has_value() || !d.stem.empty() || d.hybrid_share.has_value();
+}
+
 }  // namespace
 
 int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
@@ -269,11 +399,104 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             *opts.drc_gains);
         return kExitUsage;
     }
-    const auto wav = read_wav_arg(in_path);
-    if (!wav.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
-        return kExitInput;
+    const bool to_mp4 = names_mp4(out_path);
+    if (opts.crc && to_mp4) {
+        fmt::println(stderr,
+                     "error: crc= is a raw stream's sync frames' CRC; an MP4 sample is the raw "
+                     "frame alone, with no sync word and no CRC");
+        return kExitUsage;
     }
+
+    // The substreams, numbered from 1 without a gap: 1 the positional input,
+    // each further one an input of its own or the waveform of a substream's
+    // hybrid dialogue enhancement, which takes none.
+    const std::vector<Options::Ac4Encode::Substream>& substreams = opts.substreams;
+    const std::size_t count = substreams.size();
+    for (std::size_t n = 0; n < count; ++n) {
+        const Options::Ac4Encode::Substream& s = substreams[n];
+        const std::size_t number = n + 1;
+        if (n == 0 && s.enhances) {
+            fmt::println(stderr,
+                         "error: substream1-enhances=: substream 1, the positional input, is a "
+                         "programme, not a dialogue enhancement substream");
+            return kExitUsage;
+        }
+        if (n > 0 && s.path.empty() && !s.enhances) {
+            fmt::println(stderr,
+                         "error: substream {0} has neither an input (substream{0}=) nor a "
+                         "substream it enhances (substream{0}-enhances=): substreams are numbered "
+                         "from 1 without a gap",
+                         number);
+            return kExitUsage;
+        }
+        if (n > 0 && !s.path.empty() && s.enhances) {
+            fmt::println(stderr,
+                         "error: substream{0}= and substream{0}-enhances= both: a dialogue "
+                         "enhancement substream takes no input of its own",
+                         number);
+            return kExitUsage;
+        }
+        if (s.enhances && static_cast<std::size_t>(*s.enhances) > count) {
+            fmt::println(stderr,
+                         "error: substream{}-enhances={} names a substream the stream lacks",
+                         number, *s.enhances);
+            return kExitUsage;
+        }
+        if (s.enhances && asks_dialogue(s.dialogue)) {
+            fmt::println(stderr,
+                         "error: substream {} is a dialogue enhancement substream, the waveform of "
+                         "another's, and has no dialogue enhancement of its own",
+                         number);
+            return kExitUsage;
+        }
+        if (s.dialogue.hybrid_share && !s.dialogue.channels && s.dialogue.stem.empty()) {
+            fmt::println(stderr,
+                         "error: {}dialogue-hybrid= is a hybrid method of the dialogue "
+                         "enhancement dialogue-channels= or dialogue-stem= configures",
+                         n == 0 ? std::string{} : fmt::format("substream{}-", number));
+            return kExitUsage;
+        }
+    }
+    for (std::size_t n = 0; n < opts.presentations.size(); ++n) {
+        const Options::Ac4Encode::Presentation& p = opts.presentations[n];
+        if (!p.named) {
+            fmt::println(stderr,
+                         "error: presentation {} is missing: presentations are numbered from 1 "
+                         "without a gap",
+                         n + 1);
+            return kExitUsage;
+        }
+        for (const int s : p.substreams) {
+            if (static_cast<std::size_t>(s) > count) {
+                fmt::println(stderr,
+                             "error: presentation{} names substream {}, which the stream lacks",
+                             n + 1, s);
+                return kExitUsage;
+            }
+        }
+        if (p.substreams.empty() && p.config != 6) {
+            fmt::println(stderr,
+                         "error: presentation {0} plays no substream: list them with "
+                         "presentation{0}=, or give presentation{0}-config=6 for EMDF payloads "
+                         "alone",
+                         n + 1);
+            return kExitUsage;
+        }
+    }
+    const Options::Ac4Encode::Substream& first = substreams.front();
+    // The configuration's substreams form: several substreams, or values of
+    // the first that only ac4::SubstreamConfig carries.
+    const bool substream_form = count > 1 || first.content || !first.language.empty() ||
+                                first.bitrate_kbps || first.max_dialogue_gain_db ||
+                                !first.pan_degrees.empty() || !first.emdf.empty();
+    if (count > 1 && (meta.p.measure_dialnorm || opts.loudness)) {
+        fmt::println(stderr,
+                     "error: dialnorm=auto and loudness= measure one programme, and this stream "
+                     "has several substreams: give dialnorm=, and presentationN-dialnorm= where "
+                     "a presentation's differs");
+        return kExitUsage;
+    }
+
     ac4::AdditionalPair pair = ac4::AdditionalPair::kNone;
     if (meta.ac4_experimental_seven_x == "back") {
         pair = ac4::AdditionalPair::kBack;
@@ -282,22 +505,30 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     } else if (meta.ac4_experimental_seven_x == "top-front") {
         pair = ac4::AdditionalPair::kTopFront;
     }
-    const std::vector<ac4::Speaker> speakers = input_speakers(wav->channels.size(), pair);
-    if (speakers.empty()) {
-        fmt::println(
-            stderr,
-            "error: {}: AC-4 encoding takes mono, stereo, 5.0 and 5.1, and 7.0 and 7.1 with "
-            "experimental=7x-back, 7x-wide or 7x-top-front; the source has {} channels{}",
-            in_path, wav->channels.size(),
-            pair != ac4::AdditionalPair::kNone ? " and a 7.X pair was named" : "");
-        return kExitInput;
+    // Every substream's input, a dialogue enhancement substream's none.
+    std::vector<std::optional<Input>> inputs(count);
+    for (std::size_t n = 0; n < count; ++n) {
+        if (n == 0 || !substreams[n].path.empty()) {
+            inputs[n] = read_input(n == 0 ? in_path : std::string_view{substreams[n].path}, n + 1,
+                                   substreams[n].dialogue, pair, meta.ac4_experimental_three_zero);
+            if (!inputs[n]) {
+                return kExitInput;
+            }
+        }
     }
-    if (wav->sample_rate != 48000 && wav->sample_rate != 44100) {
-        fmt::println(stderr, "error: {}: AC-4 encoding takes 48 or 44.1 kHz; the source is {} Hz",
-                     in_path, wav->sample_rate);
-        return kExitInput;
+    const Input& main = *inputs.front();
+    const std::vector<ac4::Speaker>& speakers = main.speakers;
+    for (std::size_t n = 1; n < count; ++n) {
+        if (inputs[n] && (inputs[n]->wav.sample_rate != main.wav.sample_rate ||
+                          inputs[n]->wav.frame_count() != main.wav.frame_count())) {
+            fmt::println(stderr,
+                         "error: {}: every substream's input has the positional input's rate and "
+                         "length: {} Hz, {} samples",
+                         substreams[n].path, main.wav.sample_rate, main.wav.frame_count());
+            return kExitInput;
+        }
     }
-    if (wav->sample_rate == 44100 && opts.frame_rate_index != 13) {
+    if (main.wav.sample_rate == 44100 && opts.frame_rate_index != 13) {
         fmt::println(
             stderr,
             "error: {}: at 44.1 kHz AC-4 has the native frame rate alone (Part 1 Table 83); "
@@ -311,7 +542,9 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
                                opts.ltrt_centre_db || opts.ltrt_surround_db || opts.lfe_db ||
                                opts.preferred_downmix || opts.loro_correction_db ||
                                opts.ltrt_correction_db;
-    if (downmix_named && !multichannel) {
+    // With several substreams the downmix goes to the presentations of 5.X
+    // and 7.X, and the encoder says where there is none.
+    if (count == 1 && downmix_named && !multichannel) {
         fmt::println(
             stderr,
             "error: the downmix options describe the stereo downmix of 5.0, 5.1, 7.0 and 7.1; the "
@@ -319,7 +552,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             layout_name(speakers.size(), pair));
         return kExitUsage;
     }
-    if (opts.lfe_db && !has_lfe) {
+    if (count == 1 && opts.lfe_db && !has_lfe) {
         fmt::println(stderr, "error: lfemix= is the LFE's gain into the downmix, and {} has no LFE",
                      layout_name(speakers.size(), pair));
         return kExitUsage;
@@ -327,21 +560,11 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
 
     ac4::EncoderConfig config;
     config.channels = static_cast<int>(speakers.size());
-    config.sample_rate_hz = static_cast<int>(wav->sample_rate);
+    config.sample_rate_hz = static_cast<int>(main.wav.sample_rate);
     config.frame_rate_index = opts.frame_rate_index;
     config.bitrate_kbps = static_cast<int>(bitrate);
     config.rate_mode = opts.rate_mode;
-    if (meta.ac4_codec_mode == "simple") {
-        config.codec_mode = ac4::CodecMode::kSimple;
-    } else if (meta.ac4_codec_mode == "aspx") {
-        config.codec_mode = ac4::CodecMode::kAspx;
-    } else if (meta.ac4_codec_mode == "aspx-acpl-1") {
-        config.codec_mode = ac4::CodecMode::kAspxAcpl1;
-    } else if (meta.ac4_codec_mode == "aspx-acpl-2") {
-        config.codec_mode = ac4::CodecMode::kAspxAcpl2;
-    } else if (meta.ac4_codec_mode == "aspx-acpl-3") {
-        config.codec_mode = ac4::CodecMode::kAspxAcpl3;
-    }
+    config.codec_mode = codec_mode_of(meta.ac4_codec_mode);
     if (opts.iframe_interval) {
         config.iframe_interval = *opts.iframe_interval;
     }
@@ -349,9 +572,9 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     if (opts.fragment_seconds) {
         // A fragment at every multiple of the duration, through the decoded
         // output's length.
-        const double step = *opts.fragment_seconds * static_cast<double>(wav->sample_rate);
-        const double end =
-            static_cast<double>(wav->frame_count()) + 2.0 * static_cast<double>(wav->sample_rate);
+        const double step = *opts.fragment_seconds * static_cast<double>(main.wav.sample_rate);
+        const double end = static_cast<double>(main.wav.frame_count()) +
+                           2.0 * static_cast<double>(main.wav.sample_rate);
         for (double at = step; at < end; at += step) {
             config.fragment_starts.push_back(static_cast<std::int64_t>(std::llround(at)));
         }
@@ -363,6 +586,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     config.experimental.acpl = meta.ac4_experimental_acpl;
     config.experimental.seven_x = pair;
     config.experimental.drc_gains = opts.drc_gains.has_value();
+    config.experimental.three_zero = meta.ac4_experimental_three_zero;
 
     if (drc_named) {
         // Table 161's four modes on drc='s profile, and a mode named on a
@@ -371,12 +595,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         ac4::DrcConfig drc;
         drc.profile = opts.drc.value_or(drc.profile);
         for (int id = 0; id < 4; ++id) {
-            ac4::DrcModeConfig mode{.id = id,
-                                    .output_level_from_db = 0,
-                                    .output_level_to_db = 0,
-                                    .profile = std::nullopt,
-                                    .repeat_of = std::nullopt,
-                                    .gains_config = opts.drc_gains};
+            ac4::DrcModeConfig mode{.id = id, .gains_config = opts.drc_gains};
             const std::optional<ac4::DrcProfile>& own =
                 opts.drc_modes[static_cast<std::size_t>(id)];
             if (own && *own != drc.profile) {
@@ -406,23 +625,52 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         downmix.ltrt_correction_db2 = opts.ltrt_correction_db;
         config.downmix = downmix;
     }
-    const bool stem = !opts.dialogue_stem.empty();
-    if (opts.dialogue_channels || stem) {
-        ac4::DialogueConfig dialogue;
-        dialogue.method = opts.dialogue_method;
-        dialogue.source = stem ? ac4::DialogueSource::kStem : ac4::DialogueSource::kMarkedChannels;
-        dialogue.max_gain_db = opts.dialogue_max_gain_db;
-        if (opts.dialogue_channels) {
-            dialogue.left = names_channel(*opts.dialogue_channels, "l");
-            dialogue.right = names_channel(*opts.dialogue_channels, "r");
-            dialogue.centre = names_channel(*opts.dialogue_channels, "c");
-        } else {
-            // A stem's parameters go to each of L, R and C the layout has.
-            dialogue.left = speakers.size() > 1;
-            dialogue.right = speakers.size() > 1;
-            dialogue.centre = speakers.size() != 2;
+    if (!substream_form) {
+        config.dialogue = dialogue_config(first.dialogue, speakers.size());
+    } else {
+        for (std::size_t n = 0; n < count; ++n) {
+            const Options::Ac4Encode::Substream& s = substreams[n];
+            ac4::SubstreamConfig substream;
+            substream.channels = inputs[n] ? static_cast<int>(inputs[n]->speakers.size()) : 0;
+            substream.bitrate_kbps = s.bitrate_kbps;
+            substream.codec_mode = codec_mode_of(n == 0 ? meta.ac4_codec_mode : s.codec_mode);
+            substream.content = s.content;
+            substream.language = s.language;
+            if (inputs[n]) {
+                substream.dialogue = dialogue_config(s.dialogue, inputs[n]->speakers.size());
+            }
+            if (s.max_dialogue_gain_db || !s.pan_degrees.empty()) {
+                substream.dialogue_mix = ac4::DialogueMix{.max_gain_db = s.max_dialogue_gain_db,
+                                                          .pan_degrees = s.pan_degrees};
+            }
+            if (s.enhances) {
+                substream.enhances = *s.enhances - 1;
+            }
+            substream.emdf = s.emdf;
+            config.substreams.push_back(std::move(substream));
         }
-        config.dialogue = dialogue;
+    }
+    for (const Options::Ac4Encode::Presentation& p : opts.presentations) {
+        ac4::PresentationConfig presentation;
+        presentation.config = p.config;
+        for (const int s : p.substreams) {
+            presentation.substreams.push_back(s - 1);
+        }
+        presentation.presentation_id = p.id;
+        presentation.md_compat = p.md_compat;
+        presentation.enabled = p.enabled;
+        presentation.pre_virtualized = p.pre_virtualized;
+        presentation.name = p.name;
+        presentation.dialnorm_db = p.dialnorm_db;
+        presentation.gains_db = p.gains_db;
+        if (p.main_db || p.main_centre_db || p.main_front_db || p.associated_pan) {
+            presentation.associated = ac4::AssociatedMix{.main_db = p.main_db,
+                                                         .main_centre_db = p.main_centre_db,
+                                                         .main_front_db = p.main_front_db,
+                                                         .pan_degrees = p.associated_pan};
+        }
+        presentation.emdf = p.emdf;
+        config.presentations.push_back(std::move(presentation));
     }
     // The configuration is checked before loudness= reads the whole file,
     // with loudness values in place: they cost the same bits whatever they
@@ -446,41 +694,29 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     if (!ac4::Encoder::create(sized).has_value()) {
         return refuse_config(sized);
     }
-    // Each of the encoder's channels' place in the WAV file.
-    const std::vector<std::size_t> wav_order = ac4_order(std::span{speakers}, ac4_wav_rank);
-    std::vector<std::size_t> wav_index(speakers.size());
-    for (std::size_t w = 0; w < wav_order.size(); ++w) {
-        wav_index[wav_order[w]] = w;
-    }
+    // encode() takes every substream's channels one substream after the
+    // other, and with a stem the dialogue in each: a substream without one
+    // gives silence there, which the encoder does not read.
+    const bool stems = std::ranges::any_of(
+        inputs, [](const std::optional<Input>& input) { return input && input->has_stem; });
+    const std::vector<float> silence(stems ? main.wav.frame_count() : 0, 0.0F);
     std::vector<std::span<const float>> views;
-    for (const std::size_t w : wav_index) {
-        views.emplace_back(wav->channels[w]);
-    }
-    // dialogue-stem=: the dialogue in the programme's channels, sample for
-    // sample.
-    ac3::io::WavData stem_wav;
     std::vector<std::span<const float>> stem_views;
-    if (stem) {
-        auto read = read_wav_arg(opts.dialogue_stem);
-        if (!read.has_value()) {
-            fmt::println(stderr, "error: {}: {}", opts.dialogue_stem,
-                         ac3::io::describe(read.error()));
-            return kExitInput;
+    for (const std::optional<Input>& input : inputs) {
+        if (!input) {
+            continue;
         }
-        if (read->channels.size() != wav->channels.size() ||
-            read->sample_rate != wav->sample_rate || read->frame_count() != wav->frame_count()) {
-            fmt::println(stderr,
-                         "error: {}: a dialogue stem has the programme's channels, rate and "
-                         "length: {} channels at {} Hz, {} samples",
-                         opts.dialogue_stem, wav->channels.size(), wav->sample_rate,
-                         wav->frame_count());
-            return kExitInput;
-        }
-        stem_wav = std::move(*read);
-        for (const std::size_t w : wav_index) {
-            stem_views.emplace_back(stem_wav.channels[w]);
+        for (const std::size_t w : input->wav_index) {
+            views.emplace_back(input->wav.channels[w]);
+            if (stems) {
+                stem_views.emplace_back(input->has_stem
+                                            ? std::span<const float>{input->stem.channels[w]}
+                                            : std::span<const float>{silence});
+            }
         }
     }
+    const std::span<const std::span<const float>> main_views =
+        std::span{views}.first(speakers.size());
 
     // dialnorm=, 0 to 31.75 dB below full scale in steps of 0.25; auto, or
     // loudness= without it, takes the integrated loudness to the step.
@@ -489,7 +725,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     const bool measure_dialnorm =
         meta.p.measure_dialnorm || (opts.loudness && !meta.dialnorm_given);
     if (measure_dialnorm || opts.loudness) {
-        const auto measured = measure_programme(views, wav->sample_rate);
+        const auto measured = measure_programme(main_views, main.wav.sample_rate);
         if (!measured) {
             fmt::println(
                 stderr,
@@ -554,7 +790,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     if (!encoder.has_value()) {
         return refuse_config(config);
     }
-    auto frames = stem ? encoder->encode(views, stem_views) : encoder->encode(views);
+    auto frames = stems ? encoder->encode(views, stem_views) : encoder->encode(views);
     if (!frames.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, ac4::describe(frames.error()));
         return kExitInput;
@@ -566,8 +802,8 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     }
     frames->insert(frames->end(), rest->begin(), rest->end());
 
+    const ac4::Toc& toc = encoder->toc();
     std::vector<std::vector<std::byte>> bytes;
-    const bool to_mp4 = names_mp4(out_path);
     std::string rfc6381;
     if (to_mp4) {
         // Part 2 Annex E: each frame a sample, the I-frames its sync samples,
@@ -582,7 +818,6 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             samples.emplace_back((*frames)[i].raw_ac4_frame);
             options.sync_samples[i] = (*frames)[i].iframe;
         }
-        const ac4::Toc& toc = encoder->toc();
         const auto timing = ac4::media_timing(toc);
         if (!timing) {
             fmt::println(stderr, "error: frame_rate_index {} has no MP4 timing (Part 2 Table E.1)",
@@ -612,9 +847,10 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         }
         bytes.push_back(std::move(*muxed));
     } else {
+        const bool crc = opts.crc.value_or(true);
         bytes.reserve(frames->size());
         for (const ac4::EncodedFrame& frame : *frames) {
-            bytes.push_back(ac4::sync_frame(frame.raw_ac4_frame, true));
+            bytes.push_back(ac4::sync_frame(frame.raw_ac4_frame, crc));
         }
     }
     if (!write_frames(out_path, bytes)) {
@@ -627,11 +863,19 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             return kExitOutput;
         }
     }
-    status_println(
-        status, "encoded {} AC-4 frames -> {} ({} Hz, {}, {} kbps, dialnorm -{:g} dB{})",
-        frames->size(), out_path, config.sample_rate_hz, layout_name(speakers.size(), pair),
-        bitrate, dialnorm,
-        to_mp4 ? fmt::format(", MP4, codecs {}", rfc6381) : std::string{", raw with CRC"});
+    const std::string shape = count > 1 ? fmt::format("{} substreams", count)
+                                        : std::string{layout_name(speakers.size(), pair)};
+    const std::string presentations = toc.n_presentations > 1
+                                          ? fmt::format(", {} presentations", toc.n_presentations)
+                                          : std::string{};
+    const std::string container =
+        to_mp4 ? fmt::format(", MP4, codecs {}", rfc6381)
+               : (opts.crc.value_or(true) ? std::string{", raw with CRC"}
+                                          : std::string{", raw without CRC"});
+    status_println(status,
+                   "encoded {} AC-4 frames -> {} ({} Hz, {}{}, {} kbps, dialnorm -{:g} dB{})",
+                   frames->size(), out_path, config.sample_rate_hz, shape, presentations, bitrate,
+                   dialnorm, container);
     const bool native = config.frame_rate_index == 13;
     status_println(
         status,

@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 90> kOptionTokens{{
+constexpr std::array<OptionToken, 96> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -107,7 +107,19 @@ constexpr std::array<OptionToken, 90> kOptionTokens{{
     {"dialogue-stem=", "ac4-encode: a WAV file of the dialogue in the programme's channels"},
     {"dialogue-method=", "ac4-encode: independent, mid or cross"},
     {"dialogue-max-gain=", "ac4-encode: the most a decoder may raise the dialogue, 3 to 12 dB"},
-    {"conceal=", "decode/monitor: repeat or mute, §7.10 error concealment for a bad frame"},
+    {"dialogue-hybrid=", "ac4-encode: a hybrid dialogue enhancement, its waveform's share, 0 to 1"},
+    {"crc=", "ac4-encode: on (the default) or off, a raw stream's sync frames' Annex G CRC"},
+    {"substream2=", "ac4-encode: another input WAV file, coded as substream 2; substream3= up to "
+                    "substream32= work the same way"},
+    {"substream2-<option>=", "ac4-encode: that substream's own bitrate=, codec-mode=, content=, "
+                             "language=, dialogue-...=, enhances= and the rest (see 'help "
+                             "ac4-encode'); substream1-<option>= for the input's"},
+    {"presentation1=", "ac4-encode: the substreams a presentation plays, from 1, comma-separated; "
+                       "presentation2= up to presentation64= work the same way"},
+    {"presentation1-<option>=", "ac4-encode: that presentation's own config=, id=, md-compat=, "
+                                "name=, dialnorm=, gains=, emdf= and the rest (see 'help "
+                                "ac4-encode')"},
+    {"conceal=","decode/monitor: repeat or mute, §7.10 error concealment for a bad frame"},
     {"src=", "an additional input source; repeat for more than one"},
     {"map=", "where each source channel goes"},
     {"offset=", "<sourceIndex>:<seconds> leading silence for that source"},
@@ -425,8 +437,11 @@ void print_ac4_encode_topic() {
     fmt::println("       aspx-acpl-3, and experimental=<tools> for syntax no outside reader");
     fmt::println("       has checked yet: aspx-balance, aspx-varvar, aspx-interleave,");
     fmt::println("       coding-configs, acpl (ASPX_ACPL_1 in 5.X, A-CPL in stereo),");
-    fmt::println("       7x-back|7x-wide|7x-top-front for 7.0 and 7.1, and drc-gains-0 to");
-    fmt::println("       drc-gains-3 (the DRC modes send gains, ETSI TS 103 190-1 Table 163).");
+    fmt::println("       7x-back|7x-wide|7x-top-front for 7.0 and 7.1, three-zero for 3.0");
+    fmt::println("       (L R C), and drc-gains-0 to drc-gains-3 (the DRC modes send gains,");
+    fmt::println("       ETSI TS 103 190-1 Table 163).");
+    fmt::println("       A raw stream's sync frames carry the CRC of TS 103 190-2 Annex G");
+    fmt::println("       unless crc=off; an MP4 sample is the frame alone, without either.");
     fmt::println("       frame-rate=23.976|24|25|29.97|30|47.95|48|50|59.94|60|100|119.88|120,");
     fmt::println("       or native, the default: 2 048-sample frames, the only ones at");
     fmt::println("       44.1 kHz (Table 83). rate-mode=constant (the default), average");
@@ -455,8 +470,38 @@ void print_ac4_encode_topic() {
     fmt::println("       carry dialogue alone, or dialogue-stem=<wav> gives the dialogue in");
     fmt::println("       the programme's channels, sample for sample;");
     fmt::println("       dialogue-method=independent|mid|cross (mid: L and R's Mid; cross: a");
-    fmt::println("       stem over two or three channels) and dialogue-max-gain=3|6|9|12");
-    fmt::println("       (default 9).");
+    fmt::println("       stem over two or three channels), dialogue-max-gain=3|6|9|12");
+    fmt::println("       (default 9), and dialogue-hybrid=<0..1>, a hybrid method whose");
+    fmt::println("       waveform, that share of the enhancement, a dialogue enhancement");
+    fmt::println("       substream carries (substreamN-enhances= below).");
+    fmt::println("       Substreams: the input is substream 1, and substream2=<wav> to");
+    fmt::println("       substream32= add more, each a layout of its own at the input's rate");
+    fmt::println("       and length. substreamN-<option>= sets substream N's own:");
+    fmt::println("       bitrate=<kbps>, its share of the rate (unset ones share the rest);");
+    fmt::println("       codec-mode=; content=main|music-and-effects|visually-impaired|");
+    fmt::println("       hearing-impaired|dialogue|commentary|emergency|voice-over (TS 103");
+    fmt::println("       190-1 Table 91); language=<BCP 47 tag>; the dialogue-...= options");
+    fmt::println("       above; a dialogue substream's max-dialogue-gain=3|6|9|12, how far a");
+    fmt::println("       listener may raise it, and pan=<degrees>[,<degrees>], each channel's");
+    fmt::println("       direction clockwise from the front; and emdf=<id>:<hex bytes>, an");
+    fmt::println("       EMDF payload in every frame, repeated for more.");
+    fmt::println("       substreamN-enhances=<M>, in place of an input, makes substream N the");
+    fmt::println("       waveform of substream M's hybrid dialogue enhancement.");
+    fmt::println("       Presentations, which several substreams need:");
+    fmt::println("       presentationN=<substreams> (N from 1 to 64) lists the substreams it");
+    fmt::println("       plays, from 1, in the order of TS 103 190-2 Table 53, and");
+    fmt::println("       presentationN-<option>= sets config=0..6 (Table 53; 6 carries EMDF");
+    fmt::println("       payloads alone and plays no substream), id=<presentation_id>,");
+    fmt::println("       md-compat=0..3|7 (Table 55), enabled=on|off, pre-virtualized=on|off,");
+    fmt::println("       name=<text> (an alternative presentation), dialnorm=<0..31.75>,");
+    fmt::println("       gains=<dB>,... (each substream's group gain, 0 or below, or off),");
+    fmt::println("       associated audio's main-gain=, main-centre-gain=, main-front-gain=");
+    fmt::println("       and associated-pan=<degrees>, and emdf=<id>:<hex bytes>. The bare");
+    fmt::println("       options set every presentation's values, the downmix going to those");
+    fmt::println("       of 5.X and 7.X; dialnorm=auto and loudness= measure one programme and");
+    fmt::println("       so take one substream. An MP4's sample entry describes every");
+    fmt::println("       presentation (TS 103 190-2 Annex E.10); a stream it cannot describe");
+    fmt::println("       is refused.");
 }
 
 void print_qc_topic() {
