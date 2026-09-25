@@ -375,6 +375,14 @@ struct Firmware::Impl {
 
     esp_timer_handle_t idle_timer = nullptr;
     esp_timer_handle_t guard_timer = nullptr;
+    // The trial is read once a second from esp_timer's task (on_trial), with
+    // no task of its own until it has decided: then decide_task writes what
+    // it decided. A task made at boot for the whole trial took 6 KiB of
+    // internal RAM as the board started, and on the S3 board that left the
+    // Sendspin player without the 32 KiB block its burst player starts with,
+    // so no updated image could pass its trial there.
+    esp_timer_handle_t trial_timer = nullptr;
+    TrialStep decided = TrialStep::kWait;
 
     [[nodiscard]] FirmwareStatus status() const;
     [[nodiscard]] BoardFacts board() const;
@@ -400,7 +408,8 @@ struct Firmware::Impl {
     };
     Outcome run_upload(UploadJob& job);
     static void upload_task(void* arg);
-    static void trial_task(void* arg);
+    static void on_trial(void* arg);
+    static void decide_task(void* arg);
     void start_check();
     void stop_check();
     [[nodiscard]] std::unique_ptr<SlotHashing> begin_other();
@@ -561,34 +570,60 @@ void Firmware::Impl::restart_now(const char* why) {
 
 // --- the trial -------------------------------------------------------------------
 
-void Firmware::Impl::trial_task(void* arg) {
+// Once a second from esp_timer's task while an image is on trial.
+void Firmware::Impl::on_trial(void* arg) {
     auto* im = static_cast<Impl*>(arg);
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        std::vector<std::string> waiting;
-        if (im->hooks.trial_conditions) {
-            for (const auto& [name, holds] : im->hooks.trial_conditions()) {
-                if (!holds) {
-                    waiting.push_back(name);
-                }
+    std::vector<std::string> waiting;
+    if (im->hooks.trial_conditions) {
+        for (const auto& [name, holds] : im->hooks.trial_conditions()) {
+            if (!holds) {
+                waiting.push_back(name);
             }
         }
-        if (im->config.test_unhealthy) {
-            waiting.emplace_back("nothing (AC3FORGE_FIRMWARE_TEST_UNHEALTHY)");
-        }
-        TrialStep step = TrialStep::kWait;
+    }
+    if (im->config.test_unhealthy) {
+        waiting.emplace_back("nothing (AC3FORGE_FIRMWARE_TEST_UNHEALTHY)");
+    }
+    TrialStep step = TrialStep::kWait;
+    {
+        const std::lock_guard lock(im->mutex);
+        step = im->trial->step(now_ms(), waiting.empty());
+        im->waiting_for = std::move(waiting);
+    }
+    if (step == TrialStep::kWait) {
+        return;
+    }
+    // Either way the decision writes otadata and NVS, which takes more stack
+    // than esp_timer's task has: a task of its own does it, made now, long
+    // after the board has started. Accepting used 1,812 bytes of its stack on
+    // the S3 board.
+    (void)esp_timer_stop(im->trial_timer);
+    im->decided = step;
+    if (xTaskCreate(&Impl::decide_task, "fw_trial", 4096, im, tskIDLE_PRIORITY + 5, nullptr) == pdPASS) {
+        return;
+    }
+    if (step == TrialStep::kAccept) {
+        // Tried again in a second, when there may be room: the Trial keeps
+        // its answer, and the guard still goes back past the deadline.
+        (void)esp_timer_start_periodic(im->trial_timer, 1'000'000);
+        return;
+    }
+    // Nothing can record why, and a restart on trial still goes back.
+    std::printf("firmware: this image gives up its trial; going back\n");
+    esp_restart();
+}
+
+void Firmware::Impl::decide_task(void* arg) {
+    auto* im = static_cast<Impl*>(arg);
+    if (im->decided == TrialStep::kAccept) {
+        im->accept_trial();
+    } else {
+        std::vector<std::string> waiting;
         {
             const std::lock_guard lock(im->mutex);
-            step = im->trial->step(now_ms(), waiting.empty());
-            im->waiting_for = waiting;
+            waiting = im->waiting_for;
         }
-        if (step == TrialStep::kAccept) {
-            im->accept_trial();
-            break;
-        }
-        if (step == TrialStep::kRollBack) {
-            im->give_up_trial(waiting);
-        }
+        im->give_up_trial(waiting);
     }
     vTaskDelete(nullptr);
 }
@@ -613,7 +648,8 @@ void Firmware::Impl::accept_trial() {
         last_update = FirmwareLastUpdate{version, "accepted", ""};
         running_facts.state = "valid";
     }
-    std::printf("firmware: %s accepted after its trial\n", version.c_str());
+    std::printf("firmware: %s accepted after its trial (stack %u spare)\n", version.c_str(),
+                static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     // Nothing is left to decide, so the slots can be read through now.
     start_check();
 }
@@ -637,9 +673,9 @@ void Firmware::Impl::give_up_trial(const std::vector<std::string>& waiting) {
     esp_restart();
 }
 
-// The deadline's backstop: a trial task that has not acted 30 s past the
-// deadline is starved or stuck, and a restart while on trial boots the image
-// before this one.
+// The deadline's backstop: a trial that has not acted 30 s past the deadline
+// is starved or stuck, and a restart while on trial boots the image before
+// this one.
 void Firmware::Impl::on_guard(void* arg) {
     (void)arg;
     std::printf("firmware: the trial did not finish; restarting, which goes back\n");
@@ -1038,6 +1074,10 @@ Firmware::~Firmware() {
         (void)esp_timer_stop(impl_->guard_timer);
         (void)esp_timer_delete(impl_->guard_timer);
     }
+    if (impl_->trial_timer != nullptr) {
+        (void)esp_timer_stop(impl_->trial_timer);
+        (void)esp_timer_delete(impl_->trial_timer);
+    }
     if (impl_->check_timer != nullptr) {
         impl_->stop_check();
         (void)esp_timer_delete(impl_->check_timer);
@@ -1120,8 +1160,13 @@ bool Firmware::start(FirmwareHooks hooks, FirmwareConfig config) {
             (void)esp_timer_start_once(im->guard_timer,
                                        (static_cast<std::uint64_t>(config.trial.deadline_ms) + 30'000) * 1000);
         }
-        // Its stack takes the owner's conditions, NVS and the otadata write.
-        if (xTaskCreate(&Impl::trial_task, "fw_trial", 6144, im, tskIDLE_PRIORITY + 5, nullptr) != pdPASS) {
+        const esp_timer_create_args_t trial_args = {.callback = &Impl::on_trial,
+                                                    .arg = im,
+                                                    .dispatch_method = ESP_TIMER_TASK,
+                                                    .name = "fw_trial",
+                                                    .skip_unhandled_events = true};
+        if (esp_timer_create(&trial_args, &im->trial_timer) != ESP_OK ||
+            esp_timer_start_periodic(im->trial_timer, 1'000'000) != ESP_OK) {
             std::printf("firmware: could not start the trial; the guard goes back at the deadline\n");
         }
     } else {
