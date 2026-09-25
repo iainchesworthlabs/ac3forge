@@ -1,7 +1,9 @@
 #include "ac4/ac4.hpp"
 
+#include <algorithm>
 #include <array>
 #include <bit>
+#include <cstring>
 #include <limits>
 #include <unordered_map>
 
@@ -219,6 +221,129 @@ ScanResult scan(std::span<const std::byte> data) {
         pos = total;
     }
     return result;
+}
+
+// --- SyncFrameSplitter ----------------------------------------------------------
+
+std::span<std::byte> SyncFrameSplitter::writable() noexcept {
+    consume(handed_);
+    handed_ = 0;
+    return storage_.subspan(filled_);
+}
+
+void SyncFrameSplitter::commit(std::size_t bytes) noexcept {
+    filled_ = std::min(filled_ + bytes, storage_.size());
+}
+
+void SyncFrameSplitter::consume(std::size_t count) noexcept {
+    count = std::min(count, filled_);
+    if (count == 0) {
+        return;
+    }
+    std::memmove(storage_.data(), storage_.data() + count, filled_ - count);
+    filled_ -= count;
+    position_ += count;
+}
+
+SyncFrameSplitter::Result SyncFrameSplitter::next() noexcept {
+    consume(handed_);
+    handed_ = 0;
+    const auto byte = [this](std::size_t i) { return std::to_integer<unsigned>(storage_[i]); };
+    const auto is_sync = [&byte](std::size_t i) {
+        return byte(i) == 0xAC && (byte(i + 1) == 0x40 || byte(i + 1) == 0x41);
+    };
+    // What is held when no whole frame is: more is needed, or at the end
+    // the part of a frame left over is dropped.
+    const auto wait = [this]() {
+        if (!finished_) {
+            return Result{.status = Status::kNeedMoreInput};
+        }
+        if (filled_ > 0 && !truncated_) {
+            truncated_ = true;
+            consume(filled_);
+            return Result{.status = Status::kTruncated};
+        }
+        consume(filled_);
+        return Result{.status = Status::kEndOfStream};
+    };
+    // Skips to the next sync word after the first byte held; with none held,
+    // skips everything but a last byte of 0xAC, which may begin a sync word
+    // the next read completes. Called with two bytes or more held.
+    const auto skip = [&]() {
+        std::size_t at = 1;
+        while (at + 1 < filled_ && !is_sync(at)) {
+            ++at;
+        }
+        const bool found = at + 1 < filled_;
+        const std::size_t count = found || byte(at) == 0xAC ? at : at + 1;
+        skipped_ += count;
+        resynchronising_ = true;
+        consume(count);
+    };
+    for (;;) {
+        if (filled_ < 2) {
+            return wait();
+        }
+        if (!is_sync(0)) {
+            skip();
+            continue;
+        }
+        if (filled_ < 4) {
+            return wait();
+        }
+        const auto sync = static_cast<std::uint16_t>((byte(0) << 8U) | byte(1));
+        std::size_t header = 4;
+        std::size_t frame_size = (byte(2) << 8U) | byte(3);
+        if (frame_size == 0xFFFF) {
+            if (filled_ < 7) {
+                return wait();
+            }
+            frame_size = (byte(4) << 16U) | (byte(5) << 8U) | byte(6);
+            header = 7;
+        }
+        const bool has_crc = sync == 0xAC41;
+        const std::size_t total = header + frame_size + (has_crc ? 2U : 0U);
+        if (total > storage_.size()) {
+            // A sync word found by skipping may be a frame's bits, whose size
+            // means nothing: try the next one. A stream that starts on a sync
+            // word does not get that doubt.
+            if (resynchronising_) {
+                skip();
+                continue;
+            }
+            return Result{.status = Status::kBufferTooSmall};
+        }
+        if (filled_ < total) {
+            return wait();
+        }
+        if (resynchronising_ && !finished_) {
+            // Confirmed by the sync word that follows, where the storage can
+            // hold it.
+            if (total + 2 <= storage_.size()) {
+                if (filled_ < total + 2) {
+                    return Result{.status = Status::kNeedMoreInput};
+                }
+                if (!is_sync(total)) {
+                    skip();
+                    continue;
+                }
+            }
+        }
+        resynchronising_ = false;
+        std::optional<bool> crc_ok;
+        if (has_crc) {
+            const auto want = static_cast<std::uint16_t>((byte(total - 2) << 8U) | byte(total - 1));
+            crc_ok = crc16(std::span<const std::byte>(storage_).subspan(2, total - 4)) == want;
+        }
+        handed_ = total;
+        return Result{
+            .status = Status::kFrame,
+            .frame = SyncFrame{
+                .offset = position_,
+                .sync_word = sync,
+                .raw_ac4_frame = std::span<const std::byte>(storage_).subspan(header, frame_size),
+                .crc_ok = crc_ok}};
+    }
 }
 
 namespace {
@@ -2013,6 +2138,23 @@ std::optional<MediaTiming> media_timing(const Toc& toc) {
         case 11: return MediaTiming{.timescale = 240000, .sample_delta = 2002};  // 119,88
         default: return std::nullopt;
     }
+}
+
+std::optional<FrameRate> frame_rate(const Toc& toc) {
+    const std::optional<MediaTiming> timing = media_timing(toc);
+    if (!timing || toc.frame_rate_index < 0 || toc.frame_rate_index > 13) {
+        return std::nullopt;
+    }
+    // Table 83's frame lengths at the internal rate (frame_len_base), index 13
+    // being Table 84's 2 048 at either rate.
+    constexpr std::array<int, 14> kFrameLength = {1920, 1920, 2048, 1536, 1536, 960, 960,
+                                                  1024, 768,  768,  512,  384,  384, 2048};
+    FrameRate rate;
+    rate.frames_per_second =
+        static_cast<double>(timing->timescale) / static_cast<double>(timing->sample_delta);
+    rate.frame_length = kFrameLength[static_cast<std::size_t>(toc.frame_rate_index)];
+    rate.internal_rate_hz = static_cast<double>(rate.frame_length) * rate.frames_per_second;
+    return rate;
 }
 
 std::string rfc6381_codec_string(const Toc& toc) {

@@ -1275,6 +1275,40 @@ The sections below contain the complete change list and fixes.
   `ac3cli decode` takes `decoding=full|core` and `speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4`, and
   `fuzz_ac4_decode` reaches the element from DEE's 5.1.4 seeds. librempeg does not decode the
   element; `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 decoder's API for channel-based streams, and the AC-4 libraries installed** (phase D8
+  of `planning/ac4.md`). `ac4::Decoder::set_output()` and `set_presentation()` change the output
+  processing and the presentation from the next frame while a stream plays, where a decoder built
+  afresh waits for the next I-frame. `decode_by_block()` hands the output over in blocks of 256
+  samples whatever the frame length, allocating nothing per frame once the layout is set, and
+  `flush()` hands over the rest. `presentations()` reports each presentation of the table of
+  contents: its members and their roles, its channels, its language and, for an alternative
+  presentation, its name, whole or sent in chunks over several frames (Part 2 6.3.3.1.4; the reading
+  is in `src/ac4dec/ERRATA.md`, and `tools/references/ac4_presentations.py` takes the same one).
+  `metadata()` reports the selected presentation's loudness values, DRC configuration, dialogue
+  enhancement and downmix gains, and `latency_samples()` the decoder's delay, which equals the delay
+  the encoder counts on at every frame rate. `ac4::SyncFrameSplitter` splits the sync frames of a
+  stream that arrives in pieces, in storage the caller owns, and `ac4::frame_rate()` gives a table
+  of contents' frame rate. `ac3cli decode` takes `headphones`, `mix-lfe=on|off`, `md-compat=` and
+  `channels=5.1` for AC-4, and names in a warning an option of the other format's it was given;
+  `ac3cli probe` reports the frame rate, the bit rate, the I-frames, the splices, each version 1
+  presentation and the selected presentation's metadata, in its table and in `stream.ac4` of
+  `ac3forge.probe/1`, and Hearth's media information carries the same. The inspector, the decoder
+  and the shared core are installed and exported (`ac4::decoder_static` and `ac4::decoder_shared`,
+  each linking the inspector of its kind, and `ac4::core` beside a static decoder; pkg-config
+  `ac4`, `ac4dec` and `ac4core`), `tools/checks/check_install_consumer.sh` decodes a stream through
+  each installed decoder by CMake and by pkg-config, and `tools/ci/abi-allowlist/libac4dec.so.txt`
+  lists the decoder's exports. A test standing in for Hearth's engine decodes every committed stream
+  through the public API alone. `docs/library/ac4.md` and `examples/decode_ac4.cpp` show the API.
+- **Four items of the review of #700.** `DecoderConfig::syntax` held only the address of its
+  callable, so a lambda written in place was gone before the first record, which crashed MSVC's
+  Release build in phase D7: `ac4::SyntaxTrace` now owns a copy, the decoder and the encoder keep
+  one of their own, and `ac4::SyntaxSink`, the reference the readers hold, no longer binds a
+  temporary. A Huffman codeword the substream ends inside is `kTruncated` in every tool, where the
+  audio spectral frontend called it `kInvalidStream`. An HSF extension substream that nothing in
+  the table of contents names is reported, as refused and unread, with every other substream of
+  the substream index table. The Android app, the WebAssembly preset and the Python wheel no
+  longer compile the AC-4 libraries they do not link, until phase I4 binds them. Each has a test
+  that failed before its fix.
 
 **Browser (WASM)**
 

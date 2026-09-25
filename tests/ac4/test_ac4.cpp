@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -2148,6 +2149,53 @@ TEST_CASE("media_timing follows Part 2 Table E.1, at 240 000 Hz where frames alt
     CHECK(timing->sample_delta == 2048U);
     toc.frame_rate_index = 3;
     CHECK_FALSE(ac4::media_timing(toc).has_value());
+}
+
+TEST_CASE("frame_rate gives Part 1 Tables 83 and 84's frame rates and internal rates",
+          "[ac4][carriage]") {
+    ac4::Toc toc;
+    toc.sample_rate_hz = 48000;
+    struct Row {
+        double fps;
+        int frame_length;
+        double internal_rate_hz;
+    };
+    constexpr double kNtsc = 1000.0 / 1001.0;
+    const std::array<Row, 14> kRows = {{
+        {24.0 * kNtsc, 1920, 46080.0 * kNtsc},
+        {24.0, 1920, 46080.0},
+        {25.0, 2048, 51200.0},
+        {30.0 * kNtsc, 1536, 46080.0 * kNtsc},
+        {30.0, 1536, 46080.0},
+        {48.0 * kNtsc, 960, 46080.0 * kNtsc},
+        {48.0, 960, 46080.0},
+        {50.0, 1024, 51200.0},
+        {60.0 * kNtsc, 768, 46080.0 * kNtsc},
+        {60.0, 768, 46080.0},
+        {100.0, 512, 51200.0},
+        {120.0 * kNtsc, 384, 46080.0 * kNtsc},
+        {120.0, 384, 46080.0},
+        {48000.0 / 2048.0, 2048, 48000.0},
+    }};
+    for (int index = 0; index < static_cast<int>(kRows.size()); ++index) {
+        CAPTURE(index);
+        toc.frame_rate_index = index;
+        const auto rate = ac4::frame_rate(toc);
+        REQUIRE(rate.has_value());
+        const Row& row = kRows[static_cast<std::size_t>(index)];
+        CHECK(std::abs(rate->frames_per_second - row.fps) < 1e-9);
+        CHECK(rate->frame_length == row.frame_length);
+        CHECK(std::abs(rate->internal_rate_hz - row.internal_rate_hz) < 1e-6);
+    }
+    toc.frame_rate_index = 14;
+    CHECK_FALSE(ac4::frame_rate(toc).has_value());
+    toc.sample_rate_hz = 44100;
+    toc.frame_rate_index = 13;
+    const auto rate = ac4::frame_rate(toc);
+    REQUIRE(rate.has_value());
+    CHECK(rate->internal_rate_hz == 44100.0);
+    toc.frame_rate_index = 2;
+    CHECK_FALSE(ac4::frame_rate(toc).has_value());
 }
 
 TEST_CASE("rfc6381_codec_string renders Annex E.13's dotted hex fields", "[ac4][carriage]") {

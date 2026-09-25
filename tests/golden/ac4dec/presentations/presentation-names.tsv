@@ -1,0 +1,20 @@
+# ac4-presentation-names/1
+# Part 2 clause 6.3.3.1.4's presentation names, whole or in chunks, as src/ac4dec/ERRATA.md
+# ("A presentation name in chunks") reads them. Each case: frames' presentation_name bytes in hex,
+# space-separated, "-" for a frame whose presentation substream sends no name; then the name
+# after the last frame, UTF-8, empty for none. tests/ac4dec/test_ac4dec_api.cpp decodes them
+# through the decoder, tools/checks/test_ac4_presentation_names.py through the Python reference.
+whole	4d61696e00	Main
+whole-padded	4d61696e00000000000000000000000000000000000000000000000000000000	Main
+whole-empty	00	
+whole-utf8	4672616ec3a761697300	Français
+two-chunks	4469726563746f72 2773206375740002	Director's cut
+three-chunks	4f726967696e616c 2076657273696f6e 20310003	Original version 1
+joined-at-the-last-chunk	2773206375740002	
+joined-then-repeated	2773206375740002 4469726563746f72 2773206375740002	Director's cut
+count-too-high	4469726563746f72 2773206375740003	
+count-too-low	4f726967696e616c 2076657273696f6e 20310002	
+frame-without-a-name-between-chunks	4469726563746f72 - 2773206375740002	
+kept-over-frames-without-one	4d61696e00 - -	Main
+renamed-by-chunks	4d61696e00 4469726563746f72 2773206375740002	Director's cut
+incomplete-chunks-keep-the-last-name	4d61696e00 4469726563746f72	Main

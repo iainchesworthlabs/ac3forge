@@ -12,14 +12,18 @@
 #include <memory>
 #include <optional>
 #include <set>
+#include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
 
 #include "ac4/ac4.hpp"
 #include "bit_reader.hpp"
+#include "pcm/downmix.hpp"
+#include "pcm/drc.hpp"
 #include "pcm/isf.hpp"
 #include "pcm/objects.hpp"
+#include "pcm/routing.hpp"
 #include "pcm/substream_pcm.hpp"
 #include "presentations.hpp"
 #include "syntax/context.hpp"
@@ -142,6 +146,22 @@ std::string_view describe(DrcMode mode) {
     return "?";
 }
 
+std::string_view describe(SubstreamRole role) {
+    switch (role) {
+        case SubstreamRole::kMain:
+            return "main";
+        case SubstreamRole::kMusicAndEffects:
+            return "music and effects";
+        case SubstreamRole::kDialogue:
+            return "dialogue";
+        case SubstreamRole::kDialogueEnhancement:
+            return "dialogue enhancement";
+        case SubstreamRole::kAssociated:
+            return "associated";
+    }
+    return "?";
+}
+
 namespace {
 
 using detail::AudioSubstream;
@@ -197,6 +217,11 @@ struct IsfPlace {
     int first = 0;
     int count = 0;
 };
+
+// The refusal of a substream no element of the table of contents this
+// decoder reads names.
+constexpr std::string_view kUnnamedSubstream =
+    "no element of the table of contents this decoder reads names the substream";
 
 // What the decoder decided a substream is, and what its syntax needs.
 struct Assignment {
@@ -928,8 +953,141 @@ struct DialogueMixState {
     return anchor;
 }
 
+// --- What the decoder reports of a stream ------------------------------------
+
+// Part 1 clauses 4.3.12.3.8 to 4.3.12.3.31: an 11-bit loudness code is
+// (value x 10 + 1/2) + 1 024, so the value is (code - 1 024) / 10.
+[[nodiscard]] std::optional<double> loudness_value(const std::optional<int>& code) noexcept {
+    if (!code) {
+        return std::nullopt;
+    }
+    return static_cast<double>(*code - 1024) / 10.0;
+}
+
+// A mix gain as dB, -infinity for silence.
+[[nodiscard]] double gain_db(double gain) noexcept {
+    return gain > 0.0 ? 20.0 * std::log10(gain) : -std::numeric_limits<double>::infinity();
+}
+
+// A downmix loudness correction code as dB2: (15 - x) / 2 (Part 1 clause
+// 4.3.12.2.11); 31, which clause reads as none, as nothing.
+[[nodiscard]] std::optional<double> correction_db2(const std::optional<int>& code) noexcept {
+    if (!code || *code == 31) {
+        return std::nullopt;
+    }
+    return (15.0 - static_cast<double>(*code)) / 2.0;
+}
+
+// further_loudness_info()'s values into `out`, each where this one sends it.
+void report_loudness(const detail::FurtherLoudnessInfo& sent, LoudnessInfo& out) {
+    const auto keep = [](std::optional<double>& into, std::optional<double> value) {
+        if (value) {
+            into = value;
+        }
+    };
+    if (sent.loud_prac_type) {
+        out.practice = sent.loud_prac_type;
+        out.correction_gating =
+            sent.b_loudcorr_dialgate ? sent.dialgate_prac_type : std::optional<int>{};
+        out.corrected_in_real_time = sent.b_loudcorr_type;
+    }
+    keep(out.integrated_lkfs, loudness_value(sent.loudrelgat));
+    if (sent.loudspchgat) {
+        out.speech_gated_lkfs = loudness_value(sent.loudspchgat);
+        out.speech_gating = sent.loudspchgat_dialgate_prac_type;
+    }
+    keep(out.short_term_lufs, loudness_value(sent.loudstrm3s));
+    keep(out.max_short_term_lufs, loudness_value(sent.max_loudstrm3s));
+    keep(out.true_peak_dbtp, loudness_value(sent.truepk));
+    keep(out.max_true_peak_dbtp, loudness_value(sent.max_truepk));
+    if (sent.lra) {
+        out.loudness_range_lu = static_cast<double>(*sent.lra) / 10.0;
+        out.loudness_range_practice = sent.lra_prac_type;
+    }
+    keep(out.momentary_lufs, loudness_value(sent.loudmntry));
+    keep(out.max_momentary_lufs, loudness_value(sent.max_loudmntry));
+}
+
+// drc_config()'s modes, as the stream carries them.
+void report_drc(const detail::DrcConfig& config, DrcInfo& out) {
+    out.eac3_profile = config.drc_eac3_profile;
+    out.modes.clear();
+    const int count = std::clamp(config.drc_decoder_nr_modes + 1, 0, detail::kMaxDrcModes);
+    for (int m = 0; m < count; ++m) {
+        const int id = config.drc_decoder_mode[static_cast<std::size_t>(m)];
+        if (id < 0 || id >= detail::kMaxDrcModes) {
+            continue;
+        }
+        const detail::DrcDecoderModeConfig& mode = config.mode[static_cast<std::size_t>(id)];
+        DrcModeInfo info;
+        info.id = id;
+        if (id > 3) {
+            // Part 1 clause 4.3.13.3.2: from -drc_output_level_from to
+            // -drc_output_level_to dBFS.
+            info.output_level_from_db = -mode.drc_output_level_from;
+            info.output_level_to_db = -mode.drc_output_level_to;
+        }
+        if (mode.drc_repeat_profile_flag) {
+            info.repeat_of = mode.drc_repeat_id;
+        }
+        if (mode.drc_default_profile_flag) {
+            info.compression = DrcModeInfo::Compression::kDefaultProfile;
+        } else if (mode.drc_compression_curve_flag) {
+            info.compression = DrcModeInfo::Compression::kCurve;
+        } else {
+            info.compression = DrcModeInfo::Compression::kGains;
+            info.gains_config = mode.drc_gains_config;
+        }
+        out.modes.push_back(info);
+    }
+}
+
+// The stereo downmix's values in force.
+void report_downmix(const detail::StereoDmxCoeff& coeff, DownmixInfo& out) {
+    out.loro_centre_db = gain_db(detail::centre_mix_gain(coeff.loro_centre_mixgain));
+    out.loro_surround_db = gain_db(detail::surround_mix_gain(coeff.loro_surround_mixgain));
+    out.ltrt_centre_db = coeff.b_ltrt_mixinfo
+                             ? gain_db(detail::centre_mix_gain(coeff.ltrt_centre_mixgain))
+                             : out.loro_centre_db;
+    out.ltrt_surround_db = coeff.b_ltrt_mixinfo
+                               ? gain_db(detail::surround_mix_gain(coeff.ltrt_surround_mixgain))
+                               : out.loro_surround_db;
+    // Part 1 clause 4.3.12.2.18: lfe_mg = 5.5 - lfe_mixgain dB.
+    out.lfe_db = coeff.lfe_mixgain
+                     ? std::optional<double>{5.5 - static_cast<double>(*coeff.lfe_mixgain)}
+                     : std::nullopt;
+    out.preferred =
+        static_cast<DownmixInfo::Preferred>(std::clamp(coeff.preferred_dmx_method, 0, 3));
+}
+
+// The channels a member's channel mode has, where decode() renders it.
+void speakers_into(int ch_mode, std::vector<Speaker>& out) {
+    out.clear();
+    if (ch_mode >= 0) {
+        const std::span<const Speaker> speakers = detail::speakers_of(ch_mode);
+        out.assign(speakers.begin(), speakers.end());
+    }
+}
+
+// decode_by_block()'s blocks: the samples a frame leaves over, held for the
+// next, and the position of the next sample handed over.
+struct BlockQueue {
+    std::vector<std::vector<float>> held;  // per channel, kBlockSamples each
+    std::size_t count = 0;                 // samples held in each
+    std::vector<Speaker> speakers;
+    int rate = 0;
+    bool concealed = false;  // whether any held sample came from a concealed frame
+    std::uint64_t position = 0;
+    std::vector<std::span<const float>> spans;  // a block's channels, for the sink
+};
+
 }  // namespace
 
+// Nested in an exported class, Impl takes its visibility, so each member
+// function defined out of line below would be exported from libac4dec.so with
+// it. AC4DEC_NO_EXPORT on each keeps them to the library, and the exported set
+// to the header's (tools/ci/abi-allowlist/libac4dec.so.txt). Hiding Impl
+// itself would make GCC warn that Decoder is more visible than its impl_.
 struct Decoder::Impl {
     DecoderConfig config{};
     std::map<int, AudioSubstreamState> audio;
@@ -1013,7 +1171,18 @@ struct Decoder::Impl {
 
     // Renders the frame's intermediate spatial format objects into `frame`'s
     // channels (clause 5.10.3), or where it has none into the output layout's.
-    [[nodiscard]] detail::ParseResult render_isf(DecodedFrame& frame);
+    [[nodiscard]] AC4DEC_NO_EXPORT detail::ParseResult render_isf(DecodedFrame& frame);
+    // What presentations() and metadata() report: the presentations of the
+    // last frame read, their names by presentation substream, and the
+    // selected presentation's metadata as the frames have sent it.
+    std::vector<PresentationInfo> infos;
+    std::map<int, detail::PresentationName> names;
+    PresentationMetadata metadata;
+    std::vector<std::uint8_t> reported;  // read()'s scratch: which substreams have a report
+    // decode_by_block()'s frame, kept for its storage, and its queue.
+    DecodedFrame block_frame;
+    BlockQueue blocks;
+    int latency = 0;  // latency_samples() of the last frame decoded
 
     [[nodiscard]] bool keeps(int key) const noexcept {
         return key == last_key ||
@@ -1024,14 +1193,14 @@ struct Decoder::Impl {
 
     // The objects of one object audio member of the presentation, decoded,
     // their metadata applied, into `frame`.
-    [[nodiscard]] detail::ParseResult decode_objects(const CapturedAudio& member,
+    [[nodiscard]] AC4DEC_NO_EXPORT detail::ParseResult decode_objects(const CapturedAudio& member,
                                                      const detail::FrameInputs& base,
                                                      DecodedFrame& frame);
 
     // A change of source (Part 1 clause 4.3.3.2.2): what was read from the
-    // stream goes, the mixing values with it, and the signal of the
-    // substreams that output last carries on, so that their audio comes out
-    // to its end and overlaps the new source's first frame
+    // stream goes, the mixing values and what metadata() holds with it, and
+    // the signal of the substreams that output last carries on, so that their
+    // audio comes out to its end and overlaps the new source's first frame
     // (src/ac4dec/ERRATA.md, "A change of source").
     void forget_stream() {
         audio.clear();
@@ -1043,6 +1212,8 @@ struct Decoder::Impl {
         for (auto& [key, track] : object_tracks) {
             track.state = {};
         }
+        names.clear();
+        metadata = PresentationMetadata{};
         std::erase_if(pcm, [this](const auto& entry) { return !keeps(entry.first); });
         new_source = true;
     }
@@ -1062,8 +1233,8 @@ struct Decoder::Impl {
     // the captured frame and the values in force; `dialnorm` is the one the
     // DRC takes, which a version 0 presentation levels its associated audio
     // to.
-    [[nodiscard]] detail::MixValues mix_values(const detail::PresentationPlan& plan, std::size_t anchor,
-                                               std::optional<double> dialnorm);
+    [[nodiscard]] AC4DEC_NO_EXPORT detail::MixValues mix_values(
+        const detail::PresentationPlan& plan, std::size_t anchor, std::optional<double> dialnorm);
 
     // The substream a concealed frame comes from, the one that output last;
     // null without a concealment policy or a frame decoded to conceal from.
@@ -1075,25 +1246,43 @@ struct Decoder::Impl {
         return it != pcm.end() && it->second.can_conceal() ? &it->second : nullptr;
     }
 
-    // A frame of concealed output in place of the frame that failed with
-    // `error`, at the sequence_counter and phase decode() took it to have; the
-    // error where there is no concealment source.
-    [[nodiscard]] std::expected<std::optional<DecodedFrame>, DecodeError> conceal_or(
-        DecodeError error);
+    // A frame of concealed output in `frame` in place of the frame that failed
+    // with `error`, at the sequence_counter and phase decode() took it to
+    // have; the error where there is no concealment source.
+    [[nodiscard]] AC4DEC_NO_EXPORT std::expected<bool, DecodeError> conceal_or(DecodeError error,
+                                                                               DecodedFrame& frame);
 
-    // Reads every substream of the frame; with `capture`, keeps the content of
-    // decode()'s substream as well.
-    [[nodiscard]] std::expected<FrameReport, DecodeError> read(std::span<const std::byte> raw_ac4_frame,
-                                                               Capture* capture);
+    // Reads every substream of the frame, keeping the content of the
+    // presentation decode() selects in frame_capture, and updates what
+    // presentations() and metadata() report.
+    [[nodiscard]] AC4DEC_NO_EXPORT std::expected<FrameReport, DecodeError> read(
+        std::span<const std::byte> raw_ac4_frame);
+
+    // decode()'s work, into `frame`, whose storage it reuses: true for a frame
+    // of output, false for a frame that has none.
+    [[nodiscard]] AC4DEC_NO_EXPORT std::expected<bool, DecodeError> decode_into(
+        std::span<const std::byte> raw_ac4_frame, DecodedFrame& frame);
+
+    // The presentations of `toc` as presentations() reports them, from the
+    // plans select() left.
+    AC4DEC_NO_EXPORT void report_presentations(const Toc& toc);
+    // The selected presentation's metadata, from the frame just read.
+    AC4DEC_NO_EXPORT void report_metadata();
+
+    // decode_by_block()'s queue: hands `frame` to `sink` in blocks, holding
+    // what is left over; returns the blocks handed over.
+    AC4DEC_NO_EXPORT std::size_t queue(const DecodedFrame& frame, const BlockSink& sink);
+    // Hands over what the queue holds as one shorter block; returns its
+    // samples.
+    AC4DEC_NO_EXPORT std::size_t drain(const BlockSink& sink);
 };
 
-std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::Impl::conceal_or(
-    DecodeError error) {
+std::expected<bool, DecodeError> Decoder::Impl::conceal_or(DecodeError error, DecodedFrame& frame) {
     detail::SubstreamPcm* const source = concealment_source();
     if (source == nullptr) {
         return std::unexpected(error);
     }
-    DecodedFrame frame;
+    frame.concealed.reset();
     frame.sample_rate_hz = last_rate;
     frame.sequence_counter = previous_sequence_counter.value_or(0);
     frame.presentation = last_presentation;
@@ -1130,11 +1319,102 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::Impl::conceal_o
     if (!source->conceal(config.concealment, inputs, frame.channels, frame.speakers)) {
         return std::unexpected(error);
     }
+    frame.samples = frame.channels.empty() ? 0 : frame.channels.front().size();
+    frame.objects.clear();
+    frame.object_common.reset();
+    output_samples += static_cast<std::int64_t>(frame.samples);
     frame.concealed = Concealment{.error = error,
                                   .action = config.concealment == ConcealmentPolicy::kRepeatFade
                                                 ? ConcealmentAction::kRepeatFade
                                                 : ConcealmentAction::kMute};
-    return std::optional<DecodedFrame>{std::move(frame)};
+    return true;
+}
+
+std::size_t Decoder::Impl::queue(const DecodedFrame& frame, const BlockSink& sink) {
+    BlockQueue& q = blocks;
+    const std::size_t channels = frame.channels.size();
+    const auto hand_over = [&](std::size_t samples, bool concealed, const auto& channel_at) {
+        q.spans.resize(channels);
+        for (std::size_t c = 0; c < channels; ++c) {
+            q.spans[c] = channel_at(c);
+        }
+        sink(PcmBlock{.channels = q.spans,
+                      .speakers = q.speakers,
+                      .samples = samples,
+                      .sample_rate_hz = q.rate,
+                      .position = q.position,
+                      .concealed = concealed});
+        q.position += samples;
+    };
+    // A block never spans two layouts or rates: what is held goes first.
+    if (q.speakers.size() != frame.speakers.size() ||
+        !std::ranges::equal(q.speakers, frame.speakers) || q.rate != frame.sample_rate_hz) {
+        drain(sink);
+        q.speakers.assign(frame.speakers.begin(), frame.speakers.end());
+        q.rate = frame.sample_rate_hz;
+        q.held.resize(channels);
+        for (std::vector<float>& held : q.held) {
+            held.resize(kBlockSamples);
+        }
+    }
+    const bool concealed = frame.concealed.has_value();
+    std::size_t handed = 0;
+    std::size_t at = 0;
+    if (q.count > 0) {
+        const std::size_t take = std::min(kBlockSamples - q.count, frame.samples);
+        for (std::size_t c = 0; c < channels; ++c) {
+            std::copy_n(frame.channels[c].begin(), take,
+                        q.held[c].begin() + static_cast<std::ptrdiff_t>(q.count));
+        }
+        q.count += take;
+        q.concealed = q.concealed || concealed;
+        at = take;
+        if (q.count == kBlockSamples) {
+            hand_over(kBlockSamples, q.concealed,
+                      [&q](std::size_t c) { return std::span<const float>(q.held[c]); });
+            q.count = 0;
+            q.concealed = false;
+            ++handed;
+        }
+    }
+    for (; frame.samples - at >= kBlockSamples; at += kBlockSamples) {
+        hand_over(kBlockSamples, concealed, [&frame, at](std::size_t c) {
+            return std::span<const float>(frame.channels[c]).subspan(at, kBlockSamples);
+        });
+        ++handed;
+    }
+    if (at < frame.samples) {
+        const std::size_t rest = frame.samples - at;
+        for (std::size_t c = 0; c < channels; ++c) {
+            std::copy_n(frame.channels[c].begin() + static_cast<std::ptrdiff_t>(at), rest,
+                        q.held[c].begin());
+        }
+        q.count = rest;
+        q.concealed = concealed;
+    }
+    return handed;
+}
+
+std::size_t Decoder::Impl::drain(const BlockSink& sink) {
+    BlockQueue& q = blocks;
+    const std::size_t samples = q.count;
+    if (samples == 0) {
+        return 0;
+    }
+    q.spans.resize(q.held.size());
+    for (std::size_t c = 0; c < q.held.size(); ++c) {
+        q.spans[c] = std::span<const float>(q.held[c]).first(samples);
+    }
+    sink(PcmBlock{.channels = q.spans,
+                  .speakers = q.speakers,
+                  .samples = samples,
+                  .sample_rate_hz = q.rate,
+                  .position = q.position,
+                  .concealed = q.concealed});
+    q.position += samples;
+    q.count = 0;
+    q.concealed = false;
+    return samples;
 }
 
 detail::ParseResult Decoder::Impl::decode_objects(const CapturedAudio& member,
@@ -1254,8 +1534,7 @@ detail::ParseResult Decoder::Impl::decode_objects(const CapturedAudio& member,
     // first sample comes out the decoder's delay after this frame's first
     // output sample (clause 5.9.2).
     const std::int64_t start = output_samples;
-    const auto origin =
-        start + static_cast<std::int64_t>(std::lround(substream.output_delay_samples()));
+    const auto origin = start + static_cast<std::int64_t>(substream.output_delay_samples());
     const int n = static_cast<int>(essences.size());
     if (dyn != nullptr && timing && dyn->n_blocks > 0 && offset + n <= dyn->n_objs) {
         for (int b = 0; b < dyn->n_blocks; ++b) {
@@ -1363,14 +1642,84 @@ void Decoder::reset() {
     impl_->last_rate = 0;
     impl_->last_presentation = 0;
     impl_->last_presentation_id.reset();
+    impl_->infos.clear();
+    impl_->blocks.count = 0;
+    impl_->blocks.concealed = false;
+    impl_->blocks.position = 0;
+    impl_->latency = 0;
+    impl_->output_samples = 0;
 }
 
 std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte> raw_ac4_frame) {
-    return impl_->read(raw_ac4_frame, nullptr);
+    return impl_->read(raw_ac4_frame);
 }
 
 std::string_view Decoder::refusal_reason() const noexcept {
     return impl_->refusal;
+}
+
+void Decoder::set_output(const OutputConfig& output) {
+    impl_->config.output = output;
+}
+
+const OutputConfig& Decoder::output() const noexcept {
+    return impl_->config.output;
+}
+
+void Decoder::set_presentation(const PresentationChoice& choice) {
+    impl_->config.presentation = choice;
+}
+
+std::span<const PresentationInfo> Decoder::presentations() const {
+    return impl_->infos;
+}
+
+const PresentationMetadata& Decoder::metadata() const {
+    return impl_->metadata;
+}
+
+int Decoder::latency_samples() const noexcept {
+    return impl_->latency;
+}
+
+std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(
+    std::span<const std::byte> raw_ac4_frame) {
+    DecodedFrame frame;
+    const auto decoded = impl_->decode_into(raw_ac4_frame, frame);
+    if (!decoded) {
+        return std::unexpected(decoded.error());
+    }
+    if (!*decoded) {
+        return std::optional<DecodedFrame>{};
+    }
+    return std::optional<DecodedFrame>{std::move(frame)};
+}
+
+std::expected<std::optional<FrameInfo>, DecodeError> Decoder::decode_by_block(
+    std::span<const std::byte> raw_ac4_frame, BlockSink sink) {
+    Impl& d = *impl_;
+    DecodedFrame& frame = d.block_frame;
+    const auto decoded = d.decode_into(raw_ac4_frame, frame);
+    if (!decoded) {
+        return std::unexpected(decoded.error());
+    }
+    if (!*decoded) {
+        return std::optional<FrameInfo>{};
+    }
+    FrameInfo info;
+    info.sample_rate_hz = frame.sample_rate_hz;
+    info.sequence_counter = frame.sequence_counter;
+    info.presentation = frame.presentation;
+    info.presentation_id = frame.presentation_id;
+    info.samples = frame.samples;
+    info.concealed = frame.concealed;
+    info.blocks = d.queue(frame, sink);
+    info.speakers = d.blocks.speakers;
+    return std::optional<FrameInfo>{info};
+}
+
+std::size_t Decoder::flush(BlockSink sink) {
+    return impl_->drain(sink);
 }
 
 detail::MixValues Decoder::Impl::mix_values(const detail::PresentationPlan& plan, std::size_t anchor,
@@ -1489,10 +1838,156 @@ detail::MixValues Decoder::Impl::mix_values(const detail::PresentationPlan& plan
     return mix;
 }
 
-std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::span<const std::byte> raw_ac4_frame) {
-    Impl& d = *impl_;
+void Decoder::Impl::report_presentations(const Toc& toc) {
+    // select() planned every presentation of the frame, each at its index.
+    const std::size_t count =
+        toc.bitstream_version >= 2 ? toc.presentations_v1.size() : toc.presentations_v0.size();
+    infos.resize(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const detail::PresentationPlan& plan = plans[i];
+        PresentationInfo& info = infos[i];
+        info.index = plan.index;
+        info.presentation_id = plan.presentation_id;
+        info.presentation_version = plan.presentation_version;
+        info.presentation_config = plan.presentation_config;
+        info.md_compat = plan.md_compat;
+        info.enabled = plan.enabled;
+        info.pre_virtualized = plan.pre_virtualized;
+        info.alternative = plan.v1 && toc.presentations_v1[i].b_alternative;
+        info.name.clear();
+        if (info.alternative && plan.presentation_substream) {
+            if (const auto it = names.find(*plan.presentation_substream); it != names.end()) {
+                info.name = it->second.name();
+            }
+        }
+        info.language = detail::presentation_language(plan);
+        if (plan.v1) {
+            info.substream_groups = toc.presentations_v1[i].group_refs;
+        } else {
+            info.substream_groups.clear();
+        }
+        info.members.resize(plan.members.size());
+        for (std::size_t m = 0; m < plan.members.size(); ++m) {
+            const detail::Member& from = plan.members[m];
+            PresentationMember& to = info.members[m];
+            to.substream = from.substream;
+            to.role = detail::public_role(from.role);
+            to.group = from.group;
+            to.content_classifier = from.content_classifier >= 0
+                                        ? std::optional<int>{from.content_classifier}
+                                        : std::nullopt;
+            to.language = from.language;
+            speakers_into(from.ch_mode, to.speakers);
+        }
+        const std::optional<std::size_t> anchor = detail::anchor_member(plan);
+        speakers_into(anchor ? plan.members[*anchor].ch_mode : -1, info.speakers);
+        info.decodable = plan.decodable;
+        info.selectable = detail::selectable(plan, config.level);
+    }
+}
+
+void Decoder::Impl::report_metadata() {
+    const Capture& capture = frame_capture;
+    if (capture.plan == nullptr) {
+        return;
+    }
+    const detail::PresentationPlan& plan = *capture.plan;
+    PresentationMetadata& out = metadata;
+    if (out.presentation != plan.index) {
+        out = PresentationMetadata{};
+        out.presentation = plan.index;
+    }
+    const auto downmix = [&out](const std::optional<detail::StereoDmxCoeff>& coeff,
+                                const std::optional<int>& loro, const std::optional<int>& ltrt) {
+        if (coeff) {
+            report_downmix(*coeff, out.downmix ? *out.downmix : out.downmix.emplace());
+        }
+        if (out.downmix) {
+            if (const std::optional<double> db2 = correction_db2(loro)) {
+                out.downmix->loro_correction_db2 = db2;
+            }
+            if (const std::optional<double> db2 = correction_db2(ltrt)) {
+                out.downmix->ltrt_correction_db2 = db2;
+            }
+        }
+    };
+    // As decode() takes them: from the presentation substream where the
+    // presentation has one, and otherwise from the metadata() of the
+    // substream Part 2 Table 16 names.
+    const std::size_t anchor = detail::anchor_member(plan).value_or(0);
+    const detail::DrcState* drc_state = nullptr;
+    bool drc_read = false;
+    if (capture.presentation_read && plan.presentation_substream) {
+        const PresentationSubstream& p = capture.presentation;
+        out.loudness.dialnorm_dbfs = -0.25 * static_cast<double>(p.dialnorm_bits);
+        if (p.further_loudness_info) {
+            report_loudness(*p.further_loudness_info, out.loudness);
+        }
+        downmix(p.custom_dmx_data.stereo_dmx_coeff, p.loud_corr.loro_dmx_loud_corr,
+                p.loud_corr.ltrt_dmx_loud_corr);
+        if (const auto it = presentation.find(*plan.presentation_substream);
+            it != presentation.end()) {
+            drc_state = &it->second.drc;
+        }
+        drc_read = true;
+    } else if (!plan.v1 && anchor < capture.audio.size()) {
+        const CapturedAudio& levels = capture.audio[dialnorm_member(plan, anchor)];
+        if (levels.read) {
+            const detail::BasicMetadata& basic = levels.content.metadata.basic;
+            if (basic.dialnorm_bits) {
+                out.loudness.dialnorm_dbfs = -0.25 * static_cast<double>(*basic.dialnorm_bits);
+            }
+            if (basic.further_loudness_info) {
+                report_loudness(*basic.further_loudness_info, out.loudness);
+            }
+            if (basic.stereo_dmx_coeff) {
+                downmix(basic.stereo_dmx_coeff, basic.stereo_dmx_coeff->loro_dmx_loud_corr,
+                        basic.stereo_dmx_coeff->ltrt_dmx_loud_corr);
+            }
+            if (const auto it = audio.find(levels.state_key); it != audio.end()) {
+                drc_state = &it->second.metadata.drc;
+            }
+            drc_read = true;
+        }
+    }
+    // DRC's configuration and dialogue enhancement's are what the states
+    // hold: the last I-frame's, which an I-frame without one clears.
+    if (drc_read) {
+        if (drc_state != nullptr && drc_state->config_valid) {
+            DrcInfo& drc = out.drc ? *out.drc : out.drc.emplace();
+            report_drc(drc_state->config, drc);
+            drc.applied_mode = config.output.output_level_dbfs
+                                   ? detail::drc_mode_for(drc_state->config, config.output.drc,
+                                                          *config.output.output_level_dbfs,
+                                                          config.output.headphones)
+                                   : std::nullopt;
+        } else {
+            out.drc.reset();
+        }
+    }
+    if (anchor < capture.audio.size() && capture.audio[anchor].read) {
+        const auto it = audio.find(capture.audio[anchor].state_key);
+        if (it != audio.end() && it->second.metadata.de.config_valid) {
+            const detail::DeConfig& de = it->second.metadata.de.config;
+            DialogueEnhancementInfo& info = out.dialogue_enhancement
+                                                ? *out.dialogue_enhancement
+                                                : out.dialogue_enhancement.emplace();
+            info.method = de.de_method;
+            info.left = (de.de_channel_config & 4) != 0;
+            info.right = (de.de_channel_config & 2) != 0;
+            info.centre = (de.de_channel_config & 1) != 0;
+            info.max_gain_db = 3.0 * static_cast<double>(de.de_max_gain + 1);
+        } else {
+            out.dialogue_enhancement.reset();
+        }
+    }
+}
+
+std::expected<bool, DecodeError> Decoder::Impl::decode_into(
+    std::span<const std::byte> raw_ac4_frame, DecodedFrame& frame) {
+    Impl& d = *this;
     d.refusal = {};
-    auto report = d.read(raw_ac4_frame, &d.frame_capture);
+    auto report = d.read(raw_ac4_frame);
     if (!report) {
         d.refusal = describe(report.error());
         // read() took the frame to be the one the stream expected; its phase
@@ -1500,7 +1995,7 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         if (d.converter_phase) {
             d.converter_phase = (*d.converter_phase + 1) % 5;
         }
-        return d.conceal_or(report.error());
+        return d.conceal_or(report.error(), frame);
     }
     // Part 2 clause 5.11: phi_t is sequence_counter modulo 5, but where a
     // splicer wrote 0 it goes on from the frame before, and it is 0 for a
@@ -1512,12 +2007,16 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     if (capture.plan == nullptr) {
         // Where a substream is one this decoder does not decode yet (an
         // immersive element or objects, say), that is why no presentation can
-        // be selected, and its reason says so.
-        const auto unsupported = std::ranges::find(report->substreams, std::optional{DecodeError::kUnsupported},
-                                                   &SubstreamReport::refused);
+        // be selected, and its reason says so; a substream nothing names is
+        // not the reason.
+        const auto unsupported =
+            std::ranges::find_if(report->substreams, [](const SubstreamReport& s) {
+                return s.refused == DecodeError::kUnsupported &&
+                       s.refused_reason != kUnnamedSubstream;
+            });
         d.refusal = unsupported != report->substreams.end() ? unsupported->refused_reason
                                                             : std::string_view{"no presentation this decoder can select"};
-        return d.conceal_or(DecodeError::kUnsupported);
+        return d.conceal_or(DecodeError::kUnsupported, frame);
     }
     const detail::PresentationPlan& plan = *capture.plan;
     const std::optional<std::size_t> channel_anchor = detail::anchor_member(plan);
@@ -1532,17 +2031,17 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
                 // Nothing comes out for this frame, so the signal before it
                 // is dropped rather than resumed a gap later.
                 d.forget_signal();
-                return std::optional<DecodedFrame>{};
+                return false;
             }
-            return d.conceal_or(*it->refused);
+            return d.conceal_or(*it->refused, frame);
         }
         if (!member.read) {
             d.refusal = "the substream to decode is not in the frame";
-            return d.conceal_or(DecodeError::kInvalidStream);
+            return d.conceal_or(DecodeError::kInvalidStream, frame);
         }
     }
     const CapturedAudio& main = capture.audio[anchor];
-    DecodedFrame frame;
+    frame.concealed.reset();
     frame.sample_rate_hz = main.context.fs_index == 0 ? 44100 : 48000;
     const auto is_object = [&plan](std::size_t m) {
         return plan.members[m].coding != detail::Coding::kChannel;
@@ -1570,17 +2069,19 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         drc_frame = &capture.presentation.drc;
     } else {
         const CapturedAudio& levels = capture.audio[dialnorm_member(plan, anchor)];
-        const detail::Metadata& metadata = levels.content.metadata;
-        if (metadata.basic.dialnorm_bits) {
-            dialnorm = -0.25 * static_cast<double>(*metadata.basic.dialnorm_bits);
+        const detail::Metadata& sent = levels.content.metadata;
+        if (sent.basic.dialnorm_bits) {
+            dialnorm = -0.25 * static_cast<double>(*sent.basic.dialnorm_bits);
         }
-        if (metadata.drc) {
+        if (sent.drc) {
             drc_state = &d.audio[levels.state_key].metadata.drc;
-            drc_frame = &*metadata.drc;
+            drc_frame = &*sent.drc;
         }
     }
     inputs.drc = detail::drc_frame_values(d.config.output, dialnorm, drc_state, drc_frame);
     // The presentation's object audio substreams, each decoded apart.
+    frame.objects.clear();
+    frame.object_common.reset();
     d.last_objects.clear();
     d.isf_used = 0;
     d.object_samples = 0;
@@ -1591,17 +2092,21 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         if (const detail::ParseResult decoded = d.decode_objects(capture.audio[m], inputs, frame);
             !decoded) {
             d.refusal = decoded.error().reason;
-            return d.conceal_or(decoded.error().error);
+            return d.conceal_or(decoded.error().error, frame);
         }
         d.last_objects.push_back(capture.audio[m].state_key);
+        d.latency = d.pcm[capture.audio[m].state_key].output_delay_samples();
     }
     if (!channel_anchor) {
         // A presentation of object audio alone: no channels, but an
         // intermediate spatial format's.
+        frame.channels.clear();
+        frame.speakers.clear();
         if (const detail::ParseResult rendered = d.render_isf(frame); !rendered) {
             d.refusal = rendered.error().reason;
-            return d.conceal_or(rendered.error().error);
+            return d.conceal_or(rendered.error().error, frame);
         }
+        frame.samples = d.object_samples;
         d.last_key.reset();
         d.last_members.clear();
         d.last_rate = frame.sample_rate_hz;
@@ -1610,7 +2115,7 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         d.new_source = false;
         d.output_samples += static_cast<std::int64_t>(d.object_samples);
         std::erase_if(d.pcm, [&d](const auto& entry) { return !d.keeps(entry.first); });
-        return std::optional<DecodedFrame>{std::move(frame)};
+        return true;
     }
     inputs.de = detail::de_frame_values(main.content.metadata.dialog_enhancement);
     inputs.downmix =
@@ -1634,14 +2139,15 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         member_inputs.de = detail::de_frame_values(member.content.metadata.dialog_enhancement);
         member_inputs.decoding = d.config.decoding;
         member_inputs.qmf_only = true;
-        detail::SubstreamPcm& pcm = d.pcm[member.state_key];
+        detail::SubstreamPcm& member_pcm = d.pcm[member.state_key];
         if (const detail::ParseResult decoded =
-                pcm.decode(member.context, member.content, member_inputs, d.scratch_channels, d.scratch_speakers);
+                member_pcm.decode(member.context, member.content, member_inputs, d.scratch_channels,
+                                  d.scratch_speakers);
             !decoded) {
             d.refusal = decoded.error().reason;
-            return d.conceal_or(decoded.error().error);
+            return d.conceal_or(decoded.error().error, frame);
         }
-        const detail::MixSource out = pcm.qmf_output(member.state_key);
+        const detail::MixSource out = member_pcm.qmf_output(member.state_key);
         if (plan.members[m].role == Role::kDialogueEnhancement) {
             dialogue = dialogue.value_or(out);
         } else {
@@ -1654,12 +2160,14 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         d.pcm[main.state_key].decode(main.context, main.content, inputs, frame.channels, frame.speakers);
     if (!decoded) {
         d.refusal = decoded.error().reason;
-        return d.conceal_or(decoded.error().error);
+        return d.conceal_or(decoded.error().error, frame);
     }
     if (const detail::ParseResult rendered = d.render_isf(frame); !rendered) {
         d.refusal = rendered.error().reason;
-        return d.conceal_or(rendered.error().error);
+        return d.conceal_or(rendered.error().error, frame);
     }
+    frame.samples = frame.channels.empty() ? 0 : frame.channels.front().size();
+    d.latency = d.pcm[main.state_key].output_delay_samples();
     d.last_key = main.state_key;
     d.last_members.clear();
     for (std::size_t m = 0; m < capture.audio.size(); ++m) {
@@ -1675,11 +2183,12 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     d.new_source = false;
     // A substream the presentation no longer takes drops its signal.
     std::erase_if(d.pcm, [&d](const auto& entry) { return !d.keeps(entry.first); });
-    return std::optional<DecodedFrame>{std::move(frame)};
+    return true;
 }
 
-std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std::byte> raw_ac4_frame,
-                                                            Capture* capture) {
+std::expected<FrameReport, DecodeError> Decoder::Impl::read(
+    std::span<const std::byte> raw_ac4_frame) {
+    Capture* const capture = &frame_capture;
     auto frame = ac4::parse_raw_frame(raw_ac4_frame);
     if (!frame) {
         // The frame is taken to be the one the stream expected next, so that
@@ -1693,17 +2202,15 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
     }
     apply_observed_stereo_rule(frame->toc);
     const Toc& toc = frame->toc;
-    if (capture != nullptr) {
-        capture->plan = nullptr;
-        capture->audio.clear();
-        capture->oamd.clear();
-        capture->presentation_read = false;
-        if (const std::optional<std::size_t> selected =
-                detail::select(toc, config.presentation, config.level, plans)) {
-            capture->plan = &plans[*selected];
-            for (const detail::Member& member : capture->plan->members) {
-                capture->audio.emplace_back().index = member.substream;
-            }
+    capture->plan = nullptr;
+    capture->audio.clear();
+    capture->oamd.clear();
+    capture->presentation_read = false;
+    if (const std::optional<std::size_t> selected =
+            detail::select(toc, config.presentation, config.level, plans)) {
+        capture->plan = &plans[*selected];
+        for (const detail::Member& member : capture->plan->members) {
+            capture->audio.emplace_back().index = member.substream;
         }
     }
 
@@ -1810,8 +2317,10 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
             continue;
         }
 
-        BitReader owner_reader(raw_ac4_frame.subspan(owner_loc.offset, owner_loc.size), index, config.syntax);
-        BitReader ext_reader(raw_ac4_frame.subspan(ext_loc.offset, ext_loc.size), ext_index, config.syntax);
+        BitReader owner_reader(raw_ac4_frame.subspan(owner_loc.offset, owner_loc.size), index,
+                               sink_of(config.syntax));
+        BitReader ext_reader(raw_ac4_frame.subspan(ext_loc.offset, ext_loc.size), ext_index,
+                             sink_of(config.syntax));
         AudioSubstreamState& state = audio[assignment.state_key];
         if (!state.carries(assignment.audio)) {
             state = AudioSubstreamState{};
@@ -1845,7 +2354,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
             if (!ext_result) {
                 ext_report.refused = ext_result.error().error;
                 ext_report.refused_reason = ext_result.error().reason;
-            } else if (CapturedAudio* const captured = capture != nullptr ? capture->wants(index) : nullptr) {
+            } else if (CapturedAudio* const captured = capture->wants(index)) {
                 captured->state_key = assignment.state_key;
                 captured->context = assignment.audio;
                 captured->content = std::move(parsed);
@@ -1891,7 +2400,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                 continue;
             }
             BitReader reader(raw_ac4_frame.subspan(located.offset, located.size), index,
-                             config.syntax);
+                             sink_of(config.syntax));
             ParseResult result;
             switch (assignment.kind) {
                 case SubstreamReport::Kind::kAudio: {
@@ -1918,8 +2427,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                     AudioSubstream parsed;
                     result = detail::parse_audio_substream(reader, assignment.audio, state, parsed,
                                                            nullptr, objects ? &*objects : nullptr);
-                    if (CapturedAudio* const captured =
-                            result && capture != nullptr ? capture->wants(index) : nullptr) {
+                    if (CapturedAudio* const captured = result ? capture->wants(index) : nullptr) {
                         captured->state_key = assignment.state_key;
                         captured->context = assignment.audio;
                         captured->content = std::move(parsed);
@@ -1950,9 +2458,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                         if (parsed.common) {
                             group.common = parsed.common;
                         }
-                        if (capture != nullptr) {
-                            capture->oamd.push_back({.key = index, .content = std::move(parsed)});
-                        }
+                        capture->oamd.push_back({.key = index, .content = std::move(parsed)});
                     }
                     break;
                 }
@@ -1960,7 +2466,17 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                     PresentationSubstream parsed;
                     result = detail::parse_presentation_substream(reader, *assignment.presentation,
                                                                   presentation[index], parsed);
-                    if (result && capture != nullptr && capture->plan != nullptr &&
+                    // An alternative presentation's name, whole or in chunks,
+                    // one a frame (Part 2 clause 6.3.3.1.4).
+                    if (result && assignment.presentation->b_alternative) {
+                        detail::PresentationName& name = names[index];
+                        if (parsed.b_name_present) {
+                            name.add(parsed.presentation_name);
+                        } else {
+                            name.none();
+                        }
+                    }
+                    if (result && capture->plan != nullptr &&
                         capture->plan->presentation_substream == index) {
                         capture->presentation = std::move(parsed);
                         capture->presentation_read = true;
@@ -1992,7 +2508,31 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
             report.substreams.push_back(substream);
         }
     }
+    // A substream no element this decoder reads names - an HSF extension no
+    // ac4_hsf_ext_substream_info() points at, or one only a skipped
+    // presentation_config_ext_info() names - is reported too, unread: without
+    // a name the syntax to read it with is unknown.
+    reported.assign(frame->substreams.size(), 0);
+    for (const SubstreamReport& substream : report.substreams) {
+        if (substream.index >= 0 && static_cast<std::size_t>(substream.index) < reported.size()) {
+            reported[static_cast<std::size_t>(substream.index)] = 1;
+        }
+    }
+    for (std::size_t index = 0; index < frame->substreams.size(); ++index) {
+        if (reported[index] != 0) {
+            continue;
+        }
+        SubstreamReport substream;
+        substream.index = static_cast<int>(index);
+        substream.kind = SubstreamReport::Kind::kOther;
+        substream.size_bits = frame->substreams[index].size * 8U;
+        substream.refused = DecodeError::kUnsupported;
+        substream.refused_reason = kUnnamedSubstream;
+        report.substreams.push_back(substream);
+    }
     std::ranges::sort(report.substreams, {}, &SubstreamReport::index);
+    report_presentations(toc);
+    report_metadata();
     return report;
 }
 

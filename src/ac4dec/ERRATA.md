@@ -2109,6 +2109,29 @@ formulas of 6.3.9.8.4 and 5.9.2, and their intermediate spatial format to Annex 
 - **Evidence:** Text; the constructed `direct-isf-sr3100` renders each object's tone to each speaker at
   its coefficient in all eight layouts, and 5 dB up where its metadata sets that gain.
 
+### A presentation name in chunks
+
+- **Where:** Part 2 6.3.3.1.2 to 6.3.3.1.4, p. 167: an alternative presentation's substream may send
+  `presentation_name`, name_len bytes of UTF-8, 32 without `b_length`. "If byte[name_len-1] = 0, the name
+  of the presentation is given by byte[0] to byte[name_len-2]; otherwise, the name of the presentation is
+  serialized into multiple chunks, each transmitted in one codec frame. If byte[name_len-2] = 0, the
+  currently received chunk is the last chunk", and its byte[name_len-1] is "the total number of chunks";
+  the decoder stores the chunks "until the total number of chunks is received".
+- **Text leaves open:** which bytes of a chunk before the last are the name's; whether the chunks come in
+  consecutive frames; where a decoder that joins in the middle begins; what fills a 32-byte field longer
+  than the name.
+- **Reading:** a chunk before the last carries name_len bytes of the name, the last name_len - 2. The name
+  is the chunks of consecutive frames of the presentation substream up to and including the last, taken
+  only when there are as many as its count says, so a decoder that joins in the middle waits for the next
+  repetition; a frame of the substream that sends no name, a count that does not match and a change of
+  source each discard the chunks gathered. A name ends at its first zero byte, so a 32-byte field padded
+  with zeros gives the name before them. The last name received stays until another replaces it or the
+  source changes.
+- **Evidence:** Text; no stream here names a presentation. The 14 cases of
+  `tests/golden/ac4dec/presentations/presentation-names.tsv` hold the decoder, through hand-built frames
+  (`tests/ac4dec/test_ac4dec_api.cpp`), and the Python reference (`tools/references/ac4_presentations.py`,
+  `tools/checks/test_ac4_presentation_names.py`) to the same names.
+
 ## Tables
 
 The Huffman codebooks come from the table attachment of Part 1, `ts_103190_tables.c`, which Annex A

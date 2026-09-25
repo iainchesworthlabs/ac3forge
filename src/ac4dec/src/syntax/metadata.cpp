@@ -52,20 +52,13 @@ namespace {
     return mode == ch_mode::k7_0_322 || mode == ch_mode::k7_1_322;
 }
 
-// huff_decode() (Part 1 clause 4.3.6.4.2) with its failure given a reason.
-// Annex A's codebooks are complete, so no match means either the substream
-// ended inside a codeword or the bits are not this codebook's.
+// huff_decode() (Part 1 clause 4.3.6.4.2), a miss reported as every tool
+// reports one (huff_codeword()).
 [[nodiscard]] std::expected<int, SyntaxError> read_codeword(BitReader& r, const Codebook& codebook,
                                                             std::string_view element) {
-    const int index = huff_decode(r, codebook, element);
-    if (index >= 0) {
-        return index;
-    }
-    if (r.remaining_bits() < codebook.max_bits) {
-        return fail(DecodeError::kTruncated,
-                    "a Huffman codeword runs past the end of the substream");
-    }
-    return fail(DecodeError::kInvalidStream, "no Huffman codeword of the codebook matches");
+    return huff_codeword(r, codebook, element,
+                         {.truncated = "a Huffman codeword runs past the end of the substream",
+                          .invalid = "no Huffman codeword of the codebook matches"});
 }
 
 // --- Part 2 clause 6.2.7.2 basic_metadata ------------------------------------
