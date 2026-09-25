@@ -28,12 +28,12 @@
 // what any of them mean - MemorySettingsStore (settings_model.cpp) is the
 // test suites' own version of the same three methods.
 //
-// Shared by HearthController (its own settings_/pairing_) and
-// NetworkController (its own, separate settings_/pairing_store_, over the
-// same "ac3forge"/"Hearth" QSettings identity): each controller owns and
-// constructs this over its own QSettings, rather than one instance being
-// passed between them - the two controllers are independent the same way
-// their engine-side objects are (network_controller.hpp's own comment).
+// Used by HearthController (its own settings_), NetworkController (its own
+// settings_, for the server identity and the network settings) and the one
+// pairing store both share (shared_pairing_store.hpp), each over its own
+// QSettings with the same "ac3forge"/"Hearth" identity - the two controllers
+// are independent the same way their engine-side objects are
+// (network_controller.hpp's own comment).
 
 namespace ac3::hearth::ui {
 

@@ -743,23 +743,19 @@ The sections below contain the complete change list and fixes.
 - **Hearth's Network page: discovery and pairing** (A6, its first slice). `ac3hearth` browses
   `_sendspin._tcp` and lists every player it finds, live: a Hearth sink's roles, the codecs and
   data types it takes, its output slot count and width; a standard Sendspin player's codecs.
-  Selecting an unpaired sink starts a dynamic pairing code attempt at once — the sink shows a
-  six-digit code on its own console or page, entered here — and a wrong or expired code says so
-  without losing the attempt. `apps/hearth/engine/network_sinks.hpp` wraps `ac3::sendspin::
-  ServerHost` and its own `_sendspin._tcp` browse (kept apart from `ServerHost`'s own, so
-  `NetworkController`'s "Look again" is a real re-query); `network_view.hpp` turns what it learns
-  into the page's rows and labels, tested the way `output_decision.hpp` is. Groups, a sink's own
-  settings pages and reported levels are later slices — a sink already in use by another server
-  needs `ac3::sendspin` to grow a way to learn that at all, which pairing alone does not give it.
+  An unpaired sink's pairing view asks for a dynamic pairing code attempt with its own button —
+  the sink shows a six-digit code on its own console or page, entered here — and a wrong or
+  expired code says so without losing the attempt. `apps/hearth/engine/network_sinks.hpp` wraps
+  `ac3::sendspin::ServerHost` and its own `_sendspin._tcp` browse (kept apart from `ServerHost`'s
+  own, so `NetworkController`'s "Look again" is a real re-query); `network_view.hpp` turns what it
+  learns into the page's rows and labels, tested the way `output_decision.hpp` is.
 - **Hearth's Network page: making and editing a group** (A6). The list now shows the groups
   alongside the sinks; "+ New group…" makes a real one, backed by `ac3::sendspin::Group`, and its
   own editor adds and removes members, sets a member's volume and mute directly, and sets the
   group's own volume and mute (redistributed across the members that support it, the same
   arithmetic a `controller@v1` client's own command already uses). `Group` gains
   `set_member_volume`/`set_member_muted`, `set_group_volume`/`set_group_muted` and
-  `member_player` for this. Not in this slice: actually streaming a programme to a group, which
-  needs a network-group output seam in `Player` — the editor says so rather than showing a
-  number it cannot yet make true.
+  `member_player` for this.
 - **`ac3hearth` and `ac3hearth-testsink` register their own Windows Firewall exception before
   their first mDNS or Sendspin socket binds**, rather than leaving it to Windows' own "these
   features have been blocked" prompt. `ac3::sendspin::firewall::ensure_inbound_rule()`
@@ -768,6 +764,46 @@ The sections below contain the complete change list and fixes.
   public — the first time it finds none there, elevating once through a UAC prompt if the process
   is not already elevated; every later run finds the rule already in place. A loopback-only bind
   needs none of this and skips it; Linux and macOS do nothing at all.
+- **Hearth's Network page keeps every sink it finds, pairs with one when asked, and plays to a
+  group of them** (A6). Before this, the page showed none of four sinks Music Assistant held: a
+  row lasted only as long as its connection, and a sink another server holds closes a new
+  server's waiting connection at once (`client/goodbye` `concurrent_attempt`) — Music Assistant
+  holds every Sendspin player it knows, playing or not.
+  - A row now lasts while mDNS lists the sink or a connection to it is live, and keeps what the
+    sink last said about itself. A sink held elsewhere says "In use by another server." and is
+    not dialled again until asked: "Pair with this computer" for an unpaired one, "Take it back"
+    for a paired one, whose playback activation displaces the holder. Any other failure is
+    dialled again after 1, 2, 4, 8, 15 and then every 30 seconds, and the row and the detail
+    panel say which state the connection is in ("connecting…", "not answering - trying again").
+  - Pairing starts from the pairing view's own button, never from selecting a row.
+    `ServerHost::dial_to_pair()` opens a connection whose first activation is the pairing,
+    which a sink admits beside or over another server's connection instead of refusing, so a
+    held sink pairs without being released first. The view shows the address of the sink's own
+    page, where the code appears, and a code typed wrong empties the boxes and says so.
+  - The server's Noise identity is kept in settings (`identity/server`) instead of made new at
+    each start. A long-term pairing key is bound to the server identity it was made with (E8),
+    so no pairing survived Hearth restarting. The diagnostics report withholds the key with the
+    pairing records.
+  - The Network and Settings pages share one pairing store. With one each, a pairing made on the
+    Network page was missing from Settings until a restart, and one forgotten in Settings was
+    still used, and written back, by the network side. A paired sink's card gains "Forget this
+    pairing".
+  - The output picker lists the network groups, each with how many of its members are
+    connected, and its "Play here" — or the group editor's "Play to this group" — sends Hearth's
+    playback to the group. The editor's State says whether the group is playing, ready, or
+    waiting for a member to connect.
+  - `NetworkGroupSink::position()` counts what has played from the group's own timeline rather
+    than what has been handed to the group, so the end of a programme is no longer cut off when
+    the queue moves on.
+  - `ServerHost` reports a dial that failed or closed before its hello
+    (`ServerHostEvents::on_dial_failed()`), and a client's second connection closing no longer
+    reports the client gone while its first is still live.
+  - Checked against four Hearth sinks held by Music Assistant: each was listed, paired by code
+    through the page's own path, and the four played one E-AC-3 programme as a group from
+    `ac3hearth`'s engine — 312 of 312 bursts each, no errors, and every frame within 0.6 ms of
+    when it was due on each board (its own `worst_error_us`). A hidden `ac3tests` case,
+    `[hearth-network-live]`, repeats that against the sinks named in `AC3HEARTH_LIVE_SINKS`, and
+    withdraws its pairings afterwards.
 
 **Audio outputs**
 

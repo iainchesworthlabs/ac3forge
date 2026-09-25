@@ -20,6 +20,7 @@ ColumnLayout {
             return [];
         }
         const rows = [
+            { label: qsTr("Connection"), value: root.sink.linkText ?? "" },
             { label: qsTr("Kind"), value: root.sink.kindText ?? "" },
             { label: qsTr("Address"), value: root.sink.address ?? "" },
             { label: qsTr("Roles"), value: root.sink.rolesText ?? "" },

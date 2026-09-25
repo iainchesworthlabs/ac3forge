@@ -169,6 +169,45 @@ TestCase {
         compare(TestServices.device().opens, opens);
     }
 
+    // A group made on the Network page is a row in the picker's network
+    // section (FEATURE_COVERAGE.md row 91): Play here pins playback to it,
+    // the reopened picker starts on it, and a device row picked again moves
+    // playback back to this computer. Main.qml starts the network itself.
+    function groupRowFor(picker, id) {
+        return H.find(picker.contentItem, function(item) {
+            return item.objectName.indexOf("outputGroupRow-") === 0 && item.modelData.id === id;
+        });
+    }
+
+    function test_groupRowPinsPlaybackToTheGroup() {
+        const win = openWindow();
+        const groupId = NetworkController.createGroup("Kitchen and lounge");
+        verify(groupId.length > 0, "the network did not start, so no group could be made");
+        const picker = openPicker(win);
+        let row = null;
+        tryVerify(function() { row = groupRowFor(picker, groupId); return row !== null; }, 5000,
+                  "the picker lists no row for the group");
+        verify(H.textContaining(row, "Kitchen and lounge") !== null);
+        verify(H.textContaining(row, "No members") !== null, "an empty group's row does not say so");
+        mouseClick(row);
+        compare(picker.selectedGroupId, groupId);
+        compare(picker.selectedDeviceId, "");
+        mouseClick(findChild(win, "outputPickerPlayHere"));
+        tryVerify(function() { return !picker.visible; }, 5000, "Play here did not close the picker");
+        tryCompare(HearthController, "outputGroupName", groupId, 5000);
+
+        const again = openPicker(win);
+        compare(again.selectedGroupId, groupId);
+        tryVerify(function() { return H.textItem(groupRowFor(again, groupId), "playing here") !== null; }, 5000,
+                  "the pinned group's row has no \"playing here\" pill");
+        mouseClick(rowFor(again, "fake-speakers"));
+        compare(again.selectedGroupId, "");
+        mouseClick(findChild(win, "outputPickerPlayHere"));
+        tryVerify(function() { return !again.visible; }, 5000);
+        tryCompare(HearthController, "outputGroupName", "", 5000);
+        NetworkController.deleteGroup(groupId);
+    }
+
     function test_networkPageButtonSwitchesToTheNetworkPage() {
         const win = openWindow();
         const picker = openPicker(win);

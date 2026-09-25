@@ -324,3 +324,100 @@ TEST_CASE("network view: an empty group has nothing to report yet", "[hearth][ne
     CHECK(detail.members_connected_text == "0 of 0 connected");
     CHECK(detail.lead_time_text.empty());
 }
+
+TEST_CASE("network view: the connection in words", "[hearth][network-view]") {
+    using ac3::hearth::link_text;
+    using ac3::hearth::SinkLink;
+    SinkFacts facts = hearth_sink();
+
+    facts.link = SinkLink::kConnected;
+    CHECK(link_text(facts) == "connected");
+    CHECK(to_row(facts).connected);
+    facts.pairing_active = true;
+    CHECK(mentions(link_text(facts), "pairing"));
+    facts.wants_code = true;
+    CHECK(mentions(link_text(facts), "code"));
+    facts.pairing_active = false;
+    facts.wants_code = false;
+
+    facts.link = SinkLink::kConnecting;
+    CHECK(mentions(link_text(facts), "connecting"));
+    CHECK_FALSE(to_row(facts).connected);
+    facts.pairing_requested = true;
+    CHECK(mentions(link_text(facts), "pair"));
+    facts.pairing_requested = false;
+
+    // A connection that ended is being made again; a dial nothing answered is not answering.
+    facts.link = SinkLink::kRetrying;
+    facts.failed_dials = 1;
+    CHECK(mentions(link_text(facts), "reconnecting"));
+    facts.dial_failed = true;
+    CHECK(mentions(link_text(facts), "not answering"));
+    facts.failed_dials = 4;
+    CHECK(mentions(link_text(facts), "4 times"));
+
+    // Idle: a paired sink says it is not connected, unless the notice already says why.
+    facts.link = SinkLink::kIdle;
+    CHECK(mentions(link_text(facts), "not connected"));
+    facts.held_elsewhere = true;
+    CHECK(link_text(facts).empty());
+    facts.pair_state = PairState::kNotPaired;
+    facts.held_elsewhere = false;
+    CHECK(link_text(facts).empty());
+}
+
+TEST_CASE("network view: what the page may offer for a sink", "[hearth][network-view]") {
+    using ac3::hearth::SinkLink;
+    SinkFacts paired = hearth_sink();
+    paired.link = SinkLink::kIdle;
+    auto detail = to_detail(paired);
+    CHECK(detail.can_connect);
+    CHECK_FALSE(detail.can_pair);
+    CHECK(detail.page_url == "http://192.168.1.52/");
+    CHECK(detail.pairing == "none");
+    paired.link = SinkLink::kConnected;
+    CHECK_FALSE(to_detail(paired).can_connect);
+
+    SinkFacts unpaired = hearth_sink();
+    unpaired.pair_state = PairState::kNotPaired;
+    unpaired.link = SinkLink::kIdle;
+    detail = to_detail(unpaired);
+    CHECK(detail.can_pair);
+    CHECK_FALSE(detail.can_connect);
+
+    unpaired.pairing_requested = true;
+    detail = to_detail(unpaired);
+    CHECK(detail.pairing == "requested");
+    CHECK_FALSE(detail.can_pair);
+    unpaired.pairing_requested = false;
+    unpaired.pairing_active = true;
+    CHECK(to_detail(unpaired).pairing == "active");
+    unpaired.wants_code = true;
+    CHECK(to_detail(unpaired).pairing == "code");
+
+    // A sink that offers no code the page can take cannot be paired from it.
+    SinkFacts fixed = hearth_sink();
+    fixed.pair_state = PairState::kNotPaired;
+    fixed.offers_code_pairing = false;
+    CHECK_FALSE(to_detail(fixed).can_pair);
+}
+
+TEST_CASE("network view: a group row says how many members are connected", "[hearth][network-view]") {
+    GroupFacts group;
+    group.id = "group-1";
+    group.name = "Downstairs";
+    auto row = to_group_row(group);
+    CHECK(row.members_text.empty());
+    CHECK(mentions(row.subtitle, "No members"));
+    CHECK_FALSE(row.ready);
+
+    GroupMemberFacts connected;
+    connected.sink_id = "a";
+    connected.connected = true;
+    GroupMemberFacts away;
+    away.sink_id = "b";
+    group.members = {connected, away};
+    row = to_group_row(group);
+    CHECK(row.members_text == "1 of 2 connected");
+    CHECK(row.ready);
+}

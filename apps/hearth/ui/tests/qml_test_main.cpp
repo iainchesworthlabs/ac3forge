@@ -348,6 +348,12 @@ public slots:
         // folder would fail for a reason that has nothing to do with the UI.
         QStandardPaths::setTestModeEnabled(true);
         QDir().mkpath(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation));
+        // Before any suite starts the network (Main.qml's own
+        // Component.onCompleted does, in every suite that opens it): this
+        // binary cannot finish the elevated relaunch a firewall exception
+        // asks for (NetworkController::set_firewall_exception_requested()'s
+        // own comment), and every sink the suites dial is on loopback.
+        ac3::hearth::ui::NetworkController::set_firewall_exception_requested(false);
     }
 
     void qmlEngineAvailable(QQmlEngine* engine) {
