@@ -1330,6 +1330,28 @@ The sections below contain the complete change list and fixes.
   which the encoder then could not write; and that the 7.X layout's pair went to every substream, so
   a 7.1 substream could not have mono dialogue beside it. All three are fixed. `docs/library/ac4.md`
   describes the encoder.
+- **AC-4 over IEC 61937** (phase D11 of `planning/ac4.md`), from IEC 61937-14:2017, with IEC
+  61937-1 and 61937-2 for the burst format. `ac3::iec61937::Ac4BurstPacker` packs one AC-4 sync
+  frame to a data-burst in any of Part 14's four burst types (`Pc` data type 24 with subdata types
+  0 to 3: AC-4, AC-4 HBR4, AC-4 HBR16 and AC-4 LD). Each burst lasts as long as its frame at the
+  link rate, the bursts at 29.97, 59.94 and 119.88 fps follow Part 14's five-burst sequences, `Pc`
+  bits 8 to 11 carry the period's code and `Pd` the frame's length. `wrap_ac4_stream` is the batch
+  form, and `ac4_burst_type_for()` picks the smallest type a stream's largest frame fits.
+  `BurstReader`, `unwrap_stream` and `PassthroughDetector` read all four types, hold an AC-4
+  burst's `Pd` to the length its sync frame states, and now read all seven data-type bits of `Pc`,
+  so a data type 1 burst with a subdata type is no longer taken for AC-3. `ac3tests` holds every
+  row of the tables against a second transcription and against the arithmetic the standard
+  implies, and packs and reads back every frame rate of every type, and every committed DEE
+  stream, unchanged; `AC4DEC_STREAM_DIR` points that case at the whole gold set locally. `PassthroughSink` takes `BitstreamFormat::kAc4`, `kAc4Hbr4` and `kAc4Hbr16`:
+  ALSA and Android send the first two, since both take IEC 61937 bursts as opaque two-channel
+  data, while WASAPI, PipeWire and Core Audio ask for a codec by name, have none for AC-4, and
+  refuse it with the new `PassthroughError::kUnsupportedFormat`, as every backend refuses HBR16's
+  eight-channel link. Hearth's extension role `_ac3forge_player@v1` carries `"ac4"` burst chunks
+  of one sync frame each, and its test sink decodes and renders them: a loopback test sends DEE's
+  2.0 stream through the role, and the sink's output equals the local decode sample for sample.
+  Part 14 leaves two choices, which frame starts a burst sequence and whether `Pd` counts bits or
+  bytes; `iec61937.cpp` gives the reading taken for each. No receiver found accepts AC-4, so none
+  has been tried.
 
 **Browser (WASM)**
 

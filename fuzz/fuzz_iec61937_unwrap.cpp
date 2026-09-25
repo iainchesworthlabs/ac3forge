@@ -1,5 +1,7 @@
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <span>
 #include <vector>
 
@@ -20,6 +22,10 @@
 // the parser's state machine has to carry a preamble, a header or a payload
 // across a chunk boundary, and a fuzzer that only ever fed it one buffer
 // would never reach the carry paths at all.
+//
+// AC-4 (IEC 61937-14) adds a burst whose frame states its own length, which
+// the reader checks Pd against, and a packer whose input is a sync frame; the
+// input is fed to that packer too.
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     if (size == 0) {
         return 0;
@@ -47,5 +53,19 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // elementary stream, so a payload length that escaped its bound would
     // show up here as the allocation it is.
     (void)ac3::iec61937::unwrap_stream(carrier);
+
+    // The AC-4 packer (IEC 61937-14) reads a sync frame's head and the first
+    // fields of its table of contents from bytes as untrusted as these, one
+    // of its four burst types picked by the first byte. Whatever it packs has
+    // to be as long as the period it chose and read back as the frame itself.
+    const auto type = static_cast<ac3::iec61937::BurstDataType>(24U | ((data[0] & 3U) << 5U));
+    ac3::iec61937::Ac4BurstPacker packer(type);
+    if (const auto burst = packer.push(carrier)) {
+        const auto back = ac3::iec61937::unwrap_stream(*burst);
+        if (!packer.last() || burst->size() != std::size_t{packer.last()->period} * 4 || !back ||
+            !std::equal(back->begin(), back->end(), carrier.begin(), carrier.end())) {
+            std::abort();
+        }
+    }
     return 0;
 }

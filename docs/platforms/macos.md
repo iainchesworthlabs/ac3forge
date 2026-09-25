@@ -95,6 +95,10 @@ that format (older hardware, a non-HDMI output, an Intel Mac) the backend report
 passthrough unavailable rather than claiming it everywhere — see `passthrough.cpp`'s own "AC-3
 and E-AC-3" section.
 
+AC-4 (IEC 61937-14) cannot go this way at all: retuning a stream needs a format ID for the codec,
+and Core Audio's (`CoreAudioBaseTypes.h`) include none for AC-4. `PassthroughSink` refuses AC-4
+with `kUnsupportedFormat`, and `supports_ac4_passthrough` is false on every device.
+
 Passthrough **capture** — an input carrying somebody else's bitstream — needs none of that
 machinery, on macOS or anywhere else: IEC 61937 bursts arrive as ordinary PCM samples, and
 recognising them is `ac3::iec61937::PassthroughDetector`, which works off whatever interleaved

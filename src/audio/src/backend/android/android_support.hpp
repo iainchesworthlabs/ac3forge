@@ -15,13 +15,13 @@
 
 namespace ac3::android_audio {
 
-// Mirrors platform/windows/passthrough.cpp's burst_bytes_for and
-// platform/alsa's equivalent: which IEC 61937 burst size a format uses.
-// AudioTrack.write() needs the caller (submit()) to know this up front so it
-// can validate the burst it was handed before ever touching JNI.
+// Which IEC 61937 burst size a format uses - the longest, for AC-4, whose
+// bursts follow its frame rate (audio::max_burst_bytes()). AudioTrack.write()
+// needs the caller (submit()) to know this up front so it can validate the
+// burst it was handed, and size the buffers it copies bursts into, before
+// ever touching JNI.
 [[nodiscard]] inline std::size_t burst_bytes_for(audio::BitstreamFormat format) {
-    return format == audio::BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes
-                                                    : iec61937::kBurstBytes;
+    return audio::max_burst_bytes(format);
 }
 
 // Mirrors platform/alsa/device_names.hpp's carrier_rate exactly (same
@@ -36,10 +36,12 @@ namespace ac3::android_audio {
 // - see passthrough.cpp's header comment for why), which is exactly the
 // same "the declared rate describes the wire, not the content" situation
 // ALSA/WASAPI are already in - so PassthroughSink::start() passes THIS
-// value to PassthroughBridge.open(), not the raw content sample_rate.
+// value to PassthroughBridge.open(), not the raw content sample_rate. AC-4's
+// link runs at the content rate and its HBR4 link at 4x (audio::
+// carrier_ratio()).
 [[nodiscard]] constexpr std::uint32_t carrier_rate(audio::BitstreamFormat format,
                                                     std::uint32_t content_rate) {
-    return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
+    return content_rate * audio::carrier_ratio(format);
 }
 
 // AudioTrack.ERROR_DEAD_OBJECT, which AudioTrack.write() returns once the
@@ -63,16 +65,20 @@ inline constexpr int kAudioTrackErrorDeadObject = -6;
 // hands back. Android has exactly one addressable output route (there is no
 // WASAPI-style per-endpoint enumeration to walk - see
 // enumerate_render_devices()'s own comment), so the id/name/is_default
-// fields are fixed rather than read from anywhere.
+// fields are fixed rather than read from anywhere. `ac4_supported` is the
+// same question AC-3's is - an ENCODING_IEC61937 track at the content rate -
+// which the route either takes or does not, whatever the bursts hold.
 [[nodiscard]] inline audio::RenderDeviceInfo make_render_device_info(bool ac3_supported,
-                                                                      bool eac3_supported,
-                                                                      bool pcm_supported) {
+                                                                     bool eac3_supported,
+                                                                     bool pcm_supported,
+                                                                     bool ac4_supported = false) {
     audio::RenderDeviceInfo info;
     info.id = "default";
     info.name = "Android system audio output (HDMI-routed)";
     info.is_default = true;
     info.supports_ac3_passthrough = ac3_supported;
     info.supports_eac3_passthrough = eac3_supported;
+    info.supports_ac4_passthrough = ac4_supported;
     info.supports_exclusive_pcm = pcm_supported;
     return info;
 }
