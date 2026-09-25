@@ -101,7 +101,7 @@ nav:
           - ADM / BW64 reading: library/adm.md
           - ADM → Atmos bridging: library/adm-bridge.md
           - IAMF writing: library/iamf.md
-          - AC-4 decoding: library/ac4.md
+          - AC-4 decoding and encoding: library/ac4.md
           - Measuring quality: library/quality.md
           - Object signing: library/signing.md
           - Header map: library/header-map.md

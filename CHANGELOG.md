@@ -1298,6 +1298,38 @@ The sections below contain the complete change list and fixes.
   after the presentation substreams for the first group's audio. `fuzz_ac4_encode` draws the
   substreams and presentations; `ac3cli ac4-encode` takes them in E7. `src/ac4enc/ERRATA.md` records
   the readings.
+- **The AC-4 encoder's API in its final form, `ac3cli ac4-encode`'s options, and the encoder
+  installed** (phase E7 of `planning/ac4.md`). `ac4::Encoder::refusal_reason()` names the rule a
+  configuration `create()` refuses breaks, as a string literal such as "a rate outside 8 to 3 000
+  kbps", and every field of the configuration's structures has a default, so a designated
+  initializer names only what it sets. `ac3cli ac4-encode` takes the rest of the configuration as
+  options: `substream2=` to `substream32=` add inputs as substreams of their own, with `substreamN-`
+  keys for each one's rate share, codec mode, content classifier, language, dialogue enhancement,
+  dialogue mixing values and EMDF payloads, and `substreamN-enhances=` for the waveform of a hybrid
+  dialogue enhancement (`dialogue-hybrid=`); `presentation1=` to `presentation64=` list the
+  substreams each presentation plays, with `presentationN-` keys for its configuration, id, level,
+  filters, alternative name, dialnorm, group gains, the associated audio's mixing values and EMDF
+  payloads; `crc=off` writes sync frames without their CRC, and `experimental=three-zero` takes 3.0.
+  A configuration the encoder refuses is refused naming its rule, and every option has a test.
+  `ac4::build_dac4()` describes every presentation in the MP4 sample entry (Part 2 Annex E.10 and
+  E.11: each configuration's substream groups, the presentation's channel mode, core and channel
+  groups, A-JOC and direct-coded object groups, the program identifier, and an alternative
+  presentation's name and targets, which the decoder now reports), as DEE's muxer does byte for byte
+  for Chromium's A-JOC stream and DASH-IF's test vectors, and writes nothing where it cannot describe
+  a presentation whole, which `ac4::dac4_refusal()` names and `ac3cli mp4` refuses. `ac4::cmaf_refusal()`
+  names the rule of Annex H.1.2.1 a stream breaks for a CMAF track: a configuration 6 presentation has
+  no field for the `presentation_id` CMAF asks of each, and `ac3cli fmp4` refuses such a stream,
+  fragmenting AC-4 itself being phase I1's. The encoder is installed and exported beside the decoder
+  (`ac4::encoder_static` and `ac4::encoder_shared`, each linking the inspector of its kind, and
+  pkg-config `ac4enc`), `tools/checks/check_install_consumer.sh` encodes through each installed
+  encoder by CMake and by pkg-config, and `tools/ci/abi-allowlist/libac4enc.so.txt` lists its
+  exports. The encoder-space harness draws substreams and presentations through the new options. It
+  found that a frame at an average rate could give the substream taking what the others leave less
+  than its least frame, and that a frame between I-frames was sized for a dialogue stem's parameters
+  coded against the last frame's where it falls back to the last frame's kept (phase E6's), both of
+  which the encoder then could not write; and that the 7.X layout's pair went to every substream, so
+  a 7.1 substream could not have mono dialogue beside it. All three are fixed. `docs/library/ac4.md`
+  describes the encoder.
 
 **Browser (WASM)**
 
