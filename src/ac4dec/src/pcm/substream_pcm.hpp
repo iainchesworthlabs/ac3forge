@@ -13,6 +13,7 @@
 #include "dsp/synthesis.hpp"
 #include "pcm/acpl.hpp"
 #include "pcm/aspx.hpp"
+#include "pcm/de.hpp"
 #include "pcm/drc.hpp"
 #include "pcm/routing.hpp"
 #include "pcm/stereo.hpp"
@@ -43,9 +44,11 @@
 // sequence_counter as Part 2 clause 5.11 locks it.
 //
 // Before the synthesis, the output processing the system configures
-// (OutputConfig): the output level and DRC (clause 5.7.9, pcm/drc.hpp), their
-// values held with the rest of the frame's control data until its signal
-// reaches the QMF domain (5.7.2).
+// (OutputConfig): dialogue enhancement (clause 5.7.8, pcm/de.hpp), then the
+// output level and DRC (clause 5.7.9, pcm/drc.hpp), whose level is measured on
+// the signal before dialogue enhancement (6.2.13). Their values are held with
+// the rest of the frame's control data until its signal reaches the QMF domain
+// (5.7.2).
 
 namespace ac4::detail {
 
@@ -57,6 +60,7 @@ struct FrameInputs {
     int converter_phase = 0;  // Part 2 clause 5.11's phi_t
     OutputConfig output{};
     DrcFrameValues drc{};
+    DeFrameValues de{};
 };
 
 class SubstreamPcm {
@@ -110,6 +114,7 @@ class SubstreamPcm {
         std::vector<AspxData2ch> aspx_2ch;
         std::optional<AcplFrameValues> acpl;  // dequantised when the frame was read
         DrcFrameValues drc;                   // the frame's DRC and dialnorm
+        DeFrameValues de;                     // its dialogue enhancement
     };
 
     // One aspx_data element's frame parameters and its channels' data and
@@ -160,7 +165,11 @@ class SubstreamPcm {
     // shares, and the phase of the last frame converted.
     std::shared_ptr<const dsp::ResamplerFilter> converter_filter_;
     std::optional<int> converter_phase_;
+    DeStage de_;
     DrcStage drc_;
+    // The matrices before dialogue enhancement, DRC's side chain, where both act.
+    std::vector<std::vector<QmfValue>> side_;
+    std::vector<std::vector<QmfValue>*> side_matrices_;
 
     // Scratch, kept to save an allocation per frame.
     ElementRoute route_;

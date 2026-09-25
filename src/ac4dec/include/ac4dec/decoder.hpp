@@ -67,8 +67,9 @@ enum class DecodeError : std::uint8_t {
 
 // --- Output processing -------------------------------------------------------
 //
-// What decode() does to the decoded channels as a system configures it: the
-// output level and dynamic range control of Part 1 clause 5.7.9.
+// What decode() does to the decoded channels as a system configures it:
+// dialogue enhancement (Part 1 clause 5.7.8), then the output level and
+// dynamic range control (5.7.9).
 
 // Part 1 Table 161's DRC decoder modes, and how decode() chooses one.
 enum class DrcMode : std::uint8_t {
@@ -94,6 +95,10 @@ struct OutputConfig {
     // Where kDefault's output level falls in the portable modes' range (-16 to
     // 0 dBFS), whether it takes portable headphones or portable speakers.
     bool headphones = false;
+    // G_DE of Part 1 clause 5.7.8, in dB: how far the dialogue is raised where
+    // the stream sends dialogue enhancement parameters, up to the stream's cap
+    // of 3, 6, 9 or 12 dB. 0 leaves the output as the tool bypassed would.
+    double dialogue_enhancement_db = 0.0;
 };
 
 struct DecoderConfig {

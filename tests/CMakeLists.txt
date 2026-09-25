@@ -254,6 +254,7 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/test_ac4dec_aspx.cpp
         ac4dec/test_ac4dec_channel_elements.cpp
         ac4dec/test_ac4dec_constructed.cpp
+        ac4dec/test_ac4dec_de.cpp
         ac4dec/test_ac4dec_drc.cpp
         ac4dec/test_ac4dec_metadata.cpp
         ac4dec/test_ac4dec_multichannel.cpp

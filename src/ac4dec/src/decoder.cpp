@@ -574,6 +574,7 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         }
     }
     inputs.drc = detail::drc_frame_values(impl_->config.output, dialnorm, drc_state, drc_frame);
+    inputs.de = detail::de_frame_values(capture.content.metadata.dialog_enhancement);
     const detail::ParseResult decoded = impl_->pcm[capture.state_key].decode(
         capture.context, capture.content, inputs, frame.channels, frame.speakers);
     if (!decoded) {

@@ -1035,9 +1035,9 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 
 ## Output processing
 
-What the QMF domain's matrices go through before synthesis, the output level and DRC of Part 1 5.7.9,
-and after it, the sample rate converter of Part 1 6.2.15, whose phase Part 2 5.11 locks to
-`sequence_counter`.
+What the QMF domain's matrices go through before synthesis, dialogue enhancement (Part 1 5.7.8) and
+the output level and DRC (5.7.9), and after it, the sample rate converter of Part 1 6.2.15, whose phase
+Part 2 5.11 locks to `sequence_counter`.
 
 ### DRC's units
 
@@ -1090,14 +1090,47 @@ and after it, the sample rate converter of Part 1 6.2.15, whose phase Part 2 5.1
   them, and multiplies the output level gain. A gains configuration of 0 is one gain for all channels.
 - **Evidence:** Text; no stream DEE writes sends gains.
 
-### When DRC's values apply
+### When dialogue enhancement's and DRC's values apply
 
-- **Where:** Part 1 5.7.2 and Table 188 hold the QMF domain's control data d_ctrl frames; 5.7.9 does not
-  say when a frame's dialnorm and DRC reach the audio.
-- **Reading:** with the rest of the frame's control data, so a frame's dialnorm and DRC apply to that
-  frame's signal. Until the first frame's reach the QMF domain there is no dialnorm, and the output level
-  gain is 1.
+- **Where:** Part 1 5.7.2 and Table 188 hold the QMF domain's control data d_ctrl frames; 5.7.8 and 5.7.9
+  do not say when a frame's dialogue enhancement, dialnorm and DRC reach the audio.
+- **Reading:** with the rest of the frame's control data, so they apply to that frame's signal. Until the
+  first frame's reach the QMF domain there is no dialnorm, and the output level gain is 1.
 - **Evidence:** Text.
+
+### Dialogue enhancement's front channels
+
+- **Where:** Part 1 5.7.8.2, p. 248, takes the processed channels from "de_channel_config{x}", "the bit at
+  position x", without saying which end position 0 is; Table 171, p. 132, names the codes' channels, and
+  5.7.8.6's example, p. 252, puts L, the unprocessed second channel and C in rows 0, 1 and 2.
+- **Reading:** the three front channels are L, R and C in that order, bit 2 of `de_channel_config` being
+  L, bit 1 R and bit 0 C, as Table 171 names them; the parameter sets go to the processed channels in
+  that order.
+- **Evidence:** Text; DEE's speech streams set 110 and send parameters for L and R.
+
+### The subbands above dialogue enhancement's bands
+
+- **Where:** Part 1 5.7.8.4 and Table 173, pp. 251 and 133, segment "the num_qmf_subbands QMF subbands"
+  into eight bands, and the last ends at subband 40.
+- **Reading:** subbands 41 to 63 have no parameters and pass through dialogue enhancement unchanged.
+- **Evidence:** Text.
+
+### Dialogue enhancement without its waveform
+
+- **Where:** Part 1 5.7.8.9, p. 253, splits the enhancement of the hybrid methods between the parameters
+  and a coded dialogue waveform, by alpha_c; 5.7.8.1 lets a low-complexity decoder "use only the
+  parametric data to perform dialogue enhancement".
+- **Reading:** until the waveform's substream is decoded (phase D7), a hybrid method enhances by its
+  parameters alone, as its parametric counterpart does, at the whole gain.
+- **Evidence:** Text.
+
+### The dialogue enhancement gain the system asks for
+
+- **Where:** Part 1 5.7.8.7, p. 253, caps the system's G_DE at G_max; the text does not bound it below.
+- **Reading:** G_DE runs from 0 to the stream's G_max: at 0 or below the tool leaves the signal as it is,
+  and above G_max it applies G_max. An I-frame whose `b_de_data_present` is 0 leaves no parameters, and
+  the tool does nothing until parameters come.
+- **Evidence:** Text; planning/ac4.md's control table gives G_DE as 0 dB up to the stream's cap.
 
 ### The sample rate converter's filter and output grid
 

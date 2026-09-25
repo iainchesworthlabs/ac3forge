@@ -97,6 +97,7 @@ void SubstreamPcm::reset() {
     decoded_mode_.reset();
     applied_mode_.reset();
     converter_phase_.reset();
+    de_.reset();
     drc_.reset();
 }
 
@@ -162,6 +163,7 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx) {
     decoded_mode_.reset();
     applied_mode_.reset();
     converter_phase_.reset();
+    de_.configure(slots_, speakers_);
     // The QMF banks run at the internal rate.
     const double base_rate = ctx.fs_index == 0 ? 44100.0 : 48000.0;
     drc_.configure(base_rate * static_cast<double>(ratio.down) / static_cast<double>(ratio.up),
@@ -536,26 +538,43 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
                             .aspx_1ch = element.aspx_1ch,
                             .aspx_2ch = element.aspx_2ch,
                             .acpl = acpl,
-                            .drc = frame_inputs.drc});
-    // The DRC and dialnorm of the frame whose signal this is; none before the
-    // first one's arrives.
+                            .drc = frame_inputs.drc,
+                            .de = frame_inputs.de});
+    // The DRC, dialnorm and dialogue enhancement of the frame whose signal
+    // this is; none before the first one's arrives.
     DrcFrameValues drc;
+    DeFrameValues de;
     if (held_.size() > static_cast<std::size_t>(control_delay_)) {
         apply(held_.front());
         drc = held_.front().drc;
+        de = held_.front().de;
         held_.pop_front();
     } else {
         pass_through();
     }
 
-    // Clause 5.7.9: the output level and DRC, on the channels' matrices, their
-    // level measured on the same matrices (no dialogue enhancement comes
-    // between).
+    // Clause 5.7.8, dialogue enhancement, then 5.7.9, the output level and
+    // DRC, whose level is measured on the signal dialogue enhancement took
+    // (6.2.13).
     matrices_.clear();
     for (Channel& channel : channels_) {
         matrices_.push_back(&channel.out);
     }
-    drc_.process(frame_inputs.output, drc, matrices_, matrices_);
+    const double de_gain = frame_inputs.output.dialogue_enhancement_db;
+    std::span<std::vector<QmfValue>* const> side = matrices_;
+    if (de_.active(de_gain, de)) {
+        if (drc.curve) {
+            side_.resize(channels_.size());
+            side_matrices_.clear();
+            for (std::size_t c = 0; c < channels_.size(); ++c) {
+                side_[c] = channels_[c].out;
+                side_matrices_.push_back(&side_[c]);
+            }
+            side = side_matrices_;
+        }
+        de_.process(de_gain, de, matrices_);
+    }
+    drc_.process(frame_inputs.output, drc, matrices_, side);
 
     channels.resize(channel_count);
     // Part 2 clause 5.11: the converter's grid starts at the frame's phase,
