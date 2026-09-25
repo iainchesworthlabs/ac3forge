@@ -424,13 +424,29 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         }
         config.dialogue = dialogue;
     }
-    // The configuration is checked before loudness= reads the whole file.
-    if (!ac4::Encoder::create(config).has_value()) {
+    // The configuration is checked before loudness= reads the whole file,
+    // with loudness values in place: they cost the same bits whatever they
+    // are.
+    const auto refuse_config = [] {
         fmt::println(stderr,
                      "error: {}: the codec mode, the rate and the options must be ones the "
                      "encoder takes together (ac3cli help ac4-encode)",
                      ac4::describe(ac4::EncodeError::kInvalidConfig));
         return kExitUsage;
+    };
+    ac4::EncoderConfig sized = config;
+    if (opts.loudness) {
+        ac4::FurtherLoudness loudness;
+        loudness.practice = *opts.loudness;
+        loudness.integrated_lkfs = -23.0;
+        loudness.loudness_range_lu = 0.0;
+        loudness.max_true_peak_dbtp = 0.0;
+        loudness.max_momentary_lufs = -23.0;
+        loudness.max_short_term_lufs = -23.0;
+        sized.loudness = loudness;
+    }
+    if (!ac4::Encoder::create(sized).has_value()) {
+        return refuse_config();
     }
     // Each of the encoder's channels' place in the WAV file.
     const std::vector<std::size_t> wav_order = ac4_order(std::span{speakers}, ac4_wav_rank);
@@ -489,13 +505,18 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         status_println(status, "measured {:.2f} LKFS (BS.1770-4, gated) -> dialnorm -{:g} dB",
                        measured->integrated, dialnorm);
         if (opts.loudness) {
+            // Each within what its code holds: -102.4 to +102.3, the range 0
+            // to 102.3 LU (Part 1 clauses 4.3.12.3.8 to 4.3.12.3.30).
+            const auto held = [](std::optional<double> value, double low) {
+                return value ? std::optional<double>{std::clamp(*value, low, 102.3)} : value;
+            };
             ac4::FurtherLoudness loudness;
             loudness.practice = *opts.loudness;
-            loudness.integrated_lkfs = measured->integrated;
-            loudness.loudness_range_lu = measured->range;
-            loudness.max_true_peak_dbtp = measured->true_peak;
-            loudness.max_momentary_lufs = measured->max_momentary;
-            loudness.max_short_term_lufs = measured->max_short_term;
+            loudness.integrated_lkfs = held(measured->integrated, -102.4);
+            loudness.loudness_range_lu = held(measured->range, 0.0);
+            loudness.max_true_peak_dbtp = held(measured->true_peak, -102.4);
+            loudness.max_momentary_lufs = held(measured->max_momentary, -102.4);
+            loudness.max_short_term_lufs = held(measured->max_short_term, -102.4);
             config.loudness = loudness;
             const auto show = [](std::optional<double> value) {
                 return value ? fmt::format("{:.1f}", *value) : std::string{"none"};
@@ -533,8 +554,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
 
     auto encoder = ac4::Encoder::create(config);
     if (!encoder.has_value()) {
-        fmt::println(stderr, "error: {}", ac4::describe(encoder.error()));
-        return kExitUsage;
+        return refuse_config();
     }
     auto frames = stem ? encoder->encode(views, stem_views) : encoder->encode(views);
     if (!frames.has_value()) {

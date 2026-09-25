@@ -597,7 +597,8 @@ TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "
     const auto raw_out = dir / "ac4_encoded.ac4";
     REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(raw_out) + " 192", log) == 0);
     CHECK(read_log(log).find("raw with CRC") != std::string::npos);
-    const auto scanned = ac4::scan(read_file(raw_out));
+    const auto raw_bytes = read_file(raw_out);
+    const auto scanned = ac4::scan(raw_bytes);
     REQUIRE_FALSE(scanned.frames.empty());
     CHECK_FALSE(scanned.stopped_at.has_value());
     for (const ac4::SyncFrame& frame : scanned.frames) {
@@ -992,7 +993,9 @@ TEST_CASE("ac4-encode codes the frame rate and I-frames asked for and its MP4 li
                         " 96 frame-rate=25 rate-mode=variable iframe-interval=1",
                     log) == 0);
     CHECK(read_log(log).find("25 fps, variable rate") != std::string::npos);
-    const auto scanned = ac4::scan(read_file(raw_out));
+    // The scan's frames are views of the bytes, which outlive it.
+    const auto raw_bytes = read_file(raw_out);
+    const auto scanned = ac4::scan(raw_bytes);
     REQUIRE(scanned.frames.size() > 50U);
     CHECK_FALSE(scanned.stopped_at.has_value());
     std::size_t sizes = 0;
