@@ -135,7 +135,9 @@ struct Ac4Input {
     ac4::Toc toc;                                        // the first frame's
     std::vector<std::span<const std::byte>> mp4_samples; // raw_ac4_frame each
     std::vector<std::span<const std::byte>> ts_units;    // whole syncframes
-    std::uint32_t samples_per_frame = 0;
+    // Each frame's b_iframe_global: an MP4 track's sync samples (TS 103
+    // 190-2 E.2), a frame whose table of contents does not read not one.
+    std::vector<bool> iframes;
 };
 
 std::optional<Ac4Input> try_ac4_input(std::span<const std::byte> raw) {
@@ -153,23 +155,16 @@ std::optional<Ac4Input> try_ac4_input(std::span<const std::byte> raw) {
         fmt::println(stderr, "error: AC-4 TOC: {}", ac4::describe(first.error()));
         return std::nullopt;
     }
-    const auto samples = ac4::samples_per_frame(first->toc);
-    if (!samples.has_value()) {
-        fmt::println(stderr,
-                     "error: AC-4 frame_rate_index {} has no whole-sample frame length "
-                     "(the 1000/1001-family rates alternate frame sizes) - this muxer "
-                     "cannot lay out its timing",
-                     first->toc.frame_rate_index);
-        return std::nullopt;
-    }
     Ac4Input out;
     out.toc = std::move(first->toc);
-    out.samples_per_frame = *samples;
     out.mp4_samples.reserve(scanned.frames.size());
     out.ts_units.reserve(scanned.frames.size());
+    out.iframes.reserve(scanned.frames.size());
     for (std::size_t i = 0; i < scanned.frames.size(); ++i) {
         const auto& frame = scanned.frames[i];
         out.mp4_samples.push_back(frame.raw_ac4_frame);
+        const auto parsed = ac4::parse_raw_frame(frame.raw_ac4_frame);
+        out.iframes.push_back(parsed.has_value() && parsed->toc.b_iframe_global);
         const std::size_t end =
             i + 1 < scanned.frames.size() ? scanned.frames[i + 1].offset : raw.size();
         out.ts_units.push_back(raw.subspan(frame.offset, end - frame.offset));
@@ -269,6 +264,16 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
         // 'dac4' box, timing from Table 84, RFC 6381 string for a
         // downstream HLS/DASH packager.
         if (const auto ac4_in = try_ac4_input(raw)) {
+            // TS 103 190-2 Table E.1's time scale: the sample rate, or
+            // 240 000 at the rates whose frames alternate in length.
+            const auto timing = ac4::media_timing(ac4_in->toc);
+            if (!timing.has_value()) {
+                fmt::println(stderr,
+                             "error: AC-4 frame_rate_index {} has no time scale in TS 103 190-2 "
+                             "Table E.1",
+                             ac4_in->toc.frame_rate_index);
+                return kExitInput;
+            }
             const mp4::AudioTrack track{
                 .codec_id = std::string{mp4::kCodecAc4},
                 .sample_rate = static_cast<std::uint32_t>(ac4_in->toc.sample_rate_hz),
@@ -276,10 +281,13 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
                 // per experience; Annex E's sample entry says set 2) - see
                 // TS 103 190-2 E.4.5: channelcount "should be set to 2".
                 .channels = 2,
-                .samples_per_frame = ac4_in->samples_per_frame,
+                .samples_per_frame = timing->sample_delta,
                 .codec_config = ac4::build_dac4(ac4_in->toc),
-                .rfc6381 = ac4::rfc6381_codec_string(ac4_in->toc)};
-            const auto ac4_file = mp4::mux(track, ac4_in->mp4_samples);
+                .rfc6381 = ac4::rfc6381_codec_string(ac4_in->toc),
+                .timescale = timing->timescale};
+            mp4::MuxOptions options;
+            options.sync_samples = ac4_in->iframes;
+            const auto ac4_file = mp4::mux(track, ac4_in->mp4_samples, options);
             if (!ac4_file.has_value()) {
                 fmt::println(stderr, "error: {}", mp4::describe(ac4_file.error()));
                 return kExitInput;
@@ -289,12 +297,13 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
                 fmt::println(stderr, "error: cannot write {}", out_path);
                 return kExitOutput;
             }
-            status_println(status_stream(),
-                           "wrote {} AC-4 frames ({} Hz, {} samples/frame, {} bytes, "
-                           "codecs {}) to {}",
-                           ac4_in->mp4_samples.size(), track.sample_rate,
-                           track.samples_per_frame, ac4_file->size(), track.rfc6381,
-                           out_path);
+            status_println(
+                status_stream(), "wrote {} AC-4 frames ({} Hz, {}, {} bytes, codecs {}) to {}",
+                ac4_in->mp4_samples.size(), track.sample_rate,
+                timing->timescale == track.sample_rate
+                    ? fmt::format("{} samples/frame", timing->sample_delta)
+                    : fmt::format("{}/{} s a frame", timing->sample_delta, timing->timescale),
+                ac4_file->size(), track.rfc6381, out_path);
             return kExitOk;
         }
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
@@ -681,11 +690,22 @@ int run_ts(std::string_view in_path, std::string_view out_path, std::string_view
                              "ATSC 3.0's ROUTE/MMT) - use the dvb profile");
                 return kExitUsage;
             }
+            // A PES stream's timing is a sample count a frame, which the
+            // rates whose frames alternate in length do not have.
+            const auto samples = ac4::samples_per_frame(ac4_in->toc);
+            if (!samples.has_value()) {
+                fmt::println(stderr,
+                             "error: AC-4 frame_rate_index {} has no whole-sample frame length "
+                             "(the 1000/1001-family rates alternate frame sizes) - this muxer "
+                             "cannot lay out its timing",
+                             ac4_in->toc.frame_rate_index);
+                return kExitInput;
+            }
             const mpegts::AudioTrack ac4_track{
                 .codec = mpegts::AudioCodec::kAc4,
                 .sample_rate = static_cast<std::uint32_t>(ac4_in->toc.sample_rate_hz),
                 .channels = 2,  // presentation detail lives in the TOC, not the PMT
-                .samples_per_frame = ac4_in->samples_per_frame};
+                .samples_per_frame = *samples};
             const auto ac4_file = mpegts::mux(ac4_track, ac4_in->ts_units,
                                               mpegts::MuxOptions{.profile = profile});
             if (!ac4_file.has_value()) {
