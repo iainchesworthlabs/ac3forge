@@ -655,11 +655,10 @@ def score_acpl(name, codec_mode, source_name, ref, out, offsets, config, args, f
         return
     groups = aspx_groups(config, offsets[0])
     refs, outs = acpl_downmixes(ref, codec_mode), acpl_downmixes(out, codec_mode)
-    # Which of the downmixes an aspx_data element carries, and the LFE (last) over the whole band.
-    if ref.shape[1] == 2:
-        carried = [0]
-    else:
-        carried = [0, 0] if codec_mode == "ASPX_ACPL_3" else [0, 0, 1]
+    # Which of the downmixes an aspx_data element carries, and the LFE (last) over the whole band:
+    # the pair's one, ASPX_ACPL_3's two, or ASPX_ACPL_1's and 2's two and C.
+    five_x = [0, 0] if codec_mode == "ASPX_ACPL_3" else [0, 0, 1]
+    carried = [0] if ref.shape[1] == 2 else five_x
     snrs, cells = [], []
     for i, (r, o) in enumerate(zip(refs, outs, strict=True)):
         if i < len(carried):
