@@ -66,21 +66,27 @@ void write_substream_group_info(BitWriter& w, const FrameFields& f) {
     w.write(1, 1, "b_single_substream");
     w.write(1, 1, "b_channel_coded");
     // Table 56: 0b0 mono, 0b10 stereo, 0b1100 to 0b1110 3.0, 5.0 and 5.1,
-    // 0b1111000 to 0b1111101 the 7.X modes.
+    // 0b1111000 to 0b1111101 the 7.X modes, 0b11111100 and 0b11111101 7.0.4
+    // and 7.1.4, which name the channels their source has.
     if (f.ch_mode == 0) {
         w.write(1, 0b0, "channel_mode");
     } else if (f.ch_mode == 1) {
         w.write(2, 0b10, "channel_mode");
     } else if (f.ch_mode <= 4) {
         w.write(4, 0b1100U + static_cast<unsigned>(f.ch_mode - 2), "channel_mode");
-    } else {
+    } else if (f.ch_mode <= 10) {
         w.write(7, 0b1111000U + static_cast<unsigned>(f.ch_mode - 5), "channel_mode");
+    } else {
+        w.write(8, 0b11111100U + static_cast<unsigned>(f.ch_mode - 11), "channel_mode");
+        w.write(1, f.b_4_back_channels_present ? 1U : 0U, "b_4_back_channels_present");
+        w.write(1, f.b_centre_present ? 1U : 0U, "b_centre_present");
+        w.write(2, static_cast<std::uint64_t>(f.top_channels_present), "top_channels_present");
     }
     if (f.fs_index == 1) {
         w.write(1, 0, "b_sf_multiplier");
     }
     w.write(1, 0, "b_bitrate_info");
-    if (f.ch_mode >= 7) {
+    if (f.ch_mode >= 7 && f.ch_mode <= 10) {
         w.write(1, f.add_ch_base ? 1U : 0U, "add_ch_base");
     }
     // frame_rate_factor is 1.
@@ -142,9 +148,26 @@ void write_toc(BitWriter& w, const FrameFields& f, std::size_t payload_base, std
     return w.byte_size();
 }
 
-// Part 1 Table 88's channel modes with an LFE: 5.1 and the three 7.1s.
+// Part 1 Table 88's channel modes with an LFE: 5.1 and the three 7.1s; and
+// Part 2 Table 56's 7.1.4.
 [[nodiscard]] bool has_lfe(int ch_mode) noexcept {
-    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10;
+    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10 || ch_mode == 12;
+}
+
+// The presentation's channels for custom_dmx_data() and loud_corr(): one
+// substream's, with Part 2 Table 71's core for the 7.X.4 modes and Table 72's
+// top pairs from top_channels_present.
+[[nodiscard]] PresentationChannels presentation_channels(const FrameFields& f) noexcept {
+    PresentationChannels p;
+    p.ch_mode = f.ch_mode;
+    p.lfe = has_lfe(f.ch_mode);
+    if (f.ch_mode == 11 || f.ch_mode == 12) {
+        p.ch_mode_core = f.ch_mode == 11 ? 5 : 6;
+        p.back = f.b_4_back_channels_present;
+        p.top_channel_pairs =
+            f.top_channels_present == 3 ? 2 : (f.top_channels_present == 0 ? 0 : 1);
+    }
+    return p;
 }
 
 // A size field of `bits` bits, and variable_bits(3) for what is above them
@@ -182,8 +205,8 @@ void write_presentation_substream(BitWriter& w, const FrameFields& f) {
     write_drc_frame(drc, m != nullptr && m->drc ? &*m->drc : nullptr, f.iframe, f.drc_gains);
     write_sized(w, drc, 5, "drc_metadata_size_value", "drc_metadata_size");
     w.write(1, 0, "b_associated");
-    write_downmix(w, f.ch_mode, has_lfe(f.ch_mode),
-                  m != nullptr && m->downmix ? &*m->downmix : nullptr, f.iframe);
+    write_downmix(w, presentation_channels(f), m != nullptr && m->downmix ? &*m->downmix : nullptr,
+                  f.iframe);
     w.align();
 }
 

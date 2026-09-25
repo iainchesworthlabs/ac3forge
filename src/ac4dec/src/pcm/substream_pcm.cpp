@@ -114,6 +114,8 @@ void SubstreamPcm::reset() {
     master_.reset();
     acpl_.reset();
     acpl_history_ = {};
+    ajcc_.reset();
+    ajcc_history_ = {};
     decoded_mode_.reset();
     applied_mode_.reset();
     converter_phase_.reset();
@@ -219,6 +221,8 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, DecodingMode de
     master_.reset();
     acpl_.reset();
     acpl_history_ = {};
+    ajcc_.reset();
+    ajcc_history_ = {};
     decoded_mode_.reset();
     applied_mode_.reset();
     converter_phase_.reset();
@@ -443,6 +447,19 @@ void SubstreamPcm::apply(const Control& control) {
         acpl_.apply(ch_mode_, control.add_ch_base, control.kind, control.codec_mode, *control.acpl, slots_,
                     AcplChannels{.speakers = speakers_, .matrices = matrices_});
     }
+    // A-JCC on what A-SPX made (Part 2 clause 4.8.3.12).
+    if (control.kind == ElementKind::kImmersive &&
+        control.codec_mode == immersive_mode::kAspxAjcc && control.ajcc) {
+        if (applied_mode_ != control.codec_mode) {
+            ajcc_.reset();
+        }
+        matrices_.clear();
+        for (Channel& channel : channels_) {
+            matrices_.push_back(&channel.out);
+        }
+        ajcc_.apply(decoding_, *control.ajcc, slots_,
+                    AcplChannels{.speakers = speakers_, .matrices = matrices_});
+    }
     applied_mode_ = control.codec_mode;
 }
 
@@ -554,11 +571,6 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     if (ctx.sf_multiplier.has_value()) {
         return fail(DecodeError::kUnsupported, "96 and 192 kHz decoding (the HSF extension) is not decoded yet");
     }
-    if (element.kind == ElementKind::kImmersive &&
-        element.codec_mode == immersive_mode::kAspxAjcc) {
-        return fail(DecodeError::kUnsupported,
-                    "the immersive element's ASPX_AJCC is not decoded to PCM yet");
-    }
     if (auto ok = route_element(ctx, element, route_, frame_inputs.decoding); !ok) {
         return ok;
     }
@@ -614,6 +626,21 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
         }
         acpl = values;
     }
+    // Part 2 clause 5.6.3.2 alike, for A-JCC.
+    std::optional<AjccFrameValues> ajcc;
+    AjccQuantHistory ajcc_history = fresh ? AjccQuantHistory{} : ajcc_history_;
+    if (element.kind == ElementKind::kImmersive &&
+        element.codec_mode == immersive_mode::kAspxAjcc) {
+        if (!element.ajcc) {
+            return fail(DecodeError::kInvalidStream,
+                        "an ASPX_AJCC element without its ajcc_data()");
+        }
+        AjccFrameValues values;
+        if (auto ok = ajcc_values(*element.ajcc, ajcc_history, values); !ok) {
+            return ok;
+        }
+        ajcc = values;
+    }
     // Clause 5.1.4.2: the noise fill's generator starts each frame from the
     // frame's sequence_counter, and runs through the tracks in syntax order.
     RandGenState noise = reset_rand_gen_state_snf(sequence_counter);
@@ -629,6 +656,7 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
         return ok;
     }
     acpl_history_ = acpl_history;
+    ajcc_history_ = ajcc_history;
     decoded_mode_ = element.codec_mode;
     scpl_mode_.reset();
     if (element.kind == ElementKind::kImmersive) {
@@ -654,6 +682,7 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
                           .aspx_1ch = element.aspx_1ch,
                           .aspx_2ch = element.aspx_2ch,
                           .acpl = acpl,
+                          .ajcc = ajcc,
                           .drc = frame_inputs.drc,
                           .de = frame_inputs.de,
                           .downmix = frame_inputs.downmix},
@@ -696,6 +725,7 @@ ParseResult SubstreamPcm::conceal(ConcealmentPolicy policy, const FrameInputs& f
                           .aspx_1ch = {},
                           .aspx_2ch = {},
                           .acpl = std::nullopt,
+                          .ajcc = std::nullopt,
                           .drc = last_drc_,
                           .de = last_de_,
                           .downmix = last_downmix_},

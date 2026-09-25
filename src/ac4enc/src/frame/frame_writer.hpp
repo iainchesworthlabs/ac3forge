@@ -14,7 +14,8 @@
 // presentation over one substream group of one channel-coded substream, then
 // the substreams it indexes: the presentation substream (index 0) and the audio
 // substream (index 1). The encoder writes mono and stereo; the decoder's tests
-// build frames of the other channel modes of Part 1 Table 88 with it.
+// build frames of the other channel modes of Part 1 Table 88, and of Part 2's
+// 7.X.4 modes, with it.
 
 namespace ac4::detail {
 
@@ -28,8 +29,15 @@ struct FrameFields {
     bool iframe = true;         // b_iframe_global, b_pres_ndot and b_audio_ndot
     int fs_index = 1;           // Part 1 Table 82: 1 = 48 kHz, 0 = 44.1 kHz
     int frame_rate_index = 13;
-    int ch_mode = 1;            // Part 1 Table 88: 0 mono, 1 stereo, 2 3.0, 3 and 4 5.X, 5 to 10 7.X
+    // Part 1 Table 88: 0 mono, 1 stereo, 2 3.0, 3 and 4 5.X, 5 to 10 7.X; and
+    // Part 2 Table 56's 11 and 12, 7.0.4 and 7.1.4.
+    int ch_mode = 1;
     bool add_ch_base = false;   // for 7.X 5/2/0 and 3/2/2 (Part 2 clause 6.3.2.7)
+    // The 7.X.4 modes' channels the source has (Part 2 clauses 6.3.2.7.3 to
+    // 6.3.2.7.5, Tables 57 to 59).
+    bool b_4_back_channels_present = true;
+    bool b_centre_present = true;
+    int top_channels_present = 3;
     int dialnorm_bits = 124;    // Part 1 clause 4.3.12.2.1: -dialnorm_bits / 4 dBFS
     // The stream's metadata beside dialnorm (frame/metadata.hpp), and with
     // dialogue enhancement this frame's parameters and the last frame's, which

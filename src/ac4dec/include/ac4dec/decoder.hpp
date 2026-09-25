@@ -32,11 +32,11 @@
 // and at every frame_rate_index but 13 the sample rate converter from the
 // internal rate to 48 kHz (clause 6.2.15), its phase locked to
 // sequence_counter (Part 2 clause 5.11). It decodes the immersive element of
-// the 7.X.4 channel modes (Part 2 clause 6.2.4) in full or core decoding
-// (DecodingMode), with Part 2's stereo and multichannel processing, S-CPL,
-// A-SPX and A-CPL (clauses 5.2 to 5.5). The table of contents and the
-// substream framing come from ac4::parse_raw_frame (the inspector, src/ac4);
-// this library starts where the inspector stops.
+// the 7.X.4 channel modes (Part 2 clause 6.2.4) in every codec mode, in full or
+// core decoding (DecodingMode), with Part 2's stereo and multichannel
+// processing, S-CPL, A-SPX, A-CPL and A-JCC (clauses 5.2 to 5.6). The table of
+// contents and the substream framing come from ac4::parse_raw_frame (the
+// inspector, src/ac4); this library starts where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
 // spectral frontend (Part 1 clause 5.2), the 9.X.4 channel modes (Part 2's
@@ -44,8 +44,8 @@
 // substreams, and a 96/192 kHz substream whose HSF extension substream could
 // not be resolved and read alongside it. Refusing is per substream and per
 // frame; the next frame is attempted afresh. decode() refuses, the same way,
-// everything above that it does not turn into PCM yet: 96/192 kHz, and the
-// immersive element in ASPX_AJCC, which it reads.
+// everything above that it does not turn into PCM yet: 96/192 kHz, which it
+// reads.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.

@@ -33,6 +33,7 @@ target_sources(ac4dec_objects
         src/decoder.cpp
         src/huffman.cpp
         src/pcm/acpl.cpp
+        src/pcm/ajcc.cpp
         src/pcm/asf_reconstruct.cpp
         src/pcm/aspx.cpp
         src/pcm/companding.cpp

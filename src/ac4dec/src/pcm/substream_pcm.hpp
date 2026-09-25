@@ -12,6 +12,7 @@
 #include "dsp/resampler.hpp"
 #include "dsp/synthesis.hpp"
 #include "pcm/acpl.hpp"
+#include "pcm/ajcc.hpp"
 #include "pcm/aspx.hpp"
 #include "pcm/de.hpp"
 #include "pcm/downmix.hpp"
@@ -31,10 +32,10 @@
 // 1 gives them, SIMPLE, ASPX and the A-CPL modes; and the immersive element of
 // the 7.X.4 modes along Part 2 Figure 5 of ETSI TS 103 190-2 V1.3.1, with its
 // SMP (clause 5.2), S-CPL between the inverse transform and the analysis
-// (5.3, pcm/immersive.hpp), A-SPX with its gains (4.8.3.11), and A-CPL
-// (5.5), in full or core decoding (4.7). What it does not decode yet it
-// refuses with DecodeError::kUnsupported and the phase of planning/ac4.md that
-// brings it.
+// (5.3, pcm/immersive.hpp), A-SPX with its gains (4.8.3.11), A-CPL (5.5) and
+// A-JCC (5.6, pcm/ajcc.hpp), in full or core decoding (4.7). What it does not
+// decode yet it refuses with DecodeError::kUnsupported and the phase of
+// planning/ac4.md that brings it.
 //
 // Every codec mode passes through the QMF banks, SIMPLE included, as Figure
 // 9 draws it, so the decoder's delay is one for all of them: d_pcm, the QMF
@@ -145,6 +146,7 @@ class SubstreamPcm {
         std::vector<AspxData1ch> aspx_1ch;
         std::vector<AspxData2ch> aspx_2ch;
         std::optional<AcplFrameValues> acpl;  // dequantised when the frame was read
+        std::optional<AjccFrameValues> ajcc;  // decoded when the frame was read
         DrcFrameValues drc;                   // the frame's DRC and dialnorm
         DeFrameValues de;                     // its dialogue enhancement
         DownmixValues downmix;                // its downmix gains
@@ -225,6 +227,10 @@ class SubstreamPcm {
     // (src/ac4dec/ERRATA.md, "A change of codec mode").
     AcplStage acpl_;
     AcplQuantHistory acpl_history_;
+    // A-JCC's stage and the quantised values DIFF_TIME refers to, kept as
+    // A-CPL's are.
+    AjccStage ajcc_;
+    AjccQuantHistory ajcc_history_;
     std::optional<int> decoded_mode_;
     std::optional<int> applied_mode_;
     // The sample rate converter's filter, which every channel's converter

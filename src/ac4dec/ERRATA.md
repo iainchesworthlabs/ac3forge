@@ -1209,6 +1209,45 @@ reading below rests on it.
   core channel's, which the A-SPX post-processing (5.4) and the gain of 2 (4.8.3.11.2) then take.
 - **Evidence:** Streams: DEE's ASPX_SCPL leg in core decoding.
 
+### A-JCC's interpolation takes each module's own framing
+
+- **Where:** Part 2 Pseudocode 6, p. 70, reads `ajcc_interpolation_type` and `ajcc_param_timeslot`
+  without saying whose; `ajcc_data()` (6.2.6.1) sends an `ajcc_framing_data()` for each side, `ajcc_nps_l`
+  and `ajcc_nps_r`, and Pseudocodes 8 and 12 pass `num_pset_1` and `num_pset_2` from them.
+- **Reading:** the left module (`ajcc_module_2()` or `_4()` for L) interpolates with the left framing's
+  type, parameter sets and time slots, the right module with the right's, as A-CPL's modules each take
+  their own `acpl_data_1ch()`'s ("Each module interpolates with its own acpl_data_1ch()").
+- **Evidence:** Text; the constructed A-JCC streams, whose framings agree.
+
+### A-JCC's coefficients interpolate from their own ajcc_param_prev
+
+- **Where:** Part 2 Pseudocodes 6 and 7, pp. 70 and 71: `ajcc_param_prev[sb]` holds "the dequantized
+  A-JCC parameters from the previous AC-4 frame related to the provided ajcc_param[pset][pb] array", and
+  Pseudocodes 11 and 14 interpolate their d and w arrays, built from the parameters, not the parameters.
+- **Reading:** each of a module's coefficient arrays (d0 to d9 and w0 to w14 in full decoding, d0 to d5
+  and w0 to w5 in core) keeps its own `ajcc_param_prev`, its last set's values, 0 before the first frame.
+  Within one `ajcc_core_mode` this is the same as interpolating the parameters; where the core mode
+  changes, each coefficient ramps from what it was, alongside Pseudocode 9's crossfade.
+- **Evidence:** Text.
+
+### A-JCC values outside their range
+
+- **Where:** Part 2 5.6.3.2, p. 69: alpha and beta dequantise by Part 1 Tables 203 to 206, which end at
+  their quantised values' range; dry and wet by a step, for any value.
+- **Reading:** a frame whose differential decoding takes an alpha or beta outside its table, or a dry or
+  wet outside its F0 codebook's range (0 to 22 fine and 0 to 11 coarse for dry, 0 to 40 and 0 to 20 for
+  wet), is refused as invalid, as A-CPL's are ("Values outside the dequantisation tables").
+- **Evidence:** Text; `fuzz_ac4_decode`.
+
+### ajcc_core_mode_prev before the first frame
+
+- **Where:** Part 2 Pseudocode 9, p. 74: "The helper variable ajcc_core_mode_prev shall be initialized
+  to ajcc_core_mode."
+- **Reading:** it takes the `ajcc_core_mode` of the first frame A-JCC applies to, so that frame's
+  pre-modification takes no ramp; after a change of codec mode, which starts A-JCC afresh ("A change of
+  codec mode"), it takes the next frame's again.
+- **Evidence:** Text.
+
 ### Core decoding of the Part 1 elements
 
 - **Where:** Part 2 4.8.3.1, p. 41: in core decoding, for A-CPL "gain factors shall be applied instead";
