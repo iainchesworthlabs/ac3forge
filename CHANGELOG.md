@@ -1231,7 +1231,7 @@ The sections below contain the complete change list and fixes.
   presentation's dialogue enhancement substream. The encoder's frame writer gains general tables of
   contents and the mixing fields, with which a test multiplexer builds such streams from DEE's
   substreams and the encoder's: every mix, measured with one tone per substream, equals its formula to
-  0.01 dB, and a table of 34 constructed tables of contents selects as 4.8.2 requires, in the decoder
+  0.01 dB, and a table of 30 constructed tables of contents selects as 4.8.2 requires, in the decoder
   and in the Python reference alike (`tools/references/ac4_presentations.py`,
   `tools/checks/mix_ac4_decode.py`, in CI). `ac3cli decode` takes `presentation=`, `presentation-id=`,
   `language=`, `associated=`, `dialogue-gain=` and `associated-gain=`, and `fuzz_ac4_decode` chooses

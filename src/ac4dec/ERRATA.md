@@ -1296,7 +1296,7 @@ it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.
   `b_pre_virtualized` as the system's headphones ask. Among equals, the first in the table of contents.
   The choice is made again at each frame, so a presentation named by `presentation_id` is followed
   wherever it moves.
-- **Evidence:** Text; the selection table (34 cases, versions 0 and 1) holds both transcriptions.
+- **Evidence:** Text; the selection table (30 cases, versions 0 and 1) holds both transcriptions.
 
 ### The mixer's sum
 
@@ -1307,7 +1307,8 @@ it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.
   of a presentation with dialogue 6 dB under the same substream decoded alone, and make every level
   depend on the number of substreams.
 - **Evidence:** Text; every mix of the multiplexed streams measures each substream at its formula's
-  gain, and a decoder that divides fails four of the presentations test's cases.
+  gain, and a decoder that divides fails five of the presentations test's eleven cases and 62 of
+  `mix_ac4_decode.py`'s 68 mixes.
 
 ### Substream group gains
 

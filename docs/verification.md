@@ -1080,7 +1080,7 @@ writes their tables of contents with the encoder's writer. Where the text leaves
 reading is in `src/ac4dec/ERRATA.md`, under "Presentations".
 
 - **The selection** (`tests/ac4dec/test_ac4dec_presentations.cpp`,
-  `tools/checks/test_ac4_presentation_selection.py`): a table of 34 cases, each a constructed table of
+  `tools/checks/test_ac4_presentation_selection.py`): a table of 30 cases, each a constructed table of
   contents of version 0 or version 1 presentations, a system's choice and a level, committed as
   `tests/golden/ac4dec/presentations/presentation-selection.tsv`; the decoder and the Python reference
   (`tools/references/ac4_presentations.py`, written from the text separately) select as the table says.
