@@ -552,8 +552,8 @@ void write_7_x(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& set
     ac4::detail::AcplSetFields set;
     set.diff_type = iframe ? 0 : 1;
     set.values.assign(static_cast<std::size_t>(bands - first), 0);
-    if (iframe) {
-        set.values.front() = value;
+    if (iframe && !set.values.empty()) {
+        set.values[0] = value;
     }
     return {set};
 }
