@@ -1276,10 +1276,13 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "codec-mode" && command == "ac4-encode") {
-            if (value != "auto" && value != "simple" && value != "aspx") {
+            constexpr std::array<std::string_view, 6> kModes = {"auto",        "simple",      "aspx",
+                                                                "aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3"};
+            if (std::ranges::find(kModes, value) == kModes.end()) {
                 fmt::println(stderr,
-                             "error: codec-mode is 'auto' (ASPX below 96 kbps a channel, 76.8 in 5.X and 7.X; the default), "
-                             "'simple' or 'aspx' (got '{}')",
+                             "error: codec-mode is 'auto' (the default: in 5.X ASPX_ACPL_3 below 22.4 kbps a channel "
+                             "and ASPX_ACPL_2 below 33.6, then ASPX below 96 kbps a channel, 76.8 in 5.X and 7.X), "
+                             "'simple', 'aspx', 'aspx-acpl-1', 'aspx-acpl-2' or 'aspx-acpl-3' (got '{}')",
                              token);
                 return false;
             }
@@ -1302,12 +1305,15 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                     out.ac4_experimental_interleave = true;
                 } else if (tool == "coding-configs") {
                     out.ac4_experimental_coding_configs = true;
+                } else if (tool == "acpl") {
+                    out.ac4_experimental_acpl = true;
                 } else if (tool == "7x-back" || tool == "7x-wide" || tool == "7x-top-front") {
                     out.ac4_experimental_seven_x = std::string{tool.substr(3)};
                 } else {
                     fmt::println(stderr,
-                                 "error: experimental takes aspx-balance, aspx-varvar, aspx-interleave, coding-configs "
-                                 "and one of 7x-back, 7x-wide and 7x-top-front, comma-separated (got '{}')",
+                                 "error: experimental takes aspx-balance, aspx-varvar, aspx-interleave, "
+                                 "coding-configs, acpl and one of 7x-back, 7x-wide and 7x-top-front, "
+                                 "comma-separated (got '{}')",
                                  token);
                     return false;
                 }

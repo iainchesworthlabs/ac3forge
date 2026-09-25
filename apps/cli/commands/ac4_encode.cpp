@@ -26,11 +26,29 @@
 // Annex E's 'ac-4' sample entry when the output is named .mp4, .m4a or .mov.
 // What the encoder writes so far: mono, stereo, 5.0 and 5.1, and with
 // experimental=7x-... 7.0 and 7.1, at 48 or 44.1 kHz, frame_rate_index 13, the
-// SIMPLE or ASPX codec mode, a constant bit rate. The WAV file's channels are
-// taken in the order `decode` writes them (ac4_channels.hpp).
+// SIMPLE, ASPX or A-CPL codec modes, a constant bit rate. The WAV file's
+// channels are taken in the order `decode` writes them (ac4_channels.hpp).
 
 namespace ac3cli::commands {
 namespace {
+
+// The codec mode as Part 1 Table 95 names it.
+[[nodiscard]] std::string_view mode_name(ac4::CodecMode mode) {
+    switch (mode) {
+        case ac4::CodecMode::kAspx:
+            return "ASPX";
+        case ac4::CodecMode::kAspxAcpl1:
+            return "ASPX_ACPL_1";
+        case ac4::CodecMode::kAspxAcpl2:
+            return "ASPX_ACPL_2";
+        case ac4::CodecMode::kAspxAcpl3:
+            return "ASPX_ACPL_3";
+        case ac4::CodecMode::kAuto:
+        case ac4::CodecMode::kSimple:
+            break;
+    }
+    return "SIMPLE";
+}
 
 // Matched as 'remux' matches them: std::filesystem::path::extension(), case
 // kept.
@@ -149,11 +167,18 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         config.codec_mode = ac4::CodecMode::kSimple;
     } else if (meta.ac4_codec_mode == "aspx") {
         config.codec_mode = ac4::CodecMode::kAspx;
+    } else if (meta.ac4_codec_mode == "aspx-acpl-1") {
+        config.codec_mode = ac4::CodecMode::kAspxAcpl1;
+    } else if (meta.ac4_codec_mode == "aspx-acpl-2") {
+        config.codec_mode = ac4::CodecMode::kAspxAcpl2;
+    } else if (meta.ac4_codec_mode == "aspx-acpl-3") {
+        config.codec_mode = ac4::CodecMode::kAspxAcpl3;
     }
     config.experimental.aspx_balance = meta.ac4_experimental_balance;
     config.experimental.aspx_varvar = meta.ac4_experimental_varvar;
     config.experimental.aspx_interleave = meta.ac4_experimental_interleave;
     config.experimental.coding_configs = meta.ac4_experimental_coding_configs;
+    config.experimental.acpl = meta.ac4_experimental_acpl;
     config.experimental.seven_x = pair;
     // The rate is checked before dialnorm=auto reads the whole file.
     if (!ac4::Encoder::create(config).has_value()) {
@@ -287,7 +312,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     constexpr int kDecoderDelay = 352 + 577 + 6 * 64;
     status_println(status, "          {} mode at frame_rate_index 13; the decoder's output lags the input by {} "
                            "samples",
-                   encoder->codec_mode() == ac4::CodecMode::kAspx ? "ASPX" : "SIMPLE",
+                   mode_name(encoder->codec_mode()),
                    encoder->delay_samples() + kDecoderDelay);
     return kExitOk;
 }

@@ -124,8 +124,9 @@ struct Options {
     // `trace` command writes, so the three can be compared line by line
     // (planning/ac4.md, the encoder's ladder, item 1).
     std::string syntax_trace_path;
-    // 'ac4-encode' only: codec-mode=, "auto" (or empty), "simple" or "aspx"
-    // (ac4::CodecMode), and experimental=, the experimental tools asked for,
+    // 'ac4-encode' only: codec-mode=, "auto" (or empty), "simple", "aspx",
+    // "aspx-acpl-1", "aspx-acpl-2" or "aspx-acpl-3" (ac4::CodecMode), and
+    // experimental=, the experimental tools asked for,
     // with the 7.X element's additional pair as "back", "wide" or
     // "top-front" (ac4::AdditionalPair), or empty.
     std::string ac4_codec_mode;
@@ -133,6 +134,7 @@ struct Options {
     bool ac4_experimental_varvar = false;
     bool ac4_experimental_interleave = false;
     bool ac4_experimental_coding_configs = false;
+    bool ac4_experimental_acpl = false;
     std::string ac4_experimental_seven_x;
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
