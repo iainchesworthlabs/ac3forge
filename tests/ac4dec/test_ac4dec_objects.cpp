@@ -30,6 +30,8 @@
 #include "ac4/ac4.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4dec_objects.hpp"
+#include "pcm/isf.hpp"
+#include "tables/isf_tables.hpp"
 
 namespace {
 
@@ -410,6 +412,138 @@ TEST_CASE("object metadata takes effect at its update sample and moves object 0"
         }
         CHECK(moving >= 1);
     }
+}
+
+TEST_CASE("an intermediate spatial format renders to the output layout by Annex A.2.1",
+          "[ac4dec][objects]") {
+    // Clause 5.10.3.4: y = M x t, t the SR3.1.0.0 objects (M1 M2 M3 U1) in
+    // order, over the two substreams that carry them, and M the attachment's
+    // SR3100_to_<layout>, a row per object and a column per speaker in Table
+    // A.27's order without the LFE. Each object's tone reaches each speaker at
+    // its coefficient, and at +5 dB where the object's metadata sets that gain.
+    using S = ac4::Speaker;
+    using T = ac4::DownmixTarget;
+    struct Target {
+        T target = T::kAsCoded;
+        std::size_t matrix = 0;  // the layout's index in kIsfMatrices
+        std::vector<S> speakers;
+    };
+    const std::vector<Target> targets = {
+        {T::kAsCoded,
+         7,
+         {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround, S::kLeftBack,
+          S::kRightBack, S::kTopFrontLeft, S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight}},
+        {T::k5X, 1, {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround}},
+        {T::kStereo, 0, {S::kLeft, S::kRight}},
+        {T::kMono, 0, {S::kCentre}},
+        {T::k7X0,
+         2,
+         {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround, S::kLeftBack,
+          S::kRightBack}},
+        {T::k5X2,
+         4,
+         {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround, S::kTopSideLeft,
+          S::kTopSideRight}},
+        {T::k5X4,
+         5,
+         {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround, S::kTopFrontLeft,
+          S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight}},
+        {T::k7X2,
+         6,
+         {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround, S::kLeftBack,
+          S::kRightBack, S::kTopSideLeft, S::kTopSideRight}},
+    };
+    ObjectCase isf;
+    for (const ObjectCase& c : ac4dec_test::committed_object_cases()) {
+        if (c.kind == ObjectCase::Kind::kIsf) {
+            isf = c;
+        }
+    }
+    REQUIRE(isf.kind == ObjectCase::Kind::kIsf);
+    for (const bool gained : {false, true}) {
+        ObjectCase c = isf;
+        c.extras = gained;  // object_gain 15 - 10 = 5 dB for every object (Table 102)
+        const BuiltObjectStream stream = ac4dec_test::build_objects(c, 12);
+        REQUIRE(stream.full.size() == 4);
+        const double gain = gained ? std::pow(10.0, 5.0 / 20.0) : 1.0;
+        for (const Target& t : targets) {
+            CAPTURE(gained, ac4::describe(t.target));
+            ac4::DecoderConfig config;
+            config.output.downmix = t.target;
+            ac4::Decoder decoder(config);
+            std::vector<std::vector<float>> channels(t.speakers.size());
+            for (std::size_t f = 0; f < stream.frames.size(); ++f) {
+                const auto decoded = decoder.decode(stream.frames[f]);
+                INFO("frame " << f << ": " << decoder.refusal_reason());
+                REQUIRE(decoded.has_value());
+                REQUIRE(decoded->has_value());
+                const ac4::DecodedFrame& frame = **decoded;
+                CHECK(frame.objects.empty());
+                REQUIRE(frame.speakers == t.speakers);
+                REQUIRE(frame.channels.size() == channels.size());
+                for (std::size_t s = 0; s < channels.size(); ++s) {
+                    channels[s].insert(channels[s].end(), frame.channels[s].begin(),
+                                       frame.channels[s].end());
+                }
+            }
+            const std::span<const float> matrix = ac4::detail::tables::kIsfMatrices[0][t.matrix];
+            const std::size_t columns = t.target == T::kMono ? 2 : t.speakers.size();
+            REQUIRE(matrix.size() == 4 * columns);
+            for (std::size_t s = 0; s < channels.size(); ++s) {
+                for (std::size_t i = 0; i < 4; ++i) {
+                    CAPTURE(s, i);
+                    // The mono channel is the 2.X layout's L + R.
+                    const double coefficient = t.target == T::kMono
+                                                   ? static_cast<double>(matrix[i * 2]) +
+                                                         static_cast<double>(matrix[i * 2 + 1])
+                                                   : static_cast<double>(matrix[i * columns + s]);
+                    const auto& [hz, amplitude] = stream.full[i].tones.front();
+                    const double want = std::abs(coefficient) * amplitude * gain;
+                    const double got = tone_amplitude(steady(channels[s]), hz);
+                    CHECK(std::abs(got - want) < std::max(0.012 * want, 5e-4 * amplitude));
+                }
+            }
+        }
+    }
+    // The generator's reading of the attachment, against its text:
+    // SR3100_to_5's first and last rows, and SR15951_to_904's last value.
+    const std::span<const float> to_5 = ac4::detail::tables::kIsfMatrices[0][1];
+    CHECK(to_5[0] == 6.243139852e-01F);
+    CHECK(to_5[3] == -2.890952832e-01F);
+    CHECK(to_5[17] == 0.0F);
+    CHECK(to_5[19] == 3.751586799e-01F);
+    CHECK(ac4::detail::tables::kIsfMatrices[5][9].size() == 30 * 13);
+}
+
+TEST_CASE("an ISF object's gain ramps linearly from its update sample", "[ac4dec][objects]") {
+    // Annex F.11: an update takes effect at its sample, reached over its
+    // ramp_duration from the gain in force there; the ramp carries on into
+    // the next frame.
+    ac4::detail::IsfGain gain;
+    std::vector<float> samples(64, 1.0F);
+    ac4::ObjectUpdate update;
+    update.sample = 8;
+    update.ramp_samples = 80;
+    update.properties.gain_db = -20.0;
+    const std::array<ac4::ObjectUpdate, 1> updates = {update};
+    gain.apply(samples, updates);
+    CHECK(samples[7] == 1.0F);
+    const double step = (0.1 - 1.0) / 80.0;
+    CHECK(samples[8] == Catch::Approx(1.0 + step));
+    CHECK(samples[63] == Catch::Approx(1.0 + 56.0 * step));
+    std::vector<float> next(64, 1.0F);
+    gain.apply(next, {});
+    CHECK(next[23] == Catch::Approx(0.1));
+    CHECK(next[63] == Catch::Approx(0.1));
+    // An inactive object is silent from its update, a ramp of 0 at once.
+    ac4::ObjectUpdate off;
+    off.sample = 4;
+    off.properties.active = false;
+    const std::array<ac4::ObjectUpdate, 1> offs = {off};
+    std::vector<float> last(16, 1.0F);
+    gain.apply(last, offs);
+    CHECK(last[3] == Catch::Approx(0.1));
+    CHECK(last[4] == 0.0F);
 }
 
 TEST_CASE("Chromium's A-JOC stream decodes in full and core decoding", "[ac4dec][objects]") {

@@ -2025,11 +2025,12 @@ every object substream ("object coding is not implemented"), so no reading below
 - **Evidence:** Text. `tests/ac4dec/test_ac4dec_objects.cpp` holds a constructed dialogue case to the
   formulas in both modes, at 6 dB and at 12 dB, which the stream's `de_max_gain` of 2 caps at 9.
 
-## Object audio metadata
+## Object audio metadata and the ISF renderer
 
 The readings phase D10 takes for what the object audio metadata sets and when (Part 2 clauses 5.9 and
-6.3.9, Annex F). They are the decoder's alone. `tests/ac4dec/test_ac4dec_objects.cpp` holds the
-constructed streams' positions and timing to the formulas of 6.3.9.8.4 and 5.9.2.
+6.3.9, Annex F), and for the intermediate spatial format renderer (5.10.3). They are the decoder's alone.
+`tests/ac4dec/test_ac4dec_objects.cpp` holds the constructed streams' positions and timing to the
+formulas of 6.3.9.8.4 and 5.9.2, and their intermediate spatial format to Annex A.2.1's matrices.
 
 ### Object audio metadata
 
@@ -2087,6 +2088,27 @@ constructed streams' positions and timing to the formulas of 6.3.9.8.4 and 5.9.2
 - **Evidence:** Text; the constructed direct-coded streams, made dialogue substreams, come out 6 dB up
   asked for 6, and at their cap of 9 asked for 12.
 
+### The intermediate spatial format
+
+- **Where:** 5.10.3.4, p. 110: y = M x t, t the ISF objects in Table 61's order and M Annex A.2.1's
+  matrix for the output channel configuration; the attachment declares each `SR<config>_to_<layout>` as
+  `[NUM_ISF_CHAN][NUM_SPKR_CHAN]`, a row per object; Tables A.25 and A.26, p. 213, name the 5.x, 7.x and
+  9.x matrices `SR<config>_to_50`, `_to_70` and `_to_90`, which the attachment calls `_to_5`, `_to_7` and
+  `_to_9`; nothing gives the order of a matrix's speakers; 4.8.3.19 hands the tool each object "plus its
+  decoded associated object properties".
+- **Reading:** each speaker is the sum over the objects of each one times its row's value at the
+  speaker's column; `_to_5`, `_to_7` and `_to_9` are the tables' `_to_50`, `_to_70` and `_to_90`. A
+  matrix's columns are its layout's speakers in Table A.27's order without the LFE, as the values show:
+  SR3.1.0.0's M1, the front, reaches L and R alike, and M2, on the left, the left speakers more than the
+  right. Each object's gain applies before the matrix, -infinity
+  for an inactive one, ramped over its update's ramp. The output layout is 7.X.4 as coded and the
+  downmix target's otherwise: a two-channel target takes the 2.x matrix, and mono that matrix's L + R.
+  The 9.X layouts' screen pair (Table A.27's 24 and 25) is no speaker the decoder names, so it renders
+  none of them. In a presentation with channels, the format is rendered into the channels' layout, and
+  refused where Annex A.2.1 has no matrix for it.
+- **Evidence:** Text; the constructed `direct-isf-sr3100` renders each object's tone to each speaker at
+  its coefficient in all eight layouts, and 5 dB up where its metadata sets that gain.
+
 ## Tables
 
 The Huffman codebooks come from the table attachment of Part 1, `ts_103190_tables.c`, which Annex A
@@ -2099,7 +2121,9 @@ Phase D10's tables: A-JOC's Table 28 and its dequantisation (Tables 29 to 32, un
 range's centre, every row checked), Tables 78 and 82, and the object audio metadata's tables that give
 values (Tables 98, 99, 101 to 105, 107, 108, 110, 111 and 121 to 125) come from the text, each checked
 against a rendering of its page; the common data's (Tables 112 to 120) are handed on as the stream codes
-them.
+them. The intermediate spatial format's matrices come from Part 2's attachment,
+`ts_103190_tables_part2.c`, through `gen_ac4_tables.py`, which checks each matrix's size against the
+attachment's `#define`s and that all 60 matrices of Tables A.25 and A.26 are there.
 
 ## The trace
 

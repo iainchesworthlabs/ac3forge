@@ -18,6 +18,7 @@
 
 #include "ac4/ac4.hpp"
 #include "bit_reader.hpp"
+#include "pcm/isf.hpp"
 #include "pcm/objects.hpp"
 #include "pcm/substream_pcm.hpp"
 #include "presentations.hpp"
@@ -189,6 +190,14 @@ void apply_observed_stereo_rule(Toc& toc) {
     }
 }
 
+// Where an object audio substream's intermediate spatial format objects sit
+// in their format's t vector (Part 2 clause 5.10.3.4): the first one's place
+// and the format's object count, 0 without one.
+struct IsfPlace {
+    int first = 0;
+    int count = 0;
+};
+
 // What the decoder decided a substream is, and what its syntax needs.
 struct Assignment {
     SubstreamReport::Kind kind = SubstreamReport::Kind::kOther;
@@ -218,6 +227,8 @@ struct Assignment {
     std::vector<ObjectEntry> essences_full;
     std::vector<ObjectEntry> essences_core;
     int group_offset = 0;
+    IsfPlace isf_full;
+    IsfPlace isf_core;
     // An A-JOC substream's oamd_common_data() from the table of contents.
     std::optional<OamdCommonData> object_common;
 };
@@ -278,6 +289,7 @@ struct ObjectShare {
     std::vector<ObjectEntry> entries;  // the same objects, as the table of contents lists them
     int n_objects = 0;
     bool b_lfe = false;
+    IsfPlace isf;
     std::optional<detail::SyntaxError> refusal;
 };
 
@@ -333,6 +345,12 @@ struct ObjectShare {
             ++run->lfes_given;
             break;
         }
+    }
+    if (isf) {
+        // An intermediate spatial format has no LFE (bed_dyn_obj_assignment(),
+        // ac4_substream_info_obj()), so its objects' places are the run's.
+        share.isf = IsfPlace{.first = static_cast<int>(run->next),
+                             .count = static_cast<int>(run->objects.size())};
     }
     int taken = 0;
     while (taken < share.n_objects && run->next < run->objects.size()) {
@@ -439,6 +457,8 @@ struct Essences {
     std::vector<ObjectEntry> full;
     std::vector<ObjectEntry> core;
     int group_offset = 0;
+    IsfPlace isf_full;
+    IsfPlace isf_core;
     std::optional<OamdCommonData> object_common;
 };
 
@@ -496,6 +516,8 @@ void assign_object_instances(const Toc& toc, std::optional<int> first_index,
         a.essences_full = essences.full;
         a.essences_core = essences.core;
         a.group_offset = essences.group_offset;
+        a.isf_full = essences.isf_full;
+        a.isf_core = essences.isf_core;
         a.object_common = essences.object_common;
         out.emplace(index, std::move(a));
     }
@@ -657,6 +679,13 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                         }
                     };
                     portion(info.upmix_objects, info.n_fullband_upmix_signals, essences.full);
+                    // An intermediate spatial format's objects lead
+                    // bed_dyn_obj_assignment()'s list, the whole format.
+                    const auto isf_objects = [](const std::vector<ObjectEntry>& assigned) {
+                        return static_cast<int>(
+                            std::ranges::count(assigned, ObjectKind::kIsf, &ObjectEntry::kind));
+                    };
+                    essences.isf_full.count = isf_objects(info.upmix_objects);
                     essences.object_common = info.oamd_common_data;
                     if (info.b_static_dmx) {
                         if (info.b_lfe) {
@@ -673,6 +702,7 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                         }
                     } else {
                         portion(info.static_objects, info.n_fullband_dmx_signals, essences.core);
+                        essences.isf_core.count = isf_objects(info.static_objects);
                     }
                     // Every object counts, past the list's capacity too, so a
                     // group of more than it holds is refused where it is read.
@@ -710,6 +740,8 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                     essences.group_offset = group_objects.count;
                     essences.full = share.entries;
                     essences.core = share.entries;
+                    essences.isf_full = share.isf;
+                    essences.isf_core = share.isf;
                     for (int i = 0; i < share.objects.count; ++i) {
                         group_objects.push(i < detail::kMaxOamdObjects ? share.objects[i]
                                                                        : detail::OamdObjectType{});
@@ -799,6 +831,8 @@ struct CapturedAudio {
     std::vector<ObjectEntry> essences_core;
     int group_offset = 0;
     std::optional<int> oamd_key;
+    IsfPlace isf_full;
+    IsfPlace isf_core;
     std::optional<OamdCommonData> object_common;
 };
 
@@ -950,6 +984,7 @@ struct Decoder::Impl {
         detail::ObjectMetadataState state;
         ObjectProperties current;  // in force at the next output sample
         std::deque<std::pair<std::int64_t, ObjectUpdate>> pending;
+        detail::IsfGain isf_gain;  // an intermediate spatial format object's
     };
     std::map<std::pair<int, int>, ObjectTrack> object_tracks;
     struct AjocTimings {
@@ -963,6 +998,22 @@ struct Decoder::Impl {
     // frame's length.
     std::vector<std::vector<float>> object_pcm;
     std::size_t object_samples = 0;
+    // The frame's intermediate spatial format objects, for the ISF renderer
+    // once the presentation's channels are decoded: the first `isf_used`,
+    // their essences' storage kept from frame to frame.
+    struct IsfObject {
+        int config = 0;
+        int index = 0;
+        std::vector<float> samples;
+    };
+    std::vector<IsfObject> isf_objects;
+    std::size_t isf_used = 0;
+    std::vector<ObjectUpdate> isf_updates;
+    std::vector<detail::IsfInput> isf_inputs;
+
+    // Renders the frame's intermediate spatial format objects into `frame`'s
+    // channels (clause 5.10.3), or where it has none into the output layout's.
+    [[nodiscard]] detail::ParseResult render_isf(DecodedFrame& frame);
 
     [[nodiscard]] bool keeps(int key) const noexcept {
         return key == last_key ||
@@ -1137,6 +1188,8 @@ detail::ParseResult Decoder::Impl::decode_objects(const CapturedAudio& member,
             }
         }
     }
+    const IsfPlace isf = full ? member.isf_full : member.isf_core;
+    const int isf_config = detail::isf_config_of(isf.count);
 
     // The metadata of this frame's objects and its timing (Part 2 Table 7):
     // an A-JOC substream's portion, the upmix's in full decoding and the
@@ -1222,27 +1275,71 @@ detail::ParseResult Decoder::Impl::decode_objects(const CapturedAudio& member,
         }
     }
 
-    // The objects, each with the updates that fall in this frame.
+    // The objects, each with the updates that fall in this frame; an
+    // intermediate spatial format's, their gains applied, wait for the ISF
+    // renderer.
+    int isf_seen = 0;
     const auto end = start + static_cast<std::int64_t>(length);
     for (int k = 0; k < n; ++k) {
         const ObjectEntry& e = essences[static_cast<std::size_t>(k)];
         ObjectTrack& track = object_tracks[{member.state_key, k}];
+        const bool rendered = e.kind == ObjectKind::kIsf;
         DecodedObject object;
-        object.kind = e.kind;
-        object.lfe = e.lfe;
-        if (e.speaker) {
-            object.speaker = detail::speaker_of_index(*e.speaker);
-        }
-        object.samples = std::move(object_pcm[static_cast<std::size_t>(k)]);
+        std::vector<ObjectUpdate>& updates = rendered ? isf_updates : object.updates;
+        updates.clear();
         object.properties = track.current;
         while (!track.pending.empty() && track.pending.front().first < end) {
             auto [at_sample, update] = track.pending.front();
             track.pending.pop_front();
             update.sample = at_sample < start ? 0 : static_cast<std::size_t>(at_sample - start);
             track.current = update.properties;
-            object.updates.push_back(std::move(update));
+            updates.push_back(std::move(update));
         }
+        std::vector<float>& samples = object_pcm[static_cast<std::size_t>(k)];
+        if (rendered) {
+            if (isf_config < 0) {
+                return detail::fail(
+                    DecodeError::kInvalidStream,
+                    "an intermediate spatial format of an object count Table 61 does not have");
+            }
+            track.isf_gain.apply(samples, isf_updates);
+            if (isf_used == isf_objects.size()) {
+                isf_objects.emplace_back();
+            }
+            IsfObject& slot = isf_objects[isf_used++];
+            slot.config = isf_config;
+            slot.index = isf.first + isf_seen++;
+            slot.samples.swap(samples);
+            continue;
+        }
+        object.kind = e.kind;
+        object.lfe = e.lfe;
+        if (e.speaker) {
+            object.speaker = detail::speaker_of_index(*e.speaker);
+        }
+        object.samples = std::move(samples);
         frame.objects.push_back(std::move(object));
+    }
+    return {};
+}
+
+detail::ParseResult Decoder::Impl::render_isf(DecodedFrame& frame) {
+    if (isf_used == 0) {
+        return {};
+    }
+    isf_inputs.clear();
+    for (std::size_t i = 0; i < isf_used; ++i) {
+        const IsfObject& o = isf_objects[i];
+        isf_inputs.push_back({.config = o.config, .index = o.index, .samples = o.samples});
+    }
+    isf_used = 0;
+    const std::size_t length =
+        frame.channels.empty() ? object_samples : frame.channels.front().size();
+    if (!detail::render_isf(isf_inputs, config.output.downmix, length, frame.channels,
+                            frame.speakers)) {
+        return detail::fail(
+            DecodeError::kUnsupported,
+            "an intermediate spatial format in channels Annex A.2.1 has no matrix for");
     }
     return {};
 }
@@ -1485,6 +1582,7 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     inputs.drc = detail::drc_frame_values(d.config.output, dialnorm, drc_state, drc_frame);
     // The presentation's object audio substreams, each decoded apart.
     d.last_objects.clear();
+    d.isf_used = 0;
     d.object_samples = 0;
     for (std::size_t m = 0; m < capture.audio.size(); ++m) {
         if (!is_object(m)) {
@@ -1498,7 +1596,12 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
         d.last_objects.push_back(capture.audio[m].state_key);
     }
     if (!channel_anchor) {
-        // A presentation of object audio alone: no channels.
+        // A presentation of object audio alone: no channels, but an
+        // intermediate spatial format's.
+        if (const detail::ParseResult rendered = d.render_isf(frame); !rendered) {
+            d.refusal = rendered.error().reason;
+            return d.conceal_or(rendered.error().error);
+        }
         d.last_key.reset();
         d.last_members.clear();
         d.last_rate = frame.sample_rate_hz;
@@ -1552,6 +1655,10 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
     if (!decoded) {
         d.refusal = decoded.error().reason;
         return d.conceal_or(decoded.error().error);
+    }
+    if (const detail::ParseResult rendered = d.render_isf(frame); !rendered) {
+        d.refusal = rendered.error().reason;
+        return d.conceal_or(rendered.error().error);
     }
     d.last_key = main.state_key;
     d.last_members.clear();
@@ -1819,6 +1926,8 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(std::span<const std:
                         captured->read = true;
                         captured->essences_full = assignment.essences_full;
                         captured->essences_core = assignment.essences_core;
+                        captured->isf_full = assignment.isf_full;
+                        captured->isf_core = assignment.isf_core;
                         captured->object_common = assignment.object_common;
                         captured->group_offset = assignment.group_offset;
                         captured->oamd_key = assignment.oamd_key;

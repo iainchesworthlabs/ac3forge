@@ -32,6 +32,7 @@ target_sources(ac4core
         src/dsp/synthesis.cpp
         src/tables/huffman_codes.cpp
         src/tables/huffman_tables.cpp
+        src/tables/isf_tables.cpp
         src/tables/noise_tables.cpp
         src/tables/qmf_tables.cpp
         src/tables/sfb_tables.cpp)

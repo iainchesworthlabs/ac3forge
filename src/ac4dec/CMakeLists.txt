@@ -35,6 +35,7 @@ target_sources(ac4dec_objects
         src/pcm/acpl.cpp
         src/pcm/ajcc.cpp
         src/pcm/ajoc.cpp
+        src/pcm/isf.cpp
         src/pcm/asf_reconstruct.cpp
         src/pcm/aspx.cpp
         src/pcm/companding.cpp

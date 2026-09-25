@@ -48,16 +48,17 @@
 // decoding (clause 5.7), with A-JOC's dialogue enhancement (5.8.2.3 and
 // 5.8.2.4), and direct-coded object substreams with theirs (5.8.2.5), to each
 // object's PCM and the properties its object audio metadata sets (clause
-// 6.3.9, Annex F), for the application to render (DecodedFrame::objects).
-// The table of contents and the substream framing come from
-// ac4::parse_raw_frame (the inspector, src/ac4); this library starts where the
-// inspector stops.
+// 6.3.9, Annex F), for the application to render (DecodedFrame::objects); it
+// renders an intermediate spatial format itself (clause 5.10.3). The table of
+// contents and the substream framing come from ac4::parse_raw_frame (the
+// inspector, src/ac4); this library starts where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
 // spectral frontend (Part 1 clause 5.2), the 9.X.4 channel modes (Part 2's
-// immersive element with b_5fronts) and the 22.2 channel element, and a
-// 96/192 kHz substream whose HSF extension substream could not be resolved
-// and read alongside it. Refusing is per substream and per frame;
+// immersive element with b_5fronts) and the 22.2 channel element, an
+// intermediate spatial format mixed into channels Annex A.2.1 has no matrix
+// for, and a 96/192 kHz substream whose HSF extension substream could not be
+// resolved and read alongside it. Refusing is per substream and per frame;
 // the next frame is attempted afresh. decode() refuses, the same way,
 // everything above that it does not turn into PCM yet: 96/192 kHz, which it
 // reads.
@@ -334,8 +335,12 @@ enum class Speaker : std::uint8_t {
 // A presentation with object audio (Part 2 clause 4.8.3.4) decodes each
 // object's PCM and the properties its metadata sets, which Part 2 Annex F
 // lists as what a decoder gives an object audio renderer: the application
-// renders them. An alternative presentation's alternative object properties
-// (Part 2 clause 6.3.9.4) are read and not applied.
+// renders them. The decoder renders only the intermediate spatial format
+// (Part 2 clause 5.10.3), into DecodedFrame::channels: 7.X.4 as coded, and
+// OutputConfig::downmix's layout otherwise, a two-channel target the
+// format's own stereo matrix, and none of the 9.X layouts, whose screen pair
+// Speaker does not name. An alternative presentation's alternative object
+// properties (Part 2 clause 6.3.9.4) are read and not applied.
 
 // Annex F.2 to F.10, and add_per_object_md()'s data (Part 2 clause 6.3.9.11):
 // what one block update of an object's metadata sets (clause 6.3.9).
@@ -384,8 +389,8 @@ struct ObjectUpdate {
 };
 
 struct DecodedObject {
-    // ac4/ac4.hpp: a bed object, a dynamic object or an intermediate spatial
-    // format's.
+    // ac4/ac4.hpp: a bed object or a dynamic object (an intermediate spatial
+    // format's objects are rendered, not listed).
     ObjectKind kind = ObjectKind::kDyn;
     bool lfe = false;
     // F.3, a bed object's loudspeaker.
@@ -425,9 +430,11 @@ struct DecodedFrame {
     // did not decode.
     std::optional<Concealment> concealed;
     // A presentation with object audio: its objects, each substream's in turn
-    // (a substream's LFE first), each as long as the frame. Their samples and
-    // their updates carry the decoder's delay as `channels` do. A presentation
-    // of objects alone has no `speakers` or `channels`.
+    // (a substream's LFE first), each as long as the frame, but an
+    // intermediate spatial format's, which the decoder renders into
+    // `channels`. Their samples and their updates carry the decoder's delay as
+    // `channels` do. A presentation of objects alone has no `speakers` or
+    // `channels` unless it carries an intermediate spatial format.
     std::vector<DecodedObject> objects;
     // The common data of the objects' substream group in force (Part 2 clause
     // 6.3.9.2 and Annex F.12's trim), as the stream codes it.
