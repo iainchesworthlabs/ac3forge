@@ -752,6 +752,58 @@ TEST_CASE("probe reads a real AC-4 stream, in table and JSON form", "[cli][probe
     CHECK(table.find("73 of 73 valid") != std::string::npos);
 }
 
+TEST_CASE("probe writes an AC-4 stream's presentations and metadata", "[cli][probe][ac4]") {
+    // DEE's 5.1 film leg: one version 1 presentation, and the metadata its
+    // presentation substream and I-frames send (tests/ac4dec/
+    // test_ac4dec_api.cpp holds the decoder's report of them to the trace).
+    const auto input = baseline("ac4-51-film-96", "dee.ac4");
+    const auto log = scratch_dir() / "ac4_media.json";
+    REQUIRE(run_cli("probe \"" + input.string() + "\" json=1", log) == 0);
+    const auto document = read_log(log);
+    INFO(document);
+    const auto ac4 = json_section(json_section(document, "stream"), "ac4");
+    const auto rate = json_section(ac4, "frame_rate");
+    CHECK(json_field(rate, "fps") == "23.438");
+    CHECK(json_field(rate, "frame_length") == "2048");
+    CHECK(json_field(rate, "internal_sample_rate_hz") == "48000.00");
+    CHECK(json_field(ac4, "bitrate_kbps") == "96.0");
+    CHECK(json_field(ac4, "iframes") == "7");
+    CHECK(json_field(ac4, "splices") == "0");
+    CHECK(json_field(ac4, "selected_presentation") == "0");
+    CHECK(document.find("\"role\": \"main\"") != std::string::npos);
+    CHECK(json_field(ac4, "selectable") == "true");
+    const auto metadata = json_section(ac4, "metadata");
+    CHECK(json_field(json_section(metadata, "loudness"), "dialnorm_dbfs") == "-19.00");
+    CHECK(json_field(json_section(metadata, "drc"), "eac3_profile") == "2");
+    CHECK(json_field(json_section(metadata, "dialogue_enhancement"), "max_gain_db") == "9.0");
+    CHECK(json_field(json_section(metadata, "downmix"), "loro_centre_db") == "-3.0");
+
+    const auto table_log = scratch_dir() / "ac4_media.txt";
+    REQUIRE(run_cli("probe \"" + input.string() + "\"", table_log) == 0);
+    const auto table = read_log(table_log);
+    INFO(table);
+    CHECK(table.find("frame rate      23.438 fps") != std::string::npos);
+    CHECK(table.find("L R C LFE Ls Rs; main; selected") != std::string::npos);
+    CHECK(table.find("dialnorm        -19 dBFS") != std::string::npos);
+    CHECK(table.find("modes 0 default profile") != std::string::npos);
+
+    // The test multiplexer's stream: 17 version 1 presentations, their
+    // languages and their substreams' roles.
+    const auto multiplexed =
+        fs::path{AC4DEC_GOLDEN_DIR} / "presentations" / "presentations-5_1.ac4";
+    REQUIRE(run_cli("probe \"" + multiplexed.string() + "\" json=1", log) == 0);
+    const auto many = read_log(log);
+    std::size_t presentations = 0;
+    for (auto at = many.find("\"presentation_config\": "); at != std::string::npos;
+         at = many.find("\"presentation_config\": ", at + 1)) {
+        ++presentations;
+    }
+    CHECK(presentations == 17);
+    CHECK(many.find("\"language\": \"de\"") != std::string::npos);
+    CHECK(many.find("\"role\": \"associated\"") != std::string::npos);
+    CHECK(many.find("\"role\": \"music_and_effects\"") != std::string::npos);
+}
+
 TEST_CASE("probe reports a hand-built AC-4 stream's A-JOC substream", "[cli][probe][ac4]") {
     // The exact vector tests/ac4/test_ac4.cpp's "parse_substream_info_ajoc:
     // static_dmx, minimal upmix" test already validated field by field -

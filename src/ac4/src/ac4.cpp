@@ -2069,6 +2069,23 @@ std::optional<MediaTiming> media_timing(const Toc& toc) {
     }
 }
 
+std::optional<FrameRate> frame_rate(const Toc& toc) {
+    const std::optional<MediaTiming> timing = media_timing(toc);
+    if (!timing || toc.frame_rate_index < 0 || toc.frame_rate_index > 13) {
+        return std::nullopt;
+    }
+    // Table 83's frame lengths at the internal rate (frame_len_base), index 13
+    // being Table 84's 2 048 at either rate.
+    constexpr std::array<int, 14> kFrameLength = {1920, 1920, 2048, 1536, 1536, 960, 960,
+                                                  1024, 768,  768,  512,  384,  384, 2048};
+    FrameRate rate;
+    rate.frames_per_second =
+        static_cast<double>(timing->timescale) / static_cast<double>(timing->sample_delta);
+    rate.frame_length = kFrameLength[static_cast<std::size_t>(toc.frame_rate_index)];
+    rate.internal_rate_hz = static_cast<double>(rate.frame_length) * rate.frames_per_second;
+    return rate;
+}
+
 std::string rfc6381_codec_string(const Toc& toc) {
     // Annex E.13: two lowercase hex digits per field.
     constexpr std::string_view kHex = "0123456789abcdef";

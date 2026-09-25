@@ -5,6 +5,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
@@ -12,6 +13,7 @@
 #include "ac3/io/probe.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
 #include "json_sink.hpp"
 
 // The `stream` object of the ac3forge.probe/1 document (docs/forge/cli/
@@ -20,7 +22,8 @@
 // fixed names both of ac3cli probe's forms use, and the AC-4 walk.
 //
 // Compiled into each application that uses it, like the rest of apps/common:
-// it needs ac3::forge and ac4::ac4, which both applications link.
+// it needs ac3::forge, ac4::ac4 and ac4::decoder, which both applications
+// link.
 
 namespace ac3::apps::probe_json {
 
@@ -50,13 +53,31 @@ void write_range(JsonSink& json, std::string_view name, const io::MinMax& range,
 void write_stream(JsonSink& json, const io::ProbeReport& report);
 
 // An AC-4 stream, walked sync frame by sync frame: the counts, and the first
-// frame's table of contents, which stands for the stream's structure.
+// frame's table of contents, which stands for the stream's structure; then
+// planning/ac4.md's "Media information" over the whole stream.
 struct Ac4Summary {
     std::size_t sync_frames = 0;
     std::size_t bytes = 0;
     std::size_t crc_failures = 0;
     std::optional<ac4::Error> parse_error = std::nullopt;  // the first one seen
     std::optional<ac4::RawFrame> first_frame = std::nullopt;
+    // The first frame's frame rate and rates (ac4::frame_rate()), and the bit
+    // rate over whole raw_ac4_frame()s at that rate.
+    std::optional<ac4::FrameRate> frame_rate = std::nullopt;
+    std::optional<double> bitrate_kbps = std::nullopt;
+    // Frames with b_iframe_global, and the fewest and most frames from one to
+    // the next.
+    std::size_t iframes = 0;
+    std::optional<std::size_t> min_iframe_interval = std::nullopt;
+    std::optional<std::size_t> max_iframe_interval = std::nullopt;
+    // Changes of source: frames whose sequence_counter does not continue the
+    // stream (ETSI TS 103 190-1 clause 4.3.3.2.2), a splice among them.
+    std::size_t splices = 0;
+    // What ac4::Decoder reads of every frame: the presentations of the last
+    // frame whose table of contents reads, with their names, and the
+    // metadata of the presentation it selects without preferences.
+    std::vector<ac4::PresentationInfo> presentations;
+    std::optional<ac4::PresentationMetadata> metadata = std::nullopt;
 };
 
 [[nodiscard]] Ac4Summary summarize_ac4(std::span<const std::byte> data);

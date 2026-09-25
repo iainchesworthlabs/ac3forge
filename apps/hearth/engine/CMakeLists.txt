@@ -48,13 +48,14 @@ target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/apps/c
 
 # ac3::audio for the output side (PcmOutput, PassthroughSink, the device
 # records the output decision reads), ac3::forge for the decoder and the
-# renderer, ac4::ac4 for an AC-4 item's table of contents, and ac3::sendspin
+# renderer, ac4::ac4 for an AC-4 item's table of contents and ac4::decoder for
+# its presentations and metadata (probe_json's AC-4 walk), and ac3::sendspin
 # for the JSON writer the media information is written with, the key ring the
 # pairing records implement (pairing_store.hpp), discovery and pairing
 # themselves (network_sinks.hpp), and Group, the burst/PCM streaming path a
 # network output plays through (network_group_sink.hpp). ac3::signing asks
 # whether frames carry an authenticity tag.
-target_link_libraries(ac3hearth_engine PUBLIC ac3::audio ac3::forge ac4::ac4 ac3::sendspin)
+target_link_libraries(ac3hearth_engine PUBLIC ac3::audio ac3::forge ac4::ac4 ac4::decoder ac3::sendspin)
 # ac3::coverage (coverage floors, tools/checks/coverage_report.sh's "apps/hearth" row) instruments
 # this target's OWN sources - apps/cli's own comment on its matching link explains why the
 # instrumented EXECUTABLE that eventually links this library is not enough on its own: --coverage

@@ -543,6 +543,19 @@ struct MediaTiming {
 };
 [[nodiscard]] AC4_EXPORT std::optional<MediaTiming> media_timing(const Toc& toc);
 
+// Part 1 Tables 83 and 84 for the stream's frame_rate_index and sample rate:
+// frames a second (24 000 / 1 001 at 23.976 fps, 48 000 / 2 048 at index 13),
+// the samples a frame codes (frame_len_base) and the internal rate they are
+// coded at, their product: 46 033.97 Hz at the 1000/1001 rates, 46 080 at 24,
+// 30, 48 and 60 fps, 51 200 at 25, 50 and 100, the sample rate at index 13.
+// Nothing for an index the tables reserve, or any but 13 at 44.1 kHz.
+struct FrameRate {
+    double frames_per_second = 0.0;
+    int frame_length = 0;
+    double internal_rate_hz = 0.0;
+};
+[[nodiscard]] AC4_EXPORT std::optional<FrameRate> frame_rate(const Toc& toc);
+
 // RFC 6381 codec string per Annex E.13: "ac-4.AA.BB.CC" with two lowercase
 // hex digits each of bitstream_version, presentation_version and mdcompat,
 // taken from the first presentation (the one a presentation-unaware player

@@ -492,6 +492,12 @@ void print_probe_topic() {
     fmt::println("       a per-access-unit dump and detail=blocks adds each block's Annex E");
     fmt::println("       tools and exponent strategies. Exit code is non-zero if any frame");
     fmt::println("       failed its CRC or the parser refused it, so this works as a gate.");
+    fmt::println("       For AC-4 it reports the sync frames, the first table of contents,");
+    fmt::println("       the frame rate and the rate a frame is coded at, the bit rate, the");
+    fmt::println("       I-frames and splices, and what the decoder reads of every frame:");
+    fmt::println("       each presentation (id, name, language, level, channels, substreams)");
+    fmt::println("       and the selected one's dialnorm, loudness, DRC modes, dialogue");
+    fmt::println("       enhancement and stereo downmix values.");
 }
 
 void print_mkv_topic() {
