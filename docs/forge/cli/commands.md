@@ -423,6 +423,13 @@ ac3cli decode stream.ac4 out.wav output-level=-24 drcmode=off      # the level, 
 parameters (clause 5.7.8), from 0 (the default, which leaves the output alone) to 12 dB, and never
 beyond the cap the stream sets, 3, 6, 9 or 12 dB.
 
+`channels=` and `downmix=` fold AC-4 by clause 6.2.17's matrices with the stream's own mix gains:
+`downmix=loro`, `ltrt` and `mono` as named, and `downmix=auto`, or `channels=2` alone, the method
+the stream's `preferred_dmx_method` names (Lo/Ro where it names none). Lt/Rt takes its Pro Logic
+II form where the stream prefers that; there is no 90-degree phase shift, which in AC-4 describes
+processing before encoding. The LFE goes into the fold at the stream's `lfe_mixgain`, and a 7.X
+stream folds to 5.X on the way.
+
 `monitor` takes all of the same tokens, and additionally folds on its own initiative when the
 output device renders fewer channels than the programme: playing 5.1 on a stereo endpoint
 otherwise means whatever the platform's shared-mode mixer averages together, with none of the

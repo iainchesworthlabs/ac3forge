@@ -514,6 +514,33 @@ TEST_CASE("decode raises AC-4's dialogue by dialogue-enhancement=", "[cli][ac4]"
     CHECK(10.0 * std::log10(energy(raised->channels[0]) / energy(plain->channels[0])) > 1.0);
 }
 
+TEST_CASE("decode folds AC-4 5.1 to stereo and mono with channels= and downmix=", "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_decode_downmix.log";
+    const fs::path stream =
+        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-51-tones-384" / "dee.ac4";
+    struct Case {
+        const char* options;
+        std::size_t channels;
+        const char* layout;
+    };
+    constexpr std::array<Case, 3> kCases{{
+        {"downmix=loro", 2, "(L R, 48000 Hz)"},
+        {"channels=2", 2, "(L R, 48000 Hz)"},
+        {"channels=1", 1, "(C, 48000 Hz)"},
+    }};
+    for (const Case& c : kCases) {
+        CAPTURE(c.options);
+        const auto wav = dir / "ac4_downmix.wav";
+        REQUIRE(run_cli("decode " + quoted(stream) + " " + quoted(wav) + " " + c.options, log) ==
+                0);
+        CHECK(read_log(log).find(c.layout) != std::string::npos);
+        const auto decoded = ac3::io::read_wav(wav.string());
+        REQUIRE(decoded.has_value());
+        CHECK(decoded->channels.size() == c.channels);
+    }
+}
+
 TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "[cli][mp4][ac4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_encode.log";

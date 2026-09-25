@@ -419,20 +419,36 @@ ac4::DrcMode ac4_drc_mode(std::string_view name) {
     return ac4::DrcMode::kDefault;
 }
 
+// AC-4's downmix for channels= and downmix=: downmix=loro, ltrt and mono as
+// named, and downmix=auto or channels=2 alone the stream's preferred method
+// (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send.
+ac4::DownmixTarget ac4_downmix(const ac3cli::Options& meta) {
+    if (meta.downmix_auto) {
+        return ac4::DownmixTarget::kStereo;
+    }
+    switch (meta.output.target) {
+        case ac3::DownmixTarget::kAsCoded:
+            return ac4::DownmixTarget::kAsCoded;
+        case ac3::DownmixTarget::kLoRo:
+            return meta.downmix_named ? ac4::DownmixTarget::kLoRo : ac4::DownmixTarget::kStereo;
+        case ac3::DownmixTarget::kLtRt:
+            return ac4::DownmixTarget::kLtRt;
+        case ac3::DownmixTarget::kMono:
+            return ac4::DownmixTarget::kMono;
+    }
+    return ac4::DownmixTarget::kAsCoded;
+}
+
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the channel-coded substream
-// its decode() picks, written as its coded channels, with the dialogue raised
-// by dialogue-enhancement= (ETSI TS 103 190-1 clause 5.7.8), at the output
-// level output-level= names and compressed in the DRC decoder mode drcmode=
-// names (clause 5.7.9). The downmix and the object options are
-// output processing the AC-4 decoder does not do yet; each is reported rather
+// its decode() picks, with the dialogue raised by dialogue-enhancement= (ETSI
+// TS 103 190-1 clause 5.7.8), at the output level output-level= names and
+// compressed in the DRC decoder mode drcmode= names (clause 5.7.9), in the
+// layout channels= and downmix= ask for (6.2.17). The object options are
+// output processing the AC-4 decoder does not do yet, and are reported rather
 // than applied.
 int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
                    const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
     const auto status = status_stream(out_path);
-    if (meta.output.target != ac3::DownmixTarget::kAsCoded || meta.downmix_auto) {
-        fmt::println(stderr, "warning: {} is AC-4, whose downmixes are not decoded yet - writing its coded channels",
-                     in_path);
-    }
     if (meta.output.mode != ac3::OperatingMode::kCustom) {
         fmt::println(
             stderr,
@@ -473,6 +489,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     config.output.output_level_dbfs = meta.ac4_output_level;
     config.output.drc = ac4_drc_mode(meta.ac4_drc_mode);
     config.output.dialogue_enhancement_db = meta.ac4_dialogue_enhancement;
+    config.output.downmix = ac4_downmix(meta);
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {
