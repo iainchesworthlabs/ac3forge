@@ -775,8 +775,12 @@ different versions. It boots A, then:
 image B. Each variant is then a rebuild of A's build directory that recompiles a file or two, so
 the step costs one full build.
 
-QEMU writes to the flash image it was given and survives `esp_restart()`, but O1 has to show both
-before relying on them.
+QEMU writes to the flash image it was given, and a new QEMU started on that file boots what was
+written. It does not discard the code it has already translated from flash when the flash is
+written, though: an image written over one that ran in the same QEMU runs the old image's code
+after an `esp_restart()`, while reporting its own version. The test therefore starts a new QEMU on
+the same flash file for each image an update writes, as a power cycle would. Rollbacks, panics
+and `POST /restart` stay in one QEMU, which keeps the reset reason a panic leaves.
 
 **On boards** (O2): each exit in [Phases](#phases), on each chip.
 
