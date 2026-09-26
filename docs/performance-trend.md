@@ -51,6 +51,12 @@ invisible here. The decode series are timed against streams the encode series in
 same run just produced: a decode number only means something against a stream whose
 rate and tool set are known.
 
+The workloads cover AC-3, E-AC-3, and the Atmos object layer. `ac3perf`, `ac3bench`,
+`ac3kernelbench`, and `ac3membench` have no AC-4 workload, so the speed and memory of the AC-4
+decoder and encoder are neither gated nor trended. CI holds AC-4's audio to pinned floors
+instead, through `tools/checks/score_ac4_decode.py` and `tools/checks/score_ac4_encode.py`; see
+[Validation](verification.md#ac-4).
+
 Every workload is fed real programme material (`tests/golden/audio/reference_51.wav`,
 through `tests/performance/real_audio.hpp`), not the 440 Hz tone `ac3bench` and
 `ac3perf` ran on before PF1. A single stationary tone is not a cheaper version of

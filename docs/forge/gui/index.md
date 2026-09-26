@@ -36,7 +36,8 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
   already-encoded file — see [QC a stream](qc.md)), an **Inspect objects…** button (its decode-side
   counterpart for Dolby Atmos object metadata/audio — see [Inspect objects](inspect-objects.md)),
   an **Open stream…** button (plays an already-encoded file and exports its decode — see
-  [Open stream](open-stream.md)), and a **Preferences** button.
+  [Open stream](open-stream.md)), a **Preferences** button, and an **About** button (the version
+  and the licence).
 - **Left rail — "the signal"** (always visible, never scrolled away, and never affected by which
   tier is selected): three numbered blocks — **01 Input** (one input, with a **File / Live
   capture** selector, the loaded source list and its totals), **02 Levels** (the channel meters),

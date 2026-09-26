@@ -8,7 +8,7 @@ library's capability record, see
 Detailed design lives in [`planning/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning)
 and product `design/` records — linked below, not copied here.
 
-Last reviewed: 2026-09-21. Reconciliation source:
+Last reviewed: 2026-09-26. Reconciliation source:
 [`planning/roadmap-inventory.md`](https://github.com/iainchesworthlabs/ac3forge/tree/main/planning/roadmap-inventory.md).
 
 ## How to read this
@@ -36,20 +36,17 @@ and [`docs/hearth/index.md`](https://github.com/iainchesworthlabs/ac3forge/blob/
 
 | Feature | Done | Not done | Detail |
 |---|---|---|---|
-| Desktop player engine | Queue, transport, gapless, passthrough, meters, settings, diagnostics (`apps/hearth/engine/`; `[hearth]` tests) | Qt application window (planning A5); packaging and user guide (A7–A8) | [Hearth index](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/index.md) |
-| Sendspin server in the app | Protocol library, testserver, testsink, group/pairing tests, aiosendspin CI exit | `ServerHost` wired into the desktop engine for network output | [Sendspin extension plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md) |
-| ESP32-S3 sink | `hearth_sink` firmware, Improv, groups, QEMU CI | TDM DAC hardware exits (ES9080 pair); Music Assistant on a real MA instance | [ESP32-S3 sink guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-esp32-s3.md) |
+| Desktop player | Queue, transport, gapless, passthrough, meters, settings, diagnostics (`apps/hearth/engine/`; `[hearth]` tests); the Qt window (Play, Media, Speakers, Decoder, Network and Settings pages); channel-based AC-4 playback; packages for Windows, macOS and Linux | A user guide for the app; screenshots of the running app (the Hearth images in the repository are design mockups); immersive and object AC-4 in the app | [Hearth index](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/index.md) |
+| Network output | Sendspin discovery, pairing, groups and playing to a group from the app; updating a sink's firmware from the app; aiosendspin CI exit | Music Assistant tested against a real instance | [Sendspin extension plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md) |
+| ESP32 sinks | `hearth_sink` on the ESP32-S3, the ESP32-C6 (stereo) and the ESP32-P4 (revision 1.x): Improv, groups, updates over the network, QEMU CI; firmware images for each, published from the next release | TDM DAC hardware exits (ES9080 pair); the wide P4 sink; AC-4 on the ESP32 parts (see the AC-4 section) | [ESP32-S3 sink guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-esp32-s3.md), [Sink firmware](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-firmware.md) |
 
 **Sink module tiers (shared PCB → pair of ES9080s):** **good** C6 (5.1, one DAC) · **better**
 S3 (7.1.4 without enhanced coupling, both DACs @ 16-bit) · **best** P4 (9.1.6 + full tools
 desired, both DACs @ 32-bit on one I2S). Study:
 [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md).
 
-**Proposed next (blocked on UI design sign-off):** planning A0 UI design round, then A5 window,
-then A6 network UI.
-
-**Not started:** ESP32-C6 Sendspin sink (planning C3, after the S3 sink pattern); ESP32-P4
-wide sink past its probe (tier study P2+: a networked shape onto TDM and the ES9080 pair).
+**Not started:** the wide ESP32-P4 sink (tier study P2 and later: a networked shape onto TDM and
+the ES9080 pair).
 
 **Done:** ESP32-P4 probe and board timing table, no network (tier study P1) — real time on every
 fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-p4.md).
@@ -63,11 +60,11 @@ fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https
 | PCM decode | **In progress** — mono, stereo, 3.0, 5.X and 7.X decode to PCM in every codec mode Part 1 gives them, SIMPLE, ASPX and A-CPL (phases D2 to D5), through the QMF banks, companding, A-SPX and A-CPL; every frame rate, with the output level, DRC, dialogue enhancement and the downmix (D6); streams of several presentations, the presentation chosen and its substreams mixed (D7); the API in its final form for channel-based streams, with the output and the presentation changed while a stream plays, output by block, and each presentation and the metadata reported, and the inspector, decoder and core installed and exported (D8, [AC-4 decoding](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/ac4.md)); 7.0.4 and 7.1.4 in every immersive codec mode, in full and core decoding, rendered by Part 2's channel renderer (D9) |
 | Immersive paths, objects | **In progress** — the channel-based immersive element decodes (D9), and object audio, A-JOC and direct-coded objects with their metadata and the intermediate spatial format (D10); the 9.X.4 and 22.2 modes are refused; the speech frontend waits for a stream that uses it |
 | IEC 61937 carriage (`ac3::iec61937`, `PassthroughSink`, Hearth's extension role) | **Built** (phase D11) — the four IEC 61937-14 burst types at every frame rate, read back unchanged; passthrough on ALSA and Android, the platforms whose APIs can send AC-4; the extension role's AC-4 data type, decoded by the test sink; no receiver found accepts AC-4 |
-| Encoder (`src/ac4enc`) | **In progress** — mono, stereo, 5.0 and 5.1 in the SIMPLE, ASPX and A-CPL codec modes (phases E1 to E4), A-SPX below 96 kbps a channel in mono and stereo and below 384 kbps in 5.1, companding in mono and stereo below 64 kbps a channel, ASPX_ACPL_2 and ASPX_ACPL_3 in 5.1 below 168 and 112 kbps, `ac3cli ac4-encode`; 7.X, the 5.X element's other coding configurations, ASPX_ACPL_1 and A-CPL in stereo as experimental options; every frame rate, the rate modes, I-frames on demand and the metadata (E5); several substreams in the presentations of Part 2 Table 53 (E6); the API in its final form for channel-based streams, which names the rule a configuration it refuses breaks, `ac3cli ac4-encode` with an option for each setting, the MP4's `dac4` describing every presentation, and the encoder installed and exported beside the decoder (E7, [AC-4](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/ac4.md#encoding-a-stream)); immersive layouts and objects follow in E8 and E9 |
-| Applications (`ac3cli`, Hearth, Forge GUI, bindings) | **In progress** — Hearth's desktop player plays AC-4 through the decoder's public API, decoded for every output and sent as bursts to network sinks that take it, with the Decoder page's AC-4 controls and the Media page's AC-4 information (I2); the CLI, the Forge GUI and the bindings in phases I1 and I3 to I6 |
+| Encoder (`src/ac4enc`) | **In progress** — mono, stereo, 5.0 and 5.1 in the SIMPLE, ASPX and A-CPL codec modes (phases E1 to E4), A-SPX below 96 kbps a channel in mono and stereo and below 384 kbps in 5.1, companding in mono and stereo below 64 kbps a channel, ASPX_ACPL_2 and ASPX_ACPL_3 in 5.1 below 168 and 112 kbps, `ac3cli ac4-encode`; 7.X, the 5.X element's other coding configurations, ASPX_ACPL_1 and A-CPL in stereo as experimental options; every frame rate, the rate modes, I-frames on demand and the metadata (E5); several substreams in the presentations of Part 2 Table 53 (E6); the API in its final form for channel-based streams, which names the rule a configuration it refuses breaks, `ac3cli ac4-encode` with an option for each setting, the MP4's `dac4` describing every presentation, and the encoder installed and exported beside the decoder (E7, [AC-4](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/ac4.md#encoding-a-stream)); 5.0.4 and 5.1.4 in the immersive element, with the height downmix (E8); objects follow in E9 |
+| Applications (`ac3cli`, Hearth, Forge GUI, bindings) | **In progress** — `ac3cli` reads and writes AC-4 in `transcode`, `record`, `live`, `monitor`, `play`, `qc`, `levels`, `loudness`, `spdif`, `probe`, `mp4`, `ts` and `fmp4`; `mkv` refuses it, since Matroska registers no codec ID (I1); Hearth's desktop player plays channel-based AC-4 through the decoder's public API, decoded for every output and sent as bursts to network sinks that take it, with the Decoder page's AC-4 controls and the Media page's AC-4 information (I2); the Forge GUI, the C API and the language bindings, immersive and object content in the applications, and the ESP32 sinks are in phases I3 to I6 |
 | ESP32 (`float` on the P4, then the S3; fixed point on the C6) | **Not started** — plan phase D14, after D10: the decoder on `double`, `float` and fixed point by target, as AC-3 and E-AC-3 are, the P4 first |
 
-Hearth's desktop player plays AC-4 since phase I2; Forge's playback of it waits on its own phases. Plan:
+`ac3cli` and Hearth's desktop player play AC-4; the Forge GUI's use of it waits on its own phase. Plan:
 [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md). Its
 first phase made the DEE reference streams the others need; the local DEE licence ends on
 2026-11-06 and will not be renewed, so G1 adds every stream the remaining phases need before then.
@@ -161,6 +158,11 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 | ESP32 sink tiers (C6 / S3 / P4) on one ES9080 PCB | Modular MCU: C6 ≤5.1 / one DAC; S3 ≤7.1.4 no ecpl / both DACs @ 16-bit; P4 ≤9.1.6 full tools desired / both DACs @ 32-bit on one I2S. P4 reopened only as best tier | [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) |
 | vcpkg git registry | Consumers install via `vcpkg install ac3forge` | DR3 |
 | winget and ConanCenter | Manifests staged; CLA and submission pending | DR4 |
+| AC-4 in the performance and quality reporting | The speed, memory, quality and tool-comparison series cover AC-3, E-AC-3 and Atmos only. AC-4 needs stereo and 5.1 encode and decode workloads in `ac3bench`, `ac3perf` and `ac3membench`, its transforms in `ac3kernelbench`, and a quality series in the `quality-history` branch with the regression tiers the other series use. CI holds AC-4 to pinned floors today, and those record no history. **L** | [Performance and quality](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/performance-quality.md) |
+| Hearth desktop app: user guide and screenshots | The app has an index page and sink guides, and no guide of its own; the Hearth images in the repository are design mockups. `ac3hearth --shot <png> --page <name>` captures each page, but it starts network discovery, which on Windows asks to register a firewall rule, so a capture run has to expect that prompt. **M** | [Hearth index](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/index.md) |
+| Forge GUI screenshots of live capture | Three of the 17 screenshots (`format-vbr`, `live-session-idle`, `live-session-vbr-note`) predate the header's Inspect objects, Open stream and About buttons; taking them again needs an open capture device. **S** | [Live capture](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/forge/gui/live-session.md) |
+| Program names | `ac3cli`, `ac3gui`, `ac3hearth` and `ac3crucible` become `forge`, `forge-gui`, `hearth` and `crucible`; the library, the packages and the C API keep `ac3forge`, and the old names keep working for a stated period. **L** | [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#n1-the-names) |
+| AC-4 in the published descriptions | The GitHub repository description names AC-3 and E-AC-3 only, and the repository has no topics. The CLI's banner, man page and exit-code text (`apps/cli/usage.cpp`, quoted in `docs/forge/cli/commands.md`) name AC-3 and E-AC-3 only. **S** | — |
 
 ---
 
@@ -185,6 +187,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 - **Perfect separation of co-directional objects** — property of parametric object coding.
 - **Enabling PipeWire `iec958Codecs` on the user's behalf** — session-manager policy; documented instead.
 - **HOA, Matrix and Binaural ADM pack types** — refused with `kUnsupportedType` until a design exists.
+- **AC-4 in Matroska** — Matroska registers no codec ID for AC-4, so `ac3cli mkv` refuses it; MP4, CMAF and MPEG-TS carry it.
 - **APT/DNF repositories and Docker images** — not planned; see [`docs/releasing.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md).
 - **ESP32-P4 as a replacement for the S3 Wi-Fi Sendspin sink** — closed 2026-09-08 (no on-die radio; no float PIE win; S3 probe already real-time). **Complementary P4 “best” module** (Ethernet / hosted C6, dual ES9080 @ 32-bit) is Proposed — see [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) and [`esp32-c3.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-c3.md#why-not-the-esp32-p4).
 - **Per-channel and per-block SNR offsets** — tried and declined (EQ2); reference encoders agree with shipped behaviour.

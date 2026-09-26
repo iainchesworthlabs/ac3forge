@@ -54,7 +54,9 @@ If you cannot cite where something came from, it does not go in.
 ## Repository layout
 
 **`src/` is the installable library; `apps/` consumes it, never the reverse.** `src/forge` is
-the codec itself; `apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` are its consumers, and
+the AC-3, E-AC-3 and Atmos codec. `src/ac4`, `src/ac4core`, `src/ac4dec` and `src/ac4enc` are the
+AC-4 codec, in namespace `ac4`, and link nothing from `src/forge`.
+`apps/{cli,gui,crucible,hearth,android,wasm,baremetal}` are the consumers of both, and
 `apps/common` is shared application code, compiled directly into its consumers. `apps/windows`
 holds Crucible's separately licensed null-sink driver and its guest VM. Nothing under `src/`
 may depend on anything under `apps/`.
@@ -84,7 +86,10 @@ extends `ac3::forge`'s own model: `forge` itself (`ac3/core`, `ac3/encoder`, ...
 (`ac3/admbridge`), `audio` (`ac3/audio`), `signing` (`ac3/signing`). A bare `include/<name>/`
 (no `ac3/` prefix) marks a module as deliberately codec-blind: `ac3adm` (ADM/BW64 file parsing),
 `matroska`, `mp4`, `mpegts` (container muxing) — none of these know AC-3, E-AC-3 or Atmos exist,
-and should stay that way.
+and should stay that way. The AC-4 libraries are bare too, for a different reason: `ac4/`
+(`ac4::ac4`, the inspector), `ac4dec/` (`ac4::decoder`) and `ac4enc/` (`ac4::encoder`) are a
+separate codec that shares no bitstream syntax with `ac3::forge` and depends on nothing in it.
+`ac4core` is the static library the decoder and the encoder share, and has no public headers.
 
 The one deliberate exception is `capi`: it installs under `include/ac3forge_c/`, not `ac3/`,
 even though it depends on the codec directly (it wraps `ac3::forge_static`). The `ac3/` tree is
