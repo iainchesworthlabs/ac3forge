@@ -40,6 +40,10 @@ way the three container writers do:
 cmake --preset config-windows-msvc-debug   # AC3FORGE_BUILD_IAB=ON by default
 ```
 
+The vcpkg port and the Conan recipe install it where asked for, off by default:
+`vcpkg install ac3forge[iab]`, or `-o "ac3forge/*:iab=True"` (see
+[Using ac3::forge](index.md)).
+
 `ac3cli atmos-iab` (phase 3, needs `-DAC3FORGE_BUILD_ADM=ON` — the same flag
 `ac3::admbridge` itself rides, since that is the module with a consumer for this graph) is this
 module's own real-world driver; nothing else in this build (`ac3gui`, the other examples) consumes

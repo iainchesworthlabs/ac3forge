@@ -343,7 +343,8 @@ c++ -std=c++23 player.cpp $(pkg-config --cflags --libs ac4dec)
 c++ -std=c++23 packager.cpp $(pkg-config --cflags --libs ac4enc)
 ```
 
-`AC3FORGE_BUILD_AC4`, on by default, builds the AC-4 libraries; the vcpkg port and the Conan
-recipe build and install them with the rest, without a feature of their own yet. Android,
+`AC3FORGE_BUILD_AC4`, on by default, builds the AC-4 libraries. The vcpkg port and the Conan
+recipe install them where asked for, off by default: `vcpkg install ac3forge[ac4]`, or
+`-o "ac3forge/*:ac4=True"` (see [Using ac3::forge](index.md)). Android,
 WebAssembly, the Python wheel and the ESP-IDF component build without them until their bindings
 arrive (planning/ac4.md, phases I4 and D12).
