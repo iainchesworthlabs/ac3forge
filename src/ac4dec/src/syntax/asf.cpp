@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdlib>
+#include <expected>
 #include <span>
 
 #include "huffman.hpp"
@@ -16,6 +17,20 @@ namespace {
 using std::size_t;
 
 [[nodiscard]] size_t at(int index) noexcept { return static_cast<size_t>(index); }
+
+// What each ASF codeword's miss reports (huff_codeword()): the one error every
+// tool gives for a substream that ends inside a codeword.
+constexpr CodewordReasons kSpectrumCodeword{
+    "an ASF spectrum codeword runs past the end of the substream",
+    "no ASF spectrum codeword matches"};
+constexpr CodewordReasons kScaleFactorCodeword{
+    "an ASF scale factor codeword runs past the end of the substream",
+    "no ASF scale factor codeword matches"};
+constexpr CodewordReasons kNoiseFillCodeword{
+    "an ASF noise fill codeword runs past the end of the substream",
+    "no ASF noise fill codeword matches"};
+constexpr CodewordReasons kSapCodeword{"a SAP codeword runs past the end of the substream",
+                                       "no SAP codeword matches"};
 
 // Table 106, the 44.1/48 kHz columns: n_msfb_bits, n_side_bits and
 // n_msfbl_bits by transform length in samples. 0 marks N/A.
@@ -512,10 +527,11 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
             const int start_line = out.sect_sfb_offset[at(g)][section.start];
             const int end_line = out.sect_sfb_offset[at(g)][section.end];
             for (int k = start_line; k < end_line; k += dim) {
-                const int index = huff_decode(r, cb, "asf_qspec_hcw");
-                if (index < 0) {
-                    return fail(DecodeError::kInvalidStream, "no ASF spectrum codeword matches");
+                const auto codeword = huff_codeword(r, cb, "asf_qspec_hcw", kSpectrumCodeword);
+                if (!codeword) {
+                    return std::unexpected(codeword.error());
                 }
+                const int index = *codeword;
                 std::array<std::int32_t, 4> lines{};
                 split_codeword(cb, dim, index, lines);
                 if (is_unsigned) {
@@ -579,10 +595,12 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
             if (out.sfb_cb[at(g)][at(sfb)] != 0 && out.max_quant_idx[at(g)][at(sfb)] > 0) {
                 out.scale_factor_present[at(g)][at(sfb)] = true;
                 if (out.first_scf_found) {
-                    const int index = huff_decode(r, tables::kAsfHcbScalefac, "asf_sf_hcw");
-                    if (index < 0) {
-                        return fail(DecodeError::kInvalidStream, "no ASF scale factor codeword matches");
+                    const auto codeword = huff_codeword(r, tables::kAsfHcbScalefac, "asf_sf_hcw",
+                                                        kScaleFactorCodeword);
+                    if (!codeword) {
+                        return std::unexpected(codeword.error());
                     }
+                    const int index = *codeword;
                     out.dpcm_sf[at(g)][at(sfb)] = static_cast<std::int16_t>(index);
                 } else {
                     out.first_scf_found = true;
@@ -602,10 +620,12 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
             const int max_sfb = std::min(out.max_sfb[at(g)], num_sfb);
             for (int sfb = 0; sfb < max_sfb; ++sfb) {
                 if (out.sfb_cb[at(g)][at(sfb)] == 0 || out.max_quant_idx[at(g)][at(sfb)] == 0) {
-                    const int index = huff_decode(r, tables::kAsfHcbSnf, "asf_snf_hcw");
-                    if (index < 0) {
-                        return fail(DecodeError::kInvalidStream, "no ASF noise fill codeword matches");
+                    const auto codeword =
+                        huff_codeword(r, tables::kAsfHcbSnf, "asf_snf_hcw", kNoiseFillCodeword);
+                    if (!codeword) {
+                        return std::unexpected(codeword.error());
                     }
+                    const int index = *codeword;
                     out.snf_present[at(g)][at(sfb)] = true;
                     out.dpcm_snf[at(g)][at(sfb)] = static_cast<std::int16_t>(index);
                 }
@@ -633,10 +653,11 @@ ParseResult parse_sf_hsf_data(BitReader& r, int num_window_groups, const SfData&
                 static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(section.start - start_sfb)]);
             const int end_line = static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(section.end - start_sfb)]);
             for (int k = start_line; k < end_line; k += dim) {
-                const int index = huff_decode(r, cb, "asf_qspec_hcw");
-                if (index < 0) {
-                    return fail(DecodeError::kInvalidStream, "no ASF spectrum codeword matches");
+                const auto codeword = huff_codeword(r, cb, "asf_qspec_hcw", kSpectrumCodeword);
+                if (!codeword) {
+                    return std::unexpected(codeword.error());
                 }
+                const int index = *codeword;
                 std::array<std::int32_t, 4> lines{};
                 split_codeword(cb, dim, index, lines);
                 if (is_unsigned) {
@@ -711,10 +732,12 @@ ParseResult parse_sf_hsf_data(BitReader& r, int num_window_groups, const SfData&
             if (hsf_out.sfb_cb[at(g)][at(i)] != 0 && hsf_out.max_quant_idx[at(g)][at(i)] > 0) {
                 hsf_out.scale_factor_present[at(g)][at(i)] = true;
                 if (first_scf_found) {
-                    const int index = huff_decode(r, tables::kAsfHcbScalefac, "asf_sf_hcw");
-                    if (index < 0) {
-                        return fail(DecodeError::kInvalidStream, "no ASF scale factor codeword matches");
+                    const auto codeword = huff_codeword(r, tables::kAsfHcbScalefac, "asf_sf_hcw",
+                                                        kScaleFactorCodeword);
+                    if (!codeword) {
+                        return std::unexpected(codeword.error());
                     }
+                    const int index = *codeword;
                     hsf_out.dpcm_sf[at(g)][at(i)] = static_cast<std::int16_t>(index);
                 } else {
                     first_scf_found = true;
@@ -738,10 +761,12 @@ ParseResult parse_sf_hsf_data(BitReader& r, int num_window_groups, const SfData&
             hsf_out.snf_present[at(g)].assign(at(count), false);
             for (int i = 0; i < count; ++i) {
                 if (hsf_out.sfb_cb[at(g)][at(i)] == 0 || hsf_out.max_quant_idx[at(g)][at(i)] == 0) {
-                    const int index = huff_decode(r, tables::kAsfHcbSnf, "asf_snf_hcw");
-                    if (index < 0) {
-                        return fail(DecodeError::kInvalidStream, "no ASF noise fill codeword matches");
+                    const auto codeword =
+                        huff_codeword(r, tables::kAsfHcbSnf, "asf_snf_hcw", kNoiseFillCodeword);
+                    if (!codeword) {
+                        return std::unexpected(codeword.error());
                     }
+                    const int index = *codeword;
                     hsf_out.snf_present[at(g)][at(i)] = true;
                     hsf_out.dpcm_snf[at(g)][at(i)] = static_cast<std::int16_t>(index);
                 }
@@ -791,10 +816,12 @@ ParseResult parse_chparam_info(BitReader& r, const SubstreamContext& ctx, const 
             const int max_sfb_g = get_max_sfb(ctx, psy, g, false);
             for (int sfb = 0; sfb < max_sfb_g && sfb < kMaxSfb; sfb += 2) {
                 if (out.sap_coeff_used[at(g)][at(sfb)]) {
-                    const int index = huff_decode(r, tables::kAsfHcbScalefac, "sap_hcw");
-                    if (index < 0) {
-                        return fail(DecodeError::kInvalidStream, "no SAP codeword matches");
+                    const auto codeword =
+                        huff_codeword(r, tables::kAsfHcbScalefac, "sap_hcw", kSapCodeword);
+                    if (!codeword) {
+                        return std::unexpected(codeword.error());
                     }
+                    const int index = *codeword;
                     out.dpcm_alpha_q[at(g)][at(sfb)] = static_cast<std::int16_t>(index);
                 }
             }

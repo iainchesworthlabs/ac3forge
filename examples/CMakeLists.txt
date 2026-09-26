@@ -150,6 +150,20 @@ if(AC3FORGE_BUILD_CAPI)
     endif()
 endif()
 
+# decode_ac4 demonstrates the AC-4 inspector and decoder (src/ac4, src/ac4dec), which link nothing
+# of ac3::forge, as read_iab links nothing of it. It decodes the stream it is given, so it keeps out
+# of the list above, whose programs ctest runs with no arguments, and ctest hands it a committed DEE
+# stream. AC3FORGE_BUILD_AC4 defaults ON, and with it off there is no decoder to link.
+if(AC3FORGE_BUILD_AC4)
+    add_executable(decode_ac4 decode_ac4.cpp)
+    target_link_libraries(decode_ac4 PRIVATE ac4::decoder ac3::warnings ac3::fmt)
+    set_target_properties(decode_ac4 PROPERTIES FOLDER examples)
+    if(AC3FORGE_BUILD_TESTS)
+        add_test(NAME "example.decode_ac4" COMMAND decode_ac4
+            "${PROJECT_SOURCE_DIR}/tests/golden/external-baseline/ac4-51-film-96/dee.ac4")
+    endif()
+endif()
+
 # Run them under ctest when tests are on, so "the examples still work" is
 # checked by the same command as everything else.
 if(AC3FORGE_BUILD_TESTS)

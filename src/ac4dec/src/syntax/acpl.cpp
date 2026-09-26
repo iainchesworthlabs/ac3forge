@@ -39,18 +39,15 @@ constexpr std::array<CodebookSet, 4> kCoarseCodebooks = {{
     return static_cast<std::uint8_t>(value);
 }
 
-// One acpl_hcw. huff_decode() matches nothing only when fewer bits remain
-// than the codebook's longest codeword, since Annex A's codebooks are
-// complete; anything else is a table fault, reported as an invalid stream.
+// One acpl_hcw, a miss reported as every tool reports one (huff_codeword()).
 [[nodiscard]] ParseResult read_hcw(BitReader& r, const Codebook& codebook, std::uint16_t& out) {
-    const int index = huff_decode(r, codebook, "acpl_hcw");
-    if (index < 0) {
-        if (r.remaining_bits() < static_cast<std::size_t>(codebook.max_bits)) {
-            return fail(DecodeError::kTruncated, "an acpl_hcw runs past the end of the substream");
-        }
-        return fail(DecodeError::kInvalidStream, "no A-CPL Huffman codeword matches");
+    const auto index = huff_codeword(r, codebook, "acpl_hcw",
+                                     {.truncated = "an acpl_hcw runs past the end of the substream",
+                                      .invalid = "no A-CPL Huffman codeword matches"});
+    if (!index) {
+        return std::unexpected(index.error());
     }
-    out = static_cast<std::uint16_t>(index);
+    out = static_cast<std::uint16_t>(*index);
     return {};
 }
 

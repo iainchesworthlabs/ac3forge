@@ -8,14 +8,17 @@ trace contract (docs/verification.md); the TOC is parsed but not recorded.
 
 In scope: ac4_presentation_substream() (Part 2 6.2.2.3), ac4_substream()
 (Part 2 6.2.2.2) with audio_data_chan() and the Part 1 channel elements
-(single, pair, 3_0, 5_X, 7_X) in every codec mode, emdf_payloads_substream()
-(Part 1 4.2.4.4), and a channel-coded substream's HSF extension substream,
-ac4_hsf_ext_substream() (Part 1 4.2.4.3), where one is linked and its channel
-reports sf_multiplier. Refused (records read before the refusal are kept):
-object and A-JOC substreams, OAMD, immersive_channel_element(),
-22_2_channel_element(), the speech spectral frontend, and an HSF extension
-substream that could not be resolved (a self-reference, no sf_multiplier, an
-object/A-JOC owner, or the extension substream itself being unreadable).
+(single, pair, 3_0, 5_X, 7_X) in every codec mode, the immersive channel
+element of the 7.X.4 channel modes (Part 2 6.2.4.1 and 6.2.4.2) with A-JCC's
+ajcc_data() (6.2.6), emdf_payloads_substream() (Part 1 4.2.4.4), and a
+channel-coded substream's HSF extension substream, ac4_hsf_ext_substream()
+(Part 1 4.2.4.3), where one is linked and its channel reports sf_multiplier.
+Refused (records read before the refusal are kept): object and A-JOC
+substreams, OAMD, the 9.X.4 channel modes (the immersive element with
+b_5fronts), 22_2_channel_element(), the speech spectral frontend, and an HSF
+extension substream that could not be resolved (a self-reference, no
+sf_multiplier, an object/A-JOC owner, or the extension substream itself being
+unreadable).
 
 Invariants checked (a failure is reported, the substream stops): audio_data
 ends inside audio_size (only fill and byte_align left), the tools metadata of
@@ -1578,6 +1581,157 @@ def seven_x_channel_element(r, ctx, ch_mode):
         acpl_data_1ch(r, ctx)
 
 
+# ---------------------------------------------------------------------------
+# The immersive channel element (Part 2 6.2.4.1, 6.2.4.2) and A-JCC (6.2.6)
+# ---------------------------------------------------------------------------
+
+# Part 2 Table 73's immersive_codec_mode values.
+SCPL, ASPX_SCPL, ASPX_ACPL_1, ASPX_ACPL_2, ASPX_AJCC = 0, 1, 2, 3, 4
+
+# Part 2 Table 19: where D and E sit among the core's five tracks, by
+# core_5ch_grouping (and 2ch_mode for grouping 0), counted from the first track
+# after the LFE's. The element's other tracks follow in syntax order: F and G
+# the 7CH_STATIC two_channel_data()'s, then H, I, J and K.
+_CORE_D_E = {(0, 0): (2, 3), (0, 1): (1, 3), (1, 0): (3, 4), (2, 0): (2, 3), (3, 0): (3, 4)}
+_F, _G = 5, 6
+
+
+def _immersive_codec_mode(r):
+    """immersive_codec_mode_code (Part 2 6.3.5.1, Table 73): one bit, and after a
+    0 two more. One record for the code, 1 or 3 bits wide, valued at the bits
+    read: 1 for ASPX_AJCC, 0 to 3 for the others."""
+    pos = r.pos
+    if r._get(1):
+        r.record_raw(pos, 1, 1, 'immersive_codec_mode_code')
+        return ASPX_AJCC
+    code = r._get(2)
+    r.record_raw(pos, 3, code, 'immersive_codec_mode_code')
+    return code
+
+
+def _ajcc_framing(r):
+    """ajcc_framing_data() (Part 2 6.2.6.2): its ajcc_num_param_sets."""
+    interpolation = r.f(1, 'ajcc_interpolation_type')
+    code = r.f(1, 'ajcc_num_param_sets_code')
+    if interpolation == 1:
+        for _ in range(code + 1):
+            r.f(5, 'ajcc_param_timeslot')
+    return code + 1
+
+
+def _ajced(r, data_type, bands, quant_mode, b_no_dt, num_ps):
+    """ajced() and ajcc_huff_data() (Part 2 6.2.6.3, 6.2.6.4), with get_ajcc_hcb()
+    (Pseudocode 29): alpha and beta take A-CPL's codebooks (Part 1 Annex A.3), dry
+    and wet A-JCC's (Part 2 Annex A.1.2). Codebook indices are recorded before
+    cb_off, as A-CPL's are."""
+    quant = 'COARSE' if quant_mode else 'FINE'
+    family = 'ACPL' if data_type in ('ALPHA', 'BETA') else 'AJCC'
+    f0, df, dt = (CB[f'{family}_HCB_{data_type}_{quant}_{hcb}'] for hcb in ('F0', 'DF', 'DT'))
+    for _ in range(num_ps):
+        diff_type = 0 if b_no_dt else r.f(1, 'diff_type')
+        if diff_type == 0:
+            f0.decode(r, 'ajcc_hcw')
+            for _ in range(1, bands):
+                df.decode(r, 'ajcc_hcw')
+        else:
+            for _ in range(bands):
+                dt.decode(r, 'ajcc_hcw')
+
+
+def ajcc_data(r):
+    """ajcc_data(b_5fronts) (Part 2 6.2.6.1) for b_5fronts 0, the only case the
+    7.X.4 channel modes reach (6.2.3.1); 9.X.4 is refused before it."""
+    b_no_dt = r.f(1, 'b_no_dt')
+    bands = T.AJCC_NUM_BANDS[r.f(2, 'ajcc_num_param_bands_id')]
+    r.f(1, 'ajcc_core_mode')
+    qm_ab = r.f(1, 'ajcc_qm_ab')
+    qm_dw = r.f(1, 'ajcc_qm_dw')
+    nps_l = _ajcc_framing(r)
+    nps_r = _ajcc_framing(r)
+    for data_type, quant_mode, num_ps in (
+            ('ALPHA', qm_ab, nps_l), ('ALPHA', qm_ab, nps_r),
+            ('BETA', qm_ab, nps_l), ('BETA', qm_ab, nps_r),
+            ('DRY', qm_dw, nps_l), ('DRY', qm_dw, nps_l),
+            ('DRY', qm_dw, nps_r), ('DRY', qm_dw, nps_r),
+            ('WET', qm_dw, nps_l), ('WET', qm_dw, nps_l), ('WET', qm_dw, nps_l),
+            ('WET', qm_dw, nps_r), ('WET', qm_dw, nps_r), ('WET', qm_dw, nps_r)):
+        _ajced(r, data_type, bands, quant_mode, b_no_dt, num_ps)
+
+
+def immersive_channel_element(r, ctx, b_lfe):
+    """immersive_channel_element(b_lfe, 0, b_iframe) (Part 2 6.2.4.1) with
+    immers_cfg() (6.2.4.2): the 7.X.4 channel modes. core_channel_config is
+    7CH_STATIC in every mode but ASPX_AJCC (Table 74).
+
+    The chparam_info() elements need a framing (Part 1 Table 47), which the
+    syntax does not name (src/ac4dec/ERRATA.md): each takes the framing of the
+    track the step it parameterises codes another against, as the 7_X
+    element's take the tracks Table 183 names. The two b_use_sap_add_ch sends
+    are 5.2.3.2 step 4's, which codes F and G against D and E; the four after
+    H to K are Table 20's a'_0 to a'_3, which predict H, I, J and K from D, E,
+    F and G."""
+    mode = _immersive_codec_mode(r)
+    _configure(ctx, 'immersive', mode, mode != SCPL)
+    if ctx.b_iframe:
+        if mode != SCPL:
+            aspx_config(r, ctx)
+        if mode == ASPX_ACPL_1:
+            acpl_config_1ch(r, ctx, True)
+        if mode == ASPX_ACPL_2:
+            acpl_config_1ch(r, ctx, False)
+    if b_lfe:
+        mono_data(r, ctx, 1)
+    if mode == ASPX_AJCC:
+        companding_control(r, 5)
+    mark = len(ctx.tracks)
+    grouping = r.f(2, 'core_5ch_grouping')
+    two_ch_mode = 0
+    if grouping == 0:
+        two_ch_mode = r.f(1, '2ch_mode')
+        two_channel_data(r, ctx)
+        two_channel_data(r, ctx)
+        mono_data(r, ctx, 0)
+    elif grouping == 1:
+        three_channel_data(r, ctx)
+        two_channel_data(r, ctx)
+    elif grouping == 2:
+        four_channel_data(r, ctx)
+        mono_data(r, ctx, 0)
+    else:
+        five_channel_data(r, ctx)
+    d, e = _CORE_D_E[(grouping, two_ch_mode)]
+    static = mode != ASPX_AJCC
+    if static:
+        if r.f(1, 'b_use_sap_add_ch'):
+            for s in _tracks_at(ctx, mark, (d, e)):
+                chparam_info(r, s)
+        two_channel_data(r, ctx)
+    if mode == ASPX_SCPL:
+        # (Ls, Lb), (Rs, Rb), C, (L, R), (Tfl, Tbl), (Tfr, Tbr): Table 8.
+        aspx_data_2ch(r, ctx)
+        aspx_data_2ch(r, ctx)
+        aspx_data_1ch(r, ctx)
+        aspx_data_2ch(r, ctx)
+        aspx_data_2ch(r, ctx)
+        aspx_data_2ch(r, ctx)
+    elif mode != SCPL:
+        aspx_data_2ch(r, ctx)
+        aspx_data_2ch(r, ctx)
+        if static:
+            aspx_data_2ch(r, ctx)
+        aspx_data_1ch(r, ctx)
+    if mode == ASPX_AJCC:
+        ajcc_data(r)
+    if mode in (SCPL, ASPX_SCPL, ASPX_ACPL_1):
+        two_channel_data(r, ctx)
+        two_channel_data(r, ctx)
+        for s in _tracks_at(ctx, mark, (d, e, _F, _G)):
+            chparam_info(r, s)
+    if mode in (ASPX_ACPL_1, ASPX_ACPL_2):
+        for _ in range(4):
+            acpl_data_1ch(r, ctx)
+
+
 def audio_data_chan(r, ctx, ch_mode):
     """Part 2 6.2.3.1."""
     if ch_mode == 0:
@@ -1592,11 +1746,616 @@ def audio_data_chan(r, ctx, ch_mode):
         five_x_channel_element(r, ctx, 1)
     elif 5 <= ch_mode <= 10:
         seven_x_channel_element(r, ctx, ch_mode)
-    elif 11 <= ch_mode <= 14:
-        raise Refused('immersive_channel_element()')
+    elif ch_mode in (11, 12):
+        immersive_channel_element(r, ctx, 1 if ch_mode == 12 else 0)
+    elif ch_mode in (13, 14):
+        raise Refused('9.X.4: immersive_channel_element() with b_5fronts')
     elif ch_mode == 15:
         raise Refused('22_2_channel_element()')
     # default: nothing
+
+
+# ---------------------------------------------------------------------------
+# Object audio (Part 2 6.2.3.2 to 6.2.3.6, 6.2.4.4, 6.2.5)
+# ---------------------------------------------------------------------------
+
+# The most objects one OAMD portion describes; more is refused, as the decoder
+# refuses it (src/ac4dec/ERRATA.md, "The objects of an A-JOC substream").
+MAX_OAMD_OBJECTS = 64
+
+
+def _field(r, n, name):
+    """An array the syntax reads as one field of n bits (dmx_active_signals_mask[],
+    de_main_dlg_flag[], group_zone_flag[] and the like): one record, valued at
+    the bits in the order they were sent."""
+    return r.f(n, name)
+
+
+def var_channel_element(r, ctx, n_dmx_signals, b_has_lfe):
+    """Part 2 6.2.4.4 var_channel_element(b_iframe, n_dmx_signals, b_has_lfe)."""
+    mode = r.f(1, 'var_codec_mode')  # 0 SIMPLE, 1 ASPX
+    _configure(ctx, 'var', mode, mode == 1)
+    b_isodd = n_dmx_signals % 2
+    n_pairs = n_dmx_signals // 2
+    if mode == 1:
+        if ctx.b_iframe:
+            aspx_config(r, ctx)
+        if n_dmx_signals <= 5:
+            companding_control(r, n_dmx_signals)
+    if b_has_lfe:
+        mono_data(r, ctx, 1)
+    if b_isodd:
+        if n_dmx_signals == 1:
+            mono_data(r, ctx, 0)
+        else:
+            for _ in range(n_pairs - 1):
+                two_channel_data(r, ctx)
+            if r.f(1, 'var_coding_config') == 0:
+                two_channel_data(r, ctx)
+                mono_data(r, ctx, 0)
+            else:
+                three_channel_data(r, ctx)
+    else:
+        for _ in range(n_pairs):
+            two_channel_data(r, ctx)
+    if mode == 1:
+        for _ in range(n_pairs):
+            aspx_data_2ch(r, ctx)
+        if b_isodd:
+            aspx_data_1ch(r, ctx)
+
+
+# Part 2 6.2.3.3 objs_to_channel_mode(): 1 mono, 2 stereo, 3 3.0, 5 5.0.
+OBJS_TO_CHANNEL_MODE = {1: 0, 2: 1, 3: 2, 5: 3}
+
+
+def audio_data_objs(r, ctx, n_objects, b_lfe):
+    """Part 2 6.2.3.2, n_objects being the substream's objects beside its LFE
+    (Table 60; src/ac4dec/ERRATA.md, 'n_objects_code and the LFE')."""
+    if b_lfe:
+        mono_data(r, ctx, 1)
+    if n_objects != 0:
+        if n_objects not in OBJS_TO_CHANNEL_MODE:
+            raise SyntaxFail(f'no channel element carries {n_objects} objects')
+        audio_data_chan(r, ctx, OBJS_TO_CHANNEL_MODE[n_objects])
+
+
+# Part 2 Pseudocode 27, get_ajoc_hcb(): AJOC_HCB_<data_type>_<quant_mode>_<hcb_type>,
+# ajoc_quant_select 0 fine and 1 coarse (Table 79).
+def _ajoc_hcb(data_type, quant_select, hcb_type):
+    return CB[f'AJOC_HCB_{data_type}_{"COARSE" if quant_select else "FINE"}_{hcb_type}']
+
+
+def ajoc_huff_data(r, data_type, data_bands, quant_select, b_dfonly):
+    """Part 2 6.2.5.5."""
+    diff_type = 0 if b_dfonly else r.f(1, 'diff_type')
+    if diff_type == 0:
+        _ajoc_hcb(data_type, quant_select, 'F0').decode(r, 'ajoc_hcw')
+        cb = _ajoc_hcb(data_type, quant_select, 'DF')
+        for _ in range(1, data_bands):
+            cb.decode(r, 'ajoc_hcw')
+    else:
+        cb = _ajoc_hcb(data_type, quant_select, 'DT')
+        for _ in range(data_bands):
+            cb.decode(r, 'ajoc_hcw')
+
+
+def ajoc(r, num_dmx_signals, num_umx_signals):
+    """Part 2 6.2.5.1 to 6.2.5.4."""
+    ajoc_num_decorr = r.f(3, 'ajoc_num_decorr')
+    # ajoc_ctrl_info()
+    decorr_enable = [r.f(1, 'ajoc_decorr_enable') for _ in range(ajoc_num_decorr)]
+    present = [r.f(1, 'ajoc_object_present') for _ in range(num_umx_signals)]
+    # ajoc_data_point_info(); 5.7.3.4 allows "0, 1 or 2" data points.
+    num_dpoints = r.f(2, 'ajoc_num_dpoints')
+    if num_dpoints == 3:
+        raise SyntaxFail('ajoc_num_dpoints of 3, where 5.7.3.4 allows 0 to 2')
+    for _ in range(num_dpoints):
+        r.f(5, 'ajoc_start_pos')
+        r.f(6, 'ajoc_ramp_len_minus1')
+    config = [None] * num_umx_signals
+    if num_dpoints:
+        for o in range(num_umx_signals):
+            if not present[o]:
+                continue
+            bands = T.AJOC_NUM_BANDS[r.f(3, 'ajoc_num_bands_code')]
+            qs = r.f(1, 'ajoc_quant_select')
+            sparse = r.f(1, 'ajoc_sparse_select')
+            dry = [1] * num_dmx_signals
+            wet = [1] * ajoc_num_decorr
+            if sparse == 1:
+                dry = [r.f(1, 'ajoc_mix_mtx_dry_present') for _ in range(num_dmx_signals)]
+                wet = [r.f(1, 'ajoc_mix_mtx_wet_present') if decorr_enable[d] else 0
+                       for d in range(ajoc_num_decorr)]
+            config[o] = (bands, qs, sparse, dry, wet)
+    # ajoc_data(): without data points an object has no configuration and
+    # sends nothing.
+    b_nodt = r.f(1, 'ajoc_b_nodt')
+    for o in range(num_umx_signals):
+        if not present[o] or config[o] is None:
+            continue
+        bands, qs, sparse, dry, wet = config[o]
+        for dp in range(num_dpoints):
+            b_dfonly = dp == 0 and b_nodt
+            for ch in range(num_dmx_signals):
+                if sparse == 0 or dry[ch]:
+                    ajoc_huff_data(r, 'DRY', bands, qs, b_dfonly)
+            for de in range(ajoc_num_decorr):
+                if sparse == 0 or wet[de]:
+                    ajoc_huff_data(r, 'WET', bands, qs, b_dfonly)
+
+
+def _dlg_dmx_coeff_idx(r):
+    """de_dlg_dmx_coeff_idx (Table 82): 0b0, 0b1111, or 0b10000 to 0b11101, one
+    record of the bits read, valued at them."""
+    pos = r.pos
+    if r.peek(1) == 0:
+        r.u(1)
+        r.record_raw(pos, 1, 0, 'de_dlg_dmx_coeff_idx')
+    elif r.peek(4) == 0b1111:
+        r.u(4)
+        r.record_raw(pos, 4, 0b1111, 'de_dlg_dmx_coeff_idx')
+    else:
+        r.record_raw(pos, 5, r.u(5), 'de_dlg_dmx_coeff_idx')
+
+
+def ajoc_dmx_de_data(r, ctx, num_dmx_signals, num_umx_signals):
+    """Part 2 6.2.3.5. The configuration's dialogue objects carry to later
+    frames; an I-frame without one clears it (src/ac4dec/ERRATA.md, "A-JOC's
+    dialogue enhancement data across frames")."""
+    st = ctx.state
+    b_dmx_de_cfg = r.f(1, 'b_dmx_de_cfg')
+    b_keep = r.f(1, 'b_keep_dmx_de_coeffs')
+    if b_dmx_de_cfg:
+        r.f(2, 'de_max_gain')
+        flags = _field(r, num_umx_signals, 'de_main_dlg_flag')
+        st['ajoc_dlg_obj'] = bin(flags).count('1')
+    elif ctx.b_iframe:
+        st.pop('ajoc_dlg_obj', None)
+    if not b_keep:
+        num_dlg_obj = st.get('ajoc_dlg_obj')
+        if num_dlg_obj is None:
+            if not ctx.b_iframe:
+                raise SyntaxFail('de_dlg_dmx_coeff_idx needs a dialogue configuration no I-frame '
+                                 'has sent')
+            return
+        for _ in range(num_dlg_obj * num_dmx_signals):
+            _dlg_dmx_coeff_idx(r)
+
+
+def ajoc_bed_info(r):
+    """Part 2 6.2.3.6."""
+    if r.f(1, 'b_obj_without_bed_info_present'):
+        r.f(3, 'num_obj_with_bed_render_info')
+
+
+def _timing_blocks(own, group, carried):
+    """num_obj_info_blocks for an OAMD portion (src/ac4dec/ERRATA.md, 'Which
+    oamd_timing_data() applies'): its own timing this frame, else the group's
+    OAMD substream's, else its own from an earlier frame."""
+    if own is not None:
+        return own
+    if group is not None:
+        return group
+    return carried
+
+
+def audio_data_ajoc(r, ctx, info, oc):
+    """Part 2 6.2.3.4 audio_data_ajoc(n_fb_upmix_signals, b_static_dmx,
+    n_fb_dmx_signals, b_lfe, b_iframe). `oc` holds the portions' objects and
+    the group's timing."""
+    st = ctx.state
+    n_fb_dmx = info['n_fullband_dmx_signals']
+    n_fb_umx = info['n_fullband_upmix_signals']
+    b_lfe = info['b_lfe']
+    dmx_blocks = own_dmx = None
+    if info['b_static_dmx']:
+        audio_data_chan(r, ctx, 4 if b_lfe else 3)
+    else:
+        if r.f(1, 'b_some_signals_inactive'):
+            _field(r, n_fb_dmx, 'dmx_active_signals_mask')
+        var_channel_element(r, ctx, n_fb_dmx, b_lfe)
+        if r.f(1, 'b_dmx_timing'):
+            own_dmx = oamd_timing_data(r)
+        dmx_blocks = _timing_blocks(own_dmx, oc['group_blocks'], st.get('dmx_blocks'))
+        if dmx_blocks is None:
+            raise SyntaxFail('oamd_dyndata_single() needs an oamd_timing_data() that no frame '
+                             'has sent')
+        oamd_dyndata_single(r, oc['dmx'], dmx_blocks, ctx.b_iframe, ctx.b_alternative)
+        if r.f(1, 'b_oamd_extension_present'):
+            nbytes = r.vb(3, 'skip_bits') + 1
+            if nbytes > (r.end - r.pos) // 8:
+                raise SyntaxFail('skip_bits run past the end of the substream')
+            start = r.pos
+            ajoc_bed_info(r)
+            left = nbytes * 8 - (r.pos - start)
+            if left < 0:
+                raise SyntaxFail('ajoc_bed_info() reads past skip_bits')
+            _wide(r, left, 'skip_data')
+    ajoc(r, n_fb_dmx, n_fb_umx)
+    ajoc_dmx_de_data(r, ctx, n_fb_dmx, n_fb_umx)
+    own_umx = None
+    if r.f(1, 'b_umx_timing'):
+        own_umx = oamd_timing_data(r)
+        umx_blocks = own_umx
+    elif r.f(1, 'b_derive_timing_from_dmx') and dmx_blocks is not None:
+        umx_blocks = dmx_blocks
+    else:
+        umx_blocks = _timing_blocks(None, oc['group_blocks'], st.get('umx_blocks'))
+    if umx_blocks is None:
+        raise SyntaxFail('oamd_dyndata_single() needs an oamd_timing_data() that no frame has '
+                         'sent')
+    oamd_dyndata_single(r, oc['umx'], umx_blocks, ctx.b_iframe, ctx.b_alternative)
+    # What each portion sent of its own serves a later frame that sends none.
+    if own_dmx is not None:
+        st['dmx_blocks'] = own_dmx
+    if own_umx is not None:
+        st['umx_blocks'] = own_umx
+
+
+# ---------------------------------------------------------------------------
+# Object audio metadata (Part 2 6.2.8, 6.2.2.4)
+# ---------------------------------------------------------------------------
+
+
+def _prefix12(r, name):
+    """A prefix code of one or two bits, 0b0, 0b10 or 0b11 (Tables 92, 93, 100
+    and 101): one record of the bits read, valued at them."""
+    pos = r.pos
+    if r.peek(1) == 0:
+        r.u(1)
+        r.record_raw(pos, 1, 0, name)
+        return 0
+    v = r.u(2)
+    r.record_raw(pos, 2, v, name)
+    return v
+
+
+def oamd_timing_data(r):
+    """Part 2 6.2.8.2; returns num_obj_info_blocks."""
+    t = _prefix12(r, 'oa_sample_offset_type')
+    if t == 0b10:
+        _prefix12(r, 'oa_sample_offset_code')
+    elif t == 0b11:
+        r.f(5, 'oa_sample_offset')
+    num_obj_info_blocks = r.f(3, 'num_obj_info_blocks')
+    for _ in range(num_obj_info_blocks):
+        r.f(6, 'block_offset_factor')
+        if r.f(2, 'ramp_duration_code') == 0b11:
+            if r.f(1, 'b_use_ramp_table'):
+                r.f(4, 'ramp_duration_table')
+            else:
+                r.f(11, 'ramp_duration')
+    return num_obj_info_blocks
+
+
+def ext_prec_pos(r):
+    """Part 2 6.2.8.11; ext_prec_pos_presence[] one field, [2] its first bit."""
+    presence = _field(r, 3, 'ext_prec_pos_presence')
+    if presence & 0b100:
+        r.f(2, 'ext_prec_pos3D_X')
+    if presence & 0b010:
+        r.f(2, 'ext_prec_pos3D_Y')
+    if presence & 0b001:
+        r.f(2, 'ext_prec_pos3D_Z')
+
+
+def object_basic_info(r):
+    """Part 2 6.2.8.6."""
+    if r.f(1, 'b_default_basic_info_md') == 0:
+        md = _prefix12(r, 'basic_info_md')
+        if md in (0b0, 0b10):
+            if _prefix12(r, 'object_gain_code') == 0b0:
+                r.f(6, 'object_gain_value')
+        if md in (0b10, 0b11):
+            r.f(5, 'object_priority_code')
+
+
+def object_render_info(r, all_new, b_no_delta):
+    """Part 2 6.2.8.7; the mask is read in the order otherprops, zone, position."""
+    if all_new:
+        otherprops = zone = position = 1
+    else:
+        otherprops = r.f(1, 'b_obj_render_otherprops_present')
+        zone = r.f(1, 'b_obj_render_zone_present')
+        position = r.f(1, 'b_obj_render_position_present')
+    if position:
+        diff = 0 if b_no_delta else r.f(1, 'b_diff_pos_coding')
+        if diff:
+            r.f(3, 'diff_pos3D_X')
+            r.f(3, 'diff_pos3D_Y')
+            r.f(3, 'diff_pos3D_Z')
+        else:
+            r.f(6, 'pos3D_X')
+            r.f(6, 'pos3D_Y')
+            r.f(1, 'pos3D_Z_sign')
+            r.f(4, 'pos3D_Z')
+    if zone and r.f(1, 'b_grouped_zone_defaults') == 0:
+        flags = _field(r, 3, 'group_zone_flag')  # [2] its first bit
+        if flags & 0b100:
+            r.f(3, 'zone_mask')
+    if otherprops and r.f(1, 'b_grouped_other_defaults') == 0:
+        mask = r.f(4, 'group_other_mask')
+        if mask & 0b0001:
+            if r.f(1, 'object_width_mode') == 0:
+                r.f(5, 'object_width_code')
+            else:
+                r.f(5, 'object_width_X_code')
+                r.f(5, 'object_width_Y_code')
+                r.f(5, 'object_width_Z_code')
+        if mask & 0b0010:
+            r.f(3, 'object_screen_factor_code')
+            r.f(2, 'object_depth_factor')
+        if mask & 0b0100:
+            if r.f(1, 'b_obj_at_infinity') == 0:
+                r.f(4, 'obj_distance_factor_code')
+        if mask & 0b1000:
+            div_mode = r.f(2, 'object_div_mode')
+            if div_mode == 0b00:
+                r.f(2, 'object_div_table')
+            elif div_mode & 0b10:
+                r.f(6, 'object_div_code')
+
+
+def add_per_object_md(r, b_object_not_active, b_dynamic_object):
+    """Part 2 6.2.8.10, its parameters taken by name (object_info_block() passes
+    them the other way round; src/ac4dec/ERRATA.md, "add_per_object_md()'s
+    parameters")."""
+    r.f(1, 'b_obj_trim_disable')
+    if not b_object_not_active and b_dynamic_object:
+        if r.f(1, 'b_ext_prec_pos'):
+            ext_prec_pos(r)
+    if r.f(1, 'b_headphone'):
+        r.f(2, 'hp_render_mode_obj')
+        r.f(1, 'b_head_track_disable_obj')
+
+
+def object_info_block(r, b_no_delta, b_dynamic_object):
+    """Part 2 6.2.8.5."""
+    not_active = r.f(1, 'b_object_not_active')
+    if not_active:
+        basic_new = False
+    elif b_no_delta:
+        basic_new = True
+    else:
+        basic_new = r.f(1, 'b_basic_info_reuse') == 0
+    if basic_new:
+        object_basic_info(r)
+    render = None  # None: DEFAULT or REUSE; True: ALL_NEW; False: PART_REUSE
+    if not not_active and b_dynamic_object:
+        if b_no_delta:
+            render = True
+        elif r.f(1, 'b_render_info_reuse') == 0:
+            render = r.f(1, 'b_render_info_partial_reuse') == 0
+    if render is not None:
+        object_render_info(r, render, b_no_delta)
+    if r.f(1, 'b_add_table_data'):
+        atd_size = r.f(4, 'add_table_data_size_minus1') + 1
+        start = r.pos
+        add_per_object_md(r, not_active, b_dynamic_object)
+        remain = 8 * atd_size - (r.pos - start)
+        if remain < 0:
+            raise SyntaxFail('add_per_object_md() reads past add_table_data_size')
+        _wide(r, remain, 'add_table_data')
+
+
+def _check_objects(objects, n_blocks):
+    if len(objects) > MAX_OAMD_OBJECTS:
+        raise Refused('more objects than the decoder describes')
+    if not 0 <= n_blocks <= 7:
+        raise SyntaxFail(f'num_obj_info_blocks {n_blocks}')
+
+
+def ext_prec_alt_pos(r, objects, b_keep):
+    """Part 2 6.2.8.12."""
+    if b_keep == 0:
+        for o in objects:
+            if o['type'] == 'DYN' and not o['lfe']:
+                if r.f(1, 'b_ext_prec_alt_pos'):
+                    ext_prec_pos(r)
+
+
+def oamd_dyndata_single(r, objects, n_blocks, b_iframe, b_alternative):
+    """Part 2 6.2.8.3 over `objects`, each {'type', 'lfe', 'ajoc_coded'}."""
+    _check_objects(objects, n_blocks)
+    for o in objects:
+        dynamic = o['type'] == 'DYN' and not o['lfe']
+        for b in range(n_blocks):
+            object_info_block(r, b_iframe and b == 0, dynamic)
+    if not b_alternative:
+        return
+    r.f(1, 'b_ducking_disabled')
+    if r.f(2, 'object_sound_category') == 3:
+        r.vb(2, 'object_sound_category')
+    n_alt = r.f(2, 'n_alt_data_sets')
+    if n_alt == 3:
+        n_alt += r.vb(2, 'n_alt_data_sets')
+    if n_alt > (r.end - r.pos) // 2:
+        raise SyntaxFail('n_alt_data_sets runs past the end of the substream')
+    for _ in range(n_alt):
+        b_keep = r.f(1, 'b_keep')
+        if b_keep == 0:
+            # An intermediate spatial format sends one data point, as does
+            # b_common_data, which only the others send.
+            isf = bool(objects) and objects[0]['type'] == 'ISF'
+            n_data_points = 1 if isf or r.f(1, 'b_common_data') else len(objects)
+            for dp in range(min(n_data_points, len(objects))):
+                o = objects[dp]
+                if o['type'] in ('BED', 'ISF'):
+                    if r.f(1, 'b_alt_gain'):
+                        r.f(6, 'alt_obj_gain')
+                else:
+                    if r.f(1, 'b_alt_gain'):
+                        r.f(6, 'alt_obj_gain')
+                    if not o['lfe'] and r.f(1, 'b_alt_position'):
+                        r.f(6, 'alt_pos3D_X')
+                        r.f(6, 'alt_pos3D_Y')
+                        r.f(1, 'alt_pos3D_Z_sign')
+                        r.f(4, 'alt_pos3D_Z')
+        if r.f(1, 'b_additional_data'):
+            nbytes = r.vb(2, 'skip_bits') + 1
+            if nbytes > (r.end - r.pos) // 8:
+                raise SyntaxFail('skip_bits run past the end of the substream')
+            start = r.pos
+            ext_prec_alt_pos(r, objects, b_keep)
+            left = nbytes * 8 - (r.pos - start)
+            if left < 0:
+                raise SyntaxFail('ext_prec_alt_pos() reads past skip_bits')
+            _wide(r, left, 'skip_data')
+
+
+def oamd_dyndata_multi(r, objects, n_blocks, b_iframe):
+    """Part 2 6.2.8.4: the blocks of every object not A-JOC coded."""
+    _check_objects(objects, n_blocks)
+    for o in objects:
+        if o['ajoc_coded']:
+            continue
+        dynamic = o['type'] == 'DYN' and not o['lfe']
+        for b in range(n_blocks):
+            object_info_block(r, b_iframe and b == 0, dynamic)
+
+
+def _gain_tool(r, to_front, to_side, gain_a, gain_b, gain_c, side_branch):
+    """tool_t2_to_f_s[_b]() (6.2.9.9, 6.2.9.10), tool_tb_to_f_s[_b]() and
+    tool_tf_to_f_s[_b]() (6.2.8.13 to 6.2.8.16)."""
+    if r.f(1, to_front):
+        r.f(3, gain_a)
+    elif not side_branch or r.f(1, to_side):
+        r.f(3, gain_b)
+    else:
+        r.f(3, gain_c)
+
+
+_T2 = ('b_top_to_front', 'b_top_to_side', 'gain_t2a_code', 'gain_t2b_code', 'gain_t2c_code')
+_TB = ('b_top_back_to_front', 'b_top_back_to_side', 'gain_t2d_code', 'gain_t2e_code',
+       'gain_t2f_code')
+_TF = ('b_top_front_to_front', 'b_top_front_to_side', 'gain_t2a_code', 'gain_t2b_code',
+       'gain_t2c_code')
+
+
+def oamd_bed_render_info(r):
+    """Part 2 6.2.8.8, with stereo_dmx_coeff() (6.2.8.8a)."""
+    if not r.f(1, 'b_bed_render_info'):
+        return
+    if r.f(1, 'b_stereo_dmx_coeff'):
+        r.f(3, 'loro_centre_mixgain')
+        r.f(3, 'loro_surround_mixgain')
+        if r.f(1, 'b_ltrt_mixinfo'):
+            r.f(3, 'ltrt_centre_mixgain')
+            r.f(3, 'ltrt_surround_mixgain')
+        if r.f(1, 'b_lfe_mixinfo'):
+            r.f(5, 'lfe_mixgain')
+        r.f(2, 'preferred_dmx_method')
+    if not r.f(1, 'b_cdmx_data_present'):
+        return
+    if r.f(1, 'b_cdmx_w_to_f'):
+        r.f(3, 'gain_w_to_f_code')
+    if r.f(1, 'b_cdmx_b4_to_b2'):
+        r.f(3, 'gain_b4_to_b2_code')
+    if r.f(1, 'b_tm_ch_present'):
+        if r.f(1, 'b_cdmx_t2_to_f_s_b'):
+            _gain_tool(r, *_T2, True)
+        if r.f(1, 'b_cdmx_t2_to_f_s'):
+            _gain_tool(r, *_T2, False)
+    tb = r.f(1, 'b_tb_ch_present')
+    if tb:
+        if r.f(1, 'b_cdmx_tb_to_f_s_b'):
+            _gain_tool(r, *_TB, True)
+        if r.f(1, 'b_cdmx_tb_to_f_s'):
+            _gain_tool(r, *_TB, False)
+    tf = r.f(1, 'b_tf_ch_present')
+    if tf:
+        if r.f(1, 'b_cdmx_tf_to_f_s_b'):
+            _gain_tool(r, *_TF, True)
+        if r.f(1, 'b_cdmx_tf_to_f_s'):
+            _gain_tool(r, *_TF, False)
+    if (tb or tf) and r.f(1, 'b_cdmx_tfb_to_tm'):
+        r.f(3, 'gain_tfb_to_tm_code')
+
+
+def oamd_trim(r):
+    """Part 2 6.2.8.9; trim_balance_presence[] one field, [4] its first bit."""
+    if not r.f(1, 'b_trim_present'):
+        return
+    r.f(2, 'warp_mode')
+    r.f(2, 'reserved')
+    if r.f(2, 'global_trim_mode') == 0b10:
+        for _ in range(9):  # NUM_TRIM_CONFIGS (6.3.9.10.4)
+            if r.f(1, 'b_default_trim'):
+                continue
+            if r.f(1, 'b_disable_trim'):
+                continue
+            presence = _field(r, 5, 'trim_balance_presence')
+            if presence & 0b10000:
+                r.f(4, 'trim_centre')
+            if presence & 0b01000:
+                r.f(4, 'trim_surround')
+            if presence & 0b00100:
+                r.f(4, 'trim_height')
+            if presence & 0b00010:
+                r.f(1, 'bal3D_Y_sign_tb_code')
+                r.f(4, 'bal3D_Y_amount_tb')
+            if presence & 0b00001:
+                r.f(1, 'bal3D_Y_sign_lis_code')
+                r.f(4, 'bal3D_Y_amount_lis')
+
+
+def oamd_headphone(r):
+    """Part 2 6.2.8.9a."""
+    if r.f(1, 'b_headphone'):
+        if r.f(3, 'hp_operation_mode') in (0b001, 0b010):
+            r.f(1, 'b_head_track_disable_all')
+
+
+def oamd_common_data(r):
+    """Part 2 6.2.8.1, the elements after trim() read while add_data_bytes has
+    room for them."""
+    if r.f(1, 'b_default_screen_size_ratio') == 0:
+        r.f(5, 'master_screen_size_ratio_code')
+    r.f(1, 'b_bed_object_chan_distribute')
+    if not r.f(1, 'b_additional_data'):
+        return
+    nbytes = r.f(1, 'add_data_bytes_minus1') + 1
+    if nbytes == 2:
+        nbytes += r.vb(2, 'add_data_bytes')
+    if nbytes > (r.end - r.pos) // 8:
+        raise SyntaxFail('add_data_bytes run past the end of the substream')
+    left = nbytes * 8
+    for element in (oamd_trim, oamd_bed_render_info, oamd_headphone):
+        if left == 0:
+            break
+        start = r.pos
+        element(r)
+        left -= r.pos - start
+        if left < 0:
+            raise SyntaxFail('an element of oamd_common_data() reads past add_data_bytes')
+    _wide(r, left, 'add_data')
+
+
+def parse_oamd_substream(data, oc, state, recs):
+    """Part 2 6.2.2.4. `oc` is the group's context: its objects, b_oamd_ndot and
+    b_alternative. `state` carries the group's last num_obj_info_blocks; it
+    changes only once the substream has read to its end."""
+    r = Reader(data, recs)
+    if r.f(1, 'b_oamd_common_data_present'):
+        oamd_common_data(r)
+    timing = None
+    if r.f(1, 'b_oamd_timing_present'):
+        timing = oamd_timing_data(r)
+    if not oc['b_alternative']:
+        blocks = timing if timing is not None else state.get('blocks')
+        if blocks is None:
+            raise SyntaxFail('oamd_dyndata_multi() needs an oamd_timing_data() that no frame '
+                             'has sent')
+        oamd_dyndata_multi(r, oc['objects'], blocks, oc['b_oamd_ndot'])
+    r.align()
+    # The timing serves the group once the substream has been read, whether or
+    # not it ends at its size, as the decoder keeps it.
+    if timing is not None:
+        state['blocks'] = timing
+    if r.pos != r.end:
+        raise SyntaxFail(f'oamd_substream ends at byte {r.pos // 8}, substream_size is '
+                         f'{r.end // 8}')
 
 
 # ---------------------------------------------------------------------------
@@ -1996,13 +2755,19 @@ def emdf_payloads_substream(r, align_base=0):
     r.align(align_base)
 
 
-def metadata(r, ctx, sus_ver, b_alternative, b_ajoc, b_associated=0, b_dialog=0):
-    """Part 2 6.2.7.1; checks tools_metadata_size."""
+def metadata(r, ctx, sus_ver, b_alternative, b_ajoc, b_associated=0, b_dialog=0, oc=None):
+    """Part 2 6.2.7.1; checks tools_metadata_size. `oc` is a direct-coded object
+    substream's objects and group timing; a channel-coded substream passes none."""
     basic_metadata(r, ctx.ch_mode, sus_ver)
     extended_metadata(r, ctx.ch_mode, sus_ver, b_associated, b_dialog)
-    # oamd_dyndata_single() is read for b_alternative with b_ajoc 0, but it
-    # belongs to object substreams, which are refused before metadata(); a
-    # channel-coded substream carries none (see src/ac4dec/ERRATA.md).
+    # oamd_dyndata_single() for b_alternative with b_ajoc 0 belongs to
+    # direct-coded object substreams alone; a channel-coded substream carries
+    # none (see src/ac4dec/ERRATA.md).
+    if b_alternative and not b_ajoc and oc is not None:
+        if oc['group_blocks'] is None:
+            raise SyntaxFail('oamd_dyndata_single() needs an oamd_timing_data() that no frame '
+                             'has sent')
+        oamd_dyndata_single(r, oc['objects'], oc['group_blocks'], ctx.b_iframe, 1)
     tms = r.f(7, 'tools_metadata_size_value')
     if r.f(1, 'b_more_bits'):
         tms += r.vb(3, 'variable_bits') << 7
@@ -2023,8 +2788,11 @@ def metadata(r, ctx, sus_ver, b_alternative, b_ajoc, b_associated=0, b_dialog=0)
 
 
 def parse_ac4_substream(data, info, b_iframe, flb, state, recs, b_alternative, sus_ver,
-                        b_associated=0, b_dialog=0, hsf_reader=None):
-    """Part 2 6.2.2.2 for a channel-coded substream. Returns the AudioCtx
+                        b_associated=0, b_dialog=0, hsf_reader=None, kind='chan', oc=None):
+    """Part 2 6.2.2.2 for a channel-coded substream (kind 'chan'), an A-JOC
+    coded one ('ajoc', audio_data_ajoc()) or a direct-coded object one ('obj',
+    audio_data_objs()); `oc` holds an object substream's objects, its share of
+    the table of contents' counts and the group's timing. Returns the AudioCtx
     built. A caller with a linked HSF extension substream (hsf_reader) uses
     it afterward: sf_data() peeks ac4_hsf_ext_substream()'s own header along
     the way (leaving hsf_reader positioned at sf_hsf_data()'s first bit), and
@@ -2048,13 +2816,22 @@ def parse_ac4_substream(data, info, b_iframe, flb, state, recs, b_alternative, s
     audio_end = audio_start + 8 * audio_size
     if audio_end > r.end:
         raise SyntaxFail(f'audio_size {audio_size} runs past the substream ({r.end // 8} bytes)')
-    ctx = AudioCtx(flb, b_iframe, state, info['ch_mode'], info.get('add_ch_base', 0),
-                  sf_multiplier, hsf_reader)
-    audio_data_chan(r, ctx, info['ch_mode'])
+    # An object substream's channel_mode is negative (6.2.2.2's NOTE 2).
+    ch_mode = info['ch_mode'] if kind == 'chan' else -1
+    add_ch_base = info.get('add_ch_base', 0) if kind == 'chan' else 0
+    ctx = AudioCtx(flb, b_iframe, state, ch_mode, add_ch_base, sf_multiplier, hsf_reader)
+    ctx.b_alternative = b_alternative
+    if kind == 'chan':
+        audio_data_chan(r, ctx, ch_mode)
+    elif kind == 'ajoc':
+        audio_data_ajoc(r, ctx, info, oc)
+    else:
+        audio_data_objs(r, ctx, oc['n_objects'], oc['b_lfe'])
     if r.pos > audio_end:
         raise SyntaxFail(f'audio_data ends at bit {r.pos}, beyond audio_size end {audio_end}')
     r.pos = audio_end  # fill_bits, byte_align
-    metadata(r, ctx, sus_ver, b_alternative, 0, b_associated, b_dialog)
+    metadata(r, ctx, sus_ver, b_alternative, 1 if kind == 'ajoc' else 0, b_associated, b_dialog,
+             oc if kind == 'obj' else None)
     r.align()
     if r.pos != r.end:
         raise SyntaxFail(f'ac4_substream ends at byte {r.pos // 8}, substream_size is {r.end // 8}')
@@ -2403,7 +3180,7 @@ def substream_roles(toc):
         if idx is not None and idx not in roles:
             roles[idx] = role
 
-    def audio(info, sus_ver, kind, owner, frames_key, hsf_ext_index=None):
+    def audio(info, sus_ver, kind, owner, frames_key, hsf_ext_index=None, oc=None):
         idx = info.get('substream_index')
         if idx is None:
             return
@@ -2421,7 +3198,10 @@ def substream_roles(toc):
                                     # it - matching state_key, and there is
                                     # only one ac4_hsf_ext_substream_info()
                                     # per element regardless of factor.
-                                    'hsf_ext_index': hsf_ext_index if i == 0 else None}))
+                                    'hsf_ext_index': hsf_ext_index if i == 0 else None,
+                                    # An object substream's objects, or its
+                                    # refusal as ('FAIL' | 'refused', reason).
+                                    'oc': oc}))
 
     pres = toc['presentations']
     for p in pres:
@@ -2445,17 +3225,127 @@ def substream_roles(toc):
             if any(g is x for x in seen):
                 continue
             seen.append(g)
+            ps = p.get('presentation_substream') or {}
+            # The OAMD substream is named before the group's substreams
+            # (6.2.1.6); the objects its oamd_dyndata_multi() lists are the
+            # substreams', gathered below.
+            oamd_key = None
+            oamd = None
             if g.get('oamd') and g['oamd'].get('substream_index') is not None:
-                put(g['oamd']['substream_index'], ('oamd', g))
+                oamd_key = g['oamd']['substream_index']
+                if oamd_key not in roles:
+                    oamd = {'objects': [], 'b_oamd_ndot': g['oamd']['b_oamd_ndot'],
+                            'b_alternative': ps.get('b_alternative', 0), 'key': oamd_key}
+                    roles[oamd_key] = ('oamd', oamd)
+            group_objects = []
+            run = None
             for s in g['substreams']:
                 # s, not g: a group can carry several substreams when
                 # b_hsf_ext is set, each with its own hsf_ext_substream_index
                 # naming its own extension - g alone would not say which of
                 # several is which extension's actual owner.
+                oc = None
+                if s['kind'] == 'ajoc':
+                    info = s['info']
+                    dmx = [] if info['b_static_dmx'] else _ajoc_portion(
+                        info['static_objects'], info['n_fullband_dmx_signals'], info['b_lfe'])
+                    umx = _ajoc_portion(info['upmix_objects'], info['n_fullband_upmix_signals'],
+                                        info['b_lfe'])
+                    group_objects += umx or []
+                    if dmx is None or umx is None:
+                        oc = ('FAIL', 'bed_dyn_obj_assignment() assigns more objects than the '
+                                      'signals')
+                    elif len(dmx) > MAX_OAMD_OBJECTS or len(umx) > MAX_OAMD_OBJECTS:
+                        oc = ('refused', 'more A-JOC objects than the decoder describes')
+                    else:
+                        oc = {'dmx': dmx, 'umx': umx, 'oamd_key': oamd_key}
+                elif s['kind'] == 'obj':
+                    share, run, refusal = _object_share(s['info'], run)
+                    group_objects += share['objects']
+                    oc = refusal or {**share, 'oamd_key': oamd_key}
                 audio(s['info'], s['sus_ver'], s['kind'], p, 'b_audio_ndot',
-                      s.get('hsf_ext_substream_index'))
+                      s.get('hsf_ext_substream_index'), oc)
                 put(s.get('hsf_ext_substream_index'), ('hsf_ext', s))
+            if oamd is not None:
+                oamd['objects'] = group_objects
     return roles
+
+
+def _ajoc_portion(assigned, n_fullband, b_lfe):
+    """The objects of an A-JOC substream's OAMD portion (src/ac4dec/ERRATA.md,
+    'The objects of an A-JOC substream'): the LFE first where b_lfe is set
+    (is_lfe[0] = 1), the objects bed_dyn_obj_assignment() lists, then dynamic
+    objects up to n_fullband - no further than one past the most the decoder
+    describes, as the decoder counts them. None where the assignment lists
+    more than n_fullband."""
+    if len(assigned) > n_fullband:
+        return None
+    objs = [{'type': 'DYN', 'lfe': True, 'ajoc_coded': True}] if b_lfe else []
+    objs += [{'type': a['type'], 'lfe': False, 'ajoc_coded': True} for a in assigned]
+    i = len(assigned)
+    while i < n_fullband and len(objs) <= MAX_OAMD_OBJECTS:
+        objs.append({'type': 'DYN', 'lfe': False, 'ajoc_coded': True})
+        i += 1
+    return objs
+
+
+def _object_share(info, run):
+    """A direct-coded substream's objects (src/ac4dec/ERRATA.md, 'The objects of
+    a direct-coded substream'): with dynamic objects its own list; for a bed or
+    intermediate spatial format, the substream that starts it gives the list
+    and it and the substreams after it take its fullband objects in order,
+    n_objects each, and its LFEs one to each of the first of them. Returns
+    (share, run, refusal): the share's 'objects', 'n_objects' and 'b_lfe', the
+    run carried to the next substream, and ('FAIL' or 'refused', reason) where
+    the table of contents gives no such share."""
+    share = {'objects': [], 'n_objects': 0, 'b_lfe': 0}
+    if info['num_objects'] is None:
+        return share, run, ('FAIL', 'a reserved n_objects_code')
+    share['n_objects'] = info['num_objects']
+    if info['b_dynamic_objects']:
+        share['b_lfe'] = info['b_lfe']
+        share['objects'] = [{'type': o['type'], 'lfe': o['lfe'], 'ajoc_coded': False}
+                            for o in info['objects']]
+        return share, run, None
+    kind = info['static_kind']
+    if kind == 'reserved':
+        if share['n_objects'] != 0:
+            return share, run, ('refused', 'objects a substream of reserved data describes')
+        return share, run, None
+    if info['static_start']:
+        run = {'objects': info['objects'], 'isf': kind == 'isf', 'next': 0, 'lfes': 0}
+    elif run is None or run['isf'] != (kind == 'isf'):
+        return share, run, ('FAIL', 'a substream that extends a bed or intermediate spatial format '
+                                    'no substream before it started')
+    lfes = [o for o in run['objects'] if o['lfe']]
+    if run['lfes'] < len(lfes):
+        share['objects'].append({'type': lfes[run['lfes']]['type'], 'lfe': True,
+                                 'ajoc_coded': False})
+        share['b_lfe'] = 1
+        run['lfes'] += 1
+    taken = 0
+    while taken < share['n_objects'] and run['next'] < len(run['objects']):
+        o = run['objects'][run['next']]
+        run['next'] += 1
+        if not o['lfe']:
+            share['objects'].append({'type': o['type'], 'lfe': False, 'ajoc_coded': False})
+            taken += 1
+    if taken < share['n_objects']:
+        return share, run, ('FAIL', 'a substream that codes more objects than its bed assigns')
+    return share, run, None
+
+
+def _carried_for(a, oc):
+    """What an audio substream's carried state belongs to: its channel mode,
+    substream version, coding and, for an object substream, the counts its
+    syntax is read with - the fields the decoder's AudioSubstreamState compares."""
+    info = a['info']
+    if a['kind'] == 'chan':
+        return (info['ch_mode'], a['sus_ver'], 'chan', 0, 0, 0, 0, 0)
+    if a['kind'] == 'ajoc':
+        return (-1, a['sus_ver'], 'ajoc', info['b_lfe'], info['b_static_dmx'],
+                info['n_fullband_dmx_signals'], info['n_fullband_upmix_signals'], 0)
+    return (-1, a['sus_ver'], 'obj', oc['b_lfe'], 0, 0, 0, oc['n_objects'])
 
 
 def apply_ims_rule(toc):
@@ -2604,9 +3494,10 @@ class StreamWalker:
                     if a['sus_ver'] == 0 and owner is not None:
                         b_assoc, b_dlg = _derive_assoc_dialog(owner, info)
                     st = self.state.setdefault(('audio', a['state_key']), {})
-                    if st.get('carried_for') != (info['ch_mode'], a['sus_ver']):
+                    carried_for = _carried_for(a, None)
+                    if st.get('carried_for') != carried_for:
                         st.clear()
-                        st['carried_for'] = (info['ch_mode'], a['sus_ver'])
+                        st['carried_for'] = carried_for
                     factor = a['frame_rate_factor']
                     if factor <= 0 or flb % factor:
                         owner_err = (f'FAIL: frame_rate_factor {factor} does not divide '
@@ -2641,7 +3532,12 @@ class StreamWalker:
                 out.append((idx, 'audio', owner_recs, owner_err))
                 out.append((ext_idx, 'hsf_ext', ext_recs, ext_err))
 
-        for idx, size in enumerate(sizes):
+        # The OAMD substreams first, whose timing the object substreams of their
+        # groups take (src/ac4dec/ERRATA.md, "Which oamd_timing_data() applies").
+        order = [i for i in range(len(sizes)) if (roles.get(i) or ('',))[0] == 'oamd']
+        order += [i for i in range(len(sizes)) if i not in order]
+        for idx in order:
+            size = sizes[idx]
             if idx in handled:
                 continue
             data = datas[idx]
@@ -2674,9 +3570,18 @@ class StreamWalker:
                 elif kind == 'audio':
                     a = role[1]
                     info = a['info']
+                    oc = None
                     if a['kind'] != 'chan':
-                        raise Refused(f'{a["kind"]} substream (object audio)')
-                    if info['ch_mode'] is None:
+                        oc = a['oc']
+                        if isinstance(oc, tuple):
+                            if oc[0] == 'refused':
+                                raise Refused(oc[1])
+                            raise SyntaxFail(oc[1])
+                        # The group's OAMD substream's timing, read in this
+                        # frame's first pass or carried from an earlier one.
+                        group = self.state.get(('oamd', oc['oamd_key']))
+                        oc = {**oc, 'group_blocks': group.get('blocks') if group else None}
+                    elif info['ch_mode'] is None:
                         raise Refused(f'reserved channel_mode {info["channel_mode"]:#b}')
                     if flb is None:
                         raise SyntaxFail(f'frame_rate_index {toc["frame_rate_index"]} is reserved')
@@ -2692,29 +3597,32 @@ class StreamWalker:
                     # the base frame (substream_roles()'s own comment).
                     st = self.state.setdefault(('audio', a['state_key']), {})
                     # What a substream carries between frames belongs to its
-                    # channel mode and substream version; a change of either
-                    # starts it afresh.
-                    if st.get('carried_for') != (info['ch_mode'], a['sus_ver']):
+                    # channel mode, substream version and object shape; a change
+                    # of any starts it afresh.
+                    carried_for = _carried_for(a, oc)
+                    if st.get('carried_for') != carried_for:
                         st.clear()
-                        st['carried_for'] = (info['ch_mode'], a['sus_ver'])
+                        st['carried_for'] = carried_for
                     factor = a['frame_rate_factor']
                     if factor <= 0 or flb % factor:
                         raise SyntaxFail(f'frame_rate_factor {factor} does not divide '
                                          f'frame_len_base {flb}')
                     parse_ac4_substream(data, info, a['b_iframe'], flb // factor, st, recs, b_alt,
-                                        a['sus_ver'], b_assoc, b_dlg)
-                elif kind in ('hsf_ext', 'oamd'):
+                                        a['sus_ver'], b_assoc, b_dlg, None, a['kind'], oc)
+                elif kind == 'oamd':
+                    oamd = role[1]
+                    oamd_state = self.state.setdefault(('oamd', oamd['key']), {})
+                    parse_oamd_substream(data, oamd, oamd_state, recs)
+                elif kind == 'hsf_ext':
                     raise Refused(f'{kind} substream')
             except Refused as exc:
                 err = f'refused: {exc}'
             except SyntaxFail as exc:
                 err = f'FAIL: {exc}'
-            # 'hsf_ext' keeps its own label now that one can carry real
-            # content (records), which the KIND check in
+            # 'hsf_ext' and 'oamd' keep their own labels, which the KIND check in
             # ac4_syntax_differential.py compares against C++'s SubstreamReport::
-            # Kind::kHsfExt; 'oamd' stays folded into 'audio' as before -
-            # still always refused, so always empty either side.
-            out.append((idx, 'audio' if kind == 'oamd' else kind, recs, err))
+            # Kind::kHsfExt and kOamd.
+            out.append((idx, kind, recs, err))
         out.sort(key=lambda t: t[0])
         return out
 

@@ -189,7 +189,12 @@ src/mp4/        mp4::mp4 — a standalone MP4/ISOBMFF muxer plus fMP4/CMAF + HLS
 src/mpegts/     mpegts::mpegts — a standalone MPEG-2 Transport Stream muxer, no ac3::forge dependency
 src/ac3adm/     ac3adm::ac3adm — BW64/RF64 + Audio Definition Model reader (opt-in, needs Boost)
 src/ac3iab/     ac3iab::ac3iab — a standalone SMPTE ST 2098-2 (IAB) bitstream reader, codec-blind
-src/ac4/        ac4::ac4 — a standalone AC-4 TOC/presentation/substream inspector, codec-blind
+src/ac4/        ac4::ac4 — a standalone AC-4 sync frame/TOC/presentation/substream inspector
+src/ac4dec/     ac4::decoder — an AC-4 decoder, from ETSI TS 103 190-1 and -2; no ac3::forge
+                dependency
+src/ac4enc/     ac4::encoder — an AC-4 encoder, in-tree only until its API is final
+src/ac4core/    ac4::core — the tables and transforms the AC-4 decoder and encoder share, a static
+                library with no headers of its own
 src/iamf/       iamf::iamf — a standalone IAMF v1.1 OBU/ISOBMFF writer, fed from an E-AC-3 decode
 src/sendspin/   ac3::sendspin — Sendspin player and server for Hearth (desktop tools and the
                 ESP32 sink); built with the hearth feature, not as part of the codec library

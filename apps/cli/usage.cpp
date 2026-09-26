@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 87> kOptionTokens{{
+constexpr std::array<OptionToken, 92> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -50,6 +50,7 @@ constexpr std::array<OptionToken, 87> kOptionTokens{{
     {"sign-objects", "write a keyed EMDF object signature (needs signing-key=)"},
     {"verify-objects", "check each frame's EMDF object signature instead of just decoding"},
     {"mix-lfe", "decode/monitor: fold the LFE into the §7.8 output-stage downmix too"},
+    {"mix-lfe=", "decode/monitor: on, or off to keep the LFE out of a downmix, as AC-4's is not by default"},
     {"fast-mdct", "names the default forward MDCT (the fast §7.9.4 path)"},
     {"fast-imdct", "names the default inverse MDCT (the fast §7.9.4 step 3)"},
     {"quiet", "no status output at all - errors and the payload only"},
@@ -73,17 +74,22 @@ constexpr std::array<OptionToken, 87> kOptionTokens{{
     {"search=", "AC-3 encode, and eac3-encode under CBR: bit-allocation search, off (default)"},
     {"fgaincod=", "encode: auto (default) or 0..7, §7.2.2.4 fast gain pinned for the whole encode"},
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
-    {"channels=", "decode/monitor: 2 or 1 apply the §7.8 output stage; as-coded (default) is a no-op"},
+    {"channels=", "decode/monitor: 2 or 1 apply the §7.8 output stage; as-coded (default) is a no-op; "
+                  "decode of AC-4: 5.1 folds a 7.X stream to 5.X"},
     {"ltrt-phase=", "decode/monitor: off skips §7.8.2's real 90° surround phase shift"},
     {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes; AC-4: a DRC decoder mode"},
     {"output-level=", "decode of AC-4: the level in dBFS dialnorm is taken to (Lout)"},
     {"dialogue-enhancement=", "decode of AC-4: raise the dialogue by 0 to 12 dB, capped by the stream"},
+    {"decoding=", "decode of AC-4: full (default) or core, the immersive element's 5.X.2 core"},
+    {"speakers=", "decode of AC-4: 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4, an immersive element's layout"},
     {"presentation=", "decode of AC-4: the presentation at this position of the table of contents"},
     {"presentation-id=", "decode of AC-4: the presentation with this presentation_id"},
     {"language=", "decode of AC-4: prefer the presentation in this language, a BCP 47 tag"},
     {"associated=", "decode of AC-4: prefer the presentation with this associated audio service"},
     {"dialogue-gain=", "decode of AC-4: g_dialog, the dialogue against music and effects, dB"},
     {"associated-gain=", "decode of AC-4: g_assoc, the associated audio's level, 0 dB or less"},
+    {"headphones", "decode of AC-4: a listener on headphones - their DRC mode, pre-virtualized presentations"},
+    {"md-compat=", "decode of AC-4: the md_compat level the decoder claims, 0 to 7 (default 3)"},
     {"syntax-trace=", "ac4-encode, and decode of AC-4: write every syntax element written or read"},
     {"codec-mode=", "ac4-encode: simple, aspx, aspx-acpl-1, aspx-acpl-2 or aspx-acpl-3"},
     {"experimental=", "ac4-encode: tools and layouts no outside reader has checked yet"},
@@ -388,7 +394,18 @@ void print_decode_topic() {
     fmt::println("       portable-headphones|off: default takes the mode Table 161 gives the");
     fmt::println("       output level, off compresses nothing. dialogue-enhancement=<dB> raises");
     fmt::println("       the dialogue where the stream sends its parameters (5.7.8), 0 to 12 dB");
-    fmt::println("       and no more than the stream's cap.");
+    fmt::println("       and no more than the stream's cap. decoding=core decodes an immersive");
+    fmt::println("       element's core, 5.X.2, as a low-complexity decoder does (ETSI TS 103");
+    fmt::println("       190-2 4.7); decoding=full, the default, decodes every channel.");
+    fmt::println("       speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4 renders an immersive element to");
+    fmt::println("       that layout by the channel renderer (190-2 5.10.2), the LFE where the");
+    fmt::println("       stream has one, with the stream's custom downmix gains and loudness");
+    fmt::println("       correction; core decoding renders to 5.1.2 at most. Without it the");
+    fmt::println("       element comes out in its source's layout, and channels= and downmix=");
+    fmt::println("       folds win over it. A presentation with objects (A-JOC or direct-coded,");
+    fmt::println("       190-2 4.8.3) comes out rendered to speakers by the layout renderer,");
+    fmt::println("       each object at the position and gain its metadata sets: to the layout");
+    fmt::println("       speakers=, channels= or downmix= names, and to 7.1.4 without them.");
     fmt::println("       A stream of several presentations decodes the one presentation=<n>");
     fmt::println("       (its position) or presentation-id=<id> names, or else the one that");
     fmt::println("       best meets language=<BCP 47 tag> and associated=visually-impaired|");
@@ -398,6 +415,21 @@ void print_decode_topic() {
     fmt::println("       substreams are mixed (TS 103 190-1 6.2.16): dialogue-gain=<dB> sets the");
     fmt::println("       dialogue against the music and effects, up to the stream's maximum,");
     fmt::println("       and associated-gain=<dB>, 0 or less, the associated audio.");
+    fmt::println("       md-compat=<0..7> is the md_compat level the decoder claims (3 by default;");
+    fmt::println("       a presentation above it is not selected). headphones says the listener");
+    fmt::println("       is on headphones: the portable headphones DRC mode where the output");
+    fmt::println("       level falls in the portable range, and a presentation rendered for");
+    fmt::println("       headphones before one that was not.");
+    fmt::println("       channels=2|1 and downmix=loro|ltrt|mono|auto fold AC-4 as they fold");
+    fmt::println("       E-AC-3 (6.2.17; auto takes the stream's preferred method, Lt/Rt in its");
+    fmt::println("       Pro Logic II form where the stream prefers that), and channels=5.1");
+    fmt::println("       folds a 7.X stream's extra pair into 5.X; the LFE goes into a two-");
+    fmt::println("       channel or mono fold at the stream's lfe_mixgain unless mix-lfe=off.");
+    fmt::println("       conceal=repeat|mute conceals a frame that will not decode, as for");
+    fmt::println("       E-AC-3, and syntax-trace=<file> writes every syntax element read.");
+    fmt::println("       The options only AC-3 and E-AC-3 read (drc=, heavy, ltrt-phase=,");
+    fmt::println("       programme= and the rest) are named and ignored for AC-4, and AC-4's for");
+    fmt::println("       AC-3 and E-AC-3.");
 }
 
 void print_ac4_encode_topic() {
@@ -473,6 +505,12 @@ void print_probe_topic() {
     fmt::println("       a per-access-unit dump and detail=blocks adds each block's Annex E");
     fmt::println("       tools and exponent strategies. Exit code is non-zero if any frame");
     fmt::println("       failed its CRC or the parser refused it, so this works as a gate.");
+    fmt::println("       For AC-4 it reports the sync frames, the first table of contents,");
+    fmt::println("       the frame rate and the rate a frame is coded at, the bit rate, the");
+    fmt::println("       I-frames and splices, and what the decoder reads of every frame:");
+    fmt::println("       each presentation (id, name, language, level, channels, substreams)");
+    fmt::println("       and the selected one's dialnorm, loudness, DRC modes, dialogue");
+    fmt::println("       enhancement and stereo downmix values.");
 }
 
 void print_mkv_topic() {

@@ -1339,6 +1339,87 @@ The sections below contain the complete change list and fixes.
   the presentation and the gains from its input. librempeg decodes a presentation's first substream
   alone, and MediaInfo reads a second parameter set after `de_ms_proc_flag` that the text does not
   send; `src/ac4dec/ERRATA.md` records the readings.
+- **AC-4 decodes the immersive element of 7.0.4 and 7.1.4, in full and core decoding, and renders
+  it by Part 2's channel renderer** (phase D9 of `planning/ac4.md`). Both transcriptions read
+  `immersive_channel_element()` with `immers_cfg` and A-JCC's `ajcc_data()` (Part 2 6.2.4 to 6.2.6),
+  and `ac4::Decoder` decodes the element in its five codec modes: Part 2 5.2's track assignment with
+  step 4 and Table 20's prediction, S-CPL on the inverse transform's output, A-SPX's immersive
+  pairing and gains, A-CPL's four modules and A-JCC (in `src/ac4core`, templated on `Real`), in full
+  decoding and in core decoding (`ac4::DecoderConfig::decoding`), which gives the 5.X.2 core by the
+  core gains, A-SPX on the first channel of a pair and A-JCC's core modules. Part 2's channel renderer
+  (5.10.2) takes the element from the layout its presence flags give to the one
+  `OutputConfig::downmix` names, which gains 7.X.4, 7.X.2, 7.X.0, 5.X.4 and 5.X.2: Tables 38 to 43 in
+  full decoding and 45 and 46 in core, with the custom downmix data the stream sends and the loudness
+  correction of the output, and for two channels and mono Part 1's Table 218 after 5.X.0. DRC's
+  transmitted gains take Part 2 Table 69's groups. The 9.X.4 modes and 22.2 are refused by name.
+  DEE's 5.1.4 legs, one per immersive codec mode it writes, decode with each of the ten tones on its
+  own channel, to 0.02 dB where the tops are coded channel by channel, and in core decoding each on
+  its core channel at the core gains; rendered to 5.1 and to two channels in both modes they equal
+  the renderer's matrices applied to their as-coded decode to 0.01 dB, as the gold set's 5.1.4 legs
+  do with their custom downmix data (`tools/checks/gain_ac4_decode.py`), and every table is held
+  against a second transcription in the tests. The encoder's frame writer gains the 7.X.4 channel
+  modes with their presence flags, and an A-JCC writer, with which constructed streams reach the
+  codec modes, groupings and routes DEE does not write; five are committed with their digests.
+  `ac3cli decode` takes `decoding=full|core` and `speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4`, and
+  `fuzz_ac4_decode` reaches the element from DEE's 5.1.4 seeds. librempeg does not decode the
+  element; `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 decoder's API for channel-based streams, and the AC-4 libraries installed** (phase D8
+  of `planning/ac4.md`). `ac4::Decoder::set_output()` and `set_presentation()` change the output
+  processing and the presentation from the next frame while a stream plays, where a decoder built
+  afresh waits for the next I-frame. `decode_by_block()` hands the output over in blocks of 256
+  samples whatever the frame length, allocating nothing per frame once the layout is set, and
+  `flush()` hands over the rest. `presentations()` reports each presentation of the table of
+  contents: its members and their roles, its channels, its language and, for an alternative
+  presentation, its name, whole or sent in chunks over several frames (Part 2 6.3.3.1.4; the reading
+  is in `src/ac4dec/ERRATA.md`, and `tools/references/ac4_presentations.py` takes the same one).
+  `metadata()` reports the selected presentation's loudness values, DRC configuration, dialogue
+  enhancement and downmix gains, and `latency_samples()` the decoder's delay, which equals the delay
+  the encoder counts on at every frame rate. `ac4::SyncFrameSplitter` splits the sync frames of a
+  stream that arrives in pieces, in storage the caller owns, and `ac4::frame_rate()` gives a table
+  of contents' frame rate. `ac3cli decode` takes `headphones`, `mix-lfe=on|off`, `md-compat=` and
+  `channels=5.1` for AC-4, and names in a warning an option of the other format's it was given;
+  `ac3cli probe` reports the frame rate, the bit rate, the I-frames, the splices, each version 1
+  presentation and the selected presentation's metadata, in its table and in `stream.ac4` of
+  `ac3forge.probe/1`, and Hearth's media information carries the same. The inspector, the decoder
+  and the shared core are installed and exported (`ac4::decoder_static` and `ac4::decoder_shared`,
+  each linking the inspector of its kind, and `ac4::core` beside a static decoder; pkg-config
+  `ac4`, `ac4dec` and `ac4core`), `tools/checks/check_install_consumer.sh` decodes a stream through
+  each installed decoder by CMake and by pkg-config, and `tools/ci/abi-allowlist/libac4dec.so.txt`
+  lists the decoder's exports. A test standing in for Hearth's engine decodes every committed stream
+  through the public API alone. `docs/library/ac4.md` and `examples/decode_ac4.cpp` show the API.
+- **Four items of the review of #700.** `DecoderConfig::syntax` held only the address of its
+  callable, so a lambda written in place was gone before the first record, which crashed MSVC's
+  Release build in phase D7: `ac4::SyntaxTrace` now owns a copy, the decoder and the encoder keep
+  one of their own, and `ac4::SyntaxSink`, the reference the readers hold, no longer binds a
+  temporary. A Huffman codeword the substream ends inside is `kTruncated` in every tool, where the
+  audio spectral frontend called it `kInvalidStream`. An HSF extension substream that nothing in
+  the table of contents names is reported, as refused and unread, with every other substream of
+  the substream index table. The Android app, the WebAssembly preset and the Python wheel no
+  longer compile the AC-4 libraries they do not link, until phase I4 binds them. Each has a test
+  that failed before its fix.
+- **AC-4 decodes object audio: A-JOC in full and core decoding, direct-coded objects, and their
+  metadata** (phase D10 of `planning/ac4.md`). Both transcriptions read `audio_data_ajoc()` with its
+  `var_channel_element()` downmix and A-JOC's `ajoc()` (Part 2 6.2.3.4 to 6.2.6), `audio_data_objs()`,
+  the object audio metadata of 6.2.8 and the OAMD substream, and `ac4::Decoder` decodes them: A-JOC's
+  reconstruction (Part 2 5.7, in `src/ac4core` and templated on `Real`: the parameter bands,
+  differential decoding and dequantisation, the interpolation and its ramp across frames, the
+  decorrelators and duckers and the decorrelation input matrix) in full decoding to the upmix's
+  objects and in core decoding to the downmix's signals or its static bed, with dialogue enhancement
+  in both (5.8.2.3, 5.8.2.4); direct-coded objects in the Part 1 elements, dynamic objects and beds
+  over as many substreams as a group spreads them, with theirs (5.8.2.5); and the intermediate
+  spatial format, rendered by Annex A.2.1's matrices, which `gen_ac4_tables.py` reads from Part 2's
+  attachment. `DecodedFrame::objects` hands each object over with its PCM and the Annex F properties
+  its metadata sets, each update at its sample in the output, and `object_common` the group's
+  common data; the API's additions are new types and appended members. Chromium's `ac4-ajoc.ac4`
+  decodes in both modes, seventeen objects in full decoding and ten in core, as its table of
+  contents lists them. The encoder's writers gain the A-JOC and object audio metadata syntax and the
+  table of contents' object substreams, with which eight constructed streams reach A-JOC's shapes,
+  the direct-coded kinds and the metadata's fields; committed with their digests, every object
+  decodes to the tones its coefficients make to 0.1 dB, and every update comes out at its sample and
+  position. `ac3cli decode` renders a presentation with objects to speakers through the layout
+  renderer Hearth plays E-AC-3's objects with (`apps/common/ac4_object_render.hpp`), 7.1.4 by
+  default, and a test holds each speaker to the objects' gains for their positions. librempeg
+  refuses object coding; `src/ac4dec/ERRATA.md` records the readings.
 - **The AC-4 encoder writes several substreams and the presentations of Part 2 Table 53** (phase E6
   of `planning/ac4.md`). `ac4::EncoderConfig::substreams` codes each substream from its own input
   channels, at its share of the rate, in a substream group of its own with its content classifier

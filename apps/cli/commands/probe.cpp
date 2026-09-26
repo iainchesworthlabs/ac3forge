@@ -454,6 +454,24 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary) {
     const auto& toc = summary.first_frame->toc;
     fmt::println("{:<16}{}", "bs version", toc.bitstream_version);
     fmt::println("{:<16}{} Hz", "sample rate", toc.sample_rate_hz);
+    if (summary.frame_rate) {
+        fmt::println("{:<16}{:.3f} fps, {} samples a frame at {:.2f} Hz", "frame rate",
+                     summary.frame_rate->frames_per_second, summary.frame_rate->frame_length,
+                     summary.frame_rate->internal_rate_hz);
+    }
+    if (summary.bitrate_kbps) {
+        fmt::println("{:<16}{:.1f} kbps", "bit rate", *summary.bitrate_kbps);
+    }
+    if (summary.min_iframe_interval && summary.max_iframe_interval) {
+        fmt::println("{:<16}{}, every {} frames", "I-frames", summary.iframes,
+                     *summary.min_iframe_interval == *summary.max_iframe_interval
+                         ? fmt::format("{}", *summary.min_iframe_interval)
+                         : fmt::format("{} to {}", *summary.min_iframe_interval,
+                                       *summary.max_iframe_interval));
+    } else {
+        fmt::println("{:<16}{}", "I-frames", summary.iframes);
+    }
+    fmt::println("{:<16}{}", "splices", summary.splices);
     fmt::println("{:<16}{}", "presentations", toc.n_presentations);
     for (const auto& group : toc.substream_groups) {
         for (const auto& sub : group.substreams) {
@@ -464,6 +482,72 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary) {
         for (const auto& [role, sub] : pres.substreams) {
             fmt::println("  {:<14}{}: {}", "", role, sub.channel_mode_name);
         }
+    }
+    // What the decoder read: each presentation, and the one it selects.
+    const std::optional<std::size_t> selected =
+        summary.metadata ? summary.metadata->presentation : std::optional<std::size_t>{};
+    for (const ac4::PresentationInfo& p : summary.presentations) {
+        std::string channels;
+        for (const ac4::Speaker s : p.speakers) {
+            channels += channels.empty() ? "" : " ";
+            channels += ac4::describe(s);
+        }
+        std::string roles;
+        for (const ac4::PresentationMember& m : p.members) {
+            roles += roles.empty() ? "" : ", ";
+            roles += ac4::describe(m.role);
+            if (!m.language.empty()) {
+                roles += " (" + m.language + ")";
+            }
+        }
+        fmt::println(
+            "{:<16}{}{}{}{}; {}; {}{}{}", fmt::format("presentation {}", p.index),
+            p.presentation_id ? fmt::format("id {}, ", *p.presentation_id) : std::string{},
+            p.name.empty() ? std::string{} : fmt::format("\"{}\", ", p.name),
+            p.md_compat ? fmt::format("md_compat {}, ", *p.md_compat) : std::string{},
+            channels.empty() ? "not decoded" : channels, roles, p.enabled ? "" : "disabled, ",
+            p.pre_virtualized ? "pre-virtualized, " : "",
+            selected == p.index ? "selected" : (p.selectable ? "selectable" : "not selectable"));
+    }
+    if (!summary.metadata) {
+        return;
+    }
+    const ac4::PresentationMetadata& m = *summary.metadata;
+    if (m.loudness.dialnorm_dbfs) {
+        fmt::println("{:<16}{:g} dBFS", "dialnorm", *m.loudness.dialnorm_dbfs);
+    }
+    if (m.loudness.integrated_lkfs) {
+        fmt::println("{:<16}{:.1f} LKFS integrated", "loudness", *m.loudness.integrated_lkfs);
+    }
+    if (m.loudness.max_true_peak_dbtp) {
+        fmt::println("{:<16}{:.1f} dBTP", "true peak", *m.loudness.max_true_peak_dbtp);
+    }
+    if (m.drc) {
+        std::string modes;
+        for (const ac4::DrcModeInfo& mode : m.drc->modes) {
+            modes += modes.empty() ? "" : ", ";
+            modes += fmt::format(
+                "{} {}", mode.id,
+                mode.repeat_of ? fmt::format("as {}", *mode.repeat_of)
+                : mode.compression == ac4::DrcModeInfo::Compression::kCurve ? "curve"
+                : mode.compression == ac4::DrcModeInfo::Compression::kGains ? "gains"
+                                                                            : "default profile");
+        }
+        fmt::println("{:<16}profile {}, modes {}", "DRC", m.drc->eac3_profile, modes);
+    }
+    if (m.dialogue_enhancement) {
+        const ac4::DialogueEnhancementInfo& de = *m.dialogue_enhancement;
+        fmt::println("{:<16}method {}, {}{}{}up to {:g} dB", "dialogue enh.", de.method,
+                     de.left ? "L " : "", de.right ? "R " : "", de.centre ? "C " : "",
+                     de.max_gain_db);
+    }
+    if (m.downmix) {
+        const ac4::DownmixInfo& d = *m.downmix;
+        fmt::println(
+            "{:<16}Lo/Ro centre {:g} dB, surround {:g} dB; Lt/Rt centre {:g} dB, surround {:g} "
+            "dB{}",
+            "downmix", d.loro_centre_db, d.loro_surround_db, d.ltrt_centre_db, d.ltrt_surround_db,
+            d.lfe_db ? fmt::format("; LFE {:g} dB", *d.lfe_db) : std::string{});
     }
 }
 

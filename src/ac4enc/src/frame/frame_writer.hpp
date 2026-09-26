@@ -15,9 +15,10 @@
 // (toc_writer.hpp): audio substreams, presentation substreams and EMDF payload
 // substreams, each written to the size the frame gives it, and the fitting
 // that makes a frame of several substreams exactly as long as a constant rate
-// asks. The encoder writes its frames with these; write_frame() is the
-// frame of one presentation of one substream, which the decoder's tests
-// build frames of the channel modes of Part 1 Table 88 with.
+// asks. The encoder writes its frames with these; write_frame() is the frame
+// of one presentation of one substream, with which the decoder's tests build
+// frames of the other channel modes of Part 1 Table 88 and of Part 2's 7.X.4
+// modes.
 
 namespace ac4::detail {
 
@@ -71,7 +72,7 @@ struct AudioSubstreamFields {
 // normalisation, further loudness values, DRC (its configuration in
 // I-frames, and the frame's gains where a mode sends them), the substream
 // groups' gains and the associated audio's values, and custom_dmx_data() and
-// loud_corr() for the presentation's channel mode.
+// loud_corr() for the presentation's channels.
 struct PresentationSubstreamFields {
     bool iframe = true;  // b_pres_ndot
     const AlternativeCodes* alternative = nullptr;
@@ -80,8 +81,9 @@ struct PresentationSubstreamFields {
     const DrcCodes* drc = nullptr;
     std::span<const DrcModeGains> drc_gains;
     PresentationMixCodes mix{};
-    int pres_ch_mode = 1;  // clause 6.3.3.1.27
-    bool pres_has_lfe = false;
+    // pres_ch_mode (clause 6.3.3.1.27), its core and top pairs, and
+    // b_pres_has_lfe.
+    PresentationChannels channels{};
     const DownmixCodes* downmix = nullptr;
 };
 
@@ -133,8 +135,15 @@ struct FrameFields {
     bool iframe = true;         // b_iframe_global, b_pres_ndot and b_audio_ndot
     int fs_index = 1;           // Part 1 Table 82: 1 = 48 kHz, 0 = 44.1 kHz
     int frame_rate_index = 13;
-    int ch_mode = 1;            // Part 1 Table 88: 0 mono, 1 stereo, 2 3.0, 3 and 4 5.X, 5 to 10 7.X
+    // Part 1 Table 88: 0 mono, 1 stereo, 2 3.0, 3 and 4 5.X, 5 to 10 7.X; and
+    // Part 2 Table 56's 11 and 12, 7.0.4 and 7.1.4.
+    int ch_mode = 1;
     bool add_ch_base = false;   // for 7.X 5/2/0 and 3/2/2 (Part 2 clause 6.3.2.7)
+    // The 7.X.4 modes' channels the source has (Part 2 clauses 6.3.2.7.3 to
+    // 6.3.2.7.5, Tables 57 to 59).
+    bool b_4_back_channels_present = true;
+    bool b_centre_present = true;
+    int top_channels_present = 3;
     int dialnorm_bits = 124;    // Part 1 clause 4.3.12.2.1: -dialnorm_bits / 4 dBFS
     // The presentation's md_compat and presentation_id (Part 2 Table 55,
     // clause 6.3.2.2.4a); unset, none.

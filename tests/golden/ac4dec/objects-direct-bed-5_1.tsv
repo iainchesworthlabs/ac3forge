@@ -1,0 +1,26 @@
+# ac4-syntax-digest/1 ../ac4dec/objects/direct-bed-5_1.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	audio	5741	45958	0xabdab64b
+0	1	oamd	24	32	0xb596252b
+0	2	presentation	8	18	0x8ed0df0d
+1	0	audio	5741	45966	0xdee19c89
+1	1	oamd	25	35	0x1890036c
+1	2	presentation	8	18	0x8ed0df0d
+2	0	audio	5741	45966	0x3ff38e0a
+2	1	oamd	25	38	0x9a2a9ea0
+2	2	presentation	8	18	0x8ed0df0d
+3	0	audio	5741	45958	0x9b4b3756
+3	1	oamd	24	32	0xb596252b
+3	2	presentation	8	18	0x8ed0df0d
+4	0	audio	5741	45958	0x70ffc3e9
+4	1	oamd	25	35	0x1890036c
+4	2	presentation	8	18	0x8ed0df0d
+5	0	audio	5741	45958	0x967b6ba2
+5	1	oamd	25	38	0x9a2a9ea0
+5	2	presentation	8	18	0x8ed0df0d
+6	0	audio	5741	45950	0x1a6a14cb
+6	1	oamd	24	32	0xb596252b
+6	2	presentation	8	18	0x8ed0df0d
+7	0	audio	5741	45958	0x5b627d9d
+7	1	oamd	25	35	0x1890036c
+7	2	presentation	8	18	0x8ed0df0d

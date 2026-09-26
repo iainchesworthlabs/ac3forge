@@ -533,6 +533,13 @@ TEST_CASE("media info: an AC-4 stream's table of contents", "[hearth][media-info
     CHECK(root["probe"]["stream"]["codec"].equals("ac4"));
     CHECK(root["probe"]["stream"]["ac4"]["bitstream_version"].as_int() == 2);
     CHECK(root["probe"]["stream"]["ac4"]["n_presentations"].as_int() == 1);
+    // The decoder's reading, as ac3cli probe writes it: the presentation and
+    // the metadata its frames send.
+    CHECK(info.ac4->presentations.size() == 1);
+    CHECK(root["probe"]["stream"]["ac4"]["presentations_v1"].size() == 1);
+    CHECK(root["probe"]["stream"]["ac4"]["presentations_v1"].at(0)["selectable"].as_bool() == true);
+    CHECK(root["probe"]["stream"]["ac4"]["selected_presentation"].as_int() == 0);
+    CHECK(root["probe"]["stream"]["ac4"]["metadata"]["loudness"]["dialnorm_dbfs"].is_number());
 }
 
 TEST_CASE("media info: a legacy AC-4 presentation's substreams are valid JSON", "[hearth][media-info]") {

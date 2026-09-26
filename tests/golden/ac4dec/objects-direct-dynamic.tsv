@@ -1,0 +1,34 @@
+# ac4-syntax-digest/1 ../ac4dec/objects/direct-dynamic.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	audio	3510	28270	0x78e6203f
+0	1	audio	1118	8894	0x9969b5a3
+0	2	oamd	226	516	0x92b0e07d
+0	3	presentation	8	18	0x8ed0df0d
+1	0	audio	3510	28278	0x7314341c
+1	1	audio	1118	8894	0x9969b5a3
+1	2	oamd	58	84	0xbf6bac90
+1	3	presentation	8	18	0x8ed0df0d
+2	0	audio	3510	28278	0x37fa1f6c
+2	1	audio	1118	8894	0x9969b5a3
+2	2	oamd	58	84	0xe33952e8
+2	3	presentation	8	18	0x8ed0df0d
+3	0	audio	3510	28270	0xac77c6a7
+3	1	audio	1118	8894	0x9969b5a3
+3	2	oamd	58	84	0xc2323c31
+3	3	presentation	8	18	0x8ed0df0d
+4	0	audio	3510	28270	0x130e024e
+4	1	audio	1118	8894	0x9969b5a3
+4	2	oamd	227	519	0x58c7736b
+4	3	presentation	8	18	0x8ed0df0d
+5	0	audio	3510	28270	0x10ae5bd4
+5	1	audio	1118	8894	0x9969b5a3
+5	2	oamd	58	84	0x04095ae7
+5	3	presentation	8	18	0x8ed0df0d
+6	0	audio	3510	28262	0x8feff670
+6	1	audio	1118	8894	0x9969b5a3
+6	2	oamd	58	84	0x26c53eb9
+6	3	presentation	8	18	0x8ed0df0d
+7	0	audio	3510	28270	0xa33c3cb6
+7	1	audio	1118	8894	0x9969b5a3
+7	2	oamd	58	84	0x07ce5060
+7	3	presentation	8	18	0x8ed0df0d

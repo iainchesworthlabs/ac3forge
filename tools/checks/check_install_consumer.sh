@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Installed-package consumer check for ac3forge's C API.
+# Installed-package consumer check for ac3forge's C API and its AC-4 decoder.
 #
 # tests/capi and the C examples compile against the build tree, where the generated headers sit
 # under <build>/src/capi/generated whether or not an install rule copies them. That is how
@@ -25,7 +25,10 @@
 # packages (cmake/Packaging.cmake), so the CLI and GUI stay out and a tree that is already built
 # takes seconds. Each build directory is one AC3FORGE_INSTALL_BOTH_LINKAGES/BUILD_SHARED_LIBS
 # combination and needs AC3FORGE_BUILD_CAPI=ON; pass several to check several. Every exported C
-# API target is linked and run, static and shared; install_consumer/CMakeLists.txt says how.
+# API target is linked and run, static and shared; install_consumer/CMakeLists.txt says how. So is
+# every exported AC-4 decoder target, in a C++ program that decodes a committed stream
+# (install_consumer/consumer_ac4.cpp), and a tree built with AC3FORGE_BUILD_AC4=ON whose package
+# exports none fails.
 #
 # The same prefix is then used the way a Makefile, Meson or autotools build uses it, through its
 # .pc files (cmake/PkgConfig.cmake), which are all such a build has. The C program is linked with
@@ -37,7 +40,9 @@
 # it drops an -lm that comes before the archive calling it, so a .pc that lists its libraries in
 # the wrong order fails under either compiler. Each .pc that names an archive is also linked whole
 # into an empty C program on its own, which finds what one component's file lacks even when no
-# consumer reaches that archive. It needs pkg-config, or whatever $PKG_CONFIG names.
+# consumer reaches that archive. The AC-4 program is built the same way from ac4dec.pc, by the C++
+# compiler that configured the tree, where the package has one. It needs pkg-config, or whatever
+# $PKG_CONFIG names.
 #
 # Usage:  ./tools/checks/check_install_consumer.sh <build-dir>...
 # Exit:   0 = every tree's archives linked whole, its consumers built and ran and its .pc files
@@ -71,10 +76,10 @@ pc() {
 }
 
 # The prefix, consumed through pkg-config alone. $1 = the prefix, $2 = a scratch directory, $3 =
-# the C compiler that configured the tree, or empty for cc.
+# the C compiler that configured the tree, or empty for cc, $4 = its C++ compiler, or empty for c++.
 pkg_config_check() {
-    local prefix="$1" work="$2" cc="${3:-${CC:-cc}}"
-    local -a flags libs whole static=()
+    local prefix="$1" work="$2" cc="${3:-${CC:-cc}}" cxx="${4:-${CXX:-c++}}"
+    local -a flags libs whole static=() ac4_static=()
     local pc_file name flag libdir
 
     pc_file="$(find "$prefix" -name ac3forge_c.pc -print -quit)"
@@ -101,6 +106,25 @@ pkg_config_check() {
         return 1
     fi
     "$work/pc_consumer"
+
+    # The AC-4 decoder through ac4dec.pc, where the package has one, in the same way. Its Requires
+    # line brings ac4.pc, and a static-only install's Requires.private the core's archive.
+    if [[ -f "$pc_dir/ac4dec.pc" ]]; then
+        case " $(pc --libs-only-l ac4dec) " in
+            *" -lac4dec_static "*) ac4_static=(--static) ;;
+            *) ;;
+        esac
+        libdir="$(pc --variable=libdir ac4dec)"
+        read -r -a flags <<< "$(pc ${ac4_static[@]+"${ac4_static[@]}"} --cflags --libs ac4dec)"
+        echo "--- $cxx consumer_ac4.cpp, flags from: pkg-config ${ac4_static[*]:+${ac4_static[*]} }--cflags --libs ac4dec"
+        echo "    ${flags[*]}"
+        if ! "$cxx" -std=c++23 "$root/tools/checks/install_consumer/consumer_ac4.cpp" \
+                -o "$work/pc_consumer_ac4" -Wl,--as-needed -Wl,-rpath,"$libdir" "${flags[@]}"; then
+            echo "::error::the flags pkg-config prints for ac4dec do not link the AC-4 consumer (the linker's complaint is above) - see cmake/PkgConfig.cmake" >&2
+            return 1
+        fi
+        "$work/pc_consumer_ac4" "$root/tests/golden/external-baseline/ac4-51-film-96/dee.ac4"
+    fi
 
     # One .pc at a time, every archive it names linked whole into a program that calls nothing.
     printf 'int main(void) { return 0; }\n' > "$work/empty.c"
@@ -167,11 +191,14 @@ for build in "$@"; do
         compilers+=("-DCMAKE_CXX_COMPILER=$cxx_compiler")
     fi
 
+    # AC3FORGE_EXPECT_AC4: a tree that built the AC-4 libraries has to have installed them.
+    expect_ac4="$(cache_value "$build" AC3FORGE_BUILD_AC4)"
     cmake -S "$root/tools/checks/install_consumer" -B "$consumer_build" \
         -DCMAKE_PREFIX_PATH="$prefix" \
+        -DAC3FORGE_EXPECT_AC4="${expect_ac4:-OFF}" \
         ${compilers[@]+"${compilers[@]}"}
     cmake --build "$consumer_build"
     ctest --test-dir "$consumer_build" --output-on-failure
 
-    pkg_config_check "$prefix" "$scratch/$index" "$c_compiler"
+    pkg_config_check "$prefix" "$scratch/$index" "$c_compiler" "$cxx_compiler"
 done

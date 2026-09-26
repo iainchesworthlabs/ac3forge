@@ -156,6 +156,24 @@ ACPL_ROUTING_MARGIN_DB = 3.0
 LFE_CHANNEL = {6: 3}
 LFE_BAND_HZ = (20.0, 100.0)
 LFE_GAIN_TOLERANCE_DB = 0.5
+# The immersive element's legs: DEE's 5.1.4, its source's channels in the order the decoder writes
+# them as coded (and tones_514 carries its tones in, TONE_HZ).
+IMMERSIVE_LAYOUT = "5.1.4"
+IMMERSIVE_CHANNELS = ("L", "R", "C", "LFE", "Ls", "Rs", "Tfl", "Tfr", "Tbl", "Tbr")
+# At 768 kbps DEE codes the element in SCPL, without A-SPX, to about 17 kHz: a transient, a quarter
+# of whose energy is above 18 kHz, keeps its level within 0.04 dB of the source's and 31 dB SNR
+# below 16 kHz, and loses 2.7 dB over the whole band. So SCPL is scored below 16 kHz.
+SCPL_TOP_HZ = 16000.0
+# DEE's 5.1.4 at 192 kbps codes ten channels in the rate its 5.1 codes six in, and its film's sides
+# sit 0.21 dB under the source's there, the most any channel of the legs below does.
+IMMERSIVE_GAIN_TOLERANCE_DB = 0.25
+# The G1 legs (the gold manifest's g1_legs) --g1 adds: DEE's 5.1.4 film, speech, sweeps and
+# transients at each of its 5.1.4 rates, which take its three immersive codec modes. Its noise legs
+# are left out: white noise codes at 7 to 13 dB SNR, and its level falls 0.3 to 0.7 dB with the
+# bands the encoder leaves empty, at every rate.
+G1_LEGS = tuple(f"514-{content}-{kbps}"
+                for content in ("film", "speech", "sweep", "transient")
+                for kbps in (192, 256, 288, 320, 384, 448, 512, 768))
 
 # Per leg: (SNR floor per channel in dB, LSD ceiling in dB, tile ceiling in dB or None for
 # SIMPLE, MOS floor or None where ViSQOL was not installed), the first measurement less (plus) the
@@ -334,6 +352,197 @@ ACPL_PINS = {
         None,
         None,
         12.4, 15.10, 4.63),
+}
+# The immersive legs, by (leg, "full" or "core"): (SNR floors per scored signal, immersive_signals'
+# columns; the routing floor in dB for a tone leg, else None; the LSD ceiling; the MOS floor or
+# None). Measured 2026-09-26 with the decoder of phase D9.
+IMMERSIVE_PINS = {
+    ("ac4-514-tones-256", "full"): ((48.7, 49.6, 47.3, 18.7, 52.7, 46.5, 46.1, 44.7), 61.3, 12.31,
+                                    4.63),
+    ("ac4-514-tones-256", "core"): ((48.7, 49.6, 47.3, 18.7, 52.7, 46.5, 46.1, 44.7), 61.3, 12.30,
+                                    4.63),
+    ("ac4-514-tones-512", "full"): ((42.5, 45.3, 48.4, 18.7, 43.2, 47.9, 42.6, 42.6, 42.0, 42.3),
+                                    61.3, 11.90, 4.63),
+    ("ac4-514-tones-512", "core"): ((42.5, 45.3, 48.4, 18.7, 43.2, 47.9, 42.3, 42.4), 61.3, 12.00,
+                                    4.63),
+    ("ac4-514-tones-768", "full"): ((42.7, 44.8, 48.4, 18.7, 43.7, 48.4, 42.8, 43.0, 41.9, 42.6),
+                                    61.3, 11.63, 4.63),
+    ("ac4-514-tones-768", "core"): ((42.7, 44.8, 48.4, 18.7, 43.7, 48.4, 42.4, 42.8),
+                                    61.3, 11.89, 4.63),
+    ("514-film-192", "full"): ((17.0, 17.0, 26.1, -3.2, 14.2, 14.3, 15.1, 15.4), None, 2.66, 4.41),
+    ("514-film-192", "core"): ((17.0, 17.0, 26.1, -3.2, 14.2, 14.3, 15.1, 15.4), None, 2.66, 4.38),
+    ("514-film-256", "full"): ((19.5, 19.6, 28.8, -3.2, 16.4, 16.5, 18.3, 18.6), None, 2.43, 4.52),
+    ("514-film-256", "core"): ((19.5, 19.6, 28.8, -3.2, 16.4, 16.5, 18.3, 18.6), None, 2.43, 4.51),
+    ("514-film-288", "full"): ((21.6, 21.6, 30.6, -3.2, 18.5, 18.6, 20.3, 20.5), None, 2.33, 4.53),
+    ("514-film-288", "core"): ((21.6, 21.6, 30.6, -3.2, 18.5, 18.6, 20.3, 20.5), None, 2.33, 4.51),
+    ("514-film-320", "full"): ((23.0, 23.1, 31.9, -3.2, 20.2, 20.3, 21.7, 22.0), None, 2.34, 4.56),
+    ("514-film-320", "core"): ((23.0, 23.1, 31.9, -3.2, 20.2, 20.3, 21.7, 22.0), None, 2.34, 4.55),
+    ("514-film-384", "full"): ((25.6, 25.5, 34.8, -3.2, 23.0, 23.0, 24.2, 24.5), None, 2.23, 4.58),
+    ("514-film-384", "core"): ((25.6, 25.5, 34.8, -3.2, 23.0, 23.0, 24.2, 24.5), None, 2.23, 4.58),
+    ("514-film-448", "full"): ((27.7, 27.7, 36.4, -3.2, 25.2, 25.4, 26.3, 26.5), None, 2.15, 4.59),
+    ("514-film-448", "core"): ((27.7, 27.7, 36.4, -3.2, 25.2, 25.4, 26.3, 26.5), None, 2.15, 4.59),
+    ("514-film-512", "full"): ((25.8, 25.8, 33.7, -3.2, 24.5, 24.5, 24.8, 25.1, 21.9, 22.4),
+                               None, 2.39, 4.60),
+    ("514-film-512", "core"): ((25.8, 25.8, 33.7, -3.2, 24.5, 24.5, 24.9, 25.2), None, 2.60, 4.58),
+    ("514-film-768", "full"): ((30.0, 30.1, 37.1, -3.2, 28.1, 28.2, 29.8, 30.0, 27.3, 27.7),
+                               None, 2.10, 4.62),
+    ("514-film-768", "core"): ((30.0, 30.1, 37.1, -3.2, 28.1, 28.2, 29.8, 30.0), None, 2.27, 4.62),
+    ("514-music-192", "full"): ((20.0, 20.1, 19.0, -3.3, 14.9, 15.0, 15.7, 16.0), None, 2.56, 4.33),
+    ("514-music-192", "core"): ((20.0, 20.1, 19.0, -3.3, 14.9, 15.0, 15.7, 16.0), None, 2.56, 4.37),
+    ("514-music-256", "full"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6, 18.9), None, 2.32, 4.56),
+    ("514-music-256", "core"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6, 18.9), None, 2.32, 4.56),
+    ("514-music-256-height-front-0", "full"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6, 18.9),
+                                               None, 2.32, 4.56),
+    ("514-music-256-height-front-0", "core"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6, 18.9),
+                                               None, 2.32, 4.56),
+    ("514-music-256-height-front-minf", "full"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6, 18.9),
+                                                  None, 2.32, 4.56),
+    ("514-music-256-height-front-minf", "core"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6, 18.9),
+                                                  None, 2.32, 4.56),
+    ("514-music-256-height-front_and_surround-0", "full"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2,
+                                                             18.6, 18.9), None, 2.32, 4.56),
+    ("514-music-256-height-front_and_surround-0", "core"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2,
+                                                             18.6, 18.9), None, 2.32, 4.56),
+    ("514-music-256-height-front_and_surround-minf", "full"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2,
+                                                                18.6, 18.9), None, 2.32, 4.56),
+    ("514-music-256-height-front_and_surround-minf", "core"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2,
+                                                                18.6, 18.9), None, 2.32, 4.56),
+    ("514-music-256-height-surround-0", "full"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6, 18.9),
+                                                  None, 2.32, 4.56),
+    ("514-music-256-height-surround-0", "core"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6, 18.9),
+                                                  None, 2.32, 4.56),
+    ("514-music-256-height-surround-minf", "full"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6,
+                                                      18.9), None, 2.32, 4.56),
+    ("514-music-256-height-surround-minf", "core"): ((23.2, 23.2, 21.7, -3.2, 17.1, 17.2, 18.6,
+                                                      18.9), None, 2.32, 4.56),
+    ("514-music-288", "full"): ((24.9, 24.9, 23.9, -3.2, 19.2, 19.2, 20.7, 20.9), None, 2.23, 4.57),
+    ("514-music-288", "core"): ((24.9, 24.9, 23.9, -3.2, 19.2, 19.2, 20.7, 20.9), None, 2.23, 4.58),
+    ("514-music-320", "full"): ((26.3, 26.3, 25.8, -3.2, 21.0, 21.0, 22.1, 22.3), None, 2.32, 4.58),
+    ("514-music-320", "core"): ((26.3, 26.3, 25.8, -3.2, 21.0, 21.0, 22.1, 22.3), None, 2.32, 4.57),
+    ("514-music-384", "full"): ((28.4, 28.4, 29.0, -3.2, 23.6, 23.7, 24.5, 24.7), None, 2.21, 4.60),
+    ("514-music-384", "core"): ((28.4, 28.4, 29.0, -3.2, 23.6, 23.7, 24.5, 24.7), None, 2.21, 4.59),
+    ("514-music-448", "full"): ((30.2, 30.2, 31.0, -3.2, 25.7, 25.8, 26.5, 26.8), None, 2.13, 4.61),
+    ("514-music-448", "core"): ((30.2, 30.2, 31.0, -3.2, 25.7, 25.8, 26.5, 26.8), None, 2.13, 4.62),
+    ("514-music-512", "full"): ((28.3, 28.2, 28.6, -3.2, 25.2, 25.2, 24.9, 25.2, 22.1, 22.5),
+                                None, 2.38, 4.60),
+    ("514-music-512", "core"): ((28.3, 28.2, 28.6, -3.2, 25.2, 25.2, 25.2, 25.4), None, 2.59, 4.61),
+    ("514-music-768", "full"): ((32.3, 32.3, 32.6, -3.2, 28.6, 28.6, 29.6, 29.8, 27.0, 27.3),
+                                None, 1.95, 4.63),
+    ("514-music-768", "core"): ((32.3, 32.3, 32.6, -3.2, 28.6, 28.6, 29.8, 29.9), None, 2.10, 4.62),
+    ("514-speech-192", "full"): ((22.0, 22.0, 29.8, None, 15.4, 15.6, 15.4, 15.7),
+                                 None, 1.88, 4.27),
+    ("514-speech-192", "core"): ((22.0, 22.0, 29.8, None, 15.4, 15.6, 15.4, 15.7),
+                                 None, 1.88, 4.26),
+    ("514-speech-256", "full"): ((25.1, 25.1, 32.9, None, 17.5, 17.6, 18.2, 18.5),
+                                 None, 1.64, 4.32),
+    ("514-speech-256", "core"): ((25.1, 25.1, 32.9, None, 17.5, 17.6, 18.2, 18.5),
+                                 None, 1.64, 4.31),
+    ("514-speech-288", "full"): ((26.8, 26.8, 34.5, None, 19.6, 19.6, 20.1, 20.4),
+                                 None, 1.54, 4.34),
+    ("514-speech-288", "core"): ((26.8, 26.8, 34.5, None, 19.6, 19.6, 20.1, 20.4),
+                                 None, 1.55, 4.33),
+    ("514-speech-320", "full"): ((27.8, 27.8, 35.5, None, 21.1, 21.1, 21.4, 21.7),
+                                 None, 1.46, 4.48),
+    ("514-speech-320", "core"): ((27.8, 27.8, 35.5, None, 21.1, 21.1, 21.4, 21.7),
+                                 None, 1.46, 4.47),
+    ("514-speech-384", "full"): ((30.0, 30.0, 37.8, None, 23.7, 23.8, 23.8, 24.1),
+                                 None, 1.35, 4.50),
+    ("514-speech-384", "core"): ((30.0, 30.0, 37.8, None, 23.7, 23.8, 23.8, 24.1),
+                                 None, 1.35, 4.50),
+    ("514-speech-448", "full"): ((32.0, 32.0, 38.9, None, 26.1, 26.2, 26.2, 26.4),
+                                 None, 1.27, 4.51),
+    ("514-speech-448", "core"): ((32.0, 32.0, 38.9, None, 26.1, 26.2, 26.2, 26.4),
+                                 None, 1.27, 4.51),
+    ("514-speech-512", "full"): ((30.4, 30.4, 37.8, None, 23.8, 23.9, 23.8, 24.1, 21.8, 21.9),
+                                 None, 1.72, 4.56),
+    ("514-speech-512", "core"): ((30.4, 30.4, 37.8, None, 23.8, 23.9, 23.8, 24.0),
+                                 None, 1.59, 4.53),
+    ("514-speech-768", "full"): ((33.8, 33.8, 38.8, None, 27.7, 27.9, 29.2, 29.6, 27.5, 27.7),
+                                 None, 1.38, 4.62),
+    ("514-speech-768", "core"): ((33.8, 33.8, 38.8, None, 27.7, 27.9, 29.3, 29.5),
+                                 None, 1.26, 4.63),
+    ("514-sweep-192", "full"): ((37.4, 36.3, 36.0, 8.0, 35.7, 35.6, 35.6, 35.7), None, 12.05, 3.38),
+    ("514-sweep-192", "core"): ((37.4, 36.3, 36.0, 8.0, 35.7, 35.6, 35.6, 35.7), None, 12.04, 3.35),
+    ("514-sweep-256", "full"): ((37.5, 36.4, 36.2, 8.0, 35.7, 35.8, 35.5, 35.8), None, 11.86, 4.16),
+    ("514-sweep-256", "core"): ((37.5, 36.4, 36.2, 8.0, 35.7, 35.8, 35.5, 35.8), None, 11.86, 4.12),
+    ("514-sweep-288", "full"): ((37.5, 36.4, 36.2, 8.0, 35.7, 35.8, 35.5, 35.8), None, 11.86, 4.16),
+    ("514-sweep-288", "core"): ((37.5, 36.4, 36.2, 8.0, 35.7, 35.8, 35.5, 35.8), None, 11.86, 4.12),
+    ("514-sweep-320", "full"): ((37.6, 36.4, 36.2, 8.0, 35.6, 35.7, 35.5, 35.8), None, 11.78, 4.44),
+    ("514-sweep-320", "core"): ((37.6, 36.4, 36.2, 8.0, 35.6, 35.7, 35.5, 35.8), None, 11.77, 4.42),
+    ("514-sweep-384", "full"): ((37.6, 36.4, 36.3, 8.0, 35.6, 35.7, 35.5, 35.8), None, 11.77, 4.44),
+    ("514-sweep-384", "core"): ((37.6, 36.4, 36.3, 8.0, 35.6, 35.7, 35.5, 35.8), None, 11.77, 4.42),
+    ("514-sweep-448", "full"): ((37.6, 36.4, 36.3, 8.0, 35.6, 35.7, 35.5, 35.8), None, 11.77, 4.44),
+    ("514-sweep-448", "core"): ((37.6, 36.4, 36.3, 8.0, 35.6, 35.7, 35.5, 35.8), None, 11.77, 4.42),
+    ("514-sweep-512", "full"): ((36.4, 35.7, 36.3, 8.0, 35.3, 35.3, 35.3, 35.5, 35.7, 36.1),
+                                None, 13.58, 4.37),
+    ("514-sweep-512", "core"): ((36.4, 35.7, 36.3, 8.0, 35.3, 35.3, 35.5, 35.8), None, 12.28, 4.50),
+    ("514-sweep-768", "full"): ((36.5, 35.8, 36.3, 8.0, 35.4, 35.4, 35.4, 35.6, 35.9, 36.2),
+                                None, 13.33, 4.37),
+    ("514-sweep-768", "core"): ((36.5, 35.8, 36.3, 8.0, 35.4, 35.4, 35.7, 35.9), None, 12.21, 4.37),
+    ("514-tones-192", "full"): ((48.4, 48.4, 47.1, 18.7, 53.5, 46.4, 46.4, 45.1),
+                                67.5, 15.19, 4.63),
+    ("514-tones-192", "core"): ((48.4, 48.4, 47.1, 18.7, 53.5, 46.4, 46.4, 45.1),
+                                67.5, 15.19, 4.63),
+    ("514-tones-256", "full"): ((48.4, 48.4, 47.1, 18.7, 52.8, 46.4, 46.4, 45.1),
+                                67.5, 12.17, 4.63),
+    ("514-tones-256", "core"): ((48.4, 48.4, 47.1, 18.7, 52.8, 46.4, 46.4, 45.1),
+                                67.5, 12.16, 4.63),
+    ("514-tones-288", "full"): ((48.4, 48.4, 47.1, 18.7, 52.8, 46.4, 46.4, 45.1),
+                                67.5, 12.17, 4.63),
+    ("514-tones-288", "core"): ((48.4, 48.4, 47.1, 18.7, 52.8, 46.4, 46.4, 45.1),
+                                67.5, 12.16, 4.63),
+    ("514-tones-320", "full"): ((48.4, 48.4, 47.1, 18.7, 52.3, 46.4, 46.4, 45.1),
+                                67.5, 11.76, 4.63),
+    ("514-tones-320", "core"): ((48.4, 48.4, 47.1, 18.7, 52.3, 46.4, 46.4, 45.1),
+                                67.5, 11.75, 4.63),
+    ("514-tones-384", "full"): ((48.4, 48.4, 47.5, 18.7, 52.3, 46.4, 46.4, 45.1),
+                                67.5, 11.76, 4.63),
+    ("514-tones-384", "core"): ((48.4, 48.4, 47.5, 18.7, 52.3, 46.4, 46.4, 45.1),
+                                67.5, 11.75, 4.63),
+    ("514-tones-448", "full"): ((48.4, 48.4, 47.5, 18.7, 52.3, 46.4, 46.4, 45.1),
+                                67.5, 11.76, 4.63),
+    ("514-tones-448", "core"): ((48.4, 48.4, 47.5, 18.7, 52.3, 46.4, 46.4, 45.1),
+                                67.5, 11.75, 4.63),
+    ("514-tones-512", "full"): ((42.8, 44.6, 48.2, 18.7, 43.4, 48.0, 43.1, 43.1, 42.2, 42.9),
+                                67.5, 11.76, 4.63),
+    ("514-tones-512", "core"): ((42.8, 44.6, 48.2, 18.7, 43.4, 48.0, 42.6, 43.0),
+                                67.5, 11.86, 4.63),
+    ("514-tones-768", "full"): ((43.3, 44.6, 48.2, 18.7, 43.8, 48.3, 43.3, 43.4, 42.3, 43.2),
+                                67.5, 11.51, 4.63),
+    ("514-tones-768", "core"): ((43.3, 44.6, 48.2, 18.7, 43.8, 48.3, 42.7, 43.3),
+                                67.5, 11.77, 4.63),
+    ("514-transient-192", "full"): ((30.5, 31.0, 30.8, 16.5, 29.6, 30.3, 29.6, 29.8),
+                                    None, 2.55, 4.56),
+    ("514-transient-192", "core"): ((30.5, 31.0, 30.8, 16.5, 29.6, 30.3, 29.6, 29.8),
+                                    None, 2.55, 4.55),
+    ("514-transient-256", "full"): ((31.9, 32.4, 32.3, 16.5, 30.5, 31.6, 30.7, 31.1),
+                                    None, 2.44, 4.57),
+    ("514-transient-256", "core"): ((31.9, 32.4, 32.3, 16.5, 30.5, 31.6, 30.7, 31.1),
+                                    None, 2.45, 4.57),
+    ("514-transient-288", "full"): ((31.9, 32.4, 32.3, 16.5, 30.5, 31.6, 30.7, 31.1),
+                                    None, 2.44, 4.57),
+    ("514-transient-288", "core"): ((31.9, 32.4, 32.3, 16.5, 30.5, 31.6, 30.7, 31.1),
+                                    None, 2.45, 4.57),
+    ("514-transient-320", "full"): ((32.2, 32.4, 32.6, 16.5, 30.5, 31.7, 30.9, 31.2),
+                                    None, 2.41, 4.58),
+    ("514-transient-320", "core"): ((32.2, 32.4, 32.6, 16.5, 30.5, 31.7, 30.9, 31.2),
+                                    None, 2.41, 4.58),
+    ("514-transient-384", "full"): ((32.2, 32.4, 32.9, 16.5, 30.5, 31.7, 30.9, 31.2),
+                                    None, 2.41, 4.58),
+    ("514-transient-384", "core"): ((32.2, 32.4, 32.9, 16.5, 30.5, 31.7, 30.9, 31.2),
+                                    None, 2.41, 4.58),
+    ("514-transient-448", "full"): ((32.2, 32.4, 32.9, 16.5, 30.5, 31.7, 30.9, 31.2),
+                                    None, 2.41, 4.58),
+    ("514-transient-448", "core"): ((32.2, 32.4, 32.9, 16.5, 30.5, 31.7, 30.9, 31.2),
+                                    None, 2.41, 4.58),
+    ("514-transient-512", "full"): ((30.6, 30.4, 32.9, 16.5, 29.0, 29.0, 29.5, 29.0, 29.4, 29.1),
+                                    None, 2.37, 4.57),
+    ("514-transient-512", "core"): ((30.6, 30.4, 32.9, 16.5, 29.0, 29.0, 29.3, 28.8),
+                                    None, 2.84, 4.28),
+    ("514-transient-768", "full"): ((31.7, 31.5, 34.0, 16.5, 29.9, 30.0, 30.4, 29.9, 30.3, 30.1),
+                                    None, 2.42, 4.27),
+    ("514-transient-768", "core"): ((31.7, 31.5, 34.0, 16.5, 29.9, 30.0, 30.2, 29.8),
+                                    None, 2.66, 4.28),
 }
 # DEE's 2.0 streams carry the same audio from 256 kbps up, the rest of each frame being fill,
 # so every rate from 256 to 768 decodes to the same samples and takes the same pins.
@@ -531,9 +740,9 @@ def tile_error(ref, out, groups, rate=None):
     return differences
 
 
-def decode(cli, stream, out_wav, trace=None):
+def decode(cli, stream, out_wav, trace=None, options=()):
     """ac3cli's decode of `stream`, with its syntax trace written to `trace` when one is given."""
-    command = [str(cli), "decode", str(stream), str(out_wav)]
+    command = [str(cli), "decode", str(stream), str(out_wav), *options]
     if trace is not None:
         command.append(f"syntax-trace={trace}")
     result = subprocess.run(command, capture_output=True, text=True, check=False)
@@ -552,9 +761,10 @@ def lo_ro(five_one):
 
 
 def chosen(leg):
-    return (leg.get("codec_mode") in ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
+    channel_coded = (leg.get("codec_mode") in ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
+                     and leg.get("output_channel_layout") in ("stereo", "mono", "IMS", "5.1"))
+    return ((channel_coded or leg.get("output_channel_layout") == IMMERSIVE_LAYOUT)
             and leg.get("frame_rate_index") in RESAMPLING
-            and leg.get("output_channel_layout") in ("stereo", "mono", "IMS", "5.1")
             and any(option.startswith("measure_only") for option in leg.get("options", [])))
 
 
@@ -581,11 +791,145 @@ def legs_committed(work):
     return legs
 
 
-def legs_gold(gold):
+def legs_gold(gold, g1=False):
+    """The gold set's legs under `legs`, and with `g1` the G1 legs G1_LEGS names."""
     manifest = json.loads((gold / "gold-manifest.json").read_text(encoding="utf-8"))
+    picked = [(name, leg) for name, leg in sorted(manifest["legs"].items()) if chosen(leg)]
+    if g1:
+        g1_legs = manifest.get("g1_legs", {})
+        missing = [name for name in G1_LEGS if name not in g1_legs]
+        if missing:
+            raise SystemExit(f"G1_LEGS names legs the manifest's g1_legs lacks: {missing}")
+        picked += [(name, g1_legs[name]) for name in G1_LEGS if chosen(g1_legs[name])]
     return [(name, gold / "streams" / name / "dee.ac4", gold / "sources" / f"{leg['source']}.wav",
              leg["source"], leg["encoder"], leg["codec_mode"], leg["frame_rate_index"])
-            for name, leg in sorted(manifest["legs"].items()) if chosen(leg)]
+            for name, leg in picked]
+
+
+def immersive_mode(trace):
+    """The immersive element's codec mode (Part 2 Table 73) in a syntax trace's first frame that
+    has one, None where none does."""
+    for line in Path(trace).read_text(encoding="utf-8").splitlines():
+        fields = line.split("\t")
+        if len(fields) == 6 and fields[5] == "immersive_codec_mode_code":
+            return baseline.immersive_codec_mode(int(fields[3]), int(fields[4]))
+    return None
+
+
+def immersive_signals(source, decoded, mode, core):
+    """What an immersive leg is scored on: (names, reference, output, tone sets), the reference and
+    output with one column per name. Full decoding: the source's channels, ASPX_ACPL_2's top pairs
+    as their sums, which A-CPL keeps (Part 2 Pseudocode 2). Core decoding: the source's 5.1.2 by
+    Table 42's 5.X.4 row with Table 130's gain_t1, -3 dB, which Table 45 renders the core to.
+    Each tone set holds the TONE_HZ indices a column carries."""
+    columns = [(name, (c,), 1.0) for c, name in enumerate(IMMERSIVE_CHANNELS[:6])]
+    if core:
+        pairs = [("Tsl", (6, 8), 1.0 / np.sqrt(2.0)), ("Tsr", (7, 9), 1.0 / np.sqrt(2.0))]
+        out = [decoded[:, c] for c in range(decoded.shape[1])]
+    elif mode == "ASPX_ACPL_2":
+        pairs = [("Tfl+Tbl", (6, 8), 1.0), ("Tfr+Tbr", (7, 9), 1.0)]
+        out = [decoded[:, c] for c in range(6)] + [decoded[:, 6] + decoded[:, 8],
+                                                   decoded[:, 7] + decoded[:, 9]]
+    else:
+        pairs = [(name, (c,), 1.0) for c, name in enumerate(IMMERSIVE_CHANNELS) if c >= 6]
+        out = [decoded[:, c] for c in range(decoded.shape[1])]
+    columns += pairs
+    reference = np.stack([gain * source[:, list(chans)].sum(axis=1) for _, chans, gain in columns],
+                         axis=1)
+    return ([name for name, _, _ in columns], reference, np.stack(out, axis=1),
+            [chans for _, chans, _ in columns])
+
+
+def score_immersive(name, stream, source, source_name, core, args, work, failures, pins):
+    """An immersive leg's checks in full or core decoding (the docstring's immersive paragraph)."""
+    label = f"{name} ({'core' if core else 'full'})"
+    trace = work / f"{name}-{'core' if core else 'full'}.trace"
+    decoded, rate = decode(args.cli, stream, work / f"{name}.wav", trace,
+                           ("decoding=core",) if core else ())
+    expected_channels = 8 if core else len(IMMERSIVE_CHANNELS)
+    if rate != RATE or decoded.shape[1] != expected_channels:
+        failures.append(f"{label}: {decoded.shape[1]} channels at {rate} Hz, not "
+                        f"{expected_channels} at {RATE}")
+        return
+    mode = immersive_mode(trace)
+    names, reference, output, tones = immersive_signals(source, decoded, mode, core)
+    lag, ref, out = align(reference, output)
+    if not args.measure and lag != LAG[baseline.AC4]:
+        failures.append(f"{label}: lag {lag}, expected {LAG[baseline.AC4]}")
+    # SNR below the lowest crossover of the frame's aspx_data elements, or in SCPL below
+    # SCPL_TOP_HZ, but for the LFE, which A-SPX leaves out, over the whole band. A channel the
+    # source leaves silent (speech's LFE) must come out 100 dB under full scale, and has no SNR.
+    found = trace_values(trace)
+    top_hz = (SCPL_TOP_HZ if found is None else
+              (aspx_groups(found[0], min(found[1]))[0] - 1) * subband_hz())
+    cells, snrs = [], []
+    heard = [c for c in range(len(names)) if np.any(ref[:, c] != 0.0)]
+    for c, column in enumerate(names):
+        r, o = ref[:, c], out[:, c]
+        lfe = column == "LFE"
+        if c not in heard:
+            level = 10.0 * np.log10(max(float(np.mean(o**2)), 1e-30))
+            cells.append(f"{column} silent ({level:.0f} dB)")
+            snrs.append(None)
+            if not args.measure and level > -100.0:
+                failures.append(f"{label} {column}: {level:.1f} dB where the source is silent")
+            continue
+        if lfe:
+            gain = float(np.dot(r, o) / np.dot(r, r))
+            error = o - gain * r
+            snr = 10.0 * np.log10(np.dot(gain * r, gain * r) / np.dot(error, error))
+            gain = lfe_gain(r, o)
+        else:
+            gain = band_gain(r, o, top_hz)
+            snr = band_snr(r, o, gain, top_hz)
+        gain_db = 20.0 * np.log10(abs(gain))
+        snrs.append(float(snr))
+        cells.append(f"{column} {gain_db:+.3f} dB {snr:.1f} dB")
+        tolerance = LFE_GAIN_TOLERANCE_DB if lfe else IMMERSIVE_GAIN_TOLERANCE_DB
+        if not args.measure and abs(gain_db) > tolerance:
+            failures.append(f"{label} {column}: gain {gain_db:+.3f} dB, beyond +-{tolerance} dB of "
+                            "unity")
+    routing = None
+    if source_name.startswith("tones"):
+        margins = []
+        for c, own_tones in enumerate(tones):
+            own = min(tone_power(out[:, c], baseline.TONE_HZ[t]) for t in own_tones)
+            leak = max(tone_power(out[:, c], baseline.TONE_HZ[t])
+                       for t in range(len(IMMERSIVE_CHANNELS)) if t not in own_tones)
+            margins.append(10.0 * np.log10(own / max(leak, 1e-30)))
+        routing = min(margins)
+    lsd, _ = quality_race.spectral_scores(ref[:, heard], out[:, heard])
+    mos = quality_race.perceptual_score(ref[:, heard], out[:, heard], RATE)
+    mos_text = "-" if mos is None else f"{mos:.2f}"
+    routing_text = "" if routing is None else f"  routing {routing:.1f} dB"
+    where = (f" (below {top_hz / 1000:g} kHz)" if found is None else
+             f" (lowest xover {(top_hz + subband_hz()) / 1000:.2f} kHz)")
+    print(f"{label:<40} {mode} lag {lag}  {'  '.join(cells)}{where}{routing_text}  LSD {lsd:.2f} dB"
+          f"  MOS {mos_text}", flush=True)
+    floors = ", ".join("None" if snr is None else f"{snr - SNR_MARGIN_DB:.1f}" for snr in snrs)
+    routing_pin = "None" if routing is None else f"{routing - ACPL_ROUTING_MARGIN_DB:.1f}"
+    mos_pin = "None" if mos is None else f"{mos - MOS_MARGIN:.2f}"
+    pins.append(f'    ("{name}", "{"core" if core else "full"}"): (({floors}), {routing_pin}, '
+                f"{lsd + LSD_MARGIN_DB:.2f}, {mos_pin}),")
+    if args.measure:
+        return
+    pin = IMMERSIVE_PINS.get((name, "core" if core else "full"))
+    if pin is None:
+        failures.append(f"{label}: nothing pinned in IMMERSIVE_PINS")
+        return
+    snr_floors, routing_floor, lsd_ceiling, mos_floor = pin
+    for column, snr, floor in zip(names, snrs, snr_floors, strict=True):
+        if (snr is None) != (floor is None):
+            failures.append(f"{label} {column}: silent where the pins say it is not, or not where "
+                            "they say it is")
+        elif snr is not None and snr < floor:
+            failures.append(f"{label} {column}: SNR {snr:.2f} dB below its floor {floor}")
+    if routing_floor is not None and (routing is None or routing < routing_floor):
+        failures.append(f"{label}: routing margin {routing} dB below its floor {routing_floor}")
+    if lsd > lsd_ceiling:
+        failures.append(f"{label}: LSD {lsd:.2f} dB above its ceiling {lsd_ceiling}")
+    if mos is not None and mos_floor is not None and mos < mos_floor:
+        failures.append(f"{label}: MOS {mos:.2f} below its floor {mos_floor}")
 
 
 def acpl_units(codec_mode, channels):
@@ -787,6 +1131,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cli", required=True, type=Path, help="the ac3cli to decode with")
     parser.add_argument("--gold", type=Path, help="score G0's local gold set in this directory")
+    parser.add_argument("--g1", action="store_true",
+                        help="with --gold, score the G1 legs G1_LEGS names as well")
     parser.add_argument("--work", type=Path, help="scratch directory (default: a temporary one)")
     parser.add_argument("--measure", action="store_true",
                         help="print every leg's measurements and check nothing")
@@ -796,15 +1142,24 @@ def main():
     with tempfile.TemporaryDirectory() as temporary:
         work = args.work or Path(temporary)
         work.mkdir(parents=True, exist_ok=True)
-        legs = legs_gold(args.gold) if args.gold else legs_committed(work)
+        legs = legs_gold(args.gold, args.g1) if args.gold else legs_committed(work)
         if args.only:
             legs = [leg for leg in legs if leg[0] in args.only]
         if not legs:
             raise SystemExit("no leg to score")
         failures = []
         pins = []
+        immersive_pins = []
         for name, stream, source_path, source_name, encoder, codec_mode, rate_index in legs:
             source, source_rate = read_wav(source_path)
+            if source.shape[1] == len(IMMERSIVE_CHANNELS):
+                if source_rate != RATE:
+                    failures.append(f"{name}: source at {source_rate} Hz")
+                    continue
+                for core in (False, True):
+                    score_immersive(name, stream, source, source_name, core, args, work, failures,
+                                    immersive_pins)
+                continue
             decoded, rate = decode(args.cli, stream, work / f"{name}.wav", work / f"{name}.trace")
             if rate != RATE or source_rate != RATE:
                 failures.append(f"{name}: decoded at {rate} Hz, source at {source_rate} Hz")
@@ -912,6 +1267,8 @@ def main():
         if args.measure:
             print("\nPINS and ACPL_PINS lines:")
             print("\n".join(pins))
+            print("\nIMMERSIVE_PINS lines:")
+            print("\n".join(immersive_pins))
             return 0
         if failures:
             print("\nFAILED:")

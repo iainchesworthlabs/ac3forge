@@ -116,6 +116,20 @@ void BitWriter::write_unrecorded(unsigned bits, std::uint64_t value) {
     put(bits, value);
 }
 
+void BitWriter::write_zero_run(std::uint64_t bits, std::string_view name) {
+    constexpr std::uint64_t kMaxRecordBits = 65535;
+    while (bits > 0) {
+        const std::uint64_t width = bits < kMaxRecordBits ? bits : kMaxRecordBits;
+        const auto offset = bits_;
+        for (std::uint64_t i = 0; i < width; ++i) {
+            put(1, 0);
+        }
+        emit(SyntaxRecord{substream_, static_cast<std::uint32_t>(offset),
+                          static_cast<std::uint16_t>(width), 0, name});
+        bits -= width;
+    }
+}
+
 void BitWriter::write_as(unsigned bits, std::uint64_t raw, std::uint64_t value, std::string_view name) {
     const auto offset = bits_;
     put(bits, raw);
