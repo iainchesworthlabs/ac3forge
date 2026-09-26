@@ -427,6 +427,23 @@ Two tiers, both gated in CI:
   excerpts, and pinning by hash is what keeps an upstream change from quietly moving the
   numbers. Runs nightly in the `Interop` workflow.
 
+A third set is neither committed nor gated. `tools/generators/gen_dee_gold.py` keeps 1,086 of
+DEE's own streams on a local disk, made before DEE's licence ends on 2026-11-06, each rebuildable
+from the committed programme fixtures: AC-3 and E-AC-3 at every layout and data rate DEE lists
+(mono, 2.0, 5.1, 5.1 without its LFE, and 5.1 at 64 to 160 kbit/s through its hybrid downmix),
+7.1 as Blu-ray carries it (an AC-3 core and an E-AC-3 dependent substream, from DEE's `bluray`
+encoder mode, which its help does not list), E-AC-3 JOC from 5.1.4, 7.1.4 and 9.1.6 beds at every
+rate, TrueHD at 2, 6 and 8 channels, 48 and 96 kHz and 16 and 24 bits, each metadata option DEE
+takes, and 60 and 300 s programmes. Each keeps MediaInfo's trace, DEE's MP4 of it, and what
+`ac3cli` and FFmpeg make of it. `ac3cli`'s decoder reads every AC-3 and E-AC-3 elementary stream
+in it but the 23 that use transient pre-noise processing, whose correction reaches further back
+than the one frame of history the decoder keeps, and which it reports as unimplemented; FFmpeg
+reports errors in 67 of the E-AC-3 streams, most of them exponents out of range, as below. DEE
+uses coupling, spectral extension and the AHT by rate and never enhanced coupling. At 48 kHz,
+FFmpeg's decode of each TrueHD stream DEE was not asked to alter equals its source sample for
+sample, but for one LSB at −1 dBFS; at 96 kHz it matches to 24 kHz and rolls off above, 14 dB
+down by 30 to 40 kHz.
+
 Wiring up the first tier found **five separate Annex E decoder defects** in a single sitting, on
 syntax that no stream this project can encode is able to reach — the three AHT-in-use flags read
 unconditionally, `cplfgaincod`/`cplfsnroffst` not read at all, the three band-structure default

@@ -87,7 +87,10 @@ C version macros; release criteria written.
 Substantial internal codec on branch `feature/truehd-atmos-support` — not on `main`. To merge:
 rebase, gate as `ac3::mlp` / `AC3FORGE_BUILD_MLP`, remove non-redistributable PDFs, label output
 accurately (no real TrueHD decoder reads the current block layout). Forge front ends follow as a
-separate item (was UX10).
+separate item (was UX10). Dolby Encoding Engine's TrueHD streams of known sources (2, 6 and 8
+channels, 48 and 96 kHz, 16 and 24 bits, several presentations), made by
+`tools/generators/gen_dee_gold.py` while DEE's licence runs (it ends on 2026-11-06), are kept
+locally for what the clean-room rule below allows.
 
 **Authenticity note (for that branch):** TrueHD carries a separate keyed check from DD+ EMDF
 object signing — **Evolution frame protection**, a truncated HMAC-SHA-256 over the access unit

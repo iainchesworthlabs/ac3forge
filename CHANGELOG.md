@@ -1394,6 +1394,15 @@ The sections below contain the complete change list and fixes.
   way playback settings and the resumed queue already are - previously every restart reset the
   whole page to stereo defaults. One setup today, not one per output device, despite the page's
   own "a setup for each output" wording.
+- **Golden masters from Dolby's encoders for AC-3, E-AC-3, E-AC-3 JOC and TrueHD.** DEE's licence
+  ends on 2026-11-06 and is not renewed, so `tools/generators/gen_dee_gold.py` makes, and keeps
+  on a local disk, every stream a later piece of work could want from it: 1,111 legs (1,086
+  streams, 25 refusals kept with DEE's messages) at every layout and data rate the AC-3 and E-AC-3
+  encoders list, 7.1 from the Blu-ray mode, E-AC-3 JOC from 5.1.4, 7.1.4 and 9.1.6 beds, TrueHD at
+  48 and 96 kHz, each metadata option, and 60 and 300 s programmes, each rebuildable from the
+  committed programme fixtures, with MediaInfo's trace, DEE's MP4 and what `ac3cli` and FFmpeg
+  make of it. `ac3cli`'s decoder refuses the 23 streams that use transient pre-noise processing,
+  whose correction reaches further back than it buffers.
 
 ### Changed
 
