@@ -682,7 +682,8 @@ def main():
             legs = [leg for leg in legs if leg[0] in args.only]
         if not legs:
             raise SystemExit("no leg to check")
-        for name, stream, dialogue, layout in legs:
+        for name, stream, dialogue, leg_layout in legs:
+            layout = leg_layout
             trace = work / f"{name}.trace"
             coded = decode(args.cli, stream, work / f"{name}.wav", f"syntax-trace={trace}")
             if args.engine:
