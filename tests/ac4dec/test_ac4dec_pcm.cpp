@@ -14,6 +14,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <numbers>
 #include <span>
 #include <string>
@@ -27,6 +28,7 @@
 #include "dsp/qmf.hpp"
 #include "pcm/snf_random.hpp"
 #include "pcm/stereo.hpp"
+#include "sanitized.hpp"
 #include "syntax/asf.hpp"
 #include "syntax/context.hpp"
 #include "tables/noise_tables.hpp"
@@ -35,6 +37,15 @@
 namespace {
 
 namespace fs = std::filesystem;
+using ac3::test::kSanitized;
+
+// The frames of a DEE leg a test decodes: every one, or under the sanitizers
+// the first 72, three seconds. Past the half second tone_levels() and
+// tone_phasors() leave out at each end, that is two seconds, over which a
+// tone 126 Hz from another, the closest two of tones_514, leaves 58 dB under
+// its level in the other's measure.
+constexpr std::size_t kAllFrames = std::numeric_limits<std::size_t>::max();
+constexpr std::size_t kLegFrames = kSanitized ? 72 : kAllFrames;
 
 std::vector<std::byte> read_stream(const std::string& leg) {
     const fs::path path = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
@@ -54,8 +65,10 @@ struct Decoded {
     std::size_t frames = 0;
 };
 
+// The leg's first `frames` frames decoded, or all of them.
 Decoded decode_all(const std::string& leg, ac4::DecodingMode decoding = ac4::DecodingMode::kFull,
-                   ac4::DownmixTarget target = ac4::DownmixTarget::kAsCoded) {
+                   ac4::DownmixTarget target = ac4::DownmixTarget::kAsCoded,
+                   std::size_t frames = kAllFrames) {
     const std::vector<std::byte> stream = read_stream(leg);
     const ac4::ScanResult scan = ac4::scan(stream);
     REQUIRE_FALSE(scan.frames.empty());
@@ -64,7 +77,8 @@ Decoded decode_all(const std::string& leg, ac4::DecodingMode decoding = ac4::Dec
     config.output.downmix = target;
     ac4::Decoder decoder(config);
     Decoded out;
-    for (const ac4::SyncFrame& frame : scan.frames) {
+    for (const ac4::SyncFrame& frame :
+         std::span(scan.frames).first(std::min(frames, scan.frames.size()))) {
         const auto decoded = decoder.decode(frame.raw_ac4_frame);
         INFO(decoder.refusal_reason());
         REQUIRE(decoded.has_value());
@@ -299,7 +313,8 @@ TEST_CASE("an ASPX stereo stream decodes every frame with its high band rebuilt"
 TEST_CASE("a SIMPLE 5.1 stream decodes each tone to its own channel, the LFE's included", "[ac4dec][pcm]") {
     // tones_51: L R C LFE Ls Rs at 331, 457, 613, 47, 787 and 953 Hz, each at
     // -20 dBFS (gen_ac4_baseline.py's TONE_HZ).
-    const Decoded decoded = decode_all("ac4-51-tones-384");
+    const Decoded decoded = decode_all("ac4-51-tones-384", ac4::DecodingMode::kFull,
+                                       ac4::DownmixTarget::kAsCoded, kLegFrames);
     using S = ac4::Speaker;
     REQUIRE(decoded.speakers ==
             std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe, S::kLeftSurround, S::kRightSurround});
@@ -373,7 +388,8 @@ TEST_CASE("the immersive element's SCPL and ASPX_SCPL streams decode each tone t
     using S = ac4::Speaker;
     for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512"}) {
         CAPTURE(leg);
-        const Decoded decoded = decode_all(leg);
+        const Decoded decoded =
+            decode_all(leg, ac4::DecodingMode::kFull, ac4::DownmixTarget::kAsCoded, kLegFrames);
         REQUIRE(decoded.speakers == k514);
         const auto levels = tone_levels(decoded);
         for (std::size_t t = 0; t < kTones514.size(); ++t) {
@@ -389,8 +405,13 @@ TEST_CASE("the immersive element's SCPL and ASPX_SCPL streams decode each tone t
             }
         }
         // Rendered to 7.1.4, the backs the source leaves out come out silent
-        // (Table 38's 5.X.4 row), and every other channel as coded.
-        const Decoded wide = decode_all(leg, ac4::DecodingMode::kFull, ac4::DownmixTarget::k7X4);
+        // (Table 38's 5.X.4 row), and every other channel as coded; under the
+        // sanitizers for the SCPL stream alone.
+        if (kSanitized && std::string_view{leg} != "ac4-514-tones-768") {
+            continue;
+        }
+        const Decoded wide =
+            decode_all(leg, ac4::DecodingMode::kFull, ac4::DownmixTarget::k7X4, kLegFrames);
         REQUIRE(wide.speakers.size() == 12);
         for (const S back : {S::kLeftBack, S::kRightBack}) {
             for (const float x : wide.channels[channel_of(wide, back)]) {
@@ -410,7 +431,8 @@ TEST_CASE("the immersive element's ASPX_ACPL_2 stream makes its top pairs by A-C
     // keeps its level across its pair and is loudest in its own channel, and
     // stays out of every other channel. The rest are coded as in SCPL.
     using S = ac4::Speaker;
-    const Decoded decoded = decode_all("ac4-514-tones-256");
+    const Decoded decoded = decode_all("ac4-514-tones-256", ac4::DecodingMode::kFull,
+                                       ac4::DownmixTarget::kAsCoded, kLegFrames);
     REQUIRE(decoded.speakers == k514);
     const auto levels = tone_levels(decoded);
     const auto power = [](double db) { return std::pow(10.0, db / 10.0); };
@@ -451,7 +473,8 @@ TEST_CASE("core decoding gives the immersive element's 5.X.2 core at the core ga
     const double down = 20.0 * std::log10(std::numbers::sqrt2 / 2.0);
     for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512", "ac4-514-tones-256"}) {
         CAPTURE(leg);
-        const Decoded decoded = decode_all(leg, ac4::DecodingMode::kCore);
+        const Decoded decoded =
+            decode_all(leg, ac4::DecodingMode::kCore, ac4::DownmixTarget::kAsCoded, kLegFrames);
         REQUIRE(decoded.speakers == std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe,
                                                    S::kLeftSurround, S::kRightSurround,
                                                    S::kTopSideLeft, S::kTopSideRight});
@@ -539,12 +562,23 @@ TEST_CASE(
     const auto db = [](std::complex<double> x) {
         return 20.0 * std::log10(std::abs(x) / 0.1 + 1e-30);
     };
+    // Under the sanitizers the ASPX_SCPL stream in full decoding and the
+    // ASPX_ACPL_2 one in core decoding, each over its first 48 frames: a
+    // second past tone_phasors()'s half seconds. The renders match their
+    // matrices whatever the span; where levels are measured, in the 5.X
+    // render, two tones of a channel are 330 Hz apart or more, and each
+    // leaves 60 dB under the other's level.
+    const std::size_t frames = kSanitized ? 48 : kAllFrames;
     for (const char* leg : {"ac4-514-tones-768", "ac4-514-tones-512", "ac4-514-tones-256"}) {
         for (const ac4::DecodingMode decoding :
              {ac4::DecodingMode::kFull, ac4::DecodingMode::kCore}) {
             const bool core = decoding == ac4::DecodingMode::kCore;
+            if (kSanitized &&
+                std::string_view{leg} != (core ? "ac4-514-tones-256" : "ac4-514-tones-512")) {
+                continue;
+            }
             CAPTURE(leg, core);
-            const Decoded coded = decode_all(leg, decoding);
+            const Decoded coded = decode_all(leg, decoding, ac4::DownmixTarget::kAsCoded, frames);
             const auto in = tone_phasors(coded);
             const Mixes five = {
                 {S::kLeft, {{S::kLeft, 1.0}}},
@@ -578,7 +612,7 @@ TEST_CASE(
             for (const auto& [target, mixes] : {std::pair{ac4::DownmixTarget::k5X, five},
                                                 std::pair{ac4::DownmixTarget::kLoRo, two}}) {
                 CAPTURE(ac4::describe(target));
-                const Decoded rendered = decode_all(leg, decoding, target);
+                const Decoded rendered = decode_all(leg, decoding, target, frames);
                 REQUIRE(rendered.speakers.size() == mixes.size());
                 const auto out = tone_phasors(rendered);
                 for (const auto& [speaker, terms] : mixes) {
@@ -628,7 +662,8 @@ TEST_CASE("an ASPX 5.1 stream rebuilds the high band of every channel but the LF
     // pairs (L, R) and (Ls, Rs) and in C (Part 1 Table 213). The source music
     // is 25 to 40 dB quieter from 12 to 16 kHz than from 7.5 to 11.25 kHz; its
     // LFE is low-passed at 120 Hz.
-    const Decoded decoded = decode_all("ac4-51-music-192");
+    const Decoded decoded = decode_all("ac4-51-music-192", ac4::DecodingMode::kFull,
+                                       ac4::DownmixTarget::kAsCoded, kLegFrames);
     REQUIRE(decoded.channels.size() == 6);
     for (std::size_t c = 0; c < 6; ++c) {
         CAPTURE(c);
@@ -678,7 +713,8 @@ TEST_CASE("decode takes the IMS streams' frame rates through the sample rate con
         REQUIRE(first->toc.frame_rate_index == leg.frame_rate_index);
         ac4::Decoder decoder;
         std::vector<float> left;
-        for (const ac4::SyncFrame& frame : scan.frames) {
+        for (const ac4::SyncFrame& frame :
+             std::span(scan.frames).first(std::min(kLegFrames, scan.frames.size()))) {
             const auto decoded = decoder.decode(frame.raw_ac4_frame);
             INFO(decoder.refusal_reason());
             REQUIRE(decoded.has_value());
