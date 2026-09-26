@@ -2,8 +2,9 @@ version: 2
 updates:
   # GitHub Actions used by ci.yml/_build.yml/release.yml + the composite
   # actions under .github/actions/. Dependabot has no vcpkg ecosystem, so the
-  # C++ dependency (currently just Catch2 - see vcpkg.json) is NOT tracked
-  # here; osv-scanner.yml covers that gap instead.
+  # C++ dependencies (vcpkg.json, plus the {fmt} pins in cmake/Fmt.cmake and
+  # packaging/conan/conanfile.py) are NOT tracked here, and osv-scanner.yml
+  # does not cover them either: it reads no vcpkg, CMake or Conan file.
   - package-ecosystem: "github-actions"
     directory: "/"
     # Trunk-based: every topic branch, Dependabot's included, targets main

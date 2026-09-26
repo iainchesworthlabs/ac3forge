@@ -296,7 +296,7 @@ jobs:
       # fails on missing sonar.projectKey/sonar.organization. Every other
       # property below is relative and resolves against the base dir.
       - name: Run SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

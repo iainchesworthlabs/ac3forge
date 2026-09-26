@@ -115,29 +115,32 @@ Status:
 | 89 | Dialogs | Licences: notices text, Close | none | UI | Dialogs::test_shortcutsAboutLicencesChain |
 | 90 | Dialogs | First run shows once; Not now / Open Speakers | none | UI | Dialogs::test_firstRunShowsOnceAndNotNowRemembersIt, test_firstRunOpenSpeakersGoesToTheSpeakersPage |
 | 91 | Output | Play to a network group (`selectOutputGroup`) | none | UI | OutputPicker::test_groupRowPinsPlaybackToTheGroup (the picker's group row, Play here, then a device row moves it back) |
-| 92 | Decoder | AC-4 presentation picker and table (the one playing in bold) | none | UI | DecoderAc4::test_presentationDialogueAndDescriptionAreHeard (picked by keyboard; the description goes with presentation 1) |
-| 93 | Decoder | AC-4 dialogue enhancement slider | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_levelAndEnhancementAreHeardAsTheirFormulasSay (C up by the gain, to the stream's 9 dB cap, measured at the device) |
-| 94 | Decoder | AC-4 dialogue level slider | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_presentationDialogue... (the dialogue alone, to the stream's 6 dB maximum) |
-| 95 | Decoder | AC-4 audio description checkbox and its level | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_presentationDialogue... (the presentation carrying it plays; its level heard) |
-| 96 | Decoder | AC-4 device list (the DRC decoder mode) | none | UI | DecoderAc4::test_eachControlWritesItsSetting (all six by keyboard; each mode's compression is held against the decoder's own by the [hearth][ac4] cases) |
-| 97 | Decoder | AC-4 output level slider and dialogue normalisation checkbox | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_levelAndEnhancement... (2^((Lout - dialnorm) / 6) at -31 and -17 dBFS) |
-| 98 | Decoder | AC-4 downmix, LFE in the fold, and the stream's preferred downmix | none | UI | DecoderAc4::test_downmixIsHeardWithTheStreamsGains (Lo/Ro, Lt/Rt and the LFE at the stream's gains, each tone against its coded level) |
-| 99 | Decoder | AC-4 page readouts (dB values beside the sliders, "Nothing AC-4 is playing.") | none | UI | DecoderAc4::test_aTheBannerIsGoneAndEveryCardIsLive, DecoderAc4::test_eachControlWritesItsSetting |
-| 100 | Media | AC-4 item: Stream, Presentations and Metadata cards, and it plays | none | UI | MediaPage::test_ac4ItemIsDescribedAndPlays |
+| 92 | Network | Sink Firmware tab: asks the sink's own web server only while open, says when it does not answer, and offers nothing it could not do | none | UI | NetworkPairing::test_pairedSinkFirmwareTabAsksTheSinksOwnServerWhileOpen |
+| 93 | Network | Firmware tab with no sink: renders and asks nothing; every firmware action is a safe no-op; an unreadable file is refused with why | none | logic | NetworkSinkSettings::test_firmwareTabAsksNothingWithNoSinkSelected, NetworkSinkSettings::test_everyFirmwareActionIsASafeNoOpWithNoSinkSelected |
+| 94 | Decoder | AC-4 presentation picker and table (the one playing in bold) | none | UI | DecoderAc4::test_presentationDialogueAndDescriptionAreHeard (picked by keyboard; the description goes with presentation 1) |
+| 95 | Decoder | AC-4 dialogue enhancement slider | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_levelAndEnhancementAreHeardAsTheirFormulasSay (C up by the gain, to the stream's 9 dB cap, measured at the device) |
+| 96 | Decoder | AC-4 dialogue level slider | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_presentationDialogue... (the dialogue alone, to the stream's 6 dB maximum) |
+| 97 | Decoder | AC-4 audio description checkbox and its level | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_presentationDialogue... (the presentation carrying it plays; its level heard) |
+| 98 | Decoder | AC-4 device list (the DRC decoder mode) | none | UI | DecoderAc4::test_eachControlWritesItsSetting (all six by keyboard; each mode's compression is held against the decoder's own by the [hearth][ac4] cases) |
+| 99 | Decoder | AC-4 output level slider and dialogue normalisation checkbox | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_levelAndEnhancement... (2^((Lout - dialnorm) / 6) at -31 and -17 dBFS) |
+| 100 | Decoder | AC-4 downmix, LFE in the fold, and the stream's preferred downmix | none | UI | DecoderAc4::test_downmixIsHeardWithTheStreamsGains (Lo/Ro, Lt/Rt and the LFE at the stream's gains, each tone against its coded level) |
+| 101 | Decoder | AC-4 page readouts (dB values beside the sliders, "Nothing AC-4 is playing.") | none | UI | DecoderAc4::test_aTheBannerIsGoneAndEveryCardIsLive, DecoderAc4::test_eachControlWritesItsSetting |
+| 102 | Media | AC-4 item: Stream, Presentations and Metadata cards, and it plays | none | UI | MediaPage::test_ac4ItemIsDescribedAndPlays |
 
 ### Totals
 
-| | Before (4 suites, 18 cases) | After (15 suites, 80 cases) |
+| | Before (4 suites, 18 cases) | After (15 suites, 82 cases) |
 |---|---|---|
-| UI | 5 | 99 |
-| logic only | 15 | 1 (row 15: no UI control exists) |
-| none | 80 | 0 |
+| UI | 5 | 100 |
+| logic only | 15 | 2 (row 15: no UI control exists; row 93: nothing to select) |
+| none | 71 | 0 |
 
 Gaps that remain inside covered rows:
 
 - The sink's own trim, delay, routing and identify edits are not driven: even the accept-settings test sink manages none of them (`management.routing` false, trim range 0..0, `identify` false), so only the layout edit is shown reaching a sink.
 - The group mute and group volume sliders are not driven.
 - The Only-on-sink panel is rendered but its text is not read.
+- The Firmware tab's Update, Roll back and Restart are not driven: the test sink serves no firmware routes. The client behind them (`apps/hearth/engine/sink_firmware.hpp`) is tested in `ac3tests` against a stand-in board on loopback (`[sink-firmware]`), and against a real board by the hidden live case in `tests/hearth/test_sink_firmware_board.cpp`.
 
 ## UI bugs found (fixed)
 

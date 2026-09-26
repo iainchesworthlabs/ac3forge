@@ -6,7 +6,7 @@ import Ac3ForgeHearthTest
 
 import "HearthTestHelpers.js" as H
 
-// Media.qml (FEATURE_COVERAGE.md rows 39-42 and 100) and the Play page's
+// Media.qml (FEATURE_COVERAGE.md rows 39-42 and 102) and the Play page's
 // Objects card (row 20): the Showing picker points the page at another queue
 // item, whose file is read by the real MediaInspector and shown card by card;
 // Copy puts the JSON document on the clipboard and Export JSON... writes it

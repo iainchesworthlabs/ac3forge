@@ -61,6 +61,7 @@
 #include "ac3/render/layout.hpp"
 #include "ac3forge/control.hpp"
 #include "ac3forge/firmware.hpp"
+#include "ac3forge/log.hpp"
 #include "ac3forge/player.hpp"
 
 #include "audio_sink.hpp"
@@ -665,6 +666,10 @@ void start_sendspin() {
 }  // namespace
 
 extern "C" void app_main() {
+    // The console's recent output for GET /log, from the first line on: a
+    // board updated over its network usually has no cable on it
+    // (ac3forge/log.hpp).
+    (void)ac3forge::log_start(CONFIG_AC3FORGE_LOG_BYTES);
     (void)heap_caps_register_failed_alloc_callback(on_alloc_failed);
 
     // What this BOARD is, before anything asks: the name it answers to, the
@@ -751,8 +756,12 @@ extern "C" void app_main() {
     }
 
     // The boot play's source asks for the network too, and can be what brings
-    // it up when the call above could not; mDNS then starts here.
-    if (player::network_ready()) {
+    // it up when the call above could not; mDNS then starts here. Read once:
+    // a network that came up between two reads would start neither mDNS nor
+    // the player for this boot, and still count as there from the start, so
+    // the loop below would not start them either.
+    const bool networked_at_start = player::network_ready();
+    if (networked_at_start) {
         player::discovery_start();
     }
 
@@ -767,7 +776,7 @@ extern "C" void app_main() {
     // control surface is already listening. A network that drops after this
     // and comes back needs none of them again: the servers keep listening,
     // and mDNS announces the board again when it has an address.
-    bool networked = player::network_ready();
+    bool networked = networked_at_start;
     player::provisioning_start(player::sendspin_running() ? &player::sendspin_console : nullptr);
 
     // Everything from here is reporting and command handling. The player runs
@@ -779,6 +788,22 @@ extern "C" void app_main() {
             start_sendspin();
             if (player::sendspin_running()) {
                 player::provisioning_start(&player::sendspin_console);
+            } else if (player::sendspin_built()) {
+                // A network that comes up after boot - a new board's, over
+                // Improv - finds internal RAM already split by what started
+                // without one: the Improv task and the network stack. On the
+                // S3 board that left the burst player's task no 32 KiB block
+                // (largest 31,744), so a board just given its network could
+                // not play until it was restarted (planning/esp32-ota.md, O9).
+                // A boot with the network stored starts the player before
+                // those, so restart into one, once the Improv client has had
+                // its answer. That boot has its network from the start, so it
+                // never comes back here. Through Firmware, as a route's
+                // restart is: servers hear the board is going, and an image
+                // still on trial records why it went back.
+                std::printf("sendspin: the player could not start now the network is up\n");
+                vTaskDelay(pdMS_TO_TICKS(1500));
+                g_firmware.restart("because the Sendspin player could not start once the network came up");
             }
         }
         player::sendspin_poll();

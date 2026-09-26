@@ -153,9 +153,10 @@ option(AC3FORGE_BUILD_EXAMPLES "Build the documented library examples" ON)
 # directly - it configures a dedicated build/fuzz directory with the right
 # compiler.
 option(AC3FORGE_BUILD_FUZZERS "Build libFuzzer harnesses (Clang only; see fuzz/)" OFF)
-# Every other library component (matroska::matroska, mp4::mp4, mpegts::mpegts) gets its own
-# AC3FORGE_BUILD_<NAME> option, defaulting ON so nothing changes for today's direct/CPack builds.
-# This is what lets a vcpkg port expose a component as an opt-in feature - see
+# Every other library component (matroska::matroska, mp4::mp4, mpegts::mpegts, and the AC-4,
+# IAB and IAMF libraries below) gets its own AC3FORGE_BUILD_<NAME> option, defaulting ON so
+# nothing changes for today's direct/CPack builds. This is what lets the vcpkg port and the Conan
+# recipe (packaging/) expose each as an opt-in feature or option, off unless asked for - see
 # cmake/InstallLibrary.cmake's matching install()/export() gate.
 option(AC3FORGE_BUILD_MATROSKA "Build the standalone Matroska container writer (src/matroska)" ON)
 option(AC3FORGE_BUILD_MP4 "Build the standalone MP4/ISOBMFF container writer (src/mp4)" ON)
@@ -166,8 +167,8 @@ option(AC3FORGE_BUILD_MPEGTS "Build the standalone MPEG-TS container writer (src
 option(AC3FORGE_BUILD_AC4 "Build the standalone AC-4 bitstream inspector, decoder and encoder (src/ac4, src/ac4core, src/ac4dec, src/ac4enc)" ON)
 
 # ac3iab::ac3iab (src/ac3iab) - IAB reader, phase 1: a standalone reader for SMPTE
-# ST 2098-2's Immersive Audio Bitstream. Same zero-third-party-dependency shape as the three
-# container writers above (unlike ac3adm, see its own option() below), so it defaults ON the
+# ST 2098-2's Immersive Audio Bitstream. Like the three container writers above, it needs no
+# opt-in third-party library (unlike ac3adm, see its own option() below), so it defaults ON the
 # same way; unlike them, nothing in apps/cli, apps/gui or examples/ links it yet (IAB reader's
 # phase 3 is what will eventually give it a consumer), so there is no matching FATAL_ERROR
 # guard here - tests/CMakeLists.txt only adds ac3iab's own test file and links ac3iab::ac3iab
@@ -247,9 +248,9 @@ endif()
 # apps/cli, apps/gui, tests/ and examples/ all link matroska::matroska, mp4::mp4 and
 # mpegts::mpegts unconditionally - none of them are written to cope with any of the three being
 # absent. AC3FORGE_BUILD_MATROSKA=OFF, AC3FORGE_BUILD_MP4=OFF or AC3FORGE_BUILD_MPEGTS=OFF only
-# make sense with all four also OFF (this is the shape a vcpkg build without the matching
-# feature actually uses - mp4/mpegts have no vcpkg feature of their own yet, see
-# cmake/InstallLibrary.cmake); catch the unsupported combination here with a clear message
+# make sense with all four also OFF (this is the shape a vcpkg or Conan build without the
+# matching feature or option actually uses, see cmake/InstallLibrary.cmake and packaging/);
+# catch the unsupported combination here with a clear message
 # rather than letting it fail deep inside one of those subdirectories with a "target not found"
 # error.
 if(NOT AC3FORGE_BUILD_MATROSKA AND (AC3FORGE_BUILD_CLI OR AC3FORGE_BUILD_GUI OR AC3FORGE_BUILD_TESTS OR AC3FORGE_BUILD_EXAMPLES))

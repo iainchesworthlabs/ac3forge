@@ -154,6 +154,10 @@ compensated for or encoded as 31.
 
 Usage (repo root, after building ac3cli):  python tools/generators/gen_external_baseline.py
 Set AC3CLI to override the ac3cli binary, same as quality_race.py.
+
+The wider set of DEE's AC-3, E-AC-3, E-AC-3 JOC and TrueHD streams, every layout, rate and
+metadata option DEE takes, kept on a local disk and never committed, is
+tools/generators/gen_dee_gold.py's.
 """
 
 import datetime

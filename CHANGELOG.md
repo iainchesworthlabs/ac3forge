@@ -243,7 +243,10 @@ The sections below contain the complete change list and fixes.
     check stops before an update writes anything.
   - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
     address, the HTTP server and the Sendspin player. It goes back to the previous image if
-    it does not get there within 5 minutes, or if it resets first.
+    it does not get there within 5 minutes, or if it resets first. The trial is read from a
+    timer and takes a task only to write what it decided: a task kept for the whole trial
+    left the S3 board's Sendspin player without the internal RAM it starts with, so no update
+    could pass its trial on that board.
   - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
     its own name.
   - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
@@ -251,6 +254,45 @@ The sections below contain the complete change list and fixes.
   - **`tools/hearth/ota.py`**, and `idf.py ota` through the example's `idf_ext.py`, push a
     build to one board or to every board on the network, and wait for each to accept or go
     back.
+  - **The board's web page has a Firmware section.** It shows both slots, a trial and its time
+    left, an update under way and how the last one ended. **Update firmware…** sends an image
+    chosen from a file and shows the bytes sent; **Restart** and **Roll back** ask first. A
+    file the board would refuse on its head alone is not sent, since an upload stops what plays
+    before the board reads it. When the board comes back running another image, the page loads
+    again.
+  - **Diagnostics without a cable.** A panic's core dump is kept in the `coredump` partition
+    through the restart and a rollback. `GET /firmware` reports it: the task, where, the
+    panic's words, and the image that wrote it. `GET /firmware/coredump` sends it and
+    `DELETE /firmware/coredump` erases it. The C6 and the P4 keep one; the S3 board does not,
+    because the core dump would take 4,016 bytes of its internal SRAM. `GET /log` sends the
+    console's recent output, 16 KiB of it in PSRAM or 2 KiB without, with `?from=` for what
+    is new, and leaves out the Sendspin pairing token. `ota.py coredump` saves a dump and reads
+    it with `esp_coredump`, and `ota.py log --follow` follows the console. An upload now prints
+    the least free internal heap it saw.
+  - **ac3hearth updates a sink's firmware.** A paired Hearth sink's settings page has a
+    **Firmware** tab beside Speakers and Decoder. It shows both slots, whether the sink runs
+    this app's own build, a trial, how the last update ended and the last crash. **Update from
+    a file…** checks the image as `ota.py` does before anything is sent: that it is whole, and
+    that it is for this board. Then it asks, sends the image and follows the board through its
+    restart and trial to the outcome. **Roll back** and **Restart** ask first. The app reaches
+    the board's own web server, not Sendspin, so the tab keeps following an update while the
+    sink is off Sendspin.
+  - **Published sink firmware.** Every release now carries an image for each board:
+    `hearth-sink-esp32s3`, `-esp32c6` (4 MB), `-esp32c6-16mb` and `-esp32p4-rev1`. Each comes as
+    the app image for an update over the network, a factory image for a new board, the parts
+    with a relative `flash_args` for a board already in use, and the ELF, with one
+    `hearth-sink-manifest.json`. `tools/ci/check_firmware_package.py` holds each to its name
+    before upload. `ota.py push --release <tag|latest>` gives each board the image that fits it,
+    checked against the manifest and `SHA512SUMS`. `--run <run id>` takes a CI run's
+    `esp32-firmware` artifact, which every run keeps for 14 days.
+  - **A guide to the sink firmware, and a browser installer.** `docs/hearth/sink-firmware.md`
+    covers choosing a board's image and checking a download. It also covers installing a new
+    board, moving one that runs an older build, updating over the network, and going back.
+    `docs/hearth/sink-installer.md` flashes a board from Chrome, Edge or Firefox with ESP Web
+    Tools, served by the site itself, then gives it its network over Improv. The documentation
+    deploy copies the newest release's firmware into it, and a release redeploys the site. The
+    page lists the ESP32-S3, the ESP32-C6 and the ESP32-P4 every time, names the release its
+    images came from, and says so when GitHub has a newer release with firmware.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
@@ -1023,6 +1065,19 @@ The sections below contain the complete change list and fixes.
   `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
   `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
   rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
+- **Golden masters for the AC-4 phases still to come** (phase G1 of `planning/ac4.md`). DEE's
+  licence ends on 2026-11-06 and is not renewed, so the gold set gains 439 legs beside G0's, each
+  made from committed material by `gen_ac4_baseline.py` and grouped by the phases it serves: sweeps,
+  noise and transients at every 2.0, 5.1 and 5.1.4 rate; film and speech at 5.1.4, with the
+  immersive codec mode each rate gives; immersive stereo at every rate and frame rate, and in
+  gapless parts that meet at DEE's splices; metadata at 2.0, 5.1, 5.1.4 and immersive stereo,
+  among it stepped tones under each DRC profile, every mix level and height downmix gain, loudness
+  targets from −31 to −10 and language tags; substreams for presentations; 60 s programmes; 7.1
+  input; and E-AC-3, AC-3 and E-AC-3 JOC from the same sources. Each keeps MediaInfo's trace of
+  every frame, DEE's MP4 of it and what `ac3cli` made of it. Three 5 s 5.1.4 streams of one tone
+  per channel, one in each immersive codec mode, are committed. DEE writes no AC-4 from objects:
+  its object encoders take only an Atmos master, and refuse every ADM BWF master this project
+  writes as not authored with Dolby tools.
 - **AC-4 decodes to PCM for mono and stereo in the SIMPLE codec mode** (phase D2 of
   `planning/ac4.md`). `ac4::Decoder::decode()` reconstructs the audio spectral frontend
   (dequantisation, scale factors, noise fill), stereo processing (M/S and prediction), the inverse
@@ -1163,6 +1218,28 @@ The sections below contain the complete change list and fixes.
   `codec-mode=aspx-acpl-1|aspx-acpl-2|aspx-acpl-3` and names the mode in its summary.
   `tools/checks/score_ac4_encode.py` pins nine A-CPL legs and the A-CPL race with
   `score_ac4_decode.py`'s per-band checks, which now take ASPX_ACPL_1, 5.0 and the channel pair.
+- **AC-4 over IEC 61937** (phase D11 of `planning/ac4.md`), from IEC 61937-14:2017, with IEC
+  61937-1 and 61937-2 for the burst format. `ac3::iec61937::Ac4BurstPacker` packs one AC-4 sync
+  frame to a data-burst in any of Part 14's four burst types (`Pc` data type 24 with subdata types
+  0 to 3: AC-4, AC-4 HBR4, AC-4 HBR16 and AC-4 LD). Each burst lasts as long as its frame at the
+  link rate, the bursts at 29.97, 59.94 and 119.88 fps follow Part 14's five-burst sequences, `Pc`
+  bits 8 to 11 carry the period's code and `Pd` the frame's length. `wrap_ac4_stream` is the batch
+  form, and `ac4_burst_type_for()` picks the smallest type a stream's largest frame fits.
+  `BurstReader`, `unwrap_stream` and `PassthroughDetector` read all four types, hold an AC-4
+  burst's `Pd` to the length its sync frame states, and now read all seven data-type bits of `Pc`,
+  so a data type 1 burst with a subdata type is no longer taken for AC-3. `ac3tests` holds every
+  row of the tables against a second transcription and against the arithmetic the standard
+  implies, and packs and reads back every frame rate of every type, and every committed DEE
+  stream, unchanged; `AC4DEC_STREAM_DIR` points that case at the whole gold set locally. `PassthroughSink` takes `BitstreamFormat::kAc4`, `kAc4Hbr4` and `kAc4Hbr16`:
+  ALSA and Android send the first two, since both take IEC 61937 bursts as opaque two-channel
+  data, while WASAPI, PipeWire and Core Audio ask for a codec by name, have none for AC-4, and
+  refuse it with the new `PassthroughError::kUnsupportedFormat`, as every backend refuses HBR16's
+  eight-channel link. Hearth's extension role `_ac3forge_player@v1` carries `"ac4"` burst chunks
+  of one sync frame each, and its test sink decodes and renders them: a loopback test sends DEE's
+  2.0 stream through the role, and the sink's output equals the local decode sample for sample.
+  Part 14 leaves two choices, which frame starts a burst sequence and whether `Pd` counts bits or
+  bytes; `iec61937.cpp` gives the reading taken for each. No receiver found accepts AC-4, so none
+  has been tried.
 - **AC-4 decodes every frame rate, with the output processing a system asks for** (phase D6 of
   `planning/ac4.md`). A sample rate converter in `src/ac4core`, with its inverse for the encoder,
   takes every `frame_rate_index`'s internal rate to 48 kHz: a Kaiser-windowed polyphase filter 100 dB
@@ -1330,28 +1407,6 @@ The sections below contain the complete change list and fixes.
   which the encoder then could not write; and that the 7.X layout's pair went to every substream, so
   a 7.1 substream could not have mono dialogue beside it. All three are fixed. `docs/library/ac4.md`
   describes the encoder.
-- **AC-4 over IEC 61937** (phase D11 of `planning/ac4.md`), from IEC 61937-14:2017, with IEC
-  61937-1 and 61937-2 for the burst format. `ac3::iec61937::Ac4BurstPacker` packs one AC-4 sync
-  frame to a data-burst in any of Part 14's four burst types (`Pc` data type 24 with subdata types
-  0 to 3: AC-4, AC-4 HBR4, AC-4 HBR16 and AC-4 LD). Each burst lasts as long as its frame at the
-  link rate, the bursts at 29.97, 59.94 and 119.88 fps follow Part 14's five-burst sequences, `Pc`
-  bits 8 to 11 carry the period's code and `Pd` the frame's length. `wrap_ac4_stream` is the batch
-  form, and `ac4_burst_type_for()` picks the smallest type a stream's largest frame fits.
-  `BurstReader`, `unwrap_stream` and `PassthroughDetector` read all four types, hold an AC-4
-  burst's `Pd` to the length its sync frame states, and now read all seven data-type bits of `Pc`,
-  so a data type 1 burst with a subdata type is no longer taken for AC-3. `ac3tests` holds every
-  row of the tables against a second transcription and against the arithmetic the standard
-  implies, and packs and reads back every frame rate of every type, and every committed DEE
-  stream, unchanged; `AC4DEC_STREAM_DIR` points that case at the whole gold set locally. `PassthroughSink` takes `BitstreamFormat::kAc4`, `kAc4Hbr4` and `kAc4Hbr16`:
-  ALSA and Android send the first two, since both take IEC 61937 bursts as opaque two-channel
-  data, while WASAPI, PipeWire and Core Audio ask for a codec by name, have none for AC-4, and
-  refuse it with the new `PassthroughError::kUnsupportedFormat`, as every backend refuses HBR16's
-  eight-channel link. Hearth's extension role `_ac3forge_player@v1` carries `"ac4"` burst chunks
-  of one sync frame each, and its test sink decodes and renders them: a loopback test sends DEE's
-  2.0 stream through the role, and the sink's output equals the local decode sample for sample.
-  Part 14 leaves two choices, which frame starts a burst sequence and whether `Pd` counts bits or
-  bytes; `iec61937.cpp` gives the reading taken for each. No receiver found accepts AC-4, so none
-  has been tried.
 
 **Browser (WASM)**
 
@@ -1453,6 +1508,15 @@ The sections below contain the complete change list and fixes.
   way playback settings and the resumed queue already are - previously every restart reset the
   whole page to stereo defaults. One setup today, not one per output device, despite the page's
   own "a setup for each output" wording.
+- **Golden masters from Dolby's encoders for AC-3, E-AC-3, E-AC-3 JOC and TrueHD.** DEE's licence
+  ends on 2026-11-06 and is not renewed, so `tools/generators/gen_dee_gold.py` makes, and keeps
+  on a local disk, every stream a later piece of work could want from it: 1,111 legs (1,086
+  streams, 25 refusals kept with DEE's messages) at every layout and data rate the AC-3 and E-AC-3
+  encoders list, 7.1 from the Blu-ray mode, E-AC-3 JOC from 5.1.4, 7.1.4 and 9.1.6 beds, TrueHD at
+  48 and 96 kHz, each metadata option, and 60 and 300 s programmes, each rebuildable from the
+  committed programme fixtures, with MediaInfo's trace, DEE's MP4 and what `ac3cli` and FFmpeg
+  make of it. `ac3cli`'s decoder refuses the 23 streams that use transient pre-noise processing,
+  whose correction reaches further back than it buffers.
 
 ### Changed
 
@@ -1642,12 +1706,33 @@ The sections below contain the complete change list and fixes.
   rows, and four stale claims corrected.
 - The CLI reference lists all forty-two commands, including the previously-undocumented
   `spatial`.
+- The threat model, the WebAssembly page, the ADM page and the building guide no longer describe
+  the codec libraries as free of third-party dependencies. {fmt} is compiled into `ac3::forge`
+  and `mp4::mp4`.
 
 **Release engineering**
 
 - `ac3::version_details()` (and `ac3cli --version`) now puts commits-past-tag in the
   headline as semver build metadata (`0.10.0-beta.1+100`), so it no longer reads as a
   tagged release when it isn't.
+- **The vcpkg port and the Conan recipe install the AC-4 libraries, the IAB reader and the IAMF
+  writer only where asked for.** Each is a feature of the port and an option of the recipe, `ac4`
+  (`ac4::ac4`, `ac4::decoder`, `ac4::encoder`), `iab` (`ac3iab::ac3iab`) and `iamf`
+  (`iamf::iamf`), off by default, since a curated vcpkg port's default features may enable
+  behaviours and not public targets: `vcpkg install ac3forge[ac4,iab,iamf]` or
+  `-o "ac3forge/*:ac4=True"` and the like opt in. Until now the port and the recipe installed IAB
+  and IAMF with every install, and the AC-4 libraries since they were installed at all. Upstream's
+  `AC3FORGE_BUILD_AC4`, `AC3FORGE_BUILD_IAB` and `AC3FORGE_BUILD_IAMF` still default ON for direct
+  builds and the SDK packages. Both recipes now also pin `AC3FORGE_BUILD_HEARTH` off: upstream
+  defaults it ON, so from this tree the port and the recipe would build Hearth, an application and
+  a library nothing installs, and stop at `find_package(httplib)`, a dependency neither declares,
+  or, with the AC-4 libraries off, at upstream's refusal of Hearth without them; the release they
+  pin predates Hearth, so no published install met it. `tools/checks/check_packaging_versions.sh`
+  now holds the two recipes to the same components switching the same `AC3FORGE_BUILD_<NAME>`
+  options, fails a `default-features` entry in the port, an option the recipe turns on by default
+  beyond the container writers, and an option upstream defaults ON that a recipe neither offers nor
+  pins off, and `tools/checks/check_install_consumer.sh` checks that a tree built without a library
+  installs no file of it and one built with it installs its export and `.pc` file.
 
 ### Fixed
 
