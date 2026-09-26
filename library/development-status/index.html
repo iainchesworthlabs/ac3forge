@@ -1,0 +1,6907 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A clean-room AC-3 / E-AC-3 / AC-4 / Dolby Atmos codec library in C++23, the Forge CLI and GUI over it, Crucible, a desktop per-application Atmos mixer, and Hearth, the playback member">
+      
+      
+      
+        <link rel="canonical" href="https://iainchesworthlabs.github.io/ac3forge/library/development-status/">
+      
+      
+        <link rel="prev" href="../capabilities/">
+      
+      
+        <link rel="next" href="../application-coverage/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Development status - ac3forge</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/new.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#development-status" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="ac3forge" class="md-header__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ac3forge
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Development status
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+  
+
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Library
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../verification/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Validation
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance-quality/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance & quality
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../forge/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Forge
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../crucible/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Crucible
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../hearth/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Hearth
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../platforms/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Platforms
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="ac3forge" class="md-nav__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ac3forge
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../concepts/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/ac3-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-3 & E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/atmos-joc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Atmos & JOC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/object-signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development status
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#ac-3-a52-ts-102-366" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AC-3 (A/52 / TS 102 366)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#e-ac-3-annex-e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E-AC-3 (Annex E)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atmos-joc-oamd-emdf-ts-103-420" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atmos / JOC / OAMD / EMDF (TS 103 420)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ac-4-etsi-ts-103-190-1-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AC-4 (ETSI TS 103 190-1 / -2)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#truehd-mlp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TrueHD / MLP
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iab-smpte-st-2098-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IAB (SMPTE ST 2098-2)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adm-bw64-itu-r-bs2076-bs2088" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADM / BW64 (ITU-R BS.2076 / BS.2088)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iamf-aom-immersive-audio-model-and-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IAMF (AOM Immersive Audio Model and Formats)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stream-carriage-and-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stream carriage and containers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-cutting-library-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-cutting library surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#standards-cross-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standards cross-check
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Standards cross-check">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#atsc-a52-etsi-ts-102-366" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ATSC A/52 / ETSI TS 102 366
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etsi-ts-103-420-atmos-joc-oamd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ETSI TS 103 420 (Atmos / JOC / OAMD)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etsi-ts-103-190-1-2-ac-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ETSI TS 103 190-1 / -2 (AC-4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#smpte-st-2098-2-st-2067-201-iab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SMPTE ST 2098-2 / ST 2067-201 (IAB)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#itu-r-bs2076-bs2088-adm-bw64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ITU-R BS.2076 / BS.2088 (ADM / BW64)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aom-iamf-v110" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AOM IAMF v1.1.0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#carriage-annex-f-iec-61937-mpeg-ts-hls-dash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Carriage (Annex F, IEC 61937, MPEG-TS, HLS, DASH)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#truehd-mlp_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TrueHD / MLP
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-read-a-yellow-or-red-row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to read a yellow or red row
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../application-coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Using the library
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Using the library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Example programs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encoding-ac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../encoding-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decoding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../spatial-and-atmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spatial & Atmos objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../station-broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worked example — station broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../channel-plans-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channel plans & routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../muxing-and-sinks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Muxing & sinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../file-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File I/O
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../iab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAB (SMPTE ST 2098-2) reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM / BW64 reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../adm-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM → Atmos bridging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../iamf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAMF writing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ac4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-4 decoding and encoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Measuring quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../header-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Header map
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../api-stability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API stability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bindings
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bindings
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../c-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rust-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rust
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Validation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How output is checked
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threat-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../conformance-vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conformance vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance & quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tool-comparison-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tool comparison trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../landscape/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Landscape
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../forge/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forge
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6" id="__nav_6_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Forge
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../forge/cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/cli/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/cli/metadata-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Options & grammars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../forge/gui/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GUI guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_3" id="__nav_6_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GUI guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/loading-a-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading a source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/format-and-channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format & channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/objects-and-motion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Objects & motion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/live-session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live capture & session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/source-assignment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-source & assignment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/coding-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC a stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/inspect-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspect objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/open-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Localisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/accessibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Keyboard & text size
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../crucible/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crucible
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Crucible
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install & first run
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/room/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The room
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/signal-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The signal path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/accessibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Keyboard & screen readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_7_9" id="__nav_7_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design record
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design record
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/design/promotion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Promotion plan and record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Windows demo it grew from
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../hearth/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hearth
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Hearth
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hearth/sink-esp32-s3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    An ESP32-S3 sink
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hearth/sink-firmware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sink firmware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hearth/sink-installer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install from the browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hearth/design/player-appliance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../platforms/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platforms
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9" id="__nav_9_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platforms
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/linux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/raspberry-pi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raspberry Pi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/android/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Android (Shield demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_9_7" id="__nav_9_7_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAssembly
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_9_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    WebAssembly
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/wasm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser support
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decode demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-encode-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encode demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../platforms/bare-metal/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9_8" id="__nav_9_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_9_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bare metal
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/bare-metal/cortex-m3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cortex-M3 (QEMU reference)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/bare-metal/esp32-s3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-S3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/bare-metal/esp32-p4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-P4
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/bare-metal/esp32-c3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-C3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/bare-metal/esp32-c6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-C6
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/bare-metal/esphome/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESPHome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../platforms/windows-driver-acx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows null-sink driver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ci-self-hosted-runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosted CI runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ci-lanes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CI lane partitions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#ac-3-a52-ts-102-366" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AC-3 (A/52 / TS 102 366)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#e-ac-3-annex-e" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        E-AC-3 (Annex E)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#atmos-joc-oamd-emdf-ts-103-420" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Atmos / JOC / OAMD / EMDF (TS 103 420)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ac-4-etsi-ts-103-190-1-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AC-4 (ETSI TS 103 190-1 / -2)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#truehd-mlp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TrueHD / MLP
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iab-smpte-st-2098-2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IAB (SMPTE ST 2098-2)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adm-bw64-itu-r-bs2076-bs2088" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ADM / BW64 (ITU-R BS.2076 / BS.2088)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#iamf-aom-immersive-audio-model-and-formats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IAMF (AOM Immersive Audio Model and Formats)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stream-carriage-and-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stream carriage and containers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-cutting-library-surface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-cutting library surface
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#standards-cross-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standards cross-check
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Standards cross-check">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#atsc-a52-etsi-ts-102-366" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ATSC A/52 / ETSI TS 102 366
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etsi-ts-103-420-atmos-joc-oamd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ETSI TS 103 420 (Atmos / JOC / OAMD)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etsi-ts-103-190-1-2-ac-4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ETSI TS 103 190-1 / -2 (AC-4)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#smpte-st-2098-2-st-2067-201-iab" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SMPTE ST 2098-2 / ST 2067-201 (IAB)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#itu-r-bs2076-bs2088-adm-bw64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ITU-R BS.2076 / BS.2088 (ADM / BW64)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#aom-iamf-v110" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        AOM IAMF v1.1.0
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#carriage-annex-f-iec-61937-mpeg-ts-hls-dash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Carriage (Annex F, IEC 61937, MPEG-TS, HLS, DASH)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#truehd-mlp_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TrueHD / MLP
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-read-a-yellow-or-red-row" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to read a yellow or red row
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="development-status">Development status<a class="headerlink" href="#development-status" title="Permanent link">&para;</a></h1>
+<p>At-a-glance implementation status for every codec, coding tool, metadata field, and related
+bitstream surface this repository owns — the companion to
+<a href="../capabilities/">Capabilities and limitations</a>.</p>
+<table>
+<thead>
+<tr>
+<th>Page</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>This page</strong></td>
+<td>Status of each feature: done, partial, or not started</td>
+</tr>
+<tr>
+<td><a href="../capabilities/">Capabilities</a></td>
+<td>What each shipped feature does, with the spec sections and the limitations that shape use</td>
+</tr>
+<tr>
+<td><a href="../../verification/">Validation</a></td>
+<td>How claims are checked, and where external oracles do not reach</td>
+</tr>
+<tr>
+<td><a href="../../roadmap/">Roadmap</a></td>
+<td>Candidate work and history behind stable IDs (<code>IM5</code>, <code>EQ10</code>, …)</td>
+</tr>
+<tr>
+<td><a href="../application-coverage/">Application coverage</a></td>
+<td>Which applications expose each broad library capability</td>
+</tr>
+</tbody>
+</table>
+<p><a href="../../contributing/">CONTRIBUTING.md</a> still makes <a href="../capabilities/">Capabilities</a> and
+<a href="../../verification/">Validation</a> the authority when a capability lands or a limitation is found.
+Update those first; refresh the matching row here so the status table stays a summary rather than
+a second capability record.</p>
+<p><strong>Legend:</strong> 🟢 Completed • 🟡 Partial / in progress • 🔴 Not started / refused / out of scope</p>
+<p>Statuses describe the <em>bitstream and API surface</em>, not application polish. A green row can still
+carry a note about an oracle gap, an intentional <code>auto</code> exclusion, or an interoperability caveat —
+those details live in <a href="../capabilities/">Capabilities</a> and <a href="../../verification/">Validation</a>.</p>
+<p>The tables below were cross-checked against the cited standards (A/52 / TS 102 366 including
+Annexes D–H and F, TS 103 420, TS 103 190-1/-2, ST 2098-2, BS.2076 / BS.2088, IAMF v1.1.0, and
+the carriage specs wired in-tree). Open gaps against those texts are collected again under
+<a href="#standards-cross-check">Standards cross-check</a>.</p>
+<hr />
+<h2 id="ac-3-a52-ts-102-366">AC-3 (A/52 / TS 102 366)<a class="headerlink" href="#ac-3-a52-ts-102-366" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Encoder</strong></td>
+<td>Syncframe / BSI / audio blocks (bsid ≤ 8)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Shared tables and bit allocation with the decoder</td>
+</tr>
+<tr>
+<td></td>
+<td>Coding modes 1+1, 1/0, 2/0, 3/2 ± LFE</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Named layouts and CLI coverage</td>
+</tr>
+<tr>
+<td></td>
+<td>Coding modes 3/0, 2/1, 3/1, 2/2</td>
+<td>🟡</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Decode and <code>FrameConfig::acmod</code> accept them; no named-layout / CLI encode path for every acmod</td>
+</tr>
+<tr>
+<td></td>
+<td>Sample rates 48 / 44.1 / 32 kHz</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>44.1 kHz uses Bresenham frame-size alternation</td>
+</tr>
+<tr>
+<td></td>
+<td>CBR bit rates (Table 5.18, 32–640 kbps)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>AC-3 has no VBR</td>
+</tr>
+<tr>
+<td></td>
+<td>Block switching (§8.2.2)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Per-channel transient detector</td>
+</tr>
+<tr>
+<td></td>
+<td>Exponents D15 / D25 / D45</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Strategy from reuse span</td>
+</tr>
+<tr>
+<td></td>
+<td>Coupling (§7.4)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Auto begin/end; per-channel <code>chincpl</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Rematrixing 2/0 (§7.5.3)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Minimum-power rule</td>
+</tr>
+<tr>
+<td></td>
+<td>Delta bit allocation (§7.2.2.6)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Auto; skipped for LFE</td>
+</tr>
+<tr>
+<td></td>
+<td>Dither (<code>dithflag</code>, §7.3.4)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Content-driven per channel per block</td>
+</tr>
+<tr>
+<td></td>
+<td>Bit allocation parameters (§8.2.12)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Basic-encoder set; <code>dbpbcod</code> 3</td>
+</tr>
+<tr>
+<td></td>
+<td>Objects as 5.1 bed pan</td>
+<td>🟢</td>
+<td>Low</td>
+<td>Optional</td>
+<td>No object metadata survives — see Atmos for JOC</td>
+</tr>
+<tr>
+<td><strong>Metadata</strong></td>
+<td><code>dynrng</code> (§7.7.1)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Five project profiles</td>
+</tr>
+<tr>
+<td></td>
+<td><code>compr</code> (§7.7.2)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Mono-downmix peak ceiling</td>
+</tr>
+<tr>
+<td></td>
+<td><code>dialnorm</code> (§5.4.2.8)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>BS.1770-4 or direct</td>
+</tr>
+<tr>
+<td></td>
+<td>Downmix levels (<code>cmixlev</code> / <code>surmixlev</code>)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Tables 5.9 / 5.10</td>
+</tr>
+<tr>
+<td></td>
+<td>Service / production BSI (<code>bsmod</code>, <code>langcod</code>, timecode, <code>copyrightb</code>, <code>origbs</code>, <code>dsurmod</code>, …)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Encode, decode, probe</td>
+</tr>
+<tr>
+<td></td>
+<td>Annex D Surround EX / Headphone / A/D (<code>dsurexmod</code>, <code>dheadphonmod</code>, <code>adconvtyp</code>)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>Via <code>xbsi2</code> when bsid 6; E-AC-3 <code>infomdat</code> otherwise</td>
+</tr>
+<tr>
+<td></td>
+<td>Annex D alternate syntax (bsid 6, <code>xbsi1</code> / <code>xbsi2</code>)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>Both ways; §D3.2 legacy-reader promise holds</td>
+</tr>
+<tr>
+<td><strong>Decoder</strong></td>
+<td>Full AC-3 reconstruction</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Shared core with encoder; FFmpeg oracle</td>
+</tr>
+<tr>
+<td></td>
+<td>CRC1 / CRC2 validation</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Leading CRC1 solved on encode</td>
+</tr>
+<tr>
+<td></td>
+<td>§7.8 / dialnorm output stage</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Opt-in; Lo/Ro, Lt/Rt, mono, RF</td>
+</tr>
+<tr>
+<td></td>
+<td>§7.10 error concealment</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Opt-in repeat / mute</td>
+</tr>
+<tr>
+<td></td>
+<td>Consumer diagnostics sink</td>
+<td>🟢</td>
+<td>Low</td>
+<td>Optional</td>
+<td>CRC fail and unknown EMDF id</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="e-ac-3-annex-e">E-AC-3 (Annex E)<a class="headerlink" href="#e-ac-3-annex-e" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Encoder</strong></td>
+<td>Independent + dependent substreams</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>AccessUnitEncoder</code> for wide layouts</td>
+</tr>
+<tr>
+<td></td>
+<td>Layouts through 7.1.4 (<code>chanmap</code>)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>7.1.4 = two dependents</td>
+</tr>
+<tr>
+<td></td>
+<td>Multi-programme authoring (I0–I7)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>All eight programmes; each with own layout, dialnorm and full <code>mixmdate</code>/<code>bsmod</code> metadata — sample rate and block count shared across the stream (§E2.3.1.2 requires it)</td>
+</tr>
+<tr>
+<td></td>
+<td>Associated-service <code>bsmod</code> / <code>mainid</code> labelling</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Written, read back and validated against the stream's own <code>bsmod</code> (<code>mpegts::parse_service_descriptor</code>); consumed by Hearth's container facts, not yet surfaced in <code>ac3cli probe</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Sample rates + <code>fscod2</code> half rates</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Enc/dec complete; no external PCM oracle for half rates</td>
+</tr>
+<tr>
+<td></td>
+<td>CBR and VBR (per substream)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>VBR E-AC-3 only; ABR mode shipped</td>
+</tr>
+<tr>
+<td></td>
+<td>Short syncframes (<code>numblkscod</code> 0–2) + <code>convsync</code></td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Including object layer scaling; <code>eac3_latency()</code> still ignores short frames</td>
+</tr>
+<tr>
+<td></td>
+<td>Exponent strategies (<code>expstre</code> 0/1)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Table E2.10 or per-block</td>
+</tr>
+<tr>
+<td></td>
+<td>Standard coupling (§E3.3)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>In <code>auto</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Spectral extension (§E3.6)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>In <code>auto</code></td>
+</tr>
+<tr>
+<td></td>
+<td>AHT + GAQ (§E3.4)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>In <code>auto</code>; delta BA suppressed on AHT streams (measured)</td>
+</tr>
+<tr>
+<td></td>
+<td>Delta bit allocation (§7.2.2.6 under Annex E)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Including coupling channel; closed-loop vs rate fit</td>
+</tr>
+<tr>
+<td></td>
+<td>Enhanced coupling (§E3.5)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Enc/dec complete; kept out of <code>auto</code> (FFmpeg cannot read); no external oracle</td>
+</tr>
+<tr>
+<td></td>
+<td>Transient pre-noise (§3.7)</td>
+<td>🟢</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Enc/dec complete, every reach the syntax allows; DEE stream in the gold gate; kept out of <code>auto</code> (measured loss); 1536-sample hold-back; last AU can be lost at EOF</td>
+</tr>
+<tr>
+<td></td>
+<td>Bit allocation transmitted (<code>bamode</code> 1)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Table E1.4 defaults</td>
+</tr>
+<tr>
+<td></td>
+<td>Closed-loop <code>auto</code> tool selection</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Spectrum-aware cpl / spx / aht only</td>
+</tr>
+<tr>
+<td><strong>Metadata</strong></td>
+<td><code>mixmdate</code> downmix levels</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Tables D2.2–D2.6</td>
+</tr>
+<tr>
+<td></td>
+<td>Programme-mix wire format (<code>pgmscl</code>, <code>mixdef</code>, pan, <code>blkmixcfg</code>, …)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Written and decoded (§E2.3.1.12–61); the <code>blkmixcfginfo</code> desync at <code>numblkscod==0x0</code> is fixed and round-trip gaps are closed</td>
+</tr>
+<tr>
+<td></td>
+<td>Receiver-side programme mixer</td>
+<td>🔴</td>
+<td>Medium</td>
+<td>Important</td>
+<td>No runtime mix of main + AD / commentary / external programme</td>
+</tr>
+<tr>
+<td></td>
+<td><code>infomdat</code> service / production</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Table E1.2</td>
+</tr>
+<tr>
+<td><strong>Decoder</strong></td>
+<td>Full E-AC-3 reconstruction</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Every Annex E tool, alone or stacked</td>
+</tr>
+<tr>
+<td></td>
+<td>Dependent render (§E3.8.2)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Including 7.1.4</td>
+</tr>
+<tr>
+<td></td>
+<td>Legacy AC-3 core + E-AC-3 extension (§E2.3.1.2)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td><code>StreamKind::kAc3CoreEac3Extension</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Convertible substreams (<code>strmtyp</code> 2)</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Out-of-scope</td>
+<td>Spec’s no-re-encode AC-3 path; encode / decode / probe / edit / split all refuse</td>
+</tr>
+<tr>
+<td></td>
+<td>Multi-programme select</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>One programme per decode (<code>DecoderConfig::programme</code>)</td>
+</tr>
+<tr>
+<td></td>
+<td>Dependent failure → bed-only</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Concealment / soft fail path</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="atmos-joc-oamd-emdf-ts-103-420">Atmos / JOC / OAMD / EMDF (TS 103 420)<a class="headerlink" href="#atmos-joc-oamd-emdf-ts-103-420" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>EMDF</strong></td>
+<td>Container parse / write (Annex H)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Skip-field placement verified vs DEE</td>
+</tr>
+<tr>
+<td></td>
+<td>Reserved / unsupported EMDF variants (§H.2.2)</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Optional</td>
+<td>e.g. <code>protection_length_primary</code> = 00, <code>emdf_version</code> ≠ 0 — refused rather than guessed</td>
+</tr>
+<tr>
+<td><strong>OAMD</strong></td>
+<td>Payload encode (project subset)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>AtmosEncoder</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Payload parse (broader than encode)</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Most §5.5; commercial shapes like <code>sample_offset_code</code>, <code>b_object_not_active</code>, multi-block updates still refused by the encoder — PR #801 (open) widens it</td>
+</tr>
+<tr>
+<td></td>
+<td>Channel-based immersive (OAMD bed, no dynamic objects)</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>Decode path exists; not a separate encode product surface</td>
+</tr>
+<tr>
+<td><strong>JOC</strong></td>
+<td>Matrix encode (5.X downmix)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>7.X configs decode-only</td>
+</tr>
+<tr>
+<td></td>
+<td>Object reconstruction (QMF + MDCT, §6.6.6)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Default QMF domain; self-check &gt; −20 dB</td>
+</tr>
+<tr>
+<td></td>
+<td><code>joc_clipgain</code> application (§6.3.3.2)</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Parsed onto <code>FrameParameters</code>; not applied in the reconstruction chain</td>
+</tr>
+<tr>
+<td></td>
+<td>Phase-shift downmix undo (<code>phsflg</code>, Table 47 configs 2/4)</td>
+<td>🟡</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Configs parse; reconstructed like unshifted siblings (no Hilbert undo)</td>
+</tr>
+<tr>
+<td></td>
+<td>7.X downmix needing dependent Lb/Rb</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Metadata/JOC parse; <code>object_audio</code> empty when bed lacks the dependent</td>
+</tr>
+<tr>
+<td><strong>Atmos encode</strong></td>
+<td>Bed + objects in E-AC-3</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>oba::AtmosEncoder</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Object size / spread / zone constraints (wire)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Transmitted in OAMD</td>
+</tr>
+<tr>
+<td></td>
+<td>Extent / spread / zone / snap in renderer</td>
+<td>🟡</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Spec leaves behaviour to the renderer; VBAP bed pan does not apply them</td>
+</tr>
+<tr>
+<td></td>
+<td>Complexity index / addbsi marker (§8.3)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Probe, <code>dec3</code>, HLS <code>CHANNELS="…/JOC"</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Scene timeline (<code>ObjectScene</code>)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Shared by CLI / GUI / live</td>
+</tr>
+<tr>
+<td></td>
+<td>Live OSC object positions</td>
+<td>🟢</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Scheme-prefixed; OSC only today</td>
+</tr>
+<tr>
+<td><strong>Signing</strong></td>
+<td>EMDF protection HMAC</td>
+<td>🟡</td>
+<td>High</td>
+<td>Essential</td>
+<td>Mechanism ships; no project key — unsigned streams fall back to 5.1 in Dolby decoders</td>
+</tr>
+<tr>
+<td></td>
+<td>Authenticity-tag detect / verify</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Probe and <code>signing::verify_*</code> (single key)</td>
+</tr>
+<tr>
+<td></td>
+<td>Unchecked object decode (default)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Reconstruct without MAC check — FOSS-style</td>
+</tr>
+<tr>
+<td></td>
+<td>Multi-key verify (keyring)</td>
+<td>🔴</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Roadmap Partial / Proposed — <a href="../../concepts/object-signing/#planned-decode-modes">Object signing</a></td>
+</tr>
+<tr>
+<td></td>
+<td>Licensed soft-gate (bed on fail)</td>
+<td>🔴</td>
+<td>Medium</td>
+<td>Important</td>
+<td>AVR-like: mismatch → bed-only; decode continues</td>
+</tr>
+<tr>
+<td><strong>Tools</strong></td>
+<td>Strip object layer (bitstream)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Bit-identical bed; no re-encode</td>
+</tr>
+<tr>
+<td></td>
+<td>Object unlock in Dolby decoder</td>
+<td>🟡</td>
+<td>High</td>
+<td>Essential</td>
+<td>Spec-correct streams; proprietary key gate — see <a href="../signing/">Object signing</a></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="ac-4-etsi-ts-103-190-1-2">AC-4 (ETSI TS 103 190-1 / -2)<a class="headerlink" href="#ac-4-etsi-ts-103-190-1-2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Inspector (<code>ac4::ac4</code>)</strong></td>
+<td>Sync frame + Annex G CRC</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>vs DEE fixtures</td>
+</tr>
+<tr>
+<td></td>
+<td>Sync frames from a stream in pieces</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>SyncFrameSplitter</code>: the caller's storage, no allocation, a partial frame held between reads; resynchronises past bytes that are not a frame and hands a frame found that way over only once a sync word follows it; the frames <code>scan</code> finds on committed streams fed in pieces from 1 byte to 64 KiB, and against <code>scan</code> in <code>fuzz_ac4_parse</code></td>
+</tr>
+<tr>
+<td></td>
+<td>TOC / presentations v0–v2</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Channel-based immersive through 7.1.4</td>
+</tr>
+<tr>
+<td></td>
+<td><code>bitstream_version</code> 0/1 legacy TOC</td>
+<td>🟡</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Transcribed; no real DEE stream exercises it (all observed v2); version 0 presentations of several substreams decode and mix on the test multiplexer's streams</td>
+</tr>
+<tr>
+<td></td>
+<td>Channel-coded substream groups</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Probe / JSON contract</td>
+</tr>
+<tr>
+<td></td>
+<td>A-JOC / object / OAMD substream info</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Parsed; real A-JOC fixtures scarce</td>
+</tr>
+<tr>
+<td></td>
+<td><code>oamd_common_data()</code> (TOC level, §6.2.8.1)</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>Transcribed</td>
+</tr>
+<tr>
+<td></td>
+<td>OAMD substream DATA body (<code>oamd_substream()</code>)</td>
+<td>🔴</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Byte-range only — not field-parsed</td>
+</tr>
+<tr>
+<td></td>
+<td>EMDF-only presentations (config 6)</td>
+<td>🟢</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Synthetic + dual transcription</td>
+</tr>
+<tr>
+<td></td>
+<td><code>dac4</code> / RFC 6381 codec string</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>MP4 / TS / HLS / DASH wiring</td>
+</tr>
+<tr>
+<td></td>
+<td>Audio PCM decode</td>
+<td>🔴</td>
+<td>High</td>
+<td>Essential</td>
+<td>Inspector by design — content is byte ranges only; <code>ac4::decoder</code> decodes it</td>
+</tr>
+<tr>
+<td><strong>Decoder (<code>ac4::decoder</code>)</strong></td>
+<td>Presentation + channel-coded syntax</td>
+<td>🟡</td>
+<td>High</td>
+<td>Essential</td>
+<td>Full syntax trace</td>
+</tr>
+<tr>
+<td></td>
+<td>ASF / ASPX / A-CPL / metadata()</td>
+<td>🟡</td>
+<td>High</td>
+<td>Essential</td>
+<td>DEE digest CI; dual transcription vs Python</td>
+</tr>
+<tr>
+<td></td>
+<td>Channel-coded paths without fixtures</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>Noise fill, VARVAR ASPX, time-interleaved ASPX, the mono element, alt presentations, transmitted DRC gains — transcribed, oracle-poor; 3.0, 7.X and every A-CPL mode read on constructed streams</td>
+</tr>
+<tr>
+<td></td>
+<td>EMDF payload substreams (syntax)</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Syntax only</td>
+</tr>
+<tr>
+<td></td>
+<td>Dialogue enhancement PCM apply</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Part 1 5.7.8's four methods in the QMF domain, from 0 dB to the stream's cap; 0 dB is the tool bypassed, sample for sample, and the parsed gains apply to 0.01 dB; the channel-independent method on DEE's streams, the others on constructed data; the hybrid methods take their waveform from the presentation's dialogue enhancement substream; <code>ac3cli decode dialogue-enhancement=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Speech spectral frontend (SSF)</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Refused <code>kUnsupported</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Immersive channel element (7.0.4, 7.1.4)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Part 2 6.2.4 to 6.2.6 in both transcriptions; SCPL, ASPX_SCPL, ASPX_ACPL_1, ASPX_ACPL_2 and ASPX_AJCC: 5.2's track assignment, S-CPL, A-SPX's pairing and gains, A-CPL's four modules and A-JCC, in full and core decoding (<code>ac4::DecoderConfig::decoding</code>); DEE's 5.1.4 in its three modes with each tone on its own channel, the rest on constructed streams; <code>ac3cli decode decoding=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>9.X.4 and 22.2 channel elements</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Refused <code>kUnsupported</code> by name</td>
+</tr>
+<tr>
+<td></td>
+<td>Object audio: A-JOC and direct-coded objects</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Part 2 6.2.3 to 6.2.8 in both transcriptions, the OAMD substream included; A-JOC's reconstruction (5.7) in full decoding and its downmix or static bed in core decoding, dialogue enhancement for objects (5.8.2.3 to 5.8.2.5), each object's Annex F properties at its update sample, and the ISF renderer (5.10.3); Chromium's <code>ac4-ajoc.ac4</code> in both modes, eight constructed streams scored tone by tone. No reference decode to compare with: librempeg refuses object coding, and DEE writes no A-JOC from this project's masters</td>
+</tr>
+<tr>
+<td></td>
+<td>HSF / 96–192 kHz</td>
+<td>🟡</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Extension substream content read when it resolves to its owning channel substream; an unresolved link is refused <code>kUnsupported</code> — synthetic frames only, no real HSF stream available</td>
+</tr>
+<tr>
+<td></td>
+<td>PCM: SIMPLE mono and stereo</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>ASF, stereo processing, block switching, frame alignment and the QMF banks at <code>frame_rate_index</code> 13; DEE's 2.0 streams at unity gain and pinned SNR floors in CI; librempeg agrees to 83 dB or better</td>
+</tr>
+<tr>
+<td></td>
+<td>PCM: ASPX mono and stereo</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Companding and A-SPX in the QMF domain; DEE's 2.0 streams from 48 to 144 kbps at unity gain and its immersive stereo against Lo/Ro, with SNR below the crossover, A-SPX tile energies, LSD and ViSQOL pinned; interleaved waveform coding, balance and VARVAR tested on constructed data</td>
+</tr>
+<tr>
+<td></td>
+<td>PCM: 3.0, 5.X and 7.X</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>SIMPLE and ASPX: the LFE, Tables 178 to 183's matrices and routing, A-SPX pairing and companding over Tables 212 and 213; DEE's 5.1 streams from 192 to 768 kbps with every channel scored and pinned, each tone on its own channel, librempeg agreeing to 83 dB; every coding_config, 2ch_mode, chel_matsel, the 3.0 element and the three 7.X modes on constructed streams</td>
+</tr>
+<tr>
+<td></td>
+<td>PCM: A-CPL</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>ASPX_ACPL_1 to 3 in the pair, 5.X and 7.X elements: the decorrelators against their difference equations and flat to 1e-9, the ducker, interpolation and dequantisation; DEE's 5.1 at 96 to 144 kbps with the coded downmixes scored as waveforms and each parameter band's level difference and correlation pinned; the other modes on constructed streams. librempeg does not rebuild the surrounds</td>
+</tr>
+<tr>
+<td></td>
+<td>PCM: other frame rates</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Every <code>frame_rate_index</code> to 48 kHz through the sample rate converter (<code>ac4core</code>: Kaiser-windowed polyphase, 100 dB down from the lower Nyquist frequency), its phase locked to <code>sequence_counter</code> as Part 2 5.11 has it and Table 47's counts held; DEE's IMS streams at 23.976, 24, 25 and 29.97 fps scored in CI</td>
+</tr>
+<tr>
+<td></td>
+<td>Output level and DRC</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>Lout</code>, Table 161's mode selection, the default profiles, transmitted curves and gains, in dB2, with a BS.1770 K-weighted level detector; the output level gain to 0.01 dB for DEE's dialnorms from -31 to -17, each mode's static curve within 0.5 dB; <code>ac3cli decode output-level= drcmode=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Downmix</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Part 1 6.2.17's cascade from 7.X to 5.X, two channels and mono with the stream's gains and loudness corrections: Lo/Ro, Lt/Rt and Pro Logic II, the LFE at its mix gain; one tone per channel through each matrix equals its formula to 0.01 dB; <code>ac3cli decode channels= downmix=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Channel renderer (immersive)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Part 2 5.10.2's Tables 38 to 43 and 45 and 46 from the source's configuration to 7.X.4, 7.X.2, 7.X.0, 5.X.4, 5.X.2 and 5.X.0, with custom downmix data (Table 130's defaults) and the output's loudness correction, and Part 1's Table 218 after 5.X.0 for two channels and mono; every table held against a second transcription; DEE's 5.1.4 legs rendered in both modes equal the matrices to 0.01 dB; DRC's Table 69 groups; <code>ac3cli decode speakers=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Presentations and mixing</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Part 2 4.8.2's selection, by <code>presentation_id</code>, position, language, associated audio and <code>b_pre_virtualized</code>, within the decoder's level, for version 0 and 1 presentations: a table of 30 constructed tables of contents in both transcriptions. Music and effects with dialogue, main with associated audio, both, and <code>presentation_config</code> 5 mixed as Part 1 6.2.16 and Part 2 4.8.3.17 to 4.8.5 give: group gains, the main audio's scaling, g_dialog and g_assoc, pans, version 0's levelling; every mix of the test multiplexer's streams equals its formula to 0.01 dB, in CI; <code>ac3cli decode presentation= language= associated= dialogue-gain= associated-gain=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Start-up, splices and concealment</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Decoding from any I-frame gives the whole stream's output from the frame after it, but for A-SPX's noise phase and A-CPL's decorrelators settling; a change of source keeps the signal, so a splice at an I-frame joins the streams without a gap; <code>ConcealmentPolicy</code> repeat-and-fade or mute for a frame that does not decode, <code>ac3cli decode conceal=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>API, reports and packaging</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>DecoderConfig</code>, <code>OutputConfig</code> and <code>Decoder</code> with every control of the plan's "One control for both formats", changed while a stream plays by <code>set_output()</code> and <code>set_presentation()</code>; output a frame or 256 samples at a time; each presentation (names sent in chunks included) and the selected one's loudness, DRC, dialogue enhancement and downmix metadata; installed and exported with the inspector and the core, and a program decodes a stream through the installed package by CMake and by pkg-config; a test standing in for the Hearth engine decodes every committed stream through the public API alone, and Hearth's engine plays each one the decoder decodes through it, sample for sample the same (I2)</td>
+</tr>
+<tr>
+<td></td>
+<td><code>ac3cli decode</code> and <code>probe</code></td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>decode</code>: every control above, a presentation with objects rendered to speakers through Hearth's layout renderer, and an option of another format's named in a warning; <code>probe json=1</code>: the frame rate, bit rate, I-frames, splices, version 1 presentations, the selected presentation and its metadata</td>
+</tr>
+<tr>
+<td></td>
+<td>Transforms (<code>ac4core</code>: FFT, MDCT pair, KBD, QMF banks)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Each against its formula to 1e-12; shared by the decoder and the encoder, with A-SPX's tables and high frequency generator and A-CPL's decorrelators, ducker and tables</td>
+</tr>
+<tr>
+<td><strong>Encoder (<code>ac4::encoder</code>)</strong></td>
+<td>SIMPLE mono and stereo</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>48 and 44.1 kHz, from 8 kbps; block switching, M/S and prediction; SNR, LSD and ViSQOL floors in CI; ahead of DEE on SNR and LSD at 192 kbps</td>
+</tr>
+<tr>
+<td></td>
+<td>Frame writer, sync frame, MP4 and <code>dac4</code></td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Encoder, decoder and Python traces agree record for record (tests, <code>fuzz_ac4_encode</code>, encoder-space harness); FFmpeg frames it; MediaInfo and DEE's MP4 muxer read it as configured. The <code>dac4</code> describes every presentation (Part 2 Annex E.10: each configuration's substream groups, A-JOC and direct-coded object groups, an alternative presentation's name and target), byte for byte as DEE's muxer writes it for Chromium's A-JOC stream and DASH-IF's vectors, or <code>dac4_refusal()</code> says what it cannot; <code>cmaf_refusal()</code> names the rule of Annex H.1.2.1 a stream breaks, and <code>ac3cli fmp4</code> refuses such a stream</td>
+</tr>
+<tr>
+<td></td>
+<td>ASPX mono and stereo</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Below 96 kbps a channel: A-SPX with DEE's crossovers, FIXFIX, FIXVAR and VARFIX framing, sinusoids, companding below 64 kbps a channel; SNR below the crossover, A-SPX tiles, LSD and ViSQOL pinned in CI; ViSQOL within 0.03 of DEE's or above it from 64 to 144 kbps. Balance, VARVAR and frequency interleaving behind <code>experimental=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>SIMPLE and ASPX 5.0 and 5.1</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>The 5.X element in DEE's form: L/R and Ls/Rs pairs, C, the LFE to 140.6 Hz; ASPX below 384 kbps for 5.1, at DEE's 5.1 crossovers; each channel's tone on its own channel, the LFE's included; librempeg decodes it as the decoder does, to 82.5 dB; SNR, LSD and ViSQOL pinned in CI, and the race against DEE from 192 to 768 kbps. Coding configurations 1 to 3, <code>2ch_mode</code> 1, and 7.0 and 7.1 in the 7.X element behind <code>experimental=</code></td>
+</tr>
+<tr>
+<td></td>
+<td>A-CPL 5.0 and 5.1</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>ASPX_ACPL_3 and ASPX_ACPL_2 at DEE's rates, with DEE's A-SPX configuration; each band's parameters from each subband's own band; each tone on its own channel; the coded downmixes, each band's level difference and correlation, LSD and ViSQOL pinned in CI, and the race against DEE at 96 to 144 kbps; MediaInfo and DEE's muxer read it, and librempeg decodes its coded channels. ASPX_ACPL_1 and A-CPL in stereo behind <code>experimental=acpl</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Frame rates, rate modes and I-frames</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Every frame rate of Part 1 Table 83 at 48 kHz, through the decoder's converter in the other direction, each frame's samples locked to <code>sequence_counter</code> and exact over 100 000 frames at each rate; LSD and ViSQOL within pinned allowances of index 13 in CI; average and variable rates, the average one within the buffer <code>wait_frames</code> signals, checked frame by frame; I-frames at an interval, at named frames and at fragment starts, an MP4's sync samples</td>
+</tr>
+<tr>
+<td></td>
+<td>Metadata</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Further loudness values, measured with the BS.1770 meter; DRC's decoder modes on the default profile, on curves of their own or repeating another; the stereo downmix's values; dialogue enhancement from marked channels or a stem, by the channel-independent, Mid and cross-channel methods. MediaInfo reads each value as written over 42 configurations, and the decoder's output level, downmixes and dialogue enhancement gains equal their formulas on the encoder's streams, in CI. Transmitted DRC gains behind <code>experimental=drc-gains-N</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Presentations and several substreams</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Part 2 Table 53's configurations over substreams in groups of their own: music and effects with dialogue, main with dialogue enhancement (the hybrid methods' waveform in a substream of its own), main with associated audio, music and effects with both, main with both, roles by classifier, and EMDF payloads alone; alternative presentations and their names, languages, classifiers, group gains, each presentation's least <code>md_compat</code>, the dialogue's and the associated audio's mixing values, EMDF payloads passed through; CMAF's limits held. D7's selection and mixing give every configured presentation to 0.01 dB on the encoder's streams, in CI; MediaInfo lists the presentations, names, languages and levels as configured. 3.0 dialogue behind the experimental options. <code>ac3cli ac4-encode</code> takes them (<code>substreamN=</code>, <code>presentationN=</code>), and the encoder-space harness draws them</td>
+</tr>
+<tr>
+<td></td>
+<td>API, CLI and packaging</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>EncoderConfig</code>, every field with a default for designated initializers, and <code>Encoder</code>, whose <code>refusal_reason()</code> names the rule a configuration breaks; <code>sync_frame()</code> for raw files and MPEG-2 TS; <code>ac3cli ac4-encode</code> with an option for each setting, every option tested; installed and exported with the decoder (<code>ac4::encoder_static</code>, <code>ac4::encoder_shared</code>, pkg-config <code>ac4enc</code>), and a program encodes through the installed package by CMake and by pkg-config</td>
+</tr>
+<tr>
+<td></td>
+<td>Immersive layouts and objects</td>
+<td>🔴</td>
+<td>High</td>
+<td>Essential</td>
+<td>Plan phases E8 and E9</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="truehd-mlp">TrueHD / MLP<a class="headerlink" href="#truehd-mlp" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Codec</strong></td>
+<td>Experimental TrueHD/MLP module</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Substantial work on <code>feature/truehd-atmos-support</code>; not on <code>main</code> (roadmap IM5)</td>
+</tr>
+<tr>
+<td></td>
+<td>Evolution frame HMAC (authenticity)</td>
+<td>🔴</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Distinct from DD+ EMDF <code>ac3::signing</code>; truncated HMAC-SHA-256 on Evolution frames (cf. truehdd <code>--evo-key</code>). Note on IM5 / <a href="../../concepts/object-signing/#sibling-truehd-evolution">Object signing</a></td>
+</tr>
+<tr>
+<td></td>
+<td>Shipping TrueHD interop</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Out-of-scope</td>
+<td>Blocked on DVD Forum reference material and clean-room ruling (IM6)</td>
+</tr>
+<tr>
+<td></td>
+<td>Passthrough device lists</td>
+<td>🟡</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>ELD / capability enums mention TrueHD; no codec on <code>main</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="iab-smpte-st-2098-2">IAB (SMPTE ST 2098-2)<a class="headerlink" href="#iab-smpte-st-2098-2" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Reader</strong></td>
+<td>Elementary <code>.iab</code> parse</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>vs DTS <code>iab-validator</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Bed / object definition tree</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Positions, gains, spreads resolved on read</td>
+</tr>
+<tr>
+<td></td>
+<td><code>AudioDataPCM</code></td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Full PCM</td>
+</tr>
+<tr>
+<td></td>
+<td><code>AudioDataDLC</code> (Annex B)</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Identity only — opaque bytes; lossless coder not decoded</td>
+</tr>
+<tr>
+<td></td>
+<td>MXF Track File extract (ST 2067-201)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Minimal KLV walk</td>
+</tr>
+<tr>
+<td><strong>Bridge</strong></td>
+<td>IAB → Atmos encode (positions / gains)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td><code>admbridge::build_iab</code>; <code>ac3cli atmos-iab</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Spread + <code>ObjectZoneControl</code> → JOC</td>
+<td>🔴</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Explicitly not bridged today</td>
+</tr>
+<tr>
+<td><strong>Writer</strong></td>
+<td>IAB encode</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Read / ingest only</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="adm-bw64-itu-r-bs2076-bs2088">ADM / BW64 (ITU-R BS.2076 / BS.2088)<a class="headerlink" href="#adm-bw64-itu-r-bs2076-bs2088" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Reader</strong></td>
+<td>BW64/RF64 container</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Opt-in (<code>AC3FORGE_BUILD_ADM</code>); Boost</td>
+</tr>
+<tr>
+<td></td>
+<td>ADM XML — DirectSpeakers + Objects</td>
+<td>🟡</td>
+<td>High</td>
+<td>Essential</td>
+<td>Phase-1 scope</td>
+</tr>
+<tr>
+<td></td>
+<td>ADM Matrix / HOA / Binaural / <code>zoneExclusion</code> / <code>objectDivergence</code> / <code>screenRef</code></td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Refused <code>kUnsupportedType</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Common definitions (Annex A)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Predefined formats merged</td>
+</tr>
+<tr>
+<td><strong>Writer</strong></td>
+<td>BW64 write</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>24-bit PCM; shapes matching the bridge</td>
+</tr>
+<tr>
+<td></td>
+<td>Decode → ADM BWF (Atmos master profile)</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Dynamic-object-only programmes; cartesian</td>
+</tr>
+<tr>
+<td><strong>Bridge</strong></td>
+<td>ADM → Atmos encode</td>
+<td>🟡</td>
+<td>High</td>
+<td>Essential</td>
+<td>Drops width / HOA / zoneLock and similar</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="iamf-aom-immersive-audio-model-and-formats">IAMF (AOM Immersive Audio Model and Formats)<a class="headerlink" href="#iamf-aom-immersive-audio-model-and-formats" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Writer</strong></td>
+<td>Channel-based 7.1.4 LPCM (v1.1.0)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Phase 1; ISO-BMFF encapsulation</td>
+</tr>
+<tr>
+<td></td>
+<td>IA Sequence / Codec Config / Audio Element / Mix Presentation</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Simple Profile</td>
+</tr>
+<tr>
+<td></td>
+<td>E-AC-3 decode → IAMF round trip</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td><code>examples/mux_iamf.cpp</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Parameter Block / Temporal Delimiter / trimming OBUs</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Not required for static 7.1.4; omitted in phase 1</td>
+</tr>
+<tr>
+<td></td>
+<td>Object-based audio elements</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Waits on IAMF v2.0 final</td>
+</tr>
+<tr>
+<td></td>
+<td>OBU / file reader</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Phase 3</td>
+</tr>
+<tr>
+<td></td>
+<td>Raw OBU stream (§5)</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>§6 ISO-BMFF only today</td>
+</tr>
+<tr>
+<td></td>
+<td>Fragmented / live writer</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Nice-to-have</td>
+<td>Batch <code>iamf::mux()</code> only</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="stream-carriage-and-containers">Stream carriage and containers<a class="headerlink" href="#stream-carriage-and-containers" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Boxes</strong></td>
+<td><code>dac3</code> / <code>dec3</code> (incl. Atmos extension, Annex F)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Built from the bitstream, not the container claim</td>
+</tr>
+<tr>
+<td></td>
+<td>Legacy core+E-AC-3 extension sample entry</td>
+<td>🔴</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Decode/scan via <code>kAc3CoreEac3Extension</code>; mux refuses rather than emit a contradictory box</td>
+</tr>
+<tr>
+<td></td>
+<td><code>dac4</code> + MPEG-TS DVB registration</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>AC-4 carriage</td>
+</tr>
+<tr>
+<td></td>
+<td>MPEG-TS AC-4 ATSC profile (A/342-2)</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Explicitly refused; DVB path only</td>
+</tr>
+<tr>
+<td><strong>Mux</strong></td>
+<td>MP4 / ISOBMFF</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Mux + demux; AC-3 / E-AC-3 / AC-4</td>
+</tr>
+<tr>
+<td></td>
+<td>MP4 <code>moov</code>-after-<code>mdat</code> streaming demux</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Refused with explanation</td>
+</tr>
+<tr>
+<td></td>
+<td>Fragmented MP4 / CMAF</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Init + media segments</td>
+</tr>
+<tr>
+<td></td>
+<td>Matroska</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Mux + demux</td>
+</tr>
+<tr>
+<td></td>
+<td>MPEG-TS (DVB + ATSC for AC-3/E-AC-3)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Mux + demux; descriptors from <code>scan</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Multi-programme container mux</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>CLI muxers warn and carry the first programme only</td>
+</tr>
+<tr>
+<td><strong>Streaming</strong></td>
+<td>HLS playlists</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Atmos <code>CHANNELS="N/JOC"</code> + 5.1 fallback; manifest semantics not player-validated</td>
+</tr>
+<tr>
+<td></td>
+<td>DASH MPD + Dolby supplemental descriptors</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Syntactically correct; no schema / player validation</td>
+</tr>
+<tr>
+<td><strong>Transport</strong></td>
+<td>IEC 61937 burst pack (AC-3 + E-AC-3)</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>vs FFmpeg / MS docs</td>
+</tr>
+<tr>
+<td></td>
+<td>IEC 61937 burst unpack (<code>unspdif</code>)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>Inverse of pack</td>
+</tr>
+<tr>
+<td></td>
+<td>IEC 61937-14 AC-4 burst pack + unpack</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>The four burst types, their periods and sequences at every frame rate from the standard's tables, checked against a second transcription; no device here accepts AC-4</td>
+</tr>
+<tr>
+<td><strong>Edit</strong></td>
+<td>In-place metadata rewrite</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>Existing fields only; no insert</td>
+</tr>
+<tr>
+<td></td>
+<td>Loudness QC vs delivery specs</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>BS.1770-4 vs dialnorm / R 128 / A/85 / Netflix</td>
+</tr>
+<tr>
+<td></td>
+<td>Elementary scan / probe / split</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Programme-aware access-unit walk</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="cross-cutting-library-surface">Cross-cutting library surface<a class="headerlink" href="#cross-cutting-library-surface" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Category</th>
+<th>Feature</th>
+<th>Status</th>
+<th>Priority</th>
+<th>Criticality</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>API</strong></td>
+<td>C++23 <code>ac3::forge</code></td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>Encode / decode / inspect / measure</td>
+</tr>
+<tr>
+<td></td>
+<td>Minimum-footprint decoder (<code>ac3::forge_minimal</code>)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Bare-metal / ESP32 profile</td>
+</tr>
+<tr>
+<td></td>
+<td>C API (<code>ac3::forge_c</code>)</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Stable minimal surface</td>
+</tr>
+<tr>
+<td></td>
+<td>Python / Rust / WASM bindings</td>
+<td>🟢</td>
+<td>Medium</td>
+<td>Important</td>
+<td>WASM decode package not yet on npm</td>
+</tr>
+<tr>
+<td><strong>Verify</strong></td>
+<td>Encoder/decoder mirror traces</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>AC-3 and E-AC-3</td>
+</tr>
+<tr>
+<td></td>
+<td>Research trace export (CSV / JSONL)</td>
+<td>🟢</td>
+<td>Low</td>
+<td>Optional</td>
+<td><code>ac3::verify</code></td>
+</tr>
+<tr>
+<td></td>
+<td>Conformance / fuzz / quality gates</td>
+<td>🟢</td>
+<td>High</td>
+<td>Essential</td>
+<td>See <a href="../../verification/">Validation</a></td>
+</tr>
+<tr>
+<td></td>
+<td>Cross-toolchain encoder bit-identical output</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Audit + <code>ilogb</code> fix done; FP thresholds / cross-leg gate still open (VX12)</td>
+</tr>
+<tr>
+<td></td>
+<td>Listening-test apparatus (MUSHRA/ABX)</td>
+<td>🟡</td>
+<td>Low</td>
+<td>Optional</td>
+<td>Tools under <code>tools/listening/</code>; no human session run (VX9)</td>
+</tr>
+<tr>
+<td></td>
+<td>Perceptual encoder criterion calibration</td>
+<td>🔴</td>
+<td>Medium</td>
+<td>Optional</td>
+<td>Proposed as EQ14; not wired</td>
+</tr>
+<tr>
+<td><strong>Audio I/O</strong></td>
+<td>Capture / monitor / passthrough</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td><code>ac3::audio</code> in-tree only; every output backend now stops itself on device loss (Windows passthrough-unplug hardware-confirmed), but platform verification stays uneven</td>
+</tr>
+<tr>
+<td></td>
+<td>Sink capability discovery (EDID / ELD)</td>
+<td>🟡</td>
+<td>Medium</td>
+<td>Important</td>
+<td>Used for passthrough negotiation; uneven across platforms</td>
+</tr>
+<tr>
+<td></td>
+<td>AC-4 passthrough</td>
+<td>🟡</td>
+<td>Low</td>
+<td>Optional</td>
+<td>ALSA and Android; WASAPI, PipeWire and CoreAudio name no AC-4 format and refuse it; AC-4 HBR16's eight-channel link refused everywhere; no receiver to test</td>
+</tr>
+<tr>
+<td><strong>Out of scope</strong></td>
+<td>Headphone / binaural renderer</td>
+<td>🔴</td>
+<td>Low</td>
+<td>Out-of-scope</td>
+<td>Deliberate product boundary (external renderer)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="standards-cross-check">Standards cross-check<a class="headerlink" href="#standards-cross-check" title="Permanent link">&para;</a></h2>
+<p>Walk of each standard (or annex) this project cites against the rows above. Only <strong>open</strong>
+items (🟡 or 🔴) are listed — green surfaces are assumed covered by the feature tables.
+When a capabilities or verification page already names the bound, that page stays authoritative;
+this register is the checklist that those bounds appear here too.</p>
+<h3 id="atsc-a52-etsi-ts-102-366">ATSC A/52 / ETSI TS 102 366<a class="headerlink" href="#atsc-a52-etsi-ts-102-366" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Clause / annex</th>
+<th>Open item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Table 5.8 acmods 3/0, 2/1, 3/1, 2/2</td>
+<td>Named-layout / CLI encode coverage</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>Annex E §E2.3.1.1 <code>strmtyp</code> 2</td>
+<td>Convertible substreams</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>Annex E §E2.3.1.2 + Annex F</td>
+<td>Legacy core+extension <code>dac3</code>/<code>dec3</code> mux</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>Annex E §E2.3.1.2 I0–I7</td>
+<td>Associated-service labelling; receiver mixer</td>
+<td>🟡 / 🔴</td>
+</tr>
+<tr>
+<td>Annex E §E3.5 / §3.7</td>
+<td>In <code>auto</code>; external oracle; TPN EOF hold-back</td>
+<td>🟢 tools / 🟡 policy</td>
+</tr>
+<tr>
+<td>Annex E <code>fscod2</code></td>
+<td>External PCM oracle</td>
+<td>🟢 code / validation gap</td>
+</tr>
+<tr>
+<td>Annex H §H.2.2</td>
+<td>Reserved EMDF variants</td>
+<td>🔴</td>
+</tr>
+</tbody>
+</table>
+<h3 id="etsi-ts-103-420-atmos-joc-oamd">ETSI TS 103 420 (Atmos / JOC / OAMD)<a class="headerlink" href="#etsi-ts-103-420-atmos-joc-oamd" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Clause</th>
+<th>Open item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>§5.5 / §5.6</td>
+<td>Commercial OAMD field shapes</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>§5.x renderer behaviour</td>
+<td>Extent / spread / zone / snap apply</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>§6.3.3.2</td>
+<td><code>joc_clipgain</code> apply</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>Table 47</td>
+<td><code>phsflg</code> Hilbert undo; 7.X+dependent Lb/Rb</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>Protection / authenticity</td>
+<td>Project key + Dolby unlock</td>
+<td>🟡</td>
+</tr>
+</tbody>
+</table>
+<h3 id="etsi-ts-103-190-1-2-ac-4">ETSI TS 103 190-1 / -2 (AC-4)<a class="headerlink" href="#etsi-ts-103-190-1-2-ac-4" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Clause</th>
+<th>Open item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Part 1 / 2 TOC legacy</td>
+<td><code>bitstream_version</code> 0/1</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>§6.2.2.4</td>
+<td>OAMD substream DATA body</td>
+<td>🟢</td>
+</tr>
+<tr>
+<td>Channel-coded syntax without fixtures</td>
+<td>Noise fill, VARVAR, …</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>SSF</td>
+<td>Decode</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>§4.2.4.3</td>
+<td>HSF extension substream content (syntax only; synthetic frames only)</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>Whole codec</td>
+<td>PCM reconstruction of the 9.X.4 and 22.2 elements</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>Whole codec</td>
+<td>Encoding beyond SIMPLE, ASPX and A-CPL mono to 5.1</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>§5.1.4</td>
+<td>Spectral noise fill: decoded, but no stream here sets it</td>
+<td>🟡</td>
+</tr>
+</tbody>
+</table>
+<h3 id="smpte-st-2098-2-st-2067-201-iab">SMPTE ST 2098-2 / ST 2067-201 (IAB)<a class="headerlink" href="#smpte-st-2098-2-st-2067-201-iab" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Clause</th>
+<th>Open item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Annex B</td>
+<td><code>AudioDataDLC</code> decode</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>§5.5 / §10 zone control</td>
+<td>Spread + <code>ObjectZoneControl</code> → JOC bridge</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>Writer</td>
+<td>IAB encode</td>
+<td>🔴</td>
+</tr>
+</tbody>
+</table>
+<h3 id="itu-r-bs2076-bs2088-adm-bw64">ITU-R BS.2076 / BS.2088 (ADM / BW64)<a class="headerlink" href="#itu-r-bs2076-bs2088-adm-bw64" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Clause</th>
+<th>Open item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pack types beyond DirectSpeakers + Objects</td>
+<td>Matrix / HOA / Binaural / zoneExclusion / …</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>Writer / bridge</td>
+<td>Narrowed Atmos-master subset</td>
+<td>🟡</td>
+</tr>
+</tbody>
+</table>
+<h3 id="aom-iamf-v110">AOM IAMF v1.1.0<a class="headerlink" href="#aom-iamf-v110" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Clause</th>
+<th>Open item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>§3 Parameter / trim / delimiter OBUs</td>
+<td>Phase-1 omission</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>Object elements</td>
+<td>Waits on v2.0</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>§5 raw OBU; reader; fragmented writer</td>
+<td>Not started</td>
+<td>🔴</td>
+</tr>
+</tbody>
+</table>
+<h3 id="carriage-annex-f-iec-61937-mpeg-ts-hls-dash">Carriage (Annex F, IEC 61937, MPEG-TS, HLS, DASH)<a class="headerlink" href="#carriage-annex-f-iec-61937-mpeg-ts-hls-dash" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Spec</th>
+<th>Open item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TS 102 366 Annex F</td>
+<td>Legacy core+extension sample entry</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>ATSC A/342-2</td>
+<td>AC-4 ATSC TS profile</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>IEC 61937-14</td>
+<td>AC-4 to a device: no receiver accepts it, and HBR16's eight-channel link is not opened</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>ISO BMFF</td>
+<td><code>moov</code>-after-<code>mdat</code> demux</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>Apple HLS / Dolby DASH</td>
+<td>Player / schema validation of Atmos signalling</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>Multi-programme mux</td>
+<td>First programme only</td>
+<td>🟡</td>
+</tr>
+</tbody>
+</table>
+<h3 id="truehd-mlp_1">TrueHD / MLP<a class="headerlink" href="#truehd-mlp_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>Open item</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Branch <code>feature/truehd-atmos-support</code></td>
+<td>Land as experimental module (IM5)</td>
+<td>🟡</td>
+</tr>
+<tr>
+<td>Evolution frame HMAC</td>
+<td>Authenticity policy on MLP (parallel to EMDF; not <code>ac3::signing</code>)</td>
+<td>🔴</td>
+</tr>
+<tr>
+<td>DVD Forum MLP reference</td>
+<td>Shipping interop (IM6)</td>
+<td>🔴</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="how-to-read-a-yellow-or-red-row">How to read a yellow or red row<a class="headerlink" href="#how-to-read-a-yellow-or-red-row" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>🟡 Partial</strong> means the feature exists with a documented bound (parser narrower than commercial streams, syntax without PCM, branch not merged, intentional <code>auto</code> exclusion called out elsewhere). The bound is the note; the prose is in <a href="../capabilities/">Capabilities</a>.</li>
+<li><strong>🔴 Not started / refused / out of scope</strong> means no implementation on <code>main</code> for that specification surface, or an explicit refuse. Roadmap IDs in the notes point at <a href="../../roadmap/">Roadmap</a> where one exists.</li>
+<li>Oracle and hardware gaps are <strong>not</strong> red features by themselves. A completed encoder whose only external decoder is this project's own is still 🟢, with the gap recorded under <a href="../../verification/">Validation</a> and noted in the standards register where useful.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/enhancements.js"></script>
+      
+        <script src="../../javascripts/hero-stats.js"></script>
+      
+    
+  </body>
+</html>

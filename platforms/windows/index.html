@@ -1,0 +1,5310 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A clean-room AC-3 / E-AC-3 / AC-4 / Dolby Atmos codec library in C++23, the Forge CLI and GUI over it, Crucible, a desktop per-application Atmos mixer, and Hearth, the playback member">
+      
+      
+      
+        <link rel="canonical" href="https://iainchesworthlabs.github.io/ac3forge/platforms/windows/">
+      
+      
+        <link rel="prev" href="../">
+      
+      
+        <link rel="next" href="../linux/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Windows - ac3forge</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=IBM+Plex+Sans:300,300i,400,400i,700,700i%7CIBM+Plex+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"IBM Plex Sans";--md-code-font:"IBM Plex Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+      <link rel="stylesheet" href="../../stylesheets/new.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#windows" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="ac3forge" class="md-header__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            ac3forge
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Windows
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="custom" data-md-color-accent="custom"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+  
+
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quickstart/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Getting started
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../library/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Library
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../verification/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Validation
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../performance-quality/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Performance & quality
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../forge/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Forge
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../crucible/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Crucible
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../hearth/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Hearth
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Platforms
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../contributing/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Project
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="ac3forge" class="md-nav__button md-logo" aria-label="ac3forge" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    ac3forge
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/iainchesworthlabs/ac3forge" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    iainchesworthlabs/ac3forge
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting started
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Getting started
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quickstart/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick start
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../concepts/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Concepts
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Concepts
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/ac3-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-3 & E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/atmos-joc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Atmos & JOC
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../concepts/object-signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../building/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Building from source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../library/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Library
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/capabilities/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Capabilities
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/development-status/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development status
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/application-coverage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Application coverage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_5" id="__nav_3_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Using the library
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Using the library
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/examples/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Example programs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/encoding-ac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/encoding-eac3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encoding E-AC-3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/decoding/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/spatial-and-atmos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Spatial & Atmos objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/station-broadcast/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Worked example — station broadcast
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/channel-plans-and-routing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Channel plans & routing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/muxing-and-sinks/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Muxing & sinks
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/file-io/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    File I/O
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/iab/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAB (SMPTE ST 2098-2) reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/adm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM / BW64 reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/adm-bridge/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ADM → Atmos bridging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/iamf/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IAMF writing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/ac4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    AC-4 decoding and encoding
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Measuring quality
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/signing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object signing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/header-map/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Header map
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/api-stability/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API stability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_3_6" id="__nav_3_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bindings
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bindings
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/c-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    C API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/python-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../library/rust-api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rust
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Validation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Validation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../verification/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How output is checked
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../threat-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Threat model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../conformance-vectors/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Conformance vectors
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance & quality
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Performance & quality
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-quality/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../performance-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tool-comparison-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tool comparison trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../object-quality-trend/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Object quality trend
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../landscape/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Landscape
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../forge/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Forge
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6" id="__nav_6_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Forge
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../forge/cli/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_2" id="__nav_6_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    CLI reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/cli/commands/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Commands
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/cli/metadata-options/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Options & grammars
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../forge/gui/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    GUI guide
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6_3" id="__nav_6_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_6_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    GUI guide
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/loading-a-source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Loading a source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/format-and-channels/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format & channels
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/objects-and-motion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Objects & motion
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/live-session/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Live capture & session
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/source-assignment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Multi-source & assignment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/coding-tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Coding tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/metadata/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Metadata
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/qc/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    QC a stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/inspect-objects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Inspect objects
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/open-stream/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open stream
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Localisation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../forge/gui/accessibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Keyboard & text size
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../crucible/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Crucible
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Crucible
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/install/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install & first run
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/room/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The room
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/signal-path/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The signal path
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/settings/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Settings
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/accessibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Keyboard & screen readers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/localisation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Languages
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_7_9" id="__nav_7_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design record
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design record
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../crucible/design/promotion/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Promotion plan and record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../windows-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The Windows demo it grew from
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../hearth/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hearth
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_8" id="__nav_8_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Hearth
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hearth/sink-esp32-s3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    An ESP32-S3 sink
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hearth/sink-firmware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Sink firmware
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hearth/sink-installer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Install from the browser
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../hearth/design/player-appliance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Platforms
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9" id="__nav_9_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Platforms
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#windows-support-by-variant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows support by variant
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#toolchains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Toolchains
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audio-backend-wasapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audio backend: WASAPI
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Audio backend: WASAPI">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-process-loopback-and-device-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-process loopback and device notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passthrough-capture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passthrough capture
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qt-gui-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Qt (GUI only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packaging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packaging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windows-firewall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows Firewall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arm64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ARM64
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CI
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../linux/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Linux
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../raspberry-pi/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Raspberry Pi
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../macos/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    macOS
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../android/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Android (Shield demo)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_9_7" id="__nav_9_7_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebAssembly
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_9_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9_7">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    WebAssembly
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../wasm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Browser support
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Decode demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../wasm-encode-demo/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Encode demo
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+          
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9_8" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../bare-metal/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Bare metal
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_9_8" id="__nav_9_8_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_9_8_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Bare metal
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bare-metal/cortex-m3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cortex-M3 (QEMU reference)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bare-metal/esp32-s3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-S3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bare-metal/esp32-p4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-P4
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bare-metal/esp32-c3/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-C3
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bare-metal/esp32-c6/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESP32-C6
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../bare-metal/esphome/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ESPHome
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../windows-driver-acx/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Windows null-sink driver
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_10" >
+        
+          
+          <label class="md-nav__link" for="__nav_10" id="__nav_10_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Project
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_10_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_10">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Project
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../security/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Security policy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="https://github.com/iainchesworthlabs/ac3forge/blob/main/CHANGELOG.md" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Release notes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../releasing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Releasing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ci-self-hosted-runners/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Self-hosted CI runners
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ci-lanes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CI lane partitions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../history/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    History
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../roadmap/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Roadmap
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#windows-support-by-variant" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows support by variant
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#toolchains" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Toolchains
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audio-backend-wasapi" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Audio backend: WASAPI
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Audio backend: WASAPI">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-process-loopback-and-device-notifications" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-process loopback and device notifications
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passthrough-capture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passthrough capture
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#qt-gui-only" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Qt (GUI only)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#building" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Building
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#packaging" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Packaging
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#windows-firewall" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows Firewall
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#arm64" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ARM64
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ci" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CI
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="windows">Windows<a class="headerlink" href="#windows" title="Permanent link">&para;</a></h1>
+<p>ac3forge is built and tested on Windows today — both toolchains, CLI and GUI alike, are
+required, green CI legs. This page covers what is specific to Windows; for the full preset
+reference, options list and troubleshooting, see <a href="../../building/">Building from source</a>.</p>
+<h2 id="status">Status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>What runs here</td>
+<td>The library, <code>ac3cli</code>, <code>ac3gui</code> and Crucible</td>
+</tr>
+<tr>
+<td>Build</td>
+<td>MSVC and clang-cl, both required and green in CI; the GUI is on by default</td>
+</tr>
+<tr>
+<td>Capture and monitor playback</td>
+<td>Confirmed on real hardware — a Realtek endpoint, live microphone capture through encode to playback</td>
+</tr>
+<tr>
+<td>Windows Spatial Sound (<code>ac3cli spatial</code>)</td>
+<td>Confirmed on real hardware, with Windows Sonic enabled; nobody has listened to check the positions</td>
+</tr>
+<tr>
+<td>IEC 61937 passthrough output</td>
+<td>Confirmed on real hardware — an Onkyo TX-RZ740 over HDMI locks AC-3 (Dolby Digital 5.1), E-AC-3 (Dolby Digital Plus 5.1) and signed Atmos (JOC objects, decoded to 5.0.4) through <code>PassthroughSink</code> itself</td>
+</tr>
+<tr>
+<td>Passthrough capture</td>
+<td><strong>Never confirmed</strong> — no HDMI or S/PDIF capture card has been available</td>
+</tr>
+<tr>
+<td>Crucible's null sink</td>
+<td>A kernel driver, <strong>test-signed only</strong>; a default-settings machine refuses to load it — see <a href="../windows-driver-acx/">the driver page</a></td>
+</tr>
+<tr>
+<td>ARM64</td>
+<td>One CI leg, still marked experimental, and it packages for release</td>
+</tr>
+</tbody>
+</table>
+<p>The table below separates x64 from ARM64. Package status and runtime evidence are separate: a
+package can exist even where its hardware-facing paths have not been exercised.</p>
+<!-- Generated by tools/checks/generate_support_matrices.py from docs/assets/data/support-catalogue.json. Do not edit by hand. -->
+
+<h3 id="windows-support-by-variant">Windows support by variant<a class="headerlink" href="#windows-support-by-variant" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>x64</th>
+<th>ARM64</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>C++ library</td>
+<td><strong>Published</strong><br>required CI<br>release archive</td>
+<td><strong>Next release</strong><br>experimental CI<br>release archive</td>
+</tr>
+<tr>
+<td>Forge CLI</td>
+<td><strong>Published</strong><br>confirmed on hardware<br>ZIP and NSIS installer</td>
+<td><strong>Next release</strong><br>experimental CI<br>ZIP and NSIS installer</td>
+</tr>
+<tr>
+<td>Forge GUI</td>
+<td><strong>Published</strong><br>confirmed on hardware<br>ships with Forge</td>
+<td><strong>Unavailable</strong><br>Qt kit is not wired</td>
+</tr>
+<tr>
+<td>Crucible</td>
+<td><strong>Published</strong><br>confirmed on hardware<br>UI/driver run; receiver output untested</td>
+<td><strong>Unavailable</strong></td>
+</tr>
+<tr>
+<td>Hearth desktop player</td>
+<td><strong>In development</strong><br>confirmed on hardware<br>Qt/QML shell built and run; Play page confirmed, other tabs are placeholders</td>
+<td><strong>Unavailable</strong></td>
+</tr>
+<tr>
+<td>Live capture and PCM monitor</td>
+<td><strong>Source</strong><br>confirmed on hardware<br>WASAPI</td>
+<td><strong>Source</strong><br>experimental CI<br>compiled with the CLI</td>
+</tr>
+<tr>
+<td>IEC 61937 output</td>
+<td><strong>Source</strong><br>confirmed on hardware<br>AC-3, E-AC-3 and signed Atmos</td>
+<td><strong>Source</strong><br>experimental CI<br>no receiver run</td>
+</tr>
+<tr>
+<td>AC-4 IEC 61937 output</td>
+<td><strong>Unavailable</strong><br>WASAPI has no AC-4 subformat</td>
+<td><strong>Unavailable</strong><br>WASAPI has no AC-4 subformat</td>
+</tr>
+<tr>
+<td>Per-application capture</td>
+<td><strong>Source</strong><br>confirmed on hardware<br>Windows process loopback</td>
+<td><strong>Source</strong><br>experimental CI<br>compiled; runtime untested</td>
+</tr>
+<tr>
+<td>Atmos spatial rendering</td>
+<td><strong>Source</strong><br>confirmed on hardware<br>Windows Sonic accepted the stream</td>
+<td><strong>Source</strong><br>experimental CI<br>compiled; runtime untested</td>
+</tr>
+</tbody>
+</table>
+<h2 id="toolchains">Toolchains<a class="headerlink" href="#toolchains" title="Permanent link">&para;</a></h2>
+<p>Built and tested with <strong>MSVC 14.51</strong> and <strong>clang-cl 22.1</strong> on <strong>Windows 11</strong>, via Visual Studio
+2026 (MSVC) or clang-cl.</p>
+<p>Every Windows preset chainloads a toolchain file that locates <code>cl.exe</code>/<code>clang-cl.exe</code> and
+<code>link.exe</code> itself (via <code>vswhere</code> and <code>vcvarsall.bat</code> if a Developer PowerShell hasn't already
+set one up), so configuring works from an ordinary shell — no need to launch a Developer
+Command Prompt first. clang-cl is MSVC-ABI compatible, so it links the same vcpkg packages and
+the same prebuilt Qt kit as the MSVC build. See
+<a href="../../building/#the-compiler-is-pinned-not-path-found">The compiler is pinned, not PATH-found</a>
+for the mechanics.</p>
+<h2 id="audio-backend-wasapi">Audio backend: WASAPI<a class="headerlink" href="#audio-backend-wasapi" title="Permanent link">&para;</a></h2>
+<p>On Windows, the three features that touch sound hardware are all implemented over <strong>WASAPI</strong>:</p>
+<ul>
+<li><strong><code>ac3::audio</code></strong> — live input/loopback capture through a lock-free SPSC ring.</li>
+<li><strong><code>ac3::iec61937::PassthroughDetector</code></strong> — recognising, from that same capture, that the
+  endpoint is handing over IEC 61937 bursts rather than PCM.</li>
+<li><strong><code>ac3::audio::PassthroughSink</code></strong> — exclusive-mode/direct bitstream output, for both AC-3 and
+  E-AC-3 burst framing (IEC 61937). AC-4 (IEC 61937-14) is refused here with
+  <code>kUnsupportedFormat</code>: WASAPI asks for a compressed format by its <code>KSDATAFORMAT_SUBTYPE_IEC61937_*</code>
+  subformat, and the Windows SDK (<code>ksmedia.h</code>, 10.0.26100) defines none for AC-4.</li>
+<li><strong><code>ac3::audio::MonitorSink</code></strong> — shared-mode PCM playback: a non-bitstreamed preview/monitor
+  path that decodes what is being encoded and plays it back on an ordinary output.</li>
+<li><strong><code>ac3::audio::SpatialObjectSink</code></strong> — <code>ISpatialAudioObjectRenderStream</code>: decoded
+  Atmos objects go out as dynamic objects at their real OAMD positions, and the bed's LFE (never
+  a JOC output, TS 103 420 §6.3.2.2) as a static one. Behind <code>ac3cli spatial</code>. This is the one
+  path that lets Dolby's own renderer engage with this project's reconstructed objects at all — a
+  licensed decoder otherwise refuses object decoding without a signing key this project doesn't
+  ship (see <a href="../../concepts/object-signing/">Object signing</a>) — and needs nothing but a spatial-
+  sound-capable endpoint to do it, no AVR and no key.</li>
+</ul>
+<p>These five are not equally verified against real hardware, and the project's own documentation
+is deliberately explicit about the difference.</p>
+<div class="admonition note">
+<p class="admonition-title">MonitorSink is confirmed against real hardware</p>
+<p><code>ac3cli monitor</code> / <code>ac3cli live --monitor</code> have actually played decoded AC-3 and E-AC-3
+(including an Atmos stream's 5.1 bed) through a real Realtek output in real time, and a live
+microphone capture→encode→monitor session has run end to end. Building this path against
+real hardware surfaced two bugs that neither unit tests nor silent/synthetic input
+would have caught — a fixed submit-readiness threshold smaller than an actual chunk, which
+let the ring buffer silently perform a partial write while reporting failure, and the live
+pipeline's Atmos metering step writing past the end of a buffer sized for the object count
+rather than the bed's fixed six channels. Both are fixed; see
+<code>src/audio/src/backend/windows/monitor.cpp</code> and <code>run_live</code> in
+<code>apps/cli/commands/live_audio.cpp</code>.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">MonitorSink now distinguishes a format refusal from a WASAPI failure</p>
+<p>Found 2026-09-22, debugging why <code>ac3tests "[monitor-unplug]"</code> would not open the same "AV
+Receiver (NVIDIA High Definition Audio)" HDMI endpoint the exclusive-mode passthrough
+confirmation below used. <code>MonitorSink::start()</code> had no way to say why beyond the generic
+"a Windows audio (WASAPI/COM) call failed" — diagnosing it took a standalone WASAPI probe
+written outside this codebase, which pinned the cause down to the sample rate rather than
+the bit depth: this endpoint's shared-mode engine is locked to whatever its Advanced-tab
+"Default Format" is set to (192 kHz here), converts bit depth but not sample rate, and
+<code>IAudioClient::Initialize(AUDCLNT_SHAREMODE_SHARED, ..., 48kHz)</code> returns
+<code>AUDCLNT_E_UNSUPPORTED_FORMAT</code> (<code>0x88890008</code>) for every 48 kHz variant tried while the same
+formats at 192 kHz succeed. <code>start()</code> now reports <code>MonitorError::kFormatRejected</code> for that
+HRESULT specifically, checked on both the <code>IAudioClient3</code> low-latency path and the ordinary
+fallback; every other failure in <code>start()</code> still reports <code>kComFailure</code>. <code>"[monitor-unplug]"</code>
+still needs either this endpoint's default format changed to a 48 kHz variant or a different
+default output to run at all, but the CLI and the test now say why instead of only the
+generic WASAPI/COM message.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Playback position, pause and flush are confirmed; a multichannel patch is not</p>
+<p><code>MonitorSink</code>'s playback position, <code>pause()</code>/<code>resume()</code> and <code>flush()</code> have been exercised
+against the default Realtek endpoint by <code>ac3tests "[monitor-live]"</code> — a hidden case, since it
+needs a sound card and makes a noise: the position advances with the device's own clock, a
+pause holds it while the queue goes on taking frames, a flush drops both buffers and the
+count restarts, and playback resumes from the next submit. <code>ac3cli identify</code> walked the tone
+across that endpoint's own speakers, over a 5.1 layout it can place only two channels of, and
+with the pair swapped.</p>
+<p>What that machine cannot show is a <strong>multichannel</strong> patch: both its endpoints are stereo, and
+which speaker an output actually reaches is exactly what a two-channel device cannot
+disprove. That check needs an 8-channel endpoint — an AVR over HDMI as LPCM — and is
+<code>ac3cli identify 0 7.1.4 3</code> heard from the speaker each printed line names, then the same
+command with a patch that swaps two channels heard to swap those two speakers and nothing
+else.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">SpatialObjectSink is confirmed against a real spatial endpoint</p>
+<p><code>ac3cli spatial</code> has activated <code>ISpatialAudioObjectRenderStream</code> and rendered a real Atmos
+stream (4 orbiting objects, 8 s, this project's own encoder) against the default Realtek
+output after Windows Sonic for Headphones was enabled on it — 250 access units, zero
+underruns, clean shutdown. The <code>kNoSpatialFormat</code> refusal was confirmed the same session
+against a second endpoint that still had no spatial format enabled, and against the very
+endpoint used for the successful run, probed <em>before</em> Windows Sonic was turned on
+(<code>GetMaxDynamicObjectCount</code> read 0 everywhere on this machine at that point). What is not yet
+checked: a listening pass confirming the rendered audio actually arrives from where the OAMD
+positions say it should — nobody running this had ears in the loop, only the OS's own
+accept-and-render behaviour — and the "bed as static objects" branch beyond the LFE, since
+every stream this project's own encoder produces is dynamic-object-only (<code>oamd.hpp</code>'s own
+documented shape); a third-party bed-plus-objects Annex E stream would be needed to
+exercise the rest of <code>oba::bed_labels()</code> against a verified coded-channel-order mapping.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">Exclusive-mode passthrough bitstreaming is confirmed against a real receiver on Windows</p>
+<p>An Onkyo TX-RZ740 was cabled to a Windows workstation via an Nvidia GPU's HDMI audio
+endpoint ("AV Receiver (NVIDIA High Definition Audio)"). <code>IsFormatSupported</code>
+answered yes for both <code>KSDATAFORMAT_SUBTYPE_IEC61937_DOLBY_DIGITAL</code> and
+<code>..._DOLBY_DIGITAL_PLUS</code> — the first real device this has ever happened on — and <code>ac3cli
+play</code> through <code>PassthroughSink</code> itself, not the PCM16-WAV workaround, locked the receiver
+onto AC-3 (Dolby Digital 5.1), then E-AC-3 (Dolby Digital Plus 5.1), then a signed Atmos
+stream (<code>ac3cli atmos ... sign-objects</code>), which the receiver decoded as <strong>Atmos/DD+, 48 kHz
+in, 5.0.4 out</strong>, with the object's motion confirmed audible — the same result the Shield app
+got on this same receiver (see <code>docs/platforms/android.md</code>). Clean delivery throughout
+(0 underruns on the confirming Atmos run).</p>
+<p>Getting there surfaced two real defects in <code>PassthroughSink</code>, both fixed: a cross-thread
+WASAPI crash (<code>Activate</code>/<code>Initialize</code> on the caller's thread, <code>Start</code>/<code>GetBuffer</code> on a
+worker thread — fine for <code>MonitorSink</code>'s shared-mode path, fatal deep inside <code>AUDIOSES.DLL</code>
+for a real exclusive-mode bitstream client) and a stats bug where the per-callback
+"bursts rendered" counter truncated to zero almost every WASAPI callback, hanging the CLI's
+drain-wait loop forever after real playback had already finished. See
+<code>src/audio/src/backend/windows/passthrough.cpp</code>.</p>
+<p>The AC-3 bursts are byte-exact against FFmpeg's <code>spdif</code> muxer, and the E-AC-3 burst framing
+(data type 0x15, the 24576-byte/4x-carrier-rate burst, multi-syncframe accumulation, <code>Pd</code>
+in bytes not bits) is independently verified against both FFmpeg's <code>spdif_header_eac3</code> and
+Microsoft's own "Representing Formats for IEC 61937 Transmissions" documentation, plus
+round-trip and real-audio unit tests — all of which held up against the real device too.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">An endpoint that goes away mid-stream</p>
+<p>Unplugging the cable, switching the receiver off or disabling the endpoint invalidates the
+stream: WASAPI answers <code>AUDCLNT_E_DEVICE_INVALIDATED</code> to the render thread's next call, and
+stops signalling the event it waits on, so a wait that times out asks the endpoint for its
+padding rather than waiting again. Either answer stops the sink — <code>running()</code> turns false,
+<code>position()</code> reports nothing, <code>submit()</code> refuses — and <code>start()</code> opens again with no
+<code>stop()</code> first, on the same endpoint once it is back. <code>ac3tests "[passthrough-unplug]"</code> and
+<code>"[monitor-unplug]"</code> are hidden cases that take a person through it.</p>
+<p><strong><code>[passthrough-unplug]</code> is confirmed</strong>, against the same AV Receiver endpoint the exclusive-
+mode validation above used: the cable was pulled mid-stream, and the sink noticed on its own —
+<code>running()</code> false, <code>position()</code>/<code>can_submit()</code>/<code>submit()</code>/<code>paused()</code> all answering as a stopped
+sink would, <code>flush()</code> returning at once, <code>pause()</code>/<code>resume()</code> both refusing with <code>kNotRunning</code>
+— then a second <code>start()</code>, with no <code>stop()</code> in between, reopened the same endpoint and played
+real frames once the cable went back in. <code>[monitor-unplug]</code> (<code>MonitorSink</code>'s shared-mode path)
+has not yet been reported from this workstation's own receiver — its own hidden case opens the
+system's current <em>default</em> render endpoint rather than a named one, so what it actually
+exercises depends on whatever that is at the time.</p>
+<p><code>SpatialObjectSink</code> answers the same way, over its own two calls:
+<code>BeginUpdatingAudioObjects</code> failing outright, or — a removed endpoint need never signal the
+render-ready event again either — a wait that times out reading back
+<code>GetMaxDynamicObjectCount</code> on the <code>ISpatialAudioClient</code> instead of <code>GetCurrentPadding</code>. Not
+the stream's own <code>GetAvailableDynamicObjectCount</code>: Microsoft's reference for that call says
+not to use it once streaming has started, since <code>BeginUpdatingAudioObjects</code> already provides
+the same count from then on - the client-level call carries no such restriction.
+<code>ac3tests "[spatial-unplug]"</code> is its own hidden case, not yet run against real hardware.</p>
+</div>
+<div class="admonition note">
+<p class="admonition-title">No EDID/ELD backend on Windows</p>
+<p><code>ac3cli play</code> asks a chosen sink what it actually accepts before committing to a format —
+see <a href="../../forge/cli/commands/#following-the-sink">CLI → Following the sink</a> — and that read
+(<code>ac3::audio::sink_capabilities</code>) is real today only on ALSA (see
+<a href="../linux/#reading-a-sinks-own-edideld">Linux</a>). WASAPI answers "will this
+endpoint accept this format" (<code>IsFormatSupported</code>, what <code>enumerate_render_devices()</code> already
+uses) but does not re-expose the sink's own raw EDID-carried Short Audio Descriptors to
+user-mode code — the driver consumes them internally to decide what to offer and no
+documented public API was found that hands the source data back. <code>play</code> falls back to the
+same <code>IsFormatSupported</code> probe here, exactly as it always has.</p>
+<p>The one real avenue checked and ruled out: WMI's <code>root\wmi</code> monitor provider
+(<code>WmiMonitorID</code>/<code>WmiMonitorDescriptor</code>) does expose raw EDID bytes on Windows, but it is a
+<em>display</em> API keyed to the desktop/monitor topology, not an audio one. Tried against the
+Onkyo TX-RZ740 used for the passthrough confirmation above:
+<code>Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorID</code> sees only the two actual
+desktop monitors on this machine (an Acer and a Samsung, both on DisplayPort); the receiver,
+despite having a live HDMI audio endpoint WASAPI opens and plays through, is not registered
+as a display Windows extends onto at all, so there is no WMI monitor entry to read its SADs
+from even if this project wired one up.</p>
+</div>
+<h3 id="per-process-loopback-and-device-notifications">Per-process loopback and device notifications<a class="headerlink" href="#per-process-loopback-and-device-notifications" title="Permanent link">&para;</a></h3>
+<p>Two more WASAPI paths, added to the shared audio layer for <a href="../../crucible/">Crucible</a>
+and available to anything else that links it, both Windows-only in the backend tree:</p>
+<ul>
+<li><strong><code>Capture::start_process_loopback(pid, mode, format)</code></strong> — <code>ActivateAudioInterfaceAsync</code>
+  with <code>AUDIOCLIENT_ACTIVATION_TYPE_PROCESS_LOOPBACK</code>, which captures what one process tree
+  renders and nothing else, whichever endpoint it renders to. Needs Windows 10 build 20348 or
+  later; <code>process_loopback_available()</code> asks the kernel (<code>RtlGetVersion</code>, not the manifest-bound
+  <code>GetVersionEx</code>) and <code>audio_backend().process_loopback</code> reports the same answer. A
+  process-loopback client has no <code>GetMixFormat</code>, so the caller states the format and the engine
+  converts — 48 kHz float at two or eight channels is confirmed. The tap is polled and
+  silence-filled exactly like endpoint loopback, because a quiet process delivers no packets.
+  The library refuses a process id nobody owns (<code>kProcessNotFound</code>) because the OS does not: such
+  a tap activates and delivers zeros forever, as does a tap whose process has since exited.</li>
+<li><strong><code>DeviceWatcher</code></strong> — <code>IMMNotificationClient</code> registered with the MMDevice enumerator on a
+  worker thread that owns the COM apartment. Default-changed events are delivered for the
+  console role only (the one every sink in this tree opens; the other two roles would report
+  the same change twice more), and property-value changes (a volume nudge, a rename) are
+  dropped as noise. The listener is hand-rolled <code>IUnknown</code> rather than a WRL <code>RuntimeClass</code>,
+  for the same include-order reason <code>capture.cpp</code> spells its GUIDs out by hand.</li>
+</ul>
+<div class="admonition note">
+<p class="admonition-title">Both confirmed on the development workstation, 2026-09-03</p>
+<p>Through the raw WASAPI spike first (<code>apps/crucible/spikes/README.md</code>, S1: sixteen taps at
+once, exact separation, the mute and exclusive-mode hazards) and then through these library
+entry points themselves (<code>s1_library_tap</code>), on Windows 11 build 26200. Not yet exercised on
+a hosted CI runner beyond the device-free contract in <code>tests/audio/test_audio_backend.cpp</code>,
+which does start and stop a real watcher wherever the backend exists.</p>
+</div>
+<p><code>MonitorSink::start</code> also takes a <code>low_latency</code> flag, added for the demo's one-block mode: it
+asks <code>IAudioClient3::GetSharedModeEnginePeriod</code> for the engine's smallest shared-mode period
+for the stream's format and opens with <code>InitializeSharedAudioStream</code> at that, falling back to
+the default period where the interface is missing or the engine refuses the format at that
+size; the other backends take the flag and ignore it. On the workstation's Realtek endpoint
+it changes nothing, and the spike's <code>period_probe</code> (<code>apps/crucible/spikes/s5_latency/</code>) says
+why: the engine answers 480 frames, 10 ms, for the default, fundamental, minimum and maximum
+period alike, for the demo's float format and for the mix format both. <code>IAudioClient</code>'s
+"minimum 3 ms" device period is the exclusive-mode floor, not a shared-mode offer. A device
+that offers 2.7 ms will get it; this one does not.</p>
+<h3 id="passthrough-capture">Passthrough capture<a class="headerlink" href="#passthrough-capture" title="Permanent link">&para;</a></h3>
+<p>The reverse direction — a WASAPI endpoint <em>delivering</em> IEC 61937 rather than PCM, which is what
+an HDMI or S/PDIF capture card gives, and what a render-endpoint loopback gives when the app
+playing into it is bitstreaming — is the same framing read backwards, and the same facts govern
+it. The bursts arrive as ordinary PCM16 samples: <code>IAudioClient</code> has no way to say "this is
+Dolby Digital", and <code>Capture</code> converts them to float by dividing by 32768, which loses nothing.</p>
+<p><code>ac3::iec61937::PassthroughDetector</code> recognises the framing from those floats — a <code>Pa</code>/<code>Pb</code>
+preamble at a repetition period with a <code>0x0B77</code> syncframe behind it — and <code>ac3cli record</code>
+switches to writing the elementary stream instead of encoding the bursts as audio; <code>ac3cli
+live</code> stops with an error instead. <code>ac3cli unspdif</code> does the same job on a capture already
+saved to disk. <code>carrier_from_capture</code> is the conversion back to PCM16 words, exact for all
+65536 of them.</p>
+<div class="admonition warning">
+<p class="admonition-title">Passthrough capture has never been confirmed against a real capture device</p>
+<p>No HDMI or S/PDIF capture card, and no loopback of a bitstreaming player, has been
+available during development — the same gap the passthrough <em>output</em> side has, from the same
+missing hardware. What is verified: the burst de-framing itself round-trips byte-exactly
+against both this project's own wrapper and FFmpeg's <code>spdif</code> muxer, for AC-3 and E-AC-3 and
+for both 16-bit word orders; the float→PCM16 recovery is exact for every int16 value; and
+the detector reaches "not a bitstream" on real audio and silence alike. What is not: that a
+real device's samples reach <code>Capture</code> unmodified in the first place. A shared-mode endpoint
+that resamples or mixes would destroy the bursts before anything here saw them, which shows
+up as no detection rather than as wrong output.</p>
+</div>
+<h2 id="qt-gui-only">Qt (GUI only)<a class="headerlink" href="#qt-gui-only" title="Permanent link">&para;</a></h2>
+<p><code>ac3gui</code> needs a <strong>prebuilt Qt 6.5+ kit</strong>, discovered by <code>cmake/FindQt6.cmake</code> — never from
+vcpkg. <code>AC3FORGE_BUILD_GUI</code> defaults <strong>ON</strong> on Windows. <code>FindQt6.cmake</code> widens
+<code>CMAKE_PREFIX_PATH</code> to the usual install roots (<code>C:/Qt</code>, <code>%USERPROFILE%/Qt</code>, <code>D:/Qt</code>); to point
+at a specific kit explicitly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>config-windows-msvc-debug<span class="w"> </span>-DAC3FORGE_QT_ROOT<span class="o">=</span>D:/Qt/6.8.3/msvc2022_64
+</code></pre></div>
+<p>See <a href="../../building/#qt">Qt</a> for the full discovery order and options.</p>
+<h2 id="building">Building<a class="headerlink" href="#building" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>config-windows-msvc-debug
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>--preset<span class="w"> </span>build-windows-msvc-debug
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>ctest<span class="w"> </span>--preset<span class="w"> </span>test-windows-msvc-debug
+</code></pre></div>
+<p>Drop <code>-debug</code> for a Release build. Swap <code>msvc</code> for <code>llvm</code> throughout to build with clang-cl
+instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>cmake<span class="w"> </span>--preset<span class="w"> </span>config-windows-llvm-debug
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>cmake<span class="w"> </span>--build<span class="w"> </span>--preset<span class="w"> </span>build-windows-llvm-debug
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>ctest<span class="w"> </span>--preset<span class="w"> </span>test-windows-llvm-debug
+</code></pre></div>
+<p><code>VCPKG_ROOT</code> must point at a vcpkg checkout (it supplies Catch2 — plus Boost and Tracy only if
+you opt into the <code>adm</code>/<code>profiling</code> features; see <a href="../../building/">building.md</a>). See
+<a href="../../building/#presets">Presets</a> for the full preset table and the <code>ci-windows-msvc</code> /
+<code>ci-windows-llvm</code> workflow presets that chain all three steps.</p>
+<h2 id="packaging">Packaging<a class="headerlink" href="#packaging" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>cpack<span class="w"> </span>--preset<span class="w"> </span>pack-windows-msvc
+</code></pre></div>
+<p>Produces a ZIP, plus an NSIS installer on top if <code>makensis</code> is on <code>PATH</code> (CI's <code>windows-msvc</code> leg
+installs it via Chocolatey automatically and fails the leg if the installer doesn't come out the
+other end — see <a href="../../releasing/#winget-manifest">releasing.md</a>; locally, install NSIS yourself
+or <code>cpack</code> falls back to ZIP-only with a <code>message(WARNING ...)</code> explaining why).
+<code>pack-windows-llvm</code> is the clang-cl equivalent, and <code>pack-windows-msvc-arm64</code> the ARM64 one
+(below). <code>windows-msvc</code> is the only leg packaged continuously — CI packages it on every push and
+uploads the result as a workflow artifact, a standing smoke test of the packaging path; tagged
+releases package every <code>release_package</code> leg (Windows x64/arm64, Linux x64/arm64, macOS). See
+<a href="../../building/#packaging">Packaging</a>.</p>
+<p>The NSIS installer also registers <code>.ac3</code> and <code>.ec3</code> as <code>AC3Forge.Stream</code>, pointing
+<code>shell\open\command</code> at the installed <code>ac3gui.exe</code> and nudging Explorer to pick up the change with
+<code>SHChangeNotify</code>, and reverses both keys on uninstall — <code>CPACK_NSIS_EXTRA_INSTALL_COMMANDS</code>/
+<code>_UNINSTALL_COMMANDS</code> in <code>cmake/Packaging.cmake</code>. CI now builds and verifies the installer itself
+on every push; running it and double-clicking a <code>.ac3</code> file to confirm the file association end
+to end is still a manual, unautomated check.</p>
+<h2 id="windows-firewall">Windows Firewall<a class="headerlink" href="#windows-firewall" title="Permanent link">&para;</a></h2>
+<p><code>ac3hearth</code> and <code>ac3hearth-testsink</code> each open a socket a Windows Firewall rule has to allow:
+<code>ac3hearth</code>'s mDNS browse for <code>_sendspin._tcp</code> players, and <code>ac3hearth-testsink</code>'s own Sendspin
+listener and mDNS advertisement. Rather than leave this to Windows' own "these features have been
+blocked" prompt, <code>ac3::sendspin::firewall::ensure_inbound_rule()</code>
+(<code>src/sendspin/include/ac3/sendspin/firewall.hpp</code>) adds the rule itself, through the same
+<code>INetFwPolicy2</code> COM policy object the Settings app's firewall page edits, the first time it finds
+none already there for that executable and port.</p>
+<p>Adding a rule needs an elevated token. <code>ensure_inbound_rule()</code> adds it directly when the calling
+process is already elevated; otherwise, on an interactive desktop session, it relaunches its own
+executable once with a UAC prompt (<code>--ac3-sendspin-firewall-helper</code>,
+<code>maybe_run_as_firewall_helper_and_exit()</code> in the same header) to make just that one COM call, then
+returns to running unelevated. A non-interactive session - a service, a CI runner - is left for
+Windows' own prompt instead, same as before this existed. Every rule is scoped to the private and
+domain network profiles only, never public, and to <code>LocalSubnet</code>: this only ever opens LAN
+discovery/streaming traffic to the executable that is actually listening, never to the internet or
+to a different program.</p>
+<p>A loopback-only bind needs none of this - Windows does not gate loopback traffic - and is skipped
+before <code>ensure_inbound_rule()</code> is ever called. <code>ac3hearth-testserver</code>'s own <code>ServerHost</code> and
+reference sink are loopback-only today and so never reach it; <code>ac3tests</code>' own <code>ServerHost</code>
+fixtures are the same. Linux and macOS build a no-op implementation of the same two functions and
+never show a prompt of any kind.</p>
+<h2 id="arm64">ARM64<a class="headerlink" href="#arm64" title="Permanent link">&para;</a></h2>
+<p>A third Windows leg, <code>windows-msvc-arm64</code>, targets GitHub's hosted <code>windows-11-vs2026-arm</code> runner — real
+ARM64 hardware, not x64 emulation. It shares every file the two x64 legs above use; only the
+vcpkg triplet and the resolved MSVC tools directory differ.</p>
+<p><strong>Toolchain.</strong> <code>cmake/vcpkg/triplets/arm64-windows-msvc.cmake</code> sets <code>VCPKG_TARGET_ARCHITECTURE
+arm64</code> (same CRT/library linkage policy as <code>x64-windows-msvc.cmake</code>).
+<code>cmake/toolchains/windows.msvc.toolchain.cmake</code> resolves the target-appropriate MSVC tools
+subdirectory the same way <code>linux.gcc.toolchain.cmake</code>/<code>macos.llvm.toolchain.cmake</code> already resolve
+their own arm64 legs — generically, not hardcoded — and, for the arm64 case specifically, tries
+more than one candidate directory: <code>bin/Hostarm64/arm64</code> (a native ARM64-hosted toolset) first,
+falling back to <code>bin/Hostx64/arm64</code> (the older x64-hosted cross toolset, which still produces
+ARM64 binaries, just via x64 tools running under Windows' x64 emulation). Which one this runner's
+VS Build Tools install actually ships was unconfirmed when this leg was written and needed a real
+CI run to answer. <code>cmake/toolchains/windows.msvc.environment.cmake</code>'s <code>vcvarsall.bat</code> bootstrap
+and <code>.github/actions/setup-msvc-env</code>'s CI-side environment loader probe the same pair of
+<code>vcvarsall.bat</code> arguments (<code>arm64</code> native, then <code>amd64_arm64</code> cross), since the target
+architecture's CRT/Windows SDK library directories have to match whichever compiler actually got
+picked, or linking fails outright with a machine-type mismatch. Which of the two candidates wins
+is still open as of this writing — the leg's first real run failed one step earlier than Configure
+(see "Toolset generation" below) — and this section gets a follow-up update once that's resolved.</p>
+<p><strong>Toolset generation is older than the x64 images, confirmed empirically.</strong> The <code>windows-11-arm</code>
+hosted runner's VS Build Tools install carries MSVC 14.44.35207 (VS2022, roughly the 17.14
+generation) — older than <code>windows-latest</code>'s x64 image, which is on the 14.5x ("VS 2026"/18.x)
+toolset every other Windows leg's <code>msvc_toolset</code> pin (<code>.github/toolchain-versions.json</code>) is written
+against. This is a difference between the two runner images' own update cadences, not a
+misconfiguration — <code>vswhere</code>/<code>vcvarsall</code> resolution and the Ninja install both worked fine on the
+ARM64 runner in the same run that surfaced this. <code>_build.yml</code>'s "Report and assert toolchain
+versions" step accordingly does not hard-assert the shared pin for <code>windows-msvc-arm64</code> the way it
+does for <code>windows-msvc</code>; it reports whatever toolset this runner actually has instead, the same
+report-only shape already used for <code>macos-llvm</code>'s unpinnable Homebrew LLVM, with the reasoning
+recorded in that step's own case arm. This finding predates the 2026-09 switch to the
+<code>windows-11-vs2026-arm</code> preview label (see "Status" below) and needs reconfirming on the new image
+— the report-only handling stays either way, but the actual toolset generation it reports may now
+differ, since VS2026 is exactly what the older <code>windows-11-arm</code> image was missing.</p>
+<p><strong>CLI-only, for now.</strong> Unlike every other packageable Windows/Linux/macOS leg, <code>windows-msvc-arm64</code>
+does not build <code>ac3gui</code> — <code>AC3FORGE_BUILD_GUI</code> is off in <code>CMakePresets.json</code>'s
+<code>windows-msvc-arm64</code> preset. Qt's only Windows ARM64 kit for the pinned 6.9.3 (introduced in 6.8, the first Qt LTS
+with official Windows ARM64 support at all) is <code>win64_msvc2022_arm64_cross_compiled</code> — a
+cross-compile kit that expects a paired <code>win64_msvc2022_64</code> install to supply its host build
+tools (<code>moc</code>/<code>uic</code>/<code>rcc</code>), and <code>aqtinstall</code>/<code>jurplel/install-qt-action</code> have a documented CI bug
+against exactly that combination (<code>qtpaths.bat</code> pointing at the wrong x64 setup). That is real
+complexity a <em>native</em>-ARM64-host build doesn't need for a first pass, so this leg stays CLI-only.
+Revisiting this is a natural fast-follow once Qt ships a native-hosted ARM64 Windows kit.</p>
+<p><strong>Gold-reference gate.</strong> <code>choco</code>'s <code>ffmpeg</code> package is x64-only, so this leg installs a static
+<code>win-arm64</code> FFmpeg build from
+<a href="https://github.com/BtbN/FFmpeg-Builds/releases/tag/latest">BtbN/FFmpeg-Builds</a> instead of
+<code>choco install ffmpeg</code> — see the "Install ffmpeg (Windows ARM64)" step in <code>_build.yml</code>.</p>
+<p><strong>Status.</strong> New and <code>experimental: true</code> (<code>continue-on-error</code>) in <code>_build.yml</code> until it has proven
+green over real runs, the same promotion path <code>macos-llvm</code> and the Android leg both went through —
+see that file's own header comment for the mechanics. The <code>windows-11-arm</code> runner label was
+confirmed enabled for this repository/org: the leg's first real run picked up a runner immediately
+and passed checkout, "Setup MSVC environment" (<code>vswhere</code>/<code>vcvarsall</code> resolution) and the Ninja
+install, failing only at the toolset-version assertion described above (since relaxed to
+report-only for this leg). As of 2026-09, <code>_build.yml</code> targets <code>windows-11-vs2026-arm</code> instead:
+GitHub is running a Windows 11 ARM64 image built on Visual Studio 2026 in public preview under that
+label, in parallel with the existing <code>windows-11-arm</code> image, and has said <code>windows-11-arm</code> itself
+will be repointed at that VS2026 image once the preview ends (early September 2026). Targeting
+<code>windows-11-vs2026-arm</code> now, ahead of that cutover, validates the new image on our own schedule
+instead of having <code>windows-11-arm</code>'s meaning change under this leg unannounced on some later run.
+The label-enabled and toolset findings above are from <code>windows-11-arm</code> runs on the older image;
+this leg's <code>experimental: true</code> stays on until a real run on <code>windows-11-vs2026-arm</code> reconfirms
+them - the toolset generation in particular may now read differently, since VS2026 is exactly what
+was missing before. Once <code>windows-11-arm</code> itself moves to the VS2026 image, this leg should switch
+back to plain <code>windows-11-arm</code> and drop the preview label. Iteration continues from there.</p>
+<p><strong>Unsigned binaries.</strong> Like every other Windows binary this project ships today, this leg's output
+is unsigned — Authenticode signing is blocked project-wide on acquiring a
+certificate, not on code, and that applies here exactly as it does to the x64 legs. It is worth
+stating plainly for ARM64 specifically: SmartScreen will warn on install, and an ARM64 user has
+fewer alternative trusted sources to fall back on than an x64 user does.</p>
+<h2 id="ci">CI<a class="headerlink" href="#ci" title="Permanent link">&para;</a></h2>
+<p>All three Windows legs — <code>windows-msvc</code>, <code>windows-llvm</code> and (experimentally) <code>windows-msvc-arm64</code>
+— run on every push; the first two are <strong>required</strong>, alongside every other required leg — see the
+full matrix in <a href="../../building/#verified-configuration">Verified configuration</a>, including the
+Linux and macOS legs and the coverage/FFmpeg-validation legs. CI runs the CLI and GUI on both x64
+Windows legs; the ARM64 leg runs the CLI only (see above) and does not yet block the build while it
+proves itself out.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.sections", "navigation.top", "navigation.indexes", "search.suggest", "search.highlight", "content.code.copy", "content.tabs.link", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+        <script src="../../javascripts/enhancements.js"></script>
+      
+        <script src="../../javascripts/hero-stats.js"></script>
+      
+    
+  </body>
+</html>
