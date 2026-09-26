@@ -60,6 +60,25 @@
     [Several servers](#several-servers) has the detail, and decision 28 what it took. The budget
     was re-derived: **49,152 bytes**, against 45,957 used.
 
+    **Firmware, 2026-09-25.** Phase O3 of [the update plan](esp32-ota.md). A Firmware section
+    shows what `GET /firmware` reports:
+
+    - the image the board runs and the one it would go back to;
+    - a trial and how long it has left;
+    - an update under way;
+    - how the last update ended.
+
+    It offers three actions:
+
+    - **Update firmware…** sends an image chosen from a file, with the bytes sent shown;
+    - **Restart**;
+    - **Roll back** to the other slot's image.
+
+    Each asks first, in the dialog that asked before forgetting servers. When the board comes
+    back running another image, the page loads again. [Firmware](#firmware) has the detail, and
+    decision 29 the choices. The budget was re-derived: **57,344 bytes**, against 55,454 used.
+    O4 added the last crash's core dump and a link to the console's recent output: 55,926.
+
     Shape follows [the player plan](esp32-player.md): what exists, what changes and why, a
     budget with how each figure is measured, [Decisions](#decisions) with a recommendation and
     a cost each, and [what cannot be verified](#what-cannot-be-verified).
@@ -433,6 +452,81 @@ pairs, connects or is forgotten, which `/status`'s own fields show. The page rea
 count, the connection or the last pairing's outcome changes, and not at all while the count is
 none.
 
+## Firmware
+
+Phase O3 of [the update plan](esp32-ota.md): a section after Hardware for a board that answers
+`GET /firmware` ([decision 29](#decisions)). A firmware without the route answers 404, and the
+page then has no section.
+
+**What it shows.** From `GET /firmware`, as `ac3forge/firmware_status.hpp` writes it:
+
+- **Running**: the image, its slot, whether it is accepted or on trial, and whether the
+  background check found it intact.
+- **Trial**, while one runs: how long the conditions have held and of how long, the time left
+  before the board gives up, and what has not held yet ("12 of 30 s held, 4:48 left; waiting
+  for the Sendspin player").
+- **Other slot**: the image the board would go back to, or Empty. An image that failed its trial
+  or does not check out says so.
+- **Update**, while one is under way from another client: its stage and the bytes received.
+- **Last update**: its version, how it ended, and why.
+- **Last crash** (O4), when a core dump is kept: the task, where, the panic's words and the
+  dump's size, with a link that saves the dump (`GET /firmware/coredump`). A link beside it
+  shows the console's recent output (`GET /log`) as the browser shows any text.
+- In flash mode, a line saying that nothing plays until the board restarts, and Now's state
+  reads Flash mode (`/status`'s `flash`).
+
+**What it does.** Each action asks first, in the dialog that asks before forgetting servers,
+which now asks before anything that cannot be taken back:
+
+- **Update firmware…** opens a file chooser. The page reads the image's first 112 bytes, as
+  `parse_image_head` does, and names the version in the dialog. It does not send a file that
+  the board would refuse on those bytes alone:
+  - not an application image;
+  - an image for another chip than `/hardware`'s target;
+  - an image of another project.
+
+  An upload stops what plays before the board has read a byte, so a wrong file would otherwise
+  stop the music for nothing. Everything else is the board's to judge, and it judges these
+  again.
+- **The upload** is `PUT /firmware` with the file as the body, as `application/octet-stream`,
+  from an `XMLHttpRequest` with no timeout. The board answers only once the image is written
+  and checked. The section shows the bytes sent, then that the board is checking. Leaving the
+  page meanwhile asks first, since it would end the upload and leave the board in flash mode.
+- **Restart** (`POST /restart`) and **Roll back to** the other slot's version
+  (`PUT /firmware/rollback`). Roll back is offered when the other slot holds an image that
+  could boot, and on trial, where it gives the trial up. On trial, neither Update nor Restart is
+  offered: the board refuses both then.
+
+**Reading it.** Once when the page loads, one request after `/hardware` rather than beside it,
+since a board has few sockets. Then:
+
+- again whenever the board answers after it did not;
+- at every poll while a trial or an upload runs, one read at a time;
+- at every poll for a minute after a restart the page asked for. On the S3 board a rollback was
+  back within three seconds, and the one poll that met the restart was sent again by the browser
+  and answered, so no poll failed;
+- not while the page's own upload is out.
+
+While the board restarts because the page asked, the page says the board is restarting rather
+than reporting an error. When the board answers again running another image than the page was
+loaded with, the page loads again: the new image may serve another page. The page it loads
+shows the trial.
+
+**On a board, 2026-09-25.** The page came from this tree, through a proxy on the PC that sent
+every other request to the S3 board on COM15; the image the board served had no firmware
+section yet. The page:
+
+- updated the board from a file of 1,467,232 bytes, showing the bytes sent;
+- showed "Sent. The board checks the image before it answers.", then the board's
+  "Restarting" stage, then "Written and checked";
+- loaded again as the new image's page, whose trial counted to 30 s held and ended accepted;
+- rolled the board back twice.
+
+That run found the gap the minute of reading closes: the first rollback reloaded nothing.
+
+The page does not poll while its tab is hidden (decision 1), so a countdown in a background tab
+stands still until the tab is shown.
+
 ## How the page updates
 
 By polling `GET /status`:
@@ -526,7 +620,7 @@ mark after each handler, then reverted.
 
 | Item | Budget | Measured |
 |---|---|---|
-| Flash: the page and its script together, as stored | 49,152 bytes ([decision 22](#decisions)); 45,056 before the list of paired servers, 28,672 before the redesign, 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 45,957 (20,077 + 25,880); 42,846 at the redesign, 28,317 before it, 25,594 at B3, 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
+| Flash: the page and its script together, as stored | 57,344 bytes ([decision 22](#decisions)); 49,152 before the firmware section, 45,056 before the list of paired servers, 28,672 before the redesign, 24,576 before Hearth B3, 20,480 before B2, 16,384 before the output layout | 55,926 (21,265 + 34,661); 55,454 at the firmware section, 45,957 at the list of paired servers, 42,846 at the redesign, 28,317 before it, 25,594 at B3, 20,571 at B2, 19,187 at the output layout, 16,190 before. A host test fails above the budget |
 | Internal heap held once the server is up: two more route registrations and handler slots | 256 bytes | 76, from the `heap:` line: 290,428 free against the base's 290,504 |
 | Internal heap held while a browser has the page open | - | 376, the keep-alive connection |
 | Internal heap at the peak of one `GET /status` | 3,072 bytes | 4,700 to 7,700 from the page's keep-alive connection; 5,100 from `curl`, a new connection each time |
@@ -652,7 +746,7 @@ server stands in for the device (`device-ui/stub.js`), one per test: it serves t
 script with the headers Control sends, and implements the REST contract - routes, methods, status
 codes, reply texts, content types, and the state a play goes through. `contract.spec.js` compares
 its reply texts, headers and routes with the literals in `control.cpp`, and checks that every
-request the script makes is to a route the firmware registers. The host suite's 105 tests drive every action
+request the script makes is to a route the firmware registers. The host suite's 145 tests drive every action
 through the page and assert on the requests the stand-in received; every error path (`400` and
 `409` replies, a connection closed unanswered, a device that does not answer, a malformed or
 partial `/status`); the polling rules on Playwright's clock (one request in flight, none while
@@ -674,12 +768,33 @@ on Playwright's clock; the toast's six seconds and an error's staying; the dialo
 the passphrase's Show; the network line for WiFi, Ethernet, a kind the page has no word for and
 none; the firmware tiles; and a board with no second line offering no wiring.
 
+Since the firmware section, `firmware.spec.js`. The stand-in models `ac3forge::Firmware`'s routes
+as the page uses them: an upload whose head is an application image is written, the board
+restarts into it on trial, and a restart drops the next request. Before it drops a request the
+stand-in closes its idle connections, and until the drop is made each answer closes its own.
+Chromium sends a request again when a connection it reused closes unanswered, so a drop then fails
+the request exactly once, whatever connections the browser had open. `contract.spec.js` holds its
+replies to the literals in `firmware.cpp` and `firmware_image.hpp`, and `GET /firmware`'s keys
+to `firmware_status.hpp`'s order. The tests cover:
+
+- every state a slot can be in and what its check found, a trial as it runs and as it ends, an
+  upload another client is sending, flash mode, how the last update ended, a board with one app
+  slot, and a firmware with no route;
+- an update from a file: the image named in the dialog, sent byte for byte with the bytes
+  shown, and the new image's page loaded once the board runs it;
+- the files kept back on their head, the board's refusals before and after flash mode, and an
+  upload whose connection closes unanswered;
+- Restart and Roll back, on trial and not, with the board restarting reported as such; a board
+  back before any poll fails, on the minute of reading after a restart; and a read of
+  `GET /firmware` that hangs not joined by another.
+
 **Coverage.** Chromium's V8 coverage of the script, collected by Playwright per test, written in
 the form Node's own coverage takes, and reported by c8 (`npm run coverage:device-ui`), which fails
 below 98% of statements, lines and functions and 90% of branches. The suite reaches 100, 100, 100
-and 94.9.
+and 94.8. The branch that loads the page again is run by the tests but not counted: a page's
+coverage is what its last load ran.
 
-**Budget.** A host test sums the two files, fails above 45,056 bytes, and fails on a carriage
+**Budget.** A host test sums the two files, fails above 57,344 bytes, and fails on a carriage
 return.
 
 **On the target.** A step in the ESP32 job, after the HTTP step and without changing it, boots the
@@ -690,7 +805,8 @@ layout the capture sink cannot carry is refused with the firmware's own reply; a
 from the form finishes, and its levels on the console come out at a quarter of the boot play's;
 Stop reads back as `stopped`; `GET /api` lists the routes. Since the redesign it also reads what the
 firmware adds: the network as `Ethernet · 10.0.2.15`, the firmware tile, and no wiring on the
-capture sink. Then the step checks the console for a panic or a second boot. A second step plays [the stream set](esp32-stream-set.md) onto 7.1.4 on a
+capture sink. Since the firmware section, the image in `ota_0`, accepted, the other slot empty,
+and Update and Restart offered. Then the step checks the console for a panic or a second boot. A second step plays [the stream set](esp32-stream-set.md) onto 7.1.4 on a
 twelve-slot image (`sdkconfig.ci-http714`) and runs `device-ui/board/layouts.spec.js` on it: the
 Output, Silent and Next play rows through a 5.1 stream on 7.1.4, a 7.1.4 stream on 5.1 and a 5.1
 stream folded to 2.0, a layout wider than the bus refused and explained, and a 44.1 kHz stream
@@ -948,6 +1064,21 @@ run as root, so Playwright can install Chromium's system libraries).
     shape's 1,065,344. The page is 3% of the S3 board's image. The new figure is in
     `apps/wasm/tests/device-ui/budget.spec.js`.
 
+    **Re-derived again 2026-09-25: 57,344 bytes.** The firmware section (decision 29) took the
+    page to 55,454: the section, the upload and its checks on the image's head, and the dialog
+    made to ask about anything. An image now lives in a slot of the two-slot tables
+    ([esp32-ota.md](esp32-ota.md)), so the question is each image against its slot. Built with
+    the section:
+
+    | Image | Size | Its slot |
+    |---|---|---|
+    | S3 board | 1,476,496 bytes | 4 MiB, 65% free |
+    | C6 on the 4 MB table, the tightest | 1,644,624 bytes | 1.75 MiB, 190,384 bytes (10%) free |
+    | P4 | 1,525,056 bytes | 4 MiB |
+    | CI's HTTP shape | 952,480 bytes | 4 MiB |
+
+    The page is 3.8% of the S3 board's image.
+
 23. **The output layout's control.** (a) **the named layouts as a segmented control, those wider
     than the sink disabled, above the field**; (b) the field with its suggestion list, as before;
     (c) the segmented control alone. **Recommend (a).** A `<datalist>` shows its suggestions only
@@ -1002,3 +1133,24 @@ run as root, so Playwright can install Chromium's system libraries).
     closes its connection with `client/goodbye user_request` rather than `unpaired`, which the
     specification keeps for an answer to `server/unpair`. Cost: a list read costs an NVS read
     and about 1.3 KB of heap for as long as it runs, and the page's budget grew (decision 22).
+
+29. **Updating the board from the page** ([Firmware](#firmware)). (a) **the file as the body
+    of an `XMLHttpRequest`, with no `Content-Digest`, and the image's head checked in the page
+    first**; (b) the same, with a SHA-256 of the file computed in the script and sent as
+    `Content-Digest`; (c) `fetch`, like every other request the page makes, with no progress.
+    **Recommend (a).**
+    - **No SHA-256 in the page.** A page a board serves over plain HTTP is not a secure
+      context, so the browser's own SHA-256 (`crypto.subtle`) is not there. One in the script
+      would be about 1.5 KB in every image. The board checks the image's own SHA-256 as it lies
+      in flash, and reads back every byte it wrote, which finds an image damaged on the way.
+      A `Content-Digest` would add a check of what left the browser; `ota.py` sends one.
+    - **Not `fetch`.** It cannot report the bytes sent: Chromium streams a request body only
+      over HTTP/2, and the board's server speaks HTTP/1.1. An image of 1.5 MB takes long
+      enough over Wi-Fi that a page that shows nothing looks stuck.
+    - **The head, in the page.** An upload enters flash mode before the board reads a byte,
+      so a wrong file would stop what plays until a restart. The page reads what the board
+      reads first, and keeps back a file the board would refuse on it alone.
+
+    Cost: two ways out of the page rather than one; nothing checks the upload against what
+    left the browser; and three of the board's checks are made twice, first in the page and
+    then on the board. **Taken, (a).**

@@ -258,8 +258,8 @@ jobs:
         run: echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   # ac3adm::ac3adm (src/ac3adm) is opt-in - AC3FORGE_BUILD_ADM defaults OFF, unlike every other
   # library component (see the root CMakeLists.txt's own option() and src/ac3adm/CMakeLists.txt's
-  # header comment for why: it is the one module in this repo with a third-party dependency,
-  # libadm's Boost header libraries, resolved only via -DVCPKG_MANIFEST_FEATURES=adm). No leg in
+  # header comment for why: libadm needs Boost header libraries, a third-party dependency that
+  # only -DVCPKG_MANIFEST_FEATURES=adm resolves). No leg in
   # build-and-test's matrix (_build.yml) ever passes -DAC3FORGE_BUILD_ADM=ON; besides this job,
   # the only other build with it on is the coverage job's instrumented Debug preset, which turns
   # the CLI and examples OFF - so without this job, ADM BWF reader phase 3's CLI command and example

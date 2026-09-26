@@ -8,12 +8,15 @@ while. A reset during the trial, or a trial that fails, boots the image before
 it again (planning/esp32-ota.md). This is the host side of that. Standard
 library only; the zeroconf package is used for --all when it is installed.
 
-    python tools/hearth/ota.py push (--build-dir DIR | IMAGE) (--host H ... | --all)
-                                    [--yes] [--force] [--timeout SECONDS]
+    python tools/hearth/ota.py push (--build-dir DIR | IMAGE | --release TAG | --run RUN_ID)
+                                    (--host H ... | --all)
+                                    [--yes] [--force] [--timeout SECONDS] [--download-dir DIR]
     python tools/hearth/ota.py status [--host H ... | --all]
     python tools/hearth/ota.py restart --host H
     python tools/hearth/ota.py rollback --host H
     python tools/hearth/ota.py cancel --host H
+    python tools/hearth/ota.py coredump --host H [--out FILE] [--elf ELF] [--erase]
+    python tools/hearth/ota.py log --host H [--follow]
 
 H is a board's IP address or its mDNS name (hearth-eb2c64.local), followed by
 :PORT when the port is not 80. The firmware routes answer only those two kinds
@@ -54,10 +57,32 @@ push reads the image file once, and sends the bytes it checked:
 Boards are updated one at a time. push stops at the first board that rolls
 back or does not come back, and the boards after it are not touched.
 
-status prints each board's running and other slot, mode, trial, last update
-and network. restart, rollback and cancel send POST /restart,
+push --release TAG and --run RUN_ID take published images instead of a build
+(planning/esp32-ota.md, O8). A release's hearth-sink-manifest.json lists each
+board's image with its chip, flash size, PSRAM, revision range and partition
+table; each board gets the one that matches its /hardware and /firmware, and a
+board no image fits is named and skipped. The image is downloaded then, from
+the GitHub API ("latest" is the newest release that publishes sink firmware),
+and checked against the manifest's SHA-256 and the release's SHA512SUMS before
+it is sent. --run downloads a CI run's esp32-firmware artifact whole with the
+GitHub CLI (gh), so a pull request's firmware can go onto a board with no
+local build.
+
+status prints each board's running and other slot, mode, trial, last update,
+core dump and network. restart, rollback and cancel send POST /restart,
 PUT /firmware/rollback and PUT /firmware/mode "normal" (which leaves flash mode
 by restarting into the running image), and print the board's answer.
+
+coredump saves the core dump the board's last crash left (GET
+/firmware/coredump) to FILE, coredump-<board>.bin by default. With --elf, the
+ELF of the image that wrote it, it checks that the ELF is that image by the
+ELF SHA-256 the dump names, then runs ESP-IDF's esp_coredump on the two, which
+prints every task's backtrace; run it in the ESP-IDF environment. With
+--erase, it erases the dump once saved (DELETE /firmware/coredump), so the
+next crash is not taken for this one.
+
+log prints the board's recent console output (GET /log). With --follow it
+goes on printing what is new, asking every second, until interrupted.
 
 Exit status: 0 when every board was updated or already ran the image, and for
 the other commands when every board answered 200; 1 when a board was refused,
@@ -73,10 +98,15 @@ import dataclasses
 import hashlib
 import http.client
 import json
+import os
 import shutil
 import struct
+import subprocess
 import sys
+import tempfile
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NoReturn
@@ -103,6 +133,9 @@ SHA_WAIT_SECONDS = 20.0
 # After an upload broke off part-way, how long to look for the board's reason.
 # The board gives up on a stalled upload after 30 s.
 REFUSAL_WAIT_SECONDS = 40.0
+PRE_FLIGHT_RETRY_SECONDS = 2.0
+# log --follow asks the board for what is new this often.
+LOG_POLL_SECONDS = 1.0
 
 # --all: the service a Sendspin player advertises, and how long to listen.
 SERVICE = "_sendspin._tcp.local."
@@ -168,6 +201,10 @@ class BoardError(Exception):
 
 class UsageError(Exception):
     """The command line cannot be carried out; the text says why."""
+
+
+class NoPublishedFirmware(UsageError):
+    """The release named, or every release, publishes no sink firmware (yet)."""
 
 
 # --- the image ---------------------------------------------------------------
@@ -489,6 +526,16 @@ class Board:
         finally:
             connection.close()
 
+    def fetch(self, path: str, timeout: float = GET_TIMEOUT) -> tuple[int, bytes, dict[str, str]]:
+        """GET as bytes, with the reply's headers; errors as request() raises them."""
+        connection = http.client.HTTPConnection(self.hostname, self.port, timeout=timeout)
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            return response.status, response.read(), dict(response.getheaders())
+        finally:
+            connection.close()
+
     def get_json(self, path: str, timeout: float = GET_TIMEOUT) -> dict[str, Any]:
         try:
             status, text = self.request("GET", path, timeout=timeout)
@@ -789,11 +836,28 @@ def upload(board: Board, image: Image) -> Sent:
         connection.close()
 
 
-def refusal_after_break(board: Board) -> str | None:
-    """After an upload broke off, the board's reason once it has given the upload up.
+# What a board says of an upload it gave up because the connection went, as
+# firmware.cpp words it: another try can go through.
+CONNECTION_LOST = ("the upload stopped after", "the upload ended before")
 
-    An upload that reached the board put it in flash mode, so a board in
-    normal mode never had this one, and its last update is an older one.
+
+@dataclass
+class Broken:
+    """What became of an upload that broke off: in the board's words when it has any."""
+
+    text: str
+    retry: bool  # whether sending the image again can go through
+    flash_mode: bool  # whether the board was left in flash mode
+
+
+def after_break(board: Board, started: float) -> Broken:
+    """After an upload that began at `started` (time.monotonic) broke off: what became of it.
+
+    The board is waited for until it answers with no upload running: it may be
+    reading out a timeout, or restarting. In flash mode it gave the upload up,
+    and says why. In normal mode it restarted since the upload began: it says
+    so as the last update, "interrupted" (a firmware that records that), or its
+    uptime is shorter than the upload has been going (one that does not).
     """
     deadline = time.monotonic() + REFUSAL_WAIT_SECONDS
     while True:
@@ -802,14 +866,72 @@ def refusal_after_break(board: Board) -> str | None:
         except BoardError:
             firmware = None
         if firmware is not None and not part(firmware, "upload"):
-            last = part(firmware, "last_update")
-            in_flash_mode = text_of(firmware, "mode") == "flash"
-            if in_flash_mode and text_of(last, "result") in ("refused", "failed"):
-                return text_of(last, "reason") or text_of(last, "result")
-            return None
+            break
         if time.monotonic() >= deadline:
-            return None
+            if firmware is None:
+                return Broken("the board has not answered since", retry=False, flash_mode=False)
+            return Broken(
+                "the board still reports the upload as running", retry=False, flash_mode=True
+            )
         time.sleep(POLL_SECONDS)
+    last = part(firmware, "last_update")
+    result = text_of(last, "result")
+    reason = text_of(last, "reason")
+    if text_of(firmware, "mode") == "flash":
+        if result in ("refused", "failed") and reason:
+            return Broken(
+                f"the board gave it up: {reason}",
+                retry=reason.startswith(CONNECTION_LOST),
+                flash_mode=True,
+            )
+        return Broken(
+            "the board is in flash mode and says nothing of it", retry=True, flash_mode=True
+        )
+    if result == "interrupted":
+        return Broken(f"the board restarted during it: {reason}", retry=True, flash_mode=False)
+    uptime_ms = number_of(firmware, "uptime_ms")
+    if 0 < uptime_ms < (time.monotonic() - started) * 1000:
+        cause = text_of(firmware, "reset_reason") or "not reported"
+        return Broken(
+            f"the board restarted during it (reset reason: {cause})", retry=True, flash_mode=False
+        )
+    return Broken(
+        "the board is in normal mode and says nothing of it: it never started it",
+        retry=True,
+        flash_mode=False,
+    )
+
+
+def leave_flash_mode(board: Board) -> None:
+    """PUT /firmware/mode "normal" for a board a failed push left in flash mode.
+
+    Left alone, the board would be silent - playing nothing, not advertised -
+    until its ten-minute idle timeout restarted it.
+    """
+    try:
+        status, text = board.request(
+            "PUT", "/firmware/mode", body=b"normal", headers={"Content-Type": "text/plain"}
+        )
+    except (OSError, http.client.HTTPException) as error:
+        say(
+            board,
+            f"it stays in flash mode, and could not be told to leave it ({error_text(error)})",
+        )
+        return
+    if status == 200:
+        say(board, "told it to leave flash mode: it restarts into the image it runs")
+    else:
+        say(board, f"it stays in flash mode: leaving it answered {status} {text}")
+
+
+def leave_flash_mode_if_waiting(board: Board) -> None:
+    """Leave flash mode on a board that refused this push's image and waits for another."""
+    try:
+        firmware = board.get_json("/firmware", timeout=POLL_TIMEOUT)
+    except BoardError:
+        return
+    if text_of(firmware, "mode") == "flash" and not part(firmware, "upload"):
+        leave_flash_mode(board)
 
 
 @dataclass
@@ -971,10 +1093,20 @@ def written_text(answer: Any, reply: str, image: Image) -> str:
     return text + "; the board restarts into it, on trial"
 
 
+def get_json_patiently(board: Board, path: str) -> Any:
+    """GET `path`, asked up to three times: one slow name lookup is not a board that is gone."""
+    for _ in range(2):
+        try:
+            return board.get_json(path)
+        except BoardError:
+            time.sleep(PRE_FLIGHT_RETRY_SECONDS)
+    return board.get_json(path)
+
+
 def push_one(board: Board, image: Image, options: PushOptions) -> int:
     try:
-        hardware = board.get_json("/hardware")
-        firmware = board.get_json("/firmware")
+        hardware = get_json_patiently(board, "/hardware")
+        firmware = get_json_patiently(board, "/firmware")
     except BoardError as error:
         say(board, f"refused: {error}")
         return REFUSED
@@ -1004,28 +1136,33 @@ def push_one(board: Board, image: Image, options: PushOptions) -> int:
             return REFUSED
 
     slot = text_of(part(firmware, "other"), "label") or None
-    say(
-        board,
-        f"sending {len(image.data):,} bytes to {slot or 'the other slot'}; the board erases what "
-        "the image needs first",
-    )
-    sent = upload(board, image)
-    if sent.status is None and sent.sent < len(image.data):
-        say(board, f"the upload broke off after {sent.sent:,} bytes: {sent.text}")
-        reason = refusal_after_break(board)
-        if reason:
-            say(board, f"refused: {reason}")
-        else:
-            say(
-                board,
-                "failed: the board gave no reason. If it is in flash mode (ota.py status), a new "
-                "push, ota.py cancel, or ten minutes restarts it into the image it runs",
-            )
-        return REFUSED
+    # An upload that breaks off, or that a restart of the board cuts short, is
+    # sent once more: the board keeps running what it ran, and nothing was
+    # accepted. A second break, or a refusal, leaves it at that - and takes
+    # the board out of flash mode rather than leave it silent for ten minutes.
+    for attempt in (1, 2):
+        say(board, f"sending {len(image.data):,} bytes to {slot or 'the other slot'}")
+        started = time.monotonic()
+        sent = upload(board, image)
+        if sent.status is None and sent.sent < len(image.data):
+            say(board, f"the upload broke off after {sent.sent:,} bytes: {sent.text}")
+            broken = after_break(board, started)
+            say(board, broken.text)
+            if broken.retry and attempt == 1:
+                say(board, "sending it again")
+                continue
+            say(board, "failed: the image was not taken")
+            if broken.flash_mode:
+                leave_flash_mode(board)
+            return REFUSED
+        break
     if sent.status is None:
         say(board, f"no answer to the upload ({sent.text}); looking for the board")
     elif sent.status != 200:
         say(board, f"refused ({sent.status}): {sent.text}{http_hint(sent.status)}")
+        # A board that took the upload and then refused the image waits in flash
+        # mode for a corrected one: this push has none to send.
+        leave_flash_mode_if_waiting(board)
         return REFUSED
     else:
         try:
@@ -1045,6 +1182,8 @@ def push_one(board: Board, image: Image, options: PushOptions) -> int:
         last_before=part(firmware, "last_update"),
     )
     say(board, outcome.text)
+    if outcome.code == REFUSED:
+        leave_flash_mode_if_waiting(board)
     return outcome.code
 
 
@@ -1090,12 +1229,44 @@ def show_status(board: Board) -> int:
         ("trial", trial_text(trial) if trial else "none"),
         ("upload", upload_line),
         ("last update", last_update_text(last) if last else "none"),
+        ("core dump", coredump_text(firmware)),
         ("network", text_of(firmware, "network") or "?"),
     ]
     console.say(str(board))
     for name, value in rows:
         console.say(f"  {name:<12} {value}")
     return UPDATED
+
+
+def coredump_source(dump: dict[str, Any], firmware: dict[str, Any]) -> str:
+    """Which slot's image wrote a core dump, by the start of the ELF SHA-256 the dump keeps."""
+    prefix = text_of(dump, "elf_sha256")
+    if not prefix:
+        return "an image the dump does not name"
+    for name in ("running", "other"):
+        held = part(firmware, name)
+        if held and text_of(held, "elf_sha256").startswith(prefix):
+            return f"{text_of(held, 'version')} in {text_of(held, 'label')}"
+    return f"an image neither slot holds now (ELF SHA-256 {prefix}...)"
+
+
+def coredump_text(firmware: dict[str, Any]) -> str:
+    # A board keeps the key, null when there is no dump; firmware from before O4
+    # has no key at all.
+    if "coredump" not in firmware:
+        return "not reported by this firmware"
+    dump = part(firmware, "coredump")
+    if not dump:
+        return "none"
+    words = [f"{number_of(dump, 'bytes'):,} bytes"]
+    if dump.get("intact") is not True:
+        words.append("which do not check out")
+    if text_of(dump, "task"):
+        words.append(f"{text_of(dump, 'task')} at {text_of(dump, 'pc')}")
+    if text_of(dump, "reason"):
+        words.append(text_of(dump, "reason"))
+    words.append(f"written by {coredump_source(dump, firmware)}")
+    return ", ".join(words)
 
 
 def send(board: Board, method: str, path: str, body: bytes, what: str) -> int:
@@ -1107,6 +1278,95 @@ def send(board: Board, method: str, path: str, body: bytes, what: str) -> int:
         return REFUSED
     say(board, f"{what}: {status} {text}{http_hint(status)}")
     return UPDATED if status == 200 else REFUSED
+
+
+def fetch_coredump(board: Board, out: Path | None, elf: Path | None, erase: bool) -> int:
+    """Saves the board's core dump, reads it with esp_coredump when given the ELF, erases it."""
+    try:
+        firmware = board.get_json("/firmware")
+        status, data, _ = board.fetch("/firmware/coredump", timeout=UPLOAD_TIMEOUT)
+    except BoardError as error:
+        say(board, str(error))
+        return REFUSED
+    except (OSError, http.client.HTTPException) as error:
+        say(board, f"GET /firmware/coredump got no answer: {error_text(error)}")
+        return REFUSED
+    if status != 200:
+        say(
+            board,
+            f"GET /firmware/coredump answered {status}: {data.decode('utf-8', 'replace').strip()}",
+        )
+        return REFUSED
+    dump = part(firmware, "coredump")
+    path = out or Path(f"coredump-{board.hostname}.bin")
+    path.write_bytes(data)
+    say(board, f"saved {len(data):,} bytes to {path}: {coredump_text(firmware)}")
+    code = UPDATED if elf is None else decode_coredump(board, path, elf, dump)
+    if erase:
+        code = max(code, send(board, "DELETE", "/firmware/coredump", b"", "erase"))
+    return code
+
+
+def decode_coredump(board: Board, path: Path, elf: Path, dump: dict[str, Any]) -> int:
+    """esp_coredump's reading of a saved dump, once the ELF is shown to be its image's."""
+    try:
+        digest = hashlib.sha256(elf.read_bytes()).hexdigest()
+    except OSError as error:
+        raise UsageError(f"--elf {elf}: {error_text(error)}") from None
+    prefix = text_of(dump, "elf_sha256")
+    if prefix and not digest.startswith(prefix):
+        say(
+            board,
+            f"{elf} is not the image that wrote the dump: its ELF SHA-256 starts "
+            f"{digest[: len(prefix)]}, and the dump names {prefix}",
+        )
+        return REFUSED
+    command = [sys.executable, "-m", "esp_coredump", "info_corefile"]
+    command += ["--core", str(path), "--core-format", "raw", str(elf)]
+    say(board, "running " + " ".join(command[1:]))
+    try:
+        done = subprocess.run(command, check=False)
+    except OSError as error:
+        say(board, f"esp_coredump did not run: {error_text(error)}")
+        return REFUSED
+    if done.returncode != 0:
+        say(board, f"esp_coredump exited {done.returncode}; run it in the ESP-IDF environment")
+        return REFUSED
+    return UPDATED
+
+
+def show_log(board: Board, follow: bool) -> int:
+    """GET /log from the start of what the board holds, and with --follow what comes after."""
+    start = 0
+    first = True
+    try:
+        while True:
+            try:
+                status, data, headers = board.fetch(f"/log?from={start}")
+            except (OSError, http.client.HTTPException) as error:
+                say(board, f"GET /log got no answer: {error_text(error)}")
+                if not follow:
+                    return REFUSED
+                time.sleep(LOG_POLL_SECONDS)
+                continue
+            if status != 200:
+                say(board, f"GET /log answered {status}: {data.decode('utf-8', 'replace').strip()}")
+                return REFUSED
+            by_name = {name.lower(): value for name, value in headers.items()}
+            began = int(by_name.get("x-log-from", start))
+            if began > start and not first:
+                sys.stdout.write(f"[{began - start:,} bytes came and went before they were read]\n")
+            first = False
+            sys.stdout.write(data.decode("utf-8", "replace"))
+            sys.stdout.flush()
+            start = int(by_name.get("x-log-next", began + len(data)))
+            if data:
+                continue  # more may be waiting: a reply carries at most a few KB
+            if not follow:
+                return UPDATED
+            time.sleep(LOG_POLL_SECONDS)
+    except KeyboardInterrupt:
+        return UPDATED
 
 
 # --- finding boards ----------------------------------------------------------------------
@@ -1163,6 +1423,253 @@ def boards_from(args: argparse.Namespace) -> list[Board]:
     return boards
 
 
+# --- published images (planning/esp32-ota.md, O8) ---------------------------------------------
+
+REPOSITORY = "iainchesworthlabs/ac3forge"
+MANIFEST_NAME = "hearth-sink-manifest.json"
+FIRMWARE_ARTIFACT = "esp32-firmware"
+GITHUB_API = "https://api.github.com"
+DOWNLOAD_TIMEOUT = 120.0
+
+
+@dataclass
+class Published:
+    """A published set of images: its manifest, where its files are, and SHA512SUMS's lines."""
+
+    manifest: dict[str, Any]
+    directory: Path
+    source: str  # "release v0.11.0", "CI run 1234"
+    sums: dict[str, str] = field(default_factory=dict)
+    # A file that is not in `directory` yet, and where to fetch it.
+    urls: dict[str, str] = field(default_factory=dict)
+    # For a release: its tag, its page on GitHub and when it was published.
+    tag: str = ""
+    page: str = ""
+    published: str = ""
+
+
+def github_request(url: str) -> urllib.request.Request:
+    headers = {"Accept": "application/vnd.github+json", "User-Agent": "ac3forge-ota.py"}
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return urllib.request.Request(url, headers=headers)
+
+
+def github_get(url: str) -> bytes:
+    try:
+        with urllib.request.urlopen(github_request(url), timeout=DOWNLOAD_TIMEOUT) as response:
+            return response.read()
+    except urllib.error.HTTPError as error:
+        raise UsageError(f"{url} answered {error.code} {error.reason}") from None
+    except (OSError, http.client.HTTPException) as error:
+        raise UsageError(f"{url} got no answer: {error_text(error)}") from None
+
+
+def read_sums(text: str) -> dict[str, str]:
+    """SHA512SUMS's lines as sha512sum writes them: '<hex>  <name>'."""
+    sums = {}
+    for line in text.splitlines():
+        digest, _, name = line.strip().partition(" ")
+        if digest and name:
+            sums[name.strip().lstrip("*")] = digest.lower()
+    return sums
+
+
+def fetch_release(tag: str, into: Path) -> Published:
+    """The manifest and SHA512SUMS of release `tag`, or of the newest release that has a manifest.
+
+    The images themselves are fetched when a board is matched to one (image_for_board), so
+    that a push to one board downloads one image. "latest" takes prereleases too: every
+    release so far is one.
+    """
+    if tag == "latest":
+        releases = json.loads(github_get(f"{GITHUB_API}/repos/{REPOSITORY}/releases?per_page=30"))
+        release = next(
+            (
+                entry
+                for entry in releases
+                if any(asset.get("name") == MANIFEST_NAME for asset in entry.get("assets", []))
+            ),
+            None,
+        )
+        if release is None:
+            raise NoPublishedFirmware(f"no release of {REPOSITORY} publishes {MANIFEST_NAME} yet")
+    else:
+        release = json.loads(github_get(f"{GITHUB_API}/repos/{REPOSITORY}/releases/tags/{tag}"))
+    urls = {
+        str(asset.get("name")): str(asset.get("browser_download_url"))
+        for asset in release.get("assets", [])
+    }
+    name = str(release.get("tag_name") or tag)
+    if MANIFEST_NAME not in urls:
+        raise NoPublishedFirmware(
+            f"release {name} publishes no {MANIFEST_NAME}: it has no sink firmware"
+        )
+    into.mkdir(parents=True, exist_ok=True)
+    manifest = json.loads(github_get(urls[MANIFEST_NAME]))
+    sums = read_sums(github_get(urls["SHA512SUMS"]).decode("utf-8")) if "SHA512SUMS" in urls else {}
+    return Published(
+        manifest,
+        into,
+        f"release {name}",
+        sums,
+        urls,
+        tag=name,
+        page=str(release.get("html_url") or ""),
+        published=str(release.get("published_at") or ""),
+    )
+
+
+def fetch_run(run_id: str, into: Path) -> Published:
+    """A CI run's esp32-firmware artifact, downloaded whole with the GitHub CLI."""
+    if not run_id.isdigit():
+        raise UsageError(f"--run takes a workflow run's number, not '{run_id}'")
+    command = [
+        "gh", "run", "download", run_id, "--repo", REPOSITORY,
+        "--name", FIRMWARE_ARTIFACT, "--dir", str(into),
+    ]  # fmt: skip
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, check=False, timeout=600)
+    except FileNotFoundError:
+        raise UsageError(
+            "--run downloads with the GitHub CLI (gh), which is not installed"
+        ) from None
+    if done.returncode != 0:
+        raise UsageError(
+            f"gh run download {run_id} failed: {done.stderr.strip() or done.stdout.strip()}"
+        )
+    try:
+        manifest = json.loads((into / MANIFEST_NAME).read_text("utf-8"))
+    except (OSError, ValueError) as error:
+        raise UsageError(
+            f"run {run_id}'s {FIRMWARE_ARTIFACT} has no readable {MANIFEST_NAME}: {error}"
+        ) from None
+    return Published(manifest, into, f"CI run {run_id}")
+
+
+def image_problem(
+    entry: dict[str, Any], hardware: dict[str, Any], firmware: dict[str, Any]
+) -> str | None:
+    """Why the published image `entry` is not the one for this board, or None when it is."""
+    if entry.get("target") != text_of(hardware, "target"):
+        return f"it is for {entry.get('chip') or entry.get('target')}"
+    flash_bytes = number_of(firmware, "flash_bytes")
+    flash = str(entry.get("flash_size", ""))
+    if (
+        flash_bytes
+        and flash.endswith("MB")
+        and flash[:-2].isdigit()
+        and int(flash[:-2]) << 20 != flash_bytes
+    ):
+        return f"it is built for {flash} of flash"
+    has_psram = number_of(hardware, "psram_bytes") > 0
+    if bool(entry.get("psram")) != has_psram:
+        return (
+            "it is built for a board with PSRAM"
+            if entry.get("psram")
+            else "it is built for a board without PSRAM"
+        )
+    revision = parse_revision(text_of(hardware, "revision"))
+    low = number_of(entry, "min_rev_full")
+    high = number_of(entry, "max_rev_full")
+    if revision is not None and (revision < low or (revision_set(high) and revision > high)):
+        return f"it runs on chip revisions {revision_text(low)} to {revision_text(high)}"
+    theirs = board_partitions(firmware)
+    ours = tuple(
+        Partition(
+            text_of(part, "label"),
+            number_of(part, "type"),
+            number_of(part, "subtype"),
+            number_of(part, "offset"),
+            number_of(part, "size"),
+        )
+        for part in entry.get("partitions") or []
+    )
+    if theirs is not None and ours and table_difference(ours, theirs):
+        return f"its partition table is not the board's ({table_difference(ours, theirs)})"
+    return None
+
+
+def image_for_board(
+    published: Published, hardware: dict[str, Any], firmware: dict[str, Any]
+) -> tuple[Image | None, str]:
+    """The published image that fits this board, read and checked, or why there is none."""
+    reasons = []
+    for entry in published.manifest.get("images") or []:
+        problem = image_problem(entry, hardware, firmware)
+        if problem:
+            reasons.append(f"{entry.get('name')}: {problem}")
+            continue
+        app = (entry.get("files") or {}).get("app") or {}
+        name = str(app.get("name", ""))
+        path = published.directory / name
+        if not path.is_file() and name in published.urls:
+            path.write_bytes(github_get(published.urls[name]))
+        if not path.is_file():
+            raise UsageError(f"{published.source} names {name}, which it does not hold")
+        data = path.read_bytes()
+        if hashlib.sha256(data).hexdigest() != app.get("sha256"):
+            raise ImageError(
+                f"{name}'s SHA-256 is not the one {MANIFEST_NAME} gives: the download is damaged"
+            )
+        if published.sums and published.sums.get(name) != hashlib.sha512(data).hexdigest():
+            raise ImageError(
+                f"{name}'s SHA-512 is not the one SHA512SUMS gives: the download is damaged"
+            )
+        image = read_image_file(path)
+        partitions = tuple(
+            Partition(
+                text_of(part, "label"),
+                number_of(part, "type"),
+                number_of(part, "subtype"),
+                number_of(part, "offset"),
+                number_of(part, "size"),
+            )
+            for part in entry.get("partitions") or []
+        )
+        return (
+            dataclasses.replace(
+                image,
+                partitions=partitions or None,
+                wifi_built_in=bool(entry.get("network_built_in")),
+            ),
+            str(entry.get("name")),
+        )
+    return None, "; ".join(reasons) or f"{published.source} publishes no images"
+
+
+def push_published(published: Published, boards: list[Board], options: PushOptions) -> int:
+    """Each board gets the published image that fits it, one board at a time, as push() goes."""
+    worst = UPDATED
+    for index, board in enumerate(boards):
+        try:
+            hardware = board.get_json("/hardware")
+            firmware = board.get_json("/firmware")
+        except BoardError as error:
+            say(board, f"refused: {error}")
+            worst = max(worst, REFUSED)
+            continue
+        image, name = image_for_board(published, hardware, firmware)
+        if image is None:
+            say(board, f"refused: no image of {published.source} fits this board. {name}")
+            worst = max(worst, REFUSED)
+            continue
+        say(board, f"{published.source}'s {name} fits this board")
+        for line in describe_image(image):
+            console.say(line)
+        code = push_one(board, image, options)
+        if code in (ROLLED_BACK, SILENT):
+            rest = boards[index + 1 :]
+            if rest:
+                console.say(
+                    f"stopped at {board}; not touched: {', '.join(str(each) for each in rest)}"
+                )
+            return code
+        worst = max(worst, code)
+    return worst
+
+
 # --- the command line -----------------------------------------------------------------------
 
 
@@ -1209,6 +1716,24 @@ def build_parser() -> Parser:
         metavar="IMAGE",
         help="an app image (ac3forge_hearth_sink.bin) on its own",
     )
+    source.add_argument(
+        "--release",
+        metavar="TAG",
+        help="a release's published images (or 'latest'): each board gets the one that fits it, "
+        f"checked against {MANIFEST_NAME} and SHA512SUMS",
+    )
+    source.add_argument(
+        "--run",
+        metavar="RUN_ID",
+        help=f"a CI run's {FIRMWARE_ARTIFACT} artifact, downloaded with the GitHub CLI (gh): "
+        "each board gets the image that fits it",
+    )
+    push_parser.add_argument(
+        "--download-dir",
+        type=Path,
+        metavar="DIR",
+        help="where --release and --run keep what they download (default: a temporary directory)",
+    )
     targets = push_parser.add_mutually_exclusive_group(required=True)
     targets.add_argument(
         "--host", action="append", metavar="H", help="a board to update; repeat for several"
@@ -1253,6 +1778,38 @@ def build_parser() -> Parser:
     ):
         command = commands.add_parser(name, help=text, description=text[0].upper() + text[1:] + ".")
         command.add_argument("--host", required=True, metavar="H", help="the board")
+
+    coredump_parser = commands.add_parser(
+        "coredump",
+        help="save the core dump the board's last crash left, and read it (GET /firmware/coredump)",
+        description="Save the core dump the board's last crash left, and read it with esp_coredump "
+        "when given the ELF of the image that wrote it.",
+        epilog=EPILOG,
+    )
+    coredump_parser.add_argument("--host", required=True, metavar="H", help="the board")
+    coredump_parser.add_argument(
+        "--out", type=Path, metavar="FILE", help="where to save it (default coredump-<board>.bin)"
+    )
+    coredump_parser.add_argument(
+        "--elf",
+        type=Path,
+        metavar="ELF",
+        help="the ELF of the image that wrote it: esp_coredump then prints each task's backtrace",
+    )
+    coredump_parser.add_argument(
+        "--erase", action="store_true", help="erase it on the board once saved"
+    )
+
+    log_parser = commands.add_parser(
+        "log",
+        help="print the board's recent console output (GET /log)",
+        description="Print the board's recent console output, and with --follow what comes after.",
+        epilog=EPILOG,
+    )
+    log_parser.add_argument("--host", required=True, metavar="H", help="the board")
+    log_parser.add_argument(
+        "--follow", action="store_true", help="keep printing what is new until interrupted"
+    )
     return parser
 
 
@@ -1260,11 +1817,23 @@ def run(args: argparse.Namespace) -> int:
     if args.command == "push":
         if args.timeout <= 0:
             raise UsageError("--timeout takes a number of seconds above 0")
+        options = PushOptions(yes=args.yes, force=args.force, timeout=args.timeout)
+        if args.release or args.run:
+            with tempfile.TemporaryDirectory(prefix="ota-") as temporary:
+                into = args.download_dir or Path(temporary)
+                published = (
+                    fetch_release(args.release, into) if args.release else fetch_run(args.run, into)
+                )
+                images = published.manifest.get("images") or []
+                console.say(
+                    f"{published.source}: {len(images)} image(s), "
+                    f"{', '.join(str(image.get('name')) for image in images)}"
+                )
+                return push_published(published, boards_from(args), options)
         # The image is read and checked before any board is contacted.
         image = read_build_dir(args.build_dir) if args.build_dir else read_image_file(args.image)
         for line in describe_image(image):
             console.say(line)
-        options = PushOptions(yes=args.yes, force=args.force, timeout=args.timeout)
         return push(image, boards_from(args), options)
     if args.command == "status":
         return max((show_status(board) for board in boards_from(args)), default=UPDATED)
@@ -1273,6 +1842,10 @@ def run(args: argparse.Namespace) -> int:
         return send(board, "POST", "/restart", b"", "restart")
     if args.command == "rollback":
         return send(board, "PUT", "/firmware/rollback", b"", "rollback")
+    if args.command == "coredump":
+        return fetch_coredump(board, args.out, args.elf, args.erase)
+    if args.command == "log":
+        return show_log(board, args.follow)
     return send(board, "PUT", "/firmware/mode", b"normal", "cancel")
 
 

@@ -99,6 +99,7 @@ add_executable(ac3tests
     io/test_firmware_status.cpp
     io/test_firmware_trial.cpp
     io/test_hardware_info.cpp
+    io/test_log_ring.cpp
     io/test_improv.cpp
     io/test_interleave.cpp
     io/test_pairing_records.cpp
@@ -1082,14 +1083,24 @@ if(AC3FORGE_BUILD_HEARTH)
             hearth/test_server_host_dialling.cpp
             hearth/test_server_identity.cpp
             hearth/test_network_group_sink.cpp
-            hearth/test_engine_network_group.cpp)
+            hearth/test_engine_network_group.cpp
+            hearth/test_sink_firmware.cpp)
+        # A sink's firmware routes against a stand-in board on 127.0.0.1, which is a cpp-httplib
+        # server, so compiled on its own with cpp-httplib configured as src/sendspin configures
+        # it - test_websocket.cpp's reason above.
+        add_library(ac3tests_sink_firmware_board OBJECT hearth/test_sink_firmware_board.cpp)
+        target_link_libraries(ac3tests_sink_firmware_board
+            PRIVATE ac3hearth_engine ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
+        target_link_libraries(ac3tests PRIVATE ac3tests_sink_firmware_board)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
         # as core/test_simd_kernels.cpp's. test_aiosendspin_group.cpp's own environment() helper
-        # takes the same address the same way, and test_network_live.cpp its sinks' names.
+        # takes the same address the same way, test_network_live.cpp its sinks' names, and
+        # test_sink_firmware_board.cpp's live case its board and image.
         if(AC3FORGE_IS_MSVC_LIKE)
             set_source_files_properties(
                 hearth/test_aiosendspin.cpp hearth/test_aiosendspin_group.cpp hearth/test_network_live.cpp
+                hearth/test_sink_firmware_board.cpp
                 PROPERTIES COMPILE_OPTIONS "/wd4996")
         endif()
     endif()

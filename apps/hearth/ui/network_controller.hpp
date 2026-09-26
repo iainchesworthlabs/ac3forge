@@ -4,10 +4,13 @@
 #include <QSettings>
 #include <QString>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QtQmlIntegration>
 
+#include <cstdint>
+#include <map>
 #include <memory>
 #include <string>
 
@@ -23,6 +26,9 @@
 namespace ac3::hearth {
 class NetworkSinks;
 class PairingStore;
+class SinkFirmware;
+struct FirmwareFile;
+struct NetworkStatus;
 }
 
 // The one object the Network page talks to (planning/hearth-reference-player.md,
@@ -102,6 +108,22 @@ class NetworkController : public QObject {
     // (the speakers mockup): identity the sink itself owns, which this page
     // only shows and links out to, never edits.
     Q_PROPERTY(QVariantMap sinkOnlyOnSink READ sinkOnlyOnSink NOTIFY sinksChanged)
+
+    // --- a Hearth sink's firmware (planning/esp32-ota.md, O5) ------------
+    // The selected sink's Firmware tab (NetworkSinkFirmware.qml), each value
+    // the display string the tab shows (sink_firmware_view.hpp's
+    // FirmwarePanel): answering, statusText, reported, runningText,
+    // otherText, runningVersion, otherVersion, sameBuild, buildText,
+    // modeText, trialText, uploadText,
+    // lastUpdateText, crashText, updating, progress, progressText, outcome,
+    // outcomeText, actionText, canUpdate, canRollback, canRestart, pageUrl,
+    // logUrl, coredumpUrl. Empty while no tab is open: the board is asked
+    // only while it is (watchSinkFirmware()).
+    Q_PROPERTY(QVariantMap sinkFirmware READ sinkFirmware NOTIFY sinkFirmwareChanged)
+    // The image file chooseSinkFirmwareFile() read, as the dialog that asks
+    // first shows it: name, version, text and refusal (why the sink would not
+    // take it, empty when it would). Empty before a file is chosen.
+    Q_PROPERTY(QVariantMap sinkFirmwareCandidate READ sinkFirmwareCandidate NOTIFY sinkFirmwareChanged)
 
     // Every group, in NetworkSinkList.qml's own row shape: id, name, icon,
     // subtitle, badge, badgeText, membersText, ready - shown above `sinks` in
@@ -207,6 +229,25 @@ public:
     Q_INVOKABLE void startSinkIdentify(int slot);
     Q_INVOKABLE void stopSinkIdentify();
 
+    [[nodiscard]] QVariantMap sinkFirmware() const { return sink_firmware_; }
+    [[nodiscard]] QVariantMap sinkFirmwareCandidate() const { return sink_firmware_candidate_; }
+    // The Firmware tab is open (true) or gone (false): the selected sink's
+    // GET /firmware is read every second while it is open. An update under
+    // way carries on either way.
+    Q_INVOKABLE void watchSinkFirmware(bool watching);
+    // Reads the image at `file` and checks it: that it is an application
+    // image and whole (ac3::hearth::read_firmware_file), and that the
+    // selected sink would take it, from what the sink last said. The result
+    // is sinkFirmwareCandidate.
+    Q_INVOKABLE void chooseSinkFirmwareFile(const QUrl& file);
+    Q_INVOKABLE void clearSinkFirmwareFile();
+    // Sends the chosen file to the selected sink, which checks the board
+    // again first; nothing without a file it would take.
+    Q_INVOKABLE void updateSinkFirmware();
+    // PUT /firmware/rollback and POST /restart, on the selected sink.
+    Q_INVOKABLE void rollbackSinkFirmware();
+    Q_INVOKABLE void restartSink();
+
     Q_INVOKABLE QString createGroup(const QString& name);
     Q_INVOKABLE void renameGroup(const QString& groupId, const QString& name);
     Q_INVOKABLE void deleteGroup(const QString& groupId);
@@ -229,9 +270,16 @@ public:
 
 signals:
     void sinksChanged();
+    void sinkFirmwareChanged();
 
 private:
     void poll();
+    // The Firmware tab's half of poll(): a client for the sink it is open
+    // on, sinkFirmware from that client's latest snapshot, and the row of
+    // each sink with an update under way, or whose finished update the tab
+    // shows, kept (ac3::hearth::plan_firmware_client()).
+    void poll_firmware(const ac3::hearth::NetworkStatus& status);
+    [[nodiscard]] ac3::hearth::SinkFirmware* selected_firmware() const;
     // Records whether a settings push to `sink_id` was actually sent
     // (NetworkSinks::push_sink_settings()'s result) and republishes, so a
     // refused one shows in that sink's report rather than vanishing.
@@ -267,6 +315,21 @@ private:
     QVariantList groups_;
     QString selected_group_id_;
     QVariantMap selected_group_;
+
+    // One client per sink with its Firmware tab open or an update under
+    // way, by sink id; one that is neither is let go at the next poll. They
+    // call back into nothing here - poll_firmware() reads them - so they can
+    // go in any order.
+    std::map<std::string, std::unique_ptr<ac3::hearth::SinkFirmware>> firmware_;
+    bool firmware_watching_ = false;
+    std::string firmware_sink_id_;  // the sink sink_firmware_ describes
+    std::uint64_t firmware_generation_ = 0;
+    // The file chooseSinkFirmwareFile() read and would send, and the sink it
+    // was checked for.
+    std::unique_ptr<ac3::hearth::FirmwareFile> firmware_file_;
+    std::string firmware_file_sink_id_;
+    QVariantMap sink_firmware_;
+    QVariantMap sink_firmware_candidate_;
 };
 
 }  // namespace ac3::hearth::ui
