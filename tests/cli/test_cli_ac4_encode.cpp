@@ -95,6 +95,18 @@ fs::path tones_wav(const std::string& name, std::size_t count, std::size_t secon
     return wav_of(name, channels);
 }
 
+// A quarter of a second of tones, for the immersive layouts' runs, which read
+// their first frames' syntax: ten or twelve channels cost the sanitizer build
+// the most.
+fs::path short_tones_wav(const std::string& name, std::size_t count) {
+    std::vector<std::vector<float>> channels;
+    for (std::size_t c = 0; c < count; ++c) {
+        channels.push_back(
+            tone(331.0 + 157.0 * static_cast<double>(c), static_cast<std::size_t>(kRate / 4)));
+    }
+    return wav_of(name, channels);
+}
+
 // One syntax-trace= record: frame, substream, value and name.
 struct Record {
     long long frame = 0;
@@ -193,7 +205,7 @@ TEST_CASE("ac4-encode's stream options each write what they name", "[cli][ac4]")
     const fs::path out = dir / "ac4_stream_options.ac4";
     const fs::path stereo = tones_wav("ac4_options_stereo.wav", 2, 2);
     const fs::path five_one = tones_wav("ac4_options_51.wav", 6, 2);
-    const fs::path five_one_four = tones_wav("ac4_options_514.wav", 10, 1);
+    const fs::path five_one_four = short_tones_wav("ac4_options_514.wav", 10);
     struct Run {
         const char* name;
         const fs::path* in;
@@ -442,7 +454,7 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
         CHECK(configs >= 2U);
     }
     SECTION("back-pair takes 7.1.4 with the back pair, and acpl the immersive ASPX_ACPL_1") {
-        const fs::path twelve = tones_wav("ac4_714.wav", 12);
+        const fs::path twelve = short_tones_wav("ac4_714.wav", 12);
         (void)run(twelve, "768 experimental=back-pair");
         const std::vector<std::byte> bytes = read_bytes(out);
         const ac4::Toc toc = first_toc(bytes);
@@ -455,12 +467,12 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
         CHECK(run_cli("ac4-encode " + quoted(twelve) + " " + quoted(out) + " 768", log) == 2);
         CHECK(read_log(log).find("7.0.4 and 7.1.4 with experimental=back-pair") !=
               std::string::npos);
-        const auto records =
-            run(tones_wav("ac4_514_acpl1.wav", 10), "320 codec-mode=aspx-acpl-1 experimental=acpl");
+        const auto records = run(short_tones_wav("ac4_514_acpl1.wav", 10),
+                                 "320 codec-mode=aspx-acpl-1 experimental=acpl");
         CHECK(first_frame(records, "immersive_codec_mode_code") == std::vector<std::uint64_t>{2});
     }
     SECTION("ajcc takes the immersive ASPX_AJCC, which codec-mode= names") {
-        const fs::path ten = tones_wav("ac4_514_ajcc.wav", 10);
+        const fs::path ten = short_tones_wav("ac4_514_ajcc.wav", 10);
         const auto records = run(ten, "256 codec-mode=aspx-ajcc experimental=ajcc");
         // Table 73's one-bit code, and A-JCC's data with ajcc_core_mode 0.
         CHECK(first_frame(records, "immersive_codec_mode_code") == std::vector<std::uint64_t>{1});

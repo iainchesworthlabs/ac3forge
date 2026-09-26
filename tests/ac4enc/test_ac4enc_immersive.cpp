@@ -5,8 +5,9 @@
 // with the trace the encoder recorded and decodes, in full decoding, with each
 // channel's tone on its own channel, and in core decoding with each on the
 // core layout's speaker at the core gain, as src/ac4dec's tests hold DEE's
-// 5.1.4 streams to. The signals are half a second long, which is what the
-// sanitizer builds can afford for every mode.
+// 5.1.4 streams to. The signals are half a second long, and a third of a
+// second under the sanitizers (tests/sanitized.hpp), where the height downmix
+// takes its one route that sends both of the syntax's branches.
 
 #include <algorithm>
 #include <array>
@@ -24,15 +25,17 @@
 #include "ac4/syntax.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
+#include "sanitized.hpp"
 
 namespace {
 
+using ac3::test::kSanitized;
 using ac4::Speaker;
 
 // The decoder's delay at frame_rate_index 13 (d_pcm, the QMF banks' 577
 // samples and six QMF slots) and the encoder's, a frame and a half.
 constexpr std::size_t kLag = 3072 + 352 + 577 + 6 * 64;
-constexpr std::size_t kSamples = 24000;
+constexpr std::size_t kSamples = kSanitized ? 16384 : 24000;
 constexpr double kAmplitude = 0.1;  // -20 dBFS
 
 // gen_ac4_baseline.py's tones for L R C LFE Ls Rs Tfl Tfr Tbl Tbr, and two more
@@ -520,6 +523,11 @@ TEST_CASE("the height downmix sends DEE's custom downmix data, which the rendere
           Case{ac4::HeightDownmix::kSurround, -4.5, Speaker::kLeftSurround, Speaker::kLeftSurround},
           Case{ac4::HeightDownmix::kFrontAndSurround, -9.0, Speaker::kLeft,
                Speaker::kLeftSurround}}) {
+        // Under the sanitizers, front-and-surround alone: it sends the top
+        // front pair to the front and the top back pair not, both branches.
+        if (kSanitized && c.mode != ac4::HeightDownmix::kFrontAndSurround) {
+            continue;
+        }
         CAPTURE(static_cast<int>(c.mode), c.gain_db);
         const Encoded encoded =
             encode({.channels = 10,
