@@ -28,10 +28,11 @@
 // thread by itself).
 //
 // A row is a sink mDNS lists, keyed by its instance name, and it stays while
-// mDNS lists it or a connection to it is live - not only while this computer
-// happens to be connected. What a sink last said about itself (its hello and
-// support objects) is kept with the row, so a sink whose connection ended
-// still reads as what it is.
+// mDNS lists it, a connection to it is live, or the owner keeps it through a
+// firmware update (keep_sink()) - not only while this computer happens to be
+// connected. What a sink last said about itself (its hello and support
+// objects) is kept with the row, so a sink whose connection ended still reads
+// as what it is.
 //
 // Connections. Every sink found is dialled. What it gets once it says hello is
 // ServerHost's decision: a paired sink gets playback (so reconnecting to a
@@ -172,6 +173,19 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // back (its playback activation displaces the holder), and any other that
     // is not connected is dialled without waiting for its back-off.
     void connect_sink(const std::string& id);
+    // Keeps sink `id`'s row while `keep` is true, even once mDNS no longer
+    // lists it and nothing is connected to it. A Hearth sink taking a
+    // firmware update withdraws its mDNS service and stops its Sendspin player
+    // until it restarts, and the Network page follows the update on that row:
+    // NetworkController keeps a sink while anything it asked the sink's own
+    // web server for is under way. A kept row is dialled after its back-off
+    // like any other that is not connected, so it reconnects once the sink's
+    // player is back, whether or not mDNS has said so yet. With `keep` false
+    // again, a row mDNS no longer lists and nothing is connected to goes at
+    // once, as it would have without this. An id this class does not know -
+    // never found, or already gone - is left alone: this keeps a row but never
+    // makes one, and is not remembered for a row mDNS finds later.
+    void keep_sink(const std::string& id, bool keep);
 
     // Sends `settings` to sink `id` as a complete replacement - Settings
     // "replaces the sink's settings whole" (ac3forge_player.hpp's own
@@ -264,8 +278,12 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     struct Entry {
         sendspin::discovery::Service service{};
         // Whether mDNS lists the sink now. A row mDNS has let go of stays
-        // while a connection to it is live, and goes when that ends.
+        // while a connection to it is live or keep_sink() keeps it, and goes
+        // once neither does.
         bool listed = true;
+        // keep_sink(): the owner is following a firmware update on the sink,
+        // which takes it off mDNS and ends its connection until it restarts.
+        bool kept = false;
         // The live connection, once it has said hello.
         std::optional<sendspin::ClientView> client{};
         // What the sink last said about itself: client while connected, kept
@@ -328,8 +346,8 @@ class NetworkSinks final : private sendspin::discovery::BrowseListener, private 
     // After a failed dial or a connection that ended: the next dial after the
     // back-off, or none for a row held elsewhere.
     void schedule_retry_locked(Entry& entry, Clock::time_point now);
-    // Removes a row mDNS no longer lists and nothing is connected to, with
-    // its indices; true when it did.
+    // Removes a row mDNS no longer lists, nothing is connected to and
+    // keep_sink() does not keep, with its indices; true when it did.
     bool forget_if_unlisted_locked(std::map<std::string, Entry>::iterator it);
     void dial(const std::vector<Dial>& dials);
     void publish_locked();

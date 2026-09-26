@@ -33,6 +33,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import types
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -258,6 +259,11 @@ class FakeBoard:
         # answer comes, and the board restarts. DROP, IGNORE: see above.
         # (status, text): a refusal after the whole body.
         self.upload_answer: Any = None
+        # Answers for successive uploads, taken in turn before upload_answer;
+        # and GET /firmware once a DROP has happened (a board that gave the
+        # upload up in flash mode, or one that restarted in the middle of it).
+        self.upload_answers: list[Any] = []
+        self.after_drop: dict[str, Any] | None = None
         # Not empty: read only the head, refuse with this text, and close.
         self.refuse_after_head = ""
         self.answers: dict[tuple[str, str], tuple[int, str]] = {}
@@ -351,9 +357,19 @@ class BoardHandler(BaseHTTPRequestHandler):
             return
         with board.lock:
             board.upload_headers = dict(self.headers.items())
-        if board.upload_answer is DROP or board.upload_answer is IGNORE:
-            if board.upload_answer is IGNORE:
+            answer = board.upload_answers.pop(0) if board.upload_answers else board.upload_answer
+            if answer is DROP and board.after_drop is not None:
+                board.firmware = board.after_drop
+        if answer is DROP or answer is IGNORE:
+            if answer is IGNORE:
                 self._body()
+            else:
+                # A real board takes a while to give an upload up. Without this
+                # a dropped upload and the status read after it can both finish
+                # inside a millisecond on a fast machine, and ota.py then reads
+                # an uptime of 1 ms as no shorter than the upload has been going
+                # (a CI run of the restarted-during-it case failed on that).
+                time.sleep(0.02)
             self.close_connection = True
             return
         if board.refuse_after_head:
@@ -365,14 +381,14 @@ class BoardHandler(BaseHTTPRequestHandler):
         body = self._body()
         with board.lock:
             board.received = body
-            if board.upload_answer is None or board.upload_answer is DOWN:
+            if answer is None or answer is DOWN:
                 board.uploaded = True
             else:
-                board.refuse_next(board.upload_answer[1])
-        if board.upload_answer is DOWN:
+                board.refuse_next(answer[1])
+        if answer is DOWN:
             self.close_connection = True
-        elif board.upload_answer is not None:
-            self._text(*board.upload_answer)
+        elif answer is not None:
+            self._text(*answer)
         else:
             reply = {
                 "version": "v1.1.0",
@@ -887,9 +903,10 @@ class Push(Case):
         # A rollback from an earlier update is still what the board reports:
         # it is not this update's outcome, and the push failed. Broken off
         # part-way, and sent in full with no answer.
-        for answer, sizes, said in (
-            (DROP, (512, 2_000_000), "the board gave no reason"),
-            (IGNORE, (512, 4096), "did not take it"),
+        # Broken off, it is sent once more before the push gives up.
+        for answer, sizes, said, uploads in (
+            (DROP, (512, 2_000_000), "failed: the image was not taken", 2),
+            (IGNORE, (512, 4096), "did not take it", 1),
         ):
             with self.subTest(said=said):
                 board = FakeBoard(self)
@@ -900,6 +917,88 @@ class Push(Case):
                 self.assertEqual(code, ota.REFUSED, out)
                 self.assertIn(said, out)
                 self.assertNotIn("it panicked", out)
+                self.assertEqual(board.puts(), ["/firmware"] * uploads)
+
+    def test_an_upload_the_board_gave_up_is_sent_again(self) -> None:
+        # The connection went, and the board said so from flash mode: the
+        # second try goes through.
+        board = FakeBoard(self)
+        board.upload_answers = [DROP, None]
+        board.after_drop = firmware(
+            mode="flash",
+            last_update={
+                "version": "v1.1.0",
+                "result": "refused",
+                "reason": "the upload stopped after 65536 of 2000000 bytes",
+            },
+        )
+        board.after_upload = [on_trial(), accepted("")]
+        code, out = self.push(board, make_image(sizes=(512, 2_000_000)))
+        self.assertEqual(code, ota.UPDATED, out)
+        self.assertIn("the board gave it up: the upload stopped after 65536", out)
+        self.assertIn("sending it again", out)
+        self.assertEqual(board.puts(), ["/firmware", "/firmware"])
+
+    def test_a_board_that_restarted_during_the_upload_says_so_and_is_sent_it_again(self) -> None:
+        cases = (
+            (
+                {
+                    "last_update": {
+                        "version": "v1.1.0",
+                        "result": "interrupted",
+                        "reason": "the board restarted while the image was being written, "
+                        "on a panic",
+                    }
+                },
+                "the board restarted during it: the board restarted while the image was being "
+                "written, on a panic",
+            ),
+            # A board whose firmware records no such thing: its uptime is shorter
+            # than the upload has been going.
+            (
+                {"uptime_ms": 1, "reset_reason": "sw"},
+                "the board restarted during it (reset reason: sw)",
+            ),
+        )
+        for changes, said in cases:
+            with self.subTest(said=said):
+                board = FakeBoard(self)
+                board.upload_answers = [DROP, None]
+                board.after_drop = firmware(**changes)
+                board.after_upload = [on_trial(), accepted("")]
+                code, out = self.push(board, make_image(sizes=(512, 2_000_000)))
+                self.assertEqual(code, ota.UPDATED, out)
+                self.assertIn(said, out)
+                self.assertEqual(board.puts(), ["/firmware", "/firmware"])
+
+    def test_a_second_break_gives_up_and_takes_the_board_out_of_flash_mode(self) -> None:
+        board = FakeBoard(self)
+        board.upload_answers = [DROP, DROP]
+        board.after_drop = firmware(
+            mode="flash",
+            last_update={
+                "version": "",
+                "result": "refused",
+                "reason": "the upload stopped after 4096 of 9 bytes",
+            },
+        )
+        code, out = self.push(board, make_image(sizes=(512, 2_000_000)))
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("failed: the image was not taken", out)
+        self.assertEqual(board.puts(), ["/firmware", "/firmware", "/firmware/mode"])
+        self.assertEqual(board.bodies[("PUT", "/firmware/mode")], b"normal")
+        self.assertIn("told it to leave flash mode", out)
+
+    def test_a_refused_image_takes_the_board_out_of_flash_mode(self) -> None:
+        # The board read the image, found it wanting, and waits in flash mode
+        # for another: this push has none, so it lets the board go back.
+        board = FakeBoard(self)
+        board.upload_answer = (400, "the image in flash does not check out")
+        code, out = self.push(board, make_image())
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("refused (400): the image in flash does not check out", out)
+        self.assertEqual(board.puts(), ["/firmware", "/firmware/mode"])
+        self.assertIn("told it to leave flash mode", out)
 
     def test_a_bare_image_to_a_board_whose_network_is_built_in(self) -> None:
         board = FakeBoard(self)

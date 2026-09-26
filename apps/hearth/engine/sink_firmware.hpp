@@ -131,6 +131,27 @@ struct WaitContext {
 [[nodiscard]] std::string silent_text(const ac3forge::FirmwareStatus* last, const FirmwareFile& file,
                                       const WaitContext& context, std::chrono::seconds waited);
 
+// What became of an upload that broke off, from one GET /firmware answer or
+// none (ota.py's after_break, a poll at a time): in the board's words when it
+// has any.
+struct BreakVerdict {
+    // The board answered with no upload running, or the wait for that ran
+    // out; until then it is asked again.
+    bool decided = false;
+    std::string text{};
+    // Sending the image again can go through: the connection went, the board
+    // restarted, or it never started the upload.
+    bool retry = false;
+    // The board was left in flash mode.
+    bool flash_mode = false;
+};
+
+// `since_upload` is how long ago the upload began: a board up for less than
+// that restarted in between. `wait_over` is SinkFirmwareTiming::refusal_wait
+// having run out, when the last answer decides as it is.
+[[nodiscard]] BreakVerdict judge_break(const ac3forge::FirmwareStatus* firmware, std::chrono::milliseconds since_upload,
+                                       bool wait_over);
+
 // How often and how long SinkFirmware asks; the defaults are ota.py's.
 struct SinkFirmwareTiming {
     std::chrono::milliseconds poll{1000};      // GET /firmware while watched
@@ -170,10 +191,14 @@ class SinkFirmware {
         std::string version{};  // the image's
         std::string target{};   // the image's chip, as the board names targets
         // "checking", "sending", "answering" (the board reading back what it
-        // wrote), "waiting" (the restart and the trial), then "done".
+        // wrote), "waiting" (the restart and the trial), then "done"; and
+        // "broken" while the board is asked what became of an upload that
+        // broke off.
         std::string stage{};
         std::size_t sent = 0;
         std::size_t total = 0;
+        // 2 once the image is sent again after the first upload broke off.
+        std::uint32_t attempt = 1;
         UpdateOutcome outcome = UpdateOutcome::kNone;
         std::string text{};  // the latest thing to say about it
     };
@@ -201,8 +226,12 @@ class SinkFirmware {
 
     // Sends `file` and follows it to the end, on the thread: GET /hardware
     // and /firmware first, refuse_update() against both, PUT /firmware, then
-    // judge_wait() on each answer. False when an update or an action is
-    // already under way here, when nothing starts.
+    // judge_wait() on each answer. An upload that breaks off is sent once
+    // more when judge_break() says another try can go through, as ota.py
+    // sends it. A board that a failed or refused update leaves in flash mode
+    // is told to leave it (PUT /firmware/mode normal), as ota.py tells it,
+    // rather than left silent until its idle timeout restarts it. False when
+    // an update or an action is already under way here, when nothing starts.
     bool start_update(FirmwareFile file);
     // PUT /firmware/rollback and POST /restart. False while an update or
     // another action is under way.

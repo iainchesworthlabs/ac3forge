@@ -3,10 +3,19 @@
 // Streams of the channel elements DEE's streams do not reach, built for the
 // decoder's tests: the 3.0 element, the 5.X element in every coding_config
 // and 2ch_mode, and the 7.X element in its three channel modes, in the SIMPLE
-// and ASPX codec modes (ETSI TS 103 190-1 V1.4.1 clause 4.2.6); and the
-// channel pair, 5.X and 7.X elements in the A-CPL modes. Each output channel
-// carries a tone of its own, so a channel coded in the wrong place shows as
-// its tone in the wrong channel.
+// and ASPX codec modes (ETSI TS 103 190-1 V1.4.1 clause 4.2.6); the channel
+// pair, 5.X and 7.X elements in the A-CPL modes; and the immersive element of
+// the 7.X.4 modes (ETSI TS 103 190-2 V1.3.1 clause 6.2.4) in its five codec
+// modes, every core_5ch_grouping and 2ch_mode, with step 4's and Table 20's
+// parameters. Each output channel carries a tone of its own, so a channel
+// coded in the wrong place shows as its tone in the wrong channel.
+//
+// The immersive element's tracks are the tones worked back through what full
+// decoding does to them, by the text: S-CPL's Table 23, A-CPL's Pseudocode 2 or
+// A-JCC's Pseudocode 8 with constant parameters that route whole signals, then
+// Table 20's prediction and step 4 undone, and Table 19's assignment. So each
+// tone comes back on its own channel only where the decoder reads those as
+// printed; core decoding puts it on the core's channel of its pair.
 //
 // In the A-CPL modes the parameters are constant: alpha 1 in every band, which
 // sends each module's downmix to its first output and leaves the second
@@ -65,6 +74,19 @@ struct ElementCase {
     // the side track's bands, where it is fewer than the mid's; -1 sends the
     // mid's.
     int side_bands = -1;
+    // The immersive element of ch_mode 11 and 12, 7.0.4 and 7.1.4 (ETSI TS 103
+    // 190-2 V1.3.1 clause 6.2.4): its immersive_codec_mode, 0 (SCPL) to 4
+    // (ASPX_AJCC), in place of `aspx` and `acpl`. coding_config is its
+    // core_5ch_grouping, two_ch_mode its 2ch_mode, use_sap_add_ch and
+    // sap_add_mode step 4's; acpl_second routes ASPX_ACPL_2's modules.
+    int immersive = -1;
+    // Table 20's four chparam_info(): every band predicted at this alpha_q
+    // (full SAP), or 0 for sap_mode 0.
+    int prediction_alpha_q = 0;
+    // ASPX_AJCC: ajcc_core_mode, and where both modules send their inputs
+    // (ajcc_lines() in the source says which channels each route fills).
+    int ajcc_core_mode = 0;
+    int ajcc_route = 0;
 };
 
 struct BuiltStream {
@@ -81,9 +103,10 @@ struct BuiltStream {
 // them.
 [[nodiscard]] std::vector<std::byte> sync_framed(const BuiltStream& stream);
 
-// The builder's reading of Table 213: the aspx_data elements of an element in
-// ASPX (codec mode 1) or an A-CPL mode in syntax order, each the channels it
-// carries.
+// The builder's reading of Table 213, and of Part 2 Table 8 in full decoding:
+// the aspx_data elements of an element in ASPX (codec mode 1) or an A-CPL mode
+// in syntax order, each the channels it carries; for ch_mode 11 and 12,
+// `codec_mode` is the immersive element's.
 [[nodiscard]] std::vector<std::vector<ac4::Speaker>> aspx_elements(int ch_mode, int codec_mode = 1);
 
 // The cases committed as tests/golden/ac4dec/constructed/<name>.ac4, with

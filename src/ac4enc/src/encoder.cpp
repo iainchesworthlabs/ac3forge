@@ -2290,8 +2290,10 @@ struct Encoder::Impl {
             f.mix.keep = f.mix.sg_gain.has_value();
             f.mix.associated.reset();
         }
-        f.pres_ch_mode = p.pres_ch_mode;
-        f.pres_has_lfe = p.pres_has_lfe;
+        // The encoder writes no immersive channel mode, so no presentation
+        // has a core or top channels.
+        f.channels.ch_mode = p.pres_ch_mode;
+        f.channels.lfe = p.pres_has_lfe;
         f.downmix = p.downmix ? &*p.downmix : nullptr;
         return detail::write_presentation_substream(f);
     }

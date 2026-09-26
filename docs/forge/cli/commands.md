@@ -421,7 +421,7 @@ requirements ask for beside an Atmos one.
 
 | Command | What it does |
 |---|---|
-| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes so far, written in WAV speaker order, and of a stream of several presentations the one [`presentation=`, `language=` and `associated=`](#ac-4-presentations-presentation-language-associated) choose, its substreams mixed). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
+| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes, and 7.0.4 and 7.1.4 in every immersive codec mode, in [full or core decoding and to the layout `speakers=` names](#ac-4-immersive-speakers-and-decoding), written in WAV speaker order, and of a stream of several presentations the one [`presentation=`, `language=` and `associated=`](#ac-4-presentations-presentation-language-associated) choose, its substreams mixed). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
 | `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. Auto-detects AC-4 too (TOC/presentation/substream-group framing only) |
 | `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or a Matroska/MP4/MPEG-TS container carrying one |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
@@ -610,6 +610,47 @@ was mixed in before encoding:
 ac3cli decode broadcast.ac4 out.wav language=en dialogue-gain=6
 ac3cli decode broadcast.ac4 out.wav associated=audio-description associated-gain=-6
 ```
+
+### AC-4 immersive: `speakers=` and `decoding=`
+
+An AC-4 stream in 7.0.4 or 7.1.4 carries its channels in the immersive channel element, and says
+which of them its source had: DEE's 5.1.4 streams are 7.1.4 streams whose back channels are
+silent. `decode` writes the source's layout, 5.1.4 for those, and `speakers=` renders the element
+to another by the channel renderer of ETSI TS 103 190-2 clause 5.10.2, with the stream's custom
+downmix gains and its loudness correction for that layout: `5.1`, `5.1.2`, `5.1.4`, `7.1`, `7.1.2`
+or `7.1.4`, the LFE where the stream has one. `channels=2`, `channels=1` and `downmix=` go by the
+renderer's 5.1 to the stereo fold above, and win over `speakers=`:
+
+```bash
+ac3cli decode film_514.ac4 out.wav                     # 5.1.4, the source's layout
+ac3cli decode film_514.ac4 out.wav speakers=5.1        # the heights into the fronts and sides
+ac3cli decode film_514.ac4 out.wav speakers=7.1.4      # the silent backs as well
+```
+
+`decoding=core` decodes the element's core instead, 5.1.2, as a low-complexity decoder does (clause
+4.7): the back channels folded into the sides and each top pair into one top channel, with less of
+A-CPL's and A-JCC's work. Core decoding renders to 5.1.2 and 5.1 alone, so `speakers=` with top
+channels gives 5.1.2 and without them 5.1. The other channel elements decode alike in both modes.
+
+### AC-4 objects
+
+An AC-4 presentation of object audio, A-JOC or direct-coded objects, decodes to objects, each
+with the position and gain its metadata sets. `decode` renders them to speakers through the layout
+renderer Hearth plays E-AC-3's objects with: each object panned from its position and moving as its
+metadata moves it, to the layout `speakers=`, `channels=` or `downmix=` names, and to 7.1.4 without
+one. `decoding=core` decodes an A-JOC substream's core instead, its downmix signals as the objects.
+An intermediate spatial format is rendered by the decoder itself (ETSI TS 103 190-2 clause 5.10.3),
+to the same layouts.
+
+```bash
+ac3cli decode ajoc.ac4 out.wav                   # 7.1.4
+ac3cli decode ajoc.ac4 out.wav speakers=5.1      # 5.1
+ac3cli decode ajoc.ac4 out.wav channels=2        # two channels
+ac3cli decode ajoc.ac4 out.wav decoding=core     # the downmix's signals as the objects
+```
+
+`decode`'s objects directory and ADM output write E-AC-3's objects; given an AC-4 stream they
+write nothing, and a warning says so.
 
 Each format's decode reads options the other's does not. Given an AC-4 stream, `decode` names
 the AC-3 and E-AC-3 ones it was given (`drc=`, `heavy`, `ltrt-phase=`, `fast-imdct`, `mode=`,

@@ -63,10 +63,27 @@ constexpr double kPowerFloor = 1e-15;
 }
 
 // Table 168's channel group, by the channel's speaker; the pair a 7.X mode adds
-// joins group 0 or 2 by add_ch_base, and the back pair is always group 2.
-[[nodiscard]] int drc_group(Speaker speaker, bool add_ch_base, bool mono_or_stereo) noexcept {
+// joins group 0 or 2 by add_ch_base, and the back pair is always group 2. The
+// immersive element's top channels are Part 2 Table 69's fourth group, and so
+// are core decoding's Tsl and Tsr, which carry them (src/ac4dec/ERRATA.md,
+// "DRC's groups in core decoding").
+[[nodiscard]] int drc_group(Speaker speaker, bool add_ch_base, bool mono_or_stereo,
+                            bool immersive) noexcept {
     if (mono_or_stereo) {
         return 0;
+    }
+    if (immersive) {
+        switch (speaker) {
+            case Speaker::kTopFrontLeft:
+            case Speaker::kTopFrontRight:
+            case Speaker::kTopBackLeft:
+            case Speaker::kTopBackRight:
+            case Speaker::kTopSideLeft:
+            case Speaker::kTopSideRight:
+                return 3;
+            default:
+                break;
+        }
     }
     switch (speaker) {
         case Speaker::kCentre:
@@ -309,7 +326,7 @@ DrcFrameValues drc_frame_values(const OutputConfig& output, std::optional<double
 }
 
 void DrcStage::configure(double rate_hz, int slots, std::span<const Speaker> speakers,
-                         bool add_ch_base) {
+                         bool add_ch_base, bool immersive) {
     rate_hz_ = rate_hz;
     slots_ = slots;
     speakers_.assign(speakers.begin(), speakers.end());
@@ -318,7 +335,7 @@ void DrcStage::configure(double rate_hz, int slots, std::span<const Speaker> spe
     group_.clear();
     for (const Speaker speaker : speakers) {
         loudness_weight_.push_back(loudness_weight(speaker));
-        group_.push_back(drc_group(speaker, add_ch_base, small));
+        group_.push_back(drc_group(speaker, add_ch_base, small, immersive));
     }
     for (int k = 0; k < kSubbands; ++k) {
         k_weight_[static_cast<std::size_t>(k)] =

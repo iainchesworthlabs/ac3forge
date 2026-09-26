@@ -181,7 +181,12 @@ ParseResult acpl_values(const ChannelElement& element, AcplQuantHistory& history
         out.coupling = values;
         return {};
     }
-    const std::size_t expected = element.kind == ElementKind::kPair ? 1 : 2;
+    std::size_t expected = 2;
+    if (element.kind == ElementKind::kPair) {
+        expected = 1;
+    } else if (element.kind == ElementKind::kImmersive) {
+        expected = kMaxAcplModules;
+    }
     if (element.acpl_1ch.size() != expected) {
         return fail(DecodeError::kInvalidStream, "an A-CPL element without its acpl_data_1ch()");
     }
@@ -211,8 +216,10 @@ ParseResult acpl_values(const ChannelElement& element, AcplQuantHistory& history
     return {};
 }
 
-AcplStage::AcplStage() : decorrelators_{acpl::Decorrelator<double>(0), acpl::Decorrelator<double>(1),
-                                        acpl::Decorrelator<double>(2)} {}
+AcplStage::AcplStage()
+    : decorrelators_{acpl::Decorrelator<double>(0), acpl::Decorrelator<double>(1),
+                     acpl::Decorrelator<double>(2), acpl::Decorrelator<double>(0),
+                     acpl::Decorrelator<double>(1)} {}
 
 void AcplStage::reset() {
     for (auto& decorrelator : decorrelators_) {
@@ -241,16 +248,17 @@ void AcplStage::decorrelate(int decorrelator, std::span<const QmfValue> in, std:
 // Pseudocodes 115 and 116 for one module: x0 and x1 are the channels as they
 // came from A-SPX, before Pseudocode 115's doubling; x1 is empty where the
 // mode passes 0 for it.
-void AcplStage::module(const AcplModuleValues& values, int index, std::span<const QmfValue> x0,
-                       std::span<const QmfValue> x1, std::span<QmfValue> z0, std::span<QmfValue> z1, int num_ts) {
+void AcplStage::module(const AcplModuleValues& values, int index, int decorrelator,
+                       std::span<const QmfValue> x0, std::span<const QmfValue> x1,
+                       std::span<QmfValue> z0, std::span<QmfValue> z1, int num_ts) {
     const std::size_t n = at(num_ts) * kSubbands;
     work_.resize(n);
     for (std::size_t i = 0; i < n; ++i) {
         work_[i] = 2.0 * x0[i];
     }
-    std::vector<QmfValue>& y = decorrelated_[at(index)];
+    std::vector<QmfValue>& y = decorrelated_[at(decorrelator)];
     y.resize(n);
-    decorrelate(index, work_, y, num_ts);
+    decorrelate(decorrelator, work_, y, num_ts);
 
     std::array<acpl::ParamPrev, 2>& prev = module_prev_[at(index)];
     const Param alpha{values.alpha, prev[0]};
@@ -430,6 +438,41 @@ void AcplStage::apply(int ch_mode, bool add_ch_base, ElementKind kind, int codec
     };
 
     using S = Speaker;
+    if (kind == ElementKind::kImmersive) {
+        // Part 2 Pseudocode 2 with b_5fronts 0: modules 1 to 4 on (Ls, Lb),
+        // (Rs, Rb), (Tfl, Tbl) and (Tfr, Tbr) (Table 25's x5/x7, x6/x8, x9/x11
+        // and x10/x12), whose decorrelators are D0, D0, D1 and D1, each its own
+        // instance; x7, x8, x11 and x12 are the ASPX_ACPL_1 residuals and 0 in
+        // ASPX_ACPL_2. Then z0, z2 and z4 are twice L, R and C, and every
+        // module's outputs are scaled by the square root of 2.
+        constexpr std::array<std::array<S, 2>, kMaxAcplModules> kPairs = {
+            {{S::kLeftSurround, S::kLeftBack},
+             {S::kRightSurround, S::kRightBack},
+             {S::kTopFrontLeft, S::kTopBackLeft},
+             {S::kTopFrontRight, S::kTopBackRight}}};
+        constexpr std::array<int, kMaxAcplModules> kDecorrelator = {0, acpl::kDecorrelators, 1,
+                                                                    acpl::kDecorrelators + 1};
+        if (values.module_count != kMaxAcplModules ||
+            !writable({S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kLeftBack,
+                       S::kRightSurround, S::kRightBack, S::kTopFrontLeft, S::kTopBackLeft,
+                       S::kTopFrontRight, S::kTopBackRight})) {
+            return;
+        }
+        const bool residuals = codec_mode == immersive_mode::kAspxAcpl1;
+        for (std::size_t m = 0; m < kMaxAcplModules; ++m) {
+            const std::span<const QmfValue> x0 = input(0, kPairs[m][0]);
+            const std::span<const QmfValue> x1 =
+                residuals ? input(1, kPairs[m][1]) : std::span<const QmfValue>{};
+            module(values.modules[m], static_cast<int>(m), kDecorrelator[m], x0, x1,
+                   output(kPairs[m][0]), output(kPairs[m][1]), num_ts);
+            scale(output(kPairs[m][0]), kSqrt2);
+            scale(output(kPairs[m][1]), kSqrt2);
+        }
+        for (const Speaker front : {S::kLeft, S::kRight, S::kCentre}) {
+            scale(output(front), 2.0);
+        }
+        return;
+    }
     if (codec_mode == codec_mode::kAspxAcpl3) {
         if (!values.coupling || !writable({S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround})) {
             return;
@@ -449,7 +492,7 @@ void AcplStage::apply(int ch_mode, bool add_ch_base, ElementKind kind, int codec
         }
         const std::span<const QmfValue> x0 = input(0, S::kLeft);
         const std::span<const QmfValue> x1 = residuals ? input(1, S::kRight) : std::span<const QmfValue>{};
-        module(values.modules[0], 0, x0, x1, output(S::kLeft), output(S::kRight), num_ts);
+        module(values.modules[0], 0, 0, x0, x1, output(S::kLeft), output(S::kRight), num_ts);
         return;
     }
     const AcplMapping map = mapping_of(ch_mode, add_ch_base, kind);
@@ -460,8 +503,8 @@ void AcplStage::apply(int ch_mode, bool add_ch_base, ElementKind kind, int codec
     const std::span<const QmfValue> x1 = input(1, map.x1);
     const std::span<const QmfValue> x3 = residuals ? input(3, map.x3) : std::span<const QmfValue>{};
     const std::span<const QmfValue> x4 = residuals ? input(4, map.x4) : std::span<const QmfValue>{};
-    module(values.modules[0], 0, x0, x3, output(map.x0), output(map.x3), num_ts);
-    module(values.modules[1], 1, x1, x4, output(map.x1), output(map.x4), num_ts);
+    module(values.modules[0], 0, 0, x0, x3, output(map.x0), output(map.x3), num_ts);
+    module(values.modules[1], 1, 1, x1, x4, output(map.x1), output(map.x4), num_ts);
     scale(output(map.x3), kSqrt2);
     scale(output(map.x4), kSqrt2);
     if (map.scale_z0_z2) {

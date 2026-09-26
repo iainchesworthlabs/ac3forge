@@ -1,0 +1,18 @@
+# ac4-syntax-digest/1 ../ac4dec/objects/ajoc-5lfe-aspx-decorr-sparse.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	audio	6883	48430	0x82d32723
+0	1	presentation	8	18	0x8ed0df0d
+1	0	audio	6546	47046	0x9b6500b5
+1	1	presentation	8	18	0x8ed0df0d
+2	0	audio	6553	47078	0xa3e59279
+2	1	presentation	8	18	0x8ed0df0d
+3	0	audio	6545	47046	0x1506f129
+3	1	presentation	8	18	0x8ed0df0d
+4	0	audio	6884	48430	0x62ea7060
+4	1	presentation	8	18	0x8ed0df0d
+5	0	audio	6546	47046	0x6d11dcb0
+5	1	presentation	8	18	0x8ed0df0d
+6	0	audio	6553	47062	0xff238c95
+6	1	presentation	8	18	0x8ed0df0d
+7	0	audio	6546	47046	0xce1af67e
+7	1	presentation	8	18	0x8ed0df0d

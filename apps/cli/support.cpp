@@ -2018,6 +2018,31 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.ac4_dialogue_enhancement = gain;
             continue;
         }
+        if (key == "decoding") {
+            // AC-4's full or core decoding (ETSI TS 103 190-2 clause 4.7).
+            if (value == "full") {
+                out.ac4_core_decoding = false;
+            } else if (value == "core") {
+                out.ac4_core_decoding = true;
+            } else {
+                fmt::println(stderr, "error: decoding is 'full' or 'core' (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "speakers") {
+            // AC-4's immersive element rendered to a layout (ETSI TS 103
+            // 190-2 clause 5.10.2), the LFE where the stream has one.
+            if (value != "5.1" && value != "5.1.2" && value != "5.1.4" && value != "7.1" &&
+                value != "7.1.2" && value != "7.1.4") {
+                fmt::println(stderr,
+                             "error: speakers is 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4 (got '{}')",
+                             token);
+                return false;
+            }
+            out.ac4_speakers = std::string(value);
+            continue;
+        }
         if (key == "presentation" || key == "presentation-id") {
             // AC-4's presentation (ETSI TS 103 190-2 clause 4.8.2), by its
             // position in the table of contents or by its presentation_id.

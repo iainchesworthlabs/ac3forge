@@ -952,13 +952,26 @@ ParseResult parse_emdf_payloads_substream(BitReader& r, EmdfPayloads& out) {
 // --- Part 2 clause 6.2.7.1 metadata ------------------------------------------
 
 ParseResult parse_metadata(BitReader& r, const SubstreamContext& ctx, MetadataState& state,
-                           Metadata& out) {
+                           Metadata& out, const ObjectAudioContext* objects) {
     out = Metadata{};
     if (const ParseResult result = parse_basic_metadata(r, ctx, out.basic); !result) {
         return result;
     }
     if (const ParseResult result = parse_extended_metadata(r, ctx, out.extended); !result) {
         return result;
+    }
+    if (ctx.b_alternative && ctx.coding == AudioCoding::kObjects && objects != nullptr) {
+        if (!objects->group_blocks) {
+            return fail(DecodeError::kMissingIFrame,
+                        "oamd_dyndata_single() needs an oamd_timing_data() that no frame has sent");
+        }
+        OamdDynData oamd;
+        if (const ParseResult result = parse_oamd_dyndata_single(
+                r, objects->objects, *objects->group_blocks, ctx.b_iframe, true, oamd);
+            !result) {
+            return result;
+        }
+        out.oamd = std::move(oamd);
     }
     std::uint64_t tools_metadata_size = r.read(7, "tools_metadata_size_value");
     if (r.read_flag("b_more_bits")) {

@@ -43,6 +43,11 @@ class BitWriter {
     // Bits nothing records: fill_bits and padding.
     void write_unrecorded(unsigned bits, std::uint64_t value);
 
+    // A run of zero bits the syntax does not interpret (add_data, skip_data,
+    // add_table_data), recorded as a decoder records such a run: one record
+    // per 65 535 bits, the last shorter, each valued 0.
+    void write_zero_run(std::uint64_t bits, std::string_view name);
+
     // An element whose bits are not its value, such as ext_code: `raw` in
     // `bits` bits, recorded with `value`.
     void write_as(unsigned bits, std::uint64_t raw, std::uint64_t value, std::string_view name);

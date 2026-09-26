@@ -138,7 +138,10 @@ any other name.
    brings the previous image back.
 
 `ota.py` prints each stage. It then says the board was **updated**, **rolled back** (with the
-board's reason), or **did not come back** (with what to try). The page shows the same in its
+board's reason), or **did not come back** (with what to try). An upload that breaks off on the
+way, or that a restart of the board cuts short, is sent once more, with the board's own account
+of what happened. A push that fails does not leave the board waiting in flash mode: the tool
+tells it to go back to what it runs. The page shows the same in its
 Firmware section, and ac3hearth in its Firmware tab. Every board keeps its recent console output,
 and the C6 and the P4 also keep a crash's core dump, both readable over the network; the board's
 [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md)

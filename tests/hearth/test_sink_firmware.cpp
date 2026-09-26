@@ -97,6 +97,8 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
     status.partitions = {{.label = "nvs", .type = 1, .subtype = 2, .offset = 0x9000, .size = 0x6000},
                          {.label = "ota_0", .type = 0, .subtype = 0x10, .offset = 0x20000, .size = 0x400000}};
     status.bootloader_version = "v6.1";
+    status.reset_reason = "sw";
+    status.uptime_ms = 61'234;
 
     const std::optional<ac3forge::FirmwareStatus> parsed =
         ac3::hearth::parse_firmware_status(ac3forge::render_firmware_status(status));
@@ -141,6 +143,8 @@ TEST_CASE("sink firmware: GET /firmware is read back into what the board renders
     CHECK(parsed->partitions[1].offset == 0x20000);
     CHECK(parsed->partitions[1].size == 0x400000);
     CHECK(parsed->bootloader_version == "v6.1");
+    CHECK(parsed->reset_reason == "sw");
+    CHECK(parsed->uptime_ms == 61'234);
 
     SECTION("nulls stay absent") {
         ac3forge::FirmwareStatus bare;
@@ -417,6 +421,100 @@ TEST_CASE("sink firmware: the wait after an upload reads each answer as ota.py d
     }
 }
 
+TEST_CASE("sink firmware: an upload that broke off is judged as ota.py's after_break judges it",
+          "[hearth][sink-firmware]") {
+    using ac3::hearth::BreakVerdict;
+    using ac3::hearth::judge_break;
+    using namespace std::chrono_literals;
+    ImageSpec running;
+    ac3forge::FirmwareStatus board = s3_firmware(running);
+    board.uptime_ms = 600'000;  // up since long before the upload began
+    const std::chrono::milliseconds since = 20s;
+
+    SECTION("the board is asked again while it does not answer, or still reports the upload") {
+        CHECK_FALSE(judge_break(nullptr, since, false).decided);
+        ac3forge::FirmwareStatus still = board;
+        still.mode = "flash";
+        still.upload = ac3forge::FirmwareUpload{.received = 4096, .total = 1'480'768, .stage = "writing"};
+        CHECK_FALSE(judge_break(&still, since, false).decided);
+
+        // Once the wait runs out, neither is sent again.
+        const BreakVerdict silent = judge_break(nullptr, since, true);
+        CHECK(silent.decided);
+        CHECK(silent.text == "the board has not answered since");
+        CHECK_FALSE(silent.retry);
+        CHECK_FALSE(silent.flash_mode);
+        const BreakVerdict writing = judge_break(&still, since, true);
+        CHECK(writing.decided);
+        CHECK(writing.text == "the board still reports the upload as running");
+        CHECK_FALSE(writing.retry);
+        CHECK(writing.flash_mode);
+    }
+    SECTION("in flash mode the board gave it up and says why, and a connection that went is tried again") {
+        board.mode = "flash";
+        board.last_update = ac3forge::FirmwareLastUpdate{
+            .version = "v0.11.0", .result = "refused", .reason = "the upload stopped after 65536 of 1480768 bytes"};
+        BreakVerdict verdict = judge_break(&board, since, false);
+        CHECK(verdict.decided);
+        CHECK(verdict.text == "the board gave it up: the upload stopped after 65536 of 1480768 bytes");
+        CHECK(verdict.retry);
+        CHECK(verdict.flash_mode);
+        board.last_update->reason = "the upload ended before the image's header did";
+        CHECK(judge_break(&board, since, false).retry);
+
+        SECTION("any other reason is not tried again") {
+            board.last_update = ac3forge::FirmwareLastUpdate{
+                .version = "v0.11.0", .result = "failed", .reason = "writing the slot failed after 4096 bytes"};
+            verdict = judge_break(&board, since, false);
+            CHECK(verdict.text == "the board gave it up: writing the slot failed after 4096 bytes");
+            CHECK_FALSE(verdict.retry);
+            CHECK(verdict.flash_mode);
+        }
+        SECTION("with no reason it is") {
+            board.last_update->reason.clear();
+            verdict = judge_break(&board, since, false);
+            CHECK(verdict.text == "the board is in flash mode and says nothing of it");
+            CHECK(verdict.retry);
+            CHECK(verdict.flash_mode);
+            board.last_update.reset();
+            CHECK(judge_break(&board, since, false).text == "the board is in flash mode and says nothing of it");
+        }
+    }
+    SECTION("in normal mode, a board that restarted during it says so, and is sent it again") {
+        board.last_update = ac3forge::FirmwareLastUpdate{
+            .version = "v0.11.0",
+            .result = "interrupted",
+            .reason = "the board restarted while the image was being written, on a panic"};
+        BreakVerdict verdict = judge_break(&board, since, false);
+        CHECK(verdict.text ==
+              "the board restarted during it: the board restarted while the image was being written, on a panic");
+        CHECK(verdict.retry);
+        CHECK_FALSE(verdict.flash_mode);
+
+        // Firmware that records nothing of it: up for less time than the
+        // upload has been going.
+        board.last_update.reset();
+        board.uptime_ms = 1'500;
+        board.reset_reason = "sw";
+        verdict = judge_break(&board, since, false);
+        CHECK(verdict.text == "the board restarted during it (reset reason: sw)");
+        CHECK(verdict.retry);
+        CHECK_FALSE(verdict.flash_mode);
+        board.reset_reason.clear();
+        CHECK(judge_break(&board, since, false).text == "the board restarted during it (reset reason: not reported)");
+    }
+    SECTION("in normal mode and up throughout, it never started the upload, which is sent again") {
+        const BreakVerdict verdict = judge_break(&board, since, false);
+        CHECK(verdict.text == "the board is in normal mode and says nothing of it: it never started it");
+        CHECK(verdict.retry);
+        CHECK_FALSE(verdict.flash_mode);
+        // A board that reports no uptime is not taken to have restarted.
+        board.uptime_ms = 0;
+        CHECK(judge_break(&board, since, false).text ==
+              "the board is in normal mode and says nothing of it: it never started it");
+    }
+}
+
 TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hearth][sink-firmware]") {
     ImageSpec running;
     ac3::hearth::SinkFirmware::Snapshot snapshot;
@@ -508,6 +606,21 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
         CHECK_FALSE(panel.can_update);
         CHECK_FALSE(panel.can_restart);
 
+        // The upload broke off: what became of it is asked, and the image is
+        // sent again.
+        snapshot.update->stage = "broken";
+        snapshot.update->text = "the upload broke off after 370,192 bytes: Failed to write connection";
+        panel = ac3::hearth::to_firmware_panel(snapshot, "");
+        CHECK(panel.updating);
+        CHECK(panel.progress == -1);
+        CHECK(panel.progress_text == "The upload broke off after 370,192 bytes: Failed to write connection");
+        snapshot.update->stage = "sending";
+        snapshot.update->attempt = 2;
+        snapshot.update->sent = 740'384;
+        panel = ac3::hearth::to_firmware_panel(snapshot, "");
+        CHECK(panel.progress == 0.5);
+        CHECK(panel.progress_text == "Sending v0.11.0 again: 740,384 of 1,480,768 bytes");
+
         snapshot.update->stage = "waiting";
         snapshot.update->text = "on trial: healthy for 1s of 30s (296s left)";
         panel = ac3::hearth::to_firmware_panel(snapshot, "");
@@ -544,6 +657,56 @@ TEST_CASE("sink firmware: the Firmware tab's rows and what it may offer", "[hear
         CHECK(panel.other_text == "ota_1 · empty");
         CHECK(panel.other_version.empty());
         CHECK_FALSE(panel.can_rollback);
+    }
+}
+
+TEST_CASE("sink firmware: the page keeps a sink's client, and its row, while there is something to show",
+          "[hearth][sink-firmware]") {
+    using ac3::hearth::FirmwareClientPlan;
+    using ac3::hearth::plan_firmware_client;
+    ac3::hearth::SinkFirmware::Snapshot snapshot;
+    snapshot.host = "192.168.1.117";
+
+    SECTION("with nothing under way and nothing ended, the client goes with the tab and keeps no row") {
+        FirmwareClientPlan plan = plan_firmware_client(false, snapshot, true, "192.168.1.117");
+        CHECK_FALSE(plan.let_go);
+        CHECK_FALSE(plan.keep_sink);
+        plan = plan_firmware_client(false, snapshot, false, "");
+        CHECK(plan.let_go);
+        CHECK_FALSE(plan.keep_sink);
+    }
+    SECTION("an update under way keeps the client and the row, shown or not, and at the address it began at") {
+        snapshot.update =
+            ac3::hearth::SinkFirmware::Update{.version = "v0.11.0", .stage = "sending", .text = "sending"};
+        for (const bool shown : {true, false}) {
+            const FirmwareClientPlan plan = plan_firmware_client(true, snapshot, shown, shown ? "192.168.1.117" : "");
+            CHECK_FALSE(plan.let_go);
+            CHECK(plan.keep_sink);
+        }
+        const FirmwareClientPlan moved = plan_firmware_client(true, snapshot, true, "192.168.1.200");
+        CHECK_FALSE(moved.let_go);
+        CHECK(moved.keep_sink);
+    }
+    SECTION("an update that ended keeps the row while the tab shows how, and not once the tab moves on") {
+        // Rolled back: the board can say so before mDNS lists it again.
+        snapshot.update = ac3::hearth::SinkFirmware::Update{.version = "v0.11.0",
+                                                            .stage = "done",
+                                                            .outcome = UpdateOutcome::kRolledBack,
+                                                            .text = "rolled back: v0.11.0 did not last"};
+        FirmwareClientPlan plan = plan_firmware_client(false, snapshot, true, "192.168.1.117");
+        CHECK_FALSE(plan.let_go);
+        CHECK(plan.keep_sink);
+        // The tab closed, or another sink selected.
+        plan = plan_firmware_client(false, snapshot, false, "");
+        CHECK(plan.let_go);
+        CHECK_FALSE(plan.keep_sink);
+    }
+    SECTION("a sink at a new address is asked there, and the client let go keeps nothing") {
+        snapshot.update = ac3::hearth::SinkFirmware::Update{
+            .version = "v0.11.0", .stage = "done", .outcome = UpdateOutcome::kUpdated, .text = "updated"};
+        const FirmwareClientPlan plan = plan_firmware_client(false, snapshot, true, "192.168.1.200");
+        CHECK(plan.let_go);
+        CHECK_FALSE(plan.keep_sink);
     }
 }
 

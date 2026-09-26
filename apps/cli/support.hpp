@@ -149,6 +149,14 @@ struct Options {
     // 'decode' of AC-4 only: dialogue-enhancement=, G_DE in dB, 0 to 12
     // (ac4::OutputConfig::dialogue_enhancement_db).
     double ac4_dialogue_enhancement = 0.0;
+    // 'decode' of AC-4 only: decoding=core, core decoding (ac4::DecodingMode);
+    // full decoding by default.
+    bool ac4_core_decoding = false;
+    // 'decode' of AC-4 only: speakers=, the layout Part 2's renderer takes an
+    // immersive element to, "5.1", "5.1.2", "5.1.4", "7.1", "7.1.2" or
+    // "7.1.4" (ac4::DownmixTarget), empty for the source's own; a fold that
+    // channels= or downmix= asks for wins.
+    std::string ac4_speakers;
     // 'decode' of AC-4 only: which presentation (ac4::PresentationChoice):
     // presentation=, a position in the table of contents; presentation-id=,
     // a presentation_id; language=, a BCP 47 tag; associated=, the associated

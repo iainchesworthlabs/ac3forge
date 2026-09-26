@@ -56,6 +56,10 @@ constexpr const char* kKeyWhy = "why";               // why a trial gave up, fro
 constexpr const char* kKeyLastVersion = "last_ver";
 constexpr const char* kKeyLastResult = "last_res";
 constexpr const char* kKeyLastReason = "last_why";
+// The version an upload is writing, from just before the slot is first
+// erased until the upload ends, whichever way: one still there at boot is an
+// upload a reset cut short, which nothing else would have recorded.
+constexpr const char* kKeyUploading = "uploading";
 
 // httpd_req_recv's timeout is 5 s a call; this many in a row is a stalled
 // upload (planning/esp32-ota.md: "A stalled connection gives up after 30 s").
@@ -158,6 +162,64 @@ const char* reset_reason_text(esp_reset_reason_t reason) {
             return "it restarted before it had proved itself";
         default:
             return "it reset before it had proved itself";
+    }
+}
+
+// GET /firmware's reset_reason: why this boot happened, as a word.
+const char* reset_reason_name(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_POWERON:
+            return "poweron";
+        case ESP_RST_EXT:
+            return "ext";
+        case ESP_RST_SW:
+            return "sw";
+        case ESP_RST_PANIC:
+            return "panic";
+        case ESP_RST_INT_WDT:
+            return "int_wdt";
+        case ESP_RST_TASK_WDT:
+            return "task_wdt";
+        case ESP_RST_WDT:
+            return "wdt";
+        case ESP_RST_DEEPSLEEP:
+            return "deepsleep";
+        case ESP_RST_BROWNOUT:
+            return "brownout";
+        case ESP_RST_SDIO:
+            return "sdio";
+        case ESP_RST_USB:
+            return "usb";
+        case ESP_RST_JTAG:
+            return "jtag";
+        default:
+            return "unknown";
+    }
+}
+
+// What cut an upload short, from the reset that ended it.
+const char* reset_cause_text(esp_reset_reason_t reason) {
+    switch (reason) {
+        case ESP_RST_PANIC:
+            return "a panic";
+        case ESP_RST_INT_WDT:
+            return "the interrupt watchdog";
+        case ESP_RST_TASK_WDT:
+            return "the task watchdog";
+        case ESP_RST_WDT:
+            return "a watchdog";
+        case ESP_RST_BROWNOUT:
+            return "a dip in its supply (brownout)";
+        case ESP_RST_POWERON:
+            return "a loss of power";
+        case ESP_RST_EXT:
+        case ESP_RST_USB:
+        case ESP_RST_JTAG:
+            return "a reset from outside";
+        case ESP_RST_SW:
+            return "a restart in software (on a P4, esp_hosted restarts it when its link to the radio fails)";
+        default:
+            return "a reset";
     }
 }
 
@@ -419,13 +481,18 @@ struct Firmware::Impl {
     esp_timer_handle_t idle_timer = nullptr;
     esp_timer_handle_t guard_timer = nullptr;
     // The trial is read once a second from esp_timer's task (on_trial), with
-    // no task of its own until it has decided: then decide_task writes what
-    // it decided. A task made at boot for the whole trial took 6 KiB of
-    // internal RAM as the board started, and on the S3 board that left the
+    // no task of its own. A task made at boot for the whole trial took 6 KiB
+    // of internal RAM as the board started, and on the S3 board that left the
     // Sendspin player without the 32 KiB block its burst player starts with,
-    // so no updated image could pass its trial there.
+    // so no updated image could pass its trial there. Accepting is done from
+    // esp_timer's task too: a task made for it could not be made on a board
+    // whose internal RAM a stream had taken by then, and the guard would then
+    // go back from a good image. Only giving up has a task of its own
+    // (give_up_task), and it restarts, which goes back, if it cannot make one.
     esp_timer_handle_t trial_timer = nullptr;
-    TrialStep decided = TrialStep::kWait;
+    // While the acceptance is being written: a rollback asked for then is
+    // refused, rather than racing it and leaving the record saying accepted.
+    bool deciding = false;
 
     [[nodiscard]] FirmwareStatus status() const;
     [[nodiscard]] BoardFacts board() const;
@@ -452,7 +519,7 @@ struct Firmware::Impl {
     Outcome run_upload(UploadJob& job);
     static void upload_task(void* arg);
     static void on_trial(void* arg);
-    static void decide_task(void* arg);
+    static void give_up_task(void* arg);
     void start_check();
     void stop_check();
     [[nodiscard]] std::unique_ptr<SlotHashing> begin_other();
@@ -481,6 +548,8 @@ FirmwareStatus Firmware::Impl::status() const {
                                                  static_cast<unsigned>(p->subtype), p->address, p->size});
     }
     s.bootloader_version = bootloader_version;
+    s.reset_reason = reset_reason_name(esp_reset_reason());
+    s.uptime_ms = static_cast<std::uint64_t>(esp_timer_get_time() / 1000);
     const std::lock_guard lock(mutex);
     s.mode = flash_mode ? "flash" : "normal";
     s.running = report_slot(running, running_facts);
@@ -526,6 +595,22 @@ void Firmware::Impl::read_last_update() {
     esp_ota_img_states_t state = ESP_OTA_IMG_UNDEFINED;
     const bool on_trial = esp_ota_get_state_partition(running, &state) == ESP_OK &&
                           state == ESP_OTA_IMG_PENDING_VERIFY;
+    // An upload a reset cut short: the reset left the slot erased or part
+    // written and the board back in normal mode, and nothing else says so.
+    // Unless this is the very image it was writing, on trial: the reset fell
+    // after the slot was chosen and before the record of it, and the trial
+    // settles it from here as it settles any update.
+    const std::string uploading = nvs_text(kKeyUploading);
+    if (!uploading.empty()) {
+        if (!(on_trial && uploading == field_text(esp_app_get_description()->version))) {
+            const std::string why =
+                std::string("the board restarted while the image was being written, on ") +
+                reset_cause_text(esp_reset_reason()) + "; the slot it was going into holds no image now";
+            std::printf("firmware: the upload of %s was cut short: %s\n", uploading.c_str(), why.c_str());
+            record_last(uploading == "?" ? std::string_view{} : std::string_view{uploading}, "interrupted", why);
+        }
+        nvs_set_texts({{kKeyUploading, ""}});
+    }
     if (!pending.empty() && !on_trial) {
         const std::string version = nvs_text(kKeyPendingVersion);
         if (pending == hex(esp_app_get_description()->app_elf_sha256)) {
@@ -637,19 +722,14 @@ void Firmware::Impl::on_trial(void* arg) {
     if (step == TrialStep::kWait) {
         return;
     }
-    // Either way the decision writes otadata and NVS, which takes more stack
-    // than esp_timer's task has: a task of its own does it, made now, long
-    // after the board has started. Accepting used 1,812 bytes of its stack on
-    // the S3 board.
     (void)esp_timer_stop(im->trial_timer);
-    im->decided = step;
-    if (xTaskCreate(&Impl::decide_task, "fw_trial", 4096, im, tskIDLE_PRIORITY + 5, nullptr) == pdPASS) {
+    if (step == TrialStep::kAccept) {
+        im->accept_trial();
         return;
     }
-    if (step == TrialStep::kAccept) {
-        // Tried again in a second, when there may be room: the Trial keeps
-        // its answer, and the guard still goes back past the deadline.
-        (void)esp_timer_start_periodic(im->trial_timer, 1'000'000);
+    // Giving up tells servers the board is going, over the network, which
+    // takes more stack than esp_timer's task has: a task of its own does it.
+    if (xTaskCreate(&Impl::give_up_task, "fw_trial", 4096, im, tskIDLE_PRIORITY + 5, nullptr) == pdPASS) {
         return;
     }
     // Nothing can record why, and a restart on trial still goes back.
@@ -657,26 +737,33 @@ void Firmware::Impl::on_trial(void* arg) {
     esp_restart();
 }
 
-void Firmware::Impl::decide_task(void* arg) {
+void Firmware::Impl::give_up_task(void* arg) {
     auto* im = static_cast<Impl*>(arg);
-    if (im->decided == TrialStep::kAccept) {
-        im->accept_trial();
-    } else {
-        std::vector<std::string> waiting;
-        {
-            const std::lock_guard lock(im->mutex);
-            waiting = im->waiting_for;
-        }
-        im->give_up_trial(waiting);
+    std::vector<std::string> waiting;
+    {
+        const std::lock_guard lock(im->mutex);
+        waiting = im->waiting_for;
     }
-    vTaskDelete(nullptr);
+    im->give_up_trial(waiting);
 }
 
+// From esp_timer's task. It writes otadata and NVS and starts the check.
 void Firmware::Impl::accept_trial() {
+    {
+        const std::lock_guard lock(mutex);
+        if (busy) {
+            // A rollback asked for during the trial is under way, and goes
+            // back whatever is written here.
+            return;
+        }
+        deciding = true;
+    }
     if (esp_ota_mark_app_valid_cancel_rollback() != ESP_OK) {
         // The state could not be written. The bootloader then goes back at the
         // next reset, which is the safe way round to be wrong.
         std::printf("firmware: could not mark this image valid\n");
+        const std::lock_guard lock(mutex);
+        deciding = false;
         return;
     }
     if (guard_timer != nullptr) {
@@ -688,10 +775,12 @@ void Firmware::Impl::accept_trial() {
     {
         const std::lock_guard lock(mutex);
         trial.reset();
+        deciding = false;
         waiting_for.clear();
         last_update = FirmwareLastUpdate{version, "accepted", ""};
         running_facts.state = "valid";
     }
+    // The spare is esp_timer's task's, the least it has had since the boot.
     std::printf("firmware: %s accepted after its trial (stack %u spare)\n", version.c_str(),
                 static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     // Nothing is left to decide, so the slots can be read through now.
@@ -889,12 +978,19 @@ Firmware::Impl::Outcome Firmware::Impl::run_upload(UploadJob& job) {
         ~Freer() { heap_caps_free(p); }
     } freer{buffer};
 
-    // Reads exactly `want` bytes into `into`, riding out a few timeouts.
+    // Reads exactly `want` bytes into `into`, riding out a few timeouts, and
+    // gives up at the upload's deadline however steadily the bytes come.
     std::size_t received = 0;
+    const std::int64_t deadline_us = esp_timer_get_time() + static_cast<std::int64_t>(config.upload_deadline_ms) * 1000;
+    bool too_slow = false;
     const auto receive = [&](std::span<std::uint8_t> into) -> bool {
         std::size_t got = 0;
         int stalls = 0;
         while (got < into.size()) {
+            if (esp_timer_get_time() > deadline_us) {
+                too_slow = true;
+                return false;
+            }
             const int n = httpd_req_recv(job.req, reinterpret_cast<char*>(into.data() + got), into.size() - got);
             if (n == HTTPD_SOCK_ERR_TIMEOUT && ++stalls < kStalledReceives) {
                 continue;
@@ -955,8 +1051,28 @@ Firmware::Impl::Outcome Firmware::Impl::run_upload(UploadJob& job) {
         const std::lock_guard lock(mutex);
         upload = FirmwareUpload{received, job.length, "erasing"};
     }
+    // From here a reset leaves the slot erased or part written, with nothing
+    // recorded: the marker says so at the next boot (read_last_update).
+    nvs_set_texts({{kKeyUploading, head.version.empty() ? std::string_view{"?"} : std::string_view{head.version}}});
+    // The slot is erased a 64 KiB block at a time, just ahead of the writes,
+    // rather than the whole image's worth before the second read: an erase
+    // runs with the flash cache off, and that was seconds in which neither
+    // the network nor, on the P4, esp_hosted's link to its radio could run,
+    // with the client stalled throughout.
+    constexpr std::size_t kEraseStep = 64 * 1024;
+    std::size_t erased = std::min(kEraseStep, job.length);
+    const auto erase_to = [&](std::size_t end) -> bool {
+        while (erased < end) {
+            const std::size_t n = std::min(kEraseStep, static_cast<std::size_t>(other->size) - erased);
+            if (n == 0 || esp_partition_erase_range(other, erased, n) != ESP_OK) {
+                return false;
+            }
+            erased += n;
+        }
+        return true;
+    };
     esp_ota_handle_t ota = 0;
-    const esp_err_t begun = esp_ota_begin(other, job.length, &ota);
+    const esp_err_t begun = esp_ota_begin(other, erased, &ota);
     if (begun != ESP_OK) {
         (void)psa_hash_abort(&hash);
         out.status = begun == ESP_ERR_OTA_ROLLBACK_INVALID_STATE ? "409 Conflict" : "500 Internal Server Error";
@@ -982,11 +1098,14 @@ Firmware::Impl::Outcome Firmware::Impl::run_upload(UploadJob& job) {
             (void)esp_ota_abort(ota);
             (void)psa_hash_abort(&hash);
             out.status = "400 Bad Request";
-            out.body = "the upload stopped after " + std::to_string(received) + " of " +
-                       std::to_string(job.length) + " bytes";
+            out.body = too_slow ? "the upload took longer than " + std::to_string(config.upload_deadline_ms / 60'000) +
+                                      " minutes: " + std::to_string(received) + " of " +
+                                      std::to_string(job.length) + " bytes had arrived"
+                                : "the upload stopped after " + std::to_string(received) + " of " +
+                                      std::to_string(job.length) + " bytes";
             return out;
         }
-        written = psa_hash_update(&hash, chunk.data(), chunk.size()) == PSA_SUCCESS &&
+        written = psa_hash_update(&hash, chunk.data(), chunk.size()) == PSA_SUCCESS && erase_to(received) &&
                   esp_ota_write(ota, chunk.data(), chunk.size()) == ESP_OK;
         const std::lock_guard lock(mutex);
         upload->received = received;
@@ -1036,7 +1155,10 @@ Firmware::Impl::Outcome Firmware::Impl::run_upload(UploadJob& job) {
         out.body = std::string("the slot could not be made the next boot: ") + esp_err_to_name(selected);
         return out;
     }
-    nvs_set_texts({{kKeyPending, hex(head.elf_sha256)}, {kKeyPendingVersion, head.version}, {kKeyWhy, ""}});
+    nvs_set_texts({{kKeyPending, hex(head.elf_sha256)},
+                   {kKeyPendingVersion, head.version},
+                   {kKeyWhy, ""},
+                   {kKeyUploading, ""}});
     {
         // Until the restart, GET /firmware says one is coming; last_update
         // is still the update before this one.
@@ -1065,6 +1187,8 @@ Firmware::Impl::Outcome Firmware::Impl::run_upload(UploadJob& job) {
 void Firmware::Impl::upload_task(void* arg) {
     auto* job = static_cast<UploadJob*>(arg);
     Impl& im = *job->im;
+    // on_upload made this task before it handed over the request.
+    (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     const Outcome out = im.run_upload(*job);
     std::printf("firmware: the upload's least free internal heap was %u bytes\n",
                 static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
@@ -1075,7 +1199,11 @@ void Firmware::Impl::upload_task(void* arg) {
         // A 4xx is the image or the request, a 5xx the board.
         const char* result = out.status[0] == '4' ? "refused" : "failed";
         std::printf("firmware: upload %s (%s): %s\n", result, out.status, out.body.c_str());
-        record_last(out.version, result, out.body);
+        // The record and the end of the upload's marker in one commit.
+        nvs_set_texts({{kKeyLastVersion, out.version},
+                       {kKeyLastResult, result},
+                       {kKeyLastReason, out.body},
+                       {kKeyUploading, ""}});
         // What the erased slot holds now: nothing, or the head of an image
         // that stopped part-way or did not check out.
         std::optional<SlotFacts> theirs;
@@ -1312,18 +1440,45 @@ int Firmware::on_upload(httpd_req* req) {
         }
         im.busy = true;
     }
+    // Flash mode first, here on the server's task as PUT /firmware/mode flash
+    // does it: the teardown gives back what the player held, and the upload's
+    // task needs its stack from internal RAM, which a board playing the
+    // widest stream has almost none of (the S3 board, playing JOC over
+    // Sendspin: 723 bytes free).
+    im.enter_flash_mode();
+    // The task before the request is handed to it, so that a board that
+    // cannot make one still answers here: the server then reads the body off
+    // and the client hears why, where after httpd_req_async_handler_begin it
+    // would get only a reset. The task waits to be told its request.
     auto* job = new Impl::UploadJob{&im, nullptr, length, digest};
-    if (httpd_req_async_handler_begin(req, &job->req) != ESP_OK ||
-        xTaskCreate(&Impl::upload_task, "fw_upload", static_cast<std::uint32_t>(im.config.task_stack_bytes), job,
-                    tskIDLE_PRIORITY + 5, nullptr) != pdPASS) {
-        if (job->req != nullptr) {
-            (void)httpd_req_async_handler_complete(job->req);
-        }
+    TaskHandle_t task = nullptr;
+    if (xTaskCreate(&Impl::upload_task, "fw_upload", static_cast<std::uint32_t>(im.config.task_stack_bytes), job,
+                    tskIDLE_PRIORITY + 5, &task) != pdPASS) {
         delete job;
-        const std::lock_guard lock(im.mutex);
-        im.busy = false;
-        return reply_text(req, "500 Internal Server Error", "the board could not start the upload's task");
+        const std::string why = "the board could not start the upload: its internal RAM is short (" +
+                                std::to_string(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)) +
+                                " bytes in one piece, " + std::to_string(im.config.task_stack_bytes) + " wanted)";
+        std::printf("firmware: upload failed (503): %s\n", why.c_str());
+        record_last("", "failed", why);
+        {
+            const std::lock_guard lock(im.mutex);
+            im.busy = false;
+            im.last_update = FirmwareLastUpdate{"", "failed", why};
+        }
+        im.arm_idle_timer();
+        return reply_text(req, "503 Service Unavailable", why);
     }
+    if (httpd_req_async_handler_begin(req, &job->req) != ESP_OK) {
+        vTaskDelete(task);  // still waiting to be told its request
+        delete job;
+        {
+            const std::lock_guard lock(im.mutex);
+            im.busy = false;
+        }
+        im.arm_idle_timer();
+        return reply_text(req, "500 Internal Server Error", "the board could not hand the upload to its task");
+    }
+    xTaskNotifyGive(task);
     return ESP_OK;
 }
 
@@ -1377,6 +1532,11 @@ int Firmware::on_rollback(httpd_req* req) {
         const std::lock_guard lock(im.mutex);
         if (im.busy) {
             return reply_text(req, "409 Conflict", "an update is already under way");
+        }
+        if (im.deciding) {
+            return reply_text(req, "409 Conflict",
+                              "the running image has just passed its trial and is being accepted; ask again in a "
+                              "moment to go back to the image before it");
         }
         on_trial = im.trial.has_value();
         im.busy = on_trial;
