@@ -1777,7 +1777,9 @@ languages and levels as configured.
   Conan recipe install the AC-4 libraries only where asked for, through an `ac4` feature and
   option that are off by default, and IAB and IAMF the same way (`iab`, `iamf`), as the user
   decided on D8's question: a curated vcpkg port's default features may enable behaviours, not
-  public targets. `check_packaging_versions.sh` holds the two recipes to the same components, and
+  public targets. Both pin Hearth off, which upstream refuses beside the AC-4 libraries off and
+  whose dependencies neither declares. `check_packaging_versions.sh` holds the two recipes to the
+  same components and fails an option upstream defaults ON that a recipe neither offers nor pins, and
   `check_install_consumer.sh` checks that a tree built without a library installs no file of it.
 - The encoder-space harness draws further substreams in one case in five, in each configuration of
   Table 53, with rate shares, mixing values, ids, levels, names and payloads, through the CLI's

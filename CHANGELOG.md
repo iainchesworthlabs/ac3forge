@@ -1634,11 +1634,16 @@ The sections below contain the complete change list and fixes.
   `-o "ac3forge/*:ac4=True"` and the like opt in. Until now the port and the recipe installed IAB
   and IAMF with every install, and the AC-4 libraries since they were installed at all. Upstream's
   `AC3FORGE_BUILD_AC4`, `AC3FORGE_BUILD_IAB` and `AC3FORGE_BUILD_IAMF` still default ON for direct
-  builds and the SDK packages. `tools/checks/check_packaging_versions.sh` now holds the two
-  recipes to the same components switching the same `AC3FORGE_BUILD_<NAME>` options, fails a
-  `default-features` entry in the port and an option the recipe turns on by default beyond the
-  container writers, and `tools/checks/check_install_consumer.sh` checks that a tree built without
-  a library installs no file of it and one built with it installs its export and `.pc` file.
+  builds and the SDK packages. Both recipes now also pin `AC3FORGE_BUILD_HEARTH` off: upstream
+  defaults it ON, so from this tree the port and the recipe would build Hearth, an application and
+  a library nothing installs, and stop at `find_package(httplib)`, a dependency neither declares,
+  or, with the AC-4 libraries off, at upstream's refusal of Hearth without them; the release they
+  pin predates Hearth, so no published install met it. `tools/checks/check_packaging_versions.sh`
+  now holds the two recipes to the same components switching the same `AC3FORGE_BUILD_<NAME>`
+  options, fails a `default-features` entry in the port, an option the recipe turns on by default
+  beyond the container writers, and an option upstream defaults ON that a recipe neither offers nor
+  pins off, and `tools/checks/check_install_consumer.sh` checks that a tree built without a library
+  installs no file of it and one built with it installs its export and `.pc` file.
 
 ### Fixed
 

@@ -259,6 +259,29 @@ else
     note "vcpkg/Conan parity check: vcpkg.json, portfile.cmake or conanfile.py not found"
 fi
 
+# --- Every AC3FORGE_BUILD_<NAME> option the root CMakeLists.txt defaults ON (each is declared on
+# one line) is, in each recipe, either a component it offers or pinned OFF. One that a recipe
+# neither offers nor pins gets built by it, with whatever it needs: AC3FORGE_BUILD_HEARTH, which
+# defaults ON, had both recipes configure src/sendspin, which stops at a dependency neither
+# declares, and, with the AC-4 libraries off, at upstream's refusal of Hearth without them. ---
+cmakelists="$root/CMakeLists.txt"
+if [[ -f "$cmakelists" ]] && [[ -f "$portfile" ]] && [[ -f "$conanfile" ]]; then
+    upstream_on="$( { grep -E '^[[:space:]]*option\(AC3FORGE_BUILD_[A-Z0-9_]+[[:space:]].*[[:space:]]ON\)[[:space:]]*(#.*)?$' "$cmakelists" || true; } \
+        | sed -E 's/^[[:space:]]*option\((AC3FORGE_BUILD_[A-Z0-9_]+).*/\1/' | sort -u)"
+    port_handled="$( { awk '/FEATURES/{found=1; next} found && /\)/{exit} found {print $2}' "$portfile"
+        grep -oE '^[[:space:]]*-DAC3FORGE_BUILD_[A-Z0-9_]+=OFF' "$portfile" || true; } \
+        | sed -E 's/^[[:space:]]*-D//; s/=OFF$//' | sort -u)"
+    conan_handled="$( { grep -oE 'tc\.variables\["AC3FORGE_BUILD_[A-Z0-9_]+"\] = (False|bool\(self\.options\.[a-zA-Z0-9_]+\))' "$conanfile" || true; } \
+        | sed -E 's/^tc\.variables\["(AC3FORGE_BUILD_[A-Z0-9_]+)"\].*/\1/' | sort -u)"
+    port_unhandled="$(comm -23 <(printf '%s\n' "$upstream_on") <(printf '%s\n' "$port_handled") | grep -v '^$' || true)"
+    conan_unhandled="$(comm -23 <(printf '%s\n' "$upstream_on") <(printf '%s\n' "$conan_handled") | grep -v '^$' || true)"
+    [[ -n "$upstream_on" ]] || note "upstream-default check: found no option(AC3FORGE_BUILD_<NAME> ... ON) line in CMakeLists.txt"
+    [[ -z "$port_unhandled" ]] || note "portfile.cmake neither offers nor pins OFF option(s) upstream defaults ON, so the port builds them: $(echo "$port_unhandled" | tr '\n' ' ')- add a feature, or -D<NAME>=OFF to vcpkg_cmake_configure()"
+    [[ -z "$conan_unhandled" ]] || note "conanfile.py neither offers nor sets False option(s) upstream defaults ON, so the recipe builds them: $(echo "$conan_unhandled" | tr '\n' ' ')- add an option, or tc.variables[\"<NAME>\"] = False to generate()"
+else
+    note "upstream-default check: CMakeLists.txt, portfile.cmake or conanfile.py not found"
+fi
+
 # --- pkg-config completeness: cmake/InstallLibrary.cmake's install(TARGETS ... EXPORT ...)
 # component blocks and its ac3forge_install_pkgconfig() calls must be in 1:1 count - a future
 # component that adds one but forgets the other (packaging metadata parity's original gap: no pkg-config files

@@ -194,7 +194,7 @@ way. It installs the library only (`ac3::forge`, plus `matroska::matroska`/`mp4:
 `mpegts::mpegts` behind their own `matroska`/`mp4`/`mpegts` features, `ac3::forge_c` behind
 `capi` (see the note below), the AC-4 libraries behind `ac4`, `ac3iab::ac3iab` behind `iab` and
 `iamf::iamf` behind `iamf` - see `cmake/InstallLibrary.cmake`'s `AC3FORGE_BUILD_<NAME>` and
-`AC3FORGE_INSTALL_BOTH_LINKAGES` options), never the CLI/GUI/tests/examples/fuzzers.
+`AC3FORGE_INSTALL_BOTH_LINKAGES` options), never the CLI/GUI/Hearth/tests/examples/fuzzers.
 `ac3adm::ac3adm` (the ADM/BW64 reader) and `ac3::admbridge` have no vcpkg feature
 either - they do install/export via `find_package(ac3forge)` now (shared-only), but embed
 third-party libbw64/libadm and so deliberately carry no vcpkg/Conan feature of their own for
@@ -208,8 +208,12 @@ own `AC3FORGE_BUILD_<NAME>` options default ON; `vcpkg_check_features()` turns e
 its feature is asked for. A plain `vcpkg install ac3forge` installs the codec only; opt in
 explicitly with `vcpkg install ac3forge[matroska,mp4,mpegts]`, `ac3forge[ac4]` or any subset.
 `tools/checks/check_packaging_versions.sh` fails a `default-features` entry, a feature missing
-from the Conan recipe's options, and a feature and option that switch different
-`AC3FORGE_BUILD_<NAME>` options. The port also pins several build options a curated-registry review otherwise flags
+from the Conan recipe's options, a feature and option that switch different
+`AC3FORGE_BUILD_<NAME>` options, and an `AC3FORGE_BUILD_<NAME>` option the root `CMakeLists.txt`
+defaults ON that a recipe neither offers nor pins OFF. The port pins `AC3FORGE_BUILD_HEARTH` OFF:
+Hearth is an application and a library nothing installs, its dependencies are not the port's, and
+upstream refuses it beside `AC3FORGE_BUILD_AC4=OFF`, which is what a port without the `ac4`
+feature passes. The port also pins several build options a curated-registry review otherwise flags
 as uncontrolled: `AC3FORGE_BUILD_ADM`/`AC3FORGE_ENABLE_TRACY` explicitly OFF (already the
 project's own default, pinned so a future default change can't silently pull an undeclared
 dependency into this port), and `AC3FORGE_WITH_ALSA`/`AC3FORGE_WITH_PIPEWIRE` explicitly OFF -
@@ -500,7 +504,7 @@ A Conan (2.x) recipe for `ac3forge` is staged in-tree at
 plus `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts` behind their own default-on `matroska`/
 `mp4`/`mpegts` options, and `ac3::forge_c`, the AC-4 libraries, `ac3iab::ac3iab` and
 `iamf::iamf` behind default-off `capi`/`ac4`/`iab`/`iamf` options), never the
-CLI/GUI/tests/examples/fuzzers - with one Conan option per `AC3FORGE_BUILD_<NAME>` CMake option,
+CLI/GUI/Hearth/tests/examples/fuzzers - with one Conan option per `AC3FORGE_BUILD_<NAME>` CMake option,
 the same pattern the vcpkg port's `vcpkg_check_features()` call already establishes, and the same
 options as the port's features, which `tools/checks/check_packaging_versions.sh` checks. The
 two differ in one default: the three container writers are on by default here, as they have been
