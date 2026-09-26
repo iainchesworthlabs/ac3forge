@@ -335,7 +335,7 @@ Measured with `dumpbin /HEADERS` over `mdct.cpp.obj`:
 
 They are lazily *constructed* but statically *allocated*: the linker reserves that storage
 whether or not any of them is ever built. Leaving them out means `DecoderConfig::fast_imdct =
-false` returns `DecodeError::kUnsupported` in this profile rather than being silently served by
+false` returns `DecodeError::kNoReferenceTransform` in this profile rather than being silently served by
 the fast path — that switch exists so a caller can validate against the arithmetic the spec
 writes down, and substituting a different arithmetic would defeat its only purpose.
 

@@ -442,9 +442,10 @@ starts again at the next burst. The decoder meets the posture above.
 
 ## What a decode failure looks like
 
-Every decode entry point returns `std::expected<..., DecodeError>` and every error is one of six
-values: `kTruncated`, `kBadSyncWord`, `kBadCrc`, `kReservedValue`, `kUnsupported` (legal syntax
-this decoder declines to read) or `kInvalidStream`. `ac3::describe()` turns each into a sentence.
+Every decode entry point returns `std::expected<..., DecodeError>` and every error is one of seven
+values: `kTruncated`, `kBadSyncWord`, `kBadCrc`, `kReservedValue`, `kUnsupported` (a bsid this
+decoder does not read), `kInvalidStream` or `kNoReferenceTransform` (a build without the
+direct-form transform, asked for it). `ac3::describe()` turns each into a sentence.
 There is no concealment mode: a frame that fails produces no audio, and a caller that wants
 concealment implements it above this layer.
 

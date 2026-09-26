@@ -862,7 +862,7 @@ with `dumpbin /HEADERS` (Windows) — the actual `.bss` reservation, not an esti
 | **Total excluded** | **1,900,544** (1.81 MiB) | |
 | *Fast-path tables actually linked in* | *~12,600* | |
 
-A build asking for `mode=reference` in this profile gets `DecodeError::kUnsupported` rather than
+A build asking for `mode=reference` in this profile gets `DecodeError::kNoReferenceTransform` rather than
 a silent fast-path substitution — see the building doc for why.
 
 ### Runtime footprint

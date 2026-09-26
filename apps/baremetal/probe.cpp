@@ -1013,7 +1013,7 @@ void check_reference_transform_refused() {
     const auto discard = [](const ac3::PcmBlock&) {};
     const auto decoded = decoder.decode_frame_by_block(frames->front(), discard);
     const bool refused =
-        !decoded && decoded.error() == ac3::DecodeError::kUnsupported;
+        !decoded && decoded.error() == ac3::DecodeError::kNoReferenceTransform;
     std::printf("check=reference_transform_refused status=%s\n", refused ? "pass" : "fail");
     if (!refused) {
         g_failed = true;

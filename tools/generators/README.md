@@ -128,6 +128,7 @@ All of these are run from the repo root.
 | `gen_gui_resample_test_wav.py` | the GUI's 44.1 kHz resample fixture | stdlib only |
 | `gen_programme_fixtures.py` | both programme fixtures + `corpus.json` | needs `--source-dir` and `ffmpeg` |
 | `gen_external_baseline.py` | `tests/golden/external-baseline/` | needs **Dolby DEE**, `ffmpeg`, a built `ac3cli` |
+| `gen_dee_tpn_fixture.py` | `tests/golden/external-baseline/eac3-transient-stereo-128/` | needs the local DEE golden-master set (`--gold`) |
 | `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | encoder/decoder tables | read spec text, not committed |
 | `gen_mdct_goldens.py` | filterbank golden vectors | |
 

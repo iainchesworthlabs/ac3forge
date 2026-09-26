@@ -223,6 +223,9 @@ ffmpeg_strict_decode() {
 # and the --json-out wiring are decided once rather than in each caller.
 # $1: reference WAV. $2: WAV under test. $3: label. $4: codec label.
 # $5: bitrate. $6: scalar floor. $7: per-channel vector, or empty for scalar.
+# $8: optional further compare_wav.py arguments, one word each - e.g. a
+# longer --probe-samples for a fixture whose opening the default probe would
+# find silent, and so no lag to lock on to.
 #
 # compare_args always carries at least a floor argument, so expanding it is
 # safe on macOS's bash 3.2 - whose `set -u` treats expanding a ZERO-element
@@ -231,13 +234,20 @@ ffmpeg_strict_decode() {
 # never be empty).
 compare_and_gate() {
     local reference="$1" actual="$2" label="$3" codec="$4" bitrate_kbps="$5"
-    local min_snr_db="$6" per_channel="$7"
+    local min_snr_db="$6" per_channel="$7" extra="${8:-}"
     local compare_args=()
+    local extra_args=()
 
     if [[ -n "$per_channel" ]]; then
         compare_args+=(--min-snr-db-per-channel "$per_channel")
     else
         compare_args+=(--min-snr-db "$min_snr_db")
+    fi
+    # Only when there is something in it: expanding an empty array trips
+    # macOS bash 3.2's `set -u`, as the note above says.
+    if [[ -n "$extra" ]]; then
+        read -r -a extra_args <<<"$extra"
+        compare_args+=("${extra_args[@]}")
     fi
     if [[ -n "$RESULTS_JSON_DIR" ]]; then
         mkdir -p "$RESULTS_JSON_DIR"
@@ -254,7 +264,8 @@ compare_and_gate() {
 # because that default is calibrated for streams THIS PROJECT's own encoder
 # produced (see MIN_SNR_DB's own comment); a real third-party encoder's
 # output has no such guarantee and needs its own, separately-justified floor.
-# $6: per-channel floor vector, which supersedes $5 when given.
+# $6: per-channel floor vector, which supersedes $5 when given. $7: further
+# compare_wav.py arguments, as compare_and_gate's $8.
 check_one() {
     local label="$1$LABEL_SUFFIX" encoded="$2" codec="$3" bitrate_kbps="$4"
     local min_snr_db="${5:-$MIN_SNR_DB}"
@@ -263,6 +274,7 @@ check_one() {
     # before vectors existed and what a check with no derived vector still
     # does - never a silently different gate.
     local per_channel="${6:-}"
+    local extra="${7:-}"
     local ffmpeg_wav="$WORKDIR/${label}_ffmpeg.wav"
     local our_wav="$WORKDIR/${label}_ours.wav"
 
@@ -281,7 +293,7 @@ check_one() {
         echo "[$count] $label: SNR vs. FFmpeg's decode (L4-lite, >= ${min_snr_db} dB)"
     fi
     compare_and_gate "$ffmpeg_wav" "$our_wav" "$label" "$codec" "$bitrate_kbps" \
-        "$min_snr_db" "$per_channel"
+        "$min_snr_db" "$per_channel" "$extra"
 }
 
 # The other half of check_one, for a third-party bitstream FFmpeg cannot
@@ -295,15 +307,17 @@ check_one() {
 # rather than on check_one's near-noise-floor basis.
 # $1: label. $2: the bitstream. $3: the source WAV it was encoded from.
 # $4: codec label for --json-out. $5: nominal bitrate. $6: min SNR.
-# $7: per-channel floor vector, which supersedes $6 when given.
+# $7: per-channel floor vector, which supersedes $6 when given. $8: further
+# compare_wav.py arguments, as compare_and_gate's $8.
 check_against_source() {
     local label="$1$LABEL_SUFFIX" encoded="$2" source_wav="$3" codec="$4" bitrate_kbps="$5"
     local min_snr_db="$6"
     local per_channel="${7:-}"
+    local extra="${8:-}"
     local our_wav="$WORKDIR/${label}_ours.wav"
 
     count=$((count + 1))
-    echo "[$count] $label: ac3cli decode (no FFmpeg oracle - see this check's own comment)"
+    echo "[$count] $label: ac3cli decode (scored against the source WAV - see this check's own comment)"
     run_cli decode "$encoded" "$our_wav" >/dev/null
 
     count=$((count + 1))
@@ -313,7 +327,7 @@ check_against_source() {
         echo "[$count] $label: SNR vs. the source WAV (>= ${min_snr_db} dB)"
     fi
     compare_and_gate "$source_wav" "$our_wav" "$label" "$codec" "$bitrate_kbps" \
-        "$min_snr_db" "$per_channel"
+        "$min_snr_db" "$per_channel" "$extra"
 }
 
 
@@ -427,7 +441,8 @@ check_one "eac3_cplbndstrce0" "$CPLBNDSTRCE0_EC3" "eac3" 448 \
 # fifteen bitstreams. Adding one there does not gate it here: a leg is gated
 # only once it appears in the loop below (or, for the sixth, in the
 # check_against_source call after it) with per-channel floors derived for it,
-# so count the entries rather than the directory.
+# so count the entries rather than the directory. A seventh, DEE's transient
+# pre-noise stream, has its own block after the sixth.
 #
 # They are the closest thing to conformance vectors this project can legally
 # hold, and until now nothing in tests/ or src/ read them at all: their only
@@ -550,6 +565,40 @@ for required in "$DEE_STEREO_EC3" "$STEREO_WAV"; do
 done
 check_against_source "ext_eac3_stereo_192_dee" "$DEE_STEREO_EC3" "$STEREO_WAV" "eac3" 192 \
     25 "32,33"
+
+# --- Transient pre-noise processing from a third party (§3.7) ---------------
+# The first five seconds of a DEE stereo stream at 128 kbit/s that turns
+# transient pre-noise processing on for every burst of its source - a second of
+# silence, then decaying noise bursts - and places most of its transients in
+# the frame after the one that signals them (tools/generators/
+# gen_dee_tpn_fixture.py; leg.json beside the stream says where it came from).
+# This decoder refused every such frame until a correction learned to wait for
+# the frame its transient falls in.
+#
+# Two checks. Against the source DEE was given, as the stereo stream above is
+# scored: noise bursts whose top band spectral extension synthesises keep every
+# decoder within a few dB of it - 2.27 and 2.03 dB here, 2.46 and 2.25 through
+# FFmpeg - so these floors, 1 dB, catch a lost channel or a shifted or dropped
+# frame; where the corrections land is tests/decoder/
+# test_eac3_transient_prenoise.cpp's to check. And against FFmpeg's strict
+# decode, which reads the stream cleanly but does not apply the tool: 4.38 and
+# 4.65 dB, the spectral-extension noise each decoder synthesises for itself,
+# floors 3 dB. Below 4 kHz, outside the corrected regions, the two agree to
+# 37-40 dB.
+#
+# Both need a longer probe than compare_wav.py's 20,000 samples: the stream
+# opens with a second of silence, where there is no lag to find.
+TPN_DIR="$EXTERNAL_BASELINE_DIR/eac3-transient-stereo-128"
+for required in "$TPN_DIR/dee.ec3" "$TPN_DIR/source.wav"; do
+    if [[ ! -f "$required" ]]; then
+        echo "::error::fixture missing: $required" >&2
+        exit 1
+    fi
+done
+check_one "ext_eac3_transient_stereo_128_dee" "$TPN_DIR/dee.ec3" "eac3" 128 3 "3,3" \
+    "--probe-samples 60000"
+check_against_source "ext_eac3_transient_stereo_128_dee_source" "$TPN_DIR/dee.ec3" \
+    "$TPN_DIR/source.wav" "eac3" 128 1 "1,1" "--probe-samples 60000"
 
 # --- Cross-platform bitstream-hash gate (cross-platform bitstream reproducibility) ----------------------
 # Every check above compares two DECODES of the same bitstream, which cannot

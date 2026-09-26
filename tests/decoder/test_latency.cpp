@@ -427,8 +427,9 @@ TEST_CASE("E-AC-3 latency follows the syncframe length", "[latency][eac3]") {
         CHECK(budget.frame_samples * 6 == ac3::kSamplesPerFrame * blocks);
     }
 
-    // §3.7's hold-back is one FRAME period, so it tracks the syncframe length
-    // too rather than staying pinned at six blocks.
+    // §3.7's hold-back does not: a correction's reach is 1528 samples however
+    // long the syncframes are, so the decoder holds 1536 samples back - six
+    // one-block syncframes, one six-block one.
     const ac3::eac3::FrameConfig held{.numblkscod = 0, .transient_prenoise = true};
-    CHECK(ac3::eac3::eac3_latency(held).holdback_samples == ac3::kSamplesPerBlock);
+    CHECK(ac3::eac3::eac3_latency(held).holdback_samples == ac3::kSamplesPerFrame);
 }

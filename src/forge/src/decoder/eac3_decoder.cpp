@@ -46,6 +46,7 @@
 #include "bitalloc_internal.hpp"
 #include "bitalloc_memo.hpp"
 #include "gain.hpp"
+#include "transient_prenoise_apply.hpp"
 
 // E-AC-3 syncframe decoding, ATSC A/52:2018 Annex E Tables E1.2, E1.3 and E1.4.
 //
@@ -669,6 +670,196 @@ std::expected<AudFrm, DecodeError> parse_audfrm(BitReader& r, const Bsi& bsi, in
     return frm;
 }
 
+// §3.7's hold-back for one substream identity (Impl::transient_ below; what a
+// caller sees of it is decode_substream's own doc comment).
+//
+// A correction is known from the frame that signals it, but neither all of the
+// audio it touches nor its transient need be decoded yet. The transient sits
+// transprocloc * 4 samples past kTransientPrenoiseOrigin - up to 4092, in the
+// frame after next - and the correction reads and writes up to
+// kTransientPrenoiseMaxReach samples back from it, as far as 1020 samples into
+// the frame before. So a correction waits here until the frame its transient
+// falls in has decoded, and a frame waits until nothing still to come can
+// reach it: until the frames held after it hold kTransientPrenoiseMaxReach
+// samples or more. A correction still waiting then has its transient past
+// them, so it starts after this frame, and a later frame's corrections start
+// later still. That is one frame at six blocks a syncframe and six at one -
+// 1536 samples, whatever the syncframe length.
+struct TransientHold {
+    struct Correction {
+        std::size_t channel = 0;
+        // The transient's own sample, counted from the first sample of
+        // frames.front() - moved along as frames are released, so it stays
+        // small however long the stream runs.
+        int transient = 0;
+        int translen = 0;
+    };
+    // Decoded and not yet released, oldest first.
+    std::vector<DecodedSubstream> frames;
+    // Signalled, with the transient not decoded yet, in signalled order.
+    std::vector<Correction> waiting;
+    // Where a released frame goes on its way out: the caller's result is built
+    // from it in place (see SubstreamResult's own comment), so no second
+    // DecodedSubstream sits on the decode stack.
+    DecodedSubstream released;
+    // apply_correction()'s copy of the samples one correction touches, and the
+    // synthesis buffer §3.7.2 takes out of them. Grown once, then reused.
+    std::vector<float> window;
+    std::vector<float> synthesis;
+};
+
+int frame_samples(const DecodedSubstream& frame) {
+    return eac3::blocks_per_syncframe(frame.numblkscod) * kSamplesPerBlock;
+}
+
+// The block boundary at or before `sample`, which may be negative.
+int block_floor(int sample) {
+    return sample >= 0 ? sample - sample % kSamplesPerBlock
+                       : -((kSamplesPerBlock - 1 - sample) / kSamplesPerBlock) * kSamplesPerBlock;
+}
+
+// One correction, applied to what `hold` holds. The samples it touches are
+// copied into one contiguous window that starts on a block boundary
+// (apply_transient_prenoise finds pnlen from where the blocks are, and every
+// frame starts on one), corrected there and copied back. A sample before the
+// oldest held one reads as silence and is not written back: only the frame
+// that engages the hold can reach one, since nothing was held before it. A
+// sample past the newest held one is treated the same way, and only flush()
+// meets one - it applies the corrections whose transient never arrived, and
+// every sample those write lies before that transient.
+void apply_correction(TransientHold& hold, const TransientHold::Correction& correction) {
+    const auto range = transient_prenoise_range(correction.transient, correction.translen);
+    const int base = block_floor(range.first);
+    hold.window.assign(static_cast<std::size_t>(range.last - base), 0.0F);
+    hold.synthesis.resize(static_cast<std::size_t>(internal::kTransientPrenoiseMaxSynthesis));
+    // Calls visit(channel, first sample in it, first sample in the window,
+    // count) for every held frame's share of [base, range.last).
+    const auto each_share = [&hold, &correction, &range, base](auto&& visit) {
+        int start = 0;
+        for (auto& frame : hold.frames) {
+            const int length = frame_samples(frame);
+            const int from = std::max(start, base);
+            const int to = std::min(start + length, range.last);
+            if (from < to && correction.channel < frame.channels.size() &&
+                frame.channels[correction.channel].size() >= static_cast<std::size_t>(length)) {
+                visit(frame.channels[correction.channel], from - start, from - base, to - from);
+            }
+            start += length;
+        }
+    };
+    each_share([&hold](const std::vector<float>& channel, int in_channel, int in_window, int count) {
+        std::copy_n(channel.begin() + in_channel, count, hold.window.begin() + in_window);
+    });
+    internal::apply_transient_prenoise(hold.window, correction.transient - base,
+                                       correction.translen, hold.synthesis);
+    each_share([&hold](std::vector<float>& channel, int in_channel, int in_window, int count) {
+        std::copy_n(hold.window.begin() + in_window, count, channel.begin() + in_channel);
+    });
+}
+
+// Takes one decoded (or concealed) frame of an engaged identity into `hold`,
+// with the corrections it signalled - each `transient` counted from the
+// frame's own first sample - applies every waiting correction whose transient
+// has now decoded, in signalled order, and releases the oldest frame into
+// hold.released once nothing still to come can reach it. False while nothing
+// can be released.
+bool hold_back(TransientHold& hold, DecodedSubstream&& frame,
+               std::span<const TransientHold::Correction> corrections) {
+    int start = 0;
+    for (const auto& held : hold.frames) {
+        start += frame_samples(held);
+    }
+    for (auto correction : corrections) {
+        correction.transient += start;
+        hold.waiting.push_back(correction);
+    }
+    hold.frames.push_back(std::move(frame));
+    const int end = start + frame_samples(hold.frames.back());
+    for (auto it = hold.waiting.begin(); it != hold.waiting.end();) {
+        if (it->transient > end) {
+            ++it;
+            continue;
+        }
+        apply_correction(hold, *it);
+        it = hold.waiting.erase(it);
+    }
+    const int oldest = frame_samples(hold.frames.front());
+    if (hold.frames.size() < 2 || end - oldest < kTransientPrenoiseMaxReach) {
+        return false;
+    }
+    hold.released = std::move(hold.frames.front());
+    hold.frames.erase(hold.frames.begin());
+    for (auto& correction : hold.waiting) {
+        correction.transient -= oldest;
+    }
+    return true;
+}
+
+// decode_substream_core's last step for a frame that decoded: straight back to
+// the caller while its identity has never used transient pre-noise
+// processing, and through the identity's hold-back from the first frame that
+// does. The slot is allocated there and written through for the rest of the
+// stream (see Impl::transient_).
+SubstreamResult through_hold(std::unique_ptr<TransientHold>& slot, DecodedSubstream&& frame,
+                             std::span<const TransientHold::Correction> corrections) {
+    if (slot == nullptr && corrections.empty()) {
+        return SubstreamResult(std::in_place, std::in_place, std::move(frame));
+    }
+    if (slot == nullptr) {
+        slot = std::make_unique<TransientHold>();
+    }
+    if (!hold_back(*slot, std::move(frame), corrections)) {
+        return SubstreamResult(std::in_place, std::nullopt);
+    }
+    return SubstreamResult(std::in_place, std::in_place, std::move(slot->released));
+}
+
+// flush()'s one substream per identity, out of the frames an identity still
+// has, oldest first. Usually that is one frame. A stream of short syncframes
+// leaves several - the hold-back is 1536 samples whatever the syncframe length
+// - and they come back as one: their PCM end to end, their per-block words
+// likewise as far as a syncframe's six blocks go, numblkscod naming the block
+// count where Table E2.4 has one for it (six where it does not), and the rest
+// of the metadata the oldest frame's.
+DecodedSubstream join_frames(std::vector<DecodedSubstream>& parts) {
+    DecodedSubstream out = std::move(parts.front());
+    int blocks = eac3::blocks_per_syncframe(out.numblkscod);
+    for (std::size_t i = 1; i < parts.size(); ++i) {
+        auto& part = parts[i];
+        const int part_blocks = eac3::blocks_per_syncframe(part.numblkscod);
+        for (std::size_t ch = 0; ch < out.channels.size() && ch < part.channels.size(); ++ch) {
+            out.channels[ch].insert(out.channels[ch].end(), part.channels[ch].begin(),
+                                    part.channels[ch].end());
+        }
+        for (std::size_t object = 0;
+             object < out.object_audio.size() && object < part.object_audio.size(); ++object) {
+            out.object_audio[object].insert(out.object_audio[object].end(),
+                                            part.object_audio[object].begin(),
+                                            part.object_audio[object].end());
+        }
+        for (int blk = 0; blk < part_blocks && blocks + blk < kBlocksPerFrame; ++blk) {
+            const auto to = static_cast<std::size_t>(blocks + blk);
+            const auto from = static_cast<std::size_t>(blk);
+            out.dynrng[to] = part.dynrng[from];
+            out.dynrng2[to] = part.dynrng2[from];
+            for (std::size_t ch = 0; ch < out.blksw.size() && ch < part.blksw.size(); ++ch) {
+                out.blksw[ch][to] = part.blksw[ch][from];
+            }
+        }
+        if (!out.concealed.has_value()) {
+            out.concealed = part.concealed;
+        }
+        blocks += part_blocks;
+    }
+    switch (blocks) {
+        case 1: out.numblkscod = 0; break;
+        case 2: out.numblkscod = 1; break;
+        case 3: out.numblkscod = 2; break;
+        default: out.numblkscod = 3; break;
+    }
+    return out;
+}
+
 }  // namespace
 
 // Every private data member, following the same pimpl pattern as
@@ -735,15 +926,17 @@ struct Eac3Decoder::Impl {
     // cold every frame - see oba::joc::ReconstructionState's own doc comment.
     std::array<std::unique_ptr<oba::joc::ReconstructionState>, kSubstreamSlots> joc_state_;
     // A substream identity's slot engages the first time one of its frames
-    // sets transproce, and stays engaged (buffering one frame at a time)
-    // for the rest of the stream - see decode_substream's own doc comment.
-    // Behind a unique_ptr for the same reason delay_ and joc_state_ above
-    // are: a DecodedSubstream is 840 bytes held by value on the ESP32-S3, so
-    // 32 by-value slots pinned 26,880 bytes in every decoder whatever the
-    // stream, and a stream has one to three identities. An engaged slot is
-    // allocated once and written THROUGH for the rest of the stream, so a
-    // steady-state decode still allocates nothing.
-    std::array<std::unique_ptr<DecodedSubstream>, kSubstreamSlots> pending_;
+    // sets transproce, and stays engaged (holding 1536 samples back, and
+    // whatever corrections are waiting for their transient) for the rest of
+    // the stream - see TransientHold above and decode_substream's own doc
+    // comment. Behind a unique_ptr for the same reason delay_ and joc_state_
+    // above are: a DecodedSubstream is 840 bytes held by value on the
+    // ESP32-S3, so 32 by-value slots pinned 26,880 bytes in every decoder
+    // whatever the stream, and a stream has one to three identities. An
+    // engaged slot is allocated once and written THROUGH for the rest of the
+    // stream, its vectors keeping their capacity, so a steady-state decode
+    // still allocates nothing.
+    std::array<std::unique_ptr<TransientHold>, kSubstreamSlots> transient_;
     // decode_access_unit's own assembly cache: a substream identity's
     // RELEASED (by decode_substream) results, oldest first, waiting for
     // every other identity the same call's frames named to also have one -
@@ -1353,6 +1546,17 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         return decoded;
     }
     conceal(slot, decoded);
+    // A concealed frame takes its place in the identity's §3.7 hold-back as a
+    // decoded one would, behind the frames already held, so the identity's
+    // frames still come out in order.
+    if (decoded.has_value() && decoded->has_value() && impl_->transient_[slot] != nullptr) {
+        auto& hold = *impl_->transient_[slot];
+        if (hold_back(hold, std::move(**decoded), {})) {
+            **decoded = std::move(hold.released);
+        } else {
+            decoded->reset();
+        }
+    }
     return decoded;
 }
 
@@ -1457,7 +1661,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
     // defeat the only reason to set it. Constant-folded away in every ordinary
     // build, where kReferenceTransformAvailable is true.
     if (!impl_->config_.fast_imdct && !internal::kReferenceTransformAvailable) {
-        return std::unexpected(DecodeError::kUnsupported);
+        return std::unexpected(DecodeError::kNoReferenceTransform);
     }
     if (frame.size() < 8) {
         return std::unexpected(DecodeError::kTruncated);
@@ -1471,7 +1675,10 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         if (!core.has_value()) {
             return std::unexpected(core.error());
         }
-        return SubstreamResult(std::in_place, std::in_place, std::move(*core));
+        // An AC-3 core has no §3.7 syntax, but it is identity (independent, 0)
+        // - key 0 - and if that identity's hold-back is engaged, the core frame
+        // queues behind what it holds rather than overtaking it.
+        return through_hold(impl_->transient_[0], std::move(*core), {});
     }
     // There is no crc1 in E-AC-3 and no 5/8 checkpoint to protect, so crc2 is
     // the whole error check: the register reads zero over the frame past the
@@ -3672,7 +3879,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
                 // Two overloads, one call site. The float32 inverse takes no
                 // `fast` parameter - the direct form is double-only - and this
                 // profile has already refused fast_imdct=false with
-                // kUnsupported long before reaching here, so there is no
+                // kNoReferenceTransform long before reaching here, so there is no
                 // choice being silently dropped.
                 const bool short_block = ch < nfchans && tail.blksw[static_cast<std::size_t>(ch)];
                 internal::inverse_transform_into(coeffs[index], x, short_block,
@@ -3714,14 +3921,8 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         }
     }
 
-    // §3.7: apply any transient pre-noise correction THIS frame's fields
-    // specify, against this frame's own head plus whatever the previous
-    // frame (still held back in `impl_->pending_`, if any) contributed as its
-    // tail - the only combination a correction can ever need, because
-    // transprocloc is relative to this frame's own first sample and this
-    // decoder keeps exactly one frame of lookback (see decode_substream's
-    // own doc comment; a stream needing more is refused rather than read
-    // out of bounds).
+    // The substream identity: which JOC state, §7.10 history and §3.7
+    // hold-back below are this frame's.
     const int key = static_cast<int>(bsi->strmtyp) * 8 + bsi->substreamid;
 
     // --- JOC audio reconstruction -----------------------------------------
@@ -3783,9 +3984,7 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
 
     // §7.10: this frame decoded, so its last block becomes what a future loss
     // of this identity is reconstructed from. Committed here, past every
-    // return that refuses the frame - including transient pre-noise
-    // processing's own kUnsupported refusal below, which is why this cannot
-    // simply live at the end of the block loop.
+    // return that refuses the frame.
     //
     // Deliberately BEFORE the §3.7 hold-back: a held-back frame has still
     // decoded, and its overlap tail is what the next frame of the identity
@@ -3812,69 +4011,38 @@ std::expected<std::optional<DecodedSubstream>, DecodeError> Eac3Decoder::decode_
         impl_->last_identity_ = key;
     }
 
-    auto& pending_slot = impl_->pending_[static_cast<std::size_t>(key)];
+    // §3.7: this frame's corrections, one per full-bandwidth channel that
+    // signals one, each transient counted from this frame's first output
+    // sample: kTransientPrenoiseOrigin, where §3.7.2's "first sample of
+    // decoded PCM" is, plus transprocloc, already in samples. Where each one
+    // lands and when - possibly in a frame not decoded yet, possibly reaching
+    // back into one already held - is TransientHold's business.
+    std::array<TransientHold::Correction, eac3::chanmap::kMaxSubstreamFullbw> corrections{};
+    std::size_t correction_count = 0;
     if (frm->transproce) {
-        // One splice buffer for every processed channel, re-cleared per
-        // channel rather than re-allocated: the zero fill is load-bearing
-        // (with no pending frame the history half must read silence), the
-        // 12 KB allocation per channel was not.
-        std::vector<float> combined;
         for (int ch = 0; ch < nfchans; ++ch) {
             const auto uch = static_cast<std::size_t>(ch);
-            if (!frm->chintransproc[uch]) {
-                continue;
+            if (frm->chintransproc[uch]) {
+                corrections[correction_count++] = {
+                    .channel = uch,
+                    .transient = kTransientPrenoiseOrigin + frm->transprocloc[uch],
+                    .translen = frm->transproclen[uch]};
             }
-            const int transloc = frm->transprocloc[uch];
-            const int translen = frm->transproclen[uch];
-            const auto range = transient_prenoise_range(transloc, translen);
-            if (range.first < -kSamplesPerFrame || range.last > kSamplesPerFrame) {
-                // Reaches further back or forward than the one frame of
-                // history/lookahead this decoder buffers - recognised,
-                // refused, not misdecoded (same stance as every other
-                // syntax this project's own encoder does not exercise).
-                return std::unexpected(DecodeError::kUnsupported);
-            }
-            combined.assign(static_cast<std::size_t>(kSamplesPerFrame) * 2, 0.0f);
-            if (pending_slot != nullptr) {
-                std::ranges::copy(pending_slot->channels[uch], combined.begin());
-            }
-            std::ranges::copy(out.channels[uch], combined.begin() + kSamplesPerFrame);
-            apply_transient_prenoise(combined, kSamplesPerFrame + transloc, translen);
-            if (pending_slot != nullptr) {
-                std::ranges::copy(combined.begin(), combined.begin() + kSamplesPerFrame,
-                                  pending_slot->channels[uch].begin());
-            }
-            std::ranges::copy(combined.begin() + kSamplesPerFrame, combined.end(),
-                              out.channels[uch].begin());
         }
     }
-
-    if (pending_slot != nullptr) {
-        DecodedSubstream ready = std::move(*pending_slot);
-        // Written THROUGH the pointer, so an engaged identity reuses the one
-        // allocation it made below for every frame after it.
-        *pending_slot = std::move(out);
-        return SubstreamResult(std::in_place, std::in_place, std::move(ready));
-    }
-    if (frm->transproce) {
-        // First frame to use the tool for this substream identity: hold it
-        // back, nothing is ready to return yet - see decode_substream's own
-        // doc comment. This is the slot's one allocation, made here rather
-        // than pinned for all 32 identities - see pending_'s own comment.
-        pending_slot = std::make_unique<DecodedSubstream>(std::move(out));
-        return SubstreamResult(std::in_place, std::nullopt);
-    }
-    return SubstreamResult(std::in_place, std::in_place, std::move(out));
+    return through_hold(impl_->transient_[static_cast<std::size_t>(key)], std::move(out),
+                        std::span{corrections}.first(correction_count));
 }
 
 int Eac3Decoder::latency_samples() const {
-    // A slot holds a value exactly while that substream identity is one frame
-    // behind (see decode_substream's hold-back), so "any slot pending" IS
-    // "this decoder is currently a frame late". impl_->pending_au_parts_ is not
-    // consulted: it holds results already RELEASED by decode_substream and
+    // A slot is engaged exactly while that substream identity is holding
+    // frames back (see TransientHold), and an engaged identity holds 1536
+    // samples whatever its syncframe length - so "any slot engaged" IS "this
+    // decoder is currently a frame's worth late". impl_->pending_au_parts_ is
+    // not consulted: it holds results already RELEASED by decode_substream and
     // only waiting on a sibling identity, so whatever delay it represents is
-    // the impl_->pending_ slot of that sibling, already counted here.
-    for (const auto& slot : impl_->pending_) {
+    // the impl_->transient_ slot of that sibling, already counted here.
+    for (const auto& slot : impl_->transient_) {
         if (slot != nullptr) {
             return kSamplesPerFrame;
         }
@@ -3943,24 +4111,38 @@ std::vector<eac3::chanmap::Location> joc_wide_locations(int dmx_config_idx) {
 
 std::vector<DecodedSubstream> Eac3Decoder::flush() {
     std::vector<DecodedSubstream> ready;
-    // Slot order is key order, so this drains in the same ascending
-    // identity order the maps this replaced iterated in.
-    for (auto& slot : impl_->pending_) {
-        if (slot != nullptr) {
-            ready.push_back(std::move(*slot));
-            slot.reset();
+    // One substream per identity, each whatever that identity still has,
+    // oldest first: decode_access_unit's assembly cache's share (released,
+    // but a sibling never caught up before the stream ended, so there is no
+    // complete DecodedAccessUnit to hand back - see flush()'s own doc
+    // comment), then what §3.7 still holds, with the corrections whose
+    // transient never arrived applied to what did. The identities §3.7 was
+    // holding come first and those with only a cached share after, each in
+    // slot order - which is key order, the ascending identity order the maps
+    // this replaced iterated in.
+    const auto drain = [this, &ready](std::size_t key) {
+        auto& parts = impl_->pending_au_parts_[key];
+        if (auto& hold = impl_->transient_[key]; hold != nullptr) {
+            for (const auto& correction : hold->waiting) {
+                apply_correction(*hold, correction);
+            }
+            for (auto& frame : hold->frames) {
+                parts.push_back(std::move(frame));
+            }
+            hold.reset();
+        }
+        if (!parts.empty()) {
+            ready.push_back(parts.size() == 1 ? std::move(parts.front()) : join_frames(parts));
+            parts.clear();
+        }
+    };
+    for (std::size_t key = 0; key < Impl::kSubstreamSlots; ++key) {
+        if (impl_->transient_[key] != nullptr) {
+            drain(key);
         }
     }
-    // decode_access_unit's own assembly cache: whatever is left here is one
-    // or more substreams whose sibling(s) never caught up before the stream
-    // ended, so there is no complete DecodedAccessUnit to hand back for
-    // them - the raw substreams, oldest first, are the best this can do (see
-    // flush()'s own doc comment).
-    for (auto& queue : impl_->pending_au_parts_) {
-        for (auto& substream : queue) {
-            ready.push_back(std::move(substream));
-        }
-        queue.clear();
+    for (std::size_t key = 0; key < Impl::kSubstreamSlots; ++key) {
+        drain(key);
     }
     // §7.8, applied here too so a stream that ends mid-hold-back hands its
     // last frames back at the same channel count every other frame of it came

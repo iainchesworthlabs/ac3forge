@@ -79,7 +79,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | AHT + GAQ (§E3.4) | 🟢 | High | Essential | In `auto`; delta BA suppressed on AHT streams (measured) |
 | | Delta bit allocation (§7.2.2.6 under Annex E) | 🟢 | Medium | Important | Including coupling channel; closed-loop vs rate fit |
 | | Enhanced coupling (§E3.5) | 🟢 | Medium | Important | Enc/dec complete; kept out of `auto` (FFmpeg cannot read); no external oracle |
-| | Transient pre-noise (§3.7) | 🟢 | Low | Optional | Enc/dec complete; kept out of `auto` (measured loss); one-frame hold-back; last AU can be lost at EOF |
+| | Transient pre-noise (§3.7) | 🟢 | Low | Optional | Enc/dec complete, every reach the syntax allows; DEE stream in the gold gate; kept out of `auto` (measured loss); 1536-sample hold-back; last AU can be lost at EOF |
 | | Bit allocation transmitted (`bamode` 1) | 🟢 | High | Essential | Table E1.4 defaults |
 | | Closed-loop `auto` tool selection | 🟢 | High | Essential | Spectrum-aware cpl / spx / aht only |
 | **Metadata** | `mixmdate` downmix levels | 🟢 | High | Essential | Tables D2.2–D2.6 |

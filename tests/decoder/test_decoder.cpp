@@ -507,10 +507,11 @@ TEST_CASE("every decode error describes itself", "[decoder]") {
     // level here flags a missing case — and quietly answers "unknown decode
     // error" for whichever value was added last. Only enumerating them
     // catches that.
-    constexpr std::array<ac3::DecodeError, 6> all = {
+    constexpr std::array<ac3::DecodeError, 7> all = {
         ac3::DecodeError::kTruncated,   ac3::DecodeError::kBadSyncWord,
         ac3::DecodeError::kBadCrc,      ac3::DecodeError::kReservedValue,
         ac3::DecodeError::kUnsupported, ac3::DecodeError::kInvalidStream,
+        ac3::DecodeError::kNoReferenceTransform,
     };
     std::set<std::string_view> seen;
     for (const auto error : all) {

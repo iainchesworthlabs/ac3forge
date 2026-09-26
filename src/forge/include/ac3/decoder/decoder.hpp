@@ -51,22 +51,18 @@
 // syntax — every metadata payload is walked correctly whether or not its
 // contents are used — plus dependent substreams, chanmap and the §E3.8.2
 // render. Every coding tool Annex E adds on top of AC-3 is implemented: AHT,
-// spectral extension, enhanced coupling (§E3.5) and transient pre-noise
-// processing (§3.7) - individually or all stacked together. Annex E's
+// spectral extension, enhanced coupling (§E3.5) including its angle
+// interpolation, and transient pre-noise processing (§3.7) over every reach
+// its syntax can express - individually or all stacked together. Annex E's
 // default coupling band structures decode too: standard coupling falls back
-// to Table E2.12, enhanced coupling to Table E2.13. Two syntax corners are
-// still recognised and refused rather than mis-decoded - enhanced coupling's
-// angle-interpolation flag, and a transient pre-noise correction reaching
-// further back or forward than the one frame of history/lookahead buffered
-// here - because no stream this project's own encoder produces exercises
-// them. Transient pre-noise processing has one
-// consequence for this class's own API: see decode_substream and flush()
-// below. This is the only oracle 7.1.4 has: FFmpeg rejects any frame with
-// substreamid != 0, so a stream with two dependent substreams cannot be
-// checked against it in any container. Every substream's own dynrng/dynrng2
-// words are reported on DecodedSubstream, same convention as DecodedFrame,
-// and optionally applied per Eac3Decoder's own constructor — see
-// DecoderConfig below.
+// to Table E2.12, enhanced coupling to Table E2.13. Transient pre-noise
+// processing has one consequence for this class's own API: see
+// decode_substream and flush() below. This is the only oracle 7.1.4 has:
+// FFmpeg rejects any frame with substreamid != 0, so a stream with two
+// dependent substreams cannot be checked against it in any container. Every
+// substream's own dynrng/dynrng2 words are reported on DecodedSubstream, same
+// convention as DecodedFrame, and optionally applied per Eac3Decoder's own
+// constructor — see DecoderConfig below.
 //
 // The §7.7 dynamic range words are always reported and optionally applied —
 // see DecoderConfig. Reporting them separately from applying them is what
@@ -81,8 +77,17 @@ enum class DecodeError : std::uint8_t {
     kBadSyncWord,
     kBadCrc,
     kReservedValue,
-    kUnsupported,  // legal AC-3, but syntax this decoder declines to read
+    // A bsid this decoder does not read: above 8 for FrameDecoder, 9, 10 or
+    // above 16 for Eac3Decoder and split_frames (A/52 has decoders mute those
+    // rather than guess at them). Only that; anything else this library
+    // declines gets a value of its own that says what it is.
+    kUnsupported,
     kInvalidStream,
+    // DecoderConfig::fast_imdct = false asks for the direct-form transform,
+    // and this build leaves it out (the minimum-footprint decoder profile;
+    // see ac3/internal/profile.hpp). Refused rather than served by the fast
+    // path, whose arithmetic is not the one the caller asked to check against.
+    kNoReferenceTransform,
 };
 
 [[nodiscard]] AC3FORGE_EXPORT std::string_view describe(DecodeError error);
@@ -789,13 +794,17 @@ class AC3FORGE_EXPORT Eac3Decoder {
     // read one, and reports AC-3's own DecodedFrame rather than a substream.
     //
     // Returns std::nullopt exactly when a frame's PCM is being held back
-    // pending transient pre-noise processing (§3.7): a stream's very first
-    // frame that turns transproce on has nothing ready to return yet, because
-    // whether a correction reaches back into it is only known once the NEXT
-    // frame has been parsed. A stream that never uses the tool always gets a
-    // populated result immediately - this holding-back is the exception, not
-    // the common case. Call flush() once at end-of-stream to collect
-    // whichever frame is still held back, if any.
+    // pending transient pre-noise processing (§3.7). A correction can reach
+    // 1528 samples back from its transient, and a frame can place that
+    // transient in a later frame - up to two frames on - so from the first
+    // frame of a substream identity that turns transproce on, that identity
+    // runs 1536 samples behind: each call returns the frame no correction
+    // still to come can reach, and the first calls, while that much is
+    // building up, return nothing. That is one frame at six blocks a
+    // syncframe, and six at one. A stream that never uses the tool always
+    // gets a populated result immediately - this holding-back is the
+    // exception, not the common case. Call flush() once at end-of-stream to
+    // collect whatever is still held back, if anything.
     [[nodiscard]] std::expected<std::optional<DecodedSubstream>, DecodeError> decode_substream(
         std::span<const std::byte> frame);
 
@@ -862,26 +871,32 @@ class AC3FORGE_EXPORT Eac3Decoder {
     [[nodiscard]] std::expected<std::optional<DecodedAccessUnit>, DecodeError>
     decode_access_unit_by_block(std::span<const std::byte> unit, BlockSink sink);
 
-    // Releases whichever frames transient pre-noise processing is still
-    // holding back, one per substream identity that has one pending - empty
-    // if none does, which covers every stream that never used the tool.
-    // Call once, after the last decode_substream/decode_access_unit call for
-    // a stream, to avoid silently dropping its final frame(s). Drains BOTH
-    // decode_substream's own pending frame and decode_access_unit's
-    // assembly cache (see its own doc comment) - a caller that only ever
-    // used decode_access_unit and wants the very last program's worth of
-    // audio out of a stream that ends mid-hold-back gets raw per-substream
-    // results here rather than one final assembled DecodedAccessUnit,
-    // since by definition the assembly never completed.
+    // Releases whatever transient pre-noise processing is still holding
+    // back, one substream per substream identity that has any - empty if
+    // none does, which covers every stream that never used the tool. The
+    // corrections still waiting for a transient the stream ended before are
+    // applied to the audio that did arrive first. Call once, after the last
+    // decode_substream/decode_access_unit call for a stream, to avoid
+    // silently dropping its final frame(s). Drains BOTH decode_substream's
+    // own held frames and decode_access_unit's assembly cache (see its own
+    // doc comment) - a caller that only ever used decode_access_unit and
+    // wants the very last program's worth of audio out of a stream that ends
+    // mid-hold-back gets raw per-substream results here rather than one
+    // final assembled DecodedAccessUnit, since by definition the assembly
+    // never completed. An identity with several frames left - a stream of
+    // short syncframes holds several, 1536 samples' worth - gets them back as
+    // one substream: their PCM end to end, the per-block words likewise, and
+    // numblkscod naming that block count (six where Table E2.4 has no code
+    // for it).
     [[nodiscard]] std::vector<DecodedSubstream> flush();
 
     // bare-metal probe harness: the delay THIS decoder adds, same contract as
     // FrameDecoder::latency_samples(). Zero until some substream's frame sets
-    // transproce, kSamplesPerFrame from then on - §3.7's hold-back is not a
-    // property of the decoder but of the stream it is fed, and once a
-    // substream identity's slot engages it stays engaged for the rest of the
-    // stream (decode_substream's own doc comment). Not const-foldable for
-    // that reason, unlike the AC-3 form.
+    // transproce, kSamplesPerFrame from then on, whatever the syncframe
+    // length - §3.7's hold-back is not a property of the decoder but of the
+    // stream it is fed, and once a substream identity's slot engages it stays
+    // engaged for the rest of the stream (decode_substream's own doc
+    // comment). Not const-foldable for that reason, unlike the AC-3 form.
     //
     // A caller sizing buffers before the stream starts should ask the ENCODER
     // instead (eac3::eac3_latency), which knows from its own configuration
@@ -989,8 +1004,8 @@ split_access_units(std::span<const std::byte> stream, int programme);
 // The point of it is that stream_bsid() alone cannot tell such a stream from
 // plain AC-3: both open with an AC-3 syncframe, and a caller that dispatches
 // on that one value sends this one down the frame-at-a-time AC-3 path, which
-// reaches the dependent and refuses it as "valid AC-3 this decoder does not
-// implement". These streams need split_access_units + Eac3Decoder, which
+// reaches the dependent and refuses its bsid (kUnsupported). These streams
+// need split_access_units + Eac3Decoder, which
 // handle the core natively (see Eac3Decoder::decode_substream).
 //
 // Reads the first two syncframes and no further. That is all the arrangement

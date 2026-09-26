@@ -1,0 +1,36 @@
+{
+  "made_by": "tools/generators/gen_dee_tpn_fixture.py",
+  "from_set": {
+    "gold_version": 1,
+    "made": "2026-09-25T15:22:36Z",
+    "leg": "ddp-20-transient-128",
+    "dee_version": "This tool belongs to the Dolby Encoding Engine version 6.5.4-dme+b56bc97e",
+    "command": "\"C:\\Program Files\\Dolby\\Dolby Media Encoder\\resources\\dee-dir\\dee_ddp_encoder.exe\" --input-format wav_list -i in_L.wav:in_R.wav -o D:\\ac3bld\\dee-gold\\streams\\ddp-20-transient-128\\dee.ec3 --overwrite 1 --temp-dir D:\\ac3bld\\dee-gold\\streams\\ddp-20-transient-128 --output-channel-layout stereo --data-rate 128 --encoder ddp:surround_90deg_phase_shift=0:lfe_filter=0 --loudness-management measure_only",
+    "options": [
+      "--output-channel-layout",
+      "stereo",
+      "--data-rate",
+      "128",
+      "--encoder",
+      "ddp:surround_90deg_phase_shift=0:lfe_filter=0",
+      "--loudness-management",
+      "measure_only"
+    ],
+    "stream_sha256": "94f8ef07a75a71e492f0c8369b64e9ea59ddbf7ac928e77af3d8d02e52daf894",
+    "source": "transient_20.wav",
+    "source_sha256": "04e9cee0379993f47f5fa50a3bd05a55f8eb03ad295e8a3b66c04c9aecb91349",
+    "source_description": "1 s of silence, then a decaying noise burst each second per channel, the channels a 1/n of a second apart (the LFE's a 55 Hz thump)"
+  },
+  "dee.ec3": {
+    "syncframes": 156,
+    "samples": 239616,
+    "bytes": 79872,
+    "sha256": "a9cf0fef69127369684d8cfe35caacab1efb1d7202256ff5f50609dc41626b57"
+  },
+  "source.wav": {
+    "samples": 240000,
+    "bits": 16,
+    "note": "the source's first samples, rounded to 16-bit PCM",
+    "sha256": "79d27174ddd362c9a56f8c26313e6167ea8887d94497420d8d00ab10426867ef"
+  }
+}

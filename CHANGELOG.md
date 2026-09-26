@@ -1774,6 +1774,50 @@ The sections below contain the complete change list and fixes.
 
 **Codec correctness**
 
+- **E-AC-3 streams from the Dolby Encoding Engine that use transient pre-noise processing would
+  not decode.** DEE turns §3.7's tool on at its lower rates - all 23 such streams in the DEE
+  golden-master set, stereo at 96-144 kbit/s, 5.1 at 192-368 and a 5.1 programme at 256 - and
+  puts most of its transients in the frame after the one that signals them, up to 1,260 samples
+  in. `Eac3Decoder` applied each correction while decoding the frame that signalled it and
+  refused, with `DecodeError::kUnsupported`, any that reached past that frame. A correction now
+  waits in the decoder until the frame its transient falls in has decoded, so every reach the
+  syntax can express decodes: a transient up to 4,092 samples past the first sample of its
+  frame's PCM, and a correction reaching up to 1,528 samples back from it. All 23 streams decode.
+  The first five seconds of one are committed
+  (`tests/golden/external-baseline/eac3-transient-stereo-128/`, cut by
+  `tools/generators/gen_dee_tpn_fixture.py`) and checked against their source and against FFmpeg
+  by `tools/checks/verify_gold_reference.sh`, and by
+  `tests/decoder/test_eac3_transient_prenoise.cpp`.
+- **Transient pre-noise corrections landed one block early.** The decoder counted
+  `transprocloc` from the first sample of a frame's decoded output. A/52 counts it from the first
+  sample of the frame's PCM, and a frame's PCM is its blocks' new samples, which start one block
+  (256 samples) into that output. Dolby's own decoder places its corrections on the second origin:
+  on DEE's streams it removes the pre-noise right up to each transient, where the first origin
+  left the 164 samples of pre-noise nearest it in place. `ac3/decoder/transient_prenoise.hpp`
+  records the origin as `kTransientPrenoiseOrigin`. On this project's own streams, where the
+  correction had been moving clean audio a block ahead of the pre-noise, `quality_race.py`'s
+  self-scored stereo rows at 192 kbit/s rise from 24.0 to 26.2 dB; the 5.1 rows at 256 move by
+  0.1 dB.
+- **A stream of one-, two- or three-block syncframes using transient pre-noise processing made
+  the decoder write past its buffers.** It spliced each correction through a buffer sized for a
+  six-block frame and copied all 1,536 samples back into channels of 256, 512 or 768. A
+  correction reaches up to 1,528 samples back from its transient whatever the syncframe length,
+  so the decoder now holds 1,536 samples back - one syncframe at six blocks, six at one - and
+  `eac3::eac3_latency()` charges that hold-back for every `numblkscod` rather than one
+  syncframe's length. `flush()` still returns one substream per identity, joining the short
+  syncframes it holds.
+- **A concealed frame could overtake the frames held back for transient pre-noise processing.**
+  With `DecoderConfig::concealment` set, a frame that failed to decode came back from
+  `decode_substream` at once while the frames before it were still held, so the audio came out
+  out of order. A concealed frame now takes its place behind them.
+- **Every refused decode was described as "valid AC-3 this decoder does not implement (bsid >
+  8)".** `DecodeError::kUnsupported` stood for an unreadable bsid, for the transient pre-noise
+  refusal above, and for `DecoderConfig::fast_imdct = false` in a build without the direct-form
+  transform, and one sentence described all three. `kUnsupported` now means a bsid the decoder
+  does not read and says so, the transform refusal is the new
+  `DecodeError::kNoReferenceTransform` with its own description (the C API, which cannot ask for
+  that transform, maps it to `AC3FORGE_ERROR_DECODE_UNSUPPORTED`), and transient pre-noise
+  processing is no longer refused at all.
 - **RF mode decoded 11 dB below a Dolby decoder.** `OperatingMode::kRf` normalised
   dialnorm onto −31 dBFS and applied `compr` with nothing on top, while the Dolby
   Reference Player's RF mode applies each `compr` word with 11 dB that put dialogue at
