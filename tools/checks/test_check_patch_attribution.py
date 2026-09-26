@@ -266,6 +266,14 @@ class RangeModeChecks(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("2 commit(s) checked, 0 violation(s)", out)
 
+    def test_range_is_never_read_as_a_git_option(self) -> None:
+        # Read as an option, this range would have git log write to `target` and exit 0.
+        self.commit("feat: add a thing\n")
+        target = Path(self._tmp.name) / "written-by-git-log.txt"
+        with self.assertRaises(subprocess.CalledProcessError):
+            self._run(f"--range=--output={target}")
+        self.assertFalse(target.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

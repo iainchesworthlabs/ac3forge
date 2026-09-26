@@ -22,6 +22,10 @@
 #include "sdkconfig.h"
 
 #include "esp_app_desc.h"
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+// Exported only when the project keeps core dumps.
+#include "esp_core_dump.h"
+#endif
 #include "esp_err.h"
 #include "esp_flash.h"
 #include "esp_heap_caps.h"
@@ -326,6 +330,44 @@ FirmwareSlot report_slot(const esp_partition_t* slot, const SlotFacts& facts) {
 
 std::uint32_t now_ms() { return static_cast<std::uint32_t>(esp_timer_get_time() / 1000); }
 
+// The core dump a crash left in the coredump partition, read once at boot so
+// that GET /firmware reads no flash (as with SlotFacts). A board that keeps
+// no core dumps, or whose partition holds none, has nothing to report.
+std::optional<FirmwareCoredump> read_coredump() {
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+    std::size_t address = 0;
+    std::size_t size = 0;
+    if (esp_core_dump_image_get(&address, &size) != ESP_OK) {
+        return std::nullopt;
+    }
+    FirmwareCoredump dump;
+    dump.bytes = size;
+    dump.intact = esp_core_dump_image_check() == ESP_OK;
+    if (dump.intact) {
+        // Some hundreds of bytes: on the heap, and only while this runs.
+        auto summary = std::make_unique<esp_core_dump_summary_t>();
+        if (esp_core_dump_get_summary(summary.get()) == ESP_OK) {
+            dump.task = field_text(summary->exc_task);
+            std::array<char, 16> pc{};
+            (void)std::snprintf(pc.data(), pc.size(), "0x%08lx", static_cast<unsigned long>(summary->exc_pc));
+            dump.pc = pc.data();
+            const auto* sha = reinterpret_cast<const char*>(summary->app_elf_sha256);
+            dump.elf_sha256.assign(sha, std::find(sha, sha + sizeof(summary->app_elf_sha256), '\0'));
+        }
+        std::array<char, 160> reason{};
+        if (esp_core_dump_get_panic_reason(reason.data(), reason.size()) == ESP_OK) {
+            dump.reason = reason.data();
+        }
+    }
+    std::printf("firmware: a core dump of %u bytes from the last crash%s%s%s; GET /firmware/coredump has it\n",
+                static_cast<unsigned>(dump.bytes), dump.task.empty() ? "" : ", in ", dump.task.c_str(),
+                dump.intact ? "" : " (it does not check out)");
+    return dump;
+#else
+    return std::nullopt;
+#endif
+}
+
 }  // namespace
 
 struct Firmware::Impl {
@@ -343,6 +385,7 @@ struct Firmware::Impl {
     bool busy = false;  // an upload, a rollback or a mode change is under way
     std::optional<FirmwareUpload> upload;
     std::optional<FirmwareLastUpdate> last_update;
+    std::optional<FirmwareCoredump> coredump;  // read at boot (read_coredump)
     std::optional<Trial> trial;
     std::vector<std::string> waiting_for;
     // Each slot as read_slot() read it at boot, and again after whatever this
@@ -375,6 +418,14 @@ struct Firmware::Impl {
 
     esp_timer_handle_t idle_timer = nullptr;
     esp_timer_handle_t guard_timer = nullptr;
+    // The trial is read once a second from esp_timer's task (on_trial), with
+    // no task of its own until it has decided: then decide_task writes what
+    // it decided. A task made at boot for the whole trial took 6 KiB of
+    // internal RAM as the board started, and on the S3 board that left the
+    // Sendspin player without the 32 KiB block its burst player starts with,
+    // so no updated image could pass its trial there.
+    esp_timer_handle_t trial_timer = nullptr;
+    TrialStep decided = TrialStep::kWait;
 
     [[nodiscard]] FirmwareStatus status() const;
     [[nodiscard]] BoardFacts board() const;
@@ -400,7 +451,8 @@ struct Firmware::Impl {
     };
     Outcome run_upload(UploadJob& job);
     static void upload_task(void* arg);
-    static void trial_task(void* arg);
+    static void on_trial(void* arg);
+    static void decide_task(void* arg);
     void start_check();
     void stop_check();
     [[nodiscard]] std::unique_ptr<SlotHashing> begin_other();
@@ -448,6 +500,7 @@ FirmwareStatus Firmware::Impl::status() const {
     }
     s.upload = upload;
     s.last_update = last_update;
+    s.coredump = coredump;
     return s;
 }
 
@@ -561,34 +614,60 @@ void Firmware::Impl::restart_now(const char* why) {
 
 // --- the trial -------------------------------------------------------------------
 
-void Firmware::Impl::trial_task(void* arg) {
+// Once a second from esp_timer's task while an image is on trial.
+void Firmware::Impl::on_trial(void* arg) {
     auto* im = static_cast<Impl*>(arg);
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        std::vector<std::string> waiting;
-        if (im->hooks.trial_conditions) {
-            for (const auto& [name, holds] : im->hooks.trial_conditions()) {
-                if (!holds) {
-                    waiting.push_back(name);
-                }
+    std::vector<std::string> waiting;
+    if (im->hooks.trial_conditions) {
+        for (const auto& [name, holds] : im->hooks.trial_conditions()) {
+            if (!holds) {
+                waiting.push_back(name);
             }
         }
-        if (im->config.test_unhealthy) {
-            waiting.emplace_back("nothing (AC3FORGE_FIRMWARE_TEST_UNHEALTHY)");
-        }
-        TrialStep step = TrialStep::kWait;
+    }
+    if (im->config.test_unhealthy) {
+        waiting.emplace_back("nothing (AC3FORGE_FIRMWARE_TEST_UNHEALTHY)");
+    }
+    TrialStep step = TrialStep::kWait;
+    {
+        const std::lock_guard lock(im->mutex);
+        step = im->trial->step(now_ms(), waiting.empty());
+        im->waiting_for = std::move(waiting);
+    }
+    if (step == TrialStep::kWait) {
+        return;
+    }
+    // Either way the decision writes otadata and NVS, which takes more stack
+    // than esp_timer's task has: a task of its own does it, made now, long
+    // after the board has started. Accepting used 1,812 bytes of its stack on
+    // the S3 board.
+    (void)esp_timer_stop(im->trial_timer);
+    im->decided = step;
+    if (xTaskCreate(&Impl::decide_task, "fw_trial", 4096, im, tskIDLE_PRIORITY + 5, nullptr) == pdPASS) {
+        return;
+    }
+    if (step == TrialStep::kAccept) {
+        // Tried again in a second, when there may be room: the Trial keeps
+        // its answer, and the guard still goes back past the deadline.
+        (void)esp_timer_start_periodic(im->trial_timer, 1'000'000);
+        return;
+    }
+    // Nothing can record why, and a restart on trial still goes back.
+    std::printf("firmware: this image gives up its trial; going back\n");
+    esp_restart();
+}
+
+void Firmware::Impl::decide_task(void* arg) {
+    auto* im = static_cast<Impl*>(arg);
+    if (im->decided == TrialStep::kAccept) {
+        im->accept_trial();
+    } else {
+        std::vector<std::string> waiting;
         {
             const std::lock_guard lock(im->mutex);
-            step = im->trial->step(now_ms(), waiting.empty());
-            im->waiting_for = waiting;
+            waiting = im->waiting_for;
         }
-        if (step == TrialStep::kAccept) {
-            im->accept_trial();
-            break;
-        }
-        if (step == TrialStep::kRollBack) {
-            im->give_up_trial(waiting);
-        }
+        im->give_up_trial(waiting);
     }
     vTaskDelete(nullptr);
 }
@@ -613,7 +692,8 @@ void Firmware::Impl::accept_trial() {
         last_update = FirmwareLastUpdate{version, "accepted", ""};
         running_facts.state = "valid";
     }
-    std::printf("firmware: %s accepted after its trial\n", version.c_str());
+    std::printf("firmware: %s accepted after its trial (stack %u spare)\n", version.c_str(),
+                static_cast<unsigned>(uxTaskGetStackHighWaterMark(nullptr)));
     // Nothing is left to decide, so the slots can be read through now.
     start_check();
 }
@@ -637,9 +717,9 @@ void Firmware::Impl::give_up_trial(const std::vector<std::string>& waiting) {
     esp_restart();
 }
 
-// The deadline's backstop: a trial task that has not acted 30 s past the
-// deadline is starved or stuck, and a restart while on trial boots the image
-// before this one.
+// The deadline's backstop: a trial that has not acted 30 s past the deadline
+// is starved or stuck, and a restart while on trial boots the image before
+// this one.
 void Firmware::Impl::on_guard(void* arg) {
     (void)arg;
     std::printf("firmware: the trial did not finish; restarting, which goes back\n");
@@ -792,6 +872,10 @@ Firmware::Impl::Outcome Firmware::Impl::run_upload(UploadJob& job) {
     if (idle_timer != nullptr) {
         (void)esp_timer_stop(idle_timer);
     }
+    // The least free internal heap from here, with nothing playing, to the
+    // upload's end: upload_task reads it and stops the monitor, which the
+    // player uses for a stream and has let go of by now.
+    (void)heap_caps_monitor_local_minimum_free_size_start();
 
     auto* buffer = static_cast<std::uint8_t*>(
         heap_caps_malloc(config.buffer_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
@@ -982,6 +1066,9 @@ void Firmware::Impl::upload_task(void* arg) {
     auto* job = static_cast<UploadJob*>(arg);
     Impl& im = *job->im;
     const Outcome out = im.run_upload(*job);
+    std::printf("firmware: the upload's least free internal heap was %u bytes\n",
+                static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+    (void)heap_caps_monitor_local_minimum_free_size_stop();
     if (!out.restart) {
         // Settled before the answer goes out: a client that sends its next
         // request as soon as it has read this answer finds the board free.
@@ -1038,6 +1125,10 @@ Firmware::~Firmware() {
         (void)esp_timer_stop(impl_->guard_timer);
         (void)esp_timer_delete(impl_->guard_timer);
     }
+    if (impl_->trial_timer != nullptr) {
+        (void)esp_timer_stop(impl_->trial_timer);
+        (void)esp_timer_delete(impl_->trial_timer);
+    }
     if (impl_->check_timer != nullptr) {
         impl_->stop_check();
         (void)esp_timer_delete(impl_->check_timer);
@@ -1082,6 +1173,7 @@ bool Firmware::start(FirmwareHooks hooks, FirmwareConfig config) {
     }
     im->read_last_update();
     // Before any task of this or the board's starts, so read without the lock.
+    im->coredump = read_coredump();
     im->running_facts = read_slot(im->running, true);
     if (im->other != nullptr) {
         im->other_facts = read_slot(im->other, false);
@@ -1120,8 +1212,13 @@ bool Firmware::start(FirmwareHooks hooks, FirmwareConfig config) {
             (void)esp_timer_start_once(im->guard_timer,
                                        (static_cast<std::uint64_t>(config.trial.deadline_ms) + 30'000) * 1000);
         }
-        // Its stack takes the owner's conditions, NVS and the otadata write.
-        if (xTaskCreate(&Impl::trial_task, "fw_trial", 6144, im, tskIDLE_PRIORITY + 5, nullptr) != pdPASS) {
+        const esp_timer_create_args_t trial_args = {.callback = &Impl::on_trial,
+                                                    .arg = im,
+                                                    .dispatch_method = ESP_TIMER_TASK,
+                                                    .name = "fw_trial",
+                                                    .skip_unhandled_events = true};
+        if (esp_timer_create(&trial_args, &im->trial_timer) != ESP_OK ||
+            esp_timer_start_periodic(im->trial_timer, 1'000'000) != ESP_OK) {
             std::printf("firmware: could not start the trial; the guard goes back at the deadline\n");
         }
     } else {
@@ -1141,6 +1238,24 @@ bool Firmware::flash_mode() const {
     }
     const std::lock_guard lock(impl_->mutex);
     return impl_->flash_mode;
+}
+
+void Firmware::restart(const char* why) {
+    if (impl_ == nullptr) {
+        std::printf("firmware: restarting %s\n", why);
+        esp_restart();
+    }
+    Impl& im = *impl_;
+    bool on_trial = false;
+    {
+        const std::lock_guard lock(im.mutex);
+        on_trial = im.trial.has_value();
+    }
+    if (on_trial) {
+        // The image that runs next reads this as why this one went back.
+        nvs_set_texts({{kKeyWhy, why}});
+    }
+    im.restart_now(why);
 }
 
 int Firmware::on_status(httpd_req* req) {
@@ -1329,6 +1444,78 @@ int Firmware::on_restart(httpd_req* req) {
     }
     (void)reply_text(req, "200 OK", "restarting");
     im.restart_now("on request");
+}
+
+int Firmware::on_coredump(httpd_req* req) {
+    if (impl_ == nullptr) {
+        return reply_text(req, "404 Not Found", "this board takes no firmware updates");
+    }
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+    std::size_t address = 0;
+    std::size_t size = 0;
+    if (esp_core_dump_image_get(&address, &size) != ESP_OK) {
+        return reply_text(req, "404 Not Found", "there is no core dump: nothing has crashed since the last was erased");
+    }
+    // As it lies in flash, a kilobyte at a time from the server's own stack,
+    // for esp_coredump (`info_corefile --core-format raw`) with the ELF of
+    // the image that wrote it.
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Content-Disposition", "attachment; filename=\"coredump.bin\"");
+    std::array<char, 1024> chunk{};
+    for (std::size_t at = 0; at < size;) {
+        const std::size_t n = std::min(chunk.size(), size - at);
+        if (esp_flash_read(nullptr, chunk.data(), static_cast<std::uint32_t>(address + at), n) != ESP_OK ||
+            httpd_resp_send_chunk(req, chunk.data(), static_cast<ssize_t>(n)) != ESP_OK) {
+            return ESP_FAIL;
+        }
+        at += n;
+    }
+    return httpd_resp_send_chunk(req, nullptr, 0);
+#else
+    return reply_text(req, "404 Not Found", "this board keeps no core dumps");
+#endif
+}
+
+int Firmware::on_coredump_erase(httpd_req* req) {
+    if (impl_ == nullptr) {
+        return reply_text(req, "404 Not Found", "this board takes no firmware updates");
+    }
+    Impl& im = *impl_;
+    if (!im.host_allowed(req)) {
+        return reply_text(req, "403 Forbidden",
+                          "firmware changes are taken only on the board's own address or name (planning/esp32-ota.md)");
+    }
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+    {
+        const std::lock_guard lock(im.mutex);
+        if (im.busy) {
+            return reply_text(req, "409 Conflict", "an update is already under way");
+        }
+        im.busy = true;
+    }
+    // An erase writes flash, which the slot check keeps clear of; it starts
+    // again afterwards if it was running.
+    const bool checking = im.check_running.load();
+    im.stop_check();
+    const esp_err_t erased = esp_core_dump_image_erase();
+    {
+        const std::lock_guard lock(im.mutex);
+        im.busy = false;
+        if (erased == ESP_OK) {
+            im.coredump.reset();
+        }
+    }
+    if (checking) {
+        im.start_check();
+    }
+    if (erased != ESP_OK) {
+        return reply_text(req, "500 Internal Server Error",
+                          std::string("the core dump could not be erased: ") + esp_err_to_name(erased));
+    }
+    return reply_text(req, "200 OK", "erased");
+#else
+    return reply_text(req, "404 Not Found", "this board keeps no core dumps");
+#endif
 }
 
 }  // namespace ac3forge

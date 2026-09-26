@@ -35,10 +35,18 @@ inline constexpr std::string_view kObjectKey = "_ac3forge_player";
 enum class DataType : std::uint8_t {
     kAc3,
     kEac3,
+    // IEC 61937-14's four burst types, whichever the server's packer chose.
+    kAc4,
 };
 
 [[nodiscard]] std::string_view data_type_name(DataType type);
+// The burst type a stream of `type` is sent as: for AC-4, its first, the one on
+// a link at the content rate.
 [[nodiscard]] BurstDataType burst_data_type(DataType type);
+// Whether a burst of `burst` belongs in a stream of `type`: an AC-4 stream
+// takes any of AC-4's four burst types, which differ only in the link a
+// receiver would need and so in how long a frame they hold.
+[[nodiscard]] bool carries(DataType type, BurstDataType burst);
 
 // --- The support object in client/hello --------------------------------------------------------
 
@@ -100,7 +108,9 @@ enum class Command : std::uint8_t {
 
 struct DecoderReport {
     DataType data_type = DataType::kEac3;
-    // The coded audio coding mode, 0 to 7 (A/52, Table 5.8).
+    // The coded audio coding mode, 0 to 7 (A/52, Table 5.8). For AC-4, the mode with the decoded
+    // channels' front and surround speakers, and dialnorm 0 until the decoder reports one
+    // (planning/hearth-sendspin-extension.md, State object).
     std::int32_t acmod = 0;
     bool lfe = false;
     std::int32_t substreams = 0;

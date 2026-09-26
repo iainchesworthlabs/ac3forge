@@ -217,10 +217,11 @@ once.
 ## Toolchain
 
 No vcpkg. Every other platform preset in `CMakePresets.json` chainloads through vcpkg for
-consistency, but `ac3::forge`'s decode path has zero third-party dependencies (`vcpkg.json`'s own
-description says so), so `config-wasm-emscripten`'s toolchain file goes straight to Emscripten's own
-`Emscripten.cmake` — see that toolchain file's own header for why going through vcpkg's community
-`wasm32-emscripten` triplet would be pure cost for nothing this preset needs.
+consistency, but the one third-party library `ac3::forge` takes in this build is {fmt}, which
+`cmake/Fmt.cmake` builds from source with `FetchContent`, so `config-wasm-emscripten`'s toolchain
+file goes straight to Emscripten's own `Emscripten.cmake` — see that toolchain file's own header for
+why going through vcpkg's community `wasm32-emscripten` triplet would be pure cost for nothing this
+preset needs.
 
 Verified against **Emscripten 6.0.6**. No version is pinned in the toolchain file itself (unlike the
 Android NDK's explicit pin) — there is no CMake-side equivalent of `local.properties`' `sdk.dir` to

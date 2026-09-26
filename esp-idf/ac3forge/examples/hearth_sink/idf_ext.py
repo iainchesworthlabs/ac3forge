@@ -1,7 +1,9 @@
 """idf.py ota: push this example's build to boards over the network.
 
 ESP-IDF v6.1's idf.py loads idf_ext.py from the project directory and adds the
-actions its action_extensions() returns. This adds `ota`, which runs
+actions its action_extensions() returns, once they carry a "version" (without
+one, idf.py warns that it cannot load the extension and goes on without it:
+tools/idf_py_actions/tools.py, merge_action_lists). This adds `ota`, which runs
 tools/hearth/ota.py push on the build directory with the Python that runs
 idf.py, so a build and an update are one command, as `build flash` is over USB:
 
@@ -65,6 +67,7 @@ def action_extensions(base_actions: dict, project_path: str) -> dict:
             raise failure(f"ota.py push exited with {code}: {OUTCOMES.get(code, 'see above')}")
 
     return {
+        "version": "1",
         "actions": {
             "ota": {
                 "callback": ota,
@@ -94,5 +97,5 @@ def action_extensions(base_actions: dict, project_path: str) -> dict:
                     },
                 ],
             }
-        }
+        },
     }

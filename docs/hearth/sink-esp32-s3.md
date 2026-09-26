@@ -35,7 +35,12 @@ contains implementation details and measurements.
 
 ## Build and flash
 
-In an ESP-IDF v6.1 terminal, from `esp-idf/ac3forge/examples/hearth_sink`:
+**Without building:** a release publishes this board's image, `hearth-sink-esp32s3`, and
+[the browser installer](sink-installer.md) writes it over the USB cable, then gives the board its
+network. [Sink firmware](sink-firmware.md) covers the same with `esptool`, and updating the board
+over its network afterwards. Then continue at [The page](#the-page).
+
+**To build it yourself,** in an ESP-IDF v6.1 terminal, from `esp-idf/ac3forge/examples/hearth_sink`:
 
 ```bash
 export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram;sdkconfig.sendspin"

@@ -19,8 +19,18 @@ TEST_CASE("a board with nothing to report has every key, the parts that do not a
     const std::string body = render_firmware_status(FirmwareStatus{});
     CHECK(body ==
           "{\"mode\":\"normal\",\"running\":null,\"other\":null,\"trial\":null,\"upload\":null,"
-          "\"last_update\":null,\"network\":\"none\",\"slot_bytes\":0,\"flash_bytes\":0,"
+          "\"last_update\":null,\"coredump\":null,\"network\":\"none\",\"slot_bytes\":0,\"flash_bytes\":0,"
           "\"partitions\":[],\"bootloader_version\":\"\"}\n");
+}
+
+TEST_CASE("a core dump the last crash left is reported with where it came from", "[io][firmware_status]") {
+    FirmwareStatus status;
+    status.coredump = ac3forge::FirmwareCoredump{23'456, true, "fw_trial", "0x4037a1b2",
+                                                 "abort() was called at PC 0x4200abcd on core 0", "2366bde99"};
+    const std::string body = render_firmware_status(status);
+    CHECK(body.find("\"last_update\":null,\"coredump\":{\"bytes\":23456,\"intact\":true,\"task\":\"fw_trial\","
+                    "\"pc\":\"0x4037a1b2\",\"reason\":\"abort() was called at PC 0x4200abcd on core 0\","
+                    "\"elf_sha256\":\"2366bde99\"},\"network\"") != std::string::npos);
 }
 
 TEST_CASE("a board on trial reports both slots, the trial and the table", "[io][firmware_status]") {

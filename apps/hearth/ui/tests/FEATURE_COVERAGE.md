@@ -116,12 +116,15 @@ Status:
 | 90 | Dialogs | First run shows once; Not now / Open Speakers | none | UI | Dialogs::test_firstRunShowsOnceAndNotNowRemembersIt, test_firstRunOpenSpeakersGoesToTheSpeakersPage |
 | 91 | Output | Play to a network group (`selectOutputGroup`) | none | UI | OutputPicker::test_groupRowPinsPlaybackToTheGroup (the picker's group row, Play here, then a device row moves it back) |
 
+| 92 | Network | Sink Firmware tab: asks the sink's own web server only while open, says when it does not answer, and offers nothing it could not do | none | UI | NetworkPairing::test_pairedSinkFirmwareTabAsksTheSinksOwnServerWhileOpen |
+| 93 | Network | Firmware tab with no sink: renders and asks nothing; every firmware action is a safe no-op; an unreadable file is refused with why | none | logic | NetworkSinkSettings::test_firmwareTabAsksNothingWithNoSinkSelected, NetworkSinkSettings::test_everyFirmwareActionIsASafeNoOpWithNoSinkSelected |
+
 ### Totals
 
-| | Before (4 suites, 18 cases) | After (14 suites, 73 cases) |
+| | Before (4 suites, 18 cases) | After (14 suites, 76 cases) |
 |---|---|---|
-| UI | 5 | 90 |
-| logic only | 15 | 1 (row 15: no UI control exists) |
+| UI | 5 | 91 |
+| logic only | 15 | 2 (row 15: no UI control exists; row 93: nothing to select) |
 | none | 71 | 0 |
 
 Gaps that remain inside covered rows:
@@ -129,6 +132,7 @@ Gaps that remain inside covered rows:
 - The sink's own trim, delay, routing and identify edits are not driven: even the accept-settings test sink manages none of them (`management.routing` false, trim range 0..0, `identify` false), so only the layout edit is shown reaching a sink.
 - The group mute and group volume sliders are not driven.
 - The Only-on-sink panel is rendered but its text is not read.
+- The Firmware tab's Update, Roll back and Restart are not driven: the test sink serves no firmware routes. The client behind them (`apps/hearth/engine/sink_firmware.hpp`) is tested in `ac3tests` against a stand-in board on loopback (`[sink-firmware]`), and against a real board by the hidden live case in `tests/hearth/test_sink_firmware_board.cpp`.
 
 ## UI bugs found (fixed)
 

@@ -286,9 +286,12 @@ class Group {
         // The programme frame that is the burst's first decoded sample
         // (planning/hearth-sendspin-extension.md, Timing).
         std::int64_t frame = 0;
+        // The samples it decodes to: 1,536 for AC-3 and E-AC-3, and an AC-4
+        // frame's length, which follows its frame rate.
+        std::int64_t frames = 1536;
     };
-    // Sends one burst, of 1,536 samples, to every member playing _ac3forge_player@v1; false, taking
-    // nothing, on the same terms as push().
+    // Sends one burst to every member playing _ac3forge_player@v1; false, taking nothing, on the
+    // same terms as push().
     [[nodiscard]] bool push_burst(const Burst& burst);
     // Ends the programme: the last units, then stream/end.
     void stop();
