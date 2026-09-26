@@ -47,9 +47,13 @@ encoder picks ASPX_ACPL_2, ASPX_SCPL and SCPL as DEE does, and in ASPX_ACPL_1 by
 score_immersive(): per channel (in full decoding ASPX_ACPL_2's top pairs as their sums, which A-CPL
 keeps; in core decoding the 5.1.2 the core renders to) the lag, the level, the SNR below the lowest
 crossover (in SCPL below 16 kHz), on a tone leg the routing margin, the LSD and the MOS, pinned in
-IMMERSIVE_FLOORS. In full decoding the A-SPX tiles above the lowest crossover, and in the A-CPL
-modes the top pairs' level difference and correlation per A-CPL parameter band, are held to
-IMMERSIVE_EXTRA as the tiles and bands above are held.
+IMMERSIVE_FLOORS. In full decoding the A-SPX tiles above the lowest crossover, and in the
+parametric modes the level difference and correlation per A-CPL parameter band of the pairs the
+parameters shape, are held to IMMERSIVE_EXTRA as the tiles and bands above are held. Those pairs
+are the top pairs A-CPL rebuilds in ASPX_ACPL_1 and 2, and in ASPX_AJCC (experimental) each
+side's front (L, Tfl) and back (Ls, Tbl), whose A-JCC modules rebuild them from one core channel
+each; there the waveform SNR of the channels the modules make is pinned as it comes, a
+decorrelated part having none.
 
 The frame-rate legs (phase E5) encode music and speech in stereo and music in 5.1 at the other
 frame rates of Part 1 Table 83 and at index 13, in the same run, and hold each to the index-13
@@ -424,12 +428,12 @@ RACE_RATES = (48, 64, 96, 128, 144, 192, 256, 288, 320, 384, 448, 512, 768)
 ACPL_MODES = {2: "ASPX_ACPL_1", 3: "ASPX_ACPL_2", 4: "ASPX_ACPL_3"}
 
 # The immersive legs (phase E8), 5.1.4: name: (source, kbps, *ac4-encode's options). The encoder
-# takes ASPX_ACPL_2 below 480 kbps, ASPX_SCPL below 640 and SCPL from there, and ASPX_ACPL_1 by
-# name, experimental. score_ac4_decode.py's score_immersive() scores them, in full and in core
-# decoding, against IMMERSIVE_FLOORS, in its IMMERSIVE_PINS form; in full decoding the A-SPX tiles
-# of every channel but the LFE above the frame's lowest crossover, and in the A-CPL modes the
-# level difference and correlation per A-CPL parameter band of the top pairs A-CPL rebuilds,
-# (Tfl, Tbl) and (Tfr, Tbr), are held to IMMERSIVE_EXTRA as E2 and E4 hold theirs.
+# takes ASPX_ACPL_2 below 480 kbps, ASPX_SCPL below 640 and SCPL from there, and ASPX_ACPL_1 and
+# ASPX_AJCC by name, experimental. score_ac4_decode.py's score_immersive() scores them, in full
+# and in core decoding, against IMMERSIVE_FLOORS, in its IMMERSIVE_PINS form; in full decoding the
+# A-SPX tiles of every channel but the LFE above the frame's lowest crossover, and in the
+# parametric modes the level difference and correlation per A-CPL parameter band of the pairs
+# IMMERSIVE_BAND_PAIRS names, are held to IMMERSIVE_EXTRA as E2 and E4 hold theirs.
 IMMERSIVE_LEGS = {
     "514-tones-256": ("tones_514", 256),
     "514-tones-512": ("tones_514", 512),
@@ -440,6 +444,9 @@ IMMERSIVE_LEGS = {
     "514-music-512": ("music_514", 512),
     "514-music-768": ("music_514", 768),
     "514-music-448-acpl1": ("music_514", 448, "codec-mode=aspx-acpl-1", "experimental=acpl"),
+    "514-tones-256-ajcc": ("tones_514", 256, "codec-mode=aspx-ajcc", "experimental=ajcc"),
+    "514-music-192-ajcc": ("music_514", 192, "codec-mode=aspx-ajcc", "experimental=ajcc"),
+    "514-music-384-ajcc": ("music_514", 384, "codec-mode=aspx-ajcc", "experimental=ajcc"),
 }
 # The immersive legs' pins, by (leg, "full" or "core"), in score_ac4_decode.py's IMMERSIVE_PINS
 # form: (SNR floors per scored signal, the routing floor on a tone leg, the LSD ceiling, the MOS
@@ -475,9 +482,23 @@ IMMERSIVE_FLOORS = {
                                       20.9), None, 1.75, 4.61),
     ("514-music-448-acpl1", "core"): ((23.3, 24.0, 26.5, 15.6, 24.2, 24.5, 20.8, 21.3), None,
                                       1.66, 4.60),
+    # ASPX_AJCC, experimental. The channels A-JCC makes are part decorrelated, whose waveform
+    # SNR is pinned as it comes.
+    ("514-tones-256-ajcc", "full"): ((75.4, 74.1, 80.3, 69.1, 73.2, 44.5, 72.3, 71.3, 73.0, 47.2),
+                                     42.5, 10.90, 4.63),
+    ("514-tones-256-ajcc", "core"): ((75.4, 74.1, 80.3, 69.1, 73.2, 47.5, 71.0, 50.1), 45.5,
+                                     11.08, 4.63),
+    ("514-music-192-ajcc", "full"): ((5.7, 5.7, 20.5, 14.3, 2.5, 2.1, -8.7, -9.6, -7.1, -7.2),
+                                     None, 3.34, 4.50),
+    ("514-music-192-ajcc", "core"): ((5.7, 5.7, 20.5, 14.3, 3.3, 3.0, -8.1, -9.5), None, 3.13,
+                                     4.42),
+    ("514-music-384-ajcc", "full"): ((5.9, 5.9, 35.7, 16.5, 2.6, 2.2, -8.6, -9.4, -7.1, -7.1),
+                                     None, 3.17, 4.61),
+    ("514-music-384-ajcc", "core"): ((5.9, 5.9, 35.7, 16.5, 3.4, 3.1, -8.0, -9.4), None, 2.94,
+                                     4.58),
 }
 # By leg: (the A-SPX tile ceiling, or None in SCPL; the ceilings per A-CPL parameter band of the
-# top pairs' level difference and correlation distances, or None where the leg is not in an A-CPL
+# pairs' level difference and correlation distances, or None where the leg is not in a parametric
 # mode or is a tone leg), the first measurement plus TILE_MARGIN_DB, decoding.ACPL_ILD_MARGIN_DB
 # and decoding.ACPL_RHO_MARGIN.
 IMMERSIVE_EXTRA = {
@@ -502,6 +523,17 @@ IMMERSIVE_EXTRA = {
         (0.78, 0.73, 1.09, 0.80, 1.03, 1.13, 1.60, 1.68, 3.04, 2.80, 2.41, 2.60, 2.27, 2.33, None),
         (0.083, 0.074, 0.108, 0.080, 0.110, 0.121, 0.154, 0.169, 0.336, 0.301, 0.271, 0.246, 0.237,
          0.248, None)),
+    "514-tones-256-ajcc": (None, None, None),
+    "514-music-192-ajcc": (
+        2.64,
+        (3.40, 3.32, 3.27, 4.14, 3.41, 3.90, 3.12, 3.51, 3.41, 3.19, 2.47, 2.61, 2.22, 2.46, None),
+        (0.352, 0.426, 0.336, 0.412, 0.356, 0.383, 0.311, 0.355, 0.335, 0.281, 0.257, 0.246, 0.227,
+         0.230, None)),
+    "514-music-384-ajcc": (
+        None,
+        (3.36, 3.36, 3.29, 4.14, 3.40, 3.91, 3.08, 3.46, 3.47, 3.22, 2.44, 2.60, 2.16, 2.41, None),
+        (0.347, 0.423, 0.339, 0.409, 0.362, 0.380, 0.307, 0.362, 0.355, 0.285, 0.247, 0.242, 0.223,
+         0.229, None)),
 }
 # The race's 5.1.4 legs: G0's music and tones and G1's film, speech, sweeps and transients (the
 # gold manifest's g1_legs), at each of DEE's 5.1.4 rates, in IMMERSIVE_FLOORS' and
@@ -821,9 +853,14 @@ def score_acpl_leg(args, name, source_name, original, decoded, trace, failures, 
                                failures, pins, table=table)
 
 
-# The top pairs A-CPL rebuilds in the immersive element's full decoding, by score_ac4_decode.py's
-# IMMERSIVE_CHANNELS: (Tfl, Tbl) and (Tfr, Tbr).
-IMMERSIVE_TOP_PAIRS = ((6, 8), (7, 9))
+# The pairs whose level difference and correlation the parametric modes' parameters shape, by
+# score_ac4_decode.py's IMMERSIVE_CHANNELS: the top pairs A-CPL rebuilds, (Tfl, Tbl) and (Tfr,
+# Tbr); and A-JCC's fronts (L, Tfl) and (R, Tfr) and backs (Ls, Tbl) and (Rs, Tbr).
+IMMERSIVE_BAND_PAIRS = {
+    "ASPX_ACPL_1": ((6, 8), (7, 9)),
+    "ASPX_ACPL_2": ((6, 8), (7, 9)),
+    "ASPX_AJCC": ((0, 6), (1, 7), (4, 8), (5, 9)),
+}
 # The fewest tiles above the floor an immersive leg's tile distance is taken over. The programme
 # fixtures hold next to nothing above 13 kHz: from 384 kbps, where A-SPX starts at 12.75 kHz, a
 # music leg has one tile above the floor, whose distance says nothing of the tiles.
@@ -840,10 +877,10 @@ def larger(a, b):
 def immersive_extras(source_name, source, full):
     """What an immersive leg's full decoding measures besides score_immersive()'s checks, from its
     dict `full`: (the A-SPX tiles' mean absolute distance from the source's energy in dB, or None
-    in SCPL and where fewer than IMMERSIVE_TILES_MIN tiles are above the floor; the top pairs'
-    level difference and correlation distances per A-CPL parameter band, the larger of the two
-    pairs', or None outside the A-CPL modes, on a tone leg and where no band has frames to
-    score)."""
+    in SCPL and where fewer than IMMERSIVE_TILES_MIN tiles are above the floor; the level
+    difference and correlation distances per A-CPL parameter band of IMMERSIVE_BAND_PAIRS' pairs,
+    the largest of the pairs', or None outside the parametric modes, on a tone leg and where no
+    band has frames to score)."""
     decoding.RATE = 48000
     tiles = None
     if full["mode"] != "SCPL" and full["found"] is not None:
@@ -856,16 +893,16 @@ def immersive_extras(source_name, source, full):
         if len(differences) >= IMMERSIVE_TILES_MIN:
             tiles = float(np.mean(np.abs(differences)))
     ild = rho = None
-    if full["mode"] in ("ASPX_ACPL_1", "ASPX_ACPL_2") and not source_name.startswith("tones"):
+    if full["mode"] in IMMERSIVE_BAND_PAIRS and not source_name.startswith("tones"):
         _, ref, out = decoding.align(source, full["decoded"])
-        for a, b in IMMERSIVE_TOP_PAIRS:
+        for a, b in IMMERSIVE_BAND_PAIRS[full["mode"]]:
             pair_ild, pair_rho = decoding.acpl_band_scores(ref[:, [a, b]], out[:, [a, b]])
             if ild is None:
                 ild, rho = pair_ild, pair_rho
             else:
                 ild = [larger(x, y) for x, y in zip(ild, pair_ild, strict=True)]
                 rho = [larger(x, y) for x, y in zip(rho, pair_rho, strict=True)]
-        # A source whose top pairs never sound together in a frame (the transients) leaves no
+        # A source whose pairs never sound together in a frame (the transients' tops) leaves no
         # band to score.
         if all(v is None for v in ild):
             ild = rho = None
@@ -894,11 +931,11 @@ def extra_failures(label, extras, pin):
             failures.append(f"{label} band {band}: frames to score where none were pinned, or "
                             "none where some were")
         elif value is not None and value > ceiling:
-            failures.append(f"{label} band {band}: the top pairs' level difference {value:.2f} dB "
+            failures.append(f"{label} band {band}: the pairs' level difference {value:.2f} dB "
                             f"from the source's, above its ceiling {ceiling}")
     for band, (value, ceiling) in enumerate(zip(rho, rho_ceilings, strict=True)):
         if value is not None and ceiling is not None and value > ceiling:
-            failures.append(f"{label} band {band}: the top pairs' correlation {value:.3f} from the "
+            failures.append(f"{label} band {band}: the pairs' correlation {value:.3f} from the "
                             f"source's, above its ceiling {ceiling}")
     return failures
 
@@ -932,7 +969,7 @@ def extra_text(extras):
     if ild is not None:
         worst_ild = max(v for v in ild if v is not None)
         worst_rho = max(v for v in rho if v is not None)
-        cells.append(f"top pairs' ILD {worst_ild:.2f} dB, rho {worst_rho:.3f} (worst band)")
+        cells.append(f"pairs' ILD {worst_ild:.2f} dB, rho {worst_rho:.3f} (worst band)")
     return "  ".join(cells)
 
 
@@ -1236,7 +1273,7 @@ def immersive_gaps(ours, dee):
             def mean(values):
                 return float(np.mean([v for v in values if v is not None]))
 
-            text += (f", top pairs' ILD mean {mean(o_extras[1]) - mean(d_extras[1]):+.2f} dB"
+            text += (f", pairs' ILD mean {mean(o_extras[1]) - mean(d_extras[1]):+.2f} dB"
                      f", rho mean {mean(o_extras[2]) - mean(d_extras[2]):+.3f}")
     return text
 

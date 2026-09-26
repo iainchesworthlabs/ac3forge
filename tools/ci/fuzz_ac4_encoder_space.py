@@ -12,8 +12,9 @@ its per-block plan, the `cliff` profile and the correlation modes serve every
 codec. The configuration space is this encoder's: mono, stereo, 5.0 and 5.1,
 7.0 and 7.1 in the three 7.X layouts, and in a case in eight the immersive
 layouts, 5.0.4 and 5.1.4, and 7.0.4 and 7.1.4 with experimental=back-pair, in
-the codec mode the rate picks or SCPL, ASPX_SCPL, ASPX_ACPL_2 or (with
-experimental=acpl) ASPX_ACPL_1 forced, with the height downmix now and then;
+the codec mode the rate picks or SCPL, ASPX_SCPL, ASPX_ACPL_2, ASPX_ACPL_1
+(with experimental=acpl) or ASPX_AJCC (with experimental=ajcc) forced, with the
+height downmix now and then;
 48 kHz at every frame rate of Part 1
 Table 83 or 44.1 kHz at the native one, a rate from 8 kbps up (20 in 5.X and
 7.X), constant, average or variable, the codec mode the rate picks, SIMPLE or
@@ -148,15 +149,17 @@ SEVEN_X = ["7x-back", "7x-wide", "7x-top-front"]
 # The immersive layouts (phase E8), a case in eight, drawn from a generator of their own so that
 # the other cases, the regression seeds' among them, draw as they did: 5.0.4 and 5.1.4, and 7.0.4
 # and 7.1.4 with experimental=back-pair; the codec modes a case may force besides the one the rate
-# picks, ASPX_ACPL_1 with experimental=acpl; and the height downmix's routes and gains. The least
-# rate each codec mode holds, from silence at 48 kHz (--check-envelope measures them), "auto"
-# being ASPX_ACPL_2's, which the lowest rates take.
+# picks, ASPX_ACPL_1 with experimental=acpl and ASPX_AJCC with experimental=ajcc; and the height
+# downmix's routes and gains. The least rate each codec mode holds, from silence at 48 kHz
+# (--check-envelope measures them), "auto" being ASPX_ACPL_2's, which the lowest rates take.
 IMMERSIVE_SHARE = 0.125
 IMMERSIVE_SALT = 0xE8E8E8E8E8E8E8E8
 IMMERSIVE_CHANNELS = [9, 10, 10, 11, 12]
-IMMERSIVE_MODES = ["scpl", "aspx-scpl", "aspx-acpl-2", "aspx-acpl-1"]
+IMMERSIVE_MODES = ["scpl", "aspx-scpl", "aspx-acpl-2", "aspx-acpl-1", "aspx-ajcc"]
 IMMERSIVE_LOWEST_KBPS = {"auto": 27, "scpl": 12, "aspx-scpl": 33, "aspx-acpl-2": 27,
-                         "aspx-acpl-1": 28}
+                         "aspx-acpl-1": 28, "aspx-ajcc": 24}
+# The experimental tool each immersive codec mode needs, where it needs one.
+IMMERSIVE_TOOLS = {"aspx-acpl-1": "acpl", "aspx-ajcc": "ajcc"}
 HEIGHT_DOWNMIXES = ["front", "surround", "front-and-surround"]
 HEIGHT_GAINS = ["0", "-1.5", "-3", "-4.5", "-6", "-9", "-12", "off"]
 # The encoder's delay (a frame and a half) and the decoder's at frame_rate_index 13, which the
@@ -357,8 +360,8 @@ def draw_case(seed):
         if immersive_rng.random() < 0.4:
             mode = immersive_rng.choice(IMMERSIVE_MODES)
             options.append(f"codec-mode={mode}")
-            if mode == "aspx-acpl-1":
-                tools.append("acpl")
+            if mode in IMMERSIVE_TOOLS:
+                tools.append(IMMERSIVE_TOOLS[mode])
         if LOWEST_KBPS <= bitrate < IMMERSIVE_LOWEST_KBPS[mode]:
             bitrate = IMMERSIVE_LOWEST_KBPS[mode]
         if immersive_rng.random() < 0.3:
@@ -978,8 +981,8 @@ def check_envelope(cli):
             layouts.append((channels, [f"codec-mode={mode}", "experimental=acpl"]))
     for channels in (9, 10, 11, 12):
         for mode in IMMERSIVE_LOWEST_KBPS:
-            tools = (["acpl"] if mode == "aspx-acpl-1" else []) + (["back-pair"]
-                                                                   if channels > 10 else [])
+            tools = ([IMMERSIVE_TOOLS[mode]] if mode in IMMERSIVE_TOOLS else []) + (
+                ["back-pair"] if channels > 10 else [])
             layouts.append((channels, ([] if mode == "auto" else [f"codec-mode={mode}"])
                             + ([f"experimental={','.join(tools)}"] if tools else [])))
     with tempfile.TemporaryDirectory(prefix="ac4envelope_") as tmp:

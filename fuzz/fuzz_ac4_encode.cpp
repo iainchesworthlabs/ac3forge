@@ -138,7 +138,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // the immersive layouts, 5.0.4 and 5.1.4, or with either of those bits
     // 7.0.4 and 7.1.4 with the back pair; the bit over those asks for the
     // experimental coding configurations (which the immersive layouts refuse),
-    // and the one over that for the experimental A-CPL modes.
+    // the one over that for the experimental A-CPL modes, and the top bit for
+    // A-JCC.
     constexpr std::array<ac4::AdditionalPair, 4> kPairs = {ac4::AdditionalPair::kNone, ac4::AdditionalPair::kBack,
                                                            ac4::AdditionalPair::kWide, ac4::AdditionalPair::kTopFront};
     const std::uint8_t layout = take.byte();
@@ -164,6 +165,7 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     }
     config.experimental.coding_configs = (layout & 0x20) != 0;
     config.experimental.acpl = (layout & 0x40) != 0;
+    config.experimental.ajcc = (layout & 0x80) != 0;
     // The sample rate byte's low bit; the two over it name the A-CPL mode.
     const std::uint8_t rate = take.byte();
     config.sample_rate_hz = (rate & 1) != 0 ? 44100 : 48000;
@@ -172,8 +174,8 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     // The interval takes the low five bits of its byte and dialnorm seven of
     // its; the bits over choose the codec mode, the rate's, either forced or an
     // A-CPL mode (in the immersive layouts SCPL or ASPX_SCPL for the forced
-    // two, and ASPX_ACPL_3, which they refuse, beside ASPX_ACPL_1 and 2), and
-    // the experimental A-SPX tools.
+    // two, and ASPX_ACPL_3, which they refuse, beside ASPX_ACPL_1 and 2 and
+    // ASPX_AJCC), and the experimental A-SPX tools.
     const std::uint8_t interval = take.byte();
     config.iframe_interval = 1 + (interval % 32);
     constexpr std::array<ac4::CodecMode, 3> kModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kSimple,
@@ -182,10 +184,15 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
                                                           ac4::CodecMode::kAspxAcpl3, ac4::CodecMode::kAspxAcpl2};
     constexpr std::array<ac4::CodecMode, 3> kImmersiveModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kScpl,
                                                                ac4::CodecMode::kAspxScpl};
+    constexpr std::array<ac4::CodecMode, 4> kImmersiveParametric = {
+        ac4::CodecMode::kAspxAcpl1, ac4::CodecMode::kAspxAcpl2, ac4::CodecMode::kAspxAcpl3,
+        ac4::CodecMode::kAspxAjcc};
     const bool immersive = config.channels > 8;
     const auto mode = static_cast<std::size_t>((interval >> 5) & 3);
+    const auto parametric = static_cast<std::size_t>((rate >> 1) & 3);
     config.codec_mode = mode < kModes.size() ? (immersive ? kImmersiveModes[mode] : kModes[mode])
-                                             : kAcplModes[static_cast<std::size_t>((rate >> 1) & 3)];
+                                             : (immersive ? kImmersiveParametric[parametric]
+                                                          : kAcplModes[parametric]);
     const std::uint8_t dialnorm = take.byte();
     config.dialnorm_db = -static_cast<double>(dialnorm % 128) / 4.0;
     config.experimental.aspx_balance = (dialnorm & 0x80) != 0;

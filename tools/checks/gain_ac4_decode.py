@@ -50,8 +50,9 @@ phase G0's local gold set in DIR (DIR/streams/<leg>/dee.ac4, DIR/gold-manifest.j
 runs in CI, and with --g1 the G1 legs G1_LEGS names besides. --encoder checks streams
 `ac3cli ac4-encode` writes from tones here, a leg for each metadata option the output processing
 reads (ENCODER_LEGS), at several frame rates (planning/ac4.md, phase E5), and 5.1.4 in each of the
-encoder's immersive codec modes with each height downmix, whose renders are held to Part 2's
-channel renderer with the custom downmix data the stream sends (phase E8).
+encoder's immersive codec modes, the experimental ASPX_AJCC among them, with each height downmix,
+whose renders are held to Part 2's channel renderer with the custom downmix data the stream sends
+(phase E8).
 
 Usage:
     python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
@@ -131,6 +132,9 @@ ENCODER_LEGS = (
     ("enc-5.1.4-768-height-both", 10, 768, ("height-downmix=front-and-surround",
                                             "height-gain=off", "lorocmixlev=-1.5",
                                             "lorosurmixlev=-4.5"), None),
+    # The experimental ASPX_AJCC, whose core decoding A-JCC's own module makes.
+    ("enc-5.1.4-256-ajcc", 10, 256, ("codec-mode=aspx-ajcc", "experimental=ajcc",
+                                     "height-downmix=surround", "height-gain=-6"), None),
 )
 # Each channel's tone, under Table 173's last dialogue enhancement band (subband 41, 15.4 kHz) and
 # the LFE's under 140 Hz, 20 dB under full scale, for four seconds.

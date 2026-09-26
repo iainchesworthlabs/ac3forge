@@ -197,9 +197,11 @@ class DrawCase(unittest.TestCase):
                      for t in o.split("=", 1)[1].split(",")]
             modes = [o.split("=", 1)[1] for o in case.options if o.startswith("codec-mode=")]
             # The back pair with eleven and twelve channels alone; ASPX_ACPL_1 with
-            # experimental=acpl; none of what the immersive element refuses.
+            # experimental=acpl and ASPX_AJCC with experimental=ajcc; none of what the
+            # immersive element refuses.
             self.assertEqual("back-pair" in tools, case.channels > 10)
             self.assertEqual("acpl" in tools, modes == ["aspx-acpl-1"])
+            self.assertEqual("ajcc" in tools, modes == ["aspx-ajcc"])
             self.assertFalse(any(t in tools for t in ("coding-configs", *fa4.SEVEN_X)))
             self.assertFalse(any(t.startswith("drc-gains-") for t in tools))
             self.assertTrue(set(modes) <= set(fa4.IMMERSIVE_MODES))
