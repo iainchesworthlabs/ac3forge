@@ -156,7 +156,8 @@ BitWriter write_presentation_substream(const PresentationSubstreamFields& f) {
     // configured, a drc_frame(), the mixing values, and custom_dmx_data() and
     // loud_corr() (6.2.9.2, 6.2.9.1), which read nothing for a mono or stereo
     // presentation, and for the others the stereo coefficients and their
-    // corrections in I-frames where they are configured.
+    // corrections in I-frames where they are configured, with no custom
+    // downmix data or corrections for the immersive outputs.
     BitWriter w = BitWriter::buffered();
     if (f.alternative != nullptr) {
         write_alternative(w, *f.alternative);

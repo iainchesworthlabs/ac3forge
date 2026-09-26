@@ -15,10 +15,10 @@
 // (toc_writer.hpp): audio substreams, presentation substreams and EMDF payload
 // substreams, each written to the size the frame gives it, and the fitting
 // that makes a frame of several substreams exactly as long as a constant rate
-// asks. The encoder writes its frames with these; write_frame() is the
-// frame of one presentation of one substream, which the decoder's tests
-// build frames of the channel modes of Part 1 Table 88, and of Part 2's
-// 7.X.4 modes, with.
+// asks. The encoder writes its frames with these; write_frame() is the frame
+// of one presentation of one substream, with which the decoder's tests build
+// frames of the other channel modes of Part 1 Table 88 and of Part 2's 7.X.4
+// modes.
 
 namespace ac4::detail {
 
@@ -85,7 +85,9 @@ struct PresentationSubstreamFields {
     const DrcCodes* drc = nullptr;
     std::span<const DrcModeGains> drc_gains;
     PresentationMixCodes mix{};
-    PresentationChannels channels{};  // pres_ch_mode and the rest (clause 6.3.3.1.27)
+    // pres_ch_mode (clause 6.3.3.1.27), its core and top pairs, and
+    // b_pres_has_lfe.
+    PresentationChannels channels{};
     const DownmixCodes* downmix = nullptr;
 };
 
