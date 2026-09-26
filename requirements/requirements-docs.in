@@ -22,4 +22,4 @@ zensical
 pymdown-extensions>=12.0.1
 # Transitive via mkdocs/requests; pin directly to keep it above the idna.encode() DoS
 # (CVE-2026-45409 / GHSA-65pc-fj4g-8rjx).
-idna>=3.19
+idna>=3.20
