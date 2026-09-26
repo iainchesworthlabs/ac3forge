@@ -162,7 +162,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 | Hearth desktop app: user guide and screenshots | The app has an index page and sink guides, and no guide of its own; the Hearth images in the repository are design mockups. `ac3hearth --shot <png> --page <name>` captures each page, but it starts network discovery, which on Windows asks to register a firewall rule, so a capture run has to expect that prompt. **M** | [Hearth index](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/index.md) |
 | Forge GUI screenshots of live capture | Three of the 17 screenshots (`format-vbr`, `live-session-idle`, `live-session-vbr-note`) predate the header's Inspect objects, Open stream and About buttons; taking them again needs an open capture device. **S** | [Live capture](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/forge/gui/live-session.md) |
 | Program names | `ac3cli`, `ac3gui`, `ac3hearth` and `ac3crucible` become `forge`, `forge-gui`, `hearth` and `crucible`; the library, the packages and the C API keep `ac3forge`, and the old names keep working for a stated period. **L** | [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md#n1-the-names) |
-| AC-4 in the published descriptions | The GitHub repository description names AC-3 and E-AC-3 only, and the repository has no topics. The CLI's banner, man page and exit-code text (`apps/cli/usage.cpp`, quoted in `docs/forge/cli/commands.md`) name AC-3 and E-AC-3 only. **S** | — |
+| AC-4 in the CLI's banner and man page | The banner, the man page and the exit-code text (`apps/cli/usage.cpp`, quoted in `docs/forge/cli/commands.md`) name AC-3 and E-AC-3 only. **S** | — |
 
 ---
 
