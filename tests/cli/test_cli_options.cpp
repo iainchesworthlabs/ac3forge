@@ -262,7 +262,7 @@ TEST_CASE("a malformed coding, decoding or routing option is refused with its ow
         {"conceal=hide",
          "conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
          "silence) or 'off' (the default) (got 'conceal=hide')"},
-        {"codec=mp3", "codec must be ac3 or eac3 (got 'codec=mp3')"},
+        {"codec=mp3", "codec must be ac3, eac3 or ac4 (got 'codec=mp3')"},
         {"src=", "src= needs a file path"},
         {"map=", "map= needs a spec (<source>.<channel>"},
         {"fmp4-window=x", "fmp4-window= needs a segment count (0 keeps every segment)"},

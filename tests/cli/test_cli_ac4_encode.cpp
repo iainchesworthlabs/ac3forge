@@ -703,11 +703,12 @@ TEST_CASE("ac4-encode gives the 7.X pair to a 7.X substream beside a mono one", 
           std::string::npos);
 }
 
-TEST_CASE("fmp4 refuses an AC-4 stream whose presentations keep CMAF's rules as not yet fragmented",
+TEST_CASE("fmp4 fragments an AC-4 stream whose presentations keep CMAF's rules",
           "[cli][ac4]") {
     // One presentation with its presentation_id: what Part 2 Annex H.1.2.1
-    // asks. Fragmenting AC-4 is planning/ac4.md's phase I1; the refusal for a
-    // configuration 6 presentation is in the EMDF section above.
+    // asks. tests/cli/test_cli_ac4.cpp checks the fragments themselves
+    // (planning/ac4.md's phase I1); the refusal for a configuration 6
+    // presentation is in the EMDF section above.
     const auto dir = scratch_dir();
     const auto log = dir / "ac4_fmp4.log";
     const fs::path out = dir / "ac4_fmp4.ac4";
@@ -715,7 +716,6 @@ TEST_CASE("fmp4 refuses an AC-4 stream whose presentations keep CMAF's rules as 
                         quoted(out) + " 128",
                     log) == 0);
     const fs::path fragments = dir / "ac4_fmp4";
-    CHECK(run_cli("fmp4 " + quoted(out) + " " + quoted(fragments), log) == 2);
-    CHECK(read_log(log).find("fmp4 does not fragment AC-4 yet") != std::string::npos);
-    CHECK_FALSE(fs::exists(fragments / "init.mp4"));
+    CHECK(run_cli("fmp4 " + quoted(out) + " " + quoted(fragments), log) == 0);
+    CHECK(fs::exists(fragments / "init.mp4"));
 }
