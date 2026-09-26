@@ -1930,6 +1930,31 @@ meet E1's and E2's checks; the race at 5.1 and 96, 128 and 144 kbps.
   lacks, except mono; 3.0 carries only a dialogue enhancement signal or the dialogue of a music and
   effects presentation; and CMAF's limits hold: 64 presentations at most, a `presentation_id` in
   every sample and one table of contents configuration throughout.
+- E6 found the text leaving a writer these choices (`src/ac4enc/ERRATA.md`, "Presentations"): the
+  tracks `md_compat` counts, every channel but the LFE of every substream a presentation names, the
+  dialogue enhancement substream's included, which DEE's levels agree with (0 in stereo, 1 in 5.1, 2
+  in 5.1.4, and `presentation_id` 0 on their one presentation, which E1 to E5 left out); a name sent
+  whole, at most 31 bytes; one target for an alternative presentation of channel-coded substreams,
+  whose `alt_data_set_index` has no object metadata to pick; the substreams' order, presentation
+  substreams, then audio, then EMDF payloads, which librempeg depends on; and what a hybrid method's
+  waveform carries: each processed channel's dialogue, the Mid's sum, or the dialogue projected on its
+  panning. A configuration 6 presentation has no field for the `presentation_id` CMAF asks of every
+  presentation, and DEE's muxer warns of it.
+- MediaInfo reads the encoder's tables of contents as configured, but reads no audio substream of a
+  stream with a configuration 6 presentation, gives no language to a presentation whose one group is
+  associated audio, and frames the EMDF payloads substream without detailing it. DEE's MP4 muxer
+  refuses a stream of more than one presentation, and on the 15 presentations of the broadcast stream
+  it hangs. librempeg decodes a presentation's first group alone, as D7 found, is silent on 15
+  presentations over 22 substreams, and refused a frame whose EMDF payloads substream came before the
+  audio.
+- In the race against G1's legs, which DEE encoded one at a time and D7's multiplexer puts into the
+  same presentations, the encoder's SNR is within 0.1 dB of DEE's or above it with music at 128 kbps
+  and dialogue and associated audio at 64, and 5.5 to 6.3 dB above it at 192 and 128 kbps, ViSQOL
+  within 0.03 of DEE's throughout.
+- Left for E7: the options of `ac3cli ac4-encode`, and the MP4's `dac4`, which `ac4::build_dac4()`
+  writes whole only for a presentation of one substream (Annex E.10 describes the others); and for
+  later, transmitted DRC gains computed from a presentation's mix, where E6 takes the main
+  substream's input.
 
 **Exit:** the decoder's D7 selection and mixing on the encoder's streams give the configured
 presentations, measured with one tone per substream; MediaInfo's trace lists presentations, names,

@@ -1420,6 +1420,32 @@ The sections below contain the complete change list and fixes.
   renderer Hearth plays E-AC-3's objects with (`apps/common/ac4_object_render.hpp`), 7.1.4 by
   default, and a test holds each speaker to the objects' gains for their positions. librempeg
   refuses object coding; `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 encoder writes several substreams and the presentations of Part 2 Table 53** (phase E6
+  of `planning/ac4.md`). `ac4::EncoderConfig::substreams` codes each substream from its own input
+  channels, at its share of the rate, in a substream group of its own with its content classifier
+  and language, and `presentations` plays them together: music and effects with dialogue, main with
+  dialogue enhancement, whose hybrid methods (`DialogueConfig::hybrid`) send the dialogue's waveform in
+  a substream of its own, main with associated audio, music and effects with both, main with both,
+  roles by content classifier, and EMDF payloads alone. Each presentation carries its
+  `presentation_id`, the least `md_compat` its tracks need (Table 55), an alternative presentation's
+  name, its dialnorm, loudness values, DRC and downmix, the substream groups' gains and the associated
+  audio's scaling and pan; a dialogue substream carries its g_dialog_max and pans, and EMDF payloads
+  pass through in a presentation's EMDF payloads substream or in a substream's `metadata()`.
+  `create()` refuses what Part 1 forbids, dialogue or associated audio with a channel the main audio
+  lacks but for mono, and 3.0 anywhere but a dialogue enhancement signal or the dialogue of a music
+  and effects presentation (3.0 is experimental), and what CMAF's Annex H.1.2 does, more than 64
+  presentations or a `presentation_id` twice. A stream of one presentation now carries
+  `presentation_id` 0 and its layout's level, 1 in 5.X and 2 in 7.X, as DEE's streams do, where E1 to
+  E5 wrote level 0 and no `presentation_id`. Through D7's selection and mixing every presentation of
+  the committed streams comes out as configured, one tone per substream, to 0.01 dB
+  (`tests/ac4enc/test_ac4enc_presentations.cpp`, and `mix_ac4_decode.py` in CI); MediaInfo lists the
+  presentations, groups, names, languages and levels as configured; against DEE's G1 legs multiplexed
+  into the same presentations, the encoder's SNR is within 0.1 dB of DEE's or above it at 128 kbps and
+  5.5 to 6.3 dB above at 192 (`tools/checks/race_ac4_presentations.py`). The substreams go
+  presentation substreams first, then audio, then EMDF payloads, since librempeg takes the substream
+  after the presentation substreams for the first group's audio. `fuzz_ac4_encode` draws the
+  substreams and presentations; `ac3cli ac4-encode` takes them in E7. `src/ac4enc/ERRATA.md` records
+  the readings.
 
 **Browser (WASM)**
 
