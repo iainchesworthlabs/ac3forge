@@ -638,6 +638,43 @@ TEST_CASE("alsa passthrough: iec958 and hdmi names carry the non-audio channel s
     }
 }
 
+TEST_CASE("alsa passthrough: AC-4 bursts of either length go out on the links AC-3 and E-AC-3 use",
+          "[audio][alsa-null][concurrency]") {
+    const NullDevices devices;
+    using ac3::audio::BitstreamFormat;
+    {
+        // 29.97 fps: IEC 61937-14 Table 6's bursts, 1602 and 1601 IEC 60958
+        // frames long, one after the other in the queue.
+        ac3::audio::PassthroughSink sink;
+        REQUIRE(sink.start("iec958:CARD=Test,DEV=0", 48000, BitstreamFormat::kAc4).has_value());
+        const std::vector<std::byte> longer(std::size_t{1602} * 4);
+        const std::vector<std::byte> shorter(std::size_t{1601} * 4);
+        for (int i = 0; i < 10; ++i) {
+            REQUIRE(eventually([&] { return sink.submit(i % 2 == 0 ? longer : shorter); }));
+        }
+        // Not a whole number of link frames, and longer than any AC-4 period.
+        CHECK_FALSE(sink.submit(std::vector<std::byte>(std::size_t{1601} * 4 + 2)));
+        CHECK_FALSE(sink.submit(std::vector<std::byte>(std::size_t{2049} * 4)));
+        CHECK(eventually([&] {
+            const auto stats = sink.stats();
+            return stats.bursts_rendered >= stats.bursts_submitted;
+        }));
+        CHECK(sink.stats().bursts_submitted == 10);
+    }
+    {
+        // HBR4 runs its link at four times the content rate, as E-AC-3 does.
+        ac3::audio::PassthroughSink sink;
+        CHECK(sink.start("hdmi:CARD=Test,DEV=0", 48000, BitstreamFormat::kAc4Hbr4).has_value());
+    }
+    {
+        // HBR16 needs the eight-channel link, which this backend does not open.
+        ac3::audio::PassthroughSink sink;
+        const auto started = sink.start("hdmi:CARD=Test,DEV=0", 48000, BitstreamFormat::kAc4Hbr16);
+        REQUIRE_FALSE(started.has_value());
+        CHECK(started.error() == ac3::audio::PassthroughError::kUnsupportedFormat);
+    }
+}
+
 TEST_CASE("alsa passthrough: a device that is missing or will not take the carrier is refused",
           "[audio][alsa-null][concurrency]") {
     const NullDevices devices;

@@ -1,7 +1,10 @@
-# Scans vcpkg.json against the OSV vulnerability database. Right now that's
-# just Catch2 (test-only - see vcpkg.json), but this scales as real runtime
-# dependencies get added, since Dependabot has no vcpkg ecosystem the way it
-# does npm/pip/github-actions (see .github/dependabot.yml).
+# Scans the checkout against the OSV vulnerability database. OSV-Scanner reads
+# the lockfiles and requirements files it recognises (npm, PyPI, Gradle, NuGet,
+# Cargo). As of v2.6.0 it reads none of vcpkg.json, cmake/Fmt.cmake or
+# packaging/conan/conanfile.py, so the C++ dependencies ({fmt}, Catch2 and the
+# packages behind the profiling, adm and hearth features) get no alerts from
+# this workflow. Dependabot has no vcpkg ecosystem to cover them either (see
+# .github/dependabot.yml), so they are bumped by hand.
 #
 # Visible-only by design (fail-on-vuln: false): findings land in the
 # Security > Code scanning tab for both the PR and scheduled scans, but don't

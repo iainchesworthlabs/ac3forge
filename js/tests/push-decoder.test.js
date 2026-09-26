@@ -34,14 +34,14 @@ test("scanStream keeps the native error, and names one when the native side gave
 
 test("the constructor defaults to no fold, no dialnorm and no LFE mix", () => {
   const { module, log } = makeFakeModule();
-  new PushDecoder(module);
+  new PushDecoder(module).close();
   assert.deepEqual(log.constructed, [{ foldTarget: DownmixTarget.AsCoded, applyDialnorm: false, mixLfe: false }]);
 });
 
 test("the constructor forwards every fold option it is given", () => {
   const { module, log } = makeFakeModule();
-  new PushDecoder(module, { target: DownmixTarget.LtRt, applyDialnorm: true, mixLfe: true });
-  new PushDecoder(module, { target: DownmixTarget.Mono });
+  new PushDecoder(module, { target: DownmixTarget.LtRt, applyDialnorm: true, mixLfe: true }).close();
+  new PushDecoder(module, { target: DownmixTarget.Mono }).close();
   assert.deepEqual(log.constructed, [
     { foldTarget: DownmixTarget.LtRt, applyDialnorm: true, mixLfe: true },
     { foldTarget: DownmixTarget.Mono, applyDialnorm: false, mixLfe: false },

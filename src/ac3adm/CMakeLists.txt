@@ -12,8 +12,8 @@
 # of uninitialised data which may be triggered by reading malformed files",
 # plus real hardening of its own on top.
 #
-# This is the one library in ac3forge that is NOT zero-third-party-dependency
-# (docs/library/index.md's stated principle for everywhere else): libadm
+# The codec and container libraries take no third-party library beyond {fmt}
+# (docs/library/index.md); this one has a dependency of its own: libadm
 # needs several Boost header-only libraries (Optional, Variant, Range,
 # Iterator, Functional, Format, Integer, Rational - see vcpkg.json's "adm"
 # feature comment for how this exact list was confirmed, rather than guessed,

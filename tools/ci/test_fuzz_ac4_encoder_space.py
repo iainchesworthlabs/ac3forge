@@ -216,6 +216,26 @@ class RunCase(unittest.TestCase):
         self.assertEqual((result.status, run.call_count), ("fail", 1))
         self.assertIn("exit 1", result.detail)
 
+    def test_a_retry_refused_for_the_loudness_is_a_refusal_where_the_case_measures(self):
+        # 8 kbps stereo is below the rate's floor; at the retry's rate the encoder gets as far as
+        # measuring input BS.1770's gates leave nothing of (CI, 2026-09-26, case
+        # 10507227253340255992).
+        case = self.case(8)
+
+        def run(argv):
+            if int(str(argv[4])) == 8:
+                return completed(1, stderr=fa4.REFUSALS["rate out of range"])
+            return completed(5, stderr=fa4.REFUSALS["nothing to measure"])
+
+        for options, status in ((["dialnorm=auto"], "refused"), ([], "fail")):
+            case.options = options
+            with (
+                tempfile.TemporaryDirectory() as tmp,
+                mock.patch.object(fa4, "_run", side_effect=run),
+            ):
+                result = fa4.run_case("ac3cli", None, case, tmp)
+            self.assertEqual(result.status, status)
+
     def test_frames_that_do_not_cover_the_input_fail(self):
         # At 25 fps, 1 920 samples a frame: two frames short of the input and its lag.
         case = self.case()

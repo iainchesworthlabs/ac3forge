@@ -156,6 +156,9 @@ REFUSALS = {
 REGRESSION_SEEDS = {
     5756050987806798014: "an out-of-range rate at 44.1 kHz with another frame rate: ac3cli names "
     "the frame rate first, and the harness took only the rate's refusal",
+    10507227253340255992: "8 kbps stereo with dialnorm=auto over input BS.1770's gates leave "
+    "nothing of: refused for the rate, then at the retry's rate for the loudness, which the "
+    "harness took as a failure",
 }
 
 
@@ -508,6 +511,10 @@ def _run_case(cli, ffprobe, case, tmp):
             retry = _run([cli, "ac4-encode", wav, tmp / "retry.ac4", higher, "quiet", *options])
             if retry.returncode == 0:
                 return Result(case, "refused", "encode", "frames too small for the least frame")
+            # The rate is checked before the loudness is measured, so the retry can meet the
+            # input's own refusal.
+            if case.measures and REFUSALS["nothing to measure"] in retry.stderr:
+                return Result(case, "refused", "encode", "nothing to measure")
             return Result(
                 case,
                 "fail",

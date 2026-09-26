@@ -34,10 +34,22 @@ TEST_CASE("E-AC-3 declares its carrier at four times the content rate") {
     CHECK(carrier_rate(BitstreamFormat::kEac3, 44100) == 176400);
 }
 
+TEST_CASE("AC-4 declares its carrier at the content rate and HBR4 at four times it") {
+    // IEC 61937-14 5.3.1 and 5.3.3; the same arithmetic as ALSA's.
+    CHECK(carrier_rate(BitstreamFormat::kAc4, 48000) == 48000);
+    CHECK(carrier_rate(BitstreamFormat::kAc4, 44100) == 44100);
+    CHECK(carrier_rate(BitstreamFormat::kAc4Hbr4, 48000) == 192000);
+    // An AC-4 burst is as long as its period; the buffers are sized to the
+    // longest.
+    CHECK(burst_bytes_for(BitstreamFormat::kAc4) == 2048 * 4);
+    CHECK(burst_bytes_for(BitstreamFormat::kAc4Hbr4) == 8192 * 4);
+}
+
 TEST_CASE("the synthetic render device reports exactly what was probed") {
     const auto none = make_render_device_info(false, false, false);
     CHECK_FALSE(none.supports_ac3_passthrough);
     CHECK_FALSE(none.supports_eac3_passthrough);
+    CHECK_FALSE(none.supports_ac4_passthrough);
     CHECK_FALSE(none.supports_exclusive_pcm);
     CHECK(none.is_default);
     CHECK(none.id == "default");
@@ -46,6 +58,10 @@ TEST_CASE("the synthetic render device reports exactly what was probed") {
     CHECK_FALSE(eac3_only.supports_ac3_passthrough);
     CHECK(eac3_only.supports_eac3_passthrough);
     CHECK(eac3_only.supports_exclusive_pcm);
+
+    const auto with_ac4 = make_render_device_info(true, false, true, true);
+    CHECK(with_ac4.supports_ac4_passthrough);
+    CHECK_FALSE(with_ac4.supports_eac3_passthrough);
 }
 
 TEST_CASE("the synthetic device is always marked default") {

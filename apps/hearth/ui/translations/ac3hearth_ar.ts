@@ -1671,6 +1671,173 @@
     </message>
 </context>
 <context>
+    <name>NetworkSinkFirmware</name>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="33"/>
+        <source>Running</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="34"/>
+        <source>Other slot</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="35"/>
+        <source>This app</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="36"/>
+        <source>Mode</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="37"/>
+        <source>Trial</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="38"/>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="107"/>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="323"/>
+        <source>Update</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="39"/>
+        <source>Last update</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="40"/>
+        <source>Last crash</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="65"/>
+        <source>Firmware</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="72"/>
+        <source>Asking the sink about its firmware…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="168"/>
+        <source>Update from a file…</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="174"/>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="324"/>
+        <source>Roll back</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="180"/>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="324"/>
+        <source>Restart</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="187"/>
+        <source>An update stops what the sink plays. The sink checks the image before it writes it, restarts on it, and keeps it only once it has held healthy through its trial; otherwise it goes back to the image before by itself.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="198"/>
+        <source>Without a cable</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="203"/>
+        <source>The sink keeps its console&apos;s recent output, and the core dump of its last crash. Each opens in the browser.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="216"/>
+        <source>Recent console output</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="222"/>
+        <source>Save the core dump</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="231"/>
+        <source>Choose a firmware image</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="232"/>
+        <source>Firmware images (*.bin)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="232"/>
+        <source>All files (*)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="271"/>
+        <source>This image cannot go on %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="272"/>
+        <source>Update %1?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="274"/>
+        <source>Roll %1 back?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="275"/>
+        <source>Restart %1?</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="292"/>
+        <source>%1: %2.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="293"/>
+        <source>%1 goes onto the sink in place of %2. It stops playing while it takes the image.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="298"/>
+        <source>The sink gives up the trial of the image it runs, and restarts into the image before it.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="300"/>
+        <source>The sink restarts into %1, the image in its other slot, which then has a trial of its own.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="303"/>
+        <source>The sink stops playing and starts again on the image it runs.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="316"/>
+        <source>Close</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkFirmware.qml" line="316"/>
+        <source>Cancel</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>NetworkSinkInfo</name>
     <message>
         <location filename="../qml/NetworkSinkInfo.qml" line="23"/>
@@ -1871,7 +2038,7 @@
     </message>
     <message>
         <location filename="../qml/NetworkSinkSettings.qml" line="56"/>
-        <source>Speakers or decoder</source>
+        <source>Speakers, decoder or firmware</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1885,13 +2052,23 @@
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../qml/NetworkSinkSettings.qml" line="69"/>
-        <source>Changes reach the sink and take effect at its next burst.</source>
+        <location filename="../qml/NetworkSinkSettings.qml" line="61"/>
+        <source>Firmware</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
         <location filename="../qml/NetworkSinkSettings.qml" line="70"/>
+        <source>Changes reach the sink and take effect at its next burst.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkSettings.qml" line="72"/>
         <source>The decoder settings this sink accepts, as it lists them. Changes take effect at its next burst.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../qml/NetworkSinkSettings.qml" line="74"/>
+        <source>What the sink runs, as it reports it over its own web server, and an update sent the way its page sends one.</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
@@ -2710,96 +2887,96 @@ Drop AC-3 or E-AC-3 files or a folder here.</source>
 <context>
     <name>QObject</name>
     <message>
-        <location filename="../network_controller.cpp" line="331"/>
+        <location filename="../network_controller.cpp" line="336"/>
         <source>not sent: the sink refused the settings.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="332"/>
+        <location filename="../network_controller.cpp" line="337"/>
         <source>not sent: the sink does not take settings from Hearth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="334"/>
+        <location filename="../network_controller.cpp" line="339"/>
         <source>The sink does not take settings from Hearth.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="338"/>
+        <location filename="../network_controller.cpp" line="343"/>
         <source>revision %1 sent, not reported yet</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="340"/>
+        <location filename="../network_controller.cpp" line="345"/>
         <source>revision %1 refused: %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="344"/>
+        <location filename="../network_controller.cpp" line="349"/>
         <source>revision %1 · applied</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="346"/>
+        <location filename="../network_controller.cpp" line="351"/>
         <source>revision %1 sent · sink on %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="351"/>
+        <location filename="../network_controller.cpp" line="356"/>
         <source>Nothing playing.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="352"/>
-        <location filename="../network_controller.cpp" line="365"/>
+        <location filename="../network_controller.cpp" line="357"/>
+        <location filename="../network_controller.cpp" line="370"/>
         <source>none</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="353"/>
-        <location filename="../network_controller.cpp" line="394"/>
-        <location filename="../network_controller.cpp" line="400"/>
-        <location filename="../network_controller.cpp" line="402"/>
+        <location filename="../network_controller.cpp" line="358"/>
+        <location filename="../network_controller.cpp" line="399"/>
+        <location filename="../network_controller.cpp" line="405"/>
+        <location filename="../network_controller.cpp" line="407"/>
         <source>not reported</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="358"/>
+        <location filename="../network_controller.cpp" line="363"/>
         <source>%1 · %2%3 · %4 substream%5</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="366"/>
+        <location filename="../network_controller.cpp" line="371"/>
         <source>%1 carried · %2</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="367"/>
+        <location filename="../network_controller.cpp" line="372"/>
         <source>placed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="368"/>
+        <location filename="../network_controller.cpp" line="373"/>
         <source>not placed</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="369"/>
+        <location filename="../network_controller.cpp" line="374"/>
         <source>dialnorm %1</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="376"/>
+        <location filename="../network_controller.cpp" line="381"/>
         <source>%1 bursts</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="377"/>
+        <location filename="../network_controller.cpp" line="382"/>
         <source>%1 underruns · %2 late · %3 dropped · %4 invalid</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
-        <location filename="../network_controller.cpp" line="393"/>
+        <location filename="../network_controller.cpp" line="398"/>
         <source>%1-bit · %2 slots</source>
         <translation type="unfinished"></translation>
     </message>
@@ -3542,6 +3719,19 @@ Drop AC-3 or E-AC-3 files or a folder here.</source>
     <message>
         <location filename="../hearth_controller.cpp" line="1812"/>
         <source>could not write %1: %2</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>ac3::hearth::ui::NetworkController</name>
+    <message>
+        <location filename="../network_controller.cpp" line="865"/>
+        <source>it could not be read: %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../network_controller.cpp" line="868"/>
+        <source>it is %1 bytes, more than any sink&apos;s app slot holds</source>
         <translation type="unfinished"></translation>
     </message>
 </context>
