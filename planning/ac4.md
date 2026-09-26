@@ -1572,8 +1572,10 @@ gates.
   them committed with their digests. In ASPX_ACPL_2 DEE codes each top pair's sum and A-CPL makes
   the pair, so a top tone comes out across its pair, the sum at its level. librempeg does not decode
   the element: its L, R and C come out 6 to 9 dB down, its surrounds 12 to 15 dB down, all four top
-  tones in its Lb and its top channels silent. The Dolby delivery kit's 5.1.4 stream is not on this
-  machine, and fetching it waits on the user.
+  tones in its Lb and its top channels silent. The Dolby AC-4 Online Delivery Kit 1.5's two 5.1.4
+  streams (ASPX_ACPL_2 at 192 kbps, 25 and 29.97 fps, local only) decode in full and core decoding
+  with `ac3cli`: every frame (800 and 960) with no error, ten channels as coded and eight in core
+  decoding, 1,920 samples a frame and 1,601 or 1,602.
 
 **Exit:**
 
