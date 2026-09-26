@@ -744,6 +744,12 @@ and keeps it in NVS. CI refuses to publish an image whose `sdkconfig` sets
 - `hearth-sink-manifest.json`: every image of the release, with its chip, table, revision range
   and SHA-256, which `ota.py` reads to choose an image for each board.
 
+`<version>` is the release's tag. In CI's other runs it is `git describe` of the commit, which on
+their shallow checkout is the commit's hash. The build steps run that `describe` themselves:
+ESP-IDF's own fails in the build container, whose user does not own the checkout, and ESP-IDF
+then names the image "1". Found on 2026-09-25, when an image from a PR's run reported "1" on the
+C6. CI now refuses to publish an image named "1".
+
 **When.**
 
 - **On every CI run** that builds the ESP lane: the images are uploaded as a workflow artifact
@@ -775,6 +781,35 @@ a time.
 **Signing, when O7 comes.** A published image has to be signed with the key the boards trust. That
 means a release key held by CI, a secret only the user can set, or signing on the maintainer's
 machine before upload. O7 decides which.
+
+**Built** (O8, 2026-09-25), as above, with these specifics:
+
+- `tools/hearth/package_firmware.py package` writes one image's files from its build directory.
+  It lays the factory image out itself: each region at its offset, with `0xFF` between them as
+  erased flash has. For the C6's 16 MB build that came to byte for byte what `esptool merge-bin
+  @flash_args` writes, all 9,109,504 bytes. `check_firmware_package.py` then lays the parts out
+  again with its own code, so each checks the other. The zips' members carry a fixed date, so one build packages to the
+  same bytes every time.
+- Each image's facts go into a fragment (`<image>.json`), which `package_firmware.py manifest`
+  merges into `hearth-sink-manifest.json`. The facts are its chip, revision range, flash size,
+  PSRAM, the partition table it ships and each part's offset. The last of those is what the
+  browser installer's manifest needs (O9).
+- `build-esp32s3` packages the S3 board's image and `build-esp32c3` the other three; the 16 MB C6
+  is one more build there. `package-esp32-firmware` merges and checks them, and uploads
+  `esp32-firmware` (14 days) and, on a release, `packages-esp32-firmware`.
+- `release.yml` lists the four factory images and the manifest in its completeness check. It adds
+  `*.bin` and the manifest to the files it checksums, signs and attests, whose lists name
+  extensions and had no `.bin`.
+- `ota.py push --release` reads the release through the GitHub API with the standard library, so
+  it needs neither the GitHub CLI nor a token for a public repository. It downloads the manifest
+  and `SHA512SUMS` first, and then only the image each board takes. `--run` uses `gh run
+  download`, since workflow artifacts need a token.
+
+Checked on 2026-09-25 against this PR's own CI run (36130182488):
+- **Packaging.** `package-esp32-firmware` published the four images.
+- **Onto a board.** `ota.py push --run` chose the 16 MB C6's image for the C6 on COM9 and sent it
+  over Wi-Fi. The board checked it and accepted it after its trial, in 67 s.
+- **What it found.** The image called itself "1", which led to the version fix above.
 
 ## The user guide
 
@@ -990,6 +1025,9 @@ boards leave development, and if that is before O8, O8's images are published si
   - the same images published with each release;
   - `check_firmware_package.py`;
   - `ota.py push --run` and `--release`.
+
+  [Built](#published-images); its exits wait for a release (or `release.yml`'s dry run) and for a
+  blank board.
 
   **Exit:**
   - `ota.py push --release` puts a release's images on each board on the desk over the network,

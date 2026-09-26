@@ -334,6 +334,15 @@ jobs:
             "release-artifacts/ac3forge-[0-9]*-Darwin.dmg|macOS universal disk image (package-macos-universal)"
             "release-artifacts/ac3gui-*.AppImage|Linux AppImage (linux-appimage)"
             "release-artifacts/*.apk|Android APK (build-android)"
+            # The sink firmware (package-esp32-firmware, planning/esp32-ota.md O8):
+            # each image's factory file stands for its set, which
+            # check_firmware_package.py has already held whole. The 4 MB C6's
+            # glob names the version's leading v so the 16 MB image cannot stand in.
+            "release-artifacts/hearth-sink-esp32s3-*-factory.bin|ESP32-S3 sink firmware (package-esp32-firmware)"
+            "release-artifacts/hearth-sink-esp32c6-v*-factory.bin|ESP32-C6 sink firmware, 4 MB table (package-esp32-firmware)"
+            "release-artifacts/hearth-sink-esp32c6-16mb-*-factory.bin|ESP32-C6 sink firmware, 16 MB table (package-esp32-firmware)"
+            "release-artifacts/hearth-sink-esp32p4-rev1-*-factory.bin|ESP32-P4 sink firmware (package-esp32-firmware)"
+            "release-artifacts/hearth-sink-manifest.json|sink firmware manifest (package-esp32-firmware)"
           )
 
           missing=()
@@ -396,10 +405,13 @@ jobs:
           # omission among these globs, so the AppImage shipped with its own
           # cpack-style .sha512 side-car but no line in the aggregate manifest -
           # the file docs/releasing.md tells a downloader to verify against, and
-          # the one manifest-bump.yml reads.
+          # the one manifest-bump.yml reads. *.bin is the sink firmware's images;
+          # its manifest is named rather than globbed as *.json, which would
+          # also take in the SBOM in the steps below that make one.
           artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
                      release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
-                     release-artifacts/*.AppImage release-artifacts/*.apk)
+                     release-artifacts/*.AppImage release-artifacts/*.apk
+                     release-artifacts/*.bin release-artifacts/hearth-sink-manifest.json)
           ( cd release-artifacts && sha512sum "${artifacts[@]##release-artifacts/}" > SHA512SUMS )
 
       - name: Import GPG signing key
@@ -450,7 +462,8 @@ jobs:
           shopt -s nullglob
           artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
                      release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
-                     release-artifacts/*.AppImage release-artifacts/*.apk)
+                     release-artifacts/*.AppImage release-artifacts/*.apk
+                     release-artifacts/*.bin release-artifacts/hearth-sink-manifest.json)
 
           sign() {
             gpg --batch --yes --pinentry-mode loopback --passphrase-fd 3 --armor \
@@ -490,6 +503,8 @@ jobs:
             release-artifacts/*.dmg
             release-artifacts/*.AppImage
             release-artifacts/*.apk
+            release-artifacts/*.bin
+            release-artifacts/hearth-sink-manifest.json
 
       # The attestation above is real and independently verifiable
       # (gh attestation verify), but it lives in GitHub's Attestations API,
@@ -510,7 +525,8 @@ jobs:
           shopt -s nullglob
           artifacts=(release-artifacts/*.deb release-artifacts/*.rpm release-artifacts/*.tar.gz
                      release-artifacts/*.zip release-artifacts/*.exe release-artifacts/*.dmg
-                     release-artifacts/*.AppImage release-artifacts/*.apk)
+                     release-artifacts/*.AppImage release-artifacts/*.apk
+                     release-artifacts/*.bin release-artifacts/hearth-sink-manifest.json)
           for f in "${artifacts[@]}"; do
             name="$(basename "$f")"
             workdir="$(mktemp -d)"
@@ -540,6 +556,8 @@ jobs:
             release-artifacts/*.dmg
             release-artifacts/*.AppImage
             release-artifacts/*.apk
+            release-artifacts/*.bin
+            release-artifacts/hearth-sink-manifest.json
           sbom-path: release-artifacts/ac3forge-${{ needs.resolve-version.outputs.version }}.spdx.json
 
       # Only for workflow_dispatch: a tag-push run already has its tag (that
