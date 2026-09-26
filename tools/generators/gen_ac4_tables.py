@@ -8,9 +8,10 @@ A prints, per codebook, codebook_length and the cb_off, cb_mod, cb_mod2 and
 cb_mod3 values the decoding process uses, and Tables A.14 (CB_DIM) and A.15
 (UNSIGNED_CB). The attachment's Annex B section is empty, so Annex B's
 tables are read from the text. ETSI TS 103 190-2 V1.3.1 does the same for
-the A-JCC codebooks of its Annex A.1.2 (Tables A.13 to A.24), whose arrays
-are in ts_10319002v010301p0.zip's ts_103190_tables_part2.c; they are
-generated after Part 1's, as a sixth clause.
+the A-JCC codebooks of its Annex A.1.2 (Tables A.13 to A.24) and the A-JOC
+codebooks of its Annex A.1.1 (Tables A.1 to A.12), whose arrays are in
+ts_10319002v010301p0.zip's ts_103190_tables_part2.c; they are generated
+after Part 1's, as a sixth and a seventh clause.
 
 Reads, from --spec-dir (default spec/ in the repo root):
   ts_10319001_attach/ts_103190_tables.c  every <name>_LEN and <name>_CW array,
@@ -23,8 +24,12 @@ Reads, from --spec-dir (default spec/ in the repo root):
                                          to B.7, and Tables B.8 to B.19; and
                                          Table 106, for n_side_bits.
   ts_10319002_attach/ts_103190_tables_part2.c
-                                         the AJCC_HCB_* _LEN and _CW arrays.
-  ts_10319002v010301p.txt                Part 2 Annex A.1.2's codebook tables.
+                                         the AJCC_HCB_* and AJOC_HCB_* _LEN and
+                                         _CW arrays, and the ISF rendering
+                                         matrices SR<config>_to_<layout>
+                                         (Annex A.2.1).
+  ts_10319002v010301p.txt                Part 2 Annex A.1.1's and A.1.2's
+                                         codebook tables.
 
 Writes src/ac4core/src/tables/huffman_tables.hpp and .cpp (every Annex A
 codebook, its entries sorted by length and then codeword, as
@@ -34,7 +39,9 @@ index, for writing), sfb_tables.hpp and .cpp (Annex
 B at 44.1 and 48 kHz), noise_tables.hpp and .cpp (Annex C.11, which the
 spectral noise fill of clause 5.1.4 reads through Pseudocode 57) and
 qmf_tables.hpp and .cpp (Annex D.3, the QMF banks' window of clauses 5.7.3 and
-5.7.4, and Annex D.2, A-SPX's noise generator table of clause 5.7.6.4.3).
+5.7.4, and Annex D.2, A-SPX's noise generator table of clause 5.7.6.4.3) and
+isf_tables.hpp and .cpp (Part 2 Annex A.2.1, the intermediate spatial format's
+rendering matrices of Part 2 clause 5.10.3).
 src/ac4core is what the AC-4 decoder and encoder share.
 
 Checks, all of them before anything is written, every one failing the run:
@@ -47,7 +54,8 @@ Checks, all of them before anything is written, every one failing the run:
            listed again at the end but does not fail the run. Part 2's A.1.2
            takes the same checks against the AJCC arrays of its attachment,
            its tables numbered A.13 to A.24 without a gap, each printing
-           codebook_length and cb_off and nothing else.
+           codebook_length and cb_off and nothing else; and A.1.1 against the
+           AJOC arrays, its tables numbered A.1 to A.12, the same way.
   Annex A  its tables run A.1, A.2, ... without a gap; A.14 and A.15 cover
            spectrum codebooks 1 to 11; a dimension-4 spectrum codebook prints
            cb_mod, cb_mod2, cb_mod3 and cb_off with cb_mod^4 ==
@@ -118,8 +126,17 @@ AJCC_LABEL = "Part 2 A.1.2: A-JCC"
 AJCC_TABLES = range(13, 25)
 AJCC_NAME = re.compile(r"AJCC_HCB_(?:DRY|WET)_(?:COARSE|FINE)_(?:F0|DF|DT)")
 
+# Part 2's Annex A.1.1, the A-JOC codebooks, listed after A-JCC's as a seventh
+# clause, so that what the generated files held before keeps its place.
+AJOC_CLAUSE = 7
+AJOC_LABEL = "Part 2 A.1.1: A-JOC"
+AJOC_TABLES = range(1, 13)
+AJOC_NAME = re.compile(r"AJOC_HCB_(?:DRY|WET)_(?:COARSE|FINE)_(?:F0|DF|DT)")
+
 # Every clause the generated files have, with its label.
-OUTPUT_CLAUSES = {**{n: label for n, (_, label) in CLAUSES.items()}, AJCC_CLAUSE: AJCC_LABEL}
+OUTPUT_CLAUSES = {**{n: label for n, (_, label) in CLAUSES.items()}, AJCC_CLAUSE: AJCC_LABEL,
+                  AJOC_CLAUSE: AJOC_LABEL}
+PART2_CLAUSES = (AJCC_CLAUSE, AJOC_CLAUSE)
 
 # Tables A.14 and A.15 number the spectrum codebooks 1 to 11, and
 # huffman_tables.hpp's arrays by that number are 12 long, index 0 unused.
@@ -157,6 +174,17 @@ ASPX_NOISE_TABLE = re.compile(
 ASPX_NOISE_ENTRIES = 512
 # A number as Annex D prints it: "0", "-0.70912", "1.990318758627504e-004".
 D_NUMBER = re.compile(r"-?\d+(?:\.\d+)?(?:e[-+]\d+)?")
+# Part 2 Annex A.2.1: float SR<config>_to_<layout>[NUM_ISF_CHAN_SR<config>]
+# [NUM_SPKR_CHAN_<layout>] = {{...}, ...}; and the sizes' #defines.
+ISF_MATRIX = re.compile(
+    r"\bfloat\s+SR(\d+)_to_(\d+)\s*\[\s*(\w+)\s*\]\s*\[\s*(\w+)\s*\]\s*=\s*\{(.*?)\}\s*;", re.S)
+ISF_ROW = re.compile(r"\{([^{}]*)\}")
+ISF_FLOAT = re.compile(r"-?\d+\.\d+e[-+]\d+f")
+C_DEFINE = re.compile(r"#define\s+(\w+)\s+(\d+)")
+# Table 61's stacked ring formats in isf_config order, and the output layouts
+# Tables A.25 and A.26 name, in the order kIsfMatrices holds them.
+ISF_CONFIGS = ["3100", "5300", "7300", "9500", "7530", "15951"]
+ISF_LAYOUTS = ["2", "5", "7", "9", "502", "504", "702", "704", "902", "904"]
 ASPX_NOISE_PAIR = re.compile(r"\{\s*(" + D_NUMBER.pattern + r")\s*,\s*(" + D_NUMBER.pattern
                              + r")\s*\}")
 # A printed number: its first group of digits, then any groups of three after
@@ -324,37 +352,50 @@ def parse_annex_a(numbered):
     return codebooks, by_number["CB_DIM"], by_number["UNSIGNED_CB"]
 
 
-def ajcc_section(lines):
-    """(line number, text) for Part 2's Annex A.1.2, from its heading to A.2's."""
-    starts = [i for i, text in enumerate(lines)
-              if re.fullmatch(r"\s*A\.1\.2\s+A-JCC Huffman codebook tables\s*", text)]
-    ends = [i for i, text in enumerate(lines)
-            if re.fullmatch(r"\s*A\.2\s+Coefficient tables\s*", text)]
+def part2_section(lines, heading, next_heading):
+    """(line number, text) for a clause of Part 2's Annex A, from its heading to the next's."""
+    starts = [i for i, text in enumerate(lines) if re.fullmatch(heading, text)]
+    ends = [i for i, text in enumerate(lines) if re.fullmatch(next_heading, text)]
     check(len(starts) == 1 and len(ends) == 1 and starts[0] < ends[0],
-          f"Part 2's A.1.2 heading found {len(starts)} times and A.2's {len(ends)} times")
+          f"Part 2's heading {heading!r} found {len(starts)} times and the next "
+          f"{len(ends)} times")
     return [(i + 1, lines[i]) for i in range(starts[0] + 1, ends[0])]
 
 
-def parse_ajcc_annex(numbered):
-    """Part 2 Annex A.1.2's codebooks in table order, read as parse_annex_a() reads Part 1's."""
+def ajcc_section(lines):
+    """Part 2's Annex A.1.2, from its heading to A.2's."""
+    return part2_section(lines, r"\s*A\.1\.2\s+A-JCC Huffman codebook tables\s*",
+                         r"\s*A\.2\s+Coefficient tables\s*")
+
+
+def ajoc_section(lines):
+    """Part 2's Annex A.1.1, from its heading to A.1.2's."""
+    return part2_section(lines, r"\s*A\.1\.1\s+A-JOC Huffman codebook tables\s*",
+                         r"\s*A\.1\.2\s+A-JCC Huffman codebook tables\s*")
+
+
+def parse_part2_annex(numbered, clause, tables_range, name_re, tool, heading):
+    """A clause of Part 2 Annex A's codebooks in table order, read as parse_annex_a()
+    reads Part 1's: `tool` is the name the tables' titles give ("A-JCC"), `heading`
+    the clause's number ("A.1.2")."""
     tables = []  # [number, title, line, fields]
     for line, text in numbered:
         if match := TABLE_TITLE.match(text):
             check(match.group(1) == "A",
-                  f"Part 2 line {line}: a Table {match.group(1)} inside A.1.2")
+                  f"Part 2 line {line}: a Table {match.group(1)} inside {heading}")
             tables.append([int(match.group(2)), match.group(3), line, {}])
         elif match := CODEBOOK_FIELD.match(text):
-            check(tables, f"Part 2 line {line}: {match.group(1)} before A.1.2's first table")
+            check(tables, f"Part 2 line {line}: {match.group(1)} before {heading}'s first table")
             key, fields = match.group(1), tables[-1][3]
             check(key not in fields, f"Part 2 Table A.{tables[-1][0]} prints {key} twice")
             fields[key] = match.group(2)
         else:
             check(not text.strip().startswith(CODEBOOK_KEYS),
-                  f"Part 2 line {line}: unreadable A.1.2 field: {text.strip()!r}")
+                  f"Part 2 line {line}: unreadable {heading} field: {text.strip()!r}")
     numbers = [table[0] for table in tables]
-    check(numbers == list(AJCC_TABLES),
-          f"Part 2's A.1.2 numbers its tables {numbers}, not A.{AJCC_TABLES[0]} to "
-          f"A.{AJCC_TABLES[-1]}")
+    check(numbers == list(tables_range),
+          f"Part 2's {heading} numbers its tables {numbers}, not A.{tables_range[0]} to "
+          f"A.{tables_range[-1]}")
     codebooks = []
     for number, title, line, fields in tables:
         expected = {"Codebook name", "Codebook length table", "Codebook codeword table",
@@ -363,8 +404,8 @@ def parse_ajcc_annex(numbered):
               f"Part 2 Table A.{number} (line {line}) prints {sorted(fields)}, not "
               f"{sorted(expected)}")
         name = fields["Codebook name"]
-        check(AJCC_NAME.fullmatch(name), f"Part 2 Table A.{number}: codebook name {name!r}")
-        check(title == f"A-JCC Huffman codebook {name}",
+        check(name_re.fullmatch(name), f"Part 2 Table A.{number}: codebook name {name!r}")
+        check(title == f"{tool} Huffman codebook {name}",
               f"Part 2 Table A.{number} is titled {title!r} over codebook {name}")
         for key, suffix in (("Codebook length table", "_LEN"), ("Codebook codeword table", "_CW")):
             check(fields[key] == name + suffix,
@@ -374,8 +415,18 @@ def parse_ajcc_annex(numbered):
             check(re.fullmatch(r"\d+", fields[key]),
                   f"Part 2 Table A.{number}: {key} is {fields[key]!r}, not a number")
             printed[key] = int(fields[key])
-        codebooks.append(Codebook(number, AJCC_CLAUSE, name, printed, part=2))
+        codebooks.append(Codebook(number, clause, name, printed, part=2))
     return codebooks
+
+
+def parse_ajcc_annex(numbered):
+    """Part 2 Annex A.1.2's codebooks in table order."""
+    return parse_part2_annex(numbered, AJCC_CLAUSE, AJCC_TABLES, AJCC_NAME, "A-JCC", "A.1.2")
+
+
+def parse_ajoc_annex(numbered):
+    """Part 2 Annex A.1.1's codebooks in table order."""
+    return parse_part2_annex(numbered, AJOC_CLAUSE, AJOC_TABLES, AJOC_NAME, "A-JOC", "A.1.1")
 
 
 def check_ajcc_offsets(codebooks):
@@ -389,6 +440,27 @@ def check_ajcc_offsets(codebooks):
         else:
             check(length % 2 == 1 and offset == (length - 1) // 2,
                   f"{cb.name}: cb_off {offset} is not the middle of {length} entries")
+
+
+def check_ajoc_offsets(codebooks):
+    """Each A-JOC codebook's cb_off against its length. An F0 and a DF codebook print
+    0 and as many entries as the quantiser has steps (51 or 101 dry, 21 or 41 wet),
+    since Pseudocode 16 adds a DF value to the band below modulo that count; a DT
+    codebook prints twice the steps less one, centred, its values taken from -
+    (steps - 1) to steps - 1 about the same band of the set before."""
+    steps = {("DRY", "COARSE"): 51, ("DRY", "FINE"): 101, ("WET", "COARSE"): 21,
+             ("WET", "FINE"): 41}
+    for cb in codebooks:
+        _, _, data_type, quant, kind = cb.name.split("_")
+        count = steps[(data_type, quant)]
+        length, offset = cb.printed["codebook_length"], cb.printed["cb_off"]
+        if kind in ("F0", "DF"):
+            check(length == count and offset == 0,
+                  f"{cb.name}: {length} entries at cb_off {offset}, not {count} at 0")
+        else:
+            check(length == 2 * count - 1 and offset == count - 1,
+                  f"{cb.name}: {length} entries at cb_off {offset}, not {2 * count - 1} at "
+                  f"{count - 1}")
 
 
 def parse_attachment(path):
@@ -469,6 +541,29 @@ def parse_aspx_noise(path):
     check(int(size) == ASPX_NOISE_ENTRIES and len(pairs) == ASPX_NOISE_ENTRIES,
           f"ASPX_NOISE[{size}][2] holds {len(pairs)} pairs, not {ASPX_NOISE_ENTRIES}")
     return pairs
+
+
+def parse_isf(path):
+    """{(config, layout): [[float literal, ...] per ISF channel]} for every matrix of Part 2
+    Annex A.2.1, their sizes checked against the attachment's #defines."""
+    source = path.read_text(encoding="utf-8")
+    defines = {name: int(value) for name, value in C_DEFINE.findall(source)}
+    matrices = {}
+    for config, layout, rows_name, cols_name, body in ISF_MATRIX.findall(source):
+        rows = [ISF_FLOAT.findall(row) for row in ISF_ROW.findall(body)]
+        leftover = re.sub(r"[\s,{}]", "", ISF_FLOAT.sub("", body))
+        check(not leftover,
+              f"SR{config}_to_{layout}: unexpected {leftover[:20]!r} among its values")
+        check(rows_name in defines and cols_name in defines,
+              f"SR{config}_to_{layout}: {rows_name} or {cols_name} is not defined")
+        check(len(rows) == defines[rows_name] and all(len(r) == defines[cols_name] for r in rows),
+              f"SR{config}_to_{layout} is not {defines[rows_name]} rows of {defines[cols_name]}")
+        check((config, layout) not in matrices, f"SR{config}_to_{layout} is defined twice")
+        matrices[config, layout] = rows
+    wanted = {(config, layout) for config in ISF_CONFIGS for layout in ISF_LAYOUTS}
+    check(set(matrices) == wanted, f"ISF matrices missing {sorted(wanted - set(matrices))[:4]}, "
+                                   f"extra {sorted(set(matrices) - wanted)[:4]}")
+    return matrices
 
 
 def attach_codes(codebooks, arrays):
@@ -869,8 +964,8 @@ def spaced(value):
 
 
 HEADER_BANNER_HUFFMAN = [
-    "// Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A, and the A-JCC",
-    "// codebooks of ETSI TS 103 190-2 V1.3.1 Annex A.1.2. GENERATED by",
+    "// Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A, and the A-JCC and",
+    "// A-JOC codebooks of ETSI TS 103 190-2 V1.3.1 Annex A.1. GENERATED by",
     "// tools/generators/gen_ac4_tables.py from the attachments ts_103190_tables.c and",
     "// ts_103190_tables_part2.c and the two annexes' text; do not edit by hand.",
 ]
@@ -879,7 +974,7 @@ HEADER_BANNER_HUFFMAN = [
 def clause_heading(clause):
     """A clause's section comment: Part 1's by its number, Part 2's by its label."""
     label = OUTPUT_CLAUSES[clause]
-    return f"// {label}." if clause == AJCC_CLAUSE else f"// A.{clause}: {label}."
+    return f"// {label}." if clause in PART2_CLAUSES else f"// A.{clause}: {label}."
 
 
 def emit_huffman_header(codebooks):
@@ -923,8 +1018,9 @@ def emit_codes_header(codebooks):
     out = ["#pragma once", "", "#include <array>", "#include <span>", "",
            '#include "huffman_codebook.hpp"', "",
            "// Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A, and the A-JCC",
-           "// codebooks of ETSI TS 103 190-2 V1.3.1 Annex A.1.2, in index order, for",
-           "// writing: the codeword and its length for each index huff_decode() returns.",
+           "// and A-JOC codebooks of ETSI TS 103 190-2 V1.3.1 Annex A.1, in index order,",
+           "// for writing: the codeword and its length for each index huff_decode()",
+           "// returns.",
            "// GENERATED by tools/generators/gen_ac4_tables.py with huffman_tables.hpp,",
            "// from the attachments ts_103190_tables.c and ts_103190_tables_part2.c; do",
            "// not edit by hand. The decoder reads through huffman_tables.hpp and does not",
@@ -1318,6 +1414,67 @@ def emit_qmf_source(qwin, aspx_noise):
             "}  // namespace ac4::detail::tables"]
 
 
+ISF_HEADER = [
+    "#pragma once",
+    "",
+    "#include <array>",
+    "#include <span>",
+    "",
+    "// ETSI TS 103 190-2 V1.3.1 Annex A.2.1, the intermediate spatial format's",
+    "// rendering matrices. GENERATED by tools/generators/gen_ac4_tables.py from the",
+    "// attachment ts_103190_tables_part2.c; do not edit by hand.",
+    "",
+    "namespace ac4::detail::tables {",
+    "",
+    "// Part 2 Table 61's stacked ring formats by isf_config, SR3.1.0.0 to",
+    "// SR15.9.5.1, and each one's ISF channels.",
+    f"inline constexpr std::array<int, {len(ISF_CONFIGS)}> kIsfChannels = "
+    "{4, 8, 10, 14, 15, 30};",
+    "",
+    "// The output layouts of Tables A.25 and A.26 in the order kIsfMatrices holds",
+    "// them - 2.x, 5.x, 7.x, 9.x, 5.x.2, 5.x.4, 7.x.2, 7.x.4, 9.x.2 and 9.x.4 -",
+    "// and each one's loudspeakers.",
+    f"inline constexpr std::array<int, {len(ISF_LAYOUTS)}> kIsfOutputs = "
+    "{2, 5, 7, 9, 7, 9, 9, 11, 11, 13};",
+    "",
+    "// SR<config>_to_<layout>, [isf_config][layout]: kIsfChannels rows, one per ISF",
+    "// channel in the order t = [M1..., U1..., L1..., Z] takes them (clause",
+    "// 5.10.3.4), of kIsfOutputs coefficients each, in the float the attachment",
+    "// declares.",
+    "extern const std::array<std::array<std::span<const float>, "
+    f"{len(ISF_LAYOUTS)}>, {len(ISF_CONFIGS)}>",
+    "    kIsfMatrices;",
+    "",
+    "}  // namespace ac4::detail::tables",
+]
+
+
+def emit_isf_source(matrices):
+    out = ['#include "isf_tables.hpp"', "", "namespace ac4::detail::tables {", "namespace {", ""]
+    for config in ISF_CONFIGS:
+        for layout in ISF_LAYOUTS:
+            rows = matrices[config, layout]
+            values = [text for row in rows for text in row]
+            out.append(f"constexpr std::array<float, {len(values)}> kSR{config}To{layout} = {{")
+            out.extend(wrap(values, "   "))
+            out.append("};")
+            out.append("")
+    out.append("}  // namespace")
+    out.append("")
+    out.append("constinit const std::array<std::array<std::span<const float>, "
+               f"{len(ISF_LAYOUTS)}>, {len(ISF_CONFIGS)}>")
+    out.append("    kIsfMatrices = {{")
+    for config in ISF_CONFIGS:
+        names = [f"kSR{config}To{layout}" for layout in ISF_LAYOUTS]
+        out.append("        {{")
+        out.extend(wrap(names, "           "))
+        out.append("        }},")
+    out.append("    }};")
+    out.append("")
+    out.append("}  // namespace ac4::detail::tables")
+    return out
+
+
 def report_codebooks(codebooks):
     print(f"{'codebook':<28} {'table':>6} {'entries':>7} {'bits':>6}  Kraft sum")
     for cb in codebooks:
@@ -1350,16 +1507,22 @@ def main():
     codebooks, cb_dim, unsigned_cb = parse_annex_a(annex(lines, "A", "B"))
     attach_codes(codebooks, parse_attachment(tables_c))
     check_spectrum_values(codebooks, cb_dim, unsigned_cb)
-    # Part 2's A-JCC codebooks, from its attachment's AJCC arrays alone: the
-    # A-JOC codebooks beside them wait for the phase that decodes A-JOC.
-    ajcc = parse_ajcc_annex(ajcc_section(spec2_txt.read_text(encoding="utf-8").splitlines()))
+    # Part 2's A-JCC and A-JOC codebooks, from its attachment's AJCC and AJOC
+    # arrays.
+    lines2 = spec2_txt.read_text(encoding="utf-8").splitlines()
+    ajcc = parse_ajcc_annex(ajcc_section(lines2))
     check_ajcc_offsets(ajcc)
-    arrays2 = {key: values for key, values in parse_attachment(tables2_c).items()
-               if key[0].startswith("AJCC_")}
-    attach_codes(ajcc, arrays2)
-    check(not {cb.cxx for cb in ajcc} & {cb.cxx for cb in codebooks},
+    ajoc = parse_ajoc_annex(ajoc_section(lines2))
+    check_ajoc_offsets(ajoc)
+    attachment2 = parse_attachment(tables2_c)
+    attach_codes(ajcc, {key: values for key, values in attachment2.items()
+                        if key[0].startswith("AJCC_")})
+    attach_codes(ajoc, {key: values for key, values in attachment2.items()
+                        if key[0].startswith("AJOC_")})
+    part2 = ajcc + ajoc
+    check(not {cb.cxx for cb in part2} & {cb.cxx for cb in codebooks},
           "a Part 2 codebook has a Part 1 codebook's name")
-    codebooks = codebooks + ajcc
+    codebooks = codebooks + part2
     n_side_bits = parse_n_side_bits(lines)
     num_sfb, offsets, offset_tables, mappings, hsf = parse_annex_b(annex(lines, "B", "C"),
                                                                    n_side_bits)
@@ -1367,6 +1530,7 @@ def main():
     noise = parse_noise_table(tables_c)
     qwin = parse_qwin(tables_c)
     aspx_noise = parse_aspx_noise(tables_c)
+    isf = parse_isf(tables2_c)
 
     report_codebooks(codebooks)
     mean_square = sum(Fraction(text[:-1]) ** 2 for text in noise) / len(noise)
@@ -1376,6 +1540,8 @@ def main():
     print(f"ASPX_NOISE: {len(aspx_noise)} entries, mean energy {float(energy):.9f}")
     print(f"QWIN: {len(qwin)} entries, |QWIN[n]| == |QWIN[640 - n]|, "
           f"{sum(1 for text in qwin if text.startswith('-'))} negative")
+    print(f"ISF: {len(isf)} rendering matrices, {len(ISF_CONFIGS)} formats to "
+          f"{len(ISF_LAYOUTS)} layouts")
     print(f"\nAnnex B: num_sfb and offsets for {len(offsets)} transform lengths at 48 kHz, "
           f"{len(hsf.offsets_96)} at 96 kHz, {len(hsf.offsets_192)} at 192 kHz, "
           f"{len(mappings)} max_sfb_master tables")
@@ -1391,6 +1557,8 @@ def main():
         "noise_tables.cpp": emit_noise_source(noise),
         "qmf_tables.hpp": QMF_HEADER,
         "qmf_tables.cpp": emit_qmf_source(qwin, aspx_noise),
+        "isf_tables.hpp": ISF_HEADER,
+        "isf_tables.cpp": emit_isf_source(isf),
     }
     for name, out in outputs.items():
         for number, text in enumerate(out, start=1):

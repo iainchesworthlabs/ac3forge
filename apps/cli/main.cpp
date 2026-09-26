@@ -645,6 +645,7 @@ int run_main(int argc, char** argv) {
                                token == "bed-only" ||
                                token == "keep-partial" || token == "fast-mdct" ||
                                token == "fast-imdct" || token == "mix-lfe" ||
+                               token == "headphones" ||
                                token == "fallback-51" || token == "annexd" ||
                                token == "infomdat" || token == "encinfo" ||
                                token == "langcod" || token == "langcod2" ||

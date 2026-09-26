@@ -22,6 +22,8 @@ Sources:
     A.24): the LEN/CW arrays from its attachment ts_103190_tables_part2.c,
     codebook_length and cb_off transcribed by hand from the text below
     (AJCC_CODEBOOK_PARAMS); and Part 2 Table 83, ajcc_num_bands_table.
+  * Its A-JOC codebooks (Annex A.1.1, Tables A.1 to A.12) the same way
+    (AJOC_CODEBOOK_PARAMS), and Part 2 Table 78, ajoc_num_bands_code.
 
 Run from the repo root:
     python tools/generators/gen_ac4_reference_tables.py [--spec-dir DIR]
@@ -141,6 +143,25 @@ AJCC_CODEBOOK_PARAMS = {
 # Part 2 Table 83: ajcc_num_param_bands_id -> ajcc_num_bands_table.
 AJCC_NUM_BANDS = {0: 15, 1: 12, 2: 9, 3: 7}
 
+# Part 2 Annex A.1.1, Tables A.1 to A.12: name -> (codebook_length, cb_off).
+AJOC_CODEBOOK_PARAMS = {
+    'AJOC_HCB_DRY_COARSE_F0': (51, 0),                            # Part 2 Table A.1
+    'AJOC_HCB_DRY_FINE_F0': (101, 0),                             # Part 2 Table A.2
+    'AJOC_HCB_DRY_COARSE_DF': (51, 0),                            # Part 2 Table A.3
+    'AJOC_HCB_DRY_FINE_DF': (101, 0),                             # Part 2 Table A.4
+    'AJOC_HCB_DRY_COARSE_DT': (101, 50),                          # Part 2 Table A.5
+    'AJOC_HCB_DRY_FINE_DT': (201, 100),                           # Part 2 Table A.6
+    'AJOC_HCB_WET_COARSE_F0': (21, 0),                            # Part 2 Table A.7
+    'AJOC_HCB_WET_FINE_F0': (41, 0),                              # Part 2 Table A.8
+    'AJOC_HCB_WET_COARSE_DF': (21, 0),                            # Part 2 Table A.9
+    'AJOC_HCB_WET_FINE_DF': (41, 0),                              # Part 2 Table A.10
+    'AJOC_HCB_WET_COARSE_DT': (41, 20),                           # Part 2 Table A.11
+    'AJOC_HCB_WET_FINE_DT': (81, 40),                             # Part 2 Table A.12
+}
+
+# Part 2 Table 78: ajoc_num_bands_code -> ajoc_num_bands.
+AJOC_NUM_BANDS = {0: 23, 1: 15, 2: 12, 3: 9, 4: 7, 5: 5, 6: 3, 7: 1}
+
 # Table A.14 / Table A.15, codebook numbers 1..11.
 CB_DIM = {1: 4, 2: 4, 3: 4, 4: 4, 5: 2, 6: 2, 7: 2, 8: 2, 9: 2, 10: 2, 11: 2}
 UNSIGNED_CB = {1: False, 2: False, 3: True, 4: True, 5: False, 6: False,
@@ -165,14 +186,29 @@ def parse_attachment(path):
 
 def parse_ajcc_attachment(path):
     """The AJCC_HCB_* arrays of Part 2's attachment: its 'Annex A.2' section (the
-    text's A.1.2) holds them, after the A-JOC codebooks, which are not read."""
+    text's A.1.2) holds them, after the A-JOC codebooks."""
+    return parse_part2_attachment(path, '/* Annex A.2 A-JCC Huffman codebook tables */', 'AJCC')
+
+
+def parse_ajoc_attachment(path):
+    """The AJOC_HCB_* arrays of Part 2's attachment: its 'Annex A.1' section (the
+    text's A.1.1), up to the A-JCC section."""
+    return parse_part2_attachment(path, '/* Annex A.1 A-JOC Huffman codebook tables */', 'AJOC',
+                                  '/* Annex A.2 A-JCC Huffman codebook tables */')
+
+
+def parse_part2_attachment(path, marker, prefix, end_marker=None):
+    """The <prefix>_* LEN/CW arrays after `marker` in Part 2's attachment, and before
+    `end_marker` where one is given."""
     text = path.read_text(encoding='latin-1')
-    marker = '/* Annex A.2 A-JCC Huffman codebook tables */'
-    if text.count(marker) != 1:
-        raise SystemExit(f'{path}: {marker!r} found {text.count(marker)} times')
+    for m in (marker, end_marker):
+        if m is not None and text.count(m) != 1:
+            raise SystemExit(f'{path}: {m!r} found {text.count(m)} times')
     text = text[text.index(marker):]
+    if end_marker is not None:
+        text = text[:text.index(end_marker)]
     arrays = {}
-    pattern = r'const\s+int(?:32)?\s+(AJCC_\w+)_(LEN|CW)\[(\d+)\]\s*=\s*\{([^}]*)\};'
+    pattern = r'const\s+int(?:32)?\s+(' + prefix + r'_\w+)_(LEN|CW)\[(\d+)\]\s*=\s*\{([^}]*)\};'
     for m in re.finditer(pattern, text):
         name, kind, n, body = m.group(1), m.group(2), int(m.group(3)), m.group(4)
         vals = [int(tok, 0) for tok in re.findall(r'0x[0-9a-fA-F]+|\d+', body)]
@@ -409,6 +445,16 @@ def sb_to_pb():
     return table
 
 
+def cw_per_line(cws):
+    """Codewords per line of the output: nine, or fewer where a line of nine would
+    pass 100 columns (A-JOC's codewords reach 29 bits)."""
+    texts = [hex(c) for c in cws]
+    for per_line in range(9, 0, -1):
+        if all(len(line) <= 100 for line in fmt_list(texts, per_line, 12).split('\n')):
+            return per_line
+    return 1
+
+
 def fmt_list(vals, per_line, indent):
     pad = ' ' * indent
     return '\n'.join(pad + ', '.join(str(v) for v in vals[k:k + per_line]) + ','
@@ -472,6 +518,34 @@ def main():
             raise SystemExit(f'{name}: not prefix-free: {problems[:5]}')
         kraft[name] = k
         arrays[name] = ajcc_arrays[name]
+        report.append(f'{name:28s} n={n:3d} maxlen={max(lens):2d} Kraft={k!s:>12s}'
+                      f'{"" if k == 1 else "  (incomplete)"}')
+
+    # Part 2's A-JOC codebooks, the same way. An F0 and a DF codebook have as many
+    # entries as the quantiser has steps and cb_off 0 (Pseudocode 16 adds a DF value
+    # to the band below modulo that count); a DT codebook one fewer than twice that,
+    # centred.
+    ajoc_arrays = parse_ajoc_attachment(args.spec_dir / TABLES2_C)
+    if set(ajoc_arrays) != set(AJOC_CODEBOOK_PARAMS):
+        raise SystemExit(f'A-JOC codebook set mismatch: attachment-only '
+                         f'{set(ajoc_arrays) - set(AJOC_CODEBOOK_PARAMS)}, text-only '
+                         f'{set(AJOC_CODEBOOK_PARAMS) - set(ajoc_arrays)}')
+    steps = {'DRY_COARSE': 51, 'DRY_FINE': 101, 'WET_COARSE': 21, 'WET_FINE': 41}
+    for name, (n, off) in AJOC_CODEBOOK_PARAMS.items():
+        lens, cws = ajoc_arrays[name].get('LEN'), ajoc_arrays[name].get('CW')
+        if lens is None or cws is None or len(lens) != n or len(cws) != n:
+            raise SystemExit(f'{name}: Part 2 Annex A.1.1 codebook_length {n}, attachment arrays '
+                             f'{None if lens is None else len(lens)} LEN / '
+                             f'{None if cws is None else len(cws)} CW')
+        count = steps[name[len('AJOC_HCB_'):-3]]
+        expected = (2 * count - 1, count - 1) if name.endswith('_DT') else (count, 0)
+        if (n, off) != expected:
+            raise SystemExit(f'{name}: {n} entries at cb_off {off}, expected {expected}')
+        k, problems = check_codebook(lens, cws)
+        if problems:
+            raise SystemExit(f'{name}: not prefix-free: {problems[:5]}')
+        kraft[name] = k
+        arrays[name] = ajoc_arrays[name]
         report.append(f'{name:28s} n={n:3d} maxlen={max(lens):2d} Kraft={k!s:>12s}'
                       f'{"" if k == 1 else "  (incomplete)"}')
 
@@ -589,22 +663,25 @@ def main():
              'table attachment, codebook parameters and Tables A.14/A.15 from the Annex A\n'
              'text), Annex B (Tables B.1-B.7 for 44.1/48, 96 and 192 kHz, B.8-B.19, parsed\n'
              'from the text and checked) and hand-transcribed clause 4/5 tables; ETSI TS\n'
-             '103 190-2 V1.3.1 Annex A.1.2 (the A-JCC codebooks: LEN/CW arrays from the\n'
-             'ts_10319002v010301p0.zip attachment, parameters from the text) and its Table\n'
-             '83. Plain Python data.\n'
+             '103 190-2 V1.3.1 Annex A.1 (the A-JOC and A-JCC codebooks: LEN/CW arrays from\n'
+             'the ts_10319002v010301p0.zip attachment, parameters from the text) and its\n'
+             'Tables 78 and 83. Plain Python data.\n'
              '"""\n\n',
              '# name -> {"cb_off", "cb_mod", "cb_mod2", "cb_mod3", "len": [...], "cw": [...]}\n',
              'HUFFMAN_CODEBOOKS = {\n']
     all_params = {**CODEBOOK_PARAMS,
                   **{name: (n, off, None, None, None)
-                     for name, (n, off) in AJCC_CODEBOOK_PARAMS.items()}}
+                     for name, (n, off) in AJCC_CODEBOOK_PARAMS.items()},
+                  **{name: (n, off, None, None, None)
+                     for name, (n, off) in AJOC_CODEBOOK_PARAMS.items()}}
     for name, (_n, off, mod, mod2, mod3) in all_params.items():
         lens, cws = arrays[name]['LEN'], arrays[name]['CW']
         parts.append(f'    {name!r}: {{\n'
                      f'        "cb_off": {off!r}, "cb_mod": {mod!r}, "cb_mod2": {mod2!r}, '
                      f'"cb_mod3": {mod3!r},\n'
                      f'        "len": [\n{fmt_list(lens, 20, 12)}\n        ],\n'
-                     f'        "cw": [\n{fmt_list([hex(c) for c in cws], 9, 12)}\n        ],\n'
+                     f'        "cw": [\n{fmt_list([hex(c) for c in cws], cw_per_line(cws), 12)}'
+                     '\n        ],\n'
                      '    },\n')
     parts.append('}\n\n# Kraft sums (numerator, denominator); (1, 1) means the codebook is '
                  'complete.\n')
@@ -665,6 +742,8 @@ def main():
          TAB_BORDER),
         ('Part 2 Table 83: ajcc_num_param_bands_id -> ajcc_num_bands_table', 'AJCC_NUM_BANDS',
          AJCC_NUM_BANDS),
+        ('Part 2 Table 78: ajoc_num_bands_code -> ajoc_num_bands', 'AJOC_NUM_BANDS',
+         AJOC_NUM_BANDS),
     ]
     for comment, name, value in small:
         parts.append(f'\n# {comment}\n')

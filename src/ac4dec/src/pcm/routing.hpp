@@ -53,6 +53,41 @@
 
 namespace ac4::detail {
 
+// Object audio's layouts, numbered past the channel modes, for the elements
+// that code object audio substreams (ETSI TS 103 190-2 V1.3.1 clause 6.2.3):
+//
+// - an A-JOC substream's var_channel_element() of n fullband signals (1 to
+//   16), with the LFE's mono_data(1) first where b_lfe is set: the element's
+//   outputs Q'inAJOC in order, held under the labels kVarSlots gives them (the
+//   LFE's the LFE), which name no loudspeaker;
+// - a direct-coded substream's LFE with an element of 0 to 3 objects
+//   (audio_data_objs(), 6.2.3.2): the LFE, then the element's channels. Five
+//   objects with the LFE are 5.1, and the elements without an LFE are the
+//   channel modes objs_to_channel_mode() names.
+namespace object_layout {
+inline constexpr int kVarBase = 64;
+inline constexpr int kObjectsWithLfeBase = 96;
+[[nodiscard]] constexpr int var(int n_signals, bool lfe) noexcept {
+    return kVarBase + n_signals - 1 + (lfe ? 16 : 0);
+}
+[[nodiscard]] constexpr int objects_with_lfe(int n_objects) noexcept {
+    return kObjectsWithLfeBase + n_objects;
+}
+}  // namespace object_layout
+
+// The fullband signals of a var_channel_element() layout; 0 for another.
+[[nodiscard]] int var_signals(int layout) noexcept;
+
+// The layout decode() takes a substream's element in: its channel mode, or
+// for object audio its object_layout; nothing for a substream whose element
+// has none (a count objs_to_channel_mode() has no mode for).
+[[nodiscard]] std::optional<int> pcm_layout(const SubstreamContext& ctx) noexcept;
+
+// Pseudocode 14a: the channel of a var_channel_element() layout of n_fb
+// fullband signals (with the LFE first where `lfe`) that A-JOC input i
+// (QinAJOC's order) takes.
+[[nodiscard]] int ajoc_input_channel(int i, int n_fb, bool lfe) noexcept;
+
 // The channels decode() writes for a channel mode in a decoding mode, in
 // order: L, R, C, the LFE, Ls, Rs, then a 7.X mode's last pair, or the 7.X.4
 // modes' Lb, Rb, Tfl, Tfr, Tbl and Tbr in full decoding and their core's Tsl

@@ -1,10 +1,10 @@
 # ---------------------------------------------------------------------------
 # InstallLibrary.cmake
 #
-# install() rules + package config for distributing ac3::forge, matroska::matroska and mp4::mp4
-# independently, consumable via find_package(ac3forge). ac3::audio (src/audio/) is deliberately
-# NOT installed/exported here - it is a CLI/GUI implementation detail, not part of the
-# distributed package; see docs/library/index.md.
+# install() rules + package config for distributing ac3::forge, matroska::matroska, mp4::mp4 and
+# the other libraries below independently, consumable via find_package(ac3forge). ac3::audio
+# (src/audio/) is deliberately NOT installed/exported here - it is a CLI/GUI implementation
+# detail, not part of the distributed package; see docs/library/index.md.
 #
 # include()'d from the root CMakeLists.txt after add_subdirectory(src/forge) and, for each
 # optional component, its own guarded add_subdirectory(src/matroska|mp4|mpegts), before
@@ -67,6 +67,8 @@ if(AC3FORGE_INSTALL_BOTH_LINKAGES)
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_static mpegts_shared)
     set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_static ac3iab_shared)
     set(_ac3forge_iamf_install_targets iamf_objects iamf_static iamf_shared)
+    set(_ac3forge_ac4_install_targets ac4_objects ac4_static ac4_shared)
+    set(_ac3forge_ac4dec_install_targets ac4dec_objects ac4dec_static ac4dec_shared)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static forge_c_shared)
 elseif(BUILD_SHARED_LIBS)
     # ac3::forge_c (src/capi/CMakeLists.txt) statically embeds ac3::forge_static PRIVATE
@@ -92,6 +94,8 @@ elseif(BUILD_SHARED_LIBS)
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_shared)
     set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_shared)
     set(_ac3forge_iamf_install_targets iamf_objects iamf_shared)
+    set(_ac3forge_ac4_install_targets ac4_objects ac4_shared)
+    set(_ac3forge_ac4dec_install_targets ac4dec_objects ac4dec_shared)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_shared)
 else()
     set(_ac3forge_forge_install_targets forge_objects forge_static)
@@ -101,6 +105,8 @@ else()
     set(_ac3forge_mpegts_install_targets mpegts_objects mpegts_static)
     set(_ac3forge_iab_install_targets ac3iab_objects ac3iab_static)
     set(_ac3forge_iamf_install_targets iamf_objects iamf_static)
+    set(_ac3forge_ac4_install_targets ac4_objects ac4_static)
+    set(_ac3forge_ac4dec_install_targets ac4dec_objects ac4dec_static)
     set(_ac3forge_capi_install_targets forge_c_objects forge_c_static)
 endif()
 
@@ -392,6 +398,81 @@ if(AC3FORGE_BUILD_IAMF)
         LIBNAME "${_ac3forge_iamf_pc_libname}")
 endif()
 
+# The AC-4 inspector (src/ac4, ac4::ac4) and the AC-4 decoder (src/ac4dec, ac4::decoder) are
+# optional components under one switch, AC3FORGE_BUILD_AC4 (see the root CMakeLists.txt), with the
+# core the decoder links (src/ac4core, ac4::core). The three share one export set, ac4Targets,
+# installed under the ac4:: namespace the tree's own aliases use, each with its own install() and
+# its own .pc file - the pairing tools/checks/check_packaging_versions.sh counts. The decoder's
+# targets are exported as decoder_static and decoder_shared, and the core as core
+# (src/ac4dec/CMakeLists.txt, src/ac4core/CMakeLists.txt). The encoder (src/ac4enc) is built by the
+# same switch and installed once its API is final (planning/ac4.md, phase E7).
+#
+# The core is a static archive of hidden symbols with no headers and no ABI of its own. The
+# static decoder's archive calls into it without containing it, so it is installed wherever that
+# archive is and named by the decoder's exported target as a link-only dependency; the shared
+# decoder carries the part of it that it uses, and a shared-only install has no core. No vcpkg
+# feature or Conan option of their own yet: AC3FORGE_BUILD_AC4 is on by default in both, as
+# ac3iab's and iamf's switches are, so both install the three.
+if(AC3FORGE_BUILD_AC4)
+    install(TARGETS ${_ac3forge_ac4_install_targets}
+        EXPORT ac4Targets
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
+
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/ac4/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        COMPONENT library)
+
+    install(FILES "${CMAKE_BINARY_DIR}/src/ac4/generated/ac4/export.hpp"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ac4"
+        COMPONENT library)
+
+    ac3forge_pkgconfig_libname(_ac3forge_ac4_pc_libname ac4_shared ac4 ac4_static
+        "${_ac3forge_ac4_install_targets}")
+    ac3forge_install_pkgconfig(
+        NAME ac4
+        DESCRIPTION "AC-4 (ETSI TS 103 190) sync frame, table of contents and presentation reader"
+        LIBNAME "${_ac3forge_ac4_pc_libname}")
+
+    install(TARGETS ${_ac3forge_ac4dec_install_targets}
+        EXPORT ac4Targets
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}" COMPONENT library
+        LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT libruntime NAMELINK_COMPONENT library
+        ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
+
+    install(DIRECTORY "${PROJECT_SOURCE_DIR}/src/ac4dec/include/"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}"
+        COMPONENT library)
+
+    install(FILES "${CMAKE_BINARY_DIR}/src/ac4dec/generated/ac4dec/export.hpp"
+        DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/ac4dec"
+        COMPONENT library)
+
+    # REQUIRES ac4: the decoder's header includes the inspector's, and each decoder library links
+    # the inspector of its own kind. STATIC_REQUIRES ac4core: libac4dec_static.a calls into the
+    # core's archive, which only a static-only install names here (ac3forge_install_pkgconfig()).
+    ac3forge_pkgconfig_libname(_ac3forge_ac4dec_pc_libname ac4dec_shared ac4dec ac4dec_static
+        "${_ac3forge_ac4dec_install_targets}")
+    ac3forge_install_pkgconfig(
+        NAME ac4dec
+        DESCRIPTION "AC-4 decoder (ETSI TS 103 190-1 and TS 103 190-2)"
+        LIBNAME "${_ac3forge_ac4dec_pc_libname}"
+        REQUIRES ac4
+        STATIC_REQUIRES ac4core)
+
+    if("ac4dec_static" IN_LIST _ac3forge_ac4dec_install_targets)
+        install(TARGETS ac4core
+            EXPORT ac4Targets
+            ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}" COMPONENT library)
+
+        ac3forge_install_pkgconfig(
+            NAME ac4core
+            DESCRIPTION "The tables and transforms libac4dec_static.a links (no headers)"
+            LIBNAME ac4core_static)
+    endif()
+endif()
+
 # ac3::forge_c is an optional component (AC3FORGE_BUILD_CAPI, see the root CMakeLists.txt) - same
 # shape as matroska::matroska/mp4::mp4/mpegts::mpegts above. Roadmap item F1's whole point is a
 # stable C-callable surface for OTHER toolchains, so its header (ac3forge_c/ac3forge.h) installs
@@ -530,6 +611,14 @@ if(AC3FORGE_BUILD_IAMF)
     install(EXPORT iamfTargets
         FILE iamfTargets.cmake
         NAMESPACE iamf::
+        DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
+        COMPONENT library)
+endif()
+
+if(AC3FORGE_BUILD_AC4)
+    install(EXPORT ac4Targets
+        FILE ac4Targets.cmake
+        NAMESPACE ac4::
         DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/ac3forge"
         COMPONENT library)
 endif()

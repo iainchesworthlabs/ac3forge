@@ -39,6 +39,7 @@
 #include "ac3/verify/eac3_mirror.hpp"
 #include "ac3/verify/mirror.hpp"
 #include "ac4/ac4.hpp"
+#include "ac4_object_render.hpp"
 #include "ac4dec/decoder.hpp"
 #include "stream_playback.hpp"
 
@@ -399,6 +400,16 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
     return ac3::Acmod::k1_0;
 }
 
+// Options for a warning, space-separated.
+std::string joined(const std::vector<std::string>& tokens) {
+    std::string out;
+    for (const std::string& token : tokens) {
+        out += out.empty() ? "" : " ";
+        out += token;
+    }
+    return out;
+}
+
 // AC-4's DRC decoder mode by drcmode='s name (parse_options checked it).
 ac4::DrcMode ac4_drc_mode(std::string_view name) {
     if (name == "off") {
@@ -448,6 +459,9 @@ ac4::DownmixTarget ac4_layout(std::string_view speakers) {
 // method (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send, and
 // without a fold speakers='s layout.
 ac4::DownmixTarget ac4_downmix(const ac3cli::Options& meta) {
+    if (meta.ac4_fold_5x) {
+        return ac4::DownmixTarget::k5X;
+    }
     if (meta.downmix_auto) {
         return ac4::DownmixTarget::kStereo;
     }
@@ -507,8 +521,12 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
         case ac4::DownmixTarget::kLoRo:
         case ac4::DownmixTarget::kLtRt:
         case ac4::DownmixTarget::kMono:
-            add(fmt::format("downmixed to {}", ac4::describe(output.downmix)));
+            add(fmt::format("downmixed to {}{}", ac4::describe(output.downmix),
+                            output.mix_lfe ? "" : " without the LFE"));
             break;
+    }
+    if (output.headphones) {
+        add("for headphones");
     }
     if (output.dialogue_gain_db != 0.0) {
         add(fmt::format("dialogue substreams at {:+g} dB where the stream allows", output.dialogue_gain_db));
@@ -533,9 +551,11 @@ std::string ac4_decoding(ac4::DecodingMode decoding) {
 // TS 103 190-1 clause 5.7.8), at the output level output-level= names and
 // compressed in the DRC decoder mode drcmode= names (clause 5.7.9), in the
 // layout channels=, downmix= and speakers= ask for (6.2.17, TS 103 190-2
-// clause 5.10.2), and a damaged frame concealed as conceal= says. The object
-// options are output processing the AC-4 decoder does not do yet, and are
-// reported rather than applied.
+// clause 5.10.2), and a damaged frame concealed as conceal= says. A
+// presentation with objects is rendered to the layout those options name,
+// 7.1.4 by default, through the layout renderer Hearth plays E-AC-3's objects
+// with (apps/common/ac4_object_render.hpp); the object options, which write
+// E-AC-3's objects out, are reported rather than applied.
 int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
                    const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
     const auto status = status_stream(out_path);
@@ -555,8 +575,24 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         return kExitUsage;
     }
     if (!objects_dir.empty() || !adm_out.empty()) {
-        fmt::println(stderr, "warning: {} is AC-4, whose objects are not decoded yet - the object options are ignored",
+        fmt::println(stderr,
+                     "warning: {} is AC-4: the object options write E-AC-3's objects, and are "
+                     "ignored; AC-4's "
+                     "objects are rendered to the output's speakers",
                      in_path);
+    }
+    // Options AC-3's and E-AC-3's decode reads: said, not silently dropped.
+    // The two that promise a result AC-4 cannot give are refused.
+    if (!meta.bap_census_path.empty() || meta.verify_objects) {
+        fmt::println(stderr, "error: {} is AC-4: {} AC-3's and E-AC-3's", in_path,
+                     meta.verify_objects ? "verify-objects checks the EMDF object signatures of"
+                                         : "bap-census= counts the bit allocation of");
+        return kExitUsage;
+    }
+    if (!meta.eac3_decode_tokens.empty()) {
+        fmt::println(stderr, "warning: {} is AC-4: {} {} AC-3's and E-AC-3's, and ignored", in_path,
+                     joined(meta.eac3_decode_tokens),
+                     meta.eac3_decode_tokens.size() == 1 ? "is" : "are");
     }
     const ac4::ScanResult scan = ac4::scan(stream);
     if (scan.frames.empty()) {
@@ -582,6 +618,8 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     config.output.downmix = ac4_downmix(meta);
     config.output.dialogue_gain_db = meta.ac4_dialogue_gain;
     config.output.associated_gain_db = meta.ac4_associated_gain;
+    config.output.mix_lfe = meta.ac4_mix_lfe;
+    config.output.headphones = meta.ac4_headphones;
     config.concealment = ac4_concealment(meta.concealment);
     config.decoding = meta.ac4_core_decoding ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
     config.presentation.index = meta.ac4_presentation;
@@ -589,6 +627,8 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     config.presentation.language = meta.ac4_language;
     config.presentation.associated = meta.ac4_associated;
     config.presentation.associated_type = meta.ac4_associated_type;
+    config.presentation.headphones = meta.ac4_headphones;
+    config.level = meta.ac4_level;
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {
@@ -602,6 +642,11 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     std::optional<ac3::analysis::LevelMeter> meter;
     std::vector<std::size_t> meter_order;  // the decoded channel at each of the meter's places
     ac4::DecodedFrame first;
+    // A presentation with objects comes out rendered to speakers, `speakers`
+    // the file's channels either way.
+    std::optional<ac3::apps::Ac4ObjectRenderer> objects;
+    std::vector<std::vector<float>> rendered;
+    std::vector<ac4::Speaker> speakers;
     std::size_t decoded_frames = 0;
     std::size_t waiting_frames = 0;
     std::size_t concealed_frames = 0;  // under conceal=, frames made in place of ones that failed
@@ -629,31 +674,44 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         }
         if (!sink.is_open()) {
             first = pcm;
-            if (!sink.open(out_path, static_cast<std::uint32_t>(pcm.sample_rate_hz), pcm.channels.size(),
-                           ac4_order(pcm.speakers, ac4_wav_rank))) {
+            if (!pcm.objects.empty()) {
+                objects.emplace(config.output.downmix,
+                                static_cast<std::uint32_t>(pcm.sample_rate_hz));
+                speakers.assign(objects->speakers().begin(), objects->speakers().end());
+            } else {
+                speakers = pcm.speakers;
+            }
+            if (!sink.open(out_path, static_cast<std::uint32_t>(pcm.sample_rate_hz),
+                           speakers.size(), ac4_order(speakers, ac4_wav_rank))) {
                 fmt::println(stderr, "error: cannot open {} for writing", out_path);
                 return kExitOutput;
             }
-            meter_order = ac4_order(pcm.speakers, ac4_meter_rank);
-            const bool lfe = std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
-            meter.emplace(ac4_bed_acmod(pcm.speakers), lfe, static_cast<std::uint32_t>(pcm.sample_rate_hz),
-                          static_cast<int>(pcm.channels.size()));
+            meter_order = ac4_order(speakers, ac4_meter_rank);
+            const bool lfe = std::ranges::find(speakers, ac4::Speaker::kLfe) != speakers.end();
+            meter.emplace(ac4_bed_acmod(speakers), lfe,
+                          static_cast<std::uint32_t>(pcm.sample_rate_hz),
+                          static_cast<int>(speakers.size()));
         }
-        if (pcm.speakers != first.speakers || pcm.sample_rate_hz != first.sample_rate_hz) {
+        if ((!objects && (pcm.speakers != first.speakers || !pcm.objects.empty())) ||
+            pcm.sample_rate_hz != first.sample_rate_hz) {
             fmt::println(stderr, "error: {}: frame {}: the channel layout or sample rate changes mid-stream",
                          in_path, frames_done);
             sink.abort();
             return kExitInput;
         }
+        if (objects) {
+            objects->render(pcm, rendered);
+        }
+        const std::vector<std::vector<float>>& channels = objects ? rendered : pcm.channels;
         std::vector<std::span<const float>> views;
-        views.reserve(pcm.channels.size());
-        for (std::size_t ch = 0; ch < pcm.channels.size(); ++ch) {
-            if (!sink.append(ch, pcm.channels[ch])) {
+        views.reserve(channels.size());
+        for (std::size_t ch = 0; ch < channels.size(); ++ch) {
+            if (!sink.append(ch, channels[ch])) {
                 fmt::println(stderr, "error: cannot write to {}", out_path);
                 sink.abort();
                 return kExitOutput;
             }
-            views.emplace_back(pcm.channels[meter_order[ch]]);
+            views.emplace_back(channels[meter_order[ch]]);
         }
         // Emplaced with the sink's opening, a few lines up.
         // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
@@ -679,15 +737,22 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     }
     // The channels in the order the file holds them.
     std::string layout;
-    for (const std::size_t c : ac4_order(first.speakers, ac4_wav_rank)) {
+    for (const std::size_t c : ac4_order(speakers, ac4_wav_rank)) {
         layout += layout.empty() ? "" : " ";
-        layout += ac4::describe(first.speakers[c]);
+        layout += ac4::describe(speakers[c]);
     }
     status_println(status, "decoded {} AC-4 frames{} -> {} ({}, {} Hz)", decoded_frames,
                    ac4_decoding(config.decoding), out_path, layout, first.sample_rate_hz);
     status_println(status, "          presentation {}{}", first.presentation,
                    first.presentation_id ? fmt::format(" (presentation_id {})", *first.presentation_id)
                                          : std::string{});
+    if (objects) {
+        status_println(
+            status, "          {} objects{}, rendered to those speakers by the layout renderer",
+            first.objects.size(),
+            first.channels.empty() ? std::string{}
+                                   : fmt::format(" and {} channels", first.channels.size()));
+    }
     if (waiting_frames > 0) {
         status_println(status, "          {} frames waiting for an I-frame produced no output",
                        waiting_frames);
@@ -1181,6 +1246,17 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     if (!requested.syntax_trace_path.empty()) {
         fmt::println(stderr, "error: syntax-trace= records AC-4 syntax, and {} is AC-3 or E-AC-3", in_path);
         return kExitUsage;
+    }
+    if (requested.ac4_fold_5x) {
+        fmt::println(
+            stderr, "error: channels=5.1 folds an AC-4 7.X stream to 5.X, and {} is AC-3 or E-AC-3",
+            in_path);
+        return kExitUsage;
+    }
+    if (!requested.ac4_decode_tokens.empty()) {
+        fmt::println(stderr, "warning: {} is AC-3 or E-AC-3: {} {} AC-4's, and ignored", in_path,
+                     joined(requested.ac4_decode_tokens),
+                     requested.ac4_decode_tokens.size() == 1 ? "is" : "are");
     }
     // downmix=auto becomes a concrete fold here, once, from what the stream
     // itself prefers; everything below sees only the fold it settled on.

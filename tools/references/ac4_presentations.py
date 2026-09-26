@@ -201,3 +201,46 @@ def select_presentation(toc, choice, level):
     if by_index is not None:
         return by_index
     return best
+
+
+class PresentationName:
+    """An alternative presentation's name, gathered frame by frame from its presentation
+    substream's presentation_name (Part 2 clauses 6.3.3.1.2 to 6.3.3.1.4), as
+    src/ac4dec/ERRATA.md's "A presentation name in chunks" reads the clause: a field whose last
+    byte is 0 holds the whole name; else one whose second-last byte is 0 is the last chunk, its
+    last byte the number of chunks, and the name is that many chunks of consecutive frames ending
+    with it; a chunk before the last is all name. A name ends at its first zero byte. A frame
+    without a name, a count the chunks do not make, and a change of source drop the chunks
+    gathered; the last whole name stays."""
+
+    def __init__(self):
+        self.name = ''
+        self._chunks = []
+
+    @staticmethod
+    def _text(data):
+        return bytes(data).split(b'\x00', 1)[0].decode('utf-8', errors='replace')
+
+    def frame(self, data):
+        """One frame of the presentation substream: its presentation_name bytes, or None when
+        the frame sends no name."""
+        if not data:
+            self._chunks = []
+            return
+        if data[-1] == 0:
+            self.name = self._text(data[:-1])
+            self._chunks = []
+        elif len(data) >= 2 and data[-2] == 0:
+            chunks = [*self._chunks, bytes(data[:-2])]
+            self._chunks = []
+            if len(chunks) == data[-1]:
+                self.name = self._text(b''.join(chunks))
+        else:
+            if len(self._chunks) == 255:  # no count reaches further
+                self._chunks = []
+            self._chunks.append(bytes(data))
+
+    def forget(self):
+        """A change of source."""
+        self.name = ''
+        self._chunks = []

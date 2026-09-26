@@ -1,5 +1,6 @@
 #include "probe_json.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <fmt/format.h>
 #include <utility>
@@ -353,8 +354,16 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
     Ac4Summary summary;
     const auto scanned = ac4::scan(data);
     summary.sync_frames = scanned.frames.size();
-    for (const auto& frame : scanned.frames) {
+    // The decoder reads every substream of every frame, for the names that
+    // arrive in chunks and the metadata the I-frames send.
+    ac4::Decoder decoder;
+    std::uint64_t raw_bytes = 0;
+    std::optional<int> previous_counter;
+    std::optional<std::size_t> last_iframe;
+    for (std::size_t f = 0; f < scanned.frames.size(); ++f) {
+        const ac4::SyncFrame& frame = scanned.frames[f];
         summary.bytes += frame.raw_ac4_frame.size() + (frame.crc_ok ? 6 : 4);
+        raw_bytes += frame.raw_ac4_frame.size();
         if (frame.crc_ok.has_value() && !*frame.crc_ok) {
             ++summary.crc_failures;
         }
@@ -362,12 +371,51 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
         if (!parsed && !summary.parse_error.has_value()) {
             summary.parse_error = parsed.error();
         }
+        if (parsed) {
+            const ac4::Toc& toc = parsed->toc;
+            // ETSI TS 103 190-1 clause 4.3.3.2.2: the counter continues from
+            // the last, wraps from 1020 to 1, or follows a splice mark of 0.
+            if (previous_counter) {
+                const int previous = *previous_counter;
+                const int counter = toc.sequence_counter;
+                const bool continues = counter == previous + 1 ||
+                                       (counter == 1 && previous == 1020) ||
+                                       (counter != 0 && previous == 0);
+                summary.splices += continues ? 0U : 1U;
+            }
+            previous_counter = toc.sequence_counter;
+            if (toc.b_iframe_global) {
+                ++summary.iframes;
+                if (last_iframe) {
+                    const std::size_t interval = f - *last_iframe;
+                    summary.min_iframe_interval =
+                        std::min(summary.min_iframe_interval.value_or(interval), interval);
+                    summary.max_iframe_interval =
+                        std::max(summary.max_iframe_interval.value_or(interval), interval);
+                }
+                last_iframe = f;
+            }
+        }
         if (parsed && !summary.first_frame.has_value()) {
             summary.first_frame = std::move(*parsed);
         }
+        (void)decoder.parse(frame.raw_ac4_frame);
     }
     if (scanned.stopped_at.has_value() && !summary.parse_error.has_value()) {
         summary.parse_error = scanned.stopped_at;
+    }
+    if (summary.first_frame.has_value()) {
+        summary.frame_rate = ac4::frame_rate(summary.first_frame->toc);
+        if (summary.frame_rate && summary.sync_frames > 0) {
+            const double seconds =
+                static_cast<double>(summary.sync_frames) / summary.frame_rate->frames_per_second;
+            summary.bitrate_kbps = static_cast<double>(raw_bytes) * 8.0 / seconds / 1000.0;
+        }
+    }
+    const std::span<const ac4::PresentationInfo> presentations = decoder.presentations();
+    summary.presentations.assign(presentations.begin(), presentations.end());
+    if (decoder.metadata().presentation.has_value()) {
+        summary.metadata = decoder.metadata();
     }
     return summary;
 }
@@ -556,6 +604,194 @@ void write_ac4_group_substream(JsonSink& json, const ac4::GroupSubstream& sub) {
     json.end_object();
 }
 
+// --- What the decoder reports (planning/ac4.md, "Media information") ------
+
+void write_speakers(JsonSink& json, std::string_view name, std::span<const ac4::Speaker> speakers) {
+    json.key(name);
+    json.begin_array();
+    for (const ac4::Speaker speaker : speakers) {
+        json.value(ac4::describe(speaker));
+    }
+    json.end_array();
+}
+
+void write_optional(JsonSink& json, std::string_view name, const std::optional<int>& value) {
+    if (value) {
+        json.member(name, static_cast<std::int64_t>(*value));
+    } else {
+        json.member_null(name);
+    }
+}
+
+void write_optional(JsonSink& json, std::string_view name, const std::optional<double>& value,
+                    int decimals) {
+    if (value) {
+        json.member(name, *value, decimals);
+    } else {
+        json.member_null(name);
+    }
+}
+
+std::string_view role_token(ac4::SubstreamRole role) {
+    switch (role) {
+        case ac4::SubstreamRole::kMain:
+            return "main";
+        case ac4::SubstreamRole::kMusicAndEffects:
+            return "music_and_effects";
+        case ac4::SubstreamRole::kDialogue:
+            return "dialogue";
+        case ac4::SubstreamRole::kDialogueEnhancement:
+            return "dialogue_enhancement";
+        case ac4::SubstreamRole::kAssociated:
+            return "associated";
+    }
+    return "unknown";
+}
+
+// What the decoder read of a presentation.
+void write_ac4_presentation_members(JsonSink& json, const ac4::PresentationInfo& info) {
+    json.member("index", static_cast<std::uint64_t>(info.index));
+    write_optional(json, "presentation_id", info.presentation_id);
+    json.member("presentation_version", static_cast<std::int64_t>(info.presentation_version));
+    write_optional(json, "presentation_config", info.presentation_config);
+    write_optional(json, "md_compat", info.md_compat);
+    json.member("enabled", info.enabled);
+    json.member("alternative", info.alternative);
+    json.member("pre_virtualized", info.pre_virtualized);
+    json.member("name", std::string_view{info.name});
+    json.member("language", std::string_view{info.language});
+    write_speakers(json, "channels", info.speakers);
+    json.key("substream_groups");
+    json.begin_array();
+    for (const int group : info.substream_groups) {
+        json.value(static_cast<std::int64_t>(group));
+    }
+    json.end_array();
+    json.member("decodable", info.decodable);
+    json.member("selectable", info.selectable);
+    json.key("members");
+    json.begin_array();
+    for (const ac4::PresentationMember& member : info.members) {
+        json.begin_object();
+        json.member("substream", static_cast<std::int64_t>(member.substream));
+        json.member("role", role_token(member.role));
+        json.member("group", static_cast<std::int64_t>(member.group));
+        write_optional(json, "content_classifier", member.content_classifier);
+        json.member("language", std::string_view{member.language});
+        write_speakers(json, "channels", member.speakers);
+        json.end_object();
+    }
+    json.end_array();
+}
+
+std::string_view compression_token(ac4::DrcModeInfo::Compression compression) {
+    switch (compression) {
+        case ac4::DrcModeInfo::Compression::kDefaultProfile:
+            return "default_profile";
+        case ac4::DrcModeInfo::Compression::kCurve:
+            return "curve";
+        case ac4::DrcModeInfo::Compression::kGains:
+            return "gains";
+    }
+    return "unknown";
+}
+
+std::string_view preferred_token(ac4::DownmixInfo::Preferred preferred) {
+    switch (preferred) {
+        case ac4::DownmixInfo::Preferred::kNotIndicated:
+            return "not_indicated";
+        case ac4::DownmixInfo::Preferred::kLoRo:
+            return "lo_ro";
+        case ac4::DownmixInfo::Preferred::kLtRt:
+            return "lt_rt";
+        case ac4::DownmixInfo::Preferred::kLtRtProLogicII:
+            return "lt_rt_pro_logic_ii";
+    }
+    return "unknown";
+}
+
+// The selected presentation's metadata. A gain of 0, -infinity dB, is null,
+// as JSON writes no infinity.
+void write_ac4_metadata(JsonSink& json, const ac4::PresentationMetadata& metadata) {
+    json.begin_object();
+    if (metadata.presentation) {
+        json.member("presentation", static_cast<std::uint64_t>(*metadata.presentation));
+    } else {
+        json.member_null("presentation");
+    }
+    const ac4::LoudnessInfo& l = metadata.loudness;
+    json.key("loudness");
+    json.begin_object();
+    write_optional(json, "dialnorm_dbfs", l.dialnorm_dbfs, 2);
+    write_optional(json, "practice", l.practice);
+    write_optional(json, "correction_gating", l.correction_gating);
+    json.member("corrected_in_real_time", l.corrected_in_real_time);
+    write_optional(json, "integrated_lkfs", l.integrated_lkfs, 1);
+    write_optional(json, "speech_gated_lkfs", l.speech_gated_lkfs, 1);
+    write_optional(json, "speech_gating", l.speech_gating);
+    write_optional(json, "short_term_lufs", l.short_term_lufs, 1);
+    write_optional(json, "max_short_term_lufs", l.max_short_term_lufs, 1);
+    write_optional(json, "true_peak_dbtp", l.true_peak_dbtp, 1);
+    write_optional(json, "max_true_peak_dbtp", l.max_true_peak_dbtp, 1);
+    write_optional(json, "loudness_range_lu", l.loudness_range_lu, 1);
+    write_optional(json, "loudness_range_practice", l.loudness_range_practice);
+    write_optional(json, "momentary_lufs", l.momentary_lufs, 1);
+    write_optional(json, "max_momentary_lufs", l.max_momentary_lufs, 1);
+    json.end_object();
+    json.key("drc");
+    if (metadata.drc) {
+        json.begin_object();
+        json.member("eac3_profile", static_cast<std::int64_t>(metadata.drc->eac3_profile));
+        json.key("modes");
+        json.begin_array();
+        for (const ac4::DrcModeInfo& mode : metadata.drc->modes) {
+            json.begin_object();
+            json.member("id", static_cast<std::int64_t>(mode.id));
+            write_optional(json, "output_level_from_db", mode.output_level_from_db);
+            write_optional(json, "output_level_to_db", mode.output_level_to_db);
+            json.member("compression", compression_token(mode.compression));
+            write_optional(json, "repeat_of", mode.repeat_of);
+            write_optional(json, "gains_config", mode.gains_config);
+            json.end_object();
+        }
+        json.end_array();
+        write_optional(json, "applied_mode", metadata.drc->applied_mode);
+        json.end_object();
+    } else {
+        json.value_null();
+    }
+    json.key("dialogue_enhancement");
+    if (metadata.dialogue_enhancement) {
+        const ac4::DialogueEnhancementInfo& de = *metadata.dialogue_enhancement;
+        json.begin_object();
+        json.member("method", static_cast<std::int64_t>(de.method));
+        json.member("left", de.left);
+        json.member("right", de.right);
+        json.member("centre", de.centre);
+        json.member("max_gain_db", de.max_gain_db, 1);
+        json.end_object();
+    } else {
+        json.value_null();
+    }
+    json.key("downmix");
+    if (metadata.downmix) {
+        const ac4::DownmixInfo& d = *metadata.downmix;
+        json.begin_object();
+        json.member("loro_centre_db", d.loro_centre_db, 1);
+        json.member("loro_surround_db", d.loro_surround_db, 1);
+        json.member("ltrt_centre_db", d.ltrt_centre_db, 1);
+        json.member("ltrt_surround_db", d.ltrt_surround_db, 1);
+        write_optional(json, "lfe_db", d.lfe_db, 1);
+        json.member("preferred", preferred_token(d.preferred));
+        write_optional(json, "loro_correction_db2", d.loro_correction_db2, 1);
+        write_optional(json, "ltrt_correction_db2", d.ltrt_correction_db2, 1);
+        json.end_object();
+    } else {
+        json.value_null();
+    }
+    json.end_object();
+}
+
 }  // namespace
 
 void write_ac4_stream(JsonSink& json, const Ac4Summary& summary) {
@@ -589,6 +825,28 @@ void write_ac4_stream(JsonSink& json, const Ac4Summary& summary) {
     json.member("sample_rate_hz", static_cast<std::int64_t>(toc.sample_rate_hz));
     json.member("frame_rate_index", static_cast<std::int64_t>(toc.frame_rate_index));
     json.member("n_presentations", static_cast<std::int64_t>(toc.n_presentations));
+    json.key("frame_rate");
+    if (summary.frame_rate) {
+        json.begin_object();
+        json.member("fps", summary.frame_rate->frames_per_second, 3);
+        json.member("frame_length", static_cast<std::int64_t>(summary.frame_rate->frame_length));
+        json.member("internal_sample_rate_hz", summary.frame_rate->internal_rate_hz, 2);
+        json.end_object();
+    } else {
+        json.value_null();
+    }
+    write_optional(json, "bitrate_kbps", summary.bitrate_kbps, 1);
+    json.member("iframes", static_cast<std::uint64_t>(summary.iframes));
+    json.key("iframe_interval_frames");
+    if (summary.min_iframe_interval && summary.max_iframe_interval) {
+        json.begin_object();
+        json.member("min", static_cast<std::uint64_t>(*summary.min_iframe_interval));
+        json.member("max", static_cast<std::uint64_t>(*summary.max_iframe_interval));
+        json.end_object();
+    } else {
+        json.value_null();
+    }
+    json.member("splices", static_cast<std::uint64_t>(summary.splices));
 
     json.key("substream_groups");
     json.begin_array();
@@ -621,9 +879,17 @@ void write_ac4_stream(JsonSink& json, const Ac4Summary& summary) {
 
     json.key("presentations_v0");
     json.begin_array();
-    for (const auto& pres : toc.presentations_v0) {
+    for (std::size_t p = 0; p < toc.presentations_v0.size(); ++p) {
+        const auto& pres = toc.presentations_v0[p];
         json.begin_object();
         json.member("presentation_version", static_cast<std::int64_t>(pres.presentation_version));
+        // What the decoder read of it.
+        if (p < summary.presentations.size()) {
+            json.key("decoded");
+            json.begin_object();
+            write_ac4_presentation_members(json, summary.presentations[p]);
+            json.end_object();
+        }
         json.key("substreams");
         json.begin_array();
         // Each entry is the substream's own members, with its role beside
@@ -638,6 +904,30 @@ void write_ac4_stream(JsonSink& json, const Ac4Summary& summary) {
         json.end_object();
     }
     json.end_array();
+
+    // Version 1 presentations, as the decoder reads them.
+    json.key("presentations_v1");
+    json.begin_array();
+    if (toc.bitstream_version >= 2) {
+        for (const ac4::PresentationInfo& info : summary.presentations) {
+            json.begin_object();
+            write_ac4_presentation_members(json, info);
+            json.end_object();
+        }
+    }
+    json.end_array();
+    json.key("selected_presentation");
+    if (summary.metadata && summary.metadata->presentation) {
+        json.value(static_cast<std::uint64_t>(*summary.metadata->presentation));
+    } else {
+        json.value_null();
+    }
+    json.key("metadata");
+    if (summary.metadata) {
+        write_ac4_metadata(json, *summary.metadata);
+    } else {
+        json.value_null();
+    }
     json.end_object();  // ac4
 
     json.end_object();  // stream

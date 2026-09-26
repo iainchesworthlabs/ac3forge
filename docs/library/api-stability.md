@@ -60,6 +60,8 @@ it directly. Four tiers, assigned per header below:
 | `ac3adm/ac3adm.hpp`, `model.hpp` | Public within its own opt-in module (`-DAC3FORGE_BUILD_ADM=ON`); see [Experimental modules](#experimental-modules) for why this is not the same as "frozen." |
 | `ac3/admbridge/bridge.hpp`, `coordinates.hpp` | Public, same opt-in caveat. |
 | `ac3iab/ac3iab.hpp`, `model.hpp` | **Experimental** — see below; not part of the `v1.0.0` freeze despite being installed and default-on today. |
+| `ac4/ac4.hpp`, `ac4dec/decoder.hpp` | **Experimental** — the AC-4 inspector and decoder, installed and default-on; see below. |
+| `ac4/syntax.hpp` | Diagnostic — the AC-4 syntax trace the decoder and encoder write, as `ac3/decoder/syntax_trace.hpp` is for AC-3 and E-AC-3. |
 | `ac3forge_c/ac3forge.h` | Public — its own narrower promise, see [C API](c-api.md). |
 | `ac3/signing/signing_key.hpp`, `emdf_atmos_signer.hpp` | Public. |
 
@@ -171,6 +173,12 @@ Experimental from its first merge, and only leaves that tier through a deliberat
 decision on this page, the same way `ac3iab` will. `ac3::render` is one: it moved into
 `ac3::forge` from the ESP32 player to serve the desktop player as well, and its speaker
 management is new with it.
+
+The AC-4 inspector and decoder (`ac4::ac4`, `ac4::decoder`, [AC-4 decoding](ac4.md)) are
+Experimental too. Their API has the form [planning/ac4.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md)
+set for the decoder of channel-based streams, and the plan's later phases add to it: the immersive
+output layouts and core decoding as fields after the existing ones, and objects. The shared core,
+`ac4::core`, has no headers and so no tier, and the encoder, `ac4::encoder`, is not installed yet.
 
 `ac3adm::ac3adm` and `ac3::admbridge` are a different case: also opt-in
 (`-DAC3FORGE_BUILD_ADM=ON`), but consumed for real by the ADM→Atmos bridging path and stable in

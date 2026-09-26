@@ -729,11 +729,12 @@ See [Conformance vectors](conformance-vectors.md).
 
 ## AC-4
 
-`ac4::` is a bitstream inspector, not a decoder: it parses the sync frame, table of
-contents, presentation and substream-group framing (ETSI TS 103 190-1/-2) — channel-coded,
+Three libraries read and write AC-4 (ETSI TS 103 190-1/-2). `ac4::ac4`, the inspector, parses the
+sync frame, table of contents, presentation and substream-group framing — channel-coded,
 A-JOC-coded, direct-coded-object and OAMD alike — and reports `audio_data`/`metadata()` payloads
-as byte ranges without decoding them. That narrower scope changes which of this page's usual
-checks apply.
+as byte ranges. `ac4::decoder` decodes them, from [The decoder's syntax](#the-decoders-syntax)
+on, and `ac4::encoder` writes AC-4 ([The encoder](#the-encoder)). What comes first here is the
+inspector's, and its narrower scope changes which of this page's usual checks apply.
 
 **Where real AC-4 streams come from.** Nothing open encodes AC-4 — the same gap this page states
 for AC-3/E-AC-3, just with no third-party corpus to fall back on either, since neither ATSC nor
@@ -774,10 +775,9 @@ oracle — parses a real DEE-encoded frame's framing cleanly (`dlbac4parse` repo
 testing, with and without explicit `out-ch-config`/`out-cplx-level`/`main-assoc-mode` overrides.
 Whether that is a license/entitlement gap specific to AC-4 decode (as opposed to AC-3/E-AC-3
 decode, confirmed working on the same install) or something else was not resolved. It does not
-block this parser's own scope, since parse-and-inspect never claims to decode audio content
-either — but it does mean **no tool available to this project can currently decode AC-4 audio**,
-so nothing here can be checked against rendered PCM the way AC-3/E-AC-3's SNR gates are. If that
-gap closes later, it would upgrade tier 2 above (framing-only) to an audio-content check.
+block the inspector's scope, since parse-and-inspect never claims to decode audio content. The
+decoder's output is checked against the sources DEE encoded and against librempeg's AC-4 decoder,
+run as a command-line oracle ([The decoder's output](#the-decoders-output)).
 
 **A-JOC / direct-coded-object / OAMD substream groups** (`b_channel_coded == 0`, TS 103 190-2
 clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`, `ac4_substream_info_obj()`,
@@ -831,7 +831,7 @@ in `tools/references/ac4_parse.py`.
 
 ### The decoder's syntax
 
-`src/ac4dec` is the start of an AC-4 decoder written from the same two standards. It reads every
+`src/ac4dec` is an AC-4 decoder written from the same two standards. It reads every
 syntax element of a frame's substreams, and decodes the audio of some of them (see "The decoder's
 output" below): the presentation substream,
 channel-coded audio substreams in the Part 1 channel elements (ASF spectral data, stereo processing,
@@ -839,8 +839,9 @@ companding, A-SPX and A-CPL data, and `metadata()` with its DRC and dialogue enh
 channel-coded substream's HSF extension substream where one resolves to a distinct, readable
 substream (the additional scale factor bands, spectral data and noise fill above 24 kHz a 96 kHz or
 192 kHz substream carries), and EMDF payload substreams. It refuses, with a named reason, the speech
-spectral frontend, the immersive and 22.2 channel elements, object substreams, and a 96/192 kHz
-substream whose HSF extension substream could not be resolved.
+spectral frontend, the immersive and 22.2 channel elements, object substreams, a 96/192 kHz
+substream whose HSF extension substream could not be resolved, and a substream no element of the
+table of contents names.
 
 With no reference output to compare against, the syntax is transcribed twice, separately, from the
 text: in C++ in the decoder, and in Python in `tools/references/ac4_syntax.py`, which takes its table
@@ -1193,6 +1194,123 @@ which takes it to the layout a system asks for. Where the text leaves a choice o
 - **librempeg** (git 2026-09-24) does not decode the element: on the 5.1.4 tone legs its L, R and C
   come out 6 to 9 dB down, its surrounds 12 to 15 dB down, all four top tones in its Lb at about -15
   dB, and its top channels silent.
+
+### The decoder's API and packaging
+
+Phase D8 gives the decoder's API the form planning/ac4.md sets for channel-based streams, reports
+what a stream carries through it, and installs the inspector, the decoder and the core
+([AC-4 decoding](library/ac4.md)). The tests are in `tests/ac4dec/test_ac4dec_api.cpp` unless
+named otherwise.
+
+- **Through the public API alone**: a test standing in for Hearth's engine decodes each of the 42
+  committed streams (DEE's 13, the 20 constructed ones and the 9 of the presentation multiplexer)
+  by block through `ac4dec/decoder.hpp` alone, placing each block's channels by their speakers and
+  changing the output level and dialogue enhancement half way through. No frame is refused, only a
+  frame before a stream's first I-frame comes out empty, a stream ends in one short block at most,
+  and the output equals `decode()`'s configured the same way, sample for sample. Pointed at DEE's
+  local set with `AC4DEC_API_STREAM_DIR`, the same test decodes 406 of its 533 streams and refuses
+  the other 127, its 5.1.4 streams, by name (the immersive channel element, phase D9); of the 13
+  third-party streams it decodes 12 and refuses the A-JOC one, naming the substream.
+- **By block**: `decode_by_block()` hands over the same samples as `decode()` in blocks of 256, on
+  2 048-sample frames and on the 2 000-sample and alternating 1 601/1 602-sample frames of 24 and
+  29.97 fps, and a change of layout hands over what it holds first, as a shorter block.
+- **While a stream plays**: `set_output()` at a frame that is not an I-frame loses no frame; the
+  output before it is the old configuration's and from two frames after it, once the control data
+  has reached the QMF domain, the new one's, sample for sample. A decoder built afresh at the same
+  frame puts out nothing until the next I-frame, which is why Hearth's rebuild-and-prime cannot
+  serve AC-4. `set_presentation()` switches presentation from the next frame, and three frames later
+  the output is within 1e-4 of the peak of a decoder that decoded that presentation from the start.
+- **Reports**: `presentations()` lists the 17 presentations of the multiplexer's 5.1 stream with
+  their members and languages; `metadata()` holds, after the last frame of five DEE streams, the
+  last value the syntax trace shows for each element it reports, and at an output level of −20 dBFS
+  names the flat panel TV mode as the one applied; `latency_samples()` equals the delay the encoder
+  counts on at every frame rate, 1 313 samples at index 13.
+- **A presentation name in chunks** (Part 2 clause 6.3.3.1.4): 14 cases of frames' name bytes and
+  the name they give, committed as `tests/golden/ac4dec/presentations/presentation-names.tsv`,
+  which the decoder and `tools/references/ac4_presentations.py` both reproduce
+  (`tools/checks/test_ac4_presentation_names.py`); the reading is in `src/ac4dec/ERRATA.md`, "A
+  presentation name in chunks".
+- **The splitter** (`tests/ac4/test_ac4_splitter.cpp`): `ac4::SyncFrameSplitter` hands over the
+  frames `ac4::scan` finds in three committed streams fed in pieces from 1 byte to 64 KiB, skips
+  and counts what is not a frame before and between frames, drops a partial last frame, reports
+  storage too small, and reads an escaped frame size. `fuzz_ac4_parse` holds it to `ac4::scan` on
+  every input, at two storage sizes, and `fuzz_ac4_decode` changes the output and the presentation
+  half way and alternates `decode()` with `decode_by_block()`.
+- **The package** (`tools/checks/check_install_consumer.sh`, in CI's Linux LLVM leg): each tree it
+  installs, with both linkages, shared and static-only, is consumed by a C++ program that decodes a
+  committed stream through the installed inspector and decoder, linked through
+  `find_package(ac3forge)` for each exported decoder target and again through
+  `pkg-config --cflags --libs ac4dec`. Every installed archive, `libac4core_static.a` among them,
+  links whole with nothing undefined, and each `.pc` naming one links its archives whole on its own.
+
+Four items of the review of #700 have a test each, and each test failed before its fix:
+
+- **The syntax trace's lifetime.** `DecoderConfig::syntax` held only its callable's address, so a
+  lambda written in place, in a class's constructor in phase D7, was gone before the first record
+  and crashed MSVC's Release build. `ac4::SyntaxTrace` now owns a copy, and the decoder and the
+  encoder keep one of their own; `ac4::SyntaxSink`, the non-owning reference the readers hold, no
+  longer compiles from a temporary. The two tests of the copies ("a decoder keeps its own copy of
+  the syntax callable it is configured with", and its encoder twin) fail at their first check with
+  a non-owning trace, and static assertions hold the rest.
+- **One error for a Huffman miss.** A codeword the substream ends inside was `kTruncated` in A-SPX,
+  A-CPL and dialogue enhancement and `kInvalidStream` in the audio spectral frontend. Every tool
+  now reads its codewords through one function, and a codeword cut short is `kTruncated` whichever
+  tool reads it (`tests/ac4dec/test_ac4dec_asf.cpp`, each ASF codeword and each codebook's longest
+  codeword).
+- **An HSF extension substream nothing claims** used to go unreported. Every substream of
+  `substream_index_table()` is in the frame's report now, and one that no element of the table of
+  contents names is refused as unread (`tests/ac4dec/test_ac4dec_decoder.cpp`,
+  `tests/ac4dec/test_ac4dec_frames.cpp`).
+- **Android, WebAssembly and the Python wheel** compiled the AC-4 libraries and linked none of
+  them. Each turns `AC3FORGE_BUILD_AC4` off until phase I4 binds them, and
+  `tools/checks/test_ac4_build_configurations.py` reads the three configurations.
+
+### The decoder's objects
+
+Phase D10 adds object audio (Part 2 4.8.3): A-JOC substreams in full and core decoding (5.7),
+direct-coded objects, their object audio metadata (6.3.9, 5.9) and the intermediate spatial format
+renderer (5.10.3). Where the text leaves a choice open, the reading is in `src/ac4dec/ERRATA.md`,
+under "Object audio syntax", "A-JOC" and "Object audio metadata and the ISF renderer".
+
+- **The syntax, in both transcriptions**: `audio_data_ajoc()` with `var_channel_element()` and
+  `ajoc()`, `audio_data_objs()`, the metadata of 6.2.8 and `oamd_substream()`, in the decoder and in
+  `ac4_syntax.py`, each read against what the encoder's writer wrote, record for record, on
+  constructed streams of every `var_channel_element()` shape (one to seven signals, SIMPLE and ASPX,
+  each `var_coding_config`, with and without the LFE). Eight of them are committed with the Python
+  parser's digests, and the differential check mutates them. Chromium's `ac4-ajoc.ac4`, the one
+  encoded A-JOC stream here, reads to the end of every substream of its 64 frames in both.
+- **A-JOC on known input** (`tests/ac4core/test_ac4core_ajoc.cpp`): Table 28's bands, Tables 29 to
+  32's dequantisation, Pseudocode 16's differential decoding, the ramp of Pseudocodes 17 and 18 over
+  one and two data points and across frames, the decorrelation input matrix of objects of different
+  band counts, the wet path against the decorrelators and duckers run by hand, and dialogue
+  enhancement in both modes, each against its formula.
+- **The constructed streams** (`tests/ac4dec/test_ac4dec_objects.cpp`): each object's coefficients
+  are whole quantisation steps, so each object is a known sum of the downmix's tones; in full
+  decoding every object carries its tones to 0.1 dB and no other, through Pseudocode 14a's order,
+  several bands, two data points, differential decoding in time and an object not present, and in
+  core decoding every object is its downmix signal, or the static bed's channel. Direct-coded
+  dynamic objects, a 5.1 bed and an SR3.1.0.0 intermediate spatial format, over two substreams with
+  an OAMD substream, carry their own tones. Each block's update comes out at its sample plus the
+  decoder's delay of 1,313 samples, with the position 6.3.9.8.4 gives it, differences and extended
+  precision included. Dialogue enhancement raises A-JOC's dialogue object by 10^(G_DE/20) in full
+  decoding and adds its share to the downmix in core decoding, and a direct-coded dialogue
+  substream's objects by the same gain, each capped by the stream.
+- **The intermediate spatial format**: rendered to 7.X.4, 7.X.2, 7.X.0, 5.X.4, 5.X.2, 5.X, two
+  channels and mono, each object's tone reaches each speaker at its coefficient in the attachment's
+  matrix, and 5 dB up where its metadata sets that gain.
+- **Chromium's `ac4-ajoc.ac4`** (a local test, `AC4DEC_AJOC_STREAM`): every frame decodes in both
+  modes, seventeen objects in full decoding and ten in core, the kinds and speakers its table of
+  contents lists, each a frame long and finite, its updates inside the frame and in order. Its
+  metadata puts every object at the front of the room on the floor (X 0.5, Y 0, Z −1) in every
+  frame. The public API's engine test decodes it and the other 15 third-party streams, 16 of 16.
+- **Rendered** (`tests/ac4dec/test_ac4dec_object_render.cpp`): `ac3cli decode`'s rendering, through
+  the layout renderer Hearth plays E-AC-3's objects with, puts each tone at each speaker at the sum
+  of the objects' components at the gains the layout renderer gives their positions, frame by frame,
+  in full and core decoding, as object 0 crosses the front from the left wall to the right. Listening
+  to it is the user's, on ten-second versions the test writes with `AC4DEC_WRITE_LISTENING`.
+- **No second decoder.** librempeg (git 2026-09-24) refuses every object substream ("object coding
+  is not implemented"), Chromium's and the eight constructed ones alike, and DEE's A-JOC encoder
+  takes no master this project writes, so no reading here rests on another decoder.
 
 ### The encoder
 

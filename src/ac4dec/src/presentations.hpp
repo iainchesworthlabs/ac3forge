@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -35,6 +36,10 @@ enum class Role : std::uint8_t { kMain, kMusicAndEffects, kDialogue, kDialogueEn
 // with ("M+E", "Dialog", "DE", "Associate", "Main" or "main").
 [[nodiscard]] Role role_v0(std::string_view name) noexcept;
 
+// How a member codes its audio (Part 2 Table 50): channel-coded, an A-JOC
+// substream, or a direct-coded object substream.
+enum class Coding : std::uint8_t { kChannel, kAjoc, kObjects };
+
 // One substream of a presentation, in the order the presentation lists them:
 // its ac4_sgi_specifier()s and then each group's substreams, or Table 85's
 // order.
@@ -48,8 +53,9 @@ struct Member {
     std::optional<std::size_t> gain_slot;
     int content_classifier = -1;  // Part 1 Table 91; -1 without content_type()
     std::string language;         // language_tag_bytes; empty without them
-    int ch_mode = -1;             // -1 for a reserved channel mode
+    int ch_mode = -1;             // -1 for a reserved channel mode, and for object audio
     bool iframe = false;          // b_iframe or b_audio_ndot of the substream (the first instance)
+    Coding coding = Coding::kChannel;
 };
 
 // What decode() needs of a presentation.
@@ -64,8 +70,10 @@ struct PresentationPlan {
     bool pre_virtualized = false;
     std::optional<int> presentation_substream;  // version 1
     std::vector<Member> members;
-    // Whether every member is a channel-coded substream in this stream, in a
-    // channel mode and at a rate decode() turns into PCM.
+    // Whether every member is a substream in this stream that decode() turns
+    // into PCM: channel-coded in a channel mode it renders, A-JOC coded, or
+    // direct-coded objects in an element of 1, 2, 3 or 5 or with their LFE
+    // alone; at 48 or 44.1 kHz.
     bool decodable = false;
 };
 
@@ -84,9 +92,39 @@ bool plan_presentation(const Toc& toc, std::size_t index, PresentationPlan& plan
 [[nodiscard]] std::optional<std::size_t> select(const Toc& toc, const PresentationChoice& choice, int level,
                                                 std::vector<PresentationPlan>& plans);
 
-// The member decode() renders the others into: the first main or music and
-// effects substream, else the first member; nothing for a plan without
-// members.
+// The member decode() renders the other channel-coded members into: the first
+// channel-coded main or music and effects substream, else the first
+// channel-coded member; nothing for a plan without one. Object audio members
+// are decoded apart (DecodedFrame::objects).
 [[nodiscard]] std::optional<std::size_t> anchor_member(const PresentationPlan& plan) noexcept;
+
+// The language selection compares (Part 1 clause 4.3.3.8.8's NOTE): the first
+// dialogue substream's tag, else the first main or music and effects
+// substream's; empty for none.
+[[nodiscard]] std::string_view presentation_language(const PresentationPlan& plan) noexcept;
+
+// A member's role as the public API names it.
+[[nodiscard]] SubstreamRole public_role(Role role) noexcept;
+
+// A presentation's name as ac4_presentation_substream() sends it (Part 2 clause
+// 6.3.3.1.4): whole in one frame, or in chunks, one a frame, the last of which
+// says how many there were (src/ac4dec/ERRATA.md, "A presentation name in
+// chunks").
+class PresentationName {
+   public:
+    // One frame's presentation_name, name_len bytes of it.
+    void add(std::span<const std::uint8_t> chunk);
+    // A frame of the substream that carries no name: the chunks gathered so
+    // far are not consecutive with the next.
+    void none() noexcept;
+    void clear() noexcept;
+    // The last name received whole, UTF-8; empty before one.
+    [[nodiscard]] const std::string& name() const noexcept { return name_; }
+
+   private:
+    std::string name_;
+    std::string pending_;  // the chunks since the last whole name
+    int chunks_ = 0;
+};
 
 }  // namespace ac4::detail

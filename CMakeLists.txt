@@ -283,7 +283,7 @@ endif()
 if(NOT AC3FORGE_BUILD_AC4 AND _ac3_hearth_apps)
     message(FATAL_ERROR "AC3FORGE_BUILD_AC4=OFF requires AC3FORGE_BUILD_HEARTH to be OFF too, "
         "unless AC3FORGE_SENDSPIN_PLAYER_ONLY is set - Hearth's engine reads an AC-4 item's table "
-        "of contents with ac4::ac4.")
+        "of contents with ac4::ac4, and its presentations and metadata with ac4::decoder.")
 endif()
 
 # AC3FORGE_MINIMAL_DECODER's own version of the three guards above. Everything listed here

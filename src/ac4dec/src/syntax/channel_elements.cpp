@@ -26,6 +26,12 @@ class ElementParser {
     ParseResult element_5_x(bool b_has_lfe);
     ParseResult element_7_x();
     ParseResult immersive_element(bool b_lfe);
+    ParseResult var_element(int n_dmx_signals, bool b_has_lfe);
+    // audio_data_objs()'s mono_data(1), before its element.
+    ParseResult objects_lfe() {
+        out_.objs_lfe = true;
+        return mono_data(true);
+    }
 
    private:
     // --- configuration from I-frames ---
@@ -1005,7 +1011,135 @@ ParseResult ElementParser::immersive_element(bool b_lfe) {
     return check(r_);
 }
 
+// Part 2 6.2.4.4 var_channel_element(b_iframe, n_dmx_signals, b_has_lfe). Its
+// A-SPX data are an aspx_data_2ch() for each pair of the fullband tracks in
+// syntax order and an aspx_data_1ch() for an odd last one, and its
+// companding_control() lists the fullband tracks in syntax order
+// (src/ac4dec/ERRATA.md, "var_channel_element()'s A-SPX and companding"):
+// what that means is the reconstruction's, the syntax reads the same either
+// way.
+ParseResult ElementParser::var_element(int n_dmx_signals, bool b_has_lfe) {
+    const int mode = static_cast<int>(r_.read(1, "var_codec_mode"));
+    out_.var_signals = n_dmx_signals;
+    out_.var_lfe = b_has_lfe;
+    if (auto ok = begin(ElementKind::kVar, mode, mode == codec_mode::kAspx, std::nullopt, false);
+        !ok) {
+        return ok;
+    }
+    const bool odd = n_dmx_signals % 2 != 0;
+    const int n_pairs = n_dmx_signals / 2;
+    if (mode == codec_mode::kAspx && n_dmx_signals <= 5) {
+        if (auto ok = companding_control(n_dmx_signals); !ok) {
+            return ok;
+        }
+    }
+    if (b_has_lfe) {
+        if (auto ok = mono_data(true); !ok) {
+            return ok;
+        }
+    }
+    if (odd) {
+        if (n_dmx_signals == 1) {
+            if (auto ok = mono_data(false); !ok) {
+                return ok;
+            }
+        } else {
+            for (int p = 0; p < n_pairs - 1; ++p) {
+                if (auto ok = two_channel_data(); !ok) {
+                    return ok;
+                }
+            }
+            const int config = static_cast<int>(r_.read(1, "var_coding_config"));
+            out_.coding_config = config;
+            if (config == 0) {
+                if (auto ok = two_channel_data(); !ok) {
+                    return ok;
+                }
+                if (auto ok = mono_data(false); !ok) {
+                    return ok;
+                }
+            } else if (auto ok = three_channel_data(); !ok) {
+                return ok;
+            }
+        }
+    } else {
+        for (int p = 0; p < n_pairs; ++p) {
+            if (auto ok = two_channel_data(); !ok) {
+                return ok;
+            }
+        }
+    }
+    if (mode == codec_mode::kAspx) {
+        for (int p = 0; p < n_pairs; ++p) {
+            if (auto ok = aspx_2ch(); !ok) {
+                return ok;
+            }
+        }
+        if (odd) {
+            if (auto ok = aspx_1ch(); !ok) {
+                return ok;
+            }
+        }
+    }
+    return check(r_);
+}
+
 }  // namespace
+
+std::optional<int> objs_to_channel_mode(int n_objects) noexcept {
+    switch (n_objects) {
+        case 1:
+            return ch_mode::kMono;
+        case 2:
+            return ch_mode::kStereo;
+        case 3:
+            return ch_mode::k3_0;
+        case 5:
+            return ch_mode::k5_0;
+        default:
+            return std::nullopt;
+    }
+}
+
+ParseResult parse_audio_data_objs(BitReader& r, const SubstreamContext& ctx, int n_objects,
+                                  bool b_lfe, ChannelElementState& state, ChannelElement& out) {
+    out = ChannelElement{};
+    ElementParser parser(r, ctx, state, out, nullptr);
+    if (b_lfe) {
+        if (auto ok = parser.objects_lfe(); !ok) {
+            return ok;
+        }
+    }
+    if (n_objects == 0) {
+        return check(r);
+    }
+    const std::optional<int> mode = objs_to_channel_mode(n_objects);
+    if (!mode) {
+        return fail(DecodeError::kInvalidStream, "an object count no channel element carries");
+    }
+    out.objs_channel_mode = mode;
+    switch (*mode) {
+        case ch_mode::kMono:
+            return parser.single_channel_element();
+        case ch_mode::kStereo:
+            return parser.channel_pair_element();
+        case ch_mode::k3_0:
+            return parser.element_3_0();
+        default:
+            return parser.element_5_x(false);
+    }
+}
+
+ParseResult parse_var_channel_element(BitReader& r, const SubstreamContext& ctx, int n_dmx_signals,
+                                      bool b_has_lfe, ChannelElementState& state,
+                                      ChannelElement& out) {
+    out = ChannelElement{};
+    if (n_dmx_signals < 1) {
+        return fail(DecodeError::kInvalidStream, "a var_channel_element() of no signals");
+    }
+    ElementParser parser(r, ctx, state, out, nullptr);
+    return parser.var_element(n_dmx_signals, b_has_lfe);
+}
 
 ParseResult parse_audio_data_chan(BitReader& r, const SubstreamContext& ctx, ChannelElementState& state,
                                   ChannelElement& out, BitReader* hsf_reader) {

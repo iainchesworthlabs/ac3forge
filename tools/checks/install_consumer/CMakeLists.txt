@@ -16,6 +16,12 @@
 # which brings the C++ runtime and libm; consumer.c names neither. A shared target's consumer is
 # pinned to the C driver, which is what a C-only project gets: the shared library carries the C++
 # runtime it needs, and the driver would otherwise be chosen by whatever else lands on the link line.
+#
+# One C++ consumer per AC-4 decoder target the package exports, in the same way: ac4::decoder_shared
+# and ac4::decoder_static, or the bare ac4::decoder of a single-linkage package. consumer_ac4.cpp
+# decodes a committed stream through the installed inspector and decoder. A package built with
+# AC3FORGE_BUILD_AC4=OFF has none; check_install_consumer.sh passes AC3FORGE_EXPECT_AC4 from the
+# tree's own cache, so that a package that should have them and does not fails here.
 cmake_minimum_required(VERSION 3.28)
 project(ac3forge_install_consumer LANGUAGES C CXX)
 
@@ -49,3 +55,34 @@ if(NOT consumers)
         "ac3::forge_c - was it configured with AC3FORGE_BUILD_CAPI=OFF?")
 endif()
 message(STATUS "C API consumers of the installed package, each linked and run: ${consumers}")
+
+option(AC3FORGE_EXPECT_AC4 "The package was built with AC3FORGE_BUILD_AC4=ON" OFF)
+cmake_path(ABSOLUTE_PATH CMAKE_CURRENT_SOURCE_DIR NORMALIZE OUTPUT_VARIABLE here)
+cmake_path(APPEND here .. .. .. tests golden external-baseline ac4-51-film-96 dee.ac4
+    OUTPUT_VARIABLE ac4_stream)
+cmake_path(NORMAL_PATH ac4_stream)
+
+set(ac4_consumers)
+foreach(target IN ITEMS ac4::decoder_shared ac4::decoder_static ac4::decoder)
+    if(NOT TARGET ${target})
+        continue()
+    endif()
+    string(REPLACE "::" "_" name "consumer_${target}")
+    add_executable(${name} consumer_ac4.cpp)
+    add_test(NAME ${name} COMMAND ${name} "${ac4_stream}")
+    target_link_libraries(${name} PRIVATE ${target})
+    set_target_properties(${name} PROPERTIES
+        CXX_STANDARD 23
+        CXX_STANDARD_REQUIRED ON
+        CXX_EXTENSIONS OFF)
+    list(APPEND ac4_consumers ${target})
+endforeach()
+
+if(AC3FORGE_EXPECT_AC4 AND NOT ac4_consumers)
+    message(FATAL_ERROR
+        "the package was built with AC3FORGE_BUILD_AC4=ON and exports none of "
+        "ac4::decoder_shared, ac4::decoder_static or ac4::decoder - see cmake/InstallLibrary.cmake")
+endif()
+if(ac4_consumers)
+    message(STATUS "AC-4 consumers of the installed package, each linked and run: ${ac4_consumers}")
+endif()

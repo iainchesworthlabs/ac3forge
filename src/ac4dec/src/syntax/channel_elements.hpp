@@ -20,6 +20,11 @@
 // and Part 2's immersive_channel_element (6.2.4.1, with immers_cfg() and
 // ajcc_data()) for the 7.X.4 channel modes, which pass it b_5fronts 0. The
 // 9.X.4 modes, which pass b_5fronts 1, and the 22.2 element are refused.
+//
+// For object audio (Part 2 clause 6.2.3): audio_data_objs() (6.2.3.2), an
+// LFE's mono_data(1) and the Part 1 element objs_to_channel_mode() (6.2.3.3)
+// names, and var_channel_element() (6.2.4.4), the downmix audio_data_ajoc()
+// codes.
 
 namespace ac4::detail {
 
@@ -42,9 +47,11 @@ inline constexpr int kAspxAcpl2 = 3;
 inline constexpr int kAspxAjcc = 4;
 }  // namespace immersive_mode
 
-// The most aspx_data elements one channel element carries: the immersive
-// element's six in ASPX_SCPL (Part 2 Table 8).
-inline constexpr std::size_t kMaxAspxElements = 6;
+// The most aspx_data elements one channel element carries: var_channel_element()'s
+// nine, eight aspx_data_2ch() and an aspx_data_1ch() for its most signals,
+// sixteen (Part 2 clause 6.2.4.4); the immersive element has six in ASPX_SCPL
+// (Part 2 Table 8).
+inline constexpr std::size_t kMaxAspxElements = 9;
 
 // 4.2.11 companding_control(num_chan).
 struct CompandingControl {
@@ -54,8 +61,9 @@ struct CompandingControl {
     bool b_compand_avg = false;
 };
 
-// Which kind of channel element a substream's channel_mode selects.
-enum class ElementKind : std::uint8_t { kSingle, kPair, k3_0, k5X, k7X, kImmersive };
+// Which kind of channel element a substream's channel_mode selects; kVar is
+// the var_channel_element() of an A-JOC substream's downmix.
+enum class ElementKind : std::uint8_t { kSingle, kPair, k3_0, k5X, k7X, kImmersive, kVar };
 
 // One sf_data() and the sf_info() that governs it, in syntax order.
 struct Track {
@@ -96,6 +104,17 @@ struct ChannelElement {
     std::vector<AcplData1ch> acpl_1ch;
     std::optional<AcplData2ch> acpl_2ch;
     std::optional<AjccData> ajcc;             // the immersive element's ASPX_AJCC
+
+    // var_channel_element(b_iframe, n_dmx_signals, b_has_lfe): the signals it
+    // codes and whether an LFE's mono_data(1) comes first; coding_config holds
+    // var_coding_config where the element reads it.
+    int var_signals = 0;
+    bool var_lfe = false;
+    // audio_data_objs(n_objects, b_lfe, b_iframe): an LFE's mono_data(1), read
+    // before the element, is the first track; objs_channel_mode is the channel
+    // mode objs_to_channel_mode() gives n_objects, unset for none.
+    bool objs_lfe = false;
+    std::optional<int> objs_channel_mode;
 };
 
 // The I-frame configuration a channel element's later frames depend on, kept
@@ -123,5 +142,25 @@ struct ChannelElementState {
 [[nodiscard]] ParseResult parse_audio_data_chan(BitReader& r, const SubstreamContext& ctx,
                                                 ChannelElementState& state, ChannelElement& out,
                                                 BitReader* hsf_reader = nullptr);
+
+// Part 2 clause 6.2.3.3 objs_to_channel_mode(): mono, stereo, 3.0 or 5.0 for 1,
+// 2, 3 or 5 objects; nothing for any other count, for which the switch has no
+// case.
+[[nodiscard]] std::optional<int> objs_to_channel_mode(int n_objects) noexcept;
+
+// Part 2 clause 6.2.3.2 audio_data_objs(n_objects, b_lfe, b_iframe), with
+// `n_objects` the substream's fullband objects (src/ac4dec/ERRATA.md,
+// "n_objects_code and the LFE"). A count objs_to_channel_mode() has no mode
+// for fails as invalid.
+[[nodiscard]] ParseResult parse_audio_data_objs(BitReader& r, const SubstreamContext& ctx,
+                                                int n_objects, bool b_lfe,
+                                                ChannelElementState& state, ChannelElement& out);
+
+// Part 2 clause 6.2.4.4 var_channel_element(b_iframe, n_dmx_signals,
+// b_has_lfe).
+[[nodiscard]] ParseResult parse_var_channel_element(BitReader& r, const SubstreamContext& ctx,
+                                                    int n_dmx_signals, bool b_has_lfe,
+                                                    ChannelElementState& state,
+                                                    ChannelElement& out);
 
 }  // namespace ac4::detail

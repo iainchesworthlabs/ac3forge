@@ -157,18 +157,39 @@ Later phases add the readings their processing needs.
   the joint and the second's decoded alone from the frame after it. Text for the frame that does not
   parse.
 
-### oamd_common_data() has two call sites; only one is read
+### oamd_common_data() at both its call sites
 
 - **Where:** Part 2 §6.2.8.1, embedded by `b_oamd_common_data_present` in both `ac4_substream_info_ajoc()`
-  (§6.2.1.9, a TOC-level element) and `oamd_substream()` (§6.2.2.4, an A-JOC/object substream's own DATA
-  content).
-- **Reading:** only the first is read, at the TOC level (`ac4::`/`ac4_parse.py`), since a wrong reading
-  there desyncs every substream after it - correctness here is what the differential check and
-  `tests/ac4/test_ac4.cpp`'s synthetic vectors can hold to. The second, inside `oamd_substream()`, is not:
-  no A-JOC/object substream's DATA is decoded at all yet, so an independent second transcription of the
-  same element there would have nothing to cross-check it against.
-- **Evidence:** Text; no stream here (nor Chromium's public A-JOC test file, not re-checked since) reaches
-  the TOC-level occurrence with non-trivial content - see docs/verification.md's AC-4 section.
+  (§6.2.1.9, a TOC-level element) and `oamd_substream()` (§6.2.2.4, the OAMD substream).
+- **Reading:** both are read. The first, at the TOC level, by the inspector (`ac4::`/`ac4_parse.py`), since a
+  wrong reading there desyncs every substream after it; the second, since phase D10, by the decoder and
+  `ac4_syntax.py`, with a record per element. What the two carry applies to the group's objects; where a
+  frame carries both, the OAMD substream's, read after the table of contents, is the one in force, and
+  either holds until a frame sends another ("Object audio metadata", below).
+- **Evidence:** Text. Chromium's `ac4-ajoc.ac4` sends the TOC's in every frame with the default screen size
+  ratio and no additional data, and has no OAMD substream; the constructed object streams of
+  `tests/ac4dec/ac4dec_objects.cpp` send both, with trim, bed render and headphone data.
+
+### n_objects_code and the LFE
+
+- **Where:** Part 2 §6.2.1.11 and Table 60 (§6.3.2.10.2), p. 162; §6.2.3.2 `audio_data_objs()` and its NOTE
+  1 (§6.2.2.2).
+- **Text:** the syntax sets `num_objects = [0, 1, 2, 3, 5, 7][n_objects_code]` and, with
+  `b_dynamic_objects`, loops over `num_objects` objects, the first an LFE where `b_lfe` is set. Table 60
+  gives `n_objects` as `b_lfe`, `1 + b_lfe`, `2 + b_lfe`, `3 + b_lfe` and `5 + b_lfe` for codes 0 to 4, and
+  reserves 5 to 7. `audio_data_objs(n_objects, b_lfe, b_iframe)` reads the LFE's `mono_data(1)` and then
+  the element `objs_to_channel_mode(n_objects)` names, which has cases for 1, 2, 3 and 5 only.
+- **Reading:** Table 60's. The substream codes `[0, 1, 2, 3, 5][n_objects_code]` objects in its element,
+  which is what `audio_data_objs()` takes as `n_objects`, and the LFE on top of them: with
+  `b_dynamic_objects` and `b_lfe` the objects are the LFE, listed first as the syntax's loop has it, and
+  then that many dynamic objects. Codes 5 to 7 name no objects, the LFE included, and a substream that
+  sends one is refused as invalid.
+- **Why:** under the syntax's count, a 5.1 set of dynamic objects (code 4 with `b_lfe`) would put four
+  fullband objects in an element, which no channel element carries, and code 5's seven objects have no
+  element either; `audio_data_objs()` codes the LFE outside the element, so the element's count excludes
+  it.
+- **Evidence:** Text. The inspector (`src/ac4`) and `ac4_parse.py` had followed the syntax's count;
+  `tests/ac4/test_ac4.cpp` and `test_ac4_toc_syntax.cpp` hold the table's.
 
 ### bits_used from trim()/bed_render_info()/headphone() is measured, not returned
 
@@ -176,7 +197,10 @@ Later phases add the readings their processing needs.
   same for `bed_render_info()` and `headphone()`, three calls whose own syntax tables (§6.2.8.8, 6.2.8.9,
   6.2.8.9a) read fields in the ordinary way and state no return value.
 - **Reading:** `bits_used` is the reader position immediately after the call minus the position
-  immediately before it - what each function actually read, not a quantity it computes and returns.
+  immediately before it - what each function actually read, not a quantity it computes and returns. The
+  same holds for the three other elements whose value the syntax subtracts from a budget: `ajoc_bed_info()`
+  in `audio_data_ajoc()` (§6.2.3.4), `ext_prec_alt_pos()` in `oamd_dyndata_single()` (§6.2.8.3) and
+  `add_per_object_md()` in `object_info_block()` (§6.2.8.5), none of which returns anything in its table.
 - **Evidence:** Text.
 
 ### An add_data budget a nested element overruns fails the substream
@@ -187,7 +211,10 @@ Later phases add the readings their processing needs.
 - **Reading:** a failure: `trim()`/`bed_render_info()`/`headphone()` reading more than `add_data_bytes`
   budgeted them is possible only on a malformed stream (a real encoder sizes `add_data_bytes` to fit
   exactly what it wrote), and letting `add_data` or the fields after `oamd_common_data()` be read from a
-  position the budget never actually reserved for them would misparse rather than fail.
+  position the budget never actually reserved for them would misparse rather than fail. The same for the
+  budgets of the elements the entry above names: `skip_bits` of `ajoc_bed_info()` and `ext_prec_alt_pos()`,
+  and `add_table_data_size_minus1` of `add_per_object_md()`. A budget larger than what is left of the
+  substream is found before the element is read, and fails as truncated.
 - **Evidence:** Text; `tests/ac4/test_ac4.cpp` covers it with a `trim()` sized past an 8-bit budget.
 
 ## Substream framing
@@ -392,6 +419,158 @@ b_use_sap_add_ch 0; the constructed streams of `tests/ac4dec/ac4dec_constructed.
   first input's framing gives the parameters for every band that input carries.
 - **Evidence:** Text. DEE's ASPX_SCPL and SCPL streams parse alike, with identical digests, under this
   reading and under the other (the framing of H to K): their tracks share one framing in every frame.
+
+## Object audio syntax
+
+The syntax of object audio substreams, phase D10: `audio_data_ajoc()` with `var_channel_element()` and
+A-JOC's `ajoc()` (Part 2 clauses 6.2.3.4, 6.2.4.4 and 6.2.5), `audio_data_objs()` (6.2.3.2), the object
+audio metadata of clause 6.2.8, and `oamd_substream()` (6.2.2.4). Both transcriptions take every reading
+here. The one encoded stream that reaches any of it is Chromium's `ac4-ajoc.ac4` (Dolby's, level 3: ten
+downmix signals in a SIMPLE `var_channel_element()` and seventeen objects, no LFE, no decorrelators, one
+metadata block a frame), which both read to the end of every substream of all 64 frames, every size
+invariant holding; the constructed object streams of `tests/ac4dec/ac4dec_objects.cpp`, written with the
+encoder's writers, and the differential check, which mutates them, reach the rest.
+
+### The objects of an A-JOC substream
+
+- **Where:** Part 2 §6.2.3.4: `oamd_dyndata_single(n_dmx_signals, ..., obj_type_dmx[], is_lfe[])` and the
+  same for the upmix, with `is_lfe[0] = 1` where `b_lfe` is set; §6.2.1.9 fills `obj_type[]` by two calls
+  of `bed_dyn_obj_assignment()`, which list bed and intermediate spatial format objects alone and leave the
+  LFE out (§6.3.2.8.2's NOTE); §6.3.2.8.1: "the static objects precede the dynamic objects"; Pseudocode 15
+  puts the LFE after whichever of L, R and C the reconstruction contains, through flags nothing defines.
+- **Reading:** each portion's objects are, in order, the LFE where `b_lfe` is set (so `is_lfe[0]` is the
+  LFE, as the syntax sets it), the objects the portion's `bed_dyn_obj_assignment()` lists, and dynamic
+  objects to make up the portion's fullband count. An assignment of more objects than that count, which
+  §6.3.2.8.1 leaves undefined, is refused as invalid. An object's metadata and its essence pair by that
+  order: the LFE is the downmix's LFE, `Q'inAJOC[0]`, and the reconstruction's `QoutAJOC[o]` is the `o`th
+  object after it; Pseudocode 15's position is an order of output, not a pairing.
+- **Why:** the portions' metadata are read in the order the syntax lists the objects, and `is_lfe[0]` is
+  the only placement of the LFE the syntax itself makes.
+- **Evidence:** Text; Chromium's stream has no LFE and no static objects.
+
+### The objects of a direct-coded substream
+
+- **Where:** Part 2 §6.2.1.11; §6.3.2.10.6 and its NOTE ("If the bed contains only one LFE channel, it will
+  always be part of the first substream. If two LFE channels exist in the same bed, they are always split
+  across two substreams, and the first substream contains LFE while the second substream contains LFE2"),
+  and §6.3.2.10.7; `b_lfe` is read only with `b_dynamic_objects`, while `audio_data_objs()` takes one.
+- **Reading:** a substream with dynamic objects codes the objects its element lists ("n_objects_code and
+  the LFE"). A bed or an intermediate spatial format is listed by the substream that starts it
+  (`b_bed_start`, `b_isf_start`) and continues through the substreams of the group after it that do not:
+  its fullband objects go to those substreams in order, `n_objects` each, and its LFEs one to each of the
+  first of them, LFE to the first and LFE2 to the second, which is the `b_lfe` their `audio_data_objs()`
+  takes. A substream's objects are its LFE, then its fullband objects in the order its element's channels
+  come out (L, R, C, Ls, Rs, as Tables 62 to 66 list beds). A substream that extends no started bed or
+  intermediate spatial format, or takes more objects than one has left, is refused as invalid, and one of
+  reserved data (`res_bytes`) that codes objects as unsupported.
+- **Why:** a channel element carries at most five fullband objects, so any bed wider than 5.1 and every
+  intermediate spatial format (4 to 30 objects, none of them 5 or fewer but SR3.1.0.0's four, which no
+  element carries whole either) has to be split, and the text says only how the LFEs go.
+- **Evidence:** Text; no stream here codes direct-coded objects but the constructed ones.
+
+### The objects oamd_dyndata_multi() lists
+
+- **Where:** Part 2 §6.2.2.4 passes `oamd_dyndata_multi()` the `n_objs`, `obj_type[]`, `b_lfe[]` and
+  `b_ajoc_coded[]` the table of contents set, which each `ac4_substream_info_obj()` and
+  `bed_dyn_obj_assignment()` sets afresh; §6.3.9.5: "the order of all object essences present over all
+  audio substreams of the according substream group in the order of bitstream presence".
+- **Reading:** the objects of every substream of the group in order - an A-JOC substream's upmix objects,
+  all A-JOC coded and so passed over, and each direct-coded substream's share - not the last substream's
+  alone. An OAMD substream several groups name (§6.3.3.2.1) takes the first's. More than 64 objects are
+  refused as unsupported, in a portion or a group, where the decoder has no storage for them: Table 55
+  allows 17 and an LFE at md_compat 3.
+- **Evidence:** Text.
+
+### Which oamd_timing_data() applies
+
+- **Where:** Part 2 Table 7 places OAMD timing data in the OAMD substream or, for A-JOC, in
+  `audio_data_ajoc()` (`b_dmx_timing`, `b_umx_timing`, `b_derive_timing_from_dmx`); §6.3.9.3.1: "One
+  oamd_timing_data element applies to all substreams in a substream group"; the `num_obj_info_blocks` of
+  each `oamd_dyndata_single()` and `oamd_dyndata_multi()` comes from one, and nothing says which where a
+  frame sends none.
+- **Reading:** a portion takes the timing it sends in the frame; else the A-JOC upmix portion with
+  `b_derive_timing_from_dmx` the downmix portion's; else the last timing the group's OAMD substream sent,
+  in this frame or an earlier one; else the last the portion sent of its own. With none of those the frame
+  fails as missing its I-frame. The OAMD substream is read before the group's audio substreams, so that
+  its timing serves them in the same frame; a frame keeps the timing a substream sent once the substream
+  has been read.
+- **Evidence:** Text. Chromium's stream sends both of A-JOC's timings in every frame.
+
+### var_channel_element()'s A-SPX and companding
+
+- **Where:** Part 2 §6.2.4.4 reads `companding_control(n_dmx_signals)` for up to five signals and, in ASPX,
+  `n_pairs` `aspx_data_2ch()` and, for an odd count, an `aspx_data_1ch()`, and says nothing of which
+  tracks each covers; it calls both without the `b_iframe` the 22.2 element passes.
+- **Reading:** the fullband tracks in syntax order, the LFE's `mono_data(1)` apart: `companding_control()`'s
+  channels are the tracks in that order; `aspx_data_2ch()` k takes tracks 2k and 2k + 1, and the
+  `aspx_data_1ch()` the last. The A-SPX elements read as Part 1's do, `b_iframe` being the substream's.
+- **Evidence:** Text; Chromium's stream codes its downmix in SIMPLE.
+
+### Arrays read as one field
+
+- **Where:** Part 2 §6.2.3.4 `dmx_active_signals_mask[]` (`n_fb_dmx_signals` bits), §6.2.3.5
+  `de_main_dlg_flag[]` (`num_umx_signals` bits), §6.2.8.7 `group_zone_flag[]` (3), §6.2.8.9
+  `trim_balance_presence[]` (5) and §6.2.8.11 `ext_prec_pos_presence[]` (3): each a flag array read in one
+  syntax line, with no statement of which bit is which index.
+- **Reading:** an array indexed by signal or object (`dmx_active_signals_mask[]`, `de_main_dlg_flag[]`) is
+  sent in index order, [0] first, as the table of contents' channel assignment flags are read; one whose
+  syntax tests its flags from the highest index down, each governing the field read next
+  (`group_zone_flag[]`, `trim_balance_presence[]`, `ext_prec_pos_presence[]`), sends its highest index
+  first, so that the flags come in the order of the fields they govern, as the inspector reads the table of
+  contents' `trim()`. Each is one record of its width, valued at the bits in the order sent.
+- **Evidence:** Text; Chromium's stream sends `de_main_dlg_flag[]` as seventeen zeros and none of the
+  others.
+
+### add_per_object_md()'s parameters
+
+- **Where:** Part 2 §6.2.8.5 calls `add_per_object_md(b_dynamic_object, b_object_not_active)`; §6.2.8.10
+  defines `add_per_object_md(b_object_not_active, b_dynamic_object)` and reads `b_ext_prec_pos` "if
+  (b_object_not_active == 0) { if (b_dynamic_object)".
+- **Reading:** by name: `b_ext_prec_pos` is read for an active dynamic object, which is the object whose
+  position extended precision refines. By position the flag would be read for a static object that is
+  active, which has no position.
+- **Evidence:** Text.
+
+### A-JOC's dialogue enhancement data across frames
+
+- **Where:** Part 2 §6.2.3.5 reads `de_max_gain` and `de_main_dlg_flag[]` with `b_dmx_de_cfg` and the
+  coefficients for `num_dlg_obj` objects (Pseudocode 28, from the flags) where `b_keep_dmx_de_coeffs` is 0;
+  §6.3.6.6.2: the flag "shall be ignored by the decoder if the current codec frame is an I-frame or
+  b_dmx_de_cfg is true". Nothing says how long a configuration holds.
+- **Reading:** a configuration holds until a frame sends another; an I-frame without one clears it, as Part
+  1 §4.3.14.3.2 sets Gmax to 0 dB where an I-frame sends no `de_max_gain`, leaving no dialogue objects. The
+  coefficients are read where the syntax says, `b_keep_dmx_de_coeffs` 0; "ignored" means that in an I-frame
+  or with a new configuration nothing is kept from before, so a 1 there leaves no coefficients rather than
+  reading ones the syntax does not send. A frame that is not an I-frame and needs coefficients read for a
+  configuration no frame has sent fails as missing its I-frame.
+- **Evidence:** Text. Chromium's stream sends the configuration in every frame with no dialogue objects and
+  `b_keep_dmx_de_coeffs` 0.
+
+### ajoc_num_dpoints of 3
+
+- **Where:** Part 2 §6.2.5.4 reads `ajoc_num_dpoints` in two bits; §5.7.3.4: "signals the number 0, 1 or 2
+  of parameter sets".
+- **Reading:** 3 fails the substream as invalid, when it is read.
+- **Evidence:** Text; Chromium's stream sends 1 in every frame.
+
+### An object substream's channel_mode
+
+- **Where:** Part 2 §6.2.2.2 passes `channel_mode` to `metadata()`, and its NOTE 2: "If channel_mode has not
+  been set by a preceding info element, it shall be considered undefined and be represented by a negative
+  numeric value"; the object substreams' info elements set none.
+- **Reading:** negative for every A-JOC and direct-coded substream, whatever an earlier
+  `ac4_substream_info_chan()` of the table of contents set: `basic_metadata()` then reads none of its
+  channel-mode branches, `extended_metadata()`'s `pan_dialog` the branch for "not mono" (two pans and
+  `pan_signal_selector`), and `dialog_enhancement()` no simulcast data.
+- **Evidence:** Text. Chromium's stream sends no dialogue or downmix metadata in its substream.
+
+### Prefix codes in the trace
+
+- **Where:** Part 2 §6.2.8.2 `oa_sample_offset_type` and `oa_sample_offset_code` ("1/2" bits), §6.2.8.6
+  `basic_info_md` and `object_gain_code` (1/2), and §6.2.3.5 `de_dlg_dmx_coeff_idx` (VAR, Table 82).
+- **Reading:** one record each, of the bits read, valued at them: 0b0, 0b10 or 0b11 for the first four, as
+  `immersive_codec_mode_code` is recorded; 0b0, 0b1111 or one of 0b10000 to 0b11101 for
+  `de_dlg_dmx_coeff_idx`.
 
 ## A-SPX
 
@@ -667,7 +846,10 @@ decodes those streams' coded pair as L and R and leaves Ls and Rs silent.
   for a channel-coded substream of an alternative presentation; its `n_objs` and object types exist only
   for object substreams.
 - **Reading:** a channel-coded substream never carries it. Table 7 places OAMD dynamic data only in
-  object audio substreams that are not A-JOC coded.
+  object audio substreams that are not A-JOC coded: a direct-coded object substream of an alternative
+  presentation reads it, over its own objects ("The objects of a direct-coded substream", under "Object
+  audio syntax"), with the `num_obj_info_blocks` of its group's timing ("Which oamd_timing_data()
+  applies").
 
 ### de_data() predicts from the wrong channel
 
@@ -1729,6 +1911,227 @@ decoder takes them in `src/ac4dec/src/pcm/renderer.cpp` and `downmix.cpp`, and
   four tops go with channels the core does not have, and Ls and Rs keep group 3's.
 - **Evidence:** Text.
 
+## A-JOC
+
+The readings phase D10 takes to decode A-JOC substreams (Part 2 clause 5.7) in full and core decoding,
+with A-JOC's dialogue enhancement (5.8.2.3 and 5.8.2.4). They are the decoder's alone: the Python
+transcription reads the syntax. `src/ac4core/src/ajoc/` does the processing, and
+`tests/ac4core/test_ac4core_ajoc.cpp` holds it to the formulas on known input. The constructed streams of
+`tests/ac4dec/ac4dec_objects.cpp` give each object coefficients of whole quantisation steps, so that each
+object is a known sum of the downmix's tones, which the decoder meets to 0.1 dB in both modes. Chromium's
+`ac4-ajoc.ac4` decodes in both with the invariants holding. librempeg, the one other decoder here, refuses
+every object substream ("object coding is not implemented"), so no reading below rests on it.
+
+### A-JOC's ramp
+
+- **Where:** Part 2 Pseudocodes 17 and 18, pp. 88 to 90: `ajoc_interpolate()` moves a coefficient while
+  `curr_ramp_len <= target_ramp_len` and increments `curr_ramp_len` itself, and Pseudocode 18 calls it
+  for every coefficient of every subband of a slot; at the end of a slot where a data point starts, the
+  counter is set to 0 and the target to that data point's `ajoc_ramp_len`.
+- **Reading:** one counter a substream, advanced once a slot for all its coefficients. A coefficient
+  moves by its `delta_inc` in a slot that starts with the counter below the target, so a ramp of
+  `ajoc_ramp_len` slots moves that many times, from the slot after its start slot, and ends on its
+  target; the start slot sets `delta_inc` to (the data point's value - the value it put out) /
+  `ajoc_ramp_len`. The counter, the target and every coefficient's value and `delta_inc` carry from frame
+  to frame, all 0 before the first, so a ramp of up to 64 slots (5.7.3.4) runs on across frames.
+- **Why:** advanced by every call, the counter would pass its target within the first slot and no ramp
+  would last more than one; compared with `<=`, a ramp would move `ajoc_ramp_len` + 1 times and pass its
+  target by a step.
+- **Evidence:** Text. The kernel's tests check ramps of one and two data points within a frame and
+  across frames; the constructed streams ramp over 1 and 8 slots.
+
+### The decorrelation input matrix
+
+- **Where:** Pseudocode 18, p. 89, sums `abs(mtx_wet_dq[o][dp][de][pb]) * mtx_dry_dq[o][dp][ch][pb]` into
+  `mtx_pre_param[pb][de][ch][dp]` over each object's own `ajoc_num_bands[o]` bands, and interpolates it
+  at `sb_to_pb(sb)` without saying whose band count maps the subband; 5.7.3.6.2, p. 91, writes D(ts, sb)
+  = |Csub2(ts, sb)^T| x Csub1(ts, sb), from the interpolated matrices.
+- **Reading:** subband by subband: in each QMF subband, each object's coefficients at the band its own
+  count maps the subband to (Table 28), summed over the objects, per data point and before dialogue
+  enhancement scales them, as Pseudocode 18 takes them. The sum is a parameter with its own
+  interpolation, as Pseudocode 18 makes it, so during a ramp D is not the product of the ramped dry and
+  wet matrices that 5.7.3.6.2 writes; the two agree once the ramp ends.
+- **Why:** band indices of different counts cover different subbands, so a sum over band indices has no
+  one mapping back to subbands; where every object has the same count, the readings agree.
+- **Evidence:** Text; the kernel's tests check the matrix of objects of different band counts against a
+  hand computation, and the wet path against the decorrelators and duckers run by hand.
+
+### Pseudocode 16's sparse wet entries
+
+- **Where:** Pseudocode 16, p. 83: for a wet entry `ajoc_sparse_mask_wet[o][de]` leaves out,
+  `mtx_wet_q[o][dp][ch][pb] = (nquant - 1) / 2`, indexed by `ch` in the loop over `de`.
+- **Reading:** `mtx_wet_q[o][dp][de][pb]`, the loop's own index, at the range's centre, which
+  dequantises to 0.
+- **Evidence:** Text; `ajoc-5lfe-aspx-decorr-sparse` leaves wet entries out.
+
+### A-JOC's differential decoding across frames
+
+- **Where:** Pseudocode 16 and 5.7.3.2, pp. 82 and 83: DIFF_TIME adds to `mtx_dry_q_prev` and
+  `mtx_wet_q_prev`, "the quantized values from the last corresponding data point of the previous AC-4
+  frame", which the pseudocode sets after each data point, and does not take the sum modulo `nquant` as
+  DIFF_FREQ does; nothing gives the previous values where the object was not present, where its
+  `ajoc_quant_select` or `ajoc_num_bands` changed, or before any frame.
+- **Reading:** the previous values are the last data point's, of this frame or of the last frame that
+  sent the object. An object not present stands at the range's centre (5.7.3.3 sets an inactive object's
+  coefficients to 0), in whichever quantisation it next comes in. A DIFF_TIME sum outside 0 to `nquant` -
+  1 fails the substream as invalid; a DIFF_TIME entry with no previous values fails as missing its
+  I-frame where no frame has sent the object, and as invalid where its quantisation or band count changed.
+- **Evidence:** Text; the constructed streams send DIFF_TIME in the frames between I-frames, with an
+  object not present.
+
+### A disabled decorrelator
+
+- **Where:** Part 2 6.3.6.2.1, p. 175: `ajoc_decorr_enable[d]` "indicates whether the decorrelator with
+  index d is enabled"; nothing says what a disabled one puts out.
+- **Reading:** silence, so the wet coefficients on it add nothing. Its history and its ducker's go, and
+  it starts from silence when next enabled, as does one past `ajoc_num_decorr`.
+- **Evidence:** Text; Chromium's stream uses no decorrelator.
+
+### A static downmix's inputs
+
+- **Where:** 5.7.2.1, p. 80: QinAJOC is the `var_channel_element()`'s output reordered by Pseudocode 14a;
+  with `b_static_dmx` (6.2.3.4) the downmix is a 5.X channel element instead, and nothing orders its
+  channels as A-JOC's inputs.
+- **Reading:** L, R, C, Ls and Rs, Table A.27's order, with the LFE apart as Pseudocode 14a leaves it; in
+  core decoding those five are the objects, bed objects at their speakers after the LFE.
+- **Evidence:** Text; `ajoc-static-5_1` decodes to each object's coefficients' tones in that order.
+
+### Core decoding's objects
+
+- **Where:** 4.8.3.4.2, p. 44: "The decoder shall use the first portion present in the bitstream for core
+  decoding mode"; the downmix portion's `oamd_dyndata_single(n_dmx_signals, ...)` lists objects, and
+  nothing pairs them with the downmix's signals.
+- **Reading:** the downmix portion's objects are the downmix signals in QinAJOC's order, the LFE first,
+  as "The objects of an A-JOC substream" pairs the upmix's objects with the reconstruction's outputs.
+- **Evidence:** Text; Chromium's stream decodes in core decoding to its ten downmix signals, each with the
+  first portion's metadata.
+
+### Core decoding's H_M
+
+- **Where:** 5.8.2.4, pp. 96 and 97: the downmix plus H_M(ts, sb) H_A(ts, sb) times the downmix, H_A the
+  dialogue objects' rows of `mtx_dry` after `ajoc_de_process()` with core decoding's `de_gain`, 10^(G_DE /
+  20) - 1, and H_M ramped from H'_M,prev to H'_M by (ts + 1) / `num_qmf_timeslots`, H'_M[sb][ch][dlg] =
+  `de_dlg_dmx_coeff[dlg][ch]`; Pseudocode 22 scales the coefficients only where `de_gain` is above 1. "Gmax
+  shall be derived from de_max_gain", with no formula in Part 2.
+- **Reading:** Pseudocode 22's test belongs to full decoding's `de_gain`: in core decoding the dialogue
+  objects' dry coefficients take core's `de_gain` whenever dialogue enhancement is asked for (G_DE above 0
+  dB), and the downmix is left as it is otherwise. H'_M and H'_M,prev are kept by upmix object, 0 for one
+  that carries no dialogue, so that a change in which objects carry dialogue ramps each from its own last
+  coefficient; H'_M,prev is 0 before the first frame. The dry matrix is interpolated for every object in
+  every frame that asks for dialogue enhancement, so it is in step when an object turns to dialogue.
+  Gmax is Part 1 4.3.14.3.2's, (`de_max_gain` + 1) x 3 dB.
+- **Why:** core's `de_gain` passes 1 only above 6.02 dB; with the test, a G_DE below that would leave H_A
+  unscaled and add the dialogue again, 6 dB up whatever G_DE was asked.
+- **Evidence:** Text. `tests/ac4dec/test_ac4dec_objects.cpp` holds a constructed dialogue case to the
+  formulas in both modes, at 6 dB and at 12 dB, which the stream's `de_max_gain` of 2 caps at 9.
+
+## Object audio metadata and the ISF renderer
+
+The readings phase D10 takes for what the object audio metadata sets and when (Part 2 clauses 5.9 and
+6.3.9, Annex F), and for the intermediate spatial format renderer (5.10.3). They are the decoder's alone.
+`tests/ac4dec/test_ac4dec_objects.cpp` holds the constructed streams' positions and timing to the
+formulas of 6.3.9.8.4 and 5.9.2, and their intermediate spatial format to Annex A.2.1's matrices.
+
+### Object audio metadata
+
+- **Where:** Part 2 6.3.9.6 to 6.3.9.8 and 6.3.9.12, pp. 188 to 197, and Annex F: what an
+  `object_info_block()` sets; NOTE 1 of 6.3.9.8.4.2 to 6.3.9.8.4.4: a difference refers to "the standard
+  precision position value coded in the previous metadata update block"; Table 101's `object_gain_code`
+  0b11, "Set to object_gain of previous object".
+- **Reading:**
+  - A block starts from the object's last block's properties; REUSE keeps them. An inactive object takes
+    Table 98's and Table 99's DEFAULT: gain -infinity dB, priority 0, X and Y 0.5 and Z 0, no zone,
+    elevation off, width and screen factor 0, no snap.
+  - A difference adds to the last standard precision position the object's blocks coded, explicitly or as
+    a difference, clipped to 0 to 62 and -15 to 15; a block that sends no position leaves it. Extended
+    precision refines the position of the block that sends it alone.
+  - `object_gain_code` 0b11 takes the gain of the object before it in the same substream's list, in the
+    same block; the first object takes 0 dB.
+  - The other properties' group sets each property it does not send to its default: no width, screen
+    factor 0, the depth exponent 1 (Table 107's code 2), no distance and divergence 0. A reserved
+    divergence code (Table 111's 0) and `object_div_mode` 0b11 keep the last divergence, as 0b01 does.
+  - `add_per_object_md()` sets its block alone: a block without it has trim on and no headphone data.
+  - An alternative presentation's alternative properties (6.3.9.4) are read and not applied: its
+    objects carry their blocks' properties.
+- **Evidence:** Text; the constructed streams send differences, reuses, extended precision and each of
+  the other properties.
+
+### When an update takes effect
+
+- **Where:** 5.9.2, p. 98: an update's sample is `sample_offset` + 32 x `block_offset_factor`, "an
+  offset to the first PCM sample of the actual codec frame", and "One block update is valid until the
+  update PCM sample of the next received block update"; Annex F.11's ramp.
+- **Reading:** the update's sample in the decoder's output, where the codec frame's first sample comes
+  out the decoder's delay later (1,313 samples at `frame_rate_index` 13), so that the metadata stays with
+  the essence it describes; an update past the frame's end waits for the frame that holds its sample. The
+  ramp goes with the update, to the renderer.
+- **Evidence:** Text; the constructed streams' updates come out at their samples plus 1,313.
+
+### DRC and object audio
+
+- **Where:** Part 1 5.7.9 and Part 2 4.8.6 apply DRC "to the channels", and 4.8.3.19 hands the object
+  renderer each object's essence with its properties.
+- **Reading:** objects take the output level's gain, 2^((Lout - dialnorm) / 6), and no compression, which
+  belongs to the channels an application renders them into. A presentation's `b_obj_loud_corr` values
+  are read and not applied.
+- **Evidence:** Text.
+
+### Dialogue enhancement of direct-coded objects
+
+- **Where:** 5.8.2.5, p. 97: in a dialogue substream, the gain 10^(min(G_DE, Gmax) / 20) goes to "the
+  corresponding audio objects for which b_dialog is true", Gmax 3 x (1 + `dialog_max_gain`) dB, and 0 dB
+  without `b_dialog_max_gain`.
+- **Reading:** every object of a direct-coded substream whose `extended_metadata()` sets `b_dialog`, the
+  LFE among them; `dialog_max_gain` holds from the frame that sends it until an I-frame that does not, as
+  a dialogue substream's does for the mix (Part 1 4.3.12.4.11). Pseudocode 22's test does not apply: the
+  clause gives none.
+- **Evidence:** Text; the constructed direct-coded streams, made dialogue substreams, come out 6 dB up
+  asked for 6, and at their cap of 9 asked for 12.
+
+### The intermediate spatial format
+
+- **Where:** 5.10.3.4, p. 110: y = M x t, t the ISF objects in Table 61's order and M Annex A.2.1's
+  matrix for the output channel configuration; the attachment declares each `SR<config>_to_<layout>` as
+  `[NUM_ISF_CHAN][NUM_SPKR_CHAN]`, a row per object; Tables A.25 and A.26, p. 213, name the 5.x, 7.x and
+  9.x matrices `SR<config>_to_50`, `_to_70` and `_to_90`, which the attachment calls `_to_5`, `_to_7` and
+  `_to_9`; nothing gives the order of a matrix's speakers; 4.8.3.19 hands the tool each object "plus its
+  decoded associated object properties".
+- **Reading:** each speaker is the sum over the objects of each one times its row's value at the
+  speaker's column; `_to_5`, `_to_7` and `_to_9` are the tables' `_to_50`, `_to_70` and `_to_90`. A
+  matrix's columns are its layout's speakers in Table A.27's order without the LFE, as the values show:
+  SR3.1.0.0's M1, the front, reaches L and R alike, and M2, on the left, the left speakers more than the
+  right. Each object's gain applies before the matrix, -infinity
+  for an inactive one, ramped over its update's ramp. The output layout is 7.X.4 as coded and the
+  downmix target's otherwise: a two-channel target takes the 2.x matrix, and mono that matrix's L + R.
+  The 9.X layouts' screen pair (Table A.27's 24 and 25) is no speaker the decoder names, so it renders
+  none of them. In a presentation with channels, the format is rendered into the channels' layout, and
+  refused where Annex A.2.1 has no matrix for it.
+- **Evidence:** Text; the constructed `direct-isf-sr3100` renders each object's tone to each speaker at
+  its coefficient in all eight layouts, and 5 dB up where its metadata sets that gain.
+
+### A presentation name in chunks
+
+- **Where:** Part 2 6.3.3.1.2 to 6.3.3.1.4, p. 167: an alternative presentation's substream may send
+  `presentation_name`, name_len bytes of UTF-8, 32 without `b_length`. "If byte[name_len-1] = 0, the name
+  of the presentation is given by byte[0] to byte[name_len-2]; otherwise, the name of the presentation is
+  serialized into multiple chunks, each transmitted in one codec frame. If byte[name_len-2] = 0, the
+  currently received chunk is the last chunk", and its byte[name_len-1] is "the total number of chunks";
+  the decoder stores the chunks "until the total number of chunks is received".
+- **Text leaves open:** which bytes of a chunk before the last are the name's; whether the chunks come in
+  consecutive frames; where a decoder that joins in the middle begins; what fills a 32-byte field longer
+  than the name.
+- **Reading:** a chunk before the last carries name_len bytes of the name, the last name_len - 2. The name
+  is the chunks of consecutive frames of the presentation substream up to and including the last, taken
+  only when there are as many as its count says, so a decoder that joins in the middle waits for the next
+  repetition; a frame of the substream that sends no name, a count that does not match and a change of
+  source each discard the chunks gathered. A name ends at its first zero byte, so a 32-byte field padded
+  with zeros gives the name before them. The last name received stays until another replaces it or the
+  source changes.
+- **Evidence:** Text; no stream here names a presentation. The 14 cases of
+  `tests/golden/ac4dec/presentations/presentation-names.tsv` hold the decoder, through hand-built frames
+  (`tests/ac4dec/test_ac4dec_api.cpp`), and the Python reference (`tools/references/ac4_presentations.py`,
+  `tools/checks/test_ac4_presentation_names.py`) to the same names.
+
 ## Tables
 
 The Huffman codebooks come from the table attachment of Part 1, `ts_103190_tables.c`, which Annex A
@@ -1736,6 +2139,14 @@ names as normative, with the parameters Annex A prints; every one of the 60 is a
 (its Kraft sum is exactly 1). Annex B's scale factor band tables come from the text, each checked against
 a rendering of its page. `tools/generators/gen_ac4_tables.py` and
 `tools/generators/gen_ac4_reference_tables.py` generate the C++ and Python tables separately.
+
+Phase D10's tables: A-JOC's Table 28 and its dequantisation (Tables 29 to 32, uniform steps about each
+range's centre, every row checked), Tables 78 and 82, and the object audio metadata's tables that give
+values (Tables 98, 99, 101 to 105, 107, 108, 110, 111 and 121 to 125) come from the text, each checked
+against a rendering of its page; the common data's (Tables 112 to 120) are handed on as the stream codes
+them. The intermediate spatial format's matrices come from Part 2's attachment,
+`ts_103190_tables_part2.c`, through `gen_ac4_tables.py`, which checks each matrix's size against the
+attachment's `#define`s and that all 60 matrices of Tables A.25 and A.26 are there.
 
 ## The trace
 

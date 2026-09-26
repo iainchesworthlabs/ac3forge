@@ -6,8 +6,7 @@ Joint Object Coding (JOC). It also provides loudness metering, level analysis, a
 measurement.
 
 Related targets provide container writing, IAB and ADM/BW64 reading, IAMF writing, object
-signing, platform audio, and an AC-4 bitstream inspector. Build and linkage requirements differ
-by target. [Capabilities](capabilities.md) lists supported formats and limits;
+signing, platform audio, and AC-4 decoding. Build and linkage requirements differ by target. [Capabilities](capabilities.md) lists supported formats and limits;
 [Development status](development-status.md) is the compact done / partial / not-started companion.
 [Validation](../verification.md) describes how output is checked.
 
@@ -27,7 +26,8 @@ The main public headers are under `src/forge/include/ac3/`.
 | `iamf::iamf` | IAMF OBU and ISOBMFF writing; see [IAMF](iamf.md) |
 | `ac3adm::ac3adm` | ADM/BW64 reading and writing; opt-in with `AC3FORGE_BUILD_ADM=ON` |
 | `ac3::admbridge` | Mapping between ADM objects and the Atmos encoder or decoder |
-| `ac4::ac4` | AC-4 inspection used by in-tree applications; in-tree only, not installed or exported |
+| `ac4::decoder` | AC-4 decoding; see [AC-4 decoding](ac4.md) |
+| `ac4::ac4` | AC-4 sync frames, table of contents and presentations, which the decoder reads through |
 
 `ac3adm::ac3adm` and `ac3::admbridge` need the root dependency manifest's `adm` feature
 (`-DVCPKG_MANIFEST_FEATURES=adm`) when building this repository with vcpkg, and are installed as
@@ -35,9 +35,11 @@ shared libraries. The packaged `ac3forge` port has no `adm` feature and does not
 target. Their [ADM](adm.md) and [ADM bridge](adm-bridge.md) pages explain the dependency and
 linkage details.
 
-`ac4::ac4` is available only while this repository is part of the build.
-`cmake/InstallLibrary.cmake` has no AC-4 export or install rule, so it is not available through
-`find_package(ac3forge)`.
+The AC-4 libraries are installed and exported under `ac4::`: `ac4::decoder_static` and
+`ac4::decoder_shared`, each linking `ac4::ac4_static` or `ac4::ac4_shared`. The static decoder
+calls into `ac4::core`, an archive with no headers that its exported target names as a link-only
+dependency; [AC-4 decoding](ac4.md#linking) has the detail. The AC-4 encoder, `ac4::encoder`, is
+in-tree only until planning/ac4.md's phase E7 installs it.
 
 **In-tree** (this repo `add_subdirectory`'d into a larger build, or as a git submodule):
 
@@ -120,7 +122,8 @@ opt in with `vcpkg install ac3forge[matroska,mp4,mpegts,capi]` (all four) or `ac
 (just `mp4`) to get `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts`/`ac3::forge_c` (the C API,
 see [C API](c-api.md)) available. `ac3adm::ac3adm`/`ac3::admbridge` have no vcpkg feature — out
 of scope for this port for now, even though upstream now installs/exports both (shared-only, see
-the note above). Once merged into `microsoft/vcpkg`, the same two snippets work with a plain
+the note above). `ac3iab::ac3iab`, `iamf::iamf` and the AC-4 libraries have no feature either,
+and come with every install of the port. Once merged into `microsoft/vcpkg`, the same two snippets work with a plain
 `vcpkg install ac3forge` — no `--overlay-ports` needed.
 
 **Conan.** A recipe lives in this repo at
@@ -138,7 +141,8 @@ second one, so a Conan consumer's CMakeLists.txt looks identical to a vcpkg or p
 
 **pkg-config.** Every installed component above also gets its own `.pc` file
 (`${libdir}/pkgconfig/<name>.pc` — `ac3forge`, `ac3signing`, `matroska`, `mp4`, `mpegts`,
-`iamf`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`), for a non-CMake consumer:
+`iamf`, `ac3iab`, `ac3adm`, `admbridge`, `ac3forge_c`, `ac4`, `ac4dec`, `ac4core`), for a
+non-CMake consumer:
 
 ```bash
 pkg-config --cflags --libs ac3forge
@@ -148,7 +152,7 @@ Picks whichever linkage was actually installed (the shared name when
 `AC3FORGE_INSTALL_BOTH_LINKAGES`/`BUILD_SHARED_LIBS` selected it, else the `_static`-suffixed
 one — matching what is actually on disk), and chains `Requires:` for a component that PUBLIC-
 links another (`ac3signing` requires `ac3forge`; `admbridge` requires both `ac3forge` and
-`ac3adm`). The `prefix=` line resolves relative to wherever the `.pc` file itself ends up
+`ac3adm`; `ac4dec` requires `ac4`). The `prefix=` line resolves relative to wherever the `.pc` file itself ends up
 (`pkg-config`'s own `${pcfiledir}`), so it works the same whether that's a real system install or
 an unpacked `ac3forge-dev-*` archive.
 
@@ -162,11 +166,13 @@ cc consumer.c $(pkg-config --static --cflags --libs ac3forge_c)
 ```
 
 `ac3forge_c.pc` requires `ac3forge` privately, because `libac3forge_c_static.a` calls into
-`libac3forge_static.a`. `ac3forge.pc`, `matroska.pc`, `mp4.pc`, `mpegts.pc`, `iamf.pc` and
-`ac3iab.pc` list the C++ runtime and libm in `Libs.private`. A C compiler does not link them by
-itself, and a C++ compiler does. The names are the ones CMake recorded for the compiler that built
-the archives: `-lstdc++ -lm` with libstdc++ and `-lc++ -lm` with libc++ on Linux. `ac3signing.pc`
-gets them through `ac3forge`. A `.pc` that names a shared library has neither field: the library
+`libac3forge_static.a`, and `ac4dec.pc` requires `ac4core` privately, because
+`libac4dec_static.a` calls into `libac4core_static.a`. `ac3forge.pc`, `matroska.pc`, `mp4.pc`,
+`mpegts.pc`, `iamf.pc`, `ac3iab.pc`, `ac4.pc` and `ac4core.pc` list the C++ runtime and libm in
+`Libs.private`. A C compiler does not link them by itself, and a C++ compiler does. The names are
+the ones CMake recorded for the compiler that built the archives: `-lstdc++ -lm` with libstdc++
+and `-lc++ -lm` with libc++ on Linux. `ac3signing.pc` gets them through `ac3forge`, and
+`ac4dec.pc` through `ac4` and `ac4core`. A `.pc` that names a shared library has neither field: the library
 records what it needs, and `libac3forge_c.so` holds its own copy of the codec, so it does not pull
 in `libac3forge.so`. An install with both linkages, such as the `ac3forge-dev-*` packages, names
 the shared libraries, and `--static` does not switch to the archives, so name them yourself:
@@ -216,6 +222,8 @@ re-synced by hand and can drift. Each page's "Full program" link is the canonica
 - [IAMF writing](iamf.md) — `iamf::iamf`, a standalone writer re-wrapping a decoded 7.1.4
   programme as a channel-based IAMF Audio Element in IAMF's own ISO-BMFF encapsulation (on by
   default).
+- [AC-4 decoding](ac4.md) — `ac4::decoder` and the inspector it reads through, `ac4::ac4`: the
+  controls, the choice of presentation, what the decoder reports, and linking (on by default).
 - [Measuring quality](quality.md) — `ac3::quality`, the decoded-domain distortion measure and the
   tonality/masking model the encoder's decision search is judged on.
 - [Object signing](signing.md) — `ac3::signing`, the EMDF protection tag.

@@ -105,6 +105,90 @@ struct ScanResult {
 // parsed cleanly before it.
 [[nodiscard]] AC4_EXPORT ScanResult scan(std::span<const std::byte> data);
 
+// The storage a SyncFrameSplitter needs for a stream whose frames are all
+// shorter than 64 KiB: every AC-4 frame this project has seen is, the largest
+// a few kilobytes. frame_size's escape reaches 16 MiB (Annex G.3.1), which a
+// caller expecting such frames sizes its storage for.
+inline constexpr std::size_t kSplitterRecommendedBuffer = 65536 + 16;
+
+// Sync frames from a stream that arrives in pieces - an HTTP body, a socket, a
+// file read a block at a time - which scan() cannot walk until the last byte
+// is in. The same framing as scan(), applied incrementally: each frame comes
+// out once all of it has arrived, and a partial frame is held between reads.
+// It owns no memory and allocates none; the caller's storage holds the frame
+// being assembled, in the pattern of ac3::io::AccessUnitAccumulator:
+//
+//     std::vector<std::byte> storage(ac4::kSplitterRecommendedBuffer);
+//     ac4::SyncFrameSplitter splitter{storage};
+//     for (;;) {
+//         const auto next = splitter.next();
+//         if (next.status == ac4::SyncFrameSplitter::Status::kNeedMoreInput) {
+//             const std::size_t n = read_from_somewhere(splitter.writable());
+//             n == 0 ? splitter.finish() : splitter.commit(n);
+//             continue;
+//         }
+//         if (next.status != ac4::SyncFrameSplitter::Status::kFrame) break;
+//         decoder.decode(next.frame.raw_ac4_frame);
+//     }
+//
+// Where the stream does not start on a sync word, or something between frames
+// is not a frame, the splitter skips to the next sync word and counts the
+// bytes it skipped; a frame found that way is handed over only once a sync
+// word follows it (or the stream ends there), so that a sync word's bit
+// pattern inside a frame is not taken for one.
+class AC4_EXPORT SyncFrameSplitter {
+   public:
+    enum class Status : std::uint8_t {
+        // `frame` is one whole sync frame, its offset counted from the
+        // stream's first byte. Its bytes are valid until the next call to
+        // next(), writable() or commit(), which may move them.
+        kFrame,
+        // Feed more through writable() and commit(), or call finish() when
+        // there is no more.
+        kNeedMoreInput,
+        // finish() was called and everything held has been handed over.
+        kEndOfStream,
+        // finish() was called with part of a frame held, which is dropped;
+        // kEndOfStream follows.
+        kTruncated,
+        // The storage cannot hold the frame being assembled. Feeding more
+        // does not help; the caller needs larger storage.
+        kBufferTooSmall,
+    };
+
+    struct Result {
+        Status status = Status::kNeedMoreInput;
+        SyncFrame frame{};
+    };
+
+    explicit SyncFrameSplitter(std::span<std::byte> storage) noexcept : storage_(storage) {}
+
+    // Where the caller appends: the storage after what is held, empty when it
+    // is full.
+    [[nodiscard]] std::span<std::byte> writable() noexcept;
+    // How many of writable()'s bytes were written.
+    void commit(std::size_t bytes) noexcept;
+    // No more input will arrive.
+    void finish() noexcept { finished_ = true; }
+
+    [[nodiscard]] Result next() noexcept;
+
+    // Bytes skipped looking for a sync word, over the splitter's life.
+    [[nodiscard]] std::size_t resynchronised_bytes() const noexcept { return skipped_; }
+
+   private:
+    void consume(std::size_t count) noexcept;
+
+    std::span<std::byte> storage_;
+    std::size_t filled_ = 0;
+    std::size_t handed_ = 0;    // the frame handed over last, still at the front
+    std::size_t position_ = 0;  // the stream offset of storage_[0]
+    std::size_t skipped_ = 0;
+    bool resynchronising_ = false;
+    bool finished_ = false;
+    bool truncated_ = false;  // kTruncated reported
+};
+
 // --- §4.2.3.7 content_type --------------------------------------------------
 
 struct ContentType {
@@ -158,6 +242,11 @@ struct ObjectEntry {
     ObjectKind kind = ObjectKind::kDyn;
     bool lfe = false;
     bool ajoc_coded = false;
+    // A bed object's loudspeaker (Annex F.3's "channel"), as TS 103 190-2
+    // Table A.27 indexes speakers: 0 L, 1 R, 2 C, 3 Ls, 4 Rs, 5 Lb, 6 Rb, 7
+    // Tfl, 8 Tfr, 9 Tbl, 10 Tbr, 11 LFE, 12 Tsl, 13 Tsr, 19 LFE2, 26 Lw and 27
+    // Rw, the ones Tables 62 to 66 can assign. Unset for other objects.
+    std::optional<int> speaker;
 };
 
 // --- §6.2.1.13 oamd_substream_info ------------------------------------------
@@ -255,16 +344,36 @@ struct AjocSubstreamInfo {
     std::optional<int> sf_multiplier;
     std::optional<int> bitrate_kbps;
     std::optional<int> substream_index;
+    // §6.3.2.7.6 b_audio_ndot, one entry per frame_rate_factor, as
+    // ChannelSubstreamInfo::b_iframe.
+    std::vector<bool> b_iframe;
 };
 
 // --- §6.2.1.11 ac4_substream_info_obj ---------------------------------------
 
 struct ObjSubstreamInfo {
+    // The objects the element lists: with b_dynamic_objects, an LFE where
+    // b_lfe is set and then the dynamic objects (TS 103 190-2 Table 60 counts
+    // the LFE on top of n_objects_code's objects - src/ac4dec/ERRATA.md,
+    // "n_objects_code and the LFE"); otherwise the bed or intermediate spatial
+    // format objects a substream that starts them assigns, which substreams
+    // after it in the group may carry a share of.
     std::vector<ObjectEntry> objects;
     bool b_dynamic_objects = false;
     std::optional<int> sf_multiplier;
     std::optional<int> bitrate_kbps;
     std::optional<int> substream_index;
+    // Table 60: the objects besides the LFE that the substream's audio codes
+    // (0, 1, 2, 3 or 5); unset for a code the table reserves (5 to 7).
+    std::optional<int> num_objects;
+    bool b_lfe = false;  // b_dynamic_objects' b_lfe
+    // Without dynamic objects: what the substream holds - a bed, intermediate
+    // spatial format objects, or reserved data - and whether it starts them
+    // (b_bed_start, b_isf_start) rather than extending a previous substream's.
+    enum class Static : std::uint8_t { kNone, kBed, kIsf, kReserved };
+    Static static_kind = Static::kNone;
+    bool static_start = false;
+    std::vector<bool> b_iframe;  // b_audio_ndot, as AjocSubstreamInfo::b_iframe
 };
 
 // --- §6.2.1.6 ac4_substream_group_info --------------------------------------
@@ -458,6 +567,19 @@ struct MediaTiming {
     std::uint32_t sample_delta = 0;
 };
 [[nodiscard]] AC4_EXPORT std::optional<MediaTiming> media_timing(const Toc& toc);
+
+// Part 1 Tables 83 and 84 for the stream's frame_rate_index and sample rate:
+// frames a second (24 000 / 1 001 at 23.976 fps, 48 000 / 2 048 at index 13),
+// the samples a frame codes (frame_len_base) and the internal rate they are
+// coded at, their product: 46 033.97 Hz at the 1000/1001 rates, 46 080 at 24,
+// 30, 48 and 60 fps, 51 200 at 25, 50 and 100, the sample rate at index 13.
+// Nothing for an index the tables reserve, or any but 13 at 44.1 kHz.
+struct FrameRate {
+    double frames_per_second = 0.0;
+    int frame_length = 0;
+    double internal_rate_hz = 0.0;
+};
+[[nodiscard]] AC4_EXPORT std::optional<FrameRate> frame_rate(const Toc& toc);
 
 // RFC 6381 codec string per Annex E.13: "ac-4.AA.BB.CC" with two lowercase
 // hex digits each of bitstream_version, presentation_version and mdcompat,

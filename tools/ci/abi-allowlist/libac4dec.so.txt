@@ -1,0 +1,24 @@
+ac4::Decoder::Decoder()
+ac4::Decoder::Decoder(ac4::Decoder&&)
+ac4::Decoder::Decoder(ac4::DecoderConfig const&)
+ac4::Decoder::decode(std::span<std::byte const, 18446744073709551615ul>)
+ac4::Decoder::decode_by_block(std::span<std::byte const, 18446744073709551615ul>, ac4::BlockSink)
+ac4::Decoder::flush(ac4::BlockSink)
+ac4::Decoder::latency_samples() const
+ac4::Decoder::metadata() const
+ac4::Decoder::operator=(ac4::Decoder&&)
+ac4::Decoder::output() const
+ac4::Decoder::parse(std::span<std::byte const, 18446744073709551615ul>)
+ac4::Decoder::presentations() const
+ac4::Decoder::refusal_reason() const
+ac4::Decoder::reset()
+ac4::Decoder::set_output(ac4::OutputConfig const&)
+ac4::Decoder::set_presentation(ac4::PresentationChoice const&)
+ac4::Decoder::~Decoder()
+ac4::describe(ac4::DecodeError)
+ac4::describe(ac4::DownmixTarget)
+ac4::describe(ac4::DrcMode)
+ac4::describe(ac4::Speaker)
+ac4::describe(ac4::SubstreamRole)
+ac4::select_presentation(ac4::Toc const&, ac4::PresentationChoice const&, int)
+std::_Sp_make_shared_tag::_S_ti()::__tag
