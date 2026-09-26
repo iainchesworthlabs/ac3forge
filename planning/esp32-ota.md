@@ -1,8 +1,8 @@
 # Firmware over the network for Hearth sinks
 
 **Status, 2026-09-25:** O1 is built and merged, and all four boards are on the two-slot layout
-(O2); two of O2's checks wait for someone at the desk. O3, O4 and O5 are built and in review
-([Phases](#phases)).
+and have passed O2's checks. O3, O4, O5, O8 and O9 are built and in review, O6 is studied, and O7
+waits for the boards to leave development ([Phases](#phases)).
 
 This plan was written on 2026-09-24, when every `hearth_sink` layout on `main` (`b49a966c`) was a
 single `factory` app and nothing in the tree called `esp_ota_*`. The ESP-IDF facts below were read
@@ -47,7 +47,7 @@ It covers every board the project runs on: the ESP32-S3, the ESP32-C6 and the ES
 
 | | ESP32-S3 | ESP32-C6 | ESP32-P4 |
 |---|---|---|---|
-| Boards | two DevKitC-1 N16R8: COM15 `hearth-eb2c64`, COM16 `hearth-47b39c` | one, QFN40 rev v0.2, COM9 | one DFRobot FireBeetle 2, rev v1.3, COM10 (its USB link is down as of 2026-09-24; it is reachable only over Wi-Fi) |
+| Boards | two DevKitC-1 N16R8: COM15 `hearth-eb2c64`, COM16 `hearth-47b39c` | one, QFN40 rev v0.2, COM9 | one DFRobot FireBeetle 2, rev v1.3, COM10 (down on 2026-09-24 for want of a data cable, back on 2026-09-25 through the console USB-C) |
 | Flash on the board | 16 MB | 16 MB (the 2026-09-15 bring-up note; check with `esptool flash-id` before migrating) | 16 MB |
 | Flash size the build assumes | 16 MB (`sdkconfig.defaults`) | 4 MB (`sdkconfig.c6`, for any C6 module) | 16 MB |
 | Partition table | `partitions.csv`: `factory` 1.5 MiB | `partitions_c6.csv`: `factory` 2 MiB | `partitions_p4.csv`: `factory` 4 MiB |
@@ -939,8 +939,8 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
 4. USB: `write-flash @flash_args`, as today, or from O9 the browser installer. Both talk to the
    ROM download mode, which is in mask ROM, and this plan burns no eFuse that could lock it, so a
    board can always be recovered this way. A board that does not reset into it by itself is put
-   there by holding BOOT while pressing RESET. The P4 needs its cable working for this, which it
-   does not have today.
+   there by holding BOOT while pressing RESET. On the P4 this is the console USB-C, not the OTG
+   port.
 
 ## Per chip
 
@@ -973,9 +973,116 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
   a production v3.x P4 refuses them.
 - Wi-Fi through the co-processor, which stays up in flash mode.
 - The co-processor's own firmware (boot log: "Version mismatch: Host [2.12.0] > Co-proc [0.0.0]")
-  is a separate flash target. `esp_hosted` ships a host-performs-slave-OTA example for it, which
-  this plan leaves to decision 9.
-- No QEMU machine, and no USB until its cable is fixed; its migration waits for that.
+  is a separate flash target: [The P4's co-processor](#the-p4s-co-processor-o6) has O6's study.
+- **A restart once left the P4 unable to reach its co-processor** until its power was cycled (O2,
+  2026-09-25). Every update ends in a restart; the next section says what is known.
+- One upload to the P4 broke off 64 KiB in, about 10 s after the board had restarted: the board
+  restarted again, with nothing recorded, and the same push passed a few minutes later. Its
+  console was not attached, so the cause is not known.
+- No QEMU machine. Its USB is the console USB-C (COM10), which it was migrated over on
+  2026-09-25.
+
+## The P4's co-processor (O6)
+
+The P4 has no radio of its own. Its Wi-Fi goes over SDIO to the FireBeetle 2's onboard ESP32-C6,
+which runs Espressif's `esp_hosted` co-processor firmware. That firmware is separate from
+`hearth_sink`, and no update of the P4 changes it. O6 is a study first
+([decision 9](#decisions)). This section comes from the `esp_hosted` sources the P4 builds with,
+the issues on Espressif's `esp-hosted-mcu` repository (the numbers below) and DFRobot's
+schematic of the board, read on 2026-09-25. None of it was tried on a board.
+
+**What `esp_hosted` offers.**
+
+- The build asks for `espressif/esp_hosted` "~2", which resolved to 2.12.13, with
+  `esp_wifi_remote` 1.6.5. The example's lock file is not committed, so "~2" moves to the newest
+  2.x whenever the dependencies are resolved again ([decision 22](#decisions)).
+- The host updates the co-processor with four calls over the existing SDIO link:
+  `esp_hosted_slave_ota_begin`, `_write` and `_end`, and `_activate` from 2.6 on. The
+  co-processor writes the slot it is not running, and switches to it only after `esp_ota_end` has
+  checked the image. Espressif's example, `host_performs_slave_ota`, takes the image from HTTPS, a
+  LittleFS file or a raw partition.
+- The C6 needs two OTA slots for this; `esp_hosted`'s own C6 table has two of 1,920 KiB.
+  DFRobot's table on this board is not known.
+
+**The co-processor on this board.** The host prints version 0.0.0 when the co-processor sends
+none, which `esp_hosted` has sent since 2.1.6, in July 2025. So this C6 runs firmware from before
+then. Factory images on other P4 boards (0.0.0 and 1.4.x) have been updated from the host (#143,
+#244, #113). Whether this one can be is not proven; the C6's own console, or
+`esp_hosted_get_coprocessor_fwversion()` once the link is up, would say.
+
+**What can go wrong.**
+
+- **An update cut short, or an image that does not check out:** safe. The co-processor keeps its
+  old image.
+- **An image that checks out and then crashes, or never brings SDIO up:** not safe.
+  - `esp_hosted`'s co-processor has no app rollback, and its bootloader skips only an image that
+    fails to load. A C6 left boot-looping this way after an update over SDIO has been reported
+    (esphome/esphome#16692).
+  - There is no USB path to the C6 on this board. Its UART and IO9 (BOOT) go only to test pads on
+    the back (DFRobot's schematic V1.0, page 7). The P4 reaches it only over SDIO and its enable
+    pin (GPIO54), and the C6 is on the P4's own 3.3 V, so the P4 cannot cycle its power either.
+  - Recovering such a C6 takes a 3.3 V USB-UART adapter on those pads, with the P4 held in reset.
+  - One wire from a spare P4 GPIO to the IO9 pad would let the P4 put the C6 into its download mode
+    and reflash it over SDIO with esp-serial-flasher, which marks that mode experimental. This is
+    untested.
+
+**The restart hang, which comes first.** The restart that ended O2's rollback check, on
+2026-09-25, left the P4 unable to reach the C6. The restarts of the three pushes before it that
+day had come back normally.
+
+- The SDIO card initialised, but the C6 never sent the event that completes the link:
+  `sd_host_wait_for_event returned 0x107`, then "Not able to connect with ESP-Hosted slave
+  device".
+- The P4 resets the C6 through GPIO54 each time it starts, and that did not bring it back.
+  `esp_hosted` restarted the P4 about every 15 s ("Restarting host"). The release it had been
+  rolled back to was on trial, so the bootloader went back to the update in `ota_1`, as the trial
+  is meant to (its reason: "it restarted before it had proved itself").
+- A power cycle brought it back. About ten restarts that evening then came back normally,
+  through every one of O2's checks, so the hang does not follow every restart.
+- It matches an open upstream issue, #240 (since 2026-08-31): a P4 v1.3 with a C6 on GPIO54, after
+  a large update over Wi-Fi and a restart. Espressif have not reproduced it, and have asked for the
+  C6's console.
+- The version mismatch (host 2.12 against a co-processor older than 2.1.6) has not been shown to
+  cause it: #240 had matched versions, and the hang comes before any call the mismatch concerns.
+- Every P4 update ends in a restart, so until the cause is known, any of them can end this way.
+- Settings worth trying, at the desk:
+  - a longer `CONFIG_ESP_HOSTED_SDIO_RESET_DELAY_MS` (1,500 ms now);
+  - `CONFIG_ESP_HOSTED_SLAVE_RESET_ONLY_IF_NECESSARY`, in place of a reset at every start;
+  - `CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE` off, with an `esp_wifi_init()` failure that
+    retries rather than restarting the P4.
+
+**Staging.** A C6 co-processor image is about 1.2 MB: ESPHome's prebuilt 2.12.13 SDIO slave is
+1,240,368 bytes. The P4's `reserve` partition (4 MiB at `0x8B0000`, [Flash layout](#flash-layout))
+holds that three times over, and the example can read an image from a partition by its label.
+So the image would be uploaded to `reserve` first and checked there, as the P4's own images are,
+and the C6 fed from it with the network idle, as Espressif advise (#71). Streamed straight from
+the network, the upload would pass through the chip being rewritten.
+
+**What O6 would do next, in order:**
+
+1. **With someone at the desk:**
+   - the P4's console on COM10;
+   - a 3.3 V USB-UART adapter on the C6's pads;
+   - the C6's console captured at a cold boot and through a P4 restart;
+   - the C6's whole flash backed up, with the P4 held in reset.
+2. The restart hang's cause, from that console, before anything else.
+3. `esp_hosted` pinned to an exact version, and the co-processor image built at that version for
+   the C6: SDIO, with the flash size and mode of the factory image, and checked to fit its slot.
+4. **The first update at the desk, with the UART attached:**
+   - from `reserve`, with begin, write and end, and activate only on a co-processor of 2.6 or later;
+   - the link brought back up;
+   - the co-processor reporting the pinned version and joining Wi-Fi.
+5. Only then a route of its own. It refuses unless `reserve` holds a checked C6 image (SHA-256,
+   header, chip, size within the slot) and the board is in flash mode, and it never runs by itself.
+6. Optionally, the IO9 wire, and the P4 recovering the C6 over SDIO.
+
+**Still open:**
+
+- the factory C6 image's version, partition table and flash mode;
+- the restart hang's cause, and why one restart hangs when others do not;
+- whether the factory bootloader boots a co-processor built with ESP-IDF 6.1;
+- whether esp-serial-flasher's SDIO mode works with a v1.3 P4;
+- which `esp_hosted` patch the running P4 image has.
 
 ## Tests
 
@@ -1043,8 +1150,8 @@ that image has to be able to take the next update.
   - (d) `ota.py`, its tests and `idf.py ota`.
 
   **Exit:** CI green, the QEMU job included; no board touched.
-- **O2, boards.** One USB migration flash each: S3 COM15 and COM16, C6 COM9, and the P4 when its
-  cable works. **Exit, on each chip:**
+- **O2, boards.** One USB migration flash each: S3 COM15 and COM16, C6 COM9, and P4 COM10.
+  **Exit, on each chip:**
   - name, network and pairings survive the migration (for example "1 pairing record(s)" at boot,
     and the name in `/status`);
   - a build pushed over Wi-Fi is accepted, and a Sendspin server reconnects by itself;
@@ -1056,6 +1163,12 @@ that image has to be able to take the next update.
   - the time each step takes;
   - the C6's internal heap low-water mark during an upload (114,308 bytes, read with O4's line);
   - on the P4, a v3.1 image is refused before anything is written.
+
+  Passed on all four boards on 2026-09-25. The power cut was made by hand on the C6: an image
+  built with a 600 s hold (`CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S`), so that there was time to
+  pull the plug, lost its power 15 s into its trial. The board was back 8 s later on the image
+  before it, with the reason "the power went off before it had proved itself". The P4's run
+  needed its power cycled part-way ([The P4's co-processor](#the-p4s-co-processor-o6)).
 - **O3.** The page's Firmware section ([built](#the-web-page-o3)).
 - **O4, diagnostics without a cable.** Core dumps to the `coredump` partition, fetched with
   `GET /firmware/coredump` and read with `idf.py coredump-info`. Also a ring of recent console
@@ -1063,6 +1176,8 @@ that image has to be able to take the next update.
   [Built](#diagnostics-without-a-cable-o4).
 - **O5.** The firmware panel in `ac3hearth`. [Built](#ac3hearth-o5).
 - **O6.** The P4's co-processor firmware, as a study first ([decision 9](#decisions)).
+  [Studied](#the-p4s-co-processor-o6); what comes next needs someone at the desk with a USB-UART
+  adapter on the C6's pads.
 - **O7, when the boards leave development.** Signed images, switched on over the network
   ([Signing, later](#signing-later)).
 
@@ -1222,3 +1337,11 @@ boards leave development, and if that is before O8, O8's images are published si
     tests them, and an update takes the sink off Sendspin while it runs. Cost: a second
     connection to the sink, and the same boundary as the page: anyone on the network can
     update a board while images are unsigned.
+22. **Which `esp_hosted` the P4 builds with** ([The P4's co-processor](#the-p4s-co-processor-o6)).
+    (a) **`esp_hosted` and `esp_wifi_remote` each at one exact version in the example's
+    manifest, with the co-processor's image built from the same `esp_hosted`**; (b) "~2" and
+    ">=0.10,<2.0", as now. **Recommend (a).** The lock file is not committed, so two builds of
+    one commit, a day apart, can carry different releases of both. `esp_hosted` warns when the
+    host and the co-processor differ, and a new release on either side should be a choice, not
+    what a clean build happened to fetch. Cost: each new release is taken by hand, and once O6
+    ships, a new `esp_hosted` means a co-processor update as well.
