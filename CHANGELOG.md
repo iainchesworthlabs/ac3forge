@@ -1089,6 +1089,19 @@ The sections below contain the complete change list and fixes.
   `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
   `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
   rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
+- **Golden masters for the AC-4 phases still to come** (phase G1 of `planning/ac4.md`). DEE's
+  licence ends on 2026-11-06 and is not renewed, so the gold set gains 439 legs beside G0's, each
+  made from committed material by `gen_ac4_baseline.py` and grouped by the phases it serves: sweeps,
+  noise and transients at every 2.0, 5.1 and 5.1.4 rate; film and speech at 5.1.4, with the
+  immersive codec mode each rate gives; immersive stereo at every rate and frame rate, and in
+  gapless parts that meet at DEE's splices; metadata at 2.0, 5.1, 5.1.4 and immersive stereo,
+  among it stepped tones under each DRC profile, every mix level and height downmix gain, loudness
+  targets from −31 to −10 and language tags; substreams for presentations; 60 s programmes; 7.1
+  input; and E-AC-3, AC-3 and E-AC-3 JOC from the same sources. Each keeps MediaInfo's trace of
+  every frame, DEE's MP4 of it and what `ac3cli` made of it. Three 5 s 5.1.4 streams of one tone
+  per channel, one in each immersive codec mode, are committed. DEE writes no AC-4 from objects:
+  its object encoders take only an Atmos master, and refuse every ADM BWF master this project
+  writes as not authored with Dolby tools.
 - **AC-4 decodes to PCM for mono and stereo in the SIMPLE codec mode** (phase D2 of
   `planning/ac4.md`). `ac4::Decoder::decode()` reconstructs the audio spectral frontend
   (dequantisation, scale factors, noise fill), stereo processing (M/S and prediction), the inverse
@@ -1229,6 +1242,28 @@ The sections below contain the complete change list and fixes.
   `codec-mode=aspx-acpl-1|aspx-acpl-2|aspx-acpl-3` and names the mode in its summary.
   `tools/checks/score_ac4_encode.py` pins nine A-CPL legs and the A-CPL race with
   `score_ac4_decode.py`'s per-band checks, which now take ASPX_ACPL_1, 5.0 and the channel pair.
+- **AC-4 over IEC 61937** (phase D11 of `planning/ac4.md`), from IEC 61937-14:2017, with IEC
+  61937-1 and 61937-2 for the burst format. `ac3::iec61937::Ac4BurstPacker` packs one AC-4 sync
+  frame to a data-burst in any of Part 14's four burst types (`Pc` data type 24 with subdata types
+  0 to 3: AC-4, AC-4 HBR4, AC-4 HBR16 and AC-4 LD). Each burst lasts as long as its frame at the
+  link rate, the bursts at 29.97, 59.94 and 119.88 fps follow Part 14's five-burst sequences, `Pc`
+  bits 8 to 11 carry the period's code and `Pd` the frame's length. `wrap_ac4_stream` is the batch
+  form, and `ac4_burst_type_for()` picks the smallest type a stream's largest frame fits.
+  `BurstReader`, `unwrap_stream` and `PassthroughDetector` read all four types, hold an AC-4
+  burst's `Pd` to the length its sync frame states, and now read all seven data-type bits of `Pc`,
+  so a data type 1 burst with a subdata type is no longer taken for AC-3. `ac3tests` holds every
+  row of the tables against a second transcription and against the arithmetic the standard
+  implies, and packs and reads back every frame rate of every type, and every committed DEE
+  stream, unchanged; `AC4DEC_STREAM_DIR` points that case at the whole gold set locally. `PassthroughSink` takes `BitstreamFormat::kAc4`, `kAc4Hbr4` and `kAc4Hbr16`:
+  ALSA and Android send the first two, since both take IEC 61937 bursts as opaque two-channel
+  data, while WASAPI, PipeWire and Core Audio ask for a codec by name, have none for AC-4, and
+  refuse it with the new `PassthroughError::kUnsupportedFormat`, as every backend refuses HBR16's
+  eight-channel link. Hearth's extension role `_ac3forge_player@v1` carries `"ac4"` burst chunks
+  of one sync frame each, and its test sink decodes and renders them: a loopback test sends DEE's
+  2.0 stream through the role, and the sink's output equals the local decode sample for sample.
+  Part 14 leaves two choices, which frame starts a burst sequence and whether `Pd` counts bits or
+  bytes; `iec61937.cpp` gives the reading taken for each. No receiver found accepts AC-4, so none
+  has been tried.
 - **AC-4 decodes every frame rate, with the output processing a system asks for** (phase D6 of
   `planning/ac4.md`). A sample rate converter in `src/ac4core`, with its inverse for the encoder,
   takes every `frame_rate_index`'s internal rate to 48 kHz: a Kaiser-windowed polyphase filter 100 dB
@@ -1254,6 +1289,34 @@ The sections below contain the complete change list and fixes.
   a splice at an I-frame joins the two streams without the gap a restart from silence left, and a
   frame whose table of contents does not read is taken to be the frame the stream expected, where
   before it made the next frame a change of source. `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 encoder writes every frame rate, average and variable rates, I-frames where asked, and
+  the metadata** (phase E5 of `planning/ac4.md`). At 48 kHz every `frame_rate_index` of Part 1 Table
+  83, the input converted to the frame's internal rate by the decoder's converter the other way
+  round, each frame decoding to the samples Part 2 5.11 locks to `sequence_counter`, exact over
+  100 000 frames at every rate. `RateMode::kAverage` lets frames lend each other bytes within the
+  decoder's input buffer (Part 1 6.2.4), which `wait_frames` and Part 2's `br_code` signal, and
+  `kVariable` within two seconds' share. I-frames at an interval, at named frames and at every
+  fragment start a caller gives. The presentation substream carries the further loudness values,
+  DRC's decoder modes on the default profile, on curves of their own or repeating another, with
+  transmitted gains computed from a profile under `experimental.drc_gains`, and the stereo
+  downmix's values; the audio substream carries dialogue enhancement from channels marked as
+  dialogue or from a dialogue stem, by the channel-independent method, the Mid of L and R, or
+  cross-channel. MediaInfo reads every value as the encoder wrote it over 42 configurations, and the
+  decoder's output level, downmixes and dialogue enhancement gains equal their formulas on the
+  encoder's streams to 0.01 dB (`gain_ac4_decode.py --encoder`, in CI). At 100 to 120 fps music at
+  128 kbps scores 0.63 to 0.87 dB of log-spectral distance and up to 0.18 of ViSQOL under index 13's,
+  the frames' fixed side information taking more of the rate. `ac3cli ac4-encode` takes
+  `frame-rate=`, `rate-mode=`, `iframe-interval=`, `iframes=`, `fragment=`, `dialnorm=` in quarters of
+  a dB, `loudness=<practice>` (measured with the BS.1770 meter), `drc=` and a profile per mode, the
+  mix levels, `lfemix=` and `dmixmod=` in AC-4's terms, `loro-correction=`, `ltrt-correction=`,
+  `dialogue-channels=`, `dialogue-stem=`, `dialogue-method=` and `dialogue-max-gain=`. Its MP4 files
+  list the I-frames as sync samples and count 29.97, 59.94 and 119.88 fps at 240 000 Hz (Part 2
+  Table E.1), and `ac3cli mp4` now carries AC-4 at those rates too, through `ac4::media_timing()`,
+  `mp4::AudioTrack::timescale` and `MuxOptions::sync_samples`. The encoder-space harness draws all of
+  it, and found I-frames at the least rate a configuration takes that the encoder could not write
+  and threw on: the frame that holds nothing more now sends A-CPL's values, DRC's gains and a
+  stem's dialogue parameters as a stream starts them, and `create()` sizes it with a VARFIX interval,
+  which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
 
 **Browser (WASM)**
 
@@ -1544,6 +1607,9 @@ The sections below contain the complete change list and fixes.
   rows, and four stale claims corrected.
 - The CLI reference lists all forty-two commands, including the previously-undocumented
   `spatial`.
+- The threat model, the WebAssembly page, the ADM page and the building guide no longer describe
+  the codec libraries as free of third-party dependencies. {fmt} is compiled into `ac3::forge`
+  and `mp4::mp4`.
 
 **Release engineering**
 

@@ -10,11 +10,16 @@ ladder, item 7.
 The PCM comes from the AC-3 harness's generator, imported rather than copied:
 its per-block plan, the `cliff` profile and the correlation modes serve every
 codec. The configuration space is this encoder's: mono, stereo, 5.0 and 5.1,
-and 7.0 and 7.1 in the three 7.X layouts, 48 or 44.1 kHz, a constant rate from
-8 kbps up (20 in 5.X and 7.X), the codec mode the rate picks, SIMPLE or ASPX
-forced, or an A-CPL mode forced (ASPX_ACPL_2 and ASPX_ACPL_3 in 5.X, and with
-experimental=acpl ASPX_ACPL_1 there and both in stereo), the experimental
-tools, dialnorm, and raw or MP4 output.
+and 7.0 and 7.1 in the three 7.X layouts, 48 kHz at every frame rate of Part 1
+Table 83 or 44.1 kHz at the native one, a rate from 8 kbps up (20 in 5.X and
+7.X), constant, average or variable, the codec mode the rate picks, SIMPLE or
+ASPX forced, or an A-CPL mode forced (ASPX_ACPL_2 and ASPX_ACPL_3 in 5.X, and
+with experimental=acpl ASPX_ACPL_1 there and both in stereo), the experimental
+tools, I-frames at an interval, at named frames and at fragment starts, the
+metadata (dialnorm, the further loudness values, DRC's modes with their
+profiles and with experimental gains, the downmix values, and dialogue
+enhancement from marked channels or a stem by each method), and raw or MP4
+output.
 
 Each case is held to:
 
@@ -31,11 +36,15 @@ Each case is held to:
            the MP4 output's track is one AC-4 stream FFmpeg's mov demuxer reads
            with that many samples - item 3's FFmpeg half;
   decode   `ac3cli decode` reads it to PCM: every frame, at the input's
-           channel count and sample rate.
+           channel count and sample rate, the frames' lengths adding up to
+           what the frame rate gives that many frames (Part 2 clause 5.11),
+           and the output covering the input delayed by the lag ac4-encode
+           reports, with no more than a frame to spare.
 
 A configuration outside the encoder's range - a rate below 8 or above 3000
-kbps - must be refused with the encoder's own message, and is drawn on
-purpose now and then. --check-envelope re-measures that range.
+kbps, or at 44.1 kHz a frame rate other than the native one - must be refused
+with the encoder's own message, and is drawn on purpose now and then.
+--check-envelope re-measures that range.
 
 Every case is a pure function of one 64-bit case seed, printed with any
 failure; --replay reruns it, and REGRESSION_SEEDS holds the seeds that ever
@@ -51,6 +60,7 @@ Usage (repo root, after building):
 import argparse
 import concurrent.futures
 import json
+import math
 import os
 import random
 import re
@@ -60,6 +70,7 @@ import sys
 import tempfile
 import time
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent.parent
@@ -70,6 +81,33 @@ import ac4_syntax  # noqa: E402  (the paths above have to come first)
 import fuzz_encoder_space as ac3space  # noqa: E402
 
 FRAME = 2048  # samples per frame at frame_rate_index 13
+# Part 1 Table 83 at 48 kHz: frame-rate='s spelling of each frame_rate_index, and the samples a
+# frame decodes to, a fraction where the frames alternate in length (Part 2 clause 5.11).
+FRAME_RATES = {
+    0: ("23.976", Fraction(2002)),
+    1: ("24", Fraction(2000)),
+    2: ("25", Fraction(1920)),
+    3: ("29.97", Fraction(8008, 5)),
+    4: ("30", Fraction(1600)),
+    5: ("47.95", Fraction(1001)),
+    6: ("48", Fraction(1000)),
+    7: ("50", Fraction(960)),
+    8: ("59.94", Fraction(4004, 5)),
+    9: ("60", Fraction(800)),
+    10: ("100", Fraction(480)),
+    11: ("119.88", Fraction(2002, 5)),
+    12: ("120", Fraction(400)),
+    13: ("native", Fraction(FRAME)),
+}
+# The metadata options' values, as ac4-encode spells them.
+PRACTICES = ["atsc-a85", "ebu-r128", "arib-tr-b32", "freetv-op59", "manual", "consumer-leveller",
+             "not-indicated"]
+DRC_PROFILES = ["film-standard", "film-light", "music-standard", "music-light", "speech", "none"]
+DRC_MODES = ["drc-home-theatre", "drc-flat-panel-tv", "drc-portable-speakers",
+             "drc-portable-headphones"]
+CENTRE_LEVELS = ["+3", "+1.5", "0", "-1.5", "-3", "-4.5", "-6", "off"]
+SURROUND_LEVELS = ["0", "-1.5", "-3", "-4.5", "-6", "off"]
+DOWNMIX_METHODS = ["loro", "ltrt", "pl2", "none"]
 BLOCK = ac3space.BLOCK  # the generator's block, 256 samples
 SAMPLE_RATES = [48000, 44100]
 # The rates drawn, weighted low, where the frame's side information is under
@@ -77,6 +115,10 @@ SAMPLE_RATES = [48000, 44100]
 RATES = [8, 12, 16, 24, 32, 48, 64, 96, 128, 144, 192, 256, 320, 384, 448, 512, 640, 768, 1024]
 LOWEST_KBPS = 8
 HIGHEST_KBPS = 3000
+# Stereo at 48 kHz in the ASPX mode, whose 8 kbps frames of 42 bytes hold no I-frame whose A-SPX
+# interval starts a slot in (a VARFIX interval's left border, which a frame after one whose interval
+# ran on takes).
+STEREO_48K_LOWEST_KBPS = 9
 # The 5.X and 7.X elements' least rate: from 14 to 19 kbps, by layout and sample rate, the
 # smallest frame holds one with no bands and every aspx_data element's least; 20 holds all.
 MULTICHANNEL_LOWEST_KBPS = 20
@@ -92,8 +134,14 @@ CHANNELS = [1, 2, 2, 5, 6, 6, 7, 8]
 SEVEN_X = ["7x-back", "7x-wide", "7x-top-front"]
 # The encoder's delay (a frame and a half) and the decoder's at frame_rate_index 13, which the
 # encoder's last frame covers: d_pcm (Part 1 Table 188), the QMF banks' 577 samples and six QMF
-# slots.
+# slots. At the other frame rates ac4-encode reports the lag, to the nearest sample.
 LAG = 3072 + 352 + 577 + 6 * 64
+
+# A frame of this many bytes holds the least frame of any configuration drawn: a silent I-frame
+# with every metadata element, DRC's gains and dialogue enhancement's parameters in 7.1 among them.
+# A rate that gives smaller frames may be refused as holding no least frame, if the same case at
+# this size encodes.
+FRAME_BYTES_CAP = 400
 
 # Refusals a case may end in, by the text ac3cli prints for each.
 REFUSALS = {
@@ -101,10 +149,17 @@ REFUSALS = {
     # dialnorm=auto on input BS.1770's gates leave nothing of, which the
     # generator's sparse profiles draw: the encoder commands all refuse it so.
     "nothing to measure": "no audio above the -70 LKFS absolute gate",
+    "frame rate at 44.1 kHz": "at 44.1 kHz AC-4 has the native frame rate alone",
 }
 
 # Case seeds that ever failed, with why; --regressions replays them.
-REGRESSION_SEEDS = {}
+REGRESSION_SEEDS = {
+    5756050987806798014: "an out-of-range rate at 44.1 kHz with another frame rate: ac3cli names "
+    "the frame rate first, and the harness took only the rate's refusal",
+    10507227253340255992: "8 kbps stereo with dialnorm=auto over input BS.1770's gates leave "
+    "nothing of: refused for the rate, then at the retry's rate for the loudness, which the "
+    "harness took as a failure",
+}
 
 
 @dataclass
@@ -119,10 +174,21 @@ class Case:
     correlation: str
     mp4: bool
     options: list = field(default_factory=list)
+    frame_rate_index: int = 13
+    # A dialogue stem beside the programme: the programme's channels, each scaled.
+    stem: bool = False
 
     @property
     def in_range(self):
         return LOWEST_KBPS <= self.bitrate <= HIGHEST_KBPS
+
+    @property
+    def frame_rate_valid(self):
+        return self.sample_rate == 48000 or self.frame_rate_index == 13
+
+    @property
+    def measures(self):
+        return any(o == "dialnorm=auto" or o.startswith("loudness=") for o in self.options)
 
 
 @dataclass
@@ -146,12 +212,82 @@ def draw_case(seed):
         bitrate = rng.choices(RATES, weights=weights, k=1)[0]
     if channels > 2 and LOWEST_KBPS <= bitrate < MULTICHANNEL_LOWEST_KBPS:
         bitrate = MULTICHANNEL_LOWEST_KBPS
+    sample_rate = rng.choice(SAMPLE_RATES)
+    # Half the cases at 48 kHz at another frame rate than the native one; now and then one at
+    # 44.1 kHz, which must be refused.
+    roll = rng.random()
+    frame_rate_index = 13
+    if (sample_rate == 48000 and roll < 0.5) or roll < 0.03:
+        frame_rate_index = rng.randrange(13)
+    # A frame rate above the native one shares the rate among more frames, and most draws scale
+    # the rate with it, so that its frames hold what the native frame rate's would.
+    if frame_rate_index != 13 and LOWEST_KBPS <= bitrate <= HIGHEST_KBPS and rng.random() < 0.7:
+        fps = Fraction(48000) / FRAME_RATES[frame_rate_index][1]
+        bitrate = min(HIGHEST_KBPS, round(bitrate * fps / Fraction(48000, FRAME)))
     options = []
+    if frame_rate_index != 13 or rng.random() < 0.1:
+        options.append(f"frame-rate={FRAME_RATES[frame_rate_index][0]}")
+    roll = rng.random()
+    if roll < 0.15:
+        options.append("rate-mode=average")
+    elif roll < 0.3:
+        options.append("rate-mode=variable")
+    # I-frames at an interval, at named frames and where fragments start.
+    if rng.random() < 0.2:
+        options.append(f"iframe-interval={rng.randint(1, 12)}")
+    if rng.random() < 0.1:
+        named = sorted({rng.randrange(20) for _ in range(rng.randint(1, 3))})
+        options.append("iframes=" + ",".join(str(f) for f in named))
+    if rng.random() < 0.1:
+        options.append(f"fragment={rng.choice(['0.1', '0.25', '0.5', '1.001'])}")
     roll = rng.random()
     if roll < 0.2:
         options.append("dialnorm=auto")
     elif roll < 0.5:
-        options.append(f"dialnorm={rng.randint(1, 31)}")
+        options.append(f"dialnorm={rng.randint(0, 127) / 4:g}")
+    if rng.random() < 0.15:
+        options.append(f"loudness={rng.choice(PRACTICES)}")
+    tools = []
+    # DRC's modes on a profile, some on one of their own, and now and then their gains.
+    if rng.random() < 0.25:
+        options.append(f"drc={rng.choice(DRC_PROFILES)}")
+        options.extend(f"{mode}={rng.choice(DRC_PROFILES)}" for mode in DRC_MODES
+                       if rng.random() < 0.25)
+        if rng.random() < 0.3:
+            tools.append(f"drc-gains-{rng.randrange(4)}")
+    # The downmix values, in 5.X and 7.X, the LFE's where there is one.
+    if channels >= 5 and rng.random() < 0.3:
+        draws = [
+            ("lorocmixlev", CENTRE_LEVELS),
+            ("lorosurmixlev", SURROUND_LEVELS),
+            ("ltrtcmixlev", CENTRE_LEVELS),
+            ("ltrtsurmixlev", SURROUND_LEVELS),
+            ("dmixmod", DOWNMIX_METHODS),
+            ("loro-correction", [f"{x / 2:g}" for x in range(-15, 16)]),
+            ("ltrt-correction", [f"{x / 2:g}" for x in range(-15, 16)]),
+        ]
+        if channels % 2 == 0:
+            draws.append(("lfemix", [f"{5.5 - x:g}" for x in range(32)]))
+        chosen = [(key, values) for key, values in draws if rng.random() < 0.5]
+        if not chosen:
+            chosen = [rng.choice(draws)]
+        options.extend(f"{key}={rng.choice(values)}" for key, values in chosen)
+    # Dialogue enhancement: marked channels, or a stem; the Mid of L and R, and a stem over two
+    # or three channels cross-channel.
+    stem = False
+    if rng.random() < 0.2:
+        available = {1: ["c"], 2: ["l", "r"]}.get(channels, ["l", "r", "c"])
+        marked = [c for c in available if rng.random() < 0.6] or [rng.choice(available)]
+        stem = rng.random() < 0.5
+        method = "independent"
+        roll = rng.random()
+        if roll < 0.25 and marked == ["l", "r"]:
+            method = "mid"
+        elif roll < 0.5 and stem and len(marked) >= 2:
+            method = "cross"
+        options.append(f"dialogue-channels={','.join(marked)}")
+        options.append(f"dialogue-method={method}")
+        options.append(f"dialogue-max-gain={rng.choice([3, 6, 9, 12])}")
     # The rate picks the codec mode (in 5.X ASPX_ACPL_3 and ASPX_ACPL_2 at
     # the lowest rates a channel, then ASPX below 96 kbps a channel); now and
     # then SIMPLE or ASPX is forced, or an A-CPL mode, and the experimental
@@ -167,7 +303,6 @@ def draw_case(seed):
         options.append(f"codec-mode={acpl}")
         if channels > 2 and LOWEST_KBPS <= bitrate < ACPL_LOWEST_KBPS[acpl]:
             bitrate = ACPL_LOWEST_KBPS[acpl]
-    tools = []
     if rng.random() < 0.25:
         tools.append(
             rng.choice(
@@ -187,26 +322,27 @@ def draw_case(seed):
         tools.append(rng.choice(SEVEN_X))
     if tools:
         options.append(f"experimental={','.join(tools)}")
-    sample_rate = rng.choice(SAMPLE_RATES)
     # Two to ten frames of input: several frames, never one, so that block
-    # switching and the stereo choice change between frames. dialnorm=auto
+    # switching and the stereo choice change between frames. A measurement
     # needs more: BS.1770's gating blocks are 400 ms long.
-    shortest = 2 * FRAME // BLOCK
-    if "dialnorm=auto" in options:
-        shortest = -(-sample_rate * 3 // 5 // BLOCK)
+    frame = math.ceil(FRAME_RATES[frame_rate_index][1]) if sample_rate == 48000 else FRAME
+    shortest = -(-2 * frame // BLOCK)
+    if any(o == "dialnorm=auto" or o.startswith("loudness=") for o in options):
+        shortest = max(shortest, -(-sample_rate * 3 // 5 // BLOCK))
     return Case(
         seed=seed,
         channels=channels,
         sample_rate=sample_rate,
         bitrate=bitrate,
-        blocks=rng.randint(shortest, max(shortest, 10 * FRAME // BLOCK)),
+        blocks=rng.randint(shortest, max(shortest, -(-10 * frame // BLOCK))),
         pcm16=rng.random() < 0.5,
         audio_profile=rng.choice([*ac3space.AUDIO_PROFILES, "mixed"]),
         correlation=rng.choice(["independent", "identical", "pairs", "inverted"]),
         mp4=rng.random() < 0.3,
         options=options,
+        frame_rate_index=frame_rate_index,
+        stem=stem,
     )
-
 
 def describe(case):
     return (
@@ -214,6 +350,7 @@ def describe(case):
         f"{case.blocks * BLOCK} samples ({case.audio_profile}, {case.correlation}, "
         f"{'pcm16' if case.pcm16 else 'float'})"
         f"{' ' + ' '.join(case.options) if case.options else ''}"
+        f"{', a dialogue stem' if case.stem else ''}"
         f"{', MP4 too' if case.mp4 else ''}"
     )
 
@@ -322,6 +459,13 @@ def _run_case(cli, ffprobe, case, tmp):
     )
     wav = tmp / "in.wav"
     ac3space.write_wav(wav, pcm, case.sample_rate, case.pcm16)
+    options = list(case.options)
+    if case.stem:
+        # The dialogue in the programme's channels: each channel scaled, some to nothing.
+        gains = [rng.choice([0.0, 0.3, 0.7, 1.0]) for _ in range(case.channels)]
+        stem = [[x * g for x in channel] for channel, g in zip(pcm, gains, strict=True)]
+        ac3space.write_wav(tmp / "stem.wav", stem, case.sample_rate, False)
+        options.append(f"dialogue-stem={tmp / 'stem.wav'}")
     stream = tmp / "out.ac4"
     encoded = _run(
         [
@@ -330,33 +474,85 @@ def _run_case(cli, ffprobe, case, tmp):
             wav,
             stream,
             case.bitrate,
-            *case.options,
+            *options,
             f"syntax-trace={tmp / 'enc.tsv'}",
         ]
     )
-    if not case.in_range:
-        if encoded.returncode != 0 and REFUSALS["rate out of range"] in encoded.stderr:
-            return Result(case, "refused", "encode", "rate out of range")
+    if not case.in_range or not case.frame_rate_valid:
+        # A case can be wrong on both counts; either refusal is right for it.
+        whys = [
+            why
+            for why, wrong in (
+                ("rate out of range", not case.in_range),
+                ("frame rate at 44.1 kHz", not case.frame_rate_valid),
+            )
+            if wrong
+        ]
+        refused = [why for why in whys if REFUSALS[why] in encoded.stderr]
+        if encoded.returncode != 0 and refused:
+            return Result(case, "refused", "encode", refused[0])
         return Result(
             case,
             "fail",
             "encode",
-            f"a rate out of range was not refused (exit {encoded.returncode}): "
+            f"a {' and a '.join(whys)} was not refused (exit {encoded.returncode}): "
             f"{encoded.stderr.strip()}",
         )
+    per_frame = Fraction(FRAME)
+    if case.sample_rate == 48000:
+        per_frame = FRAME_RATES[case.frame_rate_index][1]
     if encoded.returncode != 0:
-        if "dialnorm=auto" in case.options and REFUSALS["nothing to measure"] in encoded.stderr:
+        if case.measures and REFUSALS["nothing to measure"] in encoded.stderr:
             return Result(case, "refused", "encode", "nothing to measure")
+        frame_bytes = Fraction(case.bitrate * 1000 * per_frame, 8 * case.sample_rate)
+        if REFUSALS["rate out of range"] in encoded.stderr and frame_bytes < FRAME_BYTES_CAP:
+            # A rate whose frames hold no least frame, if frames of FRAME_BYTES_CAP bytes do.
+            higher = math.ceil(Fraction(FRAME_BYTES_CAP * 8 * case.sample_rate, 1000 * per_frame))
+            retry = _run([cli, "ac4-encode", wav, tmp / "retry.ac4", higher, "quiet", *options])
+            if retry.returncode == 0:
+                return Result(case, "refused", "encode", "frames too small for the least frame")
+            # The rate is checked before the loudness is measured, so the retry can meet the
+            # input's own refusal.
+            if case.measures and REFUSALS["nothing to measure"] in retry.stderr:
+                return Result(case, "refused", "encode", "nothing to measure")
+            return Result(
+                case,
+                "fail",
+                "encode",
+                f"refused at {case.bitrate} kbps and at {higher}: {retry.stderr.strip()}",
+            )
         return Result(
             case, "fail", "encode", f"exit {encoded.returncode}: {encoded.stderr.strip()}"
         )
     match = re.search(r"encoded (\d+) AC-4 frames", encoded.stdout)
-    if match is None:
-        return Result(case, "fail", "encode", f"no frame count in: {encoded.stdout.strip()}")
+    lag_match = re.search(r"lags the input by (\d+) samples", encoded.stdout)
+    if match is None or lag_match is None:
+        return Result(case, "fail", "encode", f"no frame count or lag in: {encoded.stdout.strip()}")
     count = int(match.group(1))
-    expected_frames = -(-(case.blocks * BLOCK + LAG) // FRAME)
-    if count != expected_frames:
-        return Result(case, "fail", "encode", f"{count} frames, expected {expected_frames}")
+    lag = int(lag_match.group(1))
+    # What the frames decode to, frame by frame from sequence_counter 0: floor((f + 1) R) -
+    # floor(f R), which add up to floor(count R).
+    decoded_length = math.floor(count * per_frame)
+    length = case.blocks * BLOCK
+    if case.frame_rate_index == 13:
+        expected_frames = -(-(length + LAG) // FRAME)
+        if lag != LAG or count != expected_frames:
+            return Result(
+                case,
+                "fail",
+                "encode",
+                f"{count} frames and a lag of {lag}, expected {expected_frames} and {LAG}",
+            )
+    elif decoded_length < length + lag - 1 or math.floor((count - 2) * per_frame) >= length + lag:
+        # The output covers the input at its lag, the converter's delay rounded, with no more
+        # than a frame to spare: flush() also codes out what the converters hold.
+        return Result(
+            case,
+            "fail",
+            "encode",
+            f"{count} frames decode to {decoded_length} samples, for {length} samples at a lag "
+            f"of {lag}",
+        )
 
     data = stream.read_bytes()
     raw_frames, why = sync_frames(data)
@@ -387,13 +583,13 @@ def _run_case(cli, ffprobe, case, tmp):
 
     # The decode.
     samples, rate = read_wav_shape(tmp / "out.wav")
-    if rate != case.sample_rate or samples[0] != case.channels or samples[1] != count * FRAME:
+    if rate != case.sample_rate or samples[0] != case.channels or samples[1] != decoded_length:
         return Result(
             case,
             "fail",
             "decode",
             f"decoded {samples[0]} channels of {samples[1]} samples at {rate} Hz, expected "
-            f"{case.channels} of {count * FRAME} at {case.sample_rate}",
+            f"{case.channels} of {decoded_length} at {case.sample_rate}",
         )
 
     # FFmpeg's framing.
@@ -412,7 +608,7 @@ def _run_case(cli, ffprobe, case, tmp):
             )
         if case.mp4:
             mp4 = tmp / "out.mp4"
-            muxed = _run([cli, "ac4-encode", wav, mp4, case.bitrate, *case.options])
+            muxed = _run([cli, "ac4-encode", wav, mp4, case.bitrate, *options])
             if muxed.returncode != 0:
                 return Result(
                     case, "fail", "mp4", f"exit {muxed.returncode}: {muxed.stderr.strip()}"
@@ -481,7 +677,10 @@ def check_envelope(cli):
             for rate in SAMPLE_RATES:
                 wav = Path(tmp) / f"{channels}-{rate}.wav"
                 ac3space.write_wav(wav, [[0.0] * (4 * FRAME) for _ in range(channels)], rate, False)
-                lowest = [(LOWEST_KBPS - 1, False), (LOWEST_KBPS, True)]
+                least = LOWEST_KBPS
+                if channels == 2 and rate == 48000 and not options:
+                    least = STEREO_48K_LOWEST_KBPS
+                lowest = [(least - 1, False), (least, True)]
                 if channels > 2:
                     forced = [o.split("=", 1)[1] for o in options if o.startswith("codec-mode=")]
                     least = ACPL_LOWEST_KBPS[forced[0]] if forced else MULTICHANNEL_LOWEST_KBPS
@@ -621,8 +820,9 @@ def main():
     total = sum(counts.values())
     print(
         f"{total} cases in {time.monotonic() - started:.1f}s: {counts['ok']} encoded, read "
-        f"and decoded cleanly, {counts['refused']} refused (a rate out of range, or no "
-        f"loudness for dialnorm=auto), {counts['fail']} failed"
+        f"and decoded cleanly, {counts['refused']} refused (a rate out of range or too low for "
+        f"the frame rate and metadata, a frame rate 44.1 kHz does not have, or no loudness to "
+        f"measure), {counts['fail']} failed"
     )
     if counts["fail"]:
         sys.exit(1)

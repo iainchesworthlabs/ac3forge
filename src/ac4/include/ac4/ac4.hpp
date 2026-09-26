@@ -440,11 +440,24 @@ struct RawFrame {
 // mp4::AudioTrack::samples_per_frame and an MPEG-TS PTS cadence need.
 // Table 84: most frame rates divide the sample rate exactly; the
 // 1000/1001-family entries whose frame length alternates between two values
-// (29.97/59.94/119.88 fps) have no single answer and return nullopt - a
-// container that wants those needs per-frame durations this slice does not
-// model. At 44.1 kHz only frame_rate_index 13 (the 2048-sample frame) is
+// (29.97/59.94/119.88 fps) have no single answer and return nullopt;
+// media_timing() below gives an ISOBMFF track the time scale in which they
+// have one. At 44.1 kHz only frame_rate_index 13 (the 2048-sample frame) is
 // defined at all (Table 83).
 [[nodiscard]] AC4_EXPORT std::optional<std::uint32_t> samples_per_frame(const Toc& toc);
+
+// TS 103 190-2 Table E.1: the media time scale an ISOBMFF track of the stream
+// counts in, and each sample's duration in it (sample_delta). Where a frame
+// is a whole number of samples that is the sample rate and
+// samples_per_frame(); 29.97, 59.94 and 119.88 fps, whose frame lengths
+// alternate at 48 kHz, take the table's other time scale, 240 000, in which a
+// frame is 8 008, 4 004 or 2 002. Nothing for a frame rate Table 83 or 84
+// does not define.
+struct MediaTiming {
+    std::uint32_t timescale = 0;
+    std::uint32_t sample_delta = 0;
+};
+[[nodiscard]] AC4_EXPORT std::optional<MediaTiming> media_timing(const Toc& toc);
 
 // RFC 6381 codec string per Annex E.13: "ac-4.AA.BB.CC" with two lowercase
 // hex digits each of bitstream_version, presentation_version and mdcompat,

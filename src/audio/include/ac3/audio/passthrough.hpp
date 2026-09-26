@@ -11,11 +11,24 @@
 #include <vector>
 
 #include "ac3/audio/monitor.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 
-// Exclusive-mode IEC 61937 passthrough: hand already-packed AC-3 or E-AC-3
-// bursts to an S/PDIF or HDMI endpoint so the AV receiver on the other end
-// decodes them itself and lights its Dolby Digital / Dolby Digital Plus
+// Exclusive-mode IEC 61937 passthrough: hand already-packed AC-3, E-AC-3 or
+// AC-4 bursts to an S/PDIF or HDMI endpoint so the AV receiver on the other
+// end decodes them itself and lights its Dolby Digital / Dolby Digital Plus
 // indicator.
+//
+// AC-4 (IEC 61937-14) goes only where the platform has a way to send it,
+// which is where its audio API takes IEC 61937 bursts as opaque two-channel
+// data with the non-audio flag set rather than naming the codec: ALSA, and
+// Android's ENCODING_IEC61937. WASAPI negotiates a codec-specific subformat
+// and the Windows SDK (ksmedia.h, 10.0.26100) defines none for AC-4;
+// PipeWire's IEC 958 format names a codec and its list (spa/param/audio/
+// iec958.h, 1.6) has no AC-4; Core Audio retunes a stream to a codec's format
+// ID and its list (CoreAudioBaseTypes.h) has no AC-4 either. Those three
+// refuse every AC-4 format with kUnsupportedFormat. AC-4 HBR16 needs the
+// eight-channel high-bit-rate link, which no backend here opens, so ALSA and
+// Android refuse it the same way.
 //
 // Exclusive mode is mandatory. In shared mode the Windows audio engine would
 // treat the bursts as ordinary PCM and mix, resample or volume-scale them;
@@ -29,28 +42,99 @@
 namespace ac3::audio {
 
 enum class PassthroughError : std::uint8_t {
-    kNoBackend,             // built without a platform passthrough backend
+    kNoBackend,  // built without a platform passthrough backend
     kComFailure,
     kDeviceNotFound,
     kFormatRejected,        // endpoint will not accept this format over IEC 61937
     kExclusiveUnavailable,  // device busy, or exclusive access disabled for it
     kAlreadyRunning,
     kNotRunning,
+    // This platform's audio API has no way to send the format at all, whatever
+    // the device: see the header comment on AC-4.
+    kUnsupportedFormat,
 };
 
 [[nodiscard]] std::string_view describe(PassthroughError error);
 
-// Which IEC 61937 encapsulation to bitstream. The two need different WASAPI
-// subformats and different carrier (link) sample rates - Dolby Digital Plus
-// runs the carrier at 4x the content rate (Microsoft's "Representing Formats
-// for IEC 61937 Transmissions") - and different burst sizes
+// Which IEC 61937 encapsulation to bitstream. AC-3 and E-AC-3 need different
+// WASAPI subformats and different carrier (link) sample rates - Dolby Digital
+// Plus runs the carrier at 4x the content rate (Microsoft's "Representing
+// Formats for IEC 61937 Transmissions") - and different burst sizes
 // (ac3::iec61937::kBurstBytes vs kEac3BurstBytes).
-enum class BitstreamFormat : std::uint8_t { kAc3, kEac3 };
+//
+// The AC-4 formats are its links rather than its data types: kAc4 carries
+// IEC 61937-14's AC-4 and AC-4 LD data-bursts on a link at the content rate,
+// kAc4Hbr4 its HBR4 ones at four times it, as E-AC-3's, and kAc4Hbr16 its
+// HBR16 ones at sixteen times it. An AC-4 burst is as long as its own
+// repetition period, which follows the stream's frame rate
+// (ac3::iec61937::Ac4BurstPacker).
+enum class BitstreamFormat : std::uint8_t { kAc3, kEac3, kAc4, kAc4Hbr4, kAc4Hbr16 };
 
-// Link frames per content frame: 4 for E-AC-3, whose link runs at four times
-// the content rate, and 1 for AC-3. A burst is 1536 content frames either way.
+[[nodiscard]] constexpr bool is_ac4(BitstreamFormat format) {
+    return format == BitstreamFormat::kAc4 || format == BitstreamFormat::kAc4Hbr4 ||
+           format == BitstreamFormat::kAc4Hbr16;
+}
+
+// "AC-3", "E-AC-3", "AC-4", "AC-4 HBR4" or "AC-4 HBR16".
+[[nodiscard]] constexpr std::string_view format_name(BitstreamFormat format) {
+    switch (format) {
+        case BitstreamFormat::kAc3:
+            return "AC-3";
+        case BitstreamFormat::kEac3:
+            return "E-AC-3";
+        case BitstreamFormat::kAc4:
+            return "AC-4";
+        case BitstreamFormat::kAc4Hbr4:
+            return "AC-4 HBR4";
+        case BitstreamFormat::kAc4Hbr16:
+            return "AC-4 HBR16";
+    }
+    return "unknown";
+}
+
+// Link frames per content frame: 4 for E-AC-3 and AC-4 HBR4, whose links run
+// at four times the content rate, 16 for AC-4 HBR16, and 1 for AC-3 and AC-4.
 [[nodiscard]] constexpr std::uint32_t carrier_ratio(BitstreamFormat format) {
-    return format == BitstreamFormat::kEac3 ? 4U : 1U;
+    switch (format) {
+        case BitstreamFormat::kEac3:
+        case BitstreamFormat::kAc4Hbr4:
+            return 4U;
+        case BitstreamFormat::kAc4Hbr16:
+            return 16U;
+        case BitstreamFormat::kAc3:
+        case BitstreamFormat::kAc4:
+            break;
+    }
+    return 1U;
+}
+
+// The longest burst `format` has, in bytes: every AC-3 and E-AC-3 burst is
+// this long, and an AC-4 one is as long as its own repetition period, the
+// longest of which this is (ac3::iec61937::repetition_period()).
+[[nodiscard]] inline std::size_t max_burst_bytes(BitstreamFormat format) {
+    switch (format) {
+        case BitstreamFormat::kAc3:
+            return iec61937::kBurstBytes;
+        case BitstreamFormat::kEac3:
+            return iec61937::kEac3BurstBytes;
+        case BitstreamFormat::kAc4:
+            return iec61937::repetition_period(iec61937::BurstDataType::kAc4);
+        case BitstreamFormat::kAc4Hbr4:
+            return iec61937::repetition_period(iec61937::BurstDataType::kAc4Hbr4);
+        case BitstreamFormat::kAc4Hbr16:
+            return iec61937::repetition_period(iec61937::BurstDataType::kAc4Hbr16);
+    }
+    return iec61937::kBurstBytes;
+}
+
+// Whether a burst of `bytes` is one `format`'s submit() takes: exactly
+// max_burst_bytes() for AC-3 and E-AC-3, and for AC-4 any whole number of
+// link frames up to it.
+[[nodiscard]] inline bool burst_size_fits(BitstreamFormat format, std::size_t bytes) {
+    if (!is_ac4(format)) {
+        return bytes == max_burst_bytes(format);
+    }
+    return bytes > 0 && bytes % 4 == 0 && bytes <= max_burst_bytes(format);
 }
 
 struct RenderDeviceInfo {
@@ -65,6 +149,12 @@ struct RenderDeviceInfo {
     // there is no separate passthrough format for Atmos, since the object
     // container is ordinary Annex E aux data).
     bool supports_eac3_passthrough = false;
+    // As above, for AC-4 on a link at the content rate (BitstreamFormat::
+    // kAc4). Set only where the platform can send AC-4 at all (the header
+    // comment says which), and there it says what the AC-3 answer says: the
+    // endpoint takes an IEC 61937 link at that rate. Whether the receiver
+    // decodes AC-4 is not something any of these platforms reports.
+    bool supports_ac4_passthrough = false;
     // Whether plain 16-bit stereo PCM is accepted in exclusive mode. This
     // separates the two reasons passthrough can be unavailable: a device that
     // refuses even PCM has exclusive mode switched off (or is in use), while

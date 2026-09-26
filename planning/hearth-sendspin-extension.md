@@ -14,6 +14,10 @@
     specification", it means that commit. Section names below are the specification's own
     headings, in the file they appear in.
 
+    On 2026-09-26, phase D11 of [the AC-4 plan](ac4.md#d11-ac-4-over-iec-61937) added the AC-4
+    data type to the role, as [Versions](#versions) provides: `"ac4"` in `data_types` and
+    `stream/start`, and IEC 61937-14's bursts in the burst chunk.
+
 ## What this page fixes
 
 - **Which obligations Hearth meets**, as a server (`ac3hearth`'s engine) and as a player (the
@@ -34,7 +38,7 @@
 | `sendspin` command-line player | 7.5.0, 2026-06-16, on aiosendspin 6.0.1 | Not used: it has no Noise and no CPace, so a conformant server cannot connect to it ([Decisions](#decisions), 2) |
 | Sendspin time filter, `github.com/Sendspin/time-filter` | `39dd3f4a`, C++, Apache-2.0 | Vendored into `src/sendspin` for the player half |
 | CPace, draft-irtf-cfrg-cpace-21 | Expires 2026-10-25 | The code-based pairing flows |
-| IEC 61937 bursts | `ac3::iec61937::wrap_frame` and `Eac3BurstPacker` (`src/forge/include/ac3/iec61937/iec61937.hpp`) | What a burst chunk carries |
+| IEC 61937 bursts | `ac3::iec61937::wrap_frame`, `Eac3BurstPacker` and `Ac4BurstPacker` (`src/forge/include/ac3/iec61937/iec61937.hpp`); IEC 61937-14:2017 for AC-4 | What a burst chunk carries |
 
 ## Conformance
 
@@ -281,7 +285,7 @@ is what a chunk carries, what the sink reports, and the settings the server can 
 
 | Field | Type | Meaning |
 |---|---|---|
-| `data_types` | string[] | Bitstreams the sink decodes: a non-empty subset of `"ac3"`, `"eac3"`. `"eac3"` includes E-AC-3 JOC |
+| `data_types` | string[] | Bitstreams the sink decodes: a non-empty subset of `"ac3"`, `"eac3"`, `"ac4"`. `"eac3"` includes E-AC-3 JOC |
 | `sample_rates` | integer[] | Coded sample rates the sink plays, in Hz; `[48000]` on the boards |
 | `outputs` | object | `count`: output slots at the current setting; `bit_depth`: bits per slot at the current setting; `bit_depths`: the widths the sink can be set to on its own page. For display: the server does not change them |
 | `layout_grammar` | integer | Version of the speaker-layout text grammar (`ac3::render::OutputLayout`) the sink parses: `1` |
@@ -304,7 +308,7 @@ the rest are this role's.
 | `supported_commands` | string[] | Subset of `volume`, `mute`, `set_output_delay`, `settings`, `identify` |
 | `settings_revision` | integer | The `revision` of the last settings the sink applied; 0 before any |
 | `settings_error?` | object | `{revision, why}` when the last settings were refused; absent otherwise |
-| `decoder?` | object | What the decoder found in the current stream: `data_type`, `acmod`, `lfe`, `substreams`, `objects` (count carried), `objects_placed` (boolean), `dialnorm` (dB); absent with no stream |
+| `decoder?` | object | What the decoder found in the current stream: `data_type`, `acmod`, `lfe`, `substreams`, `objects` (count carried), `objects_placed` (boolean), `dialnorm` (dB); absent with no stream. For AC-4, `acmod` is the A/52 audio coding mode with the decoded channels' front and surround speakers (7 for 5.X and 7.X), `substreams` the substreams decoded, and `dialnorm` 0 until the decoder reports one |
 | `levels?` | object[] | One `{output, peak_db, rms_db}` per output slot, `output` counted from 0; absent with no stream |
 | `counters` | object | Since the connection opened: `bursts_played`, `underruns`, `late_chunks`, `dropped_chunks`, `invalid_chunks` |
 | `why?` | string | A short sentence when the sink stopped playing for a reason of its own; absent otherwise |
@@ -319,8 +323,8 @@ the samples written to the outputs, after routing, trim and delay.
 
 | Field | Type | Meaning |
 |---|---|---|
-| `data_type` | string | `"ac3"` or `"eac3"`, one the sink listed |
-| `sample_rate` | integer | Coded sample rate, one the sink listed |
+| `data_type` | string | `"ac3"`, `"eac3"` or `"ac4"`, one the sink listed |
+| `sample_rate` | integer | Coded sample rate, one the sink listed; for AC-4, the base sampling frequency |
 
 A `stream/start` for a running stream updates it in place, as the specification defines. This is
 how Hearth continues between queue items: from AC-3 to E-AC-3 it sends a new `stream/start` and
@@ -344,9 +348,9 @@ are big-endian.
 | 0 | ID | `192` |
 | 1 to 8 | `timestamp` | int64: server clock time in microseconds at which the first decoded sample of the burst leaves the audio port ([Timing](#timing)) |
 | 9 to 12 | `send_ahead` | uint32: as `player@v1`, saturating at 0 and 4,294,967,295 |
-| 13 to 14 | `Pc` | uint16: the burst's IEC 61937 burst-info word as the library writes it: data type in bits 0 to 4 (1 AC-3, 21 E-AC-3), bits 5 and 6 zero, error flag in bit 7, data-type-dependent bits 8 to 12 (bsmod in 8 to 10 for AC-3), data stream number in 13 to 15 |
-| 15 to 16 | `Pd` | uint16: the IEC 61937 length code: payload length in bits for AC-3, in bytes for E-AC-3 |
-| 17 to end | payload | The elementary-stream bytes the burst carries, in stream order: `Pd / 8` bytes for AC-3, `Pd` bytes for E-AC-3 |
+| 13 to 14 | `Pc` | uint16: the burst's IEC 61937 burst-info word as the library writes it: data type in bits 0 to 6 (1 AC-3 and 21 E-AC-3, whose bits 5 and 6 are zero; 24 AC-4, with IEC 61937-14's subdata type in bits 5 and 6: 0 AC-4, 1 AC-4 HBR4, 2 AC-4 HBR16, 3 AC-4 LD), error flag in bit 7, data-type-dependent bits 8 to 12 (bsmod in 8 to 10 for AC-3; for AC-4 the code of the burst's repetition period in 8 to 11, IEC 61937-14 Tables 7, 13, 19 and 25), data stream number in 13 to 15 |
+| 15 to 16 | `Pd` | uint16: the IEC 61937 length code: payload length in bits for AC-3, AC-4 and AC-4 LD, in bytes for E-AC-3 and AC-4 HBR4, in 8-byte units for AC-4 HBR16 |
+| 17 to end | payload | The elementary-stream bytes the burst carries, in stream order: `Pd / 8` bytes for AC-3, AC-4 and AC-4 LD, `Pd` bytes for E-AC-3 and AC-4 HBR4, `Pd × 8` bytes for AC-4 HBR16 |
 
 What a burst is, exactly as the library packs it for a receiver:
 
@@ -354,18 +358,31 @@ What a burst is, exactly as the library packs it for a receiver:
 - **E-AC-3**: whole access units (the independent substream's syncframe followed by its dependent
   substreams' syncframes) until their blocks total six, as `Eac3BurstPacker` groups them. 1,536
   samples.
+- **AC-4**: one AC-4 sync frame (IEC 61937-14 Annex A: the syncword 0xAC40, or 0xAC41 with a CRC
+  word after the frame, `frame_size` and the `raw_ac4_frame`), as `Ac4BurstPacker` packs it, in
+  whichever of the four burst types the server chose. An AC-4 HBR16 payload runs on with zeros to
+  a whole 8-byte unit. The frame's duration: 2,048 samples at `frame_rate_index` 13, at 48 or
+  44.1 kHz, and from 400 to 2,002 samples at the other rates.
 
 What is left out, compared with a burst for a receiver: the sync words `Pa` and `Pb`, the
 byte-swapping of the payload into 16-bit words, the pad byte of an odd-length payload, and the
-zero stuffing to the repetition period (6,144 bytes for AC-3, 24,576 for E-AC-3). The largest
-chunk is 17 + 24,568 bytes, inside one frame's 65,518 ([E12](#encryption)), so a chunk is never
-fragmented.
+zero stuffing to the repetition period (6,144 bytes for AC-3, 24,576 for E-AC-3, and for AC-4 its
+own period, from 1,024 bytes to 131,072). The largest AC-3 or E-AC-3 chunk is 17 + 24,568 bytes,
+and the largest AC-4 or AC-4 HBR4 one 17 + 32,752 (IEC 61937-14 Table 15), both inside one
+frame's 65,518 ([E12](#encryption)); only an AC-4 HBR16 chunk, up to 17 + 131,056 bytes (Table
+21), can need fragments ([E13](#encryption)).
 
-A chunk is 1,536 samples: 32 ms at 48 kHz, inside `player@v1`'s 15 to 150 ms.
+A chunk is one burst: 1,536 samples of AC-3 or E-AC-3, 32 ms at 48 kHz, inside `player@v1`'s 15
+to 150 ms; one AC-4 frame, from 8.3 ms at 119.88 and 120 fps to 42.7 ms at `frame_rate_index` 13
+(46.4 ms at 44.1 kHz).
+At 100 fps and above that is shorter than `player@v1`'s 15 ms minimum, which is a SHOULD
+([R4](#playerv1)); the role keeps IEC 61937-14's one frame to a burst.
 
-**The sink rejects** a chunk whose `Pc` data type is not the stream's `data_type`, whose `Pd`
-disagrees with the payload length, or whose payload does not start with a syncframe, and counts it
-in `invalid_chunks`. Rejecting a chunk drops it; it does not close the connection.
+**The sink rejects** a chunk whose `Pc` data type is not the stream's `data_type` (for `"ac4"`,
+data type 24 with any subdata type), whose `Pd` disagrees with the payload length in its unit, or
+whose payload does not start with a syncframe (for AC-4, a sync frame whose own size fills the
+payload, less HBR16's padding), and counts it in `invalid_chunks`. Rejecting a chunk drops it; it
+does not close the connection.
 
 ### Timing
 
@@ -374,9 +391,9 @@ in `invalid_chunks`. Rejecting a chunk drops it; it does not close the connectio
   Everything between the chunk and the port is the sink's to compensate: its decoder's frame
   hold-back (E-AC-3's §3.7 buffering), rendering, routing, delay lines and the DMA or device queue.
 - "The burst's first decoded sample" is the first sample of the PCM the library's decoder
-  attributes to the burst's first access unit. `ac3hearth` timestamps a standard player's PCM, FLAC
-  or Opus from its own decode of the same stream on the same terms, so a sink and a standard player
-  in one group play each sample at the same time.
+  attributes to the burst's first access unit, or to its AC-4 frame. `ac3hearth` timestamps a
+  standard player's PCM, FLAC or Opus from its own decode of the same stream on the same terms, so
+  a sink and a standard player in one group play each sample at the same time.
 - The server computes each timestamp from the stream's sample count, not by adding rounded chunk
   durations, so the timeline does not drift.
 - Synchronisation corrections are applied to decoded PCM, never to bursts
@@ -437,9 +454,9 @@ continues in sync when the tone stops. `level_db` is inside `IdentifyTone`'s −
 
 ### Versions
 
-The role is `v1` as defined here. Adding a value to `data_types` (AC-4, when
-[chip D](hearth-reference-player.md#chip-d-the-ac-4-decoder) delivers a decoder) or a key to
-`decoder` settings does not change the version, because a server only sends what a sink listed.
+The role is `v1` as defined here. Adding a value to `data_types` (AC-4 was added this way, by D11
+of [the AC-4 plan](ac4.md#d11-ac-4-over-iec-61937)) or a key to `decoder` settings does not change
+the version, because a server only sends what a sink listed.
 Anything that changes a field's meaning or the chunk layout is `_ac3forge_player@v2`, and a sink may
 list both.
 
@@ -466,7 +483,7 @@ Recorded here and not yet raised with the Sendspin project ([Decisions](#decisio
 - CPace draft-21 Appendix B.1 (X25519, SHA-512).
 - For this role: a burst chunk from `wrap_frame` for `tests/golden`'s AC-3 fixture and one from
   `Eac3BurstPacker` for an E-AC-3 fixture with fewer than six blocks per syncframe, checked field by
-  field against the table above.
+  field against the table above; and AC-4, AC-4 HBR4 and AC-4 HBR16 chunks from `Ac4BurstPacker`.
 
 The Music Assistant path is tested against aiosendspin 9.1.1 itself instead of against recorded
 bytes, over loopback in both directions, by the scripts in `tools/sendspin` that `hearth-validate`

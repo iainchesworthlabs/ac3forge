@@ -99,6 +99,12 @@ class Firmware {
     // setting then.
     [[nodiscard]] bool flash_mode() const;
 
+    // A restart its owner asks for, outside the routes, made as a route's
+    // restart is: `why` on the console ("firmware: restarting <why>"), and
+    // before_restart first. An image still on trial goes back at this
+    // restart, and the image that runs next records `why` as the reason.
+    [[noreturn]] void restart(const char* why);
+
     // Control's routes. Each answers the request itself.
     int on_status(httpd_req* req);
     int on_upload(httpd_req* req);

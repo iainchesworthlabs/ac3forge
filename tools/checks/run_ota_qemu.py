@@ -136,7 +136,40 @@ class Board:
         with self.lock:
             return self.process is not None and self.process.poll() is not None
 
+    # QEMU itself has crashed as it started: status -11 just after "Adding SPI
+    # flash device", with nothing on the board's console. It did that in 2 of
+    # about 15 CI runs of this test on 2026-09-25, each time as it started for
+    # a new image. The board had not run at all, so the image is not to blame:
+    # QEMU is started again, twice at most, and the log says so.
+    START_ATTEMPTS = 3
+    START_WAIT_SECONDS = 5.0
+
     def _start(self) -> None:
+        for attempt in range(1, self.START_ATTEMPTS + 1):
+            self._launch()
+            if not self._died_before_console():
+                return
+            if attempt < self.START_ATTEMPTS:
+                status = self.process.returncode if self.process is not None else None
+                print(
+                    f"(QEMU exited with status {status} before the board printed anything; "
+                    f"starting it again, console {self.boots + 1})"
+                )
+
+    def _died_before_console(self) -> bool:
+        """Whether QEMU exited before the board wrote anything, within START_WAIT_SECONDS."""
+        deadline = time.monotonic() + self.START_WAIT_SECONDS
+        while time.monotonic() < deadline:
+            printed = self.console.exists() and self.console.stat().st_size > 0
+            if printed:
+                return False
+            if self.process is None or self.process.poll() is not None:
+                return not (self.console.exists() and self.console.stat().st_size > 0)
+            time.sleep(0.05)
+        # Still running and silent: slow to start, which the steps' own waits cover.
+        return False
+
+    def _launch(self) -> None:
         self.boots += 1
         log = self.out / f"qemu-ota-{self.boots}.txt"
         self.console = log

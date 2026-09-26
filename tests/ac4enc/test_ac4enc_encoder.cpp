@@ -181,11 +181,12 @@ TEST_CASE("the encoder refuses what it does not write", "[ac4enc][encoder]") {
 TEST_CASE("samples far past full scale still encode, to frames that read back and decode", "[ac4enc][encoder]") {
     // A finite float can stand 10^38 over full scale, more than the coarsest
     // step codes in a frame at a low rate: such a frame goes out with no bands.
+    // 9 kbps is the least stereo takes at 48 kHz in the ASPX mode.
     std::vector<float> huge(48000);
     for (std::size_t n = 0; n < huge.size(); ++n) {
         huge[n] = (n / 64) % 2 == 0 ? 1e30F : -1e30F;
     }
-    for (const int kbps : {8, 192}) {
+    for (const int kbps : {9, 192}) {
         CAPTURE(kbps);
         ac4::EncoderConfig config;
         config.bitrate_kbps = kbps;
@@ -1028,5 +1029,111 @@ TEST_CASE("A-CPL keeps a pair's level difference and correlation", "[ac4enc][enc
         CHECK(out_one.correlation > 0.9);
         CHECK(std::abs(out_two.level_db - source_two.level_db) < 1.0);
         CHECK(std::abs(out_two.correlation) < 0.3);
+    }
+}
+
+TEST_CASE("at the least rate a configuration takes every frame still goes out",
+          "[ac4enc][encoder]") {
+    // create() checks that the rate holds a silent I-frame as a stream
+    // starts. A later I-frame can cost more: it codes A-CPL's values whole,
+    // which a changing mix makes dearer than those a stream starts from; its
+    // A-SPX interval starts a slot in where the last frame's ran on; and a
+    // stem's dialogue parameters and DRC's gains change with the signal. A
+    // frame that holds nothing more sends each as a stream starts it. Here
+    // every frame is an I-frame, at the least rate each configuration takes,
+    // and the mix and level jump about.
+    struct Case {
+        std::string_view name;
+        int channels;
+        int sample_rate_hz;
+        int frame_rate_index;
+        ac4::RateMode rate_mode;
+        bool drc_speech_mode;
+        int drc_gains_config;  // -1: none
+        bool stem;
+    };
+    const std::array<Case, 4> cases{{
+        {"5.0 at 30 fps, a DRC mode on its own profile", 5, 48000, 4, ac4::RateMode::kConstant,
+         true, -1, false},
+        {"5.1 at 44.1 kHz, a variable rate", 6, 44100, 13, ac4::RateMode::kVariable, false, -1,
+         false},
+        {"stereo at 25 fps, DRC's gains and a stem cross-channel", 2, 48000, 2,
+         ac4::RateMode::kConstant, false, 3, true},
+        {"5.1 at 120 fps, an average rate", 6, 48000, 12, ac4::RateMode::kAverage, false, 1, false},
+    }};
+    std::uint32_t seed = 4242;
+    const auto noise = [&seed] {
+        seed = seed * 1664525U + 1013904223U;
+        return static_cast<double>(seed >> 8) / 16777216.0 - 0.5;
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        const auto count = static_cast<std::size_t>(c.sample_rate_hz);
+        std::vector<std::vector<float>> input(static_cast<std::size_t>(c.channels),
+                                              std::vector<float>(count));
+        // Each channel's level jumps every 1 000 samples, by up to 40 dB.
+        for (std::vector<float>& channel : input) {
+            double gain = 0.0;
+            for (std::size_t n = 0; n < count; ++n) {
+                if (n % 1000 == 0) {
+                    gain = std::pow(10.0, -2.0 * (noise() + 0.5));
+                }
+                channel[n] = static_cast<float>(gain * noise());
+            }
+        }
+        std::vector<std::vector<float>> dialogue(input.size(), std::vector<float>(count, 0.0F));
+        for (std::size_t n = 0; n < count; ++n) {
+            dialogue[0][n] = 0.5F * input[0][n];
+            dialogue[1][n] = 0.7F * input[1][n];
+        }
+        ac4::EncoderConfig config;
+        config.channels = c.channels;
+        config.sample_rate_hz = c.sample_rate_hz;
+        config.frame_rate_index = c.frame_rate_index;
+        config.rate_mode = c.rate_mode;
+        config.iframe_interval = 1;
+        if (c.drc_speech_mode || c.drc_gains_config >= 0) {
+            ac4::DrcConfig drc;
+            drc.profile = ac4::DrcProfile::kFilmLight;
+            for (int id = 0; id < 4; ++id) {
+                ac4::DrcModeConfig mode;
+                mode.id = id;
+                if (c.drc_speech_mode && id == 0) {
+                    mode.profile = ac4::DrcProfile::kSpeech;
+                }
+                if (c.drc_gains_config >= 0) {
+                    mode.gains_config = c.drc_gains_config;
+                }
+                drc.modes.push_back(mode);
+            }
+            config.drc = drc;
+            config.experimental.drc_gains = c.drc_gains_config >= 0;
+        }
+        if (c.stem) {
+            ac4::DialogueConfig de;
+            de.method = ac4::DialogueMethod::kCrossChannel;
+            de.source = ac4::DialogueSource::kStem;
+            de.left = true;
+            de.right = true;
+            de.centre = false;
+            config.dialogue = de;
+        }
+        config.bitrate_kbps = 8;
+        while (config.bitrate_kbps < 400 && !ac4::Encoder::create(config).has_value()) {
+            ++config.bitrate_kbps;
+        }
+        CAPTURE(config.bitrate_kbps);
+        auto encoder = ac4::Encoder::create(config);
+        REQUIRE(encoder.has_value());
+        std::vector<std::span<const float>> views(input.begin(), input.end());
+        std::vector<std::span<const float>> stem(dialogue.begin(), dialogue.end());
+        auto frames = c.stem ? encoder->encode(views, stem) : encoder->encode(views);
+        REQUIRE(frames.has_value());
+        auto rest = encoder->flush();
+        REQUIRE(rest.has_value());
+        frames->insert(frames->end(), rest->begin(), rest->end());
+        REQUIRE(frames->size() > 10);
+        const auto decoded = decode(*frames);
+        CHECK(decoded.size() == static_cast<std::size_t>(c.channels));
     }
 }

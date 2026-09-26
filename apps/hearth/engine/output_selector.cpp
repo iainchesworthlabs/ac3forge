@@ -118,10 +118,19 @@ const std::vector<EndpointFacts>& OutputSelector::endpoints(std::uint32_t sample
                         reading.device = before->device;
                     } else if (exclusive(held.mode) && held.sample_rate == sample_rate &&
                                held.stream) {
-                        if (*held.stream == audio::BitstreamFormat::kAc3) {
-                            reading.device.supports_ac3_passthrough = true;
-                        } else {
-                            reading.device.supports_eac3_passthrough = true;
+                        switch (*held.stream) {
+                            case audio::BitstreamFormat::kAc3:
+                                reading.device.supports_ac3_passthrough = true;
+                                break;
+                            case audio::BitstreamFormat::kEac3:
+                                reading.device.supports_eac3_passthrough = true;
+                                break;
+                            case audio::BitstreamFormat::kAc4:
+                                reading.device.supports_ac4_passthrough = true;
+                                break;
+                            case audio::BitstreamFormat::kAc4Hbr4:
+                            case audio::BitstreamFormat::kAc4Hbr16:
+                                break;
                         }
                     }
                 }

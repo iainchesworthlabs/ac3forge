@@ -410,7 +410,7 @@ way the fixed findings used to.
 | `fuzz_ac3_decode`      | `ac3::split_frames` + `ac3::FrameDecoder::decode_frame`, one decoder across all frames, the way `ac3cli decode` drives it |
 | `fuzz_eac3_decode`     | `ac3::split_access_units` + `ac3::Eac3Decoder::decode_access_unit` (which calls `decode_substream` internally), the way `ac3cli decode` drives it for E-AC-3 |
 | `fuzz_wav_read`        | `ac3::io::read_wav` - a realistic input too (a truncated or hand-edited WAV), not only an adversarial one |
-| `fuzz_iec61937_unwrap` | `ac3::iec61937::BurstReader` + `unwrap_stream` - IEC 61937 burst de-framing, driven the way `ac3cli unspdif` drives it. The input is by definition off a wire (an S/PDIF or HDMI capture), and `Pd` states a length the parser must not believe past its data type's repetition period. Pushed as two chunks split at a mutation-chosen point, so the state machine's carry-across-a-chunk-boundary paths are reachable |
+| `fuzz_iec61937_unwrap` | `ac3::iec61937::BurstReader` + `unwrap_stream` - IEC 61937 burst de-framing, driven the way `ac3cli unspdif` drives it. The input is by definition off a wire (an S/PDIF or HDMI capture), and `Pd` states a length the parser must not believe past its data type's repetition period. Pushed as two chunks split at a mutation-chosen point, so the state machine's carry-across-a-chunk-boundary paths are reachable. The input also goes to `Ac4BurstPacker` as an AC-4 sync frame (IEC 61937-14), whose burst must be its period long and read back as the frame |
 | `fuzz_emdf_parse`      | `ac3::emdf::parse_container` - ETSI TS 102 366 Annex H's container, located by a bit-by-bit sync scan and sized by its own 16-bit length field |
 | `fuzz_oamd_parse`      | `ac3::oba::parse_payload` - TS 103 420 §5's `object_audio_metadata_payload`, as recovered from an EMDF payload with id 11 |
 | `fuzz_joc_parse`       | `ac3::oba::joc::parse_payload` - TS 103 420 §6's `joc()` payload: Huffman-coded coefficients into a matrix sized from the stream's own numbers |
@@ -458,9 +458,9 @@ caller's own buffer, and a caller signs a stream it just encoded.
 
 `fuzz_adm_parse` is the one harness here not built by default, and not in
 `fuzz/run.sh`'s default target list. `ac3adm` is the one library in this
-project with a third-party dependency footprint: `AC3FORGE_BUILD_ADM` is OFF
-by default, and turning it on additionally needs vcpkg's `adm` feature for
-libadm's Boost headers plus network access for the `FetchContent` pulls of
+build with a third-party dependency footprint beyond {fmt}: `AC3FORGE_BUILD_ADM`
+is OFF by default, and turning it on additionally needs vcpkg's `adm` feature
+for libadm's Boost headers plus network access for the `FetchContent` pulls of
 libbw64 and libadm themselves - none of which anything else in this build
 touches. `AC3FORGE_FUZZ_ADM=1 VCPKG_ROOT=... fuzz/run.sh` turns all of that
 on and appends the harness to the default list.

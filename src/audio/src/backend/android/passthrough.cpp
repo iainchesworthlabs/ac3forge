@@ -38,6 +38,15 @@
 //    Kotlin the already-carrier-rate value - Kotlin never multiplies by 4
 //    itself, there is exactly one place that fact lives.
 //
+// AC-4 (IEC 61937-14) goes the same way, and ENCODING_IEC61937 is why it can:
+// the track takes the bursts as opaque two-channel data, whatever codec they
+// hold, on a link at the content rate for AC-4 and at 4x for AC-4 HBR4. An
+// AC-4 burst is as long as its frame, so submit() takes any whole number of
+// link frames up to the longest (audio::burst_size_fits()). AC-4 HBR16 needs
+// the eight-channel high-bit-rate link, which the bridge does not open, and
+// is refused. The bridge's `eac3` flag below means "the four-times link" and
+// sizes the track's buffer; the Kotlin side never needs to know the codec.
+//
 // The Kotlin side (app-specific, not part of ac3::audio - see
 // apps/android/app/src/main/java/.../NativeBridge.kt and
 // PassthroughBridge.kt) is expected to expose exactly this contract, called
@@ -214,6 +223,9 @@ std::string_view describe(PassthroughError error) {
                    "this maps to AudioTrack write failures instead";
         case PassthroughError::kAlreadyRunning: return "passthrough is already running";
         case PassthroughError::kNotRunning: return "passthrough is not running";
+        case PassthroughError::kUnsupportedFormat:
+            return "AC-4 HBR16 travels on an eight-channel high-bit-rate link, and the "
+                   "AudioTrack bridge opens a two-channel one";
     }
     return "unknown passthrough error";
 }
@@ -268,7 +280,9 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
         // that route, rather than a real per-device list - see
         // android_support.hpp's make_render_device_info() for the pure
         // (and tested) half of this mapping.
-        devices.push_back(android_audio::make_render_device_info(ac3_ok, eac3_ok, pcm_ok));
+        // AC-4's link is AC-3's, an ENCODING_IEC61937 track at the content
+        // rate, so the AC-3 probe answers for both.
+        devices.push_back(android_audio::make_render_device_info(ac3_ok, eac3_ok, pcm_ok, ac3_ok));
     }
 
     return devices;
@@ -299,6 +313,8 @@ struct PassthroughSink::Impl {
     std::atomic<std::uint64_t> submitted{0};
     std::atomic<std::uint64_t> rendered{0};
     std::atomic<std::uint64_t> underruns{0};
+    // Which bursts submit() takes (audio::burst_size_fits()), and the longest.
+    BitstreamFormat format = BitstreamFormat::kAc3;
     std::size_t burst_bytes = iec61937::kBurstBytes;
 
     // For position(), all under g_bridge_mutex. The bytes the track has
@@ -452,7 +468,7 @@ bool PassthroughSink::can_submit() const {
 }
 
 bool PassthroughSink::submit(std::span<const std::byte> burst) {
-    if (!running() || burst.size() != impl_->burst_bytes || !bridge_ready()) {
+    if (!running() || !burst_size_fits(impl_->format, burst.size()) || !bridge_ready()) {
         return false;
     }
     JNIEnv* env = jni_env();
@@ -579,6 +595,9 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    if (format == BitstreamFormat::kAc4Hbr16) {
+        return std::unexpected(PassthroughError::kUnsupportedFormat);
+    }
     if (!bridge_ready()) {
         return std::unexpected(PassthroughError::kNoBackend);
     }
@@ -587,6 +606,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         return std::unexpected(PassthroughError::kComFailure);
     }
 
+    impl_->format = format;
     impl_->burst_bytes = android_audio::burst_bytes_for(format);
     // No burst is half-queued on a track that does not exist yet - see
     // submit()'s partial-write handling for what this tracks.
@@ -619,7 +639,9 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
         // why that fact lives in exactly one place, here, and not in
         // Kotlin).
         const auto carrier = android_audio::carrier_rate(format, sample_rate);
-        const jboolean eac3 = format == BitstreamFormat::kEac3 ? JNI_TRUE : JNI_FALSE;
+        // "The four-times link": E-AC-3's, and AC-4 HBR4's (see this file's
+        // header comment).
+        const jboolean eac3 = carrier_ratio(format) == 4 ? JNI_TRUE : JNI_FALSE;
         opened = env->CallBooleanMethod(g_bridge, g_mid_open, static_cast<jint>(carrier),
                                         eac3) != JNI_FALSE;
         if (env->ExceptionCheck() != 0) {
@@ -636,12 +658,13 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     }
 
     if (!opened) {
+        const std::string_view name = format_name(format);
         __android_log_print(ANDROID_LOG_WARN, kLogTag,
-                            "start: PassthroughBridge.open(%u Hz carrier, eac3=%d) returned "
+                            "start: PassthroughBridge.open(%u Hz carrier) for %.*s returned "
                             "false - the sink likely does not accept this format for direct "
                             "playback",
                             android_audio::carrier_rate(format, sample_rate),
-                            format == BitstreamFormat::kEac3);
+                            static_cast<int>(name.size()), name.data());
         return std::unexpected(PassthroughError::kFormatRejected);
     }
 

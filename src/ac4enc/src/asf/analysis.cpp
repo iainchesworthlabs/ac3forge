@@ -15,11 +15,13 @@ constexpr double kLineScale = 65536.0;
 }  // namespace
 
 Analysis::Analysis(int frame_length, int rate_multiplier) : frame_length_(frame_length) {
+    // The lengths Table 186 gives a window for: below 1 536 samples a frame
+    // splits into eighths or quarters at most, and the halvings stop there.
     for (int k = 0; k < kLengthsPerFrame; ++k) {
         const int length = frame_length >> k;
         const double alpha = dsp::kbd_alpha(length, rate_multiplier);
         if (alpha == 0.0) {
-            return;
+            break;
         }
         dsp::Mdct<double> mdct(static_cast<std::size_t>(length));
         if (!mdct.valid()) {
@@ -28,7 +30,7 @@ Analysis::Analysis(int frame_length, int rate_multiplier) : frame_length_(frame_
         mdct_.push_back(std::move(mdct));
         kbd_.push_back(dsp::kbd_left(length, alpha));
     }
-    valid_ = true;
+    valid_ = !mdct_.empty();
 }
 
 int Analysis::slot(int length) const noexcept {

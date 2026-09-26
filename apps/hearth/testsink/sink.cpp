@@ -250,8 +250,11 @@ class Connection final : public sendspin::PlayerListener, public std::enable_sha
     void on_burst_stream_start(const ac::StreamStart& stream) override {
         const bool writing = bursts_.start(stream);
         reported_decoder_.reset();
-        log("burst stream " + std::string(stream.data_type == ac::DataType::kAc3 ? "AC-3 " : "E-AC-3 ") +
-            std::to_string(stream.sample_rate) + " Hz to " + sink_->options_.layout +
+        const std::string_view codec = stream.data_type == ac::DataType::kAc3    ? "AC-3 "
+                                       : stream.data_type == ac::DataType::kEac3 ? "E-AC-3 "
+                                                                                 : "AC-4 ";
+        log("burst stream " + std::string(codec) + std::to_string(stream.sample_rate) + " Hz to " +
+            sink_->options_.layout +
             (writing ? (bursts_.file().empty() ? std::string{} : " in " + bursts_.file().string())
                      : std::string(" (not written)")));
         post_ac3forge_state();
@@ -545,7 +548,7 @@ void Sink::accept(std::unique_ptr<sendspin::transport::Connection> transport) {
     if (options_.extension_role) {
         config.supported_roles = {std::string(ac::kRole), "player@v1"};
         ac::Support support;
-        support.data_types = {ac::DataType::kAc3, ac::DataType::kEac3};
+        support.data_types = {ac::DataType::kAc3, ac::DataType::kEac3, ac::DataType::kAc4};
         support.sample_rates = {48000};
         support.outputs.count = static_cast<std::int32_t>(layout_.slots());
         support.outputs.bit_depth = 32;

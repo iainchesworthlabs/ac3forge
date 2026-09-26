@@ -8,11 +8,6 @@ namespace ac4::detail {
 namespace {
 
 constexpr std::size_t kSubbands = dsp::kQmfSubbands;
-constexpr int kHfgenSlots = 6;  // ts_offset_hfgen at 2 048 samples
-// Q_low_ext: the high frequency generator's history before Q_low's slot 0,
-// the delayed slots and the frame's own.
-constexpr int kExtSlots = aspx::kTsOffsetHfadj + kHfgenSlots + kQmfSlotsPerFrame;
-constexpr int kQLowSlots = kHfgenSlots + kQmfSlotsPerFrame;
 
 // Companding (5.7.5): the expander multiplies a slot by 2^(1/alpha)
 // L^((1 - alpha) / alpha), L its level against full scale, so the compressor
@@ -34,19 +29,30 @@ constexpr double kSilence = 64.0;
 constexpr int kTnaModes = 4;
 
 // The Q_low slots whose tonality is measured: the interval's, less the four
-// its first predictions look back over; every second one.
+// its first predictions look back over; every second one. Below 1 536 samples
+// a frame, whose interval holds too few, the slots before it make up at
+// least kToneWindow (AspxChannelEncoder::tone_lead()).
 constexpr int kToneFirst = 4;
-constexpr int kToneLast = kQmfSlotsPerFrame;
-constexpr int kToneSamples = (kToneLast - kToneFirst) / 2;
+constexpr int kToneWindow = 24;
 
 // Framing: an attack is an A-SPX slot whose band energy is ten times the mean
 // of the four before; a FIXFIX interval whose halves differ by more than
 // kSplitDb takes two envelopes; an attack's envelope is kTransientSlots long.
-// Relative borders run 2 to 8 slots (Table 53).
+// Relative borders run 2 to 8 slots, three a side at most, and at 8 A-SPX
+// slots a frame or fewer 2 or 4, one a side (Table 53).
 constexpr double kAttack = 10.0;
 constexpr double kSplitDb = 6.0;
 constexpr int kTransientSlots = 4;
-constexpr int kLongestRelative = 8;
+
+struct RelativeLimits {
+    int longest = 8;
+    int count = 3;
+};
+
+[[nodiscard]] RelativeLimits relative_limits(int aspx_slots) noexcept {
+    return aspx_slots > 8 ? RelativeLimits{.longest = 8, .count = 3}
+                          : RelativeLimits{.longest = 4, .count = 1};
+}
 
 // Added sinusoids: a subband whose tonal share is over kSineStart (kSineKeep
 // for one the last interval carried), kSinePeak times its group's mean
@@ -63,13 +69,13 @@ constexpr double kInterleaveTonal = 0.8;
     return static_cast<std::size_t>(index);
 }
 
-// Even lengths of at most kLongestRelative that add up to `length`, which is
-// even, as few and as equal as can be.
-[[nodiscard]] std::vector<int> chunks(int length) {
+// Even lengths of at most `longest` that add up to `length`, which is even,
+// as few and as equal as can be.
+[[nodiscard]] std::vector<int> chunks(int length, int longest) {
     if (length <= 0) {
         return {};
     }
-    const int count = (length + kLongestRelative - 1) / kLongestRelative;
+    const int count = (length + longest - 1) / longest;
     std::vector<int> out(at(count), length / count / 2 * 2);
     int rest = length - (length / count / 2 * 2) * count;
     for (std::size_t i = out.size(); rest > 0; rest -= 2) {
@@ -143,15 +149,15 @@ struct Residual {
 }
 
 // The share of a group's energy the predictor finds, less the share a fit of
-// two coefficients finds in noise of the same length: 0 for noise, towards 1
-// for steady tones.
-[[nodiscard]] double tonal_share(const Residual& r) noexcept {
+// two coefficients finds in noise of the same length, `samples` values: 0 for
+// noise, towards 1 for steady tones.
+[[nodiscard]] double tonal_share(const Residual& r, int samples) noexcept {
     if (r.energy <= 0.0) {
         return 0.0;
     }
-    constexpr double kBias = 2.0 / kToneSamples;
+    const double bias = 2.0 / static_cast<double>(samples);
     const double share = 1.0 - r.residual / r.energy;
-    return std::clamp((share - kBias) / (1.0 - kBias), 0.0, 1.0);
+    return std::clamp((share - bias) / (1.0 - bias), 0.0, 1.0);
 }
 
 // The quantised values an envelope's fields stand for (Pseudocodes 80 and
@@ -181,7 +187,8 @@ namespace {
 
 // The rest of aspx_config() as DEE sends it, and the tables the configuration
 // gives; false where they do not derive.
-[[nodiscard]] bool complete(AspxSetup& setup, int sample_rate_hz) {
+[[nodiscard]] bool complete(AspxSetup& setup, int sample_rate_hz, const FrameTiming& timing) {
+    setup.timing = timing;
     AspxConfigFields& c = setup.config;
     c.quant_mode_env = 1;
     c.interpolation = true;
@@ -203,7 +210,7 @@ namespace {
     setup.counts = AspxCounts{.num_sbg_sig_highres = setup.groups.num_sbg_sig_highres,
                               .num_sbg_sig_lowres = setup.groups.num_sbg_sig_lowres,
                               .num_sbg_noise = setup.groups.num_sbg_noise,
-                              .num_aspx_timeslots = kAspxTimeslots};
+                              .num_aspx_timeslots = timing.aspx_slots};
     return true;
 }
 
@@ -220,7 +227,8 @@ namespace {
 
 }  // namespace
 
-std::optional<AspxSetup> aspx_setup_for_acpl(bool coupling, int sample_rate_hz) {
+std::optional<AspxSetup> aspx_setup_for_acpl(bool coupling, int sample_rate_hz,
+                                             const FrameTiming& timing) {
     if (sample_rate_hz != 48000 && sample_rate_hz != 44100) {
         return std::nullopt;
     }
@@ -230,13 +238,14 @@ std::optional<AspxSetup> aspx_setup_for_acpl(bool coupling, int sample_rate_hz) 
     setup.config.stop_freq = coupling ? 2 : 0;
     setup.xover_subband_offset = coupling ? 0 : 1;
     setup.companding = false;
-    if (!complete(setup, sample_rate_hz)) {
+    if (!complete(setup, sample_rate_hz, timing)) {
         return std::nullopt;
     }
     return setup;
 }
 
-std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate_hz, bool multichannel) {
+std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate_hz,
+                                        bool multichannel, const FrameTiming& timing) {
     if (sample_rate_hz != 48000 && sample_rate_hz != 44100) {
         return std::nullopt;
     }
@@ -269,14 +278,25 @@ std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate
         c.stop_freq = 1;
     }
     setup.companding = !multichannel && kbps_per_channel < 64.0;
-    if (!complete(setup, sample_rate_hz)) {
+    if (!complete(setup, sample_rate_hz, timing)) {
         return std::nullopt;
     }
     return setup;
 }
 
 AspxChannelEncoder::AspxChannelEncoder(const AspxSetup& setup)
-    : setup_(&setup), tna_prev_(at(setup.groups.num_sbg_noise), 0) {}
+    : setup_(&setup),
+      companded_first_(-(setup.timing.alignment_delay + 577)),
+      tna_prev_(at(setup.groups.num_sbg_noise), 0),
+      stop_prev_(setup.timing.aspx_slots) {}
+
+int AspxChannelEncoder::tone_lead() const noexcept {
+    return std::max(0, kToneWindow - setup_->timing.qmf_slots);
+}
+
+int AspxChannelEncoder::tone_samples() const noexcept {
+    return (setup_->timing.qmf_slots + tone_lead() - kToneFirst) / 2;
+}
 
 void AspxChannelEncoder::push_slot(std::span<const double> samples) {
     std::array<double, kSubbands> scaled{};
@@ -323,12 +343,14 @@ const AspxChannelEncoder::Slot& AspxChannelEncoder::slot(long long g) const noex
 }
 
 void AspxChannelEncoder::drop_before_frame(long long frame) {
-    const long long keep_slot = kQmfSlotsPerFrame * (frame + 1) - kHfgenSlots - aspx::kTsOffsetHfadj;
+    const FrameTiming& t = setup_->timing;
+    const long long keep_slot = static_cast<long long>(t.qmf_slots) * (frame + t.control_delay) -
+                                t.hfgen_slots - aspx::kTsOffsetHfadj - tone_lead();
     while (first_slot_ < keep_slot && !slots_.empty()) {
         slots_.pop_front();
         ++first_slot_;
     }
-    const long long keep_sample = frame * kQmfSlotsPerFrame * static_cast<long long>(kSubbands);
+    const long long keep_sample = frame * t.frame_length;
     if (keep_sample > companded_first_) {
         const auto drop = static_cast<std::size_t>(
             std::min<long long>(keep_sample - companded_first_, static_cast<long long>(companded_.size())));
@@ -337,26 +359,33 @@ void AspxChannelEncoder::drop_before_frame(long long frame) {
     }
 }
 
-void AspxChannelEncoder::gather(long long frame, std::vector<QmfSample>& ext) const {
+void AspxChannelEncoder::gather(long long frame, std::vector<QmfSample>& ext, int lead) const {
     // From ts_offset_hfadj slots before Q_low's slot 0, which is slot
-    // 32(f + 1) - 6.
-    const long long first = kQmfSlotsPerFrame * (frame + 1) - kHfgenSlots - aspx::kTsOffsetHfadj;
-    ext.resize(at(kExtSlots) * kSubbands);
-    for (int e = 0; e < kExtSlots; ++e) {
+    // num_qmf_timeslots (f + d_ctrl) - ts_offset_hfgen, and `lead` before
+    // that.
+    const FrameTiming& t = setup_->timing;
+    const long long first = static_cast<long long>(t.qmf_slots) * (frame + t.control_delay) -
+                            t.hfgen_slots - aspx::kTsOffsetHfadj - lead;
+    const int slots = aspx::kTsOffsetHfadj + t.hfgen_slots + t.qmf_slots + lead;
+    ext.resize(at(slots) * kSubbands);
+    for (int e = 0; e < slots; ++e) {
         std::ranges::copy(slot(first + e), ext.begin() + static_cast<std::ptrdiff_t>(at(e) * kSubbands));
     }
 }
 
-void AspxChannelEncoder::generate(std::span<const QmfSample> ext, std::span<const std::uint8_t> tna_mode,
+void AspxChannelEncoder::generate(std::span<const QmfSample> ext,
+                                  std::span<const std::uint8_t> tna_mode,
                                   aspx::HfGeneratorState<double>& state,
-                                  std::vector<QmfSample>& q_high) const {
-    q_high.assign(at(kQLowSlots) * kSubbands, QmfSample{});
+                                  std::vector<QmfSample>& q_high, int lead) const {
+    const FrameTiming& t = setup_->timing;
+    const int slots = t.qmf_slots + lead;
+    q_high.assign(at(t.hfgen_slots + slots) * kSubbands, QmfSample{});
     const aspx::HfGeneratorInput<double> in{
         .q_low_ext = ext,
-        .num_qmf_timeslots = kQmfSlotsPerFrame,
-        .ts_offset_hfgen = kHfgenSlots,
+        .num_qmf_timeslots = slots,
+        .ts_offset_hfgen = t.hfgen_slots,
         .ts_begin = 0,
-        .ts_end = kQmfSlotsPerFrame,
+        .ts_end = slots,
         .preflat = setup_->config.preflat,
         .tna_mode = tna_mode,
     };
@@ -366,20 +395,24 @@ void AspxChannelEncoder::generate(std::span<const QmfSample> ext, std::span<cons
 AspxChannelFields AspxChannelEncoder::propose(long long frame, bool iframe) {
     std::vector<QmfSample> ext;
     gather(frame, ext);
+    // The slots tonality is measured over, with those ahead of the interval.
+    std::vector<QmfSample> tone_ext;
+    gather(frame, tone_ext, tone_lead());
     AspxChannelFields fields = framed(choose_framing(ext));
-    const std::vector<int> noise = choose_inverse_filtering(ext, fields);
+    const std::vector<int> noise = choose_inverse_filtering(tone_ext, fields);
     // Interleaving, where asked for, takes a steady tone first: the spectral
     // frontend codes it where it is, and a sinusoid would sit at its group's
     // middle subband.
     if (setup_->interleave) {
-        choose_interleaving(ext, fields);
+        choose_interleaving(tone_ext, fields);
     }
-    choose_sinusoids(ext, fields);
+    choose_sinusoids(tone_ext, fields);
     std::array<bool, dsp::kQmfSubbands> waveform{};
     for (const auto& [first, last] : interleaved_subbands(fields)) {
         std::fill(waveform.begin() + first, waveform.begin() + last, true);
     }
-    const std::vector<int> borders = interval_borders(fields.framing, stop_prev_ - kAspxTimeslots);
+    const std::vector<int> borders = interval_borders(
+        fields.framing, stop_prev_ - setup_->timing.aspx_slots, setup_->timing.aspx_slots);
     std::vector<std::vector<int>> signal;
     for (int env = 0; env + 1 < static_cast<int>(borders.size()); ++env) {
         signal.push_back(signal_envelope(ext, borders[at(env)], borders[at(env + 1)],
@@ -414,10 +447,11 @@ void AspxChannelEncoder::choose_interleaving(std::span<const QmfSample> ext, Asp
         return;
     }
     const aspx::SubbandGroups& g = setup_->groups;
+    const int tone_last = setup_->timing.qmf_slots + tone_lead();
     const std::vector<std::uint8_t> modes = tna_bytes(fields.tna_mode);
     aspx::HfGeneratorState<double> state = hf_;
     std::vector<QmfSample> q_high;
-    generate(ext, modes, state, q_high);
+    generate(ext, modes, state, q_high, tone_lead());
     std::vector<bool> coded(at(g.num_sbg_sig_highres), false);
     bool any = false;
     for (int sbg = 0; sbg < g.num_sbg_sig_highres; ++sbg) {
@@ -427,19 +461,20 @@ void AspxChannelEncoder::choose_interleaving(std::span<const QmfSample> ext, Asp
         Residual peak_input{};
         double total = 0.0;
         for (int sb = lo; sb < hi; ++sb) {
-            const Residual r = predict(ext, aspx::kTsOffsetHfadj, sb, kToneFirst, kToneLast);
+            const Residual r = predict(ext, aspx::kTsOffsetHfadj, sb, kToneFirst, tone_last);
             total += r.energy;
             if (r.energy > peak_input.energy) {
                 peak_input = r;
                 peak = sb;
             }
         }
-        if (peak_input.energy < kSilence * kToneSamples) {
+        if (peak_input.energy < kSilence * tone_samples()) {
             continue;
         }
         const double ratio = peak_input.energy / (total / static_cast<double>(hi - lo));
-        const double tonal = tonal_share(peak_input);
-        const double patched = tonal_share(predict(q_high, 0, peak, kToneFirst, kToneLast));
+        const double tonal = tonal_share(peak_input, tone_samples());
+        const double patched =
+            tonal_share(predict(q_high, 0, peak, kToneFirst, tone_last), tone_samples());
         coded[at(sbg)] = tonal > kInterleaveTonal && (hi - lo == 1 || ratio > kSinePeak) && patched < tonal - kSineGap;
         any = any || coded[at(sbg)];
     }
@@ -463,10 +498,11 @@ std::vector<std::pair<int, int>> AspxChannelEncoder::interleaved_subbands(const 
 // interval carried stays on a lower threshold.
 void AspxChannelEncoder::choose_sinusoids(std::span<const QmfSample> ext, AspxChannelFields& fields) const {
     const aspx::SubbandGroups& g = setup_->groups;
+    const int tone_last = setup_->timing.qmf_slots + tone_lead();
     const std::vector<std::uint8_t> modes = tna_bytes(fields.tna_mode);
     aspx::HfGeneratorState<double> state = hf_;
     std::vector<QmfSample> q_high;
-    generate(ext, modes, state, q_high);
+    generate(ext, modes, state, q_high, tone_lead());
     std::vector<bool> harmonic(at(g.num_sbg_sig_highres), false);
     bool any = false;
     for (int sbg = 0; sbg < g.num_sbg_sig_highres; ++sbg) {
@@ -481,19 +517,20 @@ void AspxChannelEncoder::choose_sinusoids(std::span<const QmfSample> ext, AspxCh
         double total = 0.0;
         std::array<Residual, dsp::kQmfSubbands> input{};
         for (int sb = lo; sb < hi; ++sb) {
-            input[at(sb)] = predict(ext, aspx::kTsOffsetHfadj, sb, kToneFirst, kToneLast);
+            input[at(sb)] = predict(ext, aspx::kTsOffsetHfadj, sb, kToneFirst, tone_last);
             total += input[at(sb)].energy;
             if (input[at(sb)].energy > peak_energy) {
                 peak_energy = input[at(sb)].energy;
                 peak = sb;
             }
         }
-        if (peak_energy < kSilence * kToneSamples || std::abs(peak - mid) > 1) {
+        if (peak_energy < kSilence * tone_samples() || std::abs(peak - mid) > 1) {
             continue;
         }
         const double ratio = peak_energy / (total / static_cast<double>(hi - lo));
-        const double tonal = tonal_share(input[at(peak)]);
-        const double patched = tonal_share(predict(q_high, 0, peak, kToneFirst, kToneLast));
+        const double tonal = tonal_share(input[at(peak)], tone_samples());
+        const double patched =
+            tonal_share(predict(q_high, 0, peak, kToneFirst, tone_last), tone_samples());
         const double threshold = sine_prev_[at(mid)] ? kSineKeep : kSineStart;
         harmonic[at(sbg)] = tonal > threshold && (hi - lo == 1 || ratio > kSinePeak) && patched < tonal - kSineGap;
         any = any || harmonic[at(sbg)];
@@ -501,13 +538,14 @@ void AspxChannelEncoder::choose_sinusoids(std::span<const QmfSample> ext, AspxCh
     fields.add_harmonic = any ? harmonic : std::vector<bool>{};
 }
 
-AspxChannelFields AspxChannelEncoder::fallback(bool iframe, bool silent) const {
+AspxChannelFields AspxChannelEncoder::fallback(bool iframe, bool silent,
+                                               std::optional<int> start) const {
     // One envelope from where the last interval stopped to the frame's end.
     AspxFramingFields framing;
-    const int start = stop_prev_ - kAspxTimeslots;
-    if (start > 0) {
+    const int left = start.value_or(stop_prev_ - setup_->timing.aspx_slots);
+    if (left > 0) {
         framing.int_class = AspxIntervalClass::kVarFix;
-        framing.var_bord_left = start;
+        framing.var_bord_left = left;
     }
     AspxChannelFields fields = framed(framing);
     const bool high = fields.envelope_freq_res.front() != 0;
@@ -558,7 +596,8 @@ void AspxChannelEncoder::commit(long long frame, const AspxChannelFields& sent, 
     have_previous_ = true;
     tna_prev_ = sent.tna_mode;
     sine_prev_ = sine_subbands(sent, sent.framing.num_env() - 1);
-    stop_prev_ = interval_borders(sent.framing, stop_prev_ - kAspxTimeslots).back();
+    const int slots = setup_->timing.aspx_slots;
+    stop_prev_ = interval_borders(sent.framing, stop_prev_ - slots, slots).back();
     // The generator's chirp factors follow the modes sent, and the attack
     // detector keeps the band's last four slots.
     std::vector<QmfSample> ext;
@@ -567,15 +606,17 @@ void AspxChannelEncoder::commit(long long frame, const AspxChannelFields& sent, 
     std::vector<QmfSample> q_high;
     generate(ext, modes, hf_, q_high);
     for (int t = 0; t < 4; ++t) {
-        energy_prev_[at(t)] = band_energy(ext, kAspxTimeslots - 4 + t);
+        energy_prev_[at(t)] = band_energy(ext, slots - 4 + t);
     }
 }
 
-// The A-SPX band's energy in A-SPX slot t of Q_low: QMF slots 2t and 2t + 1.
+// The A-SPX band's energy in A-SPX slot t of Q_low: its num_ts_in_ats QMF
+// slots.
 double AspxChannelEncoder::band_energy(std::span<const QmfSample> ext, int t) const {
     const aspx::SubbandGroups& g = setup_->groups;
+    const int per = setup_->timing.ts_in_ats;
     double energy = 0.0;
-    for (int ts = 2 * t; ts < 2 * t + 2; ++ts) {
+    for (int ts = per * t; ts < per * (t + 1); ++ts) {
         const std::size_t row = at(ts + aspx::kTsOffsetHfadj) * kSubbands;
         for (int sb = g.sbx; sb < g.sbx + g.num_sb_aspx; ++sb) {
             energy += std::norm(ext[row + at(sb)]);
@@ -586,49 +627,60 @@ double AspxChannelEncoder::band_energy(std::span<const QmfSample> ext, int t) co
 
 // The interval's framing. From the frame's start, where the last interval
 // stopped there: no attack gives FIXFIX, one envelope or two where the
-// band's level moves by more than kSplitDb between the halves; an attack
-// gives FIXVAR, with an envelope of kTransientSlots at the attack and the
-// interval run on to an end whose parity puts a border there, and the next
-// interval then starts where this one stops. From a later start, VARFIX,
-// with the attack's envelope where there is one.
+// band's level moves by more than kSplitDb between Table 194's halves; an
+// attack gives FIXVAR, with an envelope of kTransientSlots at the attack and
+// the interval run on to an end whose parity puts a border there, and the
+// next interval then starts where this one stops. From a later start,
+// VARFIX, with the attack's envelope where there is one. At 8 A-SPX slots a
+// frame or fewer, where a side takes one relative border of 2 or 4 slots, an
+// attack those cannot reach takes FIXFIX's two envelopes, or VARFIX's one.
 AspxFramingFields AspxChannelEncoder::choose_framing(std::span<const QmfSample> ext) const {
     const aspx::SubbandGroups& g = setup_->groups;
-    const int start = stop_prev_ - kAspxTimeslots;
+    const int slots = setup_->timing.aspx_slots;
+    const RelativeLimits limits = relative_limits(slots);
+    const int start = stop_prev_ - slots;
     // The band's energy per A-SPX slot, from four slots before the frame.
-    std::array<double, 4 + kAspxTimeslots> energy{};
-    for (int t = -4; t < kAspxTimeslots; ++t) {
+    std::vector<double> energy(at(4 + slots));
+    for (int t = -4; t < slots; ++t) {
         energy[at(t + 4)] = t < -2 ? energy_prev_[at(t + 4)] : band_energy(ext, t);
     }
-    const double floor = kSilence * static_cast<double>(2 * g.num_sb_aspx);
+    const double floor = kSilence * static_cast<double>(setup_->timing.ts_in_ats * g.num_sb_aspx);
     int attack = -1;
-    for (int t = start; t < kAspxTimeslots && attack < 0; ++t) {
+    for (int t = start; t < slots && attack < 0; ++t) {
         const double before = 0.25 * (energy[at(t)] + energy[at(t + 1)] + energy[at(t + 2)] + energy[at(t + 3)]);
         if (energy[at(t + 4)] > floor && energy[at(t + 4)] > kAttack * std::max(before, floor)) {
             attack = t;
         }
     }
+    // The end of an interval run on from the frame's end so that it lies an
+    // even number of slots after `from`.
+    const auto end_after = [&](int from) { return slots + (slots + from) % 2; };
 
     AspxFramingFields f;
+    const auto fixfix = [&](bool split) {
+        f = AspxFramingFields{};
+        f.int_class = AspxIntervalClass::kFixFix;
+        f.tmp_num_env = split ? 1 : 0;
+        return f;
+    };
     if (start == 0 && attack < 0) {
+        const int middle = fixfix_borders(slots, 2)[1];
         double first = 0.0;
         double second = 0.0;
-        for (int t = 0; t < kAspxTimeslots; ++t) {
-            (t < kAspxTimeslots / 2 ? first : second) += energy[at(t + 4)];
+        for (int t = 0; t < slots; ++t) {
+            (t < middle ? first : second) += energy[at(t + 4)];
         }
-        const double half_floor = floor * kAspxTimeslots / 2;
-        const bool moves = first > half_floor && second > half_floor &&
+        const bool moves = first > floor * middle && second > floor * (slots - middle) &&
                            std::abs(10.0 * std::log10(second / first)) > kSplitDb;
-        f.int_class = AspxIntervalClass::kFixFix;
-        f.tmp_num_env = moves ? 1 : 0;
-        return f;
+        return fixfix(moves);
     }
     if (start == 0) {
         // FIXVAR: borders counted back from an end of the attack's parity.
         f.int_class = AspxIntervalClass::kFixVar;
-        f.var_bord_right = attack % 2;
-        const int end = kAspxTimeslots + f.var_bord_right;
+        const int end = end_after(attack);
+        f.var_bord_right = end - slots;
         const int transient = std::min(kTransientSlots, end - attack);
-        std::vector<int> right = chunks(end - attack - transient);
+        std::vector<int> right = chunks(end - attack - transient, limits.longest);
         std::reverse(right.begin(), right.end());  // from the end back
         if (attack > 0) {
             right.push_back(transient);
@@ -636,37 +688,47 @@ AspxFramingFields AspxChannelEncoder::choose_framing(std::span<const QmfSample> 
         } else {
             f.tsg_ptr = 0;
         }
+        if (static_cast<int>(right.size()) > limits.count) {
+            return fixfix(true);
+        }
         f.rel_bord_right = right;
         return f;
     }
     if (attack >= 0 && setup_->varvar) {
         // VARVAR: from the last interval's stop to the attack, then the
         // attack's envelope, then on to an end of its parity.
-        f.int_class = AspxIntervalClass::kVarVar;
-        f.var_bord_left = start;
         const int before = (attack - start) / 2 * 2;
-        f.rel_bord_left = chunks(before);
+        const std::vector<int> left = chunks(before, limits.longest);
         const int at_attack = start + before;
-        f.var_bord_right = at_attack % 2;
-        const int end = kAspxTimeslots + f.var_bord_right;
+        const int end = end_after(at_attack);
         const int transient = std::min(kTransientSlots, end - at_attack);
-        std::vector<int> right = chunks(end - at_attack - transient);
+        std::vector<int> right = chunks(end - at_attack - transient, limits.longest);
         std::reverse(right.begin(), right.end());
-        f.rel_bord_right = right;
-        f.tsg_ptr = static_cast<int>(f.rel_bord_left.size());
-        return f;
+        if (static_cast<int>(left.size()) <= limits.count &&
+            static_cast<int>(right.size()) <= limits.count) {
+            f.int_class = AspxIntervalClass::kVarVar;
+            f.var_bord_left = start;
+            f.rel_bord_left = left;
+            f.var_bord_right = end - slots;
+            f.rel_bord_right = right;
+            f.tsg_ptr = static_cast<int>(left.size());
+            return f;
+        }
     }
     // VARFIX from the last interval's stop.
     f.int_class = AspxIntervalClass::kVarFix;
     f.var_bord_left = start;
     if (attack >= 0) {
         const int before = (attack - start) / 2 * 2;
-        std::vector<int> left = chunks(before);
-        f.tsg_ptr = static_cast<int>(left.size());
-        if (start + before + kTransientSlots < kAspxTimeslots) {
-            left.push_back(kTransientSlots);
+        std::vector<int> left = chunks(before, limits.longest);
+        if (static_cast<int>(left.size()) <= limits.count) {
+            f.tsg_ptr = static_cast<int>(left.size());
+            if (start + before + kTransientSlots < slots &&
+                static_cast<int>(left.size()) < limits.count) {
+                left.push_back(kTransientSlots);
+            }
+            f.rel_bord_left = left;
         }
-        f.rel_bord_left = left;
     }
     return f;
 }
@@ -680,9 +742,11 @@ AspxChannelFields AspxChannelEncoder::framed(const AspxFramingFields& framing) c
     fields.qmode_env = framing.int_class == AspxIntervalClass::kFixFix && num_env == 1
                            ? 0
                            : setup_->config.quant_mode_env;
-    const std::vector<int> borders = interval_borders(framing, stop_prev_ - kAspxTimeslots);
+    const int slots = setup_->timing.aspx_slots;
+    const std::vector<int> borders = interval_borders(framing, stop_prev_ - slots, slots);
     for (int env = 0; env < num_env; ++env) {
-        fields.envelope_freq_res.push_back(envelope_high_res(borders, env, framing.tsg_ptr) ? 1 : 0);
+        fields.envelope_freq_res.push_back(
+            envelope_high_res(borders, env, framing.tsg_ptr, slots) ? 1 : 0);
     }
     return fields;
 }
@@ -719,6 +783,7 @@ std::vector<int> AspxChannelEncoder::choose_inverse_filtering(std::span<const Qm
                                                               AspxChannelFields& fields) const {
     const aspx::SubbandGroups& g = setup_->groups;
     const int groups = g.num_sbg_noise;
+    const int tone_last = setup_->timing.qmf_slots + tone_lead();
     const auto group_of = [&](int sb) {
         int group = 0;
         while (group + 1 < groups && sb >= g.sbg_noise[at(group + 1)]) {
@@ -729,7 +794,7 @@ std::vector<int> AspxChannelEncoder::choose_inverse_filtering(std::span<const Qm
     const auto sums_of = [&](std::span<const QmfSample> matrix, int offset) {
         std::array<Residual, aspx::kMaxSbgNoise> sums{};
         for (int sb = g.sbx; sb < g.sbx + g.num_sb_aspx; ++sb) {
-            const Residual r = predict(matrix, offset, sb, kToneFirst, kToneLast);
+            const Residual r = predict(matrix, offset, sb, kToneFirst, tone_last);
             Residual& sum = sums[at(group_of(sb))];
             sum.residual += r.residual;
             sum.energy += r.energy;
@@ -740,7 +805,7 @@ std::vector<int> AspxChannelEncoder::choose_inverse_filtering(std::span<const Qm
         const std::array<Residual, aspx::kMaxSbgNoise> sums = sums_of(matrix, offset);
         std::array<double, aspx::kMaxSbgNoise> share{};
         for (int group = 0; group < groups; ++group) {
-            share[at(group)] = tonal_share(sums[at(group)]);
+            share[at(group)] = tonal_share(sums[at(group)], tone_samples());
         }
         return share;
     };
@@ -753,7 +818,7 @@ std::vector<int> AspxChannelEncoder::choose_inverse_filtering(std::span<const Qm
     for (int mode = 0; mode < kTnaModes; ++mode) {
         std::ranges::fill(modes, static_cast<std::uint8_t>(mode));
         aspx::HfGeneratorState<double> state = hf_;
-        generate(ext, modes, state, q_high);
+        generate(ext, modes, state, q_high, tone_lead());
         patched[at(mode)] = shares(q_high, 0);
     }
 
@@ -770,7 +835,8 @@ std::vector<int> AspxChannelEncoder::choose_inverse_filtering(std::span<const Qm
         // Below the smallest signal envelope, 64 per QMF subsample, a group
         // is silence, to which no noise is added.
         const int width = g.sbg_noise[at(group + 1)] - g.sbg_noise[at(group)];
-        const bool silent = input_sums[at(group)].energy < kSilence * static_cast<double>(width * kToneSamples);
+        const bool silent =
+            input_sums[at(group)].energy < kSilence * static_cast<double>(width * tone_samples());
         int q = kMaxNoise;
         if (silent) {
             q = kMaxNoise;
@@ -799,6 +865,7 @@ std::vector<int> AspxChannelEncoder::signal_envelope(std::span<const QmfSample> 
                                                          : std::span<const std::uint8_t>(g.sbg_sig_lowres);
     const double steps = quant_mode == 0 ? 2.0 : 1.0;
     const int top = quant_mode == 0 ? kMaxSignalFine : kMaxSignalCoarse;
+    const int per = setup_->timing.ts_in_ats;
     std::vector<int> q(at(groups));
     for (int sbg = 0; sbg < groups; ++sbg) {
         const int lo = table[at(sbg)];
@@ -806,7 +873,7 @@ std::vector<int> AspxChannelEncoder::signal_envelope(std::span<const QmfSample> 
         // A group with a sinusoid gives it the scale factor whole (Pseudocode
         // 94), so its envelope is the sinusoid's subband's energy.
         std::array<double, dsp::kQmfSubbands> per_subband{};
-        for (int ts = 2 * first; ts < 2 * last; ++ts) {
+        for (int ts = per * first; ts < per * last; ++ts) {
             const std::size_t row = at(ts + aspx::kTsOffsetHfadj) * kSubbands;
             for (int sb = lo; sb < hi; ++sb) {
                 per_subband[at(sb)] += std::norm(ext[row + at(sb)]);
@@ -822,7 +889,7 @@ std::vector<int> AspxChannelEncoder::signal_envelope(std::span<const QmfSample> 
                 energy += per_subband[at(sb)];
             }
         }
-        energy /= static_cast<double>(2 * (last - first) * (sine ? 1 : hi - lo));
+        energy /= static_cast<double>(per * (last - first) * (sine ? 1 : hi - lo));
         // A group the spectral frontend codes, which the decoder adds A-SPX's
         // output to (5.7.6.5.3), takes none of its own.
         if (std::all_of(waveform.begin() + lo, waveform.begin() + hi, [](bool w) { return w; })) {
@@ -923,8 +990,9 @@ std::optional<std::array<AspxChannelFields, 2>> AspxChannelEncoder::balanced_wit
     const AspxChannelEncoder& right, const std::array<AspxChannelFields, 2>& proposed, bool iframe) const {
     const AspxChannelFields& l = proposed[0];
     const AspxChannelFields& r = proposed[1];
-    const std::vector<int> start_l = interval_borders(l.framing, stop_prev_ - kAspxTimeslots);
-    const std::vector<int> start_r = interval_borders(r.framing, right.stop_prev_ - kAspxTimeslots);
+    const int slots = setup_->timing.aspx_slots;
+    const std::vector<int> start_l = interval_borders(l.framing, stop_prev_ - slots, slots);
+    const std::vector<int> start_r = interval_borders(r.framing, right.stop_prev_ - slots, slots);
     if (start_l != start_r || l.framing.int_class != r.framing.int_class ||
         l.framing.tsg_ptr != r.framing.tsg_ptr || l.qmode_env != r.qmode_env || l.tna_mode != r.tna_mode ||
         l.envelope_freq_res != r.envelope_freq_res) {
@@ -1010,22 +1078,39 @@ std::optional<std::array<AspxChannelFields, 2>> AspxChannelEncoder::balanced_wit
     return out;
 }
 
-std::vector<int> interval_borders(const AspxFramingFields& framing, int start) {
-    const int num_env = framing.num_env();
-    std::vector<int> sig(at(num_env + 1));
-    if (framing.int_class == AspxIntervalClass::kFixFix) {
-        // Table 194 at sixteen slots.
-        for (int env = 0; env <= num_env; ++env) {
-            sig[at(env)] = env * kAspxTimeslots / num_env;
-        }
-        return sig;
+std::vector<int> fixfix_borders(int aspx_slots, int envelopes) {
+    if (envelopes <= 1) {
+        return {0, aspx_slots};
     }
+    // Table 194's other rows: the halves and the quarters of 6, 8, 12, 15
+    // and 16 slots, the odd ones rounded as the table has them.
+    switch (aspx_slots) {
+        case 6:
+            return envelopes == 2 ? std::vector<int>{0, 3, 6} : std::vector<int>{0, 2, 3, 4, 6};
+        case 15:
+            return envelopes == 2 ? std::vector<int>{0, 8, 15} : std::vector<int>{0, 4, 8, 12, 15};
+        default:
+            break;
+    }
+    std::vector<int> out;
+    for (int env = 0; env <= envelopes; ++env) {
+        out.push_back(env * aspx_slots / envelopes);
+    }
+    return out;
+}
+
+std::vector<int> interval_borders(const AspxFramingFields& framing, int start, int aspx_slots) {
+    const int num_env = framing.num_env();
+    if (framing.int_class == AspxIntervalClass::kFixFix) {
+        return fixfix_borders(aspx_slots, num_env);
+    }
+    std::vector<int> sig(at(num_env + 1));
     const bool var_start =
         framing.int_class == AspxIntervalClass::kVarFix || framing.int_class == AspxIntervalClass::kVarVar;
     const bool var_end =
         framing.int_class == AspxIntervalClass::kFixVar || framing.int_class == AspxIntervalClass::kVarVar;
     sig.front() = var_start ? start : 0;
-    sig.back() = kAspxTimeslots + (var_end ? framing.var_bord_right : 0);
+    sig.back() = aspx_slots + (var_end ? framing.var_bord_right : 0);
     for (std::size_t i = 0; i < framing.rel_bord_left.size(); ++i) {
         sig[i + 1] = sig[i] + framing.rel_bord_left[i];
     }
@@ -1035,20 +1120,22 @@ std::vector<int> interval_borders(const AspxFramingFields& framing, int start) {
     return sig;
 }
 
-bool envelope_high_res(std::span<const int> borders, int envelope, int tsg_ptr) noexcept {
+bool envelope_high_res(std::span<const int> borders, int envelope, int tsg_ptr,
+                       int aspx_slots) noexcept {
     const int length = borders[at(envelope + 1)] - borders[at(envelope)];
-    const bool before_ptr = envelope < tsg_ptr && kAspxTimeslots > 8;
+    const bool before_ptr = envelope < tsg_ptr && aspx_slots > 8;
     // length > num_aspx_timeslots / 6 + 3.25, in integers.
-    return before_ptr || 12 * length > 2 * kAspxTimeslots + 39;
+    return before_ptr || 12 * length > 2 * aspx_slots + 39;
 }
 
-std::vector<int> noise_borders(const AspxFramingFields& framing, std::span<const int> borders) {
+std::vector<int> noise_borders(const AspxFramingFields& framing, std::span<const int> borders,
+                               int aspx_slots) {
     const int num_env = framing.num_env();
     if (framing.num_noise() == 1) {
         return {borders.front(), borders.back()};
     }
     if (framing.int_class == AspxIntervalClass::kFixFix) {
-        return {0, kAspxTimeslots / 2, kAspxTimeslots};
+        return fixfix_borders(aspx_slots, 2);
     }
     int mid = 0;
     if (framing.int_class == AspxIntervalClass::kVarFix) {

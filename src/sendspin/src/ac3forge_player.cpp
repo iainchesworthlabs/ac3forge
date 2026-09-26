@@ -45,9 +45,10 @@ template <class E, std::size_t N>
     return {};
 }
 
-constexpr std::array<Named<DataType>, 2> kDataTypes{{
+constexpr std::array<Named<DataType>, 3> kDataTypes{{
     {DataType::kAc3, "ac3"},
     {DataType::kEac3, "eac3"},
+    {DataType::kAc4, "ac4"},
 }};
 
 constexpr std::array<Named<Command>, 5> kCommands{{
@@ -180,7 +181,19 @@ std::string_view data_type_name(DataType type) {
 }
 
 BurstDataType burst_data_type(DataType type) {
-    return type == DataType::kAc3 ? BurstDataType::kAc3 : BurstDataType::kEac3;
+    switch (type) {
+        case DataType::kAc3:
+            return BurstDataType::kAc3;
+        case DataType::kEac3:
+            return BurstDataType::kEac3;
+        case DataType::kAc4:
+            return BurstDataType::kAc4;
+    }
+    return BurstDataType::kEac3;
+}
+
+bool carries(DataType type, BurstDataType burst) {
+    return type == DataType::kAc4 ? is_ac4(burst) : burst == burst_data_type(type);
 }
 
 // --- Support -----------------------------------------------------------------------------------
