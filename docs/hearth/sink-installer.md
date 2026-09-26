@@ -75,8 +75,9 @@ document.body.addEventListener("keydown", (event) => {
     status.textContent = "This copy of the site carries no installer firmware (" + problem +
       "). The published site takes it from the newest release that has sink firmware.";
   } else if (images.length === 0) {
-    status.textContent = "No release publishes sink firmware yet. Until one does, build the " +
-      "firmware as the board's guide describes.";
+    status.textContent = "No release publishes sink firmware yet. Until the first tagged release " +
+      "carries it, build the firmware as the board's guide describes or take a recent CI " +
+      "esp32-firmware artifact.";
   } else {
     status.append("Firmware from ");
     status.append(index.page ? link(index.page, "release " + release) : release || "the newest release");

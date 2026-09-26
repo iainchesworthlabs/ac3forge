@@ -4,9 +4,11 @@ CI records performance, quality, and memory measurements after merges. This page
 shows the latest values from `main`, explains each measure, and links to the
 append-only histories.
 
-The series cover AC-3, E-AC-3, and the Atmos object layer. AC-4 is not in them: its speed and
-memory are not benchmarked in CI, and its audio is checked by pass/fail scripts that record no
-history. [Validation](verification.md#ac-4) describes how AC-4 is checked.
+The series cover AC-3, E-AC-3, the Atmos object layer, and **AC-4** (stereo and 5.1 encode and
+decode workloads in `ac3perf`, `ac3bench`, `ac3membench` and `ac4core` kernels in
+`ac3kernelbench`). AC-4 decode quality is trended separately on the `quality-history` branch
+(`ac4-quality-main.jsonl`, from `score_ac4_decode.py --json-out`); encode quality still uses
+pinned floors only. [Validation](verification.md#ac-4) describes the gates.
 
 New to codec benchmarks: start with
 [How to read these numbers](#how-to-read-these-numbers).
@@ -74,7 +76,8 @@ produced by [ViSQOL](https://github.com/google/visqol). It models hearing rather
 than arithmetic, so it credits a stream that sounds right even where the
 waveform has moved.
 
-→ [Quality trend](quality-trend.md) tracks the gold-reference SNR gate.
+→ [Quality trend](quality-trend.md) tracks the gold-reference SNR gate and
+[AC-4 decode quality](quality-trend.md#ac-4-decode-quality).
 → [Tool comparison trend](tool-comparison-trend.md) tracks per-tool quality.
 → [Object quality trend](object-quality-trend.md) covers Atmos objects.
 → [Landscape](landscape.md) puts this encoder beside FFmpeg's and Dolby's.

@@ -156,6 +156,7 @@ nav:
   - Hearth:
       - Overview: hearth/index.md
       - An ESP32-S3 sink: hearth/sink-esp32-s3.md
+      - An ESP32-C6 sink: hearth/sink-esp32-c6.md
       - Sink firmware: hearth/sink-firmware.md
       - Install from the browser: hearth/sink-installer.md
       - Design record: hearth/design/player-appliance.md

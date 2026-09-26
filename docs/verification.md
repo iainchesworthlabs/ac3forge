@@ -973,7 +973,9 @@ shares with the encoder. Six checks stand in for the reference output neither pa
   pair in ASPX_ACPL_2 with beta 1.4 puts the decorrelated part in L and R with opposite signs: it cancels
   in their sum to 0.1 dB and is the tone 1.4 times over in their difference. Twenty of the streams are
   committed, with the Python parser's digests, which both transcriptions reproduce.
-- **DEE's streams against their sources** (`tools/checks/score_ac4_decode.py`): the decoded output is
+- **DEE's streams against their sources** (`tools/checks/score_ac4_decode.py`): pinned floors gate CI;
+  `--json-out` feeds `ac4-quality-main.jsonl` on the `quality-history` branch for
+  [AC-4 decode quality trend](quality-trend.md#ac-4-decode-quality). The decoded output is
   aligned with the source by cross-correlation and fitted with a gain per channel. Every leg must lag
   its source by the same 4,385 samples (DEE's encoder's 3,072 and this decoder's 1,313; DEE's immersive
   stereo encoder runs a frame shorter, 2,337), sit within 0.2 dB of unity gain, and meet floors pinned

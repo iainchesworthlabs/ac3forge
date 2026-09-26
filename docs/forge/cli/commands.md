@@ -7,7 +7,7 @@ platform with a spatial backend. Nothing in the build compares this block agains
 `ac3cli help` on your own build is the authority wherever the two disagree:
 
 ```text
-Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) encoder/decoder
+Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) and AC-4 (ETSI TS 103 190) encoder/decoder
 
 Usage:
   ac3cli --version    print version and git provenance, then exit

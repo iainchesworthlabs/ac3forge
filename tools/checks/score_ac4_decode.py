@@ -1148,6 +1148,8 @@ def main():
     parser.add_argument("--measure", action="store_true",
                         help="print every leg's measurements and check nothing")
     parser.add_argument("--only", nargs="+", metavar="LEG", help="score only these legs")
+    parser.add_argument("--json-out", type=Path,
+                        help="write per-leg min SNR, LSD and MOS for trend history")
     args = parser.parse_args()
 
     with tempfile.TemporaryDirectory() as temporary:
@@ -1161,6 +1163,7 @@ def main():
         failures = []
         pins = []
         immersive_pins = []
+        json_legs = []
         for name, stream, source_path, source_name, encoder, codec_mode, rate_index in legs:
             source, source_rate = read_wav(source_path)
             if source.shape[1] == len(IMMERSIVE_CHANNELS):
@@ -1246,6 +1249,12 @@ def main():
             print(f"{name:<32} lag {lag:5d}  {'  '.join(cells)}{where}  LSD {lsd:.2f} dB"
                   f"{tile_text}  MOS {mos_text}", flush=True)
             pins.append(pin_text(name, snrs, float(lsd), tile_mean, mos))
+            json_legs.append({
+                "leg": name,
+                "min_snr_db": float(min(snrs)) if snrs else None,
+                "lsd_db": float(lsd),
+                "mos_lqo": None if mos is None else float(mos),
+            })
             if args.measure:
                 continue
             pin = PINS.get(name)
@@ -1275,6 +1284,9 @@ def main():
                         if margin < ROUTING_MARGIN_DB:
                             failures.append(f"{name} ch{c}: its tone only {margin:.1f} dB above "
                                             f"ch{other}'s")
+        if args.json_out is not None:
+            args.json_out.parent.mkdir(parents=True, exist_ok=True)
+            args.json_out.write_text(json.dumps({"legs": json_legs}, indent=2) + "\n")
         if args.measure:
             print("\nPINS and ACPL_PINS lines:")
             print("\n".join(pins))

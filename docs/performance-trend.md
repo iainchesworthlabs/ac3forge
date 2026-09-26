@@ -41,21 +41,19 @@ pass/fail gate cannot see.
 
 ## What is measured, and on what
 
-Both timing producers and the gate cover the same nine workloads: three encoders
-(`plain_51` and `plain_51_fast_mdct`, `eac3_51_auto` and `eac3_stereo_auto`,
-`atmos_4obj` and `atmos_4obj_fast_mdct`) and the three decoders that read what they
-produce (`ac3_51_decode`, `eac3_51_decode`, `atmos_4obj_decode`). Until roadmap PF1
-the E-AC-3 encoder — the largest source file in the codec — and every decode path had
-no ms/frame number and no real-time gate anywhere, so a regression in any of them was
-invisible here. The decode series are timed against streams the encode series in the
-same run just produced: a decode number only means something against a stream whose
-rate and tool set are known.
+Both timing producers and the gate cover thirteen whole-frame workloads: the nine AC-3 and
+E-AC-3 workloads below, plus four AC-4 workloads (`ac4_stereo_encode`, `ac4_51_encode`,
+`ac4_stereo_decode`, `ac4_51_decode`). The AC-3/E-AC-3 encoders are `plain_51` and
+`plain_51_fast_mdct`, `eac3_51_auto` and `eac3_stereo_auto`, `atmos_4obj` and
+`atmos_4obj_fast_mdct`; their decoders are `ac3_51_decode`, `eac3_51_decode` and
+`atmos_4obj_decode`. The decode series are timed against streams the encode series in the
+same run just produced: a decode number only means something against a stream whose rate and
+tool set are known.
 
-The workloads cover AC-3, E-AC-3, and the Atmos object layer. `ac3perf`, `ac3bench`,
-`ac3kernelbench`, and `ac3membench` have no AC-4 workload, so the speed and memory of the AC-4
-decoder and encoder are neither gated nor trended. CI holds AC-4's audio to pinned floors
-instead, through `tools/checks/score_ac4_decode.py` and `tools/checks/score_ac4_encode.py`; see
-[Validation](verification.md#ac-4).
+AC-4 uses the same real-audio fixture at `frame_rate_index` 13 (2048 samples per frame, 48 kHz).
+Per-kernel tables add `ac4_mdct512_forward`, `ac4_imdct512_inverse`, `ac4_fft512_forward` and
+`ac4_qmf_analysis64`. AC-4 decode quality is trended on [Quality trend](quality-trend.md#ac-4-decode-quality);
+encode quality still uses pinned floors — see [Validation](verification.md#ac-4).
 
 Every workload is fed real programme material (`tests/golden/audio/reference_51.wav`,
 through `tests/performance/real_audio.hpp`), not the 440 Hz tone `ac3bench` and

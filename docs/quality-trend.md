@@ -1,9 +1,207 @@
 # Quality trend
 
-This series covers AC-3 and E-AC-3. AC-4 has no gold-reference gate and no history here: CI
-holds its decoder and encoder to pinned floors with `tools/checks/score_ac4_decode.py` and
-`tools/checks/score_ac4_encode.py`, which record no history. See
+This series covers AC-3 and E-AC-3. **AC-4 decode quality** is trended separately below; the
+encoder still uses pinned floors only (`tools/checks/score_ac4_encode.py`). See
 [Validation](verification.md#ac-4).
+
+## AC-4 decode quality {#ac-4-decode-quality}
+
+Each push to `main` that runs `tools/checks/score_ac4_decode.py` on the `linux-llvm` leg appends
+per-leg minimum SNR, LSD and MOS-LQO to `ac4-quality-main.jsonl` on the `quality-history`
+branch (`tools/ci/append_ac4_quality_history.py`). The pinned floors in the scoring script still
+gate CI; the history adds trailing-baseline soft and hard annotations on top.
+
+<div id="ac4-quality-trend-app">
+  <p class="quality-trend-status">Loading AC-4 decode quality…</p>
+</div>
+
+<script>
+(function () {
+  const REPO = "iainchesworthlabs/ac3forge";
+  const HISTORY_BRANCH = "quality-history";
+  const HISTORY_FILE = "ac4-quality-main";
+  const REGRESSION_WINDOW = 10;
+  const SNR_DROP_DB = 0.5;
+  const SNR_HARD_DROP_DB = 3.0;
+  const LSD_RISE_DB = 0.5;
+  const LSD_HARD_RISE_DB = 2.0;
+  const TABLE_ROWS = 40;
+  const LEG_COLOR = "#fb8c00";
+  const root = document.getElementById("ac4-quality-trend-app");
+  const state = { metric: "min_snr_db" };
+
+  function rawUrl(file) {
+    return `https://raw.githubusercontent.com/${REPO}/${HISTORY_BRANCH}/${file}`;
+  }
+
+  function parseJsonl(text) {
+    return text.split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l));
+  }
+
+  async function fetchHistory() {
+    for (const file of [`${HISTORY_FILE}.recent.jsonl`, `${HISTORY_FILE}.jsonl`]) {
+      try {
+        const resp = await fetch(rawUrl(file));
+        if (!resp.ok) continue;
+        return parseJsonl(await resp.text());
+      } catch (e) { /* try next */ }
+    }
+    return [];
+  }
+
+  function metricLabel(key) {
+    if (key === "min_snr_db") return "Min SNR (dB)";
+    if (key === "lsd_db") return "LSD (dB)";
+    return "MOS-LQO";
+  }
+
+  function metricValue(r, key) {
+    const v = r[key];
+    return v === null || v === undefined ? null : Number(v);
+  }
+
+  function regressionBaseline(records, leg, field, beforeDate) {
+    const trail = records
+      .filter((r) => r.leg === leg && r.commit_date < beforeDate && metricValue(r, field) !== null)
+      .sort((a, b) => a.commit_date.localeCompare(b.commit_date))
+      .slice(-REGRESSION_WINDOW);
+    if (!trail.length) return null;
+    return trail.reduce((s, r) => s + metricValue(r, field), 0) / trail.length;
+  }
+
+  function regressionFlag(r, records) {
+    const field = state.metric;
+    const val = metricValue(r, field);
+    if (val === null) return "";
+    const mean = regressionBaseline(records, r.leg, field, r.commit_date);
+    if (mean === null) return "";
+    if (field === "min_snr_db") {
+      const drop = mean - val;
+      if (drop >= SNR_HARD_DROP_DB) {
+        return `<span class="quality-trend-regression" title="${drop.toFixed(2)} dB below trailing mean">▼ hard</span>`;
+      }
+      if (drop >= SNR_DROP_DB) {
+        return `<span class="quality-trend-regression" title="${drop.toFixed(2)} dB below trailing mean">▼ soft</span>`;
+      }
+    } else if (field === "lsd_db") {
+      const rise = val - mean;
+      if (rise >= LSD_HARD_RISE_DB) {
+        return `<span class="quality-trend-regression" title="${rise.toFixed(2)} dB above trailing mean">▲ hard</span>`;
+      }
+      if (rise >= LSD_RISE_DB) {
+        return `<span class="quality-trend-regression" title="${rise.toFixed(2)} dB above trailing mean">▲ soft</span>`;
+      }
+    }
+    return "";
+  }
+
+  function buildChart(records) {
+    const pts = records
+      .filter((r) => metricValue(r, state.metric) !== null)
+      .sort((a, b) => a.commit_date.localeCompare(b.commit_date));
+    if (!pts.length) {
+      return `<p class="quality-trend-status">No ${metricLabel(state.metric)} history yet.</p>`;
+    }
+    const width = 760, height = 200, pad = { top: 12, right: 12, bottom: 32, left: 48 };
+    const values = pts.map((p) => metricValue(p, state.metric));
+    const minV = Math.min(...values);
+    const maxV = Math.max(...values);
+    const padV = (maxV - minV) * 0.08 || 1;
+    const lo = minV - padV;
+    const hi = maxV + padV;
+    const times = pts.map((p) => Date.parse(p.commit_date));
+    const minT = Math.min(...times);
+    const maxT = Math.max(...times);
+    const x = (t) => pad.left + (maxT === minT ? (width - pad.left - pad.right) / 2
+      : ((t - minT) / (maxT - minT)) * (width - pad.left - pad.right));
+    const y = (v) => height - pad.bottom - ((v - lo) / (hi - lo)) * (height - pad.top - pad.bottom);
+    let svg = `<svg class="quality-trend-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="AC-4 ${metricLabel(state.metric)} by commit">`;
+    for (let i = 0; i <= 4; i++) {
+      const v = lo + ((hi - lo) * i) / 4;
+      const gy = y(v);
+      svg += `<line x1="${pad.left}" y1="${gy}" x2="${width - pad.right}" y2="${gy}" stroke="var(--md-default-fg-color--lightest)" stroke-width="1"/>`;
+      svg += `<text x="${pad.left - 6}" y="${gy + 3}" text-anchor="end" font-size="10" fill="var(--md-default-fg-color--light)">${v.toFixed(1)}</text>`;
+    }
+    if (pts.length > 1) {
+      const path = pts.map((p, i) => {
+        const px = x(Date.parse(p.commit_date)).toFixed(1);
+        const py = y(metricValue(p, state.metric)).toFixed(1);
+        return `${i === 0 ? "M" : "L"}${px},${py}`;
+      }).join(" ");
+      svg += `<path d="${path}" fill="none" stroke="${LEG_COLOR}" stroke-width="2"/>`;
+    }
+    pts.forEach((p) => {
+      const cx = x(Date.parse(p.commit_date)).toFixed(1);
+      const cy = y(metricValue(p, state.metric)).toFixed(1);
+      const val = metricValue(p, state.metric).toFixed(2);
+      svg += `<circle cx="${cx}" cy="${cy}" r="3" fill="${LEG_COLOR}"><title>${p.commit.slice(0, 8)} ${val} on ${p.commit_date.slice(0, 10)}</title></circle>`;
+    });
+    svg += "</svg>";
+    return svg;
+  }
+
+  function buildTable(records) {
+    const rows = records.slice().sort((a, b) => b.commit_date.localeCompare(a.commit_date)).slice(0, TABLE_ROWS);
+    if (!rows.length) return "";
+    const trs = rows.map((r) => {
+      const snr = metricValue(r, "min_snr_db");
+      const lsd = metricValue(r, "lsd_db");
+      const mos = metricValue(r, "mos_lqo");
+      return `<tr>
+        <td>${r.commit_date.slice(0, 10)}</td>
+        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${r.commit.slice(0, 8)}</a></td>
+        <td>${r.leg}</td>
+        <td>${snr === null ? "—" : snr.toFixed(2)}</td>
+        <td>${lsd === null ? "—" : lsd.toFixed(2)}</td>
+        <td>${mos === null ? "—" : mos.toFixed(2)}</td>
+        <td>${regressionFlag(r, records)}</td>
+      </tr>`;
+    }).join("");
+    return `<div class="quality-trend-table-wrap"><table>
+      <thead><tr><th>Date</th><th>Commit</th><th>Leg</th><th>Min SNR</th><th>LSD</th><th>MOS-LQO</th><th></th></tr></thead>
+      <tbody>${trs}</tbody>
+    </table></div>`;
+  }
+
+  function render(records) {
+    root.innerHTML = `
+      <div class="quality-trend-controls">
+        <label for="ac4-quality-metric">Metric
+          <select id="ac4-quality-metric">
+            <option value="min_snr_db" ${state.metric === "min_snr_db" ? "selected" : ""}>Min SNR (dB)</option>
+            <option value="lsd_db" ${state.metric === "lsd_db" ? "selected" : ""}>LSD (dB)</option>
+            <option value="mos_lqo" ${state.metric === "mos_lqo" ? "selected" : ""}>MOS-LQO</option>
+          </select>
+        </label>
+      </div>
+      <div class="quality-trend-chart-wrap">${buildChart(records)}</div>
+      <div class="quality-trend-legend"><span><i style="background:${LEG_COLOR}"></i>linux-llvm (score_ac4_decode.py)</span></div>
+      ${buildTable(records)}
+    `;
+    document.getElementById("ac4-quality-metric").addEventListener("change", (e) => {
+      state.metric = e.target.value;
+      render(records);
+    });
+  }
+
+  fetchHistory().then((records) => {
+    if (!records.length) {
+      root.innerHTML = '<p class="quality-trend-status">No AC-4 decode quality history yet — CI writes it on the first push to <code>main</code> after this page landed.</p>';
+      return;
+    }
+    render(records);
+  });
+})();
+</script>
+
+Each AC-4 row is one `linux-llvm` run of `score_ac4_decode.py`. **Min SNR** is the worst leg
+among DEE's indexed streams; **LSD** and **MOS-LQO** come from the same scoring pass. Soft
+regression markers echo `append_ac4_quality_history.py` (0.5 dB SNR drop or LSD rise against the
+trailing ten-run mean); hard regressions fail the publish job the same way the AC-3 gate does.
+
+---
+
+## AC-3 and E-AC-3 gold-reference quality
 
 Every push to `main` that gets through the [gold-reference
 gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)

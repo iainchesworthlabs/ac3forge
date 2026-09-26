@@ -48,6 +48,10 @@
 #include "ac3/oba/joc.hpp"
 #include "real_audio.hpp"
 
+#ifdef AC3FORGE_PERF_AC4
+#include "ac4_bench.hpp"
+#endif
+
 namespace {
 
 constexpr int kFrames = 200;
@@ -466,6 +470,58 @@ int main(int argc, char** argv) {
     if (wanted("atmos_4obj_decode")) {
         results.push_back(bench_eac3_decode("atmos_4obj_decode", atmos_stream));
     }
+#ifdef AC3FORGE_PERF_AC4
+    perf::ac4::FrameSource ac4_stereo{audio, perf::ac4::kStereoChannels};
+    perf::ac4::FrameSource ac4_51{audio, perf::ac4::kFiveOneChannels};
+    std::vector<std::byte> ac4_stereo_stream;
+    std::vector<std::byte> ac4_51_stream;
+    if (wanted("ac4_stereo_decode")) {
+        ac4_stereo_stream = perf::ac4::encode_stream(ac4_stereo, perf::ac4::stereo_encoder_config(),
+                                                     kFrames, "ac4_stereo_decode");
+    }
+    if (wanted("ac4_51_decode")) {
+        ac4_51_stream = perf::ac4::encode_stream(ac4_51, perf::ac4::five_one_encoder_config(),
+                                                kFrames, "ac4_51_decode");
+    }
+    if (wanted("ac4_stereo_encode")) {
+        const auto r = perf::ac4::bench_encode(ac4_stereo, perf::ac4::stereo_encoder_config(),
+                                               "ac4_stereo_encode");
+        results.push_back({.name = r.name,
+                           .frames = r.frames,
+                           .total_ms = r.total_ms,
+                           .ms_per_frame = r.ms_per_frame,
+                           .p95_ms_per_frame = r.p95_ms_per_frame,
+                           .max_ms_per_frame = r.max_ms_per_frame});
+    }
+    if (wanted("ac4_51_encode")) {
+        const auto r = perf::ac4::bench_encode(ac4_51, perf::ac4::five_one_encoder_config(),
+                                               "ac4_51_encode");
+        results.push_back({.name = r.name,
+                           .frames = r.frames,
+                           .total_ms = r.total_ms,
+                           .ms_per_frame = r.ms_per_frame,
+                           .p95_ms_per_frame = r.p95_ms_per_frame,
+                           .max_ms_per_frame = r.max_ms_per_frame});
+    }
+    if (wanted("ac4_stereo_decode")) {
+        const auto r = perf::ac4::bench_decode(ac4_stereo_stream, "ac4_stereo_decode");
+        results.push_back({.name = r.name,
+                           .frames = r.frames,
+                           .total_ms = r.total_ms,
+                           .ms_per_frame = r.ms_per_frame,
+                           .p95_ms_per_frame = r.p95_ms_per_frame,
+                           .max_ms_per_frame = r.max_ms_per_frame});
+    }
+    if (wanted("ac4_51_decode")) {
+        const auto r = perf::ac4::bench_decode(ac4_51_stream, "ac4_51_decode");
+        results.push_back({.name = r.name,
+                           .frames = r.frames,
+                           .total_ms = r.total_ms,
+                           .ms_per_frame = r.ms_per_frame,
+                           .p95_ms_per_frame = r.p95_ms_per_frame,
+                           .max_ms_per_frame = r.max_ms_per_frame});
+    }
+#endif
     if (results.empty()) {
         std::fprintf(stderr, "ac3bench: --only matched no workload\n");
         return 1;

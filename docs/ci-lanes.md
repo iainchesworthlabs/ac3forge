@@ -2,6 +2,9 @@
 
 *Maintainer notes - CI structure; not a build or contribution guide.*
 
+For triaging GitHub Advanced Security code-scanning alerts on pull requests, see
+[`tools/ci/code_scanning_triage.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/code_scanning_triage.md).
+
 `ci.yml`'s `changes` job already tells a docs-only PR from a code one, so a
 docs-only edit skips the whole build side entirely (`code` in that job's
 outputs, computed by a `docs_re` regex). Every other PR used to pay for

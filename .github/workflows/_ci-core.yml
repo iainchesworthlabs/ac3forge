@@ -1529,7 +1529,16 @@ jobs:
       # numpy): the lag, the level, per-channel SNR floors and tone routing.
       # planning/ac4.md, the decoder's ladder, item 3.
       - name: AC-4 decode against DEE's sources (level, SNR floors, lag)
-        run: python3 tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
+        run: |
+          python3 tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli \
+            --json-out "${{ runner.temp }}/ac4-decode-quality.json"
+
+      - name: Upload AC-4 decode quality results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ac4-quality-decode-linux-llvm
+          path: ${{ runner.temp }}/ac4-decode-quality.json
+          if-no-files-found: error
 
       # planning/ac4.md, phase D6: the output level and each downmix held to
       # Part 1's formulas with each committed stream's own dialnorm and mix
