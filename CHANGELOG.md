@@ -1242,6 +1242,25 @@ The sections below contain the complete change list and fixes.
   `codec-mode=aspx-acpl-1|aspx-acpl-2|aspx-acpl-3` and names the mode in its summary.
   `tools/checks/score_ac4_encode.py` pins nine A-CPL legs and the A-CPL race with
   `score_ac4_decode.py`'s per-band checks, which now take ASPX_ACPL_1, 5.0 and the channel pair.
+- **AC-4 in the rest of `ac3cli`** (phase I1 of `planning/ac4.md`). `transcode` goes between AC-4
+  and AC-3 or E-AC-3 in both directions: an AC-4 presentation, chosen as `decode` chooses one, is
+  decoded without DRC and re-encoded with its `drc_eac3_profile` as the DRC profile (TS 103 190-1
+  clause 5.7.9.4, whose field name `src/ac4dec/ERRATA.md` reads), its dialnorm to the dB and its
+  downmix values; an AC-3 or E-AC-3 source's dialnorm and downmix values go to AC-4, `drc=` naming
+  its profile. `record` and `live` encode AC-4 with `codec=ac4`, raw, as MPEG-TS, IEC 61937-14
+  bursts or a CMAF folder; `live` monitors it and sends a receiver the 5.1 AC-3 leg. `monitor` and
+  `play` decode AC-4, `qc`, `levels` and `loudness` measure a presentation as coded, `spdif` wraps
+  AC-4, and `probe` reads it and AC-3/E-AC-3 inside MP4, MPEG-TS and Matroska and reports the
+  container's view of the track. `fmp4` fragments AC-4 as Annex H has a CMAF track: fragments start
+  at I-frames, non-sync samples are flagged, Table E.1's time scale, the `ca4m` and `ca4s` brands,
+  and Annex G's codecs, channel configuration and frame rate in the manifests
+  (`mp4::FragmentOptions::sync_samples` and `brands`, `FragmentWriter::push(frame, sync)`,
+  `DashOptions::channel_configuration` and `supplemental_properties`; `ac4::signalled_presentation()`
+  and the other manifest functions). `mkv` refuses AC-4, for which Matroska registers no codec ID.
+  `ac3::plan::Codec` gains `kAc4`, its helpers are switches, and `check_matrix_coverage.py` holds
+  every command whose usage names an `.ac4` file to a matrix leg that runs it on AC-4. `record` now
+  writes the frames it encoded while its bitstream check listened at the start of the take, where
+  they used to land at its end.
 - **AC-4 over IEC 61937** (phase D11 of `planning/ac4.md`), from IEC 61937-14:2017, with IEC
   61937-1 and 61937-2 for the burst format. `ac3::iec61937::Ac4BurstPacker` packs one AC-4 sync
   frame to a data-burst in any of Part 14's four burst types (`Pc` data type 24 with subdata types
