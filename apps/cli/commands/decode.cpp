@@ -419,16 +419,41 @@ ac4::DrcMode ac4_drc_mode(std::string_view name) {
     return ac4::DrcMode::kDefault;
 }
 
-// AC-4's downmix for channels= and downmix=: downmix=loro, ltrt and mono as
-// named, and downmix=auto or channels=2 alone the stream's preferred method
-// (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send.
+// speakers='s layout for an immersive element (ETSI TS 103 190-2 clause
+// 5.10.2); without one, as coded.
+ac4::DownmixTarget ac4_layout(std::string_view speakers) {
+    if (speakers == "5.1") {
+        return ac4::DownmixTarget::k5X;
+    }
+    if (speakers == "5.1.2") {
+        return ac4::DownmixTarget::k5X2;
+    }
+    if (speakers == "5.1.4") {
+        return ac4::DownmixTarget::k5X4;
+    }
+    if (speakers == "7.1") {
+        return ac4::DownmixTarget::k7X0;
+    }
+    if (speakers == "7.1.2") {
+        return ac4::DownmixTarget::k7X2;
+    }
+    if (speakers == "7.1.4") {
+        return ac4::DownmixTarget::k7X4;
+    }
+    return ac4::DownmixTarget::kAsCoded;
+}
+
+// AC-4's downmix for channels=, downmix= and speakers=: downmix=loro, ltrt and
+// mono as named, downmix=auto or channels=2 alone the stream's preferred
+// method (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send, and
+// without a fold speakers='s layout.
 ac4::DownmixTarget ac4_downmix(const ac3cli::Options& meta) {
     if (meta.downmix_auto) {
         return ac4::DownmixTarget::kStereo;
     }
     switch (meta.output.target) {
         case ac3::DownmixTarget::kAsCoded:
-            return ac4::DownmixTarget::kAsCoded;
+            return ac4_layout(meta.ac4_speakers);
         case ac3::DownmixTarget::kLoRo:
             return meta.downmix_named ? ac4::DownmixTarget::kLoRo : ac4::DownmixTarget::kStereo;
         case ac3::DownmixTarget::kLtRt:
@@ -466,8 +491,24 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
         add(fmt::format("dialogue raised {:g} dB where the stream allows",
                         output.dialogue_enhancement_db));
     }
-    if (output.downmix != ac4::DownmixTarget::kAsCoded) {
-        add(fmt::format("downmixed to {}", ac4::describe(output.downmix)));
+    switch (output.downmix) {
+        case ac4::DownmixTarget::kAsCoded:
+            break;
+        case ac4::DownmixTarget::k7X4:
+        case ac4::DownmixTarget::k7X2:
+        case ac4::DownmixTarget::k7X0:
+        case ac4::DownmixTarget::k5X4:
+        case ac4::DownmixTarget::k5X2:
+            // Only the immersive element takes these; the rest come out as coded.
+            add(fmt::format("an immersive element rendered to {}", ac4::describe(output.downmix)));
+            break;
+        case ac4::DownmixTarget::k5X:
+        case ac4::DownmixTarget::kStereo:
+        case ac4::DownmixTarget::kLoRo:
+        case ac4::DownmixTarget::kLtRt:
+        case ac4::DownmixTarget::kMono:
+            add(fmt::format("downmixed to {}", ac4::describe(output.downmix)));
+            break;
     }
     if (output.dialogue_gain_db != 0.0) {
         add(fmt::format("dialogue substreams at {:+g} dB where the stream allows", output.dialogue_gain_db));
@@ -478,16 +519,23 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
     return done.empty() ? "the coded channels, with no DRC, downmix or dialogue processing" : done;
 }
 
+// The decoding mode, for the status line where it is not the default.
+std::string ac4_decoding(ac4::DecodingMode decoding) {
+    return decoding == ac4::DecodingMode::kCore ? " in core decoding" : "";
+}
+
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the presentation presentation=,
 // presentation-id=, language= and associated= choose (ETSI TS 103 190-2 clause
 // 4.8.2), its substreams mixed with the dialogue and associated audio at
-// dialogue-gain= and associated-gain= (TS 103 190-1 clause 6.2.16), with the
+// dialogue-gain= and associated-gain= (TS 103 190-1 clause 6.2.16), in full or
+// core decoding as decoding= says (TS 103 190-2 clause 4.7), with the
 // dialogue raised by dialogue-enhancement= (ETSI
 // TS 103 190-1 clause 5.7.8), at the output level output-level= names and
 // compressed in the DRC decoder mode drcmode= names (clause 5.7.9), in the
-// layout channels= and downmix= ask for (6.2.17), and a damaged frame
-// concealed as conceal= says. The object options are output processing the
-// AC-4 decoder does not do yet, and are reported rather than applied.
+// layout channels=, downmix= and speakers= ask for (6.2.17, TS 103 190-2
+// clause 5.10.2), and a damaged frame concealed as conceal= says. The object
+// options are output processing the AC-4 decoder does not do yet, and are
+// reported rather than applied.
 int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, std::string_view out_path,
                    const ac3cli::Options& meta, std::string_view objects_dir, std::string_view adm_out) {
     const auto status = status_stream(out_path);
@@ -535,6 +583,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     config.output.dialogue_gain_db = meta.ac4_dialogue_gain;
     config.output.associated_gain_db = meta.ac4_associated_gain;
     config.concealment = ac4_concealment(meta.concealment);
+    config.decoding = meta.ac4_core_decoding ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
     config.presentation.index = meta.ac4_presentation;
     config.presentation.presentation_id = meta.ac4_presentation_id;
     config.presentation.language = meta.ac4_language;
@@ -634,8 +683,8 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         layout += layout.empty() ? "" : " ";
         layout += ac4::describe(first.speakers[c]);
     }
-    status_println(status, "decoded {} AC-4 frames -> {} ({}, {} Hz)", decoded_frames, out_path, layout,
-                   first.sample_rate_hz);
+    status_println(status, "decoded {} AC-4 frames{} -> {} ({}, {} Hz)", decoded_frames,
+                   ac4_decoding(config.decoding), out_path, layout, first.sample_rate_hz);
     status_println(status, "          presentation {}{}", first.presentation,
                    first.presentation_id ? fmt::format(" (presentation_id {})", *first.presentation_id)
                                          : std::string{});

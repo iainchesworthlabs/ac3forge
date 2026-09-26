@@ -22,10 +22,16 @@ namespace ac4::detail {
 // are in the stream, at 48 kHz or 44.1 kHz, with no bit rate indicator and a
 // frame rate factor of 1.
 struct TocSubstream {
-    int ch_mode = 1;           // Part 1 Table 88: 0 mono to 10 (7.1 3/2/2)
+    // Part 1 Table 88: 0 mono to 10 (7.1 3/2/2); and Part 2 Table 56's 11 and
+    // 12, 7.0.4 and 7.1.4.
+    int ch_mode = 1;
     bool add_ch_base = false;  // for 7.X 5/2/0 and 3/2/2 (clause 6.3.2.7)
     bool iframe = true;        // b_audio_ndot
     int substream_index = 0;
+    // For 7.0.4 and 7.1.4, the channels their source has (Tables 57 to 59).
+    bool b_4_back_channels_present = true;
+    bool b_centre_present = true;
+    int top_channels_present = 3;
 };
 
 // One ac4_substream_group_info() (clause 6.2.1.6) of channel-coded substreams,
@@ -83,7 +89,7 @@ void write_toc(BitWriter& w, const TocLayout& layout, std::size_t payload_base,
 // The whole raw_ac4_frame(): the table of contents and `substreams`, in index
 // order, each as long as its bytes, with no payload_base. Nothing when the
 // layout names a group, a substream or a presentation substream that is not
-// there, or one the syntax cannot send (a channel mode above 10, a
+// there, or one the syntax cannot send (a channel mode above 12, a
 // presentation_config above 5, a language tag longer than 63 bytes).
 [[nodiscard]] std::optional<std::vector<std::byte>> assemble_frame(
     const TocLayout& layout, std::span<const std::vector<std::byte>> substreams);

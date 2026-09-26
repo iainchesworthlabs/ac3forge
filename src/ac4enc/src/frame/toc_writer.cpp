@@ -96,18 +96,24 @@ void write_presentation_v1_info(BitWriter& w, const TocLayout& layout, const Toc
     write_escaped(w, 2, 2, static_cast<std::uint64_t>(p.presentation_substream), "substream_index");
 }
 
-// Table 56's channel_mode code for a Part 1 channel mode: 0b0 mono, 0b10
-// stereo, 0b1100 to 0b1110 3.0, 5.0 and 5.1, 0b1111000 to 0b1111101 the 7.X
-// modes.
-void write_channel_mode(BitWriter& w, int ch_mode) {
+// Table 56's channel_mode code: 0b0 mono, 0b10 stereo, 0b1100 to 0b1110 3.0,
+// 5.0 and 5.1, 0b1111000 to 0b1111101 the 7.X modes, and 0b11111100 and
+// 0b11111101 7.0.4 and 7.1.4, which name the channels their source has.
+void write_channel_mode(BitWriter& w, const TocSubstream& s) {
+    const int ch_mode = s.ch_mode;
     if (ch_mode == 0) {
         w.write(1, 0b0, "channel_mode");
     } else if (ch_mode == 1) {
         w.write(2, 0b10, "channel_mode");
     } else if (ch_mode <= 4) {
         w.write(4, 0b1100U + static_cast<unsigned>(ch_mode - 2), "channel_mode");
-    } else {
+    } else if (ch_mode <= 10) {
         w.write(7, 0b1111000U + static_cast<unsigned>(ch_mode - 5), "channel_mode");
+    } else {
+        w.write(8, 0b11111100U + static_cast<unsigned>(ch_mode - 11), "channel_mode");
+        w.write(1, s.b_4_back_channels_present ? 1U : 0U, "b_4_back_channels_present");
+        w.write(1, s.b_centre_present ? 1U : 0U, "b_centre_present");
+        w.write(2, static_cast<std::uint64_t>(s.top_channels_present), "top_channels_present");
     }
 }
 
@@ -122,12 +128,12 @@ void write_substream_group_info(BitWriter& w, const TocLayout& layout, const Toc
     }
     w.write(1, 1, "b_channel_coded");
     for (const TocSubstream& s : g.substreams) {
-        write_channel_mode(w, s.ch_mode);
+        write_channel_mode(w, s);
         if (layout.fs_index == 1) {
             w.write(1, 0, "b_sf_multiplier");
         }
         w.write(1, 0, "b_bitrate_info");
-        if (s.ch_mode >= 7) {
+        if (s.ch_mode >= 7 && s.ch_mode <= 10) {
             w.write(1, s.add_ch_base ? 1U : 0U, "add_ch_base");
         }
         // frame_rate_factor is 1.
@@ -205,7 +211,8 @@ void write_substream_index_table(BitWriter& w, std::span<const std::size_t> size
             return false;
         }
         for (const TocSubstream& s : g.substreams) {
-            if (s.ch_mode < 0 || s.ch_mode > 10 || s.substream_index < 0 ||
+            if (s.ch_mode < 0 || s.ch_mode > 12 || s.top_channels_present < 0 ||
+                s.top_channels_present > 3 || s.substream_index < 0 ||
                 static_cast<std::size_t>(s.substream_index) >= count) {
                 return false;
             }

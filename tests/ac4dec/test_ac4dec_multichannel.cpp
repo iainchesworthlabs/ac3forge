@@ -1,7 +1,8 @@
 // Multichannel processing (src/ac4dec/src/pcm/multichannel.*) against the
 // entries ETSI TS 103 190-1 V1.4.1 prints for it, and the routing of a
 // channel element's tracks to channels (pcm/routing.*) against Tables 180,
-// 182, 183, 212 and 213.
+// 182, 183, 212 and 213, and the immersive element's against ETSI TS 103
+// 190-2 V1.3.1 Tables 19, 20 and 8.
 //
 // Tables 178 and 179 are held as printed, entry by entry, in
 // ac4dec_printed_matrices.hpp, a transcription separate from the
@@ -211,7 +212,25 @@ TEST_CASE("the channel modes' speakers, in the order decode() writes them", "[ac
     CHECK(list(mode::k7_1_322) == std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre, Speaker::kLfe,
                                               Speaker::kLeftSurround, Speaker::kRightSurround,
                                               Speaker::kTopFrontLeft, Speaker::kTopFrontRight});
-    CHECK(list(mode::k7_1_4).empty());
+    // Part 2: 7.X.4's twelve in full decoding, its 5.X.2 core in core
+    // decoding; the Part 1 modes alike in both.
+    CHECK(list(mode::k7_1_4) ==
+          std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre, Speaker::kLfe,
+                      Speaker::kLeftSurround, Speaker::kRightSurround, Speaker::kLeftBack,
+                      Speaker::kRightBack, Speaker::kTopFrontLeft, Speaker::kTopFrontRight,
+                      Speaker::kTopBackLeft, Speaker::kTopBackRight});
+    CHECK(list(mode::k7_0_4).size() == 11);
+    const auto core = [](int ch_mode) {
+        const auto s = speakers_of(ch_mode, ac4::DecodingMode::kCore);
+        return std::vector<Speaker>(s.begin(), s.end());
+    };
+    CHECK(core(mode::k7_0_4) == std::vector{Speaker::kLeft, Speaker::kRight, Speaker::kCentre,
+                                            Speaker::kLeftSurround, Speaker::kRightSurround,
+                                            Speaker::kTopSideLeft, Speaker::kTopSideRight});
+    CHECK(core(mode::k7_1_4).size() == 8);
+    CHECK(core(mode::k7_1_322) == list(mode::k7_1_322));
+    CHECK(list(mode::k9_1_4).empty());
+    CHECK(list(mode::k22_2).empty());
 }
 
 TEST_CASE("Table 180 routes the 5.X element's tracks", "[ac4dec][multichannel]") {
@@ -333,6 +352,174 @@ TEST_CASE("Table 182 routes the 7.X element's tracks, and Table 183 pairs its la
     }
 }
 
+TEST_CASE("Part 2 Table 19 routes the immersive element's tracks, with step 4 and Table 20",
+          "[ac4dec][multichannel]") {
+    namespace immersive = ac4::detail::immersive_mode;
+    using S = Speaker;
+    SubstreamContext ctx;
+    ctx.ch_mode = ac4::detail::ch_mode::k7_1_4;
+    ElementRoute route;
+    // An element of `tracks` tracks and `pairs` two_channel_data() without
+    // stereo processing, in `mode`.
+    const auto immersive_element = [](int mode, int tracks, int pairs, bool lfe) {
+        ChannelElement element = element_of(ElementKind::kImmersive, tracks, lfe);
+        element.codec_mode = mode;
+        element.b_enable_mdct_stereo_proc.assign(static_cast<std::size_t>(pairs), false);
+        return element;
+    };
+    SECTION("SCPL, core_5ch_grouping 0 and 2ch_mode 0, with step 4's parameters") {
+        // LFE, [A,B], [D,E], C, [F,G], [H,I], [J,K]; two chparam_info() for
+        // step 4 and four for Table 20.
+        ChannelElement element = immersive_element(immersive::kScpl, 12, 5, true);
+        element.core_5ch_grouping = 0;
+        element.two_ch_mode = false;
+        element.b_use_sap_add_ch = true;
+        element.chparams.resize(6);
+        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        CHECK(destinations(route) == std::vector{S::kLfe, S::kLeft, S::kRight, S::kLeftSurround,
+                                                 S::kRightSurround, S::kCentre, S::kTopFrontLeft,
+                                                 S::kTopFrontRight, S::kLeftBack, S::kRightBack,
+                                                 S::kTopBackLeft, S::kTopBackRight});
+        CHECK(route.silent.empty());
+        REQUIRE(route.steps.size() == 6);
+        // Step 4: (D, F) and (E, G), framed as D and E.
+        CHECK((route.steps[0].first == S::kLeftSurround &&
+               route.steps[0].second == S::kTopFrontLeft));
+        CHECK((route.steps[1].first == S::kRightSurround &&
+               route.steps[1].second == S::kTopFrontRight));
+        CHECK((route.steps[0].chparam == 0 && route.steps[1].chparam == 1));
+        CHECK_FALSE(route.steps[0].prediction);
+        CHECK(route.steps[1].framing == S::kRightSurround);
+        // Table 20: H, I, J and K from D, E, F and G, after the tracks.
+        const std::array<std::array<S, 2>, 4> predicted = {{{S::kLeftSurround, S::kLeftBack},
+                                                            {S::kRightSurround, S::kRightBack},
+                                                            {S::kTopFrontLeft, S::kTopBackLeft},
+                                                            {S::kTopFrontRight, S::kTopBackRight}}};
+        for (std::size_t j = 0; j < 4; ++j) {
+            CAPTURE(j);
+            const auto& step = route.steps[2 + j];
+            CHECK(step.prediction);
+            CHECK(step.first == predicted[j][0]);
+            CHECK(step.second == predicted[j][1]);
+            CHECK(step.framing == predicted[j][0]);
+            CHECK(step.chparam == 2 + static_cast<int>(j));
+        }
+
+        // Core decoding: F and G are the core's Tsl and Tsr, H to K are read
+        // and not decoded, and Table 20 is left out.
+        REQUIRE(ac4::detail::route_element(ctx, element, route, ac4::DecodingMode::kCore));
+        REQUIRE(route.data.size() == 7);
+        CHECK(route.data[4].outputs[0] == S::kTopSideLeft);
+        CHECK(route.data[4].outputs[1] == S::kTopSideRight);
+        CHECK_FALSE(route.data[4].discarded);
+        CHECK(route.data[5].discarded);
+        CHECK(route.data[6].discarded);
+        REQUIRE(route.steps.size() == 2);
+        CHECK(route.steps[0].second == S::kTopSideLeft);
+        CHECK(route.steps[1].second == S::kTopSideRight);
+    }
+    SECTION("ASPX_SCPL, core_5ch_grouping 0 and 2ch_mode 1") {
+        ChannelElement element = immersive_element(immersive::kAspxScpl, 12, 5, true);
+        element.core_5ch_grouping = 0;
+        element.two_ch_mode = true;
+        element.b_use_sap_add_ch = false;
+        element.b_enable_mdct_stereo_proc[2] = true;  // [F,G]'s chparam_info() after the core's
+        element.chparams.resize(1 + 4);
+        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        // [A,D] and [B,E].
+        CHECK(destinations(route) == std::vector{S::kLfe, S::kLeft, S::kLeftSurround, S::kRight,
+                                                 S::kRightSurround, S::kCentre, S::kTopFrontLeft,
+                                                 S::kTopFrontRight, S::kLeftBack, S::kRightBack,
+                                                 S::kTopBackLeft, S::kTopBackRight});
+        CHECK((route.data[4].processed && route.data[4].first_chparam == 0));
+        REQUIRE(route.steps.size() == 4);
+        CHECK((route.steps[0].prediction && route.steps[0].chparam == 1));
+    }
+    SECTION("core_5ch_grouping 1, 2 and 3") {
+        ctx.ch_mode = ac4::detail::ch_mode::k7_0_4;
+        ChannelElement three = immersive_element(immersive::kAspxAcpl1, 11, 4, false);
+        three.core_5ch_grouping = 1;
+        three.chel_matsel = {3};
+        three.b_use_sap_add_ch = false;
+        three.chparams.resize(2 + 4);
+        REQUIRE(ac4::detail::route_element(ctx, three, route));
+        CHECK(destinations(route) == std::vector{S::kLeft, S::kRight, S::kCentre, S::kLeftSurround,
+                                                 S::kRightSurround, S::kTopFrontLeft,
+                                                 S::kTopFrontRight, S::kLeftBack, S::kRightBack,
+                                                 S::kTopBackLeft, S::kTopBackRight});
+        CHECK(route.data[0].chel_matsel == 3);
+        CHECK(route.steps.front().chparam == 2);
+
+        ChannelElement four = immersive_element(immersive::kScpl, 11, 3, false);
+        four.core_5ch_grouping = 2;
+        four.b_use_sap_add_ch = false;
+        four.chparams.resize(4 + 4);
+        REQUIRE(ac4::detail::route_element(ctx, four, route));
+        CHECK(destinations(route) == std::vector{S::kLeft, S::kRight, S::kLeftSurround,
+                                                 S::kRightSurround, S::kCentre, S::kTopFrontLeft,
+                                                 S::kTopFrontRight, S::kLeftBack, S::kRightBack,
+                                                 S::kTopBackLeft, S::kTopBackRight});
+
+        ChannelElement five = immersive_element(immersive::kScpl, 11, 3, false);
+        five.core_5ch_grouping = 3;
+        five.chel_matsel = {0};
+        five.b_use_sap_add_ch = true;
+        five.chparams.resize(5 + 2 + 4);
+        REQUIRE(ac4::detail::route_element(ctx, five, route));
+        CHECK(destinations(route) == std::vector{S::kLeft, S::kRight, S::kCentre, S::kLeftSurround,
+                                                 S::kRightSurround, S::kTopFrontLeft,
+                                                 S::kTopFrontRight, S::kLeftBack, S::kRightBack,
+                                                 S::kTopBackLeft, S::kTopBackRight});
+        CHECK(route.steps[0].chparam == 5);
+        CHECK(route.steps[2].chparam == 7);
+    }
+    SECTION("ASPX_ACPL_2 and ASPX_AJCC leave silent what A-CPL and A-JCC make") {
+        ChannelElement acpl = immersive_element(immersive::kAspxAcpl2, 8, 3, true);
+        acpl.core_5ch_grouping = 0;
+        acpl.two_ch_mode = false;
+        acpl.b_use_sap_add_ch = true;
+        acpl.chparams.resize(2);
+        REQUIRE(ac4::detail::route_element(ctx, acpl, route));
+        CHECK(route.silent ==
+              std::vector{S::kLeftBack, S::kRightBack, S::kTopBackLeft, S::kTopBackRight});
+        // Step 4 in ASPX_ACPL_2 too (ERRATA.md, "ASPX_ACPL_2 and step 4").
+        CHECK(route.steps.size() == 2);
+        REQUIRE(ac4::detail::route_element(ctx, acpl, route, ac4::DecodingMode::kCore));
+        CHECK(route.silent.empty());
+
+        ChannelElement ajcc = immersive_element(immersive::kAspxAjcc, 6, 2, true);
+        ajcc.core_5ch_grouping = 0;
+        ajcc.two_ch_mode = false;
+        REQUIRE(ac4::detail::route_element(ctx, ajcc, route));
+        CHECK(destinations(route) == std::vector{S::kLfe, S::kLeft, S::kRight, S::kLeftSurround,
+                                                 S::kRightSurround, S::kCentre});
+        CHECK(route.silent == std::vector{S::kLeftBack, S::kRightBack, S::kTopFrontLeft,
+                                          S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight});
+        REQUIRE(ac4::detail::route_element(ctx, ajcc, route, ac4::DecodingMode::kCore));
+        CHECK(route.silent == std::vector{S::kTopSideLeft, S::kTopSideRight});
+        CHECK(route.steps.empty());
+    }
+    SECTION("an element whose parts do not add up is refused") {
+        ChannelElement element = immersive_element(immersive::kScpl, 12, 5, true);
+        element.core_5ch_grouping = 0;
+        element.two_ch_mode = false;
+        element.b_use_sap_add_ch = false;
+        element.chparams.resize(4);
+        REQUIRE(ac4::detail::route_element(ctx, element, route));
+        element.chparams.resize(3);  // Table 20's four
+        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        element.chparams.resize(4);
+        element.two_ch_mode.reset();  // grouping 0 reads 2ch_mode
+        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        element.two_ch_mode = false;
+        element.b_use_sap_add_ch.reset();  // 7CH_STATIC reads b_use_sap_add_ch
+        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+        element.b_use_sap_add_ch = false;
+        ctx.ch_mode = ac4::detail::ch_mode::k7_0_4;  // an LFE track where the mode has none
+        CHECK_FALSE(ac4::detail::route_element(ctx, element, route));
+    }
+}
+
 TEST_CASE("Tables 212 and 213 name the channels companding and A-SPX process", "[ac4dec][multichannel]") {
     namespace mode = ac4::detail::ch_mode;
     using ac4::detail::aspx_units;
@@ -388,4 +575,64 @@ TEST_CASE("Tables 212 and 213 name the channels companding and A-SPX process", "
     REQUIRE(seven_acpl.size() == 3);
     CHECK(seven_acpl[1].speakers[0] == Speaker::kLeftSurround);
     CHECK(seven_acpl[2].speakers[0] == Speaker::kCentre);
+}
+
+TEST_CASE("Part 2 Table 8 names the channels A-SPX processes in the immersive element",
+          "[ac4dec][multichannel]") {
+    namespace mode = ac4::detail::ch_mode;
+    namespace immersive = ac4::detail::immersive_mode;
+    using ac4::detail::aspx_units;
+    using ac4::detail::companded_speakers;
+    using S = Speaker;
+    constexpr auto kCore = ac4::DecodingMode::kCore;
+    CHECK(aspx_units(mode::k7_1_4, immersive::kScpl).empty());
+    CHECK(companded_speakers(mode::k7_1_4, immersive::kAspxScpl).empty());
+    // Only ASPX_AJCC sends companding_control(), for L, R, C, Ls and Rs.
+    CHECK(companded_speakers(mode::k7_0_4, immersive::kAspxAjcc) ==
+          std::vector{S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround});
+
+    // ASPX_SCPL: (Ls, Lb), (Rs, Rb), C, (L, R), (Tfl, Tbl), (Tfr, Tbr); in
+    // core decoding [Ls], [Rs], C, (L, R), [Tsl] and [Tsr].
+    const auto full = aspx_units(mode::k7_1_4, immersive::kAspxScpl);
+    REQUIRE(full.size() == 6);
+    const std::array<std::array<S, 2>, 6> kFull = {{{S::kLeftSurround, S::kLeftBack},
+                                                    {S::kRightSurround, S::kRightBack},
+                                                    {S::kCentre, S::kCentre},
+                                                    {S::kLeft, S::kRight},
+                                                    {S::kTopFrontLeft, S::kTopBackLeft},
+                                                    {S::kTopFrontRight, S::kTopBackRight}}};
+    const std::array<int, 6> kIndex = {0, 1, 0, 2, 3, 4};
+    for (std::size_t u = 0; u < full.size(); ++u) {
+        CAPTURE(u);
+        CHECK(full[u].speakers[0] == kFull[u][0]);
+        CHECK(full[u].pair == (u != 2));
+        if (full[u].pair) {
+            CHECK(full[u].speakers[1] == kFull[u][1]);
+        }
+        CHECK(full[u].index == kIndex[u]);
+        CHECK_FALSE(full[u].first_only);
+    }
+    const auto core = aspx_units(mode::k7_1_4, immersive::kAspxScpl, kCore);
+    REQUIRE(core.size() == 6);
+    CHECK((core[0].first_only && core[1].first_only && !core[2].first_only && !core[3].first_only &&
+           core[4].first_only && core[5].first_only));
+    CHECK(core[4].speakers[0] == S::kTopSideLeft);
+    CHECK(core[5].speakers[0] == S::kTopSideRight);
+
+    // ASPX_ACPL_1 and 2: (A'', B''), (D'', E''), (F'', G''), C'', in both.
+    for (const int codec : {immersive::kAspxAcpl1, immersive::kAspxAcpl2}) {
+        CAPTURE(codec);
+        const auto acpl = aspx_units(mode::k7_0_4, codec);
+        REQUIRE(acpl.size() == 4);
+        CHECK(acpl[0].speakers == std::array{S::kLeft, S::kRight});
+        CHECK(acpl[1].speakers == std::array{S::kLeftSurround, S::kRightSurround});
+        CHECK(acpl[2].speakers == std::array{S::kTopFrontLeft, S::kTopFrontRight});
+        CHECK((!acpl[3].pair && acpl[3].speakers[0] == S::kCentre));
+        CHECK(aspx_units(mode::k7_0_4, codec, kCore)[2].speakers ==
+              std::array{S::kTopSideLeft, S::kTopSideRight});
+    }
+    // ASPX_AJCC: (A'', B''), (D'', E''), C''.
+    const auto ajcc = aspx_units(mode::k7_1_4, immersive::kAspxAjcc);
+    REQUIRE(ajcc.size() == 3);
+    CHECK((!ajcc[2].pair && ajcc[2].speakers[0] == S::kCentre));
 }

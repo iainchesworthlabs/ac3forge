@@ -33,22 +33,27 @@
 // companding, A-SPX and A-CPL (Part 1 clauses 5.1, 5.3, 5.5, 5.6 and 5.7),
 // and at every frame_rate_index but 13 the sample rate converter from the
 // internal rate to 48 kHz (clause 6.2.15), its phase locked to
-// sequence_counter (Part 2 clause 5.11). It decodes the presentation a
-// system chooses (Part 2 clause 4.8.2) with all its substreams: music and
-// effects with dialogue, main audio with associated audio, both, and a main
-// substream with the dialogue enhancement substream the hybrid dialogue
-// enhancement methods take (Part 1 clauses 5.7.8.9 and 6.2.16, Part 2
-// clauses 4.8.3.17 to 4.8.4). The table of contents and the substream framing
-// come from ac4::parse_raw_frame (the inspector, src/ac4); this library starts
-// where the inspector stops.
+// sequence_counter (Part 2 clause 5.11). It decodes the immersive element of
+// the 7.X.4 channel modes (Part 2 clause 6.2.4) in every codec mode, in full or
+// core decoding (DecodingMode), with Part 2's stereo and multichannel
+// processing, S-CPL, A-SPX, A-CPL and A-JCC (clauses 5.2 to 5.6), and renders
+// it by Part 2's channel renderer (clause 5.10.2, DownmixTarget). It decodes
+// the presentation a system chooses (Part 2 clause 4.8.2) with all its
+// substreams: music and effects with dialogue, main audio with associated
+// audio, both, and a main substream with the dialogue enhancement substream
+// the hybrid dialogue enhancement methods take (Part 1 clauses 5.7.8.9 and
+// 6.2.16, Part 2 clauses 4.8.3.17 to 4.8.4). The table of contents and the
+// substream framing come from ac4::parse_raw_frame (the inspector, src/ac4);
+// this library starts where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
-// spectral frontend (Part 1 clause 5.2), immersive and 22.2 channel elements,
-// object substreams, and a 96/192 kHz substream whose HSF extension
-// substream could not be resolved and read alongside it. Refusing is per
-// substream and per frame; the next frame is attempted afresh. decode()
-// refuses, the same way, everything above that it does not turn into PCM
-// yet: 96/192 kHz.
+// spectral frontend (Part 1 clause 5.2), the 9.X.4 channel modes (Part 2's
+// immersive element with b_5fronts) and the 22.2 channel element, object
+// substreams, and a 96/192 kHz substream whose HSF extension substream could
+// not be resolved and read alongside it. Refusing is per substream and per
+// frame; the next frame is attempted afresh. decode() refuses, the same way,
+// everything above that it does not turn into PCM yet: 96/192 kHz, which it
+// reads.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
@@ -76,18 +81,33 @@ enum class DecodeError : std::uint8_t {
 //
 // What decode() does to the decoded channels as a system configures it:
 // dialogue enhancement (Part 1 clause 5.7.8), then the output level and
-// dynamic range control (5.7.9), then the downmix (6.2.17).
+// dynamic range control (5.7.9), then the downmix (6.2.17), or for the
+// immersive element Part 2's channel renderer (Part 2 clause 5.10.2).
 
-// The layout decode() renders the decoded channels to (Part 1 clause 6.2.17).
+// The layout decode() renders the decoded channels to (Part 1 clause 6.2.17;
+// Part 2 clause 5.10.2 for the immersive element). The .X is the stream's LFE,
+// where it has one.
 enum class DownmixTarget : std::uint8_t {
-    kAsCoded,  // the channels as coded
-    k5X,       // a 7.X element's channels folded to 5.X (Table 219)
+    // The channels as coded: for the immersive element, the layout its source
+    // had (b_4_back_channels_present and top_channels_present), and in core
+    // decoding its 5.X.2 core, 5.X.0 where the source has no top channels.
+    kAsCoded,
+    k5X,  // a 7.X element's channels folded to 5.X (Table 219); 5.X.0 for the immersive element
     // Two channels, Lo/Ro or Lt/Rt as the stream's preferred_dmx_method says,
     // Lo/Ro where it says neither.
     kStereo,
     kLoRo,
     kLtRt,  // in its Pro Logic II form where the stream prefers that
     kMono,  // L + R of the stereo downmix
+    // The immersive element's other layouts (Part 2 Tables 38 to 42; core
+    // decoding has 5.X.2 and 5.X.0 alone, Table 44, and takes the one of those
+    // with the target's top channels or without). The other elements come out
+    // as coded.
+    k7X4,
+    k7X2,
+    k7X0,
+    k5X4,
+    k5X2,
 };
 
 [[nodiscard]] AC4DEC_EXPORT std::string_view describe(DownmixTarget target);
@@ -226,11 +246,28 @@ struct Concealment {
     ConcealmentAction action = ConcealmentAction::kMute;
 };
 
+// --- Decoding modes ----------------------------------------------------------
+//
+// Part 2 clause 4.7: full decoding, in which A-CPL and A-JCC reconstruct every
+// channel an immersive element codes, or core decoding, which gives the
+// element's core, 5.X.2, with those tools replaced or reduced, for
+// low-complexity platforms, and renders it to 5.X.2 or 5.X.0 alone (Part 2
+// Table 44). The Part 1 channel elements have no core (Part 2
+// Table 71) and decode alike in both (src/ac4dec/ERRATA.md, "Core decoding of
+// the Part 1 elements").
+enum class DecodingMode : std::uint8_t {
+    kFull,
+    kCore,
+};
+
+[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DecodingMode mode);
+
 struct DecoderConfig {
     // Null by default, at the cost of one branch per syntax element read.
     SyntaxSink syntax{};
     OutputConfig output{};
     ConcealmentPolicy concealment = ConcealmentPolicy::kNone;
+    DecodingMode decoding = DecodingMode::kFull;
     // Which presentation decode() decodes (select_presentation()).
     PresentationChoice presentation{};
     // The md_compat level the decoder claims: presentations above it are not
@@ -257,9 +294,9 @@ struct FrameReport {
 
 // --- Decoding to PCM ---------------------------------------------------------
 //
-// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names:
-// those of the channel modes of Part 1 Table 88. Later versions add the
-// immersive layouts'.
+// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names
+// and Part 2 clause A.3's: those of the channel modes of Part 1 Table 88, and
+// the immersive layouts' (Part 2 Table A.27).
 enum class Speaker : std::uint8_t {
     kLeft,
     kRight,
@@ -267,12 +304,16 @@ enum class Speaker : std::uint8_t {
     kLfe,            // Low-Frequency Effects
     kLeftSurround,   // Left Side/Surround, Ls: a side speaker in the 7.X modes
     kRightSurround,  // Right Side/Surround, Rs
-    kLeftBack,       // Lb, in 7.X 3/4/0
+    kLeftBack,       // Lb, in 7.X 3/4/0 and 7.X.4
     kRightBack,      // Rb
     kLeftWide,       // Lw, in 7.X 5/2/0
     kRightWide,      // Rw
-    kTopFrontLeft,   // Tfl, in 7.X 3/2/2
+    kTopFrontLeft,   // Tfl, in 7.X 3/2/2 and the X.4 layouts
     kTopFrontRight,  // Tfr
+    kTopBackLeft,    // Tbl, in the X.4 layouts
+    kTopBackRight,   // Tbr
+    kTopSideLeft,    // Tsl, the top pair of the X.2 layouts: 5.X.2, the core layout
+    kTopSideRight,   // Tsr
 };
 
 [[nodiscard]] AC4DEC_EXPORT std::string_view describe(Speaker speaker);
@@ -289,7 +330,8 @@ struct DecodedFrame {
     std::size_t presentation = 0;
     std::optional<int> presentation_id;
     // One per channel, in the order of `channels`: L, R, C, the LFE, Ls, Rs,
-    // then a 7.X mode's last pair, each where the channel mode has it.
+    // then a 7.X mode's last pair, or an immersive layout's Lb and Rb and then
+    // Tfl, Tfr, Tbl and Tbr, or Tsl and Tsr, each where the layout has it.
     std::vector<Speaker> speakers;
     // Planar PCM, one vector per channel, all the same length, at full scale
     // 1.0: a frame's worth, which at 29.97, 59.94 and 119.88 fps alternates

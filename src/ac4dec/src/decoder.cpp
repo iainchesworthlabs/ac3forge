@@ -68,6 +68,24 @@ std::string_view describe(Speaker speaker) {
             return "Tfl";
         case Speaker::kTopFrontRight:
             return "Tfr";
+        case Speaker::kTopBackLeft:
+            return "Tbl";
+        case Speaker::kTopBackRight:
+            return "Tbr";
+        case Speaker::kTopSideLeft:
+            return "Tsl";
+        case Speaker::kTopSideRight:
+            return "Tsr";
+    }
+    return "?";
+}
+
+std::string_view describe(DecodingMode mode) {
+    switch (mode) {
+        case DecodingMode::kFull:
+            return "full";
+        case DecodingMode::kCore:
+            return "core";
     }
     return "?";
 }
@@ -86,6 +104,16 @@ std::string_view describe(DownmixTarget target) {
             return "Lt/Rt";
         case DownmixTarget::kMono:
             return "mono";
+        case DownmixTarget::k7X4:
+            return "7.X.4";
+        case DownmixTarget::k7X2:
+            return "7.X.2";
+        case DownmixTarget::k7X0:
+            return "7.X.0";
+        case DownmixTarget::k5X4:
+            return "5.X.4";
+        case DownmixTarget::k5X2:
+            return "5.X.2";
     }
     return "?";
 }
@@ -606,7 +634,8 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::Impl::conceal_o
                                .output = config.output,
                                .drc = {},
                                .de = {},
-                               .downmix = {}};
+                               .downmix = {},
+                               .decoding = config.decoding};
     // The presentation's other substreams are concealed the same way, as far
     // as the QMF domain, and mixed in as the last good frame mixed them.
     detail::FrameInputs member_inputs = inputs;
@@ -847,7 +876,10 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
                                .converter_phase = phase,
                                .new_source = d.new_source,
                                .output = d.config.output,
-                               .drc = {}};
+                               .drc = {},
+                               .de = {},
+                               .downmix = {},
+                               .decoding = d.config.decoding};
     std::optional<double> dialnorm;
     const detail::DrcState* drc_state = nullptr;
     const detail::DrcFrame* drc_frame = nullptr;
@@ -887,6 +919,7 @@ std::expected<std::optional<DecodedFrame>, DecodeError> Decoder::decode(std::spa
                                           .output = d.config.output,
                                           .drc = {}};
         member_inputs.de = detail::de_frame_values(member.content.metadata.dialog_enhancement);
+        member_inputs.decoding = d.config.decoding;
         member_inputs.qmf_only = true;
         detail::SubstreamPcm& pcm = d.pcm[member.state_key];
         if (const detail::ParseResult decoded =

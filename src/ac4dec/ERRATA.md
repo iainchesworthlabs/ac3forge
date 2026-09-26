@@ -12,8 +12,9 @@ reading. The evidence for a reading is one of:
 - **Streams**: encoded streams reach the syntax. Both transcriptions read every frame of the 107 local
   census streams (50,728 frames of DEE 6.5.4 output), of the committed streams, and of the public
   channel-based streams from DASH-IF, CTA WAVE and Chromium (6,670 frames from other Dolby encoders) to
-  the end of every substream, apart from the refused 5.1.4 audio, with every size check holding, and
-  their traces agree.
+  the end of every substream, with every size check holding, and their traces agree. Since phase D9
+  that includes the 5.1.4 audio of the gold set's 22 legs and the census's 12 5.1.4 encodes (10,866
+  frames).
 - **Text**: no stream here reaches the syntax. Both transcriptions take the reading, and their traces
   agree where the differential check (see the end of this page) reaches it, which shows they read it
   alike; whether the reading is the intended one rests on the text.
@@ -357,6 +358,40 @@ Later phases add the readings their processing needs.
   against: F and G against D and E (Ls and Rs) for 3/4/0, and against A and B (L and R) for 5/2/0 and
   3/2/2. `add_ch_base` plays no part here; Table 183 does not use it.
 - **Evidence:** Text. As above, the two transcriptions had first differed.
+
+## The immersive element
+
+Part 2's immersive_channel_element (6.2.4.1), which codes the 7.X.4 channel modes, and A-JCC's
+ajcc_data() (6.2.6). The 9.X.4 modes pass the element b_5fronts 1 (6.2.3.1) and are refused by name,
+as the 22.2 element is. DEE codes 5.1.4 as 7.1.4 with the back pair absent, in ASPX_ACPL_2 from 192
+to 448 kbps, ASPX_SCPL at 512 and SCPL at 768, always with core_5ch_grouping 0, 2ch_mode 0 and
+b_use_sap_add_ch 0; the constructed streams of `tests/ac4dec/ac4dec_constructed.cpp` reach the rest.
+
+### immersive_codec_mode_code in the trace
+
+- **Where:** Part 2 6.3.5.1 and Table 73, p. 174: one bit, and after a 0 two more; Table 73 lists the
+  codes 0b000 to 0b011 and 0b1.
+- **Reading:** one record for the code, of 1 or 3 bits, valued at the bits read: 1 for ASPX_AJCC, 0 to
+  3 for SCPL to ASPX_ACPL_2, as `aspx_int_class` records its code.
+- **Evidence:** Streams, for the three modes DEE writes.
+
+### The framing of the immersive element's chparam_info()
+
+- **Where:** Part 2 6.2.4.1, pp. 128 and 129: two `chparam_info()` after `b_use_sap_add_ch`, before the
+  `two_channel_data()` that carries F and G; and in SCPL, ASPX_SCPL and ASPX_ACPL_1 four more after the
+  two `two_channel_data()` that carry H to K. `chparam_info()` needs `num_window_groups` and
+  `get_max_sfb()` (Part 1 Table 47), and nothing names the `sf_info()` it takes them from.
+- **Reading:** each follows the framing of the track the step it parameterises codes the other against,
+  as the 7_X element's do ("b_use_sap_add_ch: the framing of its chparam_info()"): the first two are
+  5.2.3.2 step 4's, which codes F and G against D and E, and take D's and E's; the four are Table 20's
+  a'_0 to a'_3, which predict H, I, J and K from D', E', F' and G', and take D's, E's, F's and G's. Table
+  19 places D and E among the core's tracks by `core_5ch_grouping` and `2ch_mode`, counted from the first
+  track after the LFE's.
+- **Why:** each step is a two-track matrix, `(D'', H'') = [[1, 0], [a', 1]] (D', H')` for Table 20's, whose
+  first input is the track the other is coded against, as in Part 1's Table 183; reading it under the
+  first input's framing gives the parameters for every band that input carries.
+- **Evidence:** Text. DEE's ASPX_SCPL and SCPL streams parse alike, with identical digests, under this
+  reading and under the other (the framing of H to K): their tracks share one framing in every frame.
 
 ## A-SPX
 
@@ -1079,6 +1114,161 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
   it becomes `float`: no stream DEE writes comes near, and every value the decoder computes stays finite.
 - **Evidence:** Text; `fuzz_ac4_decode`.
 
+## Immersive decoding
+
+The readings phase D9 takes to decode the immersive element (Part 2 clauses 5.2 to 5.5), in full and in
+core decoding (4.7). They are the decoder's alone, as under "Reconstruction". The evidence is DEE's
+5.1.4 legs, scored against their sources (`tools/checks/score_ac4_decode.py`): in SCPL and ASPX_SCPL
+every one of the ten tones comes out on its own channel to 0.02 dB (the LFE's 0.26 dB is DEE's
+low-pass), and in core decoding at the core's gains; the constructed streams of
+`tests/ac4dec/ac4dec_constructed.cpp` reach the groupings, steps and modes DEE does not write. librempeg,
+the one other decoder here, does not decode the element: its L, R and C come out 6 to 9 dB down, its
+surrounds 12 to 15 dB down, all four top tones in its Lb at -15 dB, and its top channels silent, so no
+reading below rests on it.
+
+### Table 19's track numbers are labels
+
+- **Where:** Part 2 Table 19, p. 60: each row gives an element's input tracks as `[i]`, "Tracks Oi" by NOTE
+  1, and its outputs. For `core_5ch_grouping` 0 and 2 the numbers do not follow the order the syntax reads
+  the elements in: the `mono_data()` read third is `[6]`, and the two-channel elements after it `[4,5]`,
+  `[7,8]` and `[9,10]`.
+- **Reading:** the numbers are names. Each element's outputs go to the signals its row gives, in the order
+  the syntax reads the elements, as step 1's reference to Part 1 5.3.3 makes them: grouping 0 with
+  `2ch_mode` 0 gives [A, B], [D, E], C, [F, G], [H, I], [J, K]; `2ch_mode` 1 [A, D] and [B, E] first.
+- **Evidence:** Streams, for grouping 0 with `2ch_mode` 0, DEE's only one; Text for the rest.
+
+### The EXAMPLE after Table 19
+
+- **Where:** Part 2 5.2.3.2, p. 60: "Let core_5ch_grouping = 1. Processing the first two_channel_data
+  element ... produces outputs O0,O1. The outputs are assigned to tracks E, D."
+- **Reading:** Table 19's row: in grouping 1 the first `two_channel_data()`, read after
+  `three_channel_data()`, gives [3,4], D and E in that order. The example contradicts the row twice, in
+  the outputs' numbers and in their order.
+- **Evidence:** Text.
+
+### Step 4's NOTE 2 names F' for H'
+
+- **Where:** Part 2 5.2.3.2, NOTE 2, p. 60: "Only the signals D, E, F, and G are modified in this step; all
+  others are passed through into A' through C' and F' through M'."
+- **Reading:** H' through M': F' and G' are two of the four the step modifies.
+- **Evidence:** Text.
+
+### Table 20's prediction gains
+
+- **Where:** Part 2 5.2.3.2 step 5, p. 60: "If the sap_mode = full SAP, the parameters a'j shall be
+  extracted from n_elem chparam_info elements ... Otherwise, the parameters a'j shall be set to 0." Nothing
+  says how a gain is extracted from a `chparam_info()`, which carries a 2 x 2 matrix per band (Part 1
+  5.3.2).
+- **Reading:** a'_j is Pseudocode 59's `sap_gain`, alpha_q times 0.1, band by band: in the bands whose
+  `sap_coeff_used` is set when `sap_mode` is 3 (full SAP), and 0 in the other bands and for every other
+  `sap_mode`, M/S included. Table 20 then applies H'' = H' + a'_0 D' band by band as a 2 x 2 step (1, 0,
+  a'_0, 1) under the framing of D ("The framing of the immersive element's chparam_info()"), and alike for
+  I, J and K.
+- **Why:** full SAP's matrix is Part 1's prediction of the second channel from the first, (1 + g, 1; 1 - g,
+  -1); its gain is the one value per band the step can take.
+- **Evidence:** Text. DEE sends these four `chparam_info()` with `sap_mode` 0 in every frame.
+
+### ASPX_ACPL_2 and step 4
+
+- **Where:** Part 2 5.2.3.3, p. 61, assigns A to G to A' to G' and silences H' to K', with no step 4; the
+  syntax (6.2.4.1) reads `b_use_sap_add_ch` and step 4's two `chparam_info()` in every 7CH_STATIC mode,
+  ASPX_ACPL_2 among them.
+- **Reading:** where ASPX_ACPL_2 sends step 4's parameters, the step applies as in 5.2.3.2: D, E, F and G
+  come out of it before A-CPL takes D'' to G''.
+- **Why:** the parameters describe how F and G were coded against D and E; A' to G' without the step would
+  be the coded tracks, not the channels' signals.
+- **Evidence:** Text. DEE sets `b_use_sap_add_ch` 0 in ASPX_ACPL_2.
+
+### Which channel holds which intermediate signal
+
+- **Where:** Part 2 5.2.2.2 and NOTE 3 after step 6, p. 60: the tool's outputs A'' to K'' "are not assigned
+  to dedicated channels until they have passed either one of the coupling tools (S-CPL/A-CPL) or the A-JCC
+  tool"; Table 8, p. 46, names the A-SPX inputs by channel in ASPX_SCPL and as A'' to G'' otherwise.
+- **Reading:** A'' is held in L, B'' in R, C'' in C, D'' in Ls, E'' in Rs, F'' in Tfl, G'' in Tfr, H'' in
+  Lb, I'' in Rb, J'' in Tbl and K'' in Tbr, the channel each becomes: S-CPL's Table 23 makes (Ls, Lb) of D''
+  and H'' and alike, Table 25 gives A-CPL's modules (Ls, Lb), (Rs, Rb), (Tfl, Tbl) and (Tfr, Tbr) from x5,
+  x6, x9 and x10, and core decoding's Table 24 makes L to Tfr of A'' to G''.
+- **Evidence:** Streams: DEE's legs decode each tone to its own channel in all three of its modes.
+
+### S-CPL on the inverse transform's own frame
+
+- **Where:** Part 2 5.3.1, p. 63: S-CPL "operates in the time domain, processing the output of the IMDCT";
+  Part 1 5.6 then aligns that output by `d_pcm` samples before the QMF analysis.
+- **Reading:** S-CPL takes each frame's inverse transform output with that frame's codec mode, before the
+  frame alignment. Within a codec mode the order makes no difference; where the mode changes at an I-frame,
+  each frame's samples take their own frame's gains. A concealed frame takes the last decoded frame's.
+- **Evidence:** Text.
+
+### The core's top pair is Tsl and Tsr
+
+- **Where:** Part 2 Table 24, p. 64, names S-CPL's core outputs L, R, C, Ls, Rs, Tfl and Tfr; A-JCC's core
+  outputs (5.6.3.5.3, p. 77) end with Tsl and Tsr; Tables 45 and 46, p. 108, render a 7.X.X input's core
+  from r12,12 and r13,13, the indices of Tsl and Tsr (5.10.2.2).
+- **Reading:** core decoding's top pair is Tsl and Tsr in every mode, F'' and G'' times the mode's gain:
+  the core is a 5.X.2 layout (Table 71), whose top pair is the side pair (Table A.27), and each of its two
+  channels carries the sum of a front and a back top channel.
+- **Evidence:** Streams: DEE's legs in core decoding put the Tfl and Tbl tones in the first of the pair,
+  3 dB down, as Table 45's +3 dB expects.
+
+### Core decoding's A-SPX on the first channel of a pair
+
+- **Where:** Part 2 Table 8, p. 46, NOTE 6: in core decoding in ASPX_SCPL, "Channels in square brackets are
+  processed with the first of two channels of one aspx_data_2ch() element": [Ls], [Rs], [Tfl], [Tfr].
+- **Reading:** each such `aspx_data_2ch()` is decoded whole: its second channel's envelopes are decoded
+  into state kept for it, since the next frame's differences along time and `aspx_balance`'s level and
+  balance need them, with a silent low band, and its output is not used. The first channel's output is the
+  core channel's, which the A-SPX post-processing (5.4) and the gain of 2 (4.8.3.11.2) then take.
+- **Evidence:** Streams: DEE's ASPX_SCPL leg in core decoding.
+
+### A-JCC's interpolation takes each module's own framing
+
+- **Where:** Part 2 Pseudocode 6, p. 70, reads `ajcc_interpolation_type` and `ajcc_param_timeslot`
+  without saying whose; `ajcc_data()` (6.2.6.1) sends an `ajcc_framing_data()` for each side, `ajcc_nps_l`
+  and `ajcc_nps_r`, and Pseudocodes 8 and 12 pass `num_pset_1` and `num_pset_2` from them.
+- **Reading:** the left module (`ajcc_module_2()` or `_4()` for L) interpolates with the left framing's
+  type, parameter sets and time slots, the right module with the right's, as A-CPL's modules each take
+  their own `acpl_data_1ch()`'s ("Each module interpolates with its own acpl_data_1ch()").
+- **Evidence:** Text; the constructed A-JCC streams, whose framings agree.
+
+### A-JCC's coefficients interpolate from their own ajcc_param_prev
+
+- **Where:** Part 2 Pseudocodes 6 and 7, pp. 70 and 71: `ajcc_param_prev[sb]` holds "the dequantized
+  A-JCC parameters from the previous AC-4 frame related to the provided ajcc_param[pset][pb] array", and
+  Pseudocodes 11 and 14 interpolate their d and w arrays, built from the parameters, not the parameters.
+- **Reading:** each of a module's coefficient arrays (d0 to d9 and w0 to w14 in full decoding, d0 to d5
+  and w0 to w5 in core) keeps its own `ajcc_param_prev`, its last set's values, 0 before the first frame.
+  Within one `ajcc_core_mode` this is the same as interpolating the parameters; where the core mode
+  changes, each coefficient ramps from what it was, alongside Pseudocode 9's crossfade.
+- **Evidence:** Text.
+
+### A-JCC values outside their range
+
+- **Where:** Part 2 5.6.3.2, p. 69: alpha and beta dequantise by Part 1 Tables 203 to 206, which end at
+  their quantised values' range; dry and wet by a step, for any value.
+- **Reading:** a frame whose differential decoding takes an alpha or beta outside its table, or a dry or
+  wet outside its F0 codebook's range (0 to 22 fine and 0 to 11 coarse for dry, 0 to 40 and 0 to 20 for
+  wet), is refused as invalid, as A-CPL's are ("Values outside the dequantisation tables").
+- **Evidence:** Text; `fuzz_ac4_decode`.
+
+### ajcc_core_mode_prev before the first frame
+
+- **Where:** Part 2 Pseudocode 9, p. 74: "The helper variable ajcc_core_mode_prev shall be initialized
+  to ajcc_core_mode."
+- **Reading:** it takes the `ajcc_core_mode` of the first frame A-JCC applies to, so that frame's
+  pre-modification takes no ramp; after a change of codec mode, which starts A-JCC afresh ("A change of
+  codec mode"), it takes the next frame's again.
+- **Evidence:** Text.
+
+### Core decoding of the Part 1 elements
+
+- **Where:** Part 2 4.8.3.1, p. 41: in core decoding, for A-CPL "gain factors shall be applied instead";
+  4.8.3.14, p. 48, gives the factor, 2, for the immersive element alone, and says the decoder "shall
+  utilize the A-CPL tool" of Part 1 for the other elements. Table 71, p. 171, gives no core channel mode for
+  the Part 1 channel modes.
+- **Reading:** core decoding changes only the immersive element; the Part 1 elements decode as in full
+  decoding, A-CPL included.
+- **Evidence:** Text.
+
 ## Output processing
 
 What the QMF domain's matrices go through before synthesis, dialogue enhancement (Part 1 5.7.8), the
@@ -1450,6 +1640,94 @@ it, whose substreams carry a tone each (`tests/ac4dec/test_ac4dec_presentations.
   takes the main group's gain and the scaling of associated audio.
 - **Evidence:** Text; the three methods measure to 0.01 dB against the main and the waveform decoded
   alone, in both transcriptions.
+## The channel renderer
+
+The readings phase D9 takes to render the immersive element by Part 2's channel renderer (5.10.2), which
+takes its place in the downmix stage: Tables 38 to 43 in full decoding and 45 and 46 in core decoding,
+with the custom downmix parameters (6.2.9.2, 6.3.10.3) and the loudness corrections (4.8.5.3). The
+decoder takes them in `src/ac4dec/src/pcm/renderer.cpp` and `downmix.cpp`, and
+`tools/checks/gain_ac4_decode.py` takes them again in the matrices it holds DEE's 5.1.4 legs to.
+
+### The renderer's input channel configuration
+
+- **Where:** Part 2 5.10.2.2 and 5.10.2.4, pp. 102 and 103: the input channel configuration is the one
+  `pres_ch_mode` or `ch_mode` indicates, and the element's modes are 7.X.4 (and 9.X.4); Tables 38 to 43 give
+  rows for 7.X.2, 5.X.4 and 5.X.2 inputs, which no channel mode names. 6.3.2.7.1, p. 159, says the three
+  presence flags signal "whether some of the channels as signalled by channel_mode are actually present in
+  the original content", and 6.2.9.2 derives `bs_ch_config`, which custom downmix data depend on, from
+  them.
+- **Reading:** the input configuration is the channel mode narrowed by the presence flags: 7.X with
+  `b_4_back_channels_present`, 5.X without; .4 with `top_channels_present` 3, .2 with 1 or 2, .0 with 0.
+  The channels it leaves out are silenced, as 5.10.2.2 says of input signals the input channel mode lacks,
+  and decode()'s as-coded output is that configuration. Core decoding's Tables 45 and 46 read the flags
+  themselves. `b_centre_present` 0 leaves C in, silent.
+- **Evidence:** Text. DEE's 5.1.4 legs send `b_4_back_channels_present` 0 and come out as 5.1.4.
+
+### Where a .2 source's top pair is carried
+
+- **Where:** Part 2 Table 59, p. 161: with `top_channels_present` 1, "Original content of Tsl, Tsr is
+  carried in Tfl, Tfr"; with 2, "carried in Tbr, Tbl".
+- **Reading:** Tsl in Tbl and Tsr in Tbr, left in left as with 1: the printed order lists the pair and
+  does not pair it crosswise.
+- **Evidence:** Text. No stream here sends `top_channels_present` 1 or 2 but the constructed ones.
+
+### Custom downmix data
+
+- **Where:** Part 2 6.2.9.2, p. 151: every presentation substream sends `custom_dmx_data()`, with or
+  without data (`b_cdmx_data_present`); 6.3.10.3.10, p. 208: a parameter "not transmitted for a certain
+  out_ch_config" takes Table 130's default, except that "For the downmix from bs_ch_config = 1 to
+  out_ch_config = 4 the same tool_t4_to_t2() parameters as for the downmix to out_ch_config = 1 shall be
+  used, if transmitted". Nothing says how long data a frame sends hold.
+- **Reading:** the data a frame sends hold until a frame sends others, as the mix gains and the loudness
+  corrections do (Part 1 6.2.17.0, Part 2 4.8.5.3), and each sending replaces them whole: a parameter it
+  does not send for an `out_ch_config`, or an `out_ch_config` it does not send, takes Table 130's default.
+  The exception holds where `out_ch_config` 4 sends no `gain_t1_code` and `out_ch_config` 1 does. The
+  gains are in dB, 10^(dB/20), code 7 silence.
+- **Why:** DEE sends custom downmix data in I-frames alone, 12 of a leg's 237 frames; the defaults between
+  them would move the render's gains at every I-frame.
+- **Evidence:** Streams: G1's 23 5.1.4 height legs (`out_ch_config` 0, `gain_t2a_code` to
+  `gain_t2e_code` from 0 dB to silence) render to 5.1 and to two channels at the gains they send, in
+  every frame, in full and core decoding (`tools/checks/gain_ac4_decode.py --gold ... --g1`).
+
+### The loudness correction of a render
+
+- **Where:** Part 2 4.8.5.3, p. 52: "When downmixing is done in the decoder, the loudness shall be adjusted
+  using the output channel-specific loudness correction factor from the loud_corr element that relates to
+  the selected downmix"; `loud_corr()` (6.2.9.1) sends one per output configuration, and the core's.
+- **Reading:** a render takes its output configuration's correction (`loud_corr_7_X`, `_7_X_2`,
+  `_5_X_4`, `_5_X_2`, `_5_X`) where it downmixes, its output narrower or lower than the input
+  configuration, and none where it does not: as coded, or to a configuration as wide and as high or more.
+  Core decoding takes `loud_corr_core_5_X_2` and `loud_corr_core_5_X` on the same terms against the source's
+  configuration. A correction of 31 is 0 dB.
+- **Evidence:** Text. DEE's legs send no correction for an immersive output (`b_corr_for_immersive_out`
+  0).
+
+### The renderer's two-channel output
+
+- **Where:** Part 2 Table 34, p. 104, and Table 44, p. 107, render to 5.X.0 at the narrowest; Part 1
+  6.2.17 downmixes 5.X to two channels by Table 218; `loud_corr()` sends `loro_dmx_loud_corr` and
+  `ltrt_dmx_loud_corr`, and the core's `loud_corr_core_loro` and `_ltrt`.
+- **Reading:** to two channels, or one, the renderer goes to 5.X.0 (Table 43, or 46 in core decoding),
+  and Part 1's step 2 follows with the stream's stereo coefficients and the Lo/Ro or Lt/Rt correction
+  alone, the core's in core decoding: the correction that "relates to the selected downmix" is the stereo
+  one, and `loud_corr_5_X` would count the fold to 5.X.0 twice.
+- **Evidence:** Text; DEE's legs in both modes (`tests/ac4dec/test_ac4dec_pcm.cpp`).
+
+### Core decoding's layouts
+
+- **Where:** Part 2 Table 44, p. 107: core decoding renders to 5.X.2 and 5.X.0 alone.
+- **Reading:** a layout asked for with top channels comes out as 5.X.2, one without as 5.X.0; as coded,
+  5.X.2, or 5.X.0 where the source has no top channels.
+- **Evidence:** Text.
+
+### DRC's groups in core decoding
+
+- **Where:** Part 2 4.8.3.16, p. 49: "For core decoding mode the decoder should discard gain values which
+  are assigned to channels that are not present in the core channel configuration"; Table 69, p. 170,
+  groups 7.X.4's channels and has no group for Tsl and Tsr.
+- **Reading:** Tsl and Tsr take group 4's gains, those of the tops they carry; the gains of Lb, Rb and the
+  four tops go with channels the core does not have, and Ls and Rs keep group 3's.
+- **Evidence:** Text.
 
 ## Tables
 

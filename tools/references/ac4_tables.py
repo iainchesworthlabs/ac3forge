@@ -5,8 +5,10 @@ Sources: ETSI TS 103 190-1 V1.4.1
 Annex A (Huffman codebooks: LEN/CW arrays from the ts_10319001v010401p0.zip
 table attachment, codebook parameters and Tables A.14/A.15 from the Annex A
 text), Annex B (Tables B.1-B.7 for 44.1/48, 96 and 192 kHz, B.8-B.19, parsed
-from the text and checked) and hand-transcribed clause 4/5 tables. Plain Python
-data.
+from the text and checked) and hand-transcribed clause 4/5 tables; ETSI TS
+103 190-2 V1.3.1 Annex A.1.2 (the A-JCC codebooks: LEN/CW arrays from the
+ts_10319002v010301p0.zip attachment, parameters from the text) and its Table
+83. Plain Python data.
 """
 
 # name -> {"cb_off", "cb_mod", "cb_mod2", "cb_mod3", "len": [...], "cw": [...]}
@@ -1064,6 +1066,181 @@ HUFFMAN_CODEBOOKS = {
             0x2ba, 0x2b9, 0x2b8,
         ],
     },
+    'AJCC_HCB_DRY_COARSE_F0': {
+        "cb_off": 0, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            9, 7, 6, 2, 2, 2, 3, 4, 5, 8, 10, 10,
+        ],
+        "cw": [
+            0x33, 0xd, 0x7, 0x1, 0x3, 0x2, 0x1, 0x0, 0x2,
+            0x18, 0x64, 0x65,
+        ],
+    },
+    'AJCC_HCB_DRY_FINE_F0': {
+        "cb_off": 0, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            10, 11, 9, 8, 8, 7, 3, 4, 3, 3, 3, 3, 4, 4, 4, 5, 4, 7, 9, 10,
+            12, 12, 10,
+        ],
+        "cw": [
+            0x168, 0x2d2, 0xb5, 0x5f, 0x5b, 0x2c, 0x0, 0x2, 0x7,
+            0x3, 0x5, 0x4, 0x3, 0x4, 0xc, 0xa, 0xd, 0x2e,
+            0xbd, 0x178, 0x5a6, 0x5a7, 0x179,
+        ],
+    },
+    'AJCC_HCB_DRY_COARSE_DF': {
+        "cb_off": 11, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            19, 17, 16, 14, 14, 13, 10, 8, 6, 4, 3, 1, 2, 5, 7, 9, 11, 13, 14, 16,
+            16, 18, 19,
+        ],
+        "cw": [
+            0x554fa, 0x1553f, 0xaa9e, 0x2aa6, 0x2aa4, 0x1550, 0x2ab, 0xab, 0x2b,
+            0xb, 0x4, 0x0, 0x3, 0x14, 0x54, 0x154, 0x555, 0x1551,
+            0x2aa5, 0xaa9c, 0xaa9d, 0x2aa7c, 0x554fb,
+        ],
+    },
+    'AJCC_HCB_DRY_FINE_DF': {
+        "cb_off": 22, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            20, 20, 19, 18, 17, 17, 16, 15, 15, 14, 13, 13, 12, 11, 10, 9, 8, 7, 6, 5,
+            4, 3, 1, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 14, 14, 15, 16, 16, 18, 18,
+            17, 18, 19, 20, 20,
+        ],
+        "cw": [
+            0x6015a, 0x6015b, 0x30039, 0x18057, 0xc4a8, 0xc02a, 0x6006, 0x312b, 0x300b,
+            0x1894, 0xc4b, 0xc03, 0x624, 0x301, 0x181, 0xc1, 0x61, 0x38,
+            0x19, 0xd, 0x5, 0x1, 0x1, 0x0, 0x4, 0xf, 0x1d,
+            0x39, 0x63, 0xc5, 0x188, 0x313, 0xc01, 0x1800, 0x1804, 0x3002,
+            0x6014, 0x6255, 0x1801d, 0x18952, 0xc00f, 0x18953, 0x30038, 0x60158, 0x60159,
+        ],
+    },
+    'AJCC_HCB_DRY_COARSE_DT': {
+        "cb_off": 11, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            16, 17, 17, 15, 14, 13, 11, 8, 7, 5, 2, 1, 3, 4, 6, 9, 10, 13, 14, 15,
+            17, 16, 17,
+        ],
+        "cw": [
+            0xaaa7, 0x1554c, 0x15575, 0x555c, 0x2aaf, 0x1556, 0x554, 0xab, 0x54,
+            0x14, 0x3, 0x0, 0x4, 0xb, 0x2b, 0x154, 0x2ab, 0x1555,
+            0x2aa8, 0x5552, 0x1554d, 0xaabb, 0x15574,
+        ],
+    },
+    'AJCC_HCB_DRY_FINE_DT': {
+        "cb_off": 22, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            19, 20, 19, 21, 20, 19, 19, 18, 18, 17, 17, 16, 13, 12, 11, 10, 9, 8, 7, 6,
+            5, 2, 1, 3, 5, 6, 7, 8, 9, 10, 11, 12, 12, 15, 16, 17, 18, 18, 18, 19,
+            19, 20, 19, 21, 19,
+        ],
+        "cw": [
+            0x58042, 0xb00c7, 0x5805e, 0x16018c, 0xb0092, 0x58043, 0x5805f, 0x2c025, 0x2c026,
+            0x16019, 0x16011, 0xb00a, 0x1600, 0xb01, 0x582, 0x2c2, 0x163, 0xb3,
+            0x5f, 0x2d, 0x14, 0x3, 0x0, 0x4, 0x15, 0x2e, 0x5e,
+            0xb2, 0x162, 0x2c3, 0x583, 0xb02, 0xb03, 0x5807, 0xb00d, 0x16016,
+            0x2c020, 0x2c030, 0x2c027, 0x58048, 0x5805c, 0xb0093, 0x5805d, 0x16018d, 0x58062,
+        ],
+    },
+    'AJCC_HCB_WET_COARSE_F0': {
+        "cb_off": 0, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            12, 16, 16, 15, 14, 13, 12, 10, 6, 4, 1, 3, 3, 3, 5, 7, 8, 10, 11, 12,
+            11,
+        ],
+        "cw": [
+            0x2af, 0x2ae4, 0x2ae5, 0x1573, 0xab8, 0x55d, 0x2aa, 0xa9, 0xb,
+            0x3, 0x1, 0x0, 0x2, 0x3, 0x4, 0x14, 0x2b, 0xa8,
+            0x156, 0x2ab, 0x154,
+        ],
+    },
+    'AJCC_HCB_WET_FINE_F0': {
+        "cb_off": 0, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            12, 15, 16, 17, 17, 15, 15, 15, 14, 15, 13, 13, 13, 11, 10, 9, 7, 6, 5, 4,
+            2, 3, 3, 4, 4, 4, 4, 4, 5, 6, 7, 8, 9, 9, 10, 11, 11, 12, 12, 13,
+            10,
+        ],
+        "cw": [
+            0xe37, 0x712a, 0xe359, 0x1c6b0, 0x1c6b1, 0x71ad, 0x712b, 0x7128, 0x38d7,
+            0x7129, 0x1c6a, 0x1c48, 0x1c49, 0x71f, 0x38c, 0x108, 0x43, 0x20,
+            0x11, 0x6, 0x0, 0x5, 0x6, 0x4, 0x5, 0x7, 0x9,
+            0xf, 0x1d, 0x39, 0x70, 0x85, 0x109, 0x1c5, 0x388, 0x713,
+            0x71e, 0xe34, 0xe36, 0x1c4b, 0x38e,
+        ],
+    },
+    'AJCC_HCB_WET_COARSE_DF': {
+        "cb_off": 20, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            18, 19, 19, 19, 19, 19, 19, 19, 19, 17, 14, 12, 11, 10, 10, 9, 8, 7, 4, 2,
+            1, 3, 5, 7, 8, 10, 10, 11, 12, 12, 13, 19, 19, 18, 18, 18, 18, 18, 18, 18,
+            18,
+        ],
+        "cw": [
+            0x2bdd5, 0x57ba8, 0x57ba9, 0x57ba2, 0x57ba3, 0x57ba0, 0x57ba1, 0x57ba6, 0x57ba7,
+            0x15eeb, 0x2bdc, 0xac5, 0x57a, 0x2bf, 0x2bc, 0x159, 0xad, 0x54,
+            0xb, 0x3, 0x0, 0x4, 0x14, 0x55, 0xae, 0x2b0, 0x2be,
+            0x563, 0xac4, 0xaf6, 0x15ef, 0x57ba4, 0x57ba5, 0x2bdda, 0x2bddb, 0x2bdd8,
+            0x2bdd9, 0x2bdde, 0x2bddf, 0x2bddc, 0x2bddd,
+        ],
+    },
+    'AJCC_HCB_WET_FINE_DF': {
+        "cb_off": 40, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 18, 19,
+            16, 14, 14, 13, 13, 12, 12, 12, 12, 11, 11, 10, 10, 9, 8, 7, 6, 5, 4, 3,
+            1, 3, 4, 5, 6, 8, 8, 9, 10, 11, 11, 12, 12, 12, 12, 13, 13, 13, 14, 14,
+            15, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 20,
+            20,
+        ],
+        "cw": [
+            0x715d6, 0x715d7, 0x715d4, 0x715d5, 0x7ff2a, 0x7ff2b, 0x7ff28, 0x7ff29, 0x7ff2e,
+            0x7ff2f, 0x7ff2c, 0x7ff2d, 0x7ff22, 0x7ff23, 0x7ff20, 0x7ff21, 0x7ff26, 0x7ff27,
+            0x38ae9, 0x715d0, 0xe2bb, 0x38af, 0x386c, 0x1c54, 0x1c37, 0xffd, 0xe29,
+            0xe1a, 0xe19, 0x7fd, 0x709, 0x38b, 0x385, 0x1c4, 0xe3, 0x7e,
+            0x39, 0x1d, 0xc, 0x4, 0x0, 0x5, 0xd, 0x1e, 0x3e,
+            0xe0, 0xfe, 0x1fe, 0x387, 0x708, 0x7fc, 0xe18, 0xe28, 0xffc,
+            0xfff, 0x1c55, 0x1c56, 0x1ffd, 0x386d, 0x3ff8, 0x715c, 0x7ff24, 0x7ff25,
+            0x7ff3a, 0x7ff3b, 0x7ff38, 0x7ff39, 0x7ff3e, 0x7ff3f, 0x7ff3c, 0x7ff3d, 0x7ff32,
+            0x7ff33, 0x7ff30, 0x7ff31, 0x7ff36, 0x7ff37, 0x7ff34, 0x7ff35, 0xe2ba2, 0xe2ba3,
+        ],
+    },
+    'AJCC_HCB_WET_COARSE_DT': {
+        "cb_off": 20, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 15, 14, 13, 13, 11, 10, 9, 6, 4, 3,
+            1, 2, 5, 7, 9, 10, 11, 12, 13, 14, 14, 17, 17, 17, 17, 17, 17, 17, 17, 17,
+            17,
+        ],
+        "cw": [
+            0x157ea, 0x157eb, 0x157e8, 0x157e9, 0x157ee, 0x157ef, 0x157ec, 0x157ed, 0x157e2,
+            0x157e3, 0x55fd, 0x2ae2, 0x1572, 0x1570, 0x55e, 0x2ad, 0x154, 0x2b,
+            0xb, 0x4, 0x0, 0x3, 0x14, 0x54, 0x155, 0x2ac, 0x55d,
+            0xabe, 0x1573, 0x2ae3, 0x2aff, 0x157e0, 0x157e1, 0x157e6, 0x157e7, 0x157e4,
+            0x157e5, 0x157f2, 0x157f3, 0x157f0, 0x157f1,
+        ],
+    },
+    'AJCC_HCB_WET_FINE_DT': {
+        "cb_off": 40, "cb_mod": None, "cb_mod2": None, "cb_mod3": None,
+        "len": [
+            19, 20, 20, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19,
+            19, 18, 16, 16, 16, 16, 15, 15, 14, 13, 13, 12, 11, 10, 9, 8, 7, 6, 5, 3,
+            1, 2, 5, 6, 7, 8, 9, 11, 11, 12, 13, 13, 14, 14, 15, 16, 15, 17, 17, 18,
+            17, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19, 19,
+            19,
+        ],
+        "cw": [
+            0x5e213, 0xbc424, 0xbc425, 0x5e7a2, 0x5e7a3, 0x5e7a0, 0x5e7a1, 0x5e7a6, 0x5e7a7,
+            0x5e7a4, 0x5e7a5, 0x5e74a, 0x5e74b, 0x5e748, 0x5e749, 0x5e74e, 0x5e74f, 0x5e74c,
+            0x5e74d, 0x5e742, 0x5e743, 0x2f3aa, 0xbcf5, 0xbc43, 0xbc47, 0xbc41, 0x5e26,
+            0x5e22, 0x2f3b, 0x179c, 0x1784, 0xbc3, 0x5e3, 0x2f2, 0x17e, 0xbe,
+            0x5c, 0x2c, 0x14, 0x4, 0x0, 0x3, 0x15, 0x2d, 0x5d,
+            0xbd, 0x17f, 0x5e0, 0x5e6, 0xbc5, 0x1785, 0x179f, 0x2f12, 0x2f3c,
+            0x5e27, 0xbc46, 0x5e7b, 0x17880, 0x17885, 0x2f108, 0x17881, 0x5e740, 0x5e741,
+            0x5e746, 0x5e747, 0x5e744, 0x5e745, 0x5e75a, 0x5e75b, 0x5e758, 0x5e759, 0x5e75e,
+            0x5e75f, 0x5e75c, 0x5e75d, 0x5e752, 0x5e753, 0x5e750, 0x5e751, 0x5e756, 0x5e757,
+        ],
+    },
 }
 
 # Kraft sums (numerator, denominator); (1, 1) means the codebook is complete.
@@ -1126,7 +1303,19 @@ HUFFMAN_KRAFT = {'ASF_HCB_SCALEFAC': (1, 1),
                  'DE_HCB_DIFF_0': (1, 1),
                  'DE_HCB_ABS_1': (1, 1),
                  'DE_HCB_DIFF_1': (1, 1),
-                 'DRC_HCB': (1, 1)}
+                 'DRC_HCB': (1, 1),
+                 'AJCC_HCB_DRY_COARSE_F0': (1, 1),
+                 'AJCC_HCB_DRY_FINE_F0': (1, 1),
+                 'AJCC_HCB_DRY_COARSE_DF': (1, 1),
+                 'AJCC_HCB_DRY_FINE_DF': (1, 1),
+                 'AJCC_HCB_DRY_COARSE_DT': (1, 1),
+                 'AJCC_HCB_DRY_FINE_DT': (1, 1),
+                 'AJCC_HCB_WET_COARSE_F0': (1, 1),
+                 'AJCC_HCB_WET_FINE_F0': (1, 1),
+                 'AJCC_HCB_WET_COARSE_DF': (1, 1),
+                 'AJCC_HCB_WET_FINE_DF': (1, 1),
+                 'AJCC_HCB_WET_COARSE_DT': (1, 1),
+                 'AJCC_HCB_WET_FINE_DT': (1, 1)}
 
 # Table A.14 CB_DIM and Table A.15 UNSIGNED_CB, codebook number 1..11
 CB_DIM = {1: 4, 2: 4, 3: 4, 4: 4, 5: 2, 6: 2, 7: 2, 8: 2, 9: 2, 10: 2, 11: 2}
@@ -1636,3 +1825,6 @@ TAB_BORDER = {6: {1: (0, 6), 2: (0, 3, 6), 4: (0, 2, 3, 4, 6)},
               12: {1: (0, 12), 2: (0, 6, 12), 4: (0, 3, 6, 9, 12)},
               15: {1: (0, 15), 2: (0, 8, 15), 4: (0, 4, 8, 12, 15)},
               16: {1: (0, 16), 2: (0, 8, 16), 4: (0, 4, 8, 12, 16)}}
+
+# Part 2 Table 83: ajcc_num_param_bands_id -> ajcc_num_bands_table
+AJCC_NUM_BANDS = {0: 15, 1: 12, 2: 9, 3: 7}

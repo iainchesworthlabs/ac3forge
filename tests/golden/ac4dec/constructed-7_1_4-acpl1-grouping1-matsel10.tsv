@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/7_1_4-acpl1-grouping1-matsel10.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	16	26	0xfb3f10d7
+0	1	audio	5051	35742	0x98a50bb4
+1	0	presentation	16	26	0xfb3f10d7
+1	1	audio	5016	36014	0x16215afb
+2	0	presentation	16	26	0xfb3f10d7
+2	1	audio	5037	36910	0x16d68312
+3	0	presentation	16	26	0xfb3f10d7
+3	1	audio	5041	36294	0x5ca0e1cd

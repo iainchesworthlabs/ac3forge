@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/7_0_4-aspx_scpl-grouping3-matsel4.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	16	26	0xfb3f10d7
+0	1	audio	4802	33422	0xc0836720
+1	0	presentation	16	26	0xfb3f10d7
+1	1	audio	4797	33598	0x23a864e7
+2	0	presentation	16	26	0xfb3f10d7
+2	1	audio	4822	34350	0x09062604
+3	0	presentation	16	26	0xfb3f10d7
+3	1	audio	4799	33414	0x71cb1677

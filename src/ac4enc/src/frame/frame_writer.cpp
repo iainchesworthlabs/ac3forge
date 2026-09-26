@@ -38,7 +38,10 @@ constexpr int kAudioSubstream = 1;
     group.substreams.push_back(TocSubstream{.ch_mode = f.ch_mode,
                                             .add_ch_base = f.add_ch_base,
                                             .iframe = f.iframe,
-                                            .substream_index = kAudioSubstream});
+                                            .substream_index = kAudioSubstream,
+                                            .b_4_back_channels_present = f.b_4_back_channels_present,
+                                            .b_centre_present = f.b_centre_present,
+                                            .top_channels_present = f.top_channels_present});
     group.content_classifier = 0;
     layout.groups.push_back(group);
     return layout;
@@ -55,9 +58,26 @@ void write_toc(BitWriter& w, const FrameFields& f, std::size_t payload_base, std
     return toc_bytes(toc_layout(f), payload_base, sizes);
 }
 
-// Part 1 Table 88's channel modes with an LFE: 5.1 and the three 7.1s.
+// Part 1 Table 88's channel modes with an LFE: 5.1 and the three 7.1s; and
+// Part 2 Table 56's 7.1.4.
 [[nodiscard]] bool has_lfe(int ch_mode) noexcept {
-    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10;
+    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10 || ch_mode == 12;
+}
+
+// The presentation's channels for custom_dmx_data() and loud_corr(): one
+// substream's, with Part 2 Table 71's core for the 7.X.4 modes and Table 72's
+// top pairs from top_channels_present.
+[[nodiscard]] PresentationChannels presentation_channels(const FrameFields& f) noexcept {
+    PresentationChannels p;
+    p.ch_mode = f.ch_mode;
+    p.lfe = has_lfe(f.ch_mode);
+    if (f.ch_mode == 11 || f.ch_mode == 12) {
+        p.ch_mode_core = f.ch_mode == 11 ? 5 : 6;
+        p.back = f.b_4_back_channels_present;
+        p.top_channel_pairs =
+            f.top_channels_present == 3 ? 2 : (f.top_channels_present == 0 ? 0 : 1);
+    }
+    return p;
 }
 
 // A size field of `bits` bits, and variable_bits(3) for what is above them
@@ -95,8 +115,8 @@ void write_presentation_substream(BitWriter& w, const FrameFields& f) {
     write_drc_frame(drc, m != nullptr && m->drc ? &*m->drc : nullptr, f.iframe, f.drc_gains);
     write_sized(w, drc, 5, "drc_metadata_size_value", "drc_metadata_size");
     write_presentation_mix(w, PresentationMixCodes{});  // one group, no associated audio
-    write_downmix(w, f.ch_mode, has_lfe(f.ch_mode),
-                  m != nullptr && m->downmix ? &*m->downmix : nullptr, f.iframe);
+    write_downmix(w, presentation_channels(f), m != nullptr && m->downmix ? &*m->downmix : nullptr,
+                  f.iframe);
     w.align();
 }
 

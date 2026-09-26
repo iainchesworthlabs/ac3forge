@@ -38,6 +38,16 @@ The writer takes the decoder's reading of each of these:
   the A-CPL writer (`src/ac4enc/src/acpl/acpl_syntax.hpp`, phase D5's, for the constructed streams and
   for E4) sends each parameter set from `acpl_param_band`, its first value along frequency from the F0
   codebook, as Table 65 reads it.
+- The immersive element (phase D9's, for the constructed 7.X.4 streams): the frame writer's 7.X.4 channel
+  modes with their presence flags, and the A-JCC writer (`src/ac4enc/src/ajcc/ajcc_syntax.hpp`), take
+  [The framing of the immersive element's chparam_info()](../ac4dec/ERRATA.md#the-framing-of-the-immersive-elements-chparam_info)
+  and [immersive_codec_mode_code in the trace](../ac4dec/ERRATA.md#immersive_codec_mode_code-in-the-trace);
+  `custom_dmx_data()` sends no custom downmix data and `loud_corr()` no correction for the immersive
+  outputs.
+- The channel renderer (phase D9's): the frame writer's `top_channels_present` takes
+  [Where a .2 source's top pair is carried](../ac4dec/ERRATA.md#where-a-2-sources-top-pair-is-carried), and
+  a writer that sends custom downmix data in I-frames alone, as DEE does, relies on
+  [Custom downmix data](../ac4dec/ERRATA.md#custom-downmix-data) to hold them between.
 
 ## The QMF domain
 

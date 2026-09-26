@@ -1,5 +1,5 @@
 {
-  "baseline_version": 4,
+  "baseline_version": 5,
   "dee_version": "This tool belongs to the Dolby Encoding Engine version 6.5.4-dme+b56bc97e",
   "legs": {
     "ac4-stereo-64": {
@@ -316,8 +316,7 @@
       "de_parameters": false,
       "advanced_de_data": false,
       "input_format": "cbi_wav",
-      "immersive_codec_mode": "ASPX_ACPL_2",
-      "digest": false
+      "immersive_codec_mode": "ASPX_ACPL_2"
     },
     "ac4-514-tones-512": {
       "encoder": "dee_ac4_encoder",
@@ -341,8 +340,7 @@
       "de_parameters": false,
       "advanced_de_data": false,
       "input_format": "cbi_wav",
-      "immersive_codec_mode": "ASPX_SCPL",
-      "digest": false
+      "immersive_codec_mode": "ASPX_SCPL"
     },
     "ac4-514-tones-768": {
       "encoder": "dee_ac4_encoder",
@@ -366,8 +364,7 @@
       "de_parameters": false,
       "advanced_de_data": false,
       "input_format": "cbi_wav",
-      "immersive_codec_mode": "SCPL",
-      "digest": false
+      "immersive_codec_mode": "SCPL"
     }
   }
 }

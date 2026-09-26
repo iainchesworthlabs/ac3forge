@@ -172,7 +172,8 @@ ParseResult apply_additional_pair(const SubstreamContext& ctx, const AsfPsyInfo&
                                   std::span<double> other_lines) {
     if (!std::ranges::equal(base_lengths, other_lengths)) {
         return fail(DecodeError::kInvalidStream,
-                    "the 7.X element's additional channels are transformed unlike the channels they pair with");
+                    "a step between channel data elements whose channels are transformed unlike "
+                    "each other");
     }
     std::size_t window_start = 0;
     std::size_t window = 0;

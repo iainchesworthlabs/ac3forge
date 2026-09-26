@@ -24,6 +24,20 @@ constexpr std::array k70_322 = {S::kLeft,          S::kRight,        S::kCentre,
                                 S::kRightSurround, S::kTopFrontLeft, S::kTopFrontRight};
 constexpr std::array k71_322 = {S::kLeft,         S::kRight,         S::kCentre,       S::kLfe,
                                 S::kLeftSurround, S::kRightSurround, S::kTopFrontLeft, S::kTopFrontRight};
+// The 7.X.4 modes, in full decoding and in core decoding (5.X.2).
+constexpr std::array k704 = {S::kLeft,          S::kRight,       S::kCentre,      S::kLeftSurround,
+                             S::kRightSurround, S::kLeftBack,    S::kRightBack,   S::kTopFrontLeft,
+                             S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight};
+constexpr std::array k714 = {S::kLeft,          S::kRight,        S::kCentre,
+                             S::kLfe,           S::kLeftSurround, S::kRightSurround,
+                             S::kLeftBack,      S::kRightBack,    S::kTopFrontLeft,
+                             S::kTopFrontRight, S::kTopBackLeft,  S::kTopBackRight};
+constexpr std::array k704_core = {S::kLeft,         S::kRight,         S::kCentre,
+                                  S::kLeftSurround, S::kRightSurround, S::kTopSideLeft,
+                                  S::kTopSideRight};
+constexpr std::array k714_core = {S::kLeft,        S::kRight,        S::kCentre,
+                                  S::kLfe,         S::kLeftSurround, S::kRightSurround,
+                                  S::kTopSideLeft, S::kTopSideRight};
 
 // A 7.X mode's last pair, which Table 182 calls F and G.
 [[nodiscard]] std::array<Speaker, 2> last_pair(int ch_mode) noexcept {
@@ -53,7 +67,8 @@ class Walker {
     void lfe() { add(1, {S::kLfe}, false, 0, 0); }
     void mono(Speaker speaker) { add(1, {speaker}, false, 0, 0); }
 
-    void pair(Speaker o0, Speaker o1) {
+    // `discarded`: tracks read and not decoded (DataElementRoute::discarded).
+    void pair(Speaker o0, Speaker o1, bool discarded = false) {
         bool processed = false;
         if (pair_ < element_.b_enable_mdct_stereo_proc.size()) {
             processed = element_.b_enable_mdct_stereo_proc[pair_];
@@ -62,6 +77,7 @@ class Walker {
         }
         ++pair_;
         add(2, {o0, o1}, processed, processed ? 1 : 0, 0);
+        out_.data.back().discarded = discarded;
     }
 
     void three(Speaker o0, Speaker o1, Speaker o2) { add(3, {o0, o1, o2}, true, 2, next_matsel()); }
@@ -137,9 +153,111 @@ class Walker {
     bool short_ = false;
 };
 
+// Part 2 clauses 5.2.3.2 to 5.2.3.4: the immersive element's tracks to the
+// intermediate signals by Table 19, held in the channels routing.hpp's header
+// comment gives them, with step 4's and Table 20's steps.
+ParseResult route_immersive(const SubstreamContext& ctx, const ChannelElement& element,
+                            DecodingMode decoding, ElementRoute& out) {
+    Walker walk(element, out);
+    const bool core = decoding == DecodingMode::kCore;
+    const int mode = element.codec_mode;
+    const bool lfe = !element.tracks.empty() && element.tracks.front().lfe;
+    const bool two_ch_mode = element.two_ch_mode.value_or(false);
+    const int grouping = element.core_5ch_grouping.value_or(-1);
+    // A'' to G''. H'' to K'' are Lb, Rb, Tbl and Tbr.
+    const Speaker a = S::kLeft;
+    const Speaker b = S::kRight;
+    const Speaker c = S::kCentre;
+    const Speaker d = S::kLeftSurround;
+    const Speaker e = S::kRightSurround;
+    const Speaker f = core ? S::kTopSideLeft : S::kTopFrontLeft;
+    const Speaker g = core ? S::kTopSideRight : S::kTopFrontRight;
+    if (lfe) {
+        walk.lfe();
+    }
+    // Table 19, element by element in the order the syntax reads them.
+    switch (grouping) {
+        case 0:
+            walk.pair(a, two_ch_mode ? d : b);
+            walk.pair(two_ch_mode ? b : d, e);
+            walk.mono(c);
+            break;
+        case 1:
+            walk.three(a, b, c);
+            walk.pair(d, e);
+            break;
+        case 2:
+            walk.four(a, b, d, e);
+            walk.mono(c);
+            break;
+        default:
+            walk.five(a, b, c, d, e);
+            break;
+    }
+    // Table 74: every mode but ASPX_AJCC codes the seven channels of
+    // 7CH_STATIC, F and G in a two_channel_data() after step 4's parameters.
+    const bool seven = mode != immersive_mode::kAspxAjcc;
+    const bool sap_add = seven && element.b_use_sap_add_ch.value_or(false);
+    const int sap_first = sap_add ? walk.take_chparams(2) : 0;
+    if (seven) {
+        walk.pair(f, g);
+    }
+    // H to K, and Table 20's four chparam_info() after them.
+    const bool coupled = mode == immersive_mode::kScpl || mode == immersive_mode::kAspxScpl ||
+                         mode == immersive_mode::kAspxAcpl1;
+    int prediction_first = 0;
+    if (coupled) {
+        walk.pair(S::kLeftBack, S::kRightBack, core);
+        walk.pair(S::kTopBackLeft, S::kTopBackRight, core);
+        prediction_first = walk.take_chparams(4);
+    }
+    // Step 4, in every 7CH_STATIC mode, ASPX_ACPL_2's included (ERRATA.md,
+    // "ASPX_ACPL_2 and step 4").
+    if (sap_add) {
+        out.steps.push_back(
+            {.first = d, .second = f, .chparam = sap_first, .framing = d, .prediction = false});
+        out.steps.push_back(
+            {.first = e, .second = g, .chparam = sap_first + 1, .framing = e, .prediction = false});
+    }
+    // Table 20: H'' = H' + a'0 D', I'' = I' + a'1 E', J'' = J' + a'2 F' and
+    // K'' = K' + a'3 G', which core decoding has no use for.
+    if (coupled && !core) {
+        const std::array<std::array<Speaker, 2>, 4> predicted = {
+            {{d, S::kLeftBack}, {e, S::kRightBack}, {f, S::kTopBackLeft}, {g, S::kTopBackRight}}};
+        for (std::size_t j = 0; j < predicted.size(); ++j) {
+            out.steps.push_back({.first = predicted[j][0],
+                                 .second = predicted[j][1],
+                                 .chparam = prediction_first + static_cast<int>(j),
+                                 .framing = predicted[j][0],
+                                 .prediction = true});
+        }
+    }
+    // 5.2.3.3 and 5.2.3.4: what the mode leaves silent until A-CPL or A-JCC
+    // makes it in the QMF domain.
+    if (mode == immersive_mode::kAspxAjcc) {
+        out.silent =
+            core ? std::vector<Speaker>{S::kTopSideLeft, S::kTopSideRight}
+                 : std::vector<Speaker>{S::kLeftBack,      S::kRightBack,   S::kTopFrontLeft,
+                                        S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight};
+    } else if (mode == immersive_mode::kAspxAcpl2 && !core) {
+        out.silent = {S::kLeftBack, S::kRightBack, S::kTopBackLeft, S::kTopBackRight};
+    }
+    if (grouping < 0 || (grouping == 0 && !element.two_ch_mode.has_value()) ||
+        lfe != ctx.has_lfe() || seven != element.b_use_sap_add_ch.has_value() || !walk.complete()) {
+        return fail(DecodeError::kInvalidStream,
+                    "an immersive element whose parts do not match its core_5ch_grouping");
+    }
+    return {};
+}
+
 }  // namespace
 
-std::span<const Speaker> speakers_of(int ch_mode) noexcept {
+bool is_immersive(int ch_mode) noexcept {
+    return ch_mode == ch_mode::k7_0_4 || ch_mode == ch_mode::k7_1_4;
+}
+
+std::span<const Speaker> speakers_of(int ch_mode, DecodingMode decoding) noexcept {
+    const bool core = decoding == DecodingMode::kCore;
     switch (ch_mode) {
         case ch_mode::kMono:
             return kMono;
@@ -163,13 +281,21 @@ std::span<const Speaker> speakers_of(int ch_mode) noexcept {
             return k70_322;
         case ch_mode::k7_1_322:
             return k71_322;
+        case ch_mode::k7_0_4:
+            return core ? std::span<const Speaker>(k704_core) : std::span<const Speaker>(k704);
+        case ch_mode::k7_1_4:
+            return core ? std::span<const Speaker>(k714_core) : std::span<const Speaker>(k714);
         default:
             return {};
     }
 }
 
-ParseResult route_element(const SubstreamContext& ctx, const ChannelElement& element, ElementRoute& out) {
+ParseResult route_element(const SubstreamContext& ctx, const ChannelElement& element,
+                          ElementRoute& out, DecodingMode decoding) {
     out = ElementRoute{};
+    if (element.kind == ElementKind::kImmersive) {
+        return route_immersive(ctx, element, decoding, out);
+    }
     Walker walk(element, out);
     const bool lfe = !element.tracks.empty() && element.tracks.front().lfe;
     const auto config = element.coding_config.value_or(-1);
@@ -295,6 +421,8 @@ ParseResult route_element(const SubstreamContext& ctx, const ChannelElement& ele
             }
             break;
         }
+        case ElementKind::kImmersive:
+            break;  // route_immersive()
     }
     const bool five_x_acpl = element.kind == ElementKind::k5X && acpl;
     // ASPX_ACPL_3 sends no coding_config: its channel data is stereo_data().
@@ -313,7 +441,58 @@ ParseResult route_element(const SubstreamContext& ctx, const ChannelElement& ele
     return {};
 }
 
-std::vector<AspxUnit> aspx_units(int ch_mode, int codec_mode) {
+std::vector<AspxUnit> aspx_units(int ch_mode, int codec_mode, DecodingMode decoding) {
+    if (is_immersive(ch_mode)) {
+        // Part 2 Table 8, in the order the syntax reads the elements.
+        const bool core = decoding == DecodingMode::kCore;
+        const Speaker tl = core ? S::kTopSideLeft : S::kTopFrontLeft;
+        const Speaker tr = core ? S::kTopSideRight : S::kTopFrontRight;
+        const AspxUnit front = {
+            .pair = true, .index = 0, .speakers = {S::kLeft, S::kRight}, .first_only = false};
+        const AspxUnit surround = {.pair = true,
+                                   .index = 1,
+                                   .speakers = {S::kLeftSurround, S::kRightSurround},
+                                   .first_only = false};
+        const AspxUnit centre = {
+            .pair = false, .index = 0, .speakers = {S::kCentre, S::kCentre}, .first_only = false};
+        switch (codec_mode) {
+            case immersive_mode::kAspxScpl:
+                // (Ls, Lb), (Rs, Rb), C, (L, R), (Tfl, Tbl), (Tfr, Tbr); in core
+                // decoding the first channel of each coupled pair alone.
+                return {{.pair = true,
+                         .index = 0,
+                         .speakers = {S::kLeftSurround, S::kLeftBack},
+                         .first_only = core},
+                        {.pair = true,
+                         .index = 1,
+                         .speakers = {S::kRightSurround, S::kRightBack},
+                         .first_only = core},
+                        centre,
+                        {.pair = true,
+                         .index = 2,
+                         .speakers = {S::kLeft, S::kRight},
+                         .first_only = false},
+                        {.pair = true,
+                         .index = 3,
+                         .speakers = {tl, S::kTopBackLeft},
+                         .first_only = core},
+                        {.pair = true,
+                         .index = 4,
+                         .speakers = {tr, S::kTopBackRight},
+                         .first_only = core}};
+            case immersive_mode::kAspxAcpl1:
+            case immersive_mode::kAspxAcpl2:
+                // (A'', B''), (D'', E''), (F'', G''), C''.
+                return {front,
+                        surround,
+                        {.pair = true, .index = 2, .speakers = {tl, tr}, .first_only = false},
+                        centre};
+            case immersive_mode::kAspxAjcc:
+                return {front, surround, centre};
+            default:
+                return {};  // SCPL
+        }
+    }
     if (codec_mode == codec_mode::kSimple) {
         return {};
     }
@@ -361,6 +540,12 @@ std::vector<AspxUnit> aspx_units(int ch_mode, int codec_mode) {
 }
 
 std::vector<Speaker> companded_speakers(int ch_mode, int codec_mode) {
+    if (is_immersive(ch_mode)) {
+        if (codec_mode == immersive_mode::kAspxAjcc) {
+            return {S::kLeft, S::kRight, S::kCentre, S::kLeftSurround, S::kRightSurround};
+        }
+        return {};
+    }
     if (codec_mode == codec_mode::kSimple) {
         return {};
     }

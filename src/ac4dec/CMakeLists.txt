@@ -33,14 +33,17 @@ target_sources(ac4dec_objects
         src/decoder.cpp
         src/huffman.cpp
         src/pcm/acpl.cpp
+        src/pcm/ajcc.cpp
         src/pcm/asf_reconstruct.cpp
         src/pcm/aspx.cpp
         src/pcm/companding.cpp
         src/pcm/de.cpp
         src/pcm/downmix.cpp
         src/pcm/drc.cpp
+        src/pcm/immersive.cpp
         src/pcm/mixer.cpp
         src/pcm/multichannel.cpp
+        src/pcm/renderer.cpp
         src/pcm/routing.cpp
         src/pcm/snf_random.cpp
         src/pcm/stereo.cpp
@@ -49,6 +52,7 @@ target_sources(ac4dec_objects
         src/syntax/asf.cpp
         src/syntax/aspx.cpp
         src/syntax/acpl.cpp
+        src/syntax/ajcc.cpp
         src/syntax/channel_elements.cpp
         src/syntax/metadata.cpp
         src/syntax/presentation.cpp

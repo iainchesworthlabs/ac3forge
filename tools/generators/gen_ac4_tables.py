@@ -7,7 +7,10 @@ ts_10319001v010401p0.zip, whose ts_103190_tables.c holds a <name>_LEN and a
 A prints, per codebook, codebook_length and the cb_off, cb_mod, cb_mod2 and
 cb_mod3 values the decoding process uses, and Tables A.14 (CB_DIM) and A.15
 (UNSIGNED_CB). The attachment's Annex B section is empty, so Annex B's
-tables are read from the text.
+tables are read from the text. ETSI TS 103 190-2 V1.3.1 does the same for
+the A-JCC codebooks of its Annex A.1.2 (Tables A.13 to A.24), whose arrays
+are in ts_10319002v010301p0.zip's ts_103190_tables_part2.c; they are
+generated after Part 1's, as a sixth clause.
 
 Reads, from --spec-dir (default spec/ in the repo root):
   ts_10319001_attach/ts_103190_tables.c  every <name>_LEN and <name>_CW array,
@@ -19,6 +22,9 @@ Reads, from --spec-dir (default spec/ in the repo root):
                                          the 44.1/48 kHz columns of Tables B.4
                                          to B.7, and Tables B.8 to B.19; and
                                          Table 106, for n_side_bits.
+  ts_10319002_attach/ts_103190_tables_part2.c
+                                         the AJCC_HCB_* _LEN and _CW arrays.
+  ts_10319002v010301p.txt                Part 2 Annex A.1.2's codebook tables.
 
 Writes src/ac4core/src/tables/huffman_tables.hpp and .cpp (every Annex A
 codebook, its entries sorted by length and then codeword, as
@@ -38,7 +44,10 @@ Checks, all of them before anything is written, every one failing the run:
            every codeword fits in its length; and no codeword is a prefix of
            (or equal to) another. The Kraft sum of every codebook is printed;
            a codebook whose sum is below 1 is an incomplete code, which is
-           listed again at the end but does not fail the run.
+           listed again at the end but does not fail the run. Part 2's A.1.2
+           takes the same checks against the AJCC arrays of its attachment,
+           its tables numbered A.13 to A.24 without a gap, each printing
+           codebook_length and cb_off and nothing else.
   Annex A  its tables run A.1, A.2, ... without a gap; A.14 and A.15 cover
            spectrum codebooks 1 to 11; a dimension-4 spectrum codebook prints
            cb_mod, cb_mod2, cb_mod3 and cb_off with cb_mod^4 ==
@@ -86,6 +95,8 @@ REPO = Path(__file__).resolve().parent.parent.parent
 OUT_DIR = REPO / "src" / "ac4core" / "src" / "tables"
 SPEC_TXT = "ts_10319001v010401p.txt"
 TABLES_C = Path("ts_10319001_attach") / "ts_103190_tables.c"
+SPEC2_TXT = "ts_10319002v010301p.txt"
+TABLES2_C = Path("ts_10319002_attach") / "ts_103190_tables_part2.c"
 
 MAX_BITS = 32  # huffman_codebook.hpp's kMaxHuffBits
 
@@ -98,6 +109,17 @@ CLAUSES = {
     4: ("Dialogue enhancement Huffman codebook tables", "dialogue enhancement"),
     5: ("Dynamic range control Huffman codebook table", "DRC"),
 }
+
+# Part 2's Annex A.1.2, the A-JCC codebooks, which the generated files list
+# after Part 1's five clauses as a sixth. Its tables are numbered A.13 to
+# A.24, after A.1.1's twelve A-JOC codebooks.
+AJCC_CLAUSE = 6
+AJCC_LABEL = "Part 2 A.1.2: A-JCC"
+AJCC_TABLES = range(13, 25)
+AJCC_NAME = re.compile(r"AJCC_HCB_(?:DRY|WET)_(?:COARSE|FINE)_(?:F0|DF|DT)")
+
+# Every clause the generated files have, with its label.
+OUTPUT_CLAUSES = {**{n: label for n, (_, label) in CLAUSES.items()}, AJCC_CLAUSE: AJCC_LABEL}
 
 # Tables A.14 and A.15 number the spectrum codebooks 1 to 11, and
 # huffman_tables.hpp's arrays by that number are 12 long, index 0 unused.
@@ -215,10 +237,16 @@ class Codebook:
     lengths: list = field(default_factory=list)
     codewords: list = field(default_factory=list)
     kraft: Fraction = Fraction(0)
+    part: int = 1  # the part whose Annex A prints it
 
     @property
     def cxx(self):
         return "k" + "".join(part.capitalize() for part in self.name.split("_"))
+
+    @property
+    def label(self):
+        """The table's name as the comments give it: Part 1's plainly, Part 2's with its part."""
+        return f"Table A.{self.table}" if self.part == 1 else f"Part 2 Table A.{self.table}"
 
     def value(self, key):
         return self.printed.get(key, 0)
@@ -294,6 +322,73 @@ def parse_annex_a(numbered):
               f"Table A.{number} gives {rows[title]}")
         by_number[title] = [None, *(parse(v) for v in rows[title])]
     return codebooks, by_number["CB_DIM"], by_number["UNSIGNED_CB"]
+
+
+def ajcc_section(lines):
+    """(line number, text) for Part 2's Annex A.1.2, from its heading to A.2's."""
+    starts = [i for i, text in enumerate(lines)
+              if re.fullmatch(r"\s*A\.1\.2\s+A-JCC Huffman codebook tables\s*", text)]
+    ends = [i for i, text in enumerate(lines)
+            if re.fullmatch(r"\s*A\.2\s+Coefficient tables\s*", text)]
+    check(len(starts) == 1 and len(ends) == 1 and starts[0] < ends[0],
+          f"Part 2's A.1.2 heading found {len(starts)} times and A.2's {len(ends)} times")
+    return [(i + 1, lines[i]) for i in range(starts[0] + 1, ends[0])]
+
+
+def parse_ajcc_annex(numbered):
+    """Part 2 Annex A.1.2's codebooks in table order, read as parse_annex_a() reads Part 1's."""
+    tables = []  # [number, title, line, fields]
+    for line, text in numbered:
+        if match := TABLE_TITLE.match(text):
+            check(match.group(1) == "A",
+                  f"Part 2 line {line}: a Table {match.group(1)} inside A.1.2")
+            tables.append([int(match.group(2)), match.group(3), line, {}])
+        elif match := CODEBOOK_FIELD.match(text):
+            check(tables, f"Part 2 line {line}: {match.group(1)} before A.1.2's first table")
+            key, fields = match.group(1), tables[-1][3]
+            check(key not in fields, f"Part 2 Table A.{tables[-1][0]} prints {key} twice")
+            fields[key] = match.group(2)
+        else:
+            check(not text.strip().startswith(CODEBOOK_KEYS),
+                  f"Part 2 line {line}: unreadable A.1.2 field: {text.strip()!r}")
+    numbers = [table[0] for table in tables]
+    check(numbers == list(AJCC_TABLES),
+          f"Part 2's A.1.2 numbers its tables {numbers}, not A.{AJCC_TABLES[0]} to "
+          f"A.{AJCC_TABLES[-1]}")
+    codebooks = []
+    for number, title, line, fields in tables:
+        expected = {"Codebook name", "Codebook length table", "Codebook codeword table",
+                    "codebook_length", "cb_off"}
+        check(set(fields) == expected,
+              f"Part 2 Table A.{number} (line {line}) prints {sorted(fields)}, not "
+              f"{sorted(expected)}")
+        name = fields["Codebook name"]
+        check(AJCC_NAME.fullmatch(name), f"Part 2 Table A.{number}: codebook name {name!r}")
+        check(title == f"A-JCC Huffman codebook {name}",
+              f"Part 2 Table A.{number} is titled {title!r} over codebook {name}")
+        for key, suffix in (("Codebook length table", "_LEN"), ("Codebook codeword table", "_CW")):
+            check(fields[key] == name + suffix,
+                  f"Part 2 Table A.{number}: {key} {fields[key]}, not {name}{suffix}")
+        printed = {}
+        for key in ("codebook_length", "cb_off"):
+            check(re.fullmatch(r"\d+", fields[key]),
+                  f"Part 2 Table A.{number}: {key} is {fields[key]!r}, not a number")
+            printed[key] = int(fields[key])
+        codebooks.append(Codebook(number, AJCC_CLAUSE, name, printed, part=2))
+    return codebooks
+
+
+def check_ajcc_offsets(codebooks):
+    """Each A-JCC codebook's cb_off against its length: 0 for an F0 codebook, whose
+    values huff_decode() returns as they are, and the middle index for a DF or DT
+    one, whose values huff_decode_diff() centres on zero (Part 2 6.2.6.4)."""
+    for cb in codebooks:
+        length, offset = cb.printed["codebook_length"], cb.printed["cb_off"]
+        if cb.name.endswith("_F0"):
+            check(offset == 0, f"{cb.name}: cb_off {offset}, where an F0 codebook has 0")
+        else:
+            check(length % 2 == 1 and offset == (length - 1) // 2,
+                  f"{cb.name}: cb_off {offset} is not the middle of {length} entries")
 
 
 def parse_attachment(path):
@@ -394,10 +489,10 @@ def check_code(cb):
     """Fail on anything that stops the arrays being a prefix code; return the Kraft sum."""
     length = cb.printed["codebook_length"]
     check(len(cb.lengths) == length,
-          f"{cb.name}_LEN has {len(cb.lengths)} entries; Table A.{cb.table} prints "
+          f"{cb.name}_LEN has {len(cb.lengths)} entries; {cb.label} prints "
           f"codebook_length {length}")
     check(len(cb.codewords) == length,
-          f"{cb.name}_CW has {len(cb.codewords)} entries; Table A.{cb.table} prints "
+          f"{cb.name}_CW has {len(cb.codewords)} entries; {cb.label} prints "
           f"codebook_length {length}")
     check(length < 1 << 16, f"{cb.name}: {length} entries overflow HuffEntry::index")
     pairs = list(zip(cb.lengths, cb.codewords, strict=True))
@@ -774,10 +869,17 @@ def spaced(value):
 
 
 HEADER_BANNER_HUFFMAN = [
-    "// Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A. GENERATED by",
-    "// tools/generators/gen_ac4_tables.py from the attachment ts_103190_tables.c and",
-    "// Annex A's text; do not edit by hand.",
+    "// Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A, and the A-JCC",
+    "// codebooks of ETSI TS 103 190-2 V1.3.1 Annex A.1.2. GENERATED by",
+    "// tools/generators/gen_ac4_tables.py from the attachments ts_103190_tables.c and",
+    "// ts_103190_tables_part2.c and the two annexes' text; do not edit by hand.",
 ]
+
+
+def clause_heading(clause):
+    """A clause's section comment: Part 1's by its number, Part 2's by its label."""
+    label = OUTPUT_CLAUSES[clause]
+    return f"// {label}." if clause == AJCC_CLAUSE else f"// A.{clause}: {label}."
 
 
 def emit_huffman_header(codebooks):
@@ -793,8 +895,8 @@ def emit_huffman_header(codebooks):
 
     out = ["#pragma once", "", "#include <array>", "", '#include "huffman_codebook.hpp"', "",
            *HEADER_BANNER_HUFFMAN, "", "namespace ac4::detail::tables {", ""]
-    for clause, (_, label) in CLAUSES.items():
-        out.append(f"// A.{clause}: {label}.")
+    for clause in OUTPUT_CLAUSES:
+        out.append(clause_heading(clause))
         for cb in codebooks:
             if cb.clause != clause:
                 continue
@@ -820,14 +922,16 @@ def emit_huffman_header(codebooks):
 def emit_codes_header(codebooks):
     out = ["#pragma once", "", "#include <array>", "#include <span>", "",
            '#include "huffman_codebook.hpp"', "",
-           "// Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A in index order,",
-           "// for writing: the codeword and its length for each index huff_decode()",
-           "// returns. GENERATED by tools/generators/gen_ac4_tables.py with",
-           "// huffman_tables.hpp, from the attachment ts_103190_tables.c; do not edit by",
-           "// hand. The decoder reads through huffman_tables.hpp and does not link these.",
+           "// Every Huffman codebook of ETSI TS 103 190-1 V1.4.1 Annex A, and the A-JCC",
+           "// codebooks of ETSI TS 103 190-2 V1.3.1 Annex A.1.2, in index order, for",
+           "// writing: the codeword and its length for each index huff_decode() returns.",
+           "// GENERATED by tools/generators/gen_ac4_tables.py with huffman_tables.hpp,",
+           "// from the attachments ts_103190_tables.c and ts_103190_tables_part2.c; do",
+           "// not edit by hand. The decoder reads through huffman_tables.hpp and does not",
+           "// link these.",
            "", "namespace ac4::detail::tables {", ""]
-    for clause, (_, label) in CLAUSES.items():
-        out.append(f"// A.{clause}: {label}.")
+    for clause in OUTPUT_CLAUSES:
+        out.append(clause_heading(clause))
         for cb in codebooks:
             if cb.clause == clause:
                 out.append(f"extern const std::array<HuffCode, {len(cb.lengths)}> {cb.cxx}Codes;")
@@ -848,7 +952,7 @@ def emit_codes_source(codebooks):
     out = ['#include "huffman_codes.hpp"', "", "namespace ac4::detail::tables {", ""]
     for cb in codebooks:
         digits = (max(cb.lengths) + 3) // 4
-        out.append(f"// Table A.{cb.table}, {cb.name}.")
+        out.append(f"// {cb.label}, {cb.name}.")
         out.append(f"constinit const std::array<HuffCode, {len(cb.lengths)}> {cb.cxx}Codes = {{{{")
         out += wrap([f"{{0x{code:0{digits}x}, {bits}}}"
                      for bits, code in zip(cb.lengths, cb.codewords, strict=True)], "    ")
@@ -884,7 +988,7 @@ def emit_huffman_source(codebooks, cb_dim, unsigned_cb):
                                                                   strict=True)))
         low, high = entries[0][0], entries[-1][0]
         kraft = "1" if cb.kraft == 1 else f"{cb.kraft.numerator}/{cb.kraft.denominator}"
-        out.append(f"// Table A.{cb.table}, {cb.name}: {len(entries)} codewords of {low} to "
+        out.append(f"// {cb.label}, {cb.name}: {len(entries)} codewords of {low} to "
                    f"{high} bits, Kraft sum {kraft}.")
         out.append(f"constexpr std::array<HuffEntry, {len(entries)}> {cb.cxx}Entries = {{{{")
         digits = (high + 3) // 4
@@ -1219,12 +1323,13 @@ def report_codebooks(codebooks):
     for cb in codebooks:
         kraft = "1" if cb.kraft == 1 else f"{cb.kraft} = {float(cb.kraft):.9f}"
         bits = f"{min(cb.lengths)}-{max(cb.lengths)}"
-        print(f"{cb.name:<28} {'A.' + str(cb.table):>6} {len(cb.lengths):>7} {bits:>6}  {kraft}")
+        table = f"{'' if cb.part == 1 else 'P2 '}A.{cb.table}"
+        print(f"{cb.name:<28} {table:>9} {len(cb.lengths):>7} {bits:>6}  {kraft}")
     incomplete = [cb for cb in codebooks if cb.kraft != 1]
     if incomplete:
         print(f"\n{len(incomplete)} codebook(s) are not complete codes (Kraft sum below 1):")
         for cb in incomplete:
-            print(f"  {cb.name} (Table A.{cb.table}): {cb.kraft} = {float(cb.kraft):.9f}")
+            print(f"  {cb.name} ({cb.label}): {cb.kraft} = {float(cb.kraft):.9f}")
     else:
         print("\nevery codebook is a complete code")
 
@@ -1232,17 +1337,29 @@ def report_codebooks(codebooks):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--spec-dir", type=Path, default=REPO / "spec",
-                        help="directory holding ts_10319001v010401p.txt and "
-                             "ts_10319001_attach/ts_103190_tables.c (default: REPO/spec)")
+                        help="directory holding ts_10319001v010401p.txt, "
+                             "ts_10319002v010301p.txt and their attachments' directories "
+                             "(default: REPO/spec)")
     args = parser.parse_args()
     spec_txt, tables_c = args.spec_dir / SPEC_TXT, args.spec_dir / TABLES_C
-    for path in (spec_txt, tables_c):
+    spec2_txt, tables2_c = args.spec_dir / SPEC2_TXT, args.spec_dir / TABLES2_C
+    for path in (spec_txt, tables_c, spec2_txt, tables2_c):
         check(path.is_file(), f"{path} does not exist")
 
     lines = spec_txt.read_text(encoding="utf-8").splitlines()
     codebooks, cb_dim, unsigned_cb = parse_annex_a(annex(lines, "A", "B"))
     attach_codes(codebooks, parse_attachment(tables_c))
     check_spectrum_values(codebooks, cb_dim, unsigned_cb)
+    # Part 2's A-JCC codebooks, from its attachment's AJCC arrays alone: the
+    # A-JOC codebooks beside them wait for the phase that decodes A-JOC.
+    ajcc = parse_ajcc_annex(ajcc_section(spec2_txt.read_text(encoding="utf-8").splitlines()))
+    check_ajcc_offsets(ajcc)
+    arrays2 = {key: values for key, values in parse_attachment(tables2_c).items()
+               if key[0].startswith("AJCC_")}
+    attach_codes(ajcc, arrays2)
+    check(not {cb.cxx for cb in ajcc} & {cb.cxx for cb in codebooks},
+          "a Part 2 codebook has a Part 1 codebook's name")
+    codebooks = codebooks + ajcc
     n_side_bits = parse_n_side_bits(lines)
     num_sfb, offsets, offset_tables, mappings, hsf = parse_annex_b(annex(lines, "B", "C"),
                                                                    n_side_bits)
