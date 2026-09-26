@@ -564,9 +564,10 @@ TEST_CASE("object and A-JOC substream infos read each bed and object assignment"
         CAPTURE(i);
         REQUIRE(subs[i].obj.has_value());
         CHECK(subs[i].obj->b_dynamic_objects == (i == 3));
-        using Static = ac4::ObjSubstreamInfo::Static;
-        CHECK((subs[i].obj->static_kind == Static::kBed) == (i >= 4 && i <= 7));
-        CHECK((subs[i].obj->static_kind == Static::kIsf) == (i == 8 || i == 9));
+        CHECK((subs[i].obj->static_kind == ac4::ObjSubstreamInfo::Static::kBed) ==
+              (i >= 4 && i <= 7));
+        CHECK((subs[i].obj->static_kind == ac4::ObjSubstreamInfo::Static::kIsf) ==
+              (i == 8 || i == 9));
         CHECK_FALSE(subs[i].obj->brate_ind.has_value());
     }
     CHECK(subs[1].ajoc->static_objects.size() == 1);

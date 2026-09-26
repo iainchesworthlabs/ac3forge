@@ -251,7 +251,7 @@ struct ObjectEntry {
     // Table A.27 indexes speakers: 0 L, 1 R, 2 C, 3 Ls, 4 Rs, 5 Lb, 6 Rb, 7
     // Tfl, 8 Tfr, 9 Tbl, 10 Tbr, 11 LFE, 12 Tsl, 13 Tsr, 19 LFE2, 26 Lw and 27
     // Rw, the ones Tables 62 to 66 can assign. Unset for other objects.
-    std::optional<int> speaker;
+    std::optional<int> speaker{};
 };
 
 // --- §6.2.1.13 oamd_substream_info ------------------------------------------
@@ -368,6 +368,8 @@ struct ObjSubstreamInfo {
     // format objects a substream that starts them assigns, which substreams
     // after it in the group may carry a share of.
     std::vector<ObjectEntry> objects;
+    // Whether the substream holds dynamic objects (§6.3.2.10.3); otherwise
+    // static_kind below says what it holds.
     bool b_dynamic_objects = false;
     std::optional<int> sf_multiplier;
     std::optional<int> bitrate_kbps;
@@ -377,9 +379,10 @@ struct ObjSubstreamInfo {
     // (0, 1, 2, 3 or 5); unset for a code the table reserves (5 to 7).
     std::optional<int> num_objects;
     bool b_lfe = false;  // b_dynamic_objects' b_lfe
-    // Without dynamic objects: what the substream holds - a bed, intermediate
-    // spatial format objects, or reserved data - and whether it starts them
-    // (b_bed_start, b_isf_start) rather than extending a previous substream's.
+    // Without dynamic objects: what the substream holds (§6.3.2.10.4 to
+    // 6.3.2.10.7) - a bed, intermediate spatial format objects, or reserved
+    // data - and whether it starts them (b_bed_start, b_isf_start) rather than
+    // extending a previous substream's without listing its objects again.
     enum class Static : std::uint8_t { kNone, kBed, kIsf, kReserved };
     Static static_kind = Static::kNone;
     bool static_start = false;

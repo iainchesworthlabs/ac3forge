@@ -2041,6 +2041,20 @@ decoding, and core decoding of the encoder's streams gives what D9 checks; the r
 
 **Verified by:** as E1.
 
+**Built** (phase E8): 5.0.4 and 5.1.4 in the immersive element as DEE writes it, `core_5ch_grouping` 0
+with `2ch_mode` 0, SCPL from 640 kbps, ASPX_SCPL from 480 and ASPX_ACPL_2 below, with DEE's A-SPX
+configurations by rate; each coupled pair coded as its sum and difference, the difference predicted from
+the sum band by band where that costs fewer bits, which is what DEE's streams send (`sap_mode` 3, which
+corrected the decoder's register); the height downmix as custom downmix data in I-frames; and 7.0.4 and
+7.1.4 with the back pair, ASPX_ACPL_1 and A-JCC (`ajcc_core_mode` 0) as experimental options. Every
+channel's tone decodes on its own channel in full decoding and at the core's gain in core decoding, in each
+mode. Measured locally against DEE's 5.1.4 legs from 192 to 768 kbps, in full and core decoding
+(`tools/checks/score_ac4_encode.py --gold`, pinned): ViSQOL within 0.035 of DEE's or over it on music, film
+and speech, the SNR below the crossover up to 10.5 dB under DEE's from 192 to 320 kbps and within 1.4 dB
+of it or over it from 384;
+on sweeps above 16.5 kHz the shared A-SPX encoder leaves the band emptier than DEE's does, 0.03 to 0.18
+under DEE's ViSQOL from 256 to 512 kbps. librempeg does not decode the immersive element.
+
 #### E9: A-JOC objects
 
 - Objects and their metadata in, converted by the applications from the scene descriptions they read

@@ -52,6 +52,18 @@ struct StereoChoice {
 void apply_stereo(Grouped& left, Grouped& right, std::vector<std::vector<double>>& allowed_left,
                   std::vector<std::vector<double>>& allowed_right, const StereoChoice& choice);
 
+// A coupled pair of the immersive element in SCPL and ASPX_SCPL (ETSI TS 103
+// 190-2 V1.3.1 clauses 5.2.3.2 and 5.3), `left` and `right` its two channels
+// over sqrt 2 (Ls and Lb, say): simple coupling makes them of the pair's sum
+// and difference, so every band is M/S, M = D'' and S = H'', and Table 20's
+// chparam_info() predicts S from M per pair of bands as full SAP does, H' = S
+// - a M. The pair is turned into M and S - a M in place, their allowed noise
+// with them, and the chparam_info() returned: sap_mode 3 where a pair of bands
+// is predicted, and 0, a of 0 throughout, where none is.
+[[nodiscard]] StereoChoice choose_coupled(Grouped& left, Grouped& right,
+                                          std::vector<std::vector<double>>& allowed_left,
+                                          std::vector<std::vector<double>>& allowed_right);
+
 // A track's cost as choose_stereo() weighs it: its bands' perceptual entropy,
 // in bits.
 [[nodiscard]] double perceptual_entropy(const Grouped& track, const std::vector<std::vector<double>>& allowed);

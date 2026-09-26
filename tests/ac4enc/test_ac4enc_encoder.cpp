@@ -155,7 +155,7 @@ void check_frames_read_back(const Encoded& encoded) {
 
 TEST_CASE("the encoder refuses what it does not write", "[ac4enc][encoder]") {
     ac4::EncoderConfig config;
-    for (const int channels : {0, 3, 4, 7, 8, 9}) {
+    for (const int channels : {0, 3, 4, 7, 8, 11, 12, 13}) {
         CAPTURE(channels);
         config.channels = channels;
         CHECK(ac4::Encoder::create(config).error() == ac4::EncodeError::kInvalidConfig);

@@ -869,7 +869,7 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
     REQUIRE(ac3::io::write_wav_f32(wav_four.string(), four, 48000).has_value());
     const auto out = dir / "ac4_refused.ac4";
     CHECK(run_cli("ac4-encode " + quoted(wav_four) + " " + quoted(out), log) == 2);  // kExitInput
-    CHECK(read_log(log).find("mono, stereo, 5.0 and 5.1") != std::string::npos);
+    CHECK(read_log(log).find("mono, stereo, 5.0, 5.1, 5.0.4 and 5.1.4") != std::string::npos);
     CHECK_FALSE(fs::exists(out));
     // Seven or eight channels name the 7.X pair they carry.
     const std::vector<std::vector<float>> eight(8, std::vector<float>(4800, 0.0F));
@@ -894,12 +894,20 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
     // LFE's gain an LFE 5.0 does not have.
     CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " lorocmixlev=-3",
                   log) == 1);
-    CHECK(read_log(log).find("5.0, 5.1, 7.0 and 7.1") != std::string::npos);
+    CHECK(read_log(log).find("5.0, 5.1, 7.0, 7.1 and the immersive layouts") != std::string::npos);
     const std::vector<std::vector<float>> five(5, std::vector<float>(4800, 0.0F));
     const auto wav_five = dir / "ac4_five_short.wav";
     REQUIRE(ac3::io::write_wav_f32(wav_five.string(), five, 48000).has_value());
     CHECK(run_cli("ac4-encode " + quoted(wav_five) + " " + quoted(out) + " lfemix=-4.5", log) == 1);
     CHECK(read_log(log).find("5.0 has no LFE") != std::string::npos);
+    // The top channels' downmix, for a layout without them, and a gain with no
+    // downmix to give it.
+    CHECK(run_cli("ac4-encode " + quoted(wav_five) + " " + quoted(out) + " height-downmix=front",
+                  log) == 1);
+    CHECK(read_log(log).find("the source is 5.0") != std::string::npos);
+    CHECK(run_cli("ac4-encode " + quoted(wav_five) + " " + quoted(out) + " height-gain=-6", log) ==
+          1);
+    CHECK(read_log(log).find("give height-downmix=") != std::string::npos);
     // 44.1 kHz has the 2 048-sample frame alone.
     const auto wav_44k = dir / "ac4_stereo_44k.wav";
     REQUIRE(ac3::io::write_wav_f32(wav_44k.string(), stereo, 44100).has_value());

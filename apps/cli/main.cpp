@@ -339,12 +339,14 @@ constexpr std::array<Command, 44> kCommands{{
                                 x.str(6, "off"), x.meta, x.str(7));
      }},
     {"ac4-encode", 3, "<in.wav> <out.ac4|out.mp4> [bitrate_kbps]",
-     "mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4: raw "
-     "sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is "
-     ".mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a channel "
-     "and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode "
-     "(A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 "
-     "kbps a channel, 76.8 in 5.X, and SIMPLE from there. The options below set the codec mode, "
+     "mono, stereo, 5.0, 5.1, 5.0.4 or 5.1.4 at 48 or 44.1 kHz, in the WAV order decode writes, "
+     "to AC-4: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output "
+     "is .mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a "
+     "channel and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX "
+     "codec mode (A-SPX above a crossover, with companding at the lower rates in mono and "
+     "stereo) below 96 kbps a channel, 76.8 in 5.X, and SIMPLE from there. 5.1.4 takes the "
+     "immersive element in ASPX_ACPL_2 below 480 kbps, ASPX_SCPL below 640 and SCPL from there, "
+     "as DEE's 5.1.4 streams do. The options below set the codec mode, "
      "the frame rate, the rate mode, the I-frames, the CRC, and the loudness, DRC, downmix and "
      "dialogue enhancement metadata; substreamN= and presentationN= add substreams, each an input "
      "of its own, and the presentations that play them; syntax-trace=<file> writes what the "

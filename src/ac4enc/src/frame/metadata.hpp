@@ -100,8 +100,21 @@ struct DrcModeGains {
     }
 };
 
+// custom_dmx_data()'s one configuration of an immersive presentation, for
+// out_ch_config 0 (5.X.0; Part 2 clause 6.2.9.3's cdmx_parameters()):
+// tool_t4_to_f_s()'s flags and gain codes (Table 129), and for 7.X.4
+// tool_b4_to_b2()'s gain_b_code.
+struct HeightDownmixCodes {
+    bool top_front_to_front = false;  // gain_t2a_code, else gain_t2b_code
+    bool top_back_to_front = false;   // gain_t2d_code, else gain_t2e_code
+    int top_front_code = 2;
+    int top_back_code = 2;
+    int back_code = 2;
+};
+
 // custom_dmx_data()'s stereo coefficients and loud_corr()'s corrections for
-// them (Part 2 clauses 6.2.9.2 and 6.2.9.1; Part 1 Tables 149, 149a and 150).
+// them (Part 2 clauses 6.2.9.2 and 6.2.9.1; Part 1 Tables 149, 149a and 150),
+// and an immersive presentation's custom downmix data.
 struct DownmixCodes {
     int loro_centre_mixgain = 4;
     int loro_surround_mixgain = 4;
@@ -110,6 +123,7 @@ struct DownmixCodes {
     int preferred_dmx_method = 1;
     std::optional<int> loro_dmx_loud_corr;
     std::optional<int> ltrt_dmx_loud_corr;
+    std::optional<HeightDownmixCodes> height;
 };
 
 // de_config() (Table 77), and de_ms_proc_flag, which the channel-independent
@@ -210,9 +224,10 @@ struct AlternativeCodes {
 [[nodiscard]] CurveCodes curve_codes(DrcProfile profile) noexcept;
 
 // Each element's codes, or nothing where a value is not one the syntax can
-// send. `ch_mode` is Part 1 Table 88's: the downmix's values are sent for 5.X
-// and 7.X alone, and dialogue enhancement's channels must be ones the channel
-// mode has.
+// send. `ch_mode` is Part 1 Table 88's, or Part 2 Table 56's 11 and 12 for the
+// immersive layouts: the downmix's values are sent for 5.X, 7.X and the
+// immersive layouts alone, the height downmix for the immersive layouts, and
+// dialogue enhancement's channels must be ones the channel mode has.
 [[nodiscard]] std::optional<LoudnessCodes> resolve_loudness(const FurtherLoudness& loudness);
 [[nodiscard]] std::optional<DrcCodes> resolve_drc(const DrcConfig& drc, bool experimental_gains);
 [[nodiscard]] std::optional<DownmixCodes> resolve_downmix(const DownmixConfig& downmix,
@@ -266,8 +281,9 @@ struct PresentationChannels {
 [[nodiscard]] int bs_ch_config(const PresentationChannels& p) noexcept;
 
 // custom_dmx_data() and loud_corr() for a channel-based presentation: the
-// stereo coefficients and their corrections in I-frames, and no custom downmix
-// data or corrections for the immersive outputs.
+// stereo coefficients and their corrections, and an immersive presentation's
+// custom downmix data where they are configured, in I-frames, as DEE sends
+// them; no corrections for the immersive outputs.
 void write_downmix(BitWriter& w, const PresentationChannels& p, const DownmixCodes* codes,
                    bool iframe);
 

@@ -1348,7 +1348,11 @@ reading below rests on it.
   I, J and K.
 - **Why:** full SAP's matrix is Part 1's prediction of the second channel from the first, (1 + g, 1; 1 - g,
   -1); its gain is the one value per band the step can take.
-- **Evidence:** Text. DEE sends these four `chparam_info()` with `sap_mode` 0 in every frame.
+- **Evidence:** Streams. DEE's SCPL and ASPX_SCPL streams send these four `chparam_info()` with `sap_mode`
+  3 in nearly every frame and `sap_mode` 2 in the rest (the 237 frames of G0's `514-music-768`: 236 for
+  each surround pair, 216 and 220 for the top pairs), and the ten tones of its 5.1.4 legs decode with this
+  reading each on its own channel (`tools/checks/score_ac4_decode.py`).
+  Phase E8's encoder writes them the same way (`src/ac4enc/ERRATA.md`, "Table 20's prediction").
 
 ### ASPX_ACPL_2 and step 4
 
