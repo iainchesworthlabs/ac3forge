@@ -625,11 +625,11 @@ TEST_CASE("parse_substream_info_obj: dynamic objects with an LFE bed object", "[
     const auto frame = parse_wrapped_object_coded_group([](BitWriter& w) {
         w.put(0, 1);  // b_oamd_substream = 0
         w.put(0, 1);  // b_ajoc = 0 -> ac4_substream_info_obj()
-        w.put(2, 3);  // n_objects_code = 2 -> num_objects = 2
+        w.put(2, 3);  // n_objects_code = 2 -> 2 + b_lfe objects (Table 60)
         w.put(1, 1);  // b_dynamic_objects
         w.put(1, 1);  // b_lfe
         w.put(0, 1);  // b_bitrate_info
-        w.put(0, 1);  // b_audio_ndot
+        w.put(1, 1);  // b_audio_ndot
         w.put(1, 2);  // substream_index = 1
     });
 
@@ -640,12 +640,21 @@ TEST_CASE("parse_substream_info_obj: dynamic objects with an LFE bed object", "[
     REQUIRE(group.substreams[0].obj.has_value());
     const auto& obj = *group.substreams[0].obj;
     CHECK(obj.b_dynamic_objects);
-    REQUIRE(obj.objects.size() == 2);
+    CHECK(obj.b_lfe);
+    CHECK(obj.num_objects == 2);
+    // The LFE is counted on top of the two dynamic objects, first
+    // (src/ac4dec/ERRATA.md, "n_objects_code and the LFE").
+    REQUIRE(obj.objects.size() == 3);
     CHECK(obj.objects[0].kind == ac4::ObjectKind::kBed);
     CHECK(obj.objects[0].lfe);
+    CHECK(obj.objects[0].speaker == 11);  // Table A.27's LFE
     CHECK_FALSE(obj.objects[0].ajoc_coded);
     CHECK(obj.objects[1].kind == ac4::ObjectKind::kDyn);
     CHECK_FALSE(obj.objects[1].lfe);
+    CHECK_FALSE(obj.objects[1].speaker.has_value());
+    CHECK(obj.objects[2].kind == ac4::ObjectKind::kDyn);
+    REQUIRE(obj.b_iframe.size() == 1);
+    CHECK(obj.b_iframe[0]);
     REQUIRE(obj.substream_index.has_value());
     CHECK(*obj.substream_index == 1);
 }
@@ -684,11 +693,16 @@ TEST_CASE("parse_substream_info_obj: std bed flags include LFE, unlike bed_dyn_o
     REQUIRE(obj.objects.size() == 3);  // L, R (order 0's 2-channel group), LFE (order 2)
     CHECK(obj.objects[0].kind == ac4::ObjectKind::kBed);
     CHECK_FALSE(obj.objects[0].lfe);
+    CHECK(obj.objects[0].speaker == 0);  // Table A.27: L
     CHECK(obj.objects[1].kind == ac4::ObjectKind::kBed);
     CHECK_FALSE(obj.objects[1].lfe);
+    CHECK(obj.objects[1].speaker == 1);  // R
     CHECK(obj.objects[2].kind == ac4::ObjectKind::kBed);
     CHECK(obj.objects[2].lfe);  // order 2 IS flagged lfe here
+    CHECK(obj.objects[2].speaker == 11);  // LFE
     CHECK_FALSE(obj.b_dynamic_objects);
+    CHECK(obj.static_kind == ac4::ObjSubstreamInfo::Static::kBed);
+    CHECK(obj.static_start);
 }
 
 // Regression: n_objects_code and both isf_config fields are 3 bits wide, and
@@ -698,8 +712,9 @@ TEST_CASE("parse_substream_info_obj: std bed flags include LFE, unlike bed_dyn_o
 // ac4-substream-size-not-transmitted regression input; the uninstrumented runs
 // before that read whatever followed the table and carried on. Each vector
 // ends in substream_index = 2, which only comes back if the parse stayed in
-// sync past the reserved code, and code 5 - the last entry each table has -
-// pins the boundary.
+// sync past the reserved code. Table 60 reserves n_objects_code 5 to 7, the
+// LFE with them (src/ac4dec/ERRATA.md, "n_objects_code and the LFE");
+// isf_config's code 5 - the last entry its table has - pins that boundary.
 namespace {
 
 struct ReservedCountCase {
@@ -710,8 +725,8 @@ struct ReservedCountCase {
 }  // namespace
 
 TEST_CASE("parse_substream_info_obj: a reserved n_objects_code names no objects", "[ac4]") {
-    for (const ReservedCountCase tc : {ReservedCountCase{5, 7}, ReservedCountCase{6, 0},
-                                       ReservedCountCase{7, 0}}) {
+    for (const ReservedCountCase tc :
+         {ReservedCountCase{5, 0}, ReservedCountCase{6, 0}, ReservedCountCase{7, 0}}) {
         CAPTURE(tc.code);
         const auto frame = parse_wrapped_object_coded_group([tc](BitWriter& w) {
             w.put(0, 1);        // b_oamd_substream = 0

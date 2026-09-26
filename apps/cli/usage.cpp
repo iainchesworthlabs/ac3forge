@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 90> kOptionTokens{{
+constexpr std::array<OptionToken, 92> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -80,6 +80,8 @@ constexpr std::array<OptionToken, 90> kOptionTokens{{
     {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes; AC-4: a DRC decoder mode"},
     {"output-level=", "decode of AC-4: the level in dBFS dialnorm is taken to (Lout)"},
     {"dialogue-enhancement=", "decode of AC-4: raise the dialogue by 0 to 12 dB, capped by the stream"},
+    {"decoding=", "decode of AC-4: full (default) or core, the immersive element's 5.X.2 core"},
+    {"speakers=", "decode of AC-4: 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4, an immersive element's layout"},
     {"presentation=", "decode of AC-4: the presentation at this position of the table of contents"},
     {"presentation-id=", "decode of AC-4: the presentation with this presentation_id"},
     {"language=", "decode of AC-4: prefer the presentation in this language, a BCP 47 tag"},
@@ -392,7 +394,18 @@ void print_decode_topic() {
     fmt::println("       portable-headphones|off: default takes the mode Table 161 gives the");
     fmt::println("       output level, off compresses nothing. dialogue-enhancement=<dB> raises");
     fmt::println("       the dialogue where the stream sends its parameters (5.7.8), 0 to 12 dB");
-    fmt::println("       and no more than the stream's cap.");
+    fmt::println("       and no more than the stream's cap. decoding=core decodes an immersive");
+    fmt::println("       element's core, 5.X.2, as a low-complexity decoder does (ETSI TS 103");
+    fmt::println("       190-2 4.7); decoding=full, the default, decodes every channel.");
+    fmt::println("       speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4 renders an immersive element to");
+    fmt::println("       that layout by the channel renderer (190-2 5.10.2), the LFE where the");
+    fmt::println("       stream has one, with the stream's custom downmix gains and loudness");
+    fmt::println("       correction; core decoding renders to 5.1.2 at most. Without it the");
+    fmt::println("       element comes out in its source's layout, and channels= and downmix=");
+    fmt::println("       folds win over it. A presentation with objects (A-JOC or direct-coded,");
+    fmt::println("       190-2 4.8.3) comes out rendered to speakers by the layout renderer,");
+    fmt::println("       each object at the position and gain its metadata sets: to the layout");
+    fmt::println("       speakers=, channels= or downmix= names, and to 7.1.4 without them.");
     fmt::println("       A stream of several presentations decodes the one presentation=<n>");
     fmt::println("       (its position) or presentation-id=<id> names, or else the one that");
     fmt::println("       best meets language=<BCP 47 tag> and associated=visually-impaired|");

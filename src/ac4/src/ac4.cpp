@@ -831,6 +831,52 @@ OamdSubstreamInfo parse_oamd_substream_info(Reader& r, bool b_substreams_present
 constexpr std::array<int, 8> kBedChanAssignCountAjoc = {2, 3, 5, 7, 9, 7, 9, 11};
 constexpr std::array<int, 8> kBedChanAssignCountDirect = {2, 3, 6, 8, 10, 8, 10, 12};
 constexpr std::array<int, 10> kStdBedGroupSize = {2, 1, 1, 2, 2, 2, 2, 2, 2, 1};
+
+// The loudspeakers the assignments name, as Table A.27 indexes them (see
+// ObjectEntry::speaker).
+constexpr int kL = 0, kR = 1, kC = 2, kLs = 3, kRs = 4, kLb = 5, kRb = 6, kTfl = 7, kTfr = 8,
+              kTbl = 9, kTbr = 10, kLfe = 11, kTsl = 12, kTsr = 13, kLfe2 = 19, kLw = 26, kRw = 27;
+// Tables 63 (A-JOC coded) and 62 (direct coded): bed_chan_assign_code's
+// speakers, in the order objects take them.
+constexpr std::array<std::array<int, 12>, 8> kBedChanAssignAjoc = {{
+    {kL, kR},
+    {kL, kR, kC},
+    {kL, kR, kC, kLs, kRs},
+    {kL, kR, kC, kLs, kRs, kTsl, kTsr},
+    {kL, kR, kC, kLs, kRs, kTfl, kTfr, kTbl, kTbr},
+    {kL, kR, kC, kLs, kRs, kLb, kRb},
+    {kL, kR, kC, kLs, kRs, kLb, kRb, kTsl, kTsr},
+    {kL, kR, kC, kLs, kRs, kLb, kRb, kTfl, kTfr, kTbl, kTbr},
+}};
+constexpr std::array<std::array<int, 12>, 8> kBedChanAssignDirect = {{
+    {kL, kR},
+    {kL, kR, kC},
+    {kL, kR, kC, kLfe, kLs, kRs},
+    {kL, kR, kC, kLfe, kLs, kRs, kTsl, kTsr},
+    {kL, kR, kC, kLfe, kLs, kRs, kTfl, kTfr, kTbl, kTbr},
+    {kL, kR, kC, kLfe, kLs, kRs, kLb, kRb},
+    {kL, kR, kC, kLfe, kLs, kRs, kLb, kRb, kTsl, kTsr},
+    {kL, kR, kC, kLfe, kLs, kRs, kLb, kRb, kTfl, kTfr, kTbl, kTbr},
+}};
+// Table 64: nonstd_bed_channel_assignment_flag[]'s channel order.
+constexpr std::array<int, 17> kNonstdFlagSpeakers = {
+    kL, kR, kC, kLfe, kLs, kRs, kLb, kRb, kTfl, kTfr, kTsl, kTsr, kTbl, kTbr, kLw, kRw, kLfe2};
+// Table 65: std_bed_channel_assignment_flag[]'s, one or two speakers each.
+constexpr std::array<std::array<int, 2>, 10> kStdFlagSpeakers = {{
+    {kL, kR},
+    {kC, -1},
+    {kLfe, -1},
+    {kLs, kRs},
+    {kLb, kRb},
+    {kTfl, kTfr},
+    {kTsl, kTsr},
+    {kTbl, kTbr},
+    {kLw, kRw},
+    {kLfe2, -1},
+}};
+// Table 66: nonstd_bed_channel_assignment's; 3 is reserved.
+constexpr std::array<int, 16> kNonstdAssignmentSpeakers = {
+    kL, kR, kC, -1, kLs, kRs, kLb, kRb, kTfl, kTfr, kTsl, kTsr, kTbl, kTbr, kLw, kRw};
 // isf_config's object count, read by both bed_dyn_obj_assignment() and
 // ac4_substream_info_obj().
 constexpr std::array<int, 6> kIsfCounts = {4, 8, 10, 14, 15, 30};
@@ -852,7 +898,12 @@ int count_for_code(const std::array<int, N>& table, std::uint32_t code) {
 // appears inside ac4_substream_info_ajoc().
 std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) {
     std::vector<ObjectEntry> objects;
-    auto add = [&](ObjectKind kind, bool lfe) { objects.push_back({kind, lfe, true}); };
+    auto add = [&](ObjectKind kind, bool lfe) {
+        objects.push_back({kind, lfe, true, std::nullopt});
+    };
+    auto add_bed = [&](int speaker) {
+        objects.push_back({ObjectKind::kBed, false, true, speaker});
+    };
 
     if (r.bits(1)) {  // b_dyn_objects_only
         return objects;  // every object in this substream is dynamic and unlisted here
@@ -865,9 +916,10 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
         return objects;
     }
     if (r.bits(1)) {  // b_ch_assign_code
-        const int count = kBedChanAssignCountAjoc[r.bits(3)];
+        const std::uint32_t code = r.bits(3);
+        const int count = kBedChanAssignCountAjoc[code];
         for (int i = 0; i < count; ++i) {
-            add(ObjectKind::kBed, false);
+            add_bed(kBedChanAssignAjoc[code][static_cast<std::size_t>(i)]);
         }
         return objects;
     }
@@ -883,8 +935,9 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
             n_bed_signals = r.bits(bed_ch_bits) + 1;
         }
         for (std::uint32_t b = 0; b < n_bed_signals; ++b) {
-            if (r.bits(4) != 3) {  // nonstd_bed_channel_assignment
-                add(ObjectKind::kBed, false);
+            const std::uint32_t assignment = r.bits(4);  // nonstd_bed_channel_assignment
+            if (assignment != 3) {
+                add_bed(kNonstdAssignmentSpeakers[assignment]);
             }
             // n_bed_signals is sized from n_signals, which the caller lets
             // reach 2^32 through variable_bits() (n_fullband_upmix_signals
@@ -910,7 +963,7 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
         for (int i = 0; i < 17; ++i) {
             if ((flags >> i) & 1) {  // flag[16-i]
                 if (i != 3 && i != 16) {
-                    add(ObjectKind::kBed, false);
+                    add_bed(kNonstdFlagSpeakers[static_cast<std::size_t>(i)]);
                 }
             }
         }
@@ -920,7 +973,8 @@ std::vector<ObjectEntry> parse_bed_dyn_obj_assignment(Reader& r, int n_signals) 
             if ((flags >> i) & 1) {  // flag[9-i], same reasoning as above
                 if (i != 2 && i != 9) {
                     for (int j = 0; j < kStdBedGroupSize[static_cast<std::size_t>(i)]; ++j) {
-                        add(ObjectKind::kBed, false);
+                        add_bed(kStdFlagSpeakers[static_cast<std::size_t>(i)]
+                                                [static_cast<std::size_t>(j)]);
                     }
                 }
             }
@@ -1168,7 +1222,7 @@ AjocSubstreamInfo parse_substream_info_ajoc(Reader& r, int fs_index, int frame_r
         info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
     }
     for (int i = 0; i < frame_rate_factor; ++i) {
-        r.skip(1);  // b_audio_ndot
+        info.b_iframe.push_back(r.bits(1) != 0);  // b_audio_ndot
     }
     if (b_substreams_present) {
         info.substream_index = parse_substream_index_ref(r);
@@ -1181,42 +1235,54 @@ AjocSubstreamInfo parse_substream_info_ajoc(Reader& r, int fs_index, int frame_r
 ObjSubstreamInfo parse_substream_info_obj(Reader& r, int fs_index, int frame_rate_factor,
                                            bool b_substreams_present) {
     ObjSubstreamInfo info;
-    auto add = [&](ObjectKind kind, bool lfe) { info.objects.push_back({kind, lfe, false}); };
+    auto add = [&](ObjectKind kind, bool lfe, std::optional<int> speaker) {
+        info.objects.push_back({kind, lfe, false, speaker});
+    };
 
-    constexpr std::array<int, 6> kNumObjects = {0, 1, 2, 3, 5, 7};
-    // Table 60 (§6.3.2.10.2): codes 0-4 are b_lfe/1+b_lfe/2+b_lfe/3+b_lfe/
-    // 5+b_lfe, 5-7 reserved - but the syntax table's own lookup is this
-    // flat 6-entry array regardless, and b_lfe is folded in separately
-    // below rather than by this array, so a "reserved" code still parses
-    // (just with a count this parser cannot cross-check against the
-    // semantics table's own account of it). Codes 6 and 7 fall past the end
-    // of the array and name no objects - see count_for_code().
-    const int num_objects = count_for_code(kNumObjects, r.bits(3));
+    // Table 60 (§6.3.2.10.2): codes 0 to 4 give b_lfe, 1 + b_lfe, 2 + b_lfe,
+    // 3 + b_lfe and 5 + b_lfe objects, and 5 to 7 are reserved. The syntax's
+    // own array, [0, 1, 2, 3, 5, 7], gives code 5 seven objects, which no
+    // channel element objs_to_channel_mode() names can carry, and loops the
+    // dynamic objects over that count with the LFE among them, where Table 60
+    // and audio_data_objs(), whose mono_data(1) precedes an element of
+    // n_objects channels, count it on top: the table is read, the LFE first
+    // (src/ac4dec/ERRATA.md, "n_objects_code and the LFE"). A reserved code
+    // names no objects; nothing after it depends on the count.
+    constexpr std::array<int, 5> kNumObjects = {0, 1, 2, 3, 5};
+    const std::uint32_t n_objects_code = r.bits(3);
+    if (n_objects_code < kNumObjects.size()) {
+        info.num_objects = kNumObjects[n_objects_code];
+    }
+    const int num_objects = info.num_objects.value_or(0);
     info.b_dynamic_objects = r.bits(1) != 0;
     if (info.b_dynamic_objects) {
         // No early return: fs_index/bitrate/b_audio_ndot/substream_index
         // below are read unconditionally, after this whole if/else - the
         // syntax table's braces close this branch well before them.
-        const bool b_lfe = r.bits(1) != 0;
+        info.b_lfe = r.bits(1) != 0;
+        if (info.b_lfe && info.num_objects) {
+            add(ObjectKind::kBed, true, kLfe);
+        }
         for (int i = 0; i < num_objects; ++i) {
-            if (b_lfe && i == 0) {
-                add(ObjectKind::kBed, true);
-            } else {
-                add(ObjectKind::kDyn, false);
-            }
+            add(ObjectKind::kDyn, false, std::nullopt);
         }
     } else if (r.bits(1)) {  // b_bed_objects
-        if (r.bits(1)) {     // b_bed_start
+        info.static_kind = ObjSubstreamInfo::Static::kBed;
+        info.static_start = r.bits(1) != 0;  // b_bed_start
+        if (info.static_start) {
             if (r.bits(1)) {  // b_ch_assign_code
-                const int count = kBedChanAssignCountDirect[r.bits(3)];
+                const std::uint32_t code = r.bits(3);
+                const int count = kBedChanAssignCountDirect[code];
                 for (int i = 0; i < count; ++i) {
-                    add(ObjectKind::kBed, i == 3);
+                    add(ObjectKind::kBed, i == 3,
+                        kBedChanAssignDirect[code][static_cast<std::size_t>(i)]);
                 }
             } else if (r.bits(1)) {  // b_nonstd_bed_channel_assignment_flags_present
                 const std::uint32_t flags = r.bits(17);
                 for (int i = 0; i < 17; ++i) {
                     if ((flags >> i) & 1) {
-                        add(ObjectKind::kBed, i == 3 || i == 16);
+                        add(ObjectKind::kBed, i == 3 || i == 16,
+                            kNonstdFlagSpeakers[static_cast<std::size_t>(i)]);
                     }
                 }
             } else {
@@ -1224,20 +1290,25 @@ ObjSubstreamInfo parse_substream_info_obj(Reader& r, int fs_index, int frame_rat
                 for (int i = 0; i < 10; ++i) {
                     if ((flags >> i) & 1) {  // flag[9-i] - see parse_bed_dyn_obj_assignment()
                         for (int j = 0; j < kStdBedGroupSize[static_cast<std::size_t>(i)]; ++j) {
-                            add(ObjectKind::kBed, i == 2 || i == 9);
+                            add(ObjectKind::kBed, i == 2 || i == 9,
+                                kStdFlagSpeakers[static_cast<std::size_t>(i)]
+                                                [static_cast<std::size_t>(j)]);
                         }
                     }
                 }
             }
         }
     } else if (r.bits(1)) {  // b_isf
-        if (r.bits(1)) {     // b_isf_start
+        info.static_kind = ObjSubstreamInfo::Static::kIsf;
+        info.static_start = r.bits(1) != 0;  // b_isf_start
+        if (info.static_start) {
             const int n_isf = count_for_code(kIsfCounts, r.bits(3));
             for (int i = 0; i < n_isf; ++i) {
-                add(ObjectKind::kIsf, false);
+                add(ObjectKind::kIsf, false, std::nullopt);
             }
         }
     } else {
+        info.static_kind = ObjSubstreamInfo::Static::kReserved;
         const int res_bytes = static_cast<int>(r.bits(4));
         r.skip(8 * res_bytes);
     }
@@ -1248,7 +1319,7 @@ ObjSubstreamInfo parse_substream_info_obj(Reader& r, int fs_index, int frame_rat
         info.bitrate_kbps = bitrate_kbps(read_bitrate_indicator(r));
     }
     for (int i = 0; i < frame_rate_factor; ++i) {
-        r.skip(1);  // b_audio_ndot
+        info.b_iframe.push_back(r.bits(1) != 0);  // b_audio_ndot
     }
     if (b_substreams_present) {
         info.substream_index = parse_substream_index_ref(r);

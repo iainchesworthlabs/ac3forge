@@ -20,11 +20,14 @@
 #include "bit_reader.hpp"
 #include "pcm/downmix.hpp"
 #include "pcm/drc.hpp"
+#include "pcm/isf.hpp"
+#include "pcm/objects.hpp"
 #include "pcm/routing.hpp"
 #include "pcm/substream_pcm.hpp"
 #include "presentations.hpp"
 #include "syntax/context.hpp"
 #include "syntax/metadata.hpp"
+#include "syntax/oamd.hpp"
 #include "syntax/presentation.hpp"
 #include "syntax/substream.hpp"
 
@@ -72,6 +75,26 @@ std::string_view describe(Speaker speaker) {
             return "Tfl";
         case Speaker::kTopFrontRight:
             return "Tfr";
+        case Speaker::kTopBackLeft:
+            return "Tbl";
+        case Speaker::kTopBackRight:
+            return "Tbr";
+        case Speaker::kTopSideLeft:
+            return "Tsl";
+        case Speaker::kTopSideRight:
+            return "Tsr";
+        case Speaker::kLfe2:
+            return "LFE2";
+    }
+    return "?";
+}
+
+std::string_view describe(DecodingMode mode) {
+    switch (mode) {
+        case DecodingMode::kFull:
+            return "full";
+        case DecodingMode::kCore:
+            return "core";
     }
     return "?";
 }
@@ -90,6 +113,16 @@ std::string_view describe(DownmixTarget target) {
             return "Lt/Rt";
         case DownmixTarget::kMono:
             return "mono";
+        case DownmixTarget::k7X4:
+            return "7.X.4";
+        case DownmixTarget::k7X2:
+            return "7.X.2";
+        case DownmixTarget::k7X0:
+            return "7.X.0";
+        case DownmixTarget::k5X4:
+            return "5.X.4";
+        case DownmixTarget::k5X2:
+            return "5.X.2";
     }
     return "?";
 }
@@ -176,6 +209,14 @@ void apply_observed_stereo_rule(Toc& toc) {
     }
 }
 
+// Where an object audio substream's intermediate spatial format objects sit
+// in their format's t vector (Part 2 clause 5.10.3.4): the first one's place
+// and the format's object count, 0 without one.
+struct IsfPlace {
+    int first = 0;
+    int count = 0;
+};
+
 // The refusal of a substream no element of the table of contents this
 // decoder reads names.
 constexpr std::string_view kUnnamedSubstream =
@@ -196,7 +237,160 @@ struct Assignment {
     // once every substream's own claim has been made, since the two are read
     // from different elements (see assign_v1()/assign_v0()).
     std::optional<int> hsf_ext_index;
+    // An object audio substream's objects (SubstreamContext::coding kAjoc or
+    // kObjects), and a kOamd substream's context.
+    std::optional<detail::ObjectAudioContext> objects;
+    std::optional<detail::OamdSubstreamContext> oamd;
+    // The index of the OAMD substream of the group an object audio substream
+    // or an OAMD substream belongs to, whose carried state (the timing) the
+    // group's substreams share; unset for a group without one.
+    std::optional<int> oamd_key;
+    // An object audio substream's objects as decode() puts them out, in full
+    // and in core decoding, the LFE first (SubstreamPcm's object order); and
+    // where its objects start in its group's list, oamd_dyndata_multi()'s.
+    std::vector<ObjectEntry> essences_full;
+    std::vector<ObjectEntry> essences_core;
+    int group_offset = 0;
+    IsfPlace isf_full;
+    IsfPlace isf_core;
+    // An A-JOC substream's oamd_common_data() from the table of contents.
+    std::optional<OamdCommonData> object_common;
 };
+
+[[nodiscard]] detail::ObjType obj_type_of(ObjectKind kind) noexcept {
+    switch (kind) {
+        case ObjectKind::kBed:
+            return detail::ObjType::kBed;
+        case ObjectKind::kIsf:
+            return detail::ObjType::kIsf;
+        default:
+            return detail::ObjType::kDyn;
+    }
+}
+
+// The objects of an A-JOC substream's OAMD portion (Part 2 clause 6.2.3.4): the
+// LFE first where b_lfe is set (is_lfe[0] = 1), then the bed or intermediate
+// spatial format objects bed_dyn_obj_assignment() lists, then dynamic objects
+// up to the portion's fullband count (src/ac4dec/ERRATA.md, "The objects of an
+// A-JOC substream"). False where the assignment lists more than the count,
+// which 6.3.2.8.1 leaves undefined.
+[[nodiscard]] bool ajoc_portion(const std::vector<ObjectEntry>& assigned, int n_fullband,
+                                bool b_lfe, detail::OamdObjectList& out) {
+    out = detail::OamdObjectList{};
+    if (static_cast<int>(assigned.size()) > n_fullband) {
+        return false;
+    }
+    if (b_lfe) {
+        out.push({.type = detail::ObjType::kDyn, .lfe = true, .ajoc_coded = true});
+    }
+    for (const ObjectEntry& entry : assigned) {
+        out.push({.type = obj_type_of(entry.kind), .lfe = false, .ajoc_coded = true});
+    }
+    for (int i = static_cast<int>(assigned.size());
+         i < n_fullband && out.count <= detail::kMaxOamdObjects; ++i) {
+        out.push({.type = detail::ObjType::kDyn, .lfe = false, .ajoc_coded = true});
+    }
+    return true;
+}
+
+// A bed's or intermediate spatial format's objects, as the direct-coded
+// substream that starts them lists them, and how many of them the group's
+// substreams have taken so far (src/ac4dec/ERRATA.md, "The objects of a
+// direct-coded substream").
+struct StaticRun {
+    std::vector<ObjectEntry> objects;
+    bool isf = false;
+    std::size_t next = 0;  // the next fullband object to take
+    int lfes_given = 0;    // the LFEs given to the run's substreams so far
+};
+
+// What a direct-coded substream codes: its objects in the order its audio
+// carries them (an LFE, then its element's channels), and the element's
+// fullband count and LFE. A refusal where the table of contents gives no such
+// share.
+struct ObjectShare {
+    detail::OamdObjectList objects{};
+    std::vector<ObjectEntry> entries;  // the same objects, as the table of contents lists them
+    int n_objects = 0;
+    bool b_lfe = false;
+    IsfPlace isf;
+    std::optional<detail::SyntaxError> refusal;
+};
+
+[[nodiscard]] ObjectShare object_share(const ObjSubstreamInfo& info,
+                                       std::optional<StaticRun>& run) {
+    ObjectShare share;
+    if (!info.num_objects) {
+        share.refusal =
+            detail::SyntaxError{DecodeError::kInvalidStream, "a reserved n_objects_code"};
+        return share;
+    }
+    share.n_objects = *info.num_objects;
+    const auto add = [&share](const ObjectEntry& entry) {
+        share.objects.push(
+            {.type = obj_type_of(entry.kind), .lfe = entry.lfe, .ajoc_coded = false});
+        share.entries.push_back(entry);
+    };
+    if (info.b_dynamic_objects) {
+        share.b_lfe = info.b_lfe;
+        for (const ObjectEntry& entry : info.objects) {
+            add(entry);
+        }
+        return share;
+    }
+    if (info.static_kind == ObjSubstreamInfo::Static::kReserved) {
+        if (share.n_objects != 0) {
+            share.refusal = detail::SyntaxError{DecodeError::kUnsupported,
+                                                "objects a substream of reserved data describes"};
+        }
+        return share;
+    }
+    const bool isf = info.static_kind == ObjSubstreamInfo::Static::kIsf;
+    if (info.static_start) {
+        run = StaticRun{.objects = info.objects, .isf = isf, .next = 0, .lfes_given = 0};
+    } else if (!run || run->isf != isf) {
+        share.refusal =
+            detail::SyntaxError{DecodeError::kInvalidStream,
+                                "a substream that extends a bed or intermediate spatial format "
+                                "no substream before it started"};
+        return share;
+    }
+    // The run's LFEs go one to each of its first substreams, LFE to the first
+    // and LFE2 to the second (the NOTE after Part 2 clause 6.3.2.10.6); its
+    // fullband objects go to its substreams in order, n_objects each.
+    int lfe_seen = 0;
+    for (const ObjectEntry& entry : run->objects) {
+        if (!entry.lfe) {
+            continue;
+        }
+        if (lfe_seen++ == run->lfes_given) {
+            add(entry);
+            share.b_lfe = true;
+            ++run->lfes_given;
+            break;
+        }
+    }
+    if (isf) {
+        // An intermediate spatial format has no LFE (bed_dyn_obj_assignment(),
+        // ac4_substream_info_obj()), so its objects' places are the run's.
+        share.isf = IsfPlace{.first = static_cast<int>(run->next),
+                             .count = static_cast<int>(run->objects.size())};
+    }
+    int taken = 0;
+    while (taken < share.n_objects && run->next < run->objects.size()) {
+        const ObjectEntry& entry = run->objects[run->next++];
+        if (!entry.lfe) {
+            add(entry);
+            ++taken;
+        }
+    }
+    if (taken < share.n_objects) {
+        share.refusal =
+            detail::SyntaxError{DecodeError::kInvalidStream,
+                                "a substream that codes more objects than its bed assigns"};
+    }
+    return share;
+}
 
 void refuse(std::map<int, Assignment>& out, int index, DecodeError error, std::string_view reason) {
     if (out.contains(index)) {
@@ -276,6 +470,83 @@ void assign_audio(const Toc& toc, const ChannelSubstreamInfo& chan, int index, i
     out.emplace(index, std::move(a));
 }
 
+// The context of an object audio substream - A-JOC coded or direct coded - of
+// `coding`, at `index`, instance of a series starting at `first` of
+// `b_iframe.size()` instances (Part 1 4.3.3.7.9, as assign_instances() reads
+// it for channel-coded substreams). `fill` completes the context's object
+// fields. Its channel_mode is negative (Part 2 6.2.2.2's NOTE 2).
+// An object audio substream's objects as decode() puts them out, full and
+// core, and where they start in the group's list.
+struct Essences {
+    std::vector<ObjectEntry> full;
+    std::vector<ObjectEntry> core;
+    int group_offset = 0;
+    IsfPlace isf_full;
+    IsfPlace isf_core;
+    std::optional<OamdCommonData> object_common;
+};
+
+template <typename Fill>
+void assign_object_instances(const Toc& toc, std::optional<int> first_index,
+                             const std::vector<bool>& b_iframe, std::optional<int> sf_multiplier,
+                             int presentation_version, bool b_associated, bool b_dialog,
+                             bool b_alternative, const detail::ObjectAudioContext& objects,
+                             std::optional<int> oamd_key, const Essences& essences, Fill fill,
+                             std::map<int, Assignment>& out) {
+    if (!first_index) {
+        return;
+    }
+    const std::size_t instances = b_iframe.empty() ? 1 : b_iframe.size();
+    const std::int64_t first = *first_index;
+    for (std::size_t i = 0; i < instances; ++i) {
+        const std::int64_t wide = first + static_cast<std::int64_t>(i);
+        if (wide > std::numeric_limits<int>::max()) {
+            break;
+        }
+        const int index = static_cast<int>(wide);
+        if (out.contains(index)) {
+            continue;
+        }
+        const int base = detail::frame_len_base(toc.frame_rate_index, toc.sample_rate_hz);
+        if (base == 0) {
+            refuse(out, index, DecodeError::kInvalidStream, "a reserved frame_rate_index");
+            continue;
+        }
+        const auto factor = static_cast<int>(instances);
+        if (base % factor != 0) {
+            refuse(out, index, DecodeError::kInvalidStream,
+                   "a frame rate factor the frame length does not divide by");
+            continue;
+        }
+        Assignment a;
+        a.kind = SubstreamReport::Kind::kAudio;
+        a.state_key = static_cast<int>(first);
+        SubstreamContext& ctx = a.audio;
+        ctx.bitstream_version = toc.bitstream_version;
+        ctx.presentation_version = presentation_version;
+        ctx.fs_index = toc.sample_rate_hz == 44100 ? 0 : 1;
+        ctx.frame_rate_index = toc.frame_rate_index;
+        ctx.frame_len_base = base / factor;
+        ctx.b_iframe = !b_iframe.empty() && b_iframe[i];
+        ctx.sus_ver = 1;
+        ctx.ch_mode = -1;
+        ctx.sf_multiplier = sf_multiplier;
+        ctx.b_associated = b_associated;
+        ctx.b_dialog = b_dialog;
+        ctx.b_alternative = b_alternative;
+        fill(ctx);
+        a.objects = objects;
+        a.oamd_key = oamd_key;
+        a.essences_full = essences.full;
+        a.essences_core = essences.core;
+        a.group_offset = essences.group_offset;
+        a.isf_full = essences.isf_full;
+        a.isf_core = essences.isf_core;
+        a.object_common = essences.object_common;
+        out.emplace(index, std::move(a));
+    }
+}
+
 // Part 1 4.3.3.7.9: with a frame_rate_factor above 1, substream_index names
 // the first of that many consecutive substreams, one per instance, each with
 // its own b_iframe or b_audio_ndot.
@@ -353,13 +624,44 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                 continue;
             }
             const Role role = role_v1(p, position, group);
+            // The group's OAMD substream is named before its substreams
+            // (6.2.1.6), so its claim comes first; the objects its
+            // oamd_dyndata_multi() lists are the group's substreams' in order,
+            // filled in below.
+            std::optional<int> oamd_key;
+            bool oamd_claimed = false;
             if (group.oamd && group.oamd->substream_index) {
-                refuse(out, *group.oamd->substream_index, DecodeError::kUnsupported,
-                       "object audio metadata substreams are not decoded yet");
+                const int index = *group.oamd->substream_index;
+                oamd_key = index;
+                if (!out.contains(index)) {
+                    Assignment a;
+                    a.kind = SubstreamReport::Kind::kOamd;
+                    a.oamd = detail::OamdSubstreamContext{};
+                    a.oamd->b_oamd_ndot = group.oamd->b_oamd_ndot;
+                    a.oamd->b_alternative = p.b_alternative;
+                    a.oamd_key = index;
+                    out.emplace(index, std::move(a));
+                    oamd_claimed = true;
+                }
             }
             const int classifier = group.content_type ? group.content_type->content_classifier : 0;
             const bool b_associated = role == Role::kAssociated || role_from_classifier(classifier) == Role::kAssociated;
             const bool b_dialog = role == Role::kDialogue || classifier == 0b100;
+            detail::OamdObjectList group_objects;
+            std::optional<StaticRun> run;
+            const auto refuse_series = [&out](std::optional<int> first, std::size_t instances,
+                                              DecodeError error, std::string_view reason) {
+                if (!first) {
+                    return;
+                }
+                for (std::size_t i = 0; i < std::max<std::size_t>(instances, 1); ++i) {
+                    const std::int64_t index = std::int64_t{*first} + static_cast<std::int64_t>(i);
+                    if (index > std::numeric_limits<int>::max()) {
+                        break;
+                    }
+                    refuse(out, static_cast<int>(index), error, reason);
+                }
+            };
             for (const GroupSubstream& sub : group.substreams) {
                 // The substream's own claim on its own index goes first,
                 // matching Python's substream_roles() (audio() before the
@@ -368,12 +670,123 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                 // index, and out.contains()'s first-claim-wins means the
                 // two transcriptions would otherwise disagree on which
                 // claim that self-reference resolves to.
-                if (sub.kind == GroupSubstream::Kind::kAjoc && sub.ajoc && sub.ajoc->substream_index) {
-                    refuse(out, *sub.ajoc->substream_index, DecodeError::kUnsupported,
-                           "A-JOC substreams are not decoded yet");
-                } else if (sub.kind == GroupSubstream::Kind::kObj && sub.obj && sub.obj->substream_index) {
-                    refuse(out, *sub.obj->substream_index, DecodeError::kUnsupported,
-                           "object substreams are not decoded yet");
+                if (sub.kind == GroupSubstream::Kind::kAjoc && sub.ajoc) {
+                    const AjocSubstreamInfo& info = *sub.ajoc;
+                    detail::ObjectAudioContext objects;
+                    const bool dmx_ok =
+                        info.b_static_dmx ||
+                        ajoc_portion(info.static_objects, info.n_fullband_dmx_signals, info.b_lfe,
+                                     objects.dmx);
+                    const bool umx_ok = ajoc_portion(
+                        info.upmix_objects, info.n_fullband_upmix_signals, info.b_lfe, objects.umx);
+                    // Its objects: in full decoding the upmix's, in core
+                    // decoding the downmix's, or a static downmix's bed (L, R,
+                    // C, Ls and Rs, Table A.27's 0 to 4); the LFE first.
+                    Essences essences;
+                    essences.group_offset = group_objects.count;
+                    const auto portion = [&info](const std::vector<ObjectEntry>& assigned,
+                                                 int count, std::vector<ObjectEntry>& out_list) {
+                        if (info.b_lfe) {
+                            out_list.push_back({.kind = ObjectKind::kBed,
+                                                .lfe = true,
+                                                .ajoc_coded = true,
+                                                .speaker = 11});
+                        }
+                        for (const ObjectEntry& entry : assigned) {
+                            out_list.push_back(entry);
+                        }
+                        for (int i = static_cast<int>(assigned.size()); i < count; ++i) {
+                            out_list.push_back({.kind = ObjectKind::kDyn,
+                                                .lfe = false,
+                                                .ajoc_coded = true,
+                                                .speaker = {}});
+                        }
+                    };
+                    portion(info.upmix_objects, info.n_fullband_upmix_signals, essences.full);
+                    // An intermediate spatial format's objects lead
+                    // bed_dyn_obj_assignment()'s list, the whole format.
+                    const auto isf_objects = [](const std::vector<ObjectEntry>& assigned) {
+                        return static_cast<int>(
+                            std::ranges::count(assigned, ObjectKind::kIsf, &ObjectEntry::kind));
+                    };
+                    essences.isf_full.count = isf_objects(info.upmix_objects);
+                    essences.object_common = info.oamd_common_data;
+                    if (info.b_static_dmx) {
+                        if (info.b_lfe) {
+                            essences.core.push_back({.kind = ObjectKind::kBed,
+                                                     .lfe = true,
+                                                     .ajoc_coded = true,
+                                                     .speaker = 11});
+                        }
+                        for (int s = 0; s < 5; ++s) {
+                            essences.core.push_back({.kind = ObjectKind::kBed,
+                                                     .lfe = false,
+                                                     .ajoc_coded = true,
+                                                     .speaker = s});
+                        }
+                    } else {
+                        portion(info.static_objects, info.n_fullband_dmx_signals, essences.core);
+                        essences.isf_core.count = isf_objects(info.static_objects);
+                    }
+                    // Every object counts, past the list's capacity too, so a
+                    // group of more than it holds is refused where it is read.
+                    for (int i = 0; i < objects.umx.count; ++i) {
+                        group_objects.push(i < detail::kMaxOamdObjects ? objects.umx[i]
+                                                                       : detail::OamdObjectType{});
+                    }
+                    if (!dmx_ok || !umx_ok) {
+                        refuse_series(
+                            info.substream_index, info.b_iframe.size(), DecodeError::kInvalidStream,
+                            "bed_dyn_obj_assignment() assigns more objects than the signals");
+                    } else if (objects.dmx.count > detail::kMaxOamdObjects ||
+                               objects.umx.count > detail::kMaxOamdObjects) {
+                        refuse_series(info.substream_index, info.b_iframe.size(),
+                                      DecodeError::kUnsupported,
+                                      "more A-JOC objects than the decoder describes");
+                    } else {
+                        assign_object_instances(
+                            toc, info.substream_index, info.b_iframe, info.sf_multiplier,
+                            p.presentation_version, b_associated, b_dialog, p.b_alternative,
+                            objects, oamd_key, essences,
+                            [&info](SubstreamContext& ctx) {
+                                ctx.coding = detail::AudioCoding::kAjoc;
+                                ctx.b_lfe = info.b_lfe;
+                                ctx.b_static_dmx = info.b_static_dmx;
+                                ctx.n_fullband_dmx = info.n_fullband_dmx_signals;
+                                ctx.n_fullband_umx = info.n_fullband_upmix_signals;
+                            },
+                            out);
+                    }
+                } else if (sub.kind == GroupSubstream::Kind::kObj && sub.obj) {
+                    const ObjSubstreamInfo& info = *sub.obj;
+                    const ObjectShare share = object_share(info, run);
+                    Essences essences;
+                    essences.group_offset = group_objects.count;
+                    essences.full = share.entries;
+                    essences.core = share.entries;
+                    essences.isf_full = share.isf;
+                    essences.isf_core = share.isf;
+                    for (int i = 0; i < share.objects.count; ++i) {
+                        group_objects.push(i < detail::kMaxOamdObjects ? share.objects[i]
+                                                                       : detail::OamdObjectType{});
+                    }
+                    if (share.refusal) {
+                        refuse_series(info.substream_index, info.b_iframe.size(),
+                                      share.refusal->error, share.refusal->reason);
+                    } else {
+                        detail::ObjectAudioContext objects;
+                        objects.objects = share.objects;
+                        assign_object_instances(
+                            toc, info.substream_index, info.b_iframe, info.sf_multiplier,
+                            p.presentation_version, b_associated, b_dialog, p.b_alternative,
+                            objects, oamd_key, essences,
+                            [&share](SubstreamContext& ctx) {
+                                ctx.coding = detail::AudioCoding::kObjects;
+                                ctx.b_lfe = share.b_lfe;
+                                ctx.n_objects = share.n_objects;
+                            },
+                            out);
+                    }
                 } else if (sub.kind == GroupSubstream::Kind::kChan && sub.chan) {
                     // sus_ver is 1 for bitstream_version 2 (Part 2 6.2.1.6).
                     assign_instances(toc, *sub.chan, p.presentation_version, 1, b_associated, b_dialog,
@@ -388,6 +801,13 @@ void assign_v1(const Toc& toc, std::map<int, Assignment>& out) {
                 if (sub.hsf_ext_substream_index) {
                     claim_hsf_ext(out, *sub.hsf_ext_substream_index);
                 }
+            }
+            if (oamd_claimed) {
+                // 6.3.9.5: oamd_dyndata_multi() lists "all object essences
+                // present over all audio substreams of the according substream
+                // group in the order of bitstream presence" (src/ac4dec/
+                // ERRATA.md, "The objects oamd_dyndata_multi() lists").
+                out.at(*oamd_key).oamd->objects = group_objects;
             }
         }
     }
@@ -429,6 +849,21 @@ struct CapturedAudio {
     SubstreamContext context{};
     AudioSubstream content{};
     bool read = false;  // read to its end, with no refusal
+    // An object audio substream's objects and its group's OAMD substream
+    // (Assignment's).
+    std::vector<ObjectEntry> essences_full;
+    std::vector<ObjectEntry> essences_core;
+    int group_offset = 0;
+    std::optional<int> oamd_key;
+    IsfPlace isf_full;
+    IsfPlace isf_core;
+    std::optional<OamdCommonData> object_common;
+};
+
+// A group's OAMD substream as the frame carried it.
+struct CapturedOamd {
+    int key = -1;
+    detail::OamdSubstream content{};
 };
 
 // What decode() keeps of the frame: the presentation select_presentation()
@@ -439,6 +874,7 @@ struct Capture {
     std::vector<CapturedAudio> audio;
     PresentationSubstream presentation{};
     bool presentation_read = false;
+    std::vector<CapturedOamd> oamd;
 
     [[nodiscard]] CapturedAudio* wants(int index) noexcept {
         for (CapturedAudio& a : audio) {
@@ -655,6 +1091,14 @@ struct Decoder::Impl {
     DecoderConfig config{};
     std::map<int, AudioSubstreamState> audio;
     std::map<int, PresentationSubstreamState> presentation;
+    // What a substream group's OAMD substream sent last, keyed by its index:
+    // the timing its substreams take where they send none (src/ac4dec/
+    // ERRATA.md, "Which oamd_timing_data() applies"), and the common data.
+    struct OamdGroupState {
+        std::optional<detail::OamdTimingData> timing;
+        std::optional<detail::OamdCommonData> common;
+    };
+    std::map<int, OamdGroupState> oamd;
     // decode()'s reconstruction state, keyed as `audio` is.
     std::map<int, detail::SubstreamPcm> pcm;
     std::optional<int> previous_sequence_counter;
@@ -689,6 +1133,48 @@ struct Decoder::Impl {
     // by dialogue substream.
     std::map<int, AssociatedMixState> associated_mix;
     std::map<int, DialogueMixState> dialogue_mix;
+    // Object audio: each object's metadata and its updates that wait for
+    // their output sample, by substream (its state key) and object; an A-JOC
+    // substream's portions' own timings, the last each sent; the object
+    // substreams decode() last output; and the output samples so far.
+    struct ObjectTrack {
+        detail::ObjectMetadataState state;
+        ObjectProperties current;  // in force at the next output sample
+        // The updates waiting, in order from `next`: a queue whose storage
+        // stays from frame to frame.
+        std::vector<std::pair<std::int64_t, ObjectUpdate>> pending;
+        std::size_t next = 0;
+        detail::IsfGain isf_gain;  // an intermediate spatial format object's
+    };
+    std::map<std::pair<int, int>, ObjectTrack> object_tracks;
+    struct AjocTimings {
+        std::optional<detail::OamdTimingData> dmx;
+        std::optional<detail::OamdTimingData> umx;
+    };
+    std::map<int, AjocTimings> ajoc_timings;
+    std::vector<int> last_objects;
+    std::int64_t output_samples = 0;
+    // An object substream's objects, kept from frame to frame, and the
+    // frame's length.
+    std::vector<std::vector<float>> object_pcm;
+    std::size_t object_samples = 0;
+    std::size_t objects_used = 0;  // DecodedFrame::objects filled so far this frame
+    // The frame's intermediate spatial format objects, for the ISF renderer
+    // once the presentation's channels are decoded: the first `isf_used`,
+    // their essences' storage kept from frame to frame.
+    struct IsfObject {
+        int config = 0;
+        int index = 0;
+        std::vector<float> samples;
+    };
+    std::vector<IsfObject> isf_objects;
+    std::size_t isf_used = 0;
+    std::vector<ObjectUpdate> isf_updates;
+    std::vector<detail::IsfInput> isf_inputs;
+
+    // Renders the frame's intermediate spatial format objects into `frame`'s
+    // channels (clause 5.10.3), or where it has none into the output layout's.
+    [[nodiscard]] AC4DEC_NO_EXPORT detail::ParseResult render_isf(DecodedFrame& frame);
     // What presentations() and metadata() report: the presentations of the
     // last frame read, their names by presentation substream, and the
     // selected presentation's metadata as the frames have sent it.
@@ -703,8 +1189,16 @@ struct Decoder::Impl {
 
     [[nodiscard]] bool keeps(int key) const noexcept {
         return key == last_key ||
-               std::ranges::any_of(last_members, [key](const LastMember& m) { return m.key == key; });
+               std::ranges::any_of(last_members,
+                                   [key](const LastMember& m) { return m.key == key; }) ||
+               std::ranges::find(last_objects, key) != last_objects.end();
     }
+
+    // The objects of one object audio member of the presentation, decoded,
+    // their metadata applied, into `frame`.
+    [[nodiscard]] AC4DEC_NO_EXPORT detail::ParseResult decode_objects(const CapturedAudio& member,
+                                                     const detail::FrameInputs& base,
+                                                     DecodedFrame& frame);
 
     // A change of source (Part 1 clause 4.3.3.2.2): what was read from the
     // stream goes, the mixing values and what metadata() holds with it, and
@@ -714,8 +1208,13 @@ struct Decoder::Impl {
     void forget_stream() {
         audio.clear();
         presentation.clear();
+        oamd.clear();
         associated_mix.clear();
         dialogue_mix.clear();
+        ajoc_timings.clear();
+        for (auto& [key, track] : object_tracks) {
+            track.state = {};
+        }
         names.clear();
         metadata = PresentationMetadata{};
         std::erase_if(pcm, [this](const auto& entry) { return !keeps(entry.first); });
@@ -728,6 +1227,8 @@ struct Decoder::Impl {
         pcm.clear();
         last_key.reset();
         last_members.clear();
+        last_objects.clear();
+        object_tracks.clear();
     }
 
     // This frame's mixing of `plan` (Part 1 clause 6.2.16, Part 2 clauses
@@ -795,7 +1296,8 @@ std::expected<bool, DecodeError> Decoder::Impl::conceal_or(DecodeError error, De
                                .output = config.output,
                                .drc = {},
                                .de = {},
-                               .downmix = {}};
+                               .downmix = {},
+                               .decoding = config.decoding};
     // The presentation's other substreams are concealed the same way, as far
     // as the QMF domain, and mixed in as the last good frame mixed them.
     detail::FrameInputs member_inputs = inputs;
@@ -821,6 +1323,9 @@ std::expected<bool, DecodeError> Decoder::Impl::conceal_or(DecodeError error, De
         return std::unexpected(error);
     }
     frame.samples = frame.channels.empty() ? 0 : frame.channels.front().size();
+    frame.objects.clear();
+    frame.object_common.reset();
+    output_samples += static_cast<std::int64_t>(frame.samples);
     frame.concealed = Concealment{.error = error,
                                   .action = config.concealment == ConcealmentPolicy::kRepeatFade
                                                 ? ConcealmentAction::kRepeatFade
@@ -915,6 +1420,220 @@ std::size_t Decoder::Impl::drain(const BlockSink& sink) {
     return samples;
 }
 
+detail::ParseResult Decoder::Impl::decode_objects(const CapturedAudio& member,
+                                                  const detail::FrameInputs& base,
+                                                  DecodedFrame& frame) {
+    // The objects' PCM: the substream's element, then A-JOC in full
+    // decoding, with the output level gain alone (SubstreamPcm).
+    detail::FrameInputs inputs = base;
+    inputs.de = {};
+    inputs.downmix = {};
+    inputs.mix = {};
+    inputs.sources = {};
+    inputs.dialogue.reset();
+    inputs.qmf_only = false;
+    inputs.objects = true;
+    detail::SubstreamPcm& substream = pcm[member.state_key];
+    if (auto ok =
+            substream.decode(member.context, member.content, inputs, object_pcm, scratch_speakers);
+        !ok) {
+        return ok;
+    }
+    const bool full = config.decoding == DecodingMode::kFull;
+    const std::vector<ObjectEntry>& essences = full ? member.essences_full : member.essences_core;
+    if (object_pcm.size() != essences.size()) {
+        return detail::fail(
+            DecodeError::kInvalidStream,
+            "an object audio substream whose objects its table of contents does not list");
+    }
+    const std::size_t length = object_pcm.empty() ? 0 : object_pcm.front().size();
+    object_samples = length;
+    // Part 2 clause 5.8.2.5: a direct-coded dialogue substream's objects take
+    // the dialogue enhancement gain, up to the cap its dialog_max_gain sets
+    // (0 dB without one), which is kept as a dialogue substream's is for the
+    // mix (Part 1 clause 4.3.12.4.11).
+    const detail::ExtendedMetadata& sent = member.content.metadata.extended;
+    if (member.context.coding == detail::AudioCoding::kObjects && sent.b_dialog) {
+        DialogueMixState& state = dialogue_mix[member.state_key];
+        if (sent.dialog_max_gain) {
+            state.dialog_max_gain = sent.dialog_max_gain;
+        } else if (member.context.b_iframe) {
+            state.dialog_max_gain.reset();
+        }
+        const double max_db =
+            state.dialog_max_gain ? 3.0 * static_cast<double>(1 + *state.dialog_max_gain) : 0.0;
+        if (const double db = std::min(config.output.dialogue_enhancement_db, max_db); db != 0.0) {
+            const auto de_gain = static_cast<float>(std::pow(10.0, db / 20.0));
+            for (std::vector<float>& samples : object_pcm) {
+                for (float& sample : samples) {
+                    sample *= de_gain;
+                }
+            }
+        }
+    }
+    const IsfPlace isf = full ? member.isf_full : member.isf_core;
+    const int isf_config = detail::isf_config_of(isf.count);
+
+    // The metadata of this frame's objects and its timing (Part 2 Table 7):
+    // an A-JOC substream's portion, the upmix's in full decoding and the
+    // downmix's in core decoding; a direct-coded substream's in its group's
+    // OAMD substream, or in its own metadata() in an alternative
+    // presentation. A portion that sends no timing takes the downmix's
+    // (b_derive_timing_from_dmx), the group's, or its own last (src/ac4dec/
+    // ERRATA.md, "Which oamd_timing_data() applies").
+    // The common data: an A-JOC substream's own in the table of contents,
+    // else its group's OAMD substream's.
+    std::optional<detail::OamdTimingData> group_timing;
+    if (member.object_common) {
+        frame.object_common = member.object_common;
+    }
+    if (member.oamd_key) {
+        if (const auto group = oamd.find(*member.oamd_key); group != oamd.end()) {
+            group_timing = group->second.timing;
+            if (group->second.common && !member.object_common) {
+                frame.object_common = group->second.common->data;
+            }
+        }
+    }
+    const detail::OamdDynData* dyn = nullptr;
+    int offset = 0;
+    std::optional<detail::OamdTimingData> timing;
+    if (member.context.coding == detail::AudioCoding::kAjoc && member.content.ajoc) {
+        const detail::AjocSubstream& a = *member.content.ajoc;
+        AjocTimings& own = ajoc_timings[member.state_key];
+        const std::optional<detail::OamdTimingData> dmx_timing =
+            a.dmx_timing ? a.dmx_timing : (group_timing ? group_timing : own.dmx);
+        if (a.dmx_timing) {
+            own.dmx = a.dmx_timing;
+        }
+        if (a.umx_timing) {
+            own.umx = a.umx_timing;
+        }
+        if (full) {
+            dyn = &a.umx;
+            timing = a.umx_timing
+                         ? a.umx_timing
+                         : (a.b_derive_timing_from_dmx ? dmx_timing
+                                                       : (group_timing ? group_timing : own.umx));
+        } else if (!member.context.b_static_dmx) {
+            dyn = a.dmx ? &*a.dmx : nullptr;
+            timing = dmx_timing;
+        }
+    } else {
+        if (member.content.metadata.oamd) {
+            dyn = &*member.content.metadata.oamd;
+        } else if (member.oamd_key) {
+            for (const CapturedOamd& captured : frame_capture.oamd) {
+                if (captured.key == *member.oamd_key && captured.content.dyndata) {
+                    dyn = &*captured.content.dyndata;
+                    offset = member.group_offset;
+                }
+            }
+        }
+        timing = group_timing;
+    }
+
+    // Each block's update, at its sample in the output: the codec frame's
+    // first sample comes out the decoder's delay after this frame's first
+    // output sample (clause 5.9.2).
+    const std::int64_t start = output_samples;
+    const auto origin = start + static_cast<std::int64_t>(substream.output_delay_samples());
+    const int n = static_cast<int>(essences.size());
+    if (dyn != nullptr && timing && dyn->n_blocks > 0 && offset + n <= dyn->n_objs) {
+        for (int b = 0; b < dyn->n_blocks; ++b) {
+            const detail::BlockTiming when = detail::block_timing(*timing, b);
+            std::optional<double> previous_gain;
+            for (int k = 0; k < n; ++k) {
+                const ObjectEntry& e = essences[static_cast<std::size_t>(k)];
+                const bool dynamic = e.kind == ObjectKind::kDyn && !e.lfe;
+                ObjectTrack& track = object_tracks[{member.state_key, k}];
+                const ObjectProperties p = detail::apply_block(dyn->block(offset + k, b), dynamic,
+                                                               previous_gain, track.state);
+                previous_gain = p.gain_db;
+                track.pending.emplace_back(
+                    origin + when.sample,
+                    ObjectUpdate{.sample = 0, .ramp_samples = when.ramp, .properties = p});
+            }
+        }
+    }
+
+    // The objects, each with the updates that fall in this frame; an
+    // intermediate spatial format's, their gains applied, wait for the ISF
+    // renderer.
+    // A frame decode_by_block() keeps has its objects' storage from the frame
+    // before, which the essences swap with object_pcm's.
+    int isf_seen = 0;
+    const auto end = start + static_cast<std::int64_t>(length);
+    for (int k = 0; k < n; ++k) {
+        const ObjectEntry& e = essences[static_cast<std::size_t>(k)];
+        ObjectTrack& track = object_tracks[{member.state_key, k}];
+        const bool rendered = e.kind == ObjectKind::kIsf;
+        if (!rendered && objects_used == frame.objects.size()) {
+            frame.objects.emplace_back();
+        }
+        DecodedObject* const object = rendered ? nullptr : &frame.objects[objects_used];
+        std::vector<ObjectUpdate>& updates = rendered ? isf_updates : object->updates;
+        updates.clear();
+        if (object != nullptr) {
+            object->properties = track.current;
+        }
+        while (track.next < track.pending.size() && track.pending[track.next].first < end) {
+            auto [at_sample, update] = track.pending[track.next++];
+            update.sample = at_sample < start ? 0 : static_cast<std::size_t>(at_sample - start);
+            track.current = update.properties;
+            updates.push_back(std::move(update));
+        }
+        if (track.next == track.pending.size()) {
+            track.pending.clear();
+            track.next = 0;
+        }
+        std::vector<float>& samples = object_pcm[static_cast<std::size_t>(k)];
+        if (rendered) {
+            if (isf_config < 0) {
+                return detail::fail(
+                    DecodeError::kInvalidStream,
+                    "an intermediate spatial format of an object count Table 61 does not have");
+            }
+            track.isf_gain.apply(samples, isf_updates);
+            if (isf_used == isf_objects.size()) {
+                isf_objects.emplace_back();
+            }
+            IsfObject& slot = isf_objects[isf_used++];
+            slot.config = isf_config;
+            slot.index = isf.first + isf_seen++;
+            slot.samples.swap(samples);
+            continue;
+        }
+        object->kind = e.kind;
+        object->lfe = e.lfe;
+        object->speaker = e.speaker ? detail::speaker_of_index(*e.speaker) : std::nullopt;
+        object->samples.swap(samples);
+        ++objects_used;
+    }
+    return {};
+}
+
+detail::ParseResult Decoder::Impl::render_isf(DecodedFrame& frame) {
+    if (isf_used == 0) {
+        return {};
+    }
+    isf_inputs.clear();
+    for (std::size_t i = 0; i < isf_used; ++i) {
+        const IsfObject& o = isf_objects[i];
+        isf_inputs.push_back({.config = o.config, .index = o.index, .samples = o.samples});
+    }
+    isf_used = 0;
+    const std::size_t length =
+        frame.channels.empty() ? object_samples : frame.channels.front().size();
+    if (!detail::render_isf(isf_inputs, config.output.downmix, length, frame.channels,
+                            frame.speakers)) {
+        return detail::fail(
+            DecodeError::kUnsupported,
+            "an intermediate spatial format in channels Annex A.2.1 has no matrix for");
+    }
+    return {};
+}
+
 Decoder::Decoder() : Decoder(DecoderConfig{}) {}
 
 Decoder::Decoder(const DecoderConfig& config) : impl_(std::make_unique<Impl>()) {
@@ -939,6 +1658,7 @@ void Decoder::reset() {
     impl_->blocks.concealed = false;
     impl_->blocks.position = 0;
     impl_->latency = 0;
+    impl_->output_samples = 0;
 }
 
 std::expected<FrameReport, DecodeError> Decoder::parse(std::span<const std::byte> raw_ac4_frame) {
@@ -1310,7 +2030,8 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
         return d.conceal_or(DecodeError::kUnsupported, frame);
     }
     const detail::PresentationPlan& plan = *capture.plan;
-    const std::size_t anchor = detail::anchor_member(plan).value_or(0);
+    const std::optional<std::size_t> channel_anchor = detail::anchor_member(plan);
+    const std::size_t anchor = channel_anchor.value_or(0);
     // The presentation needs every one of its substreams: one refused, or
     // missing, is the frame's failure.
     for (const CapturedAudio& member : capture.audio) {
@@ -1333,6 +2054,9 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
     const CapturedAudio& main = capture.audio[anchor];
     frame.concealed.reset();
     frame.sample_rate_hz = main.context.fs_index == 0 ? 44100 : 48000;
+    const auto is_object = [&plan](std::size_t m) {
+        return plan.members[m].coding != detail::Coding::kChannel;
+    };
     frame.sequence_counter = report->sequence_counter;
     frame.presentation = plan.index;
     frame.presentation_id = plan.presentation_id;
@@ -1343,7 +2067,10 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
                                .converter_phase = phase,
                                .new_source = d.new_source,
                                .output = d.config.output,
-                               .drc = {}};
+                               .drc = {},
+                               .de = {},
+                               .downmix = {},
+                               .decoding = d.config.decoding};
     std::optional<double> dialnorm;
     const detail::DrcState* drc_state = nullptr;
     const detail::DrcFrame* drc_frame = nullptr;
@@ -1363,6 +2090,45 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
         }
     }
     inputs.drc = detail::drc_frame_values(d.config.output, dialnorm, drc_state, drc_frame);
+    // The presentation's object audio substreams, each decoded apart.
+    frame.object_common.reset();
+    d.last_objects.clear();
+    d.isf_used = 0;
+    d.objects_used = 0;
+    d.object_samples = 0;
+    for (std::size_t m = 0; m < capture.audio.size(); ++m) {
+        if (!is_object(m)) {
+            continue;
+        }
+        if (const detail::ParseResult decoded = d.decode_objects(capture.audio[m], inputs, frame);
+            !decoded) {
+            d.refusal = decoded.error().reason;
+            return d.conceal_or(decoded.error().error, frame);
+        }
+        d.last_objects.push_back(capture.audio[m].state_key);
+        d.latency = d.pcm[capture.audio[m].state_key].output_delay_samples();
+    }
+    frame.objects.resize(d.objects_used);
+    if (!channel_anchor) {
+        // A presentation of object audio alone: no channels, but an
+        // intermediate spatial format's.
+        frame.channels.clear();
+        frame.speakers.clear();
+        if (const detail::ParseResult rendered = d.render_isf(frame); !rendered) {
+            d.refusal = rendered.error().reason;
+            return d.conceal_or(rendered.error().error, frame);
+        }
+        frame.samples = d.object_samples;
+        d.last_key.reset();
+        d.last_members.clear();
+        d.last_rate = frame.sample_rate_hz;
+        d.last_presentation = plan.index;
+        d.last_presentation_id = plan.presentation_id;
+        d.new_source = false;
+        d.output_samples += static_cast<std::int64_t>(d.object_samples);
+        std::erase_if(d.pcm, [&d](const auto& entry) { return !d.keeps(entry.first); });
+        return true;
+    }
     inputs.de = detail::de_frame_values(main.content.metadata.dialog_enhancement);
     inputs.downmix =
         detail::downmix_values(capture.presentation_read ? &capture.presentation : nullptr, main.content.metadata);
@@ -1373,7 +2139,7 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
     d.sources.clear();
     std::optional<detail::MixSource> dialogue;
     for (std::size_t m = 0; m < capture.audio.size(); ++m) {
-        if (m == anchor) {
+        if (m == anchor || is_object(m)) {
             continue;
         }
         const CapturedAudio& member = capture.audio[m];
@@ -1383,6 +2149,7 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
                                           .output = d.config.output,
                                           .drc = {}};
         member_inputs.de = detail::de_frame_values(member.content.metadata.dialog_enhancement);
+        member_inputs.decoding = d.config.decoding;
         member_inputs.qmf_only = true;
         detail::SubstreamPcm& member_pcm = d.pcm[member.state_key];
         if (const detail::ParseResult decoded =
@@ -1407,15 +2174,21 @@ std::expected<bool, DecodeError> Decoder::Impl::decode_into(
         d.refusal = decoded.error().reason;
         return d.conceal_or(decoded.error().error, frame);
     }
+    if (const detail::ParseResult rendered = d.render_isf(frame); !rendered) {
+        d.refusal = rendered.error().reason;
+        return d.conceal_or(rendered.error().error, frame);
+    }
     frame.samples = frame.channels.empty() ? 0 : frame.channels.front().size();
     d.latency = d.pcm[main.state_key].output_delay_samples();
     d.last_key = main.state_key;
     d.last_members.clear();
     for (std::size_t m = 0; m < capture.audio.size(); ++m) {
-        if (m != anchor) {
+        if (m != anchor && !is_object(m)) {
             d.last_members.push_back({.key = capture.audio[m].state_key, .role = plan.members[m].role});
         }
     }
+    d.output_samples +=
+        frame.channels.empty() ? 0 : static_cast<std::int64_t>(frame.channels.front().size());
     d.last_rate = frame.sample_rate_hz;
     d.last_presentation = plan.index;
     d.last_presentation_id = plan.presentation_id;
@@ -1443,6 +2216,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
     const Toc& toc = frame->toc;
     capture->plan = nullptr;
     capture->audio.clear();
+    capture->oamd.clear();
     capture->presentation_read = false;
     if (const std::optional<std::size_t> selected =
             detail::select(toc, config.presentation, config.level, plans)) {
@@ -1560,10 +2334,9 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
         BitReader ext_reader(raw_ac4_frame.subspan(ext_loc.offset, ext_loc.size), ext_index,
                              sink_of(config.syntax));
         AudioSubstreamState& state = audio[assignment.state_key];
-        if (state.ch_mode != assignment.audio.ch_mode || state.sus_ver != assignment.audio.sus_ver) {
+        if (!state.carries(assignment.audio)) {
             state = AudioSubstreamState{};
-            state.ch_mode = assignment.audio.ch_mode;
-            state.sus_ver = assignment.audio.sus_ver;
+            state.carry(assignment.audio);
         }
         AudioSubstream parsed;
         const ParseResult owner_result =
@@ -1607,99 +2380,145 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
         assignments.erase(index);
     }
 
-    for (auto& [index, assignment] : assignments) {
-        SubstreamReport substream;
-        substream.index = index;
-        substream.kind = assignment.kind;
-        if (index < 0 || static_cast<std::size_t>(index) >= frame->substreams.size()) {
-            substream.refused = DecodeError::kInvalidStream;
-            substream.refused_reason = "a substream index outside the substream index table";
-            report.substreams.push_back(substream);
-            continue;
-        }
-        if (assignment.refusal) {
-            substream.refused = assignment.refusal->error;
-            substream.refused_reason = assignment.refusal->reason;
-            report.substreams.push_back(substream);
-            continue;
-        }
-        const Substream& located = frame->substreams[static_cast<std::size_t>(index)];
-        substream.size_bits = located.size * 8U;
-        if (located.offset + located.size > raw_ac4_frame.size()) {
-            substream.refused = DecodeError::kTruncated;
-            substream.refused_reason = "the substream runs past the end of the frame";
-            report.substreams.push_back(substream);
-            continue;
-        }
-        BitReader reader(raw_ac4_frame.subspan(located.offset, located.size), index,
-                         sink_of(config.syntax));
-        ParseResult result;
-        switch (assignment.kind) {
-            case SubstreamReport::Kind::kAudio: {
-                // What one substream carries from frame to frame belongs to
-                // its channel mode and substream syntax version; a change of
-                // either starts it afresh. The slot is the series' first
-                // index, which is this substream's own outside a frame-rate-
-                // multiplied series (assign_instances()).
-                AudioSubstreamState& state = audio[assignment.state_key];
-                if (state.ch_mode != assignment.audio.ch_mode || state.sus_ver != assignment.audio.sus_ver) {
-                    state = AudioSubstreamState{};
-                    state.ch_mode = assignment.audio.ch_mode;
-                    state.sus_ver = assignment.audio.sus_ver;
-                }
-                AudioSubstream parsed;
-                result = detail::parse_audio_substream(reader, assignment.audio, state, parsed);
-                if (CapturedAudio* const captured = result ? capture->wants(index) : nullptr) {
-                    captured->state_key = assignment.state_key;
-                    captured->context = assignment.audio;
-                    captured->content = std::move(parsed);
-                    captured->read = true;
-                }
-                break;
+    // Two passes: the OAMD substreams first, whose timing the object audio
+    // substreams of their groups take (src/ac4dec/ERRATA.md, "Which
+    // oamd_timing_data() applies"), then the rest in index order.
+    for (const bool oamd_pass : {true, false}) {
+        for (auto& [index, assignment] : assignments) {
+            if ((assignment.kind == SubstreamReport::Kind::kOamd) != oamd_pass) {
+                continue;
             }
-            case SubstreamReport::Kind::kPresentation: {
-                PresentationSubstream parsed;
-                result = detail::parse_presentation_substream(reader, *assignment.presentation,
-                                                              presentation[index], parsed);
-                // An alternative presentation's name, whole or in chunks, one
-                // a frame (Part 2 clause 6.3.3.1.4).
-                if (result && assignment.presentation->b_alternative) {
-                    detail::PresentationName& name = names[index];
-                    if (parsed.b_name_present) {
-                        name.add(parsed.presentation_name);
-                    } else {
-                        name.none();
+            SubstreamReport substream;
+            substream.index = index;
+            substream.kind = assignment.kind;
+            if (index < 0 || static_cast<std::size_t>(index) >= frame->substreams.size()) {
+                substream.refused = DecodeError::kInvalidStream;
+                substream.refused_reason = "a substream index outside the substream index table";
+                report.substreams.push_back(substream);
+                continue;
+            }
+            if (assignment.refusal) {
+                substream.refused = assignment.refusal->error;
+                substream.refused_reason = assignment.refusal->reason;
+                report.substreams.push_back(substream);
+                continue;
+            }
+            const Substream& located = frame->substreams[static_cast<std::size_t>(index)];
+            substream.size_bits = located.size * 8U;
+            if (located.offset + located.size > raw_ac4_frame.size()) {
+                substream.refused = DecodeError::kTruncated;
+                substream.refused_reason = "the substream runs past the end of the frame";
+                report.substreams.push_back(substream);
+                continue;
+            }
+            BitReader reader(raw_ac4_frame.subspan(located.offset, located.size), index,
+                             sink_of(config.syntax));
+            ParseResult result;
+            switch (assignment.kind) {
+                case SubstreamReport::Kind::kAudio: {
+                    // What one substream carries from frame to frame belongs to
+                    // its channel mode and substream syntax version; a change of
+                    // either starts it afresh. The slot is the series' first
+                    // index, which is this substream's own outside a frame-rate-
+                    // multiplied series (assign_instances()).
+                    AudioSubstreamState& state = audio[assignment.state_key];
+                    if (!state.carries(assignment.audio)) {
+                        state = AudioSubstreamState{};
+                        state.carry(assignment.audio);
                     }
+                    // An object audio substream's objects, and the num_obj_info_blocks
+                    // its group's OAMD substream sent last, which it takes where it
+                    // sends no timing of its own.
+                    std::optional<detail::ObjectAudioContext> objects = assignment.objects;
+                    if (objects && assignment.oamd_key) {
+                        if (const auto group = oamd.find(*assignment.oamd_key);
+                            group != oamd.end() && group->second.timing) {
+                            objects->group_blocks = group->second.timing->num_obj_info_blocks;
+                        }
+                    }
+                    AudioSubstream parsed;
+                    result = detail::parse_audio_substream(reader, assignment.audio, state, parsed,
+                                                           nullptr, objects ? &*objects : nullptr);
+                    if (CapturedAudio* const captured = result ? capture->wants(index) : nullptr) {
+                        captured->state_key = assignment.state_key;
+                        captured->context = assignment.audio;
+                        captured->content = std::move(parsed);
+                        captured->read = true;
+                        captured->essences_full = assignment.essences_full;
+                        captured->essences_core = assignment.essences_core;
+                        captured->isf_full = assignment.isf_full;
+                        captured->isf_core = assignment.isf_core;
+                        captured->object_common = assignment.object_common;
+                        captured->group_offset = assignment.group_offset;
+                        captured->oamd_key = assignment.oamd_key;
+                    }
+                    break;
                 }
-                if (result && capture->plan != nullptr &&
-                    capture->plan->presentation_substream == index) {
-                    capture->presentation = std::move(parsed);
-                    capture->presentation_read = true;
+                case SubstreamReport::Kind::kOamd: {
+                    detail::OamdSubstreamContext ctx = *assignment.oamd;
+                    OamdGroupState& group = oamd[*assignment.oamd_key];
+                    if (group.timing) {
+                        ctx.carried_blocks = group.timing->num_obj_info_blocks;
+                    }
+                    detail::OamdSubstream parsed;
+                    result = detail::parse_oamd_substream(reader, ctx, parsed);
+                    if (result) {
+                        // What the substream sent holds until it sends another.
+                        if (parsed.timing) {
+                            group.timing = parsed.timing;
+                        }
+                        if (parsed.common) {
+                            group.common = parsed.common;
+                        }
+                        capture->oamd.push_back({.key = index, .content = std::move(parsed)});
+                    }
+                    break;
                 }
-                break;
+                case SubstreamReport::Kind::kPresentation: {
+                    PresentationSubstream parsed;
+                    result = detail::parse_presentation_substream(reader, *assignment.presentation,
+                                                                  presentation[index], parsed);
+                    // An alternative presentation's name, whole or in chunks,
+                    // one a frame (Part 2 clause 6.3.3.1.4).
+                    if (result && assignment.presentation->b_alternative) {
+                        detail::PresentationName& name = names[index];
+                        if (parsed.b_name_present) {
+                            name.add(parsed.presentation_name);
+                        } else {
+                            name.none();
+                        }
+                    }
+                    if (result && capture->plan != nullptr &&
+                        capture->plan->presentation_substream == index) {
+                        capture->presentation = std::move(parsed);
+                        capture->presentation_read = true;
+                    }
+                    break;
+                }
+                case SubstreamReport::Kind::kEmdfPayloads: {
+                    detail::EmdfPayloads parsed;
+                    result = detail::parse_emdf_payloads_substream(reader, parsed);
+                    break;
+                }
+                case SubstreamReport::Kind::kHsfExt:
+                    // Reaching this case rather than the combined handling above
+                    // means its owning channel substream either does not exist,
+                    // has no sf_multiplier, or is this same substream (a
+                    // self-reference) - see the loop above.
+                    result = detail::fail(
+                        DecodeError::kUnsupported,
+                        "no active HSF extension was read alongside its owning channel substream");
+                    break;
+                default:
+                    break;
             }
-            case SubstreamReport::Kind::kEmdfPayloads: {
-                detail::EmdfPayloads parsed;
-                result = detail::parse_emdf_payloads_substream(reader, parsed);
-                break;
+            substream.bits_read = reader.position();
+            if (!result) {
+                substream.refused = result.error().error;
+                substream.refused_reason = result.error().reason;
             }
-            case SubstreamReport::Kind::kHsfExt:
-                // Reaching this case rather than the combined handling above
-                // means its owning channel substream either does not exist,
-                // has no sf_multiplier, or is this same substream (a
-                // self-reference) - see the loop above.
-                result = detail::fail(DecodeError::kUnsupported,
-                                      "no active HSF extension was read alongside its owning channel substream");
-                break;
-            default:
-                break;
+            report.substreams.push_back(substream);
         }
-        substream.bits_read = reader.position();
-        if (!result) {
-            substream.refused = result.error().error;
-            substream.refused_reason = result.error().reason;
-        }
-        report.substreams.push_back(substream);
     }
     // A substream no element this decoder reads names - an HSF extension no
     // ac4_hsf_ext_substream_info() points at, or one only a skipped

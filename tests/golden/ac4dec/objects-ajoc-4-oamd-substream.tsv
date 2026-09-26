@@ -1,0 +1,26 @@
+# ac4-syntax-digest/1 ../ac4dec/objects/ajoc-4-oamd-substream.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	audio	4843	37222	0xf66db794
+0	1	oamd	10	22	0xc1db5dae
+0	2	presentation	8	18	0x8ed0df0d
+1	0	audio	4809	37078	0xfe927618
+1	1	oamd	2	2	0x73989886
+1	2	presentation	8	18	0x8ed0df0d
+2	0	audio	4809	37078	0x73504b1f
+2	1	oamd	2	2	0x73989886
+2	2	presentation	8	18	0x8ed0df0d
+3	0	audio	4809	37078	0xbec15ddd
+3	1	oamd	2	2	0x73989886
+3	2	presentation	8	18	0x8ed0df0d
+4	0	audio	4843	37222	0xb623589b
+4	1	oamd	11	25	0xd798eed5
+4	2	presentation	8	18	0x8ed0df0d
+5	0	audio	4809	37078	0xeefb21f6
+5	1	oamd	2	2	0x73989886
+5	2	presentation	8	18	0x8ed0df0d
+6	0	audio	4809	37078	0x99d61a78
+6	1	oamd	2	2	0x73989886
+6	2	presentation	8	18	0x8ed0df0d
+7	0	audio	4809	37078	0xaea80a33
+7	1	oamd	2	2	0x73989886
+7	2	presentation	8	18	0x8ed0df0d

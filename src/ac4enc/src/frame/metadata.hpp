@@ -197,9 +197,28 @@ void write_further_loudness_info(BitWriter& w, const LoudnessCodes& codes, bool 
 void write_drc_frame(BitWriter& w, const DrcCodes* codes, bool iframe,
                      std::span<const DrcModeGains> gains = {});
 
-// custom_dmx_data() and loud_corr() for a channel-based presentation of
-// `ch_mode`: the stereo coefficients and their corrections in I-frames.
-void write_downmix(BitWriter& w, int ch_mode, bool has_lfe, const DownmixCodes* codes, bool iframe);
+// A channel-based presentation's channels, as custom_dmx_data() and
+// loud_corr() read them (ETSI TS 103 190-2 V1.3.1 clause 6.2.9): pres_ch_mode,
+// pres_ch_mode_core (-1 but for the immersive modes, Table 71),
+// b_pres_4_back_channels_present, pres_top_channel_pairs (Table 72) and
+// b_pres_has_lfe.
+struct PresentationChannels {
+    int ch_mode = 1;
+    int ch_mode_core = -1;
+    bool back = false;
+    int top_channel_pairs = 0;
+    bool lfe = false;
+};
+
+// custom_dmx_data()'s bs_ch_config (6.2.9.2): -1 but for the immersive modes'
+// presentations with top channels.
+[[nodiscard]] int bs_ch_config(const PresentationChannels& p) noexcept;
+
+// custom_dmx_data() and loud_corr() for a channel-based presentation: the
+// stereo coefficients and their corrections in I-frames, and no custom downmix
+// data or corrections for the immersive outputs.
+void write_downmix(BitWriter& w, const PresentationChannels& p, const DownmixCodes* codes,
+                   bool iframe);
 
 // dialog_enhancement(b_iframe): de_config() in I-frames and each frame's
 // parameters, differential in frequency in I-frames and in time against

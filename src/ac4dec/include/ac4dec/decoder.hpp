@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -35,24 +36,36 @@
 // companding, A-SPX and A-CPL (Part 1 clauses 5.1, 5.3, 5.5, 5.6 and 5.7),
 // and at every frame_rate_index but 13 the sample rate converter from the
 // internal rate to 48 kHz (clause 6.2.15), its phase locked to
-// sequence_counter (Part 2 clause 5.11). It decodes the presentation a
-// system chooses (Part 2 clause 4.8.2) with all its substreams: music and
-// effects with dialogue, main audio with associated audio, both, and a main
-// substream with the dialogue enhancement substream the hybrid dialogue
-// enhancement methods take (Part 1 clauses 5.7.8.9 and 6.2.16, Part 2
-// clauses 4.8.3.17 to 4.8.4). The table of contents and the substream framing
-// come from ac4::parse_raw_frame (the inspector, src/ac4); this library starts
-// where the inspector stops.
+// sequence_counter (Part 2 clause 5.11). It decodes the immersive element of
+// the 7.X.4 channel modes (Part 2 clause 6.2.4) in every codec mode, in full or
+// core decoding (DecodingMode), with Part 2's stereo and multichannel
+// processing, S-CPL, A-SPX, A-CPL and A-JCC (clauses 5.2 to 5.6), and renders
+// it by Part 2's channel renderer (clause 5.10.2, DownmixTarget). It decodes
+// the presentation a system chooses (Part 2 clause 4.8.2) with all its
+// substreams: music and effects with dialogue, main audio with associated
+// audio, both, and a main substream with the dialogue enhancement substream
+// the hybrid dialogue enhancement methods take (Part 1 clauses 5.7.8.9 and
+// 6.2.16, Part 2 clauses 4.8.3.17 to 4.8.4). It decodes object audio (Part 2
+// clauses 4.8.3.4, 4.8.3.13 and 4.8.3.19): A-JOC substreams in full and core
+// decoding (clause 5.7), with A-JOC's dialogue enhancement (5.8.2.3 and
+// 5.8.2.4), and direct-coded object substreams with theirs (5.8.2.5), to each
+// object's PCM and the properties its object audio metadata sets (clause
+// 6.3.9, Annex F), for the application to render (DecodedFrame::objects); it
+// renders an intermediate spatial format itself (clause 5.10.3). The table of
+// contents and the substream framing come from ac4::parse_raw_frame (the
+// inspector, src/ac4); this library starts where the inspector stops.
 //
 // What it refuses, with DecodeError::kUnsupported and a reason: the speech
-// spectral frontend (Part 1 clause 5.2), immersive and 22.2 channel elements,
-// object substreams, a 96/192 kHz substream whose HSF extension substream
-// could not be resolved and read alongside it, and a substream no element of
-// the table of contents this decoder reads names (an HSF extension substream
-// no ac4_hsf_ext_substream_info() names among them). Refusing is per
-// substream and per frame; the next frame is attempted afresh. decode()
-// refuses, the same way, everything above that it does not turn into PCM
-// yet: 96/192 kHz.
+// spectral frontend (Part 1 clause 5.2), the 9.X.4 channel modes (Part 2's
+// immersive element with b_5fronts) and the 22.2 channel element, an
+// intermediate spatial format mixed into channels Annex A.2.1 has no matrix
+// for, a 96/192 kHz substream whose HSF extension substream could not be
+// resolved and read alongside it, and a substream no element of the table of
+// contents this decoder reads names (an HSF extension substream no
+// ac4_hsf_ext_substream_info() names among them). Refusing is per substream
+// and per frame; the next frame is attempted afresh. decode() refuses, the
+// same way, everything above that it does not turn into PCM yet: 96/192 kHz,
+// which it reads.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
@@ -80,18 +93,33 @@ enum class DecodeError : std::uint8_t {
 //
 // What decode() does to the decoded channels as a system configures it:
 // dialogue enhancement (Part 1 clause 5.7.8), then the output level and
-// dynamic range control (5.7.9), then the downmix (6.2.17).
+// dynamic range control (5.7.9), then the downmix (6.2.17), or for the
+// immersive element Part 2's channel renderer (Part 2 clause 5.10.2).
 
-// The layout decode() renders the decoded channels to (Part 1 clause 6.2.17).
+// The layout decode() renders the decoded channels to (Part 1 clause 6.2.17;
+// Part 2 clause 5.10.2 for the immersive element). The .X is the stream's LFE,
+// where it has one.
 enum class DownmixTarget : std::uint8_t {
-    kAsCoded,  // the channels as coded
-    k5X,       // a 7.X element's channels folded to 5.X (Table 219)
+    // The channels as coded: for the immersive element, the layout its source
+    // had (b_4_back_channels_present and top_channels_present), and in core
+    // decoding its 5.X.2 core, 5.X.0 where the source has no top channels.
+    kAsCoded,
+    k5X,  // a 7.X element's channels folded to 5.X (Table 219); 5.X.0 for the immersive element
     // Two channels, Lo/Ro or Lt/Rt as the stream's preferred_dmx_method says,
     // Lo/Ro where it says neither.
     kStereo,
     kLoRo,
     kLtRt,  // in its Pro Logic II form where the stream prefers that
     kMono,  // L + R of the stereo downmix
+    // The immersive element's other layouts (Part 2 Tables 38 to 42; core
+    // decoding has 5.X.2 and 5.X.0 alone, Table 44, and takes the one of those
+    // with the target's top channels or without). The other elements come out
+    // as coded.
+    k7X4,
+    k7X2,
+    k7X0,
+    k5X4,
+    k5X2,
 };
 
 [[nodiscard]] AC4DEC_EXPORT std::string_view describe(DownmixTarget target);
@@ -236,10 +264,25 @@ struct Concealment {
     ConcealmentAction action = ConcealmentAction::kMute;
 };
 
+// --- Decoding modes ----------------------------------------------------------
+//
+// Part 2 clause 4.7: full decoding, in which A-CPL and A-JCC reconstruct every
+// channel an immersive element codes, or core decoding, which gives the
+// element's core, 5.X.2, with those tools replaced or reduced, for
+// low-complexity platforms, and renders it to 5.X.2 or 5.X.0 alone (Part 2
+// Table 44). The Part 1 channel elements have no core (Part 2
+// Table 71) and decode alike in both (src/ac4dec/ERRATA.md, "Core decoding of
+// the Part 1 elements").
+enum class DecodingMode : std::uint8_t {
+    kFull,
+    kCore,
+};
+
+[[nodiscard]] AC4DEC_EXPORT std::string_view describe(DecodingMode mode);
+
 // A decoder's configuration. Decoder::set_output() and set_presentation()
 // change the two halves a system changes while a stream plays; the rest is
-// fixed for the decoder. A later version adds full or core decoding (Part 2
-// clause 4.7) as a field after these.
+// fixed for the decoder.
 struct DecoderConfig {
     // One record per syntax element read. The configuration owns a copy of the
     // callable, and the decoder one of its own (ac4/syntax.hpp); empty, the
@@ -252,11 +295,17 @@ struct DecoderConfig {
     // The md_compat level the decoder claims: presentations above it are not
     // selected (Part 2 clause 6.3.2.2.3).
     int level = 3;
+    // Full or core decoding (Part 2 clause 4.7), after the fields the
+    // decoder's API had without it.
+    DecodingMode decoding = DecodingMode::kFull;
 };
 
 // What one substream of a frame turned out to be.
 struct SubstreamReport {
-    enum class Kind : std::uint8_t { kAudio, kPresentation, kEmdfPayloads, kHsfExt, kOther };
+    // kAudio covers channel-coded, A-JOC coded and direct-coded object
+    // substreams alike (ac4_substream(), Part 2 Table 50); kOamd is an
+    // oamd_substream() (Part 2 clause 6.2.2.4).
+    enum class Kind : std::uint8_t { kAudio, kPresentation, kEmdfPayloads, kHsfExt, kOther, kOamd };
     int index = 0;
     Kind kind = Kind::kOther;
     std::size_t size_bits = 0;           // the substream's size in substream_index_table(), in bits
@@ -274,9 +323,9 @@ struct FrameReport {
 
 // --- Decoding to PCM ---------------------------------------------------------
 //
-// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names:
-// those of the channel modes of Part 1 Table 88. Later versions add the
-// immersive layouts'.
+// Where a decoded channel is meant to be heard, by Part 1 clause D.1's names
+// and Part 2 clause A.3's: those of the channel modes of Part 1 Table 88, and
+// the immersive layouts' (Part 2 Table A.27).
 enum class Speaker : std::uint8_t {
     kLeft,
     kRight,
@@ -284,15 +333,93 @@ enum class Speaker : std::uint8_t {
     kLfe,            // Low-Frequency Effects
     kLeftSurround,   // Left Side/Surround, Ls: a side speaker in the 7.X modes
     kRightSurround,  // Right Side/Surround, Rs
-    kLeftBack,       // Lb, in 7.X 3/4/0
+    kLeftBack,       // Lb, in 7.X 3/4/0 and 7.X.4
     kRightBack,      // Rb
     kLeftWide,       // Lw, in 7.X 5/2/0
     kRightWide,      // Rw
-    kTopFrontLeft,   // Tfl, in 7.X 3/2/2
+    kTopFrontLeft,   // Tfl, in 7.X 3/2/2 and the X.4 layouts
     kTopFrontRight,  // Tfr
+    kTopBackLeft,    // Tbl, in the X.4 layouts
+    kTopBackRight,   // Tbr
+    kTopSideLeft,    // Tsl, the top pair of the X.2 layouts: 5.X.2, the core layout
+    kTopSideRight,   // Tsr
+    kLfe2,           // the second LFE a bed can assign (Part 2 Tables 64 and 65)
 };
 
 [[nodiscard]] AC4DEC_EXPORT std::string_view describe(Speaker speaker);
+
+// --- Objects -----------------------------------------------------------------
+//
+// A presentation with object audio (Part 2 clause 4.8.3.4) decodes each
+// object's PCM and the properties its metadata sets, which Part 2 Annex F
+// lists as what a decoder gives an object audio renderer: the application
+// renders them. The decoder renders only the intermediate spatial format
+// (Part 2 clause 5.10.3), into DecodedFrame::channels: 7.X.4 as coded, and
+// OutputConfig::downmix's layout otherwise, a two-channel target the
+// format's own stereo matrix, and none of the 9.X layouts, whose screen pair
+// Speaker does not name. An alternative presentation's alternative object
+// properties (Part 2 clause 6.3.9.4) are read and not applied.
+
+// Annex F.2 to F.10, and add_per_object_md()'s data (Part 2 clause 6.3.9.11):
+// what one block update of an object's metadata sets (clause 6.3.9).
+struct ObjectProperties {
+    // Whether the object's essence carries sound (!b_object_not_active).
+    bool active = true;
+    // F.5, object_gain in dB; -infinity for silence.
+    double gain_db = 0.0;
+    // F.7, 0 to 1.
+    double priority = 1.0;
+    // F.2, for a dynamic object: X from the left wall (0) to the right (1), Y
+    // from the front wall (0) to the back (1), Z from the floor (-1) through
+    // the height of the screen (0) to the ceiling (1).
+    std::array<double, 3> position{0.5, 0.5, 0.0};
+    // F.8: zone_mask (Table 104) and b_enable_elevation; F.10: b_object_snap.
+    int zone_mask = 0;
+    bool enable_elevation = true;
+    bool snap = false;
+    // F.6, the object's width in X, Y and Z, 0 to 1 (object_width in all
+    // three where the stream sends one value).
+    std::array<double, 3> width{};
+    // F.4: object_screen_factor, and the exponent object_depth_factor gives
+    // the Y position (Table 107).
+    double screen_factor = 0.0;
+    double depth_exponent = 1.0;
+    // object_distance_factor (Table 108), infinity for b_obj_at_infinity;
+    // unset where the stream sends none.
+    std::optional<double> distance;
+    // F.9, object_divergence, 0 to 1.
+    double divergence = 0.0;
+    // b_obj_trim_disable, hp_render_mode_obj (Table 121) and
+    // b_head_track_disable_obj.
+    bool trim_disabled = false;
+    std::optional<int> headphone_render_mode;
+    bool head_track_disabled = false;
+};
+
+// F.11: one block update, from the output sample of the frame at which it
+// takes effect (sample_offset + 32 x block_offset_factor into its codec frame,
+// counted with the decoder's delay), and the ramp_duration, in samples, over
+// which a renderer moves to it.
+struct ObjectUpdate {
+    std::size_t sample = 0;
+    int ramp_samples = 0;
+    ObjectProperties properties;
+};
+
+struct DecodedObject {
+    // ac4/ac4.hpp: a bed object or a dynamic object (an intermediate spatial
+    // format's objects are rendered, not listed).
+    ObjectKind kind = ObjectKind::kDyn;
+    bool lfe = false;
+    // F.3, a bed object's loudspeaker.
+    std::optional<Speaker> speaker;
+    // The frame's PCM, as long as the frame, at full scale 1.0.
+    std::vector<float> samples;
+    // What is in force at the frame's first sample, and the updates within
+    // the frame, in order.
+    ObjectProperties properties;
+    std::vector<ObjectUpdate> updates;
+};
 
 // One frame of output.
 struct DecodedFrame {
@@ -306,7 +433,8 @@ struct DecodedFrame {
     std::size_t presentation = 0;
     std::optional<int> presentation_id;
     // One per channel, in the order of `channels`: L, R, C, the LFE, Ls, Rs,
-    // then a 7.X mode's last pair, each where the channel mode has it.
+    // then a 7.X mode's last pair, or an immersive layout's Lb and Rb and then
+    // Tfl, Tfr, Tbl and Tbr, or Tsl and Tsr, each where the layout has it.
     std::vector<Speaker> speakers;
     // Planar PCM, one vector per channel, all `samples` long, at full scale
     // 1.0: a frame's worth, which at 29.97, 59.94 and 119.88 fps alternates by
@@ -320,6 +448,16 @@ struct DecodedFrame {
     // Set only on a frame DecoderConfig::concealment made in place of one that
     // did not decode.
     std::optional<Concealment> concealed;
+    // A presentation with object audio: its objects, each substream's in turn
+    // (a substream's LFE first), each as long as the frame, but an
+    // intermediate spatial format's, which the decoder renders into
+    // `channels`. Their samples and their updates carry the decoder's delay as
+    // `channels` do. A presentation of objects alone has no `speakers` or
+    // `channels` unless it carries an intermediate spatial format.
+    std::vector<DecodedObject> objects;
+    // The common data of the objects' substream group in force (Part 2 clause
+    // 6.3.9.2 and Annex F.12's trim), as the stream codes it.
+    std::optional<OamdCommonData> object_common;
 };
 
 // --- Decoding by block ---------------------------------------------------------
@@ -585,7 +723,8 @@ class AC4DEC_EXPORT Decoder {
     // it completes them, the samples left over held for the next frame. The
     // decoder keeps the frame's storage, so a stream decoded this way
     // allocates nothing per frame once its layout is set. A change of layout
-    // or rate first hands over what is held, as a shorter block.
+    // or rate first hands over what is held, as a shorter block. It hands
+    // over channels alone: a presentation's objects come from decode().
     [[nodiscard]] std::expected<std::optional<FrameInfo>, DecodeError> decode_by_block(
         std::span<const std::byte> raw_ac4_frame, BlockSink sink);
 

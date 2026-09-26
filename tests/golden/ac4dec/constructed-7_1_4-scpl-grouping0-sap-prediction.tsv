@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/7_1_4-scpl-grouping0-sap-prediction.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	16	26	0xfb3f10d7
+0	1	audio	4642	33486	0x514b67ce
+1	0	presentation	16	26	0xfb3f10d7
+1	1	audio	4640	33110	0x50ee78f7
+2	0	presentation	16	26	0xfb3f10d7
+2	1	audio	4659	33838	0x6461ce75
+3	0	presentation	16	26	0xfb3f10d7
+3	1	audio	4649	33446	0x288e2800

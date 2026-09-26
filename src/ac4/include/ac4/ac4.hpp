@@ -242,6 +242,11 @@ struct ObjectEntry {
     ObjectKind kind = ObjectKind::kDyn;
     bool lfe = false;
     bool ajoc_coded = false;
+    // A bed object's loudspeaker (Annex F.3's "channel"), as TS 103 190-2
+    // Table A.27 indexes speakers: 0 L, 1 R, 2 C, 3 Ls, 4 Rs, 5 Lb, 6 Rb, 7
+    // Tfl, 8 Tfr, 9 Tbl, 10 Tbr, 11 LFE, 12 Tsl, 13 Tsr, 19 LFE2, 26 Lw and 27
+    // Rw, the ones Tables 62 to 66 can assign. Unset for other objects.
+    std::optional<int> speaker;
 };
 
 // --- §6.2.1.13 oamd_substream_info ------------------------------------------
@@ -339,16 +344,36 @@ struct AjocSubstreamInfo {
     std::optional<int> sf_multiplier;
     std::optional<int> bitrate_kbps;
     std::optional<int> substream_index;
+    // §6.3.2.7.6 b_audio_ndot, one entry per frame_rate_factor, as
+    // ChannelSubstreamInfo::b_iframe.
+    std::vector<bool> b_iframe;
 };
 
 // --- §6.2.1.11 ac4_substream_info_obj ---------------------------------------
 
 struct ObjSubstreamInfo {
+    // The objects the element lists: with b_dynamic_objects, an LFE where
+    // b_lfe is set and then the dynamic objects (TS 103 190-2 Table 60 counts
+    // the LFE on top of n_objects_code's objects - src/ac4dec/ERRATA.md,
+    // "n_objects_code and the LFE"); otherwise the bed or intermediate spatial
+    // format objects a substream that starts them assigns, which substreams
+    // after it in the group may carry a share of.
     std::vector<ObjectEntry> objects;
     bool b_dynamic_objects = false;
     std::optional<int> sf_multiplier;
     std::optional<int> bitrate_kbps;
     std::optional<int> substream_index;
+    // Table 60: the objects besides the LFE that the substream's audio codes
+    // (0, 1, 2, 3 or 5); unset for a code the table reserves (5 to 7).
+    std::optional<int> num_objects;
+    bool b_lfe = false;  // b_dynamic_objects' b_lfe
+    // Without dynamic objects: what the substream holds - a bed, intermediate
+    // spatial format objects, or reserved data - and whether it starts them
+    // (b_bed_start, b_isf_start) rather than extending a previous substream's.
+    enum class Static : std::uint8_t { kNone, kBed, kIsf, kReserved };
+    Static static_kind = Static::kNone;
+    bool static_start = false;
+    std::vector<bool> b_iframe;  // b_audio_ndot, as AjocSubstreamInfo::b_iframe
 };
 
 // --- §6.2.1.6 ac4_substream_group_info --------------------------------------

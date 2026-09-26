@@ -38,6 +38,31 @@ The writer takes the decoder's reading of each of these:
   the A-CPL writer (`src/ac4enc/src/acpl/acpl_syntax.hpp`, phase D5's, for the constructed streams and
   for E4) sends each parameter set from `acpl_param_band`, its first value along frequency from the F0
   codebook, as Table 65 reads it.
+- The immersive element (phase D9's, for the constructed 7.X.4 streams): the frame writer's 7.X.4 channel
+  modes with their presence flags, and the A-JCC writer (`src/ac4enc/src/ajcc/ajcc_syntax.hpp`), take
+  [The framing of the immersive element's chparam_info()](../ac4dec/ERRATA.md#the-framing-of-the-immersive-elements-chparam_info)
+  and [immersive_codec_mode_code in the trace](../ac4dec/ERRATA.md#immersive_codec_mode_code-in-the-trace);
+  `custom_dmx_data()` sends no custom downmix data and `loud_corr()` no correction for the immersive
+  outputs.
+- The channel renderer (phase D9's): the frame writer's `top_channels_present` takes
+  [Where a .2 source's top pair is carried](../ac4dec/ERRATA.md#where-a-2-sources-top-pair-is-carried), and
+  a writer that sends custom downmix data in I-frames alone, as DEE does, relies on
+  [Custom downmix data](../ac4dec/ERRATA.md#custom-downmix-data) to hold them between.
+- Object audio (phase D10's, for the constructed object streams of `tests/ac4dec/ac4dec_objects.cpp`):
+  the A-JOC writer (`src/ac4enc/src/ajoc/ajoc_syntax.hpp`), the object audio metadata writer
+  (`src/ac4enc/src/oamd/oamd_syntax.hpp`) and the table of contents' object groups take
+  [Arrays read as one field](../ac4dec/ERRATA.md#arrays-read-as-one-field),
+  [Prefix codes in the trace](../ac4dec/ERRATA.md#prefix-codes-in-the-trace),
+  [add_per_object_md()'s parameters](../ac4dec/ERRATA.md#add_per_object_mds-parameters),
+  [n_objects_code and the LFE](../ac4dec/ERRATA.md#n_objects_code-and-the-lfe),
+  [The objects of a direct-coded substream](../ac4dec/ERRATA.md#the-objects-of-a-direct-coded-substream),
+  [Which oamd_timing_data() applies](../ac4dec/ERRATA.md#which-oamd_timing_data-applies) and
+  [var_channel_element()'s A-SPX and companding](../ac4dec/ERRATA.md#var_channel_elements-a-spx-and-companding).
+  Each budget the syntax gives a nested element (`add_data_bytes`, `add_table_data_size_minus1`, the
+  `skip_bits` of `ajoc_bed_info()` and `ext_prec_alt_pos()`) is the fewest bytes that hold what is sent,
+  measured as the decoder measures it; where bits of an `add_data` budget are left after `trim()`, the
+  decoder reads `bed_render_info()` and then `headphone()` from them, so the writer sends those two, absent
+  where nothing is given for them, before the padding.
 
 ## The QMF domain
 
