@@ -36,9 +36,11 @@ bool write_text(const std::filesystem::path& path, std::string_view text) {
 
 }  // namespace
 
-std::string Fmp4FolderWriter::open(const std::string& directory, std::uint32_t window_segments) {
+std::string Fmp4FolderWriter::open(const std::string& directory, std::uint32_t window_segments,
+                                   std::optional<Track> described) {
     dir_ = std::filesystem::path{directory};
     window_segments_ = window_segments;
+    described_ = std::move(described);
     std::error_code ec;
     std::filesystem::create_directories(dir_, ec);
     if (ec) {
@@ -48,6 +50,26 @@ std::string Fmp4FolderWriter::open(const std::string& directory, std::uint32_t w
 }
 
 std::string Fmp4FolderWriter::start(std::span<const std::byte> first_frame) {
+    if (described_.has_value()) {
+        track_ = described_->audio;
+        hls_ = described_->hls;
+        dash_ = described_->dash;
+        mp4::FragmentOptions options;
+        options.playlist_window_segments = window_segments_;
+        options.brands = described_->brands;
+        auto writer = mp4::FragmentWriter::create(track_, options);
+        if (!writer.has_value()) {
+            return std::string{mp4::describe(writer.error())};
+        }
+        writer_.emplace(std::move(*writer));
+        if (!write_bytes(dir_ / "init.mp4", writer_->init_segment())) {
+            return kWriteFailed;
+        }
+        availability_start_ =
+            fmt::format("{:%FT%TZ}",
+                        std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now()));
+        return {};
+    }
     // One access unit carries everything the track needs: kind, sample rate,
     // rendered channel count, the dac3/dec3 payload, the channel map and the
     // TS 103 420 object marker. Exactly the re-scan
@@ -110,13 +132,12 @@ std::string Fmp4FolderWriter::write_manifests(const mp4::FragmentWriter& writer,
     // timeShiftBufferDepth matches the rolling window when there is one;
     // with window_segments_ == 0 every segment stays listed, so the depth is
     // the whole take so far.
-    const double window_seconds =
-        window.empty()
-            ? 0.0
-            : static_cast<double>(window.back().base_media_decode_time +
-                                  window.back().duration_samples -
-                                  window.front().base_media_decode_time) /
-                  static_cast<double>(track_.sample_rate);
+    const double window_seconds = window.empty()
+                                      ? 0.0
+                                      : static_cast<double>(window.back().base_media_decode_time +
+                                                            window.back().duration_samples -
+                                                            window.front().base_media_decode_time) /
+                                            static_cast<double>(mp4::timescale_of(track_));
     const mp4::MpdOptions mpd_options{.is_static = finished,
                                       .availability_start_time = availability_start_,
                                       .time_shift_buffer_depth_seconds = window_seconds};
@@ -127,7 +148,7 @@ std::string Fmp4FolderWriter::write_manifests(const mp4::FragmentWriter& writer,
     return {};
 }
 
-std::string Fmp4FolderWriter::push(std::span<const std::byte> frame) {
+std::string Fmp4FolderWriter::push(std::span<const std::byte> frame, bool sync) {
     if (!writer_.has_value()) {
         if (auto problem = start(frame); !problem.empty()) {
             return problem;
@@ -140,7 +161,9 @@ std::string Fmp4FolderWriter::push(std::span<const std::byte> frame) {
     // the optional's value once.
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
     auto& writer = *writer_;
-    auto segment = writer.push(frame);
+    // A described track's frames carry their own sync flags; a scanned one's
+    // are every one a sync sample, as every AC-3 and E-AC-3 access unit is.
+    auto segment = described_.has_value() ? writer.push(frame, sync) : writer.push(frame);
     if (!segment.has_value()) {
         return std::string{mp4::describe(segment.error())};
     }

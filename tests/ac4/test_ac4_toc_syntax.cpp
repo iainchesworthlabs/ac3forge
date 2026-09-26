@@ -979,7 +979,11 @@ TEST_CASE("bitstream_version 1 presentations of every shape", "[ac4][toc]") {
     // build_dac4() does not write.
     CHECK(ac4::build_dac4(toc).empty());
     CHECK_FALSE(ac4::dac4_refusal(toc).empty());
-    CHECK(ac4::rfc6381_codec_string(toc) == "ac-4.01.00.04");
+    // The codecs parameter names the presentation with the widest
+    // compatibility (TS 103 190-2 Annex G.2.3, ac4::signalled_presentation()):
+    // presentation 1, at md_compat 0, where presentation 0 needs level 4.
+    CHECK(ac4::signalled_presentation(toc) == std::optional<std::size_t>{1});
+    CHECK(ac4::rfc6381_codec_string(toc) == "ac-4.01.00.00");
     CHECK(ac4::samples_per_frame(toc) == 2002U);
 }
 

@@ -5,6 +5,8 @@
 #include <bit>
 #include <cstring>
 #include <limits>
+#include <numeric>
+#include <string>
 #include <unordered_map>
 
 namespace ac4 {
@@ -1826,28 +1828,6 @@ class DsiWriter {
     int filled_ = 0;
 };
 
-// The two Toc presentation lists only ever have one populated (the struct's
-// own comment); this reads whichever it is.
-[[nodiscard]] int first_presentation_version(const Toc& toc) {
-    if (!toc.presentations_v1.empty()) {
-        return toc.presentations_v1.front().presentation_version;
-    }
-    if (!toc.presentations_v0.empty()) {
-        return toc.presentations_v0.front().presentation_version;
-    }
-    return 0;
-}
-
-[[nodiscard]] int first_md_compat(const Toc& toc) {
-    if (!toc.presentations_v1.empty()) {
-        return toc.presentations_v1.front().md_compat.value_or(0);
-    }
-    if (!toc.presentations_v0.empty()) {
-        return toc.presentations_v0.front().md_compat.value_or(0);
-    }
-    return 0;
-}
-
 // Annex E.7's ac4_bitrate_dsi(): the mode wait_frames implies, the rate unknown.
 void put_bitrate_dsi(DsiWriter& w, const Toc& toc) {
     std::uint32_t mode = 3;
@@ -2525,7 +2505,9 @@ std::optional<FrameRate> frame_rate(const Toc& toc) {
 }
 
 std::string rfc6381_codec_string(const Toc& toc) {
-    // Annex E.13: two lowercase hex digits per field.
+    // Annex E.13: two lowercase hex digits per field, the presentation's two
+    // from the one a manifest describes the track by. The two Toc presentation
+    // lists only ever have one populated (the struct's own comment).
     constexpr std::string_view kHex = "0123456789abcdef";
     const auto pair = [&](int value) {
         std::string out;
@@ -2533,8 +2515,274 @@ std::string rfc6381_codec_string(const Toc& toc) {
         out.push_back(kHex[static_cast<std::size_t>(value & 0xF)]);
         return out;
     };
-    return "ac-4." + pair(toc.bitstream_version) + "." +
-           pair(first_presentation_version(toc)) + "." + pair(first_md_compat(toc));
+    int version = 0;
+    int md_compat = 0;
+    if (const std::optional<std::size_t> index = signalled_presentation(toc)) {
+        if (!toc.presentations_v1.empty()) {
+            version = toc.presentations_v1[*index].presentation_version;
+            md_compat = toc.presentations_v1[*index].md_compat.value_or(0);
+        } else {
+            version = toc.presentations_v0[*index].presentation_version;
+            md_compat = toc.presentations_v0[*index].md_compat.value_or(0);
+        }
+    }
+    return "ac-4." + pair(toc.bitstream_version) + "." + pair(version) + "." + pair(md_compat);
+}
+
+std::optional<std::size_t> signalled_presentation(const Toc& toc) {
+    // Annex G.2.3's widest compatibility: the level fewest decoders fall
+    // short of, the lowest md_compat (Part 2 Table 55, Part 1 Table 86), among
+    // the presentations a decoder may select.
+    std::optional<std::size_t> best;
+    int best_level = 0;
+    const auto consider = [&](std::size_t index, bool audio, std::optional<int> md_compat) {
+        const int level = md_compat.value_or(0);
+        if (audio && (!best || level < best_level)) {
+            best = index;
+            best_level = level;
+        }
+    };
+    if (!toc.presentations_v1.empty()) {
+        for (std::size_t i = 0; i < toc.presentations_v1.size(); ++i) {
+            const PresentationInfoV1& p = toc.presentations_v1[i];
+            // Configuration 6 carries EMDF payloads alone.
+            const bool audio = p.presentation_config != 6 && !p.group_refs.empty();
+            consider(i, audio && p.enable_presentation.value_or(true), p.md_compat);
+        }
+        return best.has_value() ? best : std::optional<std::size_t>{0};
+    }
+    if (toc.presentations_v0.empty()) {
+        return std::nullopt;
+    }
+    for (std::size_t i = 0; i < toc.presentations_v0.size(); ++i) {
+        const PresentationInfoV0& p = toc.presentations_v0[i];
+        consider(i, !p.substreams.empty(), p.md_compat);
+    }
+    return best.has_value() ? best : std::optional<std::size_t>{0};
+}
+
+namespace {
+
+// Table A.27: how many speakers each audio channel group holds, group 8 being
+// the deprecated pair group 7 replaces.
+constexpr std::array<int, 18> kGroupSpeakers = {2, 1, 2, 2, 2, 2, 1, 2, 2,
+                                                1, 1, 1, 1, 2, 1, 1, 2, 2};
+
+// Table G.1: presentation_v1_channel_groups[], group g at bit g, and the value
+// of urn:mpeg:mpegB:cicp:ChannelConfiguration it maps to.
+struct CicpRow {
+    std::uint32_t groups;
+    int value;
+};
+// clang-format off
+constexpr std::array<CicpRow, 27> kCicp = {{
+    {0x000002, 1},  {0x000001, 2},  {0x000003, 3},  {0x008003, 4},  {0x000007, 5},
+    {0x000047, 6},  {0x020047, 7},  {0x008001, 9},  {0x000005, 10}, {0x008047, 11},
+    {0x00004F, 12}, {0x02FF7F, 13}, {0x06FF6F, 13}, {0x000057, 14}, {0x040047, 14},
+    {0x00145F, 15}, {0x04144F, 15}, {0x000077, 16}, {0x040067, 16}, {0x000A77, 17},
+    {0x040A67, 17}, {0x000A7F, 18}, {0x040A6F, 18}, {0x00007F, 19}, {0x04006F, 19},
+    {0x01007F, 20}, {0x05006F, 20},
+}};
+// clang-format on
+
+// What the manifest functions read of signalled_presentation(): its audio
+// channel groups as build_dac4() writes them (Annex E.10.3), or that it is
+// object audio. Nothing for a bitstream_version below 2, or a presentation
+// whose substreams the table of contents does not describe whole.
+struct SignalledChannels {
+    bool objects = false;
+    std::uint32_t groups = 0;
+};
+
+std::optional<SignalledChannels> signalled_channels(const Toc& toc) {
+    const std::optional<std::size_t> index = signalled_presentation(toc);
+    if (toc.bitstream_version < 2 || !index || *index >= toc.presentations_v1.size()) {
+        return std::nullopt;
+    }
+    const PresentationInfoV1& pres = toc.presentations_v1[*index];
+    const std::expected<PresentationShape, Refusal> shape = shape_of(toc, pres);
+    if (!shape) {
+        return std::nullopt;
+    }
+    if (shape->ch_mode >= 0) {
+        return SignalledChannels{.objects = false,
+                                 .groups = channel_groups(shape->ch_mode, shape->centre,
+                                                          shape->four_back, shape->top_pairs)};
+    }
+    // Pseudocode 25 leaves no channel mode for object audio, and for a
+    // presentation without audio substreams, which is not object audio.
+    for (const int ref : pres.group_refs) {
+        for (const GroupSubstream& s :
+             toc.substream_groups[static_cast<std::size_t>(ref)].substreams) {
+            if (s.kind != GroupSubstream::Kind::kChan) {
+                return SignalledChannels{.objects = true, .groups = 0};
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+// Six hexadecimal digits, as G.3.3.2's examples write them.
+std::string hex6(std::uint32_t value) {
+    constexpr std::string_view kHex = "0123456789ABCDEF";
+    std::string out(6, '0');
+    for (int digit = 5; digit >= 0; --digit) {
+        out[static_cast<std::size_t>(digit)] = kHex[value & 0xFU];
+        value >>= 4;
+    }
+    return out;
+}
+
+// A substream's sf_multiplier, whichever kind it is.
+std::optional<int> sf_multiplier_of(const GroupSubstream& s) {
+    if (s.chan) {
+        return s.chan->sf_multiplier;
+    }
+    if (s.ajoc) {
+        return s.ajoc->sf_multiplier;
+    }
+    return s.obj ? s.obj->sf_multiplier : std::nullopt;
+}
+
+// A content_type()'s language tag's primary subtag: its bytes up to the first
+// hyphen.
+std::string primary_subtag(const std::vector<std::byte>& tag) {
+    std::string out;
+    for (const std::byte b : tag) {
+        const char c = static_cast<char>(std::to_integer<unsigned char>(b));
+        if (c == '-') {
+            break;
+        }
+        out.push_back(c);
+    }
+    return out;
+}
+
+}  // namespace
+
+std::optional<ManifestDescriptor> dash_channel_configuration(const Toc& toc) {
+    const std::optional<SignalledChannels> channels = signalled_channels(toc);
+    if (!channels) {
+        return std::nullopt;
+    }
+    constexpr std::string_view kDolby = "tag:dolby.com,2015:dash:audio_channel_configuration:2015";
+    if (channels->objects) {
+        return ManifestDescriptor{.scheme_id_uri = std::string{kDolby}, .value = hex6(0x800000U)};
+    }
+    for (const CicpRow& row : kCicp) {
+        if (row.groups == channels->groups) {
+            return ManifestDescriptor{.scheme_id_uri = "urn:mpeg:mpegB:cicp:ChannelConfiguration",
+                                      .value = std::to_string(row.value)};
+        }
+    }
+    return ManifestDescriptor{.scheme_id_uri = std::string{kDolby},
+                              .value = hex6(channels->groups)};
+}
+
+std::vector<ManifestDescriptor> dash_supplemental_properties(const Toc& toc) {
+    std::vector<ManifestDescriptor> out;
+    // G.3.2's frame rate, reduced: Table E.1's time scale over its
+    // sample_delta, 240 000 / 8 008 being 30 000 / 1 001.
+    if (const std::optional<MediaTiming> timing = media_timing(toc)) {
+        const std::uint32_t divisor = std::gcd(timing->timescale, timing->sample_delta);
+        const std::uint32_t num = timing->timescale / divisor;
+        const std::uint32_t den = timing->sample_delta / divisor;
+        out.push_back(ManifestDescriptor{
+            .scheme_id_uri = "tag:dolby.com,2017:dash:audio_frame_rate:2017",
+            .value =
+                den == 1 ? std::to_string(num) : std::to_string(num) + "/" + std::to_string(den)});
+    }
+    const std::optional<std::size_t> index = signalled_presentation(toc);
+    const bool virtualized =
+        index.has_value() &&
+        (!toc.presentations_v1.empty() ? toc.presentations_v1[*index].b_pre_virtualized
+                                       : toc.presentations_v0[*index].b_pre_virtualized);
+    if (virtualized) {
+        out.push_back(ManifestDescriptor{
+            .scheme_id_uri = "tag:dolby.com,2016:dash:virtualized_content:2016", .value = "1"});
+    }
+    return out;
+}
+
+std::optional<int> presentation_channel_count(const Toc& toc) {
+    const std::optional<SignalledChannels> channels = signalled_channels(toc);
+    if (!channels || channels->objects) {
+        return std::nullopt;
+    }
+    int count = 0;
+    for (std::size_t g = 0; g < kGroupSpeakers.size(); ++g) {
+        if (((channels->groups >> g) & 1U) != 0) {
+            count += kGroupSpeakers[g];
+        }
+    }
+    return count;
+}
+
+std::string_view configuration_difference(const Toc& a, const Toc& b) {
+    // Annex H.1.2.4's parameters, in its order.
+    if (a.frame_rate_index != b.frame_rate_index) {
+        return "frame_rate_index";
+    }
+    if (a.sample_rate_hz != b.sample_rate_hz) {
+        return "fs_index";
+    }
+    if (a.n_presentations != b.n_presentations ||
+        a.presentations_v1.size() != b.presentations_v1.size() ||
+        a.presentations_v0.size() != b.presentations_v0.size()) {
+        return "n_presentations";
+    }
+    for (std::size_t i = 0; i < a.presentations_v1.size(); ++i) {
+        if (a.presentations_v1[i].presentation_config !=
+            b.presentations_v1[i].presentation_config) {
+            return "a presentation's b_single_substream_group or presentation_config";
+        }
+    }
+    for (std::size_t i = 0; i < a.presentations_v0.size(); ++i) {
+        if (a.presentations_v0[i].presentation_config !=
+            b.presentations_v0[i].presentation_config) {
+            return "a presentation's b_single_substream_group or presentation_config";
+        }
+    }
+    if (a.substream_groups.size() != b.substream_groups.size()) {
+        return "the substream groups";
+    }
+    for (std::size_t j = 0; j < a.substream_groups.size(); ++j) {
+        const SubstreamGroupInfo& ga = a.substream_groups[j];
+        const SubstreamGroupInfo& gb = b.substream_groups[j];
+        if (ga.content_type.has_value() != gb.content_type.has_value()) {
+            return "a substream group's content_type()";
+        }
+        if (ga.content_type) {
+            const ContentType& ca = *ga.content_type;
+            const ContentType& cb = *gb.content_type;
+            if (ca.content_classifier != cb.content_classifier) {
+                return "a substream group's content_classifier";
+            }
+            const bool language_a = ca.language_tag.has_value() || ca.serialized_language_tag;
+            const bool language_b = cb.language_tag.has_value() || cb.serialized_language_tag;
+            if (language_a != language_b ||
+                ca.serialized_language_tag != cb.serialized_language_tag ||
+                (ca.language_tag && cb.language_tag &&
+                 primary_subtag(*ca.language_tag) != primary_subtag(*cb.language_tag))) {
+                return "a substream group's language";
+            }
+        }
+        if (ga.substreams.size() != gb.substreams.size()) {
+            return "a substream group's substreams";
+        }
+        for (std::size_t k = 0; k < ga.substreams.size(); ++k) {
+            const GroupSubstream& sa = ga.substreams[k];
+            const GroupSubstream& sb = gb.substreams[k];
+            if (sa.kind != sb.kind ||
+                (sa.chan && sb.chan && sa.chan->channel_mode != sb.chan->channel_mode)) {
+                return "a substream's channel_mode";
+            }
+            if (sf_multiplier_of(sa) != sf_multiplier_of(sb)) {
+                return "a substream's sf_multiplier";
+            }
+        }
+    }
+    return {};
 }
 
 }  // namespace ac4

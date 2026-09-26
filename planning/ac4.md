@@ -2098,6 +2098,19 @@ through `tools/checks/generate_support_matrices.py`).
   reads as E-AC-3 (`src/forge/include/ac3/encoder/plan.hpp`). The help topics' bitmask, which is
   full (`apps/cli/usage.hpp`), is widened.
 
+- Built: `transcode` decodes an AC-4 presentation as coded, since 5.7.9.4 asks a transcoder for no
+  DRC, and hands the AC-3 or E-AC-3 encoder the profile the stream names; 5.7.9.4 calls the field
+  `drc_eac3_transcode_curve`, which Part 1 does not have, and `src/ac4dec/ERRATA.md` reads it as
+  `drc_eac3_profile`. The downmix values map by linear coefficient, AC-4's half-dB LFE steps going
+  half a dB up to E-AC-3's whole dB and back down the other way, so the two directions undo each
+  other; a 7.X presentation keeps its pair in E-AC-3 at Table E2.5's locations and folds for AC-3
+  by Table 219. `record` and `live` share one `TakeEncoder` with `transcode`; `RecordingSink`
+  carries AC-4 in every container but Matroska, which has no AC-4 codec ID (FFmpeg 8.0.1 cannot
+  mux one either), and `record` no longer writes the frames of its bitstream check after the rest
+  of the take. `play` decodes AC-4 to PCM, since no receiver found takes it over IEC 61937, and
+  `live` sends a receiver the 5.1 AC-3 leg. `fmp4`'s CMAF track takes the readings
+  `src/ac4enc/ERRATA.md` records under "Manifests and CMAF tracks".
+
 **Exit:** every new option has a test; the codec matrix covers every AC-4 command, as
 `tools/checks/check_matrix_coverage.py` requires; the man page and completions list them.
 

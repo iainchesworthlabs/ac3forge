@@ -283,17 +283,19 @@ constexpr std::array<Command, 44> kCommands{{
      topic::kStdio | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) { return run_strip_objects(x.str(1), x.str(2), x.meta); }},
-    {"record", 2, "<out.ac3|out.ec3> [seconds] [bitrate_kbps] [device_index]",
-     "capture straight to a file; layout=/codec=/container= decide its shape",
+    {"record", 2, "<out.ac3|out.ec3|out.ac4> [seconds] [bitrate_kbps] [device_index]",
+     "capture straight to a file; layout=/codec=/container= decide its shape, codec=ac4 "
+     "encoding AC-4",
      topic::kTake | topic::kLayout | topic::kMeta,
      Needs::kCapture,
      [](const Args& x) {
          return run_record(x.str(1), x.u32(2, 5), x.u32(3, 192), x.i32(4, 0), x.meta);
      }},
     {"live", 3,
-     "<out.ac3|out.ec3> <capture_device> [seconds] [bitrate_kbps] [monitor_device] "
+     "<out.ac3|out.ec3|out.ac4> <capture_device> [seconds] [bitrate_kbps] [monitor_device] "
      "[passthrough_device] [mode]",
-     "capture -> encode -> live monitor and/or passthrough", topic::kLive | topic::kTake | topic::kLayout | topic::kAtmos | topic::kMulti | topic::kMeta,
+     "capture -> encode -> live monitor and/or passthrough; codec=ac4 encodes AC-4, which its "
+     "monitor decodes and a receiver gets as a 5.1 AC-3 leg", topic::kLive | topic::kTake | topic::kLayout | topic::kAtmos | topic::kMulti | topic::kMeta,
      Needs::kCapture,
      [](const Args& x) {
          return run_live(x.str(1), x.i32(2, 0), x.u32(3, 10), x.u32(4, 192), x.i32(5, -2),
@@ -363,22 +365,27 @@ constexpr std::array<Command, 44> kCommands{{
      "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "
      "Profile BW64 there (legacy item IM2) - bed LFE plus every dynamic object, positioned by its own "
      "decoded OAMD",
-     topic::kStdio | topic::kDecode | topic::kObjects,
+     topic::kStdio | topic::kDecode | topic::kAc4Decode | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3), x.str(4)); }},
-    {"probe", 2, "<in.ac3|in.ec3|in.ac4> [json=1] [detail=frames|blocks]",
+    {"probe", 2, "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [json=1] [detail=frames|blocks]",
      "inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 "
-     "TOC/presentations/substream groups; table or documented JSON",
+     "TOC/presentations/substream groups, bare or inside a container, and what the container "
+     "says of its track; table or documented JSON",
      topic::kStdio | topic::kProbe,
      Needs::kNothing, [](const Args& x) { return run_probe(x.str(1), x.meta); }},
-    {"transcode", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3> [bitrate_kbps] [layout]",
+    {"transcode", 3, "<in.ac3|in.ec3|in.ac4> <out.ac3|out.ec3|out.ac4> [bitrate_kbps] [layout]",
      "decode and re-encode, carrying dialnorm, compr and the mix metadata across - the "
-     "DD+-to-DD path for optical and AC-3-only HDMI sinks. The output codec comes from the "
-     "output name's suffix, or from codec=",
-     topic::kLayout | topic::kStreamTools,
+     "DD+-to-DD path for optical and AC-3-only HDMI sinks - or between AC-4 and AC-3 or "
+     "E-AC-3 either way: an AC-4 presentation, chosen as decode chooses one, becomes the "
+     "programme, decoded without DRC and re-encoded with its drc_eac3_profile, dialnorm and "
+     "downmix values; an AC-3 or E-AC-3 source's dialnorm and downmix values go to AC-4, "
+     "and drc= names its DRC profile. The output codec comes from the output name's suffix, "
+     "or from codec=; the bitrate defaults to 448 kbps, or 192 for AC-4",
+     topic::kLayout | topic::kStreamTools | topic::kAc4Decode,
      Needs::kNothing,
      [](const Args& x) {
-         return run_transcode(x.str(1), x.str(2), x.u32(3, 448), x.str(4), x.meta);
+         return run_transcode(x.str(1), x.str(2), x.u32(3, 0), x.str(4), x.meta);
      }},
     {"metadata", 3, "<in.ac3|in.ec3> <out.ac3|out.ec3>",
      "rewrite dialnorm/compr/bsmod/dsurmod on an existing stream and re-stamp its CRCs; the "
@@ -405,42 +412,49 @@ constexpr std::array<Command, 44> kCommands{{
          const auto inputs = x.tail(2);
          return run_cat(x.str(1), inputs);
      }},
-    {"levels", 2, "<in.wav|in.ac3|in.ec3|in.mkv|in.mp4|in.ts>", "per-channel peak/RMS report",
-     topic::kProgramme,
+    {"levels", 2, "<in.wav|in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts>",
+     "per-channel peak/RMS report; an AC-4 presentation as coded",
+     topic::kProgramme | topic::kAc4Decode,
      Needs::kNothing,
-     [](const Args& x) { return run_levels(x.str(1), x.meta.programme); }},
-    {"loudness", 2, "<in.wav>", "BS.1770-4 loudness -> dialnorm", topic::kNone,
+     [](const Args& x) { return run_levels(x.str(1), x.meta); }},
+    {"loudness", 2, "<in.wav|in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts>",
+     "BS.1770-4 loudness -> dialnorm, beside a stream's own: an AC-3 or E-AC-3 stream's first "
+     "programme, or an AC-4 presentation as coded, in AC-4's steps of 0.25 dB",
+     topic::kAc4Decode,
      Needs::kNothing,
-     [](const Args& x) { return run_loudness(x.str(1)); }},
+     [](const Args& x) { return run_loudness(x.str(1), x.meta); }},
     {"qc", 2,
-     "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [preset=<name>|all] [layout=bed|rendered] "
+     "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [preset=<name>|all] [layout=bed|rendered] "
      "[objects=<71|512|514|714>]",
      "bitstream-aware loudness QC: measured loudness vs. embedded dialnorm/compr, optional "
-     "preset gate, optional BS.1770-5 Annex 4 object re-render",
-     topic::kQc | topic::kProgramme,
-     Needs::kNothing, [](const Args& x) {
-         return run_qc(x.str(1), x.meta.qc_preset, x.meta.qc_rendered_layout, x.meta.programme,
-                       x.meta.qc_objects_layout);
-     }},
-    {"spdif", 3, "<in.ac3> <out.wav>", "IEC 61937 wrap as playable PCM16 WAV", topic::kNone,
+     "preset gate, optional BS.1770-5 Annex 4 object re-render; an AC-4 presentation as coded, "
+     "against its dialnorm and the loudness it states",
+     topic::kQc | topic::kProgramme | topic::kAc4Decode,
+     Needs::kNothing, [](const Args& x) { return run_qc(x.str(1), x.meta); }},
+    {"spdif", 3, "<in.ac3|in.ec3|in.ac4> <out.wav>",
+     "IEC 61937 wrap as playable PCM16 WAV; AC-4 in IEC 61937-14's bursts", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_spdif(x.str(1), x.str(2)); }},
-    {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|->",
+    {"unspdif", 3, "<in.wav|in.raw|-> <out.ac3|out.ec3|out.ac4|->",
      "the inverse: recover the elementary stream from IEC 61937 bursts, as captured from "
      "an S/PDIF or HDMI input or written by 'spdif'. '-' pipes either end",
      topic::kStdio,
      Needs::kNothing,
      [](const Args& x) { return run_unspdif(x.str(1), x.str(2), x.meta.keep_partial); }},
-    {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>", "wrap as a playable Matroska file", topic::kMkv,
+    {"mkv", 3, "<in.ac3|in.ec3> <out.mkv>",
+     "wrap as a playable Matroska file; AC-4 is refused, Matroska registering no codec ID for it",
+     topic::kMkv,
      Needs::kNothing,
      [](const Args& x) { return run_mkv(x.str(1), x.str(2)); }},
     {"mp4", 3, "<in.ac3|in.ec3|in.ac4> <out.mp4>",
      "wrap as playable MP4 with dac3/dec3 for AC-3/E-AC-3 or dac4 for AC-4", topic::kNone,
      Needs::kNothing,
      [](const Args& x) { return run_mp4(x.str(1), x.str(2)); }},
-    {"fmp4", 3, "<in.ac3|in.ec3> <out_dir> [frames_per_fragment]",
+    {"fmp4", 3, "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out_dir> [frames_per_fragment]",
      "fragmented MP4/CMAF + HLS/DASH manifests, ready for a packager; fallback-51 also writes "
-     "an object-stripped 5.1 companion rendition",
+     "an object-stripped 5.1 companion rendition. AC-4 as TS 103 190-2 Annex H has it: each "
+     "fragment starting at an I-frame, the timescale Table E.1 gives, the ca4m and ca4s brands "
+     "and the DASH descriptors of Annex G",
      topic::kFmp4 | topic::kMeta,
      Needs::kNothing,
      [](const Args& x) { return run_fmp4(x.str(1), x.str(2), x.u32(3, 48), x.meta); }},
@@ -448,7 +462,7 @@ constexpr std::array<Command, 44> kCommands{{
      "wrap as MPEG-2 TS; AC-4 supports DVB only",
      topic::kTs | topic::kMeta,
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
-    {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
+    {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3|out.ac4>",
      "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
      "identified by its own magic bytes, not by the file name",
      topic::kStdio,
@@ -476,17 +490,19 @@ constexpr std::array<Command, 44> kCommands{{
          return run_identify(x.i32(1, -1), x.str(2, "-"), x.u32(3, 2), x.str(4, "-"),
                              static_cast<double>(x.i32(5, -20)));
      }},
-    {"play", 2, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index]",
+    {"play", 2, "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [device_index]",
      "exclusive-mode IEC 61937 passthrough, following the sink (bsid decides the source "
      "format; a named device that rejects it gets an automatic AC-3/PCM fallback - follow=off "
-     "for the plain refusal)",
-     topic::kPlay,
+     "for the plain refusal). AC-4, which no receiver takes over IEC 61937 yet, is decoded and "
+     "played as PCM, as 'monitor' plays it",
+     topic::kPlay | topic::kAc4Decode,
      Needs::kPassthrough,
      // -1, not 0: run_play reads a negative index as "the default endpoint",
      // where 0 names the first one 'outputs' lists and demands passthrough of it.
      [](const Args& x) { return run_play(x.str(1), x.i32(2, -1), x.meta); }},
-    {"monitor", 2, "<in.ac3|in.ec3|in.mkv|in.mp4|in.ts> [device_index]",
-     "decode and play on an ordinary (non-bitstreamed) output", topic::kDecode | topic::kObjects,
+    {"monitor", 2, "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [device_index]",
+     "decode and play on an ordinary (non-bitstreamed) output",
+     topic::kDecode | topic::kAc4Decode | topic::kObjects,
      Needs::kMonitor,
      [](const Args& x) { return run_monitor(x.str(1), x.i32(2, -1), x.meta); }},
     {"spatial", 2, "<in.ec3> [device_index]",

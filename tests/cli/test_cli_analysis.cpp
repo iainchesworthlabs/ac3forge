@@ -222,7 +222,7 @@ TEST_CASE("loudness refuses what AC-3 cannot carry and reports silence as undefi
     const auto missing = dir / "loudness_missing.wav";
     fs::remove(missing);
     CHECK(run_failing("loudness " + quoted(missing), log, 2)
-              .find("error: " + missing.string() + ": cannot open file") != std::string::npos);
+              .find("error: cannot read " + missing.string()) != std::string::npos);
 
     // Nothing above BS.1770's -70 LKFS absolute gate means there is no
     // loudness to turn into a dialnorm - a runtime outcome, not bad input.
