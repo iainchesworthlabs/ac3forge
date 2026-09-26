@@ -68,14 +68,18 @@ struct AudioSubstreamFields {
 // --- Presentation and EMDF payload substreams ------------------------------------
 
 // What a presentation substream carries (clause 6.2.2.3), each where it is
-// set: an alternative presentation's name and target, dialogue
-// normalisation, further loudness values, DRC (its configuration in
-// I-frames, and the frame's gains where a mode sends them), the substream
-// groups' gains and the associated audio's values, and custom_dmx_data() and
-// loud_corr() for the presentation's channels.
+// set: an alternative presentation's name and target, the additional data's
+// immersive_audio_indicator, dialogue normalisation, further loudness values,
+// DRC (its configuration in I-frames, and the frame's gains where a mode sends
+// them), the substream groups' gains and the associated audio's values, and
+// custom_dmx_data() and loud_corr() for the presentation's channels.
 struct PresentationSubstreamFields {
     bool iframe = true;  // b_pres_ndot
     const AlternativeCodes* alternative = nullptr;
+    // b_additional_data with one byte of it, as DEE sends it for a 5.1.4
+    // presentation: immersive_audio_indicator set, no advanced dialogue
+    // enhancement data, and six bits of add_data.
+    bool immersive_audio_indicator = false;
     int dialnorm_bits = 124;  // Part 1 clause 4.3.12.2.1: -dialnorm_bits / 4 dBFS
     const LoudnessCodes* loudness = nullptr;
     const DrcCodes* drc = nullptr;

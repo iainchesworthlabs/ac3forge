@@ -2555,8 +2555,9 @@ TEST_CASE("build_dac4 describes direct-coded object substreams by what each send
     for (int kind = 0; kind < 3; ++kind) {
         ac4::ObjSubstreamInfo obj;
         obj.b_dynamic_objects = kind == 0;
-        using Static = ac4::ObjSubstreamInfo::Static;
-        obj.static_kind = kind == 1 ? Static::kBed : kind == 2 ? Static::kIsf : Static::kNone;
+        obj.static_kind = kind == 1   ? ac4::ObjSubstreamInfo::Static::kBed
+                          : kind == 2 ? ac4::ObjSubstreamInfo::Static::kIsf
+                                      : ac4::ObjSubstreamInfo::Static::kNone;
         if (kind == 0) {
             obj.brate_ind = 12;
         }

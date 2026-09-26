@@ -840,8 +840,14 @@ def immersive_signals(source, decoded, mode, core):
             [chans for _, chans, _ in columns])
 
 
-def score_immersive(name, stream, source, source_name, core, args, work, failures, pins):
-    """An immersive leg's checks in full or core decoding (the docstring's immersive paragraph)."""
+def score_immersive(name, stream, source, source_name, core, args, work, failures, pins,
+                    table=None, gain_tolerance_db=IMMERSIVE_GAIN_TOLERANCE_DB,
+                    gain_min_snr_db=None):
+    """An immersive leg's checks in full or core decoding (the docstring's immersive paragraph),
+    against `table`'s pins (IMMERSIVE_PINS by default); what it measured, as a dict, or None where
+    the decode is not the leg's layout. score_ac4_encode.py scores the encoder's immersive legs
+    with it, holding a channel's gain to `gain_tolerance_db` only where its SNR is
+    `gain_min_snr_db` or more, as it holds its other legs'."""
     label = f"{name} ({'core' if core else 'full'})"
     trace = work / f"{name}-{'core' if core else 'full'}.trace"
     decoded, rate = decode(args.cli, stream, work / f"{name}.wav", trace,
@@ -850,7 +856,7 @@ def score_immersive(name, stream, source, source_name, core, args, work, failure
     if rate != RATE or decoded.shape[1] != expected_channels:
         failures.append(f"{label}: {decoded.shape[1]} channels at {rate} Hz, not "
                         f"{expected_channels} at {RATE}")
-        return
+        return None
     mode = immersive_mode(trace)
     names, reference, output, tones = immersive_signals(source, decoded, mode, core)
     lag, ref, out = align(reference, output)
@@ -885,8 +891,9 @@ def score_immersive(name, stream, source, source_name, core, args, work, failure
         gain_db = 20.0 * np.log10(abs(gain))
         snrs.append(float(snr))
         cells.append(f"{column} {gain_db:+.3f} dB {snr:.1f} dB")
-        tolerance = LFE_GAIN_TOLERANCE_DB if lfe else IMMERSIVE_GAIN_TOLERANCE_DB
-        if not args.measure and abs(gain_db) > tolerance:
+        tolerance = LFE_GAIN_TOLERANCE_DB if lfe else gain_tolerance_db
+        coarse = gain_min_snr_db is not None and snr < gain_min_snr_db
+        if not args.measure and not coarse and abs(gain_db) > tolerance:
             failures.append(f"{label} {column}: gain {gain_db:+.3f} dB, beyond +-{tolerance} dB of "
                             "unity")
     routing = None
@@ -911,12 +918,15 @@ def score_immersive(name, stream, source, source_name, core, args, work, failure
     mos_pin = "None" if mos is None else f"{mos - MOS_MARGIN:.2f}"
     pins.append(f'    ("{name}", "{"core" if core else "full"}"): (({floors}), {routing_pin}, '
                 f"{lsd + LSD_MARGIN_DB:.2f}, {mos_pin}),")
+    measured = {"mode": mode, "names": names, "snrs": snrs, "routing": routing, "lsd": float(lsd),
+                "mos": mos, "ref": ref, "out": out, "heard": heard, "found": found,
+                "decoded": decoded}
     if args.measure:
-        return
-    pin = IMMERSIVE_PINS.get((name, "core" if core else "full"))
+        return measured
+    pin = (IMMERSIVE_PINS if table is None else table).get((name, "core" if core else "full"))
     if pin is None:
         failures.append(f"{label}: nothing pinned in IMMERSIVE_PINS")
-        return
+        return measured
     snr_floors, routing_floor, lsd_ceiling, mos_floor = pin
     for column, snr, floor in zip(names, snrs, snr_floors, strict=True):
         if (snr is None) != (floor is None):
@@ -930,6 +940,7 @@ def score_immersive(name, stream, source, source_name, core, args, work, failure
         failures.append(f"{label}: LSD {lsd:.2f} dB above its ceiling {lsd_ceiling}")
     if mos is not None and mos_floor is not None and mos < mos_floor:
         failures.append(f"{label}: MOS {mos:.2f} below its floor {mos_floor}")
+    return measured
 
 
 def acpl_units(codec_mode, channels):

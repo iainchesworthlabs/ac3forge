@@ -1465,6 +1465,18 @@ The sections below contain the complete change list and fixes.
   after the presentation substreams for the first group's audio. `fuzz_ac4_encode` draws the
   substreams and presentations; `ac3cli ac4-encode` takes them in E7. `src/ac4enc/ERRATA.md` records
   the readings.
+- **The AC-4 encoder codes 5.1.4** (phase E8 of `planning/ac4.md`). Nine or ten input channels, 5.0.4
+  and 5.1.4, are coded in Part 2's immersive channel element as DEE writes it: SCPL from 640 kbps, ASPX_SCPL
+  from 480 and ASPX_ACPL_2 below, each coupled pair as its sum and difference with the difference predicted
+  band by band (Table 20), A-SPX paired as Table 8 has it, and A-CPL's four modules rebuilding the pairs in
+  ASPX_ACPL_2. `DownmixConfig::height` sends the top channels' downmix to 5.X (custom downmix data, in
+  I-frames), and an immersive presentation carries `immersive_audio_indicator`. 7.0.4 and 7.1.4 with the
+  back pair (`experimental.back_pair`), ASPX_ACPL_1 and A-JCC (`experimental.ajcc`, which DEE's streams never
+  use) are experimental options. `ac3cli ac4-encode` takes the immersive layouts from the WAV's channel
+  count, with `codec-mode=scpl`, `aspx-scpl` and `aspx-ajcc`, `height-downmix=` and `height-gain=`. In full
+  decoding every channel's tone comes back on its own channel at unity, and in core decoding on the 5.X.2
+  core's speaker at the core's gain. `src/ac4dec/ERRATA.md`'s evidence for Table 20's prediction gains is
+  corrected: DEE's SCPL and ASPX_SCPL streams send them with `sap_mode` 3, not 0.
 - **The AC-4 encoder's API in its final form, `ac3cli ac4-encode`'s options, and the encoder
   installed** (phase E7 of `planning/ac4.md`). `ac4::Encoder::refusal_reason()` names the rule a
   configuration `create()` refuses breaks, as a string literal such as "a rate outside 8 to 3 000
