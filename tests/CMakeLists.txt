@@ -395,18 +395,17 @@ endif()
 # core/test_simd_kernels.cpp's own AVX2_REQUIRE knob reads std::getenv too -
 # same C4996 reasoning as cpu_features.cpp above - and so do
 # ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories,
-# ac4dec/test_ac4dec_constructed.cpp, test_ac4dec_objects.cpp and
-# test_ac4dec_presentations.cpp, for where to write their streams (and
-# test_ac4dec_objects.cpp for Chromium's A-JOC stream, and
-# test_ac4dec_object_render.cpp for where to write the streams to listen to),
-# ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode,
-# ac4enc/test_ac4enc_presentations.cpp, for where to write its streams, and
-# ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's.
+# ac4dec/test_ac4dec_constructed.cpp, test_ac4dec_presentations.cpp and
+# ac4enc/test_ac4enc_presentations.cpp, for where to write their streams,
+# ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's, and
+# ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode.
 # iec61937/test_iec61937_ac4.cpp reads one too, for the census directory it packs.
+# ac4dec/test_ac4dec_objects.cpp reads one too, for the census directory it packs.
+# ac4dec/test_ac4dec_object_render.cpp reads one too, for the census directory it packs.
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
-        ac4dec/test_ac4dec_constructed.cpp ac4dec/test_ac4dec_objects.cpp ac4dec/test_ac4dec_presentations.cpp
-        ac4dec/test_ac4dec_api.cpp ac4dec/test_ac4dec_object_render.cpp
+        ac4dec/test_ac4dec_constructed.cpp ac4dec/test_ac4dec_presentations.cpp ac4dec/test_ac4dec_api.cpp
+        ac4dec/test_ac4dec_objects.cpp ac4dec/test_ac4dec_object_render.cpp
         ac4enc/test_ac4enc_presentations.cpp ac4enc/test_ac4enc_presentations_race.cpp
         iec61937/test_iec61937_ac4.cpp
         PROPERTIES COMPILE_OPTIONS "/wd4996")
@@ -664,7 +663,8 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 # `ctest -L concurrency` (ThreadSanitizer leg).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_ac4_decode.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
+        cli/test_cli.cpp cli/test_cli_ac4_decode.cpp cli/test_cli_ac4_encode.cpp cli/test_cli_atmos_cbi.cpp
+        cli/test_cli_containers.cpp
         cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp
         cli/test_cli_options.cpp cli/test_cli_synth.cpp cli/test_cli_analysis.cpp
         cli/test_cli_encode_paths.cpp cli/test_cli_stream_edges.cpp

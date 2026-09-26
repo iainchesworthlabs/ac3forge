@@ -1051,6 +1051,43 @@ TEST_CASE("3.0 carries the dialogue of a music and effects presentation and a wa
     CHECK_FALSE(accepted(config));
 }
 
+TEST_CASE("the 7.X pair is the 7.X substream's beside mono dialogue", "[ac4enc][presentations]") {
+    // 7.1 music and effects (L R C LFE Ls Rs and the back pair) with mono
+    // English dialogue: experimental.seven_x names the 7.1 substream's pair,
+    // and the dialogue codes as it would alone.
+    constexpr std::array<double, 8> kTones71 = {331.0, 457.0, 613.0,  47.0,
+                                                787.0, 953.0, 1289.0, 1453.0};
+    ac4::EncoderConfig config;
+    config.bitrate_kbps = 576;
+    config.experimental.seven_x = ac4::AdditionalPair::kBack;
+    config.substreams = {substream(8, 512, ContentClassifier::kMusicAndEffects),
+                         substream(1, 64, ContentClassifier::kDialogue, "en")};
+    config.presentations = {presentation(0, {0, 1}, 1), presentation(std::nullopt, {0}, 2),
+                            presentation(std::nullopt, {1}, 3)};
+    std::vector<std::vector<float>> input;
+    for (const double hz : kTones71) {
+        input.push_back(tone(hz));
+    }
+    input.push_back(tone(kToneEnglish));
+    const Encoded e = encode(config, input);
+    read_back(e);
+    const ac4::Toc toc = toc_of(e.frames.front());
+    REQUIRE(toc.substream_groups.size() == 2);
+    CHECK(toc.substream_groups[0].substreams[0].chan->channel_mode_name == "7.1: 3/4/0.1");
+    CHECK(toc.substream_groups[1].substreams[0].chan->ch_mode == 0);
+    // The dialogue into C, the music and effects channel to channel.
+    const Decoded me = decode_id(e, 2);
+    REQUIRE(me.speakers.size() == 8);
+    const Decoded mix = decode_id(e, 1);
+    REQUIRE(mix.speakers == me.speakers);
+    check_tone(mix, decode_id(e, 3), Speaker::kCentre, kToneEnglish, {{Speaker::kCentre, 0.0}});
+    check_tone(mix, me, me.speakers.back(), kTones71.back(), {{me.speakers.back(), 0.0}});
+    // A pair and no substream of seven or eight channels to take it is refused.
+    config.substreams[0].channels = 6;
+    CHECK(ac4::Encoder::refusal_reason(config) ==
+          "experimental.seven_x's additional pair without seven or eight channels");
+}
+
 TEST_CASE("presentations that break the rules are refused", "[ac4enc][presentations]") {
     const auto base = [] {
         ac4::EncoderConfig c;

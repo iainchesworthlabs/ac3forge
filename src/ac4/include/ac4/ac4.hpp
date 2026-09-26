@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -194,6 +195,10 @@ class AC4_EXPORT SyncFrameSplitter {
 struct ContentType {
     int content_classifier = 0;  // Table 91
     std::optional<std::vector<std::byte>> language_tag;
+    // b_serialized_language_tag: the tag comes a chunk a frame
+    // (language_tag_chunk), which one table of contents does not hold whole,
+    // so language_tag stays unset.
+    bool serialized_language_tag = false;
 };
 
 // --- §4.2.3.6 ac4_substream_info (presentation_version 0) / §6.2.1.8
@@ -340,9 +345,13 @@ struct AjocSubstreamInfo {
     std::vector<ObjectEntry> static_objects;   // empty when b_static_dmx
     std::optional<OamdCommonData> oamd_common_data;
     int n_fullband_upmix_signals = 0;
+    // The upmix's bed and ISF objects, as bed_dyn_obj_assignment() lists them;
+    // the upmix signals it does not list are dynamic objects, all of them
+    // where b_dyn_objects_only is set.
     std::vector<ObjectEntry> upmix_objects;
     std::optional<int> sf_multiplier;
     std::optional<int> bitrate_kbps;
+    std::optional<int> brate_ind;  // Table 90's brate_ind, 0-19, when b_bitrate_info
     std::optional<int> substream_index;
     // §6.3.2.7.6 b_audio_ndot, one entry per frame_rate_factor, as
     // ChannelSubstreamInfo::b_iframe.
@@ -362,6 +371,7 @@ struct ObjSubstreamInfo {
     bool b_dynamic_objects = false;
     std::optional<int> sf_multiplier;
     std::optional<int> bitrate_kbps;
+    std::optional<int> brate_ind;  // Table 90's brate_ind, 0-19, when b_bitrate_info
     std::optional<int> substream_index;
     // Table 60: the objects besides the LFE that the substream's audio codes
     // (0, 1, 2, 3 or 5); unset for a code the table reserves (5 to 7).
@@ -396,6 +406,9 @@ struct GroupSubstream {
 
 struct SubstreamGroupInfo {
     bool b_substreams_present = false;
+    // Whether each substream has an HSF extension (§6.3.2.6.2); where
+    // b_substreams_present is 0 the indices it would name are not sent.
+    bool b_hsf_ext = false;
     bool b_channel_coded = true;
     std::optional<OamdSubstreamInfo> oamd;  // set only when !b_channel_coded and b_oamd_substream
     std::vector<GroupSubstream> substreams;
@@ -429,6 +442,23 @@ struct EmdfVersionKey {
     int key_id = 0;
 };
 
+// One target of an alternative presentation (§6.3.3.1.5 to 6.3.3.1.8): its
+// target_level, which Annex E.12 calls target_md_compat, and Table 67's
+// target_device_category[], the first Boolean sent (index 0, stereo speakers)
+// its most significant of four bits.
+struct AlternativeTarget {
+    int md_compat = 0;
+    int device_category = 0;
+};
+
+// What Annex E.12's alternative_info() says of an alternative presentation:
+// its name, as UTF-8 bytes without the terminating 0 the presentation
+// substream sends, and its targets.
+struct AlternativeInfo {
+    std::string name{};
+    std::vector<AlternativeTarget> targets{};
+};
+
 // presentation_config 6 is an EMDF-only presentation (Table 53): md_compat,
 // enable_presentation and group_refs stay empty, and frame_rate_factor stays
 // 1 because the presentation does not transmit one.
@@ -445,6 +475,9 @@ struct PresentationInfoV1 {
     int frame_rate_fraction = 1;
     std::optional<int> presentation_id;
     bool b_pre_virtualized = false;  // §4.3.3.3.5
+    // b_multi_pid, for a presentation of several substream groups: whether
+    // they are split over more than one elementary stream.
+    bool b_multi_pid = false;
     // §6.2.1.12 ac4_presentation_substream_info(). Unset for an EMDF-only
     // presentation (presentation_config 6), which carries none.
     std::optional<int> presentation_substream_index;
@@ -464,6 +497,11 @@ struct PresentationInfoV1 {
     // knows them sets them, and build_dac4() then writes them.
     std::optional<bool> de_indicator;
     std::optional<bool> immersive_audio_indicator;
+    // An alternative presentation's name and targets (Annex E.12), which its
+    // presentation substream carries and the table of contents does not:
+    // parse_raw_frame() leaves this unset, and build_dac4() describes an
+    // alternative presentation only where a writer that knows them has set it.
+    std::optional<AlternativeInfo> alternative_info;
 };
 
 // --- §4.2.1 / §6.2.1.1 ac4_toc ---------------------------------------------
@@ -487,6 +525,12 @@ struct Toc {
 
     int n_substreams = 0;
     std::vector<int> substream_sizes;  // bytes, §4.3.3.12.4
+
+    // §6.2.1.1's program identifier, for bitstream_version 2: short_program_id
+    // where b_program_id is set, and program_uuid's 16 bytes where
+    // b_program_uuid_present is.
+    std::optional<int> short_program_id;
+    std::optional<std::array<std::byte, 16>> program_uuid;
 };
 
 // --- §4.2.4.2 / §6.2.2.2 ac4_substream: outer envelope only -----------------
@@ -526,24 +570,46 @@ struct RawFrame {
 // (Annex E.13). All three read the already-parsed Toc rather than raw
 // bytes, so a caller pays for exactly one parse however many it needs.
 
-// The 'dac4' box payload - ac4_dsi_v1 (Annex E.5), box header excluded, the
+// The 'dac4' box payload - ac4_dsi_v1 (Annex E.6), box header excluded, the
 // same contract as mp4::AudioTrack::codec_config ("payload only").
 //
 // TOC-level fields are carried in full: ac4_dsi_version 1, the stream's own
-// bitstream_version / fs_index / frame_rate_index, n_presentations, and (for
-// bitstream_version > 1) b_program_id = 0. The bit-rate DSI (Annex E.7) takes
-// its mode from wait_frames, as Table E.7 asks, with the rate unknown: 0,
-// and a precision of 0xFFFFFFFF.
+// bitstream_version / fs_index / frame_rate_index, n_presentations, and for
+// bitstream_version 2 its program identifier where it sends one. The bit-rate
+// DSI (Annex E.7) takes its mode from wait_frames, as Table E.7 asks, with the
+// rate unknown: 0, and a precision of 0xFFFFFFFF.
 //
-// A presentation of one channel-coded substream in one substream group, with
-// no alternative, gets the whole of Annex E.10's ac4_presentation_v1_dsi()
-// and E.11's ac4_substream_group_dsi(): everything they hold is in the table
-// of contents, and src/ac4enc/ERRATA.md records the readings they take. Its
-// closing de_indicator and immersive_audio_indicator are written where the
-// Toc carries them (see PresentationInfoV1), and left out otherwise, which
-// the syntax allows. Any other presentation gets its presentation_version
-// and pres_bytes = 0, as before: its DSI is not derived from the TOC here.
+// Each presentation gets the whole of Annex E.10's ac4_presentation_v1_dsi(),
+// with an ac4_substream_group_dsi() (E.11) for each substream group its
+// ac4_sgi_specifier()s name, in their order: a single substream group, the
+// configurations of Table 53 (0 to 5, and 6's EMDF payloads alone), channel
+// coded, A-JOC or direct coded objects, and its channel mode, core and
+// channel groups by Pseudocodes 25, 26 and E.3 over every substream of those
+// groups. src/ac4enc/ERRATA.md records the readings it takes. Its closing
+// de_indicator and immersive_audio_indicator are written where the Toc
+// carries them (see PresentationInfoV1), and left out otherwise, which the
+// syntax allows; an alternative presentation's name and targets, which the
+// syntax does not let it leave out, only from
+// PresentationInfoV1::alternative_info.
+//
+// Empty where the Toc holds something this cannot describe whole, which
+// dac4_refusal() names: a writer then has no complete box to carry.
 [[nodiscard]] AC4_EXPORT std::vector<std::byte> build_dac4(const Toc& toc);
+
+// Why build_dac4() writes nothing for `toc`, a string literal naming what it
+// cannot describe; empty where it describes every presentation whole.
+[[nodiscard]] AC4_EXPORT std::string_view dac4_refusal(const Toc& toc);
+
+// Why a CMAF track (TS 103 190-2 Annex H.1.2.1) cannot carry the stream `toc`
+// describes, a string literal naming the first rule it breaks; empty where it
+// keeps them: bitstream_version 2, presentation_version 1, at most 64
+// presentations, and a presentation_id in every presentation, no two the
+// same. A presentation of configuration 6, EMDF payloads alone, has no field
+// for a presentation_id, so a stream with one is refused; an MP4 that is not
+// fragmented carries it (build_dac4()). The rules for a presentation whose
+// groups several tracks carry (H.1.2.2 and H.1.2.3), and for the samples'
+// equivalent configurations (H.1.2.4), are the muxer's to keep.
+[[nodiscard]] AC4_EXPORT std::string_view cmaf_refusal(const Toc& toc);
 
 // Samples per AC-4 frame at the stream's own sample rate - what
 // mp4::AudioTrack::samples_per_frame and an MPEG-TS PTS cadence need.

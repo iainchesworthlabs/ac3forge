@@ -31,8 +31,9 @@
 // denormals and NaNs are all a few bytes away. What is held:
 //
 //   - a configuration create() takes encodes; one it refuses is refused as
-//     kInvalidConfig, and input with a sample that is not finite as
-//     kInvalidInput, and nothing else fails;
+//     kInvalidConfig, with a reason from refusal_reason(), which names none
+//     for a configuration create() takes, and input with a sample that is not
+//     finite as kInvalidInput, and nothing else fails;
 //   - every frame the encoder returns reads back through the decoder's syntax
 //     layer to the end of every substream, and the decoder's trace of it is
 //     the encoder's own, record for record;
@@ -76,6 +77,10 @@ Run encode(const ac4::EncoderConfig& base, const std::vector<std::vector<float>>
     const auto sink = [&run](const ac4::SyntaxRecord& r) { run.trace.push_back(r); };
     config.trace = sink;
     auto encoder = ac4::Encoder::create(config);
+    // refusal_reason() names a rule exactly where create() refuses.
+    if (ac4::Encoder::refusal_reason(base).empty() != encoder.has_value()) {
+        violated();
+    }
     if (!encoder.has_value()) {
         if (encoder.error() != ac4::EncodeError::kInvalidConfig) {
             violated();

@@ -1,10 +1,11 @@
-# AC-4 (ETSI TS 103 190) decoding: `ac4::decoder`
+# AC-4 (ETSI TS 103 190): `ac4::decoder` and `ac4::encoder`
 
-`ac4dec/decoder.hpp`, library `ac4::decoder`, with the inspector it reads the table of contents
-through, `ac4/ac4.hpp` in library `ac4::ac4`. An AC-4 decoder written from ETSI TS 103 190-1
-V1.4.1 (channel-based coding) and TS 103 190-2 V1.3.1 (immersive and personalized audio). Both
-libraries are in namespace `ac4` and link nothing from `ac3::forge`: AC-4 shares no bitstream
-syntax with AC-3 or E-AC-3.
+`ac4dec/decoder.hpp`, library `ac4::decoder`, and `ac4enc/encoder.hpp`, library `ac4::encoder`,
+with the inspector both work through, `ac4/ac4.hpp` in library `ac4::ac4`. An AC-4 decoder and
+encoder written from ETSI TS 103 190-1 V1.4.1 (channel-based coding) and TS 103 190-2 V1.3.1
+(immersive and personalized audio). The libraries are in namespace `ac4` and link nothing from
+`ac3::forge`: AC-4 shares no bitstream syntax with AC-3 or E-AC-3. The encoder is described under
+[Encoding a stream](#encoding-a-stream).
 
 It decodes the mono, stereo, 3.0, 5.X and 7.X channel elements in each of Part 1's codec modes
 (SIMPLE, ASPX and the three A-CPL modes) at every frame rate; the immersive element of 7.0.4 and
@@ -197,6 +198,100 @@ plays E-AC-3's objects with (`ac3::render::LayoutRenderer`, by way of
 each update over its ramp, to the layout `speakers=`, `channels=` or `downmix=` names, 7.1.4
 without them. Width, divergence, zones and the screen factor are not rendered.
 
+## Encoding a stream
+
+`ac4::Encoder` writes mono, stereo, 5.0 and 5.1 (and, as experimental options, 7.0, 7.1 and 3.0)
+at 48 kHz at every frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples, in the
+SIMPLE, ASPX and A-CPL codec modes, at a constant, average or variable rate. It takes planar
+samples at full scale 1.0, in the order the decoder writes them, and returns raw AC-4 frames:
+
+```cpp
+ac4::EncoderConfig config{
+    .channels = 6,          // 5.1: L R C LFE Ls Rs
+    .frame_rate_index = 2,  // 25 fps; 13, the default, is the 2 048-sample frame
+    .bitrate_kbps = 384,
+    .dialnorm_db = -24.0,
+    .drc = ac4::DrcConfig{.profile = ac4::DrcProfile::kFilmStandard},
+};
+auto encoder = ac4::Encoder::create(config);
+if (!encoder) {
+    const std::string_view why = ac4::Encoder::refusal_reason(config);
+    fmt::println("refused: {}", why);  // e.g. "a rate outside 8 to 3 000 kbps"
+    return 1;
+}
+for (const auto& block : input) {  // any number of samples at a time
+    auto frames = encoder->encode(block.channels);
+    for (const ac4::EncodedFrame& frame : *frames) {
+        write(ac4::sync_frame(frame.raw_ac4_frame, true));  // a raw .ac4 file's sync frame
+    }
+}
+for (const ac4::EncodedFrame& frame : *encoder->flush()) {
+    write(ac4::sync_frame(frame.raw_ac4_frame, true));
+}
+```
+
+Every field of `EncoderConfig` and the structures in it has a default, so a designated initializer
+names only the fields it sets, in the order the header declares them. `create()` refuses a
+configuration outside what the encoder writes with `EncodeError::kInvalidConfig`, and
+`refusal_reason()` names the rule it breaks, as a string literal: a layout it does not write, a
+rate its frames cannot hold, a presentation of the wrong number of substreams, and the rest.
+
+| `EncoderConfig` field | What it sets | Default |
+|---|---|---|
+| `channels`, `sample_rate_hz` | 1, 2, 5 or 6 channels (7 or 8 with `experimental.seven_x`); 48 000 or 44 100 Hz | 2, 48 000 |
+| `frame_rate_index`, `bitrate_kbps`, `rate_mode` | Part 1 Table 83's frame rate; the rate over whole frames, 8 to 3 000 kbps; `kConstant`, `kAverage` (within the decoder's buffer, Part 1 clause 6.2.4) or `kVariable` | 13, 192, `kConstant` |
+| `codec_mode` | `kAuto` (the rate's choice, as DEE's streams make it), `kSimple`, `kAspx`, or an A-CPL mode | `kAuto` |
+| `iframe_interval`, `iframes`, `fragment_starts` | An I-frame every so many frames, at named frames, and where a container's fragments start, which an MP4 lists as its sync samples | 24 |
+| `dialnorm_db`, `loudness` | The dialogue level, 0 to -31.75 dBFS, and Part 1's further loudness values | -31, none |
+| `drc`, `downmix`, `dialogue` | The DRC decoder modes on their profiles, the stereo downmix's values, and dialogue enhancement from marked channels or a stem | none |
+| `substreams`, `presentations` | Several substreams and the presentations of Part 2 Table 53 made of them (below) | one of each |
+| `trace`, `experimental` | A record of every syntax element written; the tools and layouts no reader outside this project has checked yet | none |
+
+A frame comes out when the input it needs has arrived: `encode()` returns the frames each call
+completes, and `flush()` pads the input with silence to the end of its last frame and returns the
+rest. Each `EncodedFrame` holds the raw frame, the samples it decodes to and whether it is an
+I-frame. `delay_samples()` and `decoder_delay_samples()` give where an input sample lands in the
+decoded output, which an MP4's edit list can skip; at `frame_rate_index` 13 the two are 3 072 and
+1 313 samples.
+
+### Substreams and presentations
+
+A stream can carry several substreams, each coding inputs of its own (or, for a hybrid dialogue
+enhancement, the dialogue beside another substream), and presentations that play them together in
+Part 2 Table 53's roles:
+
+```cpp
+ac4::EncoderConfig config{.bitrate_kbps = 448};
+config.substreams = {
+    {.channels = 6, .content = ac4::ContentClassifier::kMusicAndEffects},
+    {.channels = 1, .content = ac4::ContentClassifier::kDialogue, .language = "en"},
+    {.channels = 1, .content = ac4::ContentClassifier::kDialogue, .language = "de"},
+};
+config.presentations = {
+    {.config = 0, .substreams = {0, 1}},  // music and effects with English dialogue
+    {.config = 0, .substreams = {0, 2}},  // and with German
+};
+```
+
+`encode()` then takes the substreams' channels one substream after the other: eight here. Each
+presentation gets the least `md_compat` its tracks need and a `presentation_id` of its own unless it
+sets them, and its own dialnorm, loudness, DRC and downmix where it sets them. The substreams take
+shares of the rate in proportion to their full-band channels unless they set their own. What the
+encoder refuses there, and why, is in the header and `src/ac4enc/ERRATA.md`.
+
+### Containers
+
+`ac4::sync_frame()` wraps a frame for a raw `.ac4` file or an MPEG-2 transport stream, with Part 2
+Annex G's CRC or without it. An MP4 sample holds the raw frame as it is, and the sample entry's
+`dac4` box comes from the table of contents the encoder reports: `ac4::build_dac4(encoder->toc())`
+describes every presentation, and `ac4::media_timing()` gives the track's time scale. A CMAF track
+keeps TS 103 190-2 Annex H.1.2's rules, which `ac4::cmaf_refusal()` checks: a presentation of
+configuration 6, EMDF payloads alone, has no field for the `presentation_id` each presentation of
+a CMAF track carries.
+
+`ac3cli ac4-encode` spells each setting as an option, raw or MP4 by the output's name: see
+[Commands](../forge/cli/commands.md#ac4-encode).
+
 ## The inspector
 
 `ac4::ac4` reads the framing the decoder starts from, and works on its own for a muxer or a
@@ -213,7 +308,10 @@ probe:
   groups and the substream index table.
 - `ac4::frame_rate(toc)` gives Part 1 Tables 83 and 84's frame rate, frame length and internal
   sample rate; `ac4::build_dac4(toc)` and `ac4::rfc6381_codec_string(toc)` give an MP4 sample
-  entry's `dac4` box and the codec string HLS and DASH signal.
+  entry's `dac4` box and the codec string HLS and DASH signal. The box describes every
+  presentation (Part 2 Annex E.10), or is empty where the table of contents holds something it
+  cannot describe whole, and `ac4::dac4_refusal(toc)` says what; `ac4::cmaf_refusal(toc)` names
+  the rule of Annex H.1.2.1 a stream breaks for a CMAF track.
 
 ## Linking
 
@@ -221,6 +319,7 @@ probe:
 
 ```cmake
 target_link_libraries(your_target PRIVATE ac4::decoder)   # brings ac4::ac4 with it
+target_link_libraries(your_target PRIVATE ac4::encoder)   # likewise
 ```
 
 **Installed package** (`find_package(ac3forge)`, see [Using ac3::forge](index.md)):
@@ -228,24 +327,24 @@ target_link_libraries(your_target PRIVATE ac4::decoder)   # brings ac4::ac4 with
 ```cmake
 find_package(ac3forge REQUIRED)
 target_link_libraries(your_target PRIVATE ac4::decoder_static)   # or ac4::decoder_shared
+target_link_libraries(your_target PRIVATE ac4::encoder_static)   # or ac4::encoder_shared
 ```
 
-Each decoder library links the inspector of its own kind, `ac4::ac4_static` or `ac4::ac4_shared`.
-A package installed with one linkage, as a vcpkg or Conan one is, also defines the bare
-`ac4::decoder` and `ac4::ac4`. The static decoder calls into `ac4::core`, a static archive of the
-tables and transforms the decoder and the encoder share (`libac4core_static.a`, no headers), which
-its exported target names as a link-only dependency; the shared decoder carries the part of it
-that it uses. Through pkg-config the decoder is `ac4dec`, which requires `ac4`, and whose
-static-only form requires `ac4core` privately:
+Each decoder and encoder library links the inspector of its own kind, `ac4::ac4_static` or
+`ac4::ac4_shared`. A package installed with one linkage, as a vcpkg or Conan one is, also defines
+the bare `ac4::decoder`, `ac4::encoder` and `ac4::ac4`. The static decoder and encoder call into
+`ac4::core`, a static archive of the tables and transforms the two share (`libac4core_static.a`,
+no headers), which their exported targets name as a link-only dependency; each shared library
+carries the part of it that it uses. Through pkg-config the decoder is `ac4dec` and the encoder
+`ac4enc`, each of which requires `ac4`, and whose static-only forms require `ac4core` privately:
 
 ```bash
 c++ -std=c++23 player.cpp $(pkg-config --cflags --libs ac4dec)
+c++ -std=c++23 packager.cpp $(pkg-config --cflags --libs ac4enc)
 ```
 
-`AC3FORGE_BUILD_AC4`, on by default, builds the AC-4 libraries; the vcpkg port and the Conan
-recipe build and install them with the rest, without a feature of their own yet. Android,
+`AC3FORGE_BUILD_AC4`, on by default, builds the AC-4 libraries. The vcpkg port and the Conan
+recipe install them where asked for, off by default: `vcpkg install ac3forge[ac4]`, or
+`-o "ac3forge/*:ac4=True"` (see [Using ac3::forge](index.md)). Android,
 WebAssembly, the Python wheel and the ESP-IDF component build without them until their bindings
 arrive (planning/ac4.md, phases I4 and D12).
-
-The AC-4 encoder, `ac4::encoder` (`ac4enc/encoder.hpp`), is built by the same switch and used by
-`ac3cli ac4-encode`. It is in-tree only until its API is final and phase E7 installs it.

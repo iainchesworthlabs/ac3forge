@@ -25,6 +25,7 @@
 #include "ac3/io/object_strip.hpp"
 #include "ac3/meta/bsi.hpp"
 #include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
 #include "container_input.hpp"
 #include "matroska/matroska.hpp"
 #include "matroska/reader.hpp"
@@ -174,6 +175,44 @@ std::optional<Ac4Input> try_ac4_input(std::span<const std::byte> raw) {
     return out;
 }
 
+namespace {
+
+// What an alternative presentation's dac4 needs and the table of contents does
+// not carry: its name and targets (TS 103 190-2 Annex E.12), which its
+// presentation substream sends and ac4::Decoder reads, from the frames up to
+// the first that has given every alternative presentation both.
+void describe_alternatives(ac4::Toc& toc, std::span<const std::span<const std::byte>> frames) {
+    const auto alternative = [](const ac4::PresentationInfoV1& p) { return p.b_alternative; };
+    if (std::ranges::none_of(toc.presentations_v1, alternative)) {
+        return;
+    }
+    ac4::Decoder decoder;
+    for (const std::span<const std::byte> frame : frames) {
+        if (!decoder.parse(frame).has_value()) {
+            continue;
+        }
+        const std::span<const ac4::PresentationInfo> infos = decoder.presentations();
+        bool all = true;
+        for (std::size_t i = 0; i < toc.presentations_v1.size(); ++i) {
+            ac4::PresentationInfoV1& p = toc.presentations_v1[i];
+            if (!p.b_alternative) {
+                continue;
+            }
+            if (i < infos.size() && !infos[i].name.empty() && !infos[i].targets.empty()) {
+                p.alternative_info =
+                    ac4::AlternativeInfo{.name = infos[i].name, .targets = infos[i].targets};
+            } else {
+                all = false;
+            }
+        }
+        if (all) {
+            return;
+        }
+    }
+}
+
+}  // namespace
+
 int run_mkv(std::string_view in_path, std::string_view out_path) {
     // read_elementary_stream (container readers (mkv/mp4/ts)) also accepts an MP4 or MPEG-TS
     // input here, not just a raw .ac3/.ec3 - which is what makes this
@@ -265,7 +304,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
         // (AC-4 bitstream inspector): TS 103 190-2 Annex E's 'ac-4' sample entry and
         // 'dac4' box, timing from Table 84, RFC 6381 string for a
         // downstream HLS/DASH packager.
-        if (const auto ac4_in = try_ac4_input(raw)) {
+        if (auto ac4_in = try_ac4_input(raw)) {
             // TS 103 190-2 Table E.1's time scale: the sample rate, or
             // 240 000 at the rates whose frames alternate in length.
             const auto timing = ac4::media_timing(ac4_in->toc);
@@ -276,6 +315,15 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
                              ac4_in->toc.frame_rate_index);
                 return kExitInput;
             }
+            // The sample entry's dac4 (Annex E.6), each presentation whole,
+            // or nothing: a box that leaves one out misdescribes the track.
+            describe_alternatives(ac4_in->toc, ac4_in->mp4_samples);
+            std::vector<std::byte> dac4 = ac4::build_dac4(ac4_in->toc);
+            if (dac4.empty()) {
+                fmt::println(stderr, "error: {}: the MP4 sample entry's dac4 cannot describe {}",
+                             in_path, ac4::dac4_refusal(ac4_in->toc));
+                return kExitInput;
+            }
             const mp4::AudioTrack track{
                 .codec_id = std::string{mp4::kCodecAc4},
                 .sample_rate = static_cast<std::uint32_t>(ac4_in->toc.sample_rate_hz),
@@ -284,7 +332,7 @@ int run_mp4(std::string_view in_path, std::string_view out_path) {
                 // TS 103 190-2 E.4.5: channelcount "should be set to 2".
                 .channels = 2,
                 .samples_per_frame = timing->sample_delta,
-                .codec_config = ac4::build_dac4(ac4_in->toc),
+                .codec_config = std::move(dac4),
                 .rfc6381 = ac4::rfc6381_codec_string(ac4_in->toc),
                 .timescale = timing->timescale};
             mp4::MuxOptions options;
@@ -469,6 +517,24 @@ int run_fmp4(std::string_view in_path, std::string_view out_dir,
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned.has_value()) {
+        // AC-4: a CMAF track keeps TS 103 190-2 Annex H.1.2's rules, which a
+        // stream's table of contents alone can break, such as a configuration
+        // 6 presentation's missing presentation_id. Fragmenting AC-4 itself
+        // is planning/ac4.md's phase I1.
+        if (const auto ac4_in = try_ac4_input(raw)) {
+            const std::string_view refusal = ac4::cmaf_refusal(ac4_in->toc);
+            if (!refusal.empty()) {
+                fmt::println(stderr,
+                             "error: {}: a CMAF track cannot carry {} (TS 103 190-2 Annex H.1.2)",
+                             in_path, refusal);
+                return kExitInput;
+            }
+            fmt::println(stderr,
+                         "error: {}: fmp4 does not fragment AC-4 yet; ac3cli mp4 carries it in an "
+                         "MP4 that is not fragmented",
+                         in_path);
+            return kExitInput;
+        }
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
     }

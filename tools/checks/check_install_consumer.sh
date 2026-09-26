@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Installed-package consumer check for ac3forge's C API and its AC-4 decoder.
+# Installed-package consumer check for ac3forge's C API and its AC-4 decoder and encoder.
 #
 # tests/capi and the C examples compile against the build tree, where the generated headers sit
 # under <build>/src/capi/generated whether or not an install rule copies them. That is how
@@ -27,8 +27,9 @@
 # combination and needs AC3FORGE_BUILD_CAPI=ON; pass several to check several. Every exported C
 # API target is linked and run, static and shared; install_consumer/CMakeLists.txt says how. So is
 # every exported AC-4 decoder target, in a C++ program that decodes a committed stream
-# (install_consumer/consumer_ac4.cpp), and a tree built with AC3FORGE_BUILD_AC4=ON whose package
-# exports none fails.
+# (install_consumer/consumer_ac4.cpp), and every exported AC-4 encoder target, in one that encodes
+# a tone and reads it back with the inspector (install_consumer/consumer_ac4enc.cpp); a tree built
+# with AC3FORGE_BUILD_AC4=ON whose package exports none of either fails.
 #
 # The same prefix is then used the way a Makefile, Meson or autotools build uses it, through its
 # .pc files (cmake/PkgConfig.cmake), which are all such a build has. The C program is linked with
@@ -40,9 +41,17 @@
 # it drops an -lm that comes before the archive calling it, so a .pc that lists its libraries in
 # the wrong order fails under either compiler. Each .pc that names an archive is also linked whole
 # into an empty C program on its own, which finds what one component's file lacks even when no
-# consumer reaches that archive. The AC-4 program is built the same way from ac4dec.pc, by the C++
-# compiler that configured the tree, where the package has one. It needs pkg-config, or whatever
-# $PKG_CONFIG names.
+# consumer reaches that archive. The AC-4 programs are built the same way from ac4dec.pc and
+# ac4enc.pc, by the C++ compiler that configured the tree, where the package has them; a package
+# with the decoder's file and not the encoder's fails. It needs pkg-config, or whatever $PKG_CONFIG
+# names.
+#
+# Each optional library a tree was configured with (its AC3FORGE_BUILD_<NAME> option ON) installs
+# its CMake export and its .pc file, and each it was configured without installs no file at all:
+# the vcpkg port's features and the Conan recipe's options (packaging/) switch those same options,
+# and a default install of either, without the container writers, the AC-4 libraries, IAB or IAMF,
+# must carry none of their headers, libraries or targets. A tree configured with the AC-4
+# libraries, IAB and IAMF off is that shape.
 #
 # Usage:  ./tools/checks/check_install_consumer.sh <build-dir>...
 # Exit:   0 = every tree's archives linked whole, its consumers built and ran and its .pc files
@@ -67,6 +76,47 @@ trap 'rm -rf "$scratch"' EXIT
 # FILEPATH in one tree and STRING in another).
 cache_value() {
     sed -n "s/^$2:[A-Z]*=//p" "$1/CMakeCache.txt" | head -n 1
+}
+
+# Each optional library: its AC3FORGE_BUILD_<NAME> option, its CMake export file (without
+# .cmake), and the stem its library files, .pc files and include directories are named from.
+components=(
+    "AC3FORGE_BUILD_MATROSKA matroskaTargets matroska"
+    "AC3FORGE_BUILD_MP4 mp4Targets mp4"
+    "AC3FORGE_BUILD_MPEGTS mpegtsTargets mpegts"
+    "AC3FORGE_BUILD_IAB iabTargets ac3iab"
+    "AC3FORGE_BUILD_IAMF iamfTargets iamf"
+    "AC3FORGE_BUILD_AC4 ac4Targets ac4"
+)
+
+# Each optional library the tree $1 was configured with is in the prefix $2 with its export file
+# and its .pc file, and each it was configured without has no file there at all. -print -quit, not
+# a pipe into head: with pipefail, the SIGPIPE a closed pipe sends find would stop the script.
+check_components() {
+    local build="$1" prefix="$2" entry option targets stem value found
+    for entry in "${components[@]}"; do
+        read -r option targets stem <<< "$entry"
+        value="$(cache_value "$build" "$option")"
+        case "${value^^}" in
+            ON|TRUE|1|YES|Y)
+                if [[ -z "$(find "$prefix" -name "$targets.cmake" -print -quit)" ]] ||
+                        [[ -z "$(find "$prefix" -name "$stem.pc" -print -quit)" ]]; then
+                    echo "::error::$build has $option=ON and installed no $targets.cmake or $stem.pc - see cmake/InstallLibrary.cmake" >&2
+                    return 1
+                fi
+                echo "--- $option=ON: $targets.cmake and $stem.pc installed"
+                ;;
+            *)
+                found="$(find "$prefix" \( -name "$targets*.cmake" -o -name "lib$stem*" -o -name "$stem*.pc" \
+                    -o -path "$prefix/include/$stem*" \) -print -quit)"
+                if [[ -n "$found" ]]; then
+                    echo "::error::$build has $option=${value:-unset} and installed a file of it anyway: $found - see cmake/InstallLibrary.cmake" >&2
+                    return 1
+                fi
+                echo "--- $option=${value:-unset}: no file of it installed"
+                ;;
+        esac
+    done
 }
 
 # pkg-config confined to the .pc files of one prefix (pc_dir, set per build directory below), so a
@@ -126,6 +176,29 @@ pkg_config_check() {
         "$work/pc_consumer_ac4" "$root/tests/golden/external-baseline/ac4-51-film-96/dee.ac4"
     fi
 
+    # The AC-4 encoder through ac4enc.pc, in the same way. The switch that installs the decoder
+    # installs the encoder too.
+    if [[ -f "$pc_dir/ac4enc.pc" ]]; then
+        ac4_static=()
+        case " $(pc --libs-only-l ac4enc) " in
+            *" -lac4enc_static "*) ac4_static=(--static) ;;
+            *) ;;
+        esac
+        libdir="$(pc --variable=libdir ac4enc)"
+        read -r -a flags <<< "$(pc ${ac4_static[@]+"${ac4_static[@]}"} --cflags --libs ac4enc)"
+        echo "--- $cxx consumer_ac4enc.cpp, flags from: pkg-config ${ac4_static[*]:+${ac4_static[*]} }--cflags --libs ac4enc"
+        echo "    ${flags[*]}"
+        if ! "$cxx" -std=c++23 "$root/tools/checks/install_consumer/consumer_ac4enc.cpp" \
+                -o "$work/pc_consumer_ac4enc" -Wl,--as-needed -Wl,-rpath,"$libdir" "${flags[@]}"; then
+            echo "::error::the flags pkg-config prints for ac4enc do not link the AC-4 encoder's consumer (the linker's complaint is above) - see cmake/PkgConfig.cmake" >&2
+            return 1
+        fi
+        "$work/pc_consumer_ac4enc"
+    elif [[ -f "$pc_dir/ac4dec.pc" ]]; then
+        echo "::error::$prefix installed ac4dec.pc and no ac4enc.pc - see cmake/InstallLibrary.cmake" >&2
+        return 1
+    fi
+
     # One .pc at a time, every archive it names linked whole into a program that calls nothing.
     printf 'int main(void) { return 0; }\n' > "$work/empty.c"
     for pc_file in "$pc_dir"/*.pc; do
@@ -167,6 +240,7 @@ for build in "$@"; do
     fi
     echo "--- installed include/ac3forge_c:"
     ls -1 "$prefix/include/ac3forge_c"
+    check_components "$build" "$prefix"
 
     # The compilers that built the libraries, not whichever cc and c++ a machine offers.
     c_compiler="$(cache_value "$build" CMAKE_C_COMPILER)"

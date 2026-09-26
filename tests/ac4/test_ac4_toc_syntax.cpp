@@ -10,6 +10,7 @@
 // The frames come from tests/ac4/ac4_toc_writer.hpp, which shares no code
 // with src/ac4.
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -137,7 +138,7 @@ TEST_CASE("the table of contents reads every TOC-level escape and presentation s
     w.put(0, 40);
     w.flag(true);      // b_presentation_filter
     w.flag(true);      // b_enable_presentation
-    w.flag(false);     // b_multi_pid
+    w.flag(true);      // b_multi_pid
     w.put(3, 2);       // n_substream_groups_minus2 3: escaped
     w.variable_bits(0, 2);
     for (const int group : {0, 1, 2, 3, 7}) {
@@ -210,6 +211,14 @@ TEST_CASE("the table of contents reads every TOC-level escape and presentation s
     CHECK(toc.wait_frames == 3);
     CHECK(toc.payload_base == 34);
     CHECK_FALSE(toc.b_iframe_global);
+    CHECK(toc.short_program_id == 0xBEEF);
+    REQUIRE(toc.program_uuid.has_value());
+    for (std::size_t i = 0; i < 16; ++i) {
+        CAPTURE(i);
+        constexpr std::array<std::byte, 4> kWord = {std::byte{0x12}, std::byte{0x34},
+                                                    std::byte{0x56}, std::byte{0x78}};
+        CHECK((*toc.program_uuid)[i] == kWord[i % 4]);
+    }
     REQUIRE(toc.n_presentations == 3);
     REQUIRE(toc.presentations_v1.size() == 3);
     const auto& first = toc.presentations_v1[0];
@@ -220,6 +229,7 @@ TEST_CASE("the table of contents reads every TOC-level escape and presentation s
     CHECK(first.frame_rate_factor == 4);
     CHECK(first.frame_rate_fraction == 1);
     CHECK(first.enable_presentation == true);
+    CHECK(first.b_multi_pid);
     CHECK(first.group_refs == std::vector<int>{0, 1, 2, 3, 7});
     CHECK(first.b_pre_virtualized);
     CHECK(first.b_alternative);
@@ -238,11 +248,15 @@ TEST_CASE("the table of contents reads every TOC-level escape and presentation s
     REQUIRE(group0.content_type.has_value());
     CHECK(group0.content_type->content_classifier == 1);
     CHECK_FALSE(group0.content_type->language_tag.has_value());
+    CHECK(group0.content_type->serialized_language_tag);
+    CHECK_FALSE(group0.b_hsf_ext);
     const auto& group1 = toc.substream_groups[1];
     CHECK_FALSE(group1.b_substreams_present);
+    CHECK(group1.b_hsf_ext);  // with no index to name, the group's flag says so
     CHECK_FALSE(group1.substreams[0].chan->substream_index.has_value());
     CHECK_FALSE(group1.substreams[0].hsf_ext_substream_index.has_value());
     const auto& group2 = toc.substream_groups[2];
+    CHECK_FALSE(group2.content_type->serialized_language_tag);
     REQUIRE(group2.content_type->language_tag.has_value());
     CHECK(*group2.content_type->language_tag == std::vector<std::byte>{std::byte{'e'}, std::byte{'n'}});
     CHECK(toc.substream_groups[7].substreams[0].chan->b_iframe == std::vector<bool>{true, false, false, false});
@@ -542,6 +556,19 @@ TEST_CASE("object and A-JOC substream infos read each bed and object assignment"
     CHECK(ajoc0.upmix_objects.size() == 5);
     CHECK(ajoc0.sf_multiplier == 1);
     CHECK(ajoc0.bitrate_kbps == 16);
+    CHECK(ajoc0.brate_ind == 0);
+    CHECK_FALSE(subs[1].ajoc->brate_ind.has_value());
+    // What each object substream sends it holds: 3 dynamic objects, 4 to 7 bed
+    // objects (7 continuing a bed), 8 and 9 ISF objects, 10 reserved.
+    for (std::size_t i = 3; i < subs.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(subs[i].obj.has_value());
+        CHECK(subs[i].obj->b_dynamic_objects == (i == 3));
+        using Static = ac4::ObjSubstreamInfo::Static;
+        CHECK((subs[i].obj->static_kind == Static::kBed) == (i >= 4 && i <= 7));
+        CHECK((subs[i].obj->static_kind == Static::kIsf) == (i == 8 || i == 9));
+        CHECK_FALSE(subs[i].obj->brate_ind.has_value());
+    }
     CHECK(subs[1].ajoc->static_objects.size() == 1);
     CHECK(subs[1].ajoc->upmix_objects.size() == 2);  // bits 0 and 5
     CHECK(subs[2].ajoc->static_objects.size() == 4);  // bits 0 and 4, two channels each
@@ -946,10 +973,11 @@ TEST_CASE("bitstream_version 1 presentations of every shape", "[ac4][toc]") {
     CHECK(frame.substreams[0].is_audio);
     CHECK(frame.substreams[0].audio_size == 5 + (1 << 15));
 
-    // The carriage helpers read a version 0 table of contents too.
-    const auto dac4 = ac4::build_dac4(toc);
-    // 90 bits of header and bitrate, aligned, and two bytes per presentation.
-    CHECK(dac4.size() == 12 + 5 * 2);
+    // The carriage helpers read a version 0 table of contents too; its dac4
+    // would need Part 1 Annex E.4a's ac4_presentation_v0_dsi(), which
+    // build_dac4() does not write.
+    CHECK(ac4::build_dac4(toc).empty());
+    CHECK_FALSE(ac4::dac4_refusal(toc).empty());
     CHECK(ac4::rfc6381_codec_string(toc) == "ac-4.01.00.04");
     CHECK(ac4::samples_per_frame(toc) == 2002U);
 }

@@ -364,6 +364,7 @@ void PresentationName::none() noexcept {
 
 void PresentationName::clear() noexcept {
     name_.clear();
+    targets_.clear();
     none();
 }
 

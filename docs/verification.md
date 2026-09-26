@@ -1333,8 +1333,8 @@ configurations, chosen frame by frame by the bits they save, 7.0 and 7.1 in the 
 ASPX_ACPL_1 and A-CPL in stereo are experimental options. It shares
 `src/ac4core`'s transforms, windows, codebooks, QMF banks and A-SPX tables and high frequency
 generator with the decoder, and writes the syntax through a transcription of the tables of its own.
-`ac3cli ac4-encode` writes it raw or in MP4. Eight checks stand behind it (`planning/ac4.md`, the
-encoder's ladder, and phases E5's and E6's exits):
+`ac3cli ac4-encode` writes it raw or in MP4, with an option for each setting. Nine checks stand
+behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exits):
 
 - **Three transcriptions agree.** The encoder records each element it writes in the shape the decoder
   records what it reads. The encoder's tests and the fuzz target `fuzz_ac4_encode` require the
@@ -1351,9 +1351,16 @@ encoder's ladder, and phases E5's and E6's exits):
   The fuzz target reaches every A-CPL mode too, and phase E6's substreams and presentations: each
   of Table 53's configurations over a second or third substream, a hybrid method's dialogue
   enhancement substream, 3.0 dialogue, a presentation of each substream alone, names, languages,
-  levels, group gains, the associated audio's values and EMDF payloads; the harness draws no
-  presentations until `ac3cli ac4-encode` takes them (phase E7). FFmpeg Validate runs it for 120 seconds on each pull request, and the nightly fuzz workflow
-  for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
+  levels, group gains, the associated audio's values and EMDF payloads. Since phase E7 the harness
+  draws them as well, through `ac3cli ac4-encode`'s `substreamN=` and `presentationN=`: one case in
+  five has further substreams in one of those configurations, or a presentation of each, with rate
+  shares, dialogue mixing values, ids, levels, names and payloads, now and then an EMDF-only
+  presentation, and decodes the first presentation at level 7. It found a frame at an average rate
+  that gave the substream taking what the others leave less than its least frame, and a frame
+  between I-frames sized for a dialogue stem's parameters where it falls back to the last frame's,
+  neither of which the encoder could then write; each substream now keeps its least frame first,
+  and a frame is sized for the metadata it falls back to. FFmpeg Validate runs it for 120 seconds
+  on each pull request, and the nightly fuzz workflow for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
   interleaving back through the decoder's parser, and hold the encoder's reading of the interval
   borders, envelope resolutions and noise borders to the parser's. The encoder undoes the three, four
   and five channel matrices as the 2 x 2 steps they cascade, in a transcription of Tables 178 and 179
@@ -1379,6 +1386,11 @@ encoder's ladder, and phases E5's and E6's exits):
   leaves out channel group 4, which Part 2 Table A.27 and Pseudocode E.3 both give its top front
   pair, and MediaInfo's summary names that pair Tfc (`src/ac4enc/ERRATA.md`). MediaInfo and the
   muxer read the A-CPL streams as configured as well, ASPX_ACPL_1 and A-CPL in stereo included.
+  The muxer refuses a stream of several presentations, and does not finish one of an alternative
+  presentation; for those the `dac4` (Part 2 Annex E.10) is held to the text and to MediaInfo's
+  trace, which reads every configuration's substream groups as written, and `tests/ac4/test_ac4.cpp`
+  holds `build_dac4()` to the muxer's box byte for byte for Chromium's A-JOC stream and DASH-IF's
+  5.1 test vectors, whose program identifier it copies.
   librempeg decodes the 5.X element's ASPX_ACPL_2 and ASPX_ACPL_3 streams' coded channels to within
   69 dB of the decoder's recovered downmixes, and stereo ASPX_ACPL_2's to 45 dB, and leaves the
   channels A-CPL rebuilds silent, as it does DEE's; it refuses the ASPX_ACPL_1 streams, whose
@@ -1468,6 +1480,20 @@ encoder's ladder, and phases E5's and E6's exits):
   on the music alone) and ViSQOL within 0.03; at 192 and 128 kbps its SNR leads DEE's by 5.5 to 6.3 dB
   on every presentation, ViSQOL within 0.02; on the tones it leads by 10 to 32 dB. librempeg gives
   the music and effects alone of either stream's mixes.
+- **The API, the command and the package** (phase E7). `Encoder::refusal_reason()` names the rule a
+  refused configuration breaks, and a table of refusals holds each reason to its rule
+  (`test_ac4enc_encoder.cpp`), as the configuration's designated initializers hold its defaults;
+  `fuzz_ac4_encode` holds it to `create()` on every configuration it draws, and `fuzz_ac4_parse`
+  holds `dac4_refusal()` to `build_dac4()` on every table of contents that reads.
+  Every option of `ac3cli ac4-encode` has a test: `tests/cli/test_cli_ac4_encode.cpp` reads what
+  each writes back from the table of contents and the encoder's syntax trace (the codec modes,
+  the downmix, DRC and loudness values, the dialogue enhancement methods and the hybrid ones'
+  waveform, the I-frame options, each experimental tool, `crc=`, and every `substreamN-` and
+  `presentationN-` key), and `test_cli_options.cpp` holds each spelling's parse and each malformed
+  value's refusal. `tools/checks/check_install_consumer.sh` installs each build and encodes a
+  second of tone through the installed encoder, by CMake and by pkg-config, static and shared,
+  reading every sync frame and its CRC back with the installed inspector; the ABI gate holds
+  `libac4enc.so`'s exports to the header's API (`tools/ci/abi-allowlist/libac4enc.so.txt`).
 - **The race against DEE** (`score_ac4_encode.py --gold`, locally): phase G0's 2.0 legs of music,
   speech and tones from 48 to 768 kbps, encoded again here in the mode DEE writes at each rate, and
   both decoded by the decoder. In ASPX, from 48 to 144 kbps, ViSQOL is within 0.03 of DEE's or above

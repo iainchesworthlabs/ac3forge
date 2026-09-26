@@ -907,6 +907,7 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
           1);
     CHECK(read_log(log).find("44.1 kHz") != std::string::npos);
     CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " 5000", log) == 1);  // kExitUsage
+    CHECK(read_log(log).find("a rate outside 8 to 3 000 kbps") != std::string::npos);
     CHECK_FALSE(fs::exists(out));
     // Silence has no loudness for dialnorm=auto to measure.
     CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " dialnorm=auto", log) == 5);
@@ -1199,6 +1200,79 @@ TEST_CASE("ac4-encode writes the metadata its options set as its syntax trace sh
                   log) == 2);
     CHECK(read_log(log).find("a dialogue stem has the programme's channels, rate and length") !=
           std::string::npos);
+}
+
+namespace {
+
+// The payload of the first 'dac4' box in an MP4 file, found by its type.
+std::vector<std::byte> dac4_of(std::span<const std::byte> file) {
+    for (std::size_t at = 4; at + 4 <= file.size(); ++at) {
+        if (std::string_view(reinterpret_cast<const char*>(file.data() + at), 4) == "dac4") {
+            const std::uint32_t size = be32(file, at - 4);
+            REQUIRE(size >= 8);
+            REQUIRE(at - 4 + size <= file.size());
+            return {file.begin() + static_cast<std::ptrdiff_t>(at + 4),
+                    file.begin() + static_cast<std::ptrdiff_t>(at - 4 + size)};
+        }
+    }
+    FAIL("no dac4 box");
+    return {};
+}
+
+// Each presentation's pres_bytes in an ac4_dsi_v1() (TS 103 190-2 Annex E.6)
+// with no program identifier: after 24 bits of header, b_program_id, 66 of
+// ac4_bitrate_dsi() and the alignment, a presentation_version byte and
+// pres_bytes, with add_pres_bytes past 254, then the body.
+std::vector<std::size_t> presentation_sizes(std::span<const std::byte> dac4) {
+    REQUIRE(dac4.size() >= 12);
+    const auto byte = [&](std::size_t i) { return std::to_integer<std::size_t>(dac4[i]); };
+    const std::size_t n_presentations = ((byte(1) & 1U) << 8U) | byte(2);
+    REQUIRE((byte(3) & 0x80U) == 0U);  // b_program_id
+    std::vector<std::size_t> sizes;
+    std::size_t at = 12;
+    for (std::size_t p = 0; p < n_presentations; ++p) {
+        REQUIRE(at + 2 <= dac4.size());
+        std::size_t size = byte(at + 1);
+        at += 2;
+        if (size == 255) {
+            size += (byte(at) << 8U) | byte(at + 1);
+            at += 2;
+        }
+        sizes.push_back(size);
+        at += size;
+    }
+    CHECK(at == dac4.size());
+    return sizes;
+}
+
+}  // namespace
+
+TEST_CASE("mp4 describes every presentation of a stream of several in its dac4 or refuses",
+          "[cli][mp4][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_presentations_mp4.log";
+    const fs::path presentations =
+        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / ".." / "ac4dec" / "presentations";
+    // Phase E6's broadcast stream: fifteen presentations, the eighth an
+    // alternative one named Deutsch, whose name the decoder reads from its
+    // presentation substream for the box.
+    const auto out = dir / "ac4_broadcast.mp4";
+    REQUIRE(run_cli("mp4 " + quoted(presentations / "encoder-broadcast.ac4") + " " + quoted(out), log) == 0);
+    const auto file = read_file(out);
+    const std::vector<std::byte> dac4 = dac4_of(file);
+    const std::vector<std::size_t> sizes = presentation_sizes(dac4);
+    REQUIRE(sizes.size() == 15);
+    for (const std::size_t size : sizes) {
+        CHECK(size > 0U);
+    }
+    const std::string_view text(reinterpret_cast<const char*>(dac4.data()), dac4.size());
+    CHECK(text.find("Deutsch") != std::string_view::npos);
+    // A bitstream_version 1 stream's presentations are Part 1's, which the box
+    // does not describe: refused, and the reason named.
+    const auto refused = dir / "ac4_v0.mp4";
+    CHECK(run_cli("mp4 " + quoted(presentations / "presentations-v0.ac4") + " " + quoted(refused), log) == 2);
+    CHECK(read_log(log).find("bitstream_version 0 or 1") != std::string::npos);
+    CHECK_FALSE(fs::exists(refused));
 }
 
 TEST_CASE("ts refuses AC-4 under the atsc profile with a real reason", "[cli][ts][ac4]") {

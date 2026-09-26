@@ -1173,7 +1173,8 @@ jobs:
       # installs the two trees this leg has just built (linux-llvm: Release, both linkages
       # installed; the shared pass above: Debug, BUILD_SHARED_LIBS=ON) and builds and runs a C
       # program against each prefix through find_package(ac3forge), and again through pkg-config,
-      # and a C++ program that decodes an AC-4 stream with the installed AC-4 decoder, both ways.
+      # and C++ programs that decode an AC-4 stream with the installed AC-4 decoder and encode one
+      # with the installed AC-4 encoder, both ways.
       #
       # A vcpkg or Conan package installs one linkage only (AC3FORGE_INSTALL_BOTH_LINKAGES=OFF),
       # which neither tree above does, and two defects showed only there: static archives that
@@ -1181,8 +1182,8 @@ jobs:
       # libac3forge_static.a nor the C++ runtime (cmake/PkgConfig.cmake). The .pc files of both
       # trees above name the shared library, so a third tree is configured with one linkage. It
       # builds only what the install holds, so no tests, examples, CLI or Hearth. The AC-4
-      # libraries are in the install since phase D8 of planning/ac4.md, and so in this tree, which
-      # builds the AC-4 encoder with them until it is installed too (phase E7).
+      # libraries are in the install since phases D8 and E7 of planning/ac4.md, and so in this
+      # tree.
       - name: Build C and C++ consumers against the installed SDK
         if: matrix.preset == 'linux-llvm'
         shell: bash
