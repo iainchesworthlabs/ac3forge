@@ -19,8 +19,8 @@
 // personalized audio", written from the published texts. Clause numbers below
 // name the part that defines the element.
 //
-// What it writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, at every frame rate
-// of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples
+// What it writes: mono, stereo, 5.0, 5.1, 5.0.4 or 5.1.4 PCM at 48 kHz, at every
+// frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples
 // (frame_rate_index 13, the one Table 84 has), as one presentation of one
 // channel-coded substream, or as several channel-coded substreams, each in a
 // substream group of its own, and the presentations of Part 2 Table 53 made of
@@ -37,7 +37,11 @@
 // element in the form DEE's streams have it (coding_config 0 and 2ch_mode 0:
 // L and R as a pair, Ls and Rs as a pair, C alone, and the LFE); its other
 // coding configurations, 7.0 and 7.1 in the 7.X element, ASPX_ACPL_1, and
-// A-CPL in stereo are experimental. The table of contents is bitstream
+// A-CPL in stereo are experimental. 5.0.4 and 5.1.4 take Part 2's immersive
+// element as DEE's streams have it: the 7.0.4 or 7.1.4 channel mode with the
+// back pair absent, in SCPL, ASPX_SCPL or ASPX_ACPL_2 by the rate, with
+// core_5ch_grouping 0 and 2ch_mode 0; 7.0.4 and 7.1.4 with the back pair,
+// ASPX_ACPL_1 and ASPX_AJCC there are experimental. The table of contents is bitstream
 // version 2 with presentation version 1, every presentation that carries
 // audio with a presentation_id and the least md_compat its tracks need (Part
 // 2 Table 55; configuration 6's EMDF payloads alone have neither),
@@ -50,9 +54,9 @@
 // presentations, each that carries audio with a presentation_id of its own,
 // and one configuration throughout. A configuration 6 presentation has no
 // field for one, so a CMAF track cannot carry a stream that has it
-// (ac4::cmaf_refusal()), where an MP4 can. Immersive layouts and objects,
-// which the plan's phases E8 and E9 add, are refused, as is every
-// configuration outside the rules this header states;
+// (ac4::cmaf_refusal()), where an MP4 can. Objects, which the plan's phase E9
+// adds, are refused, as is every configuration outside the rules this header
+// states;
 // Encoder::refusal_reason() names the rule a configuration breaks. Each frame
 // comes out as a raw_ac4_frame, which an MP4 sample holds as it is
 // (ac4::build_dac4() describes the track from toc()), and which sync_frame()
@@ -73,14 +77,18 @@ enum class EncodeError : std::uint8_t {
 
 [[nodiscard]] AC4ENC_EXPORT std::string_view describe(EncodeError error);
 
-// The channel element's codec mode (Part 1 clause 4.3.6.1).
+// The channel element's codec mode (Part 1 clause 4.3.6.1), or the immersive
+// element's (Part 2 clause 6.3.5.1, Table 73).
 enum class CodecMode : std::uint8_t {
     // In 5.0 and 5.1, ASPX_ACPL_3 below 22.4 kbps a channel (the LFE not
     // counted) and ASPX_ACPL_2 below 33.6, as DEE's 5.1 streams are
     // ASPX_ACPL_3 at 96 kbps and ASPX_ACPL_2 at 128 and 144; then ASPX below 96
     // kbps a channel in mono and stereo and below 76.8 in the 5.X and 7.X
     // elements, as DEE's streams switch at 192 kbps in stereo and 384 in 5.1;
-    // SIMPLE from there.
+    // SIMPLE from there. In the immersive layouts, ASPX_ACPL_2 below 480 kbps
+    // for 5.1.4's nine full-band channels (53.3 kbps a channel), ASPX_SCPL
+    // below 640 (71.1) and SCPL from there, as DEE's 5.1.4 streams are
+    // ASPX_ACPL_2 from 192 to 448 kbps, ASPX_SCPL at 512 and SCPL at 768.
     kAuto,
     kSimple,  // the audio spectral frontend over the whole band
     // The spectral frontend up to A-SPX's crossover and A-SPX above it. In
@@ -91,17 +99,40 @@ enum class CodecMode : std::uint8_t {
     kAspx,
     // With experimental.acpl: ASPX_ACPL_2 with each pair's residual, what the
     // downmix leaves out of it, coded up to 3 kHz (acpl_qmf_band 8), below
-    // which the decoder rebuilds the pair from the two as they are.
+    // which the decoder rebuilds the pair from the two as they are; in the
+    // immersive layouts, as ASPX_SCPL codes the coupled pairs below that and
+    // ASPX_ACPL_2 above it (Part 2 clause 5.5.2).
     kAspxAcpl1,
     // 5.0 and 5.1: the downmixes (L + Ls / sqrt 2) / 2 and (R + Rs / sqrt 2) / 2
     // coded as a pair and C alone, in the ASPX way from 12.75 kHz, and L, R,
     // Ls and Rs rebuilt from them by A-CPL (Part 1 clause 5.7.7.6.1). Stereo,
     // with experimental.acpl: (L + R) / 2 coded alone, in the ASPX way as
-    // stereo is at the rate, and L and R rebuilt from it (clause 5.7.7.5).
+    // stereo is at the rate, and L and R rebuilt from it (clause 5.7.7.5). The
+    // immersive layouts: L, R and C halved, and each coupled pair's sum, (Ls +
+    // Lb), (Rs + Rb), (Tfl + Tbl) and (Tfr + Tbr) over 2 sqrt 2, coded in the
+    // ASPX way, and the pairs rebuilt from their sums by A-CPL (Part 2 clause
+    // 5.5.2): from 7.125 kHz below 224 kbps in 5.1.4, from 10.5 kHz below 304
+    // and from 12.75 kHz above, as DEE's 5.1.4 streams have it.
     kAspxAcpl2,
     // 5.0 and 5.1: the Lo/Ro downmix coded as a pair, in the ASPX way from 12
     // kHz, and all five channels rebuilt from it by A-CPL (clause 5.7.7.6.2).
     kAspxAcpl3,
+    // The immersive layouts (Part 2 Table 73): every channel coded by the
+    // spectral frontend over the whole band, L, R and C halved and each coupled
+    // pair as its sum and difference over 2 sqrt 2, which simple coupling
+    // (S-CPL, Part 2 clause 5.3) turns back, the difference predicted from the
+    // sum band by band (Part 2 Table 20).
+    kScpl,
+    // As SCPL up to 12.75 kHz, and A-SPX above it on the channels S-CPL makes,
+    // a coupled pair's two sharing one aspx_data_2ch() element (Part 2 Table 8).
+    kAspxScpl,
+    // With experimental.ajcc, the immersive layouts: A-JCC (Part 2 clause
+    // 5.6, ajcc_core_mode 0), a 5.X core coded in the ASPX way, each side's
+    // front (L with Tfl at -3 dB) and back (Ls, Lb and Tbl) as one channel,
+    // and the channels rebuilt from them by A-JCC's parameters, which DEE's
+    // 5.1.4 streams never use. In core decoding the back channels come out 3
+    // dB down, as Pseudocode 14 gives them.
+    kAspxAjcc,
 };
 
 // How frames share the rate (Part 1 Table 81's wait_frames).
@@ -231,9 +262,21 @@ enum class PreferredDownmix : std::uint8_t {
     kLtRtProLogicII,
 };
 
+// Where a downmix to 5.X takes an immersive layout's top channels (Part 2
+// clause 6.2.9.2's custom_dmx_data(), tool_t4_to_f_s(), clause 6.3.10.3), as
+// DEE's height_dmx_mode names them: both top pairs into L and R
+// (b_top_front_to_front and b_top_back_to_front), both into Ls and Rs, or the
+// top front pair into L and R and the top back pair into Ls and Rs.
+enum class HeightDownmix : std::uint8_t {
+    kFront,
+    kSurround,
+    kFrontAndSurround,
+};
+
 // The stereo downmix's values (Part 2 clause 6.2.9.2's custom_dmx_data() and
 // 6.2.9.1's loud_corr(); Part 1 clauses 4.3.12.2.8 to 4.3.12.2.19), for 5.X
-// and 7.X. Gains in dB, each one of the values its table gives.
+// and 7.X and the immersive layouts, and the immersive layouts' downmix to
+// 5.X. Gains in dB, each one of the values its table gives.
 struct DownmixConfig {
     // Table 149: +3, +1.5, 0, -1.5, -3, -4.5 or -6 dB, or -infinity.
     double loro_centre_db = -3.0;
@@ -250,6 +293,16 @@ struct DownmixConfig {
     // 2): -7.5 to +7.5 in steps of 0.5 (loro_dmx_loud_corr, ltrt_dmx_loud_corr).
     std::optional<double> loro_correction_db2{};
     std::optional<double> ltrt_correction_db2{};
+    // The immersive layouts' downmix to 5.X (custom downmix data, sent with the
+    // stereo values in I-frames as DEE sends them, for out_ch_config 0): where
+    // the top channels go, and their gain there, Table 129's 0, -1.5, -3,
+    // -4.5, -6, -9 or -12 dB, or -infinity. 7.0.4 and 7.1.4 send the back
+    // pair's gain into the surrounds (tool_b4_to_b2()) beside them. Unset
+    // sends none, and a decoder takes Table 130's defaults: the top pairs into
+    // the surrounds at -3 dB, and the back pair too.
+    std::optional<HeightDownmix> height{};
+    double height_db = -3.0;
+    double back_db = -3.0;
 };
 
 // Where dialogue enhancement's parameters come from (planning/ac4.md,
@@ -365,9 +418,10 @@ struct EmdfPayload {
 
 struct SubstreamConfig {
     // Its input channels, in the order EncoderConfig::channels takes them: 1,
-    // 2, 5 or 6; 7 or 8 with experimental.seven_x; and 3, L R C, with
-    // experimental.three_zero, which Part 1 clause 4.3.3.7.1 allows only for
-    // the dialogue of a music and effects presentation.
+    // 2, 5, 6, 9 or 10; 7 or 8 with experimental.seven_x; 11 or 12 with
+    // experimental.back_pair; and 3, L R C, with experimental.three_zero, which
+    // Part 1 clause 4.3.3.7.1 allows only for the dialogue of a music and
+    // effects presentation.
     int channels = 2;
     // Its share of the stream's rate; unset shares what the set ones leave in
     // proportion to the full-band channels.
@@ -449,9 +503,11 @@ struct PresentationConfig {
 
 struct EncoderConfig {
     // The input's channels, in the order ac4::Decoder writes them: 1, mono; 2,
-    // stereo, L R; 5, 5.0, L R C Ls Rs; 6, 5.1, L R C LFE Ls Rs; and with
+    // stereo, L R; 5, 5.0, L R C Ls Rs; 6, 5.1, L R C LFE Ls Rs; 9, 5.0.4, L R
+    // C Ls Rs Tfl Tfr Tbl Tbr; 10, 5.1.4, L R C LFE Ls Rs Tfl Tfr Tbl Tbr; with
     // experimental.seven_x, 7 or 8, 7.0 or 7.1, L R C, the LFE of 7.1, Ls Rs
-    // and the additional pair.
+    // and the additional pair; and with experimental.back_pair, 11 or 12,
+    // 7.0.4 or 7.1.4, L R C, the LFE of 7.1.4, Ls Rs Lb Rb Tfl Tfr Tbl Tbr.
     int channels = 2;
     int sample_rate_hz = 48000;    // 48 000, or 44 100
     // Part 1 Table 83 at 48 kHz: 0 23.976 fps, 1 24, 2 25, 3 29.97, 4 30, 5
@@ -526,9 +582,14 @@ struct EncoderConfig {
         // beyond L, R, C, Ls and Rs.
         AdditionalPair seven_x = AdditionalPair::kNone;
         // The A-CPL modes DEE's streams do not use, which codec_mode then
-        // takes: ASPX_ACPL_1 in 5.0 and 5.1, and ASPX_ACPL_1 and ASPX_ACPL_2
-        // in stereo, the channel pair element's.
+        // takes: ASPX_ACPL_1 in 5.0 and 5.1 and in the immersive layouts, and
+        // ASPX_ACPL_1 and ASPX_ACPL_2 in stereo, the channel pair element's.
         bool acpl = false;
+        // 7.0.4 and 7.1.4 with the back pair (b_4_back_channels_present 1),
+        // eleven or twelve input channels, which DEE never writes.
+        bool back_pair = false;
+        // The immersive element's ASPX_AJCC, which codec_mode then takes.
+        bool ajcc = false;
         // DRC modes that send gains (DrcModeConfig::gains_config), which no
         // DEE stream has.
         bool drc_gains = false;

@@ -15,9 +15,26 @@ namespace {
 constexpr int kPresentationSubstream = 0;
 constexpr int kAudioSubstream = 1;
 
-// Part 1 Table 88's channel modes with an LFE: 5.1 and the three 7.1s.
+// Part 1 Table 88's channel modes with an LFE: 5.1 and the three 7.1s; and
+// Part 2 Table 56's 7.1.4.
 [[nodiscard]] bool has_lfe(int ch_mode) noexcept {
-    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10;
+    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10 || ch_mode == 12;
+}
+
+// The presentation's channels for custom_dmx_data() and loud_corr(): one
+// substream's, with Part 2 Table 71's core for the 7.X.4 modes and Table 72's
+// top pairs from top_channels_present.
+[[nodiscard]] PresentationChannels presentation_channels(const FrameFields& f) noexcept {
+    PresentationChannels p;
+    p.ch_mode = f.ch_mode;
+    p.lfe = has_lfe(f.ch_mode);
+    if (f.ch_mode == 11 || f.ch_mode == 12) {
+        p.ch_mode_core = f.ch_mode == 11 ? 5 : 6;
+        p.back = f.b_4_back_channels_present;
+        p.top_channel_pairs =
+            f.top_channels_present == 3 ? 2 : (f.top_channels_present == 0 ? 0 : 1);
+    }
+    return p;
 }
 
 // A size field of `bits` bits, and variable_bits(3) for what is above them
@@ -139,12 +156,24 @@ BitWriter write_presentation_substream(const PresentationSubstreamFields& f) {
     // configured, a drc_frame(), the mixing values, and custom_dmx_data() and
     // loud_corr() (6.2.9.2, 6.2.9.1), which read nothing for a mono or stereo
     // presentation, and for the others the stereo coefficients and their
-    // corrections in I-frames where they are configured.
+    // corrections in I-frames where they are configured, with no custom
+    // downmix data or corrections for the immersive outputs.
     BitWriter w = BitWriter::buffered();
     if (f.alternative != nullptr) {
         write_alternative(w, *f.alternative);
     }
-    w.write(1, 0, "b_additional_data");
+    w.write(1, f.immersive_audio_indicator ? 1U : 0U, "b_additional_data");
+    if (f.immersive_audio_indicator) {
+        // One byte (add_data_bytes_minus1 0) after the byte_align: the
+        // indicator, b_advanced_de_data_present, and the rest add_data. A
+        // channel-based presentation has a pres_ch_mode, so no
+        // b_oamd_common_timing.
+        w.write(4, 0, "add_data_bytes_minus1");
+        w.align();
+        w.write(1, 1, "immersive_audio_indicator");
+        w.write(1, 0, "b_advanced_de_data_present");
+        w.write_zero_run(6, "add_data");
+    }
     w.write(7, static_cast<std::uint64_t>(f.dialnorm_bits), "dialnorm_bits");
     w.write(1, f.loudness != nullptr ? 1U : 0U, "b_further_loudness_info");
     if (f.loudness != nullptr) {
@@ -154,7 +183,7 @@ BitWriter write_presentation_substream(const PresentationSubstreamFields& f) {
     write_drc_frame(drc, f.drc, f.iframe, f.drc_gains);
     write_sized(w, drc, 5, "drc_metadata_size_value", "drc_metadata_size");
     write_presentation_mix(w, f.mix);
-    write_downmix(w, f.pres_ch_mode, f.pres_has_lfe, f.downmix, f.iframe);
+    write_downmix(w, f.channels, f.downmix, f.iframe);
     w.align();
     return w;
 }
@@ -221,7 +250,10 @@ TocLayout single_layout(const FrameFields& f) {
     group.substreams.push_back(TocSubstream{.ch_mode = f.ch_mode,
                                             .add_ch_base = f.add_ch_base,
                                             .iframe = f.iframe,
-                                            .substream_index = kAudioSubstream});
+                                            .substream_index = kAudioSubstream,
+                                            .b_4_back_channels_present = f.b_4_back_channels_present,
+                                            .b_centre_present = f.b_centre_present,
+                                            .top_channels_present = f.top_channels_present});
     group.content_classifier = 0;
     layout.groups.push_back(group);
     return layout;
@@ -235,8 +267,7 @@ PresentationSubstreamFields presentation_fields(const FrameFields& f) {
     out.loudness = m != nullptr && m->loudness ? &*m->loudness : nullptr;
     out.drc = m != nullptr && m->drc ? &*m->drc : nullptr;
     out.drc_gains = f.drc_gains;
-    out.pres_ch_mode = f.ch_mode;
-    out.pres_has_lfe = has_lfe(f.ch_mode);
+    out.channels = presentation_channels(f);
     out.downmix = m != nullptr && m->downmix ? &*m->downmix : nullptr;
     return out;
 }

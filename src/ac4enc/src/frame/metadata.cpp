@@ -55,6 +55,21 @@ namespace {
     return std::nullopt;
 }
 
+// Part 2 Table 129, the custom downmix gains' code: 0 dB to -6 dB in steps of
+// 1.5, then -9 and -12 dB, and 7 for -infinity.
+[[nodiscard]] std::optional<int> custom_gain_code(double db) noexcept {
+    if (std::isinf(db) && db < 0.0) {
+        return 7;
+    }
+    constexpr std::array<double, 7> kDb = {0.0, -1.5, -3.0, -4.5, -6.0, -9.0, -12.0};
+    for (std::size_t i = 0; i < kDb.size(); ++i) {
+        if (db == kDb[i]) {
+            return static_cast<int>(i);
+        }
+    }
+    return std::nullopt;
+}
+
 // A downmix loudness correction in dB2: (15 - x) / 2 (Part 1 clause
 // 4.3.12.2.11), so x = 15 - 2 g, from 0 to 30.
 [[nodiscard]] std::optional<int> correction_code(double db2) noexcept {
@@ -277,6 +292,27 @@ std::optional<DownmixCodes> resolve_downmix(const DownmixConfig& m, int ch_mode)
         return std::nullopt;  // custom_dmx_data() sends coefficients for 5.X and 7.X
     }
     DownmixCodes codes;
+    if (m.height) {
+        // The immersive layouts' downmix to 5.X (tool_t4_to_f_s()), as DEE's
+        // height_dmx_mode sends it: front both top pairs to L and R, surround
+        // both to Ls and Rs, and front_and_surround the top front pair to L and
+        // R and the top back pair to Ls and Rs, each at the one gain.
+        if (ch_mode != 11 && ch_mode != 12) {
+            return std::nullopt;
+        }
+        const std::optional<int> height = custom_gain_code(m.height_db);
+        const std::optional<int> back = custom_gain_code(m.back_db);
+        if (!height || !back) {
+            return std::nullopt;
+        }
+        HeightDownmixCodes h;
+        h.top_front_to_front = *m.height != HeightDownmix::kSurround;
+        h.top_back_to_front = *m.height == HeightDownmix::kFront;
+        h.top_front_code = *height;
+        h.top_back_code = *height;
+        h.back_code = *back;
+        codes.height = h;
+    }
     const std::optional<int> centre = centre_code(m.loro_centre_db);
     const std::optional<int> surround = surround_code(m.loro_surround_db);
     if (!centre || !surround) {
@@ -600,12 +636,56 @@ void write_drc_frame(BitWriter& w, const DrcCodes* codes, bool iframe,
     }
 }
 
-void write_downmix(BitWriter& w, int ch_mode, bool has_lfe, const DownmixCodes* codes,
+int bs_ch_config(const PresentationChannels& p) noexcept {
+    if (p.ch_mode < 11 || p.ch_mode > 14) {
+        return -1;
+    }
+    const bool nine = p.ch_mode >= 13;
+    if (p.top_channel_pairs == 2) {
+        if (nine) {
+            return p.back ? 0 : -1;
+        }
+        return p.back ? 1 : 2;
+    }
+    if (p.top_channel_pairs == 1) {
+        if (nine) {
+            return p.back ? 3 : -1;
+        }
+        return p.back ? 4 : 5;
+    }
+    return -1;
+}
+
+void write_downmix(BitWriter& w, const PresentationChannels& p, const DownmixCodes* codes,
                    bool iframe) {
     const DownmixCodes* sent = iframe ? codes : nullptr;
-    // custom_dmx_data(): bs_ch_config is -1 below the immersive channel modes,
-    // and pres_ch_mode_core -1.
-    if (ch_mode >= 3) {
+    const int ch_mode = p.ch_mode;
+    const bool has_lfe = p.lfe;
+    // custom_dmx_data(): the immersive channel modes' bs_ch_config first, and
+    // where the height downmix is configured one configuration for
+    // out_ch_config 0, 5.X.0 (clause 6.2.9.3): tool_t4_to_f_s() for 5.X.4 and
+    // 7.X.4, and for 7.X.4 tool_b4_to_b2(). The X.2 configurations, which the
+    // encoder does not write, would take tool_t2_to_f_s().
+    const int bs = bs_ch_config(p);
+    if (bs >= 0) {
+        const bool custom = sent != nullptr && sent->height && (bs == 1 || bs == 2);
+        w.write(1, custom ? 1U : 0U, "b_cdmx_data_present");
+        if (custom) {
+            const HeightDownmixCodes& h = *sent->height;
+            w.write(2, 0, "n_cdmx_configs_minus1");
+            w.write(bs == 2 ? 1U : 3U, 0, "out_ch_config");
+            w.write(1, h.top_front_to_front ? 1U : 0U, "b_top_front_to_front");
+            w.write(3, static_cast<std::uint64_t>(h.top_front_code),
+                    h.top_front_to_front ? "gain_t2a_code" : "gain_t2b_code");
+            w.write(1, h.top_back_to_front ? 1U : 0U, "b_top_back_to_front");
+            w.write(3, static_cast<std::uint64_t>(h.top_back_code),
+                    h.top_back_to_front ? "gain_t2d_code" : "gain_t2e_code");
+            if (bs == 1) {
+                w.write(3, static_cast<std::uint64_t>(h.back_code), "gain_b_code");
+            }
+        }
+    }
+    if (ch_mode >= 3 || p.ch_mode_core >= 3) {
         w.write(1, sent != nullptr ? 1U : 0U, "b_stereo_dmx_coeff");
         if (sent != nullptr) {
             w.write(3, static_cast<std::uint64_t>(sent->loro_centre_mixgain),
@@ -629,7 +709,8 @@ void write_downmix(BitWriter& w, int ch_mode, bool has_lfe, const DownmixCodes* 
                     "preferred_dmx_method");
         }
     }
-    // loud_corr(pres_ch_mode, -1, 0).
+    // loud_corr(pres_ch_mode, pres_ch_mode_core, 0), with no corrections for
+    // the immersive outputs (b_corr_for_immersive_out 0).
     if (ch_mode > 4) {
         w.write(1, 0, "b_corr_for_immersive_out");
     }
@@ -647,6 +728,13 @@ void write_downmix(BitWriter& w, int ch_mode, bool has_lfe, const DownmixCodes* 
     }
     if (ch_mode > 4) {
         w.write(1, 0, "b_loud_comp");  // loud_corr_5_X
+    }
+    if (p.ch_mode_core >= 5) {
+        w.write(1, 0, "b_loud_comp");  // loud_corr_core_5_X_2
+    }
+    if (p.ch_mode_core >= 3) {
+        w.write(1, 0, "b_loud_comp");  // loud_corr_core_5_X
+        w.write(1, 0, "b_loud_comp");  // loud_corr_core_loro and _ltrt
     }
 }
 

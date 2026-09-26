@@ -3,9 +3,9 @@
 // level, the presentation by position, associated service and level, the
 // associated mix, every downmix with and without the LFE, a 7.X stream folded
 // to 5.X, headphones, the syntax trace, and what decode says about options the
-// other format reads. tests/cli/test_cli_containers.cpp has the first of them
-// (output-level=, presentation-id=, language=, dialogue-gain=,
-// dialogue-enhancement=, channels=2 and 1, downmix=loro, conceal=).
+// other format reads; and phase D10's objects, rendered to speakers.
+// tests/cli/test_cli_containers.cpp has the first of them (output-level=, presentation-id=,
+// language=, dialogue-gain=, dialogue-enhancement=, channels=2 and 1, downmix=loro, conceal=).
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -240,4 +240,34 @@ TEST_CASE("decode names the options the other format reads and refuses what it c
           std::string::npos);
     CHECK(run_cli("decode " + quoted(eac3_stream) + " " + quoted(wav) + " channels=5.1", log) == 1);
     CHECK(read_log(log).find("channels=5.1 folds an AC-4 7.X stream") != std::string::npos);
+}
+
+TEST_CASE("decode renders AC-4's objects to the speakers the layout options name", "[cli][ac4]") {
+    // A presentation of objects comes out through the layout renderer, 7.1.4
+    // without a layout option; an intermediate spatial format comes out in the
+    // channels the decoder rendered it to.
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_objects.log";
+    const fs::path objects = fs::path{AC4DEC_GOLDEN_DIR} / "objects";
+    const auto rendered = decode(objects / "direct-dynamic.ac4", "", log);
+    CHECK(rendered.channels.size() == 12);
+    CHECK(read_log(log).find("(L R C LFE Lb Rb Ls Rs Tfl Tfr Tbl Tbr, 48000 Hz)") !=
+          std::string::npos);
+    CHECK(read_log(log).find("5 objects, rendered to those speakers by the layout renderer") !=
+          std::string::npos);
+    CHECK(std::ranges::count_if(rendered.channels,
+                                [](const std::vector<float>& x) { return energy(x) > 0.0; }) >= 5);
+    CHECK(decode(objects / "direct-dynamic.ac4", "speakers=5.1", log).channels.size() == 6);
+    CHECK(decode(objects / "direct-dynamic.ac4", "channels=2", log).channels.size() == 2);
+    CHECK(decode(objects / "ajoc-2to4-coarse.ac4", "decoding=core", log).channels.size() == 12);
+    CHECK(read_log(log).find("2 objects, rendered") != std::string::npos);
+    const auto isf = decode(objects / "direct-isf-sr3100.ac4", "", log);
+    CHECK(isf.channels.size() == 11);
+    CHECK(read_log(log).find("objects, rendered") == std::string::npos);
+    // decode's third argument, the directory E-AC-3's objects are written to.
+    REQUIRE(run_cli("decode " + quoted(objects / "direct-bed-5_1.ac4") + " " +
+                        quoted(dir / "bed.wav") + " " + quoted(dir / "objects"),
+                    log) == 0);
+    CHECK(read_log(log).find("the object options write E-AC-3's objects, and are ignored") !=
+          std::string::npos);
 }

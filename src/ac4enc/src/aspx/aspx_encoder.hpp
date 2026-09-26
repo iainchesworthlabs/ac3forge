@@ -93,6 +93,17 @@ struct AspxSetup {
 [[nodiscard]] std::optional<AspxSetup> aspx_setup_for_acpl(bool coupling, int sample_rate_hz,
                                                            const FrameTiming& timing = {});
 
+// DEE's configuration in the immersive element (ETSI TS 103 190-2 V1.3.1
+// clause 6.2.4), as G1's 5.1.4 legs have it, by the rate alone: the high
+// resolution table to 21 kHz (aspx_stop_freq 1), from 7.125 kHz below 24.9
+// kbps a channel (224 kbps over 5.1.4's nine full-band channels), from 10.5 kHz
+// below 33.8 (304 kbps), and from 12.75 kHz above, in ASPX_ACPL_2 at 192, 256 and
+// 288 kbps, 320 to 448, and in ASPX_SCPL at 512; never companding.
+// std::nullopt for a sample rate these do not cover.
+[[nodiscard]] std::optional<AspxSetup> aspx_setup_for_immersive(double kbps_per_channel,
+                                                                int sample_rate_hz,
+                                                                const FrameTiming& timing = {});
+
 // One channel's QMF domain: the analysis of its signal slot by slot, the
 // compressed low band synthesised back, and A-SPX's parameters frame by
 // frame, with what the decoder keeps from one frame to the next.

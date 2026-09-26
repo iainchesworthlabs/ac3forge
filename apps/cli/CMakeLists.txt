@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # ac3cli - the command-line front end over ac3::forge.
 # ---------------------------------------------------------------------------
-add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp ../common/stream_playback.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/ac4_encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
+add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp ../common/stream_playback.cpp ../common/ac4_object_render.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/ac4_encode.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
 
 # ../common/recording_sink.cpp + fmp4_folder_writer.cpp: the take writer
 # 'record' and 'live' stream their output through (wide-layout record/live paths), shared

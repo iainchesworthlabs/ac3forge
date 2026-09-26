@@ -15,7 +15,9 @@ Streams:
              mode ("mode");
   synthetic  a table of contents for a channel mode no encoder here writes
              (mono, 3.0, 5.0 and the 7.X modes, with stereo and 5.1 among
-             them) over random substream payloads.
+             them) over random substream payloads; a quarter of them instead
+             an object-coded substream group of A-JOC and direct-coded
+             substreams, with or without an OAMD substream.
 
 Comparison, of each stream's last frame substream by substream: where both
 transcriptions read a substream to the end the records must be identical;
@@ -143,12 +145,18 @@ class Bits:
         return bytes(out)
 
 
-# Part 2 Table 56 channel_mode codes as (code, width).
+# Part 2 Table 56 channel_mode codes as (code, width). The 7.X.4 modes are
+# listed twice, since only their immersive element is read (9.X.4's is refused
+# by both, which the two still have to agree on).
 SYNTHETIC_MODES = [
     (0b0, 1), (0b10, 2), (0b1100, 4), (0b1101, 4), (0b1110, 4),
     (0b1111000, 7), (0b1111001, 7), (0b1111010, 7), (0b1111011, 7), (0b1111100, 7),
-    (0b1111101, 7),
+    (0b1111101, 7), (0b11111100, 8), (0b11111101, 8), (0b11111100, 8), (0b11111101, 8),
+    (0b111111100, 9), (0b111111101, 9),
 ]
+# The immersive codes, which carry b_4_back_channels_present, b_centre_present
+# and top_channels_present (Part 2 6.2.1.8).
+IMMERSIVE_CODES = (0b11111100, 0b11111101, 0b111111100, 0b111111101)
 
 
 def synthetic(rng):
@@ -198,6 +206,10 @@ def synthetic(rng):
     for value in (1, 0, 1, 1):          # b_substreams_present, b_hsf_ext,
         w.put(value, 1)                 # b_single_substream, b_channel_coded
     w.put(code, width)                  # channel_mode
+    if code in IMMERSIVE_CODES:
+        w.put(rng.randrange(2), 1)      # b_4_back_channels_present
+        w.put(rng.randrange(2), 1)      # b_centre_present
+        w.put(rng.randrange(4), 2)      # top_channels_present
     w.put(0, 1)                         # b_sf_multiplier
     w.put(0, 1)                         # b_bitrate_info
     if code in (0b1111010, 0b1111011, 0b1111100, 0b1111101):
@@ -227,6 +239,158 @@ def synthetic(rng):
         audio[1] = (audio_size << 1) & 0xFE         # b_more_bits 0
         payload += audio
     payload += bytes(rng.getrandbits(8) for _ in range(pres_len))
+    return w.to_bytes() + bytes(payload)
+
+
+def put_index(w, index):
+    """substream_index: two bits, 3 escaping to 3 + variable_bits(2)."""
+    if index < 3:
+        w.put(index, 2)
+    else:
+        w.put(3, 2)
+        w.put_variable_bits(index - 3, 2)
+
+
+def put_bed_dyn_obj_assignment(rng, w, n_signals):
+    """Part 2 6.2.1.10, one of its shapes, assigning no more objects than
+    n_signals most of the time."""
+    shape = rng.choice(("dyn", "dyn", "isf", "code", "list", "flags"))
+    w.put(1 if shape == "dyn" else 0, 1)  # b_dyn_objects_only
+    if shape == "dyn":
+        return
+    w.put(1 if shape == "isf" else 0, 1)  # b_isf
+    if shape == "isf":
+        w.put(rng.randrange(6), 3)        # isf_config
+        return
+    w.put(1 if shape == "code" else 0, 1)  # b_ch_assign_code
+    if shape == "code":
+        w.put(rng.randrange(8), 3)        # bed_chan_assign_code
+        return
+    w.put(1 if shape == "flags" else 0, 1)  # b_channel_assignment_flags_present
+    if shape == "flags":
+        if rng.randrange(2):
+            w.put(1, 1)                   # b_nonstd_bed_channel_assignment_flags_present
+            w.put(rng.getrandbits(17), 17)
+        else:
+            w.put(0, 1)
+            w.put(rng.getrandbits(10), 10)
+        return
+    n_bed = 1
+    if n_signals > 1:
+        bits = (n_signals - 1).bit_length()
+        n_bed = rng.randrange(1, n_signals + 1)
+        w.put(n_bed - 1, bits)            # n_bed_signals_minus1
+    for _ in range(n_bed):
+        w.put(rng.randrange(16), 4)       # nonstd_bed_channel_assignment
+
+
+def synthetic_objects(rng):
+    """One raw_ac4_frame of one presentation of one object-coded substream
+    group (b_channel_coded 0): one or two A-JOC or direct-coded substreams and
+    perhaps an OAMD substream, over random payloads."""
+    n_audio = rng.choice((1, 1, 2))
+    oamd = rng.randrange(2)
+    w = Bits()
+    w.put(2, 2)                         # bitstream_version
+    w.put(rng.randrange(1, 1024), 10)   # sequence_counter
+    w.put(0, 1)                         # b_wait_frames
+    w.put(1, 1)                         # fs_index
+    w.put(13, 4)                        # frame_rate_index
+    w.put(1, 1)                         # b_iframe_global
+    w.put(1, 1)                         # b_single_presentation
+    w.put(0, 1)                         # b_payload_base
+    w.put(0, 1)                         # b_program_id
+    w.put(1, 1)                         # b_single_substream_group
+    w.put(0b10, 2)                      # presentation_version 1
+    w.put(3, 3)                         # mdcompat
+    w.put(0, 1)                         # b_presentation_id
+    for value, n in ((0, 2), (0, 3), (0, 1), (0, 2), (0, 2)):
+        w.put(value, n)                 # emdf_info() with nothing in it
+    w.put(0, 1)                         # b_presentation_filter
+    w.put(0, 3)                         # ac4_sgi_specifier(): group 0
+    w.put(0, 1)                         # b_pre_virtualized
+    w.put(0, 1)                         # b_add_emdf_substreams
+    w.put(rng.randrange(2), 1)          # b_alternative
+    w.put(1, 1)                         # b_pres_ndot
+    presentation = n_audio + oamd
+    put_index(w, presentation)
+    w.put(1, 1)                         # b_substreams_present
+    w.put(0, 1)                         # b_hsf_ext
+    if n_audio == 1:
+        w.put(1, 1)                     # b_single_substream
+    else:
+        w.put(0, 1)
+        w.put(n_audio - 2, 2)           # n_lf_substreams_minus2
+    w.put(0, 1)                         # b_channel_coded
+    w.put(oamd, 1)                      # b_oamd_substream
+    if oamd:
+        w.put(1, 1)                     # b_oamd_ndot
+        put_index(w, n_audio)
+    for s in range(n_audio):
+        ajoc = rng.randrange(2)
+        w.put(ajoc, 1)                  # b_ajoc
+        if ajoc:
+            w.put(rng.randrange(2), 1)  # b_lfe
+            static = rng.randrange(4) == 0
+            w.put(1 if static else 0, 1)  # b_static_dmx
+            if not static:
+                n_dmx = rng.randint(1, 16)
+                w.put(n_dmx - 1, 4)     # n_fullband_dmx_signals_minus1
+                put_bed_dyn_obj_assignment(rng, w, n_dmx)
+            w.put(0, 1)                 # b_oamd_common_data_present
+            n_umx = rng.randint(1, 15)
+            w.put(n_umx - 1, 4)         # n_fullband_upmix_signals_minus1
+            put_bed_dyn_obj_assignment(rng, w, n_umx)
+        else:
+            w.put(rng.choice((0, 1, 2, 3, 4, 4, 5)), 3)  # n_objects_code
+            kind = rng.choice(("dyn", "dyn", "bed", "isf", "reserved"))
+            w.put(1 if kind == "dyn" else 0, 1)  # b_dynamic_objects
+            if kind == "dyn":
+                w.put(rng.randrange(2), 1)  # b_lfe
+            else:
+                w.put(1 if kind == "bed" else 0, 1)  # b_bed_objects
+                if kind == "bed":
+                    start = 1 if s == 0 else rng.randrange(2)
+                    w.put(start, 1)     # b_bed_start
+                    if start:
+                        w.put(1, 1)     # b_ch_assign_code
+                        w.put(rng.randrange(8), 3)
+                else:
+                    w.put(1 if kind == "isf" else 0, 1)  # b_isf
+                    if kind == "isf":
+                        start = 1 if s == 0 else rng.randrange(2)
+                        w.put(start, 1)  # b_isf_start
+                        if start:
+                            w.put(rng.randrange(6), 3)  # isf_config
+                    else:
+                        w.put(0, 4)     # res_bytes
+        w.put(0, 1)                     # b_sf_multiplier
+        w.put(0, 1)                     # b_bitrate_info
+        w.put(1, 1)                     # b_audio_ndot
+        put_index(w, s)
+    w.put(0, 1)                         # b_content_type
+    audio_lens = [rng.randint(16, 900) for _ in range(n_audio)]
+    sizes = [*audio_lens]
+    if oamd:
+        sizes.append(rng.randint(2, 200))
+    sizes.append(rng.randint(4, 120))   # the presentation substream
+    if len(sizes) <= 3:
+        w.put(len(sizes), 2)            # n_substreams
+    else:
+        w.put(0, 2)
+        w.put_variable_bits(len(sizes) - 4, 2)
+    for size in sizes:
+        w.put(0, 1)                     # b_size_present, then a 10-bit size
+        w.put(size, 10)
+    payload = bytearray()
+    for audio_len in audio_lens:
+        audio = bytearray(rng.getrandbits(8) for _ in range(audio_len))
+        audio_size = rng.randint(max(1, audio_len // 2), audio_len - 2)
+        audio[0] = audio_size >> 7
+        audio[1] = (audio_size << 1) & 0xFE
+        payload += audio
+    for size in sizes[n_audio:]:
+        payload += bytes(rng.getrandbits(8) for _ in range(size))
     return w.to_bytes() + bytes(payload)
 
 
@@ -265,8 +429,12 @@ def generate(streams, cases, n_mutations, n_synthetic, seed):
         index.append(f"{name}\t{path}\tframe {k}\t{how}")
     for n in range(n_synthetic):
         name = f"s{n:05d}"
-        (cases / f"{name}.ac4").write_bytes(sync_frame(synthetic(rng)))
-        index.append(f"{name}\tsynthetic\tframe 0\t-")
+        # A quarter of them object-coded groups (phase D10), the rest channel
+        # modes.
+        objects = rng.randrange(4) == 0
+        frame = synthetic_objects(rng) if objects else synthetic(rng)
+        (cases / f"{name}.ac4").write_bytes(sync_frame(frame))
+        index.append(f"{name}\tsynthetic{' objects' if objects else ''}\tframe 0\t-")
     (cases / "index.tsv").write_text("\n".join(index) + "\n", encoding="utf-8")
     return len(index)
 

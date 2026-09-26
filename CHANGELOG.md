@@ -244,9 +244,11 @@ The sections below contain the complete change list and fixes.
   - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
     address, the HTTP server and the Sendspin player. It goes back to the previous image if
     it does not get there within 5 minutes, or if it resets first. The trial is read from a
-    timer and takes a task only to write what it decided: a task kept for the whole trial
-    left the S3 board's Sendspin player without the internal RAM it starts with, so no update
-    could pass its trial on that board.
+    timer, with no task of its own: a task kept for the whole trial left the S3 board's
+    Sendspin player without the internal RAM it starts with, so no update could pass its trial
+    on that board. The timer's task also writes the acceptance, so a board whose RAM a stream
+    has taken can still accept, and a rollback asked for while it does is refused rather than
+    racing it.
   - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
     its own name.
   - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
@@ -297,6 +299,28 @@ The sections below contain the complete change list and fixes.
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
     the bootloader boots past.
+  - **An update that breaks off says why, and is sent again.**
+    - **An interrupted upload is recorded.** A board that restarts during an upload now records
+      it as `interrupted`, with the reset's cause. `GET /firmware` also gives the boot's
+      `reset_reason` and `uptime_ms`.
+    - **`ota.py` recovers from a break.** It prints the board's own account of a broken upload
+      and sends the image once more. It no longer leaves a board in flash mode after a failed
+      push.
+    - **The board erases as the image arrives.** The slot is erased a block at a time, just
+      ahead of the writes, rather than all at once before the second read.
+    - **Uploads have a limit.** An upload may take ten minutes at most.
+    - **A short-of-RAM board says so.** The upload's task is made after the teardown, and a
+      board that cannot make it answers `503` rather than dropping the connection.
+    - **Uploads survive other clients.** With every socket of the board's HTTP server in use,
+      ESP-IDF v6.1 could close the connection it had just taken for an upload, before reading
+      any of it. The example now has the server close its least recently used connection at
+      once (`CONFIG_HTTPD_QUEUE_WORK_BLOCKING`).
+    - **ac3hearth follows an update to its end.** The Firmware tab stays up while the board is
+      in flash mode, off mDNS, and shows how the update ended. As `ota.py` does, it sends an
+      upload that breaks off once more, and tells a board a failed update left in flash mode to
+      leave it.
+    - **Tested.** An overnight soak of the four boards, with faults injected, found no board
+      left stuck.
 
 **Crucible desktop application**
 
@@ -1347,6 +1371,30 @@ The sections below contain the complete change list and fixes.
   the presentation and the gains from its input. librempeg decodes a presentation's first substream
   alone, and MediaInfo reads a second parameter set after `de_ms_proc_flag` that the text does not
   send; `src/ac4dec/ERRATA.md` records the readings.
+- **AC-4 decodes the immersive element of 7.0.4 and 7.1.4, in full and core decoding, and renders
+  it by Part 2's channel renderer** (phase D9 of `planning/ac4.md`). Both transcriptions read
+  `immersive_channel_element()` with `immers_cfg` and A-JCC's `ajcc_data()` (Part 2 6.2.4 to 6.2.6),
+  and `ac4::Decoder` decodes the element in its five codec modes: Part 2 5.2's track assignment with
+  step 4 and Table 20's prediction, S-CPL on the inverse transform's output, A-SPX's immersive
+  pairing and gains, A-CPL's four modules and A-JCC (in `src/ac4core`, templated on `Real`), in full
+  decoding and in core decoding (`ac4::DecoderConfig::decoding`), which gives the 5.X.2 core by the
+  core gains, A-SPX on the first channel of a pair and A-JCC's core modules. Part 2's channel renderer
+  (5.10.2) takes the element from the layout its presence flags give to the one
+  `OutputConfig::downmix` names, which gains 7.X.4, 7.X.2, 7.X.0, 5.X.4 and 5.X.2: Tables 38 to 43 in
+  full decoding and 45 and 46 in core, with the custom downmix data the stream sends and the loudness
+  correction of the output, and for two channels and mono Part 1's Table 218 after 5.X.0. DRC's
+  transmitted gains take Part 2 Table 69's groups. The 9.X.4 modes and 22.2 are refused by name.
+  DEE's 5.1.4 legs, one per immersive codec mode it writes, decode with each of the ten tones on its
+  own channel, to 0.02 dB where the tops are coded channel by channel, and in core decoding each on
+  its core channel at the core gains; rendered to 5.1 and to two channels in both modes they equal
+  the renderer's matrices applied to their as-coded decode to 0.01 dB, as the gold set's 5.1.4 legs
+  do with their custom downmix data (`tools/checks/gain_ac4_decode.py`), and every table is held
+  against a second transcription in the tests. The encoder's frame writer gains the 7.X.4 channel
+  modes with their presence flags, and an A-JCC writer, with which constructed streams reach the
+  codec modes, groupings and routes DEE does not write; five are committed with their digests.
+  `ac3cli decode` takes `decoding=full|core` and `speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4`, and
+  `fuzz_ac4_decode` reaches the element from DEE's 5.1.4 seeds. librempeg does not decode the
+  element; `src/ac4dec/ERRATA.md` records the readings.
 - **The AC-4 decoder's API for channel-based streams, and the AC-4 libraries installed** (phase D8
   of `planning/ac4.md`). `ac4::Decoder::set_output()` and `set_presentation()` change the output
   processing and the presentation from the next frame while a stream plays, where a decoder built
@@ -1381,6 +1429,29 @@ The sections below contain the complete change list and fixes.
   the substream index table. The Android app, the WebAssembly preset and the Python wheel no
   longer compile the AC-4 libraries they do not link, until phase I4 binds them. Each has a test
   that failed before its fix.
+- **AC-4 decodes object audio: A-JOC in full and core decoding, direct-coded objects, and their
+  metadata** (phase D10 of `planning/ac4.md`). Both transcriptions read `audio_data_ajoc()` with its
+  `var_channel_element()` downmix and A-JOC's `ajoc()` (Part 2 6.2.3.4 to 6.2.6), `audio_data_objs()`,
+  the object audio metadata of 6.2.8 and the OAMD substream, and `ac4::Decoder` decodes them: A-JOC's
+  reconstruction (Part 2 5.7, in `src/ac4core` and templated on `Real`: the parameter bands,
+  differential decoding and dequantisation, the interpolation and its ramp across frames, the
+  decorrelators and duckers and the decorrelation input matrix) in full decoding to the upmix's
+  objects and in core decoding to the downmix's signals or its static bed, with dialogue enhancement
+  in both (5.8.2.3, 5.8.2.4); direct-coded objects in the Part 1 elements, dynamic objects and beds
+  over as many substreams as a group spreads them, with theirs (5.8.2.5); and the intermediate
+  spatial format, rendered by Annex A.2.1's matrices, which `gen_ac4_tables.py` reads from Part 2's
+  attachment. `DecodedFrame::objects` hands each object over with its PCM and the Annex F properties
+  its metadata sets, each update at its sample in the output, and `object_common` the group's
+  common data; the API's additions are new types and appended members. Chromium's `ac4-ajoc.ac4`
+  decodes in both modes, seventeen objects in full decoding and ten in core, as its table of
+  contents lists them. The encoder's writers gain the A-JOC and object audio metadata syntax and the
+  table of contents' object substreams, with which eight constructed streams reach A-JOC's shapes,
+  the direct-coded kinds and the metadata's fields; committed with their digests, every object
+  decodes to the tones its coefficients make to 0.1 dB, and every update comes out at its sample and
+  position. `ac3cli decode` renders a presentation with objects to speakers through the layout
+  renderer Hearth plays E-AC-3's objects with (`apps/common/ac4_object_render.hpp`), 7.1.4 by
+  default, and a test holds each speaker to the objects' gains for their positions. librempeg
+  refuses object coding; `src/ac4dec/ERRATA.md` records the readings.
 - **The AC-4 encoder writes several substreams and the presentations of Part 2 Table 53** (phase E6
   of `planning/ac4.md`). `ac4::EncoderConfig::substreams` codes each substream from its own input
   channels, at its share of the rate, in a substream group of its own with its content classifier
@@ -1407,6 +1478,18 @@ The sections below contain the complete change list and fixes.
   after the presentation substreams for the first group's audio. `fuzz_ac4_encode` draws the
   substreams and presentations; `ac3cli ac4-encode` takes them in E7. `src/ac4enc/ERRATA.md` records
   the readings.
+- **The AC-4 encoder codes 5.1.4** (phase E8 of `planning/ac4.md`). Nine or ten input channels, 5.0.4
+  and 5.1.4, are coded in Part 2's immersive channel element as DEE writes it: SCPL from 640 kbps, ASPX_SCPL
+  from 480 and ASPX_ACPL_2 below, each coupled pair as its sum and difference with the difference predicted
+  band by band (Table 20), A-SPX paired as Table 8 has it, and A-CPL's four modules rebuilding the pairs in
+  ASPX_ACPL_2. `DownmixConfig::height` sends the top channels' downmix to 5.X (custom downmix data, in
+  I-frames), and an immersive presentation carries `immersive_audio_indicator`. 7.0.4 and 7.1.4 with the
+  back pair (`experimental.back_pair`), ASPX_ACPL_1 and A-JCC (`experimental.ajcc`, which DEE's streams never
+  use) are experimental options. `ac3cli ac4-encode` takes the immersive layouts from the WAV's channel
+  count, with `codec-mode=scpl`, `aspx-scpl` and `aspx-ajcc`, `height-downmix=` and `height-gain=`. In full
+  decoding every channel's tone comes back on its own channel at unity, and in core decoding on the 5.X.2
+  core's speaker at the core's gain. `src/ac4dec/ERRATA.md`'s evidence for Table 20's prediction gains is
+  corrected: DEE's SCPL and ASPX_SCPL streams send them with `sap_mode` 3, not 0.
 - **The AC-4 encoder's API in its final form, `ac3cli ac4-encode`'s options, and the encoder
   installed** (phase E7 of `planning/ac4.md`). `ac4::Encoder::refusal_reason()` names the rule a
   configuration `create()` refuses breaks, as a string literal such as "a rate outside 8 to 3 000

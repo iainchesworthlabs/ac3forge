@@ -799,10 +799,17 @@ void NetworkController::poll_firmware(const ac3::hearth::NetworkStatus& status) 
     }
     for (auto it = firmware_.begin(); it != firmware_.end();) {
         const bool shown = it->first == sink_id;
-        // A sink that took a new address is asked there, unless an update
-        // is following it at the old one.
-        const bool moved = shown && !address.empty() && it->second->snapshot().host != address;
-        if ((!shown || moved) && !it->second->busy()) {
+        // An update puts the board in flash mode, which withdraws its mDNS
+        // service and stops its Sendspin player until it restarts: left
+        // alone, NetworkSinks would drop the sink's row, and the Firmware tab
+        // with it, until the board is back - and the board can say how the
+        // update ended before then. The plan says when the row is kept, and
+        // it is kept or let go at every poll from the same reading that lets
+        // the client go, so no client goes with its sink still kept.
+        const ac3::hearth::FirmwareClientPlan plan =
+            ac3::hearth::plan_firmware_client(it->second->busy(), it->second->snapshot(), shown, address);
+        sinks_engine_->keep_sink(it->first, plan.keep_sink);
+        if (plan.let_go) {
             it = firmware_.erase(it);
             continue;
         }
@@ -904,7 +911,11 @@ void NetworkController::updateSinkFirmware() {
     // The file was checked for the sink the tab showed then; a selection
     // changed since sends nothing.
     if (client != nullptr && firmware_file_ && firmware_file_sink_id_ == firmware_sink_id_) {
-        (void)client->start_update(std::move(*firmware_file_));
+        if (client->start_update(std::move(*firmware_file_)) && sinks_engine_) {
+            // Kept now rather than from the next poll: the upload can put the
+            // board in flash mode, and so take its row away, before then.
+            sinks_engine_->keep_sink(firmware_sink_id_, true);
+        }
     }
     clearSinkFirmwareFile();
 }

@@ -741,10 +741,12 @@ std::optional<ac4::DrcProfile> parse_ac4_drc_profile(std::string_view name) {
     return std::nullopt;
 }
 
-// codec-mode='s values (ac4::CodecMode).
+// codec-mode='s values (ac4::CodecMode): Part 1's, and the immersive
+// element's SCPL, ASPX_SCPL and ASPX_AJCC.
 bool is_ac4_codec_mode(std::string_view value) {
-    constexpr std::array<std::string_view, 6> kModes = {
-        "auto", "simple", "aspx", "aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3"};
+    constexpr std::array<std::string_view, 9> kModes = {"auto",        "simple",      "aspx",
+                                                        "aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3",
+                                                        "scpl",        "aspx-scpl",   "aspx-ajcc"};
     return std::ranges::find(kModes, value) != kModes.end();
 }
 
@@ -959,8 +961,8 @@ MetadataOptionResult parse_ac4_substream_option(
     if (suffix == "codec-mode") {
         if (!is_ac4_codec_mode(value)) {
             return refuse(
-                "a substream's codec-mode is auto, simple, aspx, aspx-acpl-1, aspx-acpl-2 or "
-                "aspx-acpl-3");
+                "a substream's codec-mode is auto, simple, aspx, aspx-acpl-1, aspx-acpl-2, "
+                "aspx-acpl-3, scpl, aspx-scpl or aspx-ajcc");
         }
         (n == 1 ? options.ac4_codec_mode : s.codec_mode) = std::string{value};
         return MetadataOptionResult::kOk;
@@ -1369,6 +1371,43 @@ MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_v
             return refuse("a downmix loudness correction is -7.5 to +7.5 dB in steps of 0.5");
         }
         (key == "loro-correction" ? out.loro_correction_db : out.ltrt_correction_db) = db;
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "height-downmix") {
+        // Part 2 clause 6.2.9.8, tool_t4_to_f_s(): where the top pairs go.
+        if (value == "front") {
+            out.height_downmix = ac4::HeightDownmix::kFront;
+        } else if (value == "surround") {
+            out.height_downmix = ac4::HeightDownmix::kSurround;
+        } else if (value == "front-and-surround") {
+            out.height_downmix = ac4::HeightDownmix::kFrontAndSurround;
+        } else {
+            return refuse("height-downmix is front, surround or front-and-surround");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "height-gain") {
+        // Part 2 Table 129.
+        constexpr std::array<std::pair<std::string_view, double>, 7> kLevels{{{"0", 0.0},
+                                                                              {"-1.5", -1.5},
+                                                                              {"-3", -3.0},
+                                                                              {"-4.5", -4.5},
+                                                                              {"-6", -6.0},
+                                                                              {"-9", -9.0},
+                                                                              {"-12", -12.0}}};
+        std::optional<double> db;
+        if (value == "off") {
+            db = -std::numeric_limits<double>::infinity();
+        }
+        for (const auto& [name, level] : kLevels) {
+            if (name == value) {
+                db = level;
+            }
+        }
+        if (!db) {
+            return refuse("height-gain is 0, -1.5, -3, -4.5, -6, -9 or -12 dB, or off");
+        }
+        out.height_db = db;
         return MetadataOptionResult::kOk;
     }
     return MetadataOptionResult::kNotMetadata;
@@ -2018,6 +2057,31 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.ac4_dialogue_enhancement = gain;
             continue;
         }
+        if (key == "decoding") {
+            // AC-4's full or core decoding (ETSI TS 103 190-2 clause 4.7).
+            if (value == "full") {
+                out.ac4_core_decoding = false;
+            } else if (value == "core") {
+                out.ac4_core_decoding = true;
+            } else {
+                fmt::println(stderr, "error: decoding is 'full' or 'core' (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "speakers") {
+            // AC-4's immersive element rendered to a layout (ETSI TS 103
+            // 190-2 clause 5.10.2), the LFE where the stream has one.
+            if (value != "5.1" && value != "5.1.2" && value != "5.1.4" && value != "7.1" &&
+                value != "7.1.2" && value != "7.1.4") {
+                fmt::println(stderr,
+                             "error: speakers is 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4 (got '{}')",
+                             token);
+                return false;
+            }
+            out.ac4_speakers = std::string(value);
+            continue;
+        }
         if (key == "presentation" || key == "presentation-id") {
             // AC-4's presentation (ETSI TS 103 190-2 clause 4.8.2), by its
             // position in the table of contents or by its presentation_id.
@@ -2124,11 +2188,14 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         }
         if (key == "codec-mode" && command == "ac4-encode") {
             if (!is_ac4_codec_mode(value)) {
-                fmt::println(stderr,
-                             "error: codec-mode is 'auto' (the default: in 5.X ASPX_ACPL_3 below 22.4 kbps a channel "
-                             "and ASPX_ACPL_2 below 33.6, then ASPX below 96 kbps a channel, 76.8 in 5.X and 7.X), "
-                             "'simple', 'aspx', 'aspx-acpl-1', 'aspx-acpl-2' or 'aspx-acpl-3' (got '{}')",
-                             token);
+                fmt::println(
+                    stderr,
+                    "error: codec-mode is 'auto' (the default: in 5.X ASPX_ACPL_3 below 22.4 kbps "
+                    "a channel and ASPX_ACPL_2 below 33.6, then ASPX below 96 kbps a channel, "
+                    "76.8 in 5.X and 7.X; in 5.1.4 ASPX_ACPL_2 below 480 kbps, ASPX_SCPL below "
+                    "640 and SCPL from there), 'simple', 'aspx', 'aspx-acpl-1', 'aspx-acpl-2', "
+                    "'aspx-acpl-3', 'scpl', 'aspx-scpl' or 'aspx-ajcc' (got '{}')",
+                    token);
                 return false;
             }
             out.ac4_codec_mode = std::string{value};
@@ -2154,6 +2221,10 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                     out.ac4_experimental_acpl = true;
                 } else if (tool == "three-zero") {
                     out.ac4_experimental_three_zero = true;
+                } else if (tool == "back-pair") {
+                    out.ac4_experimental_back_pair = true;
+                } else if (tool == "ajcc") {
+                    out.ac4_experimental_ajcc = true;
                 } else if (tool == "7x-back" || tool == "7x-wide" || tool == "7x-top-front") {
                     out.ac4_experimental_seven_x = std::string{tool.substr(3)};
                 } else if (tool.size() == 11 && tool.starts_with("drc-gains-") && tool[10] >= '0' &&
@@ -2165,9 +2236,9 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                     fmt::println(
                         stderr,
                         "error: experimental takes aspx-balance, aspx-varvar, aspx-interleave, "
-                        "coding-configs, acpl, three-zero, one of 7x-back, 7x-wide and "
-                        "7x-top-front, and one of drc-gains-0 to drc-gains-3, comma-separated "
-                        "(got '{}')",
+                        "coding-configs, acpl, three-zero, back-pair, ajcc, one of 7x-back, "
+                        "7x-wide and 7x-top-front, and one of drc-gains-0 to drc-gains-3, "
+                        "comma-separated (got '{}')",
                         token);
                     return false;
                 }

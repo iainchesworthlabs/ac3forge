@@ -104,6 +104,8 @@ std::string_view kind_name(ac4::SubstreamReport::Kind kind) {
             return "emdf_payloads";
         case ac4::SubstreamReport::Kind::kHsfExt:
             return "hsf_ext";
+        case ac4::SubstreamReport::Kind::kOamd:
+            return "oamd";
         default:
             return "other";
     }

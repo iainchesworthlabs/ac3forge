@@ -39,20 +39,55 @@ void language_of(const std::optional<ContentType>& content, std::string& out) {
 }
 
 // Appends a member to `plan`, reusing the storage a member at that place had.
-void add_member(PresentationPlan& plan, std::size_t& count, const ChannelSubstreamInfo& chan, Role role, int group,
-                std::optional<std::size_t> gain_slot, const std::optional<ContentType>& content) {
+Member& add_member(PresentationPlan& plan, std::size_t& count, std::optional<int> substream_index,
+                   const std::vector<bool>& b_iframe, Role role, int group,
+                   std::optional<std::size_t> gain_slot,
+                   const std::optional<ContentType>& content) {
     if (count == plan.members.size()) {
         plan.members.emplace_back();
     }
     Member& m = plan.members[count++];
-    m.substream = chan.substream_index.value_or(-1);
+    m.substream = substream_index.value_or(-1);
     m.role = role;
     m.group = group;
     m.gain_slot = gain_slot;
     m.content_classifier = content ? content->content_classifier : -1;
     language_of(content, m.language);
+    m.ch_mode = -1;
+    m.iframe = !b_iframe.empty() && b_iframe.front();
+    m.coding = Coding::kChannel;
+    return m;
+}
+
+void add_member(PresentationPlan& plan, std::size_t& count, const ChannelSubstreamInfo& chan,
+                Role role, int group, std::optional<std::size_t> gain_slot,
+                const std::optional<ContentType>& content) {
+    Member& m = add_member(plan, count, chan.substream_index, chan.b_iframe, role, group, gain_slot,
+                           content);
     m.ch_mode = chan.ch_mode.value_or(-1);
-    m.iframe = !chan.b_iframe.empty() && chan.b_iframe.front();
+}
+
+// Whether decode() turns an object audio substream into PCM: at 48 or 44.1
+// kHz, an A-JOC substream (its downmix of at most 16 signals), or
+// direct-coded objects that are not reserved data, their count one an element
+// carries.
+[[nodiscard]] bool decodable_object(const GroupSubstream& sub) noexcept {
+    if (sub.hsf_ext_substream_index) {
+        return false;
+    }
+    if (sub.kind == GroupSubstream::Kind::kAjoc && sub.ajoc) {
+        const AjocSubstreamInfo& a = *sub.ajoc;
+        return a.substream_index.has_value() && !a.sf_multiplier.has_value() &&
+               (a.b_static_dmx ||
+                (a.n_fullband_dmx_signals >= 1 && a.n_fullband_dmx_signals <= 16));
+    }
+    if (sub.kind == GroupSubstream::Kind::kObj && sub.obj) {
+        const ObjSubstreamInfo& o = *sub.obj;
+        return o.substream_index.has_value() && !o.sf_multiplier.has_value() &&
+               o.num_objects.has_value() &&
+               (o.b_dynamic_objects || o.static_kind != ObjSubstreamInfo::Static::kReserved);
+    }
+    return false;
 }
 
 // Which sg_gain a group at `position` takes (Part 2 clause 6.2.2.3 reads
@@ -101,15 +136,30 @@ void plan_v1(const Toc& toc, std::size_t index, PresentationPlan& plan) {
             continue;
         }
         const SubstreamGroupInfo& group = toc.substream_groups[static_cast<std::size_t>(group_index)];
-        decodable = decodable && group.b_substreams_present && group.b_channel_coded && !group.substreams.empty();
+        decodable = decodable && group.b_substreams_present && !group.substreams.empty();
         const Role role = role_v1(p, position, group);
         for (const GroupSubstream& sub : group.substreams) {
-            if (sub.kind != GroupSubstream::Kind::kChan || !sub.chan) {
-                decodable = false;
+            if (sub.kind == GroupSubstream::Kind::kChan && sub.chan) {
+                decodable =
+                    decodable && decodable_substream(*sub.chan) && !sub.hsf_ext_substream_index;
+                add_member(plan, count, *sub.chan, role, group_index, gain_slot_v1(p, position),
+                           group.content_type);
                 continue;
             }
-            decodable = decodable && decodable_substream(*sub.chan) && !sub.hsf_ext_substream_index;
-            add_member(plan, count, *sub.chan, role, group_index, gain_slot_v1(p, position), group.content_type);
+            decodable = decodable && decodable_object(sub);
+            if (sub.kind == GroupSubstream::Kind::kAjoc && sub.ajoc) {
+                Member& m =
+                    add_member(plan, count, sub.ajoc->substream_index, sub.ajoc->b_iframe, role,
+                               group_index, gain_slot_v1(p, position), group.content_type);
+                m.coding = Coding::kAjoc;
+            } else if (sub.kind == GroupSubstream::Kind::kObj && sub.obj) {
+                Member& m =
+                    add_member(plan, count, sub.obj->substream_index, sub.obj->b_iframe, role,
+                               group_index, gain_slot_v1(p, position), group.content_type);
+                m.coding = Coding::kObjects;
+            } else {
+                decodable = false;
+            }
         }
     }
     plan.members.resize(count);
@@ -394,15 +444,17 @@ bool selectable(const PresentationPlan& plan, int level) noexcept {
 }
 
 std::optional<std::size_t> anchor_member(const PresentationPlan& plan) noexcept {
+    std::optional<std::size_t> first;
     for (std::size_t m = 0; m < plan.members.size(); ++m) {
+        if (plan.members[m].coding != Coding::kChannel) {
+            continue;
+        }
         if (plan.members[m].role == Role::kMain || plan.members[m].role == Role::kMusicAndEffects) {
             return m;
         }
+        first = first.value_or(m);
     }
-    if (plan.members.empty()) {
-        return std::nullopt;
-    }
-    return 0;
+    return first;
 }
 
 std::optional<std::size_t> select(const Toc& toc, const PresentationChoice& choice, int level,

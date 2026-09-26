@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 96> kOptionTokens{{
+constexpr std::array<OptionToken, 100> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -80,6 +80,8 @@ constexpr std::array<OptionToken, 96> kOptionTokens{{
     {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes; AC-4: a DRC decoder mode"},
     {"output-level=", "decode of AC-4: the level in dBFS dialnorm is taken to (Lout)"},
     {"dialogue-enhancement=", "decode of AC-4: raise the dialogue by 0 to 12 dB, capped by the stream"},
+    {"decoding=", "decode of AC-4: full (default) or core, the immersive element's 5.X.2 core"},
+    {"speakers=", "decode of AC-4: 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4, an immersive element's layout"},
     {"presentation=", "decode of AC-4: the presentation at this position of the table of contents"},
     {"presentation-id=", "decode of AC-4: the presentation with this presentation_id"},
     {"language=", "decode of AC-4: prefer the presentation in this language, a BCP 47 tag"},
@@ -89,7 +91,7 @@ constexpr std::array<OptionToken, 96> kOptionTokens{{
     {"headphones", "decode of AC-4: a listener on headphones - their DRC mode, pre-virtualized presentations"},
     {"md-compat=", "decode of AC-4: the md_compat level the decoder claims, 0 to 7 (default 3)"},
     {"syntax-trace=", "ac4-encode, and decode of AC-4: write every syntax element written or read"},
-    {"codec-mode=", "ac4-encode: simple, aspx, aspx-acpl-1, aspx-acpl-2 or aspx-acpl-3"},
+    {"codec-mode=", "ac4-encode: simple, aspx, aspx-acpl-1 to 3, and for 5.1.4 scpl, aspx-scpl or aspx-ajcc"},
     {"experimental=", "ac4-encode: tools and layouts no outside reader has checked yet"},
     {"frame-rate=", "ac4-encode: a frame rate of Table 83 in fps, or native (2 048-sample frames)"},
     {"rate-mode=", "ac4-encode: constant, average or variable"},
@@ -103,6 +105,8 @@ constexpr std::array<OptionToken, 96> kOptionTokens{{
     {"drc-portable-headphones=", "ac4-encode: that DRC decoder mode's own profile"},
     {"loro-correction=", "ac4-encode: the Lo/Ro downmix's loudness correction, dB"},
     {"ltrt-correction=", "ac4-encode: the Lt/Rt downmix's loudness correction, dB"},
+    {"height-downmix=", "ac4-encode of 5.1.4: front, surround or front-and-surround, the tops' downmix to 5.X"},
+    {"height-gain=", "ac4-encode of 5.1.4: the tops' gain in that downmix, 0 to -12 dB or off"},
     {"dialogue-channels=", "ac4-encode: which of l, r and c carry dialogue alone"},
     {"dialogue-stem=", "ac4-encode: a WAV file of the dialogue in the programme's channels"},
     {"dialogue-method=", "ac4-encode: independent, mid or cross"},
@@ -404,7 +408,18 @@ void print_decode_topic() {
     fmt::println("       portable-headphones|off: default takes the mode Table 161 gives the");
     fmt::println("       output level, off compresses nothing. dialogue-enhancement=<dB> raises");
     fmt::println("       the dialogue where the stream sends its parameters (5.7.8), 0 to 12 dB");
-    fmt::println("       and no more than the stream's cap.");
+    fmt::println("       and no more than the stream's cap. decoding=core decodes an immersive");
+    fmt::println("       element's core, 5.X.2, as a low-complexity decoder does (ETSI TS 103");
+    fmt::println("       190-2 4.7); decoding=full, the default, decodes every channel.");
+    fmt::println("       speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4 renders an immersive element to");
+    fmt::println("       that layout by the channel renderer (190-2 5.10.2), the LFE where the");
+    fmt::println("       stream has one, with the stream's custom downmix gains and loudness");
+    fmt::println("       correction; core decoding renders to 5.1.2 at most. Without it the");
+    fmt::println("       element comes out in its source's layout, and channels= and downmix=");
+    fmt::println("       folds win over it. A presentation with objects (A-JOC or direct-coded,");
+    fmt::println("       190-2 4.8.3) comes out rendered to speakers by the layout renderer,");
+    fmt::println("       each object at the position and gain its metadata sets: to the layout");
+    fmt::println("       speakers=, channels= or downmix= names, and to 7.1.4 without them.");
     fmt::println("       A stream of several presentations decodes the one presentation=<n>");
     fmt::println("       (its position) or presentation-id=<id> names, or else the one that");
     fmt::println("       best meets language=<BCP 47 tag> and associated=visually-impaired|");
@@ -433,13 +448,23 @@ void print_decode_topic() {
 
 void print_ac4_encode_topic() {
     fmt::println("");
-    fmt::println("ac4-encode takes codec-mode=simple|aspx|aspx-acpl-1|aspx-acpl-2|");
+    fmt::println("ac4-encode takes the layout from the input's channel count: 1 mono, 2");
+    fmt::println("       stereo, 5 and 6 5.0 and 5.1, 9 and 10 5.0.4 and 5.1.4 (TS 103 190-2's");
+    fmt::println("       immersive element, the back pair absent, as DEE writes 5.1.4). In the");
+    fmt::println("       immersive layouts codec-mode=aspx-acpl-2 codes each coupled pair's sum");
+    fmt::println("       and A-CPL rebuilds the pair, aspx-scpl and scpl code sum and difference");
+    fmt::println("       and simple coupling rebuilds it, with A-SPX from 12.75 kHz or over the");
+    fmt::println("       whole band; the default takes them as DEE's 5.1.4 streams do, by the");
+    fmt::println("       rate: aspx-acpl-2 below 480 kbps, aspx-scpl below 640 and scpl from");
+    fmt::println("       there. Otherwise codec-mode=simple|aspx|aspx-acpl-1|aspx-acpl-2|");
     fmt::println("       aspx-acpl-3, and experimental=<tools> for syntax no outside reader");
     fmt::println("       has checked yet: aspx-balance, aspx-varvar, aspx-interleave,");
-    fmt::println("       coding-configs, acpl (ASPX_ACPL_1 in 5.X, A-CPL in stereo),");
-    fmt::println("       7x-back|7x-wide|7x-top-front for 7.0 and 7.1, three-zero for 3.0");
-    fmt::println("       (L R C), and drc-gains-0 to drc-gains-3 (the DRC modes send gains,");
-    fmt::println("       ETSI TS 103 190-1 Table 163).");
+    fmt::println("       coding-configs, acpl (ASPX_ACPL_1 in 5.X and the immersive layouts,");
+    fmt::println("       A-CPL in stereo), 7x-back|7x-wide|7x-top-front for 7.0 and 7.1,");
+    fmt::println("       back-pair for 7.0.4 and 7.1.4 (11 and 12 channels, with Lb and Rb),");
+    fmt::println("       ajcc for codec-mode=aspx-ajcc, three-zero for 3.0 (L R C), and");
+    fmt::println("       drc-gains-0 to drc-gains-3 (the DRC modes send gains, ETSI TS 103");
+    fmt::println("       190-1 Table 163).");
     fmt::println("       A raw stream's sync frames carry the CRC of TS 103 190-2 Annex G");
     fmt::println("       unless crc=off; an MP4 sample is the frame alone, without either.");
     fmt::println("       frame-rate=23.976|24|25|29.97|30|47.95|48|50|59.94|60|100|119.88|120,");
@@ -465,7 +490,12 @@ void print_ac4_encode_topic() {
     fmt::println("       and ltrtsurmixlev= where Lt/Rt's differ; lfemix=<+5.5..-25.5 dB>|");
     fmt::println("       off; dmixmod=loro|ltrt|pl2|none; loro-correction= and");
     fmt::println("       ltrt-correction=, the downmixes' loudness corrections, -7.5 to +7.5");
-    fmt::println("       dB in steps of 0.5.");
+    fmt::println("       dB in steps of 0.5. The immersive layouts take these for their");
+    fmt::println("       stereo downmix, and height-downmix=front|surround|front-and-surround");
+    fmt::println("       with height-gain=0|-1.5|-3|-4.5|-6|-9|-12|off (default -3) for their");
+    fmt::println("       downmix to 5.X: both top pairs into L and R, both into Ls and Rs, or");
+    fmt::println("       the top front pair into L and R and the top back pair into Ls and Rs");
+    fmt::println("       (TS 103 190-2 custom downmix data, in I-frames, as DEE sends it).");
     fmt::println("       Dialogue enhancement: dialogue-channels=<l,r,c> marks channels that");
     fmt::println("       carry dialogue alone, or dialogue-stem=<wav> gives the dialogue in");
     fmt::println("       the programme's channels, sample for sample;");

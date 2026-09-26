@@ -41,8 +41,9 @@ ROLES_V0 = {'M+E': 'music_effects', 'Dialog': 'dialogue', 'DE': 'dialogue_enhanc
 TABLE_92 = {'audio-description': ('qad', 'qax'), 'audio-description-subtitles': ('qas', 'qtx'),
             'spoken-subtitles': ('qss', 'qsx'), 'emergency-information': ('qei', 'qex')}
 
-# The channel modes the decoder renders: Part 1's (mono to 7.1).
-DECODED_CH_MODES = range(0, 11)
+# The channel modes the decoder renders: Part 1's (mono to 7.1), and Part 2's 7.0.4 and 7.1.4
+# (Table 56's 11 and 12), whose immersive element phase D9 decodes.
+DECODED_CH_MODES = range(0, 13)
 
 
 def _language(content_type):

@@ -36,6 +36,8 @@ target_sources(ac4enc_objects
     PRIVATE
         src/acpl/acpl_encoder.cpp
         src/acpl/acpl_syntax.cpp
+        src/ajcc/ajcc_syntax.cpp
+        src/ajoc/ajoc_syntax.cpp
         src/asf/analysis.cpp
         src/asf/coder.cpp
         src/asf/layout.cpp
@@ -52,7 +54,8 @@ target_sources(ac4enc_objects
         src/frame/metadata.cpp
         src/frame/sync_frame.cpp
         src/frame/timing.cpp
-        src/frame/toc_writer.cpp)
+        src/frame/toc_writer.cpp
+        src/oamd/oamd_syntax.cpp)
 
 target_include_directories(ac4enc_objects
     PUBLIC

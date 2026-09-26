@@ -564,8 +564,10 @@ TEST_CASE("object and A-JOC substream infos read each bed and object assignment"
         CAPTURE(i);
         REQUIRE(subs[i].obj.has_value());
         CHECK(subs[i].obj->b_dynamic_objects == (i == 3));
-        CHECK(subs[i].obj->b_bed_objects == (i >= 4 && i <= 7));
-        CHECK(subs[i].obj->b_isf == (i == 8 || i == 9));
+        CHECK((subs[i].obj->static_kind == ac4::ObjSubstreamInfo::Static::kBed) ==
+              (i >= 4 && i <= 7));
+        CHECK((subs[i].obj->static_kind == ac4::ObjSubstreamInfo::Static::kIsf) ==
+              (i == 8 || i == 9));
         CHECK_FALSE(subs[i].obj->brate_ind.has_value());
     }
     CHECK(subs[1].ajoc->static_objects.size() == 1);
@@ -574,9 +576,10 @@ TEST_CASE("object and A-JOC substream infos read each bed and object assignment"
     CHECK(subs[2].ajoc->n_fullband_upmix_signals == 19);
     CHECK(subs[2].ajoc->upmix_objects.empty());
     const auto& obj3 = *subs[3].obj;
-    REQUIRE(obj3.objects.size() == 3);
+    REQUIRE(obj3.objects.size() == 4);  // Table 60: 3 + b_lfe, the LFE first
     CHECK(obj3.objects[0].lfe);
     CHECK(obj3.objects[1].kind == ac4::ObjectKind::kDyn);
+    CHECK(obj3.objects[3].kind == ac4::ObjectKind::kDyn);
     CHECK(obj3.sf_multiplier == 1);
     REQUIRE(subs[4].obj->objects.size() == 8);
     CHECK(subs[4].obj->objects[3].lfe);

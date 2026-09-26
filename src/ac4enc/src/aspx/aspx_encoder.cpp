@@ -244,6 +244,34 @@ std::optional<AspxSetup> aspx_setup_for_acpl(bool coupling, int sample_rate_hz,
     return setup;
 }
 
+std::optional<AspxSetup> aspx_setup_for_immersive(double kbps_per_channel, int sample_rate_hz,
+                                                  const FrameTiming& timing) {
+    if (sample_rate_hz != 48000 && sample_rate_hz != 44100) {
+        return std::nullopt;
+    }
+    // G1's 5.1.4 legs: aspx_start_freq 0 with aspx_xover_subband_offset 1 at
+    // 192 kbps (subband 19), 4 with 0 at 256 and 288 (subband 28), and 5 with 1
+    // from 320 (subband 34), the switches here halfway between DEE's rates.
+    AspxSetup setup;
+    setup.config.master_freq_scale = 1;
+    setup.config.stop_freq = 1;
+    if (kbps_per_channel < 224.0 / 9.0) {
+        setup.config.start_freq = 0;
+        setup.xover_subband_offset = 1;
+    } else if (kbps_per_channel < 304.0 / 9.0) {
+        setup.config.start_freq = 4;
+        setup.xover_subband_offset = 0;
+    } else {
+        setup.config.start_freq = 5;
+        setup.xover_subband_offset = 1;
+    }
+    setup.companding = false;
+    if (!complete(setup, sample_rate_hz, timing)) {
+        return std::nullopt;
+    }
+    return setup;
+}
+
 std::optional<AspxSetup> aspx_setup_for(double kbps_per_channel, int sample_rate_hz,
                                         bool multichannel, const FrameTiming& timing) {
     if (sample_rate_hz != 48000 && sample_rate_hz != 44100) {

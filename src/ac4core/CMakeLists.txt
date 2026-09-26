@@ -29,6 +29,8 @@ add_library(ac4::core ALIAS ac4core)
 target_sources(ac4core
     PRIVATE
         src/acpl/acpl.cpp
+        src/ajcc/ajcc.cpp
+        src/ajoc/ajoc.cpp
         src/aspx/frequency_tables.cpp
         src/aspx/hf_generator.cpp
         src/dsp/fft.cpp
@@ -39,6 +41,7 @@ target_sources(ac4core
         src/dsp/synthesis.cpp
         src/tables/huffman_codes.cpp
         src/tables/huffman_tables.cpp
+        src/tables/isf_tables.cpp
         src/tables/noise_tables.cpp
         src/tables/qmf_tables.cpp
         src/tables/sfb_tables.cpp)

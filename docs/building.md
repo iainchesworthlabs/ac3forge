@@ -119,6 +119,13 @@ because a leg has per-leg overrides to append (`-DAC3FORGE_BUILD_GUI=ON` on the 
 nowhere to put. The workflow presets are the one-command local equivalent of those three steps,
 not the path CI takes.
 
+With any `AC3FORGE_SANITIZERS` set, `tests/CMakeLists.txt` defines `AC3FORGE_TEST_SANITIZED=1` for
+`ac3tests` (0 otherwise), and `tests/sanitized.hpp` gives it to the tests as `ac3::test::kSanitized`.
+The heaviest AC-4 tests take less under it: fewer frames, shorter signals, a stride through their
+cases or one leg per frame rate, each still running every code path it covers, to the same
+tolerances. A debug build under ASan and UBSan runs the codecs many times slower, and CI's
+sanitizer leg runs ctest serially; a new test that takes minutes there takes the flag the same way.
+
 There is an eighteenth trio, the ThreadSanitizer sibling of the pair above:
 `config-linux-llvm-tsan` / `build-linux-llvm-tsan` / `test-linux-llvm-tsan`, inheriting
 `linux-llvm` plus a `sanitize-tsan` fragment setting `AC3FORGE_SANITIZERS=thread`. It is a
