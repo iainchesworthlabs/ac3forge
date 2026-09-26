@@ -70,7 +70,9 @@ using ac3::hearth::UnitReport;
 
 // A slot for every speaker ac4::Decoder names, each at its own location, so
 // the renderer puts each decoded channel on one slot at a gain of exactly 1.
-constexpr std::string_view kEverySpeaker = "L,R,C,LFE,Ls,Rs,Lrs,Rrs,Lw,Rw,Vhl,Vhr";
+// The top back and top side pairs share Lts and Rts, as ac4_bed() maps them:
+// no stream has both.
+constexpr std::string_view kEverySpeaker = "L,R,C,LFE,Ls,Rs,Lrs,Rrs,Lw,Rw,Vhl,Vhr,Lts,Rts,LFE2";
 
 std::vector<std::byte> read_file(const fs::path& path) {
     std::ifstream in(path, std::ios::binary);
