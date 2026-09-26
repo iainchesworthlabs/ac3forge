@@ -269,6 +269,14 @@ The sections below contain the complete change list and fixes.
     is new, and leaves out the Sendspin pairing token. `ota.py coredump` saves a dump and reads
     it with `esp_coredump`, and `ota.py log --follow` follows the console. An upload now prints
     the least free internal heap it saw.
+  - **ac3hearth updates a sink's firmware.** A paired Hearth sink's settings page has a
+    **Firmware** tab beside Speakers and Decoder. It shows both slots, whether the sink runs
+    this app's own build, a trial, how the last update ended and the last crash. **Update from
+    a file…** checks the image as `ota.py` does before anything is sent: that it is whole, and
+    that it is for this board. Then it asks, sends the image and follows the board through its
+    restart and trial to the outcome. **Roll back** and **Restart** ask first. The app reaches
+    the board's own web server, not Sendspin, so the tab keeps following an update while the
+    sink is off Sendspin.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot

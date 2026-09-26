@@ -1,10 +1,14 @@
 # Firmware over the network for Hearth sinks
 
-**Status, 2026-09-24:** proposed. Nothing is built. Every `hearth_sink` layout on `main`
-(`b49a966c`) is a single `factory` app, and nothing in the tree calls `esp_ota_*`. The ESP-IDF
-facts below were read from the v6.1 tree at `D:\esp\esp-idf`, which the board builds use. The
-board facts come from the builds and flashes of 2026-09-24. [Decisions](#decisions) lists what is
-recommended and what each choice costs. The user took decisions 2, 5 and 9 on 2026-09-24:
+**Status, 2026-09-25:** O1 is built and merged, and all four boards are on the two-slot layout
+(O2); two of O2's checks wait for someone at the desk. O3, O4 and O5 are built and in review
+([Phases](#phases)).
+
+This plan was written on 2026-09-24, when every `hearth_sink` layout on `main` (`b49a966c`) was a
+single `factory` app and nothing in the tree called `esp_ota_*`. The ESP-IDF facts below were read
+from the v6.1 tree at `D:\esp\esp-idf`, which the board builds use. The board facts come from the
+builds and flashes of 2026-09-24. [Decisions](#decisions) lists what is recommended and what each
+choice costs. The user took decisions 2, 5 and 9 on 2026-09-24:
 
 - Images are not signed while the boards are in development, so anyone on the network can flash
   a board, as anyone with a USB cable can. Every image is checked for damage from the build to the
@@ -639,12 +643,60 @@ still keeps 89 KB free.
 
 ## ac3hearth (O5)
 
-The desktop app already finds sinks by mDNS and has a settings page for each one. Its firmware
-panel:
+The desktop app finds sinks by mDNS, and has a settings page for each paired Hearth sink with
+Speakers and Decoder tabs. O5 adds a third tab, **Firmware** ([decision 19](#decisions)):
 
-- shows each sink's version and whether it matches the build the app knows of;
-- offers **Update** from a chosen file, using the same routes;
-- reports the trial as the tool does.
+- **What the sink runs.** The image in each slot, with its version, its state and whether the
+  board's own check found it intact. Whether it is this app's own build
+  ([decision 20](#decisions)). Also a trial, an update another client is sending, flash mode, how
+  the last update ended, and the last crash (O4).
+- **Update from a file…** The app reads the image and checks it before anything is sent (below). A
+  dialog then names the image and the version it replaces, and says the sink stops playing while
+  it takes it. Roll back and Restart ask first too.
+- **The update's progress.** The bytes sent, then the board's own stages through the restart and
+  the trial. Then how it ended, in the tool's words: updated, rolled back and why, refused and
+  why, or not come back and what to try.
+- **Without a cable.** Buttons that open the sink's recent console output and its core dump in the
+  browser.
+
+**How it works** ([decision 21](#decisions)). `ac3::hearth::SinkFirmware`
+(`apps/hearth/engine/sink_firmware.hpp`) is `ota.py push` in C++, on a thread of its own for each
+sink:
+
+- It talks to the board's web server on port 80, at the address mDNS gave for the sink. Nothing
+  goes through Sendspin, so the tab follows the sink through the restart that takes it off
+  Sendspin.
+- It reads GET /firmware into `ac3forge::FirmwareStatus`, the struct the board renders it from, and
+  holds an image to the board's own rules in `firmware_image.hpp`. Both headers are in
+  `esp-idf/ac3forge/include` and have no ESP-IDF in them. So the app reads what the board writes,
+  and refuses what the board would refuse.
+- Its checks before an upload are `ota.py`'s for a bare image:
+  - the file is an application image, and its checksum and appended SHA-256 check out;
+  - it is for this board's chip, revision, project and flash size, and it fits the slot;
+  - the board is not on trial or taking another update;
+  - the board has two slots, and its network is not only built into the image it runs.
+- The upload carries the file's SHA-256 as its `Content-Digest`. The wait after it reads GET
+  /firmware every 1.5 s, for up to six minutes, as `ota.py` does.
+- The board is asked about its firmware once a second, and only while the tab is open.
+- When the window closes during an upload, the app does not wait for the board's answer. On
+  Windows nothing wakes a socket's wait from another thread, so the request's thread is let go to
+  finish on its own timeout.
+
+The display strings are formatted in the engine (`sink_firmware_view.hpp`), as the Network page's
+others are, so they are tested without Qt.
+
+**Tested.**
+
+- `ac3tests` `[sink-firmware]` checks the parser against the board's own `render_firmware_status`,
+  and the file checks against synthetic images. It also covers each refusal, each step of the
+  wait, and the tab's rows.
+- The same suite runs the client against a stand-in board on loopback. It covers an accepted
+  update, a rollback, a refusal before sending and one after, a board that never decides, the
+  answers to Roll back and Restart, and closing during an upload's answer.
+- A hidden case in the same suite sends an image to a real board. On 2026-09-25 it took the C6 on
+  COM9 from o4-c6-b to o4-c6-a: the image was accepted after its 30 s trial, and its SHA-256 on
+  the board matched the file's.
+- The Qt Quick suites open the tab on a paired test sink and with no sink selected.
 
 Shipping sink images inside the app's release packages, once they are signed (O7), would need a
 release key held by CI, which means a secret only the user can set. That is its own decision,
@@ -925,7 +977,7 @@ that image has to be able to take the next update.
   `GET /firmware/coredump` and read with `idf.py coredump-info`. Also a ring of recent console
   lines at `GET /log`, since flashing without a cable also means reading the console without one.
   [Built](#diagnostics-without-a-cable-o4).
-- **O5.** The firmware panel in `ac3hearth`.
+- **O5.** The firmware panel in `ac3hearth`. [Built](#ac3hearth-o5).
 - **O6.** The P4's co-processor firmware, as a study first ([decision 9](#decisions)).
 - **O7, when the boards leave development.** Signed images, switched on over the network
   ([Signing, later](#signing-later)).
@@ -1064,3 +1116,21 @@ boards leave development, and if that is before O8, O8's images are published si
     filter would have to recognise every secret that might ever be printed. Cost: a new line
     that ought to stay off the network has to be written inside the scope, and a line some
     other task prints is kept.
+19. **Where the firmware goes in ac3hearth** ([ac3hearth](#ac3hearth-o5)). (a) **a third tab on a
+    paired Hearth sink's settings page, beside Speakers and Decoder**; (b) a card in that page's
+    right column; (c) a dialog opened from the "Only on the sink" panel. **Recommend (a).** An
+    update needs room for its progress and its outcome, and the right column is a third of the
+    page. Cost: the app updates only a sink it has paired. An unpaired board is updated from its
+    own page or with `ota.py`.
+20. **"The build the app knows of"** ([ac3hearth](#ac3hearth-o5)). (a) **this app's own version,
+    `git describe` of the tree it was built from, compared with the version the board reports**;
+    (b) nothing until O8 publishes images the app could list. **Recommend (a).** The board's
+    version is ESP-IDF's `git describe` of the same tree, so one build of both reads the same.
+    Cost: builds of one commit whose describe differs, say one with uncommitted changes, do not
+    match; and the board keeps 31 characters, so the comparison is on as many.
+21. **How ac3hearth reaches the board** ([ac3hearth](#ac3hearth-o5)). (a) **the board's HTTP
+    routes, from a thread for each sink**; (b) a new command in Sendspin's `_ac3forge_player@v1`
+    role. **Recommend (a).** The routes exist, the board's page and `ota.py` use them and CI
+    tests them, and an update takes the sink off Sendspin while it runs. Cost: a second
+    connection to the sink, and the same boundary as the page: anyone on the network can
+    update a board while images are unsigned.

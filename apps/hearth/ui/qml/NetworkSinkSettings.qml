@@ -53,11 +53,12 @@ RowLayout {
                 spacing: Theme.gap
                 SegmentedControl {
                     objectName: "networkSinkSettingsTab"
-                    accessibleName: qsTr("Speakers or decoder")
+                    accessibleName: qsTr("Speakers, decoder or firmware")
                     currentValue: root.activeTab
                     model: [
                         { value: "speakers", label: qsTr("Speakers") },
-                        { value: "decoder", label: qsTr("Decoder") }
+                        { value: "decoder", label: qsTr("Decoder") },
+                        { value: "firmware", label: qsTr("Firmware") }
                     ]
                     onSelected: function(value) { root.activeTab = value; }
                 }
@@ -67,8 +68,11 @@ RowLayout {
                     Layout.alignment: Qt.AlignVCenter
                     text: root.activeTab === "speakers"
                           ? qsTr("Changes reach the sink and take effect at its next burst.")
-                          : qsTr("The decoder settings this sink accepts, as it lists them. Changes take "
-                                + "effect at its next burst.")
+                          : root.activeTab === "decoder"
+                            ? qsTr("The decoder settings this sink accepts, as it lists them. Changes take "
+                                  + "effect at its next burst.")
+                            : qsTr("What the sink runs, as it reports it over its own web server, and an "
+                                  + "update sent the way its page sends one.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontSmall
                     wrapMode: Text.WordWrap
@@ -79,15 +83,19 @@ RowLayout {
         Loader {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            sourceComponent: root.activeTab === "speakers" ? speakersTab : decoderTab
+            sourceComponent: root.activeTab === "speakers" ? speakersTab
+                                                           : root.activeTab === "decoder" ? decoderTab : firmwareTab
         }
     }
 
+    // Beside Firmware, the sink's identity again: its name, network and the
+    // firmware it said it runs in its Sendspin hello, with its page a click
+    // away.
     Loader {
         Layout.fillWidth: true
         Layout.preferredWidth: 1
         Layout.fillHeight: true
-        sourceComponent: root.activeTab === "speakers" ? onlyOnSinkPanel : reportPanel
+        sourceComponent: root.activeTab === "decoder" ? reportPanel : onlyOnSinkPanel
     }
 
     Component {
@@ -97,6 +105,10 @@ RowLayout {
     Component {
         id: decoderTab
         NetworkSinkDecoder { }
+    }
+    Component {
+        id: firmwareTab
+        NetworkSinkFirmware { }
     }
 
     Component {
