@@ -11,7 +11,7 @@
 // Internal, never installed: these are facts about how this library was
 // built, not part of its API. A caller that needs to know whether the
 // reference transform is present finds out the way any caller does - by
-// asking for it and being refused (DecodeError::kUnsupported).
+// asking for it and being refused (DecodeError::kNoReferenceTransform).
 
 namespace ac3::internal {
 

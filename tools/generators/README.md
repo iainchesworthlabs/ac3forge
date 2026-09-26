@@ -129,6 +129,7 @@ All of these are run from the repo root.
 | `gen_programme_fixtures.py` | both programme fixtures + `corpus.json` | needs `--source-dir` and `ffmpeg` |
 | `gen_external_baseline.py` | `tests/golden/external-baseline/` | needs **Dolby DEE**, `ffmpeg`, a built `ac3cli` |
 | `gen_dee_gold.py` | a local set of DEE's AC-3, E-AC-3, E-AC-3 JOC and TrueHD streams, never committed | needs **Dolby DEE**, `ffmpeg`; `--cli` records a built `ac3cli`'s reading |
+| `gen_dee_tpn_fixture.py` | `tests/golden/external-baseline/eac3-transient-stereo-128/` | needs the local DEE golden-master set (`--gold`) |
 | `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | encoder/decoder tables | read spec text, not committed |
 | `gen_mdct_goldens.py` | filterbank golden vectors | |
 

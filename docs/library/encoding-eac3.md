@@ -57,7 +57,7 @@ rejects them outright.
 | `aht`, `gaqmod` | `false`, -1 | Adaptive hybrid transform (§E3.4): a second 6-point DCT down each bin across the frame's six blocks. Decided per channel per frame — setting the flag permits it, not forces it. |
 | `coupling`, `cplbegf` | `false`, -1 | §E3.3. With `spx` also on, §E3.3.1 derives the coupling end frequency from `spxbegf`. |
 | `enhanced` | `false` | §E3.5: enhanced coupling instead of standard — 22 sub-bands, amplitude/angle/chaos-quantized coordinates and a phase-restoring reconstruction built on a full DFT, rather than a single per-band scale factor. Only meaningful with `coupling` also set (`cpl+ecpl`); combines with `spx` the same way standard coupling does. This encoder fits real amplitude/angle coordinates per band (an exact 2-variable linear least squares, since §3.5.5.4's reconstruction is linear in the complex gain the pair expresses) and chooses chaos by searching its 8 legal codes against the decoder's own deterministic de-correlation sequence. Two different channels forced into one narrow coupling band still cost quality — a single coordinate per band has a real, structural limit on what it can separate — but it is no longer the amplitude-only fit's all-or-nothing loss. |
-| `transient_prenoise` | `false` | §3.7 (`tpn`): a post-IMDCT correction that overwrites the pre-echo ahead of a detected transient with a synthesized copy of the clean audio just before it. Reuses the same transient detector block switching relies on, so it only has an effect on channels/frames that also block-switch. See [Decoding](decoding.md) for the one-frame decoder-side latency this introduces and the `flush()` call it requires. |
+| `transient_prenoise` | `false` | §3.7 (`tpn`): a post-IMDCT correction that overwrites the pre-echo ahead of a detected transient with a synthesized copy of the clean audio just before it. Reuses the same transient detector block switching relies on, so it only has an effect on channels/frames that also block-switch. See [Decoding](decoding.md) for the 1536-sample decoder-side latency this introduces and the `flush()` call it requires. |
 | `delta_allocation` | `true` | §7.2.2.6 delta bit allocation, as for AC-3: the corrections chosen per run and the second fit that weighs them. `false` skips both - the first level of the encoders' effort axis, measured on the ESP32-S3 page - and the stream has `dbaflde` clear. The CLI accepts the command-wide `delta=off` option; inside `eac3-encode`'s fourth positional `[tools]` argument, the spelling is `nodelta`, not `tools=nodelta`. |
 | `fast_mdct` | `true` | The §7.9.4 fast N/4-FFT forward MDCT instead of the direct §8.2.3.2 evaluation — a performance choice, not a coding tool: nothing in the bitstream's syntax changes, only how the coefficients were computed (verified ~3e-12 max relative error against the direct form; 0.000 dB SNR delta against an independent oracle at 192–448 kbps). `false` forces the direct reference form, which stays maintained as the oracle the fast path is validated against — the CLI spells that `tools=nofastmdct`. All three forward transforms accelerate — the long one and both halves of a block-switched pair, each down its own independently-derived fold (`ac3/core/mdct.hpp`), and `FrameConfig::fast_mdct` reaches all of them. |
 | `search` | `kNone` | Per-frame search over §7.2.2's transmitted bit-allocation parameters against `ac3::quality`'s decoded-domain distortion, instead of the fixed `dbpbcod` 3 EQ3 measured its way to on average. CBR only (`FrameConfig::vbr` unset) - silently inert under VBR/ABR, the same documented boundary EQ5 draws around AHT streams, not a rejected configuration. `kDistortion` only: `kPerceptual` is accepted but inert too, on the same grounds [Decision search](encoding-ac3.md#decision-search) already found it for AC-3. Two axes, the same pair AC-3's search moves: `dbpbcod` over `{kAllocCodes' 3, Table E1.4's 2}`, and `fgaincod` over `ac3::rate_adaptive_fgaincod`'s measured code plus §8.2.12's own default. Unlike AC-3's, the `fgaincod` candidates are not free - `baie` carries no fast gain, so a non-default code opens the per-block `fgaincode` element (`frmfgaincode` 1) and buys its masking curve out of the mantissa budget - so each candidate is scored after a refit against its own side-info cost rather than against the incumbent's. Measured on real CC0 stereo material at 96-640 kbit/s, `dbpbcod` alone was negligible everywhere tried, which is what this axis was added to move. CLI: `search=distortion`/`search=perceptual`/`search=off`. |
@@ -135,6 +135,13 @@ the correction lands between 6.5 and 24 dB *worse* than leaving the audio alone,
 fires, and the gap widens as the rate rises. It is not a bit-allocation effect: outside its own
 footprint the two decodes are bit-identical. Perceptually it is a no-op — MOS-LQO matched the
 untreated encode to within 0.01 in every row measured.
+
+These figures predate a decoder fix: the decoder then applied each correction one block (256
+samples) ahead of where A/52 and Dolby's own decoder apply it, so what was measured is a
+correction over the clean audio before the pre-noise rather than over the pre-noise itself. Where
+it lands now, `tools/ci/quality_race.py`'s own-decoder rows score the stereo stream at 192 kbit/s
+2.1 dB closer to its source than they did (26.2 against 24.0 dB) and the 5.1 stream at 256
+kbit/s 0.1 dB closer. The comparison above has not been repeated.
 
 The mechanism is that block switching gets there first. §3.7 exists to clean up pre-echo, and
 this encoder gates the correction on the same transient detector that switches to short
@@ -310,11 +317,12 @@ The four terms and what each one means are set out in
 because E-AC-3 uses the same transform, the same default frame length and the same
 lookahead-free block-switch decision. What differs is one tool, one shape and one option.
 
-**`transient_prenoise` costs a frame of decoder hold-back.** §3.7's correction reaches
-*backwards* out of one frame into the one before it, so a decoder can only realize it while it
-still has that previous frame — which means returning frame N−1's PCM from the call that
-supplies frame N. That is a full frame period, permanently, from the first frame that actually
-uses the tool onward:
+**`transient_prenoise` costs 1536 samples of decoder hold-back.** §3.7's correction reaches
+across frame boundaries — back up to 1528 samples from a transient that may itself lie in a later
+frame — so a decoder can only realize it while it still holds that much audio, which at six blocks
+a syncframe means returning frame N−1's PCM from the call that supplies frame N. That is 1536
+samples whatever the syncframe length, permanently, from the first frame that actually uses the
+tool onward:
 
 ```cpp
 ac3::eac3::FrameConfig config{.bitrate_kbps = 448, .acmod = ac3::Acmod::k3_2, .lfe = true};
@@ -332,7 +340,7 @@ ahead of the frame, and spx and coupling reconstruct within the block they arriv
 The hold-back engages when the tool does, not when it is configured. This encoder reuses the
 `blksw` decision rather than running a second detector, so a stream that never block-switches
 never sets `transproce` and never holds anything back — `Eac3Decoder::latency_samples()` reports
-0 until it does, and one frame from then on.
+0 until it does, and 1536 from then on.
 
 **An access unit's budget is the worst of its substreams'.** Every substream codes the same 1536
 samples of the same program, so the frame and transform terms are shared rather than summed; the

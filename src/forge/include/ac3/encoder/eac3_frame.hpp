@@ -525,10 +525,11 @@ using AuxPayload = std::span<const std::byte>;
 // packs a channel's six blocks into block 0 rather than looking ahead of the
 // frame, spx and coupling reconstruct within the block they arrive in, and
 // none of them change how many samples the decoder must hold. §3.7 is the
-// exception because its correction reaches backwards ACROSS a frame boundary,
-// which is only realizable by a decoder that still has the previous frame -
-// hence one frame period of hold-back, charged here because it is the
-// encoder's tool choice that imposes it.
+// exception because its correction reaches ACROSS frame boundaries, back up
+// to 1528 samples from a transient that may itself lie in a later frame,
+// which only a decoder that still holds that much audio can apply - hence
+// the hold-back, charged here because it is the encoder's tool choice that
+// imposes it.
 //
 // Free function rather than a FrameEncoder member alone so a caller can price
 // a configuration before building an encoder for it, which is what a live
@@ -542,15 +543,17 @@ using AuxPayload = std::span<const std::byte>;
     // 1280 samples, ~27 ms at 48 kHz, to exactly the live pipeline that
     // asks in order to size its buffers.
     //
-    // The hold-back is one FRAME period for the same reason (§3.7 needs the
-    // previous frame, whatever length it is), so it tracks the same figure
-    // rather than a second, fixed one.
+    // The hold-back does NOT follow it. The decoder holds 1536 samples back
+    // whatever the syncframe length (Eac3Decoder::decode_substream's own doc
+    // comment): a correction's reach is counted in samples, not frames, so a
+    // one-block stream is held six syncframes back where a six-block one is
+    // held one.
     const int frame_samples = blocks_per_syncframe(config.numblkscod) * kSamplesPerBlock;
     return LatencyBudget{
         .frame_samples = frame_samples,
         .transform_samples = kTransformDelaySamples,
         .lookahead_samples = 0,
-        .holdback_samples = config.transient_prenoise ? frame_samples : 0};
+        .holdback_samples = config.transient_prenoise ? kSamplesPerFrame : 0};
 }
 
 [[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, FrameError> build_silent_frame(

@@ -50,7 +50,7 @@ this part. The x figures are fractions of a 32 ms frame.
 | JOC in the QMF domain (`Domain::kQmf`, the licensed decoders' domain) | No: 449,826 bytes of peak | Host measurement, see [Objects](#objects) |
 | The full TS 103 420 §4.3 renderer (extents, zones, snap) | No: the pan is a point source per object | Not attempted; the extent metadata arrives and is not read |
 | §3.7 transient pre-noise processing, concealment | Compiled in; no fixture exercises either | Not measured |
-| The direct-form reference transform | No, by design: `DecodeError::kUnsupported` | Every leg checks the refusal |
+| The direct-form reference transform | No, by design: `DecodeError::kNoReferenceTransform` | Every leg checks the refusal |
 | AC-3 encode, 2/0 and 5.1 | Byte-exact with the host; **2/0 in real time at 0.35x**, 5.1 at the line (1.01x), the encoder `float` end to end and the search integer | Board; `ac3_stereo`, `ac3` |
 | E-AC-3 encode, 2/0 plain, 2/0 with coupling + spectral extension + AHT, 2/0 §E3.5, 5.1 with no tool | Byte-exact; **2/0 plain in real time at 0.73x**, the others 1.6x, 1.3x and 1.7x over, the arithmetic `float` and the remaining cost the exponent-run planner, the allocation candidates and the `double` AHT | Board; `eac3_stereo`, `eac3_tools`, `eac3_ecpl`, `eac3` |
 | E-AC-3 5.1 encode with AHT or coupling, or §E3.5 at 5.1 | No: 289,202 to 369,790 bytes of peak | Host profile, see [Encoding](#encoding) |

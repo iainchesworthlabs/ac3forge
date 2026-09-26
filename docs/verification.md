@@ -541,7 +541,8 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 7.1.4 (two dependents) | no | yes |
 | E-AC-3 with cpl / spx / aht | yes | yes |
 | E-AC-3 7.1.4 with Annex E tools | no | yes |
-| E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
+| E-AC-3 with enhanced coupling (`ecpl`) | no | yes |
+| E-AC-3 with transient pre-noise processing (`tpn`) | yes, without applying the correction | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
 | E-AC-3 with a second *independent* substream (two programmes) | no — and it poisons the first programme too | yes |
 | E-AC-3 with JOC objects (Atmos) | 5.1 bed only | yes, including the objects |
@@ -612,15 +613,32 @@ muxed file: that check is a direct guard on the access-unit boundaries, since a 
 has to end at the next independent substream of *any* programme rather than at its own next
 frame, or each span swallows the other programme's frame and FFmpeg refuses the container too.
 
-**Enhanced coupling and transient pre-noise processing have no external oracle at all — not even
-the partial one 7.1.4 gets.** FFmpeg's own Annex E parser was never written to read either
-tool's syntax, so it doesn't reject these streams the way it does a second dependent substream —
-it has no model of the bits at all, which makes `-xerror` unusable as a check here rather than
-merely unavailable. `tools/ci/quality_race.py`'s CI gate (`decode_scores_ours`) scores both through
-this project's own decoder instead, the same self-consistency posture 7.1.4 falls back to, with
-one weaker guarantee than 7.1.4 has: a defect both the encoder and decoder agree on — a
-misreading of the spec shared by both sides rather than a one-sided bug — is not caught by
-either the CI gate or the round-trip unit tests in `tests/decoder/test_eac3_decoder.cpp`.
+**Enhanced coupling has no external oracle at all — not even the partial one 7.1.4 gets.**
+FFmpeg's own Annex E parser was never written to read its syntax, so it doesn't reject these
+streams the way it does a second dependent substream — it has no model of the bits at all, which
+makes `-xerror` unusable as a check here rather than merely unavailable.
+`tools/ci/quality_race.py`'s CI gate (`decode_scores_ours`) scores it through this project's own
+decoder instead, the same self-consistency posture 7.1.4 falls back to, with one weaker guarantee
+than 7.1.4 has: a defect both the encoder and decoder agree on — a misreading of the spec shared
+by both sides rather than a one-sided bug — is not caught by either the CI gate or the round-trip
+unit tests in `tests/decoder/test_eac3_decoder.cpp`.
+
+**Transient pre-noise processing had the same gap, and it hid a defect of exactly that kind.**
+The decoder counted `transprocloc` from the first sample of a frame's decoded output, one block
+before where A/52 counts it from, and refused any correction whose transient lay past the frame
+that signalled it. This project's own encoder never places a transient there, and on its streams
+block switching leaves little pre-noise for a misplaced correction to show against, so nothing
+here noticed until the Dolby Encoding Engine's streams did: DEE puts most of its transients in the
+next frame. What closed the gap is a third-party stream and a reference decoder. FFmpeg's strict
+decode reads transient pre-noise streams — DEE's and this project's own — without error but does
+not apply the correction, so it checks everything except the correction: below 4 kHz and outside
+the corrected regions it agrees with this decoder to 37–40 dB on DEE's stream. Dolby's own decoder
+(the Reference Player, run locally, never in CI) does apply it, and where its corrections land is
+what settled the origin (`ac3/decoder/transient_prenoise.hpp`); on the same comparison it agrees
+with this decoder to about 70 dB. `tools/checks/verify_gold_reference.sh` scores a five-second
+excerpt of the DEE stream against its source and against FFmpeg, and
+`tests/decoder/test_eac3_transient_prenoise.cpp` holds the corrections to the places Dolby's
+decoder puts them.
 
 The E-AC-3 mirror self-check (#6 above) narrows that, and is worth being exact about what it
 narrows. It compares the encoder's and the decoder's *models* of each block — bit offsets,
@@ -634,7 +652,7 @@ persisted on one side and not the other. What it still cannot see is a misreadin
 make *identically*, which for anything decided in code they share (`compute_bit_allocation`,
 `group_bands`, `coupling::decode_coordinate`) is by construction. That residue is real, and only
 an external oracle or an independent transcription of the same spec text closes it — neither of
-which exists for `ecpl` or `tpn`. `tools/ci/run_codec_matrix.sh` runs the check over both tools
+which exists for `ecpl`, and for `tpn` only as far as the paragraph above says. `tools/ci/run_codec_matrix.sh` runs the check over both tools
 on the sanitizer leg.
 
 **`fscod2` audio content has no external decode oracle at all — not even Dolby's own.**

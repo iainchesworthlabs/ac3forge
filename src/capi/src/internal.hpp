@@ -161,6 +161,10 @@ namespace ac3forge_c {
         case ac3::DecodeError::kReservedValue: return AC3FORGE_ERROR_DECODE_RESERVED_VALUE;
         case ac3::DecodeError::kUnsupported: return AC3FORGE_ERROR_DECODE_UNSUPPORTED;
         case ac3::DecodeError::kInvalidStream: return AC3FORGE_ERROR_DECODE_INVALID_STREAM;
+        // Never reaches this API: it has no fast_imdct switch, so its decoders
+        // always run the fast transform every build carries. Mapped to the
+        // nearest code rather than left to the INTERNAL fallback all the same.
+        case ac3::DecodeError::kNoReferenceTransform: return AC3FORGE_ERROR_DECODE_UNSUPPORTED;
     }
     return AC3FORGE_ERROR_INTERNAL;
 }

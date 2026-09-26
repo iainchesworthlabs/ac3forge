@@ -95,6 +95,7 @@ add_executable(ac3tests
     encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
     decoder/test_eac3_programmes.cpp
+    decoder/test_eac3_transient_prenoise.cpp
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
     io/test_firmware_image.cpp

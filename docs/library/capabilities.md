@@ -107,8 +107,9 @@ pseudo-random noise blend the standard requires but leaves the exact generator u
 adaptive hybrid transform with GAQ (§E3.4), and transient pre-noise processing (§3.7) —
 individually or all stacked together, at every channel layout including 7.1.4.
 
-Transient pre-noise processing holds a frame back per substream that uses it (see [What it does
-not do](#what-it-does-not-do)), and that holding-back is not just a `decode_substream` detail:
+Transient pre-noise processing holds 1536 samples back per substream that uses it - one frame at
+six blocks a syncframe (see [What it does not do](#what-it-does-not-do)) - and that holding-back
+is not just a `decode_substream` detail:
 `Eac3Decoder::decode_access_unit` assembles a whole access unit correctly even when only some of
 its substreams set the flag, queuing whichever substreams release early rather than losing or
 misaligning them against the one still catching up.
@@ -232,18 +233,18 @@ load-bearing enough to flag up front:
     receiver's EDID. No other Linux machine, sound card or receiver has been tried: treat this as
     two confirmed configurations on one box, not as Linux generally.
 
-Enhanced coupling and transient pre-noise processing have no external decode oracle at all —
-not even the FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own
-Annex E parser has never read either tool's syntax — so `tools/ci/quality_race.py`'s CI gate scores
-both through this project's own decoder instead (see
-[Validation](../verification.md#where-the-oracles-dont-reach)). That same gap is why neither is in
-the `auto` tool set, though only one of them earned its way out: enhanced coupling measures
-*better* than standard coupling on real programme material at every bitrate and layout tried and
-is kept out purely so `auto` produces streams FFmpeg can read, while transient pre-noise
-processing measured 6.5–24 dB worse than leaving the audio alone over exactly the samples it
-touches, at every bitrate, with no perceptual movement either way — a reference-correctness tool
-rather than a quality one. [Encoding E-AC-3](encoding-eac3.md#what-auto-will-not-choose)
-carries both measurements. Transient pre-noise processing's
-one-frame decoder buffering is an API characteristic, not a gap; [Decoding](decoding.md)
-covers it. Variable bit rate is E-AC-3 only — AC-3's frame size indexes Table 5.18 rather than
+Enhanced coupling has no external decode oracle at all — not even the
+FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own Annex E parser
+has never read its syntax — so `tools/ci/quality_race.py`'s CI gate scores it through this
+project's own decoder instead (see [Validation](../verification.md#where-the-oracles-dont-reach)).
+Transient pre-noise processing has a partial one: FFmpeg reads its streams but does not apply the
+correction, and a Dolby Encoding Engine stream that uses the tool is scored in the gold-reference
+gate. Neither tool is in the `auto` tool set: enhanced coupling measures *better* than standard
+coupling on real programme material at every bitrate and layout tried and is kept out purely so
+`auto` produces streams FFmpeg can read, while transient pre-noise processing measured 6.5–24 dB
+worse than leaving the audio alone over exactly the samples it touches, at every bitrate, with no
+perceptual movement either way — a reference-correctness tool rather than a quality one.
+[Encoding E-AC-3](encoding-eac3.md#what-auto-will-not-choose) carries both measurements, and says
+what the second predates. Transient pre-noise processing's 1536-sample decoder hold-back is an API
+characteristic, not a gap; [Decoding](decoding.md) covers it. Variable bit rate is E-AC-3 only — AC-3's frame size indexes Table 5.18 rather than
 stating a word count directly, so it has no equivalent and stays CBR.
