@@ -3721,3 +3721,12 @@ jobs:
         run: |
           echo "::error::A leg/codec dropped more than the hard quality-trend threshold below its trailing average - see the job log above and docs/quality-trend.md for the recorded numbers."
           exit 1
+
+      # The same, for AC-4 decode quality (tools/ci/append_ac4_quality_history.py's
+      # SNR_HARD_DROP_DB and LSD_HARD_RISE_DB).
+      - name: Fail on hard AC-4 quality regression
+        if: steps.append.outputs.ac4_hard_regression == 'true'
+        shell: bash
+        run: |
+          echo "::error::An AC-4 stream's decode quality fell past the hard trend threshold against its trailing average - see the job log above and docs/quality-trend.md#ac-4-decode-quality."
+          exit 1

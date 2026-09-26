@@ -12,11 +12,10 @@
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/oba/atmos.hpp"
-#include "real_audio.hpp"
-
-#ifdef AC3FORGE_PERF_AC4
 #include "ac4_bench.hpp"
-#endif
+#include "ac4dec/decoder.hpp"
+#include "ac4enc/encoder.hpp"
+#include "real_audio.hpp"
 
 // Real-time throughput regression guard.
 //
@@ -33,10 +32,11 @@
 // It covers both directions of both generations plus the object path: the
 // AC-3 and Atmos/JOC encoders it was written for, and - since encoder/decode benchmarks -
 // the E-AC-3 encoder and all three decoders, which had no real-time gate of
-// any kind. A decoder is the half of the codec that runs on the least
-// capable hardware there is (a set-top box, a phone, the WASM demo in a
-// browser tab), so "faster than real time" is a harder requirement there
-// than it is on the encode side, not a softer one.
+// any kind - and AC-4's encoder and decoder, at stereo and 5.1. A decoder
+// is the half of the codec that runs on the least capable hardware there is
+// (a set-top box, a phone, the WASM demo in a browser tab), so "faster than
+// real time" is a harder requirement there than it is on the encode side,
+// not a softer one.
 //
 // Every case is fed real programme material (real_audio.hpp - see that
 // header for why a single tone is a different workload rather than a
@@ -141,6 +141,52 @@ void check_faster_than_real_time(const std::string& what, double elapsed_seconds
               << (1000.0 * elapsed_seconds / frames) << "ms/frame); real-time budget is "
               << budget << "s");
     CHECK(elapsed_seconds < kSlackFactor * budget);
+}
+
+// AC-4's frame at frame_rate_index 13 is 2 048 samples, not A/52's 1 536, so
+// its cases are held to their own budget at the same slack factor.
+void check_ac4_faster_than_real_time(const std::string& what, double elapsed_seconds,
+                                     int frames) {
+    const double budget = static_cast<double>(frames) *
+                          static_cast<double>(perf::ac4_bench::kSamplesPerFrame) / kSampleRate;
+    INFO(what << ": " << frames << " frames in " << elapsed_seconds << "s ("
+              << (1000.0 * elapsed_seconds / frames) << "ms/frame); real-time budget is "
+              << budget << "s");
+    CHECK(elapsed_seconds < kSlackFactor * budget);
+}
+
+// One encode() call per frame of input, from a fresh encoder at frame 0 like
+// the AC-3 cases; the first call or two return no frame while the encoder's
+// delay fills, and still count against the budget.
+void check_ac4_encode(const std::string& what, const ac4::EncoderConfig& config,
+                      std::span<const std::size_t> channels) {
+    perf::ac4_bench::FrameSource source{fixture(), channels};
+    auto encoder = ac4::Encoder::create(config);
+    REQUIRE(encoder.has_value());
+
+    const auto start = std::chrono::steady_clock::now();
+    for (int frame = 0; frame < kFrames; ++frame) {
+        const auto result = encoder->encode(source.frame(static_cast<std::size_t>(frame)));
+        REQUIRE(result.has_value());
+    }
+    const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start);
+    check_ac4_faster_than_real_time(what, elapsed.count(), kFrames);
+}
+
+void check_ac4_decode(const std::string& what, const ac4::EncoderConfig& config,
+                      std::span<const std::size_t> channels) {
+    perf::ac4_bench::FrameSource source{fixture(), channels};
+    const auto frames = perf::ac4_bench::encode_frames(source, config, kDecodeSourceFrames);
+    REQUIRE_FALSE(frames.empty());
+    ac4::Decoder decoder;
+
+    const auto start = std::chrono::steady_clock::now();
+    for (const auto& frame : frames) {
+        const auto result = decoder.decode(frame);
+        REQUIRE(result.has_value());
+    }
+    const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start);
+    check_ac4_faster_than_real_time(what, elapsed.count(), static_cast<int>(frames.size()));
 }
 
 }  // namespace
@@ -248,100 +294,22 @@ TEST_CASE("the Atmos/JOC decoder stays faster than real time") {
                                 static_cast<int>(units->size()));
 }
 
-#ifdef AC3FORGE_PERF_AC4
-void check_ac4_faster_than_real_time(const std::string& what, double elapsed_seconds, int frames) {
-    const double budget =
-        static_cast<double>(frames) * static_cast<double>(perf::ac4::kInputSamplesPerChunk) /
-        kSampleRate;
-    INFO(what << ": " << frames << " frames in " << elapsed_seconds << "s ("
-              << (1000.0 * elapsed_seconds / frames) << "ms/frame); real-time budget is "
-              << budget << "s");
-    CHECK(elapsed_seconds < kSlackFactor * budget);
-}
-
 TEST_CASE("the AC-4 stereo encoder stays faster than real time") {
-    const ac3::io::WavData audio = perf::load_real_audio(
-        perf::kReference51Wav, 2, perf::ac4::kInputSamplesPerChunk);
-    perf::ac4::FrameSource source{audio, perf::ac4::kStereoChannels};
-    auto encoder = ac4::Encoder::create(perf::ac4::stereo_encoder_config());
-    REQUIRE(encoder.has_value());
-    int chunk = 0;
-    for (; chunk < kFrames / 4; ++chunk) {
-        (void)encoder->encode(
-            perf::ac4::to_encoder_views(source.chunk(static_cast<std::size_t>(chunk))));
-    }
-
-    const auto start = std::chrono::steady_clock::now();
-    for (int i = 0; i < kFrames; ++i, ++chunk) {
-        const auto views = perf::ac4::to_encoder_views(source.chunk(static_cast<std::size_t>(chunk)));
-        const auto result = encoder->encode(views);
-        REQUIRE(result.has_value());
-        REQUIRE_FALSE(result->empty());
-    }
-    const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start);
-    check_ac4_faster_than_real_time("AC-4 stereo encode", elapsed.count(), kFrames);
+    check_ac4_encode("AC-4 stereo encode", perf::ac4_bench::stereo_config(),
+                     perf::ac4_bench::kStereoChannels);
 }
 
 TEST_CASE("the AC-4 5.1 encoder stays faster than real time") {
-    const ac3::io::WavData audio = perf::load_real_audio(
-        perf::kReference51Wav, 6, perf::ac4::kInputSamplesPerChunk);
-    perf::ac4::FrameSource source{audio, perf::ac4::kFiveOneChannels};
-    auto encoder = ac4::Encoder::create(perf::ac4::five_one_encoder_config());
-    REQUIRE(encoder.has_value());
-    int chunk = 0;
-    for (; chunk < kFrames / 4; ++chunk) {
-        (void)encoder->encode(
-            perf::ac4::to_encoder_views(source.chunk(static_cast<std::size_t>(chunk))));
-    }
-
-    const auto start = std::chrono::steady_clock::now();
-    for (int i = 0; i < kFrames; ++i, ++chunk) {
-        const auto views = perf::ac4::to_encoder_views(source.chunk(static_cast<std::size_t>(chunk)));
-        const auto result = encoder->encode(views);
-        REQUIRE(result.has_value());
-        REQUIRE_FALSE(result->empty());
-    }
-    const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start);
-    check_ac4_faster_than_real_time("AC-4 5.1 encode", elapsed.count(), kFrames);
+    check_ac4_encode("AC-4 5.1 encode", perf::ac4_bench::five_one_config(),
+                     perf::ac4_bench::kFiveOneChannels);
 }
 
 TEST_CASE("the AC-4 stereo decoder stays faster than real time") {
-    const ac3::io::WavData audio = perf::load_real_audio(
-        perf::kReference51Wav, 2, perf::ac4::kInputSamplesPerChunk);
-    perf::ac4::FrameSource source{audio, perf::ac4::kStereoChannels};
-    const auto stream = perf::ac4::encode_stream(source, perf::ac4::stereo_encoder_config(),
-                                                 kDecodeSourceFrames, "ac4_stereo_decode");
-    const auto scanned = ac4::scan(stream);
-    REQUIRE_FALSE(scanned.frames.empty());
-    ac4::Decoder decoder;
-
-    const auto start = std::chrono::steady_clock::now();
-    for (const auto& frame : scanned.frames) {
-        const auto result = decoder.decode(frame.raw_ac4_frame);
-        REQUIRE(result.has_value());
-    }
-    const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start);
-    check_ac4_faster_than_real_time("AC-4 stereo decode", elapsed.count(),
-                                    static_cast<int>(scanned.frames.size()));
+    check_ac4_decode("AC-4 stereo decode", perf::ac4_bench::stereo_config(),
+                     perf::ac4_bench::kStereoChannels);
 }
 
 TEST_CASE("the AC-4 5.1 decoder stays faster than real time") {
-    const ac3::io::WavData audio = perf::load_real_audio(
-        perf::kReference51Wav, 6, perf::ac4::kInputSamplesPerChunk);
-    perf::ac4::FrameSource source{audio, perf::ac4::kFiveOneChannels};
-    const auto stream = perf::ac4::encode_stream(source, perf::ac4::five_one_encoder_config(),
-                                                 kDecodeSourceFrames, "ac4_51_decode");
-    const auto scanned = ac4::scan(stream);
-    REQUIRE_FALSE(scanned.frames.empty());
-    ac4::Decoder decoder;
-
-    const auto start = std::chrono::steady_clock::now();
-    for (const auto& frame : scanned.frames) {
-        const auto result = decoder.decode(frame.raw_ac4_frame);
-        REQUIRE(result.has_value());
-    }
-    const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start);
-    check_ac4_faster_than_real_time("AC-4 5.1 decode", elapsed.count(),
-                                    static_cast<int>(scanned.frames.size()));
+    check_ac4_decode("AC-4 5.1 decode", perf::ac4_bench::five_one_config(),
+                     perf::ac4_bench::kFiveOneChannels);
 }
-#endif

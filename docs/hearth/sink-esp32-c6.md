@@ -1,62 +1,55 @@
 # An ESP32-C6 sink
 
-`hearth_sink` on the ESP32-C6 is a **stereo** Sendspin player: it receives synchronised audio from
-Hearth or another compatible server and decodes AC-3 and E-AC-3 up to 2.0. It does not decode
-AC-4, 5.1 or immersive layouts — the part's memory budget and fixed-point tier limit the network
-player to stereo PCM output.
+`hearth_sink` runs on the ESP32-C6 as a stereo Sendspin player. It plays AC-3 and E-AC-3 streams
+of up to two coded channels. A wider stream is refused before a decoder opens for it, and the
+console says why once per stream.
 
-For pairing, groups, firmware updates and the shared Sendspin workflow, see
-[An ESP32-S3 sink](sink-esp32-s3.md) and [Sink firmware](sink-firmware.md). This page covers
-what differs on the C6.
+The limit is memory, not decode speed. The C6 has no PSRAM, so the player's buffers and WiFi's
+receive buffers share the internal RAM. On a board, AC-3 and E-AC-3 5.1 each stopped within about
+12 seconds when the decoder could not allocate its working memory. The part does decode 5.1 in
+real time with WiFi running: see the [ESP32-C6 platform page](../platforms/bare-metal/esp32-c6.md).
+The sink firmware does not decode AC-4 on any board.
 
-!!! note "Status as of 2026-09-26"
-    CI builds and packages `hearth-sink-esp32c6` (4 MB flash table) and
-    `hearth-sink-esp32c6-16mb`. Hearth plays to C6 sinks in a group with S3 boards. Decode
-    probes and timing tables live on the [ESP32-C6 platform page](../platforms/bare-metal/esp32-c6.md).
+A stereo group of a C6 and an S3 has played ten minutes with no underrun on either board
+([example README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)).
+`idf.py qemu` does not support the C6, so CI builds its image but only a board runs it.
+
+Pairing, groups and firmware updates work the same as on the S3; see
+[An ESP32-S3 sink](sink-esp32-s3.md) and [Sink firmware](sink-firmware.md). This page covers what
+differs on the C6.
 
 ## Which image
 
+CI builds two C6 images, and a release carries both:
+
 | Image | For |
 |---|---|
-| `hearth-sink-esp32c6` | Any ESP32-C6 module with a **4 MB** flash partition table |
-| `hearth-sink-esp32c6-16mb` | An ESP32-C6 module with **16 MB** of flash |
+| `hearth-sink-esp32c6` | A C6 module with 4 MB of flash, the least any C6 module has |
+| `hearth-sink-esp32c6-16mb` | A C6 module with 16 MB of flash |
 
-See [Sink firmware — Which image](sink-firmware.md#which-image) for checking a board and
-installing from a release.
+[Sink firmware — Which image](sink-firmware.md#which-image) explains how to check a board's flash
+size and install from a release.
 
 ## Build and flash
 
-From `esp-idf/ac3forge/examples/hearth_sink` in an ESP-IDF v6.1 terminal:
+From `esp-idf/ac3forge/examples/hearth_sink` in an ESP-IDF terminal:
 
 ```bash
-export SDKCONFIG_DEFAULTS="sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6"
 idf.py set-target esp32c6
-idf.py build
+idf.py "-DSDKCONFIG_DEFAULTS=sdkconfig.defaults;sdkconfig.hw;sdkconfig.sendspin;sdkconfig.c6;sdkconfig.sendspin-c6" build
 idf.py -p PORT flash monitor
 ```
 
-For a board with **16 MB** of flash (`esptool --chip esp32c6 flash-id`), append `;sdkconfig.flash16mb`
-to `SDKCONFIG_DEFAULTS` so the larger partition table is used.
+For a module with 16 MB of flash, add `;sdkconfig.flash16mb` at the end of the list so the build
+uses the larger partition table.
 
-The example [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)
-has C6-specific measurements (Wi-Fi load, ring size, clock sync).
-
-## Limits compared with the ESP32-S3
-
-| | ESP32-C6 sink | ESP32-S3 sink |
-|---|---|---|
-| Output | Stereo (2.0) | Up to 7.1.4 (16 TDM slots) |
-| PSRAM | None — internal SRAM only | 8 MB octal PSRAM required |
-| Codec arithmetic | Fixed-point tier | Float tier |
-| AC-4 | Not supported | Not supported (library excluded from firmware) |
-| QEMU CI | Not emulated — board or CI build only | Sendspin and Improv under QEMU |
-
-5.1 and 7.1.4 streams **decode** on the bare-metal probe but do not fit the Sendspin player's
-memory budget once Wi-Fi and the ring buffer are resident; the firmware refuses layouts wider than
-stereo for network playback.
+`sdkconfig.c6` and `sdkconfig.sendspin-c6` record why each setting has the value it has, from
+measurements on a board: the ring size, the DMA queue and WiFi's code kept in flash. The example's
+[README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)
+covers running it on a C6.
 
 ## Related pages
 
-- [Hearth index](index.md) — desktop app and network output
-- [ESP32-C6 platform](../platforms/bare-metal/esp32-c6.md) — decode timing and memory tables
+- [ESP32-C6 platform](../platforms/bare-metal/esp32-c6.md) — decode timing and memory, with and
+  without WiFi
 - [ESP-IDF component README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/README.md)

@@ -170,6 +170,15 @@ class SpeedAndMemoryBadgeTest(unittest.TestCase):
         self.assertEqual((b["message"], b["color"]), ("16x real time", badges.GREEN))
         self.assertEqual(badges.speed_badge([{"ms_per_frame": 0}])["message"], badges.NO_DATA)
 
+    def test_speed_ranks_workloads_against_their_own_budget(self):
+        """An AC-4 frame is 2 048 samples, 42.67 ms: at 4 ms/frame it has more
+        headroom (10.7x) than an AC-3 row at 3.2 ms against 32 ms (10x), so the
+        AC-3 row is the slowest even though its ms/frame is lower."""
+        b = badges.speed_badge([
+            {"ms_per_frame": 3.2, "real_time_budget_ms_per_frame": 32.0},
+            {"ms_per_frame": 4.0, "real_time_budget_ms_per_frame": 2048 / 48.0}])
+        self.assertEqual(b["message"], "10x real time")
+
     def test_memory_colour_follows_retention_not_churn(self):
         b = badges.memory_badge([{"bytes_per_frame": 10240.0, "steady_live_growth": 0},
                                  {"bytes_per_frame": 2048.0, "steady_live_growth": None}])

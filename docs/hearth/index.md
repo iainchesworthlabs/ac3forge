@@ -54,8 +54,7 @@ Pi 4B without an underrun. See [Raspberry Pi passthrough](../platforms/raspberry
 ## Where to go next
 
 - [An ESP32-S3 sink](sink-esp32-s3.md) — build, flash, configure, and pair a board.
-- [An ESP32-S3 sink](sink-esp32-s3.md) — build, flash and play on the primary sink board
-- [An ESP32-C6 sink](sink-esp32-c6.md) — stereo Sendspin player on the C6
+- [An ESP32-C6 sink](sink-esp32-c6.md) — the stereo player on a part with no PSRAM.
 - [Sink firmware](sink-firmware.md) — install a published image, update over the network, and go
   back; or [install from the browser](sink-installer.md).
 - [ESP32-S3](../platforms/bare-metal/esp32-s3.md) — decoder timing and memory measurements.

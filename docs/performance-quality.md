@@ -4,11 +4,9 @@ CI records performance, quality, and memory measurements after merges. This page
 shows the latest values from `main`, explains each measure, and links to the
 append-only histories.
 
-The series cover AC-3, E-AC-3, the Atmos object layer, and **AC-4** (stereo and 5.1 encode and
-decode workloads in `ac3perf`, `ac3bench`, `ac3membench` and `ac4core` kernels in
-`ac3kernelbench`). AC-4 decode quality is trended separately on the `quality-history` branch
-(`ac4-quality-main.jsonl`, from `score_ac4_decode.py --json-out`); encode quality still uses
-pinned floors only. [Validation](verification.md#ac-4) describes the gates.
+The speed and memory series cover AC-3, E-AC-3, the Atmos object layer and AC-4. AC-4's decode
+quality has a series of its own on [Quality trend](quality-trend.md#ac-4-decode-quality); the
+quality and tool-comparison cards below are AC-3 and E-AC-3 only.
 
 New to codec benchmarks: start with
 [How to read these numbers](#how-to-read-these-numbers).
@@ -265,15 +263,18 @@ ceiling) fails the build rather than merely being recorded.
     // falling below real time behind eight that did not.
     const timed = rows.filter((r) => typeof r.ms_per_frame === "number" && r.ms_per_frame > 0);
     if (timed.length === 0) return card("Encode speed", "&mdash;", "", "No measurement recorded.", NONE);
-    const worst = timed.reduce((a, b) => (a.ms_per_frame > b.ms_per_frame ? a : b));
+    // Ranked against each workload's own budget, not by raw ms/frame: an
+    // AC-4 frame is 2 048 samples against A/52's 1 536.
+    const timesOf = (r) => (r.real_time_budget_ms_per_frame || 32) / r.ms_per_frame;
+    const worst = timed.reduce((a, b) => (timesOf(a) < timesOf(b) ? a : b));
     const budget = worst.real_time_budget_ms_per_frame || 32;
-    const times = budget / worst.ms_per_frame;
+    const times = timesOf(worst);
     // 1x is the line that means something - below it the codec cannot keep up
     // with playback. Anything above is headroom, and how much headroom is
     // "enough" is a judgement no threshold here should be making.
     return card("Encode speed", times.toFixed(0) + "&times;", "real time",
       `Slowest of ${timed.length} workloads (<code>${worst.config}</code>) at ` +
-      `${worst.ms_per_frame.toFixed(3)} ms/frame against a ${budget} ms frame. ` +
+      `${worst.ms_per_frame.toFixed(3)} ms/frame against a ${+budget.toFixed(2)} ms frame. ` +
       `Real time is 1&times;.`,
       times >= 1 ? OK : WATCH);
   }

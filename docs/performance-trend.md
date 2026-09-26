@@ -41,19 +41,19 @@ pass/fail gate cannot see.
 
 ## What is measured, and on what
 
-Both timing producers and the gate cover thirteen whole-frame workloads: the nine AC-3 and
-E-AC-3 workloads below, plus four AC-4 workloads (`ac4_stereo_encode`, `ac4_51_encode`,
-`ac4_stereo_decode`, `ac4_51_decode`). The AC-3/E-AC-3 encoders are `plain_51` and
-`plain_51_fast_mdct`, `eac3_51_auto` and `eac3_stereo_auto`, `atmos_4obj` and
-`atmos_4obj_fast_mdct`; their decoders are `ac3_51_decode`, `eac3_51_decode` and
-`atmos_4obj_decode`. The decode series are timed against streams the encode series in the
-same run just produced: a decode number only means something against a stream whose rate and
-tool set are known.
+The AC-3, E-AC-3 and Atmos encoders are `plain_51` and `plain_51_fast_mdct`,
+`eac3_51_auto` and `eac3_stereo_auto`, and `atmos_4obj`, `atmos_4obj_fast_mdct` and
+`atmos_4obj_qmf_fast_mdct`; their decoders are `ac3_51_decode`, `eac3_51_decode` and
+`atmos_4obj_decode`. AC-4 adds `ac4_stereo_encode` and `ac4_51_encode`, and
+`ac4_stereo_decode` and `ac4_51_decode`, which read those encoders' streams. The decode series
+are timed against streams encoded in the same run: a decode number only means something against
+a stream whose rate and tool set are known.
 
-AC-4 uses the same real-audio fixture at `frame_rate_index` 13 (2048 samples per frame, 48 kHz).
-Per-kernel tables add `ac4_mdct512_forward`, `ac4_imdct512_inverse`, `ac4_fft512_forward` and
-`ac4_qmf_analysis64`. AC-4 decode quality is trended on [Quality trend](quality-trend.md#ac-4-decode-quality);
-encode quality still uses pinned floors — see [Validation](verification.md#ac-4).
+An AC-4 frame is longer than an AC-3 one. At `frame_rate_index` 13 it is 2 048 samples, 42.67 ms
+at 48 kHz, against A/52's 1 536 samples and 32 ms, so each result carries its own real-time
+budget and the AC-4 rows are held to theirs. The per-kernel tables add AC-4's shared transforms:
+`ac4_mdct512_forward`, `ac4_imdct512_inverse`, `ac4_fft512_forward` and `ac4_qmf_analysis64`.
+AC-4 decode quality has its own series on [Quality trend](quality-trend.md#ac-4-decode-quality).
 
 Every workload is fed real programme material (`tests/golden/audio/reference_51.wav`,
 through `tests/performance/real_audio.hpp`), not the 440 Hz tone `ac3bench` and

@@ -138,7 +138,10 @@ def load_leg_results(results_dir: Path):
                 # one records empty strings.
                 "cpu_model": environment.get("cpu_model", ""),
                 "runner_image": environment.get("runner_image", ""),
-                "real_time_budget_ms_per_frame": budget,
+                # Per result where ac3bench wrote one: AC-4's frame is 2 048
+                # samples against A/52's 1 536, so one file-level budget cannot
+                # describe both codecs' rows.
+                "real_time_budget_ms_per_frame": best.get("real_time_budget_ms_per_frame", budget),
             }
 
 
