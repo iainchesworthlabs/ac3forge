@@ -1249,9 +1249,14 @@ def main():
             print(f"{name:<32} lag {lag:5d}  {'  '.join(cells)}{where}  LSD {lsd:.2f} dB"
                   f"{tile_text}  MOS {mos_text}", flush=True)
             pins.append(pin_text(name, snrs, float(lsd), tile_mean, mos))
+            # The LFE is left out of the trend's minimum: its SNR against the full-band
+            # source sits at about -2.3 dB on every 5.1 stream (its own pin holds it), so
+            # a minimum over it would be that constant and hide every other channel.
+            lfe_channel = LFE_CHANNEL.get(reference.shape[1])
+            full_band = [s for c, s in enumerate(snrs) if c != lfe_channel]
             json_legs.append({
                 "leg": name,
-                "min_snr_db": float(min(snrs)) if snrs else None,
+                "min_snr_db": float(min(full_band)) if full_band else None,
                 "lsd_db": float(lsd),
                 "mos_lqo": None if mos is None else float(mos),
             })

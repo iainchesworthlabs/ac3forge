@@ -947,9 +947,13 @@ series yet.
 })();
 </script>
 
-Each row is one DEE stream on one commit. **Minimum SNR** is that stream's lowest per-channel
-SNR against its source, **LSD** its log-spectral distance, and **MOS-LQO** ViSQOL's predicted
-listening score, all from the same scoring pass. The chart plots the worst stream for each commit
+Each row is one DEE stream on one commit: the streams scored channel by channel against their
+source. The A-CPL streams, scored through their downmixes, and the immersive streams, scored
+with their routing, are held to their floors in CI but have no series. **Minimum SNR** is the
+stream's lowest full-band channel SNR against its source; the LFE is left out, since its SNR
+against the full-band source is about −2.3 dB on every 5.1 stream and its own floor holds it.
+**LSD** is the log-spectral distance and **MOS-LQO** ViSQOL's predicted listening score, all
+from the same scoring pass. The chart plots the worst stream for each commit
 on the chosen measure. A row is flagged when its SNR falls, or its LSD rises, 0.5 dB past that
 stream's own trailing ten-run mean. A hard regression (3 dB of SNR, or 2 dB of LSD) fails the
 `Publish quality trend` job after the numbers are pushed, as the AC-3 series does.
