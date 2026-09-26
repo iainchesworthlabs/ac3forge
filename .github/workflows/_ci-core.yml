@@ -1518,6 +1518,12 @@ jobs:
       - name: AC-4 output level and downmix gains against Part 1's formulas
         run: python3 tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
 
+      # planning/ac4.md, phase E5: the same, and dialogue enhancement's gains,
+      # on streams the encoder writes here with each metadata option those
+      # read, at several frame rates.
+      - name: AC-4 output gains against Part 1's formulas on the encoder's streams
+        run: python3 tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli --encoder
+
       # planning/ac4.md, the encoder's ladder, item 4: the encoder's own streams
       # of the programme fixtures and synthetic signals, decoded by this
       # project's decoder, against SNR, log-spectral distance and ViSQOL

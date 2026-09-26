@@ -1210,6 +1210,34 @@ The sections below contain the complete change list and fixes.
   a splice at an I-frame joins the two streams without the gap a restart from silence left, and a
   frame whose table of contents does not read is taken to be the frame the stream expected, where
   before it made the next frame a change of source. `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 encoder writes every frame rate, average and variable rates, I-frames where asked, and
+  the metadata** (phase E5 of `planning/ac4.md`). At 48 kHz every `frame_rate_index` of Part 1 Table
+  83, the input converted to the frame's internal rate by the decoder's converter the other way
+  round, each frame decoding to the samples Part 2 5.11 locks to `sequence_counter`, exact over
+  100 000 frames at every rate. `RateMode::kAverage` lets frames lend each other bytes within the
+  decoder's input buffer (Part 1 6.2.4), which `wait_frames` and Part 2's `br_code` signal, and
+  `kVariable` within two seconds' share. I-frames at an interval, at named frames and at every
+  fragment start a caller gives. The presentation substream carries the further loudness values,
+  DRC's decoder modes on the default profile, on curves of their own or repeating another, with
+  transmitted gains computed from a profile under `experimental.drc_gains`, and the stereo
+  downmix's values; the audio substream carries dialogue enhancement from channels marked as
+  dialogue or from a dialogue stem, by the channel-independent method, the Mid of L and R, or
+  cross-channel. MediaInfo reads every value as the encoder wrote it over 42 configurations, and the
+  decoder's output level, downmixes and dialogue enhancement gains equal their formulas on the
+  encoder's streams to 0.01 dB (`gain_ac4_decode.py --encoder`, in CI). At 100 to 120 fps music at
+  128 kbps scores 0.63 to 0.87 dB of log-spectral distance and up to 0.18 of ViSQOL under index 13's,
+  the frames' fixed side information taking more of the rate. `ac3cli ac4-encode` takes
+  `frame-rate=`, `rate-mode=`, `iframe-interval=`, `iframes=`, `fragment=`, `dialnorm=` in quarters of
+  a dB, `loudness=<practice>` (measured with the BS.1770 meter), `drc=` and a profile per mode, the
+  mix levels, `lfemix=` and `dmixmod=` in AC-4's terms, `loro-correction=`, `ltrt-correction=`,
+  `dialogue-channels=`, `dialogue-stem=`, `dialogue-method=` and `dialogue-max-gain=`. Its MP4 files
+  list the I-frames as sync samples and count 29.97, 59.94 and 119.88 fps at 240 000 Hz (Part 2
+  Table E.1), and `ac3cli mp4` now carries AC-4 at those rates too, through `ac4::media_timing()`,
+  `mp4::AudioTrack::timescale` and `MuxOptions::sync_samples`. The encoder-space harness draws all of
+  it, and found I-frames at the least rate a configuration takes that the encoder could not write
+  and threw on: the frame that holds nothing more now sends A-CPL's values, DRC's gains and a
+  stem's dialogue parameters as a stream starts them, and `create()` sizes it with a VARFIX interval,
+  which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
 
 **Browser (WASM)**
 

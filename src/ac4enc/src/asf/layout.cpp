@@ -23,6 +23,17 @@ namespace {
     return breaks;
 }
 
+void add_window(FrameLayout& layout, int length, int group, int half) {
+    layout.window_length.push_back(length);
+    layout.window_group.push_back(group);
+    if (static_cast<int>(layout.group_windows.size()) <= group) {
+        layout.group_windows.push_back(0);
+        layout.group_length.push_back(length);
+        layout.group_half.push_back(half);
+    }
+    ++layout.group_windows[static_cast<std::size_t>(group)];
+}
+
 // Pseudocode 3 and the first half of Pseudocode 4, from the transmitted bits.
 void derive(FrameLayout& layout, int frame_length) {
     layout.window_length.clear();
@@ -30,13 +41,23 @@ void derive(FrameLayout& layout, int frame_length) {
     layout.group_windows.clear();
     layout.group_length.clear();
     layout.group_half.clear();
+    if (layout.single) {
+        const int index = layout.transf_length[0];
+        const int windows = 1 << (whole_frame_index(frame_length) - index);
+        layout.long_frame = windows == 1;
+        layout.different_framing = false;
+        int group = 0;
+        for (int w = 0; w < windows; ++w) {
+            if (w > 0 && layout.grouping_bits[static_cast<std::size_t>(w - 1)] == 0) {
+                ++group;
+            }
+            add_window(layout, block_length(frame_length, index), group, 0);
+        }
+        return;
+    }
     if (layout.long_frame) {
         layout.different_framing = false;
-        layout.window_length.push_back(frame_length);
-        layout.window_group.push_back(0);
-        layout.group_windows.push_back(1);
-        layout.group_length.push_back(frame_length);
-        layout.group_half.push_back(0);
+        add_window(layout, frame_length, 0, 0);
         return;
     }
     layout.different_framing = layout.transf_length[0] != layout.transf_length[1];
@@ -56,21 +77,34 @@ void derive(FrameLayout& layout, int frame_length) {
         }
         const int half = w < windows_0 ? 0 : 1;
         const int length = block_length(frame_length, layout.transf_length[static_cast<std::size_t>(half)]);
-        layout.window_length.push_back(length);
-        layout.window_group.push_back(group);
-        if (static_cast<int>(layout.group_windows.size()) <= group) {
-            layout.group_windows.push_back(0);
-            layout.group_length.push_back(length);
-            layout.group_half.push_back(layout.different_framing ? half : 0);
-        }
-        ++layout.group_windows[static_cast<std::size_t>(group)];
+        add_window(layout, length, group, layout.different_framing ? half : 0);
     }
 }
 
 }  // namespace
 
+int whole_frame_index(int frame_length) noexcept {
+    if (frame_length >= 1536) {
+        return 4;
+    }
+    return frame_length >= 768 ? 3 : 2;
+}
+
 int block_length(int frame_length, int index) noexcept {
-    return frame_length >> (4 - index);
+    if (frame_length >= 1536) {
+        return frame_length >> (4 - index);
+    }
+    return frame_length >> (whole_frame_index(frame_length) - index);
+}
+
+int group_transf_index(const FrameLayout& layout, std::size_t g) noexcept {
+    if (layout.single) {
+        return layout.transf_length[0];
+    }
+    if (layout.long_frame) {
+        return 4;
+    }
+    return layout.transf_length[static_cast<std::size_t>(layout.group_half[g])];
 }
 
 int grouping_bit_count(std::array<int, 2> transf_length) noexcept {
@@ -111,9 +145,18 @@ int max_sfb_bits(int transform_length) noexcept {
     }
 }
 
+int lfe_max_sfb_bits(int frame_length) noexcept {
+    return frame_length >= 1536 ? 3 : 2;
+}
+
 FrameLayout long_layout(int frame_length) {
     FrameLayout layout;
     layout.long_frame = true;
+    if (frame_length < 1536) {
+        const int whole = whole_frame_index(frame_length);
+        layout.single = true;
+        layout.transf_length = {whole, whole};
+    }
     derive(layout, frame_length);
     return layout;
 }
@@ -131,6 +174,19 @@ FrameLayout split_layout(int frame_length, std::array<int, 2> transf_length, std
         for (const bool b : breaks) {
             layout.grouping_bits.push_back(b ? 0 : 1);
         }
+    }
+    derive(layout, frame_length);
+    return layout;
+}
+
+FrameLayout short_layout(int frame_length, int index, int attack) {
+    FrameLayout layout;
+    layout.long_frame = false;
+    layout.single = true;
+    layout.transf_length = {index, index};
+    const int windows = 1 << (whole_frame_index(frame_length) - index);
+    for (const bool b : half_breaks(windows, attack)) {
+        layout.grouping_bits.push_back(b ? 0 : 1);
     }
     derive(layout, frame_length);
     return layout;

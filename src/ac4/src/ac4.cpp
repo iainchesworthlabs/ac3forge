@@ -1928,6 +1928,22 @@ std::optional<std::uint32_t> samples_per_frame(const Toc& toc) {
     }
 }
 
+std::optional<MediaTiming> media_timing(const Toc& toc) {
+    if (const auto samples = samples_per_frame(toc)) {
+        return MediaTiming{.timescale = static_cast<std::uint32_t>(toc.sample_rate_hz),
+                           .sample_delta = *samples};
+    }
+    if (toc.sample_rate_hz != 48000) {
+        return std::nullopt;
+    }
+    switch (toc.frame_rate_index) {
+        case 3: return MediaTiming{.timescale = 240000, .sample_delta = 8008};   // 29,97 fps
+        case 8: return MediaTiming{.timescale = 240000, .sample_delta = 4004};   // 59,94
+        case 11: return MediaTiming{.timescale = 240000, .sample_delta = 2002};  // 119,88
+        default: return std::nullopt;
+    }
+}
+
 std::string rfc6381_codec_string(const Toc& toc) {
     // Annex E.13: two lowercase hex digits per field.
     constexpr std::string_view kHex = "0123456789abcdef";

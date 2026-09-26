@@ -1,5 +1,6 @@
 #include "mp4/mp4.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
@@ -31,8 +32,8 @@ Bytes build_ftyp() {
 
 // §8.6.5/§8.6.6: an edts holding an elst of one edit. Version 0 is enough -
 // mux() refuses a track whose sample count needs more than 32 bits - and the
-// movie's and the media's timescales are both the sample rate here, so the
-// edit's sample counts go in as they are.
+// movie's and the media's timescales are the same here, so the edit's
+// counts go in as they are.
 Bytes build_edts(const MuxOptions::Edit& edit) {
     Bytes elst_body;
     put_u32(elst_body, 1);  // entry_count
@@ -54,10 +55,20 @@ Bytes build_moov(const AudioTrack& track, const MuxOptions& options,
     // the media, as long as its samples.
     const std::uint64_t presented =
         options.edit ? options.edit->duration_samples : total_samples;
+    const std::uint32_t timescale = track.timescale != 0 ? track.timescale : track.sample_rate;
     Bytes stbl_body;
     put_bytes(stbl_body, detail::build_stsd(track));
     put_bytes(stbl_body, detail::build_stts(static_cast<std::uint32_t>(frames.size()),
                                             track.samples_per_frame));
+    if (std::ranges::find(options.sync_samples, false) != options.sync_samples.end()) {
+        std::vector<std::uint32_t> sync;
+        for (std::size_t i = 0; i < options.sync_samples.size(); ++i) {
+            if (options.sync_samples[i]) {
+                sync.push_back(static_cast<std::uint32_t>(i + 1));
+            }
+        }
+        put_bytes(stbl_body, detail::build_stss(sync));
+    }
     put_bytes(stbl_body, detail::build_stsc(static_cast<std::uint32_t>(frames.size())));
     put_bytes(stbl_body, detail::build_stsz(frames));
     put_bytes(stbl_body, detail::build_stco(chunk_offsets));
@@ -72,7 +83,7 @@ Bytes build_moov(const AudioTrack& track, const MuxOptions& options,
     put_box(minf, "minf", minf_body);
 
     Bytes mdia_body;
-    put_bytes(mdia_body, detail::build_mdhd(track.sample_rate, total_samples, track.language));
+    put_bytes(mdia_body, detail::build_mdhd(timescale, total_samples, track.language));
     put_bytes(mdia_body, detail::build_hdlr(options.writing_app));
     put_bytes(mdia_body, minf);
     Bytes mdia;
@@ -88,7 +99,7 @@ Bytes build_moov(const AudioTrack& track, const MuxOptions& options,
     put_box(trak, "trak", trak_body);
 
     Bytes moov_body;
-    put_bytes(moov_body, detail::build_mvhd(track.sample_rate, presented));
+    put_bytes(moov_body, detail::build_mvhd(timescale, presented));
     put_bytes(moov_body, trak);
     Bytes out;
     put_box(out, "moov", moov_body);
@@ -130,6 +141,9 @@ std::expected<std::vector<std::byte>, MuxError> mux(
         static_cast<std::uint64_t>(frames.size()) * track.samples_per_frame;
     if (total_samples > std::numeric_limits<std::uint32_t>::max()) {
         return std::unexpected(MuxError::kFileTooLarge);
+    }
+    if (!options.sync_samples.empty() && options.sync_samples.size() != frames.size()) {
+        return std::unexpected(MuxError::kInvalidOptions);
     }
     if (options.edit) {
         const MuxOptions::Edit& edit = *options.edit;

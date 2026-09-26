@@ -1138,7 +1138,7 @@ cmp -s atmos_4.ec3 remux_atmos.ec3 || {
 }
 run_ffmpeg_check remux_atmos.ec3
 
-# --- AC-4 (planning/ac4.md, phases E1 to E3) ----------------------------------
+# --- AC-4 (planning/ac4.md, phases E1 to E5) ----------------------------------
 # FFmpeg has no AC-4 decoder, so its part here is framing: its raw AC-4 and mov
 # demuxers must find as many frames as ac3cli's own decoder decodes from what
 # ac4-encode wrote. The audio itself is scored by tools/checks/score_ac4_encode.py
@@ -1170,5 +1170,19 @@ for kbps in 192 384; do
 done
 run ac4-encode "$FIXTURES/reference_51.wav" ac4_51_256.mp4 256 dialnorm=auto
 run_ac4_frames_check ac4_51_256.mp4
+# Phase E5: frame rates other than the native one, the average and variable
+# rates, I-frames at an interval, and the metadata options, raw and in MP4,
+# where 29.97 fps counts at 240 000 Hz (TS 103 190-2 Table E.1) and the
+# I-frames are the sync samples.
+run ac4-encode "$FIXTURES/reference_stereo.wav" ac4_stereo_2997.mp4 128 frame-rate=29.97 \
+    rate-mode=average iframe-interval=10 dialnorm=24.25
+run_ac4_frames_check ac4_stereo_2997.mp4
+run ac4-encode "$FIXTURES/reference_stereo.wav" ac4_stereo_120.ac4 192 frame-rate=120 \
+    rate-mode=variable loudness=ebu-r128 drc=film-light dialogue-channels=l,r
+run_ac4_frames_check ac4_stereo_120.ac4 -f ac4
+run ac4-encode "$FIXTURES/reference_51.wav" ac4_51_25.mp4 256 frame-rate=25 lorocmixlev=-1.5 \
+    lorosurmixlev=-4.5 lfemix=-4.5 dmixmod=pl2 loro-correction=-2 dialogue-channels=c \
+    drc=music-standard drc-portable-headphones=speech
+run_ac4_frames_check ac4_51_25.mp4
 
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

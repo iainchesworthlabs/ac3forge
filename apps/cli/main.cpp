@@ -339,19 +339,15 @@ constexpr std::array<Command, 44> kCommands{{
                                 x.str(6, "off"), x.meta, x.str(7));
      }},
     {"ac4-encode", 3, "<in.wav> <out.ac4|out.mp4> [bitrate_kbps]",
-     "mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4 at "
-     "frame_rate_index 13 and a constant bit rate: raw sync frames with CRC, or an MP4 with the "
-     "'ac-4' sample entry when the output is .mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and "
-     "A-CPL) below 22.4 kbps a channel and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below "
-     "33.6; the ASPX codec mode (A-SPX above a crossover, with companding at the lower rates in mono "
-     "and stereo) below 96 kbps a channel, 76.8 in 5.X, and SIMPLE from there; "
-     "codec-mode=simple|aspx|aspx-acpl-1|aspx-acpl-2|aspx-acpl-3 picks one, and "
-     "experimental=aspx-balance,aspx-varvar,aspx-interleave,coding-configs,acpl,"
-     "7x-back|7x-wide|7x-top-front adds tools and layouts no outside reader has checked yet (acpl: "
-     "ASPX_ACPL_1 in 5.X, and A-CPL in stereo). "
-     "dialnorm= sets the dialogue level (auto measures it); the other metadata options are not "
-     "written to AC-4 yet and are refused. syntax-trace=<file> writes what the encoder writes",
-     topic::kStdio | topic::kMeta,
+     "mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4: raw "
+     "sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is "
+     ".mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a channel "
+     "and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode "
+     "(A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 "
+     "kbps a channel, 76.8 in 5.X, and SIMPLE from there. The options below set the codec mode, "
+     "the frame rate, the rate mode, the I-frames, and the loudness, DRC, downmix and dialogue "
+     "enhancement metadata; syntax-trace=<file> writes what the encoder writes",
+     topic::kStdio | topic::kAc4Encode,
      Needs::kNothing,
      [](const Args& x) { return run_ac4_encode(x.str(1), x.str(2), x.u32(3, 192), x.meta); }},
     {"decode", 3, "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out]",

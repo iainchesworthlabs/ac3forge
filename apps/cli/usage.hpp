@@ -71,8 +71,10 @@ inline constexpr std::uint32_t kStreamTools = 1U << 17;
 inline constexpr std::uint32_t kProgramme = 1U << 18;
 // play's sink-following fallback: follow=.
 inline constexpr std::uint32_t kPlay = 1U << 19;
+// ac4-encode's frame rate, rate mode, I-frame and metadata options.
+inline constexpr std::uint32_t kAc4Encode = 1U << 20;
 
-inline constexpr std::uint32_t kAll = 0xFFFFFU;
+inline constexpr std::uint32_t kAll = 0x1FFFFFU;
 
 }  // namespace topic
 

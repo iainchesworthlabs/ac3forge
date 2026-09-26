@@ -21,15 +21,6 @@ constexpr int kMaxDelta = 60;            // Table A.1's deltas run -60 to 60
 // each interval.
 constexpr double kRounding = 0.4054;
 
-// The transform length index of a group, as get_transf_length() (Pseudocode 2)
-// gives it: 4 for a long frame.
-[[nodiscard]] int group_index(const FrameLayout& layout, std::size_t g) {
-    if (layout.long_frame) {
-        return 4;
-    }
-    return layout.transf_length[static_cast<std::size_t>(layout.group_half[g])];
-}
-
 // Table 39: section lengths in 3-bit or 5-bit increments.
 [[nodiscard]] int section_bits_width(int index) noexcept {
     return index <= 2 ? 3 : 5;
@@ -262,7 +253,7 @@ CodedTrack code_track(const Grouped& grouped, const std::vector<std::vector<int>
     // counting each section's header.
     for (std::size_t g = 0; g < groups; ++g) {
         const int bands = grouped.max_sfb[g];
-        const int width = section_bits_width(group_index(layout, g));
+        const int width = section_bits_width(group_transf_index(layout, g));
         std::vector<std::array<std::size_t, kCodebooks>> cost(static_cast<std::size_t>(bands));
         constexpr std::size_t kNever = std::numeric_limits<std::size_t>::max() / 4;
         for (int b = 0; b < bands; ++b) {
@@ -352,16 +343,18 @@ namespace {
 
 void write_sf_info(BitWriter& w, const FrameLayout& layout, std::array<int, 2> max_sfb,
                    const std::array<int, 2>* max_sfb_side) {
-    // Table 37, at frame_len_base 1 536 and above.
-    w.write(1, layout.long_frame ? 1U : 0U, "b_long_frame");
-    int length0 = 0;
-    if (layout.long_frame) {
-        length0 = layout.window_length.front();
-    } else {
+    // Table 37: from frame_len_base 1 536, b_long_frame and a transform length
+    // per half; below it, one for the frame.
+    if (layout.single) {
         w.write(2, static_cast<std::uint64_t>(layout.transf_length[0]), "transf_length");
-        w.write(2, static_cast<std::uint64_t>(layout.transf_length[1]), "transf_length");
-        length0 = layout.window_length.front();
+    } else {
+        w.write(1, layout.long_frame ? 1U : 0U, "b_long_frame");
+        if (!layout.long_frame) {
+            w.write(2, static_cast<std::uint64_t>(layout.transf_length[0]), "transf_length");
+            w.write(2, static_cast<std::uint64_t>(layout.transf_length[1]), "transf_length");
+        }
     }
+    const int length0 = layout.window_length.front();
     // Table 38, without b_side_limited.
     const auto bits0 = static_cast<unsigned>(max_sfb_bits(length0));
     w.write(bits0, static_cast<std::uint64_t>(max_sfb[0]), "max_sfb");
@@ -395,7 +388,7 @@ void write_sf_data(BitWriter& w, const CodedTrack& track, const FrameLayout& lay
     const std::size_t groups = track.sections.size();
     // Table 39.
     for (std::size_t g = 0; g < groups; ++g) {
-        const int width = section_bits_width(group_index(layout, g));
+        const int width = section_bits_width(group_transf_index(layout, g));
         const int escape = (1 << width) - 1;
         for (const Section& section : track.sections[g]) {
             w.write(4, static_cast<std::uint64_t>(section.cb), "sect_cb");

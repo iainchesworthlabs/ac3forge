@@ -2108,6 +2108,33 @@ TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",
     CHECK_FALSE(ac4::samples_per_frame(toc).has_value());
 }
 
+TEST_CASE("media_timing follows Part 2 Table E.1, at 240 000 Hz where frames alternate",
+          "[ac4][carriage]") {
+    ac4::Toc toc;
+    toc.sample_rate_hz = 48000;
+    constexpr std::array<std::uint32_t, 14> kDelta = {2002, 2000, 1920, 8008, 1600, 1001, 1000,
+                                                      960,  4004, 800,  480,  2002, 400,  2048};
+    for (int index = 0; index < static_cast<int>(kDelta.size()); ++index) {
+        toc.frame_rate_index = index;
+        CAPTURE(index);
+        const auto timing = ac4::media_timing(toc);
+        REQUIRE(timing.has_value());
+        const bool alternates = index == 3 || index == 8 || index == 11;
+        CHECK(timing->timescale == (alternates ? 240000U : 48000U));
+        CHECK(timing->sample_delta == kDelta[static_cast<std::size_t>(index)]);
+    }
+    toc.frame_rate_index = 14;
+    CHECK_FALSE(ac4::media_timing(toc).has_value());
+    toc.sample_rate_hz = 44100;
+    toc.frame_rate_index = 13;
+    const auto timing = ac4::media_timing(toc);
+    REQUIRE(timing.has_value());
+    CHECK(timing->timescale == 44100U);
+    CHECK(timing->sample_delta == 2048U);
+    toc.frame_rate_index = 3;
+    CHECK_FALSE(ac4::media_timing(toc).has_value());
+}
+
 TEST_CASE("rfc6381_codec_string renders Annex E.13's dotted hex fields", "[ac4][carriage]") {
     const auto data = read_file(fixture_path());
     const auto scanned = ac4::scan(data);

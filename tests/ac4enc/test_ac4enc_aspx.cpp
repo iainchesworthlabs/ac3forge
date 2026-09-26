@@ -397,6 +397,35 @@ TEST_CASE("the encoder's interval borders, resolutions and noise borders are the
     }
 }
 
+TEST_CASE("the A-SPX data a frame falls back to cost more where its interval starts a slot in",
+          "[ac4enc][aspx]") {
+    // AspxChannelEncoder::fallback() takes one envelope from where the last
+    // interval stopped: FIXFIX from the frame's start, VARFIX from a slot
+    // in, as after a FIXVAR interval run on to an attack's parity, which in
+    // an I-frame sends the border too. create() sizes the frame that holds
+    // nothing more with both: at the lowest rates the second costs 2 bits a
+    // channel more, and in stereo at 8 kbps that is past its 42-byte frame.
+    const std::optional<ac4::detail::AspxSetup> setup = ac4::detail::aspx_setup_for(8.0, 48000);
+    REQUIRE(setup.has_value());
+    const ac4::detail::AspxChannelEncoder encoder(*setup);
+    const AspxChannelFields fixed = encoder.fallback(true, true);
+    const AspxChannelFields varied = encoder.fallback(true, true, 1);
+    CHECK(fixed.framing.int_class == AspxIntervalClass::kFixFix);
+    CHECK(varied.framing.int_class == AspxIntervalClass::kVarFix);
+    CHECK(varied.framing.var_bord_left == 1);
+    const auto bits = [&](const AspxChannelFields& f, int channels) {
+        BitWriter w;
+        if (channels == 1) {
+            ac4::detail::write_aspx_data_1ch(w, true, 0, setup->config, setup->counts, f);
+        } else {
+            ac4::detail::write_aspx_data_2ch(w, true, 0, setup->config, setup->counts, false,
+                                             {f, f});
+        }
+        return w.bit_position();
+    };
+    CHECK(bits(varied, 1) > bits(fixed, 1));
+    CHECK(bits(varied, 2) > bits(fixed, 2));
+}
 TEST_CASE("companding_control() in its three forms reads back through the channel element", "[ac4enc][aspx]") {
     const std::optional<ac4::detail::AspxSetup> setup = ac4::detail::aspx_setup_for(32.0, 48000);
     REQUIRE(setup.has_value());

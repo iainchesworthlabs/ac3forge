@@ -17,22 +17,21 @@ using acpl::kSubbands;
 constexpr double kRoot2 = std::numbers::sqrt2;
 constexpr double kHalfRoot2 = std::numbers::sqrt2 / 2.0;
 
-// Frame f's parameters apply to the A-CPL slots 32 (f + 1) - 6 + ts, ts = 0 to
-// 31 (the header), and smooth interpolation reaches them at the last of those
-// (Pseudocode 109). The estimate reads the 48 slots centred there, kWindowFrom
-// to kWindowTo, through a Hann window, the last of them as far ahead as the
-// input the encoder holds reaches. Measured on G0's music and film at 96 and
-// 128 kbps against DEE's streams (tools/checks/score_ac4_encode.py --gold):
-// the frame's own 32 slots, unwindowed, left the per-band level difference
-// 0.3 dB further from the source's than 32 slots centred on the frame's end
-// did; those, 0.07 to 0.14 dB further than these 48 and the subbands' own
-// bins below, with the correlation's distance within 0.005 of it.
-constexpr long long kSlotsPerFrame = 32;
-constexpr long long kHfgenSlots = 6;
-constexpr long long kWindowFrom = 8;
-constexpr long long kWindowTo = 56;
+// Frame f's parameters apply to the A-CPL slots from first_slot(f) = S (f +
+// d_ctrl) - ts_offset_hfgen, S = num_qmf_timeslots, for S slots (the header;
+// at frame_rate_index 13 32 (f + 1) - 6 + ts, ts = 0 to 31), and smooth
+// interpolation reaches them at the last of those (Pseudocode 109). The
+// estimate reads the 48 slots centred there, from S - 24 to S + 24 past
+// first_slot(f), through a Hann window. At index 13 the last of them is as
+// far ahead as the input the encoder holds reaches. Measured on G0's music
+// and film at 96 and 128 kbps against DEE's streams
+// (tools/checks/score_ac4_encode.py --gold): the frame's own 32 slots,
+// unwindowed, left the per-band level difference 0.3 dB further from the
+// source's than 32 slots centred on the frame's end did; those, 0.07 to 0.14
+// dB further than these 48 and the subbands' own bins below, with the
+// correlation's distance within 0.005 of it.
 constexpr int kWindowSlots = kAcplWindowSlots;
-static_assert(kWindowTo - kWindowFrom == kWindowSlots);
+constexpr long long kWindowHalf = kWindowSlots / 2;
 
 // The estimate works on each subband's own band. A QMF subband holds what
 // lies within half a subband of its centre, and a strong component of the
@@ -223,8 +222,10 @@ using DftWeights = std::array<std::array<std::complex<double>, kWindowSlots>, kW
 
 }  // namespace
 
-AcplEncoder::AcplEncoder(AcplLayout layout, int num_param_bands_id, int quant_mode, int qmf_band)
+AcplEncoder::AcplEncoder(AcplLayout layout, int num_param_bands_id, int quant_mode, int qmf_band,
+                         const FrameTiming& timing)
     : layout_(layout),
+      timing_(timing),
       num_param_bands_id_(num_param_bands_id),
       num_bands_(acpl_num_param_bands(num_param_bands_id)),
       quant_mode_(quant_mode),
@@ -251,8 +252,13 @@ void AcplEncoder::push_slot(std::span<const std::array<double, dsp::kQmfSubbands
     }
 }
 
-long long AcplEncoder::slots_needed(long long frame) noexcept {
-    return kSlotsPerFrame * (frame + 1) - kHfgenSlots + kWindowTo;
+long long AcplEncoder::first_slot(long long frame) const noexcept {
+    return static_cast<long long>(timing_.qmf_slots) * (frame + timing_.control_delay) -
+           timing_.hfgen_slots;
+}
+
+long long AcplEncoder::slots_needed(long long frame) const noexcept {
+    return first_slot(frame) + timing_.qmf_slots + kWindowHalf;
 }
 
 const AcplEncoder::Slot& AcplEncoder::slot(std::size_t channel, long long index) const {
@@ -261,13 +267,14 @@ const AcplEncoder::Slot& AcplEncoder::slot(std::size_t channel, long long index)
 
 std::vector<AcplEncoder::Spectrum> AcplEncoder::spectra(long long first) const {
     const DftWeights& weights = dft_weights();
+    const long long from = first + timing_.qmf_slots - kWindowHalf;
     std::vector<Spectrum> out(analyses_.size());
     for (std::size_t c = 0; c < out.size(); ++c) {
         for (std::size_t sb = 0; sb < kSubbands; ++sb) {
             for (std::size_t k = 0; k < at(kWindowSlots); ++k) {
                 std::complex<double> sum{};
                 for (std::size_t t = 0; t < at(kWindowSlots); ++t) {
-                    sum += weights[k][t] * slot(c, first + kWindowFrom + static_cast<long long>(t))[sb];
+                    sum += weights[k][t] * slot(c, from + static_cast<long long>(t))[sb];
                 }
                 out[c][sb][k] = sum;
             }
@@ -293,7 +300,7 @@ AcplParamFields AcplEncoder::code(AcplKind kind, const Values& q, const Values& 
 
 AcplFrameFields AcplEncoder::propose(long long frame, bool iframe) const {
     const acpl::Quant quant = quant_of(quant_mode_);
-    const long long first = kSlotsPerFrame * (frame + 1) - kHfgenSlots;
+    const long long first = first_slot(frame);
     const auto band_of = [&](int sb) { return at(acpl::sb_to_pb(num_bands_, sb)); };
     AcplFrameFields out;
 
@@ -461,12 +468,23 @@ AcplFrameFields AcplEncoder::propose(long long frame, bool iframe) const {
 }
 
 AcplFrameFields AcplEncoder::held(bool iframe) const {
+    return sent_as(module_history_, coupling_history_, iframe);
+}
+
+AcplFrameFields AcplEncoder::least(bool iframe) const {
+    return iframe ? sent_as({}, {}, true) : held(false);
+}
+
+AcplFrameFields AcplEncoder::sent_as(const std::array<std::array<Values, 2>, 2>& modules,
+                                     const std::array<Values, 11>& coupling, bool iframe) const {
     AcplFrameFields out;
     if (layout_ != AcplLayout::kCoupling) {
         const std::size_t count = layout_ == AcplLayout::kPair ? 1 : 2;
         for (std::size_t m = 0; m < count; ++m) {
-            out.modules[m].alpha1 = code(AcplKind::kAlpha, module_history_[m][0], module_history_[m][0], iframe);
-            out.modules[m].beta1 = code(AcplKind::kBeta, module_history_[m][1], module_history_[m][1], iframe);
+            out.modules[m].alpha1 =
+                code(AcplKind::kAlpha, modules[m][0], module_history_[m][0], iframe);
+            out.modules[m].beta1 =
+                code(AcplKind::kBeta, modules[m][1], module_history_[m][1], iframe);
         }
         return out;
     }
@@ -478,7 +496,7 @@ AcplFrameFields AcplEncoder::held(bool iframe) const {
                                                &data.beta3,    &data.gamma[0], &data.gamma[1], &data.gamma[2],
                                                &data.gamma[3], &data.gamma[4], &data.gamma[5]};
     for (std::size_t p = 0; p < fields.size(); ++p) {
-        *fields[p] = code(kinds[p], coupling_history_[p], coupling_history_[p], iframe);
+        *fields[p] = code(kinds[p], coupling[p], coupling_history_[p], iframe);
     }
     return out;
 }
@@ -503,7 +521,7 @@ void AcplEncoder::commit(const AcplFrameFields& sent) {
 }
 
 void AcplEncoder::drop_before_frame(long long frame) {
-    const long long keep = kSlotsPerFrame * (frame + 1) - kHfgenSlots + kWindowFrom;
+    const long long keep = first_slot(frame) + timing_.qmf_slots - kWindowHalf;
     while (first_slot_ < keep && !slots_.empty()) {
         slots_.pop_front();
         ++first_slot_;

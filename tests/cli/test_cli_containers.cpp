@@ -8,10 +8,13 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <iterator>
 #include <numbers>
 #include <span>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 #include "platform/process.hpp"
@@ -594,7 +597,8 @@ TEST_CASE("ac4-encode writes raw AC-4 and AC-4 in MP4 that decode reads back", "
     const auto raw_out = dir / "ac4_encoded.ac4";
     REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(raw_out) + " 192", log) == 0);
     CHECK(read_log(log).find("raw with CRC") != std::string::npos);
-    const auto scanned = ac4::scan(read_file(raw_out));
+    const auto raw_bytes = read_file(raw_out);
+    const auto scanned = ac4::scan(raw_bytes);
     REQUIRE_FALSE(scanned.frames.empty());
     CHECK_FALSE(scanned.stopped_at.has_value());
     for (const ac4::SyncFrame& frame : scanned.frames) {
@@ -804,14 +808,308 @@ TEST_CASE("ac4-encode refuses what it does not write yet, naming it", "[cli][ac4
     const std::vector<std::vector<float>> stereo(2, std::vector<float>(4800, 0.0F));
     const auto wav_stereo = dir / "ac4_stereo_short.wav";
     REQUIRE(ac3::io::write_wav_f32(wav_stereo.string(), stereo, 48000).has_value());
-    CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " drc=film-light", log) == 1);
-    CHECK(read_log(log).find("drc=") != std::string::npos);
+    // AC-3's and E-AC-3's own metadata, which AC-4 has nowhere to put.
+    CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " heavy", log) == 1);
+    CHECK(read_log(log).find("no AC-4 counterpart") != std::string::npos);
+    // Gains with no profile to compute them from.
+    CHECK(run_cli(
+              "ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " experimental=drc-gains-1",
+              log) == 1);
+    CHECK(read_log(log).find("name one with drc=") != std::string::npos);
+    // The downmix values describe a downmix stereo does not have, and the
+    // LFE's gain an LFE 5.0 does not have.
+    CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " lorocmixlev=-3",
+                  log) == 1);
+    CHECK(read_log(log).find("5.0, 5.1, 7.0 and 7.1") != std::string::npos);
+    const std::vector<std::vector<float>> five(5, std::vector<float>(4800, 0.0F));
+    const auto wav_five = dir / "ac4_five_short.wav";
+    REQUIRE(ac3::io::write_wav_f32(wav_five.string(), five, 48000).has_value());
+    CHECK(run_cli("ac4-encode " + quoted(wav_five) + " " + quoted(out) + " lfemix=-4.5", log) == 1);
+    CHECK(read_log(log).find("5.0 has no LFE") != std::string::npos);
+    // 44.1 kHz has the 2 048-sample frame alone.
+    const auto wav_44k = dir / "ac4_stereo_44k.wav";
+    REQUIRE(ac3::io::write_wav_f32(wav_44k.string(), stereo, 44100).has_value());
+    CHECK(run_cli("ac4-encode " + quoted(wav_44k) + " " + quoted(out) + " frame-rate=25", log) ==
+          1);
+    CHECK(read_log(log).find("44.1 kHz") != std::string::npos);
     CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " 5000", log) == 1);  // kExitUsage
     CHECK_FALSE(fs::exists(out));
     // Silence has no loudness for dialnorm=auto to measure.
     CHECK(run_cli("ac4-encode " + quoted(wav_stereo) + " " + quoted(out) + " dialnorm=auto", log) == 5);
     CHECK(read_log(log).find("-70 LKFS") != std::string::npos);
     CHECK_FALSE(fs::exists(out));
+}
+
+namespace {
+
+std::uint32_t be32(std::span<const std::byte> bytes, std::size_t at) {
+    std::uint32_t value = 0;
+    for (std::size_t i = 0; i < 4; ++i) {
+        value = (value << 8) | std::to_integer<std::uint32_t>(bytes[at + i]);
+    }
+    return value;
+}
+
+// The payload of the box down `path` from the top of an MP4 file, each name a
+// box inside the one before it; empty where one is missing.
+std::span<const std::byte> mp4_box(std::span<const std::byte> file,
+                                   std::initializer_list<std::string_view> path) {
+    std::span<const std::byte> level = file;
+    for (const std::string_view type : path) {
+        std::span<const std::byte> found;
+        for (std::size_t at = 0; at + 8 <= level.size();) {
+            const std::uint32_t size = be32(level, at);
+            if (size < 8 || at + size > level.size()) {
+                break;
+            }
+            if (std::string_view(reinterpret_cast<const char*>(level.data() + at + 4), 4) == type) {
+                found = level.subspan(at + 8, size - 8);
+                break;
+            }
+            at += size;
+        }
+        if (found.empty()) {
+            return {};
+        }
+        level = found;
+    }
+    return level;
+}
+
+// syntax-trace='s records of the first frame, name and value, in order.
+std::vector<std::pair<std::string, std::uint64_t>> first_frame_records(const fs::path& trace) {
+    std::ifstream in{trace};
+    std::vector<std::pair<std::string, std::uint64_t>> out;
+    std::string line;
+    while (std::getline(in, line)) {
+        std::vector<std::string> fields;
+        std::size_t from = 0;
+        for (std::size_t tab = line.find('\t'); tab != std::string::npos;
+             tab = line.find('\t', from)) {
+            fields.push_back(line.substr(from, tab - from));
+            from = tab + 1;
+        }
+        fields.push_back(line.substr(from));
+        if (fields.size() != 6 || fields[0] != "0") {
+            continue;
+        }
+        out.emplace_back(fields[5], std::stoull(fields[4]));
+    }
+    return out;
+}
+
+// The status line's dialnorm, as ac4-encode prints dB below full scale.
+std::string fmt_dialnorm(double db_below) {
+    std::string text = std::to_string(db_below);
+    text.erase(text.find_last_not_of('0') + 1);
+    if (text.back() == '.') {
+        text.pop_back();
+    }
+    return "dialnorm -" + text + " dB";
+}
+
+std::vector<std::uint64_t> values_of(
+    const std::vector<std::pair<std::string, std::uint64_t>>& records, std::string_view name) {
+    std::vector<std::uint64_t> out;
+    for (const auto& [record, value] : records) {
+        if (record == name) {
+            out.push_back(value);
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("ac4-encode codes the frame rate and I-frames asked for and its MP4 lists the I-frames",
+          "[cli][mp4][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_encode_rates.log";
+    constexpr std::size_t kLength = 96000;
+    std::vector<std::vector<float>> channels(2, std::vector<float>(kLength));
+    for (std::size_t i = 0; i < kLength; ++i) {
+        const double t = static_cast<double>(i) / 48000.0;
+        channels[0][i] = static_cast<float>(0.1 * std::sin(2.0 * std::numbers::pi * 440.0 * t));
+        channels[1][i] = static_cast<float>(0.1 * std::sin(2.0 * std::numbers::pi * 660.0 * t));
+    }
+    const auto wav_in = dir / "ac4_rates_in.wav";
+    REQUIRE(ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+
+    // 29.97 fps, whose frames decode to 1 601 or 1 602 samples: Part 2
+    // Table E.1 counts the track at 240 000 Hz, 8 008 a frame, and the
+    // I-frames, every tenth and frame 3, are its sync samples.
+    const auto mp4_out = dir / "ac4_rates.mp4";
+    REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(mp4_out) +
+                        " 128 frame-rate=29.97 rate-mode=average iframe-interval=10 iframes=3",
+                    log) == 0);
+    CHECK(read_log(log).find("29.97 fps, average rate") != std::string::npos);
+    const auto file = read_file(mp4_out);
+    const auto mdhd = mp4_box(file, {"moov", "trak", "mdia", "mdhd"});
+    REQUIRE(mdhd.size() >= 16);
+    CHECK(be32(mdhd, 12) == 240000U);
+    const auto stts = mp4_box(file, {"moov", "trak", "mdia", "minf", "stbl", "stts"});
+    REQUIRE(stts.size() >= 16);
+    CHECK(be32(stts, 4) == 1U);
+    CHECK(be32(stts, 12) == 8008U);
+    const std::uint32_t frames = be32(stts, 8);
+    CHECK(frames > 60U);
+    const auto stss = mp4_box(file, {"moov", "trak", "mdia", "minf", "stbl", "stss"});
+    REQUIRE(stss.size() >= 8);
+    std::vector<std::uint32_t> sync;
+    for (std::uint32_t i = 0; i < be32(stss, 4); ++i) {
+        sync.push_back(be32(stss, 8 + 4 * static_cast<std::size_t>(i)));
+    }
+    std::vector<std::uint32_t> expected = {1, 4};
+    for (std::uint32_t f = 10; f < frames; f += 10) {
+        expected.push_back(f + 1);
+    }
+    CHECK(sync == expected);
+    const auto decoded_wav = dir / "ac4_rates_out.wav";
+    REQUIRE(run_cli("decode " + quoted(mp4_out) + " " + quoted(decoded_wav), log) == 0);
+    const auto decoded = ac3::io::read_wav(decoded_wav.string());
+    REQUIRE(decoded.has_value());
+    CHECK(decoded->frame_count() > kLength);
+
+    // The mp4 command puts the same stream, from a raw file, in the same
+    // track.
+    const auto raw_2997 = dir / "ac4_rates_2997.ac4";
+    REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(raw_2997) +
+                        " 128 frame-rate=29.97 rate-mode=average iframe-interval=10 iframes=3",
+                    log) == 0);
+    const auto remuxed = dir / "ac4_rates_remuxed.mp4";
+    REQUIRE(run_cli("mp4 " + quoted(raw_2997) + " " + quoted(remuxed), log) == 0);
+    CHECK(read_log(log).find("8008/240000 s a frame") != std::string::npos);
+    const auto again = read_file(remuxed);
+    const auto again_mdhd = mp4_box(again, {"moov", "trak", "mdia", "mdhd"});
+    REQUIRE(again_mdhd.size() >= 16);
+    CHECK(be32(again_mdhd, 12) == 240000U);
+    const auto again_stss = mp4_box(again, {"moov", "trak", "mdia", "minf", "stbl", "stss"});
+    CHECK(std::ranges::equal(again_stss, stss));
+
+    // A raw stream at 25 fps, every frame an I-frame, at a variable rate:
+    // the frames carry the rate's share between them.
+    const auto raw_out = dir / "ac4_rates.ac4";
+    REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(raw_out) +
+                        " 96 frame-rate=25 rate-mode=variable iframe-interval=1",
+                    log) == 0);
+    CHECK(read_log(log).find("25 fps, variable rate") != std::string::npos);
+    // The scan's frames are views of the bytes, which outlive it.
+    const auto raw_bytes = read_file(raw_out);
+    const auto scanned = ac4::scan(raw_bytes);
+    REQUIRE(scanned.frames.size() > 50U);
+    CHECK_FALSE(scanned.stopped_at.has_value());
+    std::size_t sizes = 0;
+    for (const ac4::SyncFrame& frame : scanned.frames) {
+        const auto parsed = ac4::parse_raw_frame(frame.raw_ac4_frame);
+        REQUIRE(parsed.has_value());
+        CHECK(parsed->toc.frame_rate_index == 2);
+        CHECK(parsed->toc.b_iframe_global);
+        sizes += frame.raw_ac4_frame.size();
+    }
+    // 96 kbps at 25 fps is 480 bytes a frame, on average.
+    const double average = static_cast<double>(sizes) / static_cast<double>(scanned.frames.size());
+    CHECK(average < 480.0 * 1.05);
+}
+
+TEST_CASE("ac4-encode writes the metadata its options set as its syntax trace shows",
+          "[cli][ac4]") {
+    const auto dir = scratch_dir();
+    const auto log = dir / "ac4_encode_metadata.log";
+    // A tone per channel of 5.1 in WAV order, 20 dB under full scale, for
+    // four seconds: the short-term loudness and the loudness range need
+    // three.
+    constexpr std::array<double, 6> kHz = {331.0, 457.0, 613.0, 47.0, 787.0, 953.0};
+    constexpr std::size_t kLength = 192000;
+    std::vector<std::vector<float>> channels(6, std::vector<float>(kLength));
+    for (std::size_t c = 0; c < channels.size(); ++c) {
+        for (std::size_t i = 0; i < kLength; ++i) {
+            channels[c][i] = static_cast<float>(
+                0.1 * std::sin(2.0 * std::numbers::pi * kHz[c] * static_cast<double>(i) / 48000.0));
+        }
+    }
+    const auto wav_in = dir / "ac4_metadata_in.wav";
+    REQUIRE(ac3::io::write_wav_f32(wav_in.string(), channels, 48000).has_value());
+    const auto out = dir / "ac4_metadata.ac4";
+    const auto trace = dir / "ac4_metadata_trace.tsv";
+    REQUIRE(
+        run_cli(
+            "ac4-encode " + quoted(wav_in) + " " + quoted(out) +
+                " 256 loudness=ebu-r128 drc=film-standard drc-portable-speakers=speech "
+                "drc-portable-headphones=speech lorocmixlev=-1.5 ltrtsurmixlev=-4.5 lfemix=-4.5 "
+                "dmixmod=pl2 loro-correction=-2 dialogue-channels=c dialogue-max-gain=6 "
+                "syntax-trace=" +
+                quoted(trace),
+            log) == 0);
+    const auto text = read_log(log);
+    INFO(text);
+    // BS.1770 over five tones near -23 LKFS each, the surrounds 1.5 dB up
+    // and the LFE left out: near -16 LKFS. dialnorm is that to the quarter
+    // dB, and loudrelgat to the tenth.
+    const std::size_t at = text.find("measured ");
+    REQUIRE(at != std::string::npos);
+    const double lkfs = std::stod(text.substr(at + 9));
+    CHECK(lkfs > -17.0);
+    CHECK(lkfs < -15.0);
+    CHECK(text.find(fmt_dialnorm(-std::round(lkfs * 4.0) / 4.0)) != std::string::npos);
+    const auto records = first_frame_records(trace);
+    REQUIRE_FALSE(records.empty());
+    CHECK(values_of(records, "loud_prac_type") == std::vector<std::uint64_t>{2});
+    for (const std::string_view flag :
+         {"b_loudrelgat", "b_max_loudstrm3s", "b_max_truepk", "b_lra", "b_max_loudmntry"}) {
+        CAPTURE(flag);
+        CHECK(values_of(records, flag) == std::vector<std::uint64_t>{1});
+    }
+    // floor(10 x L + 1/2) + 1 024, L printed to two places.
+    const auto loudrelgat = values_of(records, "loudrelgat");
+    REQUIRE(loudrelgat.size() == 1);
+    const double code = std::floor(lkfs * 10.0 + 0.5) + 1024.0;
+    CHECK(std::abs(static_cast<double>(loudrelgat[0]) - code) <= 1.0);
+    // Film standard for the stream; modes 0 and 1 take it, 2 speech's curve
+    // and 3 repeats 2.
+    CHECK(values_of(records, "drc_eac3_profile") == std::vector<std::uint64_t>{1});
+    CHECK(values_of(records, "drc_decoder_mode_id") == std::vector<std::uint64_t>{0, 1, 2, 3});
+    CHECK(values_of(records, "drc_repeat_profile_flag") == std::vector<std::uint64_t>{0, 0, 0, 1});
+    CHECK(values_of(records, "drc_repeat_id") == std::vector<std::uint64_t>{2});
+    CHECK(values_of(records, "drc_default_profile_flag") == std::vector<std::uint64_t>{1, 1, 0});
+    CHECK(values_of(records, "drc_compression_curve_flag") == std::vector<std::uint64_t>{1});
+    // Table 149's -1.5 dB, Table 149a's -4.5 dB, 5.5 - -4.5, Pro Logic II,
+    // and 15 - 2 x -2.
+    CHECK(values_of(records, "loro_centre_mixgain") == std::vector<std::uint64_t>{3});
+    CHECK(values_of(records, "ltrt_surround_mixgain") == std::vector<std::uint64_t>{5});
+    CHECK(values_of(records, "lfe_mixgain") == std::vector<std::uint64_t>{10});
+    CHECK(values_of(records, "preferred_dmx_method") == std::vector<std::uint64_t>{3});
+    CHECK(values_of(records, "loro_dmx_loud_corr") == std::vector<std::uint64_t>{19});
+    // Dialogue enhancement on C, capped at 6 dB.
+    CHECK(values_of(records, "de_channel_config") == std::vector<std::uint64_t>{1});
+    CHECK(values_of(records, "de_max_gain") == std::vector<std::uint64_t>{1});
+
+    // A dialogue stem with the cross-channel method: the stem is the centre
+    // tone, and de_method 1 needs two channels or three.
+    std::vector<std::vector<float>> dialogue(6, std::vector<float>(kLength, 0.0F));
+    dialogue[2] = channels[2];
+    const auto stem = dir / "ac4_metadata_stem.wav";
+    REQUIRE(ac3::io::write_wav_f32(stem.string(), dialogue, 48000).has_value());
+    REQUIRE(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(out) +
+                        " 256 dialnorm=24.5 dialogue-stem=" + quoted(stem) +
+                        " dialogue-method=cross syntax-trace=" + quoted(trace),
+                    log) == 0);
+    CHECK(read_log(log).find("dialnorm -24.5 dB") != std::string::npos);
+    const auto stem_records = first_frame_records(trace);
+    CHECK(values_of(stem_records, "de_method") == std::vector<std::uint64_t>{1});
+    CHECK(values_of(stem_records, "de_channel_config") == std::vector<std::uint64_t>{7});
+    const auto decoded_wav = dir / "ac4_metadata_out.wav";
+    REQUIRE(run_cli("decode " + quoted(out) + " " + quoted(decoded_wav) + " dialogue-enhancement=6",
+                    log) == 0);
+    // A stem of another length is refused.
+    for (auto& channel : dialogue) {
+        channel.resize(kLength - 1);
+    }
+    REQUIRE(ac3::io::write_wav_f32(stem.string(), dialogue, 48000).has_value());
+    CHECK(run_cli("ac4-encode " + quoted(wav_in) + " " + quoted(out) +
+                      " 256 dialogue-stem=" + quoted(stem),
+                  log) == 2);
+    CHECK(read_log(log).find("a dialogue stem has the programme's channels, rate and length") !=
+          std::string::npos);
 }
 
 TEST_CASE("ts refuses AC-4 under the atsc profile with a real reason", "[cli][ts][ac4]") {

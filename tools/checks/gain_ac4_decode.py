@@ -1,4 +1,5 @@
-"""Check the gains of ac3cli's AC-4 output processing on DEE's streams against Part 1's formulas.
+"""Check the gains of ac3cli's AC-4 output processing on DEE's and the encoder's streams against
+Part 1's formulas.
 
 For each leg the decoder turns into PCM, at every frame rate, this decodes the stream as coded and
 again with an output option, and holds the second decode to the first through the formula the option
@@ -18,7 +19,15 @@ phase D6):
            dB under the output: the downmix works in the QMF domain before the synthesis bank, which
            is linear, so the two differ only in the output's rounding.
 
-Both skip the first three frames, where the stream's values have not yet reached the QMF domain,
+  dialogue enhancement
+           on the encoder's streams (--encoder), dialogue-enhancement=3, 6 and 12: each channel
+           the stream marks as carrying dialogue alone, whose parameters are 1 in every band, is
+           the coded output raised by the gain or the stream's cap where that is lower (clause
+           5.7.8, 1 + g p with g = 10^(G / 20) - 1), with the Mid method both of a pair carrying
+           the same tone; the other channels are the coded output. To 0.01 dB, and what the gain
+           leaves is 80 dB under the output.
+
+All skip the first three frames, where the stream's values have not yet reached the QMF domain,
 and stop three frames before the first frame whose values differ from the first frame's: DEE's
 immersive stereo at 24 and 25 fps sends a dialnorm of -24 dBFS in its last frame. DRC's curves and
 dialogue enhancement's gains are held on known input by tests/ac4dec/test_ac4dec_drc.cpp and
@@ -26,15 +35,19 @@ test_ac4dec_de.cpp; this script reads the gains from the stream, as those tests 
 
 The committed legs (tests/golden/external-baseline/) are checked by default. --gold DIR checks
 phase G0's local gold set in DIR (DIR/streams/<leg>/dee.ac4, DIR/gold-manifest.json), which never
-runs in CI.
+runs in CI. --encoder checks streams `ac3cli ac4-encode` writes from tones here, a leg for each
+metadata option the output processing reads (ENCODER_LEGS), at several frame rates (planning/
+ac4.md, phase E5).
 
 Usage:
     python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
     python tools/checks/gain_ac4_decode.py --cli ac3cli.exe --gold D:/ac3bld/ac4-gold
+    python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli --encoder
 """
 
 import argparse
 import json
+import struct
 import subprocess
 import sys
 import tempfile
@@ -60,6 +73,34 @@ DOWNMIX_FIELDS = ("loro_centre_mixgain", "loro_surround_mixgain", "b_ltrt_mixinf
                   "preferred_dmx_method", "loro_dmx_loud_corr", "ltrt_dmx_loud_corr")
 # The coded order of a 5.1 leg's output, and ac3cli's WAV order, which is the same.
 L, R, C, LFE, LS, RS = range(6)
+DE_GAINS = (3.0, 6.0, 12.0)
+DE_TOLERANCE_DB = 0.01
+DE_RESIDUAL_DB = -80.0
+# The encoder's legs: name, channels, rate, ac4-encode's options, and the channels the stream marks
+# as carrying dialogue alone (dialogue-channels=), as output channel indices, or "mid" where the
+# Mid of L and R is raised.
+ENCODER_LEGS = (
+    ("enc-2.0-192-dialnorm31", 2, 192, ("dialnorm=31",), None),
+    ("enc-2.0-128-29.97-dialnorm24.5", 2, 128, ("frame-rate=29.97", "dialnorm=24.5"), None),
+    ("enc-1.0-64-120-dialnorm17.25", 1, 64, ("frame-rate=120", "dialnorm=17.25"), None),
+    ("enc-5.1-384-loro", 6, 384, ("dialnorm=27", "lorocmixlev=-1.5", "lorosurmixlev=-4.5",
+                                  "lfemix=-4.5", "dmixmod=loro", "loro-correction=-2"), None),
+    ("enc-5.1-384-ltrt", 6, 384, ("ltrtcmixlev=-3", "ltrtsurmixlev=-6", "dmixmod=ltrt",
+                                  "ltrt-correction=1.5", "lfemix=+2.5"), None),
+    ("enc-5.1-128-25-pl2", 6, 128, ("frame-rate=25", "dmixmod=pl2", "lorocmixlev=0",
+                                    "lorosurmixlev=off"), None),
+    ("enc-5.0-192-none", 5, 192, ("dmixmod=none", "cmixlev=+3", "surmixlev=0"), None),
+    ("enc-1.0-96-de-c", 1, 96, ("dialogue-channels=c", "dialogue-max-gain=12"), (0,)),
+    ("enc-2.0-192-de-lr", 2, 192, ("dialogue-channels=l,r", "dialogue-max-gain=9"), (0, 1)),
+    ("enc-2.0-192-de-mid", 2, 192, ("dialogue-channels=l,r", "dialogue-method=mid",
+                                    "dialogue-max-gain=6"), "mid"),
+    ("enc-5.1-384-50-de-c", 6, 384, ("frame-rate=50", "dialogue-channels=c",
+                                     "dialogue-max-gain=9"), (C,)),
+)
+# Each channel's tone, under Table 173's last dialogue enhancement band (subband 41, 15.4 kHz) and
+# the LFE's under 140 Hz, 20 dB under full scale, for four seconds.
+TONES_HZ = (440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0)
+ENCODER_SECONDS = 4
 
 
 def db(x):
@@ -137,7 +178,7 @@ def stream_values(trace):
         frame = int(fields[0])
         frames = max(frames, frame + 1)
         name, value = fields[5], int(fields[4])
-        if name != "dialnorm_bits" and name not in DOWNMIX_FIELDS:
+        if name not in ("dialnorm_bits", "de_max_gain") and name not in DOWNMIX_FIELDS:
             continue
         if change is None and first.setdefault(name, value) != value:
             change = frame
@@ -159,6 +200,39 @@ def legs_gold(gold):
     manifest = json.loads((gold / "gold-manifest.json").read_text(encoding="utf-8"))
     return [(name, gold / "streams" / name / "dee.ac4")
             for name, leg in sorted(manifest["legs"].items()) if decodable(leg)]
+
+
+def write_wav_f32(path, samples, rate):
+    """An IEEE float WAV of `samples`, shape (n, channels)."""
+    data = np.asarray(samples, dtype="<f4").tobytes()
+    channels = samples.shape[1]
+    header = b"RIFF" + struct.pack("<I", 36 + len(data)) + b"WAVE"
+    header += b"fmt " + struct.pack("<IHHIIHH", 16, 3, channels, rate, rate * 4 * channels,
+                                    4 * channels, 32)
+    Path(path).write_bytes(header + b"data" + struct.pack("<I", len(data)) + data)
+
+
+def legs_encoder(cli, work):
+    """ENCODER_LEGS encoded from tones by `ac3cli ac4-encode`: (name, stream, dialogue)."""
+    rate = 48000
+    t = np.arange(ENCODER_SECONDS * rate) / rate
+    legs = []
+    for name, channels, kbps, options, dialogue in ENCODER_LEGS:
+        hz = TONES_HZ if channels > 2 else (TONES_HZ[0], TONES_HZ[1])[:channels]
+        if channels == 5:
+            hz = (TONES_HZ[L], TONES_HZ[R], TONES_HZ[C], TONES_HZ[LS], TONES_HZ[RS])
+        if dialogue == "mid":
+            hz = (hz[0], hz[0])
+        wav = work / f"{name}-in.wav"
+        write_wav_f32(wav, np.stack([0.1 * np.sin(2.0 * np.pi * f * t) for f in hz], axis=1), rate)
+        stream = work / f"{name}.ac4"
+        command = [str(cli), "ac4-encode", str(wav), str(stream), str(kbps), *options, "quiet"]
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            raise SystemExit(f"{name}: ac3cli ac4-encode failed ({result.returncode}):\n"
+                             f"{result.stdout}{result.stderr}")
+        legs.append((name, stream, dialogue))
+    return legs
 
 
 def decode(cli, stream, out_wav, *options):
@@ -183,20 +257,26 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cli", required=True, type=Path, help="the ac3cli to decode with")
     parser.add_argument("--gold", type=Path, help="check G0's local gold set in this directory")
+    parser.add_argument("--encoder", action="store_true",
+                        help="check streams ac4-encode writes here (ENCODER_LEGS)")
     parser.add_argument("--work", type=Path, help="scratch directory (default: a temporary one)")
     parser.add_argument("--only", nargs="+", metavar="LEG", help="check only these legs")
     args = parser.parse_args()
 
-    legs = legs_gold(args.gold) if args.gold else legs_committed()
-    if args.only:
-        legs = [leg for leg in legs if leg[0] in args.only]
-    if not legs:
-        raise SystemExit("no leg to check")
     failures = []
     with tempfile.TemporaryDirectory() as temporary:
         work = args.work or Path(temporary)
         work.mkdir(parents=True, exist_ok=True)
-        for name, stream in legs:
+        if args.encoder:
+            legs = legs_encoder(args.cli, work)
+        else:
+            legs = [(name, stream, None)
+                    for name, stream in (legs_gold(args.gold) if args.gold else legs_committed())]
+        if args.only:
+            legs = [leg for leg in legs if leg[0] in args.only]
+        if not legs:
+            raise SystemExit("no leg to check")
+        for name, stream, dialogue in legs:
             trace = work / f"{name}.trace"
             coded = decode(args.cli, stream, work / f"{name}.wav", f"syntax-trace={trace}")
             values, change, frames = stream_values(trace)
@@ -230,7 +310,33 @@ def main():
                     failures.append(f"{name}: output-level={lout:g} leaves {left:.1f} dB beside "
                                     "its gain")
             print(f"{name:<40} dialnorm {dialnorm:6.2f}  level {'  '.join(cells)}", flush=True)
-            if coded.shape[1] != 6:
+            if dialogue is not None:
+                cap = 3.0 * (values.get("de_max_gain", 0) + 1)
+                cells = []
+                for gain in DE_GAINS:
+                    out = decode(args.cli, stream, work / f"{name}-de.wav",
+                                 f"dialogue-enhancement={gain:g}")
+                    worst = 0.0
+                    for c in range(coded.shape[1]):
+                        a, b = coded[skip:end, c], out[skip:end, c]
+                        got_db = db(float(np.sum(a * b) / np.sum(a * a)))
+                        raised = c < 2 if dialogue == "mid" else c in dialogue
+                        expected_db = min(gain, cap) if raised else 0.0
+                        left = residual_db(from_db(got_db) * a, b)
+                        worst = max(worst, abs(got_db - expected_db))
+                        if abs(got_db - expected_db) > DE_TOLERANCE_DB:
+                            failures.append(f"{name}: dialogue-enhancement={gain:g} gives channel "
+                                            f"{c} {got_db:+.3f} dB, expected {expected_db:+.3f}")
+                        if left > DE_RESIDUAL_DB:
+                            failures.append(f"{name}: dialogue-enhancement={gain:g} leaves "
+                                            f"{left:.1f} dB beside channel {c}'s gain")
+                    cells.append(f"{gain:g}: within {worst:.4f} dB")
+                print(f"{'':<40} dialogue enhancement (cap {cap:g} dB) {'  '.join(cells)}",
+                      flush=True)
+            if coded.shape[1] == 5:
+                # 5.0: the matrix's LFE column meets silence.
+                coded = np.insert(coded, LFE, 0.0, axis=1)
+            elif coded.shape[1] != 6:
                 continue
             downmix = values.copy()
             cells = []
