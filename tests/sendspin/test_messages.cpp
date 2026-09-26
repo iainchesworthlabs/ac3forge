@@ -536,9 +536,10 @@ TEST_CASE("messages: the extension role's objects in the messages that carry the
         CHECK(read->player_support.has_value());
     }
     const auto without = m::read_client_hello(
-        Parsed(R"({"type":"client/hello","payload":{"name":"x","supported_roles":["_ac3forge_player@v1"],)"
-               R"("_ac3forge_player@v1_support":{"data_types":["ac4"]},"supported_pair_methods":{},)"
-               R"("unpaired_access":{"enabled":false}}})")
+        Parsed(
+            R"({"type":"client/hello","payload":{"name":"x","supported_roles":["_ac3forge_player@v1"],)"
+            R"("_ac3forge_player@v1_support":{"data_types":["mpegh"]},"supported_pair_methods":{},)"
+            R"("unpaired_access":{"enabled":false}}})")
             .payload(),
         Dialect::kSpecification);
     REQUIRE(without.has_value());

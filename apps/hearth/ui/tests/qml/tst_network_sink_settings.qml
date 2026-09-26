@@ -29,6 +29,7 @@ TestCase {
     Component { id: decoderComponent; NetworkSinkDecoder { width: 1200; height: 900 } }
     Component { id: reportComponent; NetworkSinkReport { width: 1200; height: 900 } }
     Component { id: onlyOnSinkComponent; NetworkSinkOnlyOnSink { width: 1200; height: 900 } }
+    Component { id: firmwareComponent; NetworkSinkFirmware { width: 1200; height: 900 } }
 
     function init() {
         NetworkController.start();
@@ -85,5 +86,61 @@ TestCase {
         const onlyOnSink = createTemporaryObject(onlyOnSinkComponent, testCase.parent);
         verify(onlyOnSink !== null);
         waitForRendering(onlyOnSink);
+
+        const firmware = createTemporaryObject(firmwareComponent, testCase.parent);
+        verify(firmware !== null);
+        waitForRendering(firmware);
+    }
+
+    // The Firmware tab (planning/esp32-ota.md, O5) asks the selected sink's
+    // own web server, and with no sink selected there is none to ask: the
+    // tab says it is asking, offers nothing, and its map stays empty.
+    function findChild(item, name) {
+        if (!item) {
+            return null;
+        }
+        if (item.objectName === name) {
+            return item;
+        }
+        const kids = item.children || [];
+        for (let i = 0; i < kids.length; ++i) {
+            const found = findChild(kids[i], name);
+            if (found) {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    function test_firmwareTabAsksNothingWithNoSinkSelected() {
+        const firmware = createTemporaryObject(firmwareComponent, testCase.parent);
+        verify(firmware !== null);
+        waitForRendering(firmware);
+        wait(150);
+        compare(Object.keys(NetworkController.sinkFirmware).length, 0);
+        const status = findChild(firmware.contentItem, "sinkFirmwareStatus");
+        verify(status !== null);
+        verify(status.visible);
+        for (const name of ["sinkFirmwareUpdate", "sinkFirmwareRollback", "sinkFirmwareRestart"]) {
+            const button = findChild(firmware.contentItem, name);
+            verify(button !== null, name);
+            compare(button.enabled, false, name);
+        }
+    }
+
+    // Each firmware invokable reads the selected sink's client and does
+    // nothing without one; a file that cannot be read is refused, with why.
+    function test_everyFirmwareActionIsASafeNoOpWithNoSinkSelected() {
+        NetworkController.watchSinkFirmware(true);
+        NetworkController.chooseSinkFirmwareFile("file:///no/such/ac3forge_hearth_sink.bin");
+        compare(NetworkController.sinkFirmwareCandidate.name, "ac3forge_hearth_sink.bin");
+        verify(NetworkController.sinkFirmwareCandidate.refusal.length > 0);
+        NetworkController.updateSinkFirmware();
+        compare(Object.keys(NetworkController.sinkFirmwareCandidate).length, 0);
+        NetworkController.rollbackSinkFirmware();
+        NetworkController.restartSink();
+        NetworkController.watchSinkFirmware(false);
+        wait(150);
+        compare(Object.keys(NetworkController.sinkFirmware).length, 0);
     }
 }

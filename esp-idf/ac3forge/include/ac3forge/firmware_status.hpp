@@ -61,6 +61,19 @@ struct FirmwareLastUpdate {
     std::string reason;
 };
 
+// The core dump the last crash left in the `coredump` partition (O4), read
+// once at boot: GET /firmware/coredump sends the dump itself.
+struct FirmwareCoredump {
+    std::size_t bytes = 0;
+    bool intact = false;  // its checksum checks out
+    std::string task;     // the task that crashed
+    std::string pc;       // where, in hex ("0x4200a1b2")
+    std::string reason;   // the panic's own words, when the dump carries them
+    // The ELF SHA-256 of the image that wrote it, as much of it as the dump
+    // keeps (CONFIG_APP_RETRIEVE_LEN_ELF_SHA): the start of a slot's.
+    std::string elf_sha256;
+};
+
 struct FirmwarePartition {
     std::string label;
     unsigned type = 0;
@@ -76,6 +89,7 @@ struct FirmwareStatus {
     std::optional<FirmwareTrial> trial;
     std::optional<FirmwareUpload> upload;
     std::optional<FirmwareLastUpdate> last_update;
+    std::optional<FirmwareCoredump> coredump;
     // Where the board's network comes from: "stored" in NVS, "built-in" to the
     // image alone, "wired" (a network that needs nothing stored), or "none".
     std::string network = "none";
@@ -199,6 +213,17 @@ inline void append_slot(std::string& out, const FirmwareSlot& slot) {
             last.text("reason", status.last_update->reason);
         } else {
             object.null("last_update");
+        }
+        if (status.coredump) {
+            detail::JsonObject dump(object.key("coredump"));
+            dump.number("bytes", status.coredump->bytes);
+            dump.key("intact") += status.coredump->intact ? "true" : "false";
+            dump.text("task", status.coredump->task);
+            dump.text("pc", status.coredump->pc);
+            dump.text("reason", status.coredump->reason);
+            dump.text("elf_sha256", status.coredump->elf_sha256);
+        } else {
+            object.null("coredump");
         }
         object.text("network", status.network);
         object.number("slot_bytes", status.slot_bytes);

@@ -11,4 +11,5 @@
 | Hearth desktop player | **In development**<br>required CI<br>Qt/QML shell builds; Play page implemented, other tabs are placeholders | **In development**<br>required CI<br>Qt/QML shell builds; Play page implemented, other tabs are placeholders | **Unavailable**<br>no package |
 | Live capture and PCM monitor | **Source**<br>build only<br>Core Audio; no audio run | **Source**<br>build only<br>Core Audio; no audio run | **Unavailable** |
 | IEC 61937 output | **Source**<br>build only<br>no receiver run | **Source**<br>build only<br>no receiver run | **Unavailable** |
+| AC-4 IEC 61937 output | **Unavailable**<br>Core Audio has no AC-4 format | **Unavailable**<br>Core Audio has no AC-4 format | **Unavailable** |
 | Per-application capture | **In development**<br>not run<br>disabled by default after a CI hang | **In development**<br>not run<br>creation path unconfirmed | **Unavailable** |

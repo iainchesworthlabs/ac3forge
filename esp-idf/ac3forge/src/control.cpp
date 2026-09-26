@@ -10,6 +10,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -20,6 +21,7 @@
 
 #include "ac3forge/firmware.hpp"
 #include "ac3forge/hardware_info.hpp"
+#include "ac3forge/log.hpp"
 
 // The web UI's two files. CMakeLists.txt embeds them (EMBED_FILES) and they stay
 // in flash. ESP-IDF names each symbol after the file's base name, which is why
@@ -32,6 +34,10 @@ extern const char ac3forge_ui_js_end[] asm("_binary_ac3forge_ui_js_end");
 
 namespace ac3forge {
 namespace {
+
+// The most of the log one GET /log sends: its copy is on the server's heap
+// while it goes, and a client following the log asks again for the rest.
+constexpr std::size_t kLogReplyBytes = 4096;
 
 // The body of a small POST or PUT, as a string. Empty on a read error or an
 // empty body - the two are the same to a handler that needs a location.
@@ -445,7 +451,10 @@ struct Control::Impl {
                          "PUT  /firmware      body: an app image; flash mode, then a restart into it\n"
                          "PUT  /firmware/mode body: flash, or normal (a restart)\n"
                          "PUT  /firmware/rollback  the image before this one boots next\n"
-                         "POST /restart       restart into the image that runs now\n");
+                         "GET  /firmware/coredump  the last crash's core dump, as it lies in flash\n"
+                         "DELETE /firmware/coredump  erase it\n"
+                         "POST /restart       restart into the image that runs now\n"
+                         "GET  /log           recent console output; ?from=N for what came after byte N\n");
     }
 
     static esp_err_t on_status(httpd_req_t* req) {
@@ -859,6 +868,39 @@ struct Control::Impl {
         Firmware* firmware = self(req)->handlers.firmware;
         return firmware != nullptr ? firmware->on_restart(req) : no_firmware(req);
     }
+
+    static esp_err_t on_coredump_get(httpd_req_t* req) {
+        Firmware* firmware = self(req)->handlers.firmware;
+        return firmware != nullptr ? firmware->on_coredump(req) : no_firmware(req);
+    }
+
+    static esp_err_t on_coredump_delete(httpd_req_t* req) {
+        Firmware* firmware = self(req)->handlers.firmware;
+        return firmware != nullptr ? firmware->on_coredump_erase(req) : no_firmware(req);
+    }
+
+    // The console's recent output (log.hpp), from byte `from` of all it has
+    // written: a client following it asks from X-Log-Next each time, and
+    // X-Log-From says where the text starts when the ring had moved on.
+    static esp_err_t on_log(httpd_req_t* req) {
+        std::uint64_t from = 0;
+        std::array<char, 64> query{};
+        std::array<char, 24> value{};
+        if (httpd_req_get_url_query_str(req, query.data(), query.size()) == ESP_OK &&
+            httpd_query_key_value(query.data(), "from", value.data(), value.size()) == ESP_OK) {
+            from = std::strtoull(value.data(), nullptr, 10);
+        }
+        const std::optional<LogRing::Read> read = log_read(from, kLogReplyBytes);
+        if (!read) {
+            return send_text(req, "404 Not Found", "this board keeps no log\n");
+        }
+        const std::string start = std::to_string(read->from);
+        const std::string next = std::to_string(read->next);
+        httpd_resp_set_hdr(req, "X-Log-From", start.c_str());
+        httpd_resp_set_hdr(req, "X-Log-Next", next.c_str());
+        httpd_resp_set_type(req, "text/plain");
+        return httpd_resp_send(req, read->text.data(), static_cast<ssize_t>(read->text.size()));
+    }
 };
 
 Control::~Control() { stop(); }
@@ -903,7 +945,10 @@ bool Control::start(const ControlHandlers& handlers, std::uint16_t port, std::si
         {.uri = "/firmware", .method = HTTP_PUT, .handler = &Impl::on_firmware_put},
         {.uri = "/firmware/mode", .method = HTTP_PUT, .handler = &Impl::on_firmware_mode},
         {.uri = "/firmware/rollback", .method = HTTP_PUT, .handler = &Impl::on_firmware_rollback},
+        {.uri = "/firmware/coredump", .method = HTTP_GET, .handler = &Impl::on_coredump_get},
+        {.uri = "/firmware/coredump", .method = HTTP_DELETE, .handler = &Impl::on_coredump_delete},
         {.uri = "/restart", .method = HTTP_POST, .handler = &Impl::on_restart},
+        {.uri = "/log", .method = HTTP_GET, .handler = &Impl::on_log},
     };
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();

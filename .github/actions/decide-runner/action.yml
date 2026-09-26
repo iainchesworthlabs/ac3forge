@@ -88,11 +88,12 @@ runs:
         # "self-hosted" and $OS_LABEL, summed across repo-level and (if
         # ORG_TOKEN is set) org-level lists. Never fails this step: a
         # missing/errored API response just counts as zero, so this check
-        # being unavailable is never a reason to block the job.
+        # being unavailable is never a reason to block the job. Every page
+        # of the list is read (_build.yml's runner_online_count says why).
         online_count() {
           local scope="$1" json count
-          json="$(gh api "$scope/actions/runners" --jq '.runners' 2>/dev/null)" || { echo 0; return; }
-          count="$(printf '%s' "$json" | jq "[.[] | select(.status==\"online\" and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$OS_LABEL\"))] | length" 2>/dev/null)" || { echo 0; return; }
+          json="$(gh api --paginate "$scope/actions/runners?per_page=100" --jq '.runners[]' 2>/dev/null)" || { echo 0; return; }
+          count="$(printf '%s' "$json" | jq -s "[.[] | select(.status==\"online\" and any(.labels[]; .name==\"self-hosted\") and any(.labels[]; .name==\"$OS_LABEL\"))] | length" 2>/dev/null)" || { echo 0; return; }
           echo "${count:-0}"
         }
 

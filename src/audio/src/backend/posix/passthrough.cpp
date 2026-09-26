@@ -22,6 +22,8 @@ std::string_view describe(PassthroughError error) {
         case PassthroughError::kExclusiveUnavailable: return "exclusive access was refused";
         case PassthroughError::kAlreadyRunning: return "passthrough is already running";
         case PassthroughError::kNotRunning: return "passthrough is not running";
+        case PassthroughError::kUnsupportedFormat:
+            return "this platform has no way to send this format over IEC 61937";
     }
     return "unknown passthrough error";
 }

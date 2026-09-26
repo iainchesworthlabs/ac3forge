@@ -25,7 +25,7 @@ this repository that must not crash, read out of bounds, or loop unboundedly on 
 | OAMD object metadata (TS 103 420 §5.5) | `ac3::oba::parse_payload` | yes — `fuzz_oamd_parse`, plus indirectly through the E-AC-3 harnesses |
 | JOC payloads (TS 103 420 §6) | `ac3::oba::joc::parse_payload` | yes — `fuzz_joc_parse`, plus indirectly through the E-AC-3 harnesses |
 | WAV / RIFF headers and PCM | `ac3::io::read_wav`, `ac3::io::WavStreamReader` | yes |
-| IEC 61937 bursts off an S/PDIF or HDMI capture | `ac3::iec61937::BurstReader` | yes — `fuzz_iec61937_unwrap` |
+| IEC 61937 bursts off an S/PDIF or HDMI capture, AC-4's included, and the AC-4 sync frames the AC-4 packer reads | `ac3::iec61937::BurstReader`, `ac3::iec61937::read_ac4_sync_frame` | yes — `fuzz_iec61937_unwrap` |
 | ADM XML + BW64/RF64 (opt-in build) | `ac3adm::parse_bw64`, via vendored libadm/libbw64 | **opt-in only** — `fuzz_adm_parse` exists but is built only under `AC3FORGE_BUILD_ADM`; see [ADM](#adm-xml-and-bw64) |
 | Object authenticity tags | `ac3::signing::verify_atmos_frame` | yes — `fuzz_signing_verify` (the key is part of the fuzzed input) |
 | Matroska/WebM containers | `matroska::demux`, `matroska::Reader` | yes |
@@ -59,8 +59,11 @@ this project does not read — or write, such as a bare Ogg or ADTS wrapper — 
 
 ## Memory-safety posture
 
-The codec core is C++23 with no third-party dependencies. It is not a memory-safe language, so
-the posture is a set of specific properties rather than a language guarantee:
+The codec core is first-party C++23. Its one third-party library is {fmt}, which builds text the
+library writes out: version and diagnostic strings, timecodes, and the scene and census JSON. None
+of the entry points in the table above is defined in a file that includes it. C++ is not a
+memory-safe language, so the posture is a set of specific properties rather than a language
+guarantee:
 
 - **Bit reading cannot run off the end.** `ac3::BitReader` is the single reader for every
   bitstream in the project. Reading past the end sets a sticky `overflowed()` flag and yields

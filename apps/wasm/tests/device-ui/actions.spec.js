@@ -124,9 +124,8 @@ test.describe('with the clock running', () => {
     });
 
     test('a setting whose connection closes unanswered says so', async ({ page, stub }) => {
-        // Chromium sends a request again, once, when a reused connection closes
-        // before any answer, so the stand-in closes both.
-        stub.next('PUT /name', 'drop');
+        // The stand-in closes its idle connections before a drop, so the
+        // request is not one Chromium sends again (stub.js, next()).
         stub.next('PUT /name', 'drop');
         await page.getByLabel('Name').fill('Kitchen');
         await page.locator('#name-form').getByRole('button', { name: 'Save' }).click();

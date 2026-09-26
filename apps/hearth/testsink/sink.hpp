@@ -31,9 +31,9 @@
 // The test sink). A Sendspin client that waits for servers: it listens on a WebSocket, advertises
 // _sendspin._tcp, pairs by its pairing PSK and a dynamic or static code, admits servers as the
 // specification ranks them, and decodes each stream it plays to a WAV file with a play-time log:
-// PCM, FLAC or Opus over player@v1, and AC-3 or E-AC-3, objects included, over _ac3forge_player@v1
-// (planning/hearth-sendspin-extension.md), rendered to its speaker layout. It can list the other
-// roles too, keeping what a server sends them and sending controller commands.
+// PCM, FLAC or Opus over player@v1, and AC-3 or E-AC-3, objects included, or AC-4, over
+// _ac3forge_player@v1 (planning/hearth-sendspin-extension.md), rendered to its speaker layout. It
+// can list the other roles too, keeping what a server sends them and sending controller commands.
 //
 // Several sinks run side by side in one process or several, with distinct names, ports and state
 // directories.

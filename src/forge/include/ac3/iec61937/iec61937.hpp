@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -33,15 +34,55 @@
 // six blocks a burst period spans (numblkscod, Table E2.4), so
 // Eac3BurstPacker accumulates consecutive access units until their block
 // counts reach six before emitting a burst.
+//
+// AC-4: written from IEC 61937-14:2017, with IEC 61937-1:2021 (and its 2024
+// corrigendum) for the burst format and IEC 61937-2:2021+AMD1:2026 for the
+// data type, which is 24 with a subdata type in Pc bits 5 and 6. Each frame
+// travels alone in a burst whose repetition period is the frame's duration,
+// so the period follows the stream's frame rate instead of being fixed; see
+// the AC-4 section below.
 
 namespace ac3::iec61937 {
 
 inline constexpr std::size_t kBurstBytes = 6144;
 inline constexpr std::size_t kEac3BurstBytes = 24576;
 
+// IEC 61937-2 Table 2 data types, as Pc bits 0 to 6 carry them: the
+// conventional data type in bits 0 to 4 and the subdata type in bits 5 and 6
+// (IEC 61937-1 6.1.8.2; IEC 61937-2 4.2). Only the ones this project both
+// writes and reads are named; anything else a carrier holds is skipped, not
+// decoded.
+enum class BurstDataType : std::uint8_t {
+    kAc3 = 0x01,
+    kEac3 = 0x15,
+    // Data type 24 (IEC 61937-14 Table 2). The subdata type sets the link:
+    // the base sampling frequency for AC-4 and AC-4 LD, four and sixteen times
+    // it for the two high-bit-rate types (clauses 5.3.1, 5.3.3, 5.3.5, 5.3.7).
+    kAc4 = 0x18,       // subdata type 0
+    kAc4Hbr4 = 0x38,   // 1
+    kAc4Hbr16 = 0x58,  // 2
+    kAc4Ld = 0x78,     // 3: low delay, at 48 kHz only
+};
+
+[[nodiscard]] constexpr bool is_ac4(BurstDataType type) {
+    return (static_cast<unsigned>(type) & 0x1FU) == 24U;
+}
+
+// "AC-3", "E-AC-3", "AC-4", "AC-4 HBR4", "AC-4 HBR16" or "AC-4 LD".
+[[nodiscard]] AC3FORGE_EXPORT std::string_view data_type_name(BurstDataType type);
+
 enum class WrapError : std::uint8_t {
-    kNotAFrame,      // missing sync word or truncated header
-    kFrameTooLarge,  // cannot happen for legal AC-3 sizes; guarded anyway
+    kNotAFrame,  // missing sync word or truncated header
+    // Cannot happen for legal AC-3 sizes; guarded anyway. For AC-4, a frame
+    // longer than its burst type allows at its frame rate (IEC 61937-14
+    // Tables 9, 15, 21 and 26).
+    kFrameTooLarge,
+    // AC-4: a base sampling frequency and frame rate the burst type has no
+    // repetition period for (AC-4 LD at 25 fps, say).
+    kUnsupportedRate,
+    // AC-4: a frame whose base sampling frequency is not the stream's first,
+    // which would change the link's rate under a receiver locked to it.
+    kRateChanged,
 };
 
 // Wrap exactly one AC-3 syncframe into one 6144-byte burst.
@@ -97,6 +138,136 @@ class AC3FORGE_EXPORT Eac3BurstPacker {
     std::span<const std::span<const std::byte>> units, bool eac3);
 
 // ---------------------------------------------------------------------------
+// AC-4 (IEC 61937-14:2017).
+//
+// One AC-4 frame to a data-burst, whole and alone: Part 14 Annex A's sync
+// frame, a syncword (0xAC40, or 0xAC41 when a CRC word follows the frame), the
+// frame's size and the raw_ac4_frame, which is what an .ac4 file holds back to
+// back. The burst's repetition period is the frame's duration in IEC 60958
+// frames at the link rate (Tables 5, 11, 17 and 23), so it follows the
+// stream's frame rate. At 29.97, 59.94 and 119.88 fps a frame is not a whole
+// number of IEC 60958 frames, and the periods of five bursts run in the
+// sequence Tables 6, 12, 18 and 24 give. Pc bits 8 to 11 carry a code for the
+// period (Tables 7, 8, 13, 14, 19, 20 and 25), and Pd the frame's length: in
+// bits for AC-4 and AC-4 LD, in bytes for HBR4, and in 8-byte units for
+// HBR16, whose payload is zero-padded to a whole unit.
+//
+// Two readings are taken where the texts leave a choice; iec61937.cpp gives
+// the reasons:
+//
+// - Which frame of a stream is data-burst 0 of a sequence. Part 14 numbers
+//   the five without saying. A frame is placed by its phase in the five-frame
+//   cycle ETSI TS 103 190-2 clause 5.11 locks the decoder's sample rate
+//   converter to, from its sequence_counter, so a stream packed from any frame
+//   gives each frame the same period.
+// - Pd's unit for AC-4 and AC-4 LD. Part 14 (clauses 5.3.1 and 5.3.7, Tables
+//   9 and 26) says bits; IEC 61937-2 Table 2 says bytes. The packer writes
+//   bits, and the reader takes either, since the sync frame says its own size.
+// ---------------------------------------------------------------------------
+
+// What IEC 61937-14's tables give one AC-4 burst type at one frame rate.
+struct Ac4BurstTiming {
+    // Pc bits 8 to 11.
+    std::uint8_t code = 0;
+    // The IEC 60958 frame rate, which is what the link runs at.
+    std::uint32_t link_rate_hz = 0;
+    // The repetition periods of data-bursts 0 to 4 of a sequence, in IEC 60958
+    // frames: all five the same at the integer frame rates.
+    std::array<std::uint16_t, 5> periods{};
+    // The largest Pd each of those bursts may carry, in the type's own unit.
+    std::array<std::uint16_t, 5> max_length{};
+};
+
+// The row of `type`'s tables for a stream's fs_index (0 for 44.1 kHz, 1 for
+// 48 kHz) and frame_rate_index (ETSI TS 103 190-1 Tables 83 and 84). Nothing
+// when the type has none: AC-4 LD outside 100, 119.88 and 120 fps, and every
+// type at 44.1 kHz outside frame_rate_index 13, which is the only index Table
+// 84 defines there.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<Ac4BurstTiming> ac4_burst_timing(BurstDataType type,
+                                                                             int fs_index,
+                                                                             int frame_rate_index);
+
+// The row a burst's own Pc code names, for a reader, which knows no frame rate.
+// Code 13 names the same periods at both base sampling frequencies, and every
+// other code only a 48 kHz one, so the code alone decides the period. AC-4 LD's
+// code 14 (256 IEC 60958 frames, 187.5 fps) is here though no frame_rate_index
+// of TS 103 190-1 V1.4.1 reaches it: Table 83 reserves index 14.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<Ac4BurstTiming> ac4_burst_timing_for_code(
+    BurstDataType type, int code);
+
+// The smallest of AC-4, AC-4 HBR4 and AC-4 HBR16 that carries sync frames of
+// up to `frame_bytes` bytes at this frame rate in every burst of a sequence: the
+// burst type a stream's largest frame needs, chosen before the link opens,
+// since the link's rate goes with it. Nothing when even HBR16's does not, or
+// the rate has no row.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<BurstDataType> ac4_burst_type_for(
+    std::size_t frame_bytes, int fs_index, int frame_rate_index);
+
+// What the head of an AC-4 sync frame says: its length and the fields of its
+// table of contents a packer needs (ETSI TS 103 190-1 4.2.3.1, TS 103 190-2
+// 6.2.1.1: bitstream_version, sequence_counter, wait_frames, fs_index,
+// frame_rate_index, in that order).
+struct Ac4SyncFrame {
+    // The whole sync frame: syncword, frame_size, raw_ac4_frame and, with
+    // syncword 0xAC41, the CRC word.
+    std::size_t bytes = 0;
+    bool crc = false;
+    int sequence_counter = 0;
+    int fs_index = 0;
+    int frame_rate_index = 0;
+};
+
+// Nothing unless `bytes` is exactly one sync frame whose table of contents
+// can be read as far as frame_rate_index.
+[[nodiscard]] AC3FORGE_EXPORT std::optional<Ac4SyncFrame> read_ac4_sync_frame(
+    std::span<const std::byte> bytes);
+
+// Packs one stream's AC-4 sync frames into data-bursts of one type, a frame to
+// a burst. One packer per stream: it remembers the stream's base sampling
+// frequency, which sets the link's rate, and the last frame's phase, which a
+// frame whose sequence_counter is 0 continues from (TS 103 190-2 5.11).
+class AC3FORGE_EXPORT Ac4BurstPacker {
+   public:
+    explicit Ac4BurstPacker(BurstDataType type = BurstDataType::kAc4);
+
+    // One whole sync frame in, its data-burst out: Pa, Pb, Pc and Pd, then the
+    // frame big-endian within little-endian 16-bit words, as wrap_frame writes
+    // AC-3, with an odd last byte in the high half of its word and zero in the
+    // low (IEC 61937-1 6.1.2), then zeros to the burst's repetition period.
+    // The burst is period x 4 bytes long. A type other than the four AC-4 ones
+    // refuses everything with kNotAFrame.
+    [[nodiscard]] std::expected<std::vector<std::byte>, WrapError> push(
+        std::span<const std::byte> sync_frame);
+
+    // What the last successful push() packed.
+    struct Packed {
+        std::uint16_t pc = 0;
+        std::uint16_t pd = 0;
+        // In IEC 60958 frames.
+        std::uint32_t period = 0;
+        // Which data-burst of Tables 6, 12, 18 and 24 it is: 0 to 4.
+        int sequence_index = 0;
+        // The payload Pd describes: the sync frame, and for HBR16 the zeros
+        // that fill its last 8-byte unit.
+        std::size_t payload_bytes = 0;
+        std::uint32_t link_rate_hz = 0;
+    };
+    [[nodiscard]] const std::optional<Packed>& last() const { return last_; }
+    [[nodiscard]] BurstDataType type() const { return type_; }
+
+   private:
+    BurstDataType type_;
+    std::optional<int> fs_index_;
+    std::optional<int> phase_;
+    std::optional<Packed> last_;
+};
+
+// A whole stream's sync frames (as ac4::scan finds them in an .ac4 file) as one
+// carrier, the AC-4 counterpart of wrap_stream.
+[[nodiscard]] AC3FORGE_EXPORT std::expected<std::vector<std::byte>, WrapError> wrap_ac4_stream(
+    std::span<const std::span<const std::byte>> frames, BurstDataType type = BurstDataType::kAc4);
+
+// ---------------------------------------------------------------------------
 // De-framing: recovering the elementary stream from a burst carrier.
 //
 // The inverse of everything above, and the only way to check it against
@@ -112,13 +283,6 @@ class AC3FORGE_EXPORT Eac3BurstPacker {
 // and a preamble that does not lead to a syncframe is treated as a false
 // match to resync past rather than as a fatal error.
 // ---------------------------------------------------------------------------
-
-// IEC 61937-2 Table 2 data types. Only the two this project both writes and
-// reads are named; anything else a carrier holds is skipped, not decoded.
-enum class BurstDataType : std::uint8_t {
-    kAc3 = 0x01,
-    kEac3 = 0x15,
-};
 
 // How a 16-bit IEC 61937 word is laid out in the carrier's bytes.
 //
@@ -144,20 +308,33 @@ enum class UnwrapError : std::uint8_t {
 // The repetition period a data type's bursts occupy, in carrier bytes:
 // 6144 for AC-3 (1536 sample frames), 24576 for E-AC-3 (6144 of them, the
 // 4x carrier). Also the hard cap on how much payload one burst may claim.
+// An AC-4 type's period follows the stream's frame rate, and this is the
+// longest it has (IEC 61937-14 Tables 5, 11, 17 and 23): 8192 for AC-4, 32768
+// for HBR4, 131072 for HBR16 and 1920 for AC-4 LD.
 [[nodiscard]] AC3FORGE_EXPORT std::size_t repetition_period(BurstDataType type);
 
 // What one burst's four preamble words said.
 struct BurstHeader {
     BurstDataType data_type = BurstDataType::kAc3;
     // Pc bits 8..12. AC-3 carries bsmod here (bits 8..10); E-AC-3 carries
-    // nothing and this is 0.
+    // nothing and this is 0; AC-4 carries its repetition period's code in bits
+    // 8..11 (IEC 61937-14 Tables 7, 8, 13, 14, 19, 20 and 25).
     std::uint8_t data_type_dependent = 0;
     std::uint8_t stream_number = 0;  // Pc bits 13..15
     bool error_flag = false;         // Pc bit 7
+    // Pd as it was written, in whichever unit its data type uses.
+    std::uint16_t pd = 0;
     // Payload length in ELEMENTARY-STREAM BYTES, whichever unit Pd used:
     // bits for AC-3, bytes for E-AC-3 (see Eac3BurstPacker's own note - it is
-    // the detail most often copied wrong between the two).
+    // the detail most often copied wrong between the two). For AC-4 it is the
+    // sync frame's own length, which leaves out HBR16's padding.
     std::size_t payload_bytes = 0;
+    // Where the burst's Pa starts, counted in carrier bytes from the first
+    // byte the reader was given. For a data type whose reference point is bit
+    // 0 of Pa, as every AC-4 type's is (IEC 61937-14 Table 2), the distance
+    // from one burst's offset to the next's is its repetition period, measured
+    // as a receiver would measure it.
+    std::uint64_t offset = 0;
 };
 
 // Feed carrier bytes in whatever sized chunks the source produces; take
@@ -183,7 +360,7 @@ class AC3FORGE_EXPORT BurstReader {
     [[nodiscard]] std::expected<void, UnwrapError> finish() const;
 
     [[nodiscard]] std::size_t bursts() const { return bursts_; }
-    // Bursts whose data type is neither 0x01 nor 0x15 - another codec's
+    // Bursts of a data type BurstDataType does not name - another codec's
     // passthrough, or IEC 61937's own null/pause bursts.
     [[nodiscard]] std::size_t skipped_bursts() const { return skipped_bursts_; }
     [[nodiscard]] std::size_t false_syncs() const { return false_syncs_; }
@@ -202,6 +379,9 @@ class AC3FORGE_EXPORT BurstReader {
 
     std::vector<std::byte> buffer_;  // carrier bytes not yet resolved
     std::size_t pos_ = 0;            // read cursor into buffer_
+    // Carrier bytes compact() has dropped from the front of buffer_, so a
+    // position in it plus this is a position in the whole carrier.
+    std::uint64_t dropped_ = 0;
     State state_ = State::kSyncing;
     std::size_t payload_needed_ = 0;  // carrier bytes still wanted for this burst
     std::size_t payload_bytes_ = 0;   // elementary bytes this burst yields
@@ -267,7 +447,10 @@ class AC3FORGE_EXPORT PassthroughDetector {
    public:
     // How much carrier to look at before giving up. Two E-AC-3 repetition
     // periods, so even the worst case - starting mid-burst on the longer of
-    // the two data types - still contains a whole one.
+    // the two data types - still contains a whole one. That covers every
+    // AC-4 and AC-4 HBR4 period too (at most 8192 and 32768 bytes). AC-4
+    // HBR16's run to 131072, but it travels on an eight-channel link, which a
+    // capture read two channels at a time never shows whole anyway.
     static constexpr std::size_t kInspectBytes = 2 * kEac3BurstBytes;
 
     // `channels` is the capture's channel count; only the first two carry a

@@ -46,6 +46,8 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ota
+import package_firmware
+import sink_build_fixture
 
 HERE = Path(__file__).resolve().parent
 EXAMPLE = HERE.parents[1] / "esp-idf" / "ac3forge" / "examples" / "hearth_sink"
@@ -180,6 +182,7 @@ def firmware(**changes: Any) -> dict[str, Any]:
         "trial": None,
         "upload": None,
         "last_update": None,
+        "coredump": None,
         "network": "stored",
         "slot_bytes": 0x400000,
         "flash_bytes": 16 << 20,
@@ -263,6 +266,12 @@ class FakeBoard:
         self.upload_headers: dict[str, str] = {}
         self.received = b""
         self.uploaded = False
+        # GET /firmware/coredump's bytes, None for a board with no dump; GET
+        # /log's whole text, None for a board that keeps no log. The log
+        # route sends at most log_reply bytes a request, as the board does.
+        self.coredump: bytes | None = None
+        self.log: str | None = None
+        self.log_reply = 4096
         self.lock = threading.Lock()
         handler = type("Handler", (BoardHandler,), {"board": self})
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -312,6 +321,9 @@ class BoardHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         board = self.board
+        if self.path == "/firmware/coredump" or self.path.startswith("/log"):
+            self._diagnostics()
+            return
         with board.lock:
             board.requests.append(("GET", self.path))
             if self.path == "/firmware" and board.uploaded and board.after_upload:
@@ -377,6 +389,45 @@ class BoardHandler(BaseHTTPRequestHandler):
             board.requests.append(("POST", self.path))
             board.bodies[("POST", self.path)] = body
         self._text(*board.answers.get(("POST", self.path), (200, "restarting")))
+
+    def do_DELETE(self) -> None:
+        board = self.board
+        with board.lock:
+            board.requests.append(("DELETE", self.path))
+            if self.path == "/firmware/coredump":
+                board.coredump = None
+        self._text(*board.answers.get(("DELETE", self.path), (200, "erased")))
+
+    def _diagnostics(self) -> None:
+        """GET /firmware/coredump and GET /log?from=N, as firmware.cpp and control.cpp answer."""
+        board = self.board
+        with board.lock:
+            board.requests.append(("GET", self.path))
+            dump = board.coredump
+            log = board.log
+        if self.path == "/firmware/coredump":
+            if dump is None:
+                self._text(
+                    404, "there is no core dump: nothing has crashed since the last was erased"
+                )
+            else:
+                self._send(200, dump, "application/octet-stream")
+            return
+        if log is None:
+            self._text(404, "this board keeps no log")
+            return
+        data = log.encode()
+        start = min(int(self.path.partition("from=")[2] or 0), len(data))
+        chunk = data[start : start + board.log_reply]
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(chunk)))
+        self.send_header("X-Log-From", str(start))
+        self.send_header("X-Log-Next", str(start + len(chunk)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(chunk)
+        self.close_connection = True
 
 
 def run_ota(*argv: str) -> tuple[int, str]:
@@ -1019,6 +1070,413 @@ class OtherCommands(Case):
         self.assertIn("restart: 409 the running image is still on trial", out)
 
 
+DUMP = {
+    "bytes": 23_456,
+    "intact": True,
+    "task": "fw_trial",
+    "pc": "0x4037a1b2",
+    "reason": "abort() was called at PC 0x4200abcd on core 0",
+    "elf_sha256": NEW_ELF.hex()[:9],
+}
+
+
+class Diagnostics(Case):
+    """The last crash's core dump and the console's recent output (O4)."""
+
+    def test_status_names_the_image_that_wrote_a_core_dump(self) -> None:
+        board = FakeBoard(self)
+        board.firmware = rolled_back("it panicked")
+        board.firmware["coredump"] = DUMP
+        code, out = run_ota("status", "--host", board.host)
+        self.assertEqual(code, 0, out)
+        self.assertIn(
+            "  core dump    23,456 bytes, fw_trial at 0x4037a1b2, abort() was called at PC "
+            "0x4200abcd on core 0, written by v1.1.0 in ota_1",
+            out,
+        )
+        # An image neither slot holds, and a dump that does not check out.
+        board.firmware["coredump"] = {
+            **DUMP,
+            "intact": False,
+            "task": "",
+            "reason": "",
+            "elf_sha256": "0123abcd9",
+        }
+        code, out = run_ota("status", "--host", board.host)
+        self.assertIn(
+            "  core dump    23,456 bytes, which do not check out, written by an image neither slot "
+            "holds now (ELF SHA-256 0123abcd9...)",
+            out,
+        )
+        board.firmware["coredump"] = {**DUMP, "elf_sha256": ""}
+        code, out = run_ota("status", "--host", board.host)
+        self.assertIn("written by an image the dump does not name", out)
+        board.firmware["coredump"] = None
+        code, out = run_ota("status", "--host", board.host)
+        self.assertIn("  core dump    none", out)
+        del board.firmware["coredump"]  # firmware from before O4
+        code, out = run_ota("status", "--host", board.host)
+        self.assertIn("  core dump    not reported by this firmware", out)
+
+    def test_coredump_saves_the_dump_and_erases_it_when_asked(self) -> None:
+        board = FakeBoard(self)
+        board.firmware = {**rolled_back("it panicked"), "coredump": DUMP}
+        board.coredump = bytes(range(256)) * 10
+        out_file = self.tmp / "dump.bin"
+        code, out = run_ota("coredump", "--host", board.host, "--out", str(out_file))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out_file.read_bytes(), bytes(range(256)) * 10)
+        self.assertIn(f"saved 2,560 bytes to {out_file}: 23,456 bytes, fw_trial", out)
+        self.assertNotIn(("DELETE", "/firmware/coredump"), board.requests)
+        code, out = run_ota("coredump", "--host", board.host, "--out", str(out_file), "--erase")
+        self.assertEqual(code, 0, out)
+        self.assertIn(("DELETE", "/firmware/coredump"), board.requests)
+        self.assertIn("erase: 200 erased", out)
+        # Nothing left: the board's own words.
+        code, out = run_ota("coredump", "--host", board.host, "--out", str(out_file))
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("GET /firmware/coredump answered 404: there is no core dump", out)
+
+    def test_coredump_reads_the_dump_with_the_elf_that_wrote_it(self) -> None:
+        board = FakeBoard(self)
+        board.firmware = {
+            **rolled_back("it panicked"),
+            "coredump": {**DUMP, "elf_sha256": hashlib.sha256(b"elf").hexdigest()[:9]},
+        }
+        board.coredump = b"a core dump"
+        elf = self.tmp / "panic.elf"
+        elf.write_bytes(b"elf")
+        out_file = self.tmp / "dump.bin"
+        ran = mock.Mock(return_value=subprocess.CompletedProcess([], 0))
+        with mock.patch.object(ota.subprocess, "run", ran):
+            code, out = run_ota(
+                "coredump", "--host", board.host, "--out", str(out_file), "--elf", str(elf)
+            )
+        self.assertEqual(code, 0, out)
+        command = ran.call_args.args[0]
+        self.assertEqual(command[1:4], ["-m", "esp_coredump", "info_corefile"])
+        self.assertEqual(command[4:], ["--core", str(out_file), "--core-format", "raw", str(elf)])
+        # esp_coredump failing, or not there at all.
+        with mock.patch.object(
+            ota.subprocess, "run", mock.Mock(return_value=subprocess.CompletedProcess([], 2))
+        ):
+            code, out = run_ota(
+                "coredump", "--host", board.host, "--out", str(out_file), "--elf", str(elf)
+            )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("esp_coredump exited 2; run it in the ESP-IDF environment", out)
+        with mock.patch.object(ota.subprocess, "run", mock.Mock(side_effect=OSError("no python"))):
+            code, out = run_ota(
+                "coredump", "--host", board.host, "--out", str(out_file), "--elf", str(elf)
+            )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("esp_coredump did not run: OSError: no python", out)
+
+    def test_coredump_refuses_an_elf_that_did_not_write_the_dump(self) -> None:
+        board = FakeBoard(self)
+        board.firmware = {**rolled_back("it panicked"), "coredump": DUMP}
+        board.coredump = b"a core dump"
+        elf = self.tmp / "other.elf"
+        elf.write_bytes(b"another image")
+        ran = mock.Mock()
+        with mock.patch.object(ota.subprocess, "run", ran):
+            code, out = run_ota(
+                "coredump",
+                "--host",
+                board.host,
+                "--out",
+                str(self.tmp / "d.bin"),
+                "--elf",
+                str(elf),
+            )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn(f"{elf} is not the image that wrote the dump", out)
+        ran.assert_not_called()
+        code, out = run_ota(
+            "coredump",
+            "--host",
+            board.host,
+            "--out",
+            str(self.tmp / "d.bin"),
+            "--elf",
+            str(self.tmp / "missing.elf"),
+        )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("--elf", out)
+
+    def test_coredump_from_a_board_that_does_not_answer(self) -> None:
+        board = FakeBoard(self)
+        host = board.host
+        board.close()
+        code, out = run_ota("coredump", "--host", host)
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("GET /firmware got no answer", out)
+
+    def test_log_prints_what_the_board_holds_a_reply_at_a_time(self) -> None:
+        board = FakeBoard(self)
+        board.log = "firmware: running v1.0.0 from ota_0\n" * 20
+        board.log_reply = 64
+        code, out = run_ota("log", "--host", board.host)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out, board.log)
+        froms = [path for method, path in board.requests if path.startswith("/log")]
+        self.assertEqual(froms[:3], ["/log?from=0", "/log?from=64", "/log?from=128"])
+        board.log = None
+        code, out = run_ota("log", "--host", board.host)
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("GET /log answered 404: this board keeps no log", out)
+
+    def test_log_follow_keeps_asking_and_says_what_it_missed(self) -> None:
+        board = FakeBoard(self)
+        board.log = "one\n"
+        rounds = []
+
+        def sleep(_: float) -> None:
+            rounds.append(1)
+            if len(rounds) == 1:
+                # The board wrote on, and moved past what was asked for next.
+                board.log = "one\ntwo\n"
+                board.log_reply = 4096
+            elif len(rounds) == 2:
+                raise KeyboardInterrupt
+
+        with mock.patch.object(ota.time, "sleep", sleep):
+            code, out = run_ota("log", "--host", board.host, "--follow")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out, "one\ntwo\n")
+
+    def test_log_follow_waits_through_a_board_that_does_not_answer(self) -> None:
+        board = FakeBoard(self)
+        host = board.host
+        board.close()
+        calls = []
+
+        def sleep(_: float) -> None:
+            calls.append(1)
+            raise KeyboardInterrupt
+
+        with mock.patch.object(ota.time, "sleep", sleep):
+            code, out = run_ota("log", "--host", host, "--follow")
+        self.assertEqual(code, 0, out)
+        self.assertIn("GET /log got no answer", out)
+        code, out = run_ota("log", "--host", host)
+        self.assertEqual(code, ota.REFUSED, out)
+
+
+C6_TABLE_4MB = (
+    ("nvs", 1, 0x02, 0x9000, 0x6000),
+    ("phy_init", 1, 0x01, 0xF000, 0x1000),
+    ("otadata", 1, 0x00, 0x10000, 0x2000),
+    ("ota_0", 0, 0x10, 0x20000, 0x1C0000),
+    ("ota_1", 0, 0x11, 0x1E0000, 0x1C0000),
+    ("coredump", 1, 0x03, 0x3A0000, 0x10000),
+    ("audio", 1, 0x40, 0x3B0000, 0x10000),
+    ("storage", 1, 0x81, 0x3C0000, 0x40000),
+)
+
+
+def table_json(entries: tuple[tuple[str, int, int, int, int], ...]) -> list[dict[str, Any]]:
+    return [
+        {"label": label, "type": kind, "subtype": subtype, "offset": offset, "size": size}
+        for label, kind, subtype, offset, size in entries
+    ]
+
+
+class PublishedImages(Case):
+    """push --release and --run: each board gets the published image that fits it (O8)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        # The four images a release publishes, packaged as CI packages them.
+        self.published_dir = self.tmp / "published"
+        for name, settings in sink_build_fixture.RELEASE_IMAGES.items():
+            build = sink_build_fixture.make_build(self.tmp / "builds" / name, **settings)
+            package_firmware.package(build, name, self.published_dir)
+        package_firmware.merge_manifest(self.published_dir)
+        self.manifest = json.loads((self.published_dir / ota.MANIFEST_NAME).read_text("utf-8"))
+
+    def published(self) -> ota.Published:
+        return ota.Published(self.manifest, self.published_dir, "release v0.11.0")
+
+    def entry(self, name: str) -> dict[str, Any]:
+        return next(image for image in self.manifest["images"] if image["name"] == name)
+
+    def chosen(self, hardware: dict[str, Any], board_firmware: dict[str, Any]) -> str:
+        image, name = ota.image_for_board(self.published(), hardware, board_firmware)
+        return name if image is not None else f"none: {name}"
+
+    def test_each_board_gets_its_own_image(self) -> None:
+        s3 = {"target": "esp32s3", "chip": "ESP32-S3", "revision": "0.2", "psram_bytes": 8 << 20}
+        c6 = {"target": "esp32c6", "chip": "ESP32-C6", "revision": "0.2", "psram_bytes": 0}
+        p4 = {"target": "esp32p4", "chip": "ESP32-P4", "revision": "1.3", "psram_bytes": 32 << 20}
+        c6_4mb = firmware(
+            flash_bytes=4 << 20, slot_bytes=0x1C0000, partitions=table_json(C6_TABLE_4MB)
+        )
+        self.assertEqual(self.chosen(s3, firmware()), "hearth-sink-esp32s3")
+        self.assertEqual(self.chosen(c6, firmware()), "hearth-sink-esp32c6-16mb")
+        self.assertEqual(self.chosen(c6, c6_4mb), "hearth-sink-esp32c6")
+        self.assertEqual(self.chosen(p4, firmware()), "hearth-sink-esp32p4-rev1")
+
+    def test_a_board_no_image_fits_is_told_why(self) -> None:
+        p4_v3 = {"target": "esp32p4", "chip": "ESP32-P4", "revision": "3.1", "psram_bytes": 1}
+        chosen = self.chosen(p4_v3, firmware())
+        self.assertTrue(chosen.startswith("none: "), chosen)
+        self.assertIn("hearth-sink-esp32p4-rev1: it runs on chip revisions v1.0 to v1.99", chosen)
+        self.assertIn("hearth-sink-esp32s3: it is for ESP32-S3", chosen)
+        s3_without_psram = {"target": "esp32s3", "revision": "0.2", "psram_bytes": 0}
+        self.assertIn(
+            "hearth-sink-esp32s3: it is built for a board with PSRAM",
+            self.chosen(s3_without_psram, firmware()),
+        )
+        s3 = {"target": "esp32s3", "revision": "0.2", "psram_bytes": 8 << 20}
+        other_table = firmware(partitions=table_json(TABLE[:-1]))
+        self.assertIn("its partition table is not the board's", self.chosen(s3, other_table))
+
+    def test_a_download_the_manifest_does_not_describe_is_refused(self) -> None:
+        name = self.entry("hearth-sink-esp32s3")["files"]["app"]["name"]
+        path = self.published_dir / name
+        path.write_bytes(path.read_bytes()[:-1] + b"\0")
+        s3 = {"target": "esp32s3", "revision": "0.2", "psram_bytes": 8 << 20}
+        with self.assertRaisesRegex(ota.ImageError, "SHA-256 is not the one"):
+            ota.image_for_board(self.published(), s3, firmware())
+
+    def release_files(self) -> dict[str, bytes]:
+        files = {path.name: path.read_bytes() for path in self.published_dir.iterdir()}
+        sums = "".join(
+            f"{hashlib.sha512(data).hexdigest()}  {name}\n"
+            for name, data in files.items()
+            if name.endswith((".bin", ".zip"))
+        )
+        files["SHA512SUMS"] = sums.encode()
+        return files
+
+    def fake_github(self, files: dict[str, bytes], releases: list[dict[str, Any]]):
+        def get(url: str) -> bytes:
+            if "/releases/tags/" in url:
+                tag = url.rsplit("/", 1)[1]
+                return json.dumps(next(r for r in releases if r["tag_name"] == tag)).encode()
+            if url.endswith("/releases?per_page=30"):
+                return json.dumps(releases).encode()
+            return files[url.rsplit("/", 1)[1]]
+
+        return get
+
+    def release(self, tag: str, files: dict[str, bytes]) -> dict[str, Any]:
+        return {
+            "tag_name": tag,
+            "assets": [
+                {"name": name, "browser_download_url": f"https://example.invalid/{name}"}
+                for name in files
+            ],
+        }
+
+    def board_that_takes(self, name: str) -> tuple[FakeBoard, bytes]:
+        """A stand-in S3 board, scripted to take the named image, restart and accept it."""
+        entry = self.entry(name)
+        app = (self.published_dir / entry["files"]["app"]["name"]).read_bytes()
+        elf = bytes.fromhex(entry["elf_sha256"])
+        board = FakeBoard(self)
+        old = slot("ota_0", "v1.0.0", OLD_ELF, image_sha=OLD_IMAGE_SHA, intact=True)
+        board.after_upload = [
+            restarting(),
+            DOWN,
+            firmware(
+                running=slot("ota_1", "v0.11.0", elf, state="trial"),
+                other=old,
+                trial={
+                    "healthy_for_ms": 30_000,
+                    "hold_ms": 30_000,
+                    "remaining_ms": 1,
+                    "waiting_for": [],
+                },
+            ),
+            firmware(
+                running=slot("ota_1", "v0.11.0", elf, image_sha=app[-32:].hex(), intact=True),
+                other=old,
+                last_update={"version": "v0.11.0", "result": "accepted", "reason": ""},
+            ),
+        ]
+        return board, app
+
+    def test_push_release_sends_each_board_its_image(self) -> None:
+        files = self.release_files()
+        board, app = self.board_that_takes("hearth-sink-esp32s3")
+        releases = [self.release("v0.11.0", files)]
+        with mock.patch.object(ota, "github_get", side_effect=self.fake_github(files, releases)):
+            code, out = run_ota("push", "--release", "v0.11.0", "--host", board.host)
+        self.assertEqual(code, ota.UPDATED, out)
+        self.assertEqual(board.received, app)
+        self.assertIn(f"{board.host}: release v0.11.0's hearth-sink-esp32s3 fits this board", out)
+        self.assertIn("updated: runs v0.11.0 from ota_1, accepted", out)
+        self.assertIn("the image's SHA-256 on the board matches the file's", out)
+
+    def test_push_release_latest_takes_the_newest_release_that_has_sink_firmware(self) -> None:
+        files = self.release_files()
+        board, _ = self.board_that_takes("hearth-sink-esp32s3")
+        releases = [
+            {"tag_name": "v0.12.0-beta.1", "assets": []},
+            self.release("v0.11.0", files),
+        ]
+        with mock.patch.object(ota, "github_get", side_effect=self.fake_github(files, releases)):
+            code, out = run_ota("push", "--release", "latest", "--host", board.host)
+        self.assertEqual(code, ota.UPDATED, out)
+        self.assertIn("release v0.11.0: 4 image(s)", out)
+
+    def test_a_release_download_sha512sums_disagrees_with_is_refused(self) -> None:
+        files = self.release_files()
+        name = self.entry("hearth-sink-esp32s3")["files"]["app"]["name"]
+        files["SHA512SUMS"] = files["SHA512SUMS"].replace(
+            hashlib.sha512(files[name]).hexdigest().encode(), b"0" * 128
+        )
+        board = FakeBoard(self)
+        releases = [self.release("v0.11.0", files)]
+        with mock.patch.object(ota, "github_get", side_effect=self.fake_github(files, releases)):
+            code, out = run_ota("push", "--release", "v0.11.0", "--host", board.host)
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("SHA-512 is not the one SHA512SUMS gives", out)
+        self.assertEqual(board.puts(), [])
+
+    def test_push_run_downloads_the_artifact_with_gh(self) -> None:
+        board, app = self.board_that_takes("hearth-sink-esp32s3")
+        commands: list[list[str]] = []
+
+        def gh(command: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            into = Path(command[command.index("--dir") + 1])
+            into.mkdir(parents=True, exist_ok=True)
+            for path in self.published_dir.iterdir():
+                (into / path.name).write_bytes(path.read_bytes())
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(ota.subprocess, "run", side_effect=gh):
+            code, out = run_ota("push", "--run", "1234", "--host", board.host)
+        self.assertEqual(code, ota.UPDATED, out)
+        self.assertEqual(board.received, app)
+        self.assertEqual(commands[0][:4], ["gh", "run", "download", "1234"])
+        self.assertIn("--name", commands[0])
+        self.assertIn(ota.FIRMWARE_ARTIFACT, commands[0])
+        self.assertIn("CI run 1234's hearth-sink-esp32s3 fits this board", out)
+
+    def test_a_board_no_image_fits_is_refused_and_the_next_is_still_updated(self) -> None:
+        files = self.release_files()
+        c3 = FakeBoard(self)
+        c3.hardware = {**c3.hardware, "target": "esp32c3", "chip": "ESP32-C3"}
+        board, _ = self.board_that_takes("hearth-sink-esp32s3")
+        releases = [self.release("v0.11.0", files)]
+        with mock.patch.object(ota, "github_get", side_effect=self.fake_github(files, releases)):
+            code, out = run_ota(
+                "push", "--release", "v0.11.0", "--host", c3.host, "--host", board.host
+            )
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn(f"{c3.host}: refused: no image of release v0.11.0 fits this board.", out)
+        self.assertIn("updated: runs v0.11.0 from ota_1, accepted", out)
+
+    def test_run_takes_a_number(self) -> None:
+        code, out = run_ota("push", "--run", "latest", "--host", "127.0.0.1:1")
+        self.assertEqual(code, ota.REFUSED, out)
+        self.assertIn("--run takes a workflow run's number", out)
+
+
 class CommandLine(Case):
     def test_help(self) -> None:
         for argv in (["--help"], ["push", "--help"], ["status", "--help"]):
@@ -1060,7 +1518,10 @@ class IdfExtension(unittest.TestCase):
 
     def test_the_ota_action(self) -> None:
         module = self.load()
-        action = module.action_extensions({}, str(EXAMPLE))["actions"]["ota"]
+        extensions = module.action_extensions({}, str(EXAMPLE))
+        # ESP-IDF v6.1's idf.py loads no extension without one.
+        self.assertTrue(extensions.get("version"))
+        action = extensions["actions"]["ota"]
         self.assertEqual(
             [option["names"] for option in action["options"]], [["--host"], ["--yes"], ["--force"]]
         )
