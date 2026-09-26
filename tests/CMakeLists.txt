@@ -390,9 +390,9 @@ endif()
 # ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories,
 # ac4dec/test_ac4dec_constructed.cpp, test_ac4dec_presentations.cpp and
 # ac4enc/test_ac4enc_presentations.cpp, for where to write their streams,
-# ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's,
-# ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode, and
-# iec61937/test_iec61937_ac4.cpp, for the census directory it packs.
+# ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's, and
+# ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode.
+# iec61937/test_iec61937_ac4.cpp reads one too, for the census directory it packs.
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
         ac4dec/test_ac4dec_constructed.cpp ac4dec/test_ac4dec_presentations.cpp ac4dec/test_ac4dec_api.cpp

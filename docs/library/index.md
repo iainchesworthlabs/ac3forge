@@ -116,16 +116,25 @@ find_package(ac3forge CONFIG REQUIRED)
 target_link_libraries(your_target PRIVATE ac3::forge)
 ```
 
-The three container writers and the C API are the port's `matroska`/`mp4`/`mpegts`/`capi`
-features — none on by default (a curated-registry port's `default-features` may only cover
-behaviors, not additional public APIs/targets/binaries, and each of these four is exactly that) —
-opt in with `vcpkg install ac3forge[matroska,mp4,mpegts,capi]` (all four) or `ac3forge[mp4]`
-(just `mp4`) to get `matroska::matroska`/`mp4::mp4`/`mpegts::mpegts`/`ac3::forge_c` (the C API,
-see [C API](c-api.md)) available. `ac3adm::ac3adm`/`ac3::admbridge` have no vcpkg feature — out
-of scope for this port for now, even though upstream now installs/exports both (shared-only, see
-the note above). `ac3iab::ac3iab`, `iamf::iamf` and the AC-4 libraries have no feature either,
-and come with every install of the port. Once merged into `microsoft/vcpkg`, the same two snippets work with a plain
-`vcpkg install ac3forge` — no `--overlay-ports` needed.
+Every library beside `ac3::forge` is one of the port's features, and none is on by default (a
+curated-registry port's `default-features` may only cover behaviors, not additional public
+APIs/targets/binaries, and each of these is exactly that):
+
+| Feature | Targets |
+|---|---|
+| `matroska` | `matroska::matroska` |
+| `mp4` | `mp4::mp4` |
+| `mpegts` | `mpegts::mpegts` |
+| `capi` | `ac3::forge_c`, the C API (see [C API](c-api.md)) |
+| `ac4` | `ac4::ac4`, `ac4::decoder` and `ac4::encoder` (see [AC-4](ac4.md)) |
+| `iab` | `ac3iab::ac3iab` (see [IAB](iab.md)) |
+| `iamf` | `iamf::iamf` (see [IAMF](iamf.md)) |
+
+Opt in with `vcpkg install ac3forge[matroska,mp4,mpegts]` for the three container writers, or any
+subset, such as `ac3forge[ac4]` for AC-4 alone. `ac3adm::ac3adm`/`ac3::admbridge` have no vcpkg
+feature — out of scope for this port for now, even though upstream now installs/exports both
+(shared-only, see the note above). Once merged into `microsoft/vcpkg`, the same two snippets work
+with a plain `vcpkg install ac3forge` — no `--overlay-ports` needed.
 
 **Conan.** A recipe lives in this repo at
 [`packaging/conan/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/packaging/conan)
@@ -133,12 +142,15 @@ and is pending submission to ConanCenter (see
 [docs/releasing.md](../releasing.md#conan-recipe)) — until that lands, `conan create
 packaging/conan --version <tag>` from a clone of this repo builds it straight into your local
 Conan cache, after which a consumer's `conanfile.txt`/`conanfile.py` `requires = "ac3forge/<tag>"`
-resolves it the same way a published package would. Same scope and features as the
-vcpkg port above (`matroska`/`mp4`/`mpegts` on by default — `-o ac3forge/*:matroska=False` etc.
-to drop one — plus `capi`, off by default like the vcpkg port's own feature, `-o
-ac3forge/*:capi=True` to opt in), and the same two `find_package`/`target_link_libraries`
-snippets: the recipe installs `ac3forge`'s own CMake package config rather than generating a
-second one, so a Conan consumer's CMakeLists.txt looks identical to a vcpkg or plain-installed one.
+resolves it the same way a published package would. Same scope as the vcpkg port above, with an
+option for each of its features: `capi`, `ac4`, `iab` and `iamf` off by default like the port's
+(`-o "ac3forge/*:ac4=True"` and the like to opt in), and `matroska`/`mp4`/`mpegts` on by default,
+where the port has them off (`-o "ac3forge/*:matroska=False"` etc. to drop one).
+`tools/checks/check_packaging_versions.sh` holds the two recipes to the same components and the
+same `AC3FORGE_BUILD_<NAME>` options. The same two `find_package`/`target_link_libraries`
+snippets apply: the recipe installs `ac3forge`'s own CMake package config rather than generating
+a second one, so a Conan consumer's CMakeLists.txt looks identical to a vcpkg or plain-installed
+one.
 
 **pkg-config.** Every installed component above also gets its own `.pc` file
 (`${libdir}/pkgconfig/<name>.pc` — `ac3forge`, `ac3signing`, `matroska`, `mp4`, `mpegts`,

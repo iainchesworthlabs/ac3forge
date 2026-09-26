@@ -1960,8 +1960,14 @@ languages and levels as configured.
   `ac4::encoder_shared` with pkg-config `ac4enc`, in the shape D8 gave the decoder: each library links
   the inspector of its own kind and the core privately, and the core's archive is installed wherever
   a static decoder or encoder is. `check_install_consumer.sh` encodes a tone through each installed
-  encoder by CMake and by pkg-config and reads it back with the inspector. vcpkg's and Conan's
-  features stay as they are, pending the user's decision on an opt-in AC-4 feature there.
+  encoder by CMake and by pkg-config and reads it back with the inspector. The vcpkg port and the
+  Conan recipe install the AC-4 libraries only where asked for, through an `ac4` feature and
+  option that are off by default, and IAB and IAMF the same way (`iab`, `iamf`), as the user
+  decided on D8's question: a curated vcpkg port's default features may enable behaviours, not
+  public targets. Both pin Hearth off, which upstream refuses beside the AC-4 libraries off and
+  whose dependencies neither declares. `check_packaging_versions.sh` holds the two recipes to the
+  same components and fails an option upstream defaults ON that a recipe neither offers nor pins, and
+  `check_install_consumer.sh` checks that a tree built without a library installs no file of it.
 - The encoder-space harness draws further substreams in one case in five, in each configuration of
   Table 53, with rate shares, mixing values, ids, levels, names and payloads, through the CLI's
   options. It found three faults the tests had not: at an average rate a frame could give the
