@@ -4,7 +4,7 @@
 |---|---|---|---|---|---|
 | AC-3 encode | Public API | File and live | File and live | Live output | No |
 | E-AC-3 encode | Public API | File and live | File and live | Live output | No |
-| AC-4 encode | Public API | File: mono to 5.1 so far (7.X and 3.0 experimental), several substreams and presentations, every encoder option | No | No | No |
+| AC-4 encode | Public API | File: mono to 5.1, and 5.0.4 and 5.1.4 (3.0, 7.X and 7.X.4 experimental), several substreams and presentations, every encoder option | No | No | No |
 | AC-3 / E-AC-3 decode | Public API | File and playback | File and monitor | Output adaptation | Desktop and ESP32 |
 | AC-4 decode | Public API | File: channel-based to 7.1.4 and objects (A-JOC, direct-coded), one presentation of several mixed, every output and presentation control | No | No | Desktop, channel-based to 7.1.4; objects not yet |
 | Atmos/JOC object encode | Public API | File and live | File and live | Placed applications | No |
