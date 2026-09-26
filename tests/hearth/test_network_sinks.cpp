@@ -201,6 +201,7 @@ TEST_CASE("network sinks: commands on an id nothing has ever found are quietly r
     sinks.submit_pairing_code("no-such-sink", "123456");
     sinks.cancel_pairing("no-such-sink");
     sinks.forget_pairing("no-such-sink");
+    sinks.keep_sink("no-such-sink", true);
     sinks.rescan();
     CHECK(sinks.status().sinks.empty());
 }
@@ -568,6 +569,111 @@ TEST_CASE("network sinks: a client going away keeps its row, and it is dialled a
     const auto link = sinks.status().sinks.front().link;
     // Dialled: connecting, or already failed again against the refused port.
     CHECK((link == ac3::hearth::SinkLink::kConnecting || link == ac3::hearth::SinkLink::kRetrying));
+}
+
+TEST_CASE("network sinks: a sink kept through a firmware update keeps its row until it is let go",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
+
+    const ss::discovery::Service service = test_service("hearth-s3-den", 1);
+    sinks.on_found(service);
+    ss::ClientView client;
+    client.client_id = "client-den";
+    client.url = *service.url();
+    client.hello = true;
+    client.name = "Den";
+    client.psk = ss::handshake::PskCategory::kLongTerm;
+    ss::ac3forge::Support support;
+    support.data_types = {ss::ac3forge::DataType::kEac3};
+    support.outputs = {.count = 2, .bit_depth = 32, .bit_depths = {32}};
+    client.ac3forge_support = support;
+    sinks.on_client(client);
+    sinks.select_sink("hearth-s3-den");
+
+    // The update starts, and the board goes into flash mode: its Sendspin
+    // player stops and its mDNS service goes. Kept, the row stays - still
+    // saying what the sink is and where, and that it is not connected - and
+    // a dial that fails while the board is away does not drop it either.
+    sinks.keep_sink("hearth-s3-den", true);
+    sinks.on_client_gone("client-den");
+    sinks.on_lost("hearth-s3-den");
+    sinks.on_dial_failed(*service.url(), false);
+    auto status = sinks.status();
+    REQUIRE(status.sinks.size() == 1);
+    CHECK(status.selected_id == "hearth-s3-den");
+    const ac3::hearth::SinkFacts facts = status.sinks.front();
+    CHECK(facts.name == "Den");
+    CHECK(facts.kind == SinkKind::kHearthSink);
+    CHECK(facts.pair_state == PairState::kPaired);
+    CHECK(facts.address == "127.0.0.1");
+    CHECK(facts.link == ac3::hearth::SinkLink::kRetrying);
+    const ac3::hearth::SinkRow row = ac3::hearth::to_row(facts);
+    CHECK_FALSE(row.connected);
+    CHECK(row.link_text.starts_with("not answering"));
+    CHECK_FALSE(ac3::hearth::to_detail(facts).connected);
+
+    // Let go while mDNS still does not list it and nothing is connected, it
+    // goes at once, as it would have without being kept. The selection is
+    // the page's own, and stays for when mDNS finds the sink again.
+    sinks.keep_sink("hearth-s3-den", false);
+    status = sinks.status();
+    CHECK(status.sinks.empty());
+    CHECK(status.selected_id == "hearth-s3-den");
+
+    // Keeping a sink that has gone does not bring it back, and is not
+    // remembered for when it does come back: the row mDNS makes then is an
+    // ordinary one, which goes with its mDNS record.
+    sinks.keep_sink("hearth-s3-den", true);
+    CHECK(sinks.status().sinks.empty());
+    sinks.on_found(service);
+    REQUIRE(sinks.status().sinks.size() == 1);
+    sinks.on_lost("hearth-s3-den");
+    CHECK(sinks.status().sinks.empty());
+}
+
+TEST_CASE("network sinks: a kept sink that mDNS finds again is an ordinary row once let go",
+          "[hearth][network-sinks]") {
+    MemorySettingsStore settings;
+    PairingStore store{settings, today};
+    const auto identity = ss::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    NetworkSinks sinks{*identity, "Test Hearth", store, {.browse = false}};
+
+    const ss::discovery::Service service = test_service("hearth-s3-porch", 1);
+    sinks.on_found(service);
+    ss::ClientView client;
+    client.client_id = "client-porch";
+    client.url = *service.url();
+    client.hello = true;
+    sinks.on_client(client);
+
+    // mDNS lets go first this time, while the connection is still up.
+    sinks.keep_sink("hearth-s3-porch", true);
+    sinks.on_lost("hearth-s3-porch");
+    sinks.on_client_gone("client-porch");
+    REQUIRE(sinks.status().sinks.size() == 1);
+
+    // The board restarts into its new image and mDNS lists it again: it is
+    // dialled at once, as on_found() dials any sink waiting out its
+    // back-off, and hello connects it.
+    sinks.on_found(service);
+    const auto link = sinks.status().sinks.front().link;
+    CHECK((link == ac3::hearth::SinkLink::kConnecting || link == ac3::hearth::SinkLink::kRetrying));
+    sinks.on_client(client);
+    CHECK(sinks.status().sinks.front().link == ac3::hearth::SinkLink::kConnected);
+
+    // Let go while mDNS lists it, it stays; from then on its mDNS record and
+    // its connection decide, as they do for any row.
+    sinks.keep_sink("hearth-s3-porch", false);
+    REQUIRE(sinks.status().sinks.size() == 1);
+    sinks.on_lost("hearth-s3-porch");
+    CHECK(sinks.status().sinks.size() == 1);
+    sinks.on_client_gone("client-porch");
+    CHECK(sinks.status().sinks.empty());
 }
 
 TEST_CASE("network sinks: another server taking the sink holds its row until the person asks",

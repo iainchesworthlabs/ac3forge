@@ -124,9 +124,12 @@ FirmwarePanel to_firmware_panel(const SinkFirmware::Snapshot& snapshot, std::str
             panel.progress = update.stage == "sending" && update.total > 0
                                  ? static_cast<double>(update.sent) / static_cast<double>(update.total)
                                  : -1.0;
+            // The second try at an upload that broke off says so, as ota.py
+            // says "sending it again".
             panel.progress_text = update.stage == "sending" && update.total > 0
-                                      ? fmt::format("Sending {}: {} of {} bytes", update.version,
-                                                    grouped_number(update.sent), grouped_number(update.total))
+                                      ? fmt::format("Sending {}{}: {} of {} bytes", update.version,
+                                                    update.attempt > 1 ? " again" : "", grouped_number(update.sent),
+                                                    grouped_number(update.total))
                                       : sentence(update.text);
         } else {
             panel.outcome = outcome_name(update.outcome);
@@ -213,6 +216,15 @@ FirmwareCandidate to_candidate(const FirmwareFile& file, const SinkFirmware::Sna
         candidate.refusal = std::move(*why);
     }
     return candidate;
+}
+
+FirmwareClientPlan plan_firmware_client(bool busy, const SinkFirmware::Snapshot& snapshot, bool shown,
+                                        std::string_view address) {
+    // A sink that took a new address is asked there, unless an update is
+    // following it at the old one.
+    const bool moved = shown && !address.empty() && snapshot.host != address;
+    const bool ended = snapshot.update && snapshot.update->outcome != UpdateOutcome::kNone;
+    return FirmwareClientPlan{.let_go = (!shown || moved) && !busy, .keep_sink = busy || (shown && !moved && ended)};
 }
 
 }  // namespace ac3::hearth

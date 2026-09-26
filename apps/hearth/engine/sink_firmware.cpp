@@ -173,6 +173,15 @@ constexpr std::array<TargetChip, 10> kTargets{{
     return !a || (a->version == b->version && a->result == b->result && a->reason == b->reason);
 }
 
+// `text`, with `more` after it as a sentence of its own when there is one.
+[[nodiscard]] std::string with_sentence(std::string text, std::string_view more) {
+    if (!more.empty()) {
+        text += text.ends_with('.') ? " " : ". ";
+        text += more;
+    }
+    return text;
+}
+
 [[nodiscard]] std::string http_hint(int status) {
     if (status == 403) {
         return " (name the board by its IP address or its .local name)";
@@ -182,6 +191,11 @@ constexpr std::array<TargetChip, 10> kTargets{{
     }
     return {};
 }
+
+// What a board says of an upload it gave up because the connection went, as
+// firmware.cpp words it (ota.py's CONNECTION_LOST): another try can go
+// through.
+constexpr std::array<std::string_view, 2> kConnectionLost{"the upload stopped after", "the upload ended before"};
 
 // A request's Host header: the board takes its own address or name there
 // (firmware_image.hpp's host_is_the_board), and an IPv6 address only in
@@ -297,6 +311,8 @@ std::optional<ac3forge::FirmwareStatus> parse_firmware_status(std::string_view t
         });
     }
     status.bootloader_version = text_at(root, "bootloader_version");
+    status.reset_reason = text_at(root, "reset_reason");
+    status.uptime_ms = number_at(root, "uptime_ms");
     return status;
 }
 
@@ -479,6 +495,64 @@ std::string silent_text(const ac3forge::FirmwareStatus* last, const FirmwareFile
            "flash it over USB.";
 }
 
+BreakVerdict judge_break(const ac3forge::FirmwareStatus* firmware, std::chrono::milliseconds since_upload,
+                         bool wait_over) {
+    // The board may be reading out a timeout, or restarting: it is asked
+    // until it answers with no upload running.
+    if (firmware == nullptr || firmware->upload) {
+        if (!wait_over) {
+            return {};
+        }
+        if (firmware == nullptr) {
+            return {.decided = true, .text = "the board has not answered since", .retry = false, .flash_mode = false};
+        }
+        return {.decided = true,
+                .text = "the board still reports the upload as running",
+                .retry = false,
+                .flash_mode = true};
+    }
+    // In flash mode it gave the upload up, and says why.
+    const std::optional<ac3forge::FirmwareLastUpdate>& last = firmware->last_update;
+    if (firmware->mode == "flash") {
+        if (last && (last->result == "refused" || last->result == "failed") && !last->reason.empty()) {
+            const bool connection_lost =
+                std::any_of(kConnectionLost.begin(), kConnectionLost.end(),
+                            [&](std::string_view words) { return last->reason.starts_with(words); });
+            return {.decided = true,
+                    .text = "the board gave it up: " + last->reason,
+                    .retry = connection_lost,
+                    .flash_mode = true};
+        }
+        return {.decided = true,
+                .text = "the board is in flash mode and says nothing of it",
+                .retry = true,
+                .flash_mode = true};
+    }
+    // In normal mode it restarted since the upload began: it says so as the
+    // last update (firmware that records "interrupted"), or its uptime is
+    // shorter than the upload has been going (firmware that does not).
+    if (last && last->result == "interrupted") {
+        return {.decided = true,
+                .text = last->reason.empty() ? std::string("the board restarted during it")
+                                             : "the board restarted during it: " + last->reason,
+                .retry = true,
+                .flash_mode = false};
+    }
+    const auto since_ms = static_cast<std::uint64_t>(std::max<std::chrono::milliseconds::rep>(since_upload.count(), 0));
+    if (firmware->uptime_ms > 0 && firmware->uptime_ms < since_ms) {
+        return {.decided = true,
+                .text = fmt::format("the board restarted during it (reset reason: {})",
+                                    firmware->reset_reason.empty() ? std::string("not reported")
+                                                                   : firmware->reset_reason),
+                .retry = true,
+                .flash_mode = false};
+    }
+    return {.decided = true,
+            .text = "the board is in normal mode and says nothing of it: it never started it",
+            .retry = true,
+            .flash_mode = false};
+}
+
 // --- the client ------------------------------------------------------------------
 
 class SinkFirmware::Worker {
@@ -570,12 +644,28 @@ class SinkFirmware::Worker {
     template <class Request>
     [[nodiscard]] Answer request(httplib::Client& client, Request&& send);
     [[nodiscard]] Answer get(const char* path);
-    // `method` with an empty body: PUT /firmware/rollback, POST /restart.
-    [[nodiscard]] Answer send_empty(bool post, const char* path);
+    // `method` with a short text body: PUT /firmware/rollback and POST
+    // /restart with none, PUT /firmware/mode with "normal".
+    [[nodiscard]] Answer send_text(bool post, const char* path, std::string_view body);
+    // PUT /firmware/mode "normal" (ota.py's leave_flash_mode), for a board a
+    // failed or refused update left in flash mode: left alone, it plays
+    // nothing and is not advertised until its idle timeout restarts it. What
+    // came of it, as a sentence for the outcome.
+    [[nodiscard]] std::string leave_flash_mode();
+    // leave_flash_mode() for a board GET /firmware finds in flash mode with
+    // no upload running, waiting for an image this update has none of
+    // (ota.py's leave_flash_mode_if_waiting); nothing to say for any other.
+    [[nodiscard]] std::string leave_flash_mode_if_waiting();
     // GET /firmware, published to the snapshot as a poll would be; nothing
     // when it was not answered with one.
     std::optional<ac3forge::FirmwareStatus> read_firmware();
-    [[nodiscard]] std::string refusal_after_break();
+    // PUT /firmware with `file`, and the board's answer; `sent` follows how
+    // much of the image went.
+    [[nodiscard]] Answer put_image(const FirmwareFile& file, std::size_t& sent);
+    // judge_break() on each GET /firmware answer after an upload that began
+    // at `started` broke off, until it decides; undecided when the thread is
+    // to stop first.
+    [[nodiscard]] BreakVerdict after_break(std::chrono::steady_clock::time_point started);
     void set_update(const Update& update);
     void publish_poll(std::optional<SinkHardware> hardware, std::optional<ac3forge::FirmwareStatus> firmware,
                       bool answered, std::string error);
@@ -683,13 +773,32 @@ SinkFirmware::Worker::Answer SinkFirmware::Worker::get(const char* path) {
     });
 }
 
-SinkFirmware::Worker::Answer SinkFirmware::Worker::send_empty(bool post, const char* path) {
+SinkFirmware::Worker::Answer SinkFirmware::Worker::send_text(bool post, const char* path, std::string_view body) {
     httplib::Client http = client(timing_.request);
     const httplib::Headers headers{{"Host", host_header(host_, port_)}};
+    const std::string content(body);
     return request(http, [&](httplib::Client& c) {
-        return post ? c.Post(path, headers, std::string(), "text/plain")
-                    : c.Put(path, headers, std::string(), "text/plain");
+        return post ? c.Post(path, headers, content, "text/plain") : c.Put(path, headers, content, "text/plain");
     });
+}
+
+std::string SinkFirmware::Worker::leave_flash_mode() {
+    const Answer answer = send_text(false, "/firmware/mode", "normal");
+    if (answer.status == 0) {
+        return fmt::format("The board stays in flash mode, and could not be told to leave it ({})", answer.error);
+    }
+    if (answer.status != 200) {
+        return fmt::format("The board stays in flash mode: leaving it answered {} {}", answer.status, answer.body);
+    }
+    return "Told the board to leave flash mode: it restarts into the image it runs";
+}
+
+std::string SinkFirmware::Worker::leave_flash_mode_if_waiting() {
+    const std::optional<ac3forge::FirmwareStatus> firmware = read_firmware();
+    if (firmware && firmware->mode == "flash" && !firmware->upload) {
+        return leave_flash_mode();
+    }
+    return {};
 }
 
 void SinkFirmware::Worker::publish_poll(std::optional<SinkHardware> hardware,
@@ -753,22 +862,46 @@ void SinkFirmware::Worker::set_update(const Update& update) {
     ++snapshot_.generation;
 }
 
-std::string SinkFirmware::Worker::refusal_after_break() {
-    // An upload that reached the board put it in flash mode, so a board in
-    // normal mode never had this one, and its last update is an older one.
+SinkFirmware::Worker::Answer SinkFirmware::Worker::put_image(const FirmwareFile& file, std::size_t& sent) {
+    // The whole file's SHA-256 goes with it, for the board to check what it
+    // received against.
+    httplib::Client http = client(timing_.upload_answer);
+    const httplib::Headers headers{
+        {"Host", host_header(host_, port_)},
+        {"Content-Digest", "sha-256=:" + ac3::sendspin::base64::encode(file.file_sha256) + ":"},
+    };
+    sent = 0;
+    const auto progress = [&](std::size_t current, std::size_t total) {
+        sent = current;
+        {
+            const std::lock_guard<std::mutex> lock(mutex_);
+            if (snapshot_.update) {
+                snapshot_.update->sent = current;
+                if (current >= total) {
+                    snapshot_.update->stage = "answering";
+                    snapshot_.update->text = "sent; the board reads the slot back and checks it before it answers";
+                }
+                ++snapshot_.generation;
+            }
+        }
+        return !stopping();
+    };
+    return request(http, [&](httplib::Client& c) {
+        return c.Put("/firmware", headers, reinterpret_cast<const char*>(file.data.data()), file.data.size(),
+                     "application/octet-stream", progress);
+    });
+}
+
+BreakVerdict SinkFirmware::Worker::after_break(std::chrono::steady_clock::time_point started) {
     const auto deadline = std::chrono::steady_clock::now() + timing_.refusal_wait;
     while (true) {
         const std::optional<ac3forge::FirmwareStatus> firmware = read_firmware();
-        if (firmware && !firmware->upload) {
-            const bool in_flash_mode = firmware->mode == "flash";
-            const std::optional<ac3forge::FirmwareLastUpdate>& last = firmware->last_update;
-            if (in_flash_mode && last && (last->result == "refused" || last->result == "failed")) {
-                return last->reason.empty() ? last->result : last->reason;
-            }
-            return {};
-        }
-        if (std::chrono::steady_clock::now() >= deadline || sleep_for(timing_.wait_poll)) {
-            return {};
+        const auto now = std::chrono::steady_clock::now();
+        BreakVerdict verdict = judge_break(firmware ? &*firmware : nullptr,
+                                           std::chrono::duration_cast<std::chrono::milliseconds>(now - started),
+                                           now >= deadline);
+        if (verdict.decided || sleep_for(timing_.wait_poll)) {
+            return verdict;
         }
     }
 }
@@ -811,62 +944,66 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
     }
     update.target = hardware->target;
 
-    // The upload, with the whole file's SHA-256 for the board to check what
-    // it received against.
     WaitContext context;
     context.slot = before->other ? before->other->label : std::string();
     context.last_before = before->last_update;
-    update.stage = "sending";
-    update.total = file.data.size();
-    update.text = fmt::format("sending {} bytes to {}; the board erases what the image needs first",
-                              grouped(file.data.size()), context.slot.empty() ? "the other slot" : context.slot);
-    set_update(update);
 
-    httplib::Client http = client(timing_.upload_answer);
-    const httplib::Headers headers{
-        {"Host", host_header(host_, port_)},
-        {"Content-Digest", "sha-256=:" + ac3::sendspin::base64::encode(file.file_sha256) + ":"},
-    };
-    std::size_t sent = 0;
-    const auto progress = [&](std::size_t current, std::size_t total) {
-        sent = current;
-        {
-            const std::lock_guard<std::mutex> lock(mutex_);
-            if (snapshot_.update) {
-                snapshot_.update->sent = current;
-                if (current >= total) {
-                    snapshot_.update->stage = "answering";
-                    snapshot_.update->text = "sent; the board reads the slot back and checks it before it answers";
-                }
-                ++snapshot_.generation;
-            }
+    // An upload that breaks off, or that a restart of the board cuts short,
+    // is sent once more (ota.py's push): the board keeps running what it ran,
+    // and nothing was accepted. Another break, or a board that gave the
+    // upload up for a reason other than the connection, leaves it at that,
+    // and takes the board out of flash mode rather than leave it silent
+    // until its idle timeout restarts it.
+    // A board whose HTTP sockets other clients hold open can reset an
+    // upload's new connection before it reads any of it (ESP-IDF v6.1's
+    // httpd), and a second try gets past that.
+    Answer answer;
+    for (std::uint32_t attempt = 1;; ++attempt) {
+        update.stage = "sending";
+        update.attempt = attempt;
+        update.sent = 0;
+        update.total = file.data.size();
+        if (attempt == 1) {
+            update.text =
+                fmt::format("sending {} bytes to {}; the board erases what the image needs first",
+                            grouped(file.data.size()), context.slot.empty() ? "the other slot" : context.slot);
         }
-        return !stopping();
-    };
-    const Answer answer = request(http, [&](httplib::Client& c) {
-        return c.Put("/firmware", headers, reinterpret_cast<const char*>(file.data.data()), file.data.size(),
-                     "application/octet-stream", progress);
-    });
-    if (stopping()) {
-        return;
-    }
-    update.sent = sent;
-    if (answer.status == 0 && sent < file.data.size()) {
+        set_update(update);
+        const auto started = std::chrono::steady_clock::now();
+        std::size_t sent = 0;
+        answer = put_image(file, sent);
+        if (stopping()) {
+            return;
+        }
+        update.sent = sent;
+        if (answer.status != 0 || sent >= file.data.size()) {
+            break;
+        }
+        update.stage = "broken";
         update.text = fmt::format("the upload broke off after {} bytes: {}", grouped(sent), answer.error);
         set_update(update);
-        const std::string reason = refusal_after_break();
-        finish(reason.empty() ? UpdateOutcome::kFailed : UpdateOutcome::kRefused,
-               reason.empty() ? "failed: the board gave no reason. If it is in flash mode, another update, or ten "
-                                "minutes, restarts it into the image it runs"
-                              : "refused: " + reason);
+        const BreakVerdict broken = after_break(started);
+        if (stopping()) {
+            return;
+        }
+        if (broken.retry && attempt == 1) {
+            update.text = broken.text + "; sending it again";
+            continue;
+        }
+        std::string text = "failed: the image was not taken; " + broken.text;
+        finish(UpdateOutcome::kFailed,
+               broken.flash_mode ? with_sentence(std::move(text), leave_flash_mode()) : std::move(text));
         return;
     }
     if (answer.status == 0) {
         context.reply_lost = true;
         update.text = fmt::format("no answer to the upload ({}); looking for the board", answer.error);
     } else if (answer.status != 200) {
+        // A board that took the upload and then refused the image waits in
+        // flash mode for a corrected one, which this update has none of.
         finish(UpdateOutcome::kRefused,
-               fmt::format("refused ({}): {}{}", answer.status, answer.body, http_hint(answer.status)));
+               with_sentence(fmt::format("refused ({}): {}{}", answer.status, answer.body, http_hint(answer.status)),
+                             leave_flash_mode_if_waiting()));
         return;
     } else {
         std::vector<json::Token> tokens;
@@ -906,7 +1043,12 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
         }
         const WaitVerdict verdict = judge_wait(firmware ? &*firmware : nullptr, file, context);
         if (verdict.outcome != UpdateOutcome::kNone) {
-            finish(verdict.outcome, verdict.text);
+            // The image not taken: a board that refused it waits in flash
+            // mode for another, as above.
+            const bool not_taken =
+                verdict.outcome == UpdateOutcome::kRefused || verdict.outcome == UpdateOutcome::kFailed;
+            finish(verdict.outcome,
+                   not_taken ? with_sentence(verdict.text, leave_flash_mode_if_waiting()) : verdict.text);
             return;
         }
         if (verdict.accepted && !sha_deadline) {
@@ -928,7 +1070,7 @@ void SinkFirmware::Worker::run_update(FirmwareFile file) {
 
 void SinkFirmware::Worker::run_action(Job job) {
     const bool rollback = job == Job::kRollback;
-    const Answer answer = rollback ? send_empty(false, "/firmware/rollback") : send_empty(true, "/restart");
+    const Answer answer = rollback ? send_text(false, "/firmware/rollback", {}) : send_text(true, "/restart", {});
     std::string text = answer.status == 0
                            ? fmt::format("{}: no answer ({})", rollback ? "roll back" : "restart", answer.error)
                            : fmt::format("{}: {} {}{}", rollback ? "roll back" : "restart", answer.status,
