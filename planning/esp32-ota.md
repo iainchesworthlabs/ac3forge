@@ -250,6 +250,12 @@ is 48 KiB and its decode stack 24 KiB. So flash mode changes no memory setting. 
 low-water mark during an upload confirms it: 114,308 bytes free at the lowest, measured once O4
 printed it ([Diagnostics](#diagnostics-without-a-cable-o4)).
 
+The S3 board is tighter. Playing JOC over Sendspin has left it 723 bytes of internal RAM (the
+example's README), so the upload's task could not have been made before the teardown. Flash mode
+therefore comes first. A board that still cannot make the task answers `503` with the largest
+block it has, and records it. Whether the teardown frees 8 KiB in one piece on that board, which
+only holds its burst player rather than freeing it, is not measured yet.
+
 **Flash writes and the cache.** An erase or a write disables the flash cache, in windows of up to
 one 64 KiB block erase. Nothing time-critical is left running by then. On the C6, Wi-Fi's own code
 runs from flash (its IRAM options are off), so Wi-Fi also pauses in those windows. TCP resends
@@ -264,10 +270,13 @@ whatever those windows delay.
    - there is no second slot (a board still on the old layout);
    - there is no `Content-Length`, or the length is more than the slot holds;
    - the `Content-Type` is not `application/octet-stream`.
-2. The request goes to a firmware task (`httpd_req_async_handler_begin`, in ESP-IDF v6.1). The
-   server stays free to answer `GET /firmware` while the upload runs.
-3. The firmware task enters flash mode and waits for app_main to confirm the teardown.
-4. It reads the first 288 bytes: the image header, the first segment's header and
+2. The server's task enters flash mode, as `PUT /firmware/mode flash` does, and waits for
+   app_main to confirm the teardown.
+3. The request goes to a firmware task (`httpd_req_async_handler_begin`, in ESP-IDF v6.1). The
+   server stays free to answer `GET /firmware` while the upload runs. The task is made before
+   the request is handed over, so a board that cannot make it answers `503` and records why,
+   where a failure after the handover could only drop the connection ([Memory](#flash-mode)).
+4. The task reads the first 288 bytes: the image header, the first segment's header and
    `esp_app_desc_t`. Nothing is erased until they pass these checks:
    - the magic numbers;
    - the chip ID is this chip's;
@@ -280,10 +289,18 @@ whatever those windows delay.
    refuses a wrong image before 1.5 MB are written, and the reply says which check failed. That
    matters on the P4: an image built without `sdkconfig.p4`'s revision settings needs v3.1 or
    newer, and this board is v1.3.
-5. `esp_ota_begin` with the declared length erases what the image needs. Then 4 KiB reads go into
-   `esp_ota_write`, and each read also goes into a running SHA-256 of the body. `GET /firmware`
-   reports the progress. A stalled connection gives up after 30 s.
-6. Three checks follow, the first and third reading the image back from flash
+5. An `uploading` marker goes into NVS, naming the version. Whatever records the upload's outcome
+   clears it in the same commit, so one found at boot is an upload a reset cut short: it becomes
+   `last_update` `interrupted`, with the reset's cause.
+6. `esp_ota_begin` erases the slot's first 64 KiB. Then 4 KiB reads go into `esp_ota_write`, each
+   later 64 KiB block erased just before the writes reach it, and each read also goes into a
+   running SHA-256 of the body. `GET /firmware` reports the progress. A stalled connection gives
+   up after 30 s, and any upload after ten minutes.
+
+   Erasing the whole image's worth first, as O1 did, left the upload reading nothing for the
+   seconds that took: the client stalled, and on the P4 the link to the radio ran only in the
+   gaps between block erases. Erasing as the writes go spreads the same work over the upload.
+7. Three checks follow, the first and third reading the image back from flash
    ([Integrity](#integrity)):
    - `esp_ota_end` runs `esp_image_verify`: the header's checksum, the SHA-256 the build
      appended to the image, the chip ID, the revision range and the segment layout;
@@ -292,7 +309,7 @@ whatever those windows delay.
    - the SHA-256 of the bytes read back from the slot has to equal the SHA-256 of the body.
 
    Only then does `esp_ota_set_boot_partition` make the new slot the next boot.
-7. The board replies `200` with the version written, waits about a second for the reply to leave,
+8. The board replies `200` with the version written, waits about a second for the reply to leave,
    and calls `esp_restart()`.
 
 Any failure calls `esp_ota_abort`, replies with the reason, records it for `GET /firmware`, and
@@ -322,13 +339,21 @@ On the new image:
   the bootloader. A board that hangs during its trial can therefore be unplugged and plugged back
   in, and it comes back on the previous image.
 - The trial is read once a second by an `esp_timer`, not in app_main's loop, so a stuck loop
-  still rolls back. It has no task of its own until it has decided: a short-lived task then
-  writes the decision to otadata and NVS, which needs more stack than `esp_timer`'s task has. A
-  task kept for the whole trial took 6 KiB of internal RAM as the board started, and on the S3
-  board that left the Sendspin player without the 32 KiB block it starts with, so no update
-  could pass its trial there (found by O2). A second `esp_timer`, 30 s past the deadline,
-  restarts the board if the trial has not acted, and a restart while on trial is itself a
-  rollback.
+  still rolls back. It has no task of its own. A task kept for the whole trial took 6 KiB of
+  internal RAM as the board started, and on the S3 board that left the Sendspin player without
+  the 32 KiB block it starts with, so no update could pass its trial there (found by O2).
+  - Accepting writes otadata and NVS from `esp_timer`'s own task. That left 2,192 of the task's
+    3,584 bytes of stack unused on the S3 board, 2,680 on the C6 and 2,660 on the P4. A task
+    made for it could fail on a board
+    whose internal RAM a stream had taken by then, such as one a server resumed as the board came
+    back, and the guard would then roll back a good image.
+  - Giving up makes a short-lived task, since it tells servers the board is going. If it cannot
+    make one, it restarts, which rolls back without the reason.
+  - A second `esp_timer`, 30 s past the deadline, restarts the board if the trial has not acted,
+    and a restart while on trial is itself a rollback.
+  - A rollback asked for while the acceptance is being written is refused with a `409`, rather
+    than racing it: the board would go back, and its record would say the new image was
+    accepted.
 - The task watchdog is left as the builds set it: it reports and does not panic
   (`CONFIG_ESP_TASK_WDT_PANIC` is off in every board build). A decode that keeps the idle task
   from running for 5 s makes it fire. That is a problem of load, not a broken image, and a trial
@@ -443,8 +468,8 @@ signed with its key. That includes one sent by a hostile web page ([Routes](#rou
 
 | Route | What it does | Replies |
 |---|---|---|
-| `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended; an upload's progress; slot size, flash size and the partition table as the board has it; the bootloader's version; whether the board's network is stored or built into its image | `200`, JSON |
-| `PUT /firmware` | Body: an app image (`ac3forge_hearth_sink.bin`, not the merged image), with an optional `Content-Digest`. Enters flash mode, writes the other slot, checks it, restarts into it | `200` then a restart; `400` not an app image, the wrong chip, a revision this chip does not meet, cut short, or damaged (a SHA-256 does not match, and the reply says which); `403` the `Host` is not one of the board's own names ([decision 13](#decisions)); `409` on trial, or an update already running; `411` no length; `413` larger than the slot; `415` a `Content-Type` other than `application/octet-stream` (none at all is fine: `curl -T` sends none) |
+| `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended; an upload's progress; slot size, flash size and the partition table as the board has it; the bootloader's version; whether the board's network is stored or built into its image; why the board last started (`reset_reason`) and how long ago (`uptime_ms`) | `200`, JSON |
+| `PUT /firmware` | Body: an app image (`ac3forge_hearth_sink.bin`, not the merged image), with an optional `Content-Digest`. Enters flash mode, writes the other slot, checks it, restarts into it | `200` then a restart; `400` not an app image, the wrong chip, a revision this chip does not meet, cut short, more than ten minutes arriving, or damaged (a SHA-256 does not match, and the reply says which); `503` no internal RAM left for the upload's task (the reply says how much there is); `403` the `Host` is not one of the board's own names ([decision 13](#decisions)); `409` on trial, or an update already running; `411` no length; `413` larger than the slot; `415` a `Content-Type` other than `application/octet-stream` (none at all is fine: `curl -T` sends none) |
 | `PUT /firmware/mode` | Body: `flash` enters flash mode; `normal` leaves it with a restart into the running image, and outside flash mode does nothing | `200`; `409` on trial |
 | `PUT /firmware/rollback` | Makes the other slot's image, if it is valid, the next to boot, and restarts into it, on trial as an update's image is. On trial, gives up the trial instead | `200`; `409` nothing valid to roll back to |
 | `POST /restart` | Restarts into the running image | `200`; `409` on trial, where a restart would roll back |
@@ -510,8 +535,19 @@ ota.py cancel   --host H          # leave flash mode: restart into the running i
      ([Flash layout](#flash-layout));
    - the board already runs this image (skipped unless `--force`).
 
-   A board that is playing is asked about first, and `--yes` answers for it.
+   A board that is playing is asked about first, and `--yes` answers for it. Each of the two
+   reads is asked up to three times, so one slow name lookup does not refuse the push.
 3. **Upload.** `PUT /firmware` with the file's `Content-Digest`, and a progress line.
+   - **An upload that breaks off** is followed by the board's own account of it, once it
+     answers with no upload running:
+     - from flash mode, "gave it up", with its reason ("the upload stopped after N of M bytes");
+     - from normal mode, "restarted during it", with its `interrupted` record, or with its reset
+       reason when a firmware keeps no record, going by an uptime shorter than the upload.
+
+     The image is then sent once more when that can help: the board still runs what it ran, and
+     nothing was accepted.
+   - **A push that ends refused or broken** leaves no board waiting in flash mode. The tool tells it
+     to leave, rather than leave it silent, unadvertised, until its ten-minute timeout.
 4. **Wait.** Poll `GET /firmware` at the address the board had, for up to 6 minutes, until:
    - the new image is running and accepted, and the running slot's SHA-256 equals the file's:
      **updated**;
@@ -1202,6 +1238,85 @@ boards leave development, and if that is before O8, O8's images are published si
   takes it, and the other pages brought into line. **Exit:** someone with only the guide takes a
   blank board to one that plays, then updates it over the network to a newer release.
   [Built](#the-user-guide); its exit waits for a release that publishes sink firmware.
+
+## Robustness (2026-09-26)
+
+**A soak on the boards.** Each board was updated over and over through the night. Each cycle
+was a push with `ota.py`, as a user makes one, then one fault injected by hand:
+- a push straight after a restart (the P4's broken upload of O2 was one);
+- uploads cut off after the header, early, at random and at 99%;
+- one at 16 KiB/s, and one that stalls for 20 s halfway;
+- a second `ota.py push` during an upload;
+- one sent while three other clients poll `GET /firmware` on kept-alive connections;
+- `PUT /firmware/rollback`;
+- a damaged image, and another chip's image.
+
+After every step the soak read `GET /firmware`, kept any core dump and saved `GET /log`; the
+S3s' and the C6's consoles were recorded throughout. The images were the stack as it goes to
+`main` with #1034's trial fix, before the fixes below.
+
+- **Result:** every kind of step went as designed on every board but one: an upload sent while
+  three other clients poll, which the board's HTTP server sometimes reset (below). None of the
+  faults left a board stuck, and none needed a power cycle. The P4 came through dozens of
+  restarts without its co-processor hang.
+- **A second upload during one** is refused by `ota.py` before it sends anything ("an update is
+  already under way"), from `GET /firmware`. A client that skips that check, and a raw second
+  `PUT`, get their connection dropped rather than a `409`: the board's HTTP server cannot answer
+  before the body, and the client is still sending it.
+- **An upload sent while three other clients poll** was sometimes reset before the board read
+  any of it: `ConnectionResetError` after 69,632 bytes, nothing in the board's log, and the board
+  as it was. The P4 lost 2 of its 3 tries at that step, an S3 1 of 4, and the C6 none of 3. It is
+  a race in ESP-IDF v6.1's HTTP server:
+  - The control server keeps three sockets. For a fourth connection it queues a close of the
+    least recently used, and takes the new connection once that close has run.
+  - A server that goes round again before the close has run queues a second close of the same
+    slot. The first frees the slot, the new connection takes it, and the second closes the new
+    connection.
+  - `httpd_sess_close()` has a check meant to skip such a close. It looks for a session that has
+    never been used, and v6.1 starts every new session at the server's current count, so it
+    never skips.
+  - An upload is the connection most likely to lose: its own burst of data keeps lwIP busy, which
+    holds up the queued close. Once the upload has begun, the server no longer purges its socket.
+
+  On the S3 board, 300 connections made as that step makes them, with a 64 KiB body the board
+  refuses with `415`, lost 16 to a reset. With `CONFIG_HTTPD_QUEUE_WORK_BLOCKING`, which makes the
+  server close the least recently used connection at once with nothing queued, 300 lost none, and
+  the Sendspin player still started and took Music Assistant's connection. The example now sets
+  it (`sdkconfig.defaults`). The cost is that `httpd_queue_work()` waits for room in a full queue
+  rather than failing. `ota.py` and ac3hearth also send an upload that breaks off once more.
+
+**A review of the code.** It ran the same night, and found the cases these fixes answer:
+- a reset during an upload leaving no trace (the P4's, most likely `esp_hosted` restarting it),
+  now the `interrupted` record;
+- the whole slot erased before the second read, now as the writes go;
+- no overall deadline, so a trickling client could keep a board busy until its power was cut,
+  now ten minutes;
+- the upload's task made before the teardown, now after it, answering `503` when it cannot be
+  made;
+- the example's flash-mode hook able to wait forever, now 15 s;
+- the tools leaving a board in flash mode after a failed push, now told to leave, and a broken
+  upload sent again;
+- the trial's acceptance needing a new 4 KiB task, which a heavy stream started during the S3's
+  hold could leave no room for, now done from `esp_timer`'s task;
+- a rollback asked for at the very end of a trial's hold racing its acceptance, now refused
+  while the acceptance is written;
+- ac3hearth's Firmware tab losing its sink when flash mode withdrew the board's mDNS record and
+  ended its Sendspin connection, so the progress and the outcome went unseen. The sink is now
+  kept while the update runs and while the tab shows how it ended.
+
+Tested on the S3 board: a reset over USB 5.1 s into an upload produced the `interrupted` record,
+`ota.py` said so, sent the image again, and it was accepted.
+
+**Still open**, from the same review: the NVS record is three writes, which a reset can tear.
+That needs power lost during those writes, and it can only leave a report that mixes two
+updates: NVS decides nothing about which image boots.
+
+**Tested and not reproduced:** polls during an S3's boot splitting the internal RAM its player's
+32 KiB block needs. Three updates to the S3 board were each pushed while 4 or 8 clients polled
+`GET /firmware`, `/status` and `/hardware` on new connections every 50 to 100 ms, from before the
+restart until after the trial: 1,000 to 2,400 requests each. Every one started the player with
+the heap of a quiet boot (largest free block 31,744) and was accepted. That build keeps lwIP's
+buffers in PSRAM (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`).
 
 ## What cannot be verified
 

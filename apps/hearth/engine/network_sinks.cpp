@@ -145,7 +145,7 @@ void NetworkSinks::schedule_retry_locked(Entry& entry, Clock::time_point now) {
 
 bool NetworkSinks::forget_if_unlisted_locked(std::map<std::string, Entry>::iterator it) {
     const Entry& entry = it->second;
-    if (entry.listed || entry.client.has_value()) {
+    if (entry.listed || entry.client.has_value() || entry.kept) {
         return false;
     }
     if (const std::optional<std::string> url = entry.service.url()) {
@@ -375,6 +375,20 @@ void NetworkSinks::connect_sink(const std::string& id) {
         publish_locked();
     }
     dial(dials);
+}
+
+void NetworkSinks::keep_sink(const std::string& id, bool keep) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    auto it = sinks_.find(id);
+    if (it == sinks_.end() || it->second.kept == keep) {
+        return;
+    }
+    it->second.kept = keep;
+    if (!keep) {
+        // Whatever mDNS and the connection let go of while it was kept.
+        (void)forget_if_unlisted_locked(it);
+    }
+    publish_locked();
 }
 
 bool NetworkSinks::push_sink_settings(const std::string& id, ss::ac3forge::Settings settings) {

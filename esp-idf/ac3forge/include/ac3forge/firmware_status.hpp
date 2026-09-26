@@ -56,7 +56,8 @@ struct FirmwareUpload {
 struct FirmwareLastUpdate {
     std::string version;
     // "on trial", "accepted", "rolled back", "rollback requested", "refused"
-    // (the image or the request was wrong) or "failed" (the board was).
+    // (the image or the request was wrong), "failed" (the board was) or
+    // "interrupted" (the board restarted while it was being written).
     std::string result;
     std::string reason;
 };
@@ -97,6 +98,12 @@ struct FirmwareStatus {
     std::size_t flash_bytes = 0;
     std::vector<FirmwarePartition> partitions;
     std::string bootloader_version;
+    // Why this boot happened (esp_reset_reason, as "poweron", "sw", "panic",
+    // "int_wdt", "task_wdt", "wdt", "brownout", "ext", "usb", ...) and how
+    // long ago: a tool that lost its connection can tell whether the board
+    // restarted in between, and on what.
+    std::string reset_reason;
+    std::uint64_t uptime_ms = 0;
 };
 
 namespace detail {
@@ -244,6 +251,8 @@ inline void append_slot(std::string& out, const FirmwareSlot& slot) {
         }
         list += ']';
         object.text("bootloader_version", status.bootloader_version);
+        object.text("reset_reason", status.reset_reason);
+        object.number("uptime_ms", status.uptime_ms);
     }
     out += '\n';
     return out;
