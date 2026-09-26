@@ -1888,9 +1888,10 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 }
                 continue;
             }
-            if (value == "5.1" && plays_ac4) {
+            if (value == "5.1" && (plays_ac4 || command == "transcode")) {
                 // AC-4's 7.X element folded to 5.X (ETSI TS 103 190-1 Table
-                // 219); decode refuses it for AC-3 and E-AC-3.
+                // 219), and transcode's AC-4 source's; decode refuses it for
+                // AC-3 and E-AC-3.
                 out.output.target = ac3::DownmixTarget::kAsCoded;
                 out.downmix_auto = false;
                 out.ac4_fold_5x = true;

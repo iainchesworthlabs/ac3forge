@@ -460,7 +460,7 @@ constexpr std::array<Command, 44> kCommands{{
      "wrap as MPEG-2 TS; AC-4 supports DVB only",
      topic::kTs | topic::kMeta,
      Needs::kNothing, [](const Args& x) { return run_ts(x.str(1), x.str(2), x.str(3, "dvb"), x.meta); }},
-    {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3>",
+    {"demux", 3, "<in.mkv|in.mp4|in.ts> <out.ac3|out.ec3|out.ac4>",
      "the inverse of 'mkv': unwrap the elementary stream a container carries. The container is "
      "identified by its own magic bytes, not by the file name",
      topic::kStdio,
