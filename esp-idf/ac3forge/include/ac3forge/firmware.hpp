@@ -69,6 +69,11 @@ struct FirmwareConfig {
     std::size_t task_stack_bytes = 8192;
     // The receive buffer, from internal RAM.
     std::size_t buffer_bytes = 4096;
+    // The longest an upload may take, from its first byte to its last: a
+    // client that sends a byte every few seconds never stalls for long enough
+    // to be dropped, and would otherwise keep the board busy - refusing
+    // restarts, rollbacks and leaving flash mode - until its power was cut.
+    std::uint32_t upload_deadline_ms = 600'000;
     // CI's switches: an image that never reports healthy, and one that panics
     // as it starts a trial, for the rollback tests under QEMU. Never set in a
     // board's build.
@@ -94,12 +99,21 @@ class Firmware {
     // setting then.
     [[nodiscard]] bool flash_mode() const;
 
+    // A restart its owner asks for, outside the routes, made as a route's
+    // restart is: `why` on the console ("firmware: restarting <why>"), and
+    // before_restart first. An image still on trial goes back at this
+    // restart, and the image that runs next records `why` as the reason.
+    [[noreturn]] void restart(const char* why);
+
     // Control's routes. Each answers the request itself.
     int on_status(httpd_req* req);
     int on_upload(httpd_req* req);
     int on_mode(httpd_req* req);
     int on_rollback(httpd_req* req);
     int on_restart(httpd_req* req);
+    // The last crash's core dump (O4): sent as it lies in flash, and erased.
+    int on_coredump(httpd_req* req);
+    int on_coredump_erase(httpd_req* req);
 
     struct Impl;
 

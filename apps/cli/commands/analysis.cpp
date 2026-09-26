@@ -1440,7 +1440,7 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
     const auto finished = reader.finish();
     if (reader.bursts() == 0) {
         sink.abort();
-        fmt::println(stderr, "error: {} holds no AC-3 or E-AC-3 bursts{}", in_path,
+        fmt::println(stderr, "error: {} holds no AC-3, E-AC-3 or AC-4 bursts{}", in_path,
                      reader.skipped_bursts() > 0
                          ? " (its bursts are another data type)"
                          : " - is it ordinary PCM rather than an IEC 61937 carrier?");
@@ -1450,19 +1450,20 @@ int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_p
         return kExitOutput;
     }
 
-    // Compared as an optional rather than dereferenced: bursts() > 0 does
-    // guarantee data_type() is engaged, but that is an invariant of the
-    // reader rather than something visible here, and the answer wanted is a
-    // bool either way - std::optional's own operator== gives it directly.
-    const bool eac3 = reader.data_type() == ac3::iec61937::BurstDataType::kEac3;
+    // value_or rather than a dereference: bursts() > 0 does guarantee
+    // data_type() is engaged, but that is an invariant of the reader rather
+    // than something visible here. An AC-4 carrier names its own link (IEC
+    // 61937-14's four burst types); its bursts hold AC-4 sync frames, the
+    // .ac4 form.
+    const std::string_view kind = ac3::iec61937::data_type_name(
+        reader.data_type().value_or(ac3::iec61937::BurstDataType::kAc3));
     // stderr when the elementary stream itself is going to stdout, the same
     // convention encode/decode follow (see status_stream's own comment):
     // this report must never land in the middle of the bytes a pipeline is
     // reading.
     auto* status = status_stream(out_path);
-    status_println(status, "unwrapped {} {} burst{} -> {} ({} bytes)", reader.bursts(),
-                   eac3 ? "E-AC-3" : "AC-3", reader.bursts() == 1 ? "" : "s", out_path,
-                   elementary_bytes);
+    status_println(status, "unwrapped {} {} burst{} -> {} ({} bytes)", reader.bursts(), kind,
+                   reader.bursts() == 1 ? "" : "s", out_path, elementary_bytes);
     if (chunk) {
         // The carrier rate, not the content rate: an E-AC-3 carrier runs at
         // 4x, so 192000 here means a 48 kHz programme.

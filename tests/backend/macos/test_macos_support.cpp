@@ -51,6 +51,10 @@ TEST_CASE("E-AC-3 runs the carrier four times as fast as its content") {
 TEST_CASE("the physical format id matches the bitstream kind") {
     CHECK(physical_format_id(BitstreamFormat::kAc3) == kAudioFormat60958AC3);
     CHECK(physical_format_id(BitstreamFormat::kEac3) == kAudioFormatEnhancedAC3);
+    // Core Audio has no AC-4 format ID to look for.
+    CHECK_FALSE(physical_format_id(BitstreamFormat::kAc4).has_value());
+    CHECK_FALSE(physical_format_id(BitstreamFormat::kAc4Hbr4).has_value());
+    CHECK_FALSE(physical_format_id(BitstreamFormat::kAc4Hbr16).has_value());
 }
 
 TEST_CASE("a stream's available formats are searched for a matching id and rate") {

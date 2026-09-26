@@ -53,11 +53,11 @@ std::string_view describe(ChunkError error) {
         case ChunkError::kWrongId:
             return "a chunk with a different message ID";
         case ChunkError::kReservedBits:
-            return "a burst with Pc bits 5 or 6 set";
+            return "an AC-3 or E-AC-3 burst with Pc bits 5 or 6 set";
         case ChunkError::kUnknownDataType:
-            return "a burst whose data type is neither AC-3 nor E-AC-3";
+            return "a burst whose data type is none of AC-3, E-AC-3 and AC-4";
         case ChunkError::kLengthMismatch:
-            return "a burst whose Pd disagrees with its payload";
+            return "a burst whose Pd, or AC-4 frame size, disagrees with its payload";
         case ChunkError::kPayloadTooLarge:
             return "a burst payload larger than its data type allows";
         case ChunkError::kNoSyncword:
@@ -114,12 +114,15 @@ std::expected<BurstChunk, ChunkError> parse_burst_chunk(std::span<const std::uin
     burst.pd = static_cast<std::uint16_t>(read_be(message.subspan(15, 2)));
     burst.chunk.data = message.subspan(kBurstChunkHeaderBytes);
 
-    if ((burst.pc & 0x60U) != 0) {
+    // Bits 5 and 6 are AC-4's subdata type (IEC 61937-14 Table 2) and zero for
+    // AC-3 and E-AC-3.
+    const std::uint16_t conventional = burst.pc & 0x1FU;
+    const bool ac4 = conventional == static_cast<std::uint16_t>(BurstDataType::kAc4);
+    if (!ac4 && (burst.pc & 0x60U) != 0) {
         return std::unexpected(ChunkError::kReservedBits);
     }
-    const std::uint16_t type_code = burst.pc & 0x1FU;
-    if (type_code != static_cast<std::uint16_t>(BurstDataType::kAc3) &&
-        type_code != static_cast<std::uint16_t>(BurstDataType::kEac3)) {
+    if (!ac4 && conventional != static_cast<std::uint16_t>(BurstDataType::kAc3) &&
+        conventional != static_cast<std::uint16_t>(BurstDataType::kEac3)) {
         return std::unexpected(ChunkError::kUnknownDataType);
     }
     const BurstDataType type = burst.data_type();
@@ -127,11 +130,38 @@ std::expected<BurstChunk, ChunkError> parse_burst_chunk(std::span<const std::uin
     if (payload.size() > max_burst_payload(type)) {
         return std::unexpected(ChunkError::kPayloadTooLarge);
     }
-    if (burst.pd != burst_length_code(type, payload.size())) {
+    if (burst.pd != burst_length_code(type, payload.size()) ||
+        (type == BurstDataType::kAc4Hbr16 && payload.size() % 8 != 0)) {
         return std::unexpected(ChunkError::kLengthMismatch);
     }
-    if (payload.size() < 2 || payload[0] != 0x0B || payload[1] != 0x77) {
+    if (!ac4) {
+        if (payload.size() < 2 || payload[0] != 0x0B || payload[1] != 0x77) {
+            return std::unexpected(ChunkError::kNoSyncword);
+        }
+        return burst;
+    }
+    // One AC-4 sync frame (IEC 61937-14 Annex A): 0xAC40, or 0xAC41 with a CRC
+    // word after the frame, then a 16-bit frame_size, or 0xFFFF and a 24-bit
+    // one. It fills the payload, which HBR16 pads to a whole 8-byte unit.
+    if (payload.size() < 4 || payload[0] != 0xAC || (payload[1] != 0x40 && payload[1] != 0x41)) {
         return std::unexpected(ChunkError::kNoSyncword);
+    }
+    std::size_t head = 4;
+    std::size_t size = (static_cast<std::size_t>(payload[2]) << 8U) | payload[3];
+    if (size == 0xFFFF) {
+        if (payload.size() < 7) {
+            return std::unexpected(ChunkError::kLengthMismatch);
+        }
+        head = 7;
+        size = (static_cast<std::size_t>(payload[4]) << 16U) |
+               (static_cast<std::size_t>(payload[5]) << 8U) | payload[6];
+    }
+    const std::size_t frame = head + size + (payload[1] == 0x41 ? 2U : 0U);
+    const bool fits = type == BurstDataType::kAc4Hbr16
+                          ? frame <= payload.size() && payload.size() - frame < 8
+                          : frame == payload.size();
+    if (!fits) {
+        return std::unexpected(ChunkError::kLengthMismatch);
     }
     return burst;
 }

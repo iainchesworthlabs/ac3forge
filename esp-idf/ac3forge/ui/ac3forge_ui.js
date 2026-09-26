@@ -6,6 +6,7 @@
   const RETRY_MS = 5000; // while GET /status fails
   const TIMEOUT_MS = 4000; // for any one request
   const TOAST_MS = 6000; // how long a message that is not an error stays in view
+  const RESTART_MS = 60000; // how long GET /firmware is read at each poll after asking for a restart
   const FRAME_US = 32000; // 1,536 samples at 48 kHz
   const FLOOR_DB = -60; // a level meter's left end; 0 dBFS is its right
   const HOT_DB = -6; // a peak past this shows in the accent colour
@@ -21,6 +22,13 @@
   const LINK = { 'long-term': 'Paired, encrypted', pairing: 'Pairing, encrypted', sentinel: 'Encrypted, not paired' };
   const PLAYING = { bursts: 'Bursts, decoded here', pcm: 'PCM', idle: 'Nothing' };
   const KINDS = { wifi: 'Wi-Fi', ethernet: 'Ethernet' }; // /status's network.kind
+  // GET /firmware's words (ac3forge/firmware_status.hpp): a slot's state, and
+  // an upload's stage.
+  const SLOT = { valid: 'accepted', trial: 'on trial', new: 'written, not started yet', invalid: 'failed its trial', aborted: 'stopped during its trial' };
+  const STAGE = { waiting: 'Stopping the player', erasing: 'Erasing', writing: 'Writing', checking: 'Checking', restarting: 'Restarting' };
+  // The chip ID an image's header names, for each target a Hearth sink is
+  // built for (GET /hardware's "target").
+  const CHIPS = { esp32s3: 9, esp32c6: 13, esp32p4: 18 };
 
   const $ = (id) => document.getElementById(id);
   const num = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -41,6 +49,7 @@
     return m ? +m[1] + +m[2] + +(m[3] || 0) : text.includes(',') ? text.split(',').length : undefined;
   };
   const ms = (us) => (us / 1000).toFixed(1) + ' ms';
+  const minutes = (sec) => Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
   const db = (v) => (num(v) ? (v <= -120 ? 'Silent' : v.toFixed(1) + ' dB') : '');
   // Where a level sits along a meter, as a CSS percentage.
   const along = (v) => (num(v) ? Math.min(100, Math.max(0, 100 - (v / FLOOR_DB) * 100)).toFixed(1) : '0') + '%';
@@ -79,6 +88,17 @@
   let filled = false;
   let code = '';
   let hardwareShown = false;
+  let hardware = {};
+  // GET /firmware: the last body (null on a board without the route), whether
+  // to read it at the next poll, the running version the page was loaded
+  // against, and when the page last asked the board to restart (0: not since
+  // the board last answered after failing to).
+  let fw = null;
+  let fwDue = true;
+  let fwReading = false;
+  let loaded = '';
+  let restarting = 0;
+  let sending = false;
   // GET /status reads begun, and for each choice the page sends, the reads
   // begun by the time its request was answered (Infinity while it is out): a
   // read begun before then says what the board had before the choice.
@@ -124,14 +144,19 @@
         // not JSON: reported below
       }
       if (!s || typeof s !== 'object' || Array.isArray(s)) throw new Error('GET /status sent no JSON object');
-      if (failing) say('The player is answering again.');
+      if (failing) {
+        say('The player is answering again.');
+        // It may have restarted, into another image.
+        fwDue = true;
+        restarting = 0;
+      }
       failing = 0;
       put('link', 'Status read at ' + clock(Date.now()) + '.');
       render(s, read);
-      if (!hardwareShown) loadHardware();
+      board();
     } catch (e) {
       delay = RETRY_MS;
-      if (!failing) say('No status: ' + e.message + '.', true);
+      if (!failing) say(restarting ? 'The board is restarting.' : 'No status: ' + e.message + '.', !restarting);
       failing ||= Date.now();
       put('link', 'No status since ' + clock(failing) + ': ' + e.message + '.', true);
     }
@@ -182,8 +207,7 @@
 
   function played(frames) {
     if (!num(frames)) return undefined;
-    const sec = Math.floor((frames * FRAME_US) / 1e6);
-    return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0') + ' (' + count(frames) + (frames === 1 ? ' frame)' : ' frames)');
+    return minutes(Math.floor((frames * FRAME_US) / 1e6)) + ' (' + count(frames) + (frames === 1 ? ' frame)' : ' frames)');
   }
 
   // A frame's 32 ms, three ways; with a DAC behind it, the sink's part is
@@ -316,9 +340,9 @@
     forget.className = 'danger';
     forget.textContent = 'Forget';
     forget.setAttribute('aria-label', 'Forget ' + name);
-    forget.addEventListener('click', () => ask('forget ' + s.server_id, 'Forget ' + name + '?',
-      'To play here again, ' + name + ' has to pair again. The board keeps its other pairings.', 'Forget ' + name,
-      'Forgot ' + name + ': it has to pair again.'));
+    forget.addEventListener('click', () => ask('Forget ' + name + '?',
+      'To play here again, ' + name + ' has to pair again. The board keeps its other pairings.', 'Forget',
+      () => pairing('Forget ' + name, 'forget ' + s.server_id, 'Forgot ' + name + ': it has to pair again.')));
     return li;
   }
 
@@ -352,10 +376,78 @@
       const hw = JSON.parse(r.text);
       if (!hw || typeof hw !== 'object' || Array.isArray(hw)) throw new Error('GET /hardware sent no JSON object');
       renderHardware(hw);
+      hardware = hw;
       hardwareShown = true;
     } catch {
       // Left as "Reading what this board is."; tried again at the next
       // successful status poll, the same board this page is already reading.
+    }
+  }
+
+  // What the board is and what it runs, after a status read and one request
+  // at a time, as the board has few sockets: GET /hardware until it has
+  // answered, and GET /firmware when it is due. After a restart the page asked
+  // for, GET /firmware at each poll for a while: a board back within a few
+  // seconds may never fail a poll, since the browser sends a request that
+  // meets a closed connection again.
+  async function board() {
+    if (!hardwareShown) await loadHardware();
+    const asked = restarting && Date.now() - restarting < RESTART_MS;
+    if (!sending && (fwDue || asked || (fw && (fw.trial || fw.upload)))) await loadFirmware();
+  }
+
+  // A slot as GET /firmware reports it: its image, the state the bootloader
+  // keeps for it, and whether it checked out when the board last read it.
+  const slotText = (s) =>
+    s ? (s.state === 'empty' ? 'Empty' : [s.version + ' in ' + s.label, SLOT[s.state], s.intact === true ? 'intact' : s.intact === false ? 'damaged' : ''].filter(Boolean).join(', ')) : undefined;
+
+  // The slots, a trial, an upload and how the last update ended; what can be
+  // done is what the board would take now.
+  function renderFirmware(f) {
+    fw = f;
+    $('firmware').hidden = !f;
+    if (!f) return;
+    const { trial: t, upload: u, other: o, last_update: l } = f;
+    const idle = !u && !sending;
+    // An image the board can go back to, as PUT /firmware/rollback judges it.
+    const back = !!o && !['empty', 'invalid', 'aborted'].includes(o.state) && o.intact !== false;
+    $('fw-note').hidden = f.mode !== 'flash';
+    row('fw-running', slotText(f.running));
+    row('fw-other', slotText(o));
+    row('fw-trial', t ? Math.floor(t.healthy_for_ms / 1000) + ' of ' + t.hold_ms / 1000 + ' s held, ' + minutes(Math.ceil(t.remaining_ms / 1000)) + ' left' + (t.waiting_for.length ? '; waiting for ' + t.waiting_for.join(', ') : '') : undefined);
+    if (!sending) row('fw-upload', u ? (STAGE[u.stage] || u.stage) + ': ' + count(u.received) + ' of ' + bytes(u.total) : undefined);
+    row('fw-last', l ? [l.version, l.result].filter(Boolean).join(', ') + (l.reason ? ': ' + l.reason : '') : undefined);
+    // The core dump a crash left (O4), which the link saves.
+    const d = f.coredump;
+    row('fw-crash', d ? [d.task && d.task + ' at ' + d.pc, d.reason, bytes(d.bytes) + (d.intact ? '' : ', damaged')].filter(Boolean).join('; ') : undefined);
+    $('fw-dump').hidden = !d;
+    $('fw-pick').hidden = !o || !!t || !idle;
+    $('fw-restart').hidden = !!t || !idle;
+    $('fw-rollback').hidden = !(back || t) || !idle;
+    $('fw-rollback').textContent = 'Roll back to ' + (o && o.version);
+    $('fw-sent').hidden = !sending;
+  }
+
+  // Read when the page loads, when the board answers again after it did not,
+  // at each poll while a trial or an upload runs, and for a while after a
+  // restart the page asked for (board()). A board running another image than
+  // the one the page was loaded against may serve another page, so the page
+  // loads again.
+  async function loadFirmware() {
+    if (fwReading) return;
+    fwReading = true;
+    fwDue = false;
+    try {
+      const r = await call('GET', 'firmware');
+      if (r.status === 404) return renderFirmware(null);
+      const f = JSON.parse(r.text);
+      if (loaded && f.running.version !== loaded) return location.reload();
+      loaded = f.running.version;
+      renderFirmware(f);
+    } catch {
+      fwDue = true; // read again at the next poll
+    } finally {
+      fwReading = false;
     }
   }
 
@@ -398,7 +490,8 @@
   function render(s, read) {
     status = s;
     const state = str(s.state) || '';
-    const head = state === 'finished' && s.why ? 'Finished (' + s.why + ')' : state ? state[0].toUpperCase() + state.slice(1) : 'Unknown';
+    // "flash": an update's flash mode (planning/esp32-ota.md), where nothing plays.
+    const head = state === 'finished' && s.why ? 'Finished (' + s.why + ')' : state === 'flash' ? 'Flash mode' : state ? state[0].toUpperCase() + state.slice(1) : 'Unknown';
     $('state').textContent = head;
     $('state').dataset.state = state;
     if (shown && head !== shown) say(head + '.');
@@ -516,25 +609,103 @@
 
   $('ss-reset').addEventListener('click', () => pairing('Allow pairing', 'reset', 'A server may ask to pair again.'));
 
-  // Forgetting cannot be taken back, so it asks first - every server, or one.
-  // The dialog keeps the last answer it closed with; Escape closes it without
-  // giving one, which must not read as the last time's "forget".
-  let forgetting;
-  function ask(body, title, text, label, done) {
-    forgetting = { body, label, done };
-    $('forget-title').textContent = title;
-    $('forget-text').textContent = text;
-    $('forget-dialog').returnValue = '';
-    $('forget-dialog').showModal();
+  // What cannot be taken back asks first: forgetting servers, and what the
+  // firmware section does. The dialog keeps the last answer it closed with;
+  // Escape closes it without giving one, which must not read as the last
+  // time's yes.
+  let then;
+  function ask(title, text, yes, go) {
+    then = go;
+    $('ask-title').textContent = title;
+    $('ask-text').textContent = text;
+    $('ask-yes').textContent = yes;
+    $('ask').returnValue = '';
+    $('ask').showModal();
   }
 
-  $('ss-forget').addEventListener('click', () => ask('forget', 'Forget every server?',
-    'Each server this board has paired with has to pair again, and the board takes a new identity.',
-    'Forget every server', 'Every server is forgotten: each has to pair again.'));
+  $('ask').addEventListener('close', () => $('ask').returnValue === 'yes' && then());
 
-  $('forget-dialog').addEventListener('close', () => {
-    if ($('forget-dialog').returnValue === 'forget') pairing(forgetting.label, forgetting.body, forgetting.done);
+  $('ss-forget').addEventListener('click', () => ask('Forget every server?',
+    'Each server this board has paired with has to pair again, and the board takes a new identity.', 'Forget',
+    () => pairing('Forget every server', 'forget', 'Every server is forgotten: each has to pair again.')));
+
+  // The image's head, as parse_image_head reads it (ac3forge/firmware_image.hpp):
+  // its chip, version and project, or null for a file that is not an
+  // application image. An upload stops what plays before the board reads a
+  // byte of it, so a file the board would refuse on these alone stays here.
+  async function head(file) {
+    const b = new Uint8Array(await file.slice(0, 112).arrayBuffer());
+    const v = new DataView(b.buffer);
+    const text = (at) => new TextDecoder().decode(b.subarray(at, at + 32)).split('\0')[0];
+    return b.length === 112 && b[0] === 0xe9 && v.getUint32(32, true) === 0xabcd5432
+      ? { chip: v.getUint16(12, true), version: text(48), project: text(80) }
+      : null;
+  }
+
+  // PUT /firmware, the one request that is not call()'s: an XMLHttpRequest
+  // reports the bytes sent, which fetch cannot, and has no timeout, since the
+  // board answers only once the image is written and checked.
+  function upload(file, version) {
+    const x = new XMLHttpRequest();
+    const sent = (text, part) => {
+      row('fw-upload', text);
+      $('fw-sent').value = part;
+    };
+    sending = true;
+    renderFirmware(fw);
+    sent('Sent 0 of ' + bytes(file.size), 0);
+    x.upload.onprogress = (e) => sent('Sent ' + count(e.loaded) + ' of ' + bytes(e.total), e.loaded / e.total);
+    x.upload.onload = () => sent('Sent. The board checks the image before it answers.', 1);
+    x.onloadend = () => {
+      sending = false;
+      restarting = x.status === 200 ? Date.now() : 0;
+      say(restarting ? 'Written and checked: the board restarts into ' + version + ', on trial.'
+        : x.status ? 'Update refused (' + x.status + '): ' + x.responseText.trim() : 'Update: no connection.', !restarting);
+      fwDue = true;
+      poll();
+    };
+    x.open('PUT', 'firmware');
+    x.setRequestHeader('Content-Type', 'application/octet-stream');
+    x.send(file);
+  }
+
+  $('fw-pick').addEventListener('click', () => $('fw-file').click());
+
+  $('fw-file').addEventListener('change', async () => {
+    const file = $('fw-file').files[0];
+    $('fw-file').value = ''; // so that the same file can be chosen again
+    if (!file) return;
+    const h = await head(file);
+    const chip = CHIPS[hardware.target];
+    const why = !h ? 'it is not an application image; choose ac3forge_hearth_sink.bin'
+      : chip !== undefined && h.chip !== chip ? 'it is for another chip than this ' + hardware.chip
+        : hardware.project && h.project !== hardware.project ? 'it is ' + h.project + ', not ' + hardware.project : '';
+    if (why) return say(file.name + ' was not sent: ' + why + '.', true);
+    ask('Update to ' + h.version + '?', 'What plays stops, and the board writes ' + file.name + ' into ' + fw.other.label +
+      ', then restarts into it. It keeps the new image once it has shown it works, and goes back to ' + fw.running.version +
+      ' by itself if not.', 'Update', () => upload(file, h.version));
   });
+
+  // The board restarts once it has answered: a poll that fails meanwhile says
+  // so rather than report an error, and board() reads what it runs after.
+  const restart = (label, method, path, text) =>
+    act(label, method, path, '', () => {
+      restarting = Date.now();
+      say(text);
+    });
+
+  $('fw-restart').addEventListener('click', () => ask('Restart the board?',
+    'What plays stops, and the board starts ' + fw.running.version + ' again.', 'Restart',
+    () => restart('Restart', 'POST', 'restart', 'Restarting.')));
+
+  $('fw-rollback').addEventListener('click', () => {
+    const v = fw.other.version;
+    ask('Roll back to ' + v + '?', 'What plays stops, and the board restarts into ' + v + '.', 'Roll back',
+      () => restart('Roll back', 'PUT', 'firmware/rollback', 'Going back to ' + v + '.'));
+  });
+
+  // Leaving during an upload ends it, and leaves the board in flash mode.
+  addEventListener('beforeunload', (e) => sending && e.preventDefault());
 
   $('outcome').addEventListener('click', hideToast);
 

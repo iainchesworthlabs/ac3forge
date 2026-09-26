@@ -1,10 +1,14 @@
 # Firmware over the network for Hearth sinks
 
-**Status, 2026-09-24:** proposed. Nothing is built. Every `hearth_sink` layout on `main`
-(`b49a966c`) is a single `factory` app, and nothing in the tree calls `esp_ota_*`. The ESP-IDF
-facts below were read from the v6.1 tree at `D:\esp\esp-idf`, which the board builds use. The
-board facts come from the builds and flashes of 2026-09-24. [Decisions](#decisions) lists what is
-recommended and what each choice costs. The user took decisions 2, 5 and 9 on 2026-09-24:
+**Status, 2026-09-25:** O1 is built and merged, and all four boards are on the two-slot layout
+and have passed O2's checks. O3, O4, O5, O8 and O9 are built and in review, O6 is studied, and O7
+waits for the boards to leave development ([Phases](#phases)).
+
+This plan was written on 2026-09-24, when every `hearth_sink` layout on `main` (`b49a966c`) was a
+single `factory` app and nothing in the tree called `esp_ota_*`. The ESP-IDF facts below were read
+from the v6.1 tree at `D:\esp\esp-idf`, which the board builds use. The board facts come from the
+builds and flashes of 2026-09-24. [Decisions](#decisions) lists what is recommended and what each
+choice costs. The user took decisions 2, 5 and 9 on 2026-09-24:
 
 - Images are not signed while the boards are in development, so anyone on the network can flash
   a board, as anyone with a USB cable can. Every image is checked for damage from the build to the
@@ -43,7 +47,7 @@ It covers every board the project runs on: the ESP32-S3, the ESP32-C6 and the ES
 
 | | ESP32-S3 | ESP32-C6 | ESP32-P4 |
 |---|---|---|---|
-| Boards | two DevKitC-1 N16R8: COM15 `hearth-eb2c64`, COM16 `hearth-47b39c` | one, QFN40 rev v0.2, COM9 | one DFRobot FireBeetle 2, rev v1.3, COM10 (its USB link is down as of 2026-09-24; it is reachable only over Wi-Fi) |
+| Boards | two DevKitC-1 N16R8: COM15 `hearth-eb2c64`, COM16 `hearth-47b39c` | one, QFN40 rev v0.2, COM9 | one DFRobot FireBeetle 2, rev v1.3, COM10 (down on 2026-09-24 for want of a data cable, back on 2026-09-25 through the console USB-C) |
 | Flash on the board | 16 MB | 16 MB (the 2026-09-15 bring-up note; check with `esptool flash-id` before migrating) | 16 MB |
 | Flash size the build assumes | 16 MB (`sdkconfig.defaults`) | 4 MB (`sdkconfig.c6`, for any C6 module) | 16 MB |
 | Partition table | `partitions.csv`: `factory` 1.5 MiB | `partitions_c6.csv`: `factory` 2 MiB | `partitions_p4.csv`: `factory` 4 MiB |
@@ -242,8 +246,15 @@ update that was cancelled or refused.
 **Memory.** The upload needs a task whose stack is in internal RAM (8 KiB to start with, measured
 in O1). The flash cache is off while the task erases and writes, and PSRAM is reached through that
 cache, so a stack there would be out of reach. It also needs a 4 KiB receive buffer. The teardown frees far more than that on every chip: the C6's Sendspin ring alone
-is 48 KiB and its decode stack 24 KiB. So flash mode changes no memory setting. O2 measures the
-C6's internal low-water mark during an upload to confirm it.
+is 48 KiB and its decode stack 24 KiB. So flash mode changes no memory setting. The C6's internal
+low-water mark during an upload confirms it: 114,308 bytes free at the lowest, measured once O4
+printed it ([Diagnostics](#diagnostics-without-a-cable-o4)).
+
+The S3 board is tighter. Playing JOC over Sendspin has left it 723 bytes of internal RAM (the
+example's README), so the upload's task could not have been made before the teardown. Flash mode
+therefore comes first. A board that still cannot make the task answers `503` with the largest
+block it has, and records it. Whether the teardown frees 8 KiB in one piece on that board, which
+only holds its burst player rather than freeing it, is not measured yet.
 
 **Flash writes and the cache.** An erase or a write disables the flash cache, in windows of up to
 one 64 KiB block erase. Nothing time-critical is left running by then. On the C6, Wi-Fi's own code
@@ -259,10 +270,13 @@ whatever those windows delay.
    - there is no second slot (a board still on the old layout);
    - there is no `Content-Length`, or the length is more than the slot holds;
    - the `Content-Type` is not `application/octet-stream`.
-2. The request goes to a firmware task (`httpd_req_async_handler_begin`, in ESP-IDF v6.1). The
-   server stays free to answer `GET /firmware` while the upload runs.
-3. The firmware task enters flash mode and waits for app_main to confirm the teardown.
-4. It reads the first 288 bytes: the image header, the first segment's header and
+2. The server's task enters flash mode, as `PUT /firmware/mode flash` does, and waits for
+   app_main to confirm the teardown.
+3. The request goes to a firmware task (`httpd_req_async_handler_begin`, in ESP-IDF v6.1). The
+   server stays free to answer `GET /firmware` while the upload runs. The task is made before
+   the request is handed over, so a board that cannot make it answers `503` and records why,
+   where a failure after the handover could only drop the connection ([Memory](#flash-mode)).
+4. The task reads the first 288 bytes: the image header, the first segment's header and
    `esp_app_desc_t`. Nothing is erased until they pass these checks:
    - the magic numbers;
    - the chip ID is this chip's;
@@ -275,10 +289,18 @@ whatever those windows delay.
    refuses a wrong image before 1.5 MB are written, and the reply says which check failed. That
    matters on the P4: an image built without `sdkconfig.p4`'s revision settings needs v3.1 or
    newer, and this board is v1.3.
-5. `esp_ota_begin` with the declared length erases what the image needs. Then 4 KiB reads go into
-   `esp_ota_write`, and each read also goes into a running SHA-256 of the body. `GET /firmware`
-   reports the progress. A stalled connection gives up after 30 s.
-6. Three checks follow, the first and third reading the image back from flash
+5. An `uploading` marker goes into NVS, naming the version. Whatever records the upload's outcome
+   clears it in the same commit, so one found at boot is an upload a reset cut short: it becomes
+   `last_update` `interrupted`, with the reset's cause.
+6. `esp_ota_begin` erases the slot's first 64 KiB. Then 4 KiB reads go into `esp_ota_write`, each
+   later 64 KiB block erased just before the writes reach it, and each read also goes into a
+   running SHA-256 of the body. `GET /firmware` reports the progress. A stalled connection gives
+   up after 30 s, and any upload after ten minutes.
+
+   Erasing the whole image's worth first, as O1 did, left the upload reading nothing for the
+   seconds that took: the client stalled, and on the P4 the link to the radio ran only in the
+   gaps between block erases. Erasing as the writes go spreads the same work over the upload.
+7. Three checks follow, the first and third reading the image back from flash
    ([Integrity](#integrity)):
    - `esp_ota_end` runs `esp_image_verify`: the header's checksum, the SHA-256 the build
      appended to the image, the chip ID, the revision range and the segment layout;
@@ -287,7 +309,7 @@ whatever those windows delay.
    - the SHA-256 of the bytes read back from the slot has to equal the SHA-256 of the body.
 
    Only then does `esp_ota_set_boot_partition` make the new slot the next boot.
-7. The board replies `200` with the version written, waits about a second for the reply to leave,
+8. The board replies `200` with the version written, waits about a second for the reply to leave,
    and calls `esp_restart()`.
 
 Any failure calls `esp_ota_abort`, replies with the reason, records it for `GET /firmware`, and
@@ -316,9 +338,22 @@ On the new image:
 - A panic, a watchdog reset, a brownout or a power cut before acceptance also rolls back, through
   the bootloader. A board that hangs during its trial can therefore be unplugged and plugged back
   in, and it comes back on the previous image.
-- The trial runs on a task of its own, not in app_main's loop, so a stuck loop still rolls back.
-  An `esp_timer` 30 s past the deadline restarts the board if that task has not acted, and a
-  restart while on trial is itself a rollback.
+- The trial is read once a second by an `esp_timer`, not in app_main's loop, so a stuck loop
+  still rolls back. It has no task of its own. A task kept for the whole trial took 6 KiB of
+  internal RAM as the board started, and on the S3 board that left the Sendspin player without
+  the 32 KiB block it starts with, so no update could pass its trial there (found by O2).
+  - Accepting writes otadata and NVS from `esp_timer`'s own task. That left 2,192 of the task's
+    3,584 bytes of stack unused on the S3 board, 2,680 on the C6 and 2,660 on the P4. A task
+    made for it could fail on a board
+    whose internal RAM a stream had taken by then, such as one a server resumed as the board came
+    back, and the guard would then roll back a good image.
+  - Giving up makes a short-lived task, since it tells servers the board is going. If it cannot
+    make one, it restarts, which rolls back without the reason.
+  - A second `esp_timer`, 30 s past the deadline, restarts the board if the trial has not acted,
+    and a restart while on trial is itself a rollback.
+  - A rollback asked for while the acceptance is being written is refused with a `409`, rather
+    than racing it: the board would go back, and its record would say the new image was
+    accepted.
 - The task watchdog is left as the builds set it: it reports and does not panic
   (`CONFIG_ESP_TASK_WDT_PANIC` is off in every board build). A decode that keeps the idle task
   from running for 5 s makes it fire. That is a problem of load, not a broken image, and a trial
@@ -433,11 +468,14 @@ signed with its key. That includes one sent by a hostile web page ([Routes](#rou
 
 | Route | What it does | Replies |
 |---|---|---|
-| `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended; an upload's progress; slot size, flash size and the partition table as the board has it; the bootloader's version; whether the board's network is stored or built into its image | `200`, JSON |
-| `PUT /firmware` | Body: an app image (`ac3forge_hearth_sink.bin`, not the merged image), with an optional `Content-Digest`. Enters flash mode, writes the other slot, checks it, restarts into it | `200` then a restart; `400` not an app image, the wrong chip, a revision this chip does not meet, cut short, or damaged (a SHA-256 does not match, and the reply says which); `403` the `Host` is not one of the board's own names ([decision 13](#decisions)); `409` on trial, or an update already running; `411` no length; `413` larger than the slot; `415` a `Content-Type` other than `application/octet-stream` (none at all is fine: `curl -T` sends none) |
+| `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended; an upload's progress; slot size, flash size and the partition table as the board has it; the bootloader's version; whether the board's network is stored or built into its image; why the board last started (`reset_reason`) and how long ago (`uptime_ms`) | `200`, JSON |
+| `PUT /firmware` | Body: an app image (`ac3forge_hearth_sink.bin`, not the merged image), with an optional `Content-Digest`. Enters flash mode, writes the other slot, checks it, restarts into it | `200` then a restart; `400` not an app image, the wrong chip, a revision this chip does not meet, cut short, more than ten minutes arriving, or damaged (a SHA-256 does not match, and the reply says which); `503` no internal RAM left for the upload's task (the reply says how much there is); `403` the `Host` is not one of the board's own names ([decision 13](#decisions)); `409` on trial, or an update already running; `411` no length; `413` larger than the slot; `415` a `Content-Type` other than `application/octet-stream` (none at all is fine: `curl -T` sends none) |
 | `PUT /firmware/mode` | Body: `flash` enters flash mode; `normal` leaves it with a restart into the running image, and outside flash mode does nothing | `200`; `409` on trial |
 | `PUT /firmware/rollback` | Makes the other slot's image, if it is valid, the next to boot, and restarts into it, on trial as an update's image is. On trial, gives up the trial instead | `200`; `409` nothing valid to roll back to |
 | `POST /restart` | Restarts into the running image | `200`; `409` on trial, where a restart would roll back |
+| `GET /firmware/coredump` | The core dump the last crash left, as it lies in flash (O4) | `200`, `application/octet-stream`; `404` none, or a build that keeps none |
+| `DELETE /firmware/coredump` | Erases it | `200`; `403` the `Host` is not the board's; `409` an update is under way |
+| `GET /log` | The console's recent output, oldest first; `?from=N` for what was written since byte N, with `X-Log-From` and `X-Log-Next` saying where the text starts and where to ask next (O4) | `200`, text; `404` a build that keeps no log |
 
 `curl -T build/ac3forge_hearth_sink.bin http://hearth-eb2c64.local/firmware` is a whole update,
 since `curl -T` sends a PUT.
@@ -497,8 +535,19 @@ ota.py cancel   --host H          # leave flash mode: restart into the running i
      ([Flash layout](#flash-layout));
    - the board already runs this image (skipped unless `--force`).
 
-   A board that is playing is asked about first, and `--yes` answers for it.
+   A board that is playing is asked about first, and `--yes` answers for it. Each of the two
+   reads is asked up to three times, so one slow name lookup does not refuse the push.
 3. **Upload.** `PUT /firmware` with the file's `Content-Digest`, and a progress line.
+   - **An upload that breaks off** is followed by the board's own account of it, once it
+     answers with no upload running:
+     - from flash mode, "gave it up", with its reason ("the upload stopped after N of M bytes");
+     - from normal mode, "restarted during it", with its `interrupted` record, or with its reset
+       reason when a firmware keeps no record, going by an uptime shorter than the upload.
+
+     The image is then sent once more when that can help: the board still runs what it ran, and
+     nothing was accepted.
+   - **A push that ends refused or broken** leaves no board waiting in flash mode. The tool tells it
+     to leave, rather than leave it silent, unadvertised, until its ten-minute timeout.
 4. **Wait.** Poll `GET /firmware` at the address the board had, for up to 6 minutes, until:
    - the new image is running and accepted, and the running slot's SHA-256 equals the file's:
      **updated**;
@@ -531,14 +580,159 @@ reloads. Pages are already served `Cache-Control: no-cache`, so the page that re
 image's. The device-UI suite gains the routes in `stub.js` and in `contract.spec.js`'s route
 check. The page budget (45,056 bytes, 42,846 used) is derived again, as each redesign did.
 
+**Built 2026-09-25**, as [the device page's plan](esp32-device-ui.md#firmware) describes, with
+three changes to the sketch:
+
+- The page reads `GET /firmware` rather than `GET /hardware` for what the board runs. When the
+  board answers again running another image than the page was loaded with, the page loads
+  again, whoever made the update.
+- It reads the image's head before sending, and keeps back a file the board would refuse on it
+  alone. An upload enters flash mode before the board reads a byte, so a wrong file would stop
+  what plays for nothing.
+- It sends no `Content-Digest`. A page on plain HTTP has no `crypto.subtle`, and the board
+  checks the image's own SHA-256 and reads back what it wrote. The device page's decision 29
+  has the reasoning.
+
+The budget is 57,344 bytes, against 55,454 used.
+
+## Diagnostics without a cable (O4)
+
+A board updated over its network is usually a board with no cable on it. When one panics, or
+does something odd, its console is where the cause is written, and nobody is reading it. O4 keeps
+two things the console would have shown, where the network can reach them.
+
+**The last crash.** A panic writes a core dump to the `coredump` partition, which O1 put in both
+tables for this ([decision 8](#decisions)). The board keeps it through the restart that follows,
+and through a rollback: the image that goes back reads the dump the failed image wrote.
+
+- `GET /firmware` says whether there is one: its size, the task that crashed and where, and
+  which image wrote it, by the ELF SHA-256 the dump carries. That image is usually one of the
+  two slots.
+- `GET /firmware/coredump` sends the dump as it lies in the partition.
+- `DELETE /firmware/coredump` erases it, so the next crash is not mistaken for this one.
+- `ota.py coredump --host H` saves it to a file. With `--elf`, the ELF of the image that wrote
+  it, it runs ESP-IDF's `esp_coredump info_corefile` on it: every task's backtrace, which
+  `idf.py coredump-info` would show at the desk.
+
+**Recent console lines.** A ring of the console's last few kilobytes, in RAM:
+
+- `GET /log` sends it as text, oldest first. `GET /log?from=N` sends only what was written since
+  byte N, and each reply says where the next read starts, in `X-Log-Next`. So a client can
+  follow the console the way a terminal would.
+- `ota.py log --host H` prints it, and `--follow` keeps printing what is new.
+
+**How the console is kept.** ESP-IDF has no public way to add an output to its console, and
+picolibc, its C library in v6.1, has one `stdout` for every task. So the component reopens
+`stdout` and `stderr` on a device of its own, `/dev/ac3log`, whose writes go on to
+`/dev/console` as before and into the ring as well ([decision 17](#decisions)). That covers a
+`printf` from any task, and the `ESP_LOGx` that reach `stdout`. It does not cover:
+
+- what was printed before `log_start`, first thing in `app_main`;
+- what `esp_rom_printf` writes, which includes a panic's registers and backtrace. The core dump is
+  the record of a crash.
+
+**What the network does not get.** The console prints the Sendspin pairing token, which pairs a
+server with no code. It is printed for whoever holds the board, and the page and `/status` never
+carry it. `GET /log` is for anyone on the network, so the token's line is printed inside a
+`ConsoleOnly` scope, which keeps that task's writes out of the ring ([decision 18](#decisions)).
+Improv's packets are kept out the same way: they are binary, not lines.
+
+A core dump holds what was on each task's stack when the board crashed. That can include key
+material a task was working with. The network is already the boundary for everything else this
+API does ([Routes](#routes)), and it is for this too. `DELETE /firmware/coredump` takes the same
+`Host` check as the firmware PUTs.
+
+**What each board keeps** ([decision 16](#decisions)):
+
+| Build | Core dump | Its static internal SRAM | Console ring |
+|---|---|---|---|
+| S3 board (`sdkconfig.psram`) | off | 4,016 bytes | 16 KiB, in PSRAM |
+| C6 | on | 1,140 bytes | 2 KiB, internal |
+| P4 | on | 3,652 bytes, of 418 KiB left | 16 KiB, in PSRAM |
+| CI's update test (`sdkconfig.ci-ota`) | on | 2,128 bytes | 2 KiB, internal |
+| CI's 7.1.4 stream set (`sdkconfig.ci-http714`) | off | 2,128 bytes | none |
+
+Each cost is `idf.py size`'s, against the same build with `CONFIG_ESP_COREDUMP_ENABLE_TO_NONE`
+(2026-09-25). A build whose task stacks may be in PSRAM, the S3 board and the P4, costs more:
+ESP-IDF gives the dump a stack of its own in internal SRAM (`ESP_COREDUMP_USE_STACK_SIZE`, 1,792
+bytes at the least). A JOC stream has left the S3 board 43 bytes of internal SRAM (hearth_sink's
+README). A crash there still says it panicked, in `GET /firmware`'s last update, and the ring
+keeps what the console said before it.
+
+The core dump's code adds 16 to 17 KB to an image. The C6's on the 4 MB table, the tightest, is
+now 1,665,856 bytes, which leaves 169,152 (9%) of its 1.75 MiB slot.
+
+**The upload's least free heap.** O2 asks for the C6's internal heap low-water mark during an
+upload. The upload now measures it from the moment flash mode has stopped the player to the
+upload's end, and prints it (`firmware: the upload's least free internal heap was N bytes`). The
+line comes just before the restart into the new image, so it reaches the USB console. After an
+update that went through, the ring in RAM is gone with the restart. Measured on 2026-09-25, each
+board taking a whole image from O4's image:
+
+| Board | Internal heap free as flash mode starts | Least free during the upload |
+|---|---|---|
+| C6 (COM9) | 135,920 bytes, largest block 86,016 | 114,308 bytes |
+| S3 board (COM15) | 94,335 bytes, largest block 31,744 | 89,415 bytes |
+
+Neither comes near running out during an upload. The S3 board is the tighter of the two, and
+still keeps 89 KB free.
+
 ## ac3hearth (O5)
 
-The desktop app already finds sinks by mDNS and has a settings page for each one. Its firmware
-panel:
+The desktop app finds sinks by mDNS, and has a settings page for each paired Hearth sink with
+Speakers and Decoder tabs. O5 adds a third tab, **Firmware** ([decision 19](#decisions)):
 
-- shows each sink's version and whether it matches the build the app knows of;
-- offers **Update** from a chosen file, using the same routes;
-- reports the trial as the tool does.
+- **What the sink runs.** The image in each slot, with its version, its state and whether the
+  board's own check found it intact. Whether it is this app's own build
+  ([decision 20](#decisions)). Also a trial, an update another client is sending, flash mode, how
+  the last update ended, and the last crash (O4).
+- **Update from a file…** The app reads the image and checks it before anything is sent (below). A
+  dialog then names the image and the version it replaces, and says the sink stops playing while
+  it takes it. Roll back and Restart ask first too.
+- **The update's progress.** The bytes sent, then the board's own stages through the restart and
+  the trial. Then how it ended, in the tool's words: updated, rolled back and why, refused and
+  why, or not come back and what to try.
+- **Without a cable.** Buttons that open the sink's recent console output and its core dump in the
+  browser.
+
+**How it works** ([decision 21](#decisions)). `ac3::hearth::SinkFirmware`
+(`apps/hearth/engine/sink_firmware.hpp`) is `ota.py push` in C++, on a thread of its own for each
+sink:
+
+- It talks to the board's web server on port 80, at the address mDNS gave for the sink. Nothing
+  goes through Sendspin, so the tab follows the sink through the restart that takes it off
+  Sendspin.
+- It reads GET /firmware into `ac3forge::FirmwareStatus`, the struct the board renders it from, and
+  holds an image to the board's own rules in `firmware_image.hpp`. Both headers are in
+  `esp-idf/ac3forge/include` and have no ESP-IDF in them. So the app reads what the board writes,
+  and refuses what the board would refuse.
+- Its checks before an upload are `ota.py`'s for a bare image:
+  - the file is an application image, and its checksum and appended SHA-256 check out;
+  - it is for this board's chip, revision, project and flash size, and it fits the slot;
+  - the board is not on trial or taking another update;
+  - the board has two slots, and its network is not only built into the image it runs.
+- The upload carries the file's SHA-256 as its `Content-Digest`. The wait after it reads GET
+  /firmware every 1.5 s, for up to six minutes, as `ota.py` does.
+- The board is asked about its firmware once a second, and only while the tab is open.
+- When the window closes during an upload, the app does not wait for the board's answer. On
+  Windows nothing wakes a socket's wait from another thread, so the request's thread is let go to
+  finish on its own timeout.
+
+The display strings are formatted in the engine (`sink_firmware_view.hpp`), as the Network page's
+others are, so they are tested without Qt.
+
+**Tested.**
+
+- `ac3tests` `[sink-firmware]` checks the parser against the board's own `render_firmware_status`,
+  and the file checks against synthetic images. It also covers each refusal, each step of the
+  wait, and the tab's rows.
+- The same suite runs the client against a stand-in board on loopback. It covers an accepted
+  update, a rollback, a refusal before sending and one after, a board that never decides, the
+  answers to Roll back and Restart, and closing during an upload's answer.
+- A hidden case in the same suite sends an image to a real board. On 2026-09-25 it took the C6 on
+  COM9 from o4-c6-b to o4-c6-a: the image was accepted after its 30 s trial, and its SHA-256 on
+  the board matched the file's.
+- The Qt Quick suites open the tab on a paired test sink and with no sink selected.
 
 Shipping sink images inside the app's release packages, once they are signed (O7), would need a
 release key held by CI, which means a secret only the user can set. That is its own decision,
@@ -586,6 +780,12 @@ and keeps it in NVS. CI refuses to publish an image whose `sdkconfig` sets
 - `hearth-sink-manifest.json`: every image of the release, with its chip, table, revision range
   and SHA-256, which `ota.py` reads to choose an image for each board.
 
+`<version>` is the release's tag. In CI's other runs it is `git describe` of the commit, which on
+their shallow checkout is the commit's hash. The build steps run that `describe` themselves:
+ESP-IDF's own fails in the build container, whose user does not own the checkout, and ESP-IDF
+then names the image "1". Found on 2026-09-25, when an image from a PR's run reported "1" on the
+C6. CI now refuses to publish an image named "1".
+
 **When.**
 
 - **On every CI run** that builds the ESP lane: the images are uploaded as a workflow artifact
@@ -617,6 +817,35 @@ a time.
 **Signing, when O7 comes.** A published image has to be signed with the key the boards trust. That
 means a release key held by CI, a secret only the user can set, or signing on the maintainer's
 machine before upload. O7 decides which.
+
+**Built** (O8, 2026-09-25), as above, with these specifics:
+
+- `tools/hearth/package_firmware.py package` writes one image's files from its build directory.
+  It lays the factory image out itself: each region at its offset, with `0xFF` between them as
+  erased flash has. For the C6's 16 MB build that came to byte for byte what `esptool merge-bin
+  @flash_args` writes, all 9,109,504 bytes. `check_firmware_package.py` then lays the parts out
+  again with its own code, so each checks the other. The zips' members carry a fixed date, so one build packages to the
+  same bytes every time.
+- Each image's facts go into a fragment (`<image>.json`), which `package_firmware.py manifest`
+  merges into `hearth-sink-manifest.json`. The facts are its chip, revision range, flash size,
+  PSRAM, the partition table it ships and each part's offset. The last of those is what the
+  browser installer's manifest needs (O9).
+- `build-esp32s3` packages the S3 board's image and `build-esp32c3` the other three; the 16 MB C6
+  is one more build there. `package-esp32-firmware` merges and checks them, and uploads
+  `esp32-firmware` (14 days) and, on a release, `packages-esp32-firmware`.
+- `release.yml` lists the four factory images and the manifest in its completeness check. It adds
+  `*.bin` and the manifest to the files it checksums, signs and attests, whose lists name
+  extensions and had no `.bin`.
+- `ota.py push --release` reads the release through the GitHub API with the standard library, so
+  it needs neither the GitHub CLI nor a token for a public repository. It downloads the manifest
+  and `SHA512SUMS` first, and then only the image each board takes. `--run` uses `gh run
+  download`, since workflow artifacts need a token.
+
+Checked on 2026-09-25 against this PR's own CI run (36130182488):
+- **Packaging.** `package-esp32-firmware` published the four images.
+- **Onto a board.** `ota.py push --run` chose the 16 MB C6's image for the C6 on COM9 and sent it
+  over Wi-Fi. The board checked it and accepted it after its trial, in 67 s.
+- **What it found.** The image called itself "1", which led to the version fix above.
 
 ## The user guide
 
@@ -671,8 +900,57 @@ on ESP Web Tools. Its supported chips include the ESP32-S3, ESP32-C6 and ESP32-P
   Safari, and nothing on iOS.
 - **Hosting.** The page cannot fetch GitHub release assets, which carry no CORS headers, so
   `docs.yml` copies the latest release's images and manifest into the site when it deploys.
+  Tried in a browser on 2026-09-25: a page on another site can read GitHub's release list from
+  its API, but not a release's files, through their download links or through the API.
 - **On the P4,** the installer has to be on the USB-C connector that carries the console. The
   board's other connector is a separate USB peripheral.
+
+**Built** (O9, 2026-09-25): `docs/hearth/sink-firmware.md` follows the eight steps above, and
+`docs/hearth/sink-installer.md` is the installer. The specifics:
+
+- **ESP Web Tools 10.4.0 is served by the site itself.** `docs.yml`'s deploy job packs it from npm,
+  checks the tarball against the integrity npm published for that version, and unpacks it into
+  the page's assets, with its licence. A reader's browser then loads nothing from a third party on
+  the page that writes their board's flash.
+- **The firmware.** `tools/hearth/installer_site.py` fills the assets in the same job. It reads
+  the newest release that publishes sink firmware with `ota.py`'s own reading of a release,
+  checks each image's `parts.zip` against the manifest and `SHA512SUMS`, unpacks it, and writes
+  ESP Web Tools' manifest for each image.
+- **One manifest for each image.** ESP Web Tools chooses a build by chip family alone, so the two
+  C6 images need a button each.
+- **Every chip, every time.** The page lists the ESP32-S3, the ESP32-C6 and the ESP32-P4, each
+  with a button for each of its images. A chip the release has no image for says so, rather
+  than going missing.
+- **Which release.** The page names the release its images came from, with its date and a link.
+  It also asks GitHub's API which is the newest release with firmware. When that is newer than
+  the site's, it says so, and points to that release's page and to the guide's `esptool` steps.
+  A page the site has not been republished for since a release is then still correct about
+  what it offers.
+- **Keys typed into the installer's dialog.** Material for MkDocs takes bare keys as shortcuts
+  unless a text field has the focus: `s`, `f` and `/` open its search, and `n`, `p`, `.` and `,`
+  turn the page. It cannot see a field inside ESP Web Tools' nested shadow roots. On 2026-09-25 a
+  network name typed into Improv's form lost a letter to the search box. The page now stops keys
+  that come from the dialog at the body, after the field has had them.
+- **Before a release.** `installer_site.py --run <id>` or `--dir <path>` fills the assets from a
+  CI run's `esp32-firmware` artifact, or from a directory of the same files, to try the page
+  with real images before any release publishes them.
+- **Before any release publishes firmware**, the script writes an index with no images and the
+  page says so. Any other failure, such as the API not answering, fails the deploy rather than
+  publish an empty installer.
+- **After a release.** A release created with a workflow's token starts no other workflow by its
+  own event, so `release.yml`'s `github-release` dispatches `docs.yml` as its last step.
+- The rest of the documentation is brought into line: the Hearth overview, the S3 guide's
+  "Build and flash", `docs/releasing.md` and the site's navigation.
+
+Checked on 2026-09-25: the site builds with `mkdocs build --strict`. The four images were built
+the way CI builds them and passed `check_firmware_package.py`. With the assets filled from them by
+`installer_site.py --dir`, the page served locally lists the S3, the C6 (4 MB and 16 MB) and the
+P4, each with its install button. Then with stand-in indexes:
+- **An older release without the S3:** the page names and links that release, and says the S3
+  has no image. Asked for a release file every release carries, the real GitHub API showed
+  v0.10.0-beta.1 as newer, and the page said so.
+- **No images:** every chip says it has none yet.
+The exit waits for a release that publishes sink firmware, and a blank board.
 
 ## What stays USB-only, and how a board is recovered
 
@@ -697,8 +975,8 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
 4. USB: `write-flash @flash_args`, as today, or from O9 the browser installer. Both talk to the
    ROM download mode, which is in mask ROM, and this plan burns no eFuse that could lock it, so a
    board can always be recovered this way. A board that does not reset into it by itself is put
-   there by holding BOOT while pressing RESET. The P4 needs its cable working for this, which it
-   does not have today.
+   there by holding BOOT while pressing RESET. On the P4 this is the console USB-C, not the OTG
+   port.
 
 ## Per chip
 
@@ -715,7 +993,8 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
 - The 16 MB table on COM9, through `sdkconfig.flash16mb`; the 4 MB table for other modules.
 - No PSRAM, and Wi-Fi's code in flash. Flash mode's teardown matters most here, and O2 measures
   it: the internal heap's low-water mark during an upload, and whether Wi-Fi keeps its association
-  through the erase windows.
+  through the erase windows. It did through every upload, and the low-water mark was 114,308
+  bytes.
 - No QEMU machine, so board-only.
 
 **ESP32-P4.**
@@ -730,9 +1009,116 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
   a production v3.x P4 refuses them.
 - Wi-Fi through the co-processor, which stays up in flash mode.
 - The co-processor's own firmware (boot log: "Version mismatch: Host [2.12.0] > Co-proc [0.0.0]")
-  is a separate flash target. `esp_hosted` ships a host-performs-slave-OTA example for it, which
-  this plan leaves to decision 9.
-- No QEMU machine, and no USB until its cable is fixed; its migration waits for that.
+  is a separate flash target: [The P4's co-processor](#the-p4s-co-processor-o6) has O6's study.
+- **A restart once left the P4 unable to reach its co-processor** until its power was cycled (O2,
+  2026-09-25). Every update ends in a restart; the next section says what is known.
+- One upload to the P4 broke off 64 KiB in, about 10 s after the board had restarted: the board
+  restarted again, with nothing recorded, and the same push passed a few minutes later. Its
+  console was not attached, so the cause is not known.
+- No QEMU machine. Its USB is the console USB-C (COM10), which it was migrated over on
+  2026-09-25.
+
+## The P4's co-processor (O6)
+
+The P4 has no radio of its own. Its Wi-Fi goes over SDIO to the FireBeetle 2's onboard ESP32-C6,
+which runs Espressif's `esp_hosted` co-processor firmware. That firmware is separate from
+`hearth_sink`, and no update of the P4 changes it. O6 is a study first
+([decision 9](#decisions)). This section comes from the `esp_hosted` sources the P4 builds with,
+the issues on Espressif's `esp-hosted-mcu` repository (the numbers below) and DFRobot's
+schematic of the board, read on 2026-09-25. None of it was tried on a board.
+
+**What `esp_hosted` offers.**
+
+- The build asks for `espressif/esp_hosted` "~2", which resolved to 2.12.13, with
+  `esp_wifi_remote` 1.6.5. The example's lock file is not committed, so "~2" moves to the newest
+  2.x whenever the dependencies are resolved again ([decision 22](#decisions)).
+- The host updates the co-processor with four calls over the existing SDIO link:
+  `esp_hosted_slave_ota_begin`, `_write` and `_end`, and `_activate` from 2.6 on. The
+  co-processor writes the slot it is not running, and switches to it only after `esp_ota_end` has
+  checked the image. Espressif's example, `host_performs_slave_ota`, takes the image from HTTPS, a
+  LittleFS file or a raw partition.
+- The C6 needs two OTA slots for this; `esp_hosted`'s own C6 table has two of 1,920 KiB.
+  DFRobot's table on this board is not known.
+
+**The co-processor on this board.** The host prints version 0.0.0 when the co-processor sends
+none, which `esp_hosted` has sent since 2.1.6, in July 2025. So this C6 runs firmware from before
+then. Factory images on other P4 boards (0.0.0 and 1.4.x) have been updated from the host (#143,
+#244, #113). Whether this one can be is not proven; the C6's own console, or
+`esp_hosted_get_coprocessor_fwversion()` once the link is up, would say.
+
+**What can go wrong.**
+
+- **An update cut short, or an image that does not check out:** safe. The co-processor keeps its
+  old image.
+- **An image that checks out and then crashes, or never brings SDIO up:** not safe.
+  - `esp_hosted`'s co-processor has no app rollback, and its bootloader skips only an image that
+    fails to load. A C6 left boot-looping this way after an update over SDIO has been reported
+    (esphome/esphome#16692).
+  - There is no USB path to the C6 on this board. Its UART and IO9 (BOOT) go only to test pads on
+    the back (DFRobot's schematic V1.0, page 7). The P4 reaches it only over SDIO and its enable
+    pin (GPIO54), and the C6 is on the P4's own 3.3 V, so the P4 cannot cycle its power either.
+  - Recovering such a C6 takes a 3.3 V USB-UART adapter on those pads, with the P4 held in reset.
+  - One wire from a spare P4 GPIO to the IO9 pad would let the P4 put the C6 into its download mode
+    and reflash it over SDIO with esp-serial-flasher, which marks that mode experimental. This is
+    untested.
+
+**The restart hang, which comes first.** The restart that ended O2's rollback check, on
+2026-09-25, left the P4 unable to reach the C6. The restarts of the three pushes before it that
+day had come back normally.
+
+- The SDIO card initialised, but the C6 never sent the event that completes the link:
+  `sd_host_wait_for_event returned 0x107`, then "Not able to connect with ESP-Hosted slave
+  device".
+- The P4 resets the C6 through GPIO54 each time it starts, and that did not bring it back.
+  `esp_hosted` restarted the P4 about every 15 s ("Restarting host"). The release it had been
+  rolled back to was on trial, so the bootloader went back to the update in `ota_1`, as the trial
+  is meant to (its reason: "it restarted before it had proved itself").
+- A power cycle brought it back. About ten restarts that evening then came back normally,
+  through every one of O2's checks, so the hang does not follow every restart.
+- It matches an open upstream issue, #240 (since 2026-08-31): a P4 v1.3 with a C6 on GPIO54, after
+  a large update over Wi-Fi and a restart. Espressif have not reproduced it, and have asked for the
+  C6's console.
+- The version mismatch (host 2.12 against a co-processor older than 2.1.6) has not been shown to
+  cause it: #240 had matched versions, and the hang comes before any call the mismatch concerns.
+- Every P4 update ends in a restart, so until the cause is known, any of them can end this way.
+- Settings worth trying, at the desk:
+  - a longer `CONFIG_ESP_HOSTED_SDIO_RESET_DELAY_MS` (1,500 ms now);
+  - `CONFIG_ESP_HOSTED_SLAVE_RESET_ONLY_IF_NECESSARY`, in place of a reset at every start;
+  - `CONFIG_ESP_HOSTED_TRANSPORT_RESTART_ON_FAILURE` off, with an `esp_wifi_init()` failure that
+    retries rather than restarting the P4.
+
+**Staging.** A C6 co-processor image is about 1.2 MB: ESPHome's prebuilt 2.12.13 SDIO slave is
+1,240,368 bytes. The P4's `reserve` partition (4 MiB at `0x8B0000`, [Flash layout](#flash-layout))
+holds that three times over, and the example can read an image from a partition by its label.
+So the image would be uploaded to `reserve` first and checked there, as the P4's own images are,
+and the C6 fed from it with the network idle, as Espressif advise (#71). Streamed straight from
+the network, the upload would pass through the chip being rewritten.
+
+**What O6 would do next, in order:**
+
+1. **With someone at the desk:**
+   - the P4's console on COM10;
+   - a 3.3 V USB-UART adapter on the C6's pads;
+   - the C6's console captured at a cold boot and through a P4 restart;
+   - the C6's whole flash backed up, with the P4 held in reset.
+2. The restart hang's cause, from that console, before anything else.
+3. `esp_hosted` pinned to an exact version, and the co-processor image built at that version for
+   the C6: SDIO, with the flash size and mode of the factory image, and checked to fit its slot.
+4. **The first update at the desk, with the UART attached:**
+   - from `reserve`, with begin, write and end, and activate only on a co-processor of 2.6 or later;
+   - the link brought back up;
+   - the co-processor reporting the pinned version and joining Wi-Fi.
+5. Only then a route of its own. It refuses unless `reserve` holds a checked C6 image (SHA-256,
+   header, chip, size within the slot) and the board is in flash mode, and it never runs by itself.
+6. Optionally, the IO9 wire, and the P4 recovering the C6 over SDIO.
+
+**Still open:**
+
+- the factory C6 image's version, partition table and flash mode;
+- the restart hang's cause, and why one restart hangs when others do not;
+- whether the factory bootloader boots a co-processor built with ESP-IDF 6.1;
+- whether esp-serial-flasher's SDIO mode works with a v1.3 P4;
+- which `esp_hosted` patch the running P4 image has.
 
 ## Tests
 
@@ -800,8 +1186,8 @@ that image has to be able to take the next update.
   - (d) `ota.py`, its tests and `idf.py ota`.
 
   **Exit:** CI green, the QEMU job included; no board touched.
-- **O2, boards.** One USB migration flash each: S3 COM15 and COM16, C6 COM9, and the P4 when its
-  cable works. **Exit, on each chip:**
+- **O2, boards.** One USB migration flash each: S3 COM15 and COM16, C6 COM9, and P4 COM10.
+  **Exit, on each chip:**
   - name, network and pairings survive the migration (for example "1 pairing record(s)" at boot,
     and the name in `/status`);
   - a build pushed over Wi-Fi is accepted, and a Sendspin server reconnects by itself;
@@ -811,14 +1197,23 @@ that image has to be able to take the next update.
   - `PUT /firmware/rollback` works;
   - an update of a playing board stops the play and says goodbye to its server;
   - the time each step takes;
-  - the C6's internal heap low-water mark during an upload;
+  - the C6's internal heap low-water mark during an upload (114,308 bytes, read with O4's line);
   - on the P4, a v3.1 image is refused before anything is written.
-- **O3.** The page's Firmware section.
+
+  Passed on all four boards on 2026-09-25. The power cut was made by hand on the C6: an image
+  built with a 600 s hold (`CONFIG_AC3FORGE_FIRMWARE_TRIAL_HOLD_S`), so that there was time to
+  pull the plug, lost its power 15 s into its trial. The board was back 8 s later on the image
+  before it, with the reason "the power went off before it had proved itself". The P4's run
+  needed its power cycled part-way ([The P4's co-processor](#the-p4s-co-processor-o6)).
+- **O3.** The page's Firmware section ([built](#the-web-page-o3)).
 - **O4, diagnostics without a cable.** Core dumps to the `coredump` partition, fetched with
   `GET /firmware/coredump` and read with `idf.py coredump-info`. Also a ring of recent console
   lines at `GET /log`, since flashing without a cable also means reading the console without one.
-- **O5.** The firmware panel in `ac3hearth`.
+  [Built](#diagnostics-without-a-cable-o4).
+- **O5.** The firmware panel in `ac3hearth`. [Built](#ac3hearth-o5).
 - **O6.** The P4's co-processor firmware, as a study first ([decision 9](#decisions)).
+  [Studied](#the-p4s-co-processor-o6); what comes next needs someone at the desk with a USB-UART
+  adapter on the C6's pads.
 - **O7, when the boards leave development.** Signed images, switched on over the network
   ([Signing, later](#signing-later)).
 
@@ -831,6 +1226,9 @@ boards leave development, and if that is before O8, O8's images are published si
   - `check_firmware_package.py`;
   - `ota.py push --run` and `--release`.
 
+  [Built](#published-images); its exits wait for a release (or `release.yml`'s dry run) and for a
+  blank board.
+
   **Exit:**
   - `ota.py push --release` puts a release's images on each board on the desk over the network,
     each board getting the image that fits it;
@@ -839,6 +1237,86 @@ boards leave development, and if that is before O8, O8's images are published si
 - **O9, the user guide.** [The user guide](#the-user-guide), the browser installer if decision 15
   takes it, and the other pages brought into line. **Exit:** someone with only the guide takes a
   blank board to one that plays, then updates it over the network to a newer release.
+  [Built](#the-user-guide); its exit waits for a release that publishes sink firmware.
+
+## Robustness (2026-09-26)
+
+**A soak on the boards.** Each board was updated over and over through the night. Each cycle
+was a push with `ota.py`, as a user makes one, then one fault injected by hand:
+- a push straight after a restart (the P4's broken upload of O2 was one);
+- uploads cut off after the header, early, at random and at 99%;
+- one at 16 KiB/s, and one that stalls for 20 s halfway;
+- a second `ota.py push` during an upload;
+- one sent while three other clients poll `GET /firmware` on kept-alive connections;
+- `PUT /firmware/rollback`;
+- a damaged image, and another chip's image.
+
+After every step the soak read `GET /firmware`, kept any core dump and saved `GET /log`; the
+S3s' and the C6's consoles were recorded throughout. The images were the stack as it goes to
+`main` with #1034's trial fix, before the fixes below.
+
+- **Result:** every kind of step went as designed on every board but one: an upload sent while
+  three other clients poll, which the board's HTTP server sometimes reset (below). None of the
+  faults left a board stuck, and none needed a power cycle. The P4 came through dozens of
+  restarts without its co-processor hang.
+- **A second upload during one** is refused by `ota.py` before it sends anything ("an update is
+  already under way"), from `GET /firmware`. A client that skips that check, and a raw second
+  `PUT`, get their connection dropped rather than a `409`: the board's HTTP server cannot answer
+  before the body, and the client is still sending it.
+- **An upload sent while three other clients poll** was sometimes reset before the board read
+  any of it: `ConnectionResetError` after 69,632 bytes, nothing in the board's log, and the board
+  as it was. The P4 lost 2 of its 3 tries at that step, an S3 1 of 4, and the C6 none of 3. It is
+  a race in ESP-IDF v6.1's HTTP server:
+  - The control server keeps three sockets. For a fourth connection it queues a close of the
+    least recently used, and takes the new connection once that close has run.
+  - A server that goes round again before the close has run queues a second close of the same
+    slot. The first frees the slot, the new connection takes it, and the second closes the new
+    connection.
+  - `httpd_sess_close()` has a check meant to skip such a close. It looks for a session that has
+    never been used, and v6.1 starts every new session at the server's current count, so it
+    never skips.
+  - An upload is the connection most likely to lose: its own burst of data keeps lwIP busy, which
+    holds up the queued close. Once the upload has begun, the server no longer purges its socket.
+
+  On the S3 board, 300 connections made as that step makes them, with a 64 KiB body the board
+  refuses with `415`, lost 16 to a reset. With `CONFIG_HTTPD_QUEUE_WORK_BLOCKING`, which makes the
+  server close the least recently used connection at once with nothing queued, 300 lost none, and
+  the Sendspin player still started and took Music Assistant's connection. The example now sets
+  it (`sdkconfig.defaults`). The cost is that `httpd_queue_work()` waits for room in a full queue
+  rather than failing. `ota.py` and ac3hearth also send an upload that breaks off once more.
+
+**A review of the code.** It ran the same night, and found the cases these fixes answer:
+- a reset during an upload leaving no trace (the P4's, most likely `esp_hosted` restarting it),
+  now the `interrupted` record;
+- the whole slot erased before the second read, now as the writes go;
+- no overall deadline, so a trickling client could keep a board busy until its power was cut,
+  now ten minutes;
+- the upload's task made before the teardown, now after it, answering `503` when it cannot be
+  made;
+- the example's flash-mode hook able to wait forever, now 15 s;
+- the tools leaving a board in flash mode after a failed push, now told to leave, and a broken
+  upload sent again;
+- the trial's acceptance needing a new 4 KiB task, which a heavy stream started during the S3's
+  hold could leave no room for, now done from `esp_timer`'s task;
+- a rollback asked for at the very end of a trial's hold racing its acceptance, now refused
+  while the acceptance is written;
+- ac3hearth's Firmware tab losing its sink when flash mode withdrew the board's mDNS record and
+  ended its Sendspin connection, so the progress and the outcome went unseen. The sink is now
+  kept while the update runs and while the tab shows how it ended.
+
+Tested on the S3 board: a reset over USB 5.1 s into an upload produced the `interrupted` record,
+`ota.py` said so, sent the image again, and it was accepted.
+
+**Still open**, from the same review: the NVS record is three writes, which a reset can tear.
+That needs power lost during those writes, and it can only leave a report that mixes two
+updates: NVS decides nothing about which image boots.
+
+**Tested and not reproduced:** polls during an S3's boot splitting the internal RAM its player's
+32 KiB block needs. Three updates to the S3 board were each pushed while 4 or 8 clients polled
+`GET /firmware`, `/status` and `/hardware` on new connections every 50 to 100 ms, from before the
+restart until after the trial: 1,000 to 2,400 requests each. Every one started the player with
+the heap of a quiet boot (largest free block 31,744) and was accepted. That build keeps lwIP's
+buffers in PSRAM (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`).
 
 ## What cannot be verified
 
@@ -937,3 +1415,48 @@ boards leave development, and if that is before O8, O8's images are published si
     Cost: a third-party script on one page of the site; a browser with Web Serial (not Safari or
     iOS); and `docs.yml` copying each release's images into the site, because a page cannot fetch
     release assets directly.
+16. **Which boards keep a core dump** ([Diagnostics](#diagnostics-without-a-cable-o4)). (a)
+    **every build, except the S3 board and the widest CI shape, where internal SRAM is what runs
+    out**; (b) every build; (c) none, and a crash read over USB. **Recommend (a).** The C6 and
+    the P4 have internal SRAM to spare, and the S3 board has none: 4,016 bytes, against a JOC
+    stream that left 43. Cost: a crash on the S3 board says it panicked and no more; reading
+    one takes a USB cable and ESP-IDF's monitor.
+17. **How the console reaches the ring.** (a) **`stdout` and `stderr` reopened on a device of
+    the component's own, which writes on to `/dev/console`**; (b) `esp_log_set_vprintf`; (c)
+    ESP-IDF's ROM output channel (`esp_rom_install_channel_putc`). **Recommend (a).** The
+    example's lines, the ones that say what an update or a trial is doing, are `printf`, which
+    (b) never sees; (c) runs from interrupts and with the cache off, where the ring's lock
+    cannot be taken, and it sees only ROM output. Cost: a device registered with ESP-IDF's VFS,
+    one more step on every console write, and nothing kept from before `app_main`.
+18. **The pairing token and the log.** (a) **a scope, `ConsoleOnly`, around the few writes
+    that are the console's alone**; (b) filter the ring for known secrets; (c) no ring on a
+    Sendspin board. **Recommend (a).** The code that prints the token knows it is one; a
+    filter would have to recognise every secret that might ever be printed. Cost: a new line
+    that ought to stay off the network has to be written inside the scope, and a line some
+    other task prints is kept.
+19. **Where the firmware goes in ac3hearth** ([ac3hearth](#ac3hearth-o5)). (a) **a third tab on a
+    paired Hearth sink's settings page, beside Speakers and Decoder**; (b) a card in that page's
+    right column; (c) a dialog opened from the "Only on the sink" panel. **Recommend (a).** An
+    update needs room for its progress and its outcome, and the right column is a third of the
+    page. Cost: the app updates only a sink it has paired. An unpaired board is updated from its
+    own page or with `ota.py`.
+20. **"The build the app knows of"** ([ac3hearth](#ac3hearth-o5)). (a) **this app's own version,
+    `git describe` of the tree it was built from, compared with the version the board reports**;
+    (b) nothing until O8 publishes images the app could list. **Recommend (a).** The board's
+    version is ESP-IDF's `git describe` of the same tree, so one build of both reads the same.
+    Cost: builds of one commit whose describe differs, say one with uncommitted changes, do not
+    match; and the board keeps 31 characters, so the comparison is on as many.
+21. **How ac3hearth reaches the board** ([ac3hearth](#ac3hearth-o5)). (a) **the board's HTTP
+    routes, from a thread for each sink**; (b) a new command in Sendspin's `_ac3forge_player@v1`
+    role. **Recommend (a).** The routes exist, the board's page and `ota.py` use them and CI
+    tests them, and an update takes the sink off Sendspin while it runs. Cost: a second
+    connection to the sink, and the same boundary as the page: anyone on the network can
+    update a board while images are unsigned.
+22. **Which `esp_hosted` the P4 builds with** ([The P4's co-processor](#the-p4s-co-processor-o6)).
+    (a) **`esp_hosted` and `esp_wifi_remote` each at one exact version in the example's
+    manifest, with the co-processor's image built from the same `esp_hosted`**; (b) "~2" and
+    ">=0.10,<2.0", as now. **Recommend (a).** The lock file is not committed, so two builds of
+    one commit, a day apart, can carry different releases of both. `esp_hosted` warns when the
+    host and the co-processor differ, and a new release on either side should be a choice, not
+    what a clean build happened to fetch. Cost: each new release is taken by hand, and once O6
+    ships, a new `esp_hosted` means a co-processor update as well.

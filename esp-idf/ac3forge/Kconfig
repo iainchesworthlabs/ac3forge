@@ -65,4 +65,17 @@ config AC3FORGE_FIRMWARE_FLASH_MODE_IDLE_S
     default 600
     range 30 86400
 
+# DIAGNOSTICS WITHOUT A CABLE - include/ac3forge/log.hpp and
+# planning/esp32-ota.md (O4).
+config AC3FORGE_LOG_BYTES
+    int "Bytes of recent console output kept for GET /log"
+    default 16384 if SPIRAM
+    default 2048
+    range 0 262144
+    help
+        A ring of the console's last bytes, which GET /log sends. It comes
+        from PSRAM where the board has it, and from internal RAM otherwise,
+        which is why a board without PSRAM keeps less. 0 keeps none, and
+        GET /log answers 404.
+
 endmenu
