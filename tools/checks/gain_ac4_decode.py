@@ -49,7 +49,9 @@ The committed legs (tests/golden/external-baseline/) are checked by default. --g
 phase G0's local gold set in DIR (DIR/streams/<leg>/dee.ac4, DIR/gold-manifest.json), which never
 runs in CI, and with --g1 the G1 legs G1_LEGS names besides. --encoder checks streams
 `ac3cli ac4-encode` writes from tones here, a leg for each metadata option the output processing
-reads (ENCODER_LEGS), at several frame rates (planning/ac4.md, phase E5).
+reads (ENCODER_LEGS), at several frame rates (planning/ac4.md, phase E5), and 5.1.4 in each of the
+encoder's immersive codec modes with each height downmix, whose renders are held to Part 2's
+channel renderer with the custom downmix data the stream sends (phase E8).
 
 Usage:
     python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
@@ -120,10 +122,21 @@ ENCODER_LEGS = (
                                     "dialogue-max-gain=6"), "mid"),
     ("enc-5.1-384-50-de-c", 6, 384, ("frame-rate=50", "dialogue-channels=c",
                                      "dialogue-max-gain=9"), (C,)),
+    # 5.1.4 in ASPX_ACPL_2, ASPX_SCPL and SCPL: the default downmix (no custom downmix data), and
+    # each height downmix at a gain of its own.
+    ("enc-5.1.4-256", 10, 256, ("dialnorm=27",), None),
+    ("enc-5.1.4-256-height-front", 10, 256, ("height-downmix=front", "height-gain=-6"), None),
+    ("enc-5.1.4-512-height-surround", 10, 512, ("height-downmix=surround", "height-gain=-1.5"),
+     None),
+    ("enc-5.1.4-768-height-both", 10, 768, ("height-downmix=front-and-surround",
+                                            "height-gain=off", "lorocmixlev=-1.5",
+                                            "lorosurmixlev=-4.5"), None),
 )
 # Each channel's tone, under Table 173's last dialogue enhancement band (subband 41, 15.4 kHz) and
 # the LFE's under 140 Hz, 20 dB under full scale, for four seconds.
 TONES_HZ = (440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0)
+# A 5.1.4 leg's top channels' tones, Tfl Tfr Tbl Tbr.
+TOP_TONES_HZ = (1490.0, 1730.0, 1970.0, 2210.0)
 ENCODER_SECONDS = 4
 # The G1 legs (the gold manifest's g1_legs) --g1 adds, for the immersive element's renders: DEE's
 # 5.1.4 tones with each height downmix its options give (custom downmix data for 5.X.0), with each
@@ -510,7 +523,9 @@ def write_wav_f32(path, samples, rate):
 
 
 def legs_encoder(cli, work):
-    """ENCODER_LEGS encoded from tones by `ac3cli ac4-encode`: (name, stream, dialogue)."""
+    """ENCODER_LEGS encoded from tones by `ac3cli ac4-encode`: (name, stream, dialogue, layout),
+    the layout "5.1.4" for a leg of ten channels, which the render check takes, and None for the
+    others."""
     rate = 48000
     t = np.arange(ENCODER_SECONDS * rate) / rate
     legs = []
@@ -518,6 +533,8 @@ def legs_encoder(cli, work):
         hz = TONES_HZ if channels > 2 else (TONES_HZ[0], TONES_HZ[1])[:channels]
         if channels == 5:
             hz = (TONES_HZ[L], TONES_HZ[R], TONES_HZ[C], TONES_HZ[LS], TONES_HZ[RS])
+        elif channels == 10:
+            hz = TONES_HZ + TOP_TONES_HZ
         if dialogue == "mid":
             hz = (hz[0], hz[0])
         wav = work / f"{name}-in.wav"
@@ -528,7 +545,7 @@ def legs_encoder(cli, work):
         if result.returncode != 0:
             raise SystemExit(f"{name}: ac3cli ac4-encode failed ({result.returncode}):\n"
                              f"{result.stdout}{result.stderr}")
-        legs.append((name, stream, dialogue))
+        legs.append((name, stream, dialogue, "5.1.4" if channels == 10 else None))
     return legs
 
 
@@ -601,8 +618,7 @@ def main():
         work = args.work or Path(temporary)
         work.mkdir(parents=True, exist_ok=True)
         if args.encoder:
-            legs = [(name, stream, dialogue, None)
-                    for name, stream, dialogue in legs_encoder(args.cli, work)]
+            legs = legs_encoder(args.cli, work)
         else:
             legs = [(name, stream, None, layout) for name, stream, layout in
                     (legs_gold(args.gold, args.g1) if args.gold else legs_committed())]
