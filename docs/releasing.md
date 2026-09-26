@@ -139,6 +139,9 @@ Most of what used to be a manual post-release checklist here is now automated (r
    sync, not new information), and a prerelease's `> **Pre-release.**` caveat blockquote (picking
    the single biggest open gap to headline is a judgement call, not an extraction).
 2. Verify the release page has all expected artifacts, and that the notes render and read well.
+   `github-release` also redeploys the documentation site, which copies the release's sink
+   firmware into [the browser installer](hearth/sink-installer.md). Once `docs.yml` has run, the
+   installer page names the new release's version.
 3. **The four packaging manifests bump themselves.** Once `github-release` has published the
    release and uploaded every asset, the `manifest-bump` job calls
    [`.github/workflows/manifest-bump.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/manifest-bump.yml),

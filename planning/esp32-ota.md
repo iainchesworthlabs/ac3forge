@@ -864,8 +864,57 @@ on ESP Web Tools. Its supported chips include the ESP32-S3, ESP32-C6 and ESP32-P
   Safari, and nothing on iOS.
 - **Hosting.** The page cannot fetch GitHub release assets, which carry no CORS headers, so
   `docs.yml` copies the latest release's images and manifest into the site when it deploys.
+  Tried in a browser on 2026-09-25: a page on another site can read GitHub's release list from
+  its API, but not a release's files, through their download links or through the API.
 - **On the P4,** the installer has to be on the USB-C connector that carries the console. The
   board's other connector is a separate USB peripheral.
+
+**Built** (O9, 2026-09-25): `docs/hearth/sink-firmware.md` follows the eight steps above, and
+`docs/hearth/sink-installer.md` is the installer. The specifics:
+
+- **ESP Web Tools 10.4.0 is served by the site itself.** `docs.yml`'s deploy job packs it from npm,
+  checks the tarball against the integrity npm published for that version, and unpacks it into
+  the page's assets, with its licence. A reader's browser then loads nothing from a third party on
+  the page that writes their board's flash.
+- **The firmware.** `tools/hearth/installer_site.py` fills the assets in the same job. It reads
+  the newest release that publishes sink firmware with `ota.py`'s own reading of a release,
+  checks each image's `parts.zip` against the manifest and `SHA512SUMS`, unpacks it, and writes
+  ESP Web Tools' manifest for each image.
+- **One manifest for each image.** ESP Web Tools chooses a build by chip family alone, so the two
+  C6 images need a button each.
+- **Every chip, every time.** The page lists the ESP32-S3, the ESP32-C6 and the ESP32-P4, each
+  with a button for each of its images. A chip the release has no image for says so, rather
+  than going missing.
+- **Which release.** The page names the release its images came from, with its date and a link.
+  It also asks GitHub's API which is the newest release with firmware. When that is newer than
+  the site's, it says so, and points to that release's page and to the guide's `esptool` steps.
+  A page the site has not been republished for since a release is then still correct about
+  what it offers.
+- **Keys typed into the installer's dialog.** Material for MkDocs takes bare keys as shortcuts
+  unless a text field has the focus: `s`, `f` and `/` open its search, and `n`, `p`, `.` and `,`
+  turn the page. It cannot see a field inside ESP Web Tools' nested shadow roots. On 2026-09-25 a
+  network name typed into Improv's form lost a letter to the search box. The page now stops keys
+  that come from the dialog at the body, after the field has had them.
+- **Before a release.** `installer_site.py --run <id>` or `--dir <path>` fills the assets from a
+  CI run's `esp32-firmware` artifact, or from a directory of the same files, to try the page
+  with real images before any release publishes them.
+- **Before any release publishes firmware**, the script writes an index with no images and the
+  page says so. Any other failure, such as the API not answering, fails the deploy rather than
+  publish an empty installer.
+- **After a release.** A release created with a workflow's token starts no other workflow by its
+  own event, so `release.yml`'s `github-release` dispatches `docs.yml` as its last step.
+- The rest of the documentation is brought into line: the Hearth overview, the S3 guide's
+  "Build and flash", `docs/releasing.md` and the site's navigation.
+
+Checked on 2026-09-25: the site builds with `mkdocs build --strict`. The four images were built
+the way CI builds them and passed `check_firmware_package.py`. With the assets filled from them by
+`installer_site.py --dir`, the page served locally lists the S3, the C6 (4 MB and 16 MB) and the
+P4, each with its install button. Then with stand-in indexes:
+- **An older release without the S3:** the page names and links that release, and says the S3
+  has no image. Asked for a release file every release carries, the real GitHub API showed
+  v0.10.0-beta.1 as newer, and the page said so.
+- **No images:** every chip says it has none yet.
+The exit waits for a release that publishes sink firmware, and a blank board.
 
 ## What stays USB-only, and how a board is recovered
 
@@ -1037,6 +1086,7 @@ boards leave development, and if that is before O8, O8's images are published si
 - **O9, the user guide.** [The user guide](#the-user-guide), the browser installer if decision 15
   takes it, and the other pages brought into line. **Exit:** someone with only the guide takes a
   blank board to one that plays, then updates it over the network to a newer release.
+  [Built](#the-user-guide); its exit waits for a release that publishes sink firmware.
 
 ## What cannot be verified
 
