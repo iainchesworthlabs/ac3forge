@@ -252,12 +252,13 @@ PackageName: ac3forge
 PackageUrl: https://github.com/iainchesworthlabs/ac3forge
 License: GPL-3.0-or-later
 LicenseUrl: https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE
-ShortDescription: Clean-room AC-3/E-AC-3 encoder, decoder and Atmos object-layer CLI/GUI
+ShortDescription: Clean-room AC-3/E-AC-3/AC-4 encoder, decoder and Atmos object-layer CLI/GUI
 Description: >-
-  ac3forge is a clean-room C++23 implementation of the AC-3 (ATSC A/52, "Dolby Digital") and
-  E-AC-3 ("Dolby Digital Plus") codecs, including a spatial object layer for Atmos-style
-  authoring and decode. This package installs ac3cli (the command-line encoder/decoder) and
-  ac3gui (the Qt6 desktop application) as portable executables.
+  ac3forge is a clean-room C++23 implementation of the AC-3 (ATSC A/52, "Dolby Digital"),
+  E-AC-3 ("Dolby Digital Plus") and AC-4 codecs, including a spatial object layer for
+  Atmos-style authoring and decode. This package installs ac3cli (the command-line
+  encoder/decoder, which also reads and writes AC-4) and ac3gui (the Qt6 desktop application,
+  which does AC-3 and E-AC-3) as portable executables.
 Moniker: ac3forge
 Tags:
   - audio

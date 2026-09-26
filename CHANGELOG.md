@@ -1859,6 +1859,10 @@ The sections below contain the complete change list and fixes.
 
 **Release engineering**
 
+- The package descriptions name E-AC-3 and AC-4: the CMake project (which feeds the pkg-config
+  files and the Debian package summary), the vcpkg port, the Conan recipe, the Homebrew formula and
+  the winget manifest template. The homepage names AC-4 and describes the Hearth player as it is,
+  and its Probe a stream card links to the CLI reference, which had moved.
 - `ac3::version_details()` (and `ac3cli --version`) now puts commits-past-tag in the
   headline as semver build metadata (`0.10.0-beta.1+100`), so it no longer reads as a
   tagged release when it isn't.
