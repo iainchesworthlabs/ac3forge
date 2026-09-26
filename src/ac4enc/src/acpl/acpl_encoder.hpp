@@ -10,12 +10,14 @@
 #include "acpl/acpl.hpp"
 #include "acpl/acpl_syntax.hpp"
 #include "dsp/qmf.hpp"
+#include "frame/timing.hpp"
 
 // The encoder's A-CPL: ETSI TS 103 190-1 V1.4.1 clause 5.7.7 run from the
 // other side. The channels A-CPL rebuilds are analysed by the decoder's QMF
 // bank on the decoder's slot axis (aspx/aspx_encoder.hpp): frame f's
-// parameters apply to QMF slots 32 (f + 1) - 6 to 32 (f + 1) + 25, the slots
-// of the A-SPX interval they share a control frame with. Each frame's
+// parameters apply to the slots of the A-SPX interval they share a control
+// frame with, at frame_rate_index 13 QMF slots 32 (f + 1) - 6 to 32 (f + 1) +
+// 25. Each frame's
 // parameters are estimated per parameter band (Table 197) against the upmix of
 // Pseudocodes 115 to 119, over 48 slots centred on the frame's last and each
 // subband's own band (acpl_encoder.cpp, kBandCentreBin), quantised by Tables
@@ -67,8 +69,10 @@ struct AcplFrameFields {
 class AcplEncoder {
    public:
     // `quant_mode` is acpl_quant_mode (acpl_quant_mode_0 and 1 alike);
-    // `qmf_band` is ASPX_ACPL_1's acpl_qmf_band, 0 otherwise.
-    AcplEncoder(AcplLayout layout, int num_param_bands_id, int quant_mode, int qmf_band);
+    // `qmf_band` is ASPX_ACPL_1's acpl_qmf_band, 0 otherwise; `timing` the
+    // frame grid.
+    AcplEncoder(AcplLayout layout, int num_param_bands_id, int quant_mode, int qmf_band,
+                const FrameTiming& timing = {});
 
     [[nodiscard]] AcplLayout layout() const noexcept { return layout_; }
     [[nodiscard]] AcplConfig1chFields config_1ch() const noexcept;
@@ -78,12 +82,14 @@ class AcplEncoder {
     [[nodiscard]] std::size_t channels() const noexcept { return analyses_.size(); }
 
     // Analyses slot slots() of each channel, from the 64 samples of the
-    // delayed input (full scale 1.0) from 64 slots() - 352.
+    // delayed input (full scale 1.0) from 64 slots() - d_pcm.
     void push_slot(std::span<const std::array<double, dsp::kQmfSubbands>> samples);
     [[nodiscard]] long long slots() const noexcept { return first_slot_ + static_cast<long long>(slots_.size()); }
 
-    // The slot after the last one propose() reads for frame f.
-    [[nodiscard]] static long long slots_needed(long long frame) noexcept;
+    // The first slot frame f's parameters apply to, and the slot after the
+    // last one propose() reads for it.
+    [[nodiscard]] long long first_slot(long long frame) const noexcept;
+    [[nodiscard]] long long slots_needed(long long frame) const noexcept;
 
     // Frame f's data from the slots its parameters apply to, which must have
     // been analysed, differentially coded against what the decoder holds.
@@ -93,6 +99,12 @@ class AcplEncoder {
     // What a frame whose bits hold no more sends: the values the decoder
     // holds, again, which cost least.
     [[nodiscard]] AcplFrameFields held(bool iframe) const;
+
+    // What a frame sends whose bits hold not even those: in an I-frame,
+    // which codes its values whole, the values a stream starts from, 0 in
+    // every band, which is what create() checks the rate holds; elsewhere the
+    // held values.
+    [[nodiscard]] AcplFrameFields least(bool iframe) const;
 
     // Moves what the decoder holds on to the values sent.
     void commit(const AcplFrameFields& sent);
@@ -114,8 +126,14 @@ class AcplEncoder {
     // One parameter set sent as it costs least: along frequency, or along
     // time from `previous` outside I-frames.
     [[nodiscard]] AcplParamFields code(AcplKind kind, const Values& q, const Values& previous, bool iframe) const;
+    // Every parameter set of the layout sent as `modules` or `coupling` has
+    // it, against the values held.
+    [[nodiscard]] AcplFrameFields sent_as(const std::array<std::array<Values, 2>, 2>& modules,
+                                          const std::array<Values, 11>& coupling,
+                                          bool iframe) const;
 
     AcplLayout layout_;
+    FrameTiming timing_;
     int num_param_bands_id_ = 0;
     int num_bands_ = acpl::kMaxParamBands;
     int quant_mode_ = 0;

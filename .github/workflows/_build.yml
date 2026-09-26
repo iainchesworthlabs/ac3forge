@@ -721,7 +721,10 @@ jobs:
   linux-appimage:
     name: Linux AppImage (ac3gui)
     needs: [toolchain-versions]
-    if: inputs.run_linux
+    # Not on a pull_request run: GitHub-hosted, so it waits for the merge
+    # queue instead (ci.yml's run_android comment). run_linux itself stays on
+    # for PRs, since it also gates the Linux build matrix.
+    if: inputs.run_linux && github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     # GitHub-hosted, so on a push to main only the newest main commit's run
     # waits for a runner - docs/ci-lanes.md, "Only the newest main commit runs

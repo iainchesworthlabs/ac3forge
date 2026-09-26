@@ -99,6 +99,11 @@ struct AudioTrack {
     // string", which stays true for AC-3/E-AC-3. Kept here rather than
     // parsed out of codec_config so this module stays codec-blind.
     std::string rfc6381{};
+    // mux() only: the media's and the movie's timescale, which
+    // samples_per_frame and an edit then count in; 0 is sample_rate. AC-4 at
+    // 29.97, 59.94 and 119.88 fps, whose frames are no whole number of
+    // samples, takes 240 000 (ETSI TS 103 190-2 Table E.1).
+    std::uint32_t timescale = 0;
 };
 
 struct MuxOptions {
@@ -106,16 +111,22 @@ struct MuxOptions {
     // One edit (ISO/IEC 14496-12 §8.6.6): the presentation plays
     // `duration_samples` of the track, starting `start_samples` in - the
     // priming a decoder should drop, and where the audio ends before the last
-    // frame's padding. Both count samples at the track's rate, which this
-    // module also uses as the movie's and the media's timescale. The movie and
-    // track durations become the edit's. Unset writes no edit list. An edit
-    // that runs past the frames handed in, or plays nothing, is
-    // kInvalidOptions.
+    // frame's padding. Both count in the track's timescale (the sample rate
+    // unless AudioTrack::timescale says otherwise), which this module uses as
+    // the movie's and the media's. The movie and track durations become the
+    // edit's. Unset writes no edit list. An edit that runs past the frames
+    // handed in, or plays nothing, is kInvalidOptions.
     struct Edit {
         std::uint64_t start_samples = 0;
         std::uint64_t duration_samples = 0;
     };
     std::optional<Edit> edit = std::nullopt;
+    // Whether each frame is a sync sample, one flag a frame (ISO/IEC 14496-12
+    // §8.6.2): where any is not, the track gets a Sync Sample Box naming
+    // those that are, as an AC-4 track whose frames are not all I-frames
+    // needs (ETSI TS 103 190-2 E.2). Empty: every frame is one, and there is
+    // no box. A list of another length is kInvalidOptions.
+    std::vector<bool> sync_samples{};
 };
 
 // Mux frames into a complete .mp4, returned as bytes. No file I/O here, so

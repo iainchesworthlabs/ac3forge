@@ -243,7 +243,10 @@ The sections below contain the complete change list and fixes.
     check stops before an update writes anything.
   - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
     address, the HTTP server and the Sendspin player. It goes back to the previous image if
-    it does not get there within 5 minutes, or if it resets first.
+    it does not get there within 5 minutes, or if it resets first. The trial is read from a
+    timer and takes a task only to write what it decided: a task kept for the whole trial
+    left the S3 board's Sendspin player without the internal RAM it starts with, so no update
+    could pass its trial on that board.
   - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
     its own name.
   - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
@@ -251,6 +254,12 @@ The sections below contain the complete change list and fixes.
   - **`tools/hearth/ota.py`**, and `idf.py ota` through the example's `idf_ext.py`, push a
     build to one board or to every board on the network, and wait for each to accept or go
     back.
+  - **The board's web page has a Firmware section.** It shows both slots, a trial and its time
+    left, an update under way and how the last one ended. **Update firmware…** sends an image
+    chosen from a file and shows the bytes sent; **Restart** and **Roll back** ask first. A
+    file the board would refuse on its head alone is not sent, since an upload stops what plays
+    before the board reads it. When the board comes back running another image, the page loads
+    again.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
@@ -1023,6 +1032,19 @@ The sections below contain the complete change list and fixes.
   `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
   `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
   rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
+- **Golden masters for the AC-4 phases still to come** (phase G1 of `planning/ac4.md`). DEE's
+  licence ends on 2026-11-06 and is not renewed, so the gold set gains 439 legs beside G0's, each
+  made from committed material by `gen_ac4_baseline.py` and grouped by the phases it serves: sweeps,
+  noise and transients at every 2.0, 5.1 and 5.1.4 rate; film and speech at 5.1.4, with the
+  immersive codec mode each rate gives; immersive stereo at every rate and frame rate, and in
+  gapless parts that meet at DEE's splices; metadata at 2.0, 5.1, 5.1.4 and immersive stereo,
+  among it stepped tones under each DRC profile, every mix level and height downmix gain, loudness
+  targets from −31 to −10 and language tags; substreams for presentations; 60 s programmes; 7.1
+  input; and E-AC-3, AC-3 and E-AC-3 JOC from the same sources. Each keeps MediaInfo's trace of
+  every frame, DEE's MP4 of it and what `ac3cli` made of it. Three 5 s 5.1.4 streams of one tone
+  per channel, one in each immersive codec mode, are committed. DEE writes no AC-4 from objects:
+  its object encoders take only an Atmos master, and refuse every ADM BWF master this project
+  writes as not authored with Dolby tools.
 - **AC-4 decodes to PCM for mono and stereo in the SIMPLE codec mode** (phase D2 of
   `planning/ac4.md`). `ac4::Decoder::decode()` reconstructs the audio spectral frontend
   (dequantisation, scale factors, noise fill), stereo processing (M/S and prediction), the inverse
@@ -1185,6 +1207,59 @@ The sections below contain the complete change list and fixes.
   Part 14 leaves two choices, which frame starts a burst sequence and whether `Pd` counts bits or
   bytes; `iec61937.cpp` gives the reading taken for each. No receiver found accepts AC-4, so none
   has been tried.
+- **AC-4 decodes every frame rate, with the output processing a system asks for** (phase D6 of
+  `planning/ac4.md`). A sample rate converter in `src/ac4core`, with its inverse for the encoder,
+  takes every `frame_rate_index`'s internal rate to 48 kHz: a Kaiser-windowed polyphase filter 100 dB
+  down from the lower rate's Nyquist frequency, its phase locked to `sequence_counter` as Part 2 5.11
+  has it, so each frame gives Table 47's count. DEE's immersive stereo at 23.976, 24, 25 and 29.97 fps
+  decodes and scores as it does at `frame_rate_index` 13, and `score_ac4_decode.py` pins it.
+  `ac4::OutputConfig` sets the output level and the DRC decoder mode (Table 161's selection, the
+  default profiles, transmitted curves and gains in dB2, and a BS.1770 K-weighted level detector), the
+  dialogue enhancement gain for all four of Part 1 5.7.8's methods, and the downmix: Part 1 6.2.17's
+  cascade to 5.X, two channels and mono with the stream's gains and loudness corrections, as Lo/Ro,
+  Lt/Rt or Pro Logic II. The output level gain equals 2^((Lout - dialnorm) / 6) to 0.01 dB at
+  dialnorms from -31 to -17 on the encoder's streams and from -24 to -16 on DEE's, each mode's static
+  curve is within 0.5 dB of its profile, dialogue enhancement at 0 dB leaves the output as the tool
+  bypassed does, and one tone per channel through each downmix equals its formula to 0.01 dB.
+  `tools/checks/gain_ac4_decode.py` holds the output level and every downmix of DEE's streams to
+  their formulas with each stream's own values, on the committed streams in CI. With no output level
+  the stream comes out at its coded level, uncompressed. `ac3cli decode` takes `output-level=`, AC-4's own `drcmode=` names,
+  `dialogue-enhancement=`, `channels=` and `downmix=`, and `conceal=`: `ac4::ConcealmentPolicy`
+  repeats and fades, or mutes, a frame that does not decode, through the decoder's own transform and
+  output stages. A decode begun at an I-frame gives the whole stream's output from the frame after it,
+  but for A-SPX's noise and tone phases and A-CPL's decorrelators, which settle within four frames. A
+  change of source now keeps the decoder's signal and forgets only what was read from the stream, so
+  a splice at an I-frame joins the two streams without the gap a restart from silence left, and a
+  frame whose table of contents does not read is taken to be the frame the stream expected, where
+  before it made the next frame a change of source. `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 encoder writes every frame rate, average and variable rates, I-frames where asked, and
+  the metadata** (phase E5 of `planning/ac4.md`). At 48 kHz every `frame_rate_index` of Part 1 Table
+  83, the input converted to the frame's internal rate by the decoder's converter the other way
+  round, each frame decoding to the samples Part 2 5.11 locks to `sequence_counter`, exact over
+  100 000 frames at every rate. `RateMode::kAverage` lets frames lend each other bytes within the
+  decoder's input buffer (Part 1 6.2.4), which `wait_frames` and Part 2's `br_code` signal, and
+  `kVariable` within two seconds' share. I-frames at an interval, at named frames and at every
+  fragment start a caller gives. The presentation substream carries the further loudness values,
+  DRC's decoder modes on the default profile, on curves of their own or repeating another, with
+  transmitted gains computed from a profile under `experimental.drc_gains`, and the stereo
+  downmix's values; the audio substream carries dialogue enhancement from channels marked as
+  dialogue or from a dialogue stem, by the channel-independent method, the Mid of L and R, or
+  cross-channel. MediaInfo reads every value as the encoder wrote it over 42 configurations, and the
+  decoder's output level, downmixes and dialogue enhancement gains equal their formulas on the
+  encoder's streams to 0.01 dB (`gain_ac4_decode.py --encoder`, in CI). At 100 to 120 fps music at
+  128 kbps scores 0.63 to 0.87 dB of log-spectral distance and up to 0.18 of ViSQOL under index 13's,
+  the frames' fixed side information taking more of the rate. `ac3cli ac4-encode` takes
+  `frame-rate=`, `rate-mode=`, `iframe-interval=`, `iframes=`, `fragment=`, `dialnorm=` in quarters of
+  a dB, `loudness=<practice>` (measured with the BS.1770 meter), `drc=` and a profile per mode, the
+  mix levels, `lfemix=` and `dmixmod=` in AC-4's terms, `loro-correction=`, `ltrt-correction=`,
+  `dialogue-channels=`, `dialogue-stem=`, `dialogue-method=` and `dialogue-max-gain=`. Its MP4 files
+  list the I-frames as sync samples and count 29.97, 59.94 and 119.88 fps at 240 000 Hz (Part 2
+  Table E.1), and `ac3cli mp4` now carries AC-4 at those rates too, through `ac4::media_timing()`,
+  `mp4::AudioTrack::timescale` and `MuxOptions::sync_samples`. The encoder-space harness draws all of
+  it, and found I-frames at the least rate a configuration takes that the encoder could not write
+  and threw on: the frame that holds nothing more now sends A-CPL's values, DRC's gains and a
+  stem's dialogue parameters as a stream starts them, and `create()` sizes it with a VARFIX interval,
+  which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
 
 **Browser (WASM)**
 
@@ -1475,6 +1550,9 @@ The sections below contain the complete change list and fixes.
   rows, and four stale claims corrected.
 - The CLI reference lists all forty-two commands, including the previously-undocumented
   `spatial`.
+- The threat model, the WebAssembly page, the ADM page and the building guide no longer describe
+  the codec libraries as free of third-party dependencies. {fmt} is compiled into `ac3::forge`
+  and `mp4::mp4`.
 
 **Release engineering**
 

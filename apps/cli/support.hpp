@@ -30,6 +30,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "ac4enc/encoder.hpp"
 #include "matroska/matroska.hpp"
 #include "mp4/dash.hpp"
 #include "mp4/hls.hpp"
@@ -136,6 +137,54 @@ struct Options {
     bool ac4_experimental_coding_configs = false;
     bool ac4_experimental_acpl = false;
     std::string ac4_experimental_seven_x;
+    // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
+    // dialnorm is taken to (ac4::OutputConfig::output_level_dbfs), unset to
+    // leave the coded level; and the DRC decoder mode drcmode= names there,
+    // "off", "default", "home-theatre", "flat-panel-tv", "portable-speakers"
+    // or "portable-headphones" (ac4::DrcMode), empty for the default.
+    std::optional<double> ac4_output_level;
+    std::string ac4_drc_mode;
+    // 'decode' of AC-4 only: dialogue-enhancement=, G_DE in dB, 0 to 12
+    // (ac4::OutputConfig::dialogue_enhancement_db).
+    double ac4_dialogue_enhancement = 0.0;
+    // 'ac4-encode' only: the frame rate, rate mode, I-frames and metadata
+    // (ac4::EncoderConfig) as its options set them; print_meta_usage says
+    // what each takes. Where a key other commands also read (dialnorm=, drc=,
+    // the mix levels, lfemix=, dmixmod=) means something else in AC-4, or
+    // takes values AC-4 alone has, ac4-encode reads it into here instead.
+    struct Ac4Encode {
+        int frame_rate_index = 13;                           // frame-rate=
+        ac4::RateMode rate_mode = ac4::RateMode::kConstant;  // rate-mode=
+        std::optional<int> iframe_interval;                  // iframe-interval=
+        std::vector<std::int64_t> iframes;                   // iframes=
+        std::optional<double> fragment_seconds;              // fragment=
+        // dialnorm=: 0 to 31.75 dB below full scale, in steps of 0.25 dB;
+        // dialnorm=auto is plan::Metadata's measure_dialnorm.
+        std::optional<double> dialnorm_db;
+        std::optional<ac4::LoudnessPractice> loudness;  // loudness=
+        // drc=, and a profile of its own for any of Table 161's modes 0 to 3
+        // (drc-home-theatre= and the rest); experimental=drc-gains-N.
+        std::optional<ac4::DrcProfile> drc;
+        std::array<std::optional<ac4::DrcProfile>, 4> drc_modes{};
+        std::optional<int> drc_gains;
+        // The downmix values, in dB: cmixlev= and lorocmixlev= alike set the
+        // Lo/Ro centre gain, surmixlev= and lorosurmixlev= its surround gain.
+        std::optional<double> loro_centre_db;
+        std::optional<double> loro_surround_db;
+        std::optional<double> ltrt_centre_db;
+        std::optional<double> ltrt_surround_db;
+        std::optional<double> lfe_db;                            // lfemix=
+        std::optional<ac4::PreferredDownmix> preferred_downmix;  // dmixmod=
+        std::optional<double> loro_correction_db;                // loro-correction=
+        std::optional<double> ltrt_correction_db;                // ltrt-correction=
+        // Dialogue enhancement: dialogue-channels= (any of l, r and c),
+        // dialogue-stem=, dialogue-method= and dialogue-max-gain=.
+        std::optional<std::string> dialogue_channels;
+        std::string dialogue_stem;
+        ac4::DialogueMethod dialogue_method = ac4::DialogueMethod::kChannelIndependent;
+        int dialogue_max_gain_db = 9;
+    };
+    Ac4Encode ac4enc{};
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in

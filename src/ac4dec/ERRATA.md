@@ -130,17 +130,31 @@ Later phases add the readings their processing needs.
 - **Where:** Part 1 4.3.3.2.2, p. 72: a frame continues the stream when its `sequence_counter` is the
   previous frame's plus 1, wraps from 1020 to 1, or follows a 0, which a splicing device writes into the
   first frame after a splice; anything else is a change of source, and a decoder bridges the gap "until
-  the next independently decodable frame".
-- **Reading:** at a change of source, everything carried between frames is forgotten: I-frame
-  configuration, A-SPX offsets and borders, DRC and dialogue enhancement state. A frame that needs
-  configuration before the next I-frame fails as missing its I-frame. Only a frame whose table of
-  contents holds together counts as the predecessor of the next: a frame whose substream sizes run past
-  it leaves the counter where it was, so the frame after it reads as a change of source. The text does
-  not say whether a counter transmitted in an unreadable frame still counts, and forgetting what such a
-  frame might have carried is the safer half of the choice.
+  the next independently decodable frame". Part 1 6.2.19, p. 272: a switch of streams at an I-frame
+  "shall produce a flawless output", and the decoder "shall use this splice indication to ignore any
+  information from previous frames when decoding the first frame after a splice". Part 2 5.11, p. 110,
+  delays a change in the converter's phase "with the signal" until the new source's first sample
+  reaches the converter's output.
+- **Reading:** a change of source forgets what was read from the stream: I-frame configuration, A-SPX
+  offsets and borders, DRC and dialogue enhancement configuration, and the values A-SPX's and A-CPL's
+  differences along time start from. A frame that needs configuration before the next I-frame fails as
+  missing its I-frame. The signal carries on: the overlap, the frame alignment's delay line, the QMF
+  banks and their history, A-SPX's generators, A-CPL's decorrelators, the output stages and the
+  converter. The old stream's audio comes out to its end and overlaps the new stream's first frame,
+  which is what makes a switch at an I-frame flawless and gives 5.11's delay a signal to travel with. A
+  frame that returns nothing while it waits for an I-frame drops the signal, so the frame decoded after
+  the wait starts from silence rather than from audio a gap old; under a concealment policy the wait is
+  concealed instead. A frame whose table of contents does not read is taken to be the frame the stream
+  expected: its counter is the previous one plus 1 (after a 0, any counter but 0 continues, and still
+  does), and phi_t moves on with it. The text does not say whether an unreadable frame counts. Taking it
+  as the expected frame keeps one damaged frame from costing every frame up to the next I-frame, and the
+  checks of "Configuration belongs to the codec mode it was sent for" still refuse a frame that needed
+  an I-frame the damage took.
 - **Evidence:** Streams: DEE starts counting at 1019, so every stream here passes the wrap to 1 in its
-  third frame. `tests/ac4dec/test_ac4dec_decoder.cpp` checks a jump and a 0. Text for the frame that
-  does not parse.
+  third frame. `tests/ac4dec/test_ac4dec_decoder.cpp` splices DEE streams at an I-frame, marked 0 and
+  with the counter jumping, and between I-frames: the output is the first stream's decoded alone up to
+  the joint and the second's decoded alone from the frame after it. Text for the frame that does not
+  parse.
 
 ### oamd_common_data() has two call sites; only one is read
 
@@ -752,7 +766,9 @@ clause's formula.
 - **Where:** Part 1 5.5.2.1, p. 185, describes `overlap` and `Nprev` as state carried from the previous
   block, and says nothing of their value before the first one.
 - **Reading:** silence, and a previous block of full length, so that the first block takes its
-  unmodified left window. A change of source (Part 1 4.3.3.2.2) starts from the same state.
+  unmodified left window. A change of source keeps the overlap ("A change of source"); a frame that
+  returns nothing while it waits for an I-frame drops it, and the frame decoded after the wait starts
+  from this state.
 - **Evidence:** Text; the first frame's output differs from a mid-stream decode only in the half block
   the missing predecessor would have filled.
 
@@ -1004,6 +1020,25 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 - **Evidence:** Text. Either way the noise and the tones take the same sequences; which entry a subband
   gets cannot be measured against a source.
 
+### What an I-frame does not restore
+
+- **Where:** Part 1 4.3.3.2.2, p. 72, calls an I-frame "independently decodable". Pseudocodes 103 and
+  105, pp. 228 and 229, run A-SPX's noise and tone indices on from "the previous A-SPX interval", from
+  `master_reset` and from "the codec initialization stage"; Pseudocode 111, p. 235, keeps A-CPL's
+  decorrelator "filter states from previously processed frames", and the transient ducker (5.7.7.4.3)
+  keeps its energies.
+- **Reading:** a decoder that starts at an I-frame starts those states as at a stream's first frame: the
+  indices at their first values, the filters and the ducker silent. Nothing in the stream restores them.
+  The I-frame's own audio overlaps a frame the decoder never had. From the next frame's audio on, the
+  waveform-coded signal is the one a decoder running from the stream's start gives; A-SPX's noise and
+  tones come out at the same levels at another phase of their tables, and A-CPL's decorrelated signal
+  converges on the other decoder's over a few frames.
+- **Evidence:** Streams: `tests/ac4dec/test_ac4dec_decoder.cpp` decodes the committed DEE streams from
+  each of their I-frames. The frame after the I-frame matches the decode from the start to under -100
+  dBFS in SIMPLE, the QMF banks' transient, and to -50 dBFS in ASPX; in A-CPL the output is within -54
+  dBFS of it by the fourth frame. DEE's first frame is a priming frame, and it and the second are both
+  I-frames, so a decode from the second gives the stream's audio from the third frame on.
+
 ### Interleaved waveform coding
 
 - **Where:** Part 1 5.7.6.5.2, p. 231, counts `aspx_tic_used_in_slot` in A-SPX slots "starting at the A-SPX
@@ -1032,6 +1067,175 @@ pre-flattening in every `aspx_config()`, uses FIXFIX, FIXVAR and VARFIX interval
 - **Reading:** the exponent is clamped to +-96 before `2^x`, and the output to +-10^9 of full scale before
   it becomes `float`: no stream DEE writes comes near, and every value the decoder computes stays finite.
 - **Evidence:** Text; `fuzz_ac4_decode`.
+
+## Output processing
+
+What the QMF domain's matrices go through before synthesis, dialogue enhancement (Part 1 5.7.8), the
+output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample rate converter of Part 1
+6.2.15, whose phase Part 2 5.11 locks to `sequence_counter`.
+
+### DRC's units
+
+- **Where:** Part 1 5.7.9.3.1.2, p. 256, converts the curve's gains "expressed in units of dB" by
+  10^(G/20); 4.3.13.4.1, p. 127, gives the control points in dB2, which clause 3.4, p. 26, defines as 6 dB2
+  to a factor of 2; 5.7.9.3.2 adjusts the transmitted gains "to reflect dB2 values"; 5.7.9.3.3's output level
+  gain is 2^((Lout - Lin) / 6).
+- **Reading:** dB2 throughout: a curve's gain G is 2^(G/6), as the transmitted gains and the output level
+  gain are. The two conversions are 0.34 % apart, 0.08 dB at a 24 dB cut.
+- **Evidence:** Text.
+
+### The level DRC measures
+
+- **Where:** Part 1 5.7.9.3.1.1 and 5.7.9.3.1.2, pp. 256 and 257: the level L is the curve's argument, in
+  dB relative to dialnorm, is smoothed as L~ = alpha L~ + (1 - alpha) L, and in adaptive smoothing enters
+  10 x log10(L / L~), which takes it as a power; the method of measuring it is the implementation's.
+- **Reading:** L is a power, the curve takes it in dB relative to dialnorm, and L~ smooths the power. The
+  measurement is ITU-R BS.1770's: the K-weighted power of the channels, with BS.1770's channel weights (1
+  at the front, 1.41 at the sides, 0 for the LFE), one wideband value per QMF time slot, the K-weighting
+  read at each subband's centre and the analysis's energy gain (the sum of QWIN's squares) taken out, in
+  LKFS. The gain comes from each slot's level and is then smoothed, as the text orders it.
+- **Evidence:** Text; `tests/ac4dec/test_ac4dec_drc.cpp` measures each profile's static curve to 0.5 dB
+  with stepped tones whose levels come from BS.1770's own calibration.
+
+### Choosing a DRC decoder mode
+
+- **Where:** Part 1 5.7.9.2, p. 255: by default the mode "with the largest mode ID value for which
+  Lout,min < Lout < Lout,max"; Table 161, p. 123, gives the default modes' ranges as whole dB, -31 to -27,
+  -26 to -17 and -16 to 0.
+- **Reading:** the ranges include their edges, so that -31 selects home theatre, and an output level
+  between two ranges is taken to its nearest whole dB. Portable speakers and portable headphones share a
+  range; the system says which. A mode the stream does not configure, whether asked for by name or
+  chosen, compresses nothing, and no mode applies below -31 or above 0 unless the stream adds one there.
+- **Evidence:** Text; planning/ac4.md's decision 12 records the edges as inclusive.
+
+### The default profiles' smoothing
+
+- **Where:** Part 1 Table 162, p. 124, gives each (E-)AC-3 profile but None its fast time constants and
+  thresholds; Table 167's default smoothing, p. 129, turns adaptive smoothing off, and neither says
+  whether a default profile smooths adaptively.
+- **Reading:** a default profile smooths adaptively with its Table 162 values; a transmitted curve does
+  as its `drc_adaptive_smoothing_flag` says.
+- **Evidence:** Text. DEE sends its curves with the flag set and Table 162's values.
+
+### Transmitted DRC gains
+
+- **Where:** Part 1 5.7.9.3.2, p. 257, maps `drc_gain[chg][sf][band]` to the QMF samples of the band, the
+  subframe and the group's channels.
+- **Reading:** each gain holds across its band, subframe and channel group, with no smoothing between
+  them, and multiplies the output level gain. A gains configuration of 0 is one gain for all channels.
+- **Evidence:** Text; no stream DEE writes sends gains.
+
+### When dialogue enhancement's, DRC's and the downmix's values apply
+
+- **Where:** Part 1 5.7.2 and Table 188 hold the QMF domain's control data d_ctrl frames; 5.7.8, 5.7.9 and
+  6.2.17 do not say when a frame's dialogue enhancement, dialnorm, DRC and mix gains reach the audio.
+- **Reading:** with the rest of the frame's control data, so they apply to that frame's signal. Until the
+  first frame's reach the QMF domain there is no dialnorm, and the output level gain is 1.
+- **Evidence:** Text.
+
+### Where the downmix runs
+
+- **Where:** Part 2 4.8, pp. 50 to 53, renders each substream (4.8.3.19) before loudness correction and
+  the compression curves' DRC (4.8.6); Part 1 6.2.17 does not place the downmix in the QMF domain or after
+  synthesis.
+- **Reading:** in the QMF domain after DRC and before synthesis. A curve's gain is one gain for every
+  channel at each QMF sample and a downmix is a fixed matrix, so the two commute, and the transmitted
+  gains, which are per channel group, still come before it; only the channels that come out are
+  synthesised.
+- **Evidence:** Text; `tests/ac4dec/test_ac4dec_downmix.cpp` measures DEE's tones through each downmix.
+
+### The downmix gains
+
+- **Where:** Part 1 Tables 149 and 149a, pp. 109 and 110, give each mix gain code both a linear value
+  (0.707 for -3 dB) and a value in dB, which differ by up to 0.012 dB; Table 219, p. 271, and 6.2.17.6
+  print 0.707 alone; 4.3.12.2.11 and 4.3.12.2.16 give the downmix loudness corrections in dB2.
+- **Reading:** the mix gains and `lfe_mixgain` in dB, 10^(dB/20); Table 219's fold and the mono upmix at
+  0.707 as printed; the loudness corrections in dB2, 2^(x/6). Without mix gains, -3 dB each, as Tables 149
+  and 149a say; a surround code the table reserves reads the same.
+- **Evidence:** Text.
+
+### The listener's Lt/Rt and the stream's Pro Logic II form
+
+- **Where:** Part 1 6.2.17.4, p. 271: the matrix follows the user-selected downmix method or, with none
+  selected, `preferred_dmx_method`, whose codes 2 and 3 are both Lt/Rt (Table 150) and give Table 218 two
+  Lt/Rt rows.
+- **Reading:** a listener who asks for Lt/Rt gets the Pro Logic II row where the stream prefers code 3,
+  and the plain Lt/Rt row otherwise; one who asks for stereo without naming a method gets the stream's
+  preference, Lo/Ro where it prefers none (code 0). The Lo/Ro correction goes with Lo/Ro and the Lt/Rt
+  correction with both Lt/Rt rows.
+- **Evidence:** Text.
+
+### The LFE in a downmix
+
+- **Where:** Part 1 4.3.12.2.18, p. 111, NOTE: after start-up or a splice "a value of -inf dB may be used
+  for lfe_mg until an AC-4 frame with b_lfe_mixinfo = 1 is received"; Table 218 mixes the LFE at lfe_mg.
+- **Reading:** the LFE stays out of a downmix until the stream sends `lfe_mixgain`, and then goes in at
+  it; a stream that never sends it leaves the LFE out. The system may keep it out regardless
+  (`OutputConfig::mix_lfe`).
+- **Evidence:** Text; DEE's 5.1 streams send `b_lfe_mixinfo` 0.
+
+### Dialogue enhancement's front channels
+
+- **Where:** Part 1 5.7.8.2, p. 248, takes the processed channels from "de_channel_config{x}", "the bit at
+  position x", without saying which end position 0 is; Table 171, p. 132, names the codes' channels, and
+  5.7.8.6's example, p. 252, puts L, the unprocessed second channel and C in rows 0, 1 and 2.
+- **Reading:** the three front channels are L, R and C in that order, bit 2 of `de_channel_config` being
+  L, bit 1 R and bit 0 C, as Table 171 names them; the parameter sets go to the processed channels in
+  that order.
+- **Evidence:** Text; DEE's speech streams set 110 and send parameters for L and R.
+
+### The subbands above dialogue enhancement's bands
+
+- **Where:** Part 1 5.7.8.4 and Table 173, pp. 251 and 133, segment "the num_qmf_subbands QMF subbands"
+  into eight bands, and the last ends at subband 40.
+- **Reading:** subbands 41 to 63 have no parameters and pass through dialogue enhancement unchanged.
+- **Evidence:** Text.
+
+### Dialogue enhancement without its waveform
+
+- **Where:** Part 1 5.7.8.9, p. 253, splits the enhancement of the hybrid methods between the parameters
+  and a coded dialogue waveform, by alpha_c; 5.7.8.1 lets a low-complexity decoder "use only the
+  parametric data to perform dialogue enhancement".
+- **Reading:** until the waveform's substream is decoded (phase D7), a hybrid method enhances by its
+  parameters alone, as its parametric counterpart does, at the whole gain.
+- **Evidence:** Text.
+
+### The dialogue enhancement gain the system asks for
+
+- **Where:** Part 1 5.7.8.7, p. 253, caps the system's G_DE at G_max; the text does not bound it below.
+- **Reading:** G_DE runs from 0 to the stream's G_max: at 0 or below the tool leaves the signal as it is,
+  and above G_max it applies G_max. An I-frame whose `b_de_data_present` is 0 leaves no parameters, and
+  the tool does nothing until parameters come.
+- **Evidence:** Text; planning/ac4.md's control table gives G_DE as 0 dB up to the stream's cap.
+
+### The sample rate converter's filter and output grid
+
+- **Where:** Part 1 6.2.15, p. 268, asks only that the converter "should use high-quality anti-aliasing
+  filters"; Part 2 5.11 and Table 47, p. 110, give the number of samples each frame yields at the
+  1000/1001 rates, by phase.
+- **Reading:** a Kaiser-windowed sinc, polyphase, with the passband to 0.86 of the lower rate's Nyquist
+  frequency and the stopband from that frequency 100 dB down (`src/ac4core/src/dsp/resampler.hpp`). Output
+  sample m is complete once (m + 1) x down / up input samples have arrived, so frame t of N samples
+  yields floor((t + 1) R) - floor(t R), R = N x up / down: Table 47's sequence for phi_t = t modulo 5, and
+  a constant count at the other rates. A converter starting at phi_t starts its grid t frames in.
+- **Evidence:** Text, and Table 47 held in `tests/ac4core/test_ac4core_resampler.cpp`. DEE's IMS streams
+  at 23.976, 24, 25 and 29.97 fps lag their sources by a constant per rate, within 1.3 samples of DEE's half
+  frame plus this decoder's delay (`tools/checks/score_ac4_decode.py`, LAG_AT_RATE).
+
+### The converter's phase across a splice
+
+- **Where:** Part 2 5.11, p. 110: phi_t goes on from phi_t-1 where `sequence_counter` is 0 and the frame is
+  not the first, and a change of source that moves the sequence "shall only be applied at the time the
+  first frame of the new source is returned".
+- **Reading:** a change of source keeps phi_t and the converter ("A change of source"). The frame a
+  splicer marks 0 takes phi_t-1 + 1, so its sample count goes on in the old sequence; the frame after it
+  takes its own counter's phase. Where that jumps, the converter's grid moves by the jump and keeps the
+  input it holds, so the jump neither drops samples nor inserts silence. The count changes with the
+  frame that brings the new source's first samples out, whose first samples are still the old source's:
+  the grid moves at that frame's start, which shifts the old source's last samples by less than one
+  output sample.
+- **Evidence:** Text; `tests/ac4dec/test_ac4dec_decoder.cpp` holds the counts across a jump and a 0 at
+  29.97 fps.
 
 ## Tables
 

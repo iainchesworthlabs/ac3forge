@@ -174,6 +174,12 @@ curl -T <build dir>/ac3forge_hearth_sink.bin http://hearth-eb2c64.local/firmware
 file's SHA-256 with it, and waits for the board to accept the new image or go
 back to the old one.
 
+The board's own web page does the same from a browser: **Update firmware…**
+in its Firmware section takes `ac3forge_hearth_sink.bin` from a file, shows the
+bytes sent, and loads the new image's page once the board runs it. The section
+also shows both slots, the trial and how the last update ended, and has
+**Restart** and **Roll back**.
+
 On the board, the update goes like this:
 
 1. **Flash mode.** Every play stops, servers are told the board is restarting,

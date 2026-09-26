@@ -65,11 +65,12 @@ fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https
 | IEC 61937 carriage (`ac3::iec61937`, `PassthroughSink`, Hearth's extension role) | **Built** (phase D11) — the four IEC 61937-14 burst types at every frame rate, read back unchanged; passthrough on ALSA and Android, the platforms whose APIs can send AC-4; the extension role's AC-4 data type, decoded by the test sink; no receiver found accepts AC-4 |
 | Encoder (`src/ac4enc`) | **In progress** — mono, stereo, 5.0 and 5.1 in the SIMPLE, ASPX and A-CPL codec modes (phases E1 to E4), A-SPX below 96 kbps a channel in mono and stereo and below 384 kbps in 5.1, companding in mono and stereo below 64 kbps a channel, ASPX_ACPL_2 and ASPX_ACPL_3 in 5.1 below 168 and 112 kbps, `ac3cli ac4-encode`; 7.X, the 5.X element's other coding configurations, ASPX_ACPL_1 and A-CPL in stereo as experimental options; metadata and the other frame rates follow in E5 to E7 |
 | Applications (`ac3cli`, Hearth, Forge GUI, bindings) | **Not started** — plan phases I1 to I6, after the channel-based library |
+| ESP32 (`float` on the P4, then the S3; fixed point on the C6) | **Not started** — plan phase D14, after D10: the decoder on `double`, `float` and fixed point by target, as AC-3 and E-AC-3 are, the P4 first |
 
 Hearth and Forge playback of AC-4 waits on PCM decode. Plan:
 [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md). Its
-first phase makes the DEE reference streams the others need before the local DEE licence ends on
-2026-11-06.
+first phase made the DEE reference streams the others need; the local DEE licence ends on
+2026-11-06 and will not be renewed, so G1 adds every stream the remaining phases need before then.
 
 ### Library — API freeze → v1.0.0 (was AP1, L)
 

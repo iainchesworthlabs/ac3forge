@@ -1,15 +1,19 @@
 // ac4::Decoder's frame-to-frame behaviour, on the committed DEE streams: what
-// a frame whose table of contents does not parse returns, and when I-frame
-// configuration carried between frames is kept or forgotten.
+// a frame whose table of contents does not parse returns, when I-frame
+// configuration carried between frames is kept or forgotten, what a decode
+// begun at an I-frame or continued across a splice gives, and the concealment
+// policies.
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -323,6 +327,93 @@ std::vector<std::byte> hsf_ext_two_substream_frame(bool ext_index_lower = false)
     return data;
 }
 
+// decode() over `frames`, each of which must not fail: the channels of the
+// frames that came out, appended, and each one's length and sequence_counter.
+struct Decoded {
+    std::vector<std::vector<float>> channels;
+    std::vector<std::size_t> lengths;
+    std::vector<int> counters;
+    std::size_t nothing = 0;  // frames that returned no output
+};
+
+Decoded decode_frames(ac4::Decoder& decoder, std::span<const std::vector<std::byte>> frames) {
+    Decoded out;
+    for (const std::vector<std::byte>& frame : frames) {
+        const auto decoded = decoder.decode(frame);
+        INFO(decoder.refusal_reason());
+        REQUIRE(decoded.has_value());
+        if (!decoded->has_value()) {
+            ++out.nothing;
+            continue;
+        }
+        const ac4::DecodedFrame& pcm = **decoded;
+        if (out.channels.empty()) {
+            out.channels.resize(pcm.channels.size());
+        }
+        REQUIRE(pcm.channels.size() == out.channels.size());
+        for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
+            out.channels[c].insert(out.channels[c].end(), pcm.channels[c].begin(),
+                                   pcm.channels[c].end());
+        }
+        out.lengths.push_back(pcm.channels.front().size());
+        out.counters.push_back(pcm.sequence_counter);
+    }
+    return out;
+}
+
+// The largest difference between two decodes over `count` samples of every
+// channel, `a` from sample `a_first` and `b` from `b_first`.
+float peak_difference(const std::vector<std::vector<float>>& a, std::size_t a_first,
+                      const std::vector<std::vector<float>>& b, std::size_t b_first,
+                      std::size_t count) {
+    REQUIRE(a.size() == b.size());
+    float peak = 0.0F;
+    for (std::size_t c = 0; c < a.size(); ++c) {
+        REQUIRE(a_first + count <= a[c].size());
+        REQUIRE(b_first + count <= b[c].size());
+        for (std::size_t n = 0; n < count; ++n) {
+            peak = std::max(peak, std::abs(a[c][a_first + n] - b[c][b_first + n]));
+        }
+    }
+    return peak;
+}
+
+// The largest magnitude over `count` samples of every channel from `first`.
+float peak(const std::vector<std::vector<float>>& channels, std::size_t first, std::size_t count) {
+    float out = 0.0F;
+    for (const std::vector<float>& channel : channels) {
+        REQUIRE(first + count <= channel.size());
+        for (std::size_t n = first; n < first + count; ++n) {
+            out = std::max(out, std::abs(channel[n]));
+        }
+    }
+    return out;
+}
+
+// audio_size_value 32 767 and b_more_bits 0 in the frame's audio substream:
+// past the end of the substream, which decode() refuses with the table of
+// contents intact.
+void damage_audio(std::vector<std::byte>& frame) {
+    const auto parsed = ac4::parse_raw_frame(frame);
+    REQUIRE(parsed.has_value());
+    for (const ac4::Substream& substream : parsed->substreams) {
+        if (substream.is_audio) {
+            frame[substream.offset] = std::byte{0xFF};
+            frame[substream.offset + 1] = std::byte{0xFE};
+            return;
+        }
+    }
+    FAIL("the frame has no audio substream");
+}
+
+// At frame_rate_index 13 a frame is 2 048 samples, and frame k's audio comes
+// out from sample 2 048 k + 1 313, the decoder's delay (decoder.hpp). The QMF
+// banks spread a change in the signal over a prototype's length either side,
+// 640 samples, at under -100 dBFS.
+constexpr std::size_t kFrame = 2048;
+constexpr std::size_t kDelay = 1313;
+constexpr std::size_t kQmfSpread = 640;
+
 }  // namespace
 
 TEST_CASE("ac4::Decoder fails a frame whose table of contents does not parse", "[ac4dec]") {
@@ -441,4 +532,363 @@ TEST_CASE("ac4::Decoder reads a channel's HSF extension substream alongside it",
     CHECK(ext->kind == ac4::SubstreamReport::Kind::kHsfExt);
     CHECK_FALSE(ext->refused.has_value());
     CHECK(ext->bits_read == 8);  // the 6-bit header, byte_align'd
+}
+
+TEST_CASE("a decode begun at an I-frame gives the whole stream's output from the frame after it",
+          "[ac4dec][pcm]") {
+    // The I-frame's own audio needs the frame before it to overlap with; from
+    // the next frame's audio the two decodes agree, as closely as each codec
+    // mode's state allows.
+    struct Leg {
+        const char* name;
+        std::size_t settle;  // the frame after the I-frame from whose audio on the decodes agree
+        float tolerance;     // their largest difference over that frame's audio and the next's
+    };
+    constexpr std::array<Leg, 6> kLegs{{
+        // SIMPLE: the QMF banks' transient alone, under -110 dBFS.
+        {"ac4-20-music-192", 1, 1e-5F},
+        {"ac4-51-tones-384", 1, 1e-5F},
+        // ASPX: A-SPX's noise and tone generators step through their tables
+        // from the decoder's first frame (Part 1 Pseudocodes 103 and 105), a
+        // phase no I-frame restores, so the noise and tones it adds come out
+        // at their levels and another phase.
+        {"ac4-20-speech-128", 1, 3e-3F},
+        {"ac4-51-music-192", 1, 3e-3F},
+        // A-CPL: the decorrelators' IIR filters and the transient ducker carry
+        // state from frame to frame that no I-frame restores (clause 5.7.7.4);
+        // on these streams it has settled by the fourth frame.
+        {"ac4-51-film-96", 4, 2e-3F},
+        {"ac4-51-music-128", 4, 2e-3F},
+    }};
+    for (const Leg& leg : kLegs) {
+        CAPTURE(leg.name);
+        const auto frames = raw_frames(read_stream(leg.name));
+        ac4::Decoder whole_decoder;
+        const Decoded whole = decode_frames(whole_decoder, frames);
+        REQUIRE(whole.lengths.size() == frames.size());
+        std::size_t checked = 0;
+        for (std::size_t k = 1; k < frames.size(); ++k) {
+            const std::size_t from = (k + leg.settle) * kFrame + kDelay;
+            if (!is_iframe(frames[k]) || from + 2 * kFrame > whole.channels.front().size()) {
+                continue;
+            }
+            CAPTURE(k);
+            // Enough frames for the output to reach the two frames' audio.
+            const std::size_t count = leg.settle + 3;
+            ac4::Decoder decoder;
+            const Decoded part = decode_frames(decoder, std::span(frames).subspan(k, count));
+            REQUIRE(part.lengths.size() == count);
+            CHECK(peak_difference(whole.channels, from, part.channels, from - k * kFrame,
+                                  2 * kFrame) < leg.tolerance);
+            ++checked;
+        }
+        // DEE's second frame, an I-frame after its priming frame, and the
+        // I-frames every 23 or 24 frames after it that leave room to compare.
+        CHECK(checked == 5);
+    }
+}
+
+TEST_CASE("a splice at an I-frame joins the two streams' audio without a gap", "[ac4dec][pcm]") {
+    // Part 1 clause 6.2.19: a switch at an I-frame decodes without a flaw,
+    // and the first frame after a splice is read without what the frames
+    // before it sent. The signal carries on: the first stream's audio comes out
+    // to its end, the second's from its first frame, and the two overlap across
+    // that frame's audio. The first stream is SIMPLE stereo music.
+    const auto first_stream = raw_frames(read_stream("ac4-20-music-192"));
+    constexpr std::size_t kSplice = 30;  // the first stream's frames before the splice
+    constexpr std::size_t kFrom = 47;    // the second stream's I-frame after it
+    bool marked = false;
+    SECTION("marked 0, a controlled splice") {
+        marked = true;
+    }
+    SECTION("the counter jumping") {}
+
+    struct Second {
+        const char* name;
+        float tolerance;  // after the joint frame, against the stream decoded alone
+        bool steady;      // tones, which never fall quiet
+    };
+    // SIMPLE tones, then ASPX speech, whose A-SPX starts at the splice as it
+    // does in a decode of the stream alone.
+    for (const Second& second :
+         {Second{"ac4-20-tones-192", 1e-5F, true}, Second{"ac4-20-speech-128", 1e-5F, false}}) {
+        CAPTURE(second.name);
+        const auto second_stream = raw_frames(read_stream(second.name));
+        REQUIRE(is_iframe(second_stream[kFrom]));
+        std::vector<std::vector<std::byte>> tail(second_stream.begin() + kFrom,
+                                                 second_stream.end());
+        if (marked) {
+            set_sequence_counter(tail.front(), 0);
+        }
+
+        // Each stream alone: the first one frame past the splice, for the
+        // audio its delay line still holds there.
+        ac4::Decoder first_decoder;
+        const Decoded first_alone =
+            decode_frames(first_decoder, std::span(first_stream).first(kSplice + 1));
+        ac4::Decoder second_decoder;
+        const Decoded second_alone = decode_frames(second_decoder, tail);
+
+        std::vector<std::vector<std::byte>> frames(first_stream.begin(),
+                                                   first_stream.begin() + kSplice);
+        frames.insert(frames.end(), tail.begin(), tail.end());
+        ac4::Decoder decoder;
+        const Decoded spliced = decode_frames(decoder, frames);
+        REQUIRE(spliced.lengths.size() == frames.size());
+        // The second stream's first audio starts here.
+        const std::size_t joint = kSplice * kFrame + kDelay;
+        CHECK(peak_difference(spliced.channels, 0, first_alone.channels, 0, joint - kQmfSpread) ==
+              0.0F);
+        // From the audio of the second stream's next frame, the second stream
+        // as decoded alone, past the QMF banks' transient.
+        const std::size_t next = joint + kFrame;
+        CHECK(peak_difference(spliced.channels, next, second_alone.channels,
+                              next - kSplice * kFrame,
+                              spliced.channels.front().size() - next) < second.tolerance);
+        // Across the joint frame's audio the two streams overlap: the first
+        // stream's last audio falls as the second's rises, where a decoder that
+        // started again from silence would put a frame's delay of it.
+        for (std::size_t n = joint; second.steady && n < next; n += kFrame / 8) {
+            CAPTURE(n);
+            CHECK(peak(spliced.channels, n, kFrame / 8) > 0.01F);
+        }
+    }
+}
+
+TEST_CASE(
+    "after a change of source between I-frames the output resumes as the new stream decoded alone",
+    "[ac4dec][pcm]") {
+    // Without a concealment policy the frames that wait for an I-frame return
+    // nothing, and the signal before them goes with them.
+    const auto first_stream = raw_frames(read_stream("ac4-20-music-192"));
+    const auto second_stream = raw_frames(read_stream("ac4-20-speech-128"));
+    REQUIRE_FALSE(is_iframe(second_stream[50]));
+    const std::vector<std::vector<std::byte>> tail(second_stream.begin() + 50, second_stream.end());
+    ac4::Decoder alone_decoder;
+    const Decoded alone = decode_frames(alone_decoder, tail);
+    CHECK(alone.nothing == 21);  // until the I-frame at 71
+
+    ac4::Decoder decoder;
+    REQUIRE(decode_frames(decoder, std::span(first_stream).first(30)).lengths.size() == 30);
+    const Decoded spliced = decode_frames(decoder, tail);
+    CHECK(spliced.nothing == alone.nothing);
+    REQUIRE(spliced.lengths == alone.lengths);
+    CHECK(peak_difference(spliced.channels, 0, alone.channels, 0, alone.channels.front().size()) ==
+          0.0F);
+}
+
+TEST_CASE("the converter's output counts stay locked to sequence_counter across a splice",
+          "[ac4dec][pcm][src]") {
+    // Part 2 Table 47 at 29.97 fps, by phi_t.
+    constexpr std::array<std::size_t, 5> kCounts{1601, 1602, 1601, 1602, 1602};
+    const auto frames = raw_frames(read_stream("ac4-ims-music-64-2997"));
+    REQUIRE(frames.size() > 120);
+    REQUIRE(is_iframe(frames[90]));
+    std::vector<std::vector<std::byte>> tail(frames.begin() + 90, frames.end());
+    ac4::Decoder decoder;
+    const Decoded lead = decode_frames(decoder, std::span(frames).first(40));
+    REQUIRE(lead.lengths.size() == 40);
+
+    SECTION("a counter that jumps: the new stream's phase from its first frame") {
+        const Decoded spliced = decode_frames(decoder, tail);
+        REQUIRE(spliced.lengths.size() == tail.size());
+        for (std::size_t n = 0; n < tail.size(); ++n) {
+            CAPTURE(n);
+            CHECK(spliced.lengths[n] == kCounts[static_cast<std::size_t>(spliced.counters[n] % 5)]);
+        }
+    }
+    SECTION("the splice mark: phi_t goes on from the frame before (Part 2 clause 5.11)") {
+        set_sequence_counter(tail.front(), 0);
+        const Decoded spliced = decode_frames(decoder, tail);
+        REQUIRE(spliced.lengths.size() == tail.size());
+        CHECK(spliced.counters.front() == 0);
+        CHECK(spliced.lengths.front() ==
+              kCounts[static_cast<std::size_t>((lead.counters.back() % 5 + 1) % 5)]);
+        for (std::size_t n = 1; n < tail.size(); ++n) {
+            CAPTURE(n);
+            CHECK(spliced.lengths[n] == kCounts[static_cast<std::size_t>(spliced.counters[n] % 5)]);
+        }
+    }
+}
+
+TEST_CASE("without a concealment policy a frame that does not decode fails and the next goes on",
+          "[ac4dec][pcm]") {
+    const auto frames = raw_frames(read_stream("ac4-20-tones-192"));
+    constexpr std::size_t kLost = 10;
+    REQUIRE_FALSE(is_iframe(frames[kLost + 1]));
+    auto damaged = frames;
+    ac4::DecodeError expected = ac4::DecodeError::kInvalidStream;
+    SECTION("an audio substream that does not read") {
+        damage_audio(damaged[kLost]);
+    }
+    SECTION("a table of contents that does not read, taken to be the frame the stream expected") {
+        damaged[kLost] = {std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}};
+        expected = ac4::DecodeError::kInvalidToc;
+    }
+    ac4::Decoder decoder;
+    REQUIRE(decode_frames(decoder, std::span(damaged).first(kLost)).lengths.size() == kLost);
+    const auto lost = decoder.decode(damaged[kLost]);
+    REQUIRE_FALSE(lost.has_value());
+    CHECK(lost.error() == expected);
+    CHECK_FALSE(decoder.refusal_reason().empty());
+    // The frame after it continues the stream: it decodes, where a change of
+    // source would have it wait for an I-frame.
+    const auto next = decoder.decode(damaged[kLost + 1]);
+    REQUIRE(next.has_value());
+    CHECK(next->has_value());
+    CHECK(decoder.refusal_reason().empty());
+}
+
+TEST_CASE("a concealment policy puts a frame in place of each one that does not decode",
+          "[ac4dec][pcm]") {
+    // SIMPLE stereo tones, at -20 dBFS: three frames lost in a row.
+    const auto frames = raw_frames(read_stream("ac4-20-tones-192"));
+    constexpr std::size_t kLost = 10;
+    constexpr std::size_t kLosses = 3;
+    auto damaged = frames;
+    for (std::size_t k = kLost; k < kLost + kLosses; ++k) {
+        REQUIRE_FALSE(is_iframe(frames[k]));
+        damage_audio(damaged[k]);
+    }
+    ac4::Decoder clean_decoder;
+    const Decoded clean = decode_frames(clean_decoder, frames);
+
+    ac4::ConcealmentPolicy policy = ac4::ConcealmentPolicy::kMute;
+    ac4::ConcealmentAction action = ac4::ConcealmentAction::kMute;
+    SECTION("mute") {}
+    SECTION("repeat and fade") {
+        policy = ac4::ConcealmentPolicy::kRepeatFade;
+        action = ac4::ConcealmentAction::kRepeatFade;
+    }
+    ac4::Decoder decoder(ac4::DecoderConfig{.syntax = {}, .output = {}, .concealment = policy});
+    std::vector<std::vector<float>> out(2);
+    for (std::size_t k = 0; k < damaged.size(); ++k) {
+        CAPTURE(k);
+        const auto decoded = decoder.decode(damaged[k]);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        const ac4::DecodedFrame& pcm = **decoded;
+        const bool lost = k >= kLost && k < kLost + kLosses;
+        REQUIRE(pcm.concealed.has_value() == lost);
+        if (lost) {
+            CHECK(pcm.concealed->error == ac4::DecodeError::kInvalidStream);
+            CHECK(pcm.concealed->action == action);
+            CHECK_FALSE(decoder.refusal_reason().empty());
+        }
+        CHECK(pcm.sequence_counter == clean.counters[k]);
+        CHECK(pcm.sample_rate_hz == 48000);
+        CHECK(pcm.speakers == std::vector<ac4::Speaker>{ac4::Speaker::kLeft, ac4::Speaker::kRight});
+        REQUIRE(pcm.channels.size() == 2);
+        for (std::size_t c = 0; c < 2; ++c) {
+            REQUIRE(pcm.channels[c].size() == kFrame);
+            out[c].insert(out[c].end(), pcm.channels[c].begin(), pcm.channels[c].end());
+        }
+    }
+    // The clean stream's output up to the first lost frame's audio, and again
+    // from the audio of the second good frame after the losses (the first
+    // overlaps a concealed frame).
+    const std::size_t damage_from = kLost * kFrame + kDelay;
+    const std::size_t damage_to = (kLost + kLosses + 1) * kFrame + kDelay;
+    CHECK(peak_difference(out, 0, clean.channels, 0, damage_from - kQmfSpread) == 0.0F);
+    CHECK(peak_difference(out, damage_from - kQmfSpread, clean.channels, damage_from - kQmfSpread,
+                          kQmfSpread) < 1e-5F);
+    CHECK(peak_difference(out, damage_to, clean.channels, damage_to,
+                          out.front().size() - damage_to) < 1e-5F);
+    // The second and third lost frames' audio lies between concealed frames:
+    // in the second half of each, where the frame before has faded, silence
+    // under kMute and the tones faded under kRepeatFade, over 20 dB further
+    // in the third than in the second.
+    const std::size_t half = kFrame / 2 - kQmfSpread;
+    const float second = peak(out, (kLost + 1) * kFrame + kDelay + kFrame / 2, half);
+    const float third = peak(out, (kLost + 2) * kFrame + kDelay + kFrame / 2, half);
+    CAPTURE(second, third);
+    if (policy == ac4::ConcealmentPolicy::kMute) {
+        CHECK(second == 0.0F);
+        CHECK(third == 0.0F);
+    } else {
+        CHECK(second > 1e-4F);
+        CHECK(second < 1e-2F);
+        CHECK(third < second / 10.0F);
+    }
+}
+
+TEST_CASE("a concealment policy has nothing to conceal from before a frame has decoded",
+          "[ac4dec][pcm]") {
+    auto frames = raw_frames(read_stream("ac4-20-tones-192"));
+    damage_audio(frames[0]);
+    ac4::Decoder decoder(ac4::DecoderConfig{
+        .syntax = {}, .output = {}, .concealment = ac4::ConcealmentPolicy::kRepeatFade});
+    const auto first = decoder.decode(frames[0]);
+    REQUIRE_FALSE(first.has_value());
+    CHECK(first.error() == ac4::DecodeError::kInvalidStream);
+    // DEE's second frame is an I-frame, and decodes.
+    const auto second = decoder.decode(frames[1]);
+    REQUIRE(second.has_value());
+    REQUIRE(second->has_value());
+    CHECK_FALSE((*second)->concealed.has_value());
+}
+
+TEST_CASE("a concealed frame whose table of contents did not read keeps the converter's counts",
+          "[ac4dec][pcm][src]") {
+    // Part 2 Table 47 at 29.97 fps, by phi_t.
+    constexpr std::array<std::size_t, 5> kCounts{1601, 1602, 1601, 1602, 1602};
+    auto frames = raw_frames(read_stream("ac4-ims-music-64-2997"));
+    constexpr std::size_t kLost = 40;
+    REQUIRE_FALSE(is_iframe(frames[kLost]));
+    const auto parsed = ac4::parse_raw_frame(frames[kLost]);
+    REQUIRE(parsed.has_value());
+    const int counter = parsed->toc.sequence_counter;
+    frames[kLost] = {std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}};
+    ac4::Decoder decoder(ac4::DecoderConfig{
+        .syntax = {}, .output = {}, .concealment = ac4::ConcealmentPolicy::kMute});
+    for (std::size_t k = 0; k < frames.size(); ++k) {
+        CAPTURE(k);
+        const auto decoded = decoder.decode(frames[k]);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        const ac4::DecodedFrame& pcm = **decoded;
+        REQUIRE(pcm.concealed.has_value() == (k == kLost));
+        if (k == kLost) {
+            CHECK(pcm.concealed->error == ac4::DecodeError::kInvalidToc);
+            CHECK(pcm.sequence_counter == counter);
+        }
+        CHECK(pcm.channels.front().size() ==
+              kCounts[static_cast<std::size_t>(pcm.sequence_counter % 5)]);
+    }
+}
+
+TEST_CASE("a concealment policy fills the frames that wait for an I-frame after a change of source",
+          "[ac4dec][pcm]") {
+    // Frames 0 to 19 of one stream, then 50 on: the counter jumps, and 50 to
+    // 70 wait for the I-frame at 71.
+    const auto frames = raw_frames(read_stream("ac4-20-tones-192"));
+    REQUIRE(is_iframe(frames[71]));
+    const std::vector<std::vector<std::byte>> tail(frames.begin() + 50, frames.end());
+    ac4::Decoder alone_decoder;
+    const Decoded alone = decode_frames(alone_decoder, tail);
+    REQUIRE(alone.nothing == 21);
+
+    ac4::Decoder decoder(ac4::DecoderConfig{
+        .syntax = {}, .output = {}, .concealment = ac4::ConcealmentPolicy::kMute});
+    REQUIRE(decode_frames(decoder, std::span(frames).first(20)).lengths.size() == 20);
+    std::vector<std::vector<float>> out(2);
+    for (std::size_t k = 0; k < tail.size(); ++k) {
+        CAPTURE(k);
+        const auto decoded = decoder.decode(tail[k]);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        const ac4::DecodedFrame& pcm = **decoded;
+        REQUIRE(pcm.concealed.has_value() == (k < alone.nothing));
+        if (pcm.concealed) {
+            CHECK(pcm.concealed->error == ac4::DecodeError::kMissingIFrame);
+            CHECK(pcm.channels.front().size() == kFrame);
+            continue;
+        }
+        for (std::size_t c = 0; c < 2; ++c) {
+            out[c].insert(out[c].end(), pcm.channels[c].begin(), pcm.channels[c].end());
+        }
+    }
+    // From the I-frame on, the new source's output as decoded alone.
+    REQUIRE(out.front().size() == alone.channels.front().size());
+    CHECK(peak_difference(out, 0, alone.channels, 0, out.front().size()) == 0.0F);
 }

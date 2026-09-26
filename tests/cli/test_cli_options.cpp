@@ -211,27 +211,47 @@ TEST_CASE("a malformed metadata option is refused with its own reason before any
 TEST_CASE("a malformed coding, decoding or routing option is refused with its own reason",
           "[cli][options]") {
     static constexpr Refusal kRows[] = {
-        {"fast-imdct=on", "the fast IMDCT is the default; 'fast-imdct=off' forces the direct "
-                          "\xC2\xA7" "7.9.4 step-3 evaluation (got 'fast-imdct=on')"},
-        {"numblkscod=4", "numblkscod is 0-3 (1/2/3/6 blocks per syncframe, section E2.3.1.4) "
-                         "(got 'numblkscod=4')"},
+        {"fast-imdct=on",
+         "the fast IMDCT is the default; 'fast-imdct=off' forces the direct "
+         "\xC2\xA7"
+         "7.9.4 step-3 evaluation (got 'fast-imdct=on')"},
+        {"numblkscod=4",
+         "numblkscod is 0-3 (1/2/3/6 blocks per syncframe, section E2.3.1.4) "
+         "(got 'numblkscod=4')"},
         {"numblkscod=x", "numblkscod is 0-3"},
-        {"joc-domain=fft", "joc-domain is 'qmf' (the default, \xC2\xA7" "7.1's complex "
-                           "filterbank) or 'mdct' (the 256-bin approximation) "
-                           "(got 'joc-domain=fft')"},
+        {"joc-domain=fft",
+         "joc-domain is 'qmf' (the default, \xC2\xA7"
+         "7.1's complex "
+         "filterbank) or 'mdct' (the 256-bin approximation) "
+         "(got 'joc-domain=fft')"},
         {"search=fast",
          "search is 'off' (the default), 'distortion' or 'perceptual' (got 'search=fast')"},
-        {"delta=on", "delta bit allocation is on by default; 'delta=off' skips the "
-                     "corrections and the second fit that weighs them (got 'delta=on')"},
-        {"channels=3", "channels is '2' (\xC2\xA7" "7.8 stereo), '1' (mono) or 'as-coded' "
-                       "(the default - no downmix at all) (got 'channels=3')"},
-        {"ltrt-phase=on", "the Lt/Rt surround phase shift is the default; 'ltrt-phase=off' "
-                          "selects the sign-only matrix (got 'ltrt-phase=on')"},
-        {"drcmode=film", "drcmode is 'line' (\xC2\xA7" "7.7.1), 'rf' (\xC2\xA7" "7.7.2, with "
-                         "downmix overload protection) or 'none' (the default) "
-                         "(got 'drcmode=film')"},
-        {"conceal=hide", "conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
-                         "silence) or 'off' (the default) (got 'conceal=hide')"},
+        {"delta=on",
+         "delta bit allocation is on by default; 'delta=off' skips the "
+         "corrections and the second fit that weighs them (got 'delta=on')"},
+        {"channels=3",
+         "channels is '2' (\xC2\xA7"
+         "7.8 stereo), '1' (mono) or 'as-coded' "
+         "(the default - no downmix at all) (got 'channels=3')"},
+        {"ltrt-phase=on",
+         "the Lt/Rt surround phase shift is the default; 'ltrt-phase=off' "
+         "selects the sign-only matrix (got 'ltrt-phase=on')"},
+        {"drcmode=film",
+         "drcmode is 'line' (\xC2\xA7"
+         "7.7.1), 'rf' (\xC2\xA7"
+         "7.7.2, with "
+         "downmix overload protection) or 'none' (the default) for AC-3 and "
+         "E-AC-3, and 'off', 'default', 'home-theatre', 'flat-panel-tv', "
+         "'portable-speakers' or 'portable-headphones' for AC-4 "
+         "(got 'drcmode=film')"},
+        {"output-level=5", "output-level is a level in dBFS from -60 to 0 (got 'output-level=5')"},
+        {"output-level=loud", "output-level is a level in dBFS from -60 to 0"},
+        {"dialogue-enhancement=13",
+         "dialogue-enhancement is a gain in dB from 0 to 12 (got 'dialogue-enhancement=13')"},
+        {"dialogue-enhancement=-3", "dialogue-enhancement is a gain in dB from 0 to 12"},
+        {"conceal=hide",
+         "conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
+         "silence) or 'off' (the default) (got 'conceal=hide')"},
         {"codec=mp3", "codec must be ac3 or eac3 (got 'codec=mp3')"},
         {"src=", "src= needs a file path"},
         {"map=", "map= needs a spec (<source>.<channel>"},
@@ -244,8 +264,9 @@ TEST_CASE("a malformed coding, decoding or routing option is refused with its ow
         {"capture2=-1", "capture2= needs a non-negative device index"},
         {"container=avi", "container must be raw, mkv, ts, spdif or fmp4 (got 'container=avi')"},
         {"positions=osc", "positions= needs a scheme (positions=osc:<port>)"},
-        {"positions=midi:1", "positions= scheme must be 'osc' (got 'midi'; MIDI and a game "
-                             "controller are not implemented yet)"},
+        {"positions=midi:1",
+         "positions= scheme must be 'osc' (got 'midi'; MIDI and a game "
+         "controller are not implemented yet)"},
         {"positions=osc:local:x",
          "positions=osc:[local|any|<ipv4>:]<port> needs a port from 1 to 65535"},
     };
@@ -302,18 +323,61 @@ TEST_CASE("an unknown option names itself and prints the option summary", "[cli]
 TEST_CASE("every documented spelling of a valued option gets past parsing to the input file",
           "[cli][options]") {
     static constexpr std::string_view kTokens[] = {
-        "search=off", "search=distortion", "search=perceptual", "delta=off",
-        "channels=2", "channels=1", "channels=as-coded", "mix-lfe",
-        "ltrt-phase=off", "drcmode=line", "drcmode=rf", "drcmode=none",
-        "conceal=repeat", "conceal=mute", "conceal=off", "drc=0.5",
-        "drc=film-light", "drc2=speech", "ceiling=-1", "dialogue=-20",
-        "ceiling2=-1.5", "dialogue2=-24", "dialnorm2=5", "dialnorm2=auto",
-        "compr2=-3", "dsurmod=3", "dsurmod=on", "dsurmod=1",
-        "cmixlev=-3", "cmixlev=-4.5", "cmixlev=-6", "surmixlev=-3",
-        "surmixlev=-6", "surmixlev=off", "lfemix=off", "lfemix=10",
-        "dmixmod=none", "dmixmod=ltrt", "dmixmod=loro", "lorocmixlev=+1.5",
-        "ltrtsurmixlev=-3", "lorosurmixlev=off", "dheadphonmod=on", "dsurexmod=ex",
-        "adconvtyp=hdcd", "codec=ec3", "codec=eac3", "codec=ac3",
+        "search=off",
+        "search=distortion",
+        "search=perceptual",
+        "delta=off",
+        "channels=2",
+        "channels=1",
+        "channels=as-coded",
+        "mix-lfe",
+        "ltrt-phase=off",
+        "drcmode=line",
+        "drcmode=rf",
+        "drcmode=none",
+        "drcmode=default",
+        "drcmode=home-theatre",
+        "drcmode=portable-headphones",
+        "output-level=-31",
+        "output-level=-14.5",
+        "dialogue-enhancement=9",
+        "dialogue-enhancement=0",
+        "conceal=repeat",
+        "conceal=mute",
+        "conceal=off",
+        "drc=0.5",
+        "drc=film-light",
+        "drc2=speech",
+        "ceiling=-1",
+        "dialogue=-20",
+        "ceiling2=-1.5",
+        "dialogue2=-24",
+        "dialnorm2=5",
+        "dialnorm2=auto",
+        "compr2=-3",
+        "dsurmod=3",
+        "dsurmod=on",
+        "dsurmod=1",
+        "cmixlev=-3",
+        "cmixlev=-4.5",
+        "cmixlev=-6",
+        "surmixlev=-3",
+        "surmixlev=-6",
+        "surmixlev=off",
+        "lfemix=off",
+        "lfemix=10",
+        "dmixmod=none",
+        "dmixmod=ltrt",
+        "dmixmod=loro",
+        "lorocmixlev=+1.5",
+        "ltrtsurmixlev=-3",
+        "lorosurmixlev=off",
+        "dheadphonmod=on",
+        "dsurexmod=ex",
+        "adconvtyp=hdcd",
+        "codec=ec3",
+        "codec=eac3",
+        "codec=ac3",
     };
     check_accepted("eac3-encode", kTokens, "accept_a");
 }
@@ -333,6 +397,99 @@ TEST_CASE("the remaining valued and bare option spellings get past parsing to th
         "container=cmaf", "asvc=0,2", "asvc=0x05", "mainid=3", "langcod2",
     };
     check_accepted("eac3-encode", kTokens, "accept_b");
+}
+
+TEST_CASE("ac4-encode's own options are refused with their own reasons", "[cli][options][ac4]") {
+    static constexpr Refusal kRows[] = {
+        {"frame-rate=31",
+         "frame-rate is 23.976, 24, 25, 29.97, 30, 47.95, 48, 50, 59.94, 60, 100, "
+         "119.88 or 120 fps, or native, the 2 048-sample frame (got 'frame-rate=31')"},
+        {"rate-mode=cbr", "rate-mode is constant, average or variable (got 'rate-mode=cbr')"},
+        {"iframe-interval=0", "iframe-interval is a number of frames from 1"},
+        {"iframes=3,,4", "iframes is a comma-separated list of frame numbers from 0"},
+        {"iframes=-1", "iframes is a comma-separated list of frame numbers from 0"},
+        {"fragment=0", "fragment is a fragment's duration in seconds"},
+        // AC-4's dialnorm is in quarters of a dB, from 0 to 31.75.
+        {"dialnorm=32", "dialnorm is auto, or the dialogue level in dB below full scale"},
+        {"dialnorm=24.1", "dialnorm is auto, or the dialogue level in dB below full scale"},
+        {"loudness=r128", "loudness is the practice the programme is measured to"},
+        {"drc=0.5",
+         "unknown DRC profile '0.5' (film-standard | film-light | music-standard | "
+         "music-light | speech | none)"},
+        {"drc-portable-speakers=loud", "unknown DRC profile 'loud'"},
+        {"cmixlev=-2", "an AC-4 centre mix level is +3, +1.5, 0, -1.5, -3, -4.5, -6 or off"},
+        // Table 149a has 0 dB for the surrounds, and nothing louder.
+        {"lorosurmixlev=+1.5", "an AC-4 surround mix level is 0, -1.5, -3, -4.5, -6 or off"},
+        {"lfemix=10", "AC-4's lfemix is the LFE's gain into the stereo downmix, +5.5 to -25.5 dB"},
+        {"lfemix=-3", "AC-4's lfemix is the LFE's gain into the stereo downmix"},
+        {"dmixmod=reserved", "AC-4's dmixmod is loro, ltrt, pl2 (Lt/Rt for Pro Logic II) or none"},
+        {"loro-correction=8", "a downmix loudness correction is -7.5 to +7.5 dB in steps of 0.5"},
+        {"ltrt-correction=0.3", "a downmix loudness correction is -7.5 to +7.5 dB in steps of 0.5"},
+        {"dialogue-channels=l,x", "dialogue-channels is any of l, r and c, comma-separated"},
+        {"dialogue-stem=", "dialogue-stem needs a WAV file"},
+        {"dialogue-method=hybrid", "dialogue-method is independent, mid or cross"},
+        {"dialogue-max-gain=10", "dialogue-max-gain is 3, 6, 9 or 12 dB"},
+        {"experimental=drc-gains-4", "experimental takes aspx-balance, aspx-varvar"},
+    };
+    check_refusals("ac4-encode", kRows, "refuse_ac4");
+}
+
+TEST_CASE("every spelling of ac4-encode's own options gets past parsing to the input file",
+          "[cli][options][ac4]") {
+    static constexpr std::string_view kTokens[] = {
+        "frame-rate=23.976",
+        "frame-rate=29.97",
+        "frame-rate=47.95",
+        "frame-rate=119.88",
+        "frame-rate=native",
+        "rate-mode=constant",
+        "rate-mode=average",
+        "rate-mode=variable",
+        "iframe-interval=1",
+        "iframes=0,5,100",
+        "fragment=2.002",
+        "dialnorm=0",
+        "dialnorm=31.75",
+        "dialnorm=auto",
+        "dialnorm=23.25",
+        "loudness=atsc-a85",
+        "loudness=ebu-r128",
+        "loudness=arib-tr-b32",
+        "loudness=freetv-op59",
+        "loudness=manual",
+        "loudness=consumer-leveller",
+        "loudness=not-indicated",
+        "drc=none",
+        "drc=music-light",
+        "drc-home-theatre=film-standard",
+        "drc-flat-panel-tv=speech",
+        "drc-portable-speakers=none",
+        "drc-portable-headphones=music-standard",
+        "cmixlev=+3",
+        "lorocmixlev=off",
+        "ltrtcmixlev=-4.5",
+        "surmixlev=0",
+        "lorosurmixlev=-1.5",
+        "ltrtsurmixlev=off",
+        "lfemix=5.5",
+        "lfemix=+4.5",
+        "lfemix=-25.5",
+        "lfemix=off",
+        "dmixmod=pl2",
+        "dmixmod=ltrt",
+        "dmixmod=none",
+        "loro-correction=-7.5",
+        "ltrt-correction=+2.5",
+        "dialogue-channels=l,r,c",
+        "dialogue-channels=c",
+        "dialogue-stem=stem.wav",
+        "dialogue-method=independent",
+        "dialogue-method=mid",
+        "dialogue-method=cross",
+        "dialogue-max-gain=12",
+        "experimental=drc-gains-0,acpl",
+    };
+    check_accepted("ac4-encode", kTokens, "accept_ac4");
 }
 
 TEST_CASE("a programmeN= token without its value, or naming a field no extra programme has, is "

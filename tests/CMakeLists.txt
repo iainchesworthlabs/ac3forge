@@ -52,10 +52,14 @@ add_executable(ac3tests
     ac4core/test_ac4core_acpl.cpp
     ac4core/test_ac4core_aspx.cpp
     ac4core/test_ac4core_dsp.cpp
+    ac4core/test_ac4core_resampler.cpp
     ac4dec/test_ac4dec_decoder.cpp
     ac4dec/test_ac4dec_frames.cpp
     ac4dec/test_ac4dec_syntax.cpp
     ac4enc/test_ac4enc_encoder.cpp
+    ac4enc/test_ac4enc_frame_rates.cpp
+    ac4enc/test_ac4enc_metadata.cpp
+    ac4enc/test_ac4enc_rates.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
@@ -258,6 +262,9 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/test_ac4dec_aspx.cpp
         ac4dec/test_ac4dec_channel_elements.cpp
         ac4dec/test_ac4dec_constructed.cpp
+        ac4dec/test_ac4dec_de.cpp
+        ac4dec/test_ac4dec_downmix.cpp
+        ac4dec/test_ac4dec_drc.cpp
         ac4dec/test_ac4dec_metadata.cpp
         ac4dec/test_ac4dec_multichannel.cpp
         ac4dec/test_ac4dec_pcm.cpp

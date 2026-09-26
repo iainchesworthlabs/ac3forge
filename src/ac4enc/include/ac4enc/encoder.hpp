@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -17,10 +18,13 @@
 // personalized audio", written from the published texts. Clause numbers below
 // name the part that defines the element.
 //
-// What this version writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, or 44.1
-// kHz, in frames of 2 048 samples (frame_rate_index 13, which needs no sample
-// rate converter), as one presentation of one channel-coded substream, at a
-// constant bit rate (wait_frames 0), each frame filled to its size. The codec
+// What this version writes: mono, stereo, 5.0 or 5.1 PCM at 48 kHz, at every
+// frame rate of Part 1 Table 83, or at 44.1 kHz in frames of 2 048 samples
+// (frame_rate_index 13, the one Table 84 has), as one presentation of one
+// channel-coded substream, at a constant, average or variable bit rate
+// (RateMode). At every frame rate but index 13's the input is
+// converted to the rate the frames are coded at, the inverse of the
+// decoder's conversion (Tables 83 and 84's resampling ratio). The codec
 // mode is SIMPLE, the audio spectral frontend with block switching and
 // MDCT-domain stereo processing for each channel pair; or ASPX, which codes
 // the spectral frontend up to a crossover and recreates the band above it
@@ -32,9 +36,11 @@
 // coding configurations, 7.0 and 7.1 in the 7.X element, ASPX_ACPL_1, and
 // A-CPL in stereo are experimental. The table of contents is bitstream
 // version 2 with presentation version 1, and the presentation substream
-// carries the dialogue normalisation it is given. Everything else in the
-// plan's later phases (immersive layouts, other frame rates, DRC and dialogue
-// enhancement data) is refused by name as an invalid configuration.
+// carries the dialogue normalisation it is given and, as configured, further
+// loudness values, DRC's decoder modes and the stereo downmix's values; the
+// audio substream's metadata() carries dialogue enhancement's parameters.
+// Everything else in the plan's later phases (immersive layouts, several
+// presentations) is refused by name as an invalid configuration.
 //
 // src/ac4enc/ERRATA.md records the readings the writer alone needs; where the
 // decoder depends on the same reading, src/ac4dec/ERRATA.md has it.
@@ -79,12 +85,193 @@ enum class CodecMode : std::uint8_t {
     kAspxAcpl3,
 };
 
+// How frames share the rate (Part 1 Table 81's wait_frames).
+enum class RateMode : std::uint8_t {
+    // Every frame bitrate_kbps' share, to the byte (wait_frames 0).
+    kConstant,
+    // Each frame as long as its content needs at its masking thresholds, as
+    // far as the decoder's input buffer of Part 1 clause 6.2.4 (six frames at
+    // the rate, twelve above 60 fps) lets frames lend each other bytes, with
+    // bitrate_kbps over the long term (wait_frames 1 to 6: the frames a
+    // decoder that starts at the frame waits before its output, and Part 2
+    // Table 52's br_code carrying the rate, Part 2 Annex B).
+    kAverage,
+    // As kAverage without the buffer: frames lend each other up to two
+    // seconds' share of the rate (wait_frames 7).
+    kVariable,
+};
+
 // The 7.X element's pair beyond L, R, C, Ls and Rs (Part 1 Table 88).
 enum class AdditionalPair : std::uint8_t {
     kNone,
     kBack,      // 3/4/0: Lb and Rb
     kWide,      // 5/2/0: Lw and Rw
     kTopFront,  // 3/2/2: Tfl and Tfr
+};
+
+// --- Metadata ----------------------------------------------------------------
+//
+// What the presentation substream (Part 2 clause 6.2.2.3) and the audio
+// substream's metadata() (6.2.7) carry beside the audio, as the caller
+// configures it; the semantics are Part 1 clauses 4.3.12 to 4.3.14. Each is
+// written only where it is configured. As DEE's streams do, the values that
+// hold for the stream go in I-frames, and a decoder keeps them until the next.
+
+// Part 1 Table 156: the practice the programme loudness was measured by.
+enum class LoudnessPractice : std::uint8_t {
+    kNotIndicated = 0,
+    kAtscA85 = 1,
+    kEbuR128 = 2,
+    kAribTrB32 = 3,
+    kFreeTvOp59 = 4,
+    kManual = 14,
+    kConsumerLeveller = 15,
+};
+
+// Part 1 Table 157: how dialogue was gated.
+enum class DialogueGating : std::uint8_t {
+    kNotIndicated = 0,
+    kCentreOrLeftRight = 1,  // automated, on C or on the power sum of L and R
+    kLeftCentreRight = 2,    // automated, on each front channel
+    kManual = 3,
+};
+
+// further_loudness_info() (Part 2 clause 6.2.7.3, Part 1 clause 4.3.12.3): the
+// programme's loudness as the caller measured it, without dialogue
+// normalisation or DRC applied. Written in every frame, the values in
+// I-frames, in steps of 0.1 dB.
+struct FurtherLoudness {
+    LoudnessPractice practice = LoudnessPractice::kNotIndicated;  // loud_prac_type
+    // With a practice: the dialogue gating the programme's loudness was
+    // corrected with, if any, and whether the correction ran in real time
+    // rather than over the whole file.
+    std::optional<DialogueGating> corrected_with_gating;
+    bool corrected_in_real_time = false;
+    std::optional<double> integrated_lkfs;    // loudrelgat: BS.1770, relative gated
+    std::optional<double> speech_gated_lkfs;  // loudspchgat, gated as `speech_gating` says
+    DialogueGating speech_gating = DialogueGating::kNotIndicated;
+    std::optional<double> max_short_term_lufs;  // max_loudstrm3s: the loudest 3 s
+    std::optional<double> max_true_peak_dbtp;   // max_truepk
+    std::optional<double> loudness_range_lu;    // lra, EBU Tech 3342
+    bool loudness_range_v2 = true;              // lra_prac_type: EBU Tech 3342 v2, or v1
+    std::optional<double> max_momentary_lufs;   // max_loudmntry
+};
+
+// Part 1 Table 160: drc_eac3_profile, and Table 162's default profiles.
+enum class DrcProfile : std::uint8_t {
+    kNone,
+    kFilmStandard,
+    kFilmLight,
+    kMusicStandard,
+    kMusicLight,
+    kSpeech,
+};
+
+// One DRC decoder mode (Part 1 clause 4.3.13.3, Table 72).
+struct DrcModeConfig {
+    // Table 161: 0 home theatre, 1 flat panel TV, 2 portable speakers, 3
+    // portable headphones; 4 to 7 for the output levels from
+    // `output_level_from_db` down to `output_level_to_db`, 0 to -31 dBFS.
+    int id = 0;
+    int output_level_from_db = 0;
+    int output_level_to_db = 0;
+    // What the mode compresses with: the stream's default profile, sent as
+    // drc_default_profile_flag; another profile, sent as its compression curve
+    // (Table 166's parameters, Table 162's values); or another mode's
+    // configuration, by that mode's id (drc_repeat_profile_flag).
+    std::optional<DrcProfile> profile;
+    std::optional<int> repeat_of;
+    // With experimental.drc_gains: the gains the profile (the stream's
+    // default where unset) gives the input, computed frame by frame as a
+    // decoder applying it would and sent in every frame
+    // (drc_compression_curve_flag 0), as Table 163's drc_gains_config: 0 one
+    // gain a frame for every channel, 1 a gain per channel group (Table 168)
+    // and subframe (Table 169), 2 and 3 those in 2 and 4 bands (Table 164).
+    // Every group and band takes the programme's gain, the curve being
+    // defined on the programme's level; configurations 1 to 3 add the
+    // subframes' resolution in time.
+    std::optional<int> gains_config;
+};
+
+// DRC (Part 1 clause 4.3.13): drc_config() in I-frames, which is where
+// DEE's streams send it.
+struct DrcConfig {
+    // drc_eac3_profile: the profile the modes without their own take, and the
+    // one a transcoder to E-AC-3 applies (Part 1 clause 5.7.9.4).
+    DrcProfile profile = DrcProfile::kFilmLight;
+    // The modes; empty sends the four of Table 161 on the default profile, as
+    // DEE's streams do.
+    std::vector<DrcModeConfig> modes;
+};
+
+// Part 1 Table 150: the downmix the stream prefers.
+enum class PreferredDownmix : std::uint8_t {
+    kNotIndicated,
+    kLoRo,
+    kLtRt,
+    kLtRtProLogicII,
+};
+
+// The stereo downmix's values (Part 2 clause 6.2.9.2's custom_dmx_data() and
+// 6.2.9.1's loud_corr(); Part 1 clauses 4.3.12.2.8 to 4.3.12.2.19), for 5.X
+// and 7.X. Gains in dB, each one of the values its table gives.
+struct DownmixConfig {
+    // Table 149: +3, +1.5, 0, -1.5, -3, -4.5 or -6 dB, or -infinity.
+    double loro_centre_db = -3.0;
+    // Table 149a: 0, -1.5, -3, -4.5 or -6 dB, or -infinity.
+    double loro_surround_db = -3.0;
+    // Lt/Rt's, where they differ from Lo/Ro's (b_ltrt_mixinfo).
+    std::optional<double> ltrt_centre_db;
+    std::optional<double> ltrt_surround_db;
+    // The LFE into the stereo downmix, 5.5 - lfe_mixgain dB: +5.5 to -25.5 in
+    // steps of 1 dB. Unset leaves the LFE out.
+    std::optional<double> lfe_db;
+    PreferredDownmix preferred = PreferredDownmix::kLoRo;
+    // The loudness correction each downmix takes, in dB2 (6 dB2 a factor of
+    // 2): -7.5 to +7.5 in steps of 0.5 (loro_dmx_loud_corr, ltrt_dmx_loud_corr).
+    std::optional<double> loro_correction_db2;
+    std::optional<double> ltrt_correction_db2;
+};
+
+// Where dialogue enhancement's parameters come from (planning/ac4.md,
+// decision 18: no speech detector).
+enum class DialogueSource : std::uint8_t {
+    // The channels DialogueConfig marks carry dialogue alone: their
+    // parameters are 1 in every band.
+    kMarkedChannels,
+    // A dialogue stem, given to encode() beside the programme: each band's
+    // parameter is the stem's share of the channel.
+    kStem,
+};
+
+// How dialogue enhancement's parameters raise the dialogue (Part 1 Table 170
+// and clause 5.7.8). The hybrid methods, 2 and 3, add a dialogue waveform in
+// a substream of its own, which phase E6's presentations bring.
+enum class DialogueMethod : std::uint8_t {
+    // de_method 0: each channel scaled, band by band, by its own parameter,
+    // the dialogue's share of it.
+    kChannelIndependent,
+    // de_method 0 with de_ms_proc_flag, for L and R alone: their Mid scaled,
+    // where dialogue centred between them sits.
+    kMid,
+    // de_method 1, from a stem, over two or three channels: a mix of the
+    // channels that follows the dialogue, panned back onto them as the
+    // dialogue is panned (de_mix_coef1_idx and 2).
+    kCrossChannel,
+};
+
+// Dialogue enhancement (Part 1 clauses 4.3.14 and 5.7.8): de_config() in
+// I-frames and each frame's parameters in de_data().
+struct DialogueConfig {
+    DialogueMethod method = DialogueMethod::kChannelIndependent;
+    DialogueSource source = DialogueSource::kMarkedChannels;
+    // Which of L, R and C carry dialogue, in de_channel_config's order (Table
+    // 171); a mono programme has only C, a stereo one L and R.
+    bool left = false;
+    bool right = false;
+    bool centre = true;
+    // The most a decoder may raise the dialogue: 3, 6, 9 or 12 dB (de_max_gain).
+    int max_gain_db = 9;
 };
 
 struct EncoderConfig {
@@ -94,15 +281,36 @@ struct EncoderConfig {
     // and the additional pair.
     int channels = 2;
     int sample_rate_hz = 48000;    // 48 000, or 44 100
+    // Part 1 Table 83 at 48 kHz: 0 23.976 fps, 1 24, 2 25, 3 29.97, 4 30, 5
+    // 47.95, 6 48, 7 50, 8 59.94, 9 60, 10 100, 11 119.88, 12 120, and 13
+    // the 2 048-sample frame, 23.4375 fps, which alone needs no converter; 13
+    // alone at 44.1 kHz.
+    int frame_rate_index = 13;
     int bitrate_kbps = 192;        // the stream's rate, over whole raw_ac4_frame()s
+    RateMode rate_mode = RateMode::kConstant;
     CodecMode codec_mode = CodecMode::kAuto;
     // An I-frame every this many frames, the first frame being one; 1 makes
     // every frame an I-frame. The containers need one at every fragment's start
     // (Part 1 Annex E.5, Part 2 Annex E.3).
     int iframe_interval = 24;
+    // I-frames besides those: the frames, counted from 0, that must be ones,
+    // in any order.
+    std::vector<std::int64_t> iframes;
+    // Where the caller's fragments start, in samples of the decoded output
+    // from its first, which is the media time an MP4 track counts: the frame
+    // whose output starts there, or the first to start after it, is an
+    // I-frame, so that a fragment can start with it.
+    std::vector<std::int64_t> fragment_starts;
     // The input reference level, Part 1 clause 4.3.12.2.1: 0 to -31.75 dBFS in
     // steps of 0.25 dB.
     double dialnorm_db = -31.0;
+    // The metadata above, each written where it is set: the programme's
+    // further loudness values, DRC's decoder modes, the stereo downmix's
+    // values (5.X and 7.X only) and dialogue enhancement.
+    std::optional<FurtherLoudness> loudness;
+    std::optional<DrcConfig> drc;
+    std::optional<DownmixConfig> downmix;
+    std::optional<DialogueConfig> dialogue;
     // One record per syntax element written, in the shape ac4/syntax.hpp
     // states, for comparing what was written with what a reader reads. The
     // callable must outlive the Encoder.
@@ -136,6 +344,9 @@ struct EncoderConfig {
         // takes: ASPX_ACPL_1 in 5.0 and 5.1, and ASPX_ACPL_1 and ASPX_ACPL_2
         // in stereo, the channel pair element's.
         bool acpl = false;
+        // DRC modes that send gains (DrcModeConfig::gains_config), which no
+        // DEE stream has.
+        bool drc_gains = false;
     };
     Experimental experimental{};
 };
@@ -144,7 +355,12 @@ struct EncoderConfig {
 // wraps for a raw .ac4 file or MPEG-2 TS.
 struct EncodedFrame {
     std::vector<std::byte> raw_ac4_frame;
-    int samples = 0;       // PCM samples per channel the frame codes
+    // PCM samples per channel the frame decodes to, at the input's rate: the
+    // frame's length at index 13, and elsewhere what the decoder's converter
+    // gives the frame, which at 29.97, 59.94 and 119.88 fps changes from
+    // frame to frame in a cycle of five (Part 2 clause 5.11): 1 601, 1 602,
+    // 1 601, 1 602 and 1 602 at 29.97.
+    int samples = 0;
     bool iframe = false;   // b_iframe_global
 };
 
@@ -166,6 +382,11 @@ class AC4ENC_EXPORT Encoder {
     // needs.
     [[nodiscard]] std::expected<std::vector<EncodedFrame>, EncodeError> encode(
         std::span<const std::span<const float>> channels);
+    // With DialogueSource::kStem: the programme and, sample for sample, the
+    // dialogue in it, in the programme's channels.
+    [[nodiscard]] std::expected<std::vector<EncodedFrame>, EncodeError> encode(
+        std::span<const std::span<const float>> channels,
+        std::span<const std::span<const float>> dialogue);
 
     // Ends the stream: pads the input with silence to the end of its last
     // frame and returns the frames the delay still held, so that a decoder's
@@ -182,11 +403,22 @@ class AC4ENC_EXPORT Encoder {
     // never kAuto.
     [[nodiscard]] CodecMode codec_mode() const noexcept;
 
-    // Samples of silence the encoder puts before the input: an input sample at
-    // index n is at index n + delay_samples() of the decoded output before the
-    // decoder's own delay is added: at frame_rate_index 13, 1 313 samples
-    // (Part 1 Table 188's d_pcm, 352, the QMF banks' 577 and six QMF slots).
+    // Samples of silence the encoder puts before the input, at the input's
+    // rate: a frame and a half, 3 072 samples at frame_rate_index 13. At the
+    // other frame rates, a frame and a half at the internal rate and the
+    // converter's delay, to the nearest sample: the delay itself is a
+    // fraction of a sample off it. An input sample at index n is at index n +
+    // delay_samples() of the decoded output before the decoder's own delay is
+    // added.
     [[nodiscard]] int delay_samples() const noexcept;
+
+    // The delay ac4::Decoder adds, at the input's rate: at frame_rate_index
+    // 13, 1 313 samples (Part 1 Table 188's d_pcm, 352, the QMF banks' 577 and
+    // six QMF slots); at the other frame rates, the same at the internal rate
+    // and the decoder's converter's delay, to the nearest sample. An input
+    // sample at index n is at index n + delay_samples() +
+    // decoder_delay_samples() of ac4::Decoder's output, to within a sample.
+    [[nodiscard]] int decoder_delay_samples() const noexcept;
 
    private:
     struct Impl;

@@ -113,7 +113,7 @@ so a misrouted channel is identifiable by ear.)
 | `eac3-encode` | WAV → E-AC-3, with the Annex E `tools:` token and an optional `vbr:` token available (see [Options & grammars](metadata-options.md)). Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1, 8→7.1, 10→5.1.4, 12→7.1.4). |
 | `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement |
 | `atmos-cbi` | WAV already mixed into a fixed channel-based-immersive (CBI) bed layout → E-AC-3 Atmos with `program.bed != 0` and 0 dynamic objects — Dolby's `dee_ddpjoc_encoder --input-format cbi_wav` shape, not free-floating objects |
-| `ac4-encode` | WAV → AC-4: mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz at `frame_rate_index` 13 (2,048 samples a frame) and a constant rate from 8 kbps (about 15 in 5.X). A WAV file's channels are taken in the order `decode` writes them: FL FR FC LFE BL BR for 5.1, the surrounds in BL and BR. Below 96 kbps a channel the ASPX codec mode: the spectral frontend up to a crossover of 7.5, 10.5 or 13.5 kHz by rate, A-SPX above it, and companding below 64 kbps a channel; in 5.X below 76.8 kbps a channel (384 kbps for 5.1), with DEE's 5.1 crossovers of 12 and 12.75 kHz and no companding; the SIMPLE mode from there. In 5.X, lower still, the A-CPL modes, which code a downmix and rebuild the channels from it: ASPX_ACPL_2 below 33.6 kbps a channel (168 kbps for 5.1), the downmixes of each side's pair and C, and ASPX_ACPL_3 below 22.4 (112 kbps for 5.1), a Lo/Ro downmix, as DEE's 5.1 streams are at 128 and 96 kbps; where the rate cannot hold that mode's least frame, the next of ASPX_ACPL_2 and ASPX that it can. `codec-mode=simple`, `aspx`, `aspx-acpl-2` or `aspx-acpl-3` picks one whatever the rate, and `experimental=` takes a comma-separated list of `aspx-balance`, `aspx-varvar`, `aspx-interleave`, `coding-configs` (the 5.X element's coding configurations 1 to 3 and `2ch_mode` 1) and `acpl` (with `codec-mode=aspx-acpl-1`, ASPX_ACPL_1 in 5.X, which also codes each side's difference from its downmix to 3 kHz; with `aspx-acpl-1` or `aspx-acpl-2`, A-CPL in stereo), tools no reader outside this project has read from the encoder yet, and `7x-back`, `7x-wide` or `7x-top-front`, which takes seven or eight channels as 7.0 or 7.1 in that 7.X layout, in the WAV order `decode` writes: 3/4/0's back pair in BL and BR and its surrounds in SL and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR. Writes raw sync frames with their CRC, or an MP4 file with the `ac-4` sample entry and its `dac4` when the output is `.mp4`, `.m4a` or `.mov`. `dialnorm=` sets the presentation's dialogue level, `dialnorm=auto` measures it; `syntax-trace=<file>` writes every syntax element it writes, one per line |
+| `ac4-encode` | WAV → AC-4: mono, stereo, 5.0 or 5.1 (7.0 and 7.1 experimental), at 48 kHz at every frame rate of Part 1 Table 83 or at 44.1 kHz at the native one, as raw sync frames with their CRC or, for `.mp4`, `.m4a` or `.mov`, an MP4 file with the `ac-4` sample entry and its `dac4`. The codec mode follows the rate: SIMPLE from 96 kbps a channel (76.8 in 5.X), the ASPX mode below, and in 5.X the A-CPL modes lower still. The frame rate, the rate mode, the I-frames and the metadata are options: see [`ac4-encode`](#ac4-encode) below |
 
 ```bash
 ac3cli encode in.wav out.ac3 448 couple
@@ -158,6 +158,83 @@ is no `[paths.txt]` argument and `dialnorm=auto` is refused for the same reason 
 `atmos-adm`/`atmos-iab` below — see [Atmos & JOC](../../concepts/atmos-joc.md#oamd) and
 [Spatial & Atmos objects](../../library/spatial-and-atmos.md#channel-based-immersive-cbi-beds).
 
+#### `ac4-encode`
+
+A WAV file's channels are taken in the order `decode` writes them: FL FR FC LFE BL BR for 5.1, the
+surrounds in BL and BR.
+
+**Codec mode.** Below 96 kbps a channel the ASPX codec mode: the spectral frontend up to a crossover
+of 7.5, 10.5 or 13.5 kHz by rate, A-SPX above it, and companding below 64 kbps a channel; in 5.X
+below 76.8 kbps a channel (384 kbps for 5.1), with DEE's 5.1 crossovers of 12 and 12.75 kHz and no
+companding; the SIMPLE mode from there. In 5.X, lower still, the A-CPL modes, which code a downmix
+and rebuild the channels from it: ASPX_ACPL_2 below 33.6 kbps a channel (168 kbps for 5.1), the
+downmixes of each side's pair and C, and ASPX_ACPL_3 below 22.4 (112 kbps for 5.1), a Lo/Ro
+downmix, as DEE's 5.1 streams are at 128 and 96 kbps; where the rate cannot hold that mode's least
+frame, the next of ASPX_ACPL_2 and ASPX that it can. The rate must hold a silent I-frame with
+every metadata element the options send: at the native frame rate from 8 kbps (9 in stereo at
+48 kHz in the ASPX mode) and from 20 in 5.X, more at the higher frame rates and with more
+metadata. `codec-mode=simple`, `aspx`, `aspx-acpl-2` or `aspx-acpl-3` picks one whatever the
+rate.
+
+**Experimental.** `experimental=` takes a comma-separated list of the tools no reader outside this
+project has read from the encoder yet: `aspx-balance`, `aspx-varvar`, `aspx-interleave`,
+`coding-configs` (the 5.X element's coding configurations 1 to 3 and `2ch_mode` 1), `acpl` (with
+`codec-mode=aspx-acpl-1`, ASPX_ACPL_1 in 5.X, which also codes each side's difference from its
+downmix to 3 kHz; with `aspx-acpl-1` or `aspx-acpl-2`, A-CPL in stereo) and `drc-gains-0` to
+`drc-gains-3` (the DRC modes send gains in that `drc_gains_config` of Part 1 Table 163); and
+`7x-back`, `7x-wide` or `7x-top-front`, which takes seven or eight channels as 7.0 or 7.1 in that
+7.X layout, in the WAV order `decode` writes: 3/4/0's back pair in BL and BR and its surrounds in SL
+and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR.
+
+**Frame rate and rate mode.** `frame-rate=` is one of Table 83's rates, `23.976`, `24`, `25`,
+`29.97`, `30`, `47.95`, `48`, `50`, `59.94`, `60`, `100`, `119.88` or `120`, or `native`, the
+default: 2 048-sample frames, the only ones at 44.1 kHz. Away from the native frame rate the
+input is converted to the frame's internal rate, and each frame decodes to the samples Part 2
+clause 5.11 gives it: at 29.97 fps 1 601 and 1 602 in turn. `rate-mode=constant`, the default,
+gives every frame the rate's share; `average` lets frames lend each other bytes within the
+decoder's input buffer (Part 1 clause 6.2.4), with `wait_frames` telling a decoder how long to
+wait; `variable` lends up to two seconds' share.
+
+**I-frames.** `iframe-interval=<frames>` (default 24) makes every so many frames an I-frame,
+`iframes=<n,...>` names frames, from 0, that are I-frames besides, and `fragment=<seconds>` makes
+the first frame of each fragment of that length one, for a packager that cuts there. An MP4 file
+lists the I-frames as its sync samples, and counts 29.97, 59.94 and 119.88 fps in a time scale of
+240 000 (Part 2 Table E.1); `mp4` does the same for an AC-4 stream it is given.
+
+**Loudness and DRC.** `dialnorm=` is the dialogue level in dB below full scale, 0 to 31.75 in
+steps of 0.25, or `auto` to measure it. `loudness=<practice>`, one of `atsc-a85`, `ebu-r128`,
+`arib-tr-b32`, `freetv-op59`, `manual`, `consumer-leveller` and `not-indicated`, measures the
+programme with the BS.1770 meter and sends its integrated loudness, loudness range, true peak and
+highest momentary and short-term loudness with that practice, and sets dialnorm from it where
+`dialnorm=` is not given. `drc=<profile>`, one of `film-standard`, `film-light`,
+`music-standard`, `music-light`, `speech` and `none`, sends Table 161's four DRC decoder modes on
+that profile; `drc-home-theatre=`, `drc-flat-panel-tv=`, `drc-portable-speakers=` and
+`drc-portable-headphones=` give one mode a profile of its own, sent as its curve or as a repeat
+of an earlier mode on the same profile.
+
+**Downmix, 5.X and 7.X.** `cmixlev=` or `lorocmixlev=` is the Lo/Ro downmix's centre gain, +3,
++1.5, 0, -1.5, -3, -4.5 or -6 dB or `off`; `surmixlev=` or `lorosurmixlev=` its surround gain, 0,
+-1.5, -3, -4.5 or -6 dB or `off`; `ltrtcmixlev=` and `ltrtsurmixlev=` Lt/Rt's where they differ.
+`lfemix=` is the LFE's gain into the downmix, +5.5 to -25.5 dB in steps of 1 dB, and `dmixmod=` the
+preferred downmix, `loro`, `ltrt`, `pl2` (Lt/Rt for Pro Logic II) or `none`. `loro-correction=`
+and `ltrt-correction=` are each downmix's loudness correction, -7.5 to +7.5 dB in steps of 0.5.
+
+**Dialogue enhancement.** `dialogue-channels=` marks which of `l`, `r` and `c` carry dialogue
+alone, whose parameters are then 1 in every band; `dialogue-stem=<wav>` gives the dialogue, in the
+programme's channels and sample for sample, and each band's parameter is its share of the channel.
+`dialogue-method=independent`, the default, raises each channel; `mid` raises the Mid of L and R;
+`cross`, with a stem over two or three channels, raises a mix of the channels that follows the
+dialogue and pans it back as the dialogue is panned. `dialogue-max-gain=` caps what a decoder may
+add: 3, 6, 9 (the default) or 12 dB.
+
+`syntax-trace=<file>` writes every syntax element the encoder writes, one per line. The summary
+names the codec mode, the frame rate and the rate mode, and how far the decoder's output lags the
+input, to the nearest sample away from the native frame rate.
+
+```bash
+ac3cli ac4-encode in.wav out.mp4 128 frame-rate=29.97 rate-mode=average iframe-interval=15
+ac3cli ac4-encode in_51.wav out.ac4 384 loudness=ebu-r128 drc=film-light dmixmod=loro dialogue-channels=c
+```
 ### ADM ingest — professional master files (opt-in)
 
 **Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — but always *listed*, the same
@@ -404,6 +481,32 @@ top, which puts dialogue at −20 dBFS, and plays any syncframe without a `compr
 mode's level — the same as the Dolby Reference Player's RF mode (see
 [RF mode's level](../../library/decoding.md#rf-modes-level)).
 
+AC-4 has a different model (ETSI TS 103 190-1 clauses 5.7.8 and 5.7.9): the decoder takes the stream's
+dialnorm to an output level the system supplies, cutting or boosting by
+2^((output level − dialnorm) / 6), and compresses in one of the DRC decoder modes the stream
+configures. `output-level=<dBFS>` sets that level; without it `decode` writes the coded level.
+At an output level, `drcmode=` names the mode: `default` (the default) takes the one Table 161
+gives the level (home theatre from −31 to −27 dBFS, flat panel TV from −26 to −17, portable
+speakers from −16 to 0), `home-theatre`, `flat-panel-tv`, `portable-speakers` and
+`portable-headphones` name one, and `off` applies the level alone:
+
+```bash
+ac3cli decode stream.ac4 out.wav output-level=-31                  # home theatre
+ac3cli decode stream.ac4 out.wav output-level=-14 drcmode=portable-headphones
+ac3cli decode stream.ac4 out.wav output-level=-24 drcmode=off      # the level, no compression
+```
+
+`dialogue-enhancement=<dB>` raises the dialogue where the stream sends dialogue enhancement
+parameters (clause 5.7.8), from 0 (the default, which leaves the output alone) to 12 dB, and never
+beyond the cap the stream sets, 3, 6, 9 or 12 dB.
+
+`channels=` and `downmix=` fold AC-4 by clause 6.2.17's matrices with the stream's own mix gains:
+`downmix=loro`, `ltrt` and `mono` as named, and `downmix=auto`, or `channels=2` alone, the method
+the stream's `preferred_dmx_method` names (Lo/Ro where it names none). Lt/Rt takes its Pro Logic
+II form where the stream prefers that; there is no 90-degree phase shift, which in AC-4 describes
+processing before encoding. The LFE goes into the fold at the stream's `lfe_mixgain`, and a 7.X
+stream folds to 5.X on the way.
+
 `monitor` takes all of the same tokens, and additionally folds on its own initiative when the
 output device renders fewer channels than the programme: playing 5.1 on a stereo endpoint
 otherwise means whatever the platform's shared-mode mixer averages together, with none of the
@@ -424,6 +527,12 @@ ac3cli decode recovered.ac3 out.wav conceal=mute     # window-ramped silence
 Either way the run reports how many frames or access units were concealed. Off by default: a
 decode that hides a damaged frame looks exactly like one that had nothing to hide. See
 [Decoding → Concealing it instead](../../library/decoding.md#concealing-it-instead-decoderconfigconcealment).
+
+`decode` takes `conceal=` for AC-4 too. A concealed AC-4 frame is the last good frame's spectrum
+again, faded 20 dB for each 32 ms lost as the AC-3 and E-AC-3 decoders fade, or silence, through
+the decoder's own transform and output stages; the QMF-domain tools pass it through. The frames
+that wait for an I-frame after a change of source, which otherwise write nothing, are concealed
+the same way. A frame that fails before any frame has decoded still stops the run.
 
 #### `probe` — what the stream says about itself
 

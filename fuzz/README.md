@@ -458,9 +458,9 @@ caller's own buffer, and a caller signs a stream it just encoded.
 
 `fuzz_adm_parse` is the one harness here not built by default, and not in
 `fuzz/run.sh`'s default target list. `ac3adm` is the one library in this
-project with a third-party dependency footprint: `AC3FORGE_BUILD_ADM` is OFF
-by default, and turning it on additionally needs vcpkg's `adm` feature for
-libadm's Boost headers plus network access for the `FetchContent` pulls of
+build with a third-party dependency footprint beyond {fmt}: `AC3FORGE_BUILD_ADM`
+is OFF by default, and turning it on additionally needs vcpkg's `adm` feature
+for libadm's Boost headers plus network access for the `FetchContent` pulls of
 libbw64 and libadm themselves - none of which anything else in this build
 touches. `AC3FORGE_FUZZ_ADM=1 VCPKG_ROOT=... fuzz/run.sh` turns all of that
 on and appends the harness to the default list.

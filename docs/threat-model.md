@@ -59,8 +59,11 @@ this project does not read — or write, such as a bare Ogg or ADTS wrapper — 
 
 ## Memory-safety posture
 
-The codec core is C++23 with no third-party dependencies. It is not a memory-safe language, so
-the posture is a set of specific properties rather than a language guarantee:
+The codec core is first-party C++23. Its one third-party library is {fmt}, which builds text the
+library writes out: version and diagnostic strings, timecodes, and the scene and census JSON. None
+of the entry points in the table above is defined in a file that includes it. C++ is not a
+memory-safe language, so the posture is a set of specific properties rather than a language
+guarantee:
 
 - **Bit reading cannot run off the end.** `ac3::BitReader` is the single reader for every
   bitstream in the project. Reading past the end sets a sticky `overflowed()` flag and yields

@@ -45,6 +45,7 @@
 #include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "ac4enc/encoder.hpp"
 #include "container_input.hpp"
 #include "platform/stdio_binary.hpp"
 #include "recording_sink.hpp"
@@ -710,6 +711,289 @@ MetadataOptionResult parse_programme_metadata_option(std::string_view suffix,
     return MetadataOptionResult::kNotMetadata;
 }
 
+// Whether `value` is a whole number of `step`s.
+bool on_grid(double value, double step) {
+    return std::isfinite(value) && value / step == std::floor(value / step);
+}
+
+// A DRC profile by the name drc= gives it, or "none" (Part 1 Table 160).
+std::optional<ac4::DrcProfile> parse_ac4_drc_profile(std::string_view name) {
+    if (name == "none") {
+        return ac4::DrcProfile::kNone;
+    }
+    ac3::meta::ProfileId id{};
+    if (!ac3::meta::parse_profile(name, id)) {
+        return std::nullopt;
+    }
+    switch (id) {
+        case ac3::meta::ProfileId::kFilmStandard:
+            return ac4::DrcProfile::kFilmStandard;
+        case ac3::meta::ProfileId::kFilmLight:
+            return ac4::DrcProfile::kFilmLight;
+        case ac3::meta::ProfileId::kMusicStandard:
+            return ac4::DrcProfile::kMusicStandard;
+        case ac3::meta::ProfileId::kMusicLight:
+            return ac4::DrcProfile::kMusicLight;
+        case ac3::meta::ProfileId::kSpeech:
+            return ac4::DrcProfile::kSpeech;
+    }
+    return std::nullopt;
+}
+
+// ac4-encode's own options, and the keys other commands read that mean
+// something else in AC-4 or take values only AC-4 has; parse_options asks
+// here first for that command. The same three answers as
+// parse_programme_metadata_option.
+MetadataOptionResult parse_ac4_encode_option(std::string_view key, std::string_view value,
+                                             std::string_view token, Options& options) {
+    Options::Ac4Encode& out = options.ac4enc;
+    const auto refuse = [token](std::string_view what) {
+        fmt::println(stderr, "error: {} (got '{}')", what, token);
+        return MetadataOptionResult::kError;
+    };
+    // A signed figure in dB, which may lead with a + as a mixing desk shows
+    // it and parse_double does not take.
+    const auto signed_db = [](std::string_view text, double& db) {
+        if (text.starts_with('+')) {
+            text.remove_prefix(1);
+            if (text.starts_with('-') || text.starts_with('+')) {
+                return false;
+            }
+        }
+        return parse_double(text, db);
+    };
+    if (key == "frame-rate") {
+        // Part 1 Table 83's frame rates at 48 kHz as it prints them, and
+        // "native" for index 13, the 2 048-sample frame.
+        constexpr std::array<std::string_view, 14> kRates = {
+            "23.976", "24",    "25", "29.97", "30",     "47.95", "48",
+            "50",     "59.94", "60", "100",   "119.88", "120",   "native"};
+        const auto it = std::ranges::find(kRates, value);
+        if (it == kRates.end()) {
+            return refuse(
+                "frame-rate is 23.976, 24, 25, 29.97, 30, 47.95, 48, 50, 59.94, 60, "
+                "100, 119.88 or 120 fps, or native, the 2 048-sample frame");
+        }
+        out.frame_rate_index = static_cast<int>(it - kRates.begin());
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "rate-mode") {
+        if (value == "constant") {
+            out.rate_mode = ac4::RateMode::kConstant;
+        } else if (value == "average") {
+            out.rate_mode = ac4::RateMode::kAverage;
+        } else if (value == "variable") {
+            out.rate_mode = ac4::RateMode::kVariable;
+        } else {
+            return refuse("rate-mode is constant, average or variable");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "iframe-interval") {
+        const std::uint32_t frames = parse_u32_or(value, 0);
+        if (frames < 1 || frames > 100000) {
+            return refuse("iframe-interval is a number of frames from 1");
+        }
+        out.iframe_interval = static_cast<int>(frames);
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "iframes") {
+        // Frame numbers from 0, comma-separated.
+        std::string_view rest = value;
+        do {
+            const std::size_t comma = rest.find(',');
+            const std::string_view item = rest.substr(0, comma);
+            std::uint32_t frame = 0;
+            const auto [ptr, ec] = std::from_chars(item.data(), item.data() + item.size(), frame);
+            if (item.empty() || ec != std::errc{} || ptr != item.data() + item.size()) {
+                return refuse("iframes is a comma-separated list of frame numbers from 0");
+            }
+            out.iframes.push_back(frame);
+            rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+        } while (!rest.empty());
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "fragment") {
+        double seconds = 0.0;
+        if (!parse_double(value, seconds) || !std::isfinite(seconds) || seconds <= 0.0) {
+            return refuse("fragment is a fragment's duration in seconds");
+        }
+        out.fragment_seconds = seconds;
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialnorm") {
+        // Part 1 clause 4.3.12.2.1: 0 to -31.75 dBFS in steps of 0.25 dB.
+        if (value == "auto") {
+            options.p.measure_dialnorm = true;
+            options.dialnorm_given = true;
+            return MetadataOptionResult::kOk;
+        }
+        double db = 0.0;
+        if (!parse_double(value, db) || !(db >= 0.0 && db <= 31.75) || !on_grid(db, 0.25)) {
+            return refuse(
+                "dialnorm is auto, or the dialogue level in dB below full scale, 0 to "
+                "31.75 in steps of 0.25");
+        }
+        out.dialnorm_db = db;
+        options.p.measure_dialnorm = false;
+        options.dialnorm_given = true;
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "loudness") {
+        // Part 1 Table 156's practices.
+        constexpr std::array<std::pair<std::string_view, ac4::LoudnessPractice>, 7> kPractices{{
+            {"not-indicated", ac4::LoudnessPractice::kNotIndicated},
+            {"atsc-a85", ac4::LoudnessPractice::kAtscA85},
+            {"ebu-r128", ac4::LoudnessPractice::kEbuR128},
+            {"arib-tr-b32", ac4::LoudnessPractice::kAribTrB32},
+            {"freetv-op59", ac4::LoudnessPractice::kFreeTvOp59},
+            {"manual", ac4::LoudnessPractice::kManual},
+            {"consumer-leveller", ac4::LoudnessPractice::kConsumerLeveller},
+        }};
+        for (const auto& [name, practice] : kPractices) {
+            if (name == value) {
+                out.loudness = practice;
+                return MetadataOptionResult::kOk;
+            }
+        }
+        return refuse(
+            "loudness is the practice the programme is measured to: atsc-a85, "
+            "ebu-r128, arib-tr-b32, freetv-op59, manual, consumer-leveller or "
+            "not-indicated");
+    }
+    constexpr std::array<std::string_view, 4> kDrcModeKeys = {
+        "drc-home-theatre", "drc-flat-panel-tv", "drc-portable-speakers",
+        "drc-portable-headphones"};
+    const auto mode_key = std::ranges::find(kDrcModeKeys, key);
+    if (key == "drc" || mode_key != kDrcModeKeys.end()) {
+        const auto profile = parse_ac4_drc_profile(value);
+        if (!profile) {
+            fmt::println(stderr, "error: unknown DRC profile '{}' ({} | none)", value,
+                         ac3::meta::kProfileNames);
+            return MetadataOptionResult::kError;
+        }
+        if (key == "drc") {
+            out.drc = profile;
+        } else {
+            out.drc_modes[static_cast<std::size_t>(mode_key - kDrcModeKeys.begin())] = profile;
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "cmixlev" || key == "lorocmixlev" || key == "ltrtcmixlev") {
+        // Part 1 Table 149.
+        ac3::meta::MixLevel level{};
+        if (!parse_mix_level(value, level)) {
+            return refuse("an AC-4 centre mix level is +3, +1.5, 0, -1.5, -3, -4.5, -6 or off");
+        }
+        constexpr std::array<double, 7> kDb = {3.0, 1.5, 0.0, -1.5, -3.0, -4.5, -6.0};
+        const auto code = static_cast<std::size_t>(level);
+        const double db = code < kDb.size() ? kDb[code] : -std::numeric_limits<double>::infinity();
+        (key == "ltrtcmixlev" ? out.ltrt_centre_db : out.loro_centre_db) = db;
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "surmixlev" || key == "lorosurmixlev" || key == "ltrtsurmixlev") {
+        // Part 1 Table 149a.
+        constexpr std::array<std::pair<std::string_view, double>, 5> kLevels{
+            {{"0", 0.0}, {"-1.5", -1.5}, {"-3", -3.0}, {"-4.5", -4.5}, {"-6", -6.0}}};
+        std::optional<double> db;
+        if (value == "off") {
+            db = -std::numeric_limits<double>::infinity();
+        }
+        for (const auto& [name, level] : kLevels) {
+            if (name == value) {
+                db = level;
+            }
+        }
+        if (!db) {
+            return refuse("an AC-4 surround mix level is 0, -1.5, -3, -4.5, -6 or off");
+        }
+        (key == "ltrtsurmixlev" ? out.ltrt_surround_db : out.loro_surround_db) = db;
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "lfemix") {
+        // Part 1 clause 4.3.12.2.18: 5.5 - lfe_mixgain dB.
+        if (value == "off") {
+            out.lfe_db = std::nullopt;
+            return MetadataOptionResult::kOk;
+        }
+        double db = 0.0;
+        if (!signed_db(value, db) || !(db >= -25.5 && db <= 5.5) || !on_grid(db - 0.5, 1.0)) {
+            return refuse(
+                "AC-4's lfemix is the LFE's gain into the stereo downmix, +5.5 to -25.5 "
+                "dB in steps of 1 dB, or off");
+        }
+        out.lfe_db = db;
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dmixmod") {
+        // Part 1 Table 150.
+        if (value == "loro") {
+            out.preferred_downmix = ac4::PreferredDownmix::kLoRo;
+        } else if (value == "ltrt") {
+            out.preferred_downmix = ac4::PreferredDownmix::kLtRt;
+        } else if (value == "pl2") {
+            out.preferred_downmix = ac4::PreferredDownmix::kLtRtProLogicII;
+        } else if (value == "none") {
+            out.preferred_downmix = ac4::PreferredDownmix::kNotIndicated;
+        } else {
+            return refuse("AC-4's dmixmod is loro, ltrt, pl2 (Lt/Rt for Pro Logic II) or none");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "loro-correction" || key == "ltrt-correction") {
+        // Part 1 clause 4.3.12.2.11: -7.5 to +7.5 in steps of 0.5.
+        double db = 0.0;
+        if (!signed_db(value, db) || !(db >= -7.5 && db <= 7.5) || !on_grid(db, 0.5)) {
+            return refuse("a downmix loudness correction is -7.5 to +7.5 dB in steps of 0.5");
+        }
+        (key == "loro-correction" ? out.loro_correction_db : out.ltrt_correction_db) = db;
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialogue-channels") {
+        std::string_view rest = value;
+        bool ok = !rest.empty();
+        while (ok && !rest.empty()) {
+            const std::size_t comma = rest.find(',');
+            const std::string_view item = rest.substr(0, comma);
+            ok = item == "l" || item == "r" || item == "c";
+            rest = comma == std::string_view::npos ? std::string_view{} : rest.substr(comma + 1);
+        }
+        if (!ok) {
+            return refuse("dialogue-channels is any of l, r and c, comma-separated");
+        }
+        out.dialogue_channels = std::string{value};
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialogue-stem") {
+        if (value.empty()) {
+            return refuse("dialogue-stem needs a WAV file");
+        }
+        out.dialogue_stem = std::string{value};
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialogue-method") {
+        if (value == "independent") {
+            out.dialogue_method = ac4::DialogueMethod::kChannelIndependent;
+        } else if (value == "mid") {
+            out.dialogue_method = ac4::DialogueMethod::kMid;
+        } else if (value == "cross") {
+            out.dialogue_method = ac4::DialogueMethod::kCrossChannel;
+        } else {
+            return refuse("dialogue-method is independent, mid or cross");
+        }
+        return MetadataOptionResult::kOk;
+    }
+    if (key == "dialogue-max-gain") {
+        const std::uint32_t db = parse_u32_or(value, 0);
+        if (db != 3 && db != 6 && db != 9 && db != 12) {
+            return refuse("dialogue-max-gain is 3, 6, 9 or 12 dB");
+        }
+        out.dialogue_max_gain_db = static_cast<int>(db);
+        return MetadataOptionResult::kOk;
+    }
+    return MetadataOptionResult::kNotMetadata;
+}
+
 std::vector<std::byte> to_bytes(std::span<const char> raw) {
     std::vector<std::byte> bytes(raw.size());
     for (std::size_t i = 0; i < raw.size(); ++i) {
@@ -838,6 +1122,16 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         const std::string_view value =
             eq == std::string_view::npos ? std::string_view{} : token.substr(eq + 1);
 
+        if (command == "ac4-encode" && eq != std::string_view::npos) {
+            switch (parse_ac4_encode_option(key, value, token, out)) {
+                case MetadataOptionResult::kOk:
+                    continue;
+                case MetadataOptionResult::kError:
+                    return false;
+                case MetadataOptionResult::kNotMetadata:
+                    break;
+            }
+        }
         if (token == "quiet" || token == "verbose") {
             // Recorded on Options for a command that wants to reason about
             // them (run_live names its legs only when verbose), but the
@@ -1227,19 +1521,54 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             // normalisation AND which of dynrng/compr applies, which is what
             // distinguishes them from drc=/heavy - those are the individual
             // switches, these are the two combinations that have names.
+            // AC-4's are the DRC decoder modes of ETSI TS 103 190-1 Table 161.
+            constexpr std::array<std::string_view, 6> kAc4Modes = {
+                "off",           "default",           "home-theatre",
+                "flat-panel-tv", "portable-speakers", "portable-headphones"};
             if (value == "line") {
                 out.output.mode = ac3::OperatingMode::kLine;
             } else if (value == "rf") {
                 out.output.mode = ac3::OperatingMode::kRf;
             } else if (value == "none") {
                 out.output.mode = ac3::OperatingMode::kCustom;
+            } else if (std::ranges::find(kAc4Modes, value) != kAc4Modes.end()) {
+                out.ac4_drc_mode = std::string{value};
             } else {
+                fmt::println(
+                    stderr,
+                    "error: drcmode is 'line' (§7.7.1), 'rf' (§7.7.2, with downmix "
+                    "overload protection) or 'none' (the default) for AC-3 and E-AC-3, and "
+                    "'off', 'default', 'home-theatre', 'flat-panel-tv', 'portable-speakers' or "
+                    "'portable-headphones' for AC-4 (got '{}')",
+                    token);
+                return false;
+            }
+            continue;
+        }
+        if (key == "output-level") {
+            // AC-4's Lout (ETSI TS 103 190-1 clause 5.7.9.3.3), in dBFS.
+            double level = 0.0;
+            if (!parse_double(value, level) || !std::isfinite(level) || level > 0.0 ||
+                level < -60.0) {
                 fmt::println(stderr,
-                             "error: drcmode is 'line' (§7.7.1), 'rf' (§7.7.2, with downmix "
-                             "overload protection) or 'none' (the default) (got '{}')",
+                             "error: output-level is a level in dBFS from -60 to 0 (got '{}')",
                              token);
                 return false;
             }
+            out.ac4_output_level = level;
+            continue;
+        }
+        if (key == "dialogue-enhancement") {
+            // AC-4's G_DE (ETSI TS 103 190-1 clause 5.7.8), which the stream
+            // caps at 3, 6, 9 or 12 dB.
+            double gain = 0.0;
+            if (!parse_double(value, gain) || !std::isfinite(gain) || gain < 0.0 || gain > 12.0) {
+                fmt::println(stderr,
+                             "error: dialogue-enhancement is a gain in dB from 0 to 12 (got '{}')",
+                             token);
+                return false;
+            }
+            out.ac4_dialogue_enhancement = gain;
             continue;
         }
         // Scoped to `decode`, which is the only command that builds a census -
@@ -1309,12 +1638,18 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                     out.ac4_experimental_acpl = true;
                 } else if (tool == "7x-back" || tool == "7x-wide" || tool == "7x-top-front") {
                     out.ac4_experimental_seven_x = std::string{tool.substr(3)};
+                } else if (tool.size() == 11 && tool.starts_with("drc-gains-") && tool[10] >= '0' &&
+                           tool[10] <= '3') {
+                    // The DRC modes send gains, in drc_gains_config N (Part 1
+                    // Table 163).
+                    out.ac4enc.drc_gains = tool[10] - '0';
                 } else {
-                    fmt::println(stderr,
-                                 "error: experimental takes aspx-balance, aspx-varvar, aspx-interleave, "
-                                 "coding-configs, acpl and one of 7x-back, 7x-wide and 7x-top-front, "
-                                 "comma-separated (got '{}')",
-                                 token);
+                    fmt::println(
+                        stderr,
+                        "error: experimental takes aspx-balance, aspx-varvar, aspx-interleave, "
+                        "coding-configs, acpl, one of 7x-back, 7x-wide and 7x-top-front, and "
+                        "one of drc-gains-0 to drc-gains-3, comma-separated (got '{}')",
+                        token);
                     return false;
                 }
             }

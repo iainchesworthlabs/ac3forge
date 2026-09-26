@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 60> kOptionTokens{{
+constexpr std::array<OptionToken, 81> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -60,12 +60,12 @@ constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"ceiling2=", "Ch2's heavy-compression peak ceiling, dBFS"},
     {"dialogue=", "where heavy compression puts dialogue, dBFS"},
     {"dialogue2=", "Ch2's heavy-compression dialogue target, dBFS"},
-    {"dialnorm=", "auto, or 1..31 (§5.4.2.8)"},
+    {"dialnorm=", "auto, or 1..31 (§5.4.2.8); ac4-encode: 0..31.75 in steps of 0.25"},
     {"dialnorm2=", "Ch2's own dialnorm, auto or 1..31 (§5.4.2.16)"},
     {"cmixlev=", "-3, -4.5 or -6 (Table 5.9)"},
     {"surmixlev=", "-3, -6 or off (Table 5.10)"},
-    {"lfemix=", "0..31 or off (§E2.3.1.11)"},
-    {"dmixmod=", "ltrt, loro or none (Table D2.2)"},
+    {"lfemix=", "0..31 or off (§E2.3.1.11); ac4-encode: +5.5..-25.5 dB or off"},
+    {"dmixmod=", "ltrt, loro or none (Table D2.2); ac4-encode: pl2 besides"},
     {"mode=", "performance (default) or reference - both transforms at once"},
     {"dither=", "off pins §7.3.4 dithflag at 0 wherever this command encodes"},
     {"joc-domain=", "atmos*/decode: mdct estimates JOC over 256 MDCT bins, not §7.1's QMF"},
@@ -75,7 +75,28 @@ constexpr std::array<OptionToken, 60> kOptionTokens{{
     {"verify", "eac3-encode: decode every access unit as it's encoded and diff against it"},
     {"channels=", "decode/monitor: 2 or 1 apply the §7.8 output stage; as-coded (default) is a no-op"},
     {"ltrt-phase=", "decode/monitor: off skips §7.8.2's real 90° surround phase shift"},
-    {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes"},
+    {"drcmode=", "decode/monitor: line or rf, §7.7's two named consumer DRC modes; AC-4: a DRC decoder mode"},
+    {"output-level=", "decode of AC-4: the level in dBFS dialnorm is taken to (Lout)"},
+    {"dialogue-enhancement=", "decode of AC-4: raise the dialogue by 0 to 12 dB, capped by the stream"},
+    {"syntax-trace=", "ac4-encode, and decode of AC-4: write every syntax element written or read"},
+    {"codec-mode=", "ac4-encode: simple, aspx, aspx-acpl-1, aspx-acpl-2 or aspx-acpl-3"},
+    {"experimental=", "ac4-encode: tools and layouts no outside reader has checked yet"},
+    {"frame-rate=", "ac4-encode: a frame rate of Table 83 in fps, or native (2 048-sample frames)"},
+    {"rate-mode=", "ac4-encode: constant, average or variable"},
+    {"iframe-interval=", "ac4-encode: an I-frame every this many frames (default 24)"},
+    {"iframes=", "ac4-encode: frames, from 0, that are I-frames besides"},
+    {"fragment=", "ac4-encode: an I-frame where each fragment of this many seconds starts"},
+    {"loudness=", "ac4-encode: measure and send the loudness values, with this practice"},
+    {"drc-home-theatre=", "ac4-encode: that DRC decoder mode's own profile"},
+    {"drc-flat-panel-tv=", "ac4-encode: that DRC decoder mode's own profile"},
+    {"drc-portable-speakers=", "ac4-encode: that DRC decoder mode's own profile"},
+    {"drc-portable-headphones=", "ac4-encode: that DRC decoder mode's own profile"},
+    {"loro-correction=", "ac4-encode: the Lo/Ro downmix's loudness correction, dB"},
+    {"ltrt-correction=", "ac4-encode: the Lt/Rt downmix's loudness correction, dB"},
+    {"dialogue-channels=", "ac4-encode: which of l, r and c carry dialogue alone"},
+    {"dialogue-stem=", "ac4-encode: a WAV file of the dialogue in the programme's channels"},
+    {"dialogue-method=", "ac4-encode: independent, mid or cross"},
+    {"dialogue-max-gain=", "ac4-encode: the most a decoder may raise the dialogue, 3 to 12 dB"},
     {"conceal=", "decode/monitor: repeat or mute, §7.10 error concealment for a bad frame"},
     {"src=", "an additional input source; repeat for more than one"},
     {"map=", "where each source channel goes"},
@@ -353,6 +374,55 @@ void print_decode_topic() {
     fmt::println("       not decode from the previous block's overlap instead of failing the");
     fmt::println("       command; monitor also folds on its own initiative when the output");
     fmt::println("       endpoint renders fewer channels than the programme.");
+    fmt::println("");
+    fmt::println("decode of AC-4 takes output-level=<dBFS>, the level the stream's dialnorm is");
+    fmt::println("       taken to (ETSI TS 103 190-1 5.7.9.3.3, which boosts as well as cuts;");
+    fmt::println("       unset, the default, leaves the coded level), and at that level");
+    fmt::println("       drcmode=default|home-theatre|flat-panel-tv|portable-speakers|");
+    fmt::println("       portable-headphones|off: default takes the mode Table 161 gives the");
+    fmt::println("       output level, off compresses nothing. dialogue-enhancement=<dB> raises");
+    fmt::println("       the dialogue where the stream sends its parameters (5.7.8), 0 to 12 dB");
+    fmt::println("       and no more than the stream's cap.");
+}
+
+void print_ac4_encode_topic() {
+    fmt::println("");
+    fmt::println("ac4-encode takes codec-mode=simple|aspx|aspx-acpl-1|aspx-acpl-2|");
+    fmt::println("       aspx-acpl-3, and experimental=<tools> for syntax no outside reader");
+    fmt::println("       has checked yet: aspx-balance, aspx-varvar, aspx-interleave,");
+    fmt::println("       coding-configs, acpl (ASPX_ACPL_1 in 5.X, A-CPL in stereo),");
+    fmt::println("       7x-back|7x-wide|7x-top-front for 7.0 and 7.1, and drc-gains-0 to");
+    fmt::println("       drc-gains-3 (the DRC modes send gains, ETSI TS 103 190-1 Table 163).");
+    fmt::println("       frame-rate=23.976|24|25|29.97|30|47.95|48|50|59.94|60|100|119.88|120,");
+    fmt::println("       or native, the default: 2 048-sample frames, the only ones at");
+    fmt::println("       44.1 kHz (Table 83). rate-mode=constant (the default), average");
+    fmt::println("       (frames share the rate within the decoder's buffer, 6.2.4) or");
+    fmt::println("       variable (within two seconds' share). iframe-interval=<frames>");
+    fmt::println("       (default 24), iframes=<n,...> counted from frame 0, and");
+    fmt::println("       fragment=<seconds>, an I-frame where each fragment of that length");
+    fmt::println("       starts; an MP4 lists the I-frames as its sync samples.");
+    fmt::println("       dialnorm=auto|<0..31.75> in steps of 0.25. loudness=atsc-a85|");
+    fmt::println("       ebu-r128|arib-tr-b32|freetv-op59|manual|consumer-leveller|");
+    fmt::println("       not-indicated measures the integrated loudness, the loudness range,");
+    fmt::println("       the true peak and the highest momentary and short-term loudness and");
+    fmt::println("       sends them with that practice, and dialnorm too unless dialnorm=");
+    fmt::println("       gives it.");
+    fmt::println("       drc=<profile>|none sends Table 161's four DRC decoder modes on that");
+    fmt::println("       profile; drc-home-theatre=, drc-flat-panel-tv=,");
+    fmt::println("       drc-portable-speakers= and drc-portable-headphones= give one mode a");
+    fmt::println("       profile of its own.");
+    fmt::println("       5.X and 7.X: cmixlev= or lorocmixlev= (+3 to -6 dB or off),");
+    fmt::println("       surmixlev= or lorosurmixlev= (0 to -6 dB or off), and ltrtcmixlev=");
+    fmt::println("       and ltrtsurmixlev= where Lt/Rt's differ; lfemix=<+5.5..-25.5 dB>|");
+    fmt::println("       off; dmixmod=loro|ltrt|pl2|none; loro-correction= and");
+    fmt::println("       ltrt-correction=, the downmixes' loudness corrections, -7.5 to +7.5");
+    fmt::println("       dB in steps of 0.5.");
+    fmt::println("       Dialogue enhancement: dialogue-channels=<l,r,c> marks channels that");
+    fmt::println("       carry dialogue alone, or dialogue-stem=<wav> gives the dialogue in");
+    fmt::println("       the programme's channels, sample for sample;");
+    fmt::println("       dialogue-method=independent|mid|cross (mid: L and R's Mid; cross: a");
+    fmt::println("       stem over two or three channels) and dialogue-max-gain=3|6|9|12");
+    fmt::println("       (default 9).");
 }
 
 void print_qc_topic() {
@@ -451,7 +521,7 @@ struct TopicSection {
     void (*print)();
 };
 
-constexpr std::array<TopicSection, 16> kTopicSections{{
+constexpr std::array<TopicSection, 17> kTopicSections{{
     {topic::kStdio, print_stdio_topic},
     {topic::kLive, print_live_topic},
     {topic::kPlay, print_play_topic},
@@ -465,6 +535,7 @@ constexpr std::array<TopicSection, 16> kTopicSections{{
     {topic::kFmp4, print_fmp4_topic},
     {topic::kTs, print_ts_topic},
     {topic::kDecode, print_decode_topic},
+    {topic::kAc4Encode, print_ac4_encode_topic},
     {topic::kQc, print_qc_topic},
     {topic::kProbe, print_probe_topic},
     {topic::kStreamTools, print_stream_tools_topic},
