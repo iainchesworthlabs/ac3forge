@@ -96,6 +96,7 @@ add_executable(ac3tests
     io/test_firmware_status.cpp
     io/test_firmware_trial.cpp
     io/test_hardware_info.cpp
+    io/test_log_ring.cpp
     io/test_improv.cpp
     io/test_interleave.cpp
     io/test_pairing_records.cpp

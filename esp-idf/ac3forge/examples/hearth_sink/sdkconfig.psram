@@ -48,3 +48,12 @@ CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_DESCRIPTORS=12
 CONFIG_AC3FORGE_EXAMPLE_I2S_DMA_FRAMES=256
 CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
 CONFIG_AC3FORGE_EXAMPLE_HOLD_FIRST_UNIT=1
+#
+# No core dump on this board (planning/esp32-ota.md, O4). With task stacks
+# allowed in PSRAM, ESP-IDF gives the dump a stack of its own in internal SRAM
+# (ESP_COREDUMP_USE_STACK_SIZE, 1,792 bytes at the least), and the core dump
+# cost this board 4,016 bytes of internal SRAM in all, measured with idf.py
+# size on 2026-09-25. A JOC stream has left 43 bytes of it free (the README's
+# sendspin.progress line). GET /log keeps the console's lines in PSRAM, and a
+# crash still says it panicked in GET /firmware's last update.
+CONFIG_ESP_COREDUMP_ENABLE_TO_NONE=y

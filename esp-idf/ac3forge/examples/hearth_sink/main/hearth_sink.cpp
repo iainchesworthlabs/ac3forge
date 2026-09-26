@@ -61,6 +61,7 @@
 #include "ac3/render/layout.hpp"
 #include "ac3forge/control.hpp"
 #include "ac3forge/firmware.hpp"
+#include "ac3forge/log.hpp"
 #include "ac3forge/player.hpp"
 
 #include "audio_sink.hpp"
@@ -665,6 +666,10 @@ void start_sendspin() {
 }  // namespace
 
 extern "C" void app_main() {
+    // The console's recent output for GET /log, from the first line on: a
+    // board updated over its network usually has no cable on it
+    // (ac3forge/log.hpp).
+    (void)ac3forge::log_start(CONFIG_AC3FORGE_LOG_BYTES);
     (void)heap_caps_register_failed_alloc_callback(on_alloc_failed);
 
     // What this BOARD is, before anything asks: the name it answers to, the

@@ -211,6 +211,23 @@ in development: anyone on the network can update a board, as anyone with a USB
 cable can. [planning/esp32-ota.md](../../../../planning/esp32-ota.md) has the
 reasons, and what later phases add.
 
+### Without a cable
+
+A board updated over its network usually has no cable on it, so two things the
+console would show are kept where the network reaches them:
+
+- **The last crash's core dump**, in the `coredump` partition, which a restart
+  and a rollback leave alone. `GET /firmware` says which task crashed, where,
+  and which image wrote the dump; `GET /firmware/coredump` sends it, and
+  `DELETE /firmware/coredump` erases it. `ota.py coredump --host H --elf <that
+  image's ELF>` saves it and prints every task's backtrace. The S3 board keeps
+  no core dump: it would take 4,016 bytes of internal SRAM that board does not
+  have to spare (`sdkconfig.psram`).
+- **The console's recent output**: the last 16 KiB in PSRAM, or 2 KiB without
+  PSRAM (`CONFIG_AC3FORGE_LOG_BYTES`). `GET /log` sends it, and
+  `ota.py log --host H --follow` follows it. The Sendspin pairing token is left
+  out: whoever can read `GET /log` need only be on the network.
+
 ## What it prints
 
 Under QEMU, through the capture sink:

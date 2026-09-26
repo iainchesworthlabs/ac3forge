@@ -13,6 +13,7 @@
 #include <unistd.h>
 
 #include "ac3forge/improv.hpp"
+#include "ac3forge/log.hpp"
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "freertos/FreeRTOS.h"
@@ -47,10 +48,14 @@ namespace improv = ac3forge::improv;
 // is an LF, left broken. sdkconfig.defaults asks for LF in both
 // directions, which is no conversion at all, and the comment there has the
 // measurements; tools/checks/run_improv_qemu.sh holds the board to it.
+//
+// And not text for GET /log either, which keeps the console's lines
+// (ac3forge/log.hpp).
 void send(std::span<const std::uint8_t> packet) {
     if (packet.empty()) {
         return;
     }
+    const ac3forge::ConsoleOnly console_only;
     (void)std::fwrite(packet.data(), 1, packet.size(), stdout);
     (void)std::fflush(stdout);
     (void)fsync(fileno(stdout));

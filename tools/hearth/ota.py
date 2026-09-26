@@ -14,6 +14,8 @@ library only; the zeroconf package is used for --all when it is installed.
     python tools/hearth/ota.py restart --host H
     python tools/hearth/ota.py rollback --host H
     python tools/hearth/ota.py cancel --host H
+    python tools/hearth/ota.py coredump --host H [--out FILE] [--elf ELF] [--erase]
+    python tools/hearth/ota.py log --host H [--follow]
 
 H is a board's IP address or its mDNS name (hearth-eb2c64.local), followed by
 :PORT when the port is not 80. The firmware routes answer only those two kinds
@@ -54,10 +56,21 @@ push reads the image file once, and sends the bytes it checked:
 Boards are updated one at a time. push stops at the first board that rolls
 back or does not come back, and the boards after it are not touched.
 
-status prints each board's running and other slot, mode, trial, last update
-and network. restart, rollback and cancel send POST /restart,
+status prints each board's running and other slot, mode, trial, last update,
+core dump and network. restart, rollback and cancel send POST /restart,
 PUT /firmware/rollback and PUT /firmware/mode "normal" (which leaves flash mode
 by restarting into the running image), and print the board's answer.
+
+coredump saves the core dump the board's last crash left (GET
+/firmware/coredump) to FILE, coredump-<board>.bin by default. With --elf, the
+ELF of the image that wrote it, it checks that the ELF is that image by the
+ELF SHA-256 the dump names, then runs ESP-IDF's esp_coredump on the two, which
+prints every task's backtrace; run it in the ESP-IDF environment. With
+--erase, it erases the dump once saved (DELETE /firmware/coredump), so the
+next crash is not taken for this one.
+
+log prints the board's recent console output (GET /log). With --follow it
+goes on printing what is new, asking every second, until interrupted.
 
 Exit status: 0 when every board was updated or already ran the image, and for
 the other commands when every board answered 200; 1 when a board was refused,
@@ -75,6 +88,7 @@ import http.client
 import json
 import shutil
 import struct
+import subprocess
 import sys
 import time
 from dataclasses import dataclass, field
@@ -103,6 +117,8 @@ SHA_WAIT_SECONDS = 20.0
 # After an upload broke off part-way, how long to look for the board's reason.
 # The board gives up on a stalled upload after 30 s.
 REFUSAL_WAIT_SECONDS = 40.0
+# log --follow asks the board for what is new this often.
+LOG_POLL_SECONDS = 1.0
 
 # --all: the service a Sendspin player advertises, and how long to listen.
 SERVICE = "_sendspin._tcp.local."
@@ -486,6 +502,16 @@ class Board:
             connection.request(method, path, body=body, headers=headers or {})
             response = connection.getresponse()
             return response.status, response.read().decode("utf-8", "replace").strip()
+        finally:
+            connection.close()
+
+    def fetch(self, path: str, timeout: float = GET_TIMEOUT) -> tuple[int, bytes, dict[str, str]]:
+        """GET as bytes, with the reply's headers; errors as request() raises them."""
+        connection = http.client.HTTPConnection(self.hostname, self.port, timeout=timeout)
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            return response.status, response.read(), dict(response.getheaders())
         finally:
             connection.close()
 
@@ -1090,12 +1116,44 @@ def show_status(board: Board) -> int:
         ("trial", trial_text(trial) if trial else "none"),
         ("upload", upload_line),
         ("last update", last_update_text(last) if last else "none"),
+        ("core dump", coredump_text(firmware)),
         ("network", text_of(firmware, "network") or "?"),
     ]
     console.say(str(board))
     for name, value in rows:
         console.say(f"  {name:<12} {value}")
     return UPDATED
+
+
+def coredump_source(dump: dict[str, Any], firmware: dict[str, Any]) -> str:
+    """Which slot's image wrote a core dump, by the start of the ELF SHA-256 the dump keeps."""
+    prefix = text_of(dump, "elf_sha256")
+    if not prefix:
+        return "an image the dump does not name"
+    for name in ("running", "other"):
+        held = part(firmware, name)
+        if held and text_of(held, "elf_sha256").startswith(prefix):
+            return f"{text_of(held, 'version')} in {text_of(held, 'label')}"
+    return f"an image neither slot holds now (ELF SHA-256 {prefix}...)"
+
+
+def coredump_text(firmware: dict[str, Any]) -> str:
+    # A board keeps the key, null when there is no dump; firmware from before O4
+    # has no key at all.
+    if "coredump" not in firmware:
+        return "not reported by this firmware"
+    dump = part(firmware, "coredump")
+    if not dump:
+        return "none"
+    words = [f"{number_of(dump, 'bytes'):,} bytes"]
+    if dump.get("intact") is not True:
+        words.append("which do not check out")
+    if text_of(dump, "task"):
+        words.append(f"{text_of(dump, 'task')} at {text_of(dump, 'pc')}")
+    if text_of(dump, "reason"):
+        words.append(text_of(dump, "reason"))
+    words.append(f"written by {coredump_source(dump, firmware)}")
+    return ", ".join(words)
 
 
 def send(board: Board, method: str, path: str, body: bytes, what: str) -> int:
@@ -1107,6 +1165,95 @@ def send(board: Board, method: str, path: str, body: bytes, what: str) -> int:
         return REFUSED
     say(board, f"{what}: {status} {text}{http_hint(status)}")
     return UPDATED if status == 200 else REFUSED
+
+
+def fetch_coredump(board: Board, out: Path | None, elf: Path | None, erase: bool) -> int:
+    """Saves the board's core dump, reads it with esp_coredump when given the ELF, erases it."""
+    try:
+        firmware = board.get_json("/firmware")
+        status, data, _ = board.fetch("/firmware/coredump", timeout=UPLOAD_TIMEOUT)
+    except BoardError as error:
+        say(board, str(error))
+        return REFUSED
+    except (OSError, http.client.HTTPException) as error:
+        say(board, f"GET /firmware/coredump got no answer: {error_text(error)}")
+        return REFUSED
+    if status != 200:
+        say(
+            board,
+            f"GET /firmware/coredump answered {status}: {data.decode('utf-8', 'replace').strip()}",
+        )
+        return REFUSED
+    dump = part(firmware, "coredump")
+    path = out or Path(f"coredump-{board.hostname}.bin")
+    path.write_bytes(data)
+    say(board, f"saved {len(data):,} bytes to {path}: {coredump_text(firmware)}")
+    code = UPDATED if elf is None else decode_coredump(board, path, elf, dump)
+    if erase:
+        code = max(code, send(board, "DELETE", "/firmware/coredump", b"", "erase"))
+    return code
+
+
+def decode_coredump(board: Board, path: Path, elf: Path, dump: dict[str, Any]) -> int:
+    """esp_coredump's reading of a saved dump, once the ELF is shown to be its image's."""
+    try:
+        digest = hashlib.sha256(elf.read_bytes()).hexdigest()
+    except OSError as error:
+        raise UsageError(f"--elf {elf}: {error_text(error)}") from None
+    prefix = text_of(dump, "elf_sha256")
+    if prefix and not digest.startswith(prefix):
+        say(
+            board,
+            f"{elf} is not the image that wrote the dump: its ELF SHA-256 starts "
+            f"{digest[: len(prefix)]}, and the dump names {prefix}",
+        )
+        return REFUSED
+    command = [sys.executable, "-m", "esp_coredump", "info_corefile"]
+    command += ["--core", str(path), "--core-format", "raw", str(elf)]
+    say(board, "running " + " ".join(command[1:]))
+    try:
+        done = subprocess.run(command, check=False)
+    except OSError as error:
+        say(board, f"esp_coredump did not run: {error_text(error)}")
+        return REFUSED
+    if done.returncode != 0:
+        say(board, f"esp_coredump exited {done.returncode}; run it in the ESP-IDF environment")
+        return REFUSED
+    return UPDATED
+
+
+def show_log(board: Board, follow: bool) -> int:
+    """GET /log from the start of what the board holds, and with --follow what comes after."""
+    start = 0
+    first = True
+    try:
+        while True:
+            try:
+                status, data, headers = board.fetch(f"/log?from={start}")
+            except (OSError, http.client.HTTPException) as error:
+                say(board, f"GET /log got no answer: {error_text(error)}")
+                if not follow:
+                    return REFUSED
+                time.sleep(LOG_POLL_SECONDS)
+                continue
+            if status != 200:
+                say(board, f"GET /log answered {status}: {data.decode('utf-8', 'replace').strip()}")
+                return REFUSED
+            by_name = {name.lower(): value for name, value in headers.items()}
+            began = int(by_name.get("x-log-from", start))
+            if began > start and not first:
+                sys.stdout.write(f"[{began - start:,} bytes came and went before they were read]\n")
+            first = False
+            sys.stdout.write(data.decode("utf-8", "replace"))
+            sys.stdout.flush()
+            start = int(by_name.get("x-log-next", began + len(data)))
+            if data:
+                continue  # more may be waiting: a reply carries at most a few KB
+            if not follow:
+                return UPDATED
+            time.sleep(LOG_POLL_SECONDS)
+    except KeyboardInterrupt:
+        return UPDATED
 
 
 # --- finding boards ----------------------------------------------------------------------
@@ -1253,6 +1400,38 @@ def build_parser() -> Parser:
     ):
         command = commands.add_parser(name, help=text, description=text[0].upper() + text[1:] + ".")
         command.add_argument("--host", required=True, metavar="H", help="the board")
+
+    coredump_parser = commands.add_parser(
+        "coredump",
+        help="save the core dump the board's last crash left, and read it (GET /firmware/coredump)",
+        description="Save the core dump the board's last crash left, and read it with esp_coredump "
+        "when given the ELF of the image that wrote it.",
+        epilog=EPILOG,
+    )
+    coredump_parser.add_argument("--host", required=True, metavar="H", help="the board")
+    coredump_parser.add_argument(
+        "--out", type=Path, metavar="FILE", help="where to save it (default coredump-<board>.bin)"
+    )
+    coredump_parser.add_argument(
+        "--elf",
+        type=Path,
+        metavar="ELF",
+        help="the ELF of the image that wrote it: esp_coredump then prints each task's backtrace",
+    )
+    coredump_parser.add_argument(
+        "--erase", action="store_true", help="erase it on the board once saved"
+    )
+
+    log_parser = commands.add_parser(
+        "log",
+        help="print the board's recent console output (GET /log)",
+        description="Print the board's recent console output, and with --follow what comes after.",
+        epilog=EPILOG,
+    )
+    log_parser.add_argument("--host", required=True, metavar="H", help="the board")
+    log_parser.add_argument(
+        "--follow", action="store_true", help="keep printing what is new until interrupted"
+    )
     return parser
 
 
@@ -1273,6 +1452,10 @@ def run(args: argparse.Namespace) -> int:
         return send(board, "POST", "/restart", b"", "restart")
     if args.command == "rollback":
         return send(board, "PUT", "/firmware/rollback", b"", "rollback")
+    if args.command == "coredump":
+        return fetch_coredump(board, args.out, args.elf, args.erase)
+    if args.command == "log":
+        return show_log(board, args.follow)
     return send(board, "PUT", "/firmware/mode", b"normal", "cancel")
 
 

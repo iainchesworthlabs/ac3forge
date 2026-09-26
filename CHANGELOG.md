@@ -260,6 +260,15 @@ The sections below contain the complete change list and fixes.
     file the board would refuse on its head alone is not sent, since an upload stops what plays
     before the board reads it. When the board comes back running another image, the page loads
     again.
+  - **Diagnostics without a cable.** A panic's core dump is kept in the `coredump` partition
+    through the restart and a rollback. `GET /firmware` reports it: the task, where, the
+    panic's words, and the image that wrote it. `GET /firmware/coredump` sends it and
+    `DELETE /firmware/coredump` erases it. The C6 and the P4 keep one; the S3 board does not,
+    because the core dump would take 4,016 bytes of its internal SRAM. `GET /log` sends the
+    console's recent output, 16 KiB of it in PSRAM or 2 KiB without, with `?from=` for what
+    is new, and leaves out the Sendspin pairing token. `ota.py coredump` saves a dump and reads
+    it with `esp_coredump`, and `ota.py log --follow` follows the console. An upload now prints
+    the least free internal heap it saw.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
