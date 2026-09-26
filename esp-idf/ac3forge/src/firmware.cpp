@@ -22,6 +22,10 @@
 #include "sdkconfig.h"
 
 #include "esp_app_desc.h"
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+// Exported only when the project keeps core dumps.
+#include "esp_core_dump.h"
+#endif
 #include "esp_err.h"
 #include "esp_flash.h"
 #include "esp_heap_caps.h"
@@ -326,6 +330,44 @@ FirmwareSlot report_slot(const esp_partition_t* slot, const SlotFacts& facts) {
 
 std::uint32_t now_ms() { return static_cast<std::uint32_t>(esp_timer_get_time() / 1000); }
 
+// The core dump a crash left in the coredump partition, read once at boot so
+// that GET /firmware reads no flash (as with SlotFacts). A board that keeps
+// no core dumps, or whose partition holds none, has nothing to report.
+std::optional<FirmwareCoredump> read_coredump() {
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+    std::size_t address = 0;
+    std::size_t size = 0;
+    if (esp_core_dump_image_get(&address, &size) != ESP_OK) {
+        return std::nullopt;
+    }
+    FirmwareCoredump dump;
+    dump.bytes = size;
+    dump.intact = esp_core_dump_image_check() == ESP_OK;
+    if (dump.intact) {
+        // Some hundreds of bytes: on the heap, and only while this runs.
+        auto summary = std::make_unique<esp_core_dump_summary_t>();
+        if (esp_core_dump_get_summary(summary.get()) == ESP_OK) {
+            dump.task = field_text(summary->exc_task);
+            std::array<char, 16> pc{};
+            (void)std::snprintf(pc.data(), pc.size(), "0x%08lx", static_cast<unsigned long>(summary->exc_pc));
+            dump.pc = pc.data();
+            const auto* sha = reinterpret_cast<const char*>(summary->app_elf_sha256);
+            dump.elf_sha256.assign(sha, std::find(sha, sha + sizeof(summary->app_elf_sha256), '\0'));
+        }
+        std::array<char, 160> reason{};
+        if (esp_core_dump_get_panic_reason(reason.data(), reason.size()) == ESP_OK) {
+            dump.reason = reason.data();
+        }
+    }
+    std::printf("firmware: a core dump of %u bytes from the last crash%s%s%s; GET /firmware/coredump has it\n",
+                static_cast<unsigned>(dump.bytes), dump.task.empty() ? "" : ", in ", dump.task.c_str(),
+                dump.intact ? "" : " (it does not check out)");
+    return dump;
+#else
+    return std::nullopt;
+#endif
+}
+
 }  // namespace
 
 struct Firmware::Impl {
@@ -343,6 +385,7 @@ struct Firmware::Impl {
     bool busy = false;  // an upload, a rollback or a mode change is under way
     std::optional<FirmwareUpload> upload;
     std::optional<FirmwareLastUpdate> last_update;
+    std::optional<FirmwareCoredump> coredump;  // read at boot (read_coredump)
     std::optional<Trial> trial;
     std::vector<std::string> waiting_for;
     // Each slot as read_slot() read it at boot, and again after whatever this
@@ -457,6 +500,7 @@ FirmwareStatus Firmware::Impl::status() const {
     }
     s.upload = upload;
     s.last_update = last_update;
+    s.coredump = coredump;
     return s;
 }
 
@@ -828,6 +872,10 @@ Firmware::Impl::Outcome Firmware::Impl::run_upload(UploadJob& job) {
     if (idle_timer != nullptr) {
         (void)esp_timer_stop(idle_timer);
     }
+    // The least free internal heap from here, with nothing playing, to the
+    // upload's end: upload_task reads it and stops the monitor, which the
+    // player uses for a stream and has let go of by now.
+    (void)heap_caps_monitor_local_minimum_free_size_start();
 
     auto* buffer = static_cast<std::uint8_t*>(
         heap_caps_malloc(config.buffer_bytes, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
@@ -1018,6 +1066,9 @@ void Firmware::Impl::upload_task(void* arg) {
     auto* job = static_cast<UploadJob*>(arg);
     Impl& im = *job->im;
     const Outcome out = im.run_upload(*job);
+    std::printf("firmware: the upload's least free internal heap was %u bytes\n",
+                static_cast<unsigned>(heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+    (void)heap_caps_monitor_local_minimum_free_size_stop();
     if (!out.restart) {
         // Settled before the answer goes out: a client that sends its next
         // request as soon as it has read this answer finds the board free.
@@ -1122,6 +1173,7 @@ bool Firmware::start(FirmwareHooks hooks, FirmwareConfig config) {
     }
     im->read_last_update();
     // Before any task of this or the board's starts, so read without the lock.
+    im->coredump = read_coredump();
     im->running_facts = read_slot(im->running, true);
     if (im->other != nullptr) {
         im->other_facts = read_slot(im->other, false);
@@ -1392,6 +1444,78 @@ int Firmware::on_restart(httpd_req* req) {
     }
     (void)reply_text(req, "200 OK", "restarting");
     im.restart_now("on request");
+}
+
+int Firmware::on_coredump(httpd_req* req) {
+    if (impl_ == nullptr) {
+        return reply_text(req, "404 Not Found", "this board takes no firmware updates");
+    }
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+    std::size_t address = 0;
+    std::size_t size = 0;
+    if (esp_core_dump_image_get(&address, &size) != ESP_OK) {
+        return reply_text(req, "404 Not Found", "there is no core dump: nothing has crashed since the last was erased");
+    }
+    // As it lies in flash, a kilobyte at a time from the server's own stack,
+    // for esp_coredump (`info_corefile --core-format raw`) with the ELF of
+    // the image that wrote it.
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Content-Disposition", "attachment; filename=\"coredump.bin\"");
+    std::array<char, 1024> chunk{};
+    for (std::size_t at = 0; at < size;) {
+        const std::size_t n = std::min(chunk.size(), size - at);
+        if (esp_flash_read(nullptr, chunk.data(), static_cast<std::uint32_t>(address + at), n) != ESP_OK ||
+            httpd_resp_send_chunk(req, chunk.data(), static_cast<ssize_t>(n)) != ESP_OK) {
+            return ESP_FAIL;
+        }
+        at += n;
+    }
+    return httpd_resp_send_chunk(req, nullptr, 0);
+#else
+    return reply_text(req, "404 Not Found", "this board keeps no core dumps");
+#endif
+}
+
+int Firmware::on_coredump_erase(httpd_req* req) {
+    if (impl_ == nullptr) {
+        return reply_text(req, "404 Not Found", "this board takes no firmware updates");
+    }
+    Impl& im = *impl_;
+    if (!im.host_allowed(req)) {
+        return reply_text(req, "403 Forbidden",
+                          "firmware changes are taken only on the board's own address or name (planning/esp32-ota.md)");
+    }
+#if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
+    {
+        const std::lock_guard lock(im.mutex);
+        if (im.busy) {
+            return reply_text(req, "409 Conflict", "an update is already under way");
+        }
+        im.busy = true;
+    }
+    // An erase writes flash, which the slot check keeps clear of; it starts
+    // again afterwards if it was running.
+    const bool checking = im.check_running.load();
+    im.stop_check();
+    const esp_err_t erased = esp_core_dump_image_erase();
+    {
+        const std::lock_guard lock(im.mutex);
+        im.busy = false;
+        if (erased == ESP_OK) {
+            im.coredump.reset();
+        }
+    }
+    if (checking) {
+        im.start_check();
+    }
+    if (erased != ESP_OK) {
+        return reply_text(req, "500 Internal Server Error",
+                          std::string("the core dump could not be erased: ") + esp_err_to_name(erased));
+    }
+    return reply_text(req, "200 OK", "erased");
+#else
+    return reply_text(req, "404 Not Found", "this board keeps no core dumps");
+#endif
 }
 
 }  // namespace ac3forge

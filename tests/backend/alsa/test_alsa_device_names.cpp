@@ -80,6 +80,25 @@ TEST_CASE("E-AC-3 runs the link four times as fast as its content") {
     CHECK(carrier_rate(BitstreamFormat::kEac3, 32000) == 128000);
 }
 
+TEST_CASE("AC-4 runs its link at the content rate and its HBR4 bursts at four times it") {
+    using ac3::alsa::carrier_rate;
+    using ac3::alsa::non_audio_channel_status;
+    using ac3::audio::BitstreamFormat;
+
+    // IEC 61937-14 5.3.1, 5.3.3 and 5.3.5.
+    CHECK(carrier_rate(BitstreamFormat::kAc4, 48000) == 48000);
+    CHECK(carrier_rate(BitstreamFormat::kAc4, 44100) == 44100);
+    CHECK(carrier_rate(BitstreamFormat::kAc4Hbr4, 48000) == 192000);
+    CHECK(carrier_rate(BitstreamFormat::kAc4Hbr4, 44100) == 176400);
+    CHECK(carrier_rate(BitstreamFormat::kAc4Hbr16, 48000) == 768000);
+    // Both base sampling frequencies AC-4 has give links IEC 60958 has a
+    // frequency code for, on both of the links this backend opens.
+    for (const std::uint32_t base : {44100U, 48000U}) {
+        CHECK(non_audio_channel_status(carrier_rate(BitstreamFormat::kAc4, base)).has_value());
+        CHECK(non_audio_channel_status(carrier_rate(BitstreamFormat::kAc4Hbr4, base)).has_value());
+    }
+}
+
 TEST_CASE("the whole status matches what alsa-lib's own iec958 device defaults to") {
     // alsa-lib's /usr/share/alsa/pcm/iec958.conf defaults to AES0=0x04,
     // AES1=0x82, AES2=0x00, AES3=0x02 - consumer, not-copyright, PCM coder,

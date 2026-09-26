@@ -28,14 +28,18 @@ constexpr std::size_t kInitialPendingBlocks = 32;
 }
 
 [[nodiscard]] std::string_view stream_name(audio::BitstreamFormat format) {
-    return format == audio::BitstreamFormat::kAc3 ? "AC-3" : "E-AC-3";
+    return audio::format_name(format);
 }
 
 [[nodiscard]] std::string_view describe(iec61937::WrapError error) {
+    // clang-format off
     switch (error) {
         case iec61937::WrapError::kNotAFrame: return "it is not a whole frame";
         case iec61937::WrapError::kFrameTooLarge: return "it is too large for a burst";
+        case iec61937::WrapError::kUnsupportedRate: return "no burst carries its frame rate";
+        case iec61937::WrapError::kRateChanged: return "its sampling frequency changed mid-stream";
     }
+    // clang-format on
     return "it could not be packed";
 }
 
@@ -455,9 +459,7 @@ void Player::note_started(std::size_t item, bool joined) const {
     }
     const ItemFacts& facts = session_->facts();
     const std::string_view stream =
-        !facts.stream                                      ? "an unknown stream"
-        : *facts.stream == audio::BitstreamFormat::kAc3 ? "AC-3"
-                                                          : "E-AC-3";
+        !facts.stream ? "an unknown stream" : stream_name(*facts.stream);
     const std::uint64_t ms =
         facts.sample_rate == 0 ? 0 : session_->total_samples() * 1000 / facts.sample_rate;
     std::string what = fmt::format("{}: {}, {} Hz, {} channels, {}.{:03} s",

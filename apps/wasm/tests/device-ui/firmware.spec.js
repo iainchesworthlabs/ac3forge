@@ -40,7 +40,7 @@ test.describe('what the board runs', () => {
         const section = page.getByRole('region', { name: 'Firmware' });
         await expect(page.locator('#fw-running')).toHaveText(RUNNING + ' in ota_0, accepted, intact');
         await expect(page.locator('#fw-other')).toHaveText('Empty');
-        for (const id of ['#fw-trial', '#fw-upload', '#fw-last', '#fw-note', '#fw-sent']) {
+        for (const id of ['#fw-trial', '#fw-upload', '#fw-last', '#fw-crash', '#fw-note', '#fw-sent', '#fw-dump']) {
             await expect(page.locator(id)).toBeHidden();
         }
         await expect(section.getByRole('button', { name: 'Update firmware…' })).toBeVisible();
@@ -155,6 +155,30 @@ test.describe('what the board runs', () => {
         stub.device.firmware.last_update = { version: 'o2-panic', result: 'rolled back', reason: 'it panicked' };
         await page.goto(stub.url);
         await expect(page.locator('#fw-last')).toHaveText('o2-panic, rolled back: it panicked');
+    });
+
+    test('the core dump a crash left, and the link that saves it', async ({ page, stub }) => {
+        stub.device.firmware.coredump = {
+            bytes: 23456, intact: true, task: 'fw_trial', pc: '0x4037a1b2',
+            reason: 'abort() was called at PC 0x4200abcd on core 0', elf_sha256: '2366bde99',
+        };
+        stub.device.coredumpBytes = Buffer.from('a core dump');
+        await page.goto(stub.url);
+        await expect(page.locator('#fw-crash')).toHaveText(
+            'fw_trial at 0x4037a1b2; abort() was called at PC 0x4200abcd on core 0; 23,456 bytes',
+        );
+        const save = page.getByRole('link', { name: 'Save the core dump' });
+        await expect(save).toHaveAttribute('href', 'firmware/coredump');
+        const download = page.waitForEvent('download');
+        await save.click();
+        expect((await download).suggestedFilename()).toBe('coredump.bin');
+        await expect(page.getByRole('link', { name: 'Recent console output' })).toHaveAttribute('href', 'log');
+    });
+
+    test('a core dump that does not check out, and names no task', async ({ page, stub }) => {
+        stub.device.firmware.coredump = { bytes: 23456, intact: false, task: '', pc: '', reason: '', elf_sha256: '' };
+        await page.goto(stub.url);
+        await expect(page.locator('#fw-crash')).toHaveText('23,456 bytes, damaged');
     });
 
     test('a GET /firmware that is not JSON is read again at the next poll', async ({ page, stub }) => {
@@ -516,7 +540,7 @@ test('the stand-in refuses what ac3forge::Firmware refuses', async ({ stub }) =>
     ]);
     expect(await ask('PUT', 'firmware/rollback', '')).toEqual([409, 'this board has one app slot, so there is nothing to go back to']);
     stub.device.firmware = undefined;
-    for (const [method, route] of [['GET', 'firmware'], ['PUT', 'firmware'], ['PUT', 'firmware/mode'], ['PUT', 'firmware/rollback'], ['POST', 'restart']]) {
+    for (const [method, route] of [['GET', 'firmware'], ['PUT', 'firmware'], ['PUT', 'firmware/mode'], ['PUT', 'firmware/rollback'], ['POST', 'restart'], ['GET', 'firmware/coredump'], ['DELETE', 'firmware/coredump']]) {
         expect(await ask(method, route, method === 'GET' ? undefined : 'x')).toEqual([404, 'this board takes no firmware updates']);
     }
     // An empty slot as the model writes one.

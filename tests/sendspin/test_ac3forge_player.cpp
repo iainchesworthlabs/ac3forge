@@ -102,8 +102,24 @@ TEST_CASE("ac3forge_player: names and IDs", "[sendspin][ac3forge]") {
     CHECK(ac3::sendspin::message_id::kAc3forgeBurst == 192);
     CHECK(ac::data_type_name(ac::DataType::kAc3) == "ac3");
     CHECK(ac::data_type_name(ac::DataType::kEac3) == "eac3");
+    CHECK(ac::data_type_name(ac::DataType::kAc4) == "ac4");
     CHECK(ac::burst_data_type(ac::DataType::kAc3) == ac3::sendspin::BurstDataType::kAc3);
     CHECK(ac::burst_data_type(ac::DataType::kEac3) == ac3::sendspin::BurstDataType::kEac3);
+    CHECK(ac::burst_data_type(ac::DataType::kAc4) == ac3::sendspin::BurstDataType::kAc4);
+}
+
+TEST_CASE("ac3forge_player: an AC-4 stream carries any of IEC 61937-14's four burst types",
+          "[sendspin][ac3forge][ac4]") {
+    using ac3::sendspin::BurstDataType;
+    for (const BurstDataType burst : {BurstDataType::kAc4, BurstDataType::kAc4Hbr4,
+                                      BurstDataType::kAc4Hbr16, BurstDataType::kAc4Ld}) {
+        CHECK(ac::carries(ac::DataType::kAc4, burst));
+        CHECK_FALSE(ac::carries(ac::DataType::kEac3, burst));
+    }
+    CHECK_FALSE(ac::carries(ac::DataType::kAc4, BurstDataType::kAc3));
+    CHECK(ac::carries(ac::DataType::kAc3, BurstDataType::kAc3));
+    CHECK_FALSE(ac::carries(ac::DataType::kAc3, BurstDataType::kEac3));
+    CHECK(ac::carries(ac::DataType::kEac3, BurstDataType::kEac3));
 }
 
 TEST_CASE("ac3forge_player: the support object", "[sendspin][ac3forge]") {
@@ -134,14 +150,23 @@ TEST_CASE("ac3forge_player: the support object", "[sendspin][ac3forge]") {
     const std::string management =
         R"("management":{"routing":false,"trim_db":[0,0],"delay_ms":[0,0],"crossover_hz":[80,80],"identify":false},)";
     const std::string tail = R"("decoder_settings":[],"buffer_capacity":65536})";
-    // An AC-4 sink of a later day still offers E-AC-3: the unknown type is left out.
-    const std::optional<ac::Support> later =
-        read_text(R"({"data_types":["ac4","eac3"],"sample_rates":[48000],)" + outputs + management + tail);
+    // A sink of a later day with a data type this reader does not know still offers E-AC-3: the
+    // unknown type is left out.
+    const std::optional<ac::Support> later = read_text(
+        R"({"data_types":["mpegh","eac3"],"sample_rates":[48000],)" + outputs + management + tail);
     REQUIRE(later.has_value());
     CHECK(later->data_types == std::vector<ac::DataType>{ac::DataType::kEac3});
     CHECK(read_text(R"({"data_types":["eac3"],"sample_rates":[48000],"future":{},)" + outputs + management + tail));
+    // AC-4 (planning/ac4.md, D11).
+    const std::optional<ac::Support> with_ac4 =
+        read_text(R"({"data_types":["ac3","eac3","ac4"],"sample_rates":[48000],)" + outputs +
+                  management + tail);
+    REQUIRE(with_ac4.has_value());
+    CHECK(with_ac4->data_types ==
+          std::vector<ac::DataType>{ac::DataType::kAc3, ac::DataType::kEac3, ac::DataType::kAc4});
 
-    CHECK_FALSE(read_text(R"({"data_types":["ac4"],"sample_rates":[48000],)" + outputs + management + tail));
+    CHECK_FALSE(read_text(R"({"data_types":["mpegh"],"sample_rates":[48000],)" + outputs +
+                          management + tail));
     CHECK_FALSE(read_text(R"({"data_types":[],"sample_rates":[48000],)" + outputs + management + tail));
     CHECK_FALSE(read_text(R"({"data_types":["eac3",3],"sample_rates":[48000],)" + outputs + management + tail));
     CHECK_FALSE(read_text(R"({"data_types":["eac3"],"sample_rates":[0],)" + outputs + management + tail));
@@ -251,7 +276,12 @@ TEST_CASE("ac3forge_player: the stream/start object", "[sendspin][ac3forge]") {
     CHECK(read->sample_rate == 48000);
 
     CHECK(ac::read_stream_start(Parsed(R"({"data_type":"ac3","sample_rate":44100,"future":true})").root()));
-    CHECK_FALSE(ac::read_stream_start(Parsed(R"({"data_type":"ac4","sample_rate":48000})").root()));
+    const std::optional<ac::StreamStart> ac4 =
+        ac::read_stream_start(Parsed(R"({"data_type":"ac4","sample_rate":48000})").root());
+    REQUIRE(ac4.has_value());
+    CHECK(ac4->data_type == ac::DataType::kAc4);
+    CHECK_FALSE(
+        ac::read_stream_start(Parsed(R"({"data_type":"mpegh","sample_rate":48000})").root()));
     CHECK_FALSE(ac::read_stream_start(Parsed(R"({"data_type":"eac3"})").root()));
     CHECK_FALSE(ac::read_stream_start(Parsed(R"({"sample_rate":48000})").root()));
 }

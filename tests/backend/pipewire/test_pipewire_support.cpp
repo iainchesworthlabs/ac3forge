@@ -109,6 +109,13 @@ TEST_CASE("a stream's unplayed frames add its queue, its converter and the graph
 TEST_CASE("the codec sent over IEC958 matches the bitstream format asked for") {
     CHECK(iec958_codec_for(BitstreamFormat::kAc3) == SPA_AUDIO_IEC958_CODEC_AC3);
     CHECK(iec958_codec_for(BitstreamFormat::kEac3) == SPA_AUDIO_IEC958_CODEC_EAC3);
+    // SPA's codecs have no AC-4, so there is nothing to ask a sink for.
+    CHECK_FALSE(iec958_codec_for(BitstreamFormat::kAc4).has_value());
+    CHECK_FALSE(iec958_codec_for(BitstreamFormat::kAc4Hbr4).has_value());
+    CHECK_FALSE(iec958_codec_for(BitstreamFormat::kAc4Hbr16).has_value());
+    // The link rates are the same arithmetic as ALSA's all the same.
+    CHECK(carrier_rate(BitstreamFormat::kAc4, 48000) == 48000);
+    CHECK(carrier_rate(BitstreamFormat::kAc4Hbr4, 48000) == 192000);
 }
 
 TEST_CASE("a node is classified as a source, a sink, or neither") {

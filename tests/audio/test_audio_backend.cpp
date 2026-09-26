@@ -271,11 +271,56 @@ TEST_CASE("every passthrough error describes itself", "[audio-backend][concurren
          {PassthroughError::kNoBackend, PassthroughError::kComFailure,
           PassthroughError::kDeviceNotFound, PassthroughError::kFormatRejected,
           PassthroughError::kExclusiveUnavailable, PassthroughError::kAlreadyRunning,
-          PassthroughError::kNotRunning}) {
+          PassthroughError::kNotRunning, PassthroughError::kUnsupportedFormat}) {
         const std::string_view text = ac3::audio::describe(error);
         CHECK_FALSE(text.empty());
         CHECK(text != "unknown passthrough error");
     }
+}
+
+TEST_CASE("passthrough formats: the rate and burst lengths and name of each link",
+          "[audio-backend][concurrency]") {
+    using ac3::audio::BitstreamFormat;
+    // IEC 61937-14 5.3.1, 5.3.3 and 5.3.5: AC-4 at the content rate, HBR4 at
+    // four times it as E-AC-3, HBR16 at sixteen times.
+    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kAc3) == 1);
+    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kEac3) == 4);
+    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kAc4) == 1);
+    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kAc4Hbr4) == 4);
+    CHECK(ac3::audio::carrier_ratio(BitstreamFormat::kAc4Hbr16) == 16);
+    CHECK(ac3::audio::format_name(BitstreamFormat::kAc4Hbr4) == "AC-4 HBR4");
+    CHECK(ac3::audio::is_ac4(BitstreamFormat::kAc4));
+    CHECK_FALSE(ac3::audio::is_ac4(BitstreamFormat::kEac3));
+
+    // Every AC-3 and E-AC-3 burst is one length; an AC-4 burst is as long as
+    // its repetition period, up to the longest (2 048 IEC 60958 frames of four
+    // bytes at the content rate).
+    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kAc3) == 6144);
+    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kEac3) == 24576);
+    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kAc4) == 8192);
+    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kAc4Hbr4) == 32768);
+    CHECK(ac3::audio::max_burst_bytes(BitstreamFormat::kAc4Hbr16) == 131072);
+    CHECK(ac3::audio::burst_size_fits(BitstreamFormat::kAc3, 6144));
+    CHECK_FALSE(ac3::audio::burst_size_fits(BitstreamFormat::kAc3, 6140));
+    CHECK(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 1601 * 4));
+    CHECK(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 8192));
+    CHECK_FALSE(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 8196));
+    CHECK_FALSE(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 1602 * 4 + 2));
+    CHECK_FALSE(ac3::audio::burst_size_fits(BitstreamFormat::kAc4, 0));
+}
+
+TEST_CASE("passthrough: AC-4 HBR16 is refused everywhere before a device is touched",
+          "[audio-backend][concurrency]") {
+    // No backend opens the eight-channel link HBR16 needs, and the three whose
+    // platforms have no AC-4 format refuse every AC-4 link - all before any
+    // device is looked up, so this makes no noise anywhere. A build with no
+    // backend at all says so instead.
+    ac3::audio::PassthroughSink sink;
+    const auto started = sink.start("", 48000, ac3::audio::BitstreamFormat::kAc4Hbr16);
+    REQUIRE_FALSE(started.has_value());
+    CHECK((started.error() == ac3::audio::PassthroughError::kUnsupportedFormat ||
+           started.error() == ac3::audio::PassthroughError::kNoBackend));
+    CHECK_FALSE(sink.running());
 }
 
 TEST_CASE("every monitor error describes itself", "[audio-backend][concurrency]") {

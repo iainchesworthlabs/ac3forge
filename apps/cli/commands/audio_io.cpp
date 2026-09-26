@@ -89,11 +89,14 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
                        ac3::audio::Capture& capture,
                        ac3::iec61937::PassthroughDetector& detector, const Options& meta) {
     const auto channels = capture.channels();
-    const bool eac3 = detector.detected() == ac3::iec61937::BurstDataType::kEac3;
+    const auto type = detector.detected().value_or(ac3::iec61937::BurstDataType::kAc3);
     const auto status = status_stream(out_path);
     status_println(status, "");
-    status_println(status, "capture is bitstreaming {}, not PCM: recording the elementary stream",
-                   eac3 ? "Dolby Digital Plus (data type 0x15)" : "Dolby Digital (data type 0x01)");
+    status_println(
+        status, "capture is bitstreaming {}, not PCM: recording the elementary stream",
+        type == ac3::iec61937::BurstDataType::kEac3  ? "Dolby Digital Plus (data type 0x15)"
+        : type == ac3::iec61937::BurstDataType::kAc3 ? "Dolby Digital (data type 0x01)"
+                                                     : "AC-4 (IEC 61937-14, data type 24)");
     if (meta.container != RecordingSink::Container::kElementary) {
         // Said rather than silently ignored: mkv/ts/spdif/fmp4 all need the
         // frame boundaries RecordingSink works from, and this path never has
@@ -210,7 +213,7 @@ int record_passthrough(std::string_view out_path, std::uint32_t seconds,
     }
     const auto stats = capture.stats();
     status_println(status, "wrote {} {} bursts ({} bytes) to {}", reader.bursts(),
-                   eac3 ? "E-AC-3" : "AC-3", elementary_bytes, out_path);
+                   ac3::iec61937::data_type_name(type), elementary_bytes, out_path);
     status_println(status, "captured {} frames, {} silence-filled, {} dropped",
                    stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);
     if (reader.skipped_bursts() > 0 || reader.false_syncs() > 0) {

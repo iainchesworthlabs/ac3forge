@@ -45,6 +45,9 @@
 #include "ac3/sendspin/server_store.hpp"
 #include "ac3/sendspin/state_roles.hpp"
 #include "ac3/sendspin/stream_roles.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
+#include "burst_output.hpp"
 #include "sink.hpp"
 
 // A ServerHost and two test sinks in process over loopback WebSockets, with mDNS off: the host
@@ -1090,4 +1093,212 @@ TEST_CASE("group: two paired test sinks play E-AC-3 JOC in step over the extensi
 // WAV files near half a gigabyte each. Run by name.
 TEST_CASE("group: ten minutes of E-AC-3 JOC in step on two test sinks", "[.][hearth-soak]") {
     play_joc_programme(fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_soak_" + scratch_pid_suffix()), "2.0.2", 298);
+}
+
+// D11 (planning/ac4.md): the Dolby Encoding Engine's 2.0 AC-4 stream at 48 kHz and frame_rate_index
+// 13, the rate the decoder on main decodes, sent to a paired test sink over _ac3forge_player@v1:
+// each frame in its own AC-4 data-burst, with the Pc and Pd ac3::iec61937::Ac4BurstPacker writes
+// and the frame's 2 048 samples on the group's timeline. The sink's WAV must be the local decode of
+// the same frames rendered to its layout as its BurstOutput renders them, sample for sample; what
+// its decoder found must reach the host; and every burst's logged play time must put the first
+// frame at the same local time, within 1 ms.
+TEST_CASE("group: a paired test sink decodes AC-4 sent over the extension role",
+          "[hearth][group][websocket][ac3forge][ac4]") {
+    const fs::path scratch =
+        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_group_ac4_" + scratch_pid_suffix());
+    fs::remove_all(scratch);
+    const std::string layout_text = "5.1";
+    const std::optional<ac3::render::OutputLayout> layout =
+        ac3::render::OutputLayout::parse(layout_text);
+    REQUIRE(layout.has_value());
+
+    const std::vector<std::byte> file =
+        read_bytes(AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR "/ac4-stereo-64/dee.ac4");
+    const ac4::ScanResult scanned = ac4::scan(file);
+    REQUIRE_FALSE(scanned.frames.empty());
+    REQUIRE_FALSE(scanned.stopped_at.has_value());
+    constexpr std::int64_t kFrameSamples = 2048;
+    std::vector<PackedBurst> bursts;
+    ac3::iec61937::Ac4BurstPacker packer;
+    for (std::size_t i = 0; i < scanned.frames.size(); ++i) {
+        const std::size_t begin = scanned.frames[i].offset;
+        const std::size_t end =
+            i + 1 < scanned.frames.size() ? scanned.frames[i + 1].offset : file.size();
+        const std::span<const std::byte> sync_frame =
+            std::span<const std::byte>(file).subspan(begin, end - begin);
+        REQUIRE(packer.push(sync_frame).has_value());
+        const ac3::iec61937::Ac4BurstPacker::Packed& packed = *packer.last();
+        // IEC 61937-14 Tables 5 and 7: 2 048 IEC 60958 frames, code 13, at 48 kHz.
+        REQUIRE(packed.period == 2048);
+        REQUIRE(((packed.pc >> 8U) & 0x0FU) == 13U);
+        PackedBurst burst{.pc = packed.pc,
+                          .pd = packed.pd,
+                          .payload = {},
+                          .frame = static_cast<std::int64_t>(i) * kFrameSamples};
+        std::transform(sync_frame.begin(), sync_frame.end(), std::back_inserter(burst.payload),
+                       [](std::byte b) { return std::to_integer<std::uint8_t>(b); });
+        REQUIRE(burst.payload.size() == packed.payload_bytes);
+        bursts.push_back(std::move(burst));
+    }
+
+    QuietLog log;
+    testsink::SinkOptions options;
+    options.name = "Study";
+    options.address = "127.0.0.1";
+    options.port = 0;
+    options.state_directory = scratch / "state";
+    options.output_directory = scratch / "out";
+    options.advertise = false;
+    options.codecs = {m::Codec::kPcm};
+    options.layout = layout_text;
+    auto started = testsink::Sink::start(options, log);
+    REQUIRE(started.has_value());
+    const std::unique_ptr<testsink::Sink> sink = std::move(*started);
+
+    std::optional<ac3::sendspin::noise::KeyPair> identity =
+        ac3::sendspin::noise::KeyPair::generate();
+    REQUIRE(identity.has_value());
+    ac3::sendspin::MemoryServerStore store;
+    HostEvents events;
+    auto host = ac3::sendspin::ServerHost::start({.identity = *identity,
+                                                  .name = "Test host",
+                                                  .languages = {"en"},
+                                                  .address = "127.0.0.1",
+                                                  .port = std::nullopt,
+                                                  .advertise = false,
+                                                  .browse = false,
+                                                  .mdns_interfaces = {}},
+                                                 store, events);
+    REQUIRE(host.has_value());
+    REQUIRE((*host)->enter_pairing_token(sink->pairing_token()));
+    (*host)->dial("ws://127.0.0.1:" + std::to_string(sink->port()) + "/sendspin");
+    REQUIRE(events.wait(
+        [](const auto& clients) {
+            return clients.size() == 1 &&
+                   std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
+                       return entry.second.playing && entry.second.bursts &&
+                              entry.second.available &&
+                              entry.second.psk == ac3::sendspin::handshake::PskCategory::kLongTerm;
+                   });
+        },
+        30s));
+
+    std::shared_ptr<ac3::sendspin::Group> group = (*host)->make_group("Study");
+    group->add(sink->client_id());
+    REQUIRE(group->start(
+        {.pcm = std::nullopt,
+         .bursts =
+             ac3::sendspin::ac3forge::StreamStart{
+                 .data_type = ac3::sendspin::ac3forge::DataType::kAc4, .sample_rate = 48000},
+         .buffered = true}));
+    std::size_t next = 0;
+    const auto deadline =
+        std::chrono::steady_clock::now() + 30s +
+        std::chrono::milliseconds(static_cast<std::int64_t>(bursts.size()) * 43 * 3 / 2);
+    while (next < bursts.size() && std::chrono::steady_clock::now() < deadline) {
+        const PackedBurst& burst = bursts[next];
+        if (group->push_burst({.pc = burst.pc,
+                               .pd = burst.pd,
+                               .payload = burst.payload,
+                               .frame = burst.frame,
+                               .frames = kFrameSamples})) {
+            ++next;
+        } else {
+            std::this_thread::sleep_for(5ms);
+        }
+    }
+    REQUIRE(next == bursts.size());
+    // What the sink's decoder found reaches the host in its state.
+    const bool reported = events.wait(
+        [](const auto& clients) {
+            return clients.size() == 1 &&
+                   std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
+                       const std::optional<ac3::sendspin::ac3forge::State>& state =
+                           entry.second.ac3forge_state;
+                       return state && state->decoder &&
+                              state->decoder->data_type ==
+                                  ac3::sendspin::ac3forge::DataType::kAc4 &&
+                              state->decoder->acmod == 2 && !state->decoder->lfe;
+                   });
+        },
+        10s);
+    CHECK(reported);
+    group->stop();
+    const auto until = std::chrono::steady_clock::now() + 30s;
+    while (sink->totals().bursts < bursts.size() && std::chrono::steady_clock::now() < until) {
+        std::this_thread::sleep_for(20ms);
+    }
+    REQUIRE(sink->totals().bursts == bursts.size());
+    // A group must not outlive its host.
+    group.reset();
+    host->reset();
+
+    // The WAV is the local decode, rendered as BurstOutput renders AC-4, sample for sample.
+    ac3::io::WavStreamReader wav;
+    REQUIRE(wav.open(only_file(scratch / "out", "bursts-", ".wav").string()).has_value());
+    REQUIRE(static_cast<std::size_t>(wav.channels()) == layout->slots());
+    std::vector<std::vector<float>> played(layout->slots(),
+                                           std::vector<float>(ac3::kSamplesPerBlock));
+    std::vector<std::span<float>> played_spans(played.begin(), played.end());
+    std::vector<std::array<float, ac3::kSamplesPerBlock>> rendered(layout->slots());
+    std::vector<std::span<float>> rendered_spans;
+    for (std::array<float, ac3::kSamplesPerBlock>& slot : rendered) {
+        rendered_spans.emplace_back(slot);
+    }
+    ac4::Decoder decoder;
+    ac3::render::LayoutRenderer renderer(*layout);
+    std::optional<ac3::eac3::chanmap::Layout> bed_set;
+    std::uint64_t frames = 0;
+    std::uint64_t different = 0;
+    for (const ac4::SyncFrame& frame : scanned.frames) {
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        REQUIRE(decoded.has_value());
+        if (!*decoded) {
+            continue;
+        }
+        const ac4::DecodedFrame& pcm = **decoded;
+        const ac3::eac3::chanmap::Layout bed = testsink::ac4_bed(pcm.speakers);
+        if (!bed_set || bed_set->count != bed.count ||
+            !std::equal(bed.begin(), bed.end(), bed_set->begin())) {
+            renderer.set_bed(bed);
+            bed_set = bed;
+        }
+        const std::size_t n = pcm.channels.front().size();
+        std::vector<std::span<const float>> block_channels(pcm.channels.size());
+        for (std::size_t at = 0; at < n; at += ac3::kSamplesPerBlock) {
+            const std::size_t m = std::min<std::size_t>(ac3::kSamplesPerBlock, n - at);
+            for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
+                block_channels[c] = std::span<const float>(pcm.channels[c]).subspan(at, m);
+            }
+            const ac3::PcmBlock block{
+                .index = static_cast<int>(at / ac3::kSamplesPerBlock),
+                .blocks = static_cast<int>((n + ac3::kSamplesPerBlock - 1) / ac3::kSamplesPerBlock),
+                .channels = block_channels,
+                .objects = {},
+                .object_indices = {},
+                .object_metadata = nullptr};
+            renderer.render(block, false, 1.0F, rendered_spans);
+            const std::expected<std::size_t, ac3::io::WavError> got =
+                wav.read_planar(played_spans, m);
+            REQUIRE(got.has_value());
+            REQUIRE(*got == m);
+            for (std::size_t slot = 0; slot < layout->slots(); ++slot) {
+                for (std::size_t t = 0; t < m; ++t) {
+                    different += rendered[slot][t] == played[slot][t] ? 0U : 1U;
+                }
+            }
+            frames += m;
+        }
+    }
+    CHECK(frames == scanned.frames.size() * static_cast<std::uint64_t>(kFrameSamples));
+    CHECK(different == 0);
+    CHECK(wav.frame_count() == frames);
+
+    // Every burst puts the first frame at the same local time, within 1 ms.
+    const std::vector<double> times =
+        first_frame_times(only_file(scratch / "out", "bursts-", ".times.csv"));
+    CHECK(times.size() == bursts.size());
+    REQUIRE_FALSE(times.empty());
+    const auto [earliest, latest] = std::minmax_element(times.begin(), times.end());
+    CHECK(*latest - *earliest < 1000.0);
 }

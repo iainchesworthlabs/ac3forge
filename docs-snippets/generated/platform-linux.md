@@ -11,4 +11,5 @@
 | Hearth desktop player | **In development**<br>required CI<br>Qt/QML shell builds; Play page implemented, other tabs are placeholders | **In development**<br>required CI<br>Qt/QML shell builds; Play page implemented, other tabs are placeholders |
 | Live capture and PCM monitor | **Source**<br>required CI<br>ALSA or PipeWire | **Source**<br>confirmed on hardware<br>ALSA or PipeWire |
 | IEC 61937 output | **Source**<br>required CI<br>hardware untried | **Source**<br>confirmed on hardware<br>ALSA and PipeWire on one Pi 4B |
+| AC-4 IEC 61937 output | **Source**<br>required CI<br>ALSA's null device; PipeWire has no AC-4 codec | **Source**<br>build only<br>ALSA; no receiver accepts AC-4 |
 | Per-application capture | **Source**<br>required CI<br>PipeWire | **Source**<br>confirmed on hardware<br>PipeWire on one Pi 4B |
