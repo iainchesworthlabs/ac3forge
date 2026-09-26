@@ -149,7 +149,7 @@ it — `config-arm-none-eabi-minimal`, `config-linux-gcc-minimal`, `config-linux
 They are not part of the table above because they do not build the project: they build
 PF7's decode-only library and its probe, and nothing else. The arm one does not inherit `core`
 either — there is no vcpkg triplet for bare-metal arm and nothing that profile builds has a
-third-party dependency, the same reasoning the Emscripten preset follows. See
+third-party dependency. See
 [Minimum-footprint decoder profile](#minimum-footprint-decoder-profile).
 
 There is a sixteenth trio, `config-linux-gcc-coverage` / `build-linux-gcc-coverage` /
@@ -265,7 +265,7 @@ platform/compiler fragment matches your machine.
 | `AC3FORGE_BUILD_MATROSKA` | `ON` | Build `matroska::matroska` (`src/matroska`), the standalone Matroska container writer. `OFF` only makes sense with the CLI, GUI, tests and examples all `OFF` too — they link it unconditionally, and configure fails with a clear message otherwise (see the root `CMakeLists.txt` guard). |
 | `AC3FORGE_BUILD_MP4` | `ON` | Build `mp4::mp4` (`src/mp4`), the standalone MP4/ISOBMFF container writer. Same all-off constraint as `AC3FORGE_BUILD_MATROSKA`. |
 | `AC3FORGE_BUILD_MPEGTS` | `ON` | Build `mpegts::mpegts` (`src/mpegts`), the standalone MPEG-TS container writer. Same all-off constraint as `AC3FORGE_BUILD_MATROSKA`. |
-| `AC3FORGE_BUILD_IAB` | `ON` | Build `ac3iab::ac3iab` (`src/ac3iab`), the standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader. Same zero-third-party-dependency shape as the three container writers above, so it defaults on the same way; unlike them nothing in `apps/` or `examples/` links it yet, so there is no all-off guard — `tests/CMakeLists.txt` simply adds its test file when this is on. |
+| `AC3FORGE_BUILD_IAB` | `ON` | Build `ac3iab::ac3iab` (`src/ac3iab`), the standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader. Like the three container writers above it needs no opt-in third-party library, so it defaults on the same way; unlike them nothing in `apps/` or `examples/` links it yet, so there is no all-off guard — `tests/CMakeLists.txt` simply adds its test file when this is on. |
 | `AC3FORGE_BUILD_CAPI` | `ON` | Build `ac3::forge_c` (`src/capi`), the C API over the encode/decode core — see [C API](library/c-api.md). Depends on nothing but `ac3::forge_static`, so unlike `AC3FORGE_BUILD_ADM` there is no extra dependency footprint to opt out of. |
 | `AC3FORGE_BUILD_PYTHON` | `OFF` | Build the pybind11 extension module (`python/`). Off by default for the same reason as `AC3FORGE_BUILD_ADM`: nothing under `src/`, `apps/`, `tests/` or `examples/` links it, so a normal C++ build is unaffected either way. `python/pyproject.toml` turns it on itself via scikit-build-core when `pip install`/cibuildwheel drives the configure. |
 | `AC3FORGE_BUILD_ADM` | `OFF` | Build `ac3adm::ac3adm` (`src/ac3adm`), the standalone BW64/RF64 + ADM parser — see [ADM / BW64 reading](library/adm.md). Off by default, unlike every other library component: it vendors libbw64/libadm via `FetchContent`, and libadm needs several Boost header libraries, resolved separately via `-DVCPKG_MANIFEST_FEATURES=adm` (`vcpkg.json`'s `adm` feature) — turning this `ON` without also selecting that feature fails with a clear configure-time message rather than a bare "Boost not found". |

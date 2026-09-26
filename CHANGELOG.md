@@ -1528,6 +1528,9 @@ The sections below contain the complete change list and fixes.
   rows, and four stale claims corrected.
 - The CLI reference lists all forty-two commands, including the previously-undocumented
   `spatial`.
+- The threat model, the WebAssembly page, the ADM page and the building guide no longer describe
+  the codec libraries as free of third-party dependencies. {fmt} is compiled into `ac3::forge`
+  and `mp4::mp4`.
 
 **Release engineering**
 
