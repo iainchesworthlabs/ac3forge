@@ -37,6 +37,11 @@ eac3::chanmap::Layout ac4_bed(std::span<const ac4::Speaker> speakers) {
             case ac4::Speaker::kRightWide: location = Location::kRw; break;
             case ac4::Speaker::kTopFrontLeft: location = Location::kVhl; break;
             case ac4::Speaker::kTopFrontRight: location = Location::kVhr; break;
+            case ac4::Speaker::kTopBackLeft:
+            case ac4::Speaker::kTopSideLeft: location = Location::kLts; break;
+            case ac4::Speaker::kTopBackRight:
+            case ac4::Speaker::kTopSideRight: location = Location::kRts; break;
+            case ac4::Speaker::kLfe2: location = Location::kLfe2; break;
         }
         // clang-format on
         bed.items[static_cast<std::size_t>(bed.count++)] = location;
