@@ -42,8 +42,8 @@ The writer takes the decoder's reading of each of these:
   modes with their presence flags, and the A-JCC writer (`src/ac4enc/src/ajcc/ajcc_syntax.hpp`), take
   [The framing of the immersive element's chparam_info()](../ac4dec/ERRATA.md#the-framing-of-the-immersive-elements-chparam_info)
   and [immersive_codec_mode_code in the trace](../ac4dec/ERRATA.md#immersive_codec_mode_code-in-the-trace);
-  `custom_dmx_data()` sends no custom downmix data and `loud_corr()` no correction for the immersive
-  outputs.
+  `custom_dmx_data()` sends custom downmix data for the height downmix alone ("The height downmix", below)
+  and `loud_corr()` no correction for the immersive outputs.
 - The channel renderer (phase D9's): the frame writer's `top_channels_present` takes
   [Where a .2 source's top pair is carried](../ac4dec/ERRATA.md#where-a-2-sources-top-pair-is-carried), and
   a writer that sends custom downmix data in I-frames alone, as DEE does, relies on
@@ -247,6 +247,68 @@ each of these:
   exact. beta3 gives the centre the energy the prediction leaves out.
 - **Evidence:** Streams: DEE's 5.1 streams at 96 kbps hold the four relations in 3,534 and 3,539 of the
   3,555 bands of music and film, and one relation is a step out in the rest.
+
+## The immersive element
+
+The readings phase E8 takes for 5.0.4 and 5.1.4 in SCPL, ASPX_SCPL and ASPX_ACPL_2, and for ASPX_ACPL_1,
+ASPX_AJCC and 7.0.4 and 7.1.4 with the back pair as experimental options. The writer takes the decoder's
+reading of each of these, and the tests hold the three traces equal on every immersive stream they write:
+
+- [Table 19's track numbers are labels](../ac4dec/ERRATA.md#table-19s-track-numbers-are-labels) and
+  [Which channel holds which intermediate signal](../ac4dec/ERRATA.md#which-channel-holds-which-intermediate-signal):
+  `core_5ch_grouping` 0 with `2ch_mode` 0, as DEE writes it, and A'' to K'' coded where the channels they
+  become are.
+- [The framing of the immersive element's chparam_info()](../ac4dec/ERRATA.md#the-framing-of-the-immersive-elements-chparam_info)
+  and [Table 20's prediction gains](../ac4dec/ERRATA.md#table-20s-prediction-gains): each coupled pair's
+  difference is predicted from its sum band by band with Pseudocode 59's gain, and a pair and the pair
+  predicted from it share a transform layout.
+- [The core's top pair is Tsl and Tsr](../ac4dec/ERRATA.md#the-cores-top-pair-is-tsl-and-tsr): the
+  encoder's streams decode in core decoding to 5.X.2, each top pair's two channels in its side of it.
+
+### Table 20's prediction
+
+- **Where:** Part 2 5.2.3.2 step 5, p. 60, and 5.3, p. 63: S-CPL makes each coupled pair of its sum and
+  difference; nothing says how a writer forms them, or what the four `chparam_info()` should send.
+- **Reading:** each coupled pair's channels over sqrt 2 are coded as their sum and difference (M/S in every
+  band), and the difference as its least-squares prediction's residual from the sum (`sap_mode` 3) where
+  that costs fewer bits than the difference itself, else `sap_mode` 0. A 5.1.4 source's absent back pair
+  makes each surround pair's difference its sum, which the prediction takes whole at a gain of 1.
+- **Evidence:** Streams: DEE's SCPL and ASPX_SCPL streams send `sap_mode` 3 there in nearly every frame
+  (the decoder's entry). Readers: every channel's tone decodes on its own channel, and the decoder's trace
+  is the encoder's.
+
+### immersive_audio_indicator and the presence flags
+
+- **Where:** Part 2 6.2.2.3 and 6.3.2.7: `b_additional_data` and `add_data()` may carry
+  `immersive_audio_indicator`; the presence flags describe the source's channels. Nothing says when a
+  writer sets either.
+- **Reading:** an immersive presentation sends one byte of additional data, `immersive_audio_indicator` 1
+  and no advanced dialogue enhancement data, as DEE's 5.1.4 streams do; the presence flags are the
+  source's: `b_4_back_channels_present` only with the back pair, the centre, both top pairs.
+- **Evidence:** Streams: DEE's 5.1.4 streams carry both so.
+
+### The height downmix
+
+- **Where:** Part 2 6.2.9.2 to 6.2.9.10: `custom_dmx_data()` sends per output
+  configuration where the top channels go and at what gain; DEE's `height_dmx_mode` names three routes.
+- **Reading:** `HeightDownmix::kFront` sends both top pairs to L and R, `kSurround` both to Ls and Rs, and
+  `kFrontAndSurround` the top front pair to L and R and the top back pair to Ls and Rs, each at the one
+  gain (Table 129), for `out_ch_config` 0 (5.X.0), in I-frames alone, as DEE's streams carry its three
+  modes; 7.0.4 and 7.1.4 add the back pair's `gain_b_code`.
+- **Evidence:** Streams: G0's and G1's height downmix legs; the decoder renders the encoder's streams to
+  each route at its gain (`tests/ac4enc/test_ac4enc_immersive.cpp`, `tools/checks/gain_ac4_decode.py`).
+
+### A-JCC's parameters
+
+- **Where:** Part 2 5.6, pp. 68 to 78, gives A-JCC's upmix; nothing gives the core a writer codes or how it
+  chooses the parameters. DEE's 5.1.4 streams never use ASPX_AJCC.
+- **Reading:** `ajcc_core_mode` 0. The core is each side's front, L + Tfl / sqrt 2, and back, (Ls + Lb +
+  Tbl) / sqrt 2, over Pseudocode 8's input gain 2 + 1 / sqrt 2, and C over the same, so that the upmix
+  keeps each column's sum. Per A-CPL parameter band, the front module's alpha and beta are estimated as the
+  A-CPL modules' are; the back module's dry values are the least-squares shares of the column's sum, and
+  its wet values those whose decorrelated signals give what the quantised shares leave its covariance.
+- **Evidence:** Readers: one tone per channel decodes on its own channel in full decoding, and in core
+  decoding at Pseudocode 14's gains (`tests/ac4enc/test_ac4enc_immersive.cpp`).
 
 ## The MP4 sample entry's dac4
 
