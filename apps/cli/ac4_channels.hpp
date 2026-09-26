@@ -13,9 +13,12 @@
 // AC-4's channels in WAV files, for `decode` and `ac4-encode` alike: a WAV
 // file holds them in the WAVEFORMATEXTENSIBLE speaker order the E-AC-3 path
 // writes (plan::wav_order: FL FR FC LFE BL BR, then SL SR and the top front
-// pair), with Ls and Rs at SL and SR, Lb and Rb at BL and BR, and Lw and Rw,
-// which that order has no place for, last. So 5.1's surrounds take the fifth
-// and sixth channels, as E-AC-3's do.
+// pair), with Ls and Rs at SL and SR, Lb and Rb at BL and BR, the top back
+// pair at TBL and TBR, and Lw and Rw, which that order has no place for, last.
+// So 5.1's surrounds take the fifth and sixth channels, as E-AC-3's do, and
+// 5.1.4 and 7.1.4 come out as DEE takes them in. The top side pair of an X.2
+// layout, which the order has no place for either, takes the top front pair's
+// places, which an X.2 layout leaves empty.
 
 namespace ac3cli {
 
@@ -38,9 +41,15 @@ namespace ac3cli {
         case ac4::Speaker::kRightSurround:
             return 10;
         case ac4::Speaker::kTopFrontLeft:
+        case ac4::Speaker::kTopSideLeft:
             return 12;
         case ac4::Speaker::kTopFrontRight:
+        case ac4::Speaker::kTopSideRight:
             return 14;
+        case ac4::Speaker::kTopBackLeft:
+            return 15;
+        case ac4::Speaker::kTopBackRight:
+            return 17;
         default:
             return 99;
     }

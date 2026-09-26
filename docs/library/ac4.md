@@ -8,12 +8,14 @@ encoder written from ETSI TS 103 190-1 V1.4.1 (channel-based coding) and TS 103 
 [Encoding a stream](#encoding-a-stream).
 
 It decodes the mono, stereo, 3.0, 5.X and 7.X channel elements in each of Part 1's codec modes
-(SIMPLE, ASPX and the three A-CPL modes) at every frame rate; streams of several presentations,
-the one a system chooses decoded with all of its substreams mixed; the output level and dynamic
-range control, dialogue enhancement and the downmix; and it conceals a frame that does not decode
-when asked to. It refuses, per substream and per frame, with `DecodeError::kUnsupported` and a
-reason: the speech spectral frontend, the immersive and 22.2 channel elements, object substreams
-(A-JOC among them), and output at 96 or 192 kHz. [Development status](development-status.md)
+(SIMPLE, ASPX and the three A-CPL modes) at every frame rate; the immersive element of 7.0.4 and
+7.1.4 in full and core decoding, rendered by Part 2's channel renderer; object audio, A-JOC in
+full and core decoding and direct-coded objects, with each object's metadata ([Objects](#objects));
+streams of several presentations, the one a system chooses decoded with all of its substreams
+mixed; the output level and dynamic range control, dialogue enhancement and the downmix; and it
+conceals a frame that does not decode when asked to. It refuses, per substream and per frame, with
+`DecodeError::kUnsupported` and a reason: the speech spectral frontend, the 9.X.4 and 22.2
+channel elements, and output at 96 or 192 kHz. [Development status](development-status.md)
 has the detail, feature by feature, and [Validation](../verification.md#ac-4) says how each part
 is checked.
 
@@ -94,14 +96,15 @@ to the next, and a new layout starts its channels' synthesis from silence.
 | `drc` | Which of Table 161's DRC decoder modes compresses: `kDefault` takes the one clause 5.7.9.2 gives the output level; `kHomeTheatre`, `kFlatPanelTv`, `kPortableSpeakers` and `kPortableHeadphones` name one; `kOff` applies the level alone | `kDefault` |
 | `headphones` | Whether `kDefault` takes portable headphones rather than portable speakers where the level falls in their range, −16 to 0 dBFS | `false` |
 | `dialogue_enhancement_db` | G_DE (clause 5.7.8): how far the dialogue is raised, up to the cap the stream sets, 3, 6, 9 or 12 dB | 0, the tool bypassed |
-| `downmix` | The layout (clause 6.2.17): `kAsCoded`, `k5X` (a 7.X element folded to 5.X), `kStereo` (the method the stream prefers), `kLoRo`, `kLtRt`, `kMono` | `kAsCoded` |
+| `downmix` | The layout (clause 6.2.17): `kAsCoded`, `k5X` (a 7.X element folded to 5.X), `kStereo` (the method the stream prefers), `kLoRo`, `kLtRt`, `kMono`; and for the immersive element and an intermediate spatial format, `k7X4`, `k7X2`, `k7X0`, `k5X4` and `k5X2` (Part 2 clauses 5.10.2 and 5.10.3) | `kAsCoded` |
 | `mix_lfe` | Whether a two-channel or mono downmix takes the LFE at the stream's `lfe_mixgain`, as Part 1 does | `true` |
 | `dialogue_gain_db` | g_dialog (clause 6.2.16.1): a presentation's dialogue against its music and effects, up to the stream's `g_dialog_max` | 0 |
 | `associated_gain_db` | g_assoc (clause 6.2.16.2), 0 or less: a presentation's associated audio | 0 |
 
 `DecoderConfig` holds the rest: `output`, `presentation` (below), `concealment`, `level` (the
-`md_compat` level the decoder claims, 3 by default; presentations above it are not chosen), and
-`syntax`, a trace of every syntax element read. `syntax` is an `ac4::SyntaxTrace`, a
+`md_compat` level the decoder claims, 3 by default; presentations above it are not chosen),
+`decoding` (full or core decoding, Part 2 clause 4.7, full by default), and `syntax`, a trace of
+every syntax element read. `syntax` is an `ac4::SyntaxTrace`, a
 `std::function` the configuration owns, and the decoder keeps a copy of its own, so a lambda
 written in place, in a class's constructor for instance, stays valid; what it captures by
 reference has to outlive the decoder. The records are described under
@@ -159,6 +162,41 @@ reading taken.
 
 `ac3cli probe json=1` writes the same reports for a stream: see
 [Commands](../forge/cli/commands.md#ac-4).
+
+## Objects
+
+A presentation with object audio (Part 2 clause 4.8.3) decodes to objects, which
+`DecodedFrame::objects` hands over for the application to render: each object's PCM, as long as the
+frame, and the properties its object audio metadata sets, which Part 2 Annex F lists as what a
+decoder gives an object renderer.
+
+- `DecodedObject`: a dynamic object or a bed object (`kind`), the LFE (`lfe`), a bed object's
+  loudspeaker (`speaker`), the samples, the properties in force at the frame's first sample, and
+  the updates within the frame, in order.
+- `ObjectProperties`: whether the object is active, its gain in dB (−infinity for silence) and
+  priority, its position (X from the left wall to the right, 0 to 1; Y from the front wall to the
+  back, 0 to 1; Z from the floor through the screen's height to the ceiling, −1 to 1), its zone
+  constraint, elevation and snap, its width, screen factor and depth exponent, distance and
+  divergence, and the trim and headphone data of `add_per_object_md()`.
+- `ObjectUpdate`: the sample of the frame at which an update takes effect, counted with the
+  decoder's delay as the samples are (clause 5.9.2), and its ramp, in samples, for the renderer to
+  move over.
+- `DecodedFrame::object_common`: the group's common data (clause 6.3.9.2), trim among it, as the
+  stream codes it.
+
+An A-JOC substream decodes in full decoding to its upmix's objects, reconstructed from the downmix
+(clause 5.7), and in core decoding to the downmix's own signals, or a static 5.X downmix's bed, with
+the downmix's metadata. Dialogue enhancement raises the dialogue objects in both, and a direct-coded
+dialogue substream's objects, up to the stream's cap. The decoder renders only an intermediate
+spatial format, into `channels`: 7.X.4 as coded and the `downmix` layout otherwise. A presentation
+of objects alone has no channels besides; `decode_by_block()` hands over channels only, so a player
+of objects takes them from `decode()`.
+
+`ac3cli decode` renders a presentation with objects to speakers through the layout renderer Hearth
+plays E-AC-3's objects with (`ac3::render::LayoutRenderer`, by way of
+`apps/common/ac4_object_render.hpp`): each object panned from its position at its gain, moving to
+each update over its ramp, to the layout `speakers=`, `channels=` or `downmix=` names, 7.1.4
+without them. Width, divergence, zones and the screen factor are not rendered.
 
 ## Encoding a stream
 

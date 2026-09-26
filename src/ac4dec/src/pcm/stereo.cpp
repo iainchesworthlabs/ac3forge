@@ -15,15 +15,21 @@ constexpr std::array<double, 4> kMidSide = {1.0, 1.0, 1.0, -1.0};
 
 // Pseudocode 59's inverse quantisation of alpha_q, with the float the text's
 // 0.1f makes of it.
+[[nodiscard]] double sap_gain(int alpha_q) noexcept {
+    return static_cast<double>(static_cast<float>(alpha_q) * 0.1f);
+}
+
 [[nodiscard]] std::array<double, 4> prediction(int alpha_q) noexcept {
-    const auto sap_gain = static_cast<double>(static_cast<float>(alpha_q) * 0.1f);
-    return {1.0 + sap_gain, 1.0, 1.0 - sap_gain, -1.0};
+    const double gain = sap_gain(alpha_q);
+    return {1.0 + gain, 1.0, 1.0 - gain, -1.0};
 }
 
 }  // namespace
 
-StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const ChparamInfo& chparam) {
+StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& info,
+                                   const ChparamInfo& chparam, StereoUse use) {
     StereoParameters out;
+    const bool pair = use == StereoUse::kPair;
     const AsfPsyInfo& psy = info.psy;
     // alpha_q of a band sap_data() sent no coefficient for is never read by a
     // well-formed stream; it is 0 here rather than whatever it last held.
@@ -40,10 +46,10 @@ StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& in
                     abcd = kIdentity;
                     break;
                 case 1:
-                    abcd = chparam.ms_used[gi][si] ? kMidSide : kIdentity;
+                    abcd = pair && chparam.ms_used[gi][si] ? kMidSide : kIdentity;
                     break;
                 case 2:
-                    abcd = kMidSide;
+                    abcd = pair ? kMidSide : kIdentity;
                     break;
                 default: {  // sap_mode 3
                     if (!chparam.sap_coeff_used[gi][si]) {
@@ -64,7 +70,8 @@ StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& in
                             value = alpha_q[gi][si - 2] + delta;
                         }
                     }
-                    abcd = prediction(value);
+                    abcd = pair ? prediction(value)
+                                : std::array<double, 4>{1.0, 0.0, sap_gain(value), 1.0};
                     break;
                 }
             }

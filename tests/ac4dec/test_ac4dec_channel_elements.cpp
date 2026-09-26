@@ -55,6 +55,7 @@ using ac4dec_test::BitWriter;
 using ac4dec_test::Recorder;
 namespace ch_mode = ac4::detail::ch_mode;
 namespace codec_mode = ac4::detail::codec_mode;
+namespace immersive_mode = ac4::detail::immersive_mode;
 
 // The shortest codeword of a codebook, and its index.
 void put_shortest(BitWriter& w, const Codebook& codebook) {
@@ -571,15 +572,27 @@ TEST_CASE("channel elements refuse the speech frontend and the modes not decoded
         REQUIRE_FALSE(result.has_value());
         CHECK(result.error().error == DecodeError::kUnsupported);
     }
-    SECTION("immersive, 22.2 and reserved channel modes") {
+    SECTION("9.X.4, 22.2 and reserved channel modes") {
         BitWriter w;
         w.put(0, 32);
-        for (const int mode : {ch_mode::k7_0_4, ch_mode::k7_1_4, ch_mode::k9_0_4, ch_mode::k9_1_4, ch_mode::k22_2}) {
+        for (const int mode : {ch_mode::k9_0_4, ch_mode::k9_1_4, ch_mode::k22_2}) {
             ChannelElementState state;
             ChannelElement out;
             const auto result = read_element(w, context(mode, true), state, out);
             REQUIRE_FALSE(result.has_value());
             CHECK(result.error().error == DecodeError::kUnsupported);
+            CHECK(result.error().reason.find(mode == ch_mode::k22_2 ? "22_2" : "9.X.4") != std::string_view::npos);
+        }
+        // The 7.X.4 modes read their immersive element, which 32 zero bits
+        // cannot hold: SCPL with its LFE, grouping 0 and the first sf_info()s.
+        for (const int mode : {ch_mode::k7_0_4, ch_mode::k7_1_4}) {
+            ChannelElementState state;
+            ChannelElement out;
+            const auto result = read_element(w, context(mode, true), state, out);
+            REQUIRE_FALSE(result.has_value());
+            CHECK(result.error().error == DecodeError::kTruncated);
+            CHECK(out.kind == ElementKind::kImmersive);
+            CHECK(out.codec_mode == immersive_mode::kScpl);
         }
         ChannelElementState state;
         ChannelElement out;

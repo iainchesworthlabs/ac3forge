@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <cstdint>
 #include <span>
 #include <vector>
 
@@ -28,9 +29,19 @@ struct StereoParameters {
     std::array<std::array<std::array<double, 4>, kMaxSfb>, kMaxWindows> abcd{};
 };
 
-// Pseudocode 59 for one chparam_info() under the sf_info() it was read with.
+// What a chparam_info() parameterises: a 2 x 2 step (Pseudocode 59), or one of
+// the prediction gains a'_j of ETSI TS 103 190-2 V1.3.1 clause 5.2.3.2 step 5,
+// which Table 20 applies as O1 = a'_j I0 + I1, the step (1, 0, a'_j, 1). a'_j is
+// the band's sap_gain where the chparam_info() is full SAP (sap_mode 3) and
+// sends the band's coefficient, and 0 in every other band and mode
+// (src/ac4dec/ERRATA.md, "Table 20's prediction gains").
+enum class StereoUse : std::uint8_t { kPair, kPrediction };
+
+// Pseudocode 59 for one chparam_info() under the sf_info() it was read with,
+// as `use` takes it.
 [[nodiscard]] StereoParameters stereo_parameters(const SubstreamContext& ctx, const SfInfo& info,
-                                                 const ChparamInfo& chparam);
+                                                 const ChparamInfo& chparam,
+                                                 StereoUse use = StereoUse::kPair);
 
 // The matrix, band by band, on two tracks' lines in bitstream order (see
 // pcm/asf_reconstruct.hpp); `layout` is either track's SfData, whose band

@@ -1554,6 +1554,28 @@ gates.
 - 7.1.4 with every channel present, which DEE cannot write: the same element with the back channels
   present, tested on constructed streams and then on E8's.
 - 22.2 and 9.X.4 are refused.
+- D9 found the element's text at odds with itself in three places, each read by the rest of the
+  text: Table 19's track numbers are names, not the order the syntax reads the elements in; the
+  EXAMPLE after it assigns the first pair of grouping 1 against the table; step 4's NOTE 2 names F'
+  where it means H'. Table 20's prediction gains, which the text does not say how to extract, are
+  read as Pseudocode 59's `sap_gain`. The core's top pair is Tsl and Tsr, which Tables 45 and 46 index,
+  and Table 59 prints a .2 source's pair as carried "in Tbr, Tbl", read left to left. Tables 38 to
+  43 have rows no channel mode names, so the renderer's input configuration is the channel mode
+  narrowed by the presence flags; custom downmix data hold from the frame that sends them until
+  another does, since DEE sends them in I-frames alone; a render takes its output's loudness
+  correction only where it downmixes, and two channels the Lo/Ro or Lt/Rt correction alone.
+- DEE writes the element in three codec modes, by rate alone: ASPX_ACPL_2 from 192 to 448 kbps,
+  ASPX_SCPL at 512 and SCPL at 768, always with the back channels silent
+  (`b_4_back_channels_present` 0), so its 5.1.4 comes out as 5.1.4. It writes neither ASPX_ACPL_1
+  nor ASPX_AJCC, and no 7.1.4 with backs, so those, every `core_5ch_grouping` and `2ch_mode`, and
+  step 4's and Table 20's parameters are read from streams the encoder's writer builds, five of
+  them committed with their digests. In ASPX_ACPL_2 DEE codes each top pair's sum and A-CPL makes
+  the pair, so a top tone comes out across its pair, the sum at its level. librempeg does not decode
+  the element: its L, R and C come out 6 to 9 dB down, its surrounds 12 to 15 dB down, all four top
+  tones in its Lb and its top channels silent. The Dolby AC-4 Online Delivery Kit 1.5's two 5.1.4
+  streams (ASPX_ACPL_2 at 192 kbps, 25 and 29.97 fps, local only) decode in full and core decoding
+  with `ac3cli`: every frame (800 and 960) with no error, ten channels as coded and eight in core
+  decoding, 1,920 samples a frame and 1,601 or 1,602.
 
 **Exit:**
 
@@ -1577,6 +1599,29 @@ gates.
 - Direct-coded object substreams (`ac4_substream_info_obj`), which use the Part 1 elements.
 - Objects and their Annex F properties on the API; the OAMD substream's content, with the second
   `oamd_common_data()` it can carry.
+- Built in D10: both transcriptions read the object syntax, and the encoder's writers gained it for
+  the constructed streams; A-JOC's reconstruction lives in `src/ac4core`, templated on `Real`, and
+  the decoder hands each object over with its Annex F properties and the sample of each update. The
+  intermediate spatial format is the one kind of object the decoder renders itself, by the
+  attachment's matrices; `ac3cli decode` renders the others through the layout renderer Hearth plays
+  E-AC-3's objects with (`apps/common/ac4_object_render.hpp`).
+- Chromium's `ac4-ajoc.ac4` is the only encoded A-JOC stream here: ten downmix signals in a SIMPLE
+  `var_channel_element()`, seventeen objects, no LFE and no decorrelators, one metadata block a
+  frame, and every object at X 0.5, Y 0 and Z −1, the front of the room on the floor, in all 64
+  frames. It decodes in both modes with the invariants holding and its objects as its table of
+  contents lists them; rendered, it all comes from the centre speaker. The rest is read from the
+  encoder's writer: eight committed constructed streams, whose objects each carry a known sum of
+  tones, and the differential check's mutations of them.
+- The text needed readings (`src/ac4dec/ERRATA.md`): A-JOC's ramp advances once a slot and stops
+  on its target (Pseudocode 17 as printed would pass it by a step); the decorrelation input matrix
+  is taken subband by subband for objects of different band counts; Pseudocode 22's `de_gain > 1`
+  test belongs to full decoding, since core decoding's `de_gain` is 10^(G/20) − 1; H'_M is kept by
+  object; and Annex A.2.1's tables name the 5.x, 7.x and 9.x matrices `_to_50`, `_to_70` and
+  `_to_90`, which the attachment calls `_to_5`, `_to_7` and `_to_9`, and give no column order,
+  which the values settle as Table A.27's.
+- DEE writes no A-JOC from this project's masters (G1), so the DEE criterion below does not apply;
+  librempeg refuses object coding, so there is no second decode to compare with. Whether the
+  objects move as their metadata says is the user's to hear.
 
 **Exit:**
 

@@ -18,15 +18,19 @@
 #include "ac4/ac4.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
+#include "sanitized.hpp"
 
 namespace {
 
+using ac3::test::kSanitized;
+
 constexpr double kRate = 48000.0;
 
-// Four seconds whose frames need very different sizes: near silence, a
-// tone, noise, and bursts after silence.
-std::vector<std::vector<float>> programme(int channels) {
-    const auto second = static_cast<std::size_t>(kRate);
+// Four parts whose frames need very different sizes: near silence, a tone,
+// noise, and bursts after silence, each `second` long; a second, or a
+// quarter of one under the sanitizers.
+std::vector<std::vector<float>> programme(
+    int channels, std::size_t second = static_cast<std::size_t>(kSanitized ? kRate / 4.0 : kRate)) {
     std::vector<std::vector<float>> out(static_cast<std::size_t>(channels),
                                         std::vector<float>(4 * second));
     std::uint32_t seed = 2026;
@@ -247,7 +251,9 @@ TEST_CASE("a variable rate stream sends no wait and keeps its rate over seconds"
     config.channels = 2;
     config.bitrate_kbps = 96;
     config.rate_mode = ac4::RateMode::kVariable;
-    const std::vector<ac4::EncodedFrame> frames = encode(config, programme(2));
+    // Four seconds, whatever the build: the rate holds over seconds.
+    const std::vector<ac4::EncodedFrame> frames =
+        encode(config, programme(2, static_cast<std::size_t>(kRate)));
     double total = 0.0;
     std::size_t longest = 0;
     std::size_t shortest = std::numeric_limits<std::size_t>::max();

@@ -1,12 +1,14 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <vector>
 
 #include "bit_reader.hpp"
 #include "syntax/acpl.hpp"
+#include "syntax/ajcc.hpp"
 #include "syntax/asf.hpp"
 #include "syntax/aspx.hpp"
 #include "syntax/context.hpp"
@@ -14,8 +16,15 @@
 // audio_data_chan() (ETSI TS 103 190-2 V1.3.1 clause 6.2.3.1) for the Part 1
 // channel elements: single_channel_element, channel_pair_element,
 // 3_0_channel_element, 5_X_channel_element and 7_X_channel_element (ETSI TS
-// 103 190-1 V1.4.1 clauses 4.2.5 and 4.2.6), and companding_control() (4.2.11).
-// The immersive and 22.2 elements are refused.
+// 103 190-1 V1.4.1 clauses 4.2.5 and 4.2.6), and companding_control() (4.2.11);
+// and Part 2's immersive_channel_element (6.2.4.1, with immers_cfg() and
+// ajcc_data()) for the 7.X.4 channel modes, which pass it b_5fronts 0. The
+// 9.X.4 modes, which pass b_5fronts 1, and the 22.2 element are refused.
+//
+// For object audio (Part 2 clause 6.2.3): audio_data_objs() (6.2.3.2), an
+// LFE's mono_data(1) and the Part 1 element objs_to_channel_mode() (6.2.3.3)
+// names, and var_channel_element() (6.2.4.4), the downmix audio_data_ajoc()
+// codes.
 
 namespace ac4::detail {
 
@@ -28,6 +37,22 @@ inline constexpr int kAspxAcpl2 = 3;
 inline constexpr int kAspxAcpl3 = 4;
 }  // namespace codec_mode
 
+// immersive_codec_mode values, Part 2 Table 73: an immersive element's
+// ChannelElement::codec_mode holds one of these.
+namespace immersive_mode {
+inline constexpr int kScpl = 0;
+inline constexpr int kAspxScpl = 1;
+inline constexpr int kAspxAcpl1 = 2;
+inline constexpr int kAspxAcpl2 = 3;
+inline constexpr int kAspxAjcc = 4;
+}  // namespace immersive_mode
+
+// The most aspx_data elements one channel element carries: var_channel_element()'s
+// nine, eight aspx_data_2ch() and an aspx_data_1ch() for its most signals,
+// sixteen (Part 2 clause 6.2.4.4); the immersive element has six in ASPX_SCPL
+// (Part 2 Table 8).
+inline constexpr std::size_t kMaxAspxElements = 9;
+
 // 4.2.11 companding_control(num_chan).
 struct CompandingControl {
     int num_chan = 0;
@@ -36,8 +61,9 @@ struct CompandingControl {
     bool b_compand_avg = false;
 };
 
-// Which kind of channel element a substream's channel_mode selects.
-enum class ElementKind : std::uint8_t { kSingle, kPair, k3_0, k5X, k7X };
+// Which kind of channel element a substream's channel_mode selects; kVar is
+// the var_channel_element() of an A-JOC substream's downmix.
+enum class ElementKind : std::uint8_t { kSingle, kPair, k3_0, k5X, k7X, kImmersive, kVar };
 
 // One sf_data() and the sf_info() that governs it, in syntax order.
 struct Track {
@@ -54,10 +80,13 @@ struct Track {
 // Everything an audio substream's channel element carried in one frame.
 struct ChannelElement {
     ElementKind kind = ElementKind::kPair;
+    // The element's codec mode: a codec_mode value, or for the immersive
+    // element an immersive_mode one.
     int codec_mode = codec_mode::kSimple;
     std::optional<int> coding_config;         // 3_0_coding_config or coding_config, when read
+    std::optional<int> core_5ch_grouping;     // the immersive element's (Part 2 Table 75)
     std::optional<bool> two_ch_mode;          // 2ch_mode
-    std::optional<bool> b_use_sap_add_ch;     // 7_X only
+    std::optional<bool> b_use_sap_add_ch;     // 7_X, and the immersive element's 7CH_STATIC modes
     std::vector<bool> b_enable_mdct_stereo_proc;  // one per stereo_data / two_channel_data / ACPL_1 pair, in order
     std::vector<int> chel_matsel;             // one per three_channel_info / five_channel_info, in order
     std::optional<int> max_sfb_master;
@@ -74,6 +103,18 @@ struct ChannelElement {
     std::vector<AspxData2ch> aspx_2ch;
     std::vector<AcplData1ch> acpl_1ch;
     std::optional<AcplData2ch> acpl_2ch;
+    std::optional<AjccData> ajcc;             // the immersive element's ASPX_AJCC
+
+    // var_channel_element(b_iframe, n_dmx_signals, b_has_lfe): the signals it
+    // codes and whether an LFE's mono_data(1) comes first; coding_config holds
+    // var_coding_config where the element reads it.
+    int var_signals = 0;
+    bool var_lfe = false;
+    // audio_data_objs(n_objects, b_lfe, b_iframe): an LFE's mono_data(1), read
+    // before the element, is the first track; objs_channel_mode is the channel
+    // mode objs_to_channel_mode() gives n_objects, unset for none.
+    bool objs_lfe = false;
+    std::optional<int> objs_channel_mode;
 };
 
 // The I-frame configuration a channel element's later frames depend on, kept
@@ -87,8 +128,8 @@ struct ChannelElementState {
     std::optional<AcplConfig1ch> acpl_config_1ch;
     std::optional<AcplConfig2ch> acpl_config_2ch;
     // One per aspx_data_1ch()/aspx_data_2ch() position in the element, in
-    // syntax order: 7_X in ASPX mode has the most, four.
-    std::array<AspxElementState, 4> aspx{};
+    // syntax order: the immersive element in ASPX_SCPL has the most, six.
+    std::array<AspxElementState, kMaxAspxElements> aspx{};
 };
 
 // `hsf_reader` is the owning substream's HSF extension reader, positioned at
@@ -101,5 +142,25 @@ struct ChannelElementState {
 [[nodiscard]] ParseResult parse_audio_data_chan(BitReader& r, const SubstreamContext& ctx,
                                                 ChannelElementState& state, ChannelElement& out,
                                                 BitReader* hsf_reader = nullptr);
+
+// Part 2 clause 6.2.3.3 objs_to_channel_mode(): mono, stereo, 3.0 or 5.0 for 1,
+// 2, 3 or 5 objects; nothing for any other count, for which the switch has no
+// case.
+[[nodiscard]] std::optional<int> objs_to_channel_mode(int n_objects) noexcept;
+
+// Part 2 clause 6.2.3.2 audio_data_objs(n_objects, b_lfe, b_iframe), with
+// `n_objects` the substream's fullband objects (src/ac4dec/ERRATA.md,
+// "n_objects_code and the LFE"). A count objs_to_channel_mode() has no mode
+// for fails as invalid.
+[[nodiscard]] ParseResult parse_audio_data_objs(BitReader& r, const SubstreamContext& ctx,
+                                                int n_objects, bool b_lfe,
+                                                ChannelElementState& state, ChannelElement& out);
+
+// Part 2 clause 6.2.4.4 var_channel_element(b_iframe, n_dmx_signals,
+// b_has_lfe).
+[[nodiscard]] ParseResult parse_var_channel_element(BitReader& r, const SubstreamContext& ctx,
+                                                    int n_dmx_signals, bool b_has_lfe,
+                                                    ChannelElementState& state,
+                                                    ChannelElement& out);
 
 }  // namespace ac4::detail

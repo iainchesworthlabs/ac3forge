@@ -57,9 +57,8 @@ least every I-frame fails its substream size checks; walked as stereo, every fra
 exactly (src/ac4dec/ERRATA.md, "presentation_version 2 is read as immersive stereo").
 
 The three 5.1.4 legs (phase G1) are one tone per channel in each immersive codec mode DEE
-writes, for the phases from D9 on. Both transcriptions refuse immersive_channel_element() until
-D9 reads it, so these legs have no digest yet ("digest": false in the manifest), and their walk
-may report that refusal and nothing else.
+writes, for the phases from D9 on. Both transcriptions read immersive_channel_element() since
+phase D9, and these legs' digests are written with the others'.
 
 Sources, rebuilt on every run from committed material, so any stream can be scored again. Cuts
 of the committed programme fixtures (30 s each), SECONDS long (5 s for the committed set, 10 s
@@ -89,7 +88,7 @@ single 6-channel WAV the same way as a wav_list of its channels (music_51 encode
 gives byte-identical streams), unlike dee_ddp_encoder, which gen_external_baseline.py records
 losing Ls from a single 6-channel WAV.
 
-Manifest. baseline_version 4 (see BASELINE_VERSION). One entry per leg:
+Manifest. baseline_version 5 (see BASELINE_VERSION). One entry per leg:
 
   encoder, source, output_channel_layout, bitrate_kbps, options
       What was encoded and how. options are the DEE arguments beyond input, output, layout and
@@ -113,11 +112,10 @@ Manifest. baseline_version 4 (see BASELINE_VERSION). One entry per leg:
       LEGS states what the layout, rate and options must give; main() stops if a walk
       disagrees, before anything in the tree changes. de_parameters is not stated: it follows
       the dialogue DEE detects in the content.
-  immersive_codec_mode, digest (the 5.1.4 legs)
-      immersive_codec_mode is TS 103 190-2 Table 73's immersive_codec_mode_code, read at the
-      bit where ac4_syntax.py stops at immersive_channel_element() (immersive_probe()), the one
-      field of that element the manifest reports until phase D9 transcribes it. digest is
-      false while both transcriptions refuse the element.
+  immersive_codec_mode, input_format (the 5.1.4 legs)
+      immersive_codec_mode is TS 103 190-2 Table 73's immersive_codec_mode_code, as the trace
+      records it: one bit for ASPX_AJCC, three for the others. input_format is the cbi_wav
+      dee_ac4_encoder took the ten channels as.
 
 The gold set (--gold-set DIR). DIR/sources holds the sources; DIR/streams/<leg> holds each
 stream (dee.ac4, or dee.ec3 and dee.ac3 for G1's E-AC-3 and AC-3 legs), DEE's log and output
@@ -129,8 +127,9 @@ and each walk's diagnostics. G0's legs (gold_legs(), the manifest's "legs") are 
 and rate dee_ac4_encoder writes, from 2.0 at 48 kbps to 5.1.4 at 768, for music, speech or
 film, and tones; dee_ac4ims_encoder at every rate and frame rate; and metadata legs: each DRC
 profile, the per-device profiles, each preferred downmix and some mix levels, I-frame
-intervals, loudness presets, the height downmix, and the IMS encoder's DRC settings. 5.1.4's
-audio is refused by both transcriptions until phase D9, so its codec mode is recorded as null.
+intervals, loudness presets, the height downmix, and the IMS encoder's DRC settings. Both
+transcriptions refused 5.1.4's audio until phase D9, so the gold manifests G0 and G1 wrote
+record its codec mode as null, and G1's its immersive_codec_mode beside it.
 
 Objects (--adm-master WAV, repeatable, with --gold-set). dee_ac4ajoc_encoder accepts only an
 Atmos master. Each master given is tried once with dee_ac4ajoc_encoder at levels 3 and 4 and
@@ -213,7 +212,6 @@ this function states.
 """
 
 import argparse
-import contextlib
 import hashlib
 import json
 import os
@@ -267,7 +265,10 @@ DDPJOC = "dee_ddpjoc_encoder"
 # 4: phase G1. Three committed 5.1.4 legs, one tone per channel in each immersive codec mode,
 #    without digests until D9; the gold set's g1_legs (the module docstring's "Phase G1"),
 #    with G0's legs, sources and files left as they were.
-BASELINE_VERSION = 4
+# 5: phase D9. The 5.1.4 legs' digests, now that both transcriptions read
+#    immersive_channel_element(), and their immersive_codec_mode from its trace; the streams
+#    are G1's bytes.
+BASELINE_VERSION = 5
 
 RATE = 48000
 COMMITTED_SECONDS = 5.0
@@ -377,10 +378,9 @@ LEGS = [
     {"name": "ac4-ims-music-128-25", "encoder": IMS, "source": "music_51", "layout": "IMS",
      "kbps": 128, "options": [*MEASURE_ONLY, "--target-fps", "25"],
      "expect": {"frame_rate_index": 2, "codec_mode": "ASPX", "advanced_de_data": True}},
-    # Phase G1: 5.1.4 in each immersive codec mode DEE writes. "digest": False, since both
-    # transcriptions refuse immersive_channel_element() until phase D9 (the module docstring).
+    # Phase G1: 5.1.4 in each immersive codec mode DEE writes, digested since phase D9.
     *({"name": f"ac4-514-tones-{kbps}", "encoder": AC4, "source": "tones_514", "layout": "5.1.4",
-       "kbps": kbps, "options": MEASURE_ONLY, "input_format": "cbi_wav", "digest": False,
+       "kbps": kbps, "options": MEASURE_ONLY, "input_format": "cbi_wav",
        "expect": {"frame_rate_index": 13, "codec_mode": None, "immersive_codec_mode": mode,
                   "custom_downmix_data": True}}
       for kbps, mode in ((256, "ASPX_ACPL_2"), (512, "ASPX_SCPL"), (768, "SCPL"))),
@@ -1383,26 +1383,12 @@ def describe(name, data):
     return frame_count, frame_rate_indices.pop()
 
 
-@contextlib.contextmanager
-def immersive_probe(found):
-    """Adds to `found` each immersive_channel_element()'s immersive_codec_mode (TS 103 190-2
-    6.3.5.1 and Table 73: one bit, then two more if it is 0), peeked at the bit where
-    ac4_syntax.py refuses the element, which is the element's first (Part 2 6.2.3.1 calls it
-    at once). Nothing is recorded, so the trace and its digests are as they were; phase D9
-    transcribes the element in both languages."""
-    original = ac4_syntax.audio_data_chan
-
-    def probe(r, ctx, ch_mode):
-        if 11 <= ch_mode <= 14:
-            bits = r.peek(3)
-            found.add("ASPX_AJCC" if bits >> 2 else IMMERSIVE_CODEC_MODES[bits & 3])
-        return original(r, ctx, ch_mode)
-
-    ac4_syntax.audio_data_chan = probe
-    try:
-        yield
-    finally:
-        ac4_syntax.audio_data_chan = original
+def immersive_codec_mode(width, value):
+    """TS 103 190-2 Table 73's name for an immersive_codec_mode_code record: one bit is
+    ASPX_AJCC, and three bits, a 0 and two more, the others."""
+    if width == 1:
+        return "ASPX_AJCC"
+    return IMMERSIVE_CODEC_MODES[value & 3]
 
 
 def walk_all(data, label=None):
@@ -1414,23 +1400,24 @@ def walk_all(data, label=None):
     immersive = set()
     lines = [f"# ac4-syntax-digest/1 {label}", ac4_syntax.DIGEST_COLUMNS] if label else None
     values = dict.fromkeys(WALKED_KEYS[1:], False)
-    with immersive_probe(immersive):
-        for frame, substream, kind, records in ac4_syntax.walk_stream(data, True, diagnostics):
-            if lines is not None:
-                lines.append(ac4_syntax.digest_line(frame, substream, kind, records))
-            for _offset, _width, value, element in records:
-                if element in CODEC_MODES:
-                    names = CODEC_MODES[element]
-                    modes.add(names[value] if value < len(names) else f"{element} {value}")
-                elif element == "drc_compression_curve_flag" and value:
-                    values["explicit_drc_curves"] = True
-                elif (element in ("b_stereo_dmx_coeff", "b_cdmx_data_present") and value
-                      and kind == "presentation"):
-                    values["custom_downmix_data"] = True
-                elif element == "de_par_code":
-                    values["de_parameters"] = True
-                elif element == "b_advanced_de_data_present" and value:
-                    values["advanced_de_data"] = True
+    for frame, substream, kind, records in ac4_syntax.walk_stream(data, True, diagnostics):
+        if lines is not None:
+            lines.append(ac4_syntax.digest_line(frame, substream, kind, records))
+        for _offset, width, value, element in records:
+            if element in CODEC_MODES:
+                names = CODEC_MODES[element]
+                modes.add(names[value] if value < len(names) else f"{element} {value}")
+            elif element == "immersive_codec_mode_code":
+                immersive.add(immersive_codec_mode(width, value))
+            elif element == "drc_compression_curve_flag" and value:
+                values["explicit_drc_curves"] = True
+            elif (element in ("b_stereo_dmx_coeff", "b_cdmx_data_present") and value
+                  and kind == "presentation"):
+                values["custom_downmix_data"] = True
+            elif element == "de_par_code":
+                values["de_parameters"] = True
+            elif element == "b_advanced_de_data_present" and value:
+                values["advanced_de_data"] = True
     if len(modes) > 1:
         values["codec_mode"] = sorted(modes)
     else:
@@ -1495,16 +1482,9 @@ def committed_run(args, version):
         data = encode(leg, wavs[leg["source"]], scratch / leg["name"])
         frame_count, frame_rate_index = describe(leg["name"], data)
         walked, diagnostics, _, immersive = walk_all(data)
-        if leg.get("digest", True):
-            unexpected = diagnostics
-        else:
-            # A leg without a digest may be refused where both transcriptions refuse the
-            # immersive element, and nowhere else.
-            unexpected = [d for d in diagnostics
-                          if not d.endswith("refused: immersive_channel_element()")]
-        if unexpected:
+        if diagnostics:
             raise SystemExit(f"{leg['name']}: ac4_syntax.py did not read every substream to "
-                             f"its end: {unexpected[:5]}")
+                             f"its end: {diagnostics[:5]}")
         check_expected(leg, frame_rate_index, walked, immersive)
         dest = OUT / leg["name"] / "dee.ac4"
         if leg.get("pinned") and dest.is_file() and dest.read_bytes() != data:
@@ -1525,16 +1505,15 @@ def committed_run(args, version):
             print(f"wrote {dest} ({len(data)} bytes)")
         entry = manifest_entry(leg, wavs[leg["source"]], descriptions[leg["source"]], data,
                                frame_count, frame_rate_index, walked, leg["source"] in built)
-        if leg.get("digest", True):
-            label = f"{leg['name']}/dee.ac4"
-            digest = DIGESTS / f"{leg['name']}.tsv"
-            digest.write_text("\n".join(ac4_syntax.digest_lines(data, label)) + "\n",
-                              encoding="utf-8", newline="\n")
-            digests += 1
-        else:
+        if "input_format" in leg:
             entry["input_format"] = leg["input_format"]
+        if immersive:
             entry["immersive_codec_mode"] = immersive[0] if len(immersive) == 1 else immersive
-            entry["digest"] = False
+        label = f"{leg['name']}/dee.ac4"
+        digest = DIGESTS / f"{leg['name']}.tsv"
+        digest.write_text("\n".join(ac4_syntax.digest_lines(data, label)) + "\n",
+                          encoding="utf-8", newline="\n")
+        digests += 1
         manifest["legs"][leg["name"]] = entry
 
     manifest_path = OUT / "ac4-manifest.json"
