@@ -20,10 +20,11 @@
 // back by the decoder (planning/ac4.md, the encoder's ladder, items 1 and 8).
 //
 // The first bytes choose the configuration - the channel layout, mono to
-// 7.1, sample rate, bit rate, I-frame interval, dialnorm, codec mode, the A-CPL
-// ones among them, the experimental tools, the size of the pieces the input
-// arrives in, and phase E5's frame rate, rate mode, named I-frames, fragment
-// start, loudness values, DRC modes and gains, downmix values and dialogue
+// 7.1 and phase E8's immersive layouts, sample rate, bit rate, I-frame
+// interval, dialnorm, codec mode, the A-CPL and immersive ones among them, the
+// experimental tools, the size of the pieces the input arrives in, and phase
+// E5's frame rate, rate mode, named I-frames, fragment start, loudness values,
+// DRC modes and gains, downmix values (with E8's height downmix) and dialogue
 // enhancement, from marked channels or a stem that is the input at half
 // level, and phase E6's substreams and presentations - and the rest are the
 // samples, as 32-bit floats, one channel after the
@@ -133,9 +134,11 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     ac4::EncoderConfig config;
     // The first byte's low bit chooses mono or stereo, as it always has; the
     // two bits over it can widen that to 5.0 or 5.1, or to 7.0 or 7.1 in the
-    // 7.X layout the next two bits name (or in none, which is refused), the
-    // bit over those asks for the experimental coding configurations, and the
-    // one over that for the experimental A-CPL modes.
+    // 7.X layout the next two bits name (or in none, which is refused), or to
+    // the immersive layouts, 5.0.4 and 5.1.4, or with either of those bits
+    // 7.0.4 and 7.1.4 with the back pair; the bit over those asks for the
+    // experimental coding configurations (which the immersive layouts refuse),
+    // and the one over that for the experimental A-CPL modes.
     constexpr std::array<ac4::AdditionalPair, 4> kPairs = {ac4::AdditionalPair::kNone, ac4::AdditionalPair::kBack,
                                                            ac4::AdditionalPair::kWide, ac4::AdditionalPair::kTopFront};
     const std::uint8_t layout = take.byte();
@@ -147,6 +150,13 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         case 2:
             config.channels = lfe ? 8 : 7;
             config.experimental.seven_x = kPairs[static_cast<std::size_t>((layout >> 3) & 3)];
+            break;
+        case 3:
+            config.channels = lfe ? 10 : 9;
+            if (((layout >> 3) & 3) != 0) {
+                config.channels += 2;
+                config.experimental.back_pair = true;
+            }
             break;
         default:
             config.channels = lfe ? 2 : 1;
@@ -161,15 +171,21 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     config.bitrate_kbps = 4 + static_cast<int>(take.byte()) * 4;
     // The interval takes the low five bits of its byte and dialnorm seven of
     // its; the bits over choose the codec mode, the rate's, either forced or an
-    // A-CPL mode, and the experimental A-SPX tools.
+    // A-CPL mode (in the immersive layouts SCPL or ASPX_SCPL for the forced
+    // two, and ASPX_ACPL_3, which they refuse, beside ASPX_ACPL_1 and 2), and
+    // the experimental A-SPX tools.
     const std::uint8_t interval = take.byte();
     config.iframe_interval = 1 + (interval % 32);
     constexpr std::array<ac4::CodecMode, 3> kModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kSimple,
                                                       ac4::CodecMode::kAspx};
     constexpr std::array<ac4::CodecMode, 4> kAcplModes = {ac4::CodecMode::kAspxAcpl1, ac4::CodecMode::kAspxAcpl2,
                                                           ac4::CodecMode::kAspxAcpl3, ac4::CodecMode::kAspxAcpl2};
+    constexpr std::array<ac4::CodecMode, 3> kImmersiveModes = {ac4::CodecMode::kAuto, ac4::CodecMode::kScpl,
+                                                               ac4::CodecMode::kAspxScpl};
+    const bool immersive = config.channels > 8;
     const auto mode = static_cast<std::size_t>((interval >> 5) & 3);
-    config.codec_mode = mode < kModes.size() ? kModes[mode] : kAcplModes[static_cast<std::size_t>((rate >> 1) & 3)];
+    config.codec_mode = mode < kModes.size() ? (immersive ? kImmersiveModes[mode] : kModes[mode])
+                                             : kAcplModes[static_cast<std::size_t>((rate >> 1) & 3)];
     const std::uint8_t dialnorm = take.byte();
     config.dialnorm_db = -static_cast<double>(dialnorm % 128) / 4.0;
     config.experimental.aspx_balance = (dialnorm & 0x80) != 0;
@@ -244,8 +260,17 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
             downmix.ltrt_centre_db = kCentre[static_cast<std::size_t>(values >> 2) % kCentre.size()];
             downmix.ltrt_surround_db = kSurround[static_cast<std::size_t>(values >> 2) % kSurround.size()];
         }
-        if (config.channels == 6 || config.channels == 8) {
+        if (config.channels % 2 == 0) {
             downmix.lfe_db = 5.5 - static_cast<double>(values % 32);
+        }
+        // The height downmix, which a layout without the top channels
+        // refuses; its gains may be Table 129's or not, which is refused.
+        if ((values & 0x40) != 0) {
+            constexpr std::array<double, 9> kGains = {0.0, -1.5, -3.0, -4.5, -6.0,
+                                                      -9.0, -12.0, -std::numeric_limits<double>::infinity(), -2.0};
+            downmix.height = static_cast<ac4::HeightDownmix>(values % 3);
+            downmix.height_db = kGains[static_cast<std::size_t>(values >> 3) % kGains.size()];
+            downmix.back_db = kGains[static_cast<std::size_t>(values) % kGains.size()];
         }
         downmix.preferred = static_cast<ac4::PreferredDownmix>(values % 4);
         downmix.loro_correction_db2 = (static_cast<double>(values % 31) - 15.0) / 2.0;
