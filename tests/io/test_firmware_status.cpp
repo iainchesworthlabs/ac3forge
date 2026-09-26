@@ -20,7 +20,17 @@ TEST_CASE("a board with nothing to report has every key, the parts that do not a
     CHECK(body ==
           "{\"mode\":\"normal\",\"running\":null,\"other\":null,\"trial\":null,\"upload\":null,"
           "\"last_update\":null,\"coredump\":null,\"network\":\"none\",\"slot_bytes\":0,\"flash_bytes\":0,"
-          "\"partitions\":[],\"bootloader_version\":\"\"}\n");
+          "\"partitions\":[],\"bootloader_version\":\"\",\"reset_reason\":\"\",\"uptime_ms\":0}\n");
+}
+
+TEST_CASE("why the board last started, and how long ago, end the document", "[io][firmware_status]") {
+    FirmwareStatus status;
+    status.bootloader_version = "v6.1";
+    status.reset_reason = "sw";
+    status.uptime_ms = 12'345;
+    const std::string body = render_firmware_status(status);
+    CHECK(body.find("\"bootloader_version\":\"v6.1\",\"reset_reason\":\"sw\",\"uptime_ms\":12345}\n") !=
+          std::string::npos);
 }
 
 TEST_CASE("a core dump the last crash left is reported with where it came from", "[io][firmware_status]") {

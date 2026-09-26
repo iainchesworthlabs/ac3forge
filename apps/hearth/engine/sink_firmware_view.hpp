@@ -9,7 +9,8 @@
 // strings, formatted here rather than in QML for network_view.hpp's reason:
 // the page formats nothing itself, and these can be tested without Qt. The
 // words are ota.py's where it has some, so the tool, the board's own page and
-// this app say the same about one update.
+// this app say the same about one update. What the page does with a sink's
+// client at each poll is decided here too, for the same reason.
 
 namespace ac3::hearth {
 
@@ -73,5 +74,24 @@ struct FirmwareCandidate {
 };
 
 [[nodiscard]] FirmwareCandidate to_candidate(const FirmwareFile& file, const SinkFirmware::Snapshot& snapshot);
+
+// What the Network page does with one sink's firmware client at a poll
+// (NetworkController::poll_firmware()).
+struct FirmwareClientPlan {
+    // The client goes: the tab does not show its sink, or shows it at an
+    // address the sink has since left, and nothing is under way.
+    bool let_go = false;
+    // The sink's row stays whether or not mDNS lists it
+    // (NetworkSinks::keep_sink()): while anything is under way, and while the
+    // tab shows how this client's update ended, since a board that restarted
+    // can give its verdict before mDNS lists it again. Never for a client let
+    // go, so that no row stays kept with no client left to let it go.
+    bool keep_sink = false;
+};
+
+// `busy` and `snapshot` are the client's; `shown` is whether the Firmware tab
+// is open on its sink, and `address` where mDNS says the sink is now.
+[[nodiscard]] FirmwareClientPlan plan_firmware_client(bool busy, const SinkFirmware::Snapshot& snapshot, bool shown,
+                                                      std::string_view address);
 
 }  // namespace ac3::hearth

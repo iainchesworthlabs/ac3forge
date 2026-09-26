@@ -133,6 +133,7 @@ SHA_WAIT_SECONDS = 20.0
 # After an upload broke off part-way, how long to look for the board's reason.
 # The board gives up on a stalled upload after 30 s.
 REFUSAL_WAIT_SECONDS = 40.0
+PRE_FLIGHT_RETRY_SECONDS = 2.0
 # log --follow asks the board for what is new this often.
 LOG_POLL_SECONDS = 1.0
 
@@ -835,11 +836,28 @@ def upload(board: Board, image: Image) -> Sent:
         connection.close()
 
 
-def refusal_after_break(board: Board) -> str | None:
-    """After an upload broke off, the board's reason once it has given the upload up.
+# What a board says of an upload it gave up because the connection went, as
+# firmware.cpp words it: another try can go through.
+CONNECTION_LOST = ("the upload stopped after", "the upload ended before")
 
-    An upload that reached the board put it in flash mode, so a board in
-    normal mode never had this one, and its last update is an older one.
+
+@dataclass
+class Broken:
+    """What became of an upload that broke off: in the board's words when it has any."""
+
+    text: str
+    retry: bool  # whether sending the image again can go through
+    flash_mode: bool  # whether the board was left in flash mode
+
+
+def after_break(board: Board, started: float) -> Broken:
+    """After an upload that began at `started` (time.monotonic) broke off: what became of it.
+
+    The board is waited for until it answers with no upload running: it may be
+    reading out a timeout, or restarting. In flash mode it gave the upload up,
+    and says why. In normal mode it restarted since the upload began: it says
+    so as the last update, "interrupted" (a firmware that records that), or its
+    uptime is shorter than the upload has been going (one that does not).
     """
     deadline = time.monotonic() + REFUSAL_WAIT_SECONDS
     while True:
@@ -848,14 +866,72 @@ def refusal_after_break(board: Board) -> str | None:
         except BoardError:
             firmware = None
         if firmware is not None and not part(firmware, "upload"):
-            last = part(firmware, "last_update")
-            in_flash_mode = text_of(firmware, "mode") == "flash"
-            if in_flash_mode and text_of(last, "result") in ("refused", "failed"):
-                return text_of(last, "reason") or text_of(last, "result")
-            return None
+            break
         if time.monotonic() >= deadline:
-            return None
+            if firmware is None:
+                return Broken("the board has not answered since", retry=False, flash_mode=False)
+            return Broken(
+                "the board still reports the upload as running", retry=False, flash_mode=True
+            )
         time.sleep(POLL_SECONDS)
+    last = part(firmware, "last_update")
+    result = text_of(last, "result")
+    reason = text_of(last, "reason")
+    if text_of(firmware, "mode") == "flash":
+        if result in ("refused", "failed") and reason:
+            return Broken(
+                f"the board gave it up: {reason}",
+                retry=reason.startswith(CONNECTION_LOST),
+                flash_mode=True,
+            )
+        return Broken(
+            "the board is in flash mode and says nothing of it", retry=True, flash_mode=True
+        )
+    if result == "interrupted":
+        return Broken(f"the board restarted during it: {reason}", retry=True, flash_mode=False)
+    uptime_ms = number_of(firmware, "uptime_ms")
+    if 0 < uptime_ms < (time.monotonic() - started) * 1000:
+        cause = text_of(firmware, "reset_reason") or "not reported"
+        return Broken(
+            f"the board restarted during it (reset reason: {cause})", retry=True, flash_mode=False
+        )
+    return Broken(
+        "the board is in normal mode and says nothing of it: it never started it",
+        retry=True,
+        flash_mode=False,
+    )
+
+
+def leave_flash_mode(board: Board) -> None:
+    """PUT /firmware/mode "normal" for a board a failed push left in flash mode.
+
+    Left alone, the board would be silent - playing nothing, not advertised -
+    until its ten-minute idle timeout restarted it.
+    """
+    try:
+        status, text = board.request(
+            "PUT", "/firmware/mode", body=b"normal", headers={"Content-Type": "text/plain"}
+        )
+    except (OSError, http.client.HTTPException) as error:
+        say(
+            board,
+            f"it stays in flash mode, and could not be told to leave it ({error_text(error)})",
+        )
+        return
+    if status == 200:
+        say(board, "told it to leave flash mode: it restarts into the image it runs")
+    else:
+        say(board, f"it stays in flash mode: leaving it answered {status} {text}")
+
+
+def leave_flash_mode_if_waiting(board: Board) -> None:
+    """Leave flash mode on a board that refused this push's image and waits for another."""
+    try:
+        firmware = board.get_json("/firmware", timeout=POLL_TIMEOUT)
+    except BoardError:
+        return
+    if text_of(firmware, "mode") == "flash" and not part(firmware, "upload"):
+        leave_flash_mode(board)
 
 
 @dataclass
@@ -1017,10 +1093,20 @@ def written_text(answer: Any, reply: str, image: Image) -> str:
     return text + "; the board restarts into it, on trial"
 
 
+def get_json_patiently(board: Board, path: str) -> Any:
+    """GET `path`, asked up to three times: one slow name lookup is not a board that is gone."""
+    for _ in range(2):
+        try:
+            return board.get_json(path)
+        except BoardError:
+            time.sleep(PRE_FLIGHT_RETRY_SECONDS)
+    return board.get_json(path)
+
+
 def push_one(board: Board, image: Image, options: PushOptions) -> int:
     try:
-        hardware = board.get_json("/hardware")
-        firmware = board.get_json("/firmware")
+        hardware = get_json_patiently(board, "/hardware")
+        firmware = get_json_patiently(board, "/firmware")
     except BoardError as error:
         say(board, f"refused: {error}")
         return REFUSED
@@ -1050,28 +1136,33 @@ def push_one(board: Board, image: Image, options: PushOptions) -> int:
             return REFUSED
 
     slot = text_of(part(firmware, "other"), "label") or None
-    say(
-        board,
-        f"sending {len(image.data):,} bytes to {slot or 'the other slot'}; the board erases what "
-        "the image needs first",
-    )
-    sent = upload(board, image)
-    if sent.status is None and sent.sent < len(image.data):
-        say(board, f"the upload broke off after {sent.sent:,} bytes: {sent.text}")
-        reason = refusal_after_break(board)
-        if reason:
-            say(board, f"refused: {reason}")
-        else:
-            say(
-                board,
-                "failed: the board gave no reason. If it is in flash mode (ota.py status), a new "
-                "push, ota.py cancel, or ten minutes restarts it into the image it runs",
-            )
-        return REFUSED
+    # An upload that breaks off, or that a restart of the board cuts short, is
+    # sent once more: the board keeps running what it ran, and nothing was
+    # accepted. A second break, or a refusal, leaves it at that - and takes
+    # the board out of flash mode rather than leave it silent for ten minutes.
+    for attempt in (1, 2):
+        say(board, f"sending {len(image.data):,} bytes to {slot or 'the other slot'}")
+        started = time.monotonic()
+        sent = upload(board, image)
+        if sent.status is None and sent.sent < len(image.data):
+            say(board, f"the upload broke off after {sent.sent:,} bytes: {sent.text}")
+            broken = after_break(board, started)
+            say(board, broken.text)
+            if broken.retry and attempt == 1:
+                say(board, "sending it again")
+                continue
+            say(board, "failed: the image was not taken")
+            if broken.flash_mode:
+                leave_flash_mode(board)
+            return REFUSED
+        break
     if sent.status is None:
         say(board, f"no answer to the upload ({sent.text}); looking for the board")
     elif sent.status != 200:
         say(board, f"refused ({sent.status}): {sent.text}{http_hint(sent.status)}")
+        # A board that took the upload and then refused the image waits in flash
+        # mode for a corrected one: this push has none to send.
+        leave_flash_mode_if_waiting(board)
         return REFUSED
     else:
         try:
@@ -1091,6 +1182,8 @@ def push_one(board: Board, image: Image, options: PushOptions) -> int:
         last_before=part(firmware, "last_update"),
     )
     say(board, outcome.text)
+    if outcome.code == REFUSED:
+        leave_flash_mode_if_waiting(board)
     return outcome.code
 
 

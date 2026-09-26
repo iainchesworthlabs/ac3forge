@@ -244,9 +244,11 @@ The sections below contain the complete change list and fixes.
   - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
     address, the HTTP server and the Sendspin player. It goes back to the previous image if
     it does not get there within 5 minutes, or if it resets first. The trial is read from a
-    timer and takes a task only to write what it decided: a task kept for the whole trial
-    left the S3 board's Sendspin player without the internal RAM it starts with, so no update
-    could pass its trial on that board.
+    timer, with no task of its own: a task kept for the whole trial left the S3 board's
+    Sendspin player without the internal RAM it starts with, so no update could pass its trial
+    on that board. The timer's task also writes the acceptance, so a board whose RAM a stream
+    has taken can still accept, and a rollback asked for while it does is refused rather than
+    racing it.
   - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
     its own name.
   - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
@@ -297,6 +299,28 @@ The sections below contain the complete change list and fixes.
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
     the bootloader boots past.
+  - **An update that breaks off says why, and is sent again.**
+    - **An interrupted upload is recorded.** A board that restarts during an upload now records
+      it as `interrupted`, with the reset's cause. `GET /firmware` also gives the boot's
+      `reset_reason` and `uptime_ms`.
+    - **`ota.py` recovers from a break.** It prints the board's own account of a broken upload
+      and sends the image once more. It no longer leaves a board in flash mode after a failed
+      push.
+    - **The board erases as the image arrives.** The slot is erased a block at a time, just
+      ahead of the writes, rather than all at once before the second read.
+    - **Uploads have a limit.** An upload may take ten minutes at most.
+    - **A short-of-RAM board says so.** The upload's task is made after the teardown, and a
+      board that cannot make it answers `503` rather than dropping the connection.
+    - **Uploads survive other clients.** With every socket of the board's HTTP server in use,
+      ESP-IDF v6.1 could close the connection it had just taken for an upload, before reading
+      any of it. The example now has the server close its least recently used connection at
+      once (`CONFIG_HTTPD_QUEUE_WORK_BLOCKING`).
+    - **ac3hearth follows an update to its end.** The Firmware tab stays up while the board is
+      in flash mode, off mDNS, and shows how the update ended. As `ota.py` does, it sends an
+      upload that breaks off once more, and tells a board a failed update left in flash mode to
+      leave it.
+    - **Tested.** An overnight soak of the four boards, with faults injected, found no board
+      left stuck.
 
 **Crucible desktop application**
 
