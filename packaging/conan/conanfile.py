@@ -32,7 +32,7 @@ from conan.tools.files import copy, get
 class Ac3forgeConan(ConanFile):
     name = "ac3forge"
     description = (
-        "Clean-room AC-3 (ATSC A/52) encoder and decoder with a spatial "
+        "Clean-room AC-3 (ATSC A/52), E-AC-3 and AC-4 encoder and decoder with a spatial "
         "object layer, in C++23."
     )
     license = "GPL-3.0-or-later"

@@ -7,7 +7,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GitVersionDerivation.cmake")
 
 project(ac3forge
     VERSION ${DERIVED_VERSION_SEMVER}
-    DESCRIPTION "Clean-room AC-3 (ATSC A/52) encoder and decoder with a spatial object layer"
+    DESCRIPTION "Clean-room AC-3 (ATSC A/52), E-AC-3 and AC-4 encoder and decoder with a spatial object layer"
     HOMEPAGE_URL "https://github.com/iainchesworthlabs/ac3forge"
     LANGUAGES CXX)
 
