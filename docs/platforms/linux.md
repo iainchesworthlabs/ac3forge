@@ -105,6 +105,17 @@ rather than PipeWire winning by default for being the modern norm on most curren
 full reasoning, and the explicit override for a machine where PipeWire's compressed codecs are
 configured, is in [Why ALSA still comes first](../building.md#why-alsa-still-comes-first).
 
+### AC-4
+
+AC-4's bursts (IEC 61937-14) need nothing from ALSA that AC-3's do not: the channel status says
+"not audio" whatever the codec, so `PassthroughSink` sends AC-4 on a link at the content rate, as
+AC-3 goes, and AC-4 HBR4 at four times it, as E-AC-3 goes. An AC-4 burst is as long as its
+frame, so the sink queues bursts of different lengths at the 1000/1001 frame rates. PipeWire
+names the codec instead, and its IEC 958 codec list (`spa/param/audio/iec958.h`, 1.6) has no
+AC-4, so the PipeWire backend refuses AC-4 with `kUnsupportedFormat`. Both refuse AC-4 HBR16,
+which needs the eight-channel high-bit-rate link neither opens. The ALSA path is tested against
+ALSA's `null` device; no receiver found so far accepts AC-4, so none has been tried.
+
 ### What has and has not been verified
 
 !!! note "ALSA is hardware-confirmed via Raspberry Pi; PipeWire is not, anywhere"

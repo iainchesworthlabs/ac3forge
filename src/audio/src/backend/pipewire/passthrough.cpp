@@ -88,10 +88,6 @@ constexpr std::size_t kCarrierFrameBytes = ac3::pipewire::kCarrierFrameBytes;
 constexpr int kConnectTimeoutSeconds = 5;
 constexpr int kProbeTimeoutSeconds = 2;
 
-std::size_t burst_bytes_for(BitstreamFormat format) {
-    return format == BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes : iec61937::kBurstBytes;
-}
-
 enum class ConnectState : int { kPending, kReady, kError };
 
 bool wait_for_connect(pw_thread_loop* loop, std::atomic<ConnectState>& state, int timeout_seconds) {
@@ -196,10 +192,12 @@ bool probe_connect(const std::string& node_id, const spa_pod** params, std::uint
     return ready;
 }
 
+// AC-3 or E-AC-3: nothing asks for AC-4, which has no SPA codec (start()
+// refuses it first), so UNKNOWN is never what a sink is offered.
 const spa_pod* build_iec958_pod(spa_pod_builder& builder, BitstreamFormat format,
                                  std::uint32_t carrier) {
     spa_audio_info_iec958 info{};
-    info.codec = ac3::pipewire::iec958_codec_for(format);
+    info.codec = ac3::pipewire::iec958_codec_for(format).value_or(SPA_AUDIO_IEC958_CODEC_UNKNOWN);
     info.rate = carrier;
     return spa_format_audio_iec958_build(&builder, SPA_PARAM_EnumFormat, &info);
 }
@@ -348,6 +346,9 @@ std::string_view describe(PassthroughError error) {
                    "user lacks permission on the underlying device)";
         case PassthroughError::kAlreadyRunning: return "passthrough is already running";
         case PassthroughError::kNotRunning: return "passthrough is not running";
+        case PassthroughError::kUnsupportedFormat:
+            return "PipeWire's IEC 958 format names no AC-4 codec (spa/param/audio/iec958.h), so "
+                   "no sink can be asked to take AC-4; the ALSA backend can send it";
     }
     return "unknown passthrough error";
 }
@@ -374,6 +375,8 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
                 sink.codec_ac3 && probe_iec958(sink.id, BitstreamFormat::kAc3, sample_rate),
             .supports_eac3_passthrough =
                 sink.codec_eac3 && probe_iec958(sink.id, BitstreamFormat::kEac3, sample_rate),
+            // No SPA codec for AC-4 (iec958_codec_for()).
+            .supports_ac4_passthrough = false,
             .supports_exclusive_pcm = probe_exclusive_pcm(sink.id, sample_rate),
             // What the node is configured as, which for a device sink is what
             // the device renders. The rate is the one rate it is running at,
@@ -715,6 +718,9 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    if (!ac3::pipewire::iec958_codec_for(format_kind)) {
+        return std::unexpected(PassthroughError::kUnsupportedFormat);
+    }
     // A stream that ended on its own still has its loop and its stream, and
     // still holds its sink exclusively; stop() tears both down in the right
     // order. With nothing started it does nothing.
@@ -749,7 +755,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     }
 
     const std::uint32_t carrier = ac3::pipewire::carrier_rate(format_kind, sample_rate);
-    const std::size_t burst_bytes = burst_bytes_for(format_kind);
+    const std::size_t burst_bytes = max_burst_bytes(format_kind);
 
     impl_->loop = ThreadLoop{pw_thread_loop_new("ac3audio-passthrough", nullptr)};
     if (!impl_->loop) {

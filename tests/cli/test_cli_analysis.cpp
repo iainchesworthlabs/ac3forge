@@ -498,7 +498,7 @@ TEST_CASE("unspdif refuses an unreadable carrier, plain PCM and an unwritable ou
     const auto pcm = write_tone_wav(dir / "unspdif_pcm.wav", 2, 48000, 4800, 0.5);
     CHECK(run_failing("unspdif " + quoted(pcm) + " " + quoted(out_path), log, 2)
               .find("error: " + pcm.string() +
-                    " holds no AC-3 or E-AC-3 bursts - is it ordinary PCM rather than an IEC "
+                    " holds no AC-3, E-AC-3 or AC-4 bursts - is it ordinary PCM rather than an IEC "
                     "61937 carrier?") != std::string::npos);
     CHECK_FALSE(fs::exists(out_path));
 

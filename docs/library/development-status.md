@@ -241,6 +241,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | DASH MPD + Dolby supplemental descriptors | 🟡 | Medium | Important | Syntactically correct; no schema / player validation |
 | **Transport** | IEC 61937 burst pack (AC-3 + E-AC-3) | 🟢 | High | Essential | vs FFmpeg / MS docs |
 | | IEC 61937 burst unpack (`unspdif`) | 🟢 | Medium | Optional | Inverse of pack |
+| | IEC 61937-14 AC-4 burst pack + unpack | 🟢 | Medium | Important | The four burst types, their periods and sequences at every frame rate from the standard's tables, checked against a second transcription; no device here accepts AC-4 |
 | **Edit** | In-place metadata rewrite | 🟡 | Medium | Optional | Existing fields only; no insert |
 | | Loudness QC vs delivery specs | 🟢 | Medium | Important | BS.1770-4 vs dialnorm / R 128 / A/85 / Netflix |
 | | Elementary scan / probe / split | 🟢 | High | Essential | Programme-aware access-unit walk |
@@ -263,6 +264,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Perceptual encoder criterion calibration | 🔴 | Medium | Optional | Proposed as EQ14; not wired |
 | **Audio I/O** | Capture / monitor / passthrough | 🟡 | Medium | Important | `ac3::audio` in-tree only; every output backend now stops itself on device loss (Windows passthrough-unplug hardware-confirmed), but platform verification stays uneven |
 | | Sink capability discovery (EDID / ELD) | 🟡 | Medium | Important | Used for passthrough negotiation; uneven across platforms |
+| | AC-4 passthrough | 🟡 | Low | Optional | ALSA and Android; WASAPI, PipeWire and CoreAudio name no AC-4 format and refuse it; AC-4 HBR16's eight-channel link refused everywhere; no receiver to test |
 | **Out of scope** | Headphone / binaural renderer | 🔴 | Low | Out-of-scope | Deliberate product boundary (external renderer) |
 
 ---
@@ -339,6 +341,7 @@ this register is the checklist that those bounds appear here too.
 |---|---|---|
 | TS 102 366 Annex F | Legacy core+extension sample entry | 🔴 |
 | ATSC A/342-2 | AC-4 ATSC TS profile | 🔴 |
+| IEC 61937-14 | AC-4 to a device: no receiver accepts it, and HBR16's eight-channel link is not opened | 🟡 |
 | ISO BMFF | `moov`-after-`mdat` demux | 🔴 |
 | Apple HLS / Dolby DASH | Player / schema validation of Atmos signalling | 🟡 |
 | Multi-programme mux | First programme only | 🟡 |
