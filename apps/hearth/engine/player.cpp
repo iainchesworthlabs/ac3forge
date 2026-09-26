@@ -239,8 +239,8 @@ std::string Player::join_blocked(const OutputChoice& next, std::string_view titl
             "\"{}\" goes to the group's sinks as {}, not as what the group is "
             "carrying, so the group starts again - there is a gap.",
             title, [&] {
-                const std::optional<audio::BitstreamFormat> next = sent_stream(*prepared_);
-                return next ? audio::format_name(*next) : std::string_view{"PCM alone"};
+                const std::optional<audio::BitstreamFormat> sent = sent_stream(*prepared_);
+                return sent ? audio::format_name(*sent) : std::string_view{"PCM alone"};
             }());
     }
     if (mode_ != OutputMode::kBitstream || packed_frames_ == 0 || !prepared_) {

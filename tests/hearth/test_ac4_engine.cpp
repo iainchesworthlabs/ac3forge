@@ -461,9 +461,25 @@ TEST_CASE(
     // What a listener gets: dialogue to -31 dBFS, the DRC mode for it.
     const DecoderSettings settings;
     const ac4::DecoderConfig config = ac3::hearth::decoder_setup(settings, layout).ac4;
+    int played_whole = 0;
+    std::map<std::string, int> refused;
     for (const fs::path& path : streams) {
         INFO("stream " << path.string());
         const std::vector<std::byte> bytes = read_file(path);
+        // A stream none of whose presentations the decoder decodes - the
+        // immersive legs, until the decoder has their channel elements - is
+        // refused when it opens, with the decoder's own reason.
+        const auto opened = Session::open("item", loader_of({{"item", bytes}}), std::nullopt,
+                                          ac3::hearth::presentation_choice(settings));
+        if (!opened) {
+            const std::string& why = opened.error();
+            const std::string_view refusal = "has no presentation this build decodes: ";
+            const std::size_t at = why.find(refusal);
+            REQUIRE(at != std::string::npos);
+            ++refused[why.substr(at + refusal.size())];
+            continue;
+        }
+        ++played_whole;
         const Played played = play_item(bytes, layout, settings);
         CHECK(played.errors.empty());
         const std::vector<std::vector<float>> expected = reference(bytes, layout, config);
@@ -481,6 +497,15 @@ TEST_CASE(
         CHECK(std::ranges::all_of(played.reports,
                                   [](const UnitReport& r) { return r.ac4.has_value(); }));
     }
+    std::ostringstream summary;
+    summary << played_whole << " of " << streams.size() << " committed streams played;";
+    for (const auto& [reason, count] : refused) {
+        summary << " " << count << " refused: " << reason << ";";
+    }
+    WARN(summary.str());
+    // The 42 D8 decoded through the API, and any stream since that the
+    // decoder decodes.
+    CHECK(played_whole >= 42);
 }
 
 TEST_CASE("hearth ac4: the engine plays the streams of AC4DEC_API_STREAM_DIR", "[hearth][ac4]") {
