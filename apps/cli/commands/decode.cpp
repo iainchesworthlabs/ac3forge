@@ -377,6 +377,11 @@ std::string joined(const std::vector<std::string>& tokens) {
     return out;
 }
 
+// The decoding mode, for the status line where it is not the default.
+std::string ac4_decoding(ac4::DecodingMode decoding) {
+    return decoding == ac4::DecodingMode::kCore ? " in core decoding" : "";
+}
+
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the presentation presentation=,
 // presentation-id=, language= and associated= choose (ETSI TS 103 190-2 clause
 // 4.8.2), its substreams mixed with the dialogue and associated audio at
