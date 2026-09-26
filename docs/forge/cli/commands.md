@@ -113,7 +113,7 @@ so a misrouted channel is identifiable by ear.)
 | `eac3-encode` | WAV → E-AC-3, with the Annex E `tools:` token and an optional `vbr:` token available (see [Options & grammars](metadata-options.md)). Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1, 8→7.1, 10→5.1.4, 12→7.1.4). |
 | `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement |
 | `atmos-cbi` | WAV already mixed into a fixed channel-based-immersive (CBI) bed layout → E-AC-3 Atmos with `program.bed != 0` and 0 dynamic objects — Dolby's `dee_ddpjoc_encoder --input-format cbi_wav` shape, not free-floating objects |
-| `ac4-encode` | WAV → AC-4: mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz at `frame_rate_index` 13 (2,048 samples a frame) and a constant rate from 8 kbps (about 15 in 5.X). A WAV file's channels are taken in the order `decode` writes them: FL FR FC LFE BL BR for 5.1, the surrounds in BL and BR. Below 96 kbps a channel the ASPX codec mode: the spectral frontend up to a crossover of 7.5, 10.5 or 13.5 kHz by rate, A-SPX above it, and companding below 64 kbps a channel; in 5.X below 76.8 kbps a channel (384 kbps for 5.1), with DEE's 5.1 crossovers of 12 and 12.75 kHz and no companding; the SIMPLE mode from there. In 5.X, lower still, the A-CPL modes, which code a downmix and rebuild the channels from it: ASPX_ACPL_2 below 33.6 kbps a channel (168 kbps for 5.1), the downmixes of each side's pair and C, and ASPX_ACPL_3 below 22.4 (112 kbps for 5.1), a Lo/Ro downmix, as DEE's 5.1 streams are at 128 and 96 kbps; where the rate cannot hold that mode's least frame, the next of ASPX_ACPL_2 and ASPX that it can. `codec-mode=simple`, `aspx`, `aspx-acpl-2` or `aspx-acpl-3` picks one whatever the rate, and `experimental=` takes a comma-separated list of `aspx-balance`, `aspx-varvar`, `aspx-interleave`, `coding-configs` (the 5.X element's coding configurations 1 to 3 and `2ch_mode` 1) and `acpl` (with `codec-mode=aspx-acpl-1`, ASPX_ACPL_1 in 5.X, which also codes each side's difference from its downmix to 3 kHz; with `aspx-acpl-1` or `aspx-acpl-2`, A-CPL in stereo), tools no reader outside this project has read from the encoder yet, and `7x-back`, `7x-wide` or `7x-top-front`, which takes seven or eight channels as 7.0 or 7.1 in that 7.X layout, in the WAV order `decode` writes: 3/4/0's back pair in BL and BR and its surrounds in SL and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR. Writes raw sync frames with their CRC, or an MP4 file with the `ac-4` sample entry and its `dac4` when the output is `.mp4`, `.m4a` or `.mov`. `dialnorm=` sets the presentation's dialogue level, `dialnorm=auto` measures it; `syntax-trace=<file>` writes every syntax element it writes, one per line |
+| `ac4-encode` | WAV → AC-4: mono, stereo, 5.0 or 5.1 (7.0 and 7.1 experimental), at 48 kHz at every frame rate of Part 1 Table 83 or at 44.1 kHz at the native one, as raw sync frames with their CRC or, for `.mp4`, `.m4a` or `.mov`, an MP4 file with the `ac-4` sample entry and its `dac4`. The codec mode follows the rate: SIMPLE from 96 kbps a channel (76.8 in 5.X), the ASPX mode below, and in 5.X the A-CPL modes lower still. The frame rate, the rate mode, the I-frames and the metadata are options: see [`ac4-encode`](#ac4-encode) below |
 
 ```bash
 ac3cli encode in.wav out.ac3 448 couple
@@ -158,6 +158,89 @@ is no `[paths.txt]` argument and `dialnorm=auto` is refused for the same reason 
 `atmos-adm`/`atmos-iab` below — see [Atmos & JOC](../../concepts/atmos-joc.md#oamd) and
 [Spatial & Atmos objects](../../library/spatial-and-atmos.md#channel-based-immersive-cbi-beds).
 
+#### `ac4-encode`
+
+A WAV file's channels are taken in the order `decode` writes them: FL FR FC LFE BL BR for 5.1, the
+surrounds in BL and BR.
+
+**Codec mode.** Below 96 kbps a channel the ASPX codec mode: the spectral frontend up to a crossover
+of 7.5, 10.5 or 13.5 kHz by rate, A-SPX above it, and companding below 64 kbps a channel; in 5.X
+below 76.8 kbps a channel (384 kbps for 5.1), with DEE's 5.1 crossovers of 12 and 12.75 kHz and no
+companding; the SIMPLE mode from there. In 5.X, lower still, the A-CPL modes, which code a downmix
+and rebuild the channels from it: ASPX_ACPL_2 below 33.6 kbps a channel (168 kbps for 5.1), the
+downmixes of each side's pair and C, and ASPX_ACPL_3 below 22.4 (112 kbps for 5.1), a Lo/Ro
+downmix, as DEE's 5.1 streams are at 128 and 96 kbps; where the rate cannot hold that mode's least
+frame, the next of ASPX_ACPL_2 and ASPX that it can. The rate must hold a silent I-frame with
+every metadata element the options send: at the native frame rate from 8 kbps (9 in stereo at
+48 kHz in the ASPX mode) and from 20 in 5.X, more at the higher frame rates and with more
+metadata. `codec-mode=simple`, `aspx`, `aspx-acpl-2` or `aspx-acpl-3` picks one whatever the
+rate.
+
+**Experimental.** `experimental=` takes a comma-separated list of the tools no reader outside this
+project has read from the encoder yet: `aspx-balance`, `aspx-varvar`, `aspx-interleave`,
+`coding-configs` (the 5.X element's coding configurations 1 to 3 and `2ch_mode` 1), `acpl` (with
+`codec-mode=aspx-acpl-1`, ASPX_ACPL_1 in 5.X, which also codes each side's difference from its
+downmix to 3 kHz; with `aspx-acpl-1` or `aspx-acpl-2`, A-CPL in stereo) and `drc-gains-0` to
+`drc-gains-3` (the DRC modes send gains in that `drc_gains_config` of Part 1 Table 163); and
+`7x-back`, `7x-wide` or `7x-top-front`, which takes seven or eight channels as 7.0 or 7.1 in that
+7.X layout, in the WAV order `decode` writes: 3/4/0's back pair in BL and BR and its surrounds in SL
+and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR.
+
+**Frame rate and rate mode.** `frame-rate=` is one of Table 83's rates, `23.976`, `24`, `25`,
+`29.97`, `30`, `47.95`, `48`, `50`, `59.94`, `60`, `100`, `119.88` or `120`, or `native`, the
+default: 2 048-sample frames, the only ones at 44.1 kHz. Away from the native frame rate the
+input is converted to the frame's internal rate, and each frame decodes to the samples Part 2
+clause 5.11 gives it: at 29.97 fps 1 601 and 1 602 in turn. `rate-mode=constant`, the default,
+gives every frame the rate's share; `average` lets frames lend each other bytes within the
+decoder's input buffer (Part 1 clause 6.2.4), with `wait_frames` telling a decoder how long to
+wait; `variable` lends up to two seconds' share.
+
+**I-frames.** `iframe-interval=<frames>` (default 24) makes every so many frames an I-frame,
+`iframes=<n,...>` names frames, from 0, that are I-frames besides, and `fragment=<seconds>` makes
+the first frame of each fragment of that length one, for a packager that cuts there. An MP4 file
+lists the I-frames as its sync samples, and counts 29.97, 59.94 and 119.88 fps in a time scale of
+240 000 (Part 2 Table E.1); `mp4` does the same for an AC-4 stream it is given.
+
+**Loudness and DRC.** `dialnorm=` is the dialogue level in dB below full scale, 0 to 31.75 in
+steps of 0.25, or `auto` to measure it. `loudness=<practice>`, one of `atsc-a85`, `ebu-r128`,
+`arib-tr-b32`, `freetv-op59`, `manual`, `consumer-leveller` and `not-indicated`, measures the
+programme with the BS.1770 meter and sends its integrated loudness, loudness range, true peak and
+highest momentary and short-term loudness with that practice, and sets dialnorm from it where
+`dialnorm=` is not given. `drc=<profile>`, one of `film-standard`, `film-light`,
+`music-standard`, `music-light`, `speech` and `none`, sends Table 161's four DRC decoder modes on
+that profile; `drc-home-theatre=`, `drc-flat-panel-tv=`, `drc-portable-speakers=` and
+`drc-portable-headphones=` give one mode a profile of its own, sent as its curve or as a repeat
+of an earlier mode on the same profile.
+
+**Downmix, 5.X and 7.X.** `cmixlev=` or `lorocmixlev=` is the Lo/Ro downmix's centre gain, +3,
++1.5, 0, -1.5, -3, -4.5 or -6 dB or `off`; `surmixlev=` or `lorosurmixlev=` its surround gain, 0,
+-1.5, -3, -4.5 or -6 dB or `off`; `ltrtcmixlev=` and `ltrtsurmixlev=` Lt/Rt's where they differ.
+`lfemix=` is the LFE's gain into the downmix, +5.5 to -25.5 dB in steps of 1 dB, and `dmixmod=` the
+preferred downmix, `loro`, `ltrt`, `pl2` (Lt/Rt for Pro Logic II) or `none`. `loro-correction=`
+and `ltrt-correction=` are each downmix's loudness correction, -7.5 to +7.5 dB in steps of 0.5.
+
+**Dialogue enhancement.** `dialogue-channels=` marks which of `l`, `r` and `c` carry dialogue
+alone, whose parameters are then 1 in every band; `dialogue-stem=<wav>` gives the dialogue, in the
+programme's channels and sample for sample, and each band's parameter is its share of the channel.
+`dialogue-method=independent`, the default, raises each channel; `mid` raises the Mid of L and R;
+`cross`, with a stem over two or three channels, raises a mix of the channels that follows the
+dialogue and pans it back as the dialogue is panned. `dialogue-max-gain=` caps what a decoder may
+add: 3, 6, 9 (the default) or 12 dB.
+
+**Presentations.** The output is one substream in one presentation, with `presentation_id` 0 and
+the `md_compat` level its layout needs. Several substreams and the presentations of Part 2 Table 53
+(music and effects with dialogue, associated audio, the hybrid dialogue enhancement methods'
+waveform, alternative presentations and EMDF payloads) are in the library,
+`ac4::EncoderConfig::substreams` and `presentations`; the options that take them follow in phase E7.
+
+`syntax-trace=<file>` writes every syntax element the encoder writes, one per line. The summary
+names the codec mode, the frame rate and the rate mode, and how far the decoder's output lags the
+input, to the nearest sample away from the native frame rate.
+
+```bash
+ac3cli ac4-encode in.wav out.mp4 128 frame-rate=29.97 rate-mode=average iframe-interval=15
+ac3cli ac4-encode in_51.wav out.ac4 384 loudness=ebu-r128 drc=film-light dmixmod=loro dialogue-channels=c
+```
 ### ADM ingest — professional master files (opt-in)
 
 **Only *runnable* in a build with `-DAC3FORGE_BUILD_ADM=ON`** — but always *listed*, the same
@@ -294,7 +377,7 @@ requirements ask for beside an Atmos one.
 
 | Command | What it does |
 |---|---|
-| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes so far, written in WAV speaker order). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
+| `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes, and 7.0.4 and 7.1.4 in every immersive codec mode, in [full or core decoding and to the layout `speakers=` names](#ac-4-immersive-speakers-and-decoding), written in WAV speaker order, and of a stream of several presentations the one [`presentation=`, `language=` and `associated=`](#ac-4-presentations-presentation-language-associated) choose, its substreams mixed). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream, reports the object count found and, with `objects_dir`, exports each JOC-reconstructed object as its own `object_NN.wav` there. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there — the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation |
 | `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. Auto-detects AC-4 too (TOC/presentation/substream-group framing only) |
 | `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or a Matroska/MP4/MPEG-TS container carrying one |
 | `loudness` | BS.1770-4 gated loudness on a WAV, reported as the `dialnorm` it implies |
@@ -419,6 +502,10 @@ ac3cli decode stream.ac4 out.wav output-level=-14 drcmode=portable-headphones
 ac3cli decode stream.ac4 out.wav output-level=-24 drcmode=off      # the level, no compression
 ```
 
+`headphones` says the listener is on headphones: at an output level in the portable range,
+`drcmode=default` takes portable headphones rather than portable speakers, and of a stream's
+presentations one rendered for headphones before it was encoded comes first.
+
 `dialogue-enhancement=<dB>` raises the dialogue where the stream sends dialogue enhancement
 parameters (clause 5.7.8), from 0 (the default, which leaves the output alone) to 12 dB, and never
 beyond the cap the stream sets, 3, 6, 9 or 12 dB.
@@ -427,14 +514,110 @@ beyond the cap the stream sets, 3, 6, 9 or 12 dB.
 `downmix=loro`, `ltrt` and `mono` as named, and `downmix=auto`, or `channels=2` alone, the method
 the stream's `preferred_dmx_method` names (Lo/Ro where it names none). Lt/Rt takes its Pro Logic
 II form where the stream prefers that; there is no 90-degree phase shift, which in AC-4 describes
-processing before encoding. The LFE goes into the fold at the stream's `lfe_mixgain`, and a 7.X
-stream folds to 5.X on the way.
+processing before encoding. The LFE goes into the fold at the stream's `lfe_mixgain`, which
+`mix-lfe=off` leaves out, and a 7.X stream folds to 5.X on the way. `channels=5.1` stops there: a
+7.X stream's extra pair folded into its 5.X channels by Table 219, and any other stream as coded.
+
+```bash
+ac3cli decode stream.ac4 out.wav channels=2 mix-lfe=off   # Lo/Ro or Lt/Rt without the LFE
+ac3cli decode stream_71.ac4 out.wav channels=5.1
+```
 
 `monitor` takes all of the same tokens, and additionally folds on its own initiative when the
 output device renders fewer channels than the programme: playing 5.1 on a stereo endpoint
 otherwise means whatever the platform's shared-mode mixer averages together, with none of the
 stream's levels and none of §7.8.1's normalisation. An explicit `channels=`/`downmix=` always
 wins, and a backend that cannot report its endpoint width leaves the audio alone.
+
+### AC-4 presentations: `presentation=`, `language=`, `associated=`
+
+An AC-4 stream can carry several presentations of its substreams: music and effects with the
+dialogue in one language or another, the main audio with audio description, and so on (ETSI TS 103
+190-2 clause 4.8). `decode` decodes one of them. `presentation=<n>` names it by its position in the
+table of contents and `presentation-id=<id>` by its `presentation_id`, which stays with the
+presentation as the table of contents changes over time; otherwise `language=<BCP 47 tag>` and
+`associated=<service>` say
+what the listener wants, and `decode` takes the presentation that best meets them, the language
+first, then the associated audio. With neither it takes the first presentation without associated
+audio. A presentation the decoder cannot decode, one the stream disables, and one above the
+decoder's compatibility level (`md_compat`) are never chosen, and the status output names the
+presentation decoded:
+
+```bash
+ac3cli decode broadcast.ac4 out.wav language=de
+ac3cli decode broadcast.ac4 out.wav associated=audio-description
+ac3cli decode broadcast.ac4 out.wav presentation-id=3
+```
+
+`associated=` takes `visually-impaired`, `hearing-impaired` and `commentary` (ETSI TS 103 190-1
+Table 91's associated audio), and Table 92's services: `audio-description`,
+`audio-description-subtitles`, `spoken-subtitles` and `emergency-information`.
+
+`md-compat=<0..7>` sets the compatibility level the decoder claims, 3 by default: a presentation
+whose `md_compat` is above it is not chosen (ETSI TS 103 190-2 Table 55).
+
+A presentation of several substreams is mixed as ETSI TS 103 190-1 clause 6.2.16 gives, with the
+stream's own gains and pans. `dialogue-gain=<dB>` sets the dialogue against the music and effects,
+up to the maximum the stream allows (0 dB where it allows none, and at most 12), and
+`associated-gain=<dB>`, 0 or less, the associated audio, except where the stream says that audio
+was mixed in before encoding:
+
+```bash
+ac3cli decode broadcast.ac4 out.wav language=en dialogue-gain=6
+ac3cli decode broadcast.ac4 out.wav associated=audio-description associated-gain=-6
+```
+
+### AC-4 immersive: `speakers=` and `decoding=`
+
+An AC-4 stream in 7.0.4 or 7.1.4 carries its channels in the immersive channel element, and says
+which of them its source had: DEE's 5.1.4 streams are 7.1.4 streams whose back channels are
+silent. `decode` writes the source's layout, 5.1.4 for those, and `speakers=` renders the element
+to another by the channel renderer of ETSI TS 103 190-2 clause 5.10.2, with the stream's custom
+downmix gains and its loudness correction for that layout: `5.1`, `5.1.2`, `5.1.4`, `7.1`, `7.1.2`
+or `7.1.4`, the LFE where the stream has one. `channels=2`, `channels=1` and `downmix=` go by the
+renderer's 5.1 to the stereo fold above, and win over `speakers=`:
+
+```bash
+ac3cli decode film_514.ac4 out.wav                     # 5.1.4, the source's layout
+ac3cli decode film_514.ac4 out.wav speakers=5.1        # the heights into the fronts and sides
+ac3cli decode film_514.ac4 out.wav speakers=7.1.4      # the silent backs as well
+```
+
+`decoding=core` decodes the element's core instead, 5.1.2, as a low-complexity decoder does (clause
+4.7): the back channels folded into the sides and each top pair into one top channel, with less of
+A-CPL's and A-JCC's work. Core decoding renders to 5.1.2 and 5.1 alone, so `speakers=` with top
+channels gives 5.1.2 and without them 5.1. The other channel elements decode alike in both modes.
+
+### AC-4 objects
+
+An AC-4 presentation of object audio, A-JOC or direct-coded objects, decodes to objects, each
+with the position and gain its metadata sets. `decode` renders them to speakers through the layout
+renderer Hearth plays E-AC-3's objects with: each object panned from its position and moving as its
+metadata moves it, to the layout `speakers=`, `channels=` or `downmix=` names, and to 7.1.4 without
+one. `decoding=core` decodes an A-JOC substream's core instead, its downmix signals as the objects.
+An intermediate spatial format is rendered by the decoder itself (ETSI TS 103 190-2 clause 5.10.3),
+to the same layouts.
+
+```bash
+ac3cli decode ajoc.ac4 out.wav                   # 7.1.4
+ac3cli decode ajoc.ac4 out.wav speakers=5.1      # 5.1
+ac3cli decode ajoc.ac4 out.wav channels=2        # two channels
+ac3cli decode ajoc.ac4 out.wav decoding=core     # the downmix's signals as the objects
+```
+
+`decode`'s objects directory and ADM output write E-AC-3's objects; given an AC-4 stream they
+write nothing, and a warning says so.
+
+Each format's decode reads options the other's does not. Given an AC-4 stream, `decode` names
+the AC-3 and E-AC-3 ones it was given (`drc=`, `heavy`, `ltrt-phase=`, `fast-imdct`, `mode=`,
+`programme=`, `bed-only`, `joc-domain=`) in a warning and ignores them, as it does the object
+options, and given an AC-3 or E-AC-3 stream it does the same with AC-4's. The options that promise
+what the other format cannot give stop the run: `bap-census=` and `verify-objects` for AC-4, and
+`channels=5.1` and `syntax-trace=` for AC-3 and E-AC-3.
+
+```text
+warning: stream.ac4 is AC-4: heavy is AC-3's and E-AC-3's, and ignored
+```
 
 ### Damaged frames: `conceal=`
 
@@ -619,14 +802,15 @@ coded channel, LFE last) and `coupling_exponent_strategy`.
 
 ##### AC-4
 
-`probe` auto-detects AC-4 (`ac4::`) by its first byte — `0xAC` rather than AC-3/
+`probe` auto-detects AC-4 (`ac4::ac4`) by its first byte — `0xAC` rather than AC-3/
 E-AC-3's `0x0B` — so `ac3cli probe stream.ac4` needs no extra flag, and works on `-` (stdin) the
 same way. It reads the sync frame, table of contents, presentation and substream-group framing —
-channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike; audio content is
-reported by byte range, never decoded, and there is no `detail=frames`/`detail=blocks`
-equivalent — there is no per-block audio-layer walk to show, by scope (see
-[Verification](../../verification.md#ac-4) for exactly what that does and does not cover, including
-the narrower evidence behind the A-JOC/object/OAMD path).
+channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike — and has every
+frame read by the decoder (`ac4::decoder`) without decoding its audio, for what only the
+substreams carry: each presentation as the decoder sees it, and the metadata of the one it would
+decode. There is no `detail=frames`/`detail=blocks` equivalent (see
+[Verification](../../verification.md#ac-4) for what the inspector's reading does and does not
+cover, including the narrower evidence behind the A-JOC/object/OAMD path).
 
 ```bash
 ac3cli probe stream.ac4
@@ -635,13 +819,29 @@ ac3cli probe stream.ac4
 ```text
 file            stream.ac4
 codec           AC-4
-access units    73 (73 sync frame(s)), 25939 bytes
-CRC             73 of 73 valid
+access units    120 (120 sync frame(s)), 62160 bytes
+CRC             120 of 120 valid
 bs version      2
 sample rate     48000 Hz
+frame rate      23.438 fps, 2048 samples a frame at 48000.00 Hz
+bit rate        96.0 kbps
+I-frames        7, every 1 to 24 frames
+splices         0
 presentations   1
-                Stereo
+                5.1
+presentation 0  id 0, md_compat 1, L R C LFE Ls Rs; main; selected
+dialnorm        -19 dBFS
+loudness        -18.6 LKFS integrated
+true peak       -5.7 dBTP
+DRC             profile 2, modes 0 default profile, 1 default profile, 2 default profile, 3 default profile
+dialogue enh.   method 0, C up to 9 dB
+downmix         Lo/Ro centre -3 dB, surround -3 dB; Lt/Rt centre -3 dB, surround -3 dB
 ```
+
+`frame rate` is Part 1 Tables 83 and 84's, with the frame length and the rate a frame is coded
+at; `I-frames` counts the frames whose substreams need nothing from an earlier one, and the
+spacing between them; `splices` counts the frames whose `sequence_counter` does not continue the
+stream, where a decoder forgets what it held.
 
 `json=1` writes `stream.codec == "ac4"` and a dedicated `stream.ac4` object — deliberately not
 the AC-3/E-AC-3 `stream` shape above with its acmod/bsmod/numblkscod/etc. fields nulled out one
@@ -654,7 +854,9 @@ Verification link above). Each `presentations_v0[]` entry carries `presentation_
 `substreams[]`, whose entries are a `chan` substream's members (below) with its `role` beside
 them. Each `substream_groups[]` entry carries `b_substreams_present`,
 `b_channel_coded`, `oamd` (null unless the group is object-coded and carries an OAMD substream:
-`b_oamd_ndot`, `substream_index`), and `substreams[]`. Each substream entry is a tagged union —
+`b_oamd_ndot`, `substream_index`), and `substreams[]`. Each `presentations_v0[]` entry also carries
+`decoded`, the decoder's reading of it, with the members of a `presentations_v1[]` entry (below).
+Each substream entry is a tagged union —
 `kind` (`"chan"`, `"ajoc"` or `"obj"`) says which one of `chan`/`ajoc`/`obj` is non-null, the
 other two `null`:
 - `chan`: `channel_mode`, `channel_mode_name`, `ch_mode`, `bitrate_kbps`, `substream_index`,
@@ -667,6 +869,26 @@ other two `null`:
 - `obj`: `objects[]`, `b_dynamic_objects`, `sf_multiplier`, `bitrate_kbps`, `substream_index`.
 - Every object list entry (`static_objects`/`upmix_objects`/`objects`) is `{kind: "bed"|"dyn"|
   "isf", lfe, ajoc_coded}`.
+
+The decoder's reading adds, after those:
+
+- `frame_rate`: `fps`, `frame_length` and `internal_sample_rate_hz`; `bitrate_kbps`, over the
+  whole stream; `iframes` and `iframe_interval_frames` (`min` and `max`, null for fewer than two
+  I-frames); `splices`.
+- `presentations_v1[]`, one per presentation of the last frame's table of contents: `index`,
+  `presentation_id`, `presentation_version`, `presentation_config`, `md_compat`, `enabled`,
+  `alternative`, `pre_virtualized`, `name`, `language`, `channels` (the speakers it decodes to,
+  `L`, `R`, `C`, `LFE`, `Ls`, `Rs` and so on), `substream_groups`, `decodable`, `selectable`, and
+  `members[]`: `substream`, `role` (`main`, `music_and_effects`, `dialogue`,
+  `dialogue_enhancement` or `associated`), `group`, `content_classifier`, `language`, `channels`.
+- `selected_presentation`: the index of the presentation the decoder would decode by default, null
+  where it would decode none.
+- `metadata`, that presentation's as the stream sent it up to its last frame: `loudness` (`dialnorm_dbfs` and
+  Part 1 clause 4.3.12.3's further values, each null where the stream sends none), `drc`
+  (`eac3_profile`, `modes[]` with each decoder mode's output level range and how it compresses,
+  `applied_mode`), `dialogue_enhancement` (`method`, `left`, `right`, `centre`, `max_gain_db`) and
+  `downmix` (the Lo/Ro and Lt/Rt centre and surround gains, `lfe_db`, `preferred`, the loudness
+  corrections), each null where the stream sends none.
 
 An A-JOC substream's `oamd_common_data()` (§6.2.8.1), present when its
 `b_oamd_common_data_present` flag is set, is read as part of the table of contents: the fields

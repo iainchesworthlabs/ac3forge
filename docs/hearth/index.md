@@ -36,12 +36,17 @@ Pi 4B without an underrun. See [Raspberry Pi passthrough](../platforms/raspberry
 ## What it does not do (yet)
 
 The desktop application has no package or user guide, and cannot yet send audio to a sink. The
-ESP32-S3 sink is source code that you build and flash; there is no firmware download. Its
-[setup guide](sink-esp32-s3.md) covers network setup, pairing, groups, wiring, and slot widths.
+sink's firmware is built by CI for the ESP32-S3, the ESP32-C6 and the ESP32-P4 and published with
+each release from the next one on; [Sink firmware](sink-firmware.md) covers installing it, from
+the browser or with `esptool`, and updating a board over its network. The S3's
+[setup guide](sink-esp32-s3.md) covers building it yourself, network setup, pairing, groups,
+wiring, and slot widths.
 
 ## Where to go next
 
 - [An ESP32-S3 sink](sink-esp32-s3.md) — build, flash, configure, and pair a board.
+- [Sink firmware](sink-firmware.md) — install a published image, update over the network, and go
+  back; or [install from the browser](sink-installer.md).
 - [ESP32-S3](../platforms/bare-metal/esp32-s3.md) — decoder timing and memory measurements.
 - [The design record](design/player-appliance.md) — decisions and current implementation status.
 - [Roadmap](../roadmap.md) — planned work.

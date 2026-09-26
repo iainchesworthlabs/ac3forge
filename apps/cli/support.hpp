@@ -30,6 +30,8 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "ac4dec/decoder.hpp"
+#include "ac4enc/encoder.hpp"
 #include "matroska/matroska.hpp"
 #include "mp4/dash.hpp"
 #include "mp4/hls.hpp"
@@ -146,6 +148,85 @@ struct Options {
     // 'decode' of AC-4 only: dialogue-enhancement=, G_DE in dB, 0 to 12
     // (ac4::OutputConfig::dialogue_enhancement_db).
     double ac4_dialogue_enhancement = 0.0;
+    // 'decode' of AC-4 only: decoding=core, core decoding (ac4::DecodingMode);
+    // full decoding by default.
+    bool ac4_core_decoding = false;
+    // 'decode' of AC-4 only: speakers=, the layout Part 2's renderer takes an
+    // immersive element to, "5.1", "5.1.2", "5.1.4", "7.1", "7.1.2" or
+    // "7.1.4" (ac4::DownmixTarget), empty for the source's own; a fold that
+    // channels= or downmix= asks for wins.
+    std::string ac4_speakers;
+    // 'decode' of AC-4 only: which presentation (ac4::PresentationChoice):
+    // presentation=, a position in the table of contents; presentation-id=,
+    // a presentation_id; language=, a BCP 47 tag; associated=, the associated
+    // audio service, as a Table 91 content_classifier and its Table 92
+    // refinement. And the mix: dialogue-gain= and associated-gain=, g_dialog
+    // and g_assoc in dB (ac4::OutputConfig::dialogue_gain_db and
+    // associated_gain_db).
+    std::optional<std::size_t> ac4_presentation;
+    std::optional<int> ac4_presentation_id;
+    std::string ac4_language;
+    std::optional<int> ac4_associated;
+    ac4::AssociatedType ac4_associated_type = ac4::AssociatedType::kAny;
+    double ac4_dialogue_gain = 0.0;
+    double ac4_associated_gain = 0.0;
+    // 'decode' of AC-4 only: whether a downmix takes the LFE, as AC-4 does
+    // unless mix-lfe=off (ac4::OutputConfig::mix_lfe); headphones, a listener
+    // on headphones, which takes the portable headphones DRC mode where the
+    // output level falls in the portable range and prefers a pre-virtualized
+    // presentation (OutputConfig::headphones, PresentationChoice::headphones);
+    // md-compat=, the md_compat level the decoder claims (DecoderConfig::
+    // level); and channels=5.1, a 7.X element folded to 5.X
+    // (DownmixTarget::k5X).
+    bool ac4_mix_lfe = true;
+    bool ac4_headphones = false;
+    int ac4_level = 3;
+    bool ac4_fold_5x = false;
+    // 'decode' only: the options given that one format's decode reads and
+    // the other's does not, so that decode says which it ignores for the
+    // stream it finds rather than ignoring them silently: AC-3's and
+    // E-AC-3's (drc=, heavy, ltrt-phase=, fast-imdct, mode=, programme=,
+    // bed-only, joc-domain=), and AC-4's.
+    std::vector<std::string> eac3_decode_tokens;
+    std::vector<std::string> ac4_decode_tokens;
+    // 'ac4-encode' only: the frame rate, rate mode, I-frames and metadata
+    // (ac4::EncoderConfig) as its options set them; print_meta_usage says
+    // what each takes. Where a key other commands also read (dialnorm=, drc=,
+    // the mix levels, lfemix=, dmixmod=) means something else in AC-4, or
+    // takes values AC-4 alone has, ac4-encode reads it into here instead.
+    struct Ac4Encode {
+        int frame_rate_index = 13;                           // frame-rate=
+        ac4::RateMode rate_mode = ac4::RateMode::kConstant;  // rate-mode=
+        std::optional<int> iframe_interval;                  // iframe-interval=
+        std::vector<std::int64_t> iframes;                   // iframes=
+        std::optional<double> fragment_seconds;              // fragment=
+        // dialnorm=: 0 to 31.75 dB below full scale, in steps of 0.25 dB;
+        // dialnorm=auto is plan::Metadata's measure_dialnorm.
+        std::optional<double> dialnorm_db;
+        std::optional<ac4::LoudnessPractice> loudness;  // loudness=
+        // drc=, and a profile of its own for any of Table 161's modes 0 to 3
+        // (drc-home-theatre= and the rest); experimental=drc-gains-N.
+        std::optional<ac4::DrcProfile> drc;
+        std::array<std::optional<ac4::DrcProfile>, 4> drc_modes{};
+        std::optional<int> drc_gains;
+        // The downmix values, in dB: cmixlev= and lorocmixlev= alike set the
+        // Lo/Ro centre gain, surmixlev= and lorosurmixlev= its surround gain.
+        std::optional<double> loro_centre_db;
+        std::optional<double> loro_surround_db;
+        std::optional<double> ltrt_centre_db;
+        std::optional<double> ltrt_surround_db;
+        std::optional<double> lfe_db;                            // lfemix=
+        std::optional<ac4::PreferredDownmix> preferred_downmix;  // dmixmod=
+        std::optional<double> loro_correction_db;                // loro-correction=
+        std::optional<double> ltrt_correction_db;                // ltrt-correction=
+        // Dialogue enhancement: dialogue-channels= (any of l, r and c),
+        // dialogue-stem=, dialogue-method= and dialogue-max-gain=.
+        std::optional<std::string> dialogue_channels;
+        std::string dialogue_stem;
+        ac4::DialogueMethod dialogue_method = ac4::DialogueMethod::kChannelIndependent;
+        int dialogue_max_gain_db = 9;
+    };
+    Ac4Encode ac4enc{};
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
     // Every field defaults off, so a plain invocation still writes the coded
     // channels untouched - see channels=/downmix=/drcmode= in

@@ -1,0 +1,10 @@
+# ac4-syntax-digest/1 ../ac4dec/constructed/7_1_4-ajcc-grouping0-2ch1-mode1-route2.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	16	26	0xfb3f10d7
+0	1	audio	2463	16822	0x721f8f77
+1	0	presentation	16	26	0xfb3f10d7
+1	1	audio	2446	16750	0x68a3f952
+2	0	presentation	16	26	0xfb3f10d7
+2	1	audio	2472	17350	0xd9e01392
+3	0	presentation	16	26	0xfb3f10d7
+3	1	audio	2465	17262	0xc84f10f5

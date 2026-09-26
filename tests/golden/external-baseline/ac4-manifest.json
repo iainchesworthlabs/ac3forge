@@ -1,5 +1,5 @@
 {
-  "baseline_version": 3,
+  "baseline_version": 5,
   "dee_version": "This tool belongs to the Dolby Encoding Engine version 6.5.4-dme+b56bc97e",
   "legs": {
     "ac4-stereo-64": {
@@ -293,6 +293,78 @@
       "custom_downmix_data": false,
       "de_parameters": false,
       "advanced_de_data": true
+    },
+    "ac4-514-tones-256": {
+      "encoder": "dee_ac4_encoder",
+      "source": "one tone per channel, L R C LFE Ls Rs Tfl Tfr Tbl Tbr: 331, 457, 613, 47, 787, 953, 1117, 1289, 1453, 1621 Hz at -20 dBFS",
+      "output_channel_layout": "5.1.4",
+      "bitrate_kbps": 256,
+      "options": [
+        "--loudness-management",
+        "measure_only"
+      ],
+      "duration_s": 5.0,
+      "source_sha256": "24f240c4a066c798a02e9bd42f6af340fad36c4daebd9eb8fcdfc9ebc5e6af25",
+      "size_bytes": 164560,
+      "frame_count": 120,
+      "frame_rate_index": 13,
+      "frame_len_base": 2048,
+      "walked_by": "tools/references/ac4_syntax.py",
+      "codec_mode": null,
+      "explicit_drc_curves": false,
+      "custom_downmix_data": true,
+      "de_parameters": false,
+      "advanced_de_data": false,
+      "input_format": "cbi_wav",
+      "immersive_codec_mode": "ASPX_ACPL_2"
+    },
+    "ac4-514-tones-512": {
+      "encoder": "dee_ac4_encoder",
+      "source": "one tone per channel, L R C LFE Ls Rs Tfl Tfr Tbl Tbr: 331, 457, 613, 47, 787, 953, 1117, 1289, 1453, 1621 Hz at -20 dBFS",
+      "output_channel_layout": "5.1.4",
+      "bitrate_kbps": 512,
+      "options": [
+        "--loudness-management",
+        "measure_only"
+      ],
+      "duration_s": 5.0,
+      "source_sha256": "24f240c4a066c798a02e9bd42f6af340fad36c4daebd9eb8fcdfc9ebc5e6af25",
+      "size_bytes": 328400,
+      "frame_count": 120,
+      "frame_rate_index": 13,
+      "frame_len_base": 2048,
+      "walked_by": "tools/references/ac4_syntax.py",
+      "codec_mode": null,
+      "explicit_drc_curves": false,
+      "custom_downmix_data": true,
+      "de_parameters": false,
+      "advanced_de_data": false,
+      "input_format": "cbi_wav",
+      "immersive_codec_mode": "ASPX_SCPL"
+    },
+    "ac4-514-tones-768": {
+      "encoder": "dee_ac4_encoder",
+      "source": "one tone per channel, L R C LFE Ls Rs Tfl Tfr Tbl Tbr: 331, 457, 613, 47, 787, 953, 1117, 1289, 1453, 1621 Hz at -20 dBFS",
+      "output_channel_layout": "5.1.4",
+      "bitrate_kbps": 768,
+      "options": [
+        "--loudness-management",
+        "measure_only"
+      ],
+      "duration_s": 5.0,
+      "source_sha256": "24f240c4a066c798a02e9bd42f6af340fad36c4daebd9eb8fcdfc9ebc5e6af25",
+      "size_bytes": 492240,
+      "frame_count": 120,
+      "frame_rate_index": 13,
+      "frame_len_base": 2048,
+      "walked_by": "tools/references/ac4_syntax.py",
+      "codec_mode": null,
+      "explicit_drc_curves": false,
+      "custom_downmix_data": true,
+      "de_parameters": false,
+      "advanced_de_data": false,
+      "input_format": "cbi_wav",
+      "immersive_codec_mode": "SCPL"
     }
   }
 }

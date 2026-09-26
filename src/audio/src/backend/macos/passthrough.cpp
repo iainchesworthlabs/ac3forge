@@ -119,10 +119,6 @@ constexpr auto kFormatChangeTimeout = std::chrono::milliseconds{2000};
 // them - the stride mpv's exclusive output reads an IOProc buffer in too.
 constexpr std::size_t kLinkFrameBytes = 4;
 
-std::size_t burst_bytes_for(BitstreamFormat format) {
-    return format == BitstreamFormat::kEac3 ? iec61937::kEac3BurstBytes : iec61937::kBurstBytes;
-}
-
 struct Candidate {
     AudioObjectID device = kAudioObjectUnknown;
     AudioStreamID stream = 0;
@@ -141,6 +137,16 @@ std::optional<Candidate> find_stream(AudioObjectID device, AudioFormatID format_
         }
     }
     return std::nullopt;
+}
+
+// Whether `device` has an output stream offering `format` for `sample_rate`
+// of content: never for AC-4, which has no format ID (physical_format_id()).
+bool offers(AudioObjectID device, BitstreamFormat format, std::uint32_t sample_rate) {
+    const std::optional<AudioFormatID> format_id = coreaudio::physical_format_id(format);
+    return format_id.has_value() &&
+           find_stream(device, *format_id,
+                       static_cast<Float64>(coreaudio::carrier_rate(format, sample_rate)))
+               .has_value();
 }
 
 }  // namespace
@@ -162,6 +168,9 @@ std::string_view describe(PassthroughError error) {
                    "the request itself failed)";
         case PassthroughError::kAlreadyRunning: return "passthrough is already running";
         case PassthroughError::kNotRunning: return "passthrough is not running";
+        case PassthroughError::kUnsupportedFormat:
+            return "Core Audio defines no AC-4 format ID (CoreAudioBaseTypes.h), so no stream "
+                   "can offer AC-4 or be retuned to it";
     }
     return "unknown passthrough error";
 }
@@ -185,16 +194,9 @@ std::expected<std::vector<RenderDeviceInfo>, PassthroughError> enumerate_render_
             .id = uid,
             .name = name.empty() ? coreaudio::fallback_name(uid) : name,
             .is_default = uid == default_id,
-            .supports_ac3_passthrough =
-                find_stream(device, coreaudio::physical_format_id(BitstreamFormat::kAc3),
-                           static_cast<Float64>(
-                               coreaudio::carrier_rate(BitstreamFormat::kAc3, sample_rate)))
-                    .has_value(),
-            .supports_eac3_passthrough =
-                find_stream(device, coreaudio::physical_format_id(BitstreamFormat::kEac3),
-                           static_cast<Float64>(
-                               coreaudio::carrier_rate(BitstreamFormat::kEac3, sample_rate)))
-                    .has_value(),
+            .supports_ac3_passthrough = offers(device, BitstreamFormat::kAc3, sample_rate),
+            .supports_eac3_passthrough = offers(device, BitstreamFormat::kEac3, sample_rate),
+            .supports_ac4_passthrough = false,
             // Every real output device publishes ordinary linear PCM among
             // its available physical formats - the control probe playing
             // the same role ALSA's own supports_exclusive_pcm does: "this
@@ -411,12 +413,16 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     if (running()) {
         return std::unexpected(PassthroughError::kAlreadyRunning);
     }
+    const std::optional<AudioFormatID> physical = coreaudio::physical_format_id(format_kind);
+    if (!physical) {
+        return std::unexpected(PassthroughError::kUnsupportedFormat);
+    }
     // A stream whose device died still holds its IOProc, its watch, and the
     // hog and format it took; stop() gives all of them back. With nothing
     // started it does nothing.
     stop();
 
-    const auto format_id = coreaudio::physical_format_id(format_kind);
+    const AudioFormatID format_id = *physical;
     const auto carrier = static_cast<Float64>(coreaudio::carrier_rate(format_kind, sample_rate));
 
     // Pick the device before touching anything, mirroring
@@ -479,7 +485,7 @@ std::expected<void, PassthroughError> PassthroughSink::start(const std::string& 
     impl_->stream = candidate->stream;
     impl_->original_format = *original;
     impl_->have_original_format = true;
-    impl_->burst_bytes = burst_bytes_for(format_kind);
+    impl_->burst_bytes = max_burst_bytes(format_kind);
     // Room for roughly a second of bursts, so a caller encoding slightly
     // ahead of real time never has to spin - the same sizing rationale as
     // the Windows/ALSA backends.

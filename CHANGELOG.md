@@ -244,9 +244,11 @@ The sections below contain the complete change list and fixes.
   - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
     address, the HTTP server and the Sendspin player. It goes back to the previous image if
     it does not get there within 5 minutes, or if it resets first. The trial is read from a
-    timer and takes a task only to write what it decided: a task kept for the whole trial
-    left the S3 board's Sendspin player without the internal RAM it starts with, so no update
-    could pass its trial on that board.
+    timer, with no task of its own: a task kept for the whole trial left the S3 board's
+    Sendspin player without the internal RAM it starts with, so no update could pass its trial
+    on that board. The timer's task also writes the acceptance, so a board whose RAM a stream
+    has taken can still accept, and a rollback asked for while it does is refused rather than
+    racing it.
   - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
     its own name.
   - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
@@ -260,10 +262,65 @@ The sections below contain the complete change list and fixes.
     file the board would refuse on its head alone is not sent, since an upload stops what plays
     before the board reads it. When the board comes back running another image, the page loads
     again.
+  - **Diagnostics without a cable.** A panic's core dump is kept in the `coredump` partition
+    through the restart and a rollback. `GET /firmware` reports it: the task, where, the
+    panic's words, and the image that wrote it. `GET /firmware/coredump` sends it and
+    `DELETE /firmware/coredump` erases it. The C6 and the P4 keep one; the S3 board does not,
+    because the core dump would take 4,016 bytes of its internal SRAM. `GET /log` sends the
+    console's recent output, 16 KiB of it in PSRAM or 2 KiB without, with `?from=` for what
+    is new, and leaves out the Sendspin pairing token. `ota.py coredump` saves a dump and reads
+    it with `esp_coredump`, and `ota.py log --follow` follows the console. An upload now prints
+    the least free internal heap it saw.
+  - **ac3hearth updates a sink's firmware.** A paired Hearth sink's settings page has a
+    **Firmware** tab beside Speakers and Decoder. It shows both slots, whether the sink runs
+    this app's own build, a trial, how the last update ended and the last crash. **Update from
+    a file…** checks the image as `ota.py` does before anything is sent: that it is whole, and
+    that it is for this board. Then it asks, sends the image and follows the board through its
+    restart and trial to the outcome. **Roll back** and **Restart** ask first. The app reaches
+    the board's own web server, not Sendspin, so the tab keeps following an update while the
+    sink is off Sendspin.
+  - **Published sink firmware.** Every release now carries an image for each board:
+    `hearth-sink-esp32s3`, `-esp32c6` (4 MB), `-esp32c6-16mb` and `-esp32p4-rev1`. Each comes as
+    the app image for an update over the network, a factory image for a new board, the parts
+    with a relative `flash_args` for a board already in use, and the ELF, with one
+    `hearth-sink-manifest.json`. `tools/ci/check_firmware_package.py` holds each to its name
+    before upload. `ota.py push --release <tag|latest>` gives each board the image that fits it,
+    checked against the manifest and `SHA512SUMS`. `--run <run id>` takes a CI run's
+    `esp32-firmware` artifact, which every run keeps for 14 days.
+  - **A guide to the sink firmware, and a browser installer.** `docs/hearth/sink-firmware.md`
+    covers choosing a board's image and checking a download. It also covers installing a new
+    board, moving one that runs an older build, updating over the network, and going back.
+    `docs/hearth/sink-installer.md` flashes a board from Chrome, Edge or Firefox with ESP Web
+    Tools, served by the site itself, then gives it its network over Improv. The documentation
+    deploy copies the newest release's firmware into it, and a release redeploys the site. The
+    page lists the ESP32-S3, the ESP32-C6 and the ESP32-P4 every time, names the release its
+    images came from, and says so when GitHub has a newer release with firmware.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
     the bootloader boots past.
+  - **An update that breaks off says why, and is sent again.**
+    - **An interrupted upload is recorded.** A board that restarts during an upload now records
+      it as `interrupted`, with the reset's cause. `GET /firmware` also gives the boot's
+      `reset_reason` and `uptime_ms`.
+    - **`ota.py` recovers from a break.** It prints the board's own account of a broken upload
+      and sends the image once more. It no longer leaves a board in flash mode after a failed
+      push.
+    - **The board erases as the image arrives.** The slot is erased a block at a time, just
+      ahead of the writes, rather than all at once before the second read.
+    - **Uploads have a limit.** An upload may take ten minutes at most.
+    - **A short-of-RAM board says so.** The upload's task is made after the teardown, and a
+      board that cannot make it answers `503` rather than dropping the connection.
+    - **Uploads survive other clients.** With every socket of the board's HTTP server in use,
+      ESP-IDF v6.1 could close the connection it had just taken for an upload, before reading
+      any of it. The example now has the server close its least recently used connection at
+      once (`CONFIG_HTTPD_QUEUE_WORK_BLOCKING`).
+    - **ac3hearth follows an update to its end.** The Firmware tab stays up while the board is
+      in flash mode, off mDNS, and shows how the update ended. As `ota.py` does, it sends an
+      upload that breaks off once more, and tells a board a failed update left in flash mode to
+      leave it.
+    - **Tested.** An overnight soak of the four boards, with faults injected, found no board
+      left stuck.
 
 **Crucible desktop application**
 
@@ -1032,6 +1089,19 @@ The sections below contain the complete change list and fixes.
   `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
   `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
   rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
+- **Golden masters for the AC-4 phases still to come** (phase G1 of `planning/ac4.md`). DEE's
+  licence ends on 2026-11-06 and is not renewed, so the gold set gains 439 legs beside G0's, each
+  made from committed material by `gen_ac4_baseline.py` and grouped by the phases it serves: sweeps,
+  noise and transients at every 2.0, 5.1 and 5.1.4 rate; film and speech at 5.1.4, with the
+  immersive codec mode each rate gives; immersive stereo at every rate and frame rate, and in
+  gapless parts that meet at DEE's splices; metadata at 2.0, 5.1, 5.1.4 and immersive stereo,
+  among it stepped tones under each DRC profile, every mix level and height downmix gain, loudness
+  targets from −31 to −10 and language tags; substreams for presentations; 60 s programmes; 7.1
+  input; and E-AC-3, AC-3 and E-AC-3 JOC from the same sources. Each keeps MediaInfo's trace of
+  every frame, DEE's MP4 of it and what `ac3cli` made of it. Three 5 s 5.1.4 streams of one tone
+  per channel, one in each immersive codec mode, are committed. DEE writes no AC-4 from objects:
+  its object encoders take only an Atmos master, and refuse every ADM BWF master this project
+  writes as not authored with Dolby tools.
 - **AC-4 decodes to PCM for mono and stereo in the SIMPLE codec mode** (phase D2 of
   `planning/ac4.md`). `ac4::Decoder::decode()` reconstructs the audio spectral frontend
   (dequantisation, scale factors, noise fill), stereo processing (M/S and prediction), the inverse
@@ -1172,6 +1242,28 @@ The sections below contain the complete change list and fixes.
   `codec-mode=aspx-acpl-1|aspx-acpl-2|aspx-acpl-3` and names the mode in its summary.
   `tools/checks/score_ac4_encode.py` pins nine A-CPL legs and the A-CPL race with
   `score_ac4_decode.py`'s per-band checks, which now take ASPX_ACPL_1, 5.0 and the channel pair.
+- **AC-4 over IEC 61937** (phase D11 of `planning/ac4.md`), from IEC 61937-14:2017, with IEC
+  61937-1 and 61937-2 for the burst format. `ac3::iec61937::Ac4BurstPacker` packs one AC-4 sync
+  frame to a data-burst in any of Part 14's four burst types (`Pc` data type 24 with subdata types
+  0 to 3: AC-4, AC-4 HBR4, AC-4 HBR16 and AC-4 LD). Each burst lasts as long as its frame at the
+  link rate, the bursts at 29.97, 59.94 and 119.88 fps follow Part 14's five-burst sequences, `Pc`
+  bits 8 to 11 carry the period's code and `Pd` the frame's length. `wrap_ac4_stream` is the batch
+  form, and `ac4_burst_type_for()` picks the smallest type a stream's largest frame fits.
+  `BurstReader`, `unwrap_stream` and `PassthroughDetector` read all four types, hold an AC-4
+  burst's `Pd` to the length its sync frame states, and now read all seven data-type bits of `Pc`,
+  so a data type 1 burst with a subdata type is no longer taken for AC-3. `ac3tests` holds every
+  row of the tables against a second transcription and against the arithmetic the standard
+  implies, and packs and reads back every frame rate of every type, and every committed DEE
+  stream, unchanged; `AC4DEC_STREAM_DIR` points that case at the whole gold set locally. `PassthroughSink` takes `BitstreamFormat::kAc4`, `kAc4Hbr4` and `kAc4Hbr16`:
+  ALSA and Android send the first two, since both take IEC 61937 bursts as opaque two-channel
+  data, while WASAPI, PipeWire and Core Audio ask for a codec by name, have none for AC-4, and
+  refuse it with the new `PassthroughError::kUnsupportedFormat`, as every backend refuses HBR16's
+  eight-channel link. Hearth's extension role `_ac3forge_player@v1` carries `"ac4"` burst chunks
+  of one sync frame each, and its test sink decodes and renders them: a loopback test sends DEE's
+  2.0 stream through the role, and the sink's output equals the local decode sample for sample.
+  Part 14 leaves two choices, which frame starts a burst sequence and whether `Pd` counts bits or
+  bytes; `iec61937.cpp` gives the reading taken for each. No receiver found accepts AC-4, so none
+  has been tried.
 - **AC-4 decodes every frame rate, with the output processing a system asks for** (phase D6 of
   `planning/ac4.md`). A sample rate converter in `src/ac4core`, with its inverse for the encoder,
   takes every `frame_rate_index`'s internal rate to 48 kHz: a Kaiser-windowed polyphase filter 100 dB
@@ -1197,6 +1289,163 @@ The sections below contain the complete change list and fixes.
   a splice at an I-frame joins the two streams without the gap a restart from silence left, and a
   frame whose table of contents does not read is taken to be the frame the stream expected, where
   before it made the next frame a change of source. `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 encoder writes every frame rate, average and variable rates, I-frames where asked, and
+  the metadata** (phase E5 of `planning/ac4.md`). At 48 kHz every `frame_rate_index` of Part 1 Table
+  83, the input converted to the frame's internal rate by the decoder's converter the other way
+  round, each frame decoding to the samples Part 2 5.11 locks to `sequence_counter`, exact over
+  100 000 frames at every rate. `RateMode::kAverage` lets frames lend each other bytes within the
+  decoder's input buffer (Part 1 6.2.4), which `wait_frames` and Part 2's `br_code` signal, and
+  `kVariable` within two seconds' share. I-frames at an interval, at named frames and at every
+  fragment start a caller gives. The presentation substream carries the further loudness values,
+  DRC's decoder modes on the default profile, on curves of their own or repeating another, with
+  transmitted gains computed from a profile under `experimental.drc_gains`, and the stereo
+  downmix's values; the audio substream carries dialogue enhancement from channels marked as
+  dialogue or from a dialogue stem, by the channel-independent method, the Mid of L and R, or
+  cross-channel. MediaInfo reads every value as the encoder wrote it over 42 configurations, and the
+  decoder's output level, downmixes and dialogue enhancement gains equal their formulas on the
+  encoder's streams to 0.01 dB (`gain_ac4_decode.py --encoder`, in CI). At 100 to 120 fps music at
+  128 kbps scores 0.63 to 0.87 dB of log-spectral distance and up to 0.18 of ViSQOL under index 13's,
+  the frames' fixed side information taking more of the rate. `ac3cli ac4-encode` takes
+  `frame-rate=`, `rate-mode=`, `iframe-interval=`, `iframes=`, `fragment=`, `dialnorm=` in quarters of
+  a dB, `loudness=<practice>` (measured with the BS.1770 meter), `drc=` and a profile per mode, the
+  mix levels, `lfemix=` and `dmixmod=` in AC-4's terms, `loro-correction=`, `ltrt-correction=`,
+  `dialogue-channels=`, `dialogue-stem=`, `dialogue-method=` and `dialogue-max-gain=`. Its MP4 files
+  list the I-frames as sync samples and count 29.97, 59.94 and 119.88 fps at 240 000 Hz (Part 2
+  Table E.1), and `ac3cli mp4` now carries AC-4 at those rates too, through `ac4::media_timing()`,
+  `mp4::AudioTrack::timescale` and `MuxOptions::sync_samples`. The encoder-space harness draws all of
+  it, and found I-frames at the least rate a configuration takes that the encoder could not write
+  and threw on: the frame that holds nothing more now sends A-CPL's values, DRC's gains and a
+  stem's dialogue parameters as a stream starts them, and `create()` sizes it with a VARFIX interval,
+  which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
+- **AC-4 decodes streams of several presentations and mixes their substreams** (phase D7 of
+  `planning/ac4.md`). `ac4::DecoderConfig::presentation` chooses as Part 2 4.8.2 has it, for version 0
+  and version 1 presentations: by `presentation_id`, by position, or by language, associated audio
+  (Part 1 Table 91's classifiers and Table 92's services) and `b_pre_virtualized`, among those the
+  decoder decodes, the stream enables and the decoder's level (`md_compat`) allows;
+  `ac4::select_presentation()` gives the choice for a table of contents, and each `DecodedFrame` names
+  the presentation it holds. Music and effects with dialogue, main with associated audio, both, and
+  `presentation_config` 5's by content classifier mix in the QMF domain as Part 1 6.2.16 and Part 2
+  4.8.3.17 to 4.8.5 give: substream group gains, the main audio's scaling, the dialogue's g_dialog up
+  to the stream's g_dialog_max, g_assoc, pans at Table 216's angles and linearly between, and version
+  0's levelling of associated audio by its own dialnorm; summed, where Part 2 4.8.4's equation divides
+  by the number of substreams. The hybrid dialogue enhancement methods take their waveform from the
+  presentation's dialogue enhancement substream. The encoder's frame writer gains general tables of
+  contents and the mixing fields, with which a test multiplexer builds such streams from DEE's
+  substreams and the encoder's: every mix, measured with one tone per substream, equals its formula to
+  0.01 dB, and a table of 30 constructed tables of contents selects as 4.8.2 requires, in the decoder
+  and in the Python reference alike (`tools/references/ac4_presentations.py`,
+  `tools/checks/mix_ac4_decode.py`, in CI). `ac3cli decode` takes `presentation=`, `presentation-id=`,
+  `language=`, `associated=`, `dialogue-gain=` and `associated-gain=`, and `fuzz_ac4_decode` chooses
+  the presentation and the gains from its input. librempeg decodes a presentation's first substream
+  alone, and MediaInfo reads a second parameter set after `de_ms_proc_flag` that the text does not
+  send; `src/ac4dec/ERRATA.md` records the readings.
+- **AC-4 decodes the immersive element of 7.0.4 and 7.1.4, in full and core decoding, and renders
+  it by Part 2's channel renderer** (phase D9 of `planning/ac4.md`). Both transcriptions read
+  `immersive_channel_element()` with `immers_cfg` and A-JCC's `ajcc_data()` (Part 2 6.2.4 to 6.2.6),
+  and `ac4::Decoder` decodes the element in its five codec modes: Part 2 5.2's track assignment with
+  step 4 and Table 20's prediction, S-CPL on the inverse transform's output, A-SPX's immersive
+  pairing and gains, A-CPL's four modules and A-JCC (in `src/ac4core`, templated on `Real`), in full
+  decoding and in core decoding (`ac4::DecoderConfig::decoding`), which gives the 5.X.2 core by the
+  core gains, A-SPX on the first channel of a pair and A-JCC's core modules. Part 2's channel renderer
+  (5.10.2) takes the element from the layout its presence flags give to the one
+  `OutputConfig::downmix` names, which gains 7.X.4, 7.X.2, 7.X.0, 5.X.4 and 5.X.2: Tables 38 to 43 in
+  full decoding and 45 and 46 in core, with the custom downmix data the stream sends and the loudness
+  correction of the output, and for two channels and mono Part 1's Table 218 after 5.X.0. DRC's
+  transmitted gains take Part 2 Table 69's groups. The 9.X.4 modes and 22.2 are refused by name.
+  DEE's 5.1.4 legs, one per immersive codec mode it writes, decode with each of the ten tones on its
+  own channel, to 0.02 dB where the tops are coded channel by channel, and in core decoding each on
+  its core channel at the core gains; rendered to 5.1 and to two channels in both modes they equal
+  the renderer's matrices applied to their as-coded decode to 0.01 dB, as the gold set's 5.1.4 legs
+  do with their custom downmix data (`tools/checks/gain_ac4_decode.py`), and every table is held
+  against a second transcription in the tests. The encoder's frame writer gains the 7.X.4 channel
+  modes with their presence flags, and an A-JCC writer, with which constructed streams reach the
+  codec modes, groupings and routes DEE does not write; five are committed with their digests.
+  `ac3cli decode` takes `decoding=full|core` and `speakers=5.1|5.1.2|5.1.4|7.1|7.1.2|7.1.4`, and
+  `fuzz_ac4_decode` reaches the element from DEE's 5.1.4 seeds. librempeg does not decode the
+  element; `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 decoder's API for channel-based streams, and the AC-4 libraries installed** (phase D8
+  of `planning/ac4.md`). `ac4::Decoder::set_output()` and `set_presentation()` change the output
+  processing and the presentation from the next frame while a stream plays, where a decoder built
+  afresh waits for the next I-frame. `decode_by_block()` hands the output over in blocks of 256
+  samples whatever the frame length, allocating nothing per frame once the layout is set, and
+  `flush()` hands over the rest. `presentations()` reports each presentation of the table of
+  contents: its members and their roles, its channels, its language and, for an alternative
+  presentation, its name, whole or sent in chunks over several frames (Part 2 6.3.3.1.4; the reading
+  is in `src/ac4dec/ERRATA.md`, and `tools/references/ac4_presentations.py` takes the same one).
+  `metadata()` reports the selected presentation's loudness values, DRC configuration, dialogue
+  enhancement and downmix gains, and `latency_samples()` the decoder's delay, which equals the delay
+  the encoder counts on at every frame rate. `ac4::SyncFrameSplitter` splits the sync frames of a
+  stream that arrives in pieces, in storage the caller owns, and `ac4::frame_rate()` gives a table
+  of contents' frame rate. `ac3cli decode` takes `headphones`, `mix-lfe=on|off`, `md-compat=` and
+  `channels=5.1` for AC-4, and names in a warning an option of the other format's it was given;
+  `ac3cli probe` reports the frame rate, the bit rate, the I-frames, the splices, each version 1
+  presentation and the selected presentation's metadata, in its table and in `stream.ac4` of
+  `ac3forge.probe/1`, and Hearth's media information carries the same. The inspector, the decoder
+  and the shared core are installed and exported (`ac4::decoder_static` and `ac4::decoder_shared`,
+  each linking the inspector of its kind, and `ac4::core` beside a static decoder; pkg-config
+  `ac4`, `ac4dec` and `ac4core`), `tools/checks/check_install_consumer.sh` decodes a stream through
+  each installed decoder by CMake and by pkg-config, and `tools/ci/abi-allowlist/libac4dec.so.txt`
+  lists the decoder's exports. A test standing in for Hearth's engine decodes every committed stream
+  through the public API alone. `docs/library/ac4.md` and `examples/decode_ac4.cpp` show the API.
+- **Four items of the review of #700.** `DecoderConfig::syntax` held only the address of its
+  callable, so a lambda written in place was gone before the first record, which crashed MSVC's
+  Release build in phase D7: `ac4::SyntaxTrace` now owns a copy, the decoder and the encoder keep
+  one of their own, and `ac4::SyntaxSink`, the reference the readers hold, no longer binds a
+  temporary. A Huffman codeword the substream ends inside is `kTruncated` in every tool, where the
+  audio spectral frontend called it `kInvalidStream`. An HSF extension substream that nothing in
+  the table of contents names is reported, as refused and unread, with every other substream of
+  the substream index table. The Android app, the WebAssembly preset and the Python wheel no
+  longer compile the AC-4 libraries they do not link, until phase I4 binds them. Each has a test
+  that failed before its fix.
+- **AC-4 decodes object audio: A-JOC in full and core decoding, direct-coded objects, and their
+  metadata** (phase D10 of `planning/ac4.md`). Both transcriptions read `audio_data_ajoc()` with its
+  `var_channel_element()` downmix and A-JOC's `ajoc()` (Part 2 6.2.3.4 to 6.2.6), `audio_data_objs()`,
+  the object audio metadata of 6.2.8 and the OAMD substream, and `ac4::Decoder` decodes them: A-JOC's
+  reconstruction (Part 2 5.7, in `src/ac4core` and templated on `Real`: the parameter bands,
+  differential decoding and dequantisation, the interpolation and its ramp across frames, the
+  decorrelators and duckers and the decorrelation input matrix) in full decoding to the upmix's
+  objects and in core decoding to the downmix's signals or its static bed, with dialogue enhancement
+  in both (5.8.2.3, 5.8.2.4); direct-coded objects in the Part 1 elements, dynamic objects and beds
+  over as many substreams as a group spreads them, with theirs (5.8.2.5); and the intermediate
+  spatial format, rendered by Annex A.2.1's matrices, which `gen_ac4_tables.py` reads from Part 2's
+  attachment. `DecodedFrame::objects` hands each object over with its PCM and the Annex F properties
+  its metadata sets, each update at its sample in the output, and `object_common` the group's
+  common data; the API's additions are new types and appended members. Chromium's `ac4-ajoc.ac4`
+  decodes in both modes, seventeen objects in full decoding and ten in core, as its table of
+  contents lists them. The encoder's writers gain the A-JOC and object audio metadata syntax and the
+  table of contents' object substreams, with which eight constructed streams reach A-JOC's shapes,
+  the direct-coded kinds and the metadata's fields; committed with their digests, every object
+  decodes to the tones its coefficients make to 0.1 dB, and every update comes out at its sample and
+  position. `ac3cli decode` renders a presentation with objects to speakers through the layout
+  renderer Hearth plays E-AC-3's objects with (`apps/common/ac4_object_render.hpp`), 7.1.4 by
+  default, and a test holds each speaker to the objects' gains for their positions. librempeg
+  refuses object coding; `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 encoder writes several substreams and the presentations of Part 2 Table 53** (phase E6
+  of `planning/ac4.md`). `ac4::EncoderConfig::substreams` codes each substream from its own input
+  channels, at its share of the rate, in a substream group of its own with its content classifier
+  and language, and `presentations` plays them together: music and effects with dialogue, main with
+  dialogue enhancement, whose hybrid methods (`DialogueConfig::hybrid`) send the dialogue's waveform in
+  a substream of its own, main with associated audio, music and effects with both, main with both,
+  roles by content classifier, and EMDF payloads alone. Each presentation carries its
+  `presentation_id`, the least `md_compat` its tracks need (Table 55), an alternative presentation's
+  name, its dialnorm, loudness values, DRC and downmix, the substream groups' gains and the associated
+  audio's scaling and pan; a dialogue substream carries its g_dialog_max and pans, and EMDF payloads
+  pass through in a presentation's EMDF payloads substream or in a substream's `metadata()`.
+  `create()` refuses what Part 1 forbids, dialogue or associated audio with a channel the main audio
+  lacks but for mono, and 3.0 anywhere but a dialogue enhancement signal or the dialogue of a music
+  and effects presentation (3.0 is experimental), and what CMAF's Annex H.1.2 does, more than 64
+  presentations or a `presentation_id` twice. A stream of one presentation now carries
+  `presentation_id` 0 and its layout's level, 1 in 5.X and 2 in 7.X, as DEE's streams do, where E1 to
+  E5 wrote level 0 and no `presentation_id`. Through D7's selection and mixing every presentation of
+  the committed streams comes out as configured, one tone per substream, to 0.01 dB
+  (`tests/ac4enc/test_ac4enc_presentations.cpp`, and `mix_ac4_decode.py` in CI); MediaInfo lists the
+  presentations, groups, names, languages and levels as configured; against DEE's G1 legs multiplexed
+  into the same presentations, the encoder's SNR is within 0.1 dB of DEE's or above it at 128 kbps and
+  5.5 to 6.3 dB above at 192 (`tools/checks/race_ac4_presentations.py`). The substreams go
+  presentation substreams first, then audio, then EMDF payloads, since librempeg takes the substream
+  after the presentation substreams for the first group's audio. `fuzz_ac4_encode` draws the
+  substreams and presentations; `ac3cli ac4-encode` takes them in E7. `src/ac4enc/ERRATA.md` records
+  the readings.
 
 **Browser (WASM)**
 
@@ -1298,6 +1547,15 @@ The sections below contain the complete change list and fixes.
   way playback settings and the resumed queue already are - previously every restart reset the
   whole page to stereo defaults. One setup today, not one per output device, despite the page's
   own "a setup for each output" wording.
+- **Golden masters from Dolby's encoders for AC-3, E-AC-3, E-AC-3 JOC and TrueHD.** DEE's licence
+  ends on 2026-11-06 and is not renewed, so `tools/generators/gen_dee_gold.py` makes, and keeps
+  on a local disk, every stream a later piece of work could want from it: 1,111 legs (1,086
+  streams, 25 refusals kept with DEE's messages) at every layout and data rate the AC-3 and E-AC-3
+  encoders list, 7.1 from the Blu-ray mode, E-AC-3 JOC from 5.1.4, 7.1.4 and 9.1.6 beds, TrueHD at
+  48 and 96 kHz, each metadata option, and 60 and 300 s programmes, each rebuildable from the
+  committed programme fixtures, with MediaInfo's trace, DEE's MP4 and what `ac3cli` and FFmpeg
+  make of it. `ac3cli`'s decoder refuses the 23 streams that use transient pre-noise processing,
+  whose correction reaches further back than it buffers.
 
 ### Changed
 
@@ -1487,6 +1745,9 @@ The sections below contain the complete change list and fixes.
   rows, and four stale claims corrected.
 - The CLI reference lists all forty-two commands, including the previously-undocumented
   `spatial`.
+- The threat model, the WebAssembly page, the ADM page and the building guide no longer describe
+  the codec libraries as free of third-party dependencies. {fmt} is compiled into `ac3::forge`
+  and `mp4::mp4`.
 
 **Release engineering**
 

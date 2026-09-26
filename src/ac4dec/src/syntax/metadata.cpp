@@ -52,20 +52,13 @@ namespace {
     return mode == ch_mode::k7_0_322 || mode == ch_mode::k7_1_322;
 }
 
-// huff_decode() (Part 1 clause 4.3.6.4.2) with its failure given a reason.
-// Annex A's codebooks are complete, so no match means either the substream
-// ended inside a codeword or the bits are not this codebook's.
+// huff_decode() (Part 1 clause 4.3.6.4.2), a miss reported as every tool
+// reports one (huff_codeword()).
 [[nodiscard]] std::expected<int, SyntaxError> read_codeword(BitReader& r, const Codebook& codebook,
                                                             std::string_view element) {
-    const int index = huff_decode(r, codebook, element);
-    if (index >= 0) {
-        return index;
-    }
-    if (r.remaining_bits() < codebook.max_bits) {
-        return fail(DecodeError::kTruncated,
-                    "a Huffman codeword runs past the end of the substream");
-    }
-    return fail(DecodeError::kInvalidStream, "no Huffman codeword of the codebook matches");
+    return huff_codeword(r, codebook, element,
+                         {.truncated = "a Huffman codeword runs past the end of the substream",
+                          .invalid = "no Huffman codeword of the codebook matches"});
 }
 
 // --- Part 2 clause 6.2.7.2 basic_metadata ------------------------------------
@@ -959,13 +952,26 @@ ParseResult parse_emdf_payloads_substream(BitReader& r, EmdfPayloads& out) {
 // --- Part 2 clause 6.2.7.1 metadata ------------------------------------------
 
 ParseResult parse_metadata(BitReader& r, const SubstreamContext& ctx, MetadataState& state,
-                           Metadata& out) {
+                           Metadata& out, const ObjectAudioContext* objects) {
     out = Metadata{};
     if (const ParseResult result = parse_basic_metadata(r, ctx, out.basic); !result) {
         return result;
     }
     if (const ParseResult result = parse_extended_metadata(r, ctx, out.extended); !result) {
         return result;
+    }
+    if (ctx.b_alternative && ctx.coding == AudioCoding::kObjects && objects != nullptr) {
+        if (!objects->group_blocks) {
+            return fail(DecodeError::kMissingIFrame,
+                        "oamd_dyndata_single() needs an oamd_timing_data() that no frame has sent");
+        }
+        OamdDynData oamd;
+        if (const ParseResult result = parse_oamd_dyndata_single(
+                r, objects->objects, *objects->group_blocks, ctx.b_iframe, true, oamd);
+            !result) {
+            return result;
+        }
+        out.oamd = std::move(oamd);
     }
     std::uint64_t tools_metadata_size = r.read(7, "tools_metadata_size_value");
     if (r.read_flag("b_more_bits")) {

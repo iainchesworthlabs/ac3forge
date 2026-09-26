@@ -295,6 +295,27 @@ TestCase {
         verify(NetworkController.groups.every(function(g) { return g.id !== groupId; }));
     }
 
+    // The Firmware tab (planning/esp32-ota.md, O5) asks the sink's own web
+    // server, at the address mDNS gave for it - 127.0.0.1 for this test sink,
+    // which serves no GET /firmware - and only while the tab is open. It says
+    // the sink does not answer, and offers nothing it could not do.
+    function test_pairedSinkFirmwareTabAsksTheSinksOwnServerWhileOpen() {
+        const page = makePage();
+        ensurePaired(page);
+        mouseClick(H.segment(page, "Speakers, decoder or firmware", "firmware"));
+        tryVerify(function() { return NetworkController.sinkFirmware.pageUrl === "http://127.0.0.1/"; }, 10000,
+                  "the Firmware tab never asked the sink");
+        tryVerify(function() { return (NetworkController.sinkFirmware.statusText ?? "").length > 0; }, 15000);
+        compare(NetworkController.sinkFirmware.answering, false);
+        compare(NetworkController.sinkFirmware.canUpdate, false);
+        const update = H.find(page, function(item) { return item.objectName === "sinkFirmwareUpdate"; });
+        verify(update !== null, "the Firmware tab has no Update button");
+        compare(update.enabled, false);
+        mouseClick(H.segment(page, "Speakers, decoder or firmware", "speakers"));
+        tryVerify(function() { return Object.keys(NetworkController.sinkFirmware).length === 0; }, 5000,
+                  "the sink is still asked with its Firmware tab closed");
+    }
+
     // The Decoder tab offers exactly the settings the sink lists
     // (NetworkSinkDecoder.qml's accepts()): this test sink lists none, so
     // every control is shown and disabled, and the report panel beside it
@@ -302,7 +323,7 @@ TestCase {
     function test_pairedSinkDecoderTabFollowsWhatTheSinkAccepts() {
         const page = makePage();
         ensurePaired(page);
-        mouseClick(H.segment(page, "Speakers or decoder", "decoder"));
+        mouseClick(H.segment(page, "Speakers, decoder or firmware", "decoder"));
         let mode = null;
         tryVerify(function() { mode = H.segment(page, "Mode", "rf"); return mode !== null; }, 10000,
                   "the Decoder tab shows no Mode control");

@@ -38,6 +38,31 @@ The writer takes the decoder's reading of each of these:
   the A-CPL writer (`src/ac4enc/src/acpl/acpl_syntax.hpp`, phase D5's, for the constructed streams and
   for E4) sends each parameter set from `acpl_param_band`, its first value along frequency from the F0
   codebook, as Table 65 reads it.
+- The immersive element (phase D9's, for the constructed 7.X.4 streams): the frame writer's 7.X.4 channel
+  modes with their presence flags, and the A-JCC writer (`src/ac4enc/src/ajcc/ajcc_syntax.hpp`), take
+  [The framing of the immersive element's chparam_info()](../ac4dec/ERRATA.md#the-framing-of-the-immersive-elements-chparam_info)
+  and [immersive_codec_mode_code in the trace](../ac4dec/ERRATA.md#immersive_codec_mode_code-in-the-trace);
+  `custom_dmx_data()` sends no custom downmix data and `loud_corr()` no correction for the immersive
+  outputs.
+- The channel renderer (phase D9's): the frame writer's `top_channels_present` takes
+  [Where a .2 source's top pair is carried](../ac4dec/ERRATA.md#where-a-2-sources-top-pair-is-carried), and
+  a writer that sends custom downmix data in I-frames alone, as DEE does, relies on
+  [Custom downmix data](../ac4dec/ERRATA.md#custom-downmix-data) to hold them between.
+- Object audio (phase D10's, for the constructed object streams of `tests/ac4dec/ac4dec_objects.cpp`):
+  the A-JOC writer (`src/ac4enc/src/ajoc/ajoc_syntax.hpp`), the object audio metadata writer
+  (`src/ac4enc/src/oamd/oamd_syntax.hpp`) and the table of contents' object groups take
+  [Arrays read as one field](../ac4dec/ERRATA.md#arrays-read-as-one-field),
+  [Prefix codes in the trace](../ac4dec/ERRATA.md#prefix-codes-in-the-trace),
+  [add_per_object_md()'s parameters](../ac4dec/ERRATA.md#add_per_object_mds-parameters),
+  [n_objects_code and the LFE](../ac4dec/ERRATA.md#n_objects_code-and-the-lfe),
+  [The objects of a direct-coded substream](../ac4dec/ERRATA.md#the-objects-of-a-direct-coded-substream),
+  [Which oamd_timing_data() applies](../ac4dec/ERRATA.md#which-oamd_timing_data-applies) and
+  [var_channel_element()'s A-SPX and companding](../ac4dec/ERRATA.md#var_channel_elements-a-spx-and-companding).
+  Each budget the syntax gives a nested element (`add_data_bytes`, `add_table_data_size_minus1`, the
+  `skip_bits` of `ajoc_bed_info()` and `ext_prec_alt_pos()`) is the fewest bytes that hold what is sent,
+  measured as the decoder measures it; where bits of an `add_data` budget are left after `trim()`, the
+  decoder reads `bed_render_info()` and then `headphone()` from them, so the writer sends those two, absent
+  where nothing is given for them, before the padding.
 
 ## The QMF domain
 
@@ -68,11 +93,13 @@ equal on every ASPX stream they write:
 - **Where:** Part 1 Table 188's `d_pcm` and `d_ctrl`, 5.7.3's analysis, and 5.7.6.3.2's
   `ts_offset_hfgen`, read from the writer's side: which input samples a frame's A-SPX data describes.
 - **Reading:** the decoder's QMF slot g covers the 64 samples of the encoder's delayed input from
-  `64 g - 352`, since the output of the inverse transform is held `d_pcm` = 352 samples before the
-  analysis; frame f's control data arrives `d_ctrl` = 1 frame later, behind `ts_offset_hfgen` = 6 slots,
-  so its interval's slot i is QMF slot `32 (f + 1) - 6 + i`. The encoder analyses its input with the
-  decoder's own bank on that axis and estimates each frame's envelopes, noise floors and inverse
-  filtering over those slots.
+  `64 g - d_pcm`, since the output of the inverse transform is held `d_pcm` samples before the
+  analysis; frame f's control data arrives `d_ctrl` frames later, behind `ts_offset_hfgen` slots, so its
+  interval's slot i is QMF slot `num_qmf_timeslots (f + d_ctrl) - ts_offset_hfgen + i`: at
+  `frame_rate_index` 13, 352 samples, 1 frame and 6 slots, `32 (f + 1) - 6 + i`. The encoder analyses
+  its input with the decoder's own bank on that axis and estimates each frame's envelopes, noise floors
+  and inverse filtering over those slots, and dialogue enhancement's and DRC's values over the same
+  block, where the decoder's output stages meet them.
 - **Evidence:** Streams and Readers. The encoder's ASPX streams decode at the lag of DEE's, and above
   the crossover the decoded A-SPX tiles land as close to the source's energy as DEE's do
   (`tools/checks/score_ac4_encode.py --gold`).
@@ -84,9 +111,9 @@ equal on every ASPX stream they write:
 - **Reading:** the compressor multiplies each slot of the input's low band, below `sbx`, by `0.5
   L^(alpha - 1)`, L measured as the expander measures it on the input's own analysis: expanded, the
   slot's level is L again. The compressed slots, with nothing above `sbx`, are synthesised back by the
-  decoder's synthesis bank, whose output runs 352 + 577 = 929 samples behind the analysis's input; the
-  spectral frontend codes that output 929 samples on, so that the decoder's analysis of what it decodes
-  sees the compressed slots on the same axis.
+  decoder's synthesis bank, whose output runs `d_pcm` + 577 samples (929 at `frame_rate_index` 13)
+  behind the analysis's input; the spectral frontend codes that output as far on, so that the decoder's
+  analysis of what it decodes sees the compressed slots on the same axis.
 - **Evidence:** Observation. A 1 kHz tone whose level steps by 30 dB steps by 0.65 of that, 19.5 dB,
   compressed (`tests/ac4enc/test_ac4enc_aspx.cpp`), and the encoder's companded streams decode within
   0.4 dB of their source's level.
@@ -297,3 +324,233 @@ the box it writes is the box `build_dac4()` writes, byte for byte (`tests/ac4/te
   one bit; `tools_metadata_size` of the audio substream's `metadata()` is likewise one bit,
   `b_de_data_present` 0.
 - **Evidence:** Readers: both readers hold these sizes to the bits read.
+
+### Dialogue enhancement and DRC in the frame's metadata
+
+The writer takes the decoder's reading of each of these (phase E5):
+
+- [de_data() predicts from the wrong channel](../ac4dec/ERRATA.md#de_data-predicts-from-the-wrong-channel):
+  a channel after the first is sent along its own bands in an I-frame.
+- [Dialogue enhancement and DRC configuration across I-frames](../ac4dec/ERRATA.md#dialogue-enhancement-and-drc-configuration-across-i-frames):
+  `de_config()` and `drc_config()` go in I-frames, and a frame between them sends `b_de_config_flag` 0,
+  and `b_drc_present` 0 unless a mode sends gains.
+- [drc_repeat_id copies a whole mode](../ac4dec/ERRATA.md#drc_repeat_id-copies-a-whole-mode): a repeat of
+  a mode that sends gains sends a gainset in `drc_data()` too, that mode's gains again.
+- [drc_gains() is a brace short](../ac4dec/ERRATA.md#drc_gains-is-a-brace-short) and
+  [DRC's units](../ac4dec/ERRATA.md#drcs-units): gains in whole dB2, frequency-differential along the
+  first subframe's bands and time-differential along each band's subframes.
+- [When dialogue enhancement's, DRC's and the downmix's values apply](../ac4dec/ERRATA.md#when-dialogue-enhancements-drcs-and-the-downmixs-values-apply):
+  a frame's dialogue enhancement parameters and DRC gains are computed on the block its control data
+  meets (above, "Where the encoder's QMF slots fall").
+
+### drc_gainset_size counts drc_version
+
+- **Where:** Part 1 4.3.13.5.1, p. 130 ("the size in bits of the following drc_gains element"), against
+  Table 74, p. 67 (`bits_left = drc_gainset_size - 2 - used_bits`).
+- **Reading:** the formula's: the size counts `drc_version`'s two bits and `drc_gains()`, which is what
+  a reader skipping a gainset by its size needs. The decoder accepts either reading at `drc_version` 0
+  ([drc_gainset_size does and does not count drc_version](../ac4dec/ERRATA.md#drc_gainset_size-does-and-does-not-count-drc_version)).
+- **Evidence:** Readers. Transmitted gains are experimental (`experimental=drc-gains`): no stream DEE
+  writes sends them.
+
+## Presentations
+
+The table of contents of several presentations and their mixing fields (`src/ac4enc/src/frame/toc_writer.cpp`
+and `metadata.cpp`), which phase D7's test multiplexer writes, and the encoder's presentations of several
+substreams (`src/ac4enc/src/encoder.cpp`), phase E6's. The writer takes the decoder's reading of each of
+these:
+
+- [presentation_config 1 and 4 read more specifiers than n_substream_groups](../ac4dec/ERRATA.md#presentation_config-1-and-4-read-more-specifiers-than-n_substream_groups)
+  and [Substream group gains](../ac4dec/ERRATA.md#substream-group-gains): every specifier the
+  configuration reads, and `sg_gain` for n_substream_groups groups as 6.2.1.3 assigns it: none for
+  configuration 1, the main and associated groups' for configuration 4.
+- [The dialogue's gain and pans](../ac4dec/ERRATA.md#the-dialogues-gain-and-pans) and
+  [Panning](../ac4dec/ERRATA.md#panning): `dialog_max_gain` for a g_dialog_max of (1 + `dialog_max_gain`)
+  x 3 dB, and pans in 1.5 degree steps clockwise from the front, 330 degrees L and 30 degrees R.
+- [The main audio's and the dialogue's scaling with associated audio](../ac4dec/ERRATA.md#the-main-audios-and-the-dialogues-scaling-with-associated-audio):
+  `scale_main`, `scale_main_centre` and `scale_main_front` at -0.3 dB a step, 255 for silence.
+- [The hybrid dialogue enhancement's waveform](../ac4dec/ERRATA.md#the-hybrid-dialogue-enhancements-waveform):
+  a hybrid method's `de_signal_contribution` sets the waveform's share, alpha_c = x / 31, of the gain,
+  and the dialogue enhancement substream's channels are d_c in that entry's order (below, "The hybrid
+  methods' waveform").
+- [Which presentations can be selected](../ac4dec/ERRATA.md#which-presentations-can-be-selected): each
+  presentation's `md_compat` is the least its tracks allow (below, "Tracks for md_compat"), so that a
+  decoder of that level can select it; a caller may set a higher one, and 7 is selected only by a
+  decoder told its level is 7.
+- [The order of the preferences](../ac4dec/ERRATA.md#the-order-of-the-preferences): a presentation's
+  language is its dialogue substream's, else its main or music and effects substream's. Each substream's
+  language goes in its own group's `content_type()`, so an associated substream's tag, which may be one
+  of Table 92's codes such as `qad`, never gives a presentation its language.
+- [b_associated and b_dialog are parameters at sus_ver 0](../ac4dec/ERRATA.md#b_associated-and-b_dialog-are-parameters-at-sus_ver-0):
+  at sus_ver 1 the writer sends `b_dialog` for a substream that is the dialogue of a presentation or is
+  classified as dialogue, with its mixing values, in every frame.
+- [Levelling before the mix](../ac4dec/ERRATA.md#levelling-before-the-mix): a version 1 presentation
+  carries one dialnorm, in its presentation substream, and levels nothing, so each presentation substream
+  sends the dialnorm its substreams share: the presentation's own, else the stream's.
+- [oamd_dyndata_single() in metadata() of a channel-coded substream](../ac4dec/ERRATA.md#oamd_dyndata_single-in-metadata-of-a-channel-coded-substream):
+  a channel-coded substream sends none, so one substream serves an alternative presentation and others
+  alike.
+- [The end of an EMDF payload list](../ac4dec/ERRATA.md#the-end-of-an-emdf-payload-list): each list ends
+  with an `emdf_payload_id` of 0 and the alignment, and nothing between.
+- [The presentation substream](../ac4dec/ERRATA.md#the-presentation-substream): `superset(0, 1)` is 1,
+  so stereo main audio with mono dialogue or associated audio is a stereo presentation, and the fields
+  that follow `pres_ch_mode`, `custom_dmx_data()` and `loud_corr()`, follow the superset.
+
+### Tracks for md_compat
+
+- **Where:** Part 2 6.3.2.2.3 and Table 55, p. 157: md_compat 0 to 3 allow 2, 6, 9 and 11 tracks, "the
+  total number of audio objects and channels in all substreams contributing to the presentation, with the
+  exception of LFE channels that have the b_lfe flag set in mono_data() structure", and 7 is
+  "Unrestricted".
+- **Reading:** a presentation's tracks are the channels of every substream it names but the LFE, its
+  dialogue enhancement substream's among them, whose waveform joins the output (Part 1 5.7.8.9). The
+  writer sends the least level that holds them, 7 above 11 tracks, and refuses a level set below it or in
+  4 to 6. One substream alone is level 0 in mono and stereo, 1 in 5.X and 2 in 7.X.
+- **Evidence:** Streams. DEE's streams carry level 0 in stereo, 1 in 5.1 and 2 in 5.1.4, whose nine
+  tracks the reading counts, each with `presentation_id` 0 on its one presentation, as the encoder's
+  single presentation now has (phases E1 to E5 wrote level 0 and no `presentation_id`). MediaInfo lists
+  each committed presentation's level as configured, and the decoder selects each at it
+  (`tests/ac4enc/test_ac4enc_presentations.cpp`).
+
+### A presentation_id for every presentation that carries audio
+
+- **Where:** Part 2 Annex H.1.2.1, p. 250: in an AC-4 CMAF track of several presentations "each
+  presentation shall have a unique presentation_id", and "for every presentation presentation_id shall be
+  present in every AC-4 sample"; 6.2.1.3, p. 114, reads no `b_presentation_id` for `presentation_config`
+  6.
+- **Reading:** every presentation of configurations 0 to 5, and every presentation of one substream
+  group, carries a `presentation_id` in every frame, no two the same; a configuration 6 presentation,
+  EMDF payloads alone, has no field for one. The writer takes configuration 6 as Part 2's syntax has it;
+  whether a CMAF track may carry one is for the muxer to decide (phase E7).
+- **Evidence:** Text. DEE's muxer, given the encoder's EMDF stream, warns that its second presentation "is
+  missing a presentation_id", and refuses the stream, as it refuses every stream of more than one
+  presentation.
+
+### An alternative presentation's name
+
+- **Where:** Part 2 6.2.2.3, p. 123, and 6.3.3.1.1 to 6.3.3.1.4, p. 167: `name_len` in five bits, or 32
+  bytes where `b_length` is 0; a name whose last byte is 0 is whole, and one whose last byte is not is a
+  chunk of a name serialized over several frames, the last chunk counting them.
+- **Reading:** a name of at most 31 bytes of UTF-8, none of them 0, sent whole in every frame: its bytes
+  and a 0, with `name_len` counting the 0 where that is below 32, and the 32-byte form for a name of 31
+  bytes. A longer name, which only the chunked form holds, is refused.
+- **Evidence:** Readers. MediaInfo frames the name where the writer put it, showing its bytes as data,
+  and the decoder's and the Python parser's traces read the name and the 0.
+
+### An alternative presentation's target
+
+- **Where:** Part 2 6.2.2.3, pp. 123 and 124, and 6.3.3.1.5 to 6.3.3.1.15, pp. 167 and 168: one target
+  or more, each with a `target_level` "similar to the md_compat element", Table 67's four device
+  categories, an optional ducking depth and loudness correction, and for each substream `b_active` and
+  `alt_data_set_index`, which picks one of the alternative object metadata sets an object substream's
+  `oamd_dyndata_single()` carries; 4.8.2, p. 40: alternative presentations apply "alternative metadata
+  to the selected substreams". Nothing says what a decoder does with a target.
+- **Reading:** a channel-coded substream has no alternative metadata sets, so an alternative presentation
+  of channel-coded substreams carries its name and one target: the presentation's `md_compat`, every
+  device category, no ducking depth or loudness correction, and every substream active with
+  `alt_data_set_index` 0, none.
+- **Evidence:** Text; Readers.
+
+### 3.0 substreams
+
+- **Where:** Part 1 4.3.3.7.1, p. 77: "The 3.0 channel mode shall only be used" for "coding of the
+  enhancement signal for the Dialogue Enhancement (DE) feature" and for "coding of the dialogue in a
+  music and effects + dialogue presentation".
+- **Reading:** a 3.0 substream is a hybrid method's dialogue enhancement substream, or the dialogue of a
+  configuration 0 or 3 presentation, or of a configuration 5 one whose main group is classified music and
+  effects. A presentation of one substream group, which gives it no other role, may also play it alone,
+  so long as a music and effects presentation carries it as dialogue. 3.0 as main or associated audio, or
+  as dialogue beside a complete main, is refused. The 3.0 element is experimental
+  (`experimental.three_zero`): no DEE stream has one.
+- **Evidence:** Readers. The decoder and the Python parser read the committed 3.0 stream
+  (`tests/golden/ac4dec/presentations/encoder-three-zero.ac4`) as the encoder wrote it, MediaInfo lists
+  it as configured, and the decoder mixes the dialogue channel to channel into the music and effects'
+  L, R and C.
+
+### The hybrid methods' waveform
+
+- **Where:** Part 1 5.7.8.9, pp. 253 and 254: the hybrid methods add the waveform d_c to the output; the
+  text gives the decoder's equations and says nothing of the signal a writer puts in d_c.
+- **Reading:** d_c is the dialogue the parameters raise. With the channel independent method, the
+  dialogue of each processed channel, from the stem or from the channels marked as dialogue, one channel
+  each in L, R, C order; with the Mid, L's and R's dialogue summed, which 1/2 (1, 1) halves into each;
+  with the cross-channel method, the dialogue projected on r, its panning, which the writer estimates from
+  the dialogue's energy in each channel, averaged with a leak whose time constant is half a second. The
+  waveform's share alpha_c is the caller's (`DialogueConfig::waveform_share`), sent as
+  `de_signal_contribution`.
+- **Evidence:** Text; each method's output measures to 0.01 dB against the main and the waveform decoded
+  alone, as the decoder's reading combines them (`tests/ac4enc/test_ac4enc_presentations.cpp`).
+
+### Mixing values across I-frames
+
+- **Where:** Part 1 6.2.16.0, p. 268: the mixing metadata "are not necessarily sent with each frame, and
+  not necessarily with each I-frame, although this is encouraged", and "remain valid until new ones are
+  transmitted"; Part 2 6.3.3.1.22 to 6.3.3.1.24, p. 170: `b_keep` repeats the last group gains; 6.3.2.11.2,
+  p. 166: `b_pres_ndot` says "whether a presentation substream can be decoded independently from
+  preceding frames".
+- **Reading:** an I-frame's presentation substream sends every mixing value the presentation is
+  configured with, and sets `b_pres_ndot`; a frame between I-frames keeps the group gains with `b_keep`,
+  sends no associated audio's values, which hold, and clears `b_pres_ndot`. A dialogue substream's values
+  (`b_dialog`) go in every frame, since the decoder's reading sets g_dialog_max to 0 dB at an I-frame
+  that does not send them.
+- **Evidence:** Readers; every mix of the committed streams measures its configured gains.
+
+### The substreams' order
+
+- **Where:** Part 1 4.2.3.11, p. 33, and 4.3.3.12.4, p. 81: `substream_index_table()` gives the
+  substreams' sizes in the order the frame carries them; Part 2 4.8.2, p. 40: a presentation finds its
+  substreams by each info element's `substream_index`. Nothing orders the presentation, audio and EMDF
+  payload substreams.
+- **Reading:** the presentation substreams first, in the presentations' order, then the audio
+  substreams, in the groups' order, then the EMDF payload substreams.
+- **Evidence:** Streams. librempeg takes the substream after the presentation substreams as a
+  presentation's first group's audio: with an EMDF payload substream there, it refused the frame ("invalid
+  audio_size"). MediaInfo reads either order.
+
+### EMDF
+
+- **Where:** Part 1 4.3.3.6.1 and 4.3.3.6.2, p. 77: `emdf_version` "shall be set to 0", and the text
+  "defines no semantics" for `key_id`; Part 2 6.2.1.3, p. 114: a presentation names an EMDF payloads
+  substream in its `emdf_info()`, and configuration 6 in `b_add_emdf_substreams`' list.
+- **Reading:** `emdf_version` 0 and `key_id` 0, with no protection bytes. A presentation's payloads go in
+  an EMDF payloads substream of their own that its `emdf_info()` names, configuration 6's in one its list
+  names, and a substream's in its `metadata()` (`b_emdf_payloads_substream`); each in every frame, as the
+  caller gives them.
+- **Evidence:** Readers. MediaInfo frames the EMDF payloads substream without detailing it, and names a
+  substream's payloads `umd_payload`.
+
+### DRC gains for a presentation of several substreams
+
+- **Where:** Part 1 6.2.13, p. 268: the decoder's DRC side chain is the signal before dialogue
+  enhancement. Nothing says what signal a writer computes transmitted gains (`drc_gains()`) from where a
+  presentation mixes several substreams.
+- **Reading:** the presentation's main or music and effects substream's input alone. The decoder's side
+  chain is the mix of the substreams ([Where the substreams are mixed](../ac4dec/ERRATA.md#where-the-substreams-are-mixed)),
+  so these gains leave the dialogue's and the associated audio's level out; transmitted gains are
+  experimental (`experimental=drc-gains`), and computing them from the mix, with the presentation's
+  gains, pans and scaling, is left for later.
+- **Evidence:** Text.
+
+## Rates
+
+### What wait_frames counts
+
+- **Where:** Part 1 4.3.3.2.4 and Table 81, p. 73: the frames a decoder "should wait" after receiving
+  the frame before its output; 6.2.4, p. 263, and Part 2 Annex B, pp. 217 and 218, which estimates the
+  rate from sizes over m frames and `m + wait_frames(0) - wait_frames(m)`, give it a buffer's meaning.
+- **Reading:** the whole frame periods between the frame's arrival, whole, over a channel at the
+  stream's rate and its output, for a decoder that starts at the frame: its slack, floored (in twos at
+  indices 10 to 12, where Table 81 counts in twos). Such a decoder outputs the frame up to a frame (two)
+  early, so each frame keeps at least a frame (two) of slack and at most what the buffer holds: 1 to 5
+  frames, or 2 to 11. Over m frames the sizes then come to within a frame (two) of Annex B's N'.
+- **Evidence:** Text. The tests check, frame by frame and from the stream alone, that a decoder starting
+  at any frame is never fed a frame late and that its buffer never holds more than 6.2.4 sets.
+
+### br_code carries the raw frames' rate
+
+- **Where:** Part 2 6.3.2.1.2 and Annex B, steps 2 to 4 and 13.
+- **Reading:** the sequence carries the rate of the raw frames, `raw_ac4_frame()`s, in kbps, which is
+  the rate the encoder is given; Annex B adds a sync frame's overhead to it as B. The writer sends 0b11
+  and six base-3 digits of the fraction of log2 of the rate, a precision of 3^-6 of an octave, then 0b11
+  again.
+- **Evidence:** Text.

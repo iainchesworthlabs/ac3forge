@@ -2,6 +2,7 @@
 
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -624,11 +625,11 @@ TEST_CASE("parse_substream_info_obj: dynamic objects with an LFE bed object", "[
     const auto frame = parse_wrapped_object_coded_group([](BitWriter& w) {
         w.put(0, 1);  // b_oamd_substream = 0
         w.put(0, 1);  // b_ajoc = 0 -> ac4_substream_info_obj()
-        w.put(2, 3);  // n_objects_code = 2 -> num_objects = 2
+        w.put(2, 3);  // n_objects_code = 2 -> 2 + b_lfe objects (Table 60)
         w.put(1, 1);  // b_dynamic_objects
         w.put(1, 1);  // b_lfe
         w.put(0, 1);  // b_bitrate_info
-        w.put(0, 1);  // b_audio_ndot
+        w.put(1, 1);  // b_audio_ndot
         w.put(1, 2);  // substream_index = 1
     });
 
@@ -639,12 +640,21 @@ TEST_CASE("parse_substream_info_obj: dynamic objects with an LFE bed object", "[
     REQUIRE(group.substreams[0].obj.has_value());
     const auto& obj = *group.substreams[0].obj;
     CHECK(obj.b_dynamic_objects);
-    REQUIRE(obj.objects.size() == 2);
+    CHECK(obj.b_lfe);
+    CHECK(obj.num_objects == 2);
+    // The LFE is counted on top of the two dynamic objects, first
+    // (src/ac4dec/ERRATA.md, "n_objects_code and the LFE").
+    REQUIRE(obj.objects.size() == 3);
     CHECK(obj.objects[0].kind == ac4::ObjectKind::kBed);
     CHECK(obj.objects[0].lfe);
+    CHECK(obj.objects[0].speaker == 11);  // Table A.27's LFE
     CHECK_FALSE(obj.objects[0].ajoc_coded);
     CHECK(obj.objects[1].kind == ac4::ObjectKind::kDyn);
     CHECK_FALSE(obj.objects[1].lfe);
+    CHECK_FALSE(obj.objects[1].speaker.has_value());
+    CHECK(obj.objects[2].kind == ac4::ObjectKind::kDyn);
+    REQUIRE(obj.b_iframe.size() == 1);
+    CHECK(obj.b_iframe[0]);
     REQUIRE(obj.substream_index.has_value());
     CHECK(*obj.substream_index == 1);
 }
@@ -683,11 +693,16 @@ TEST_CASE("parse_substream_info_obj: std bed flags include LFE, unlike bed_dyn_o
     REQUIRE(obj.objects.size() == 3);  // L, R (order 0's 2-channel group), LFE (order 2)
     CHECK(obj.objects[0].kind == ac4::ObjectKind::kBed);
     CHECK_FALSE(obj.objects[0].lfe);
+    CHECK(obj.objects[0].speaker == 0);  // Table A.27: L
     CHECK(obj.objects[1].kind == ac4::ObjectKind::kBed);
     CHECK_FALSE(obj.objects[1].lfe);
+    CHECK(obj.objects[1].speaker == 1);  // R
     CHECK(obj.objects[2].kind == ac4::ObjectKind::kBed);
     CHECK(obj.objects[2].lfe);  // order 2 IS flagged lfe here
+    CHECK(obj.objects[2].speaker == 11);  // LFE
     CHECK_FALSE(obj.b_dynamic_objects);
+    CHECK(obj.static_kind == ac4::ObjSubstreamInfo::Static::kBed);
+    CHECK(obj.static_start);
 }
 
 // Regression: n_objects_code and both isf_config fields are 3 bits wide, and
@@ -697,8 +712,9 @@ TEST_CASE("parse_substream_info_obj: std bed flags include LFE, unlike bed_dyn_o
 // ac4-substream-size-not-transmitted regression input; the uninstrumented runs
 // before that read whatever followed the table and carried on. Each vector
 // ends in substream_index = 2, which only comes back if the parse stayed in
-// sync past the reserved code, and code 5 - the last entry each table has -
-// pins the boundary.
+// sync past the reserved code. Table 60 reserves n_objects_code 5 to 7, the
+// LFE with them (src/ac4dec/ERRATA.md, "n_objects_code and the LFE");
+// isf_config's code 5 - the last entry its table has - pins that boundary.
 namespace {
 
 struct ReservedCountCase {
@@ -709,8 +725,8 @@ struct ReservedCountCase {
 }  // namespace
 
 TEST_CASE("parse_substream_info_obj: a reserved n_objects_code names no objects", "[ac4]") {
-    for (const ReservedCountCase tc : {ReservedCountCase{5, 7}, ReservedCountCase{6, 0},
-                                       ReservedCountCase{7, 0}}) {
+    for (const ReservedCountCase tc :
+         {ReservedCountCase{5, 0}, ReservedCountCase{6, 0}, ReservedCountCase{7, 0}}) {
         CAPTURE(tc.code);
         const auto frame = parse_wrapped_object_coded_group([tc](BitWriter& w) {
             w.put(0, 1);        // b_oamd_substream = 0
@@ -2106,6 +2122,80 @@ TEST_CASE("samples_per_frame follows Table 84, refusing the alternating rates",
     CHECK(ac4::samples_per_frame(toc) == std::optional<std::uint32_t>{2048});
     toc.frame_rate_index = 0;
     CHECK_FALSE(ac4::samples_per_frame(toc).has_value());
+}
+
+TEST_CASE("media_timing follows Part 2 Table E.1, at 240 000 Hz where frames alternate",
+          "[ac4][carriage]") {
+    ac4::Toc toc;
+    toc.sample_rate_hz = 48000;
+    constexpr std::array<std::uint32_t, 14> kDelta = {2002, 2000, 1920, 8008, 1600, 1001, 1000,
+                                                      960,  4004, 800,  480,  2002, 400,  2048};
+    for (int index = 0; index < static_cast<int>(kDelta.size()); ++index) {
+        toc.frame_rate_index = index;
+        CAPTURE(index);
+        const auto timing = ac4::media_timing(toc);
+        REQUIRE(timing.has_value());
+        const bool alternates = index == 3 || index == 8 || index == 11;
+        CHECK(timing->timescale == (alternates ? 240000U : 48000U));
+        CHECK(timing->sample_delta == kDelta[static_cast<std::size_t>(index)]);
+    }
+    toc.frame_rate_index = 14;
+    CHECK_FALSE(ac4::media_timing(toc).has_value());
+    toc.sample_rate_hz = 44100;
+    toc.frame_rate_index = 13;
+    const auto timing = ac4::media_timing(toc);
+    REQUIRE(timing.has_value());
+    CHECK(timing->timescale == 44100U);
+    CHECK(timing->sample_delta == 2048U);
+    toc.frame_rate_index = 3;
+    CHECK_FALSE(ac4::media_timing(toc).has_value());
+}
+
+TEST_CASE("frame_rate gives Part 1 Tables 83 and 84's frame rates and internal rates",
+          "[ac4][carriage]") {
+    ac4::Toc toc;
+    toc.sample_rate_hz = 48000;
+    struct Row {
+        double fps;
+        int frame_length;
+        double internal_rate_hz;
+    };
+    constexpr double kNtsc = 1000.0 / 1001.0;
+    const std::array<Row, 14> kRows = {{
+        {24.0 * kNtsc, 1920, 46080.0 * kNtsc},
+        {24.0, 1920, 46080.0},
+        {25.0, 2048, 51200.0},
+        {30.0 * kNtsc, 1536, 46080.0 * kNtsc},
+        {30.0, 1536, 46080.0},
+        {48.0 * kNtsc, 960, 46080.0 * kNtsc},
+        {48.0, 960, 46080.0},
+        {50.0, 1024, 51200.0},
+        {60.0 * kNtsc, 768, 46080.0 * kNtsc},
+        {60.0, 768, 46080.0},
+        {100.0, 512, 51200.0},
+        {120.0 * kNtsc, 384, 46080.0 * kNtsc},
+        {120.0, 384, 46080.0},
+        {48000.0 / 2048.0, 2048, 48000.0},
+    }};
+    for (int index = 0; index < static_cast<int>(kRows.size()); ++index) {
+        CAPTURE(index);
+        toc.frame_rate_index = index;
+        const auto rate = ac4::frame_rate(toc);
+        REQUIRE(rate.has_value());
+        const Row& row = kRows[static_cast<std::size_t>(index)];
+        CHECK(std::abs(rate->frames_per_second - row.fps) < 1e-9);
+        CHECK(rate->frame_length == row.frame_length);
+        CHECK(std::abs(rate->internal_rate_hz - row.internal_rate_hz) < 1e-6);
+    }
+    toc.frame_rate_index = 14;
+    CHECK_FALSE(ac4::frame_rate(toc).has_value());
+    toc.sample_rate_hz = 44100;
+    toc.frame_rate_index = 13;
+    const auto rate = ac4::frame_rate(toc);
+    REQUIRE(rate.has_value());
+    CHECK(rate->internal_rate_hz == 44100.0);
+    toc.frame_rate_index = 2;
+    CHECK_FALSE(ac4::frame_rate(toc).has_value());
 }
 
 TEST_CASE("rfc6381_codec_string renders Annex E.13's dotted hex fields", "[ac4][carriage]") {

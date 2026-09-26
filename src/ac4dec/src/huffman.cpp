@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 
 namespace ac4::detail {
 
@@ -27,6 +28,19 @@ int huff_decode(BitReader& reader, const Codebook& codebook, std::string_view el
         }
     }
     return -1;
+}
+
+std::expected<int, SyntaxError> huff_codeword(BitReader& reader, const Codebook& codebook,
+                                              std::string_view element,
+                                              const CodewordReasons& reasons) {
+    const int index = huff_decode(reader, codebook, element);
+    if (index >= 0) {
+        return index;
+    }
+    if (reader.remaining_bits() < static_cast<std::size_t>(codebook.max_bits)) {
+        return fail(DecodeError::kTruncated, reasons.truncated);
+    }
+    return fail(DecodeError::kInvalidStream, reasons.invalid);
 }
 
 }  // namespace ac4::detail

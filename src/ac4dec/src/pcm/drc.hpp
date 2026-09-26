@@ -93,8 +93,10 @@ class DrcStage {
     // `rate_hz` is the rate the QMF banks run at, the internal rate; `slots`
     // num_qmf_timeslots; `speakers` the channels, in the order process() gets
     // their matrices; `add_ch_base` groups a 7.X element's channels for the
-    // transmitted gains (Table 168).
-    void configure(double rate_hz, int slots, std::span<const Speaker> speakers, bool add_ch_base);
+    // transmitted gains (Table 168), and `immersive` an immersive element's
+    // by Part 2's Table 69.
+    void configure(double rate_hz, int slots, std::span<const Speaker> speakers, bool add_ch_base,
+                   bool immersive = false);
 
     // Forgets the smoothing and the last dialnorm.
     void reset() noexcept;
@@ -120,7 +122,7 @@ class DrcStage {
     int slots_ = 32;
     std::vector<Speaker> speakers_;
     std::vector<double> loudness_weight_;  // BS.1770's channel weights
-    std::vector<int> group_;               // Table 168's channel group, per channel
+    std::vector<int> group_;               // Table 168's (or 69's) channel group, per channel
     std::array<double, 64> k_weight_{};    // |K(f)|^2 at each subband's centre
     double qmf_gain_ = 1.0;                // sum of QWIN^2
     std::optional<double> dialnorm_;       // the last one carried

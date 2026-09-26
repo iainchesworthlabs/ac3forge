@@ -24,6 +24,7 @@ them.
 |---|---|---|
 | [`decode_stream`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/decode_stream.cpp) | Scan an unknown elementary stream, then decode it with the right decoder. | [Decoding](decoding.md) |
 | [`decode_robustness`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/decode_robustness.cpp) | Skip a damaged mid-stream frame and keep decoding. | [Decoding](decoding.md) |
+| [`decode_ac4`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/decode_ac4.cpp) | Decode an AC-4 stream that arrives in pieces, by block, with a television's output settings, then read its presentations and metadata. `ctest` hands it a committed stream. | [AC-4 decoding](ac4.md) |
 | [`stream_edit`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/stream_edit.cpp) | Where each access unit starts, a metadata rewrite that leaves the audio bit-identical, and a cut that rejoins byte for byte. | [Decoding](decoding.md) |
 | [`level_metering`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/level_metering.cpp) | Decode and meter: per-channel peak/RMS plus the speaker-ring energy vector. | [Muxing & sinks](muxing-and-sinks.md) |
 | [`qc_report`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/qc_report.cpp) | Decode, measure BS.1770-4/Tech 3342, and check named QC delivery gates. | [Metadata](metadata.md) |

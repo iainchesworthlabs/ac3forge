@@ -14,6 +14,7 @@
 #include "ac4dec_printed_matrices.hpp"
 #include "ac4enc/encoder.hpp"
 #include "acpl/acpl_syntax.hpp"
+#include "ajcc/ajcc_syntax.hpp"
 #include "asf/analysis.hpp"
 #include "asf/coder.hpp"
 #include "asf/layout.hpp"
@@ -43,8 +44,18 @@ using Matrix = std::vector<std::vector<double>>;
 constexpr int kFrameLength = 2048;
 constexpr int kRate = 48000;
 constexpr double kAmplitude = 0.1;  // -20 dBFS
-// Every tone is below the coded band's top, 1.5 kHz: lines of 11.7 Hz.
+// Every tone is below the coded band's top, 1.5 kHz: lines of 11.7 Hz. The
+// immersive element's twelve tones reach 1.93 kHz, under 2.25 kHz.
 constexpr std::size_t kTopLine = 128;
+constexpr std::size_t kImmersiveTopLine = 192;
+// A-JCC's input gain, 2 + 1/sqrt(2) (Pseudocodes 8 and 12).
+constexpr double kAjccGain = 2.0 + 1.0 / std::numbers::sqrt2;
+// immersive_codec_mode (Part 2 Table 73).
+constexpr int kScpl = 0;
+constexpr int kAspxScpl = 1;
+constexpr int kAspxAcpl1 = 2;
+constexpr int kAspxAcpl2 = 3;
+constexpr int kAspxAjcc = 4;
 // The LFE's max_sfb: n_msfbl_bits is 3 at 2 048 samples (Part 1 Table 106).
 constexpr int kLfeMaxSfb = 7;
 // A-SPX: 40 kbps a channel takes the high resolution table from 10.5 kHz.
@@ -86,8 +97,37 @@ constexpr double kGamma = 6552.0 / 16384.0;
     }
 }
 
+// The immersive element's: gen_ac4_baseline.py's for L R C LFE Ls Rs Tfl Tfr
+// Tbl Tbr, and two more primes for Lb and Rb, 150 Hz or more from the rest.
+[[nodiscard]] double immersive_tone_of(Speaker speaker) {
+    switch (speaker) {
+        case Speaker::kTopFrontLeft:
+            return 1117.0;
+        case Speaker::kTopFrontRight:
+            return 1289.0;
+        case Speaker::kTopBackLeft:
+            return 1453.0;
+        case Speaker::kTopBackRight:
+            return 1621.0;
+        case Speaker::kLeftBack:
+            return 1777.0;
+        case Speaker::kRightBack:
+            return 1931.0;
+        default:
+            return tone_of(speaker);
+    }
+}
+
+[[nodiscard]] bool is_immersive(int ch_mode) {
+    return ch_mode == 11 || ch_mode == 12;
+}
+
+[[nodiscard]] double tone_for(int ch_mode, Speaker speaker) {
+    return is_immersive(ch_mode) ? immersive_tone_of(speaker) : tone_of(speaker);
+}
+
 [[nodiscard]] bool has_lfe(int ch_mode) {
-    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10;
+    return ch_mode == 4 || ch_mode == 6 || ch_mode == 8 || ch_mode == 10 || ch_mode == 12;
 }
 
 // A 7.X mode's last pair (Table 88).
@@ -116,7 +156,11 @@ constexpr double kGamma = 6552.0 / 16384.0;
     }
     out.push_back(Speaker::kLeftSurround);
     out.push_back(Speaker::kRightSurround);
-    if (ch_mode >= 5) {
+    if (is_immersive(ch_mode)) {
+        out.insert(out.end(),
+                   {Speaker::kLeftBack, Speaker::kRightBack, Speaker::kTopFrontLeft,
+                    Speaker::kTopFrontRight, Speaker::kTopBackLeft, Speaker::kTopBackRight});
+    } else if (ch_mode >= 5) {
         const auto [left, right] = last_pair(ch_mode);
         out.push_back(left);
         out.push_back(right);
@@ -208,10 +252,27 @@ class ElementWriter {
     ElementWriter(BitWriter& w, const std::map<Speaker, Lines>& lines, const ElementCase& c)
         : w_(w), lines_(lines), c_(c), layout_(ac4::detail::long_layout(kFrameLength)) {
         const auto offsets = ac4::detail::band_offsets(kFrameLength);
+        const std::size_t top = is_immersive(c.ch_mode) ? kImmersiveTopLine : kTopLine;
         while (max_sfb_ + 1 < static_cast<int>(offsets.size()) &&
-               offsets[static_cast<std::size_t>(max_sfb_)] < kTopLine) {
+               offsets[static_cast<std::size_t>(max_sfb_)] < top) {
             ++max_sfb_;
         }
+    }
+
+    // A chparam_info() of full SAP predicting every band at `alpha_q`, as
+    // Table 20's are sent here; sap_mode 0 for an alpha_q of 0.
+    void chparam_prediction(int alpha_q) {
+        if (alpha_q == 0) {
+            chparam(0);
+            return;
+        }
+        ac4::detail::StereoChoice choice;
+        choice.sap_mode = 3;
+        choice.sap_coeff_all = true;
+        const auto pairs = static_cast<std::size_t>((max_sfb_ + 1) / 2);
+        choice.sap_used = {std::vector<bool>(pairs, true)};
+        choice.alpha_q = {std::vector<int>(pairs, alpha_q)};
+        ac4::detail::write_chparam_info(w_, choice);
     }
 
     // mono_data(1): sf_info_lfe() is max_sfb alone.
@@ -403,7 +464,8 @@ class ElementWriter {
 }
 
 void write_aspx_data(BitWriter& w, bool iframe, const AspxSetup& setup, const ElementCase& c) {
-    const auto elements = aspx_elements(c.ch_mode, c.acpl != 0 ? c.acpl : 1);
+    const int mode = is_immersive(c.ch_mode) ? c.immersive : (c.acpl != 0 ? c.acpl : 1);
+    const auto elements = aspx_elements(c.ch_mode, mode);
     for (std::size_t e = 0; e < elements.size(); ++e) {
         const bool loud = static_cast<int>(e) == c.loud_unit;
         if (elements[e].size() == 1) {
@@ -728,6 +790,280 @@ void write_7_x_acpl(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup
     return out;
 }
 
+// --- The immersive element (Part 2 clause 6.2.4) ---
+
+[[nodiscard]] AcplConfig1chFields immersive_acpl_config(const ElementCase& c) {
+    return {.partial = c.immersive == kAspxAcpl1,
+            .num_param_bands_id = c.acpl_bands_id,
+            .quant_mode = c.acpl_quant,
+            .qmf_band = kAcplQmfBand};
+}
+
+// Every module alike: alpha 1 or -1 and beta 0, as for the Part 1 elements;
+// in ASPX_ACPL_1 the tones are below acpl_qmf_band, where alpha plays no part.
+[[nodiscard]] AcplData1chFields immersive_acpl_data(const ElementCase& c, bool iframe) {
+    const AcplConfig1chFields config = immersive_acpl_config(c);
+    const int bands = ac4::detail::acpl_num_param_bands(config.num_param_bands_id);
+    const int first = ac4::detail::acpl_param_band(config);
+    AcplData1chFields d;
+    d.alpha1 = constant_param(alpha_q(c.acpl_second, c.acpl_quant), first, bands, iframe);
+    d.beta1 = constant_param(0, first, bands, iframe);
+    return d;
+}
+
+// A-JCC's routes: alpha, dry1 and dry2 of both modules (beta and every wet 0).
+struct AjccRoute {
+    bool alpha_one = true;  // alpha 1, else -1
+    bool dry1 = true;       // 1, else 0
+    bool dry2 = false;
+};
+[[nodiscard]] AjccRoute ajcc_route_of(int route) {
+    switch (route) {
+        case 1:
+            return {.alpha_one = false, .dry1 = false, .dry2 = true};
+        case 2:
+            return {.alpha_one = true, .dry1 = false, .dry2 = false};
+        default:
+            return {};
+    }
+}
+
+// ajcc_data() for the case's route, in both modules: each parameter one set,
+// along frequency in I-frames and along time, unchanged, after them.
+[[nodiscard]] ac4::detail::AjccDataFields ajcc_data_of(const ElementCase& c, bool iframe) {
+    ac4::detail::AjccDataFields d;
+    d.num_param_bands_id = c.acpl_bands_id;
+    d.core_mode = c.ajcc_core_mode;
+    d.qm_ab = c.acpl_quant;
+    d.qm_dw = c.acpl_quant;
+    const bool fine = c.acpl_quant == 0;
+    const AjccRoute route = ajcc_route_of(c.ajcc_route);
+    // Pseudocodes 4 and 5: dry q 0.1 (0.2) - 0.6 is 1 at 16 (8) and 0 at 6 (3);
+    // wet q 0.1 (0.2) - 2 is 0 at 20 (10). Alpha 1 is 24 (12), -1 8 (4).
+    const int dry_one = fine ? 16 : 8;
+    const int dry_zero = fine ? 6 : 3;
+    const int wet_zero = fine ? 20 : 10;
+    const int alpha = alpha_q(!route.alpha_one, c.acpl_quant);
+    const std::array<int, 14> values = {alpha,
+                                        alpha,
+                                        0,
+                                        0,
+                                        route.dry1 ? dry_one : dry_zero,
+                                        route.dry2 ? dry_one : dry_zero,
+                                        route.dry1 ? dry_one : dry_zero,
+                                        route.dry2 ? dry_one : dry_zero,
+                                        wet_zero,
+                                        wet_zero,
+                                        wet_zero,
+                                        wet_zero,
+                                        wet_zero,
+                                        wet_zero};
+    const int bands = ac4::detail::ajcc_num_param_bands(d.num_param_bands_id);
+    for (std::size_t p = 0; p < values.size(); ++p) {
+        ac4::detail::AjccSetFields set;
+        set.diff_type = iframe ? 0 : 1;
+        set.values.assign(static_cast<std::size_t>(bands), 0);
+        if (iframe && !set.values.empty()) {
+            set.values.front() = values[p];
+        }
+        d.params[p] = {set};
+    }
+    return d;
+}
+
+// The immersive element's intermediate signals A'' to K'' worked back from the
+// channels' tones through what full decoding does, each under the channel that
+// holds it (A'' in L, B'' in R, C'' in C, D'' in Ls, E'' in Rs, F'' in Tfl, G''
+// in Tfr, H'' in Lb, I'' in Rb, J'' in Tbl, K'' in Tbr). Returns the channels
+// left silent.
+std::vector<Speaker> immersive_lines(std::map<Speaker, Lines>& lines, const ElementCase& c) {
+    using S = Speaker;
+    const std::map<Speaker, Lines> tone = lines;
+    const Lines& none = tone.begin()->second;
+    const auto scaled = [&](double gain, Speaker speaker) {
+        return mix(gain, tone.at(speaker), 0.0, none);
+    };
+    const std::array<std::array<S, 2>, 4> coupled = {{{S::kLeftSurround, S::kLeftBack},
+                                                      {S::kRightSurround, S::kRightBack},
+                                                      {S::kTopFrontLeft, S::kTopBackLeft},
+                                                      {S::kTopFrontRight, S::kTopBackRight}}};
+    // Table 23 (and Pseudocode 2 below acpl_qmf_band, and Table 10 with S-CPL
+    // at c_gain 1): L = 2 A'', and (Ls, Lb) = sqrt 2 (D'' + H'', D'' - H'').
+    const double k = 1.0 / (2.0 * kRoot2);
+    if (c.immersive != kAspxAjcc) {
+        for (const S front : {S::kLeft, S::kRight, S::kCentre}) {
+            lines[front] = scaled(0.5, front);
+        }
+    }
+    switch (c.immersive) {
+        case kScpl:
+        case kAspxScpl:
+        case kAspxAcpl1:
+            for (const auto& [x, y] : coupled) {
+                lines[x] = mix(k, tone.at(x), k, tone.at(y));
+                lines[y] = mix(k, tone.at(x), -k, tone.at(y));
+            }
+            return {};
+        case kAspxAcpl2: {
+            // Pseudocode 2 at alpha 1: (Ls, Lb) = (2 sqrt 2 D'', 0); at -1 the
+            // other way round.
+            std::vector<S> silent;
+            for (const auto& [x, y] : coupled) {
+                lines[x] = scaled(k, c.acpl_second ? y : x);
+                silent.push_back(c.acpl_second ? x : y);
+            }
+            return silent;
+        }
+        default:
+            break;
+    }
+    // ASPX_AJCC, Pseudocode 8: C = g C'', and each module's A'' (in L or R)
+    // and D'' (in Ls or Rs) to the two channels its route gives them, L at g
+    // and the others at sqrt 2 g.
+    const double g = kAjccGain;
+    lines[S::kCentre] = scaled(1.0 / g, S::kCentre);
+    const AjccRoute route = ajcc_route_of(c.ajcc_route);
+    std::vector<S> silent;
+    for (std::size_t side = 0; side < 2; ++side) {
+        const bool l = side == 0;
+        const S front = l ? S::kLeft : S::kRight;
+        const S surround = l ? S::kLeftSurround : S::kRightSurround;
+        const S back = l ? S::kLeftBack : S::kRightBack;
+        const S top_front = l ? S::kTopFrontLeft : S::kTopFrontRight;
+        const S top_back = l ? S::kTopBackLeft : S::kTopBackRight;
+        // Where A'' and D'' go (z0 to z4: front, surround, back, top front,
+        // top back), by core mode and route.
+        S a = front;
+        S d = surround;
+        if (c.ajcc_core_mode == 0) {
+            a = route.alpha_one ? front : top_front;
+            d = route.dry1 ? surround : (route.dry2 ? back : top_back);
+        } else {
+            a = route.dry1 ? front : (route.dry2 ? surround : back);
+            d = route.alpha_one ? top_front : top_back;
+        }
+        lines[front] = scaled(a == front ? 1.0 / g : 1.0 / (kRoot2 * g), a);
+        lines[surround] = scaled(1.0 / (kRoot2 * g), d);
+        for (const S s : {front, surround, back, top_front, top_back}) {
+            if (s != a && s != d) {
+                silent.push_back(s);
+            }
+        }
+    }
+    return silent;
+}
+
+// Table 20 undone: H' = H'' - a' D'' and alike, with a' full SAP's sap_gain.
+void undo_prediction(std::map<Speaker, Lines>& lines, const ElementCase& c) {
+    using S = Speaker;
+    if (c.prediction_alpha_q == 0) {
+        return;
+    }
+    const auto gain = static_cast<double>(static_cast<float>(c.prediction_alpha_q) * 0.1f);
+    for (const auto& [x, y] :
+         {std::pair{S::kLeftSurround, S::kLeftBack}, std::pair{S::kRightSurround, S::kRightBack},
+          std::pair{S::kTopFrontLeft, S::kTopBackLeft},
+          std::pair{S::kTopFrontRight, S::kTopBackRight}}) {
+        lines[y] = mix(1.0, lines.at(y), -gain, lines.at(x));
+    }
+}
+
+// Step 4 undone: (D, F) = P^-1 (D', F') and (E, G) = P^-1 (E', G').
+void undo_step_4(std::map<Speaker, Lines>& lines, const ElementCase& c) {
+    using S = Speaker;
+    const std::array<Abcd, 1> p = {parameters_of(c.sap_add_mode)};
+    const Matrix m = printed_matrix("a0 b0 | c0 d0", p);
+    for (const auto& [first, second] : {std::pair{S::kLeftSurround, S::kTopFrontLeft},
+                                        std::pair{S::kRightSurround, S::kTopFrontRight}}) {
+        const std::vector<Lines> tracks = tracks_for(m, {&lines.at(first), &lines.at(second)});
+        lines[first] = tracks[0];
+        lines[second] = tracks[1];
+    }
+}
+
+// immersive_channel_element(b_lfe, 0, b_iframe), Part 2 6.2.4.1, with
+// immers_cfg() (6.2.4.2) in I-frames: Table 19's channel data by
+// core_5ch_grouping, then 7CH_STATIC's F and G, A-SPX, A-JCC, H to K with
+// Table 20's parameters, and A-CPL, as the codec mode sends them.
+void write_immersive(BitWriter& w, ElementWriter& e, bool iframe, const AspxSetup& setup,
+                     const ElementCase& c) {
+    using S = Speaker;
+    const int mode = c.immersive;
+    if (mode == kAspxAjcc) {
+        w.write(1, 1, "immersive_codec_mode_code");
+    } else {
+        w.write(3, static_cast<std::uint64_t>(mode), "immersive_codec_mode_code");
+    }
+    if (iframe) {
+        if (mode != kScpl) {
+            ac4::detail::write_aspx_config(w, setup.config);
+        }
+        if (mode == kAspxAcpl1 || mode == kAspxAcpl2) {
+            ac4::detail::write_acpl_config_1ch(w, immersive_acpl_config(c));
+        }
+    }
+    if (has_lfe(c.ch_mode)) {
+        e.lfe();
+    }
+    if (mode == kAspxAjcc) {
+        write_companding(w, 5, c);
+    }
+    w.write(2, static_cast<std::uint64_t>(c.coding_config), "core_5ch_grouping");
+    switch (c.coding_config) {
+        case 0:
+            w.write(1, c.two_ch_mode ? 1U : 0U, "2ch_mode");
+            if (c.two_ch_mode) {
+                e.two_channel_data(S::kLeft, S::kLeftSurround);
+                e.two_channel_data(S::kRight, S::kRightSurround);
+            } else {
+                e.two_channel_data(S::kLeft, S::kRight);
+                e.two_channel_data(S::kLeftSurround, S::kRightSurround);
+            }
+            e.mono(S::kCentre);
+            break;
+        case 1:
+            e.three_channel_data(S::kLeft, S::kRight, S::kCentre);
+            e.two_channel_data(S::kLeftSurround, S::kRightSurround);
+            break;
+        case 2:
+            e.four_channel_data(S::kLeft, S::kRight, S::kLeftSurround, S::kRightSurround);
+            e.mono(S::kCentre);
+            break;
+        default:
+            e.five_channel_data(S::kLeft, S::kRight, S::kCentre, S::kLeftSurround,
+                                S::kRightSurround);
+            break;
+    }
+    if (mode != kAspxAjcc) {
+        w.write(1, c.use_sap_add_ch ? 1U : 0U, "b_use_sap_add_ch");
+        if (c.use_sap_add_ch) {
+            e.chparam(c.sap_add_mode);
+            e.chparam(c.sap_add_mode);
+        }
+        e.two_channel_data(S::kTopFrontLeft, S::kTopFrontRight);
+    }
+    if (mode != kScpl) {
+        write_aspx_data(w, iframe, setup, c);
+    }
+    if (mode == kAspxAjcc) {
+        ac4::detail::write_ajcc_data(w, ajcc_data_of(c, iframe));
+    }
+    if (mode == kScpl || mode == kAspxScpl || mode == kAspxAcpl1) {
+        e.two_channel_data(S::kLeftBack, S::kRightBack);
+        e.two_channel_data(S::kTopBackLeft, S::kTopBackRight);
+        for (int j = 0; j < 4; ++j) {
+            e.chparam_prediction(c.prediction_alpha_q);
+        }
+    }
+    if (mode == kAspxAcpl1 || mode == kAspxAcpl2) {
+        const AcplConfig1chFields config = immersive_acpl_config(c);
+        const AcplData1chFields data = immersive_acpl_data(c, iframe);
+        for (int k = 0; k < 4; ++k) {
+            ac4::detail::write_acpl_data_1ch(w, config, data);
+        }
+    }
+}
+
 // ASPX_ACPL_1's pair of a base channel and the residual coded against it:
 // below acpl_qmf_band, A-CPL makes base = k (x0 + x3) and partner = sqrt 2
 // (x0 - x3) of what the base and residual carry after the residual's
@@ -821,12 +1157,14 @@ std::vector<Speaker> acpl_lines(std::map<Speaker, Lines>& lines, const ElementCa
 
 // Each channel's lines for frame `frame`: its tone over the 2N samples the
 // frame's one long block transforms (asf/analysis.hpp).
-[[nodiscard]] std::map<Speaker, Lines> channel_lines(ac4::detail::Analysis& analysis, const FrameLayout& layout,
-                                                     const std::vector<Speaker>& speakers, int frame) {
+[[nodiscard]] std::map<Speaker, Lines> channel_lines(ac4::detail::Analysis& analysis,
+                                                     const FrameLayout& layout,
+                                                     const std::vector<Speaker>& speakers,
+                                                     int ch_mode, int frame) {
     std::map<Speaker, Lines> out;
     std::vector<double> samples(2 * kFrameLength);
     for (const Speaker speaker : speakers) {
-        const double w = 2.0 * std::numbers::pi * tone_of(speaker) / kRate;
+        const double w = 2.0 * std::numbers::pi * tone_for(ch_mode, speaker) / kRate;
         for (std::size_t n = 0; n < samples.size(); ++n) {
             const auto t = static_cast<double>(static_cast<std::size_t>(frame) * kFrameLength + n);
             samples[n] = kAmplitude * std::sin(w * t);
@@ -858,6 +1196,28 @@ void undo_additional_steps(std::map<Speaker, Lines>& lines, const ElementCase& c
 
 std::vector<std::vector<Speaker>> aspx_elements(int ch_mode, int codec_mode) {
     using S = Speaker;
+    if (is_immersive(ch_mode)) {
+        // Part 2 Table 8, full decoding.
+        switch (codec_mode) {
+            case kAspxScpl:
+                return {{S::kLeftSurround, S::kLeftBack},
+                        {S::kRightSurround, S::kRightBack},
+                        {S::kCentre},
+                        {S::kLeft, S::kRight},
+                        {S::kTopFrontLeft, S::kTopBackLeft},
+                        {S::kTopFrontRight, S::kTopBackRight}};
+            case kAspxAcpl1:
+            case kAspxAcpl2:
+                return {{S::kLeft, S::kRight},
+                        {S::kLeftSurround, S::kRightSurround},
+                        {S::kTopFrontLeft, S::kTopFrontRight},
+                        {S::kCentre}};
+            case kAspxAjcc:
+                return {{S::kLeft, S::kRight}, {S::kLeftSurround, S::kRightSurround}, {S::kCentre}};
+            default:
+                return {};
+        }
+    }
     if (codec_mode >= 2) {
         if (ch_mode == 1) {
             return {{S::kLeft}};
@@ -887,7 +1247,7 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
     BuiltStream out;
     out.speakers = speakers_for(c.ch_mode);
     for (const Speaker speaker : out.speakers) {
-        out.tone_hz.push_back(tone_of(speaker));
+        out.tone_hz.push_back(tone_for(c.ch_mode, speaker));
     }
     const std::optional<AspxSetup> setup = ac4::detail::aspx_setup_for(kAspxKbpsPerChannel, kRate);
     if (!setup) {
@@ -897,8 +1257,22 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
     const FrameLayout layout = ac4::detail::long_layout(kFrameLength);
     for (int frame = 0; frame < frames; ++frame) {
         const bool iframe = frame % 4 == 0;
-        std::map<Speaker, Lines> lines = channel_lines(analysis, layout, out.speakers, frame);
-        if (c.acpl != 0) {
+        std::map<Speaker, Lines> lines =
+            channel_lines(analysis, layout, out.speakers, c.ch_mode, frame);
+        if (is_immersive(c.ch_mode)) {
+            const std::vector<Speaker> silent = immersive_lines(lines, c);
+            for (std::size_t s = 0; s < out.speakers.size(); ++s) {
+                if (std::ranges::find(silent, out.speakers[s]) != silent.end()) {
+                    out.tone_hz[s] = 0.0;
+                }
+            }
+            if (c.immersive != kAspxAcpl2 && c.immersive != kAspxAjcc) {
+                undo_prediction(lines, c);
+            }
+            if (c.immersive != kAspxAjcc && c.use_sap_add_ch) {
+                undo_step_4(lines, c);
+            }
+        } else if (c.acpl != 0) {
             const std::vector<Speaker> silent = acpl_lines(lines, c);
             for (std::size_t s = 0; s < out.speakers.size(); ++s) {
                 if (std::ranges::find(silent, out.speakers[s]) != silent.end()) {
@@ -913,7 +1287,9 @@ BuiltStream build_stream(const ElementCase& c, int frames) {
         }
         BitWriter audio = BitWriter::buffered();
         ElementWriter element(audio, lines, c);
-        if (c.ch_mode == 1) {
+        if (is_immersive(c.ch_mode)) {
+            write_immersive(audio, element, iframe, *setup, c);
+        } else if (c.ch_mode == 1) {
             write_pair_acpl(audio, element, iframe, *setup, c);
         } else if (c.ch_mode == 2) {
             write_3_0(audio, element, iframe, *setup, c);
@@ -959,40 +1335,152 @@ std::vector<ElementCase> committed_cases() {
     // them; the ASPX ones with their second aspx_data element loud.
     return {
         {.name = "3_0-simple-config0", .ch_mode = 2, .coding_config = 0, .sap_mode = 2},
-        {.name = "3_0-aspx-config1-matsel5", .ch_mode = 2, .aspx = true, .coding_config = 1, .chel_matsel = 5,
-         .sap_mode = 2, .loud_unit = 1, .companded = 2},
+        {.name = "3_0-aspx-config1-matsel5",
+         .ch_mode = 2,
+         .aspx = true,
+         .coding_config = 1,
+         .chel_matsel = 5,
+         .sap_mode = 2,
+         .loud_unit = 1,
+         .companded = 2},
         {.name = "5_0-simple-config2", .ch_mode = 3, .coding_config = 2, .sap_mode = 2},
-        {.name = "5_1-simple-config1-matsel9", .ch_mode = 4, .coding_config = 1, .chel_matsel = 9, .sap_mode = 2},
-        {.name = "5_1-simple-config0-2ch1", .ch_mode = 4, .coding_config = 0, .two_ch_mode = true,
+        {.name = "5_1-simple-config1-matsel9",
+         .ch_mode = 4,
+         .coding_config = 1,
+         .chel_matsel = 9,
+         .sap_mode = 2},
+        {.name = "5_1-simple-config0-2ch1",
+         .ch_mode = 4,
+         .coding_config = 0,
+         .two_ch_mode = true,
          .stereo_proc = false},
-        {.name = "5_1-aspx-config3-matsel3", .ch_mode = 4, .aspx = true, .coding_config = 3, .chel_matsel = 3,
-         .sap_mode = 2, .loud_unit = 1, .companded = 3},
-        {.name = "7_0-340-aspx-config1-matsel6", .ch_mode = 5, .aspx = true, .coding_config = 1, .chel_matsel = 6,
-         .sap_mode = 2, .loud_unit = 3},
-        {.name = "7_1-340-simple-config0-2ch1-sap", .ch_mode = 6, .coding_config = 0, .two_ch_mode = true,
-         .sap_mode = 2, .use_sap_add_ch = true},
-        {.name = "7_0-520-aspx-config3-matsel11-sap", .ch_mode = 7, .aspx = true, .coding_config = 3,
-         .chel_matsel = 11, .sap_mode = 2, .use_sap_add_ch = true, .loud_unit = 1},
-        {.name = "7_1-520-simple-config1-matsel0", .ch_mode = 8, .coding_config = 1, .sap_mode = 2},
-        {.name = "7_0-322-aspx-config0", .ch_mode = 9, .aspx = true, .coding_config = 0, .sap_mode = 2,
+        {.name = "5_1-aspx-config3-matsel3",
+         .ch_mode = 4,
+         .aspx = true,
+         .coding_config = 3,
+         .chel_matsel = 3,
+         .sap_mode = 2,
+         .loud_unit = 1,
+         .companded = 3},
+        {.name = "7_0-340-aspx-config1-matsel6",
+         .ch_mode = 5,
+         .aspx = true,
+         .coding_config = 1,
+         .chel_matsel = 6,
+         .sap_mode = 2,
          .loud_unit = 3},
-        {.name = "7_1-322-simple-config2-sap", .ch_mode = 10, .coding_config = 2, .sap_mode = 2,
+        {.name = "7_1-340-simple-config0-2ch1-sap",
+         .ch_mode = 6,
+         .coding_config = 0,
+         .two_ch_mode = true,
+         .sap_mode = 2,
+         .use_sap_add_ch = true},
+        {.name = "7_0-520-aspx-config3-matsel11-sap",
+         .ch_mode = 7,
+         .aspx = true,
+         .coding_config = 3,
+         .chel_matsel = 11,
+         .sap_mode = 2,
+         .use_sap_add_ch = true,
+         .loud_unit = 1},
+        {.name = "7_1-520-simple-config1-matsel0", .ch_mode = 8, .coding_config = 1, .sap_mode = 2},
+        {.name = "7_0-322-aspx-config0",
+         .ch_mode = 9,
+         .aspx = true,
+         .coding_config = 0,
+         .sap_mode = 2,
+         .loud_unit = 3},
+        {.name = "7_1-322-simple-config2-sap",
+         .ch_mode = 10,
+         .coding_config = 2,
+         .sap_mode = 2,
          .use_sap_add_ch = true},
         // The A-CPL modes: each element's, both routings, residuals against
         // both of Table 202's bases, and the band counts and quantisations.
         {.name = "2_0-acpl1-stereoproc", .ch_mode = 1, .sap_mode = 2, .acpl = 2},
-        {.name = "2_0-acpl2-second", .ch_mode = 1, .acpl = 3, .acpl_second = true, .acpl_bands_id = 3},
-        {.name = "5_1-acpl1-config1-matsel7", .ch_mode = 4, .coding_config = 1, .chel_matsel = 7, .sap_mode = 2,
-         .sap_add_mode = 0, .acpl = 2, .acpl_bands_id = 1},
+        {.name = "2_0-acpl2-second",
+         .ch_mode = 1,
+         .acpl = 3,
+         .acpl_second = true,
+         .acpl_bands_id = 3},
+        {.name = "5_1-acpl1-config1-matsel7",
+         .ch_mode = 4,
+         .coding_config = 1,
+         .chel_matsel = 7,
+         .sap_mode = 2,
+         .sap_add_mode = 0,
+         .acpl = 2,
+         .acpl_bands_id = 1},
         {.name = "5_0-acpl2-config0", .ch_mode = 3, .coding_config = 0, .sap_mode = 2, .acpl = 3},
-        {.name = "5_1-acpl3-second-coarse", .ch_mode = 4, .sap_mode = 2, .acpl = 4, .acpl_second = true,
+        {.name = "5_1-acpl3-second-coarse",
+         .ch_mode = 4,
+         .sap_mode = 2,
+         .acpl = 4,
+         .acpl_second = true,
          .acpl_quant = 1},
-        {.name = "7_1-340-acpl2-config2", .ch_mode = 6, .coding_config = 2, .sap_mode = 2, .acpl = 3,
+        {.name = "7_1-340-acpl2-config2",
+         .ch_mode = 6,
+         .coding_config = 2,
+         .sap_mode = 2,
+         .acpl = 3,
          .acpl_bands_id = 2},
-        {.name = "7_0-520-acpl1-config3-base1", .ch_mode = 7, .coding_config = 3, .chel_matsel = 4, .sap_mode = 2,
-         .acpl = 2, .add_ch_base = true},
-        {.name = "7_1-322-acpl2-config0-second", .ch_mode = 10, .coding_config = 0, .sap_mode = 2, .acpl = 3,
-         .acpl_second = true, .acpl_quant = 1},
+        {.name = "7_0-520-acpl1-config3-base1",
+         .ch_mode = 7,
+         .coding_config = 3,
+         .chel_matsel = 4,
+         .sap_mode = 2,
+         .acpl = 2,
+         .add_ch_base = true},
+        {.name = "7_1-322-acpl2-config0-second",
+         .ch_mode = 10,
+         .coding_config = 0,
+         .sap_mode = 2,
+         .acpl = 3,
+         .acpl_second = true,
+         .acpl_quant = 1},
+        // The immersive element (Part 2 clause 6.2.4) in each codec mode, with
+        // the groupings, 2ch_modes, step 4 and Table 20 among them.
+        {.name = "7_1_4-scpl-grouping0-sap-prediction",
+         .ch_mode = 12,
+         .coding_config = 0,
+         .sap_mode = 2,
+         .use_sap_add_ch = true,
+         .immersive = 0,
+         .prediction_alpha_q = 5},
+        {.name = "7_0_4-aspx_scpl-grouping3-matsel4",
+         .ch_mode = 11,
+         .coding_config = 3,
+         .chel_matsel = 4,
+         .sap_mode = 2,
+         .loud_unit = 4,
+         .immersive = 1},
+        {.name = "7_1_4-acpl1-grouping1-matsel10",
+         .ch_mode = 12,
+         .coding_config = 1,
+         .chel_matsel = 10,
+         .sap_mode = 2,
+         .stereo_proc = false,
+         .acpl_bands_id = 2,
+         .immersive = 2,
+         .prediction_alpha_q = -7},
+        {.name = "7_1_4-acpl2-grouping2-second",
+         .ch_mode = 12,
+         .coding_config = 2,
+         .sap_mode = 2,
+         .use_sap_add_ch = true,
+         .sap_add_mode = 0,
+         .acpl_second = true,
+         .acpl_quant = 1,
+         .immersive = 3},
+        {.name = "7_1_4-ajcc-grouping0-2ch1-mode1-route2",
+         .ch_mode = 12,
+         .coding_config = 0,
+         .two_ch_mode = true,
+         .sap_mode = 2,
+         .acpl_bands_id = 3,
+         .immersive = 4,
+         .ajcc_core_mode = 1,
+         .ajcc_route = 2},
     };
 }
 

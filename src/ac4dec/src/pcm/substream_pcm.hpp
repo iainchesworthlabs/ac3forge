@@ -12,10 +12,13 @@
 #include "dsp/resampler.hpp"
 #include "dsp/synthesis.hpp"
 #include "pcm/acpl.hpp"
+#include "pcm/ajcc.hpp"
+#include "pcm/ajoc.hpp"
 #include "pcm/aspx.hpp"
 #include "pcm/de.hpp"
 #include "pcm/downmix.hpp"
 #include "pcm/drc.hpp"
+#include "pcm/mixer.hpp"
 #include "pcm/routing.hpp"
 #include "pcm/stereo.hpp"
 #include "syntax/channel_elements.hpp"
@@ -28,9 +31,13 @@
 // block switching (5.5) and frame alignment (5.6), then the QMF domain (5.7):
 // analysis, companding, A-SPX, A-CPL and synthesis, for what this version
 // decodes: the mono, pair, 3.0, 5.X and 7.X elements in every codec mode Part
-// 1 gives them, SIMPLE, ASPX and the A-CPL modes. What it does not decode yet
-// it refuses with DecodeError::kUnsupported and the phase of planning/ac4.md
-// that brings it.
+// 1 gives them, SIMPLE, ASPX and the A-CPL modes; and the immersive element of
+// the 7.X.4 modes along Part 2 Figure 5 of ETSI TS 103 190-2 V1.3.1, with its
+// SMP (clause 5.2), S-CPL between the inverse transform and the analysis
+// (5.3, pcm/immersive.hpp), A-SPX with its gains (4.8.3.11), A-CPL (5.5) and
+// A-JCC (5.6, pcm/ajcc.hpp), in full or core decoding (4.7). What it does not
+// decode yet it refuses with DecodeError::kUnsupported and the phase of
+// planning/ac4.md that brings it.
 //
 // Every codec mode passes through the QMF banks, SIMPLE included, as Figure
 // 9 draws it, so the decoder's delay is one for all of them: d_pcm, the QMF
@@ -48,9 +55,28 @@
 // (OutputConfig): dialogue enhancement (clause 5.7.8, pcm/de.hpp), then the
 // output level and DRC (clause 5.7.9, pcm/drc.hpp), whose level is measured on
 // the signal before dialogue enhancement (6.2.13), then the downmix (6.2.17,
-// pcm/downmix.hpp), after which only the channels that come out are
-// synthesised. Their values are held with the rest of the frame's control data
+// pcm/downmix.hpp), for the immersive element Part 2's channel renderer
+// (clause 5.10.2, pcm/renderer.hpp), after which only the channels that come
+// out are synthesised. Their values are held with the rest of the frame's control data
 // until its signal reaches the QMF domain (5.7.2).
+//
+// A presentation of several substreams (Part 1 clause 6.2.16, Part 2 clause
+// 4.8.4) decodes each of the others only as far as the QMF domain, after its
+// dialogue enhancement (FrameInputs::qmf_only, then qmf_output()), and mixes
+// them into the main or music and effects substream's channels ahead of its
+// DRC (pcm/mixer.hpp); a hybrid dialogue enhancement method takes the
+// dialogue enhancement substream's channels as its waveform. The output stages
+// then run once, on the mix.
+//
+// An object audio substream (Part 2 clause 6.2.3) decodes its element the same
+// way, in the layout pcm_layout() gives it (pcm/routing.hpp): an A-JOC
+// substream's downmix, whose objects A-JOC makes after A-SPX in full decoding
+// (pcm/ajoc.hpp), or a direct-coded substream's objects, the channels of its
+// element. With FrameInputs::objects, decode() then puts out each object's
+// PCM, with the output level gain alone (clause 5.7.9.3.3), in object order:
+// the LFE first, then the upmix objects, or in core decoding the downmix's
+// signals in QinAJOC's order (a static downmix's L, R, C, Ls and Rs), or the
+// element's channels L, R, C, Ls and Rs as it has them.
 
 namespace ac4::detail {
 
@@ -67,6 +93,22 @@ struct FrameInputs {
     DrcFrameValues drc{};
     DeFrameValues de{};
     DownmixValues downmix{};
+    DecodingMode decoding = DecodingMode::kFull;  // Part 2 clause 4.7
+    // A substream another's decode() mixes in: decode() stops in the QMF
+    // domain after dialogue enhancement and puts out nothing; qmf_output()
+    // then gives the frame's matrices.
+    bool qmf_only = false;
+    // For the substream the others are mixed into: this frame's mixing, held
+    // with its control data, and each other substream's qmf_output() of this
+    // frame, whose signal is of the same frame as this one's.
+    MixValues mix{};
+    std::span<const MixSource> sources{};
+    // The dialogue enhancement substream's qmf_output() of this frame, the
+    // waveform of a hybrid dialogue enhancement method (clause 5.7.8.9).
+    std::optional<MixSource> dialogue{};
+    // An object audio substream: decode() puts out its objects' PCM in
+    // `channels`, in object order, and no speakers.
+    bool objects = false;
 };
 
 class SubstreamPcm {
@@ -109,6 +151,16 @@ class SubstreamPcm {
     // samples and ts_offset_hfgen QMF slots.
     [[nodiscard]] int delay_samples() const noexcept;
 
+    // The same at the output rate: at every frame_rate_index but 13 the
+    // converter's delay added and the sum taken through its ratio, to the
+    // nearest sample (Decoder::latency_samples()).
+    [[nodiscard]] int output_delay_samples() const noexcept;
+
+    // After a decode() or conceal() with FrameInputs::qmf_only: the frame's
+    // QMF-domain matrices, one per channel of the channel mode, and the same
+    // before its dialogue enhancement. Valid until the next call.
+    [[nodiscard]] MixSource qmf_output(int key) const noexcept;
+
    private:
     struct Channel {
         dsp::ChannelSynthesis<double> synthesis;
@@ -140,13 +192,28 @@ class SubstreamPcm {
         std::vector<AspxData1ch> aspx_1ch;
         std::vector<AspxData2ch> aspx_2ch;
         std::optional<AcplFrameValues> acpl;  // dequantised when the frame was read
+        std::optional<AjccFrameValues> ajcc;  // decoded when the frame was read
+        std::optional<AjocFrameValues> ajoc;  // decoded and dequantised when the frame was read
+        double dialogue_db = 0.0;             // G_DE, for A-JOC's dialogue enhancement
         DrcFrameValues drc;                   // the frame's DRC and dialnorm
         DeFrameValues de;                     // its dialogue enhancement
         DownmixValues downmix;                // its downmix gains
+        MixValues mix;                        // its presentation's mixing
+    };
+
+    // The second channel of an aspx_data_2ch() core decoding takes the first
+    // of alone (AspxUnit::first_only): its A-SPX state, which its data's
+    // differences along time need, silence for its low band, and a matrix for
+    // the high band nothing uses.
+    struct Ghost {
+        std::vector<QmfValue> ext;
+        std::vector<QmfValue> out;
+        AspxChannelState aspx;
     };
 
     // One aspx_data element's frame parameters and its channels' data and
-    // matrices, for one of the units aspx_units() lists.
+    // matrices, for one of the units aspx_units() lists; a channel of -1 is a
+    // ghost.
     struct UnitIo {
         AspxFrame frame;
         std::array<AspxChannelIo, 2> io{};
@@ -161,21 +228,41 @@ class SubstreamPcm {
     [[nodiscard]] ParseResult render(Control control, const FrameInputs& frame_inputs,
                                      std::vector<std::vector<float>>& channels,
                                      std::vector<Speaker>& speakers);
-    [[nodiscard]] ParseResult configure(const SubstreamContext& ctx);
+    [[nodiscard]] ParseResult configure(const SubstreamContext& ctx, DecodingMode decoding);
     // The output stages - DRC's channel groups, the downmix, and each channel
-    // out's synthesis bank and converter - for add_ch_base and the output the
-    // system asks for, rebuilt only where one of them changes.
+    // out's synthesis bank and converter - for add_ch_base, the immersive
+    // element's presence flags and the output the system asks for, rebuilt
+    // only where one of them changes.
     void configure_outputs(const SubstreamContext& ctx, const OutputConfig& output);
     [[nodiscard]] ParseResult check_control(const SubstreamContext& ctx, const ChannelElement& element) const;
     [[nodiscard]] UnitIo unit_io(const AspxUnit& unit, const Control& control, bool master_reset);
     [[nodiscard]] int channel_of(Speaker speaker) const noexcept;
     [[nodiscard]] ParseResult matrix(const SubstreamContext& ctx, const ChannelElement& element);
     void apply(const Control& control);
+    // A-JOC on the downmix (pcm/ajoc.hpp), after A-SPX: the upmix objects in
+    // full decoding, dialogue enhancement in core decoding.
+    void apply_ajoc(const AjocFrameValues& values, double dialogue_db);
+    // The object audio substream's objects' matrices in object order
+    // (object_matrices_), and their PCM into `channels`.
+    void collect_objects();
+    void synthesise_objects(const FrameInputs& frame_inputs, const DrcFrameValues& drc,
+                            std::vector<std::vector<float>>& channels);
+    // The immersive element's A-SPX gains and core decoding's gain in place of
+    // A-CPL (pcm/immersive.hpp), after A-SPX made `units`.
+    void apply_immersive_gains(const Control& control, std::span<const UnitIo> units,
+                               std::span<const aspx::SubbandGroups> groups);
     void pass_through();
     void pass_through(Channel& channel) const;
 
     int full_length_ = 0;
-    int ch_mode_ = -1;
+    int ch_mode_ = -1;  // the element's layout: pcm_layout()'s
+    // How the substream codes its audio, and an A-JOC substream's downmix.
+    AudioCoding coding_ = AudioCoding::kChannel;
+    bool static_dmx_ = false;
+    int dmx_signals_ = 0;
+    int umx_signals_ = 0;
+    bool object_lfe_ = false;
+    DecodingMode decoding_ = DecodingMode::kFull;
     int frame_rate_index_ = -1;
     int fs_index_ = 1;
     int delay_ = 0;
@@ -186,6 +273,12 @@ class SubstreamPcm {
     std::optional<dsp::TransformSet<double>> transforms_;
     std::span<const Speaker> speakers_;  // the channel mode's, speakers_of()
     std::vector<Channel> channels_;      // in speakers_'s order
+    // Core decoding's ASPX_SCPL, by aspx_data_2ch() index; empty otherwise.
+    std::vector<Ghost> ghosts_;
+    // The immersive element's codec mode of the last frame decoded, whose
+    // spectra S-CPL takes after the inverse transform, concealment's included;
+    // unset for the other elements.
+    std::optional<int> scpl_mode_;
     std::vector<AspxUnit> units_;        // aspx_units() of the control being applied
     std::vector<int> companded_;         // its companded_speakers(), as channel indices
     std::deque<Control> held_;
@@ -198,6 +291,24 @@ class SubstreamPcm {
     // (src/ac4dec/ERRATA.md, "A change of codec mode").
     AcplStage acpl_;
     AcplQuantHistory acpl_history_;
+    // A-JCC's stage and the quantised values DIFF_TIME refers to, kept as
+    // A-CPL's are.
+    AjccStage ajcc_;
+    AjccQuantHistory ajcc_history_;
+    // A-JOC's stage, its quantised values DIFF_TIME refers to (and a copy to
+    // decode a frame against), and the upmix objects' matrices of the frame;
+    // whether this frame's control applied A-JOC.
+    AjocStage ajoc_;
+    AjocQuantHistory ajoc_history_;
+    AjocQuantHistory ajoc_history_next_;
+    std::vector<std::vector<QmfValue>> objects_;
+    bool ajoc_applied_ = false;
+    std::vector<const std::vector<QmfValue>*> ajoc_inputs_;
+    std::vector<std::vector<QmfValue>*> ajoc_inputs_in_place_;
+    // The objects' matrices in object order, and each object's synthesis bank
+    // and converter.
+    std::vector<std::vector<QmfValue>*> object_matrices_;
+    std::vector<Output> object_outputs_;
     std::optional<int> decoded_mode_;
     std::optional<int> applied_mode_;
     // The sample rate converter's filter, which every channel's converter
@@ -207,11 +318,13 @@ class SubstreamPcm {
     DeStage de_;
     DrcStage drc_;
     DownmixStage downmix_;
+    MixStage mix_;
     double internal_rate_ = 48000.0;  // the rate the QMF banks run at
     bool outputs_valid_ = false;
     bool add_ch_base_ = false;
     DownmixTarget downmix_target_ = DownmixTarget::kAsCoded;
     bool mix_lfe_ = true;
+    std::optional<ImmersiveLayout> layout_;     // the immersive element's, for the renderer
     std::vector<Output> outputs_;               // in downmix_.speakers()'s order
     // The last good frame, which concealment repeats, and the frames lost
     // since it.
@@ -221,12 +334,14 @@ class SubstreamPcm {
     DrcFrameValues last_drc_;
     DeFrameValues last_de_;
     DownmixValues last_downmix_;
+    MixValues last_mix_;
     int losses_ = 0;
     std::vector<std::vector<QmfValue>> mixed_;  // the downmix's matrices
     std::vector<std::vector<QmfValue>*> mixed_matrices_;
     // The matrices before dialogue enhancement, DRC's side chain, where both act.
     std::vector<std::vector<QmfValue>> side_;
     std::vector<std::vector<QmfValue>*> side_matrices_;
+    bool side_kept_ = false;  // whether the last frame's side chain is side_ rather than the matrices
 
     // Scratch, kept to save an allocation per frame.
     ElementRoute route_;
@@ -239,6 +354,7 @@ class SubstreamPcm {
     std::vector<std::vector<double>> spectra_;  // per channel, in window order
     std::vector<int> track_of_;                 // per channel, the track its lines are in
     std::vector<double> pcm_;
+    std::vector<std::vector<double>> time_;  // per channel, the inverse transform's frame
     std::vector<double> converted_;
     std::vector<double> aligned_;
     std::vector<std::vector<int>> lengths_;  // per channel, its blocks' lengths

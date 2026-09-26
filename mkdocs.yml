@@ -101,6 +101,7 @@ nav:
           - ADM / BW64 reading: library/adm.md
           - ADM → Atmos bridging: library/adm-bridge.md
           - IAMF writing: library/iamf.md
+          - AC-4 decoding: library/ac4.md
           - Measuring quality: library/quality.md
           - Object signing: library/signing.md
           - Header map: library/header-map.md
@@ -155,6 +156,8 @@ nav:
   - Hearth:
       - Overview: hearth/index.md
       - An ESP32-S3 sink: hearth/sink-esp32-s3.md
+      - Sink firmware: hearth/sink-firmware.md
+      - Install from the browser: hearth/sink-installer.md
       - Design record: hearth/design/player-appliance.md
   - Platforms:
       - Which platform: platforms/index.md

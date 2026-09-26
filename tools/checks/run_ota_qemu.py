@@ -17,7 +17,8 @@ built from one tree:
 In order, each step failing the run with an ::error:: annotation that says what
 the board answered:
 
-   1. the board boots a.bin from ota_0, valid, with the other slot empty;
+   1. the board boots a.bin from ota_0, valid, with the other slot empty, and
+      GET /log has the boot's lines without the Sendspin pairing token;
    2. tools/hearth/ota.py pushes b.bin: the board restarts into ota_1, the
       trial accepts it, and a.bin is the image to go back to;
    3. refusals, each leaving b.bin running: a byte of the image changed (400,
@@ -29,7 +30,9 @@ the board answered:
    5. ota.py pushes unhealthy.bin: rolled back at the deadline, and the board
       says why;
    6. ota.py pushes panic.bin: rolled back by the bootloader, and the board
-      says it panicked;
+      says it panicked; the panic's core dump is reported, sent whole by GET
+      /firmware/coredump, named for panic.elf, read by esp_coredump when the
+      ESP-IDF environment is there, and erased by DELETE;
    7. PUT /firmware/rollback with nothing to go back to: 409; then b.bin is
       pushed, and PUT /firmware/rollback takes the board back to a.bin;
    8. POST /restart: the board restarts into the image it ran;
@@ -54,6 +57,7 @@ import argparse
 import base64
 import hashlib
 import http.client
+import importlib.util
 import json
 import re
 import shutil
@@ -224,6 +228,16 @@ class Board:
         finally:
             connection.close()
 
+    def fetch(self, path: str, timeout: float = 60.0) -> tuple[int, bytes]:
+        """GET as bytes: a core dump is not text."""
+        connection = http.client.HTTPConnection("127.0.0.1", PORT, timeout=timeout)
+        try:
+            connection.request("GET", path)
+            response = connection.getresponse()
+            return response.status, response.read()
+        finally:
+            connection.close()
+
     def firmware(self) -> dict:
         status, text = self.request("GET", "/firmware")
         if status != 200:
@@ -321,6 +335,14 @@ def run(board: Board, images: Path) -> None:
         f"ota_1 is not empty: {state.get('other')}",
     )
     expect(state.get("mode") == "normal", f"mode is {state.get('mode')}")
+    # The console's lines so far (O4), without the Sendspin pairing token the
+    # console itself printed: GET /log is for anyone on the network.
+    status, text = board.request("GET", "/log")
+    expect(
+        status == 200 and f"firmware: running {version_a} from ota_0" in text,
+        f"GET /log at boot: {status} {text[-400:]}",
+    )
+    expect("pairing token" not in text, "GET /log carries the Sendspin pairing token")
 
     print("--- 2: ota.py pushes b.bin")
     code, _ = ota("push", str(images / "b.bin"), "--host", HOST, "--yes")
@@ -399,6 +421,7 @@ def run(board: Board, images: Path) -> None:
         last.get("result") == "rolled back" and "panicked" in last.get("reason", ""),
         f"last_update after the panicking image: {last}",
     )
+    check_coredump(board, state, images / "panic.elf")
 
     print("--- 7: PUT /firmware/rollback")
     status, text = board.request("PUT", "/firmware/rollback")
@@ -441,6 +464,49 @@ def run(board: Board, images: Path) -> None:
     time.sleep(3)
     state = board.wait_up()
     expect(state.get("mode") == "normal", f"mode after a restart: {state.get('mode')}")
+
+
+def check_coredump(board: Board, state: dict, elf: Path) -> None:
+    """The panicking image's core dump, as the image that went back reports and sends it (O4).
+
+    The dump names the image that wrote it by the start of its ELF SHA-256.
+    When the ESP-IDF environment is there, as it is in CI, esp_coredump reads it
+    with that image's ELF and has to find the abort() the trial panicked with.
+    Then it is erased.
+    """
+    dump = state.get("coredump") or {}
+    expect(dump.get("intact") is True and dump.get("bytes", 0) > 0, f"the core dump: {dump}")
+    if elf.exists():
+        digest = hashlib.sha256(elf.read_bytes()).hexdigest()
+        expect(
+            bool(dump.get("elf_sha256")) and digest.startswith(dump["elf_sha256"]),
+            f"the core dump names ELF SHA-256 {dump.get('elf_sha256')!r}; panic.elf's is {digest}",
+        )
+    status, data = board.fetch("/firmware/coredump")
+    expect(
+        status == 200 and len(data) == dump.get("bytes"),
+        f"GET /firmware/coredump: {status}, {len(data)} bytes, not {dump.get('bytes')}",
+    )
+    saved = board.out / "coredump-panic.bin"
+    saved.write_bytes(data)
+    print(f"the panic's core dump: {len(data):,} bytes, {dump.get('task')} at {dump.get('pc')}")
+    if elf.exists() and importlib.util.find_spec("esp_coredump") is not None:
+        decoded = subprocess.run(
+            [sys.executable, "-m", "esp_coredump", "info_corefile",
+             "--core", str(saved), "--core-format", "raw", str(elf)],
+            capture_output=True,
+            text=True,
+            timeout=300,
+            check=False,
+        )  # fmt: skip
+        (board.out / "coredump-panic.txt").write_text(decoded.stdout + decoded.stderr, "utf-8")
+        expect(
+            decoded.returncode == 0 and "abort" in decoded.stdout,
+            f"esp_coredump exited {decoded.returncode}: {decoded.stderr[-600:]}",
+        )
+    status, text = board.request("DELETE", "/firmware/coredump")
+    expect(status == 200, f"DELETE /firmware/coredump: {status} {text.strip()}")
+    expect(board.firmware().get("coredump") is None, "GET /firmware still reports a core dump")
 
 
 def image_version(image: bytes) -> str:

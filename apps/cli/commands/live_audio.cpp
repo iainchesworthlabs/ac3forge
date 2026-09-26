@@ -1123,8 +1123,9 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                              "error: \"{}\" is bitstreaming {} over IEC 61937, not delivering "
                              "PCM - a live encode of it would be noise",
                              device.name,
-                             *type == ac3::iec61937::BurstDataType::kEac3 ? "Dolby Digital Plus"
-                                                                         : "Dolby Digital");
+                             *type == ac3::iec61937::BurstDataType::kEac3  ? "Dolby Digital Plus"
+                             : *type == ac3::iec61937::BurstDataType::kAc3 ? "Dolby Digital"
+                                                                           : "AC-4");
                 fmt::println(stderr,
                              "  'ac3cli record <out.ec3> <seconds> 0 {}' records the elementary "
                              "stream instead, and 'ac3cli unspdif' recovers one from a capture "

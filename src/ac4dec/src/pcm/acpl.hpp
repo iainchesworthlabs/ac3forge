@@ -27,13 +27,20 @@
 //                               and 119);
 //   the 7.X element             two modules on the pairs Table 202 names by
 //                               channel mode and add_ch_base (5.7.7.6.3,
-//                               Pseudocode 120).
+//                               Pseudocode 120);
+//   the immersive element       four modules, on (Ls, Lb), (Rs, Rb), (Tfl,
+//                               Tbl) and (Tfr, Tbr), in full decoding (ETSI
+//                               TS 103 190-2 V1.3.1 clause 5.5.2, Table 25
+//                               and Pseudocode 2).
 //
 // The core (acpl/acpl.hpp) holds the decorrelators, the transient ducker and
 // interpolation. src/ac4dec/ERRATA.md records the readings taken, under
 // "A-CPL".
 
 namespace ac4::detail {
+
+// The most acpl_data_1ch() one element carries: the immersive element's four.
+inline constexpr std::size_t kMaxAcplModules = 4;
 
 // One acpl_data_1ch(), dequantised: the parameters of one module.
 struct AcplModuleValues {
@@ -54,10 +61,10 @@ struct AcplCouplingValues {
     std::array<acpl::ParamSets, 6> gamma{};
 };
 
-// A frame's A-CPL data as the QMF domain takes it: one or two modules'
+// A frame's A-CPL data as the QMF domain takes it: one, two or four modules'
 // parameters, or acpl_data_2ch()'s.
 struct AcplFrameValues {
-    std::array<AcplModuleValues, 2> modules{};
+    std::array<AcplModuleValues, kMaxAcplModules> modules{};
     std::size_t module_count = 0;
     std::optional<AcplCouplingValues> coupling;
 };
@@ -66,7 +73,7 @@ struct AcplFrameValues {
 // last parameter set decoded, which DIFF_TIME adds to.
 struct AcplQuantHistory {
     // [acpl_data_1ch() in syntax order][acpl_alpha1, acpl_beta1][band].
-    std::array<std::array<std::array<int, acpl::kMaxParamBands>, 2>, 2> modules{};
+    std::array<std::array<std::array<int, acpl::kMaxParamBands>, 2>, kMaxAcplModules> modules{};
     // acpl_data_2ch()'s eleven parameters in Table 62's order: alpha1,
     // alpha2, beta1, beta2, beta3, gamma1 to gamma6.
     std::array<std::array<int, acpl::kMaxParamBands>, 11> coupling{};
@@ -86,7 +93,7 @@ struct AcplChannels {
     std::span<std::vector<QmfValue>* const> matrices;
 };
 
-// What A-CPL carries from frame to frame: the three decorrelators with their
+// What A-CPL carries from frame to frame: the decorrelators with their
 // transient duckers, and acpl_param_prev of every parameter its modules
 // interpolate.
 class AcplStage {
@@ -98,8 +105,8 @@ class AcplStage {
     void reset();
 
     // Applies one frame's parameters for an element of `kind` in `codec_mode`
-    // under channel mode `ch_mode` and, for the 7.X modes that send it,
-    // add_ch_base.
+    // (an immersive_mode value for the immersive element) under channel mode
+    // `ch_mode` and, for the 7.X modes that send it, add_ch_base.
     void apply(int ch_mode, bool add_ch_base, ElementKind kind, int codec_mode, const AcplFrameValues& values,
                int num_ts, const AcplChannels& channels);
 
@@ -110,9 +117,11 @@ class AcplStage {
         acpl::ParamPrev prev{};
     };
 
-    // One module: the first or second, which is also its decorrelator's index.
-    void module(const AcplModuleValues& values, int index, std::span<const QmfValue> x0,
-                std::span<const QmfValue> x1, std::span<QmfValue> z0, std::span<QmfValue> z1, int num_ts);
+    // One module: `index` counts the element's acpl_data_1ch(), whose
+    // acpl_param_prev it keeps, and `decorrelator` is one of decorrelators_.
+    void module(const AcplModuleValues& values, int index, int decorrelator,
+                std::span<const QmfValue> x0, std::span<const QmfValue> x1, std::span<QmfValue> z0,
+                std::span<QmfValue> z1, int num_ts);
     void coupling(const AcplCouplingValues& values, std::span<const QmfValue> x0, std::span<const QmfValue> x1,
                   std::span<std::span<QmfValue>, 5> z, int num_ts);
     // Pseudocode 109 for `param` under `framing`, into `out`.
@@ -120,17 +129,20 @@ class AcplStage {
                      std::vector<double>& out) const;
     void decorrelate(int decorrelator, std::span<const QmfValue> in, std::span<QmfValue> out, int num_ts);
 
-    std::array<acpl::Decorrelator<double>, acpl::kDecorrelators> decorrelators_;
-    std::array<acpl::TransientDucker<double>, acpl::kDecorrelators> duckers_{};
-    // acpl_param_prev: alpha and beta of the two modules, and acpl_data_2ch()'s
+    // D0, D1 and D2, then the second instances of D0 and D1 the immersive
+    // element's four modules take (Pseudocode 2): kDecorrelatorSlots.
+    static constexpr std::size_t kDecorrelatorSlots = acpl::kDecorrelators + 2;
+    std::array<acpl::Decorrelator<double>, kDecorrelatorSlots> decorrelators_;
+    std::array<acpl::TransientDucker<double>, kDecorrelatorSlots> duckers_{};
+    // acpl_param_prev: alpha and beta of each module, and acpl_data_2ch()'s
     // eleven parameters in AcplQuantHistory's order.
-    std::array<std::array<acpl::ParamPrev, 2>, 2> module_prev_{};
+    std::array<std::array<acpl::ParamPrev, 2>, kMaxAcplModules> module_prev_{};
     std::array<acpl::ParamPrev, 11> coupling_prev_{};
 
     // Scratch, kept to save allocations per frame.
     std::array<std::vector<QmfValue>, 5> in_{};
     std::array<std::vector<QmfValue>, 3> transformed_{};
-    std::array<std::vector<QmfValue>, 3> decorrelated_{};
+    std::array<std::vector<QmfValue>, kDecorrelatorSlots> decorrelated_{};
     std::vector<QmfValue> work_;
     std::array<std::vector<double>, 2> interp_{};
     std::vector<std::vector<double>> interp_scratch_;

@@ -129,24 +129,26 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 
 | Category | Feature | Status | Priority | Criticality | Notes |
 |---|---|---|---|---|---|
-| **Inspector (`ac4::`)** | Sync frame + Annex G CRC | 🟢 | High | Essential | vs DEE fixtures |
+| **Inspector (`ac4::ac4`)** | Sync frame + Annex G CRC | 🟢 | High | Essential | vs DEE fixtures |
+| | Sync frames from a stream in pieces | 🟢 | High | Essential | `SyncFrameSplitter`: the caller's storage, no allocation, a partial frame held between reads; resynchronises past bytes that are not a frame and hands a frame found that way over only once a sync word follows it; the frames `scan` finds on committed streams fed in pieces from 1 byte to 64 KiB, and against `scan` in `fuzz_ac4_parse` |
 | | TOC / presentations v0–v2 | 🟢 | High | Essential | Channel-based immersive through 7.1.4 |
-| | `bitstream_version` 0/1 legacy TOC | 🟡 | Low | Optional | Transcribed; no real DEE stream exercises it (all observed v2) |
+| | `bitstream_version` 0/1 legacy TOC | 🟡 | Low | Optional | Transcribed; no real DEE stream exercises it (all observed v2); version 0 presentations of several substreams decode and mix on the test multiplexer's streams |
 | | Channel-coded substream groups | 🟢 | High | Essential | Probe / JSON contract |
 | | A-JOC / object / OAMD substream info | 🟡 | Medium | Important | Parsed; real A-JOC fixtures scarce |
 | | `oamd_common_data()` (TOC level, §6.2.8.1) | 🟡 | Medium | Optional | Transcribed |
 | | OAMD substream DATA body (`oamd_substream()`) | 🔴 | Medium | Important | Byte-range only — not field-parsed |
 | | EMDF-only presentations (config 6) | 🟢 | Low | Optional | Synthetic + dual transcription |
 | | `dac4` / RFC 6381 codec string | 🟢 | Medium | Important | MP4 / TS / HLS / DASH wiring |
-| | Audio PCM decode | 🔴 | High | Essential | Inspector by design — content is byte ranges only |
-| **Decoder (`ac4dec::`)** | Presentation + channel-coded syntax | 🟡 | High | Essential | Full syntax trace |
+| | Audio PCM decode | 🔴 | High | Essential | Inspector by design — content is byte ranges only; `ac4::decoder` decodes it |
+| **Decoder (`ac4::decoder`)** | Presentation + channel-coded syntax | 🟡 | High | Essential | Full syntax trace |
 | | ASF / ASPX / A-CPL / metadata() | 🟡 | High | Essential | DEE digest CI; dual transcription vs Python |
 | | Channel-coded paths without fixtures | 🟡 | Medium | Optional | Noise fill, VARVAR ASPX, time-interleaved ASPX, the mono element, alt presentations, transmitted DRC gains — transcribed, oracle-poor; 3.0, 7.X and every A-CPL mode read on constructed streams |
 | | EMDF payload substreams (syntax) | 🟡 | Medium | Important | Syntax only |
-| | Dialogue enhancement PCM apply | 🟢 | Medium | Important | Part 1 5.7.8's four methods in the QMF domain, from 0 dB to the stream's cap; 0 dB is the tool bypassed, sample for sample, and the parsed gains apply to 0.01 dB; the channel-independent method on DEE's streams, the others on constructed data; `ac3cli decode dialogue-enhancement=` |
+| | Dialogue enhancement PCM apply | 🟢 | Medium | Important | Part 1 5.7.8's four methods in the QMF domain, from 0 dB to the stream's cap; 0 dB is the tool bypassed, sample for sample, and the parsed gains apply to 0.01 dB; the channel-independent method on DEE's streams, the others on constructed data; the hybrid methods take their waveform from the presentation's dialogue enhancement substream; `ac3cli decode dialogue-enhancement=` |
 | | Speech spectral frontend (SSF) | 🔴 | Low | Nice-to-have | Refused `kUnsupported` |
-| | Immersive / 22.2 channel elements | 🔴 | Medium | Important | Refused today |
-| | Object / A-JOC audio substreams | 🔴 | Medium | Important | Refused at TOC |
+| | Immersive channel element (7.0.4, 7.1.4) | 🟢 | High | Essential | Part 2 6.2.4 to 6.2.6 in both transcriptions; SCPL, ASPX_SCPL, ASPX_ACPL_1, ASPX_ACPL_2 and ASPX_AJCC: 5.2's track assignment, S-CPL, A-SPX's pairing and gains, A-CPL's four modules and A-JCC, in full and core decoding (`ac4::DecoderConfig::decoding`); DEE's 5.1.4 in its three modes with each tone on its own channel, the rest on constructed streams; `ac3cli decode decoding=` |
+| | 9.X.4 and 22.2 channel elements | 🔴 | Low | Nice-to-have | Refused `kUnsupported` by name |
+| | Object audio: A-JOC and direct-coded objects | 🟢 | Medium | Important | Part 2 6.2.3 to 6.2.8 in both transcriptions, the OAMD substream included; A-JOC's reconstruction (5.7) in full decoding and its downmix or static bed in core decoding, dialogue enhancement for objects (5.8.2.3 to 5.8.2.5), each object's Annex F properties at its update sample, and the ISF renderer (5.10.3); Chromium's `ac4-ajoc.ac4` in both modes, eight constructed streams scored tone by tone. No reference decode to compare with: librempeg refuses object coding, and DEE writes no A-JOC from this project's masters |
 | | HSF / 96–192 kHz | 🟡 | Low | Nice-to-have | Extension substream content read when it resolves to its owning channel substream; an unresolved link is refused `kUnsupported` — synthetic frames only, no real HSF stream available |
 | | PCM: SIMPLE mono and stereo | 🟢 | High | Essential | ASF, stereo processing, block switching, frame alignment and the QMF banks at `frame_rate_index` 13; DEE's 2.0 streams at unity gain and pinned SNR floors in CI; librempeg agrees to 83 dB or better |
 | | PCM: ASPX mono and stereo | 🟢 | High | Essential | Companding and A-SPX in the QMF domain; DEE's 2.0 streams from 48 to 144 kbps at unity gain and its immersive stereo against Lo/Ro, with SNR below the crossover, A-SPX tile energies, LSD and ViSQOL pinned; interleaved waveform coding, balance and VARVAR tested on constructed data |
@@ -155,14 +157,21 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | PCM: other frame rates | 🟢 | High | Essential | Every `frame_rate_index` to 48 kHz through the sample rate converter (`ac4core`: Kaiser-windowed polyphase, 100 dB down from the lower Nyquist frequency), its phase locked to `sequence_counter` as Part 2 5.11 has it and Table 47's counts held; DEE's IMS streams at 23.976, 24, 25 and 29.97 fps scored in CI |
 | | Output level and DRC | 🟢 | High | Essential | `Lout`, Table 161's mode selection, the default profiles, transmitted curves and gains, in dB2, with a BS.1770 K-weighted level detector; the output level gain to 0.01 dB for DEE's dialnorms from -31 to -17, each mode's static curve within 0.5 dB; `ac3cli decode output-level= drcmode=` |
 | | Downmix | 🟢 | High | Essential | Part 1 6.2.17's cascade from 7.X to 5.X, two channels and mono with the stream's gains and loudness corrections: Lo/Ro, Lt/Rt and Pro Logic II, the LFE at its mix gain; one tone per channel through each matrix equals its formula to 0.01 dB; `ac3cli decode channels= downmix=` |
+| | Channel renderer (immersive) | 🟢 | High | Essential | Part 2 5.10.2's Tables 38 to 43 and 45 and 46 from the source's configuration to 7.X.4, 7.X.2, 7.X.0, 5.X.4, 5.X.2 and 5.X.0, with custom downmix data (Table 130's defaults) and the output's loudness correction, and Part 1's Table 218 after 5.X.0 for two channels and mono; every table held against a second transcription; DEE's 5.1.4 legs rendered in both modes equal the matrices to 0.01 dB; DRC's Table 69 groups; `ac3cli decode speakers=` |
+| | Presentations and mixing | 🟢 | High | Essential | Part 2 4.8.2's selection, by `presentation_id`, position, language, associated audio and `b_pre_virtualized`, within the decoder's level, for version 0 and 1 presentations: a table of 30 constructed tables of contents in both transcriptions. Music and effects with dialogue, main with associated audio, both, and `presentation_config` 5 mixed as Part 1 6.2.16 and Part 2 4.8.3.17 to 4.8.5 give: group gains, the main audio's scaling, g_dialog and g_assoc, pans, version 0's levelling; every mix of the test multiplexer's streams equals its formula to 0.01 dB, in CI; `ac3cli decode presentation= language= associated= dialogue-gain= associated-gain=` |
 | | Start-up, splices and concealment | 🟢 | High | Essential | Decoding from any I-frame gives the whole stream's output from the frame after it, but for A-SPX's noise phase and A-CPL's decorrelators settling; a change of source keeps the signal, so a splice at an I-frame joins the streams without a gap; `ConcealmentPolicy` repeat-and-fade or mute for a frame that does not decode, `ac3cli decode conceal=` |
+| | API, reports and packaging | 🟢 | High | Essential | `DecoderConfig`, `OutputConfig` and `Decoder` with every control of the plan's "One control for both formats", changed while a stream plays by `set_output()` and `set_presentation()`; output a frame or 256 samples at a time; each presentation (names sent in chunks included) and the selected one's loudness, DRC, dialogue enhancement and downmix metadata; installed and exported with the inspector and the core, and a program decodes a stream through the installed package by CMake and by pkg-config; a test standing in for the Hearth engine decodes every committed stream through the public API alone |
+| | `ac3cli decode` and `probe` | 🟢 | High | Essential | `decode`: every control above, a presentation with objects rendered to speakers through Hearth's layout renderer, and an option of another format's named in a warning; `probe json=1`: the frame rate, bit rate, I-frames, splices, version 1 presentations, the selected presentation and its metadata |
 | | Transforms (`ac4core`: FFT, MDCT pair, KBD, QMF banks) | 🟢 | High | Essential | Each against its formula to 1e-12; shared by the decoder and the encoder, with A-SPX's tables and high frequency generator and A-CPL's decorrelators, ducker and tables |
-| **Encoder (`ac4enc::`)** | SIMPLE mono and stereo | 🟢 | High | Essential | 48 and 44.1 kHz at `frame_rate_index` 13, a constant rate from 8 kbps; block switching, M/S and prediction; SNR, LSD and ViSQOL floors in CI; ahead of DEE on SNR and LSD at 192 kbps |
+| **Encoder (`ac4::encoder`)** | SIMPLE mono and stereo | 🟢 | High | Essential | 48 and 44.1 kHz, from 8 kbps; block switching, M/S and prediction; SNR, LSD and ViSQOL floors in CI; ahead of DEE on SNR and LSD at 192 kbps |
 | | Frame writer, sync frame, MP4 and `dac4` | 🟢 | High | Essential | Encoder, decoder and Python traces agree record for record (tests, `fuzz_ac4_encode`, encoder-space harness); FFmpeg frames it; MediaInfo and DEE's MP4 muxer read it as configured |
 | | ASPX mono and stereo | 🟢 | High | Essential | Below 96 kbps a channel: A-SPX with DEE's crossovers, FIXFIX, FIXVAR and VARFIX framing, sinusoids, companding below 64 kbps a channel; SNR below the crossover, A-SPX tiles, LSD and ViSQOL pinned in CI; ViSQOL within 0.03 of DEE's or above it from 64 to 144 kbps. Balance, VARVAR and frequency interleaving behind `experimental=` |
 | | SIMPLE and ASPX 5.0 and 5.1 | 🟢 | High | Essential | The 5.X element in DEE's form: L/R and Ls/Rs pairs, C, the LFE to 140.6 Hz; ASPX below 384 kbps for 5.1, at DEE's 5.1 crossovers; each channel's tone on its own channel, the LFE's included; librempeg decodes it as the decoder does, to 82.5 dB; SNR, LSD and ViSQOL pinned in CI, and the race against DEE from 192 to 768 kbps. Coding configurations 1 to 3, `2ch_mode` 1, and 7.0 and 7.1 in the 7.X element behind `experimental=` |
 | | A-CPL 5.0 and 5.1 | 🟢 | High | Essential | ASPX_ACPL_3 and ASPX_ACPL_2 at DEE's rates, with DEE's A-SPX configuration; each band's parameters from each subband's own band; each tone on its own channel; the coded downmixes, each band's level difference and correlation, LSD and ViSQOL pinned in CI, and the race against DEE at 96 to 144 kbps; MediaInfo and DEE's muxer read it, and librempeg decodes its coded channels. ASPX_ACPL_1 and A-CPL in stereo behind `experimental=acpl` |
-| | Other layouts, rates and metadata | 🔴 | High | Essential | Immersive layouts, other frame rates, DRC, dialogue enhancement: plan phases E5 to E7 |
+| | Frame rates, rate modes and I-frames | 🟢 | High | Essential | Every frame rate of Part 1 Table 83 at 48 kHz, through the decoder's converter in the other direction, each frame's samples locked to `sequence_counter` and exact over 100 000 frames at each rate; LSD and ViSQOL within pinned allowances of index 13 in CI; average and variable rates, the average one within the buffer `wait_frames` signals, checked frame by frame; I-frames at an interval, at named frames and at fragment starts, an MP4's sync samples |
+| | Metadata | 🟢 | High | Essential | Further loudness values, measured with the BS.1770 meter; DRC's decoder modes on the default profile, on curves of their own or repeating another; the stereo downmix's values; dialogue enhancement from marked channels or a stem, by the channel-independent, Mid and cross-channel methods. MediaInfo reads each value as written over 42 configurations, and the decoder's output level, downmixes and dialogue enhancement gains equal their formulas on the encoder's streams, in CI. Transmitted DRC gains behind `experimental=drc-gains-N` |
+| | Presentations and several substreams | 🟢 | High | Essential | Part 2 Table 53's configurations over substreams in groups of their own: music and effects with dialogue, main with dialogue enhancement (the hybrid methods' waveform in a substream of its own), main with associated audio, music and effects with both, main with both, roles by classifier, and EMDF payloads alone; alternative presentations and their names, languages, classifiers, group gains, each presentation's least `md_compat`, the dialogue's and the associated audio's mixing values, EMDF payloads passed through; CMAF's limits held. D7's selection and mixing give every configured presentation to 0.01 dB on the encoder's streams, in CI; MediaInfo lists the presentations, names, languages and levels as configured. 3.0 dialogue behind the experimental options. In the library only: `ac3cli ac4-encode` takes presentations in plan phase E7, and the MP4's `dac4` describes only presentations of one substream |
+| | Immersive layouts and objects | 🔴 | High | Essential | Plan phases E8 and E9 |
 
 ---
 
@@ -239,6 +248,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | DASH MPD + Dolby supplemental descriptors | 🟡 | Medium | Important | Syntactically correct; no schema / player validation |
 | **Transport** | IEC 61937 burst pack (AC-3 + E-AC-3) | 🟢 | High | Essential | vs FFmpeg / MS docs |
 | | IEC 61937 burst unpack (`unspdif`) | 🟢 | Medium | Optional | Inverse of pack |
+| | IEC 61937-14 AC-4 burst pack + unpack | 🟢 | Medium | Important | The four burst types, their periods and sequences at every frame rate from the standard's tables, checked against a second transcription; no device here accepts AC-4 |
 | **Edit** | In-place metadata rewrite | 🟡 | Medium | Optional | Existing fields only; no insert |
 | | Loudness QC vs delivery specs | 🟢 | Medium | Important | BS.1770-4 vs dialnorm / R 128 / A/85 / Netflix |
 | | Elementary scan / probe / split | 🟢 | High | Essential | Programme-aware access-unit walk |
@@ -261,6 +271,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Perceptual encoder criterion calibration | 🔴 | Medium | Optional | Proposed as EQ14; not wired |
 | **Audio I/O** | Capture / monitor / passthrough | 🟡 | Medium | Important | `ac3::audio` in-tree only; every output backend now stops itself on device loss (Windows passthrough-unplug hardware-confirmed), but platform verification stays uneven |
 | | Sink capability discovery (EDID / ELD) | 🟡 | Medium | Important | Used for passthrough negotiation; uneven across platforms |
+| | AC-4 passthrough | 🟡 | Low | Optional | ALSA and Android; WASAPI, PipeWire and CoreAudio name no AC-4 format and refuse it; AC-4 HBR16's eight-channel link refused everywhere; no receiver to test |
 | **Out of scope** | Headphone / binaural renderer | 🔴 | Low | Out-of-scope | Deliberate product boundary (external renderer) |
 
 ---
@@ -299,12 +310,11 @@ this register is the checklist that those bounds appear here too.
 | Clause | Open item | Status |
 |---|---|---|
 | Part 1 / 2 TOC legacy | `bitstream_version` 0/1 | 🟡 |
-| §6.2.2.4 | OAMD substream DATA body | 🔴 |
+| §6.2.2.4 | OAMD substream DATA body | 🟢 |
 | Channel-coded syntax without fixtures | Noise fill, VARVAR, … | 🟡 |
-| Dialogue enhancement | PCM apply | 🔴 |
-| SSF / immersive / objects | Decode | 🔴 |
+| SSF | Decode | 🔴 |
 | §4.2.4.3 | HSF extension substream content (syntax only; synthetic frames only) | 🟡 |
-| Whole codec | PCM reconstruction beyond the channel elements' codec modes (immersive, objects, the sample rate converter) | 🔴 |
+| Whole codec | PCM reconstruction of the 9.X.4 and 22.2 elements | 🔴 |
 | Whole codec | Encoding beyond SIMPLE, ASPX and A-CPL mono to 5.1 | 🔴 |
 | §5.1.4 | Spectral noise fill: decoded, but no stream here sets it | 🟡 |
 
@@ -337,6 +347,7 @@ this register is the checklist that those bounds appear here too.
 |---|---|---|
 | TS 102 366 Annex F | Legacy core+extension sample entry | 🔴 |
 | ATSC A/342-2 | AC-4 ATSC TS profile | 🔴 |
+| IEC 61937-14 | AC-4 to a device: no receiver accepts it, and HBR16's eight-channel link is not opened | 🟡 |
 | ISO BMFF | `moov`-after-`mdat` demux | 🔴 |
 | Apple HLS / Dolby DASH | Player / schema validation of Atmos signalling | 🟡 |
 | Multi-programme mux | First programme only | 🟡 |

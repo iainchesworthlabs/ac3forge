@@ -455,6 +455,29 @@ _BED_CHAN_ASSIGN_COUNT_DIRECT = [2, 3, 6, 8, 10, 8, 10, 12]
 _STD_BED_GROUP_SIZE = [2, 1, 1, 2, 2, 2, 2, 2, 2, 1]
 _ISF_COUNTS = [4, 8, 10, 14, 15, 30]  # isf_config, read in both elements below
 
+# Each bed object's loudspeaker, by Part 2 Table A.27's speaker index.
+_SPEAKER_INDEX = {'L': 0, 'R': 1, 'C': 2, 'Ls': 3, 'Rs': 4, 'Lb': 5, 'Rb': 6, 'Tfl': 7, 'Tfr': 8,
+                  'Tbl': 9, 'Tbr': 10, 'LFE': 11, 'Tsl': 12, 'Tsr': 13, 'LFE2': 19, 'Lw': 26,
+                  'Rw': 27}
+# Table 63 (A-JOC coded) and Table 62 (direct coded): bed_chan_assign_code's
+# speakers, in the order the bed objects take them.
+_BED_CHAN_ASSIGN_AJOC = [
+    'L R', 'L R C', 'L R C Ls Rs', 'L R C Ls Rs Tsl Tsr', 'L R C Ls Rs Tfl Tfr Tbl Tbr',
+    'L R C Ls Rs Lb Rb', 'L R C Ls Rs Lb Rb Tsl Tsr', 'L R C Ls Rs Lb Rb Tfl Tfr Tbl Tbr']
+_BED_CHAN_ASSIGN_DIRECT = [
+    'L R', 'L R C', 'L R C LFE Ls Rs', 'L R C LFE Ls Rs Tsl Tsr', 'L R C LFE Ls Rs Tfl Tfr Tbl Tbr',
+    'L R C LFE Ls Rs Lb Rb', 'L R C LFE Ls Rs Lb Rb Tsl Tsr',
+    'L R C LFE Ls Rs Lb Rb Tfl Tfr Tbl Tbr']
+# Table 64: nonstd_bed_channel_assignment_flag[] by channel order.
+_NONSTD_FLAG_CHANNELS = ['L', 'R', 'C', 'LFE', 'Ls', 'Rs', 'Lb', 'Rb', 'Tfl', 'Tfr', 'Tsl', 'Tsr',
+                         'Tbl', 'Tbr', 'Lw', 'Rw', 'LFE2']
+# Table 65: std_bed_channel_assignment_flag[] by channel order, one or two each.
+_STD_FLAG_CHANNELS = [['L', 'R'], ['C'], ['LFE'], ['Ls', 'Rs'], ['Lb', 'Rb'], ['Tfl', 'Tfr'],
+                      ['Tsl', 'Tsr'], ['Tbl', 'Tbr'], ['Lw', 'Rw'], ['LFE2']]
+# Table 66: nonstd_bed_channel_assignment; 3 is reserved.
+_NONSTD_ASSIGNMENT = ['L', 'R', 'C', None, 'Ls', 'Rs', 'Lb', 'Rb', 'Tfl', 'Tfr', 'Tsl', 'Tsr',
+                      'Tbl', 'Tbr', 'Lw', 'Rw']
+
 
 def _count_for_code(table, code):
     """The object count a 3-bit code names in a table shorter than eight
@@ -470,8 +493,9 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
     since this element only appears inside ac4_substream_info_ajoc()."""
     objects = []
 
-    def add(kind, lfe):
-        objects.append({'type': kind, 'lfe': lfe, 'ajoc_coded': True})
+    def add(kind, lfe, speaker=None):
+        objects.append({'type': kind, 'lfe': lfe, 'ajoc_coded': True,
+                        'speaker': None if speaker is None else _SPEAKER_INDEX[speaker]})
 
     b_dyn_objects_only = r.bits(1)
     if b_dyn_objects_only:
@@ -484,8 +508,11 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
         return objects
     if r.bits(1):  # b_ch_assign_code
         bed_chan_assign_code = r.bits(3)
-        for _ in range(_BED_CHAN_ASSIGN_COUNT_AJOC[bed_chan_assign_code]):
-            add('BED', False)
+        speakers = _BED_CHAN_ASSIGN_AJOC[bed_chan_assign_code].split()
+        if len(speakers) != _BED_CHAN_ASSIGN_COUNT_AJOC[bed_chan_assign_code]:
+            raise AssertionError('Table 63 transcribed with the wrong count')
+        for speaker in speakers:
+            add('BED', False, speaker)
         return objects
     if not r.bits(1):  # b_channel_assignment_flags_present
         # Neither an assignment code nor explicit flags: one nonstd_bed_
@@ -499,7 +526,7 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
         for _ in range(n_bed_signals):
             nonstd_bed_channel_assignment = r.bits(4)
             if nonstd_bed_channel_assignment != 3:
-                add('BED', False)
+                add('BED', False, _NONSTD_ASSIGNMENT[nonstd_bed_channel_assignment])
         return objects
     if r.bits(1):  # b_nonstd_bed_channel_assignment_flags_present
         flags = r.bits(17)
@@ -510,14 +537,14 @@ def parse_bed_dyn_obj_assignment(r, n_signals):
             # Cross-checked against §6.3.2.10.8 EXAMPLE 2's worked value.
             if (flags >> i) & 1:  # flag[16-i]
                 if i != 3 and i != 16:
-                    add('BED', False)
+                    add('BED', False, _NONSTD_FLAG_CHANNELS[i])
     else:
         flags = r.bits(10)
         for i in range(10):
             if (flags >> i) & 1:  # flag[9-i], same reasoning as the 17-bit case above
                 if i != 2 and i != 9:
-                    for _ in range(_STD_BED_GROUP_SIZE[i]):
-                        add('BED', False)
+                    for speaker in _STD_FLAG_CHANNELS[i]:
+                        add('BED', False, speaker)
     return objects
 
 
@@ -714,51 +741,65 @@ def parse_substream_info_ajoc(r, fs_index, frame_rate_factor, b_substreams_prese
 def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_present):
     objects = []
 
-    def add(kind, lfe):
-        objects.append({'type': kind, 'lfe': lfe, 'ajoc_coded': False})
+    def add(kind, lfe, speaker=None):
+        objects.append({'type': kind, 'lfe': lfe, 'ajoc_coded': False,
+                        'speaker': None if speaker is None else _SPEAKER_INDEX[speaker]})
 
     n_objects_code = r.bits(3)
-    # Table 60 (§6.3.2.10.2): codes 0-4 are b_lfe/1+b_lfe/2+b_lfe/3+b_lfe/
-    # 5+b_lfe, 5-7 reserved - but the syntax table's own lookup is this flat
-    # 6-entry array regardless, and b_lfe is folded in separately below
-    # rather than by this array, so a "reserved" code still parses (just
-    # with a count this parser cannot cross-check against the semantics
-    # table's own account of it). Codes 6 and 7 fall past the end of the
-    # array and name no objects - see _count_for_code().
-    num_objects = _count_for_code([0, 1, 2, 3, 5, 7], n_objects_code)
+    # Table 60 (§6.3.2.10.2): n_objects_code 0 to 4 give b_lfe, 1+b_lfe,
+    # 2+b_lfe, 3+b_lfe and 5+b_lfe objects; 5 to 7 are reserved. The syntax's
+    # flat [0, 1, 2, 3, 5, 7] would give 5 seven objects, which no channel
+    # element carries, and its loop counts the LFE among num_objects where the
+    # table and audio_data_objs() count it on top; the table is read, the LFE
+    # listed first (src/ac4dec/ERRATA.md, "n_objects_code and the LFE"). A
+    # reserved code names no objects.
+    num_objects = [0, 1, 2, 3, 5][n_objects_code] if n_objects_code < 5 else None
     b_dynamic_objects = r.bits(1)
+    b_lfe = 0
+    static_kind = None
+    static_start = False
     if b_dynamic_objects:
         # No early return: fs_index/bitrate/b_audio_ndot/substream_index
         # below are read unconditionally, after this whole if/else - the
         # syntax table's braces close this branch well before them.
         b_lfe = r.bits(1)
-        for i in range(num_objects):
-            add('BED', True) if (b_lfe and i == 0) else add('DYN', False)
+        if num_objects is not None:
+            if b_lfe:
+                add('BED', True, 'LFE')
+            for _ in range(num_objects):
+                add('DYN', False)
     elif r.bits(1):  # b_bed_objects
-        if r.bits(1):  # b_bed_start
+        static_kind = 'bed'
+        static_start = bool(r.bits(1))  # b_bed_start
+        if static_start:
             if r.bits(1):  # b_ch_assign_code
                 bed_chan_assign_code = r.bits(3)
-                count = _BED_CHAN_ASSIGN_COUNT_DIRECT[bed_chan_assign_code]
-                for i in range(count):
-                    add('BED', i == 3)
+                speakers = _BED_CHAN_ASSIGN_DIRECT[bed_chan_assign_code].split()
+                if len(speakers) != _BED_CHAN_ASSIGN_COUNT_DIRECT[bed_chan_assign_code]:
+                    raise AssertionError('Table 62 transcribed with the wrong count')
+                for speaker in speakers:
+                    add('BED', speaker == 'LFE', speaker)
             elif r.bits(1):  # b_nonstd_bed_channel_assignment_flags_present
                 flags = r.bits(17)
                 for i in range(17):
                     if (flags >> i) & 1:
-                        add('BED', i == 3 or i == 16)
+                        add('BED', i == 3 or i == 16, _NONSTD_FLAG_CHANNELS[i])
             else:
                 flags = r.bits(10)
                 for i in range(10):
                     if (flags >> i) & 1:  # flag[9-i] - see parse_bed_dyn_obj_assignment()
-                        for _ in range(_STD_BED_GROUP_SIZE[i]):
-                            add('BED', i == 2 or i == 9)
+                        for speaker in _STD_FLAG_CHANNELS[i]:
+                            add('BED', i == 2 or i == 9, speaker)
     elif r.bits(1):  # b_isf
-        if r.bits(1):  # b_isf_start
+        static_kind = 'isf'
+        static_start = bool(r.bits(1))  # b_isf_start
+        if static_start:
             isf_config = r.bits(3)
             n_isf = _count_for_code(_ISF_COUNTS, isf_config)
             for _ in range(n_isf):
                 add('ISF', False)
     else:
+        static_kind = 'reserved'
         res_bytes = r.bits(4)
         r.bits(8 * res_bytes)
     sf_multiplier = None
@@ -770,6 +811,8 @@ def parse_substream_info_obj(r, fs_index, frame_rate_factor, b_substreams_presen
     b_audio_ndot = [r.bits(1) for _ in range(frame_rate_factor)]
     substream_index = parse_substream_index_ref(r) if b_substreams_present else None
     return {'objects': objects, 'b_dynamic_objects': bool(b_dynamic_objects),
+            'num_objects': num_objects, 'b_lfe': b_lfe, 'static_kind': static_kind,
+            'static_start': static_start,
             'sf_multiplier': sf_multiplier, 'bitrate_kbps': bitrate_kbps,
             'b_audio_ndot': b_audio_ndot, 'substream_index': substream_index}
 
@@ -876,6 +919,7 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
     n_substream_groups = 0
     b_pre_virtualized = 0
     pres_sub = None
+    presentation_id = None
     if not b_single_substream_group and presentation_config == 6:
         # §6.2.1.3: an EMDF-only presentation. b_add_emdf_substreams is set
         # without being transmitted, and the n_add_emdf_substreams loop after
@@ -886,7 +930,7 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
         if bitstream_version != 1:
             md_compat = r.bits(3)
         if r.bits(1):  # b_presentation_id
-            variable_bits(r, 2)  # presentation_id, unused downstream
+            presentation_id = variable_bits(r, 2)
         frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
         frame_rate_fraction = parse_frame_rate_fractions_info(r, frame_rate_index,
                                                               frame_rate_factor)
@@ -929,7 +973,8 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
             emdf_substreams.append(parse_emdf_info(r))
     return {'presentation_version': presentation_version,
             'presentation_config': presentation_config, 'group_refs': group_refs,
-            'md_compat': md_compat, 'enable_presentation': b_enable_presentation,
+            'md_compat': md_compat, 'presentation_id': presentation_id,
+            'enable_presentation': b_enable_presentation,
             'frame_rate_factor': frame_rate_factor, 'frame_rate_fraction': frame_rate_fraction,
             'n_substream_groups': n_substream_groups,
             'emdf': emdf, 'b_pre_virtualized': b_pre_virtualized,

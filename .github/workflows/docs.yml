@@ -36,6 +36,9 @@ on:
     paths:
       - "docs/**"
       - "mkdocs.yml"
+      # What the deploy job runs to fill the sink installer.
+      - "tools/hearth/installer_site.py"
+      - "tools/hearth/ota.py"
       - "requirements/requirements-docs.in"
       - "requirements/requirements-docs.txt"
       - ".github/workflows/docs.yml"
@@ -208,6 +211,43 @@ jobs:
           mkdir -p docs/assets/wasm-decode-demo docs/assets/wasm-encode-demo
           cp -r build/config-wasm-emscripten/bin/wasm_decode_demo/. docs/assets/wasm-decode-demo/
           cp -r build/config-wasm-emscripten/bin/wasm_encode_demo/. docs/assets/wasm-encode-demo/
+
+      # The Hearth sink installer (docs/hearth/sink-installer.md,
+      # planning/esp32-ota.md O9) flashes a board from the browser with ESP Web
+      # Tools. The site serves its own copy rather than a CDN's, so a reader's
+      # browser loads nothing from a third party on the page that writes their
+      # board's flash: the npm tarball, pinned to a version and to the
+      # integrity npm published for it, unpacked into the page's assets.
+      - name: Put ESP Web Tools into the sink installer
+        env:
+          ESP_WEB_TOOLS_VERSION: "10.4.0"
+          ESP_WEB_TOOLS_INTEGRITY: "sha512-3pwkeFFm5Fj7UQo8SJNYK5RXrtNCpq6X9QoI6bMT4GBZWgrJqjn0YvM9ihG74BtMoSFYXfmDtkehuxe50PTMPQ=="
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          ( cd "$work" && npm pack "esp-web-tools@$ESP_WEB_TOOLS_VERSION" --silent >/dev/null )
+          tarball="$work/esp-web-tools-$ESP_WEB_TOOLS_VERSION.tgz"
+          actual="sha512-$(openssl dgst -sha512 -binary "$tarball" | base64 -w0)"
+          if [ "$actual" != "$ESP_WEB_TOOLS_INTEGRITY" ]; then
+            echo "::error::esp-web-tools $ESP_WEB_TOOLS_VERSION is not the tarball its pinned integrity names"
+            exit 1
+          fi
+          tar -xzf "$tarball" -C "$work" package/dist/web package/LICENSE
+          mkdir -p docs/assets/sink-installer/esp-web-tools
+          cp -r "$work/package/dist/web/." docs/assets/sink-installer/esp-web-tools/
+          cp "$work/package/LICENSE" docs/assets/sink-installer/esp-web-tools/LICENSE
+
+      # And the newest release's sink firmware beside it: a page cannot fetch
+      # GitHub release assets, which carry no CORS headers.
+      # tools/hearth/installer_site.py checks each image's parts against the
+      # release's manifest and SHA512SUMS, and writes ESP Web Tools' manifest
+      # for each. Before any release publishes sink firmware it writes an empty
+      # index, and the page says so; anything else it cannot do fails the
+      # deploy. release.yml dispatches this workflow once a release is up.
+      - name: Put the newest release's sink firmware into the installer
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 tools/hearth/installer_site.py --release latest --out docs/assets/sink-installer
 
       - name: Configure git for gh-deploy
         env:

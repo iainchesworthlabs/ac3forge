@@ -548,9 +548,10 @@ TEST_CASE("object and A-JOC substream infos read each bed and object assignment"
     CHECK(subs[2].ajoc->n_fullband_upmix_signals == 19);
     CHECK(subs[2].ajoc->upmix_objects.empty());
     const auto& obj3 = *subs[3].obj;
-    REQUIRE(obj3.objects.size() == 3);
+    REQUIRE(obj3.objects.size() == 4);  // Table 60: 3 + b_lfe, the LFE first
     CHECK(obj3.objects[0].lfe);
     CHECK(obj3.objects[1].kind == ac4::ObjectKind::kDyn);
+    CHECK(obj3.objects[3].kind == ac4::ObjectKind::kDyn);
     CHECK(obj3.sf_multiplier == 1);
     REQUIRE(subs[4].obj->objects.size() == 8);
     CHECK(subs[4].obj->objects[3].lfe);

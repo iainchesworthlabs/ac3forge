@@ -240,7 +240,7 @@ jobs:
             -DAC4_STATIC_DEFINE -DAC4DEC_STATIC_DEFINE \
             -Isrc/ac4/include -Isrc/ac4dec/include \
             -I"${BUILD_DIR}/src/ac4/generated" -I"${BUILD_DIR}/src/ac4dec/generated" \
-            "${BUILD_DIR}/src/ac4dec/libac4dec_static.a" "${BUILD_DIR}/src/ac4core/libac4core.a" \
+            "${BUILD_DIR}/src/ac4dec/libac4dec_static.a" "${BUILD_DIR}/src/ac4core/libac4core_static.a" \
             "${BUILD_DIR}/src/ac4/libac4_static.a"
           python3 tools/checks/ac4_syntax_differential.py \
             --trace-tool "${BUILD_DIR}/ac4_syntax_trace" \
@@ -296,7 +296,7 @@ jobs:
       # fails on missing sonar.projectKey/sonar.organization. Every other
       # property below is relative and resolves against the base dir.
       - name: Run SonarCloud scan
-        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8
+        uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         env:
           GITHUB_TOKEN: ${{ github.token }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

@@ -48,15 +48,22 @@ endif()
 add_executable(ac3tests
     ac4/test_ac4.cpp
     ac4/test_ac4_presentation_configs.cpp
+    ac4/test_ac4_splitter.cpp
     ac4/test_ac4_toc_syntax.cpp
     ac4core/test_ac4core_acpl.cpp
+    ac4core/test_ac4core_ajoc.cpp
     ac4core/test_ac4core_aspx.cpp
     ac4core/test_ac4core_dsp.cpp
     ac4core/test_ac4core_resampler.cpp
+    ac4dec/test_ac4dec_api.cpp
     ac4dec/test_ac4dec_decoder.cpp
     ac4dec/test_ac4dec_frames.cpp
     ac4dec/test_ac4dec_syntax.cpp
     ac4enc/test_ac4enc_encoder.cpp
+    ac4enc/test_ac4enc_frame_rates.cpp
+    ac4enc/test_ac4enc_metadata.cpp
+    ac4enc/test_ac4enc_presentations.cpp
+    ac4enc/test_ac4enc_rates.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
     encoder/test_bandwidth.cpp
@@ -94,6 +101,7 @@ add_executable(ac3tests
     io/test_firmware_status.cpp
     io/test_firmware_trial.cpp
     io/test_hardware_info.cpp
+    io/test_log_ring.cpp
     io/test_improv.cpp
     io/test_interleave.cpp
     io/test_pairing_records.cpp
@@ -120,6 +128,7 @@ add_executable(ac3tests
     containers/test_fmp4.cpp
     core/test_frame.cpp
     iec61937/test_iec61937.cpp
+    iec61937/test_iec61937_ac4.cpp
     decoder/test_latency.cpp
     iec61937/test_iec61937_unwrap.cpp
     decoder/test_live_downmix.cpp
@@ -254,6 +263,8 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src"
 if(NOT BUILD_SHARED_LIBS)
     target_sources(ac3tests PRIVATE
         ac4dec/ac4dec_constructed.cpp
+        ac4dec/ac4dec_mux.cpp
+        ac4dec/ac4dec_objects.cpp
         ac4dec/test_ac4dec_acpl.cpp
         ac4dec/test_ac4dec_asf.cpp
         ac4dec/test_ac4dec_aspx.cpp
@@ -262,14 +273,21 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/test_ac4dec_de.cpp
         ac4dec/test_ac4dec_downmix.cpp
         ac4dec/test_ac4dec_drc.cpp
+        ac4dec/test_ac4dec_immersive.cpp
         ac4dec/test_ac4dec_metadata.cpp
         ac4dec/test_ac4dec_multichannel.cpp
+        ac4dec/test_ac4dec_object_render.cpp
+        ac4dec/test_ac4dec_objects.cpp
         ac4dec/test_ac4dec_pcm.cpp
         ac4dec/test_ac4dec_presentation.cpp
+        ac4dec/test_ac4dec_presentations.cpp
+        ac4dec/test_ac4dec_renderer.cpp
         ac4enc/test_ac4enc_acpl.cpp
         ac4enc/test_ac4enc_aspx.cpp
         ac4enc/test_ac4enc_multichannel.cpp
-        ac4enc/test_ac4enc_writer.cpp)
+        ac4enc/test_ac4enc_presentations_race.cpp
+        ac4enc/test_ac4enc_writer.cpp
+        "${CMAKE_SOURCE_DIR}/apps/common/ac4_object_render.cpp")
 endif()
 # tests/ac4enc/ reach the encoder's writer (src/ac4enc/src/) the same way; the
 # two libraries' internal headers keep distinct names (bit_reader.hpp and
@@ -377,11 +395,21 @@ endif()
 
 # core/test_simd_kernels.cpp's own AVX2_REQUIRE knob reads std::getenv too -
 # same C4996 reasoning as cpu_features.cpp above - and so do
-# ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories, and
-# ac4dec/test_ac4dec_constructed.cpp, for where to write its streams.
+# ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories,
+# ac4dec/test_ac4dec_constructed.cpp, test_ac4dec_objects.cpp and
+# test_ac4dec_presentations.cpp, for where to write their streams (and
+# test_ac4dec_objects.cpp for Chromium's A-JOC stream, and
+# test_ac4dec_object_render.cpp for where to write the streams to listen to),
+# ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode,
+# ac4enc/test_ac4enc_presentations.cpp, for where to write its streams, and
+# ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's.
+# iec61937/test_iec61937_ac4.cpp reads one too, for the census directory it packs.
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
-        ac4dec/test_ac4dec_constructed.cpp
+        ac4dec/test_ac4dec_constructed.cpp ac4dec/test_ac4dec_objects.cpp ac4dec/test_ac4dec_presentations.cpp
+        ac4dec/test_ac4dec_api.cpp ac4dec/test_ac4dec_object_render.cpp
+        ac4enc/test_ac4enc_presentations.cpp ac4enc/test_ac4enc_presentations_race.cpp
+        iec61937/test_iec61937_ac4.cpp
         PROPERTIES COMPILE_OPTIONS "/wd4996")
 endif()
 
@@ -502,6 +530,18 @@ target_compile_definitions(ac3tests
 # it. Supplied the same way AC3CLI_EXE and AC3FORGE_GOLDEN_AUDIO_DIR above are.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_TEST_SCRATCH_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/scratch\"")
+
+# Whether the tests run under the sanitizers (cmake/Sanitizers.cmake), for
+# tests/sanitized.hpp's kSanitized: there the heaviest tests take fewer frames,
+# shorter signals and fewer cases, each still running every code path it
+# covers, so that the ASan+UBSan leg, which runs ctest serially in a debug
+# build, finishes within its time (.github/workflows/_ci-linux.yml). Defined as
+# 0 otherwise, so that no source asks the preprocessor.
+if(AC3FORGE_SANITIZERS)
+    target_compile_definitions(ac3tests PRIVATE AC3FORGE_TEST_SANITIZED=1)
+else()
+    target_compile_definitions(ac3tests PRIVATE AC3FORGE_TEST_SANITIZED=0)
+endif()
 
 # ---------------------------------------------------------------------------
 # Toolchain hook: keep a failing assert from opening a modal dialog that hangs
@@ -625,7 +665,7 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 # `ctest -L concurrency` (ThreadSanitizer leg).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
+        cli/test_cli.cpp cli/test_cli_ac4_decode.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
         cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp
         cli/test_cli_options.cpp cli/test_cli_synth.cpp cli/test_cli_analysis.cpp
         cli/test_cli_encode_paths.cpp cli/test_cli_stream_edges.cpp
@@ -1066,14 +1106,24 @@ if(AC3FORGE_BUILD_HEARTH)
             hearth/test_server_host_dialling.cpp
             hearth/test_server_identity.cpp
             hearth/test_network_group_sink.cpp
-            hearth/test_engine_network_group.cpp)
+            hearth/test_engine_network_group.cpp
+            hearth/test_sink_firmware.cpp)
+        # A sink's firmware routes against a stand-in board on 127.0.0.1, which is a cpp-httplib
+        # server, so compiled on its own with cpp-httplib configured as src/sendspin configures
+        # it - test_websocket.cpp's reason above.
+        add_library(ac3tests_sink_firmware_board OBJECT hearth/test_sink_firmware_board.cpp)
+        target_link_libraries(ac3tests_sink_firmware_board
+            PRIVATE ac3hearth_engine ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
+        target_link_libraries(ac3tests PRIVATE ac3tests_sink_firmware_board)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
         # as core/test_simd_kernels.cpp's. test_aiosendspin_group.cpp's own environment() helper
-        # takes the same address the same way, and test_network_live.cpp its sinks' names.
+        # takes the same address the same way, test_network_live.cpp its sinks' names, and
+        # test_sink_firmware_board.cpp's live case its board and image.
         if(AC3FORGE_IS_MSVC_LIKE)
             set_source_files_properties(
                 hearth/test_aiosendspin.cpp hearth/test_aiosendspin_group.cpp hearth/test_network_live.cpp
+                hearth/test_sink_firmware_board.cpp
                 PROPERTIES COMPILE_OPTIONS "/wd4996")
         endif()
     endif()

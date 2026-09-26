@@ -283,9 +283,10 @@ dialog::backdrop{background:#0009}
 <div hidden><dt>Other slot</dt><dd id="fw-other"></dd></div>
 <div hidden><dt>Update</dt><dd id="fw-upload"></dd></div>
 <div hidden><dt>Last update</dt><dd id="fw-last"></dd></div>
+<div hidden><dt>Last crash</dt><dd id="fw-crash"></dd></div>
 </dl>
 <progress id="fw-sent" aria-label="Sent" hidden></progress>
-<p class="help">An update is written beside the image the board runs, and the board goes back to that image by itself if the new one does not work.</p>
+<p class="help">An update is written beside the image the board runs, and the board goes back to that image by itself if the new one does not work. <a id="fw-dump" href="firmware/coredump" download="coredump.bin" hidden>Save the core dump</a> <a href="log">Recent console output</a></p>
 <div class="actions">
 <button id="fw-pick" type="button" class="primary">Update firmware…</button>
 <button id="fw-restart" type="button">Restart</button>

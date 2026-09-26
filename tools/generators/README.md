@@ -128,6 +128,7 @@ All of these are run from the repo root.
 | `gen_gui_resample_test_wav.py` | the GUI's 44.1 kHz resample fixture | stdlib only |
 | `gen_programme_fixtures.py` | both programme fixtures + `corpus.json` | needs `--source-dir` and `ffmpeg` |
 | `gen_external_baseline.py` | `tests/golden/external-baseline/` | needs **Dolby DEE**, `ffmpeg`, a built `ac3cli` |
+| `gen_dee_gold.py` | a local set of DEE's AC-3, E-AC-3, E-AC-3 JOC and TrueHD streams, never committed | needs **Dolby DEE**, `ffmpeg`; `--cli` records a built `ac3cli`'s reading |
 | `gen_dee_tpn_fixture.py` | `tests/golden/external-baseline/eac3-transient-stereo-128/` | needs the local DEE golden-master set (`--gold`) |
 | `gen_aht_tables.py`, `gen_bitalloc_tables.py`, `gen_joc_tables.py` | encoder/decoder tables | read spec text, not committed |
 | `gen_mdct_goldens.py` | filterbank golden vectors | |
@@ -148,3 +149,10 @@ invokes licensed commercial software (Dolby DEE) and FFmpeg's encoder. It
 refuses to start if `GITHUB_ACTIONS` is set. See its own module docstring for
 the leg list, the DEE input-path constraint, and how the manifest it writes is
 consumed.
+
+`gen_dee_gold.py` follows the same rule, and is the one generator here whose
+output is not committed: it makes DEE's golden masters for AC-3, E-AC-3,
+E-AC-3 JOC and TrueHD while DEE's licence runs (it ends on 2026-11-06), a set
+of about 1,100 streams kept on a local disk with a manifest, each rebuildable
+from the committed programme fixtures. `gen_ac4_baseline.py --gold-set` does
+the same for AC-4.

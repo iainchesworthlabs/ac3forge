@@ -232,7 +232,8 @@ TEST_CASE("a malformed coding, decoding or routing option is refused with its ow
         {"channels=3",
          "channels is '2' (\xC2\xA7"
          "7.8 stereo), '1' (mono) or 'as-coded' "
-         "(the default - no downmix at all) (got 'channels=3')"},
+         "(the default - no downmix at all), and for AC-4 '5.1' (a 7.X stream folded to 5.X) "
+         "(got 'channels=3')"},
         {"ltrt-phase=on",
          "the Lt/Rt surround phase shift is the default; 'ltrt-phase=off' "
          "selects the sign-only matrix (got 'ltrt-phase=on')"},
@@ -249,6 +250,18 @@ TEST_CASE("a malformed coding, decoding or routing option is refused with its ow
         {"dialogue-enhancement=13",
          "dialogue-enhancement is a gain in dB from 0 to 12 (got 'dialogue-enhancement=13')"},
         {"dialogue-enhancement=-3", "dialogue-enhancement is a gain in dB from 0 to 12"},
+        {"decoding=partial", "decoding is 'full' or 'core' (got 'decoding=partial')"},
+        {"speakers=9.1.6",
+         "speakers is 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2 or 7.1.4 (got 'speakers=9.1.6')"},
+        {"presentation=2000", "presentation is a number from 0 to 1023 (got 'presentation=2000')"},
+        {"presentation-id=first",
+         "presentation-id is a number from 0 to 1023 (got 'presentation-id=first')"},
+        {"language=en_GB", "language is a BCP 47 tag such as en or pt-BR (got 'language=en_GB')"},
+        {"associated=subtitles", "associated is visually-impaired, audio-description, "},
+        {"dialogue-gain=13",
+         "dialogue-gain is a gain in dB from -130 to 12 (got 'dialogue-gain=13')"},
+        {"associated-gain=1",
+         "associated-gain is a gain in dB from -130 to 0 (got 'associated-gain=1')"},
         {"conceal=hide",
          "conceal is 'repeat' (repeat-and-fade), 'mute' (window-ramped "
          "silence) or 'off' (the default) (got 'conceal=hide')"},
@@ -342,6 +355,22 @@ TEST_CASE("every documented spelling of a valued option gets past parsing to the
         "output-level=-14.5",
         "dialogue-enhancement=9",
         "dialogue-enhancement=0",
+        "decoding=full",
+        "decoding=core",
+        "speakers=5.1",
+        "speakers=5.1.2",
+        "speakers=5.1.4",
+        "speakers=7.1",
+        "speakers=7.1.2",
+        "speakers=7.1.4",
+        "presentation=0",
+        "presentation-id=7",
+        "language=pt-BR",
+        "associated=audio-description",
+        "associated=commentary",
+        "dialogue-gain=-6",
+        "dialogue-gain=6",
+        "associated-gain=-10",
         "conceal=repeat",
         "conceal=mute",
         "conceal=off",
@@ -397,6 +426,159 @@ TEST_CASE("the remaining valued and bare option spellings get past parsing to th
         "container=cmaf", "asvc=0,2", "asvc=0x05", "mainid=3", "langcod2",
     };
     check_accepted("eac3-encode", kTokens, "accept_b");
+}
+
+TEST_CASE("decode's AC-4 options are refused with their own reasons", "[cli][options][ac4]") {
+    static constexpr Refusal kRows[] = {
+        {"md-compat=8", "md-compat is a level from 0 to 7 (got 'md-compat=8')"},
+        {"md-compat=high", "md-compat is a level from 0 to 7 (got 'md-compat=high')"},
+        {"mix-lfe=maybe", "mix-lfe is 'on' or 'off' (got 'mix-lfe=maybe')"},
+        {"channels=6",
+         "channels is '2' (\xC2\xA7"
+         "7.8 stereo), '1' (mono) or 'as-coded' (the default - no downmix at all), and for "
+         "AC-4 '5.1' (a 7.X stream folded to 5.X) (got 'channels=6')"},
+    };
+    check_refusals("decode", kRows, "refuse_ac4_decode");
+}
+
+TEST_CASE("every spelling of decode's AC-4 options gets past parsing to the input file",
+          "[cli][options][ac4]") {
+    // decode reports a missing input in its own words, so check_accepted's
+    // encoder message does not fit; the check is the same.
+    static constexpr std::string_view kTokens[] = {
+        "channels=5.1",
+        "mix-lfe=on",
+        "mix-lfe=off",
+        "headphones",
+        "md-compat=0",
+        "md-compat=7",
+        "drcmode=off",
+        "drcmode=flat-panel-tv",
+        "drcmode=portable-speakers",
+        "presentation-id=0",
+        "associated=visually-impaired",
+        "associated=audio-description-subtitles",
+        "associated=spoken-subtitles",
+        "associated=emergency-information",
+        "associated=hearing-impaired",
+        "downmix=auto",
+        "downmix=ltrt",
+        "downmix=mono",
+        "syntax-trace=trace.tsv",
+        "conceal=mute",
+    };
+    const auto dir = scratch_dir();
+    const auto missing = dir / "accept_ac4_decode_missing.ac4";
+    const auto log = dir / "accept_ac4_decode.log";
+    std::string args =
+        "decode \"" + missing.string() + "\" \"" + (dir / "accept_ac4_decode.wav").string() + "\"";
+    for (const auto token : kTokens) {
+        args += " \"" + std::string{token} + "\"";
+    }
+    const auto rc = run_cli(args, log);
+    const auto text = read_log(log);
+    INFO(text);
+    CHECK(rc == 2);
+    CHECK(text.find("error: cannot read " + missing.string()) != std::string::npos);
+    CHECK(text.find("unknown option") == std::string::npos);
+    // md-compat= is decode's alone.
+    CHECK(run_cli("eac3-encode \"" + missing.string() + "\" \"" + (dir / "x.ec3").string() +
+                      "\" md-compat=3",
+                  log) == 1);
+    CHECK(read_log(log).find("error: unknown option 'md-compat=3'") != std::string::npos);
+}
+
+TEST_CASE("ac4-encode's own options are refused with their own reasons", "[cli][options][ac4]") {
+    static constexpr Refusal kRows[] = {
+        {"frame-rate=31",
+         "frame-rate is 23.976, 24, 25, 29.97, 30, 47.95, 48, 50, 59.94, 60, 100, "
+         "119.88 or 120 fps, or native, the 2 048-sample frame (got 'frame-rate=31')"},
+        {"rate-mode=cbr", "rate-mode is constant, average or variable (got 'rate-mode=cbr')"},
+        {"iframe-interval=0", "iframe-interval is a number of frames from 1"},
+        {"iframes=3,,4", "iframes is a comma-separated list of frame numbers from 0"},
+        {"iframes=-1", "iframes is a comma-separated list of frame numbers from 0"},
+        {"fragment=0", "fragment is a fragment's duration in seconds"},
+        // AC-4's dialnorm is in quarters of a dB, from 0 to 31.75.
+        {"dialnorm=32", "dialnorm is auto, or the dialogue level in dB below full scale"},
+        {"dialnorm=24.1", "dialnorm is auto, or the dialogue level in dB below full scale"},
+        {"loudness=r128", "loudness is the practice the programme is measured to"},
+        {"drc=0.5",
+         "unknown DRC profile '0.5' (film-standard | film-light | music-standard | "
+         "music-light | speech | none)"},
+        {"drc-portable-speakers=loud", "unknown DRC profile 'loud'"},
+        {"cmixlev=-2", "an AC-4 centre mix level is +3, +1.5, 0, -1.5, -3, -4.5, -6 or off"},
+        // Table 149a has 0 dB for the surrounds, and nothing louder.
+        {"lorosurmixlev=+1.5", "an AC-4 surround mix level is 0, -1.5, -3, -4.5, -6 or off"},
+        {"lfemix=10", "AC-4's lfemix is the LFE's gain into the stereo downmix, +5.5 to -25.5 dB"},
+        {"lfemix=-3", "AC-4's lfemix is the LFE's gain into the stereo downmix"},
+        {"dmixmod=reserved", "AC-4's dmixmod is loro, ltrt, pl2 (Lt/Rt for Pro Logic II) or none"},
+        {"loro-correction=8", "a downmix loudness correction is -7.5 to +7.5 dB in steps of 0.5"},
+        {"ltrt-correction=0.3", "a downmix loudness correction is -7.5 to +7.5 dB in steps of 0.5"},
+        {"dialogue-channels=l,x", "dialogue-channels is any of l, r and c, comma-separated"},
+        {"dialogue-stem=", "dialogue-stem needs a WAV file"},
+        {"dialogue-method=hybrid", "dialogue-method is independent, mid or cross"},
+        {"dialogue-max-gain=10", "dialogue-max-gain is 3, 6, 9 or 12 dB"},
+        {"experimental=drc-gains-4", "experimental takes aspx-balance, aspx-varvar"},
+    };
+    check_refusals("ac4-encode", kRows, "refuse_ac4");
+}
+
+TEST_CASE("every spelling of ac4-encode's own options gets past parsing to the input file",
+          "[cli][options][ac4]") {
+    static constexpr std::string_view kTokens[] = {
+        "frame-rate=23.976",
+        "frame-rate=29.97",
+        "frame-rate=47.95",
+        "frame-rate=119.88",
+        "frame-rate=native",
+        "rate-mode=constant",
+        "rate-mode=average",
+        "rate-mode=variable",
+        "iframe-interval=1",
+        "iframes=0,5,100",
+        "fragment=2.002",
+        "dialnorm=0",
+        "dialnorm=31.75",
+        "dialnorm=auto",
+        "dialnorm=23.25",
+        "loudness=atsc-a85",
+        "loudness=ebu-r128",
+        "loudness=arib-tr-b32",
+        "loudness=freetv-op59",
+        "loudness=manual",
+        "loudness=consumer-leveller",
+        "loudness=not-indicated",
+        "drc=none",
+        "drc=music-light",
+        "drc-home-theatre=film-standard",
+        "drc-flat-panel-tv=speech",
+        "drc-portable-speakers=none",
+        "drc-portable-headphones=music-standard",
+        "cmixlev=+3",
+        "lorocmixlev=off",
+        "ltrtcmixlev=-4.5",
+        "surmixlev=0",
+        "lorosurmixlev=-1.5",
+        "ltrtsurmixlev=off",
+        "lfemix=5.5",
+        "lfemix=+4.5",
+        "lfemix=-25.5",
+        "lfemix=off",
+        "dmixmod=pl2",
+        "dmixmod=ltrt",
+        "dmixmod=none",
+        "loro-correction=-7.5",
+        "ltrt-correction=+2.5",
+        "dialogue-channels=l,r,c",
+        "dialogue-channels=c",
+        "dialogue-stem=stem.wav",
+        "dialogue-method=independent",
+        "dialogue-method=mid",
+        "dialogue-method=cross",
+        "dialogue-max-gain=12",
+        "experimental=drc-gains-0,acpl",
+    };
+    check_accepted("ac4-encode", kTokens, "accept_ac4");
 }
 
 TEST_CASE("a programmeN= token without its value, or naming a field no extra programme has, is "

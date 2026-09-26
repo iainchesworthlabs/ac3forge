@@ -215,12 +215,14 @@ jobs:
             sanitizer: true
             # 150, not the 90 every other leg gets. On 2026-09-21 this leg
             # took about 36 minutes. The AC-4 encoder and decoder tests merged
-            # on 2026-09-25 run for minutes each under ASan+UBSan (the 7.X
-            # A-CPL ones 530 and 335 s), and main's run at f5aded47 spent 72
-            # of its minutes in ctest, all 2738 tests passing, before the
-            # codec matrix ran out of time at 90. Making those tests cheaper
-            # under the sanitizers is the fix; this keeps the leg green until
-            # then.
+            # from 2026-09-25 on ran for minutes each under ASan+UBSan: main's
+            # run at f5aded47 spent 72 of its minutes in ctest before the codec
+            # matrix ran out of time at 90, and on #1057 ctest took 7,204 s,
+            # 5,964 of them in the AC-4 tests, before the leg ran out of 150.
+            # Under the sanitizers those tests now take fewer frames, shorter
+            # signals and fewer cases (tests/sanitized.hpp), which cut their
+            # serial time by 71 % in WSL; the 150 stays for the phases still to
+            # come.
             timeout_minutes: 150
 
           # ThreadSanitizer (ThreadSanitizer leg). A DIFFERENT question from the
@@ -1170,23 +1172,25 @@ jobs:
       # #included an ac3forge_c/version.h it never installed, and nothing here noticed. This
       # installs the two trees this leg has just built (linux-llvm: Release, both linkages
       # installed; the shared pass above: Debug, BUILD_SHARED_LIBS=ON) and builds and runs a C
-      # program against each prefix through find_package(ac3forge), and again through pkg-config.
+      # program against each prefix through find_package(ac3forge), and again through pkg-config,
+      # and a C++ program that decodes an AC-4 stream with the installed AC-4 decoder, both ways.
       #
       # A vcpkg or Conan package installs one linkage only (AC3FORGE_INSTALL_BOTH_LINKAGES=OFF),
       # which neither tree above does, and two defects showed only there: static archives that
       # left {fmt} symbols undefined (cmake/Fmt.cmake) and a static ac3forge_c.pc that named neither
       # libac3forge_static.a nor the C++ runtime (cmake/PkgConfig.cmake). The .pc files of both
       # trees above name the shared library, so a third tree is configured with one linkage. It
-      # builds only what the install holds, so no tests, examples, CLI, Hearth or AC-4 (19 s to
-      # configure and 22 s to build on a 20-core machine).
-      - name: Build a C consumer against the installed SDK
+      # builds only what the install holds, so no tests, examples, CLI or Hearth. The AC-4
+      # libraries are in the install since phase D8 of planning/ac4.md, and so in this tree, which
+      # builds the AC-4 encoder with them until it is installed too (phase E7).
+      - name: Build C and C++ consumers against the installed SDK
         if: matrix.preset == 'linux-llvm'
         shell: bash
         run: |
           set -euo pipefail
           cmake --preset config-linux-llvm -B build/install-consumer-static \
             -DAC3FORGE_BUILD_TESTS=OFF -DAC3FORGE_BUILD_CLI=OFF -DAC3FORGE_BUILD_EXAMPLES=OFF \
-            -DAC3FORGE_BUILD_HEARTH=OFF -DAC3FORGE_BUILD_AC4=OFF -DVCPKG_MANIFEST_FEATURES= \
+            -DAC3FORGE_BUILD_HEARTH=OFF -DVCPKG_MANIFEST_FEATURES= \
             -DAC3FORGE_INSTALL_BOTH_LINKAGES=OFF
           cmake --build build/install-consumer-static
           bash tools/checks/check_install_consumer.sh \

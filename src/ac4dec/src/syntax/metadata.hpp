@@ -9,6 +9,7 @@
 
 #include "bit_reader.hpp"
 #include "syntax/context.hpp"
+#include "syntax/oamd.hpp"
 
 // The metadata of a channel-coded ac4_substream() - Part 2 clause 6.2.7.1's
 // metadata() and the Part 1 clause 4.2.14 elements it calls - and the two
@@ -376,6 +377,9 @@ struct EmdfPayloads {
 struct Metadata {
     BasicMetadata basic{};
     ExtendedMetadata extended{};
+    // A direct-coded object substream's oamd_dyndata_single() in an
+    // alternative presentation (b_alternative, and b_ajoc 0).
+    std::optional<OamdDynData> oamd;
     std::uint64_t tools_metadata_size = 0;
     // sus_ver 0 only: at sus_ver 1 drc_frame() is in the presentation substream.
     std::optional<DrcFrame> drc;
@@ -391,19 +395,21 @@ struct MetadataState {
 };
 
 // Part 2 clause 6.2.7.1 metadata(b_alternative, b_ajoc, b_iframe, channel_mode,
-// sus_ver) for a channel-coded substream, from its first bit to the end of its
-// last element; the caller reads the byte_align after it.
+// sus_ver), from its first bit to the end of its last element; the caller
+// reads the byte_align after it.
 //
-// Channel-coded only: b_ajoc is 0 there (Part 2 clause 6.2.1.6), and the
-// oamd_dyndata_single() that metadata() reads when b_alternative is set
-// belongs to object substreams alone - its n_objs, obj_type[] and b_lfe[] exist
-// only for them, and Part 2 Table 7 places it only in object audio - so
-// ctx.b_alternative reads nothing here.
+// The oamd_dyndata_single() that metadata() reads when b_alternative is set and
+// b_ajoc is 0 belongs to direct-coded object substreams alone - its n_objs,
+// obj_type[] and b_lfe[] exist only for them, and Part 2 Table 7 places it only
+// in object audio - so a channel-coded substream reads none, whatever
+// ctx.b_alternative says. A direct-coded one reads it over `objects`' objects,
+// with the group's num_obj_info_blocks; an A-JOC one (b_ajoc 1) never.
 //
 // Checks tools_metadata_size against the bits drc_frame() and
 // dialog_enhancement() took.
 [[nodiscard]] ParseResult parse_metadata(BitReader& r, const SubstreamContext& ctx,
-                                         MetadataState& state, Metadata& out);
+                                         MetadataState& state, Metadata& out,
+                                         const ObjectAudioContext* objects = nullptr);
 
 // --- Shared by the syntax that carries metadata ------------------------------
 

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <charconv>
 #include <string>
@@ -83,12 +84,25 @@ inline void ensure_initialized() {
 // code at all.
 [[nodiscard]] constexpr std::uint32_t carrier_rate(audio::BitstreamFormat format,
                                                     std::uint32_t content_rate) {
-    return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
+    return content_rate * audio::carrier_ratio(format);
 }
 
-[[nodiscard]] constexpr spa_audio_iec958_codec iec958_codec_for(audio::BitstreamFormat format) {
-    return format == audio::BitstreamFormat::kEac3 ? SPA_AUDIO_IEC958_CODEC_EAC3
-                                                    : SPA_AUDIO_IEC958_CODEC_AC3;
+// The SPA codec a format is negotiated as; nothing for AC-4, which PipeWire's
+// list does not name (UNKNOWN, PCM, DTS, AC3, MPEG, MPEG2_AAC, EAC3, TRUEHD
+// and DTSHD in 1.6), so there is no format to ask a sink for.
+[[nodiscard]] constexpr std::optional<spa_audio_iec958_codec> iec958_codec_for(
+    audio::BitstreamFormat format) {
+    switch (format) {
+        case audio::BitstreamFormat::kAc3:
+            return SPA_AUDIO_IEC958_CODEC_AC3;
+        case audio::BitstreamFormat::kEac3:
+            return SPA_AUDIO_IEC958_CODEC_EAC3;
+        case audio::BitstreamFormat::kAc4:
+        case audio::BitstreamFormat::kAc4Hbr4:
+        case audio::BitstreamFormat::kAc4Hbr16:
+            break;
+    }
+    return std::nullopt;
 }
 
 // The carrier is a 2-channel 16-bit stream whatever rides inside it (see

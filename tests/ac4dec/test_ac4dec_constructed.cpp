@@ -33,15 +33,19 @@
 #include "ac4dec/decoder.hpp"
 #include "ac4dec_constructed.hpp"
 #include "dsp/qmf.hpp"
+#include "sanitized.hpp"
 
 namespace {
 
 namespace fs = std::filesystem;
+using ac3::test::kSanitized;
 using ac4::Speaker;
 using ac4dec_test::BuiltStream;
 using ac4dec_test::ElementCase;
 
-constexpr int kFrames = 16;
+// Under the sanitizers ten frames, six of them steady: over those,
+// tone_amplitude()'s window still holds a tone 126 Hz away 90 dB down.
+constexpr int kFrames = kSanitized ? 10 : 16;
 // The first frames hold the decoder's delay and the transform's start.
 constexpr std::size_t kSkippedFrames = 4;
 constexpr double kAmplitude = 0.1;
@@ -53,11 +57,13 @@ struct Decoded {
 
 // Every frame decoded, with the decoder's records the writer's: the same
 // substreams, offsets, widths and values, in the same order.
-Decoded decode_checked(const BuiltStream& stream) {
+Decoded decode_checked(const BuiltStream& stream,
+                       ac4::DecodingMode decoding = ac4::DecodingMode::kFull) {
     std::vector<ac4::SyntaxRecord> read;
     const auto keep = [&read](const ac4::SyntaxRecord& record) { read.push_back(record); };
     ac4::DecoderConfig config;
     config.syntax = keep;
+    config.decoding = decoding;
     ac4::Decoder decoder(config);
     Decoded out;
     for (std::size_t f = 0; f < stream.frames.size(); ++f) {
@@ -156,13 +162,94 @@ std::string name_of(const ElementCase& c) {
                           : c.name;
 }
 
+// Core decoding of the immersive element (Part 2 clause 4.7): each tone on the
+// core channel of its pair (Ls and Lb on Ls, Tfl and Tbl on Tsl, and alike),
+// L, R, C and the LFE as they are and the others 3 dB down (Tables 24 and 45),
+// and every other tone 60 dB under it there.
+void check_core_routing(const BuiltStream& stream, const Decoded& decoded) {
+    using S = Speaker;
+    const auto core_of = [](Speaker s) {
+        switch (s) {
+            case S::kLeftBack:
+                return S::kLeftSurround;
+            case S::kRightBack:
+                return S::kRightSurround;
+            case S::kTopFrontLeft:
+            case S::kTopBackLeft:
+                return S::kTopSideLeft;
+            case S::kTopFrontRight:
+            case S::kTopBackRight:
+                return S::kTopSideRight;
+            default:
+                return s;
+        }
+    };
+    std::vector<S> core_speakers;
+    for (const S s : stream.speakers) {
+        if (std::ranges::find(core_speakers, core_of(s)) == core_speakers.end()) {
+            core_speakers.push_back(core_of(s));
+        }
+    }
+    REQUIRE(decoded.speakers == core_speakers);
+    const double down = std::sqrt(0.5);
+    for (std::size_t c = 0; c < decoded.channels.size(); ++c) {
+        CAPTURE(c, ac4::describe(decoded.speakers[c]));
+        for (std::size_t s = 0; s < stream.speakers.size(); ++s) {
+            if (stream.tone_hz[s] <= 0.0) {
+                continue;
+            }
+            CAPTURE(ac4::describe(stream.speakers[s]));
+            const double level = tone_amplitude(steady(decoded, c), stream.tone_hz[s]);
+            if (core_of(stream.speakers[s]) != decoded.speakers[c]) {
+                CHECK(level < kAmplitude * 1e-3);
+                continue;
+            }
+            const bool coupled = stream.speakers[s] != decoded.speakers[c] ||
+                                 stream.speakers[s] == S::kLeftSurround ||
+                                 stream.speakers[s] == S::kRightSurround;
+            CHECK(std::abs(20.0 * std::log10(level / (kAmplitude * (coupled ? down : 1.0)))) < 0.3);
+        }
+    }
+}
+
 void check_case(const ElementCase& c) {
-    INFO(name_of(c) << (c.aspx ? " ASPX" : " SIMPLE") << ", chel_matsel " << c.chel_matsel << ", sap_mode "
-                    << c.sap_mode << ", 2ch_mode " << c.two_ch_mode << ", stereo processing " << c.stereo_proc
-                    << ", b_use_sap_add_ch " << c.use_sap_add_ch << ", A-CPL mode " << c.acpl << ", second "
-                    << c.acpl_second << ", add_ch_base " << c.add_ch_base);
+    INFO(name_of(c) << (c.aspx ? " ASPX" : " SIMPLE") << ", chel_matsel " << c.chel_matsel
+                    << ", sap_mode " << c.sap_mode << ", 2ch_mode " << c.two_ch_mode
+                    << ", stereo processing " << c.stereo_proc << ", b_use_sap_add_ch "
+                    << c.use_sap_add_ch << ", A-CPL mode " << c.acpl << ", second " << c.acpl_second
+                    << ", add_ch_base " << c.add_ch_base << ", immersive mode " << c.immersive
+                    << ", a' alpha_q " << c.prediction_alpha_q << ", A-JCC core mode "
+                    << c.ajcc_core_mode << " route " << c.ajcc_route);
     const BuiltStream stream = ac4dec_test::build_stream(c, kFrames);
     check_routing(stream, decode_checked(stream));
+    if (c.immersive >= 0) {
+        check_core_routing(stream, decode_checked(stream, ac4::DecodingMode::kCore));
+    }
+}
+
+// Under the sanitizers a test takes every `stride`-th of its cases from the
+// `first`, which its comment says covers what the test covers; a normal build
+// takes every case.
+class Stride {
+   public:
+    Stride(std::size_t stride, std::size_t first) : stride_(stride), first_(first) {}
+
+    // Whether the next case runs.
+    [[nodiscard]] bool take() {
+        const std::size_t index = next_++;
+        return !kSanitized || (index >= first_ && (index - first_) % stride_ == 0);
+    }
+
+   private:
+    std::size_t stride_;
+    std::size_t first_;
+    std::size_t next_ = 0;
+};
+
+void check_case(const ElementCase& c, Stride& stride) {
+    if (stride.take()) {
+        check_case(c);
+    }
 }
 
 std::vector<std::byte> read_file(const fs::path& path) {
@@ -178,20 +265,30 @@ std::vector<std::byte> read_file(const fs::path& path) {
 }  // namespace
 
 TEST_CASE("the 3.0 element's two coding_configs put each tone on its channel", "[ac4dec][constructed]") {
+    // Under the sanitizers every fifth case: each coding_config in SIMPLE and
+    // ASPX, stereo processing on and off, and four of the matrices.
+    Stride stride(5, 0);
     for (const bool aspx : {false, true}) {
         for (const bool proc : {false, true}) {
-            check_case({.ch_mode = 2, .aspx = aspx, .coding_config = 0, .sap_mode = 2, .stereo_proc = proc});
+            check_case({.ch_mode = 2, .aspx = aspx, .coding_config = 0, .sap_mode = 2, .stereo_proc = proc},
+                       stride);
         }
         for (int matsel = 0; matsel < 12; ++matsel) {
-            check_case({.ch_mode = 2, .aspx = aspx, .coding_config = 1, .chel_matsel = matsel, .sap_mode = 2});
+            check_case({.ch_mode = 2, .aspx = aspx, .coding_config = 1, .chel_matsel = matsel, .sap_mode = 2},
+                       stride);
         }
     }
 }
 
 TEST_CASE("Table 180's coding_configs and 2ch_modes put each 5.X tone on its channel", "[ac4dec][constructed]") {
+    // Under the sanitizers each 2ch_mode with stereo processing one way, and
+    // every fifth matrix, in SIMPLE and ASPX for coding_config 3.
     for (const int ch_mode : {3, 4}) {
         for (const bool two : {false, true}) {
             for (const bool proc : {false, true}) {
+                if (kSanitized && two != proc) {
+                    continue;
+                }
                 check_case({.ch_mode = ch_mode, .coding_config = 0, .two_ch_mode = two, .sap_mode = 2,
                             .stereo_proc = proc});
             }
@@ -199,19 +296,27 @@ TEST_CASE("Table 180's coding_configs and 2ch_modes put each 5.X tone on its cha
         check_case({.ch_mode = ch_mode, .coding_config = 2, .sap_mode = 2});
         check_case({.ch_mode = ch_mode, .aspx = true, .coding_config = 2, .sap_mode = 0});
     }
+    Stride stride(5, 0);
     for (int matsel = 0; matsel < 12; ++matsel) {
+        if (!stride.take()) {
+            continue;
+        }
         check_case({.ch_mode = 4, .coding_config = 1, .chel_matsel = matsel, .sap_mode = 2});
         check_case({.ch_mode = 4, .aspx = matsel % 2 == 1, .coding_config = 3, .chel_matsel = matsel, .sap_mode = 2});
     }
 }
 
 TEST_CASE("Tables 182 and 183 put each 7.X tone on its channel in the three modes", "[ac4dec][constructed]") {
+    // Under the sanitizers every seventh case: each ch_mode and
+    // coding_config, SIMPLE and ASPX, both 2ch_modes and b_use_sap_add_ch.
+    Stride stride(7, 0);
     for (int ch_mode = 5; ch_mode <= 10; ++ch_mode) {
         for (int config = 0; config < 4; ++config) {
             for (const bool sap : {false, true}) {
                 check_case({.ch_mode = ch_mode, .aspx = config % 2 == 1, .coding_config = config,
                             .two_ch_mode = ch_mode % 2 == 0, .chel_matsel = (ch_mode + config) % 12, .sap_mode = 2,
-                            .use_sap_add_ch = sap});
+                            .use_sap_add_ch = sap},
+                           stride);
             }
         }
     }
@@ -237,19 +342,35 @@ TEST_CASE("the channel pair's A-CPL modes put each tone on its channel", "[ac4de
 }
 
 TEST_CASE("the 5.X element's A-CPL modes put each tone on its channel", "[ac4dec][constructed][acpl]") {
+    // Under the sanitizers each ch_mode takes one coding_config, 3/2/0 the
+    // first and 3/2/0 with the LFE the second, and a case of each A-CPL mode,
+    // with sap_add_mode, acpl_second, acpl_quant and stereo processing each
+    // way between the two.
     for (const int ch_mode : {3, 4}) {
         for (int config = 0; config < 2; ++config) {
+            if (kSanitized && config != ch_mode - 3) {
+                continue;
+            }
             for (const int sap : {0, 2}) {
+                if (kSanitized && sap != 2 * config) {
+                    continue;
+                }
                 check_case({.ch_mode = ch_mode, .coding_config = config, .chel_matsel = 5 + config, .sap_mode = 2,
                             .sap_add_mode = sap, .acpl = 2, .acpl_bands_id = config});
             }
             for (const bool second : {false, true}) {
+                if (kSanitized && second != (config == 1)) {
+                    continue;
+                }
                 check_case({.ch_mode = ch_mode, .coding_config = config, .chel_matsel = 9, .sap_mode = 2, .acpl = 3,
                             .acpl_second = second, .acpl_quant = config});
             }
         }
         for (const bool second : {false, true}) {
             for (const bool proc : {false, true}) {
+                if (kSanitized && (second != proc || second != (ch_mode == 4))) {
+                    continue;
+                }
                 check_case({.ch_mode = ch_mode, .sap_mode = 2, .stereo_proc = proc, .acpl = 4, .acpl_second = second,
                             .acpl_quant = proc ? 1 : 0});
             }
@@ -258,6 +379,10 @@ TEST_CASE("the 5.X element's A-CPL modes put each tone on its channel", "[ac4dec
 }
 
 TEST_CASE("the 7.X element's A-CPL modes put each tone on its channel by Table 202", "[ac4dec][constructed][acpl]") {
+    // Under the sanitizers every twentieth case from the second: each
+    // ch_mode, coding_config and 2ch_mode, add_ch_base both ways, and each
+    // A-CPL mode and acpl_second.
+    Stride stride(20, 1);
     for (int ch_mode = 5; ch_mode <= 10; ++ch_mode) {
         for (int config = 0; config < 4; ++config) {
             for (const bool base : {false, true}) {
@@ -275,13 +400,160 @@ TEST_CASE("the 7.X element's A-CPL modes put each tone on its channel by Table 2
                 common.acpl_bands_id = config;
                 ElementCase residual = common;
                 residual.acpl = 2;
-                check_case(residual);
+                check_case(residual, stride);
                 for (const bool second : {false, true}) {
                     ElementCase full = common;
                     full.acpl = 3;
                     full.acpl_second = second;
-                    check_case(full);
+                    check_case(full, stride);
                 }
+            }
+        }
+    }
+}
+
+TEST_CASE("Part 2 Table 19, step 4 and Table 20 put each 7.X.4 tone on its channel, full and core",
+          "[ac4dec][constructed][immersive]") {
+    // SCPL, ASPX_SCPL and ASPX_ACPL_1, which code all eleven signals: every
+    // core_5ch_grouping and 2ch_mode, step 4 at identity, M/S or absent, and
+    // Table 20 predicting at 0.5 or not at all. Under the sanitizers four
+    // cases: SCPL in grouping 1, ASPX_SCPL in 2 and 3 with b_use_sap_add_ch,
+    // and ASPX_ACPL_1 in 0, which take each mode and grouping, both 2ch_modes
+    // and stereo processing both ways.
+    for (const int mode : {0, 1, 2}) {
+        for (int grouping = 0; grouping < 4; ++grouping) {
+            for (const bool sap : {false, true}) {
+                if (kSanitized && (sap != (mode == 1) ||
+                                   (mode == 1 ? grouping < 2 : grouping != (mode == 0 ? 1 : 0)))) {
+                    continue;
+                }
+                ElementCase c;
+                c.ch_mode = grouping % 2 == 0 ? 12 : 11;
+                c.immersive = mode;
+                c.coding_config = grouping;
+                c.two_ch_mode = (grouping + mode) % 2 == 1;
+                c.chel_matsel = (4 * mode + grouping) % 12;
+                c.sap_mode = 2;
+                c.stereo_proc = mode != 1;
+                c.use_sap_add_ch = sap;
+                c.sap_add_mode = grouping % 2 == 0 ? 2 : 0;
+                c.prediction_alpha_q = sap ? 5 : 0;
+                c.acpl_bands_id = grouping;
+                c.loud_unit = mode == 1 ? grouping : -1;
+                check_case(c);
+            }
+        }
+    }
+}
+
+TEST_CASE("the immersive element's ASPX_ACPL_2 makes each coupled pair by A-CPL",
+          "[ac4dec][constructed][immersive]") {
+    // Under the sanitizers the first case and the last, which differ in
+    // every field.
+    Stride stride(3, 0);
+    for (const bool second : {false, true}) {
+        for (const bool sap : {false, true}) {
+            ElementCase c;
+            c.ch_mode = second ? 11 : 12;
+            c.immersive = 3;
+            c.coding_config = sap ? 3 : 0;
+            c.chel_matsel = 2;
+            c.sap_mode = 2;
+            c.use_sap_add_ch = sap;
+            c.acpl_second = second;
+            c.acpl_quant = second ? 1 : 0;
+            c.acpl_bands_id = sap ? 1 : 3;
+            check_case(c, stride);
+        }
+    }
+}
+
+TEST_CASE("A-JCC makes the 7.X.4 channels of its five, full and core, by each core mode",
+          "[ac4dec][constructed][immersive][ajcc]") {
+    // Each route sends a module's A'' and D'' whole to two of its five
+    // outputs; the other three stay silent. Under the sanitizers every other
+    // case: each route, and each core mode.
+    Stride stride(2, 0);
+    for (const int core_mode : {0, 1}) {
+        for (int route = 0; route < 3; ++route) {
+            ElementCase c;
+            c.ch_mode = route == 1 ? 11 : 12;
+            c.immersive = 4;
+            c.coding_config = (core_mode + route) % 4;
+            c.two_ch_mode = route == 2;
+            c.chel_matsel = 6 + route;
+            c.sap_mode = 2;
+            c.ajcc_core_mode = core_mode;
+            c.ajcc_route = route;
+            c.acpl_quant = route % 2;
+            c.acpl_bands_id = route;
+            check_case(c, stride);
+        }
+    }
+}
+
+TEST_CASE("A-SPX fills the immersive element's channels by Part 2 Table 8, full and core",
+          "[ac4dec][constructed][immersive]") {
+    // The loud aspx_data element's channels, and no other. A-CPL at alpha 1
+    // and A-JCC's first route leave each channel A-SPX made where it was, and
+    // what they make of it silent. Core decoding in ASPX_SCPL takes the first
+    // channel of a coupled pair alone (Table 8's square brackets): the
+    // second, Lb, Rb, Tbl or Tbr, core decoding does not have.
+    using S = Speaker;
+    const auto core_of = [](S s) {
+        switch (s) {
+            case S::kTopFrontLeft:
+                return S::kTopSideLeft;
+            case S::kTopFrontRight:
+                return S::kTopSideRight;
+            default:
+                return s;
+        }
+    };
+    // Under the sanitizers every other element, from the first in ASPX_SCPL
+    // and A-JCC and from the second in ASPX_ACPL_2.
+    for (const int mode : {1, 3, 4}) {
+        const auto elements = ac4dec_test::aspx_elements(12, mode);
+        for (std::size_t loud = 0; loud < elements.size(); ++loud) {
+            if (kSanitized && (loud + (mode == 3 ? 1U : 0U)) % 2 != 0) {
+                continue;
+            }
+            CAPTURE(mode, loud);
+            ElementCase c;
+            c.ch_mode = 12;
+            c.immersive = mode;
+            c.sap_mode = 2;
+            c.loud_unit = static_cast<int>(loud);
+            const BuiltStream stream = ac4dec_test::build_stream(c, kFrames);
+            for (const ac4::DecodingMode decoding :
+                 {ac4::DecodingMode::kFull, ac4::DecodingMode::kCore}) {
+                const bool core = decoding == ac4::DecodingMode::kCore;
+                CAPTURE(core);
+                const Decoded decoded = decode_checked(stream, decoding);
+                std::vector<S> filled;
+                for (const S s : elements[loud]) {
+                    const bool second = s == S::kLeftBack || s == S::kRightBack ||
+                                        s == S::kTopBackLeft || s == S::kTopBackRight;
+                    if (!core || !second) {
+                        filled.push_back(core ? core_of(s) : s);
+                    }
+                }
+                double quietest_loud = 1e300;
+                double loudest_other = 0.0;
+                std::string levels;
+                for (std::size_t ch = 0; ch < decoded.channels.size(); ++ch) {
+                    const double high = band_energy(steady(decoded, ch), 32, 48);
+                    levels += std::string{ac4::describe(decoded.speakers[ch])} + " " +
+                              std::to_string(10.0 * std::log10(high)) + "; ";
+                    if (std::ranges::find(filled, decoded.speakers[ch]) != filled.end()) {
+                        quietest_loud = std::min(quietest_loud, high);
+                    } else {
+                        loudest_other = std::max(loudest_other, high);
+                    }
+                }
+                CAPTURE(levels);
+                CAPTURE(10.0 * std::log10(quietest_loud), 10.0 * std::log10(loudest_other + 1e-30));
+                CHECK(quietest_loud > 1e3 * loudest_other);
             }
         }
     }
@@ -310,10 +582,17 @@ TEST_CASE("A-CPL's decorrelated part cancels in the sum of its two outputs", "[a
 
 TEST_CASE("A-SPX fills the channels of the aspx_data element Table 213 gives them", "[ac4dec][constructed]") {
     // Crossover at QMF subband 28 (10.5 kHz): the tones are below it, and
-    // only the loud element's channels have anything from 12 to 18 kHz.
+    // only the loud element's channels have anything from 12 to 18 kHz. Under
+    // the sanitizers every other element, from the first and the second by
+    // turns.
+    std::size_t turn = 0;
     for (const int ch_mode : {2, 4, 5, 7, 9}) {
         const auto elements = ac4dec_test::aspx_elements(ch_mode);
+        const std::size_t first = turn++ % 2;
         for (std::size_t loud = 0; loud < elements.size(); ++loud) {
+            if (kSanitized && (loud + first) % 2 != 0) {
+                continue;
+            }
             CAPTURE(ch_mode, loud);
             const BuiltStream stream = ac4dec_test::build_stream(
                 {.ch_mode = ch_mode, .aspx = true, .coding_config = 0, .sap_mode = 2,

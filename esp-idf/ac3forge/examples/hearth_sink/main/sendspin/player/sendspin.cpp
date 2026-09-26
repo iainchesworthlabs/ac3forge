@@ -35,6 +35,7 @@
 #include "ac3/sendspin/player_session.hpp"
 #include "ac3/sendspin/websocket.hpp"
 #include "ac3forge/burst_player.hpp"
+#include "ac3forge/log.hpp"
 #include "ac3forge/playout.hpp"
 #include "ac3forge/sendspin_host.hpp"
 
@@ -391,9 +392,13 @@ void print_token(const ac3forge::SendspinHost& host) {
     std::copy(store.identity().public_key().begin(), store.identity().public_key().end(), payload.begin());
     std::copy(store.pairing_psk().begin(), store.pairing_psk().end(), payload.begin() + 32);
     // The console is the board's own display: whoever reads it is holding the
-    // board, which is what the token asks of them.
-    std::printf("sendspin: pairing token %s\n",
-                ss::pairing::encode_token(ss::pairing::TokenVersion::kPairingPsk, payload).c_str());
+    // board, which is what the token asks of them. So it stays out of GET
+    // /log, which anyone on the network can read.
+    {
+        const ac3forge::ConsoleOnly console_only;
+        std::printf("sendspin: pairing token %s\n",
+                    ss::pairing::encode_token(ss::pairing::TokenVersion::kPairingPsk, payload).c_str());
+    }
     ss::crypto::wipe(payload);
 }
 
