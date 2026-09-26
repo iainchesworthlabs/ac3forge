@@ -897,7 +897,7 @@ std::expected<SessionOutput, Refusal> ServerSession::send_burst(std::int64_t tim
     // What the player would reject is not sent (planning/hearth-sendspin-extension.md, Burst
     // chunks).
     const auto parsed = parse_burst_chunk(message);
-    if (!parsed || parsed->data_type() != ac3forge::burst_data_type(burst_stream_->data_type)) {
+    if (!parsed || !ac3forge::carries(burst_stream_->data_type, parsed->data_type())) {
         return refuse(Refusal::kBadBurst);
     }
     std::vector<std::vector<std::uint8_t>> sealed;

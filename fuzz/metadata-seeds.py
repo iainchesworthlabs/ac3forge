@@ -22,6 +22,15 @@ Two subcommands, both driven from fuzz/generate-seeds.sh:
       BS.2076-2 ADM XML), which are the shapes the reader is known to accept
       and therefore the ones worth mutating from.
 
+  ac4-carrier <out-dir> <stream.ac4>
+      Packs the first four frames of a 48 kHz, frame_rate_index 13 AC-4
+      stream into IEC 61937-14 AC-4 data-bursts and writes them to
+      fuzz_iec61937_unwrap/ as a PCM16 stereo WAV, the shape 'ac3cli spdif'
+      gives AC-3 and E-AC-3 carriers. ac3cli does not pack AC-4 yet
+      (planning/ac4.md, I1), so this does, the way
+      ac3::iec61937::Ac4BurstPacker does at that rate: 2 048 IEC 60958
+      frames a burst, Pc 0x0D18, Pd the frame's length in bits.
+
 The EMDF container syntax below is a deliberate second implementation of
 src/forge/src/emdf/emdf.cpp's own reader, in a different language, for the
 narrow purpose of finding payload boundaries. It is not a check on that
@@ -361,11 +370,53 @@ def cmd_adm(out_root: pathlib.Path) -> int:
     return 0
 
 
+# --- An AC-4 IEC 61937 carrier for fuzz_iec61937_unwrap --------------------
+
+def ac4_sync_frames(stream: bytes):
+    """Each whole sync frame (IEC 61937-14 Annex A) of an .ac4 stream, in order."""
+    at = 0
+    while at + 4 <= len(stream):
+        sync, size = struct.unpack_from(">HH", stream, at)
+        if sync not in (0xAC40, 0xAC41):
+            return
+        head = 4
+        if size == 0xFFFF:
+            size = int.from_bytes(stream[at + 4:at + 7], "big")
+            head = 7
+        end = at + head + size + (2 if sync == 0xAC41 else 0)
+        if end > len(stream):
+            return
+        yield stream[at:end]
+        at = end
+
+
+def cmd_ac4_carrier(out_root: pathlib.Path, stream: pathlib.Path) -> int:
+    carrier = bytearray()
+    for frame in list(ac4_sync_frames(stream.read_bytes()))[:4]:
+        burst = bytearray(struct.pack("<HHHH", 0xF872, 0x4E1F, 0x0D18, len(frame) * 8))
+        # Big-endian within little-endian words, an odd last byte in the
+        # high half of its word (IEC 61937-1 6.1.2).
+        padded = frame + (b"\0" if len(frame) % 2 else b"")
+        for i in range(0, len(padded), 2):
+            burst += bytes((padded[i + 1], padded[i]))
+        burst += bytes(2048 * 4 - len(burst))
+        carrier += burst
+    directory = out_root / "fuzz_iec61937_unwrap"
+    directory.mkdir(parents=True, exist_ok=True)
+    wav = (b"RIFF" + struct.pack("<I", 36 + len(carrier)) + b"WAVE" +
+           chunk(b"fmt ", fmt_chunk(2, 48000)) + chunk(b"data", bytes(carrier)))
+    (directory / "spdif-ac4-20.wav").write_bytes(wav)
+    print(f"    {directory.name:<20} spdif-ac4-20.wav, {len(carrier) // 8192} bursts")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if len(argv) >= 3 and argv[1] == "extract":
         return cmd_extract(pathlib.Path(argv[2]), [pathlib.Path(p) for p in argv[3:]])
     if len(argv) == 3 and argv[1] == "adm":
         return cmd_adm(pathlib.Path(argv[2]))
+    if len(argv) == 4 and argv[1] == "ac4-carrier":
+        return cmd_ac4_carrier(pathlib.Path(argv[2]), pathlib.Path(argv[3]))
     print(__doc__, file=sys.stderr)
     return 2
 

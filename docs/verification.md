@@ -427,6 +427,23 @@ Two tiers, both gated in CI:
   excerpts, and pinning by hash is what keeps an upstream change from quietly moving the
   numbers. Runs nightly in the `Interop` workflow.
 
+A third set is neither committed nor gated. `tools/generators/gen_dee_gold.py` keeps 1,086 of
+DEE's own streams on a local disk, made before DEE's licence ends on 2026-11-06, each rebuildable
+from the committed programme fixtures: AC-3 and E-AC-3 at every layout and data rate DEE lists
+(mono, 2.0, 5.1, 5.1 without its LFE, and 5.1 at 64 to 160 kbit/s through its hybrid downmix),
+7.1 as Blu-ray carries it (an AC-3 core and an E-AC-3 dependent substream, from DEE's `bluray`
+encoder mode, which its help does not list), E-AC-3 JOC from 5.1.4, 7.1.4 and 9.1.6 beds at every
+rate, TrueHD at 2, 6 and 8 channels, 48 and 96 kHz and 16 and 24 bits, each metadata option DEE
+takes, and 60 and 300 s programmes. Each keeps MediaInfo's trace, DEE's MP4 of it, and what
+`ac3cli` and FFmpeg make of it. `ac3cli`'s decoder reads every AC-3 and E-AC-3 elementary stream
+in it but the 23 that use transient pre-noise processing, whose correction reaches further back
+than the one frame of history the decoder keeps, and which it reports as unimplemented; FFmpeg
+reports errors in 67 of the E-AC-3 streams, most of them exponents out of range, as below. DEE
+uses coupling, spectral extension and the AHT by rate and never enhanced coupling. At 48 kHz,
+FFmpeg's decode of each TrueHD stream DEE was not asked to alter equals its source sample for
+sample, but for one LSB at −1 dBFS; at 96 kHz it matches to 24 kHz and rolls off above, 14 dB
+down by 30 to 40 kHz.
+
 Wiring up the first tier found **five separate Annex E decoder defects** in a single sitting, on
 syntax that no stream this project can encode is able to reach — the three AHT-in-use flags read
 unconditionally, `cplfgaincod`/`cplfsnroffst` not read at all, the three band-structure default
@@ -1336,6 +1353,24 @@ slots and reads the bins of its own band, all of them where its neighbours' comp
 band; the prediction is 1 and 0 there (DEE's 0.9 and 0), and the routing 9.7 dB. The readings the
 writer takes, and those it shares with the decoder, are in `src/ac4enc/ERRATA.md`.
 
+### IEC 61937
+
+AC-4's burst types (IEC 61937-14, phase D11) have no oracle: nothing else here writes or reads
+them, and no receiver found accepts AC-4. They are checked against the standard's text.
+`tests/iec61937/test_iec61937_ac4.cpp` transcribes Part 14's repetition periods, burst sequences,
+`Pc` codes and maximum lengths a second time, row by row as printed, and holds the library's
+tables to that transcription and both to the arithmetic the standard implies: five bursts of a
+sequence span five frames exactly, each burst starts at the IEC 60958 frame nearest its frame's
+exact start, and each maximum length is the period less the preamble and the two IEC 60958 frames
+of spacing between bursts. A stream packed and read back returns every frame unchanged at every
+frame rate of every type, with each burst's period, measured from the carrier as a receiver would
+measure it, its place in its sequence and its `Pc` fields as the tables give them; DEE's streams
+at four frame rates do the same. For the extension role, a loopback test
+(`tests/hearth/test_group.cpp`) sends DEE's 2.0 stream at 48 kHz through `_ac3forge_player@v1`
+to a test sink, whose output equals the local decode, rendered the same way, sample for sample.
+The two readings Part 14 leaves open, which frame starts a burst sequence and whether `Pd` counts
+bits or bytes, are given in `src/forge/src/iec61937/iec61937.cpp`.
+
 ## What untrusted input is checked against
 
 Correctness and robustness are different questions, and this page answers only the first. What
@@ -1368,6 +1403,9 @@ covered where it's most relevant rather than repeated here:
   HDMI to a real AV receiver, with object audio confirmed reconstructable (not just the panned
   bed). Verification specific to this one Android app on this one Shield + receiver pair, not a
   general claim about Android as a platform.
+- [AC-4 passthrough](library/muxing-and-sinks.md) — no receiver found accepts AC-4, so no AC-4
+  burst has reached hardware; ALSA's path runs against ALSA's `null` device, and Windows, PipeWire
+  and macOS cannot send AC-4 at all.
 - [Atmos & JOC](concepts/atmos-joc.md#two-limitations) — Dolby's own decoder gates object
   decoding on a keyed authenticity tag; the signer ships in-tree (`ac3::signing`) but this
   project ships no key for it, so its streams are unsigned unless an operator supplies one.

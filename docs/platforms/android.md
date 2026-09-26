@@ -141,6 +141,14 @@ So the backend is split, unlike the other three:
   path to the sink's raw EDID would not add anything the existing probe does not already give —
   see [Linux](linux.md#reading-a-sinks-own-edideld) for where that read is real.
 
+AC-4 (IEC 61937-14) goes through the same track. `ENCODING_IEC61937` takes the bursts as opaque
+two-channel data, whatever codec they hold, so `PassthroughSink` sends AC-4 on a track at the
+content rate, the one AC-3 uses, and AC-4 HBR4 on the four-times track E-AC-3 uses. An AC-4 burst
+is as long as its frame, so `submit()` takes any whole number of link frames up to the longest.
+AC-4 HBR16, whose link has eight channels, is refused with `kUnsupportedFormat`.
+`supports_ac4_passthrough` takes the AC-3 probe's answer, since the track is the same one. No
+receiver found so far decodes AC-4, and this path has been compiled but never run on a device.
+
 ### Partial `AudioTrack` writes are resumed from, not restarted
 
 `PassthroughSink::submit` treated a short but non-negative `AudioTrack.write` as a plain failure,

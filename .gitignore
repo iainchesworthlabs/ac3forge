@@ -9,6 +9,9 @@ packages/
 # Generated docs site (mkdocs build / mkdocs serve); published via the docs
 # workflow to the gh-pages branch, never committed to develop/main.
 site/
+# The sink installer's ESP Web Tools and firmware, which docs.yml's deploy job
+# puts in before it builds the site (docs/hearth/sink-installer.md).
+docs/assets/sink-installer/
 
 # Machine-local CMake presets (carry local VCPKG_ROOT)
 CMakeUserPresets.json

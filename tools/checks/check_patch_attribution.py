@@ -147,8 +147,11 @@ def _parse_patch_chunk(chunk: str) -> Commit:
 
 def commits_from_range(root: Path, rev_range: str) -> list[Commit]:
     fmt = FIELD_SEP.join(["%H", "%an", "%ae", "%cn", "%ce", "%s", "%b"]) + RECORD_SEP
+    # --end-of-options (git 2.24+) keeps the caller's range from being read as an option: a
+    # range of `--output=<file>` would otherwise have git log write to that file. After it, a
+    # leading dash just makes a revision that does not exist.
     result = subprocess.run(
-        ["git", "log", "--no-merges", rev_range, f"--format={fmt}"],
+        ["git", "log", "--no-merges", f"--format={fmt}", "--end-of-options", rev_range],
         cwd=root,
         capture_output=True,
         text=True,

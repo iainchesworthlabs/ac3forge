@@ -139,6 +139,9 @@ Most of what used to be a manual post-release checklist here is now automated (r
    sync, not new information), and a prerelease's `> **Pre-release.**` caveat blockquote (picking
    the single biggest open gap to headline is a judgement call, not an extraction).
 2. Verify the release page has all expected artifacts, and that the notes render and read well.
+   `github-release` also redeploys the documentation site, which copies the release's sink
+   firmware into [the browser installer](hearth/sink-installer.md). Once `docs.yml` has run, the
+   installer page names the new release's version.
 3. **The four packaging manifests bump themselves.** Once `github-release` has published the
    release and uploaded every asset, the `manifest-bump` job calls
    [`.github/workflows/manifest-bump.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/manifest-bump.yml),
@@ -692,6 +695,26 @@ built" check - deliberately, since it is a `.tar.gz` and would otherwise satisfy
 its own - and from there it is signed, checksummed, SBOM'd and attested exactly like a package.
 See [Conformance vectors](conformance-vectors.md) for what is in it and how a decoder implementer
 uses it.
+
+And **the Hearth sink firmware** ([planning/esp32-ota.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-ota.md#published-images),
+O8). `_build.yml`'s `package-esp32-firmware` job gathers the four board images `build-esp32s3`
+and `build-esp32c3` build: `hearth-sink-esp32s3`, `hearth-sink-esp32c6` (4 MB table),
+`hearth-sink-esp32c6-16mb` and `hearth-sink-esp32p4-rev1`. Each is published as four files:
+
+- `<image>-<version>.bin`, the app image, for an update over the network;
+- `-factory.bin`, the whole flash from `0x0`, for a new board (it overwrites NVS);
+- `-parts.zip`, the same pieces with a `flash_args` of relative paths, which move a board already
+  in use to the layout with its NVS kept;
+- `-elf.zip`, for a backtrace or a core dump.
+
+One `hearth-sink-manifest.json` describes them all, and `tools/hearth/ota.py push --release`
+reads it to give each board its image. `tools/ci/check_firmware_package.py` holds each image to
+its name before anything is uploaded: its chip, revisions, flash size and PSRAM, its own
+SHA-256, the smallest slot of its table, its parts against its factory image, and no network
+built in. On a release each image carries the tag as its version (`PROJECT_VER`). The files are
+checksummed, GPG-signed and attested with everything else; the images themselves are not yet
+signed with a key the boards check (O7). Every CI run keeps the same set for 14 days as the
+`esp32-firmware` artifact, which `ota.py push --run <run id>` takes.
 
 One leg is still `experimental: true`, `windows-msvc-arm64` on its own runner label
 (`_build.yml`'s matrix comment says why), and it carries `release_package: true` as well, so a

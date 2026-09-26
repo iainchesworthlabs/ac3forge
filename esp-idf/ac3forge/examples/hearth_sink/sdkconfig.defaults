@@ -28,6 +28,29 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 # the factory slot before. The bootloader itself changes only over USB.
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
+# A panic's core dump, kept in the coredump partition through the restart and
+# a rollback, for GET /firmware/coredump (planning/esp32-ota.md, O4). Its
+# static internal RAM, measured with idf.py size on 2026-09-25: 2,128 bytes on
+# the S3 with task stacks in internal RAM, 1,140 on the C6, and more where task
+# stacks may be in PSRAM, since the dump then has a stack of its own (3,652 on
+# the P4; the S3 board keeps none, sdkconfig.psram). The board checks the dump
+# once at boot, before anything else uses the SHA hardware, so ESP-IDF's own
+# check is left off.
+CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y
+# CONFIG_ESP_COREDUMP_CHECK_BOOT is not set
+
+# The control server closes its least recently used connection for a new one
+# at once, with nothing queued. ESP-IDF v6.1 queues that close by default, and
+# a server that comes round again before it has run queues a second close of
+# the same slot, which then lands on the new connection that took the slot:
+# an update's upload, reset before the board read any of it, while three other
+# clients held the server's sockets (planning/esp32-ota.md, Robustness). The
+# cost: httpd_queue_work() waits for room when a server's queue is full,
+# rather than failing. The Sendspin host queues at most one tick, one request
+# and one close for each of its three connections, five in all, and its queue
+# holds six (CONFIG_LWIP_UDP_RECVMBOX_SIZE).
+CONFIG_HTTPD_QUEUE_WORK_BLOCKING=y
+
 # PSRAM stays off, as everywhere else in this profile: the point is that the
 # decode fits in internal SRAM, and the streaming buffers are part of what has
 # to fit.
