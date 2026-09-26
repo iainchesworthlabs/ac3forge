@@ -358,12 +358,19 @@ struct Plan {
                 p.immersive = immersive_mode::kAspxAcpl1;
                 break;
             }
-            [[fallthrough]];
+            return std::unexpected("ASPX_ACPL_1 in an immersive layout without experimental.acpl");
+        case CodecMode::kAspxAjcc:
+            if (config.experimental.ajcc) {
+                p.immersive = immersive_mode::kAspxAjcc;
+                break;
+            }
+            return std::unexpected("ASPX_AJCC without experimental.ajcc");
         default:
             return std::unexpected(
                 "a codec mode the immersive layouts do not take: SCPL, ASPX_SCPL and ASPX_ACPL_2, "
                 "and with experimental.acpl ASPX_ACPL_1 and experimental.ajcc ASPX_AJCC");
     }
+    const bool joint = p.immersive == immersive_mode::kAspxAjcc;
     int n = 0;
     p.l = n++;
     p.r = n++;
@@ -373,6 +380,29 @@ struct Plan {
     }
     p.ls = n++;
     p.rs = n++;
+    if (joint) {
+        // ASPX_AJCC (Part 2 clause 5.2.3.4, 5CH_DYNAMIC): the five core
+        // channels A'' to E'' alone, (A'', B''), (D'', E'') and C'' with the
+        // A-SPX data of Table 8, companding_control(5) before them, and A-JCC
+        // rebuilding the rest from them (AcplLayout::kJoint).
+        p.groups = {{p.l, p.r}, {p.ls, p.rs}, {p.c}};
+        p.group_cutoff.assign(p.groups.size(), 0.0);
+        if (lfe) {
+            p.groups.push_back({p.lfe});
+            p.group_cutoff.push_back(0.0);
+        }
+        p.coded = n;
+        p.aspx_elements = {{p.l, p.r}, {p.ls, p.rs}, {p.c}};
+        p.balance.assign(p.aspx_elements.size(), false);
+        p.companded = {p.l, p.r, p.c, p.ls, p.rs};
+        p.acpl = detail::AcplLayout::kJoint;
+        // L Tfl Ls Lb Tbl R Tfr Rs Rb Tbr, and C, which the core carries as it
+        // is (detail::ajcc_core()).
+        p.source = {p.input[0], p.input[8], p.input[4], p.input[6],  p.input[10], p.input[1],
+                    p.input[9], p.input[5], p.input[7], p.input[11], p.input[2]};
+        p.input_lfe = p.input[3];
+        return p;
+    }
     p.x1 = n++;
     p.x2 = n++;
     const bool differences = p.immersive != immersive_mode::kAspxAcpl2;
@@ -659,16 +689,19 @@ struct Structure {
     s.chel_matsel = chel_matsel;
     if (p.immersive_element()) {
         // Part 2 clause 6.2.4.1 with core_5ch_grouping 0 and 2ch_mode 0: the
-        // LFE, (A'', B''), (D'', E''), C'' and (F'', G''), then (H'', I'') and
-        // (J'', K'') where the mode sends them. The writer puts the A-SPX and
-        // A-CPL data between.
+        // LFE, (A'', B''), (D'', E''), C'' and but in ASPX_AJCC (F'', G''), then
+        // (H'', I'') and (J'', K'') where the mode sends them. The writer puts
+        // the A-SPX, A-CPL and A-JCC data between.
         if (p.lfe >= 0) {
             s.units.push_back({.kind = UnitKind::kLfe, .outputs = {p.lfe}});
         }
         s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.l, p.r}});
         s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.ls, p.rs}});
         s.units.push_back({.kind = UnitKind::kMono, .outputs = {p.c}});
-        s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.x1, p.x2}, .additional = true});
+        if (p.x1 >= 0) {
+            s.units.push_back(
+                {.kind = UnitKind::kPair, .outputs = {p.x1, p.x2}, .additional = true});
+        }
         if (p.h >= 0) {
             s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.h, p.i}});
             s.units.push_back({.kind = UnitKind::kPair, .outputs = {p.j, p.k}});
@@ -1508,11 +1541,13 @@ struct SubstreamCoder {
 
     // Part 2 clause 6.2.4.1, immersive_channel_element(b_lfe, 0, b_iframe):
     // immersive_codec_mode_code (Table 73), immers_cfg() in an I-frame, the LFE,
-    // core_5ch_grouping 0 and 2ch_mode 0 with (A'', B''), (D'', E'') and C'',
-    // b_use_sap_add_ch 0 and (F'', G''), the aspx_data elements of Table 8, and
-    // then in SCPL, ASPX_SCPL and ASPX_ACPL_1 (H'', I''), (J'', K'') and Table
-    // 20's four chparam_info(), and in ASPX_ACPL_1 and 2 the four
-    // acpl_data_1ch(). Without `data`, all of it but the sf_data() elements.
+    // in ASPX_AJCC companding_control(5), core_5ch_grouping 0 and 2ch_mode 0
+    // with (A'', B''), (D'', E'') and C'', but in ASPX_AJCC b_use_sap_add_ch 0
+    // and (F'', G''), the aspx_data elements of Table 8, in ASPX_AJCC
+    // ajcc_data(0), and then in SCPL, ASPX_SCPL and ASPX_ACPL_1 (H'', I''),
+    // (J'', K'') and Table 20's four chparam_info(), and in ASPX_ACPL_1 and 2
+    // the four acpl_data_1ch(). Without `data`, all of it but the sf_data()
+    // elements.
     void write_immersive_element(BitWriter& w, const Coding& f, bool data) const {
         const int mode = plan.immersive;
         if (mode == immersive_mode::kAspxAjcc) {
@@ -1537,17 +1572,26 @@ struct SubstreamCoder {
         if (plan.lfe >= 0) {
             unit();
         }
+        const bool joint = mode == immersive_mode::kAspxAjcc;
+        if (joint) {
+            detail::write_companding_control(w, f.aspx->companding);
+        }
         w.write(2, 0, "core_5ch_grouping");
         w.write(1, 0, "2ch_mode");
         unit();  // (A'', B'')
         unit();  // (D'', E'')
         unit();  // C''
-        w.write(1, 0, "b_use_sap_add_ch");
-        unit();  // (F'', G'')
+        if (!joint) {
+            w.write(1, 0, "b_use_sap_add_ch");
+            unit();  // (F'', G'')
+        }
         if (mode != immersive_mode::kScpl && f.aspx) {
             for (const detail::AspxElement& element : f.aspx->elements) {
                 detail::write_aspx_tail(w, f.iframe, *aspx, element);
             }
+        }
+        if (joint) {
+            detail::write_ajcc_data(w, f.acpl->joint);
         }
         if (plan.h >= 0) {
             unit();  // (H'', I'')
@@ -4027,7 +4071,28 @@ std::vector<std::vector<double>> SubstreamCoder::internal(
 void SubstreamCoder::take(const std::vector<std::vector<double>>& programme_input,
                           const std::vector<std::vector<double>>& stem_input) {
     const std::size_t count = programme_input.front().size();
-    if (plan.immersive_element()) {
+    if (plan.immersive_element() && plan.immersive == immersive_mode::kAspxAjcc) {
+        // ASPX_AJCC: the core A'' to E'' and the LFE are coded, and A-JCC's
+        // analysis reads the channels it rebuilds (Plan::source; C, the last,
+        // only into the core).
+        std::vector<double> input(plan.source.size());
+        const std::array<int, 5> core = {plan.l, plan.r, plan.c, plan.ls, plan.rs};
+        for (std::size_t n = 0; n < count; ++n) {
+            for (std::size_t k = 0; k < input.size(); ++k) {
+                const int c = plan.source[k];
+                input[k] = c < 0 ? 0.0 : programme_input[static_cast<std::size_t>(c)][n];
+                source[k].push_back(input[k]);
+            }
+            const std::array<double, 5> coded = detail::ajcc_core(input);
+            for (std::size_t i = 0; i < core.size(); ++i) {
+                signal[static_cast<std::size_t>(core[i])].push_back(coded[i]);
+            }
+            if (plan.lfe >= 0) {
+                signal[static_cast<std::size_t>(plan.lfe)].push_back(
+                    programme_input[static_cast<std::size_t>(plan.input_lfe)][n]);
+            }
+        }
+    } else if (plan.immersive_element()) {
         // The intermediate signals (Part 2 clause 5.2): L, R and C halved, which
         // S-CPL's c_gain of 2 (or A-SPX's gain, or A-CPL's) doubles again; each
         // coupled pair's channels over sqrt 2 in the simple coupling modes,

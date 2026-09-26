@@ -126,8 +126,12 @@ enum class CodecMode : std::uint8_t {
     // As SCPL up to 12.75 kHz, and A-SPX above it on the channels S-CPL makes,
     // a coupled pair's two sharing one aspx_data_2ch() element (Part 2 Table 8).
     kAspxScpl,
-    // With experimental.ajcc: A-JCC (Part 2 clause 5.6), five core channels
-    // coded in the ASPX way, with companding, and the others rebuilt from them.
+    // With experimental.ajcc, the immersive layouts: A-JCC (Part 2 clause
+    // 5.6, ajcc_core_mode 0), a 5.X core coded in the ASPX way, each side's
+    // front (L with Tfl at -3 dB) and back (Ls, Lb and Tbl) as one channel,
+    // and the channels rebuilt from them by A-JCC's parameters, which DEE's
+    // 5.1.4 streams never use. In core decoding the back channels come out 3
+    // dB down, as Pseudocode 14 gives them.
     kAspxAjcc,
 };
 

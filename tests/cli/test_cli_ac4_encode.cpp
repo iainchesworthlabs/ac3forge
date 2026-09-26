@@ -459,6 +459,18 @@ TEST_CASE("ac4-encode's experimental tools each write their syntax", "[cli][ac4]
             run(tones_wav("ac4_514_acpl1.wav", 10), "320 codec-mode=aspx-acpl-1 experimental=acpl");
         CHECK(first_frame(records, "immersive_codec_mode_code") == std::vector<std::uint64_t>{2});
     }
+    SECTION("ajcc takes the immersive ASPX_AJCC, which codec-mode= names") {
+        const fs::path ten = tones_wav("ac4_514_ajcc.wav", 10);
+        const auto records = run(ten, "256 codec-mode=aspx-ajcc experimental=ajcc");
+        // Table 73's one-bit code, and A-JCC's data with ajcc_core_mode 0.
+        CHECK(first_frame(records, "immersive_codec_mode_code") == std::vector<std::uint64_t>{1});
+        CHECK(first_frame(records, "ajcc_core_mode") == std::vector<std::uint64_t>{0});
+        CHECK(read_log(log).find("ASPX_AJCC mode") != std::string::npos);
+        // Without the option the encoder refuses the mode, naming it.
+        CHECK(run_cli("ac4-encode " + quoted(ten) + " " + quoted(out) + " 256 codec-mode=aspx-ajcc",
+                      log) == 1);
+        CHECK(read_log(log).find("experimental.ajcc") != std::string::npos);
+    }
     SECTION("7x-wide and 7x-top-front take the 7.X element's other pairs") {
         struct Layout {
             const char* option;

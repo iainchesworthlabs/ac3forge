@@ -10,6 +10,7 @@
 
 #include "acpl/acpl.hpp"
 #include "acpl/acpl_syntax.hpp"
+#include "ajcc/ajcc_syntax.hpp"
 #include "dsp/qmf.hpp"
 #include "frame/timing.hpp"
 
@@ -56,7 +57,22 @@
 //     Pseudocode 2 doubles into the module and whose outputs it raises by
 //     sqrt 2, so that Ls + Lb = 2 sqrt 2 D'' exactly, and ASPX_ACPL_1's
 //     residual H'' = (Ls - Lb) / (2 sqrt 2), which below acpl_qmf_band makes
-//     the pair as simple coupling does.
+//     the pair as simple coupling does;
+//   the immersive element's ASPX_AJCC (experimental; ETSI TS 103 190-2
+//     clause 5.6, ajcc_core_mode 0): per side a front module that rebuilds
+//     (L, Tfl / sqrt 2) from their sum as the A-CPL modules do, with alpha
+//     and beta quantised by A-CPL's tables, and a back module that rebuilds
+//     (Ls, Lb, Tbl) over sqrt 2 from theirs (Pseudocodes 8 and 11). Its dry
+//     values are the least squares shares of the sum, dry1 and dry2 for Ls
+//     and Lb and 1 - dry1 - dry2 for Tbl, and its wet values give the two
+//     decorrelated signals, each of the sum's energy, the covariance of what
+//     the dry shares leave: wet3^2 + wet2^2 and wet1^2 + wet3^2 twice Lb's and
+//     Tbl's residual energy over the sum's, wet3 (wet1 + wet2) twice their
+//     cross term's. Without the back pair Lb's shares are 0 and the module is
+//     a pair's, wet1 = beta / sqrt 2. The core the decoder upmixes is then
+//     A'' = (L + Tfl / sqrt 2) / g, C'' = C / g and D'' = (Ls + Lb + Tbl) /
+//     (sqrt 2 g), g = 2 + 1 / sqrt 2 (Pseudocode 8's input gain), and their
+//     mirrors (ajcc_core()).
 
 namespace ac4::detail {
 
@@ -68,9 +84,11 @@ enum class AcplLayout : std::uint8_t {
     kFiveX,      // the 5.X element's ASPX_ACPL_1 and 2: L R C Ls Rs
     kCoupling,   // the 5.X element's ASPX_ACPL_3: L R C Ls Rs
     kImmersive,  // the immersive element's ASPX_ACPL_1 and 2: Ls Lb Rs Rb Tfl Tbl Tfr Tbr
+    kJoint,      // the immersive element's ASPX_AJCC: L Tfl Ls Lb Tbl R Tfr Rs Rb Tbr
 };
 
-// The acpl_data_1ch() modules of a layout: 1, 2 or 4; none for kCoupling.
+// The acpl_data_1ch() modules of a layout: 1, 2 or 4; none for kCoupling
+// and kJoint.
 [[nodiscard]] std::size_t acpl_modules(AcplLayout layout) noexcept;
 
 // A frame's A-CPL data, as the writer takes them.
@@ -79,6 +97,7 @@ struct AcplFrameFields {
     // element's four.
     std::array<AcplData1chFields, 4> modules{};
     AcplData2chFields coupling{};  // ASPX_ACPL_3
+    AjccDataFields joint{};        // ASPX_AJCC
 };
 
 class AcplEncoder {
@@ -146,6 +165,12 @@ class AcplEncoder {
     [[nodiscard]] AcplFrameFields sent_as(const std::array<std::array<Values, 2>, 4>& modules,
                                           const std::array<Values, 11>& coupling,
                                           bool iframe) const;
+    // ASPX_AJCC's: ajcc_data() sending `values`, its fourteen parameters in
+    // AjccDataFields::params' order, each set along frequency or, outside
+    // I-frames, along time from the values held as it costs least.
+    [[nodiscard]] AjccDataFields joint_sent_as(const std::array<Values, 14>& values,
+                                               bool iframe) const;
+    [[nodiscard]] AcplFrameFields propose_joint(long long frame, bool iframe) const;
 
     AcplLayout layout_;
     FrameTiming timing_;
@@ -162,7 +187,14 @@ class AcplEncoder {
     // Table 62's order.
     std::array<std::array<Values, 2>, 4> module_history_{};
     std::array<Values, 11> coupling_history_{};
+    // ASPX_AJCC's (Pseudocode 3's ajcc_SET_q_prev), in AjccDataFields::params'
+    // order.
+    std::array<Values, 14> joint_history_{};
 };
+
+// ASPX_AJCC's core from one sample of the input's channels in kJoint's
+// order and C last: A'', B'', C'', D'' and E'' (AcplLayout's comment).
+[[nodiscard]] std::array<double, 5> ajcc_core(std::span<const double> input);
 
 // The channels the spectral frontend codes for a layout, from one sample of
 // the input's channels in the layout's order: the channel pair's x0; the 5.X

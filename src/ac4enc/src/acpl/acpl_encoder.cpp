@@ -3,10 +3,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <numbers>
 #include <tuple>
 #include <utility>
+
+#include "ajcc/ajcc.hpp"
 
 namespace ac4::detail {
 namespace {
@@ -156,6 +159,112 @@ struct CouplingSums {
     }
 };
 
+// ASPX_AJCC's back column over a band: the three channels a back module
+// rebuilds from their sum x = a + b + c (Ls, Lb and Tbl over sqrt 2, or their
+// mirrors): <x, x>, Re<a, x> and Re<b, x>, and Re<b, b>, Re<c, c> and Re<b, c>.
+struct ColumnSums {
+    double xx = 0.0;
+    double ax = 0.0;
+    double bx = 0.0;
+    double bb = 0.0;
+    double cc = 0.0;
+    double bc = 0.0;
+
+    void add(std::complex<double> a, std::complex<double> b, std::complex<double> c) noexcept {
+        const std::complex<double> x = a + b + c;
+        xx += std::norm(x);
+        ax += (a * std::conj(x)).real();
+        bx += (b * std::conj(x)).real();
+        bb += std::norm(b);
+        cc += std::norm(c);
+        bc += (b * std::conj(c)).real();
+    }
+
+    ColumnSums& operator+=(const ColumnSums& other) noexcept {
+        xx += other.xx;
+        ax += other.ax;
+        bx += other.bx;
+        bb += other.bb;
+        cc += other.cc;
+        bc += other.bc;
+        return *this;
+    }
+};
+
+// ASPX_AJCC's parameters, in AjccDataFields::params' order.
+enum JointParam : std::uint8_t {
+    kAlpha1,
+    kAlpha2,
+    kBeta1,
+    kBeta2,
+    kDry1,
+    kDry2,
+    kDry3,
+    kDry4,
+    kWet1,
+    kWet2,
+    kWet3,
+    kWet4,
+    kWet5,
+    kWet6,
+    kJointParams,
+};
+
+// The nearest dry or wet value of Pseudocode 4 or 5.
+[[nodiscard]] int quantise_step(ajcc::Kind kind, double value, acpl::Quant quant) noexcept {
+    const acpl::Range range = ajcc::quantised_range(kind, quant);
+    const double base = ajcc::dequantise(kind, 0, quant);
+    const double step = ajcc::dequantise(kind, 1, quant) - base;
+    return std::clamp(static_cast<int>(std::lround((value - base) / step)), range.min, range.max);
+}
+
+// The wet values (wet1, wet2, wet3) whose decorrelated signals give a back
+// column's residuals the covariance `b`, `c` and `d` asks, each over the
+// sum's energy and doubled: wet3^2 + wet2^2 = b, wet1^2 + wet3^2 = c and
+// wet3 (wet1 + wet2) = d. With s = wet3, wet2 = sqrt(b - s^2) and wet1 =
+// sqrt(c - s^2); s (wet1 + wet2) rises from 0 and falls again as |s| reaches
+// the smaller root, so s is the root of the rising part found by bisection,
+// or where that part peaks when d lies beyond it.
+[[nodiscard]] std::array<double, 3> column_wets(double b, double c, double d) noexcept {
+    b = std::max(b, 0.0);
+    c = std::max(c, 0.0);
+    const double limit = std::sqrt(std::min(b, c));
+    const auto reach = [&](double s) { return s * (std::sqrt(c - s * s) + std::sqrt(b - s * s)); };
+    const auto wets = [&](double s) {
+        return std::array<double, 3>{std::sqrt(std::max(c - s * s, 0.0)),
+                                     std::sqrt(std::max(b - s * s, 0.0)), s};
+    };
+    const double target = std::abs(d);
+    if (limit <= 0.0 || target <= 0.0) {
+        return wets(0.0);
+    }
+    // The peak of reach() on [0, limit]: a ternary search, the function
+    // rising to it and falling after.
+    double lo = 0.0;
+    double hi = limit;
+    for (int i = 0; i < 60; ++i) {
+        const double m1 = lo + (hi - lo) / 3.0;
+        const double m2 = hi - (hi - lo) / 3.0;
+        if (reach(m1) < reach(m2)) {
+            lo = m1;
+        } else {
+            hi = m2;
+        }
+    }
+    const double peak = 0.5 * (lo + hi);
+    double s = peak;
+    if (reach(peak) > target) {
+        lo = 0.0;
+        hi = peak;
+        for (int i = 0; i < 60; ++i) {
+            const double mid = 0.5 * (lo + hi);
+            (reach(mid) < target ? lo : hi) = mid;
+        }
+        s = 0.5 * (lo + hi);
+    }
+    return wets(d < 0.0 ? -s : s);
+}
+
 // Whether a band's estimate reads its subbands' own bins alone: where they
 // hold kOwnShare of its energy, `own` of `all`.
 [[nodiscard]] bool own_bins_carry(double own, double all) noexcept {
@@ -227,6 +336,8 @@ using DftWeights = std::array<std::array<std::complex<double>, kWindowSlots>, kW
             return 2;
         case AcplLayout::kImmersive:
             return 8;
+        case AcplLayout::kJoint:
+            return 10;
         default:
             return 5;
     }
@@ -243,6 +354,7 @@ std::size_t acpl_modules(AcplLayout layout) noexcept {
         case AcplLayout::kImmersive:
             return 4;
         case AcplLayout::kCoupling:
+        case AcplLayout::kJoint:
             break;
     }
     return 0;
@@ -325,6 +437,9 @@ AcplParamFields AcplEncoder::code(AcplKind kind, const Values& q, const Values& 
 }
 
 AcplFrameFields AcplEncoder::propose(long long frame, bool iframe) const {
+    if (layout_ == AcplLayout::kJoint) {
+        return propose_joint(frame, iframe);
+    }
     const acpl::Quant quant = quant_of(quant_mode_);
     const long long first = first_slot(frame);
     const auto band_of = [&](int sb) { return at(acpl::sb_to_pb(num_bands_, sb)); };
@@ -498,11 +613,144 @@ AcplFrameFields AcplEncoder::propose(long long frame, bool iframe) const {
     return out;
 }
 
+AcplFrameFields AcplEncoder::propose_joint(long long frame, bool iframe) const {
+    const acpl::Quant quant = quant_of(quant_mode_);
+    const auto band_of = [&](int sb) { return at(acpl::sb_to_pb(num_bands_, sb)); };
+    const std::vector<Spectrum> x = spectra(first_slot(frame));
+    // Per side, the front module's sums on (L, Tfl / sqrt 2) and the back
+    // column's on (Ls, Lb, Tbl) / sqrt 2, over each band's own bins, [0], and
+    // all of them, [1]: kJoint's channels L Tfl Ls Lb Tbl, then the right
+    // side's.
+    std::array<std::array<std::array<ModuleSums, kMaxParamBands>, 2>, 2> front_split{};
+    std::array<std::array<std::array<ColumnSums, kMaxParamBands>, 2>, 2> back_split{};
+    for (int sb = 0; sb < kSubbands; ++sb) {
+        const std::size_t pb = band_of(sb);
+        const auto s = at(sb);
+        for (int bin = 0; bin < kWindowSlots; ++bin) {
+            const auto k = at(bin);
+            for (std::size_t side = 0; side < 2; ++side) {
+                const std::size_t c = 5 * side;
+                ModuleSums front;
+                front.add(x[c][s][k], kHalfRoot2 * x[c + 1][s][k]);
+                ColumnSums back;
+                back.add(kHalfRoot2 * x[c + 2][s][k], kHalfRoot2 * x[c + 3][s][k],
+                         kHalfRoot2 * x[c + 4][s][k]);
+                front_split[side][1][pb] += front;
+                back_split[side][1][pb] += back;
+                if (own_bin(sb, bin)) {
+                    front_split[side][0][pb] += front;
+                    back_split[side][0][pb] += back;
+                }
+            }
+        }
+    }
+    std::array<Values, 14> q = joint_history_;
+    const std::array<std::array<std::size_t, 7>, 2> params = {
+        {{kAlpha1, kBeta1, kDry1, kDry2, kWet1, kWet2, kWet3},
+         {kAlpha2, kBeta2, kDry3, kDry4, kWet4, kWet5, kWet6}}};
+    for (std::size_t side = 0; side < 2; ++side) {
+        const auto& [alpha_p, beta_p, dry_a, dry_b, wet_1, wet_2, wet_3] = params[side];
+        for (int band = 0; band < num_bands_; ++band) {
+            const std::size_t b = at(band);
+            // The front module: A-CPL's on the pair, its decorrelator taking
+            // the sum, x0in.
+            const ModuleSums& own_front = front_split[side][0][b];
+            const ModuleSums& front = own_bins_carry(own_front.gg, front_split[side][1][b].gg)
+                                          ? own_front
+                                          : front_split[side][1][b];
+            std::tie(q[alpha_p][b], q[beta_p][b]) =
+                estimate(front, front.gg, quant, {q[alpha_p][b], q[beta_p][b]});
+            // The back module: the dry shares, then the wet values for what
+            // the quantised shares leave, both decorrelators taking the sum,
+            // x3in.
+            const ColumnSums& own_back = back_split[side][0][b];
+            const ColumnSums& back = own_bins_carry(own_back.xx, back_split[side][1][b].xx)
+                                         ? own_back
+                                         : back_split[side][1][b];
+            if (back.xx <= kSilence) {
+                continue;
+            }
+            q[dry_a][b] = quantise_step(ajcc::Kind::kDry, back.ax / back.xx, quant);
+            q[dry_b][b] = quantise_step(ajcc::Kind::kDry, back.bx / back.xx, quant);
+            const double da = ajcc::dequantise(ajcc::Kind::kDry, q[dry_a][b], quant);
+            const double db = ajcc::dequantise(ajcc::Kind::kDry, q[dry_b][b], quant);
+            const double dc = 1.0 - da - db;
+            const double cx = back.xx - back.ax - back.bx;
+            const double rbb = back.bb - 2.0 * db * back.bx + db * db * back.xx;
+            const double rcc = back.cc - 2.0 * dc * cx + dc * dc * back.xx;
+            const double rbc = back.bc - dc * back.bx - db * cx + db * dc * back.xx;
+            const std::array<double, 3> wet =
+                column_wets(2.0 * rbb / back.xx, 2.0 * rcc / back.xx, 2.0 * rbc / back.xx);
+            q[wet_1][b] = quantise_step(ajcc::Kind::kWet, wet[0], quant);
+            q[wet_2][b] = quantise_step(ajcc::Kind::kWet, wet[1], quant);
+            q[wet_3][b] = quantise_step(ajcc::Kind::kWet, wet[2], quant);
+        }
+    }
+    AcplFrameFields out;
+    out.joint = joint_sent_as(q, iframe);
+    return out;
+}
+
+AjccDataFields AcplEncoder::joint_sent_as(const std::array<Values, 14>& values, bool iframe) const {
+    AjccDataFields data;
+    data.no_dt = iframe;
+    data.num_param_bands_id = num_param_bands_id_;
+    data.core_mode = 0;
+    data.qm_ab = quant_mode_;
+    data.qm_dw = quant_mode_;
+    for (std::size_t p = 0; p < values.size(); ++p) {
+        AjccSetFields along_frequency;
+        AjccSetFields along_time;
+        along_time.diff_type = 1;
+        for (int band = 0; band < num_bands_; ++band) {
+            const std::size_t b = at(band);
+            along_frequency.values.push_back(band == 0 ? values[p][b]
+                                                       : values[p][b] - values[p][b - 1]);
+            along_time.values.push_back(values[p][b] - joint_history_[p][b]);
+        }
+        // Along time where the codebook holds every step and that costs less.
+        const bool codable = std::ranges::all_of(along_time.values, [&](int value) {
+            return ajcc_codable(p, quant_mode_, 1, false, value);
+        });
+        const bool by_time = !iframe && codable &&
+                             ajcc_set_bits(p, quant_mode_, false, along_time) <
+                                 ajcc_set_bits(p, quant_mode_, false, along_frequency);
+        data.params[p] = {by_time ? along_time : along_frequency};
+    }
+    return data;
+}
+
 AcplFrameFields AcplEncoder::held(bool iframe) const {
+    if (layout_ == AcplLayout::kJoint) {
+        AcplFrameFields out;
+        out.joint = joint_sent_as(joint_history_, iframe);
+        return out;
+    }
     return sent_as(module_history_, coupling_history_, iframe);
 }
 
 AcplFrameFields AcplEncoder::least(bool iframe) const {
+    if (layout_ == AcplLayout::kJoint && iframe) {
+        // Each side's front all in L and its back all in Ls, with nothing
+        // decorrelated: alpha 1, beta 0, dry1 1, dry2 0 and every wet 0.
+        const acpl::Quant quant = quant_of(quant_mode_);
+        const int alpha = quantise_alpha(1.0, quant);
+        const int beta = quantise_beta(0.0, acpl::dequantise_alpha(alpha, quant).ibeta, quant);
+        std::array<Values, 14> values{};
+        for (int band = 0; band < num_bands_; ++band) {
+            const std::size_t b = at(band);
+            values[kAlpha1][b] = values[kAlpha2][b] = alpha;
+            values[kBeta1][b] = values[kBeta2][b] = beta;
+            values[kDry1][b] = values[kDry3][b] = quantise_step(ajcc::Kind::kDry, 1.0, quant);
+            values[kDry2][b] = values[kDry4][b] = quantise_step(ajcc::Kind::kDry, 0.0, quant);
+            for (const std::size_t wet : {kWet1, kWet2, kWet3, kWet4, kWet5, kWet6}) {
+                values[wet][b] = quantise_step(ajcc::Kind::kWet, 0.0, quant);
+            }
+        }
+        AcplFrameFields out;
+        out.joint = joint_sent_as(values, true);
+        return out;
+    }
     return iframe ? sent_as({}, {}, true) : held(false);
 }
 
@@ -533,6 +781,16 @@ AcplFrameFields AcplEncoder::sent_as(const std::array<std::array<Values, 2>, 4>&
 }
 
 void AcplEncoder::commit(const AcplFrameFields& sent) {
+    if (layout_ == AcplLayout::kJoint) {
+        for (std::size_t p = 0; p < joint_history_.size(); ++p) {
+            const AjccSetFields& set = sent.joint.params[p].front();
+            AcplSetFields as_acpl;
+            as_acpl.diff_type = set.diff_type;
+            as_acpl.values = set.values;
+            joint_history_[p] = decode_set(as_acpl, 0, joint_history_[p]);
+        }
+        return;
+    }
     if (layout_ != AcplLayout::kCoupling) {
         const std::size_t count = acpl_modules(layout_);
         for (std::size_t m = 0; m < count; ++m) {
@@ -577,6 +835,16 @@ std::vector<double> acpl_downmix(AcplLayout layout, std::span<const double> inpu
     const double centre = kHalfRoot2 * input[2];
     const double norm = 1.0 / (1.0 + kRoot2);
     return {norm * (input[0] + centre + kHalfRoot2 * input[3]), norm * (input[1] + centre + kHalfRoot2 * input[4])};
+}
+
+std::array<double, 5> ajcc_core(std::span<const double> input) {
+    // Pseudocode 8's input gain, which the upmix applies to the core.
+    constexpr double kInputGain = 2.0 + kHalfRoot2;
+    constexpr double kFront = 1.0 / kInputGain;
+    constexpr double kBack = kHalfRoot2 / kInputGain;
+    return {kFront * (input[0] + kHalfRoot2 * input[1]),
+            kFront * (input[5] + kHalfRoot2 * input[6]), kFront * input[10],
+            kBack * (input[2] + input[3] + input[4]), kBack * (input[7] + input[8] + input[9])};
 }
 
 std::vector<double> acpl_residuals(AcplLayout layout, std::span<const double> input) {

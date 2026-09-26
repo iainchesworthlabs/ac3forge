@@ -357,6 +357,104 @@ TEST_CASE("5.0.4, and 7.1.4 with the back pair, put each channel's tone on its o
     }
 }
 
+TEST_CASE("A-JCC puts each channel's tone on its own channel, in full and core decoding",
+          "[ac4enc][encoder][immersive]") {
+    // ASPX_AJCC (experimental, Part 2 clause 5.6): the core carries each
+    // side's front (L with Tfl) and back (Ls with Lb and Tbl) as one channel,
+    // and A-JCC's modules part them band by band, so each tone sits
+    // mid-subband in an A-CPL parameter band of its own (Part 1 Table 197,
+    // subbands 0 to 8 a band each), apart from the others its module takes.
+    // Full decoding gives each tone on its own channel at unity, the
+    // decorrelated parts adding nothing there. Core decoding gives the 5.X.2
+    // core, the tops 3 dB down in their side's top channel, as S-CPL's does,
+    // and the back pair 3 dB down in its surround (Pseudocode 14).
+    const auto set_tones = [](std::vector<Channel>& channels) {
+        for (Channel& c : channels) {
+            // clang-format off
+            switch (c.speaker) {
+                case Speaker::kLeft: c.hz = 560.0; break;             // subband 1
+                case Speaker::kRight: c.hz = 190.0; break;            // subband 0
+                case Speaker::kCentre: c.hz = 4500.0; break;          // coded as it is
+                case Speaker::kLeftSurround: c.hz = 940.0; break;     // subband 2
+                case Speaker::kRightSurround: c.hz = 2440.0; break;   // subband 6
+                case Speaker::kLeftBack: c.hz = 2810.0; break;        // subband 7
+                case Speaker::kRightBack: c.hz = 3750.0; break;       // subbands 9 and 10
+                case Speaker::kTopFrontLeft: c.hz = 1310.0; break;    // subband 3
+                case Speaker::kTopFrontRight: c.hz = 1690.0; break;   // subband 4
+                case Speaker::kTopBackLeft: c.hz = 2060.0; break;     // subband 5
+                case Speaker::kTopBackRight: c.hz = 3190.0; break;    // subband 8
+                default: break;
+            }
+            // clang-format on
+        }
+    };
+    for (const bool backs : {false, true}) {
+        CAPTURE(backs);
+        std::vector<Channel> channels = layout(true, backs);
+        set_tones(channels);
+        const Encoded encoded = encode({.channels = backs ? 12 : 10,
+                                        .bitrate_kbps = 256,
+                                        .codec_mode = ac4::CodecMode::kAspxAjcc,
+                                        .experimental = {.back_pair = backs, .ajcc = true}},
+                                       tones(channels));
+        CHECK(encoded.mode == ac4::CodecMode::kAspxAjcc);
+        // Table 73's one-bit code, 5CH_DYNAMIC's core and ajcc_data() with
+        // ajcc_core_mode 0 in every frame.
+        const std::size_t frames = encoded.frames.size();
+        CHECK(std::ranges::count_if(encoded.trace, [](const ac4::SyntaxRecord& r) {
+                  return r.name == "immersive_codec_mode_code" && r.bits == 1 && r.value == 1;
+              }) == static_cast<std::ptrdiff_t>(frames));
+        CHECK(count_records(encoded, "ajcc_core_mode", 0) == frames);
+        CHECK(count_records(encoded, "b_use_sap_add_ch", 0) == 0);
+        check_frames_read_back(encoded);
+        const Decoded full = decode(encoded.frames, ac4::DecodingMode::kFull);
+        REQUIRE(full.speakers.size() == channels.size());
+        for (const Channel& own : channels) {
+            CAPTURE(own.hz);
+            const std::size_t c = index_of(full, own.speaker);
+            const double gain = level(full.channels[c], own.hz);
+            CHECK(std::abs(db(gain)) < 0.2);
+            for (const Channel& other : channels) {
+                if (other.speaker != own.speaker) {
+                    CAPTURE(other.hz);
+                    CHECK(db(gain / level(full.channels[c], other.hz)) > 40.0);
+                }
+            }
+        }
+        const Decoded core = decode(encoded.frames, ac4::DecodingMode::kCore);
+        for (const Channel& c : channels) {
+            CAPTURE(c.hz);
+            Speaker where = c.speaker;
+            double gain_db = 0.0;
+            switch (c.speaker) {
+                case Speaker::kTopFrontLeft:
+                case Speaker::kTopBackLeft:
+                    where = Speaker::kTopSideLeft;
+                    gain_db = -3.01;
+                    break;
+                case Speaker::kTopFrontRight:
+                case Speaker::kTopBackRight:
+                    where = Speaker::kTopSideRight;
+                    gain_db = -3.01;
+                    break;
+                case Speaker::kLeftBack:
+                case Speaker::kLeftSurround:
+                    where = Speaker::kLeftSurround;
+                    gain_db = backs ? -3.01 : 0.0;
+                    break;
+                case Speaker::kRightBack:
+                case Speaker::kRightSurround:
+                    where = Speaker::kRightSurround;
+                    gain_db = backs ? -3.01 : 0.0;
+                    break;
+                default:
+                    break;
+            }
+            CHECK(std::abs(db(level(core.channels[index_of(core, where)], c.hz)) - gain_db) < 0.2);
+        }
+    }
+}
+
 TEST_CASE("the immersive layouts' table of contents, levels and MP4 description",
           "[ac4enc][encoder][immersive]") {
     struct Case {
@@ -464,7 +562,16 @@ TEST_CASE("the encoder refuses the immersive configurations it does not write",
          "immersive layouts do not take"},
         {"ASPX_ACPL_1 without experimental.acpl",
          {.channels = 10, .bitrate_kbps = 256, .codec_mode = ac4::CodecMode::kAspxAcpl1},
-         "immersive layouts do not take"},
+         "experimental.acpl"},
+        {"ASPX_AJCC without experimental.ajcc",
+         {.channels = 10, .bitrate_kbps = 256, .codec_mode = ac4::CodecMode::kAspxAjcc},
+         "experimental.ajcc"},
+        {"ASPX_AJCC for 5.1",
+         {.channels = 6,
+          .bitrate_kbps = 256,
+          .codec_mode = ac4::CodecMode::kAspxAjcc,
+          .experimental = {.ajcc = true}},
+         "immersive element alone"},
         {"a height downmix for 5.1",
          {.channels = 6,
           .bitrate_kbps = 384,
