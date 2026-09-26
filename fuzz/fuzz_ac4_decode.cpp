@@ -1,3 +1,4 @@
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -30,7 +31,11 @@
 // from frame to frame. The second framed decoder's output processing and
 // concealment policy come from the input's last byte, so the DRC, dialogue
 // enhancement and downmix values the stream sends, and the concealment of the
-// frames that fail, are pressed too.
+// frames that fail, are pressed too; and its choice of presentation, level and
+// mixing gains from the byte before it, so that the selection among the
+// presentations a table of contents offers and the mixing of the substreams
+// they name are pressed as well (the seeds include the multiplexed streams
+// of tests/golden/ac4dec/presentations/).
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size) {
     const std::span<const std::byte> bytes(reinterpret_cast<const std::byte*>(data), size);
 
@@ -51,6 +56,46 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         processing.output.downmix = static_cast<ac4::DownmixTarget>((pick >> 4U) % 6U);
         processing.output.mix_lfe = (pick & 16U) == 0;
         processing.concealment = static_cast<ac4::ConcealmentPolicy>((pick >> 6U) % 3U);
+    }
+    if (size > 1) {
+        // Bits 0 and 1: no preference, a position, a presentation_id, or the
+        // preferences; bits 2 to 5 their values; bits 6 and 7 the gains, or
+        // a level other than the default.
+        const auto choose = static_cast<unsigned>(data[size - 2]);
+        constexpr std::array<const char*, 4> kLanguages = {"", "en", "de-AT", "fr"};
+        switch (choose & 3U) {
+            case 1:
+                processing.presentation.index = (choose >> 2U) % 16U;
+                break;
+            case 2:
+                processing.presentation.presentation_id = static_cast<int>((choose >> 2U) % 16U);
+                break;
+            case 3:
+                processing.presentation.language = kLanguages[(choose >> 2U) % 4U];
+                if ((choose & 16U) != 0) {
+                    processing.presentation.associated = 0b010;
+                    processing.presentation.associated_type = static_cast<ac4::AssociatedType>((choose >> 2U) % 5U);
+                }
+                processing.presentation.headphones = (choose & 32U) != 0;
+                break;
+            default:
+                break;
+        }
+        switch (choose >> 6U) {
+            case 1:
+                processing.output.dialogue_gain_db = 12.0;
+                processing.output.associated_gain_db = -10.0;
+                break;
+            case 2:
+                processing.output.dialogue_gain_db = -150.0;
+                processing.output.associated_gain_db = -150.0;
+                break;
+            case 3:
+                processing.level = static_cast<int>((choose >> 2U) % 8U);
+                break;
+            default:
+                break;
+        }
     }
     ac4::Decoder decoding(processing);
     const ac4::ScanResult scan = ac4::scan(bytes);

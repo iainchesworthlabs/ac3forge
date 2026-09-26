@@ -16,6 +16,7 @@
 #include "pcm/de.hpp"
 #include "pcm/downmix.hpp"
 #include "pcm/drc.hpp"
+#include "pcm/mixer.hpp"
 #include "pcm/routing.hpp"
 #include "pcm/stereo.hpp"
 #include "syntax/channel_elements.hpp"
@@ -51,6 +52,14 @@
 // pcm/downmix.hpp), after which only the channels that come out are
 // synthesised. Their values are held with the rest of the frame's control data
 // until its signal reaches the QMF domain (5.7.2).
+//
+// A presentation of several substreams (Part 1 clause 6.2.16, Part 2 clause
+// 4.8.4) decodes each of the others only as far as the QMF domain, after its
+// dialogue enhancement (FrameInputs::qmf_only, then qmf_output()), and mixes
+// them into the main or music and effects substream's channels ahead of its
+// DRC (pcm/mixer.hpp); a hybrid dialogue enhancement method takes the
+// dialogue enhancement substream's channels as its waveform. The output stages
+// then run once, on the mix.
 
 namespace ac4::detail {
 
@@ -67,6 +76,18 @@ struct FrameInputs {
     DrcFrameValues drc{};
     DeFrameValues de{};
     DownmixValues downmix{};
+    // A substream another's decode() mixes in: decode() stops in the QMF
+    // domain after dialogue enhancement and puts out nothing; qmf_output()
+    // then gives the frame's matrices.
+    bool qmf_only = false;
+    // For the substream the others are mixed into: this frame's mixing, held
+    // with its control data, and each other substream's qmf_output() of this
+    // frame, whose signal is of the same frame as this one's.
+    MixValues mix{};
+    std::span<const MixSource> sources{};
+    // The dialogue enhancement substream's qmf_output() of this frame, the
+    // waveform of a hybrid dialogue enhancement method (clause 5.7.8.9).
+    std::optional<MixSource> dialogue{};
 };
 
 class SubstreamPcm {
@@ -109,6 +130,11 @@ class SubstreamPcm {
     // samples and ts_offset_hfgen QMF slots.
     [[nodiscard]] int delay_samples() const noexcept;
 
+    // After a decode() or conceal() with FrameInputs::qmf_only: the frame's
+    // QMF-domain matrices, one per channel of the channel mode, and the same
+    // before its dialogue enhancement. Valid until the next call.
+    [[nodiscard]] MixSource qmf_output(int key) const noexcept;
+
    private:
     struct Channel {
         dsp::ChannelSynthesis<double> synthesis;
@@ -143,6 +169,7 @@ class SubstreamPcm {
         DrcFrameValues drc;                   // the frame's DRC and dialnorm
         DeFrameValues de;                     // its dialogue enhancement
         DownmixValues downmix;                // its downmix gains
+        MixValues mix;                        // its presentation's mixing
     };
 
     // One aspx_data element's frame parameters and its channels' data and
@@ -207,6 +234,7 @@ class SubstreamPcm {
     DeStage de_;
     DrcStage drc_;
     DownmixStage downmix_;
+    MixStage mix_;
     double internal_rate_ = 48000.0;  // the rate the QMF banks run at
     bool outputs_valid_ = false;
     bool add_ch_base_ = false;
@@ -221,12 +249,14 @@ class SubstreamPcm {
     DrcFrameValues last_drc_;
     DeFrameValues last_de_;
     DownmixValues last_downmix_;
+    MixValues last_mix_;
     int losses_ = 0;
     std::vector<std::vector<QmfValue>> mixed_;  // the downmix's matrices
     std::vector<std::vector<QmfValue>*> mixed_matrices_;
     // The matrices before dialogue enhancement, DRC's side chain, where both act.
     std::vector<std::vector<QmfValue>> side_;
     std::vector<std::vector<QmfValue>*> side_matrices_;
+    bool side_kept_ = false;  // whether the last frame's side chain is side_ rather than the matrices
 
     // Scratch, kept to save an allocation per frame.
     ElementRoute route_;

@@ -16,11 +16,15 @@
 //
 // The four methods (Table 170): channel independent, each processed channel
 // scaled by 1 + g p_i, or its Mid alone where de_ms_proc_flag is set;
-// cross-channel, I + g r p^T over the processed channels; and the two hybrids,
-// whose dialogue waveform comes in a substream of its own (phase D7 of
-// planning/ac4.md). Without it they enhance by their parametric data alone, as
-// the clause allows a low-complexity decoder to, at the whole gain
-// (src/ac4dec/ERRATA.md, "Dialogue enhancement without its waveform").
+// cross-channel, I + g r p^T over the processed channels; and the two hybrids
+// (5.7.8.9), which split g between their parameters, (1 - alpha_c) g, and a
+// dialogue waveform, alpha_c g, which the presentation's dialogue enhancement
+// substream carries: one channel per processed channel with the channel
+// independent method (one for the Mid with de_ms_proc_flag), one channel
+// rendered by r with the cross-channel method. Without that substream they
+// enhance by their parametric data alone, as the clause allows a
+// low-complexity decoder to, at the whole gain (src/ac4dec/ERRATA.md,
+// "Dialogue enhancement without its waveform").
 //
 // Subbands above Table 173's last band, 40, have no parameters and pass
 // unchanged (ERRATA, "The subbands above dialogue enhancement's bands").
@@ -70,20 +74,30 @@ class DeStage {
     // a matrix left from the last frame to interpolate from.
     [[nodiscard]] bool active(double gain_db, const DeFrameValues& values) const noexcept;
 
-    // Enhances `matrices` in place, `gain_db` being G_DE.
+    // Enhances `matrices` in place, `gain_db` being G_DE. `waveform` is the
+    // dialogue enhancement substream's matrices, in its channels' order, for
+    // the hybrid methods; empty where there is none.
     void process(double gain_db, const DeFrameValues& values,
-                 std::span<std::vector<QmfValue>* const> matrices);
+                 std::span<std::vector<QmfValue>* const> matrices,
+                 std::span<std::vector<QmfValue>* const> waveform = {});
 
    private:
     using Matrix = std::array<std::array<double, kDeFront>, kDeFront>;
 
+    // Clause 5.7.8.6's 3x6 matrix per band: the parametric part, over L, R and
+    // C, and the waveform part, over the waveform's channels.
+    struct Frame {
+        std::array<Matrix, kDeNrBands> h{};
+        std::array<Matrix, kDeNrBands> w{};
+    };
+
     [[nodiscard]] static Matrix identity() noexcept;
-    [[nodiscard]] std::array<Matrix, kDeNrBands> frame_matrices(double gain_db,
-                                                                const DeFrameValues& values) const;
+    [[nodiscard]] Frame frame_matrices(double gain_db, const DeFrameValues& values,
+                                       std::size_t waveform_channels) const;
 
     int slots_ = 32;
     std::array<int, kDeFront> channel_{-1, -1, -1};  // each of L, R and C's matrix, -1 where absent
-    std::array<Matrix, kDeNrBands> previous_{};
+    Frame previous_{};
     bool previous_identity_ = true;
 };
 

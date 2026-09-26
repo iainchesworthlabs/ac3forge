@@ -1096,6 +1096,48 @@ processing" and in "A change of source" and "What an I-frame does not restore".
   are silent, repeated ones fade by more than 20 dB a frame, and a frame whose table of contents does
   not read keeps the stream's counter and the converter's counts.
 
+### The decoder's presentations
+
+Phase D7 adds the choice among a stream's presentations (Part 2 4.8.2) and the mixing of a
+presentation's substreams (Part 1 6.2.16, Part 2 4.8.3.15 to 4.8.5). DEE writes no stream of several
+presentations or substreams, so a test multiplexer (`tests/ac4dec/ac4dec_mux.hpp`) builds them from
+DEE's 5.1 and 2.0 tone legs and the encoder's mono and stereo tone streams
+(`tools/generators/gen_ac4_presentation_sources.py`), each substream carrying tones of its own, and
+writes their tables of contents with the encoder's writer. Where the text leaves a choice open, the
+reading is in `src/ac4dec/ERRATA.md`, under "Presentations".
+
+- **The selection** (`tests/ac4dec/test_ac4dec_presentations.cpp`,
+  `tools/checks/test_ac4_presentation_selection.py`): a table of 30 cases, each a constructed table of
+  contents of version 0 or version 1 presentations, a system's choice and a level, committed as
+  `tests/golden/ac4dec/presentations/presentation-selection.tsv`; the decoder and the Python reference
+  (`tools/references/ac4_presentations.py`, written from the text separately) select as the table says.
+- **The multiplexed streams** (`tests/golden/ac4dec/presentations/`): music and effects with dialogue,
+  main with associated audio, both, by content classifier and at every pan; main substreams whose
+  dialogue enhancement is a hybrid method, with their dialogue enhancement substream; and version 0
+  presentations, whose substreams carry their own dialnorms. The committed bytes are the builder's,
+  both transcriptions read every frame to its end, and the Python parser's digests are beside the
+  others in `tests/golden/ac4dec/`. MediaInfo reads their tables of contents, 17, 9 and 10
+  presentations, and flags `tools_metadata` where a substream sends the Mid's one parameter set (the
+  errata register, "de_ms_proc_flag leaves one parameter set").
+- **The mixes**: in the decoder's tests each substream's tones come out of each mix at their formula's
+  gain to 0.01 dB and 60 dB under that everywhere else, and the formula applied to the substreams
+  decoded alone leaves the whole output 100 dB under it or more. `tools/checks/mix_ac4_decode.py`, in
+  CI, reads each stream's gains, pans and dialogue enhancement from `ac3cli`'s syntax trace and fits
+  each output channel on the substreams decoded alone: over 68 mixes (the three streams, g_dialog and
+  g_assoc at 0, -6 and -10 dB and +9 dB, and at an output level of -31 dBFS) every coefficient equals
+  its formula to 0.01 dB, and the formula leaves the output 110 dB under it or more. Mono associated
+  audio pans to 330, 0 and 30 degrees as Table 216 has it, and at 0 degrees into 2.0, 0.5 to each side.
+  A decoder that divides by the number of substreams, or pans at constant power, fails these checks.
+- **A lost frame**: a mixed presentation conceals a frame whose table of contents does not read, with
+  all of its substreams, and goes on.
+- **librempeg** (git 2026-09-24): of a presentation it decodes the first group's substream alone,
+  whichever presentation `-presentation` names, so its output has no dialogue, associated audio or
+  dialogue enhancement waveform in it; that substream agrees with this decoder's to 85 dB. It refuses
+  every frame of a table of contents of more than 16 presentations, which the 5.1 stream's 17 are,
+  puts out silence for 15 and 16 presentations over 22 and 23 substreams, and refuses
+  `bitstream_version` 1 ("not yet implemented"), which the version 0 stream is. Part 2 bounds none of
+  these counts.
+
 ### The encoder
 
 `src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 kHz at every

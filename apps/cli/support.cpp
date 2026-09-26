@@ -1571,6 +1571,77 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             out.ac4_dialogue_enhancement = gain;
             continue;
         }
+        if (key == "presentation" || key == "presentation-id") {
+            // AC-4's presentation (ETSI TS 103 190-2 clause 4.8.2), by its
+            // position in the table of contents or by its presentation_id.
+            const std::uint32_t n = parse_u32_or(value, 0xFFFFFFFFU);
+            if (n > 1023U) {
+                fmt::println(stderr, "error: {} is a number from 0 to 1023 (got '{}')", key, token);
+                return false;
+            }
+            if (key == "presentation") {
+                out.ac4_presentation = static_cast<std::size_t>(n);
+            } else {
+                out.ac4_presentation_id = static_cast<int>(n);
+            }
+            continue;
+        }
+        if (key == "language") {
+            // An IETF BCP 47 tag: letters, digits and hyphens.
+            const bool tag = !value.empty() && value.size() <= 42 &&
+                             std::ranges::all_of(value, [](char c) {
+                                 return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '-';
+                             });
+            if (!tag) {
+                fmt::println(stderr, "error: language is a BCP 47 tag such as en or pt-BR (got '{}')", token);
+                return false;
+            }
+            out.ac4_language = std::string{value};
+            continue;
+        }
+        if (key == "associated") {
+            // The associated audio service AC-4 presentation selection
+            // prefers: a content_classifier of ETSI TS 103 190-1 Table 91 and
+            // its Table 92 refinement.
+            struct Service {
+                std::string_view name;
+                int classifier;
+                ac4::AssociatedType type;
+            };
+            constexpr std::array<Service, 7> kServices = {{
+                {"visually-impaired", 0b010, ac4::AssociatedType::kAny},
+                {"audio-description", 0b010, ac4::AssociatedType::kAudioDescription},
+                {"audio-description-subtitles", 0b010, ac4::AssociatedType::kAudioDescriptionSubtitles},
+                {"spoken-subtitles", 0b111, ac4::AssociatedType::kSpokenSubtitles},
+                {"emergency-information", 0b010, ac4::AssociatedType::kEmergencyInformation},
+                {"hearing-impaired", 0b011, ac4::AssociatedType::kAny},
+                {"commentary", 0b101, ac4::AssociatedType::kAny},
+            }};
+            const auto service = std::ranges::find(kServices, value, &Service::name);
+            if (service == kServices.end()) {
+                fmt::println(stderr,
+                             "error: associated is visually-impaired, audio-description, "
+                             "audio-description-subtitles, spoken-subtitles, emergency-information, "
+                             "hearing-impaired or commentary (got '{}')",
+                             token);
+                return false;
+            }
+            out.ac4_associated = service->classifier;
+            out.ac4_associated_type = service->type;
+            continue;
+        }
+        if (key == "dialogue-gain" || key == "associated-gain") {
+            // g_dialog (up to the stream's g_dialog_max, 12 dB at most) and
+            // g_assoc (0 dB at most) of ETSI TS 103 190-1 clause 6.2.16.
+            double gain = 0.0;
+            const double most = key == "dialogue-gain" ? 12.0 : 0.0;
+            if (!parse_double(value, gain) || !std::isfinite(gain) || gain > most || gain < -130.0) {
+                fmt::println(stderr, "error: {} is a gain in dB from -130 to {:g} (got '{}')", key, most, token);
+                return false;
+            }
+            (key == "dialogue-gain" ? out.ac4_dialogue_gain : out.ac4_associated_gain) = gain;
+            continue;
+        }
         // Scoped to `decode`, which is the only command that builds a census -
         // run_decode is reached from nowhere else, and the loudness commands
         // run their own decode loop that never accumulates one. Unscoped, this

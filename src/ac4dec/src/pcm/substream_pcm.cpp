@@ -78,6 +78,14 @@ int SubstreamPcm::delay_samples() const noexcept {
     return delay_ + kQmfPairDelay + hfgen_ * dsp::kQmfSubbands;
 }
 
+MixSource SubstreamPcm::qmf_output(int key) const noexcept {
+    const std::span<std::vector<QmfValue>* const> matrices = matrices_;
+    return MixSource{.key = key,
+                     .speakers = speakers_,
+                     .matrices = matrices,
+                     .side = side_kept_ ? std::span<std::vector<QmfValue>* const>(side_matrices_) : matrices};
+}
+
 void SubstreamPcm::reset() {
     for (Channel& channel : channels_) {
         channel.synthesis.reset();
@@ -480,7 +488,9 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     if (auto ok = configure(ctx); !ok) {
         return ok;
     }
-    configure_outputs(ctx, frame_inputs.output);
+    if (!frame_inputs.qmf_only) {
+        configure_outputs(ctx, frame_inputs.output);
+    }
     const std::size_t channel_count = channels_.size();
 
     // Everything that can fail is checked before any channel's overlap buffer
@@ -551,6 +561,7 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     last_drc_.reset = false;
     last_de_ = frame_inputs.de;
     last_downmix_ = frame_inputs.downmix;
+    last_mix_ = frame_inputs.mix;
     losses_ = 0;
 
     return render(Control{.codec_mode = element.codec_mode,
@@ -564,7 +575,8 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
                           .acpl = acpl,
                           .drc = frame_inputs.drc,
                           .de = frame_inputs.de,
-                          .downmix = frame_inputs.downmix},
+                          .downmix = frame_inputs.downmix,
+                          .mix = frame_inputs.mix},
                   frame_inputs, channels, speakers);
 }
 
@@ -606,7 +618,8 @@ ParseResult SubstreamPcm::conceal(ConcealmentPolicy policy, const FrameInputs& f
                           .acpl = std::nullopt,
                           .drc = last_drc_,
                           .de = last_de_,
-                          .downmix = last_downmix_},
+                          .downmix = last_downmix_,
+                          .mix = last_mix_},
                   frame_inputs, channels, speakers);
 }
 
@@ -647,14 +660,21 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
     DrcFrameValues drc;
     DeFrameValues de;
     DownmixValues downmix;
+    MixValues mix;
     if (held_.size() > static_cast<std::size_t>(control_delay_)) {
         apply(held_.front());
         drc = held_.front().drc;
         de = held_.front().de;
         downmix = held_.front().downmix;
+        mix = held_.front().mix;
         held_.pop_front();
     } else {
         pass_through();
+    }
+    for (Channel& channel : channels_) {
+        // The last slots become the next frame's history.
+        std::copy(channel.ext.end() - static_cast<std::ptrdiff_t>(history), channel.ext.end(),
+                  channel.ext.begin());
     }
 
     // Clause 5.7.8, dialogue enhancement, then 5.7.9, the output level and
@@ -665,18 +685,37 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
         matrices_.push_back(&channel.out);
     }
     const double de_gain = frame_inputs.output.dialogue_enhancement_db;
+    const bool enhance = de_.active(de_gain, de);
+    // In a presentation of several substreams the others are mixed in ahead
+    // of DRC (clause 6.2.16; ERRATA, "Where the substreams are mixed").
+    const bool mixing = !frame_inputs.qmf_only && mix.active;
+    // DRC's side chain is the signal before dialogue enhancement: a copy of
+    // it where the tool changes the signal and a curve measures it, where
+    // another substream's decode mixes this one in and may measure it, and
+    // where others are mixed into this one and a curve measures the mix.
+    side_kept_ = (enhance && (drc.curve.has_value() || frame_inputs.qmf_only)) || (mixing && drc.curve.has_value());
     std::span<std::vector<QmfValue>* const> side = matrices_;
-    if (de_.active(de_gain, de)) {
-        if (drc.curve) {
-            side_.resize(channels_.size());
-            side_matrices_.clear();
-            for (std::size_t c = 0; c < channels_.size(); ++c) {
-                side_[c] = channels_[c].out;
-                side_matrices_.push_back(&side_[c]);
-            }
-            side = side_matrices_;
+    if (side_kept_) {
+        side_.resize(channels_.size());
+        side_matrices_.clear();
+        for (std::size_t c = 0; c < channels_.size(); ++c) {
+            side_[c] = channels_[c].out;
+            side_matrices_.push_back(&side_[c]);
         }
-        de_.process(de_gain, de, matrices_);
+        side = side_matrices_;
+    }
+    if (enhance) {
+        de_.process(de_gain, de, matrices_,
+                    frame_inputs.dialogue ? frame_inputs.dialogue->matrices
+                                          : std::span<std::vector<QmfValue>* const>{});
+    }
+    if (frame_inputs.qmf_only) {
+        channels.clear();
+        speakers.clear();
+        return {};
+    }
+    if (mixing) {
+        mix_.mix(mix, speakers_, matrices_, side, side_kept_, frame_inputs.sources);
     }
     drc_.process(frame_inputs.output, drc, matrices_, side);
 
@@ -689,11 +728,6 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
             mixed_matrices_.push_back(&mixed);
         }
         rendered = mixed_matrices_;
-    }
-    for (Channel& channel : channels_) {
-        // The last slots become the next frame's history.
-        std::copy(channel.ext.end() - static_cast<std::ptrdiff_t>(history), channel.ext.end(),
-                  channel.ext.begin());
     }
 
     channels.resize(outputs_.size());

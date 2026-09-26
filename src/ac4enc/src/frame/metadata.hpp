@@ -124,10 +124,44 @@ struct DeConfigCodes {
 // 210's in the cross-channel method), per processed channel in
 // de_channel_config's order, the Mid's alone with de_ms_proc_flag, and per
 // band; and in the cross-channel method de_mix_coef1_idx and
-// de_mix_coef2_idx (Table 172).
+// de_mix_coef2_idx (Table 172). The hybrid methods (Table 170's 2 and 3) add
+// de_signal_contribution, 0 to 31, the waveform's share alpha_c x 31 (Part 1
+// clause 4.3.14.4.6).
 struct DeFrameParameters {
     std::array<std::array<int, kDeBands>, 3> par{};
     std::array<int, 2> mix{};
+    int signal_contribution = 0;
+};
+
+// The presentation substream's mixing values (Part 2 clause 6.2.2.3, from
+// b_substream_group_gains_present to pan_associated): each substream group's
+// gain (Table 70: -0.25 dB a step, 63 silence), and the associated audio's
+// gains on the main audio (Part 1 clauses 4.3.12.4.3 to 4.3.12.4.9: -0.3 dB a
+// step, 255 silence) and its pan (1.5 degrees a step clockwise from the
+// front).
+struct AssociatedMixCodes {
+    std::optional<int> scale_main;
+    std::optional<int> scale_main_centre;
+    std::optional<int> scale_main_front;
+    std::optional<int> pan_associated;  // b_associate_is_mono
+};
+
+struct PresentationMixCodes {
+    // As clause 6.2.1.3 assigns it: the group gains are sent above 1.
+    int n_substream_groups = 1;
+    std::optional<std::vector<int>> sg_gain;       // b_substream_group_gains_present
+    bool keep = false;                             // b_keep: the last frame's gains again
+    std::optional<AssociatedMixCodes> associated;  // b_associated
+};
+
+// extended_metadata()'s dialogue fields at sus_ver 1 (Part 2 clause 6.2.7.4;
+// Part 1 clauses 4.3.12.4.10 to 4.3.12.4.14): g_dialog_max as (1 + x) x 3 dB,
+// and the dialogue's pan, one angle for a mono substream ([0]) and two with
+// pan_signal_selector for the others.
+struct DialogueMixCodes {
+    std::optional<int> dialog_max_gain;
+    std::optional<std::array<int, 2>> pan_dialog;  // b_pan_dialog_present
+    int pan_signal_selector = 0;
 };
 
 // What the stream's frames carry beside dialnorm: each where it is configured.
@@ -173,5 +207,14 @@ void write_downmix(BitWriter& w, int ch_mode, bool has_lfe, const DownmixCodes* 
 void write_dialog_enhancement(BitWriter& w, const DeConfigCodes* config,
                               const DeFrameParameters* parameters,
                               const DeFrameParameters* previous, bool iframe);
+
+// The presentation substream's fields from b_substream_group_gains_present
+// (where n_substream_groups is above 1) to pan_associated; with nothing
+// configured, b_associated 0 alone.
+void write_presentation_mix(BitWriter& w, const PresentationMixCodes& codes);
+
+// extended_metadata(channel_mode, 1): b_dialog, and with `dialogue` the
+// dialogue fields; no channel classification or event probability.
+void write_extended_metadata(BitWriter& w, int ch_mode, const DialogueMixCodes* dialogue);
 
 }  // namespace ac4::detail

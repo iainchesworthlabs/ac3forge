@@ -258,6 +258,7 @@ target_include_directories(ac3tests PRIVATE "${CMAKE_SOURCE_DIR}/src/ac4dec/src"
 if(NOT BUILD_SHARED_LIBS)
     target_sources(ac3tests PRIVATE
         ac4dec/ac4dec_constructed.cpp
+        ac4dec/ac4dec_mux.cpp
         ac4dec/test_ac4dec_acpl.cpp
         ac4dec/test_ac4dec_asf.cpp
         ac4dec/test_ac4dec_aspx.cpp
@@ -270,6 +271,7 @@ if(NOT BUILD_SHARED_LIBS)
         ac4dec/test_ac4dec_multichannel.cpp
         ac4dec/test_ac4dec_pcm.cpp
         ac4dec/test_ac4dec_presentation.cpp
+        ac4dec/test_ac4dec_presentations.cpp
         ac4enc/test_ac4enc_acpl.cpp
         ac4enc/test_ac4enc_aspx.cpp
         ac4enc/test_ac4enc_multichannel.cpp
@@ -382,11 +384,13 @@ endif()
 # core/test_simd_kernels.cpp's own AVX2_REQUIRE knob reads std::getenv too -
 # same C4996 reasoning as cpu_features.cpp above - and so do
 # ac4dec/test_ac4dec_syntax.cpp, for its trace and census directories,
-# ac4dec/test_ac4dec_constructed.cpp, for where to write its streams, and
-# iec61937/test_iec61937_ac4.cpp, for the census directory it packs.
+# ac4dec/test_ac4dec_constructed.cpp and test_ac4dec_presentations.cpp, for
+# where to write their streams, and iec61937/test_iec61937_ac4.cpp, for the
+# census directory it packs.
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
-        ac4dec/test_ac4dec_constructed.cpp iec61937/test_iec61937_ac4.cpp
+        ac4dec/test_ac4dec_constructed.cpp ac4dec/test_ac4dec_presentations.cpp
+        iec61937/test_iec61937_ac4.cpp
         PROPERTIES COMPILE_OPTIONS "/wd4996")
 endif()
 

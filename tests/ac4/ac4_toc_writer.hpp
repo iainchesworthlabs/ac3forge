@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "ac4dec/ac4dec_bits.hpp"
@@ -121,10 +122,10 @@ inline void channel_mode(BitWriter& w, int ch_mode) {
 // ac4_hsf_ext_substream_info() after it.
 struct ChanInfo {
     int ch_mode = 1;
-    std::optional<int> sf_multiplier;
+    std::optional<int> sf_multiplier{};
     std::vector<bool> b_audio_ndot{true};
     int substream_index = 0;
-    std::optional<int> hsf_ext_substream_index;
+    std::optional<int> hsf_ext_substream_index{};
 };
 
 inline void chan_info(BitWriter& w, const ChanInfo& info, int fs_index, bool substreams_present) {
@@ -152,9 +153,24 @@ inline void chan_info(BitWriter& w, const ChanInfo& info, int fs_index, bool sub
     }
 }
 
+// Part 1 Table 10's content_type(), with a language tag sent whole
+// (language_tag_bytes) where there is one.
+inline void content_type(BitWriter& w, int content_classifier, const std::string& language) {
+    w.put(static_cast<std::uint64_t>(content_classifier), 3);
+    w.flag(!language.empty());  // b_language_indicator
+    if (!language.empty()) {
+        w.flag(false);  // b_serialized_language_tag
+        w.put(language.size(), 6);
+        for (const char c : language) {
+            w.put(static_cast<unsigned char>(c), 8);
+        }
+    }
+}
+
 // ac4_substream_group_info() of channel-coded substreams, 1 or 2 to 4.
 inline void chan_group(BitWriter& w, const std::vector<ChanInfo>& infos, int fs_index = 1,
-                       bool substreams_present = true, std::optional<int> content_classifier = std::nullopt) {
+                       bool substreams_present = true, std::optional<int> content_classifier = std::nullopt,
+                       const std::string& language = {}) {
     bool hsf = false;
     for (const ChanInfo& info : infos) {
         hsf = hsf || info.hsf_ext_substream_index.has_value();
@@ -174,8 +190,7 @@ inline void chan_group(BitWriter& w, const std::vector<ChanInfo>& infos, int fs_
     }
     w.flag(content_classifier.has_value());  // b_content_type
     if (content_classifier) {
-        w.put(static_cast<std::uint64_t>(*content_classifier), 3);
-        w.flag(false);  // b_language_indicator
+        content_type(w, *content_classifier, language);
     }
 }
 
@@ -183,14 +198,18 @@ inline void chan_group(BitWriter& w, const std::vector<ChanInfo>& infos, int fs_
 // is given (the frame_rate_multiply_info() and frame_rate_fractions_info()
 // bits the index calls for).
 struct PresV1 {
-    std::optional<int> presentation_config;  // unset: b_single_substream_group
+    std::optional<int> presentation_config{};  // unset: b_single_substream_group
     std::vector<int> groups{0};
     int presentation_version = 1;
     int presentation_substream = 1;
     bool b_alternative = false;
     bool b_pres_ndot = true;
-    std::vector<bool> frame_rate_bits;
-    std::optional<int> emdf_payloads_substream;
+    std::vector<bool> frame_rate_bits{};
+    std::optional<int> emdf_payloads_substream{};
+    int md_compat = 0;
+    std::optional<int> presentation_id{};
+    std::optional<bool> enable{};  // b_presentation_filter and b_enable_presentation
+    bool b_pre_virtualized = false;
 };
 
 inline void presentation_v1(BitWriter& w, const PresV1& p) {
@@ -204,13 +223,19 @@ inline void presentation_v1(BitWriter& w, const PresV1& p) {
         }
     }
     presentation_version(w, p.presentation_version);
-    w.put(0, 3);    // md_compat
-    w.flag(false);  // b_presentation_id
+    w.put(static_cast<std::uint64_t>(p.md_compat), 3);
+    w.flag(p.presentation_id.has_value());  // b_presentation_id
+    if (p.presentation_id) {
+        w.variable_bits(static_cast<std::uint64_t>(*p.presentation_id), 2);
+    }
     for (const bool bit : p.frame_rate_bits) {
         w.flag(bit);
     }
     emdf_info(w, p.emdf_payloads_substream);
-    w.flag(false);  // b_presentation_filter
+    w.flag(p.enable.has_value());  // b_presentation_filter
+    if (p.enable) {
+        w.flag(*p.enable);
+    }
     if (!p.presentation_config) {
         group_index(w, p.groups.at(0));
     } else {
@@ -222,11 +247,72 @@ inline void presentation_v1(BitWriter& w, const PresV1& p) {
             group_index(w, group);
         }
     }
-    w.flag(false);  // b_pre_virtualized
+    w.flag(p.b_pre_virtualized);
     w.flag(false);  // b_add_emdf_substreams
     w.flag(p.b_alternative);
     w.flag(p.b_pres_ndot);
     substream_index(w, p.presentation_substream);
+}
+
+// Part 1 Table 9, ac4_substream_info(), at frame_rate_factor 1 (Part 1
+// channel modes 0 to 10).
+struct SubInfoV0 {
+    int ch_mode = 1;
+    std::optional<int> content_classifier{};
+    std::string language{};
+    int substream_index = 0;
+    bool b_iframe = true;
+};
+
+inline void substream_info_v0(BitWriter& w, const SubInfoV0& s, int fs_index = 1) {
+    channel_mode(w, s.ch_mode);
+    if (fs_index == 1) {
+        w.flag(false);  // b_sf_multiplier
+    }
+    w.flag(false);  // b_bitrate_info
+    if (s.ch_mode >= 7 && s.ch_mode <= 10) {
+        w.flag(false);  // add_ch_base
+    }
+    w.flag(s.content_classifier.has_value());  // b_content_type
+    if (s.content_classifier) {
+        content_type(w, *s.content_classifier, s.language);
+    }
+    w.flag(s.b_iframe);
+    substream_index(w, s.substream_index);
+}
+
+// Part 1 Table 4 as Part 2 clause 6.2.1.2 prints it, ac4_presentation_info(),
+// at frame_rate_index 13 (no frame_rate_multiply_info() bits), for
+// presentation_configs 0 to 5 or a single substream.
+struct PresV0 {
+    std::optional<int> presentation_config{};  // unset: b_single_substream
+    int presentation_version = 0;
+    int md_compat = 0;
+    std::optional<int> presentation_id{};  // b_belongs_to_presentation_id
+    std::vector<SubInfoV0> substreams{};   // Table 85's, in order
+    bool b_pre_virtualized = false;
+};
+
+inline void presentation_v0(BitWriter& w, const PresV0& p, int fs_index = 1) {
+    w.flag(!p.presentation_config.has_value());  // b_single_substream
+    if (p.presentation_config) {
+        w.put(static_cast<std::uint64_t>(*p.presentation_config), 3);
+    }
+    presentation_version(w, p.presentation_version);
+    w.put(static_cast<std::uint64_t>(p.md_compat), 3);
+    w.flag(p.presentation_id.has_value());
+    if (p.presentation_id) {
+        w.variable_bits(static_cast<std::uint64_t>(*p.presentation_id), 2);
+    }
+    emdf_info(w);
+    if (p.presentation_config) {
+        w.flag(false);  // b_hsf_ext
+    }
+    for (const SubInfoV0& s : p.substreams) {
+        substream_info_v0(w, s, fs_index);
+    }
+    w.flag(p.b_pre_virtualized);
+    w.flag(false);  // b_add_emdf_substreams
 }
 
 // substream_index_table() with every size transmitted.

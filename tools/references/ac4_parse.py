@@ -876,6 +876,7 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
     n_substream_groups = 0
     b_pre_virtualized = 0
     pres_sub = None
+    presentation_id = None
     if not b_single_substream_group and presentation_config == 6:
         # §6.2.1.3: an EMDF-only presentation. b_add_emdf_substreams is set
         # without being transmitted, and the n_add_emdf_substreams loop after
@@ -886,7 +887,7 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
         if bitstream_version != 1:
             md_compat = r.bits(3)
         if r.bits(1):  # b_presentation_id
-            variable_bits(r, 2)  # presentation_id, unused downstream
+            presentation_id = variable_bits(r, 2)
         frame_rate_factor = parse_frame_rate_multiply_info(r, frame_rate_index)
         frame_rate_fraction = parse_frame_rate_fractions_info(r, frame_rate_index,
                                                               frame_rate_factor)
@@ -929,7 +930,8 @@ def parse_presentation_v1_info(r, bitstream_version, fs_index, frame_rate_index)
             emdf_substreams.append(parse_emdf_info(r))
     return {'presentation_version': presentation_version,
             'presentation_config': presentation_config, 'group_refs': group_refs,
-            'md_compat': md_compat, 'enable_presentation': b_enable_presentation,
+            'md_compat': md_compat, 'presentation_id': presentation_id,
+            'enable_presentation': b_enable_presentation,
             'frame_rate_factor': frame_rate_factor, 'frame_rate_fraction': frame_rate_fraction,
             'n_substream_groups': n_substream_groups,
             'emdf': emdf, 'b_pre_virtualized': b_pre_virtualized,
