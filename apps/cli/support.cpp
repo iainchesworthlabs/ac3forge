@@ -19,6 +19,8 @@
 #include <iostream>
 #include <iterator>
 #include <limits>
+#include <memory>
+#include <numeric>
 #include <optional>
 #include <span>
 #include <string>
@@ -34,6 +36,8 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/encoder/silent_frame.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 #include "ac3/io/elementary.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/bsi.hpp"
@@ -46,6 +50,7 @@
 #include "ac3/quality/distortion.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "ac4/ac4.hpp"
 #include "ac4enc/encoder.hpp"
 #include "container_input.hpp"
 #include "platform/stdio_binary.hpp"
@@ -1495,6 +1500,12 @@ bool is_extra_programme_token(std::string_view token) {
 }
 
 bool parse_options(std::span<char*> tokens, Options& out, std::string_view command) {
+    // The commands that play an AC-4 stream to a listener, which take the
+    // listener's options (headphones, channels=5.1), and every command that
+    // decodes one, which chooses its presentation at a level (md-compat=).
+    const bool plays_ac4 = command == "decode" || command == "monitor" || command == "play";
+    const bool decodes_ac4 = plays_ac4 || command == "transcode" || command == "qc" ||
+                             command == "levels" || command == "loudness";
     for (char* raw : tokens) {
         const std::string_view token{raw};
         const auto eq = token.find('=');
@@ -1836,11 +1847,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             fmt::println(stderr, "error: mix-lfe is 'on' or 'off' (got '{}')", token);
             return false;
         }
-        if (token == "headphones" && command == "decode") {
+        if (token == "headphones" && plays_ac4) {
             out.ac4_headphones = true;
             continue;
         }
-        if (key == "md-compat" && command == "decode") {
+        if (key == "md-compat" && decodes_ac4) {
             // The md_compat level an AC-4 decoder claims (ETSI TS 103 190-2
             // Table 55, 0 to 3 and 7 unrestricted).
             const std::uint32_t level = parse_u32_or(value, 0xFFFFFFFFU);
@@ -1877,7 +1888,7 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
                 }
                 continue;
             }
-            if (value == "5.1" && command == "decode") {
+            if (value == "5.1" && plays_ac4) {
                 // AC-4's 7.X element folded to 5.X (ETSI TS 103 190-1 Table
                 // 219); decode refuses it for AC-3 and E-AC-3.
                 out.output.target = ac3::DownmixTarget::kAsCoded;
@@ -2463,14 +2474,11 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
         if (key == "codec" && command == "transcode") {
             // 'transcode' only - disambiguated from record/live's own codec=
             // below the same way layout= is, a few blocks down. Named rather
-            // than inferred when out_path is "-" or has no .ac3/.ec3 suffix
-            // to read - see Options::codec.
-            if (value == "ac3") {
-                out.codec = ac3::plan::Codec::kAc3;
-            } else if (value == "eac3" || value == "ec3") {
-                out.codec = ac3::plan::Codec::kEac3;
-            } else {
-                fmt::println(stderr, "error: codec must be ac3 or eac3 (got '{}')", value);
+            // than inferred when out_path is "-" or has no .ac3/.ec3/.ac4
+            // suffix to read - see Options::codec.
+            out.codec = ac3::plan::parse_codec(value);
+            if (!out.codec.has_value()) {
+                fmt::println(stderr, "error: codec must be ac3, eac3 or ac4 (got '{}')", value);
                 return false;
             }
             continue;
@@ -2774,12 +2782,9 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             continue;
         }
         if (key == "codec") {
-            if (value == "ac3") {
-                out.take_codec = plan::Codec::kAc3;
-            } else if (value == "eac3" || value == "ec3") {
-                out.take_codec = plan::Codec::kEac3;
-            } else {
-                fmt::println(stderr, "error: codec must be ac3 or eac3 (got '{}')", token);
+            out.take_codec = plan::parse_codec(value);
+            if (!out.take_codec.has_value()) {
+                fmt::println(stderr, "error: codec must be ac3, eac3 or ac4 (got '{}')", token);
                 return false;
             }
             continue;
@@ -3740,7 +3745,9 @@ bool resolve_layout(std::string_view name, ac3::plan::Codec codec, ac3::plan::Pl
         if (!ac3::plan::carries(codec, *id)) {
             fmt::println(stderr, "error: {} cannot carry {} - {}", ac3::plan::codec_label(codec),
                          ac3::plan::layout(*id).label,
-                         ac3::plan::describe(ac3::plan::PlanError::kLayoutNeedsEac3));
+                         ac3::plan::describe(codec == ac3::plan::Codec::kAc4
+                                                 ? ac3::plan::PlanError::kLayoutNotInAc4
+                                                 : ac3::plan::PlanError::kLayoutNeedsEac3));
             return false;
         }
         plan_out.layout = *id;
@@ -3886,12 +3893,268 @@ std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bit
 }
 
 RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take,
-                                       std::uint32_t sample_rate_hz) {
-    return RecordingSink::Config{.container = meta.container,
+                                       std::uint32_t sample_rate_hz, const TakeEncoder* encoder) {
+    RecordingSink::Config config{.container = meta.container,
                                  .eac3 = take.eac3,
                                  .sample_rate = sample_rate_hz,
                                  .channels = take.rendered_channels,
                                  .fmp4_window_segments = meta.fmp4_window_segments};
+    const ac4::Toc* toc = encoder != nullptr ? encoder->ac4_toc() : nullptr;
+    if (toc == nullptr) {
+        return config;
+    }
+    RecordingSink::Ac4Carriage ac4;
+    // A PES timestamp's step. The 1000/1001 rates' frames alternate in
+    // length, which a fixed step cannot follow; the encoder writes frame
+    // rate index 13 unless asked otherwise, whose frames do not.
+    ac4.samples_per_frame = ac4::samples_per_frame(*toc).value_or(2048);
+    // IEC 61937-14's smallest burst type that carries the rate's largest
+    // frame, as run_spdif chooses it for a finished stream; no carrier where
+    // none does.
+    ac4.carrier_rate_hz = 0;
+    const int fs_index = toc->sample_rate_hz == 44100 ? 0 : 1;
+    if (const auto type = ac3::iec61937::ac4_burst_type_for(encoder->ac4_max_frame_bytes(),
+                                                            fs_index, toc->frame_rate_index)) {
+        if (const auto timing =
+                ac3::iec61937::ac4_burst_timing(*type, fs_index, toc->frame_rate_index)) {
+            const bool hbr16 = *type == ac3::iec61937::BurstDataType::kAc4Hbr16;
+            ac4.burst_type = *type;
+            ac4.carrier_rate_hz = hbr16 ? timing->link_rate_hz / 4 : timing->link_rate_hz;
+            ac4.carrier_channels = hbr16 ? 8 : 2;
+        }
+    }
+    // TS 103 190-2 Annexes E, G and H: the 'ac-4' sample entry, Table E.1's
+    // time scale, Table H.1's brands, and the manifests' values for the
+    // presentation with the widest compatibility, as fmp4 writes them.
+    if (const auto timing = ac4::media_timing(*toc)) {
+        ac4.fmp4.audio = mp4::AudioTrack{.codec_id = std::string{mp4::kCodecAc4},
+                                         .sample_rate = static_cast<std::uint32_t>(toc->sample_rate_hz),
+                                         .channels = 2,  // TS 103 190-2 E.4.5
+                                         .samples_per_frame = timing->sample_delta,
+                                         .codec_config = ac4::build_dac4(*toc),
+                                         .rfc6381 = ac4::rfc6381_codec_string(*toc),
+                                         .timescale = timing->timescale};
+    }
+    ac4.fmp4.brands = {"ca4m", "ca4s"};
+    if (const std::optional<int> channels = ac4::presentation_channel_count(*toc)) {
+        ac4.fmp4.hls.channels_attribute = fmt::format("{}", *channels);
+    }
+    if (const auto configuration = ac4::dash_channel_configuration(*toc)) {
+        ac4.fmp4.dash.channel_configuration = mp4::Descriptor{
+            .scheme_id_uri = configuration->scheme_id_uri, .value = configuration->value};
+    }
+    for (const ac4::ManifestDescriptor& property : ac4::dash_supplemental_properties(*toc)) {
+        ac4.fmp4.dash.supplemental_properties.push_back(
+            mp4::Descriptor{.scheme_id_uri = property.scheme_id_uri, .value = property.value});
+    }
+    config.channels = 2;
+    config.ac4 = std::move(ac4);
+    return config;
+}
+
+std::optional<ac3::meta::ProfileId> profile_id_of(const ac3::meta::Profile& p) {
+    for (const auto id :
+         {ac3::meta::ProfileId::kFilmStandard, ac3::meta::ProfileId::kFilmLight,
+          ac3::meta::ProfileId::kMusicStandard, ac3::meta::ProfileId::kMusicLight,
+          ac3::meta::ProfileId::kSpeech}) {
+        const ac3::meta::Profile q = ac3::meta::profile(id);
+        if (p.null_low_db == q.null_low_db && p.null_high_db == q.null_high_db &&
+            p.boost_ratio == q.boost_ratio && p.max_boost_db == q.max_boost_db &&
+            p.early_cut_ratio == q.early_cut_ratio && p.early_cut_end_db == q.early_cut_end_db &&
+            p.cut_ratio == q.cut_ratio && p.attack_ms == q.attack_ms &&
+            p.release_ms == q.release_ms) {
+            return id;
+        }
+    }
+    return std::nullopt;
+}
+
+ac4::DrcProfile ac4_profile_of(ac3::meta::ProfileId id) {
+    switch (id) {
+        case ac3::meta::ProfileId::kFilmStandard:
+            return ac4::DrcProfile::kFilmStandard;
+        case ac3::meta::ProfileId::kFilmLight:
+            break;
+        case ac3::meta::ProfileId::kMusicStandard:
+            return ac4::DrcProfile::kMusicStandard;
+        case ac3::meta::ProfileId::kMusicLight:
+            return ac4::DrcProfile::kMusicLight;
+        case ac3::meta::ProfileId::kSpeech:
+            return ac4::DrcProfile::kSpeech;
+    }
+    return ac4::DrcProfile::kFilmLight;
+}
+
+ac4::EncoderConfig ac4_config_for(const plan::Plan& p) {
+    ac4::EncoderConfig config;
+    config.channels = static_cast<int>(plan::coded_channels(plan::resolve(p)).size());
+    config.sample_rate_hz = static_cast<int>(ac3::sample_rate_hz(p.sample_rate));
+    config.bitrate_kbps = static_cast<int>(p.bitrate_kbps);
+    config.dialnorm_db = -static_cast<double>(p.meta.dialnorm);
+    if (p.meta.drc.has_value()) {
+        if (const auto id = profile_id_of(*p.meta.drc)) {
+            ac4::DrcConfig drc;
+            drc.profile = ac4_profile_of(*id);
+            config.drc = drc;
+        }
+    }
+    return config;
+}
+
+TakeEncoder::TakeEncoder() = default;
+TakeEncoder::~TakeEncoder() = default;
+TakeEncoder::TakeEncoder(TakeEncoder&&) noexcept = default;
+TakeEncoder& TakeEncoder::operator=(TakeEncoder&&) noexcept = default;
+
+namespace {
+
+// Where AC-4's encoder takes a coded channel (ac4::EncoderConfig::channels):
+// L, R, C, the LFE, Ls, Rs.
+int ac4_input_rank(ac3::eac3::chanmap::Location location) {
+    using L = ac3::eac3::chanmap::Location;
+    switch (location) {
+        case L::kLeft:
+            return 0;
+        case L::kRight:
+            return 1;
+        case L::kCentre:
+            return 2;
+        case L::kLfe:
+            return 3;
+        case L::kLeftSurround:
+            return 4;
+        case L::kRightSurround:
+            return 5;
+        default:
+            return 99;
+    }
+}
+
+}  // namespace
+
+std::string TakeEncoder::open(const plan::Plan& p, std::optional<ac4::EncoderConfig> ac4) {
+    ac3_.reset();
+    eac3_.reset();
+    ac4_.reset();
+    coded_channels_ = 0;
+    ac4_max_frame_bytes_ = 0;
+    switch (p.codec) {
+        case plan::Codec::kAc3:
+            // Heap-allocated: FrameEncoder carries several KB of MDCT
+            // scratch/history state (PREfast's C6262).
+            ac3_ = std::make_unique<ac3::FrameEncoder>(plan::ac3_config(p));
+            coded_channels_ = static_cast<std::size_t>(ac3_->channel_count());
+            return {};
+        case plan::Codec::kEac3: {
+            const auto config = plan::eac3_config(p);
+            eac3_ = std::make_unique<ac3::eac3::AccessUnitEncoder>(config);
+            coded_channels_ = static_cast<std::size_t>(eac3_->channel_count());
+            // AccessUnitEncoder refuses a configuration by building no
+            // substreams; build_silent_access_unit() makes the same checks
+            // and names the one that failed.
+            if (coded_channels_ == 0) {
+                const auto check = ac3::eac3::build_silent_access_unit(config);
+                return fmt::format("the encoder cannot express this configuration: {}",
+                                   check.has_value() ? std::string_view{"no substreams were built"}
+                                                     : ac3::describe(check.error()));
+            }
+            return {};
+        }
+        case plan::Codec::kAc4: {
+            const auto coded = plan::coded_channels(plan::resolve(p));
+            ac4_order_.resize(coded.size());
+            std::iota(ac4_order_.begin(), ac4_order_.end(), std::size_t{0});
+            std::ranges::stable_sort(ac4_order_, {}, [&](std::size_t c) {
+                return ac4_input_rank(coded[c].location);
+            });
+            ac4::EncoderConfig config = ac4.value_or(ac4_config_for(p));
+            config.channels = static_cast<int>(coded.size());
+            config.sample_rate_hz = static_cast<int>(ac3::sample_rate_hz(p.sample_rate));
+            config.bitrate_kbps = static_cast<int>(p.bitrate_kbps);
+            auto encoder = ac4::Encoder::create(config);
+            if (!encoder.has_value()) {
+                return fmt::format("the AC-4 encoder refuses {}",
+                                   ac4::Encoder::refusal_reason(config));
+            }
+            ac4_ = std::make_unique<ac4::Encoder>(std::move(*encoder));
+            ac4_views_.resize(coded.size());
+            coded_channels_ = coded.size();
+            // The largest sync frame: the rate's share of the longest frame
+            // (a frame at 29.97 fps is a sample longer every other time), its
+            // head with frame_size's escape, and its CRC.
+            const auto timing = ac4::media_timing(ac4_->toc());
+            const double seconds =
+                timing.has_value() ? static_cast<double>(timing->sample_delta) /
+                                         static_cast<double>(timing->timescale)
+                                   : 2048.0 / static_cast<double>(config.sample_rate_hz);
+            ac4_max_frame_bytes_ =
+                static_cast<std::size_t>(std::ceil(static_cast<double>(p.bitrate_kbps) * 125.0 *
+                                                   seconds * 1.001)) +
+                9;
+            return {};
+        }
+    }
+    return "a codec outside the plan's";
+}
+
+std::vector<TakeEncoder::Unit> TakeEncoder::ac4_units(
+    const std::vector<ac4::EncodedFrame>& frames) const {
+    std::vector<Unit> out;
+    out.reserve(frames.size());
+    for (const ac4::EncodedFrame& frame : frames) {
+        out.push_back(Unit{.bytes = ac4::sync_frame(frame.raw_ac4_frame, true), .sync = frame.iframe});
+    }
+    return out;
+}
+
+std::expected<std::vector<TakeEncoder::Unit>, std::string> TakeEncoder::encode(
+    std::span<const std::span<const float>> coded, std::size_t samples) {
+    std::vector<Unit> out;
+    if (ac4_) {
+        for (std::size_t k = 0; k < ac4_order_.size(); ++k) {
+            ac4_views_[k] = coded[ac4_order_[k]].first(samples);
+        }
+        auto frames = ac4_->encode(ac4_views_);
+        if (!frames.has_value()) {
+            return std::unexpected(
+                fmt::format("the AC-4 encoder: {}", ac4::describe(frames.error())));
+        }
+        return ac4_units(*frames);
+    }
+    if (eac3_) {
+        auto unit = eac3_->encode_access_unit(coded);
+        if (!unit.has_value()) {
+            return std::unexpected(fmt::format("the encoder cannot express this configuration: {}",
+                                               ac3::describe(unit.error())));
+        }
+        out.push_back(Unit{.bytes = std::move(unit->bytes), .sync = true});
+        return out;
+    }
+    if (ac3_) {
+        auto frame = ac3_->encode_frame(coded);
+        if (!frame.has_value()) {
+            return std::unexpected(fmt::format("the encoder cannot express this configuration: {}",
+                                               ac3::describe(frame.error())));
+        }
+        out.push_back(Unit{.bytes = std::move(*frame), .sync = true});
+        return out;
+    }
+    return std::unexpected(std::string{"no encoder is open"});
+}
+
+std::expected<std::vector<TakeEncoder::Unit>, std::string> TakeEncoder::flush() {
+    if (!ac4_) {
+        return std::vector<Unit>{};
+    }
+    auto frames = ac4_->flush();
+    if (!frames.has_value()) {
+        return std::unexpected(fmt::format("the AC-4 encoder: {}", ac4::describe(frames.error())));
+    }
+    return ac4_units(*frames);
+}
+
+const ac4::Toc* TakeEncoder::ac4_toc() const {
+    return ac4_ ? &ac4_->toc() : nullptr;
 }
 
 std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_view codec,
@@ -3918,6 +4181,155 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
         return std::nullopt;
     }
     return routing;
+}
+
+// --- AC-4 ----------------------------------------------------------------------
+
+bool is_ac4_stream(std::span<const std::byte> bytes) {
+    return bytes.size() >= 2 && std::to_integer<unsigned>(bytes[0]) == 0xACU &&
+           (std::to_integer<unsigned>(bytes[1]) & 0xFEU) == 0x40U;
+}
+
+namespace {
+
+// AC-4's DRC decoder mode by drcmode='s name (parse_options checked it).
+ac4::DrcMode ac4_drc_mode(std::string_view name) {
+    if (name == "off") {
+        return ac4::DrcMode::kOff;
+    }
+    if (name == "home-theatre") {
+        return ac4::DrcMode::kHomeTheatre;
+    }
+    if (name == "flat-panel-tv") {
+        return ac4::DrcMode::kFlatPanelTv;
+    }
+    if (name == "portable-speakers") {
+        return ac4::DrcMode::kPortableSpeakers;
+    }
+    if (name == "portable-headphones") {
+        return ac4::DrcMode::kPortableHeadphones;
+    }
+    return ac4::DrcMode::kDefault;
+}
+
+// AC-4's downmix for channels= and downmix=: downmix=loro, ltrt and mono as
+// named, and downmix=auto or channels=2 alone the stream's preferred method
+// (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send.
+ac4::DownmixTarget ac4_downmix(const Options& meta) {
+    if (meta.ac4_fold_5x) {
+        return ac4::DownmixTarget::k5X;
+    }
+    if (meta.downmix_auto) {
+        return ac4::DownmixTarget::kStereo;
+    }
+    switch (meta.output.target) {
+        case ac3::DownmixTarget::kAsCoded:
+            return ac4::DownmixTarget::kAsCoded;
+        case ac3::DownmixTarget::kLoRo:
+            return meta.downmix_named ? ac4::DownmixTarget::kLoRo : ac4::DownmixTarget::kStereo;
+        case ac3::DownmixTarget::kLtRt:
+            return ac4::DownmixTarget::kLtRt;
+        case ac3::DownmixTarget::kMono:
+            return ac4::DownmixTarget::kMono;
+    }
+    return ac4::DownmixTarget::kAsCoded;
+}
+
+// conceal='s policy, which AC-4's decoder offers as AC-3's and E-AC-3's do.
+ac4::ConcealmentPolicy ac4_concealment(ac3::ConcealmentPolicy policy) {
+    switch (policy) {
+        case ac3::ConcealmentPolicy::kNone:
+            return ac4::ConcealmentPolicy::kNone;
+        case ac3::ConcealmentPolicy::kRepeatFade:
+            return ac4::ConcealmentPolicy::kRepeatFade;
+        case ac3::ConcealmentPolicy::kMute:
+            return ac4::ConcealmentPolicy::kMute;
+    }
+    return ac4::ConcealmentPolicy::kNone;
+}
+
+}  // namespace
+
+ac4::DecoderConfig ac4_decoder_config(const Options& meta) {
+    ac4::DecoderConfig config = ac4_coded_config(meta);
+    config.output.output_level_dbfs = meta.ac4_output_level;
+    config.output.drc = ac4_drc_mode(meta.ac4_drc_mode);
+    config.output.dialogue_enhancement_db = meta.ac4_dialogue_enhancement;
+    config.output.downmix = ac4_downmix(meta);
+    config.output.mix_lfe = meta.ac4_mix_lfe;
+    config.output.headphones = meta.ac4_headphones;
+    return config;
+}
+
+std::optional<std::vector<ac4::Speaker>> ac4_presentation_speakers(
+    std::span<const ac4::SyncFrame> frames, const ac4::DecoderConfig& config) {
+    // A decoder of its own, which parse() leaves untouched by audio: the
+    // caller's starts afresh at the first frame.
+    ac4::DecoderConfig parsing = config;
+    parsing.syntax = {};
+    ac4::Decoder decoder(parsing);
+    for (const ac4::SyncFrame& frame : frames) {
+        if (!decoder.parse(frame.raw_ac4_frame).has_value()) {
+            continue;
+        }
+        const std::optional<std::size_t> selected = decoder.metadata().presentation;
+        const std::span<const ac4::PresentationInfo> presentations = decoder.presentations();
+        if (!selected.has_value() || *selected >= presentations.size()) {
+            continue;
+        }
+        const std::vector<ac4::Speaker>& speakers = presentations[*selected].speakers;
+        if (speakers.empty()) {
+            return std::nullopt;
+        }
+        return speakers;
+    }
+    return std::nullopt;
+}
+
+std::string ac4_processing(const ac4::OutputConfig& output) {
+    std::string done;
+    const auto add = [&done](const std::string& part) {
+        done += (done.empty() ? "" : "; ") + part;
+    };
+    if (output.output_level_dbfs.has_value()) {
+        add(fmt::format("dialnorm to {:g} dBFS, DRC {}", *output.output_level_dbfs,
+                        ac4::describe(output.drc)));
+    }
+    if (output.dialogue_enhancement_db > 0.0) {
+        add(fmt::format("dialogue raised {:g} dB where the stream allows",
+                        output.dialogue_enhancement_db));
+    }
+    if (output.downmix != ac4::DownmixTarget::kAsCoded) {
+        add(fmt::format("downmixed to {}{}", ac4::describe(output.downmix),
+                        output.mix_lfe ? "" : " without the LFE"));
+    }
+    if (output.headphones) {
+        add("for headphones");
+    }
+    if (output.dialogue_gain_db != 0.0) {
+        add(fmt::format("dialogue substreams at {:+g} dB where the stream allows", output.dialogue_gain_db));
+    }
+    if (output.associated_gain_db != 0.0) {
+        add(fmt::format("associated audio at {:+g} dB", output.associated_gain_db));
+    }
+    return done.empty() ? "the coded channels, with no DRC, downmix or dialogue processing" : done;
+}
+
+ac4::DecoderConfig ac4_coded_config(const Options& meta) {
+    ac4::DecoderConfig config;
+    // The mix of the presentation's substreams belongs to the presentation,
+    // so it is the same whatever the output processing.
+    config.output.dialogue_gain_db = meta.ac4_dialogue_gain;
+    config.output.associated_gain_db = meta.ac4_associated_gain;
+    config.concealment = ac4_concealment(meta.concealment);
+    config.presentation.index = meta.ac4_presentation;
+    config.presentation.presentation_id = meta.ac4_presentation_id;
+    config.presentation.language = meta.ac4_language;
+    config.presentation.associated = meta.ac4_associated;
+    config.presentation.associated_type = meta.ac4_associated_type;
+    config.presentation.headphones = meta.ac4_headphones;
+    config.level = meta.ac4_level;
+    return config;
 }
 
 std::optional<ac3::signing::VerifySummary> apply_object_verification(

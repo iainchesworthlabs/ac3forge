@@ -933,4 +933,111 @@ void write_ac4_stream(JsonSink& json, const Ac4Summary& summary) {
     json.end_object();  // stream
 }
 
+void write_container(JsonSink& json, const ContainerFacts& facts) {
+    const auto text_or_null = [&json](std::string_view name, std::string_view text) {
+        if (text.empty()) {
+            json.member_null(name);
+        } else {
+            json.member(name, text);
+        }
+    };
+    const auto int_or_null = [&json](std::string_view name, const std::optional<int>& number) {
+        if (number.has_value()) {
+            json.member(name, static_cast<std::int64_t>(*number));
+        } else {
+            json.member_null(name);
+        }
+    };
+    json.key("container");
+    if (facts.kind == ContainerKind::kUnknown) {
+        json.value_null();
+        return;
+    }
+    json.begin_object();
+    json.member("format", container_token(facts.kind));
+    text_or_null("codec_id", facts.codec_id);
+    json.member("track", static_cast<std::uint64_t>(facts.track));
+    text_or_null("language", facts.language);
+    json.member("samples", static_cast<std::uint64_t>(facts.samples));
+    if (facts.sample_rate != 0) {
+        json.member("sample_rate_hz", static_cast<std::uint64_t>(facts.sample_rate));
+    } else {
+        json.member_null("sample_rate_hz");
+    }
+    if (facts.channels != 0) {
+        json.member("channels", static_cast<std::int64_t>(facts.channels));
+    } else {
+        json.member_null("channels");
+    }
+    json.key("mp4");
+    if (facts.kind == ContainerKind::kMp4) {
+        json.begin_object();
+        json.member("timescale", static_cast<std::uint64_t>(facts.timescale));
+        json.member("movie_timescale", static_cast<std::uint64_t>(facts.movie_timescale));
+        json.member("edits", static_cast<std::uint64_t>(facts.edits));
+        json.key("codec_box");
+        if (facts.codec_box) {
+            const CodecBox& box = *facts.codec_box;
+            json.begin_object();
+            // The same members Hearth's media information writes, dac4's
+            // included, whose fields are AC-4's and read as zero here.
+            json.member("type", box.type);
+            json.member("bytes", static_cast<std::uint64_t>(box.bytes));
+            json.member("fscod", static_cast<std::int64_t>(box.fscod));
+            json.member("bsid", static_cast<std::int64_t>(box.bsid));
+            json.member("bsmod", static_cast<std::int64_t>(box.bsmod));
+            json.member("bsmod_label", bsmod_label(box.bsmod, static_cast<Acmod>(box.acmod)));
+            json.member("acmod", static_cast<std::int64_t>(box.acmod));
+            json.member("lfeon", box.lfeon);
+            json.member("bit_rate_code", static_cast<std::int64_t>(box.bit_rate_code));
+            json.member("data_rate_kbps", static_cast<std::int64_t>(box.data_rate_kbps));
+            json.member("independent_substreams",
+                        static_cast<std::int64_t>(box.independent_substreams));
+            json.member("num_dep_sub", static_cast<std::int64_t>(box.num_dep_sub));
+            json.member("chan_loc", static_cast<std::int64_t>(box.chan_loc));
+            json.member("asvc", box.asvc);
+            json.member("asvc_label", asvc_label(box.asvc));
+            int_or_null("complexity_index", box.complexity_index);
+            json.end_object();
+        } else {
+            json.value_null();
+        }
+        json.end_object();
+    } else {
+        json.value_null();
+    }
+    json.key("mpegts");
+    if (facts.kind == ContainerKind::kMpegTs) {
+        json.begin_object();
+        json.member("program_number", static_cast<std::int64_t>(facts.program_number));
+        json.member("pmt_pid", static_cast<std::int64_t>(facts.pmt_pid));
+        json.member("stream_type", static_cast<std::int64_t>(facts.stream_type));
+        json.member("signalling", facts.signalling);
+        json.member("packet_size", static_cast<std::uint64_t>(facts.packet_size));
+        json.key("service");
+        if (facts.service_present) {
+            json.begin_object();
+            json.member("bsmod", static_cast<std::int64_t>(facts.service_bsmod));
+            json.member("bsmod_present", facts.service_bsmod_present);
+            if (facts.service_full_service.has_value()) {
+                json.member("full_service", *facts.service_full_service);
+            } else {
+                json.member_null("full_service");
+            }
+            json.member("bsid", static_cast<std::int64_t>(facts.service_bsid));
+            int_or_null("mainid", facts.service_mainid);
+            json.member("priority", static_cast<std::int64_t>(facts.service_priority));
+            int_or_null("asvc", facts.service_asvc);
+            json.member("mix_metadata", facts.service_mix_metadata);
+            json.end_object();
+        } else {
+            json.value_null();
+        }
+        json.end_object();
+    } else {
+        json.value_null();
+    }
+    json.end_object();
+}
+
 }  // namespace ac3::apps::probe_json

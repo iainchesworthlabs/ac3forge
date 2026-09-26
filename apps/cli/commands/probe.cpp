@@ -11,6 +11,7 @@
 #include <iterator>
 #include <optional>
 #include <span>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -31,6 +32,7 @@
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/version.hpp"
 #include "ac4/ac4.hpp"
+#include "container_input.hpp"
 #include "probe_json.hpp"
 
 namespace ac3cli::commands {
@@ -64,6 +66,7 @@ using ac3::apps::probe_json::exp_strategy_token;
 using ac3::apps::probe_json::strmtyp_token;
 using ac3::apps::probe_json::summarize_ac4;
 using ac3::apps::probe_json::write_ac4_stream;
+using ac3::apps::probe_json::write_container;
 using ac3::apps::probe_json::write_stream;
 
 // --- human-readable table --------------------------------------------------
@@ -80,8 +83,12 @@ void print_range(std::string_view label, const io::MinMax& range, std::string_vi
     fmt::println("{:<16}{}{} .. {}{}", label, range.min, unit, range.max, unit);
 }
 
-void print_table(std::string_view path, const io::ProbeReport& report) {
+void print_container(const ac3::apps::ContainerFacts& facts);
+
+void print_table(std::string_view path, const io::ProbeReport& report,
+                 const ac3::apps::ContainerFacts& container) {
     fmt::println("{:<16}{}", "file", path);
+    print_container(container);
     fmt::println("{:<16}{} (bsid {})", "codec", codec_label(report.kind), report.bsid);
     fmt::println("{:<16}{} Hz{}", "sample rate", ac3::sample_rate_hz(report.sample_rate),
                  report.reduced_rate ? " (fscod2 reduced rate)" : "");
@@ -438,8 +445,42 @@ void write_access_unit(JsonWriter& json, const io::ProbeAccessUnit& unit, Detail
 // No detail=frames/detail=blocks equivalent exists here: there is no
 // per-block audio-layer walk to show, by scope.
 
-void print_ac4_table(std::string_view path, const Ac4Summary& summary) {
+// What a Matroska, MP4 or MPEG-TS file said of the track the table describes,
+// on the line after the file's name; nothing for a bare stream.
+void print_container(const ac3::apps::ContainerFacts& facts) {
+    using ac3::apps::ContainerKind;
+    switch (facts.kind) {
+        case ContainerKind::kUnknown:
+            return;
+        case ContainerKind::kMpegTs:
+            fmt::println("{:<16}MPEG-TS, PID {}, program {}, stream_type 0x{:02X} ({}), {} PES "
+                         "payloads, {}-byte packets",
+                         "container", facts.track, facts.program_number, facts.stream_type,
+                         facts.signalling, facts.samples, facts.packet_size);
+            return;
+        case ContainerKind::kMp4:
+        case ContainerKind::kMatroska:
+            break;
+    }
+    const std::string box =
+        facts.codec_box ? fmt::format(", {} of {} bytes", facts.codec_box->type,
+                                      facts.codec_box->bytes)
+                        : std::string{};
+    const std::string timescale =
+        facts.kind == ContainerKind::kMp4 && facts.timescale != facts.sample_rate
+            ? fmt::format(", timescale {}", facts.timescale)
+            : std::string{};
+    fmt::println("{:<16}{}, track {}, '{}', {} {}, {} Hz{}, {} channel(s){}", "container",
+                 facts.kind == ContainerKind::kMp4 ? "MP4" : "Matroska", facts.track,
+                 facts.codec_id, facts.samples,
+                 facts.kind == ContainerKind::kMp4 ? "samples" : "frames", facts.sample_rate,
+                 timescale, facts.channels, box);
+}
+
+void print_ac4_table(std::string_view path, const Ac4Summary& summary,
+                     const ac3::apps::ContainerFacts& container) {
     fmt::println("{:<16}{}", "file", path);
+    print_container(container);
     fmt::println("{:<16}AC-4", "codec");
     fmt::println("{:<16}{} ({} sync frame(s)), {} bytes", "access units", summary.sync_frames,
                  summary.sync_frames, summary.bytes);
@@ -551,7 +592,8 @@ void print_ac4_table(std::string_view path, const Ac4Summary& summary) {
     }
 }
 
-int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& meta) {
+int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& meta,
+                  const ac3::apps::ContainerFacts& container) {
     // Reads the whole input into memory - unlike the AC-3/E-AC-3 path above,
     // which pulls forward through a fixed window (see docs/forge/cli/commands.md's
     // "Memory is flat" claim, which is specific to that path and not
@@ -578,11 +620,14 @@ int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& met
         json.member("schema", "ac3forge.probe/1");
         json.member("generator", ac3::version_full);
         json.member("file", in_path);
+        if (container.kind != ac3::apps::ContainerKind::kUnknown) {
+            write_container(json, container);
+        }
         write_ac4_stream(json, summary);
         json.end_object();
         json.finish();
     } else {
-        print_ac4_table(in_path, summary);
+        print_ac4_table(in_path, summary, container);
     }
     return summary.crc_failures > 0 || summary.parse_error ? 1 : 0;
 }
@@ -609,7 +654,36 @@ int run_probe(std::string_view in_path, const Options& meta) {
             return 1;
         }
     }
-    std::istream& in = is_stdio_path(in_path) ? std::cin : file;
+    // A container - Matroska, MP4 or MPEG-2 TS - is read whole and its audio
+    // track's elementary stream probed, with what the container says of the
+    // track beside it: the demux decode and the other commands read a
+    // container through (container_input.hpp). A bare stream, from a file or
+    // from stdin, is read as it arrives, as before.
+    ac3::apps::ContainerFacts container;
+    std::istringstream demuxed;
+    std::istream* source = is_stdio_path(in_path) ? static_cast<std::istream*>(&std::cin) : &file;
+    if (!is_stdio_path(in_path)) {
+        // The sniff decides within a few hundred bytes (sniff_container).
+        std::array<char, 4096> head{};
+        file.read(head.data(), static_cast<std::streamsize>(head.size()));
+        const auto got = static_cast<std::size_t>(file.gcount());
+        file.clear();
+        file.seekg(0, std::ios::beg);
+        const auto kind = ac3::apps::sniff_container(std::as_bytes(std::span{head}).first(got));
+        if (kind != ac3::apps::ContainerKind::kUnknown) {
+            const auto bytes = read_all(in_path);
+            auto result = ac3::apps::elementary_stream_from_bytes(bytes);
+            if (!result.error.empty()) {
+                fmt::println(stderr, "error: {} is a {}", in_path, result.error);
+                return 1;
+            }
+            container = std::move(result.container);
+            demuxed.str(std::string{reinterpret_cast<const char*>(result.bytes.data()),
+                                    result.bytes.size()});
+            source = &demuxed;
+        }
+    }
+    std::istream& in = *source;
 
     // json=1's document is byte-exact text a consumer (or, here, a test's own
     // substring check) can reasonably expect to round-trip: on Windows, an
@@ -629,7 +703,7 @@ int run_probe(std::string_view in_path, const Options& meta) {
     // AccessUnitReader below is unaffected either way - this dispatch has
     // to happen before it, since it is hardwired to AC-3/E-AC-3 framing.
     if (in.peek() == 0xAC) {
-        return run_probe_ac4(in_path, in, meta);
+        return run_probe_ac4(in_path, in, meta, container);
     }
 
     // The JSON document is written as the walk produces it - the frames array
@@ -645,6 +719,9 @@ int run_probe(std::string_view in_path, const Options& meta) {
         json.member("schema", "ac3forge.probe/1");
         json.member("generator", ac3::version_full);
         json.member("file", in_path);
+        if (container.kind != ac3::apps::ContainerKind::kUnknown) {
+            write_container(json, container);
+        }
         if (detail != Detail::kNone) {
             json.key("access_units");
             json.begin_array();
@@ -703,12 +780,12 @@ int run_probe(std::string_view in_path, const Options& meta) {
         json.end_object();
         json.finish();
     } else if (detail == Detail::kNone) {
-        print_table(in_path, report);
+        print_table(in_path, report, container);
     } else {
         // The dump has already gone out unit by unit; the summary follows it,
         // in the same order the JSON form puts them.
         fmt::println("");
-        print_table(in_path, report);
+        print_table(in_path, report, container);
     }
 
     // A stream that fails its own CRCs, or that this decoder cannot parse, is

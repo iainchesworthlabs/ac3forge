@@ -267,6 +267,14 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         return kExitUsage;
     }
     const auto channel_plan = plan::resolve(take->plan);
+    // The take's encoder, AC-3, E-AC-3 or AC-4 (codec=ac4), built before the
+    // device opens so that a configuration it refuses touches no device.
+    TakeEncoder encoder;
+    if (const std::string why = encoder.open(take->plan); !why.empty()) {
+        fmt::println(stderr, "error: {}", why);
+        return kExitUsage;
+    }
+    const bool ac4 = take->plan.codec == plan::Codec::kAc4;
 
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
@@ -362,18 +370,6 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                    device.name, rate_hz, channels,
                    plan::codec_label(take->plan.codec), take->label, seconds);
 
-    // Heap-allocated: both encoders carry several KB of MDCT scratch/history
-    // state, and this function only constructs them once (PREfast's C6262).
-    // Both are declared, only one is built: which, is settled by take->eac3
-    // before the loop rather than tested per frame.
-    std::unique_ptr<ac3::FrameEncoder> ac3_encoder;
-    std::unique_ptr<ac3::eac3::AccessUnitEncoder> eac3_encoder;
-    if (take->eac3) {
-        eac3_encoder =
-            std::make_unique<ac3::eac3::AccessUnitEncoder>(plan::eac3_config(take->plan));
-    } else {
-        ac3_encoder = std::make_unique<ac3::FrameEncoder>(plan::ac3_config(take->plan));
-    }
     // Meters what the encoder is fed, not what the endpoint delivers: a needle
     // that moves on a channel the stream never carries would be a lie. The
     // bed's own acmod/lfe, widened to the coded count where a dependent adds
@@ -393,13 +389,24 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // known to be real PCM worth committing to disk.
     RecordingSink sink;
     bool sink_open = false;
+    // What was encoded while the check below listened, written first once
+    // the sink opens, so the take keeps its order.
+    std::vector<TakeEncoder::Unit> pending;
     const auto open_sink = [&] {
-        if (const auto why = sink.open(std::string{out_path}, take_sink_config(meta, *take, rate_hz));
+        if (const auto why = sink.open(std::string{out_path},
+                                       take_sink_config(meta, *take, rate_hz, &encoder));
             !why.empty()) {
             fmt::println(stderr, "error: {}: {}", out_path, why);
             return false;
         }
         sink_open = true;
+        for (TakeEncoder::Unit& unit : pending) {
+            if (const auto why = sink.push(unit.bytes, unit.sync); !why.empty()) {
+                fmt::println(stderr, "error: {}: {}", out_path, why);
+                return false;
+            }
+        }
+        pending.clear();
         return true;
     };
 
@@ -431,7 +438,6 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // a second's worth of frames, not the whole session, so IO9's
     // bounded-memory property still holds for everything after this window.
     ac3::iec61937::PassthroughDetector detector;
-    std::vector<std::vector<std::byte>> pending;
     std::uint64_t frames_written = 0;
 
     while (frames_written < target_frames && !device_lost) {
@@ -462,35 +468,23 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
         plan::render(*routing, in, out, ac3::kSamplesPerFrame);
         meter.process(views);
 
-        std::vector<std::byte> unit_bytes;
-        if (take->eac3) {
-            const auto unit = eac3_encoder->encode_access_unit(views);
-            if (!unit.has_value()) {
-                fmt::println(stderr, "error: the encoder cannot express this configuration");
-                if (sink_open) {
-                    std::ignore = sink.close();
-                }
-                return kExitUsage;
+        // One unit for AC-3 and E-AC-3; for AC-4 the frames this one
+        // completes, none while its encoder's delay fills.
+        auto units = encoder.encode(views);
+        if (!units.has_value()) {
+            fmt::println(stderr, "error: {}", units.error());
+            if (sink_open) {
+                std::ignore = sink.close();
             }
-            unit_bytes = unit->bytes;
-        } else {
-            auto frame = ac3_encoder->encode_frame(views);
-            if (!frame.has_value()) {
-                fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
-                if (sink_open) {
-                    std::ignore = sink.close();
-                }
-                return kExitUsage;
-            }
-            unit_bytes = std::move(*frame);
+            return kExitUsage;
         }
-        if (sink_open) {
-            if (const auto why = sink.push(unit_bytes); !why.empty()) {
+        for (TakeEncoder::Unit& unit : *units) {
+            if (!sink_open) {
+                pending.push_back(std::move(unit));
+            } else if (const auto why = sink.push(unit.bytes, unit.sync); !why.empty()) {
                 fmt::println(stderr, "error: {}: {}", out_path, why);
                 return kExitOutput;
             }
-        } else {
-            pending.push_back(std::move(unit_bytes));
         }
         ++frames_written;
         // One frame is 32 ms at 48 kHz, so the meter redraws about 30 times a
@@ -500,19 +494,31 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     }
     status_println(status);
 
-    // The detector never decided within the whole take (a session shorter
-    // than its own detection window) - open now and flush whatever is
-    // pending, exactly as the mid-loop path does once decided() goes true.
-    if (!sink_open && !pending.empty() && !open_sink()) {
-        return kExitOutput;
-    }
-    if (sink_open) {
-        for (auto& unit_bytes : pending) {
-            if (const auto why = sink.push(unit_bytes); !why.empty()) {
+    // AC-4's encoder hands over the frames its delay still holds.
+    if (!device_lost) {
+        auto rest = encoder.flush();
+        if (!rest.has_value()) {
+            fmt::println(stderr, "error: {}", rest.error());
+            if (sink_open) {
+                std::ignore = sink.close();
+            }
+            return kExitUsage;
+        }
+        for (TakeEncoder::Unit& unit : *rest) {
+            if (!sink_open) {
+                pending.push_back(std::move(unit));
+            } else if (const auto why = sink.push(unit.bytes, unit.sync); !why.empty()) {
                 fmt::println(stderr, "error: {}: {}", out_path, why);
                 return kExitOutput;
             }
         }
+    }
+
+    // The detector never decided within the whole take (a session shorter
+    // than its own detection window) - open now, which writes whatever is
+    // pending, exactly as the mid-loop path does once decided() goes true.
+    if (!sink_open && !pending.empty() && !open_sink()) {
+        return kExitOutput;
     }
 
     capture.stop();
@@ -536,9 +542,10 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
                      close_problem.empty() ? "" : " - " + close_problem);
         return kExitRuntime;
     }
-    status_println(status, "wrote {} {} ({} kbps, {}) to {}{}", frames_written,
-                   take->eac3 ? "access units" : "frames", bitrate, take->label, out_path,
-                   container_note(meta.container));
+    status_println(status, "wrote {} {} ({} kbps, {}) to {}{}",
+                   ac4 ? static_cast<std::uint64_t>(sink.frames()) : frames_written,
+                   ac4 ? "AC-4 frames" : (take->eac3 ? "access units" : "frames"), bitrate,
+                   take->label, out_path, container_note(meta.container));
     status_println(status, "captured {} frames, {} silence-filled, {} dropped",
                    stats.frames_captured, stats.frames_silence_filled, stats.frames_dropped);
     print_channel_summary(meter, status);
@@ -968,6 +975,24 @@ int run_play(std::string_view in_path, int device_index, const Options& meta) {
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
         return kExitInput;
+    }
+    // AC-4: no receiver found takes it over IEC 61937 (planning/ac4.md, phase
+    // D11), so 'play' decodes it on an ordinary output, as its fallback for a
+    // sink that bitstreams nothing does - 'monitor's own path, with decode's
+    // AC-4 options.
+    if (is_ac4_stream(stream)) {
+        if (!meta.follow_sink) {
+            fmt::println(stderr,
+                         "error: {} is AC-4, which 'play' decodes to PCM rather than passing "
+                         "through; follow=off asks for passthrough alone",
+                         in_path);
+            return kExitUnavailable;
+        }
+        status_println(status_stream(),
+                       "{} is AC-4: playing it decoded, on an ordinary output (no receiver found "
+                       "takes AC-4 over IEC 61937)",
+                       in_path);
+        return run_monitor(in_path, device_index, meta);
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid.has_value()) {

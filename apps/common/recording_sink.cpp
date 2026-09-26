@@ -1,6 +1,9 @@
 #include "recording_sink.hpp"
 
+#include <cstddef>
 #include <filesystem>
+#include <optional>
+#include <span>
 #include <system_error>
 #include <utility>
 
@@ -14,6 +17,36 @@ namespace {
 constexpr const char* kCannotOpen = "Could not open the output file for writing.";
 constexpr const char* kCannotWrap = "Could not wrap the stream into IEC 61937 bursts.";
 constexpr const char* kNothingEncoded = "Nothing was encoded.";
+constexpr const char* kNoAc4Matroska =
+    "Matroska registers no codec ID for AC-4: record it raw, as MPEG-TS, as an IEC 61937 "
+    "carrier or as fragmented MP4.";
+constexpr const char* kNotAc4SyncFrame = "An AC-4 frame was not a whole sync frame.";
+constexpr const char* kNoAc4Burst =
+    "No IEC 61937-14 burst type carries AC-4 frames at this rate.";
+
+// An AC-4 sync frame's raw_ac4_frame (ETSI TS 103 190-2 Annex G.3.1): past
+// the sync word and frame_size, 16 bits or 0xFFFF and 24 more, and before the
+// crc_word a 0xAC41 frame ends with. Empty where `sync_frame` is not whole.
+std::span<const std::byte> raw_ac4_frame(std::span<const std::byte> sync_frame) {
+    if (sync_frame.size() < 4) {
+        return {};
+    }
+    const auto byte = [&](std::size_t i) { return std::to_integer<std::size_t>(sync_frame[i]); };
+    const bool crc = byte(1) == 0x41;
+    std::size_t head = 4;
+    std::size_t size = (byte(2) << 8) | byte(3);
+    if (size == 0xFFFF) {
+        if (sync_frame.size() < 7) {
+            return {};
+        }
+        size = (byte(4) << 16) | (byte(5) << 8) | byte(6);
+        head = 7;
+    }
+    if (head + size + (crc ? 2 : 0) > sync_frame.size()) {
+        return {};
+    }
+    return sync_frame.subspan(head, size);
+}
 
 const char* write_failed_for(RecordingSink::Container container) {
     switch (container) {
@@ -46,7 +79,25 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
     std::error_code probe;
     created_ = !std::filesystem::exists(std::filesystem::symlink_status(path, probe));
 
+    if (config.ac4.has_value() && config.container == Container::kMatroska) {
+        return kNoAc4Matroska;
+    }
+
     if (config.container == Container::kSpdif) {
+        if (config.ac4.has_value()) {
+            // IEC 61937-14's link, as the caller chose it for the stream's
+            // rate: ac3cli's own run_spdif makes the same choice for a
+            // finished stream.
+            if (config.ac4->carrier_rate_hz == 0) {
+                return kNoAc4Burst;
+            }
+            if (!wav_.open(path, config.ac4->carrier_rate_hz, config.ac4->carrier_channels)) {
+                return kCannotOpen;
+            }
+            ac4_packer_.emplace(config.ac4->burst_type);
+            open_ = true;
+            return {};
+        }
         // The carrier runs at 4x the content rate for E-AC-3 - see
         // ac3cli's own run_spdif (apps/cli/main.cpp) for the citation.
         const auto carrier_rate =
@@ -64,8 +115,14 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
         // fragmenter's track needs a bitstream scan, so it waits for the
         // first frame (see Fmp4FolderWriter). Creating the folder here still
         // means an unwritable destination refuses the take before capture
-        // starts, which is what open()'s contract above promises.
-        if (auto problem = fmp4_.open(path, config.fmp4_window_segments); !problem.empty()) {
+        // starts, which is what open()'s contract above promises. An AC-4
+        // take's track is its caller's description instead.
+        std::optional<Fmp4FolderWriter::Track> described;
+        if (config.ac4.has_value()) {
+            described = config.ac4->fmp4;
+        }
+        if (auto problem = fmp4_.open(path, config.fmp4_window_segments, std::move(described));
+            !problem.empty()) {
             return problem;
         }
         open_ = true;
@@ -83,11 +140,17 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
         }
         matroska_.emplace(std::move(*writer));
     } else if (config.container == Container::kMpegts) {
+        // An AC-4 track's PMT says no more than its codec (the presentation
+        // detail lives in the table of contents), as 'ac3cli ts' writes it.
+        const bool ac4 = config.ac4.has_value();
         auto writer = mpegts::Writer::create(mpegts::AudioTrack{
-            .codec = config.eac3 ? mpegts::AudioCodec::kEac3 : mpegts::AudioCodec::kAc3,
+            .codec = ac4           ? mpegts::AudioCodec::kAc4
+                     : config.eac3 ? mpegts::AudioCodec::kEac3
+                                   : mpegts::AudioCodec::kAc3,
             .sample_rate = config.sample_rate,
-            .channels = config.channels,
-            .samples_per_frame = ac3::kSamplesPerFrame});
+            .channels = ac4 ? 2 : config.channels,
+            .samples_per_frame = ac4 ? config.ac4->samples_per_frame
+                                     : static_cast<std::uint32_t>(ac3::kSamplesPerFrame)});
         if (!writer.has_value()) {
             return std::string{mpegts::describe(writer.error())};
         }
@@ -105,7 +168,7 @@ std::string RecordingSink::open(const std::string& path, const Config& config) {
     return {};
 }
 
-std::string RecordingSink::push(std::span<const std::byte> frame) {
+std::string RecordingSink::push(std::span<const std::byte> frame, bool sync) {
     switch (config_.container) {
         case Container::kElementary:
             if (!write_file(frame)) {
@@ -132,13 +195,30 @@ std::string RecordingSink::push(std::span<const std::byte> frame) {
             }
             break;
         }
-        case Container::kFmp4:
-            if (const auto problem = fmp4_.push(frame); !problem.empty()) {
+        case Container::kFmp4: {
+            // An AC-4 sample is the raw frame alone (TS 103 190-2 Annex E.4).
+            std::span<const std::byte> sample = frame;
+            if (config_.ac4.has_value()) {
+                sample = raw_ac4_frame(frame);
+                if (sample.empty()) {
+                    return kNotAc4SyncFrame;
+                }
+            }
+            if (const auto problem = fmp4_.push(sample, sync); !problem.empty()) {
                 return problem;
             }
             break;
+        }
         case Container::kSpdif: {
-            if (config_.eac3) {
+            if (ac4_packer_.has_value()) {
+                auto burst = ac4_packer_->push(frame);
+                if (!burst.has_value()) {
+                    return kCannotWrap;
+                }
+                if (!wav_.write(*burst)) {
+                    return write_failed_for(config_.container);
+                }
+            } else if (config_.eac3) {
                 auto burst = packer_.push(frame);
                 if (!burst.has_value()) {
                     return kCannotWrap;

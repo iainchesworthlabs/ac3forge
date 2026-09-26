@@ -6,6 +6,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "mp4/dash.hpp"
 #include "mp4/hls.hpp"
@@ -32,6 +33,17 @@
 // come back as user-facing strings - empty means fine.
 class Fmp4FolderWriter {
    public:
+    // A track its caller describes, for a codec this class does not scan:
+    // AC-4, whose sample entry, time scale, brands and manifest values come
+    // from its table of contents (ETSI TS 103 190-2 Annexes E, G and H), which
+    // ac3cli reads. Only the mp4:: types are needed to carry them here.
+    struct Track {
+        mp4::AudioTrack audio{};
+        std::vector<std::string> brands{};
+        mp4::HlsOptions hls{};
+        mp4::DashOptions dash{};
+    };
+
     // Creates the folder. Deliberately does NOT write anything into it yet:
     // mp4::AudioTrack's dac3/dec3 payload is bitstream syntax, so the
     // fragmenter cannot exist until the first access unit does (see push()).
@@ -43,13 +55,20 @@ class Fmp4FolderWriter {
     // (mp4::FragmentOptions::playlist_window_segments). 0, the default,
     // lists every segment, which is what every existing caller except
     // ac3cli's own `fmp4-window=` token wants.
+    //
+    // `described`: the track, where the caller describes it; the first frame
+    // is then not scanned.
     [[nodiscard]] std::string open(const std::string& directory,
-                                   std::uint32_t window_segments = 0);
+                                   std::uint32_t window_segments = 0,
+                                   std::optional<Track> described = std::nullopt);
 
     // Scans the first frame to build the track (once), then buffers into the
     // current fragment; writes a segment and refreshes the manifests whenever
-    // one closes.
-    [[nodiscard]] std::string push(std::span<const std::byte> frame);
+    // one closes. `sync`: whether the frame is a sync sample, which a
+    // described track's frames need not all be (an AC-4 frame is one where it
+    // is an I-frame); a fragment then closes only where one starts
+    // (mp4::FragmentWriter::push()'s own rule).
+    [[nodiscard]] std::string push(std::span<const std::byte> frame, bool sync = true);
 
     // Flushes the trailing partial fragment and rewrites the manifests in
     // their finished form. A no-op if nothing was ever pushed.
@@ -68,6 +87,7 @@ class Fmp4FolderWriter {
     std::filesystem::path dir_;
     std::uint32_t window_segments_ = 0;
     std::size_t segments_ = 0;
+    std::optional<Track> described_;
     mp4::AudioTrack track_;
     mp4::HlsOptions hls_;
     mp4::DashOptions dash_;

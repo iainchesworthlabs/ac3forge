@@ -231,6 +231,19 @@ int run_mkv(std::string_view in_path, std::string_view out_path) {
     // count. This used to take a layout argument to learn the channel count,
     // which meant a wrong one silently produced a file that misdescribed
     // itself - and nothing could catch it.
+    // AC-4 has no Matroska CodecID: the IETF cellar working group's codec
+    // specification registers A_AC3 and A_EAC3 and none for TS 103 190, and
+    // its request for one (matroska-specification issue 176) has no mapping
+    // yet. A file under a CodecID of this project's own invention would be one
+    // no other reader could name, so this refuses rather than invent one.
+    if (is_ac4_stream(raw)) {
+        fmt::println(stderr,
+                     "error: {} is AC-4, for which Matroska registers no CodecID (its codec "
+                     "specification has A_AC3 and A_EAC3); 'ac3cli mp4', 'fmp4' and 'ts' carry "
+                     "AC-4",
+                     in_path);
+        return kExitUsage;
+    }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned.has_value()) {
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
@@ -506,34 +519,158 @@ std::vector<mp4::SegmentInfo> segment_infos_of(const RenditionFiles& rendition) 
     return out;
 }
 
+// fmp4 for AC-4: a CMAF track of the stream's raw frames (ETSI TS 103 190-2
+// Annex H) with its HLS and DASH manifests (Annex G). What CMAF asks of the
+// stream is checked first, every sample's table of contents against the
+// first's: H.1.2.1's rules (ac4::cmaf_refusal()), H.1.2.3's single stream (no
+// presentation's groups in another elementary stream, b_multi_pid), and
+// H.1.2.4's equivalent configurations. Each fragment starts at an I-frame
+// (E.3), the first once it holds frames_per_fragment frames, and the track
+// counts in Table E.1's timescale. Its brands are Table H.1's 'ca4m' and
+// 'ca4s' (src/ac4enc/ERRATA.md, "A single-stream track's brands"); its codecs
+// parameter, channel configuration, frame rate and channel count describe the
+// presentation with the widest compatibility (G.2.3, ac4::signalled_presentation()).
+int fmp4_ac4(Ac4Input& input, std::string_view in_path, std::string_view out_dir,
+             std::uint32_t frames_per_fragment, const Options& meta) {
+    const auto refuse = [&](std::string_view what, std::string_view clause) {
+        fmt::println(stderr, "error: {}: a CMAF track cannot carry {} (TS 103 190-2 Annex {})",
+                     in_path, what, clause);
+        return kExitInput;
+    };
+    for (std::size_t i = 0; i < input.mp4_samples.size(); ++i) {
+        const auto frame = ac4::parse_raw_frame(input.mp4_samples[i]);
+        if (!frame.has_value()) {
+            fmt::println(stderr, "error: {}: frame {}'s table of contents does not read: {}",
+                         in_path, i + 1, ac4::describe(frame.error()));
+            return kExitInput;
+        }
+        if (const std::string_view refusal = ac4::cmaf_refusal(frame->toc); !refusal.empty()) {
+            return refuse(refusal, "H.1.2.1");
+        }
+        if (std::ranges::any_of(frame->toc.presentations_v1,
+                                [](const ac4::PresentationInfoV1& p) { return p.b_multi_pid; })) {
+            return refuse(
+                "a presentation whose substream groups other elementary streams carry "
+                "(b_multi_pid)",
+                "H.1.2.3");
+        }
+        if (const std::string_view differs = ac4::configuration_difference(input.toc, frame->toc);
+            !differs.empty()) {
+            fmt::println(stderr,
+                         "error: {}: frame {} has another {} than the first, and every sample of "
+                         "a CMAF track has an equivalent configuration (TS 103 190-2 Annex "
+                         "H.1.2.4)",
+                         in_path, i + 1, differs);
+            return kExitInput;
+        }
+    }
+    if (input.iframes.empty() || !input.iframes.front()) {
+        fmt::println(stderr,
+                     "error: {}: the stream's first frame is not an I-frame, and a fragment starts "
+                     "at one (TS 103 190-2 Annex E.3)",
+                     in_path);
+        return kExitInput;
+    }
+    const auto timing = ac4::media_timing(input.toc);
+    if (!timing.has_value()) {
+        fmt::println(stderr,
+                     "error: AC-4 frame_rate_index {} has no time scale in TS 103 190-2 Table E.1",
+                     input.toc.frame_rate_index);
+        return kExitInput;
+    }
+    describe_alternatives(input.toc, input.mp4_samples);
+    std::vector<std::byte> dac4 = ac4::build_dac4(input.toc);
+    if (dac4.empty()) {
+        fmt::println(stderr, "error: {}: the track's dac4 cannot describe {}", in_path,
+                     ac4::dac4_refusal(input.toc));
+        return kExitInput;
+    }
+    const mp4::AudioTrack track{.codec_id = std::string{mp4::kCodecAc4},
+                                .sample_rate = static_cast<std::uint32_t>(input.toc.sample_rate_hz),
+                                // TS 103 190-2 E.4.5: channelcount "should be set to 2".
+                                .channels = 2,
+                                .samples_per_frame = timing->sample_delta,
+                                .codec_config = std::move(dac4),
+                                .rfc6381 = ac4::rfc6381_codec_string(input.toc),
+                                .timescale = timing->timescale};
+    auto fragmented = mp4::fragment(
+        track, input.mp4_samples,
+        mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment,
+                             .sync_samples = input.iframes,
+                             .brands = {"ca4m", "ca4s"}});
+    if (!fragmented.has_value()) {
+        fmt::println(stderr, "error: {}", mp4::describe(fragmented.error()));
+        return kExitInput;
+    }
+    // HLS's CHANNELS, the signalled presentation's speakers; DASH's
+    // AudioChannelConfiguration and supplemental properties, Annex G.3's.
+    const std::optional<int> channels = ac4::presentation_channel_count(input.toc);
+    const RenditionFiles rendition{
+        .track = track,
+        .fragmented = std::move(*fragmented),
+        .channels_attribute = channels ? fmt::format("{}", *channels) : std::string{}};
+    const std::filesystem::path dir{std::string{out_dir}};
+    if (!write_rendition(dir, rendition)) {
+        return kExitOutput;
+    }
+    const std::vector<mp4::SegmentInfo> segments = segment_infos_of(rendition);
+    const std::array<mp4::HlsRendition, 1> renditions{
+        mp4::HlsRendition{.track = rendition.track,
+                          .segments = segments,
+                          .media_playlist_uri = "audio.m3u8",
+                          .name = "Audio",
+                          .channels_attribute = rendition.channels_attribute,
+                          .is_default = true}};
+    if (!write_text_to_path(dir / "master.m3u8", mp4::build_hls_master_playlist(renditions))) {
+        return kExitOutput;
+    }
+    mp4::DashOptions dash;
+    if (const auto configuration = ac4::dash_channel_configuration(input.toc)) {
+        dash.channel_configuration = mp4::Descriptor{.scheme_id_uri = configuration->scheme_id_uri,
+                                                     .value = configuration->value};
+    }
+    for (const ac4::ManifestDescriptor& property : ac4::dash_supplemental_properties(input.toc)) {
+        dash.supplemental_properties.push_back(
+            mp4::Descriptor{.scheme_id_uri = property.scheme_id_uri, .value = property.value});
+    }
+    const auto adaptation_set =
+        mp4::build_dash_adaptation_set(track, rendition.fragmented.media_segments, dash);
+    if (!write_text_to_path(dir / "manifest.mpd",
+                            mp4::build_dash_mpd(track, rendition.fragmented.media_segments,
+                                                adaptation_set))) {
+        return kExitOutput;
+    }
+    if (meta.hls_fallback_51) {
+        fmt::println("note: fallback-51 ignored - {} is AC-4, which carries no object layer to strip",
+                     in_path);
+    }
+    const std::size_t iframes =
+        static_cast<std::size_t>(std::ranges::count(input.iframes, true));
+    status_println(status_stream(),
+                   "wrote {} AC-4 frames ({} of them I-frames; {} Hz, codecs {}) as {} fragment(s) "
+                   "to {} (init.mp4, segment*.m4s, audio.m3u8, master.m3u8, manifest.mpd; brands "
+                   "ca4m and ca4s)",
+                   input.mp4_samples.size(), iframes, track.sample_rate, track.rfc6381,
+                   rendition.fragmented.media_segments.size(), out_dir);
+    return kExitOk;
+}
+
 }  // namespace
 
 int run_fmp4(std::string_view in_path, std::string_view out_dir,
              std::uint32_t frames_per_fragment, const Options& meta) {
-    const auto raw = read_all(in_path);
+    // read_elementary_stream also takes a Matroska, MP4 or MPEG-TS input, as
+    // mkv/mp4/ts do: 'ac4-encode' and 'mp4' write MP4, which this fragments
+    // as readily as the raw stream.
+    const auto raw = read_elementary_stream(in_path);
     if (raw.empty()) {
-        fmt::println(stderr, "error: cannot open {}", in_path);
         return kExitInput;
     }
     const auto scanned = ac3::io::scan(raw);
     if (!scanned.has_value()) {
-        // AC-4: a CMAF track keeps TS 103 190-2 Annex H.1.2's rules, which a
-        // stream's table of contents alone can break, such as a configuration
-        // 6 presentation's missing presentation_id. Fragmenting AC-4 itself
-        // is planning/ac4.md's phase I1.
-        if (const auto ac4_in = try_ac4_input(raw)) {
-            const std::string_view refusal = ac4::cmaf_refusal(ac4_in->toc);
-            if (!refusal.empty()) {
-                fmt::println(stderr,
-                             "error: {}: a CMAF track cannot carry {} (TS 103 190-2 Annex H.1.2)",
-                             in_path, refusal);
-                return kExitInput;
-            }
-            fmt::println(stderr,
-                         "error: {}: fmp4 does not fragment AC-4 yet; ac3cli mp4 carries it in an "
-                         "MP4 that is not fragmented",
-                         in_path);
-            return kExitInput;
+        // AC-4, which keeps TS 103 190-2 Annex H's rules for a CMAF track.
+        if (auto ac4_in = try_ac4_input(raw)) {
+            return fmp4_ac4(*ac4_in, in_path, out_dir, frames_per_fragment, meta);
         }
         fmt::println(stderr, "error: {}", ac3::io::describe(scanned.error()));
         return kExitInput;
