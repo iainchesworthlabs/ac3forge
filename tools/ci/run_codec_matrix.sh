@@ -1185,4 +1185,73 @@ run ac4-encode "$FIXTURES/reference_51.wav" ac4_51_25.mp4 256 frame-rate=25 loro
     drc=music-standard drc-portable-headphones=speech
 run_ac4_frames_check ac4_51_25.mp4
 
+# --- AC-4 through the rest of ac3cli (planning/ac4.md, phase I1) ---------------
+# Every other command that reads or writes AC-4, on the streams ac4-encode
+# wrote above; tools/checks/check_matrix_coverage.py holds each one to a leg
+# here. FFmpeg checks what it can read: the AC-3 and E-AC-3 a transcode writes
+# decode strictly, and its demuxers count the frames of the AC-4 a transcode
+# writes, of the MP4 and MPEG-TS that carry it, and of the fragments fmp4
+# writes.
+run_ac4_fmp4_check() {
+    count=$((count + 1))
+    echo "[$count] AC-4 fragments: ffprobe reads every frame of $2 from $1"
+    local joined="$1.joined.mp4" frames packets n=1
+    cat "$1/init.mp4" > "$joined"
+    while [ -f "$1/segment$n.m4s" ]; do
+        cat "$1/segment$n.m4s" >> "$joined"
+        n=$((n + 1))
+    done
+    frames=$("$CLI" probe "$2" | sed -n 's/^access units *\([0-9]*\) .*/\1/p')
+    packets=$(ffprobe -v error -count_packets -show_entries stream=nb_read_packets \
+        -of csv=p=0 "$joined")
+    if [ -z "$frames" ] || [ "$frames" != "$packets" ]; then
+        echo "$2 holds '$frames' AC-4 frames and ffprobe read '$packets' from $1" >&2
+        exit 1
+    fi
+}
+run decode ac4_51_192.ac4 i1_ac4_51_stereo.wav channels=2 output-level=-24 drcmode=flat-panel-tv
+run probe ac4_51_192.ac4
+run probe ac4_stereo_192.mp4 json=1
+run qc ac4_51_192.ac4
+run qc ac4_51_25.mp4 layout=rendered
+run levels ac4_51_192.ac4
+run loudness ac4_51_192.ac4
+# AC-4 to E-AC-3 and AC-3, the presentation's drc_eac3_profile compressing the
+# re-encode, from a raw stream and from an MP4 at 25 fps.
+run transcode ac4_51_192.ac4 i1_from_ac4.ec3
+run_ffmpeg_check i1_from_ac4.ec3
+run transcode ac4_51_192.ac4 i1_from_ac4.ac3 448
+run_ffmpeg_check i1_from_ac4.ac3
+run transcode ac4_51_25.mp4 i1_from_ac4_25.ec3 384 dialnorm=auto
+run_ffmpeg_check i1_from_ac4_25.ec3
+run transcode ac4_stereo_120.ac4 i1_from_ac4_stereo.ac3 192 mono
+run_ffmpeg_check i1_from_ac4_stereo.ac3
+# AC-3 and E-AC-3 to AC-4: 5.1, and 7.1 folded to AC-4's 5.1.
+run transcode real_51_448.ac3 i1_from_ac3.ac4 256 drc=film-light
+run_ac4_frames_check i1_from_ac3.ac4 -f ac4
+run transcode eac3enc_none.ec3 i1_from_ec3.ac4 192
+run_ac4_frames_check i1_from_ec3.ac4 -f ac4
+run transcode eac3_71.ec3 i1_from_ec3_71.ac4 256
+run_ac4_frames_check i1_from_ec3_71.ac4 -f ac4
+# The containers: IEC 61937-14 bursts and MPEG-TS read back unchanged, MP4,
+# and CMAF fragments that start at I-frames.
+run spdif ac4_51_192.ac4 i1_ac4_spdif.wav
+run unspdif i1_ac4_spdif.wav i1_ac4_unspdif.ac4
+cmp -s ac4_51_192.ac4 i1_ac4_unspdif.ac4 || {
+    echo "spdif then unspdif did not return ac4_51_192.ac4 byte for byte" >&2
+    exit 1
+}
+run ts ac4_51_192.ac4 i1_ac4.ts
+run demux i1_ac4.ts i1_ac4_demux.ac4
+cmp -s ac4_51_192.ac4 i1_ac4_demux.ac4 || {
+    echo "demux i1_ac4.ts did not reproduce ac4_51_192.ac4 byte for byte" >&2
+    exit 1
+}
+run mp4 ac4_51_192.ac4 i1_ac4.mp4
+run_ac4_frames_check i1_ac4.mp4
+run fmp4 ac4_51_192.ac4 i1_ac4_fmp4 24
+run_ac4_fmp4_check i1_ac4_fmp4 ac4_51_192.ac4
+run fmp4 ac4_stereo_2997.mp4 i1_ac4_fmp4_2997 20
+run_ac4_fmp4_check i1_ac4_fmp4_2997 ac4_stereo_2997.mp4
+
 echo "codec matrix: $count commands completed cleanly in $WORKDIR"

@@ -427,6 +427,58 @@ every configuration's substream groups as written.
   it takes `n_targets` for `n_targets_minus1`. DEE's muxer, given the encoder's stream of one alternative
   presentation, writes nothing in 60 seconds and has to be stopped, so it settles nothing here.
 
+## Manifests and CMAF tracks
+
+`ac3cli fmp4`, and `record` and `live` with `container=fmp4`, fragment AC-4 into a CMAF track (Part 2
+Annex H) with an HLS playlist and a DASH MPD (Annex G). `src/ac4` reads what the manifests say off the
+table of contents (`ac4::signalled_presentation()`, `ac4::rfc6381_codec_string()`,
+`ac4::dash_channel_configuration()`, `ac4::dash_supplemental_properties()`,
+`ac4::presentation_channel_count()`), and `src/mp4` writes the track, each fragment starting at a sync
+sample (E.3) and listing each sample's flags where a fragment holds a frame that is not an I-frame
+(E.2). These are the readings.
+
+### The presentation a manifest describes
+
+- **Where:** Part 2 G.2.3, p. 247: "AdaptationSet elements should signal the properties of the AC-4
+  presentation with the widest compatibility"; E.13, p. 240, takes the codecs parameter's
+  `presentation_version` and `md_compat` "for the presentation".
+- **Text:** neither clause says what makes one presentation more widely compatible than another, or
+  which presentation E.13 means.
+- **Reading:** the lowest `md_compat` (Table 55, the level a decoder needs), among the presentations
+  that carry audio and that the stream does not disable, the first in the table of contents where
+  several share it; the first presentation where none carries audio. The codecs parameter, the channel
+  configuration, the frame rate and pre-virtualized descriptors and HLS's channel count all describe
+  this one. It is the first presentation for every stream DEE writes and for every stream of one
+  presentation, which is what `rfc6381_codec_string()` took before.
+- **Evidence:** Text. No player here reads an AC-4 manifest.
+
+### The "Dolby:2015" channel configuration's bit order
+
+- **Where:** Part 2 G.3.3.2, p. 248, and Table G.1, p. 249.
+- **Text:** "bit n in {0 ... 17} is set to ac4_dsi_v1/presentation_channel_group[17 - n]", where
+  Pseudocode E.3 indexes that array by Table A.27's channel group, which would put L/R (group 0) at bit
+  17. The clause's Example 1 gives 5.1.2 (groups 0, 1, 2, 6 and 7) as `0000C7`, Example 2 object audio
+  as `800000`, and every row of Table G.1 has group g at bit g (stereo `000001`, mono `000002`, 5.1
+  `000047`).
+- **Reading:** group g at bit g, as both examples and the table have it: the index in "[17 - n]" is the
+  order the array's elements are sent in, the first being group 17 (E.10.2). Bit 23 is set for object
+  audio, and Table G.1's MPEG value is signalled instead wherever the groups match a row, as G.3.3.1
+  prefers.
+- **Evidence:** The clause's two examples and Table G.1's 27 rows agree with each other and not with the
+  sentence.
+
+### A single-stream track's brands
+
+- **Where:** Part 2 H.4, Table H.1, p. 253: 'ca4m' for the AC-4 CMAF main profile (H.1.2.1, H.1.2.2,
+  H.3), 'ca4s' for the single-stream profile (H.1.2.1, H.1.2.3, H.3), "a subprofile of the AC-4 CMAF
+  main profile".
+- **Reading:** a track holding every substream group its presentations name, none of them with
+  `b_multi_pid` (H.1.2.3), lists both brands after 'cmfc': it keeps the single-stream profile, and
+  H.1.2.2's rules apply only where a presentation's groups are spread over several tracks, so it keeps
+  the main profile too, which H.4 makes the default. A stream with `b_multi_pid` is refused, since one
+  track cannot hold its other groups.
+- **Evidence:** Text.
+
 ## The presentation substream
 
 ### dialnorm_bits

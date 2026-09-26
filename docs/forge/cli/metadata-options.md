@@ -503,7 +503,8 @@ record/live options (record, live; any order, after the positional arguments):
                     default, keeps every segment
   layout=<name>     the encoded layout (default stereo); anything wider
                     than AC-3 carries promotes the stream to E-AC-3
-  codec=ac3|eac3    force the codec instead of deriving it from layout=
+  codec=ac3|eac3|ac4  force the codec instead of deriving it from layout=;
+                    ac4 encodes AC-4
   watchdog=<sec>    stop the session if capture delivers nothing for this
                     long (default 3, 0 disables)
 ```
@@ -518,7 +519,7 @@ playable file rather than nothing.
 
 | Value | What it writes | Byte-identical to |
 |---|---|---|
-| `raw` (default) | The bare `.ac3`/`.ec3` elementary stream | the frames, concatenated |
+| `raw` (default) | The bare `.ac3`/`.ec3` elementary stream, or an `.ac4` one's sync frames with their CRC | the frames, concatenated |
 | `mkv` (alias `matroska`) | Matroska, via `matroska::Writer`'s unknown-size Segment | `mkv` over the same frames, modulo the streaming Segment header |
 | `ts` (alias `mpegts`) | MPEG-2 Transport Stream, DVB profile | `ts` over the same frames |
 | `spdif` | IEC 61937 bursts inside a PCM16 WAV carrier | `spdif` over the same frames |
@@ -572,6 +573,18 @@ substreams only E-AC-3 has, so it promotes the stream automatically. `codec=eac3
 a narrow layout too (for a receiver you want to exercise as Dolby Digital Plus); `codec=ac3`
 alongside a layout AC-3 cannot carry is refused with the layout named.
 
+`codec=ac4` encodes AC-4 (ETSI TS 103 190) through the same AC-4 encoder `ac4-encode` uses, from
+the same plan: mono, stereo, 5.0 (`layout=L,C,R,Ls,Rs`) or 5.1, at 48 or 44.1 kHz, with
+`dialnorm=` sent as AC-4's dialnorm and `drc=`'s profile as its `drc_eac3_profile`, an I-frame every
+24 frames and the rate's own codec mode. A layout the AC-4 encoder does not take is refused with the
+reason, before the device opens. Each container carries AC-4 as its own command does: `raw` the
+sync frames with their CRC, `ts` the DVB signalling of `ts`, `spdif` the IEC 61937-14 bursts of
+`spdif` (the smallest burst type the rate's largest frame fits), and `fmp4` a CMAF track fragmented
+at I-frames with the `ca4m` and `ca4s` brands and Annex G's manifest values, as `fmp4` writes one.
+`mkv` is refused, since Matroska registers no codec ID for AC-4. `live`'s monitor decodes the AC-4
+it encodes; its passthrough receiver gets the parallel 5.1 AC-3 leg (`downmix=`), since no receiver
+found takes AC-4 over IEC 61937.
+
 `layout=`/`codec=` describe a **channel** session. `live mode=atmos` always encodes the TS 103 420
 shape — a 5.1 E-AC-3 bed plus its object layer — so passing either alongside it is refused rather
 than silently ignored.
@@ -580,6 +593,7 @@ than silently ignored.
 ac3cli record out.ec3 30 448 0 layout=51
 ac3cli record out.ec3 30 384 0 layout=stereo codec=eac3
 ac3cli live out.ec3 0 30 448 -1 -1 channels layout=714
+ac3cli record out.ac4 30 192 0 layout=51 codec=ac4 drc=film-light
 ```
 
 ### `watchdog=`
@@ -866,7 +880,7 @@ carry is an error that lists the ones it does. Ignored for AC-3, which has no su
 
 | Token | Command | Meaning |
 |---|---|---|
-| `codec=ac3` / `codec=eac3` | `transcode` | The output codec, when the output name's own suffix cannot say it — stdout (`-`), or a file named something other than `.ac3`/`.ec3`. Without it, an unrecognisable name is refused rather than guessed |
+| `codec=ac3` / `codec=eac3` / `codec=ac4` | `transcode` | The output codec, when the output name's own suffix cannot say it — stdout (`-`), or a file named something other than `.ac3`/`.ec3`/`.ac4`. Without it, an unrecognisable name is refused rather than guessed |
 | `compr=<dB>` | `metadata` | Stamp §7.7.2's compression word onto an existing stream, as the 8-bit wire value that gain implies |
 | `compr2=<dB>` | `metadata` | The same for Ch2 of a 1+1 dual-mono stream |
 | `bsmod=<0..7>` | `metadata` | Table 5.5's service type (0 = complete main, 1 = music and effects, 2 = visually impaired, …) |
@@ -886,7 +900,11 @@ refused, not invented.
 `dialnorm=` and `dialnorm2=` work on `metadata` too, but only with an explicit `1..31` value:
 `dialnorm=auto` needs a measurement, which is what `ac3cli normalize` is. On `transcode` they
 override the value carried from the source, and `dialnorm=auto` measures the *source* the same
-way an encode from a WAV would.
+way an encode from a WAV would; an AC-4 source is measured as the presentation it transcodes, as
+coded. A transcode to AC-4 takes `dialnorm=` and `drc=` for AC-4's dialnorm and DRC profile, and
+refuses the options AC-4 has no counterpart for (`heavy`, `drc2=`, `dialnorm2=`, `mixmeta`,
+`infomdat`, `annexd`); a transcode from AC-4 takes the presentation options of
+[Commands](commands.md#ac-4-presentations-presentation-language-associated) and `channels=5.1`.
 
 ## Qc options (`qc`): `preset=`, `layout=`, `objects=`
 
@@ -1099,7 +1117,8 @@ Optional positional arguments, when omitted:
 - `record` — 5 s at 192 kbps from device 0.
 - `live` — 10 s at 192 kbps.
 - `play`, `monitor`, `spatial` — device `-1`, the default output.
-- `transcode` — 448 kbps, and the source's own layout (folded to 5.1 when AC-3 cannot code it).
+- `transcode` — 448 kbps (192 for AC-4), and the source's own layout (folded to 5.1 when the
+  target cannot code it).
 - `cut` — from 0 s to the end of the stream.
 
 ## What the encoder accepts

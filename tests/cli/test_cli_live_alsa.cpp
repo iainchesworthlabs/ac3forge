@@ -823,3 +823,118 @@ TEST_CASE("identify stops at the slot where its output went away",
     CHECK(contains(out, "went away"));
     CHECK(contains(out, "stopped at slot 0"));
 }
+
+// ---------------------------------------------------------------------------
+// AC-4 (planning/ac4.md, phase I1): record and live take codec=ac4, and
+// monitor decodes AC-4. A take's frames are checked by decoding them back,
+// through each container they were written into.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Decodes an AC-4 stream, or a container holding one, and returns decode's
+// status line.
+std::string decoded_ac4(const fs::path& path) {
+    const auto wav = fs::path{path}.replace_extension(".decoded.wav");
+    const auto log = fs::path{path}.replace_extension(".decode.log");
+    REQUIRE(run_cli(null_config(), "decode \"" + path.string() + "\" \"" + wav.string() + "\"",
+                    log) == 0);
+    const auto out = read_text(log);
+    CHECK(contains(out, "AC-4 frames"));
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("record encodes an AC-4 take with codec=ac4 into each container it offers",
+          "[cli][audio-io][alsa-null][concurrency][ac4]") {
+    const auto dir = scratch_dir();
+    SECTION("raw sync frames") {
+        const auto take = dir / "record.ac4";
+        const auto log = dir / "record_ac4.log";
+        REQUIRE(run_cli(null_config(), "record \"" + take.string() + "\" 1 64 0 codec=ac4", log) ==
+                0);
+        const auto out = read_text(log);
+        check_clean(out);
+        CHECK(contains(out, "AC-4 frames (64 kbps, 2/0 stereo)"));
+        decoded_ac4(take);
+    }
+    SECTION("MPEG-TS, demuxed back") {
+        const auto take = dir / "record_ac4.ts";
+        REQUIRE(run_cli(null_config(),
+                        "record \"" + take.string() + "\" 1 64 0 codec=ac4 container=ts",
+                        dir / "record_ac4_ts.log") == 0);
+        const auto demuxed = dir / "record_ac4_ts.ac4";
+        REQUIRE(run_cli(null_config(),
+                        "demux \"" + take.string() + "\" \"" + demuxed.string() + "\"",
+                        dir / "record_ac4_demux.log") == 0);
+        decoded_ac4(demuxed);
+    }
+    SECTION("IEC 61937-14 bursts, unwrapped back") {
+        const auto take = dir / "record_ac4_spdif.wav";
+        REQUIRE(run_cli(null_config(),
+                        "record \"" + take.string() + "\" 1 64 0 codec=ac4 container=spdif",
+                        dir / "record_ac4_spdif.log") == 0);
+        const auto recovered = dir / "record_ac4_spdif.ac4";
+        REQUIRE(run_cli(null_config(),
+                        "unspdif \"" + take.string() + "\" \"" + recovered.string() + "\"",
+                        dir / "record_ac4_unspdif.log") == 0);
+        decoded_ac4(recovered);
+    }
+    SECTION("a CMAF folder of fragments") {
+        const auto folder = dir / "record_ac4_fmp4";
+        fs::remove_all(folder);
+        REQUIRE(run_cli(null_config(),
+                        "record \"" + folder.string() + "\" 1 64 0 codec=ac4 container=fmp4",
+                        dir / "record_ac4_fmp4.log") == 0);
+        const auto init = read_text(folder / "init.mp4");
+        CHECK(contains(init, "ca4m"));
+        CHECK(contains(init, "dac4"));
+        CHECK(fs::exists(folder / "segment1.m4s"));
+        CHECK(contains(read_text(folder / "master.m3u8"), "CODECS=\"ac-4."));
+    }
+    SECTION("Matroska is refused, for want of a codec ID") {
+        const auto take = dir / "record_ac4.mkv";
+        const auto log = dir / "record_ac4_mkv.log";
+        CHECK(run_cli(null_config(),
+                      "record \"" + take.string() + "\" 1 64 0 codec=ac4 container=mkv",
+                      log) == kExitOutput);
+        CHECK(contains(read_text(log), "Matroska registers no codec ID for AC-4"));
+    }
+    SECTION("a layout AC-4's encoder does not take is refused") {
+        const auto log = dir / "record_ac4_71.log";
+        CHECK(run_cli(null_config(),
+                      "record \"" + (dir / "record_ac4_71.ac4").string() +
+                          "\" 1 256 0 codec=ac4 layout=71",
+                      log) == 1);
+        CHECK(contains(read_text(log), "the AC-4 encoder takes mono, stereo, 5.0 and 5.1"));
+    }
+}
+
+TEST_CASE("live encodes an AC-4 session and monitors it through the AC-4 decoder",
+          "[cli][audio-io][alsa-null][concurrency][ac4]") {
+    const auto dir = scratch_dir();
+    const auto take = dir / "live.ac4";
+    const auto log = dir / "live_ac4.log";
+    REQUIRE(run_cli(null_config(), "live \"" + take.string() + "\" 0 1 64 -1 -2 codec=ac4", log) ==
+            0);
+    const auto out = read_text(log);
+    check_clean(out);
+    CHECK(contains(out, "monitoring on \"default endpoint\""));
+    CHECK(contains(out, "AC-4 frames (64 kbps, 2/0 stereo)"));
+    decoded_ac4(take);
+}
+
+TEST_CASE("monitor decodes and plays an AC-4 stream to the end on the default output",
+          "[cli][audio-io][alsa-null][concurrency][ac4]") {
+    const auto dir = scratch_dir();
+    const auto stream = dir / "monitor.ac4";
+    REQUIRE(run_cli(null_config(), "record \"" + stream.string() + "\" 1 64 0 codec=ac4",
+                    dir / "monitor_ac4_make.log") == 0);
+    const auto log = dir / "monitor_ac4.log";
+    REQUIRE(run_cli(null_config(), "monitor \"" + stream.string() + "\"", log) == 0);
+    const auto out = read_text(log);
+    check_clean(out);
+    CHECK(contains(out, "(AC-4, presentation 0, 2 channels, 48000 Hz)"));
+    CHECK(contains(out, "played "));
+}

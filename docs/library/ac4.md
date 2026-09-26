@@ -312,6 +312,15 @@ probe:
   presentation (Part 2 Annex E.10), or is empty where the table of contents holds something it
   cannot describe whole, and `ac4::dac4_refusal(toc)` says what; `ac4::cmaf_refusal(toc)` names
   the rule of Annex H.1.2.1 a stream breaks for a CMAF track.
+- What a manifest says of a track (Part 2 Annex G): `ac4::signalled_presentation(toc)` is the
+  presentation it describes, the one with the widest compatibility, the lowest `md_compat` (G.2.3;
+  the codec string names it too); `ac4::presentation_channel_count(toc)` its channels, for HLS's
+  `CHANNELS`; `ac4::dash_channel_configuration(toc)` its DASH AudioChannelConfiguration (Table
+  G.1, or the Dolby 2015 scheme's word); and `ac4::dash_supplemental_properties(toc)` the frame
+  rate and a pre-virtualized presentation's descriptors (G.3). `ac4::configuration_difference(a,
+  b)` names the Annex H.1.2.4 parameter in which two tables of contents differ, empty where every
+  sample of a CMAF track may carry both. `src/ac4enc/ERRATA.md` ("Manifests and CMAF tracks") has
+  the readings these take.
 
 ## Linking
 
