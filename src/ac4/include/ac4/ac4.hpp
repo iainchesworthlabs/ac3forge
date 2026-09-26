@@ -663,7 +663,8 @@ struct ManifestDescriptor {
 // object audio (src/ac4enc/ERRATA.md, "Manifests", on G.3.3.2's bit order).
 // Nothing for a bitstream_version below 2, or a presentation whose substreams
 // the table of contents does not describe whole.
-[[nodiscard]] AC4_EXPORT std::optional<ManifestDescriptor> dash_channel_configuration(const Toc& toc);
+[[nodiscard]] AC4_EXPORT std::optional<ManifestDescriptor> dash_channel_configuration(
+    const Toc& toc);
 
 // The SupplementalProperty descriptors Annex G.3 asks of a Representation for
 // signalled_presentation(): G.3.2's frame rate

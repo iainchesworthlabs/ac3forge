@@ -79,7 +79,9 @@ template <typename Rank>
 // The coding mode that names an AC-4 layout's bed for a meter: 1/0, 2/0, 3/0
 // or 3/2; a 7.X layout's last pair is metered past it.
 [[nodiscard]] inline ac3::Acmod ac4_bed_acmod(std::span<const ac4::Speaker> speakers) {
-    const auto has = [&](ac4::Speaker s) { return std::ranges::find(speakers, s) != speakers.end(); };
+    const auto has = [&](ac4::Speaker s) {
+        return std::ranges::find(speakers, s) != speakers.end();
+    };
     if (has(ac4::Speaker::kLeftSurround)) {
         return ac3::Acmod::k3_2;
     }

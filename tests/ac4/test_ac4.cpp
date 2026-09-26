@@ -2753,6 +2753,7 @@ TEST_CASE("dash_channel_configuration maps channel groups by Table G.1 or the Do
         std::string_view value;
         int channels;
     };
+    // clang-format off
     const std::vector<Case> cases = {
         {0, std::nullopt, kCicp, "1", 1},   // mono: C
         {1, std::nullopt, kCicp, "2", 2},   // stereo: L R
@@ -2774,6 +2775,7 @@ TEST_CASE("dash_channel_configuration maps channel groups by Table G.1 or the Do
                                   .top_channels_present = 1},
          kDolby, "0000C7", 8},
     };
+    // clang-format on
     for (const Case& c : cases) {
         CAPTURE(c.ch_mode, c.value);
         ac4::Toc toc = one_substream_toc(c.ch_mode);
@@ -2812,9 +2814,9 @@ TEST_CASE("dash_supplemental_properties sends Annex G.3's frame rate and pre-vir
         int frame_rate_index;
         std::string_view value;
     };
-    for (const Case c : {Case{48000, 13, "375/16"}, Case{48000, 3, "30000/1001"},
-                         Case{48000, 0, "24000/1001"}, Case{48000, 2, "25"},
-                         Case{48000, 11, "120000/1001"}, Case{44100, 13, "11025/512"}}) {
+    for (const Case c :
+         {Case{48000, 13, "375/16"}, Case{48000, 3, "30000/1001"}, Case{48000, 0, "24000/1001"},
+          Case{48000, 2, "25"}, Case{48000, 11, "120000/1001"}, Case{44100, 13, "11025/512"}}) {
         CAPTURE(c.sample_rate, c.frame_rate_index);
         ac4::Toc toc = one_substream_toc(4);
         toc.sample_rate_hz = c.sample_rate;
@@ -2865,8 +2867,8 @@ TEST_CASE("configuration_difference names the parameter of Annex H.1.2.4 that di
              t.n_presentations += 1;
          },
          "n_presentations"},
-        {"a presentation_config", [](ac4::Toc& t) { t.presentations_v1[1].presentation_config = 5; },
-         "presentation_config"},
+        {"a presentation_config",
+         [](ac4::Toc& t) { t.presentations_v1[1].presentation_config = 5; }, "presentation_config"},
         {"a single substream group",
          [](ac4::Toc& t) { t.presentations_v1[1].presentation_config.reset(); },
          "b_single_substream_group"},

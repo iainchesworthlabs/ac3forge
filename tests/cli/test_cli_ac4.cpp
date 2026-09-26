@@ -36,7 +36,8 @@ namespace {
 // Per this project's per-file test-helper convention (see
 // tests/cli/test_cli_containers.cpp, whose shapes these copy).
 fs::path scratch_dir() {
-    auto dir = fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_ac4_" + ac3::test::platform::process_id());
+    auto dir =
+        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("cli_ac4_" + ac3::test::platform::process_id());
     fs::create_directories(dir);
     return dir;
 }
@@ -116,8 +117,8 @@ fs::path tones_wav(const std::string& name, std::size_t count, int rate = 48000)
             const double hz = 331.0 + 157.0 * static_cast<double>(c);
             std::vector<float> x(length);
             for (std::size_t n = 0; n < length; ++n) {
-                x[n] = static_cast<float>(0.2 * std::sin(2.0 * std::numbers::pi * hz *
-                                                         static_cast<double>(n) / rate));
+                x[n] = static_cast<float>(
+                    0.2 * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n) / rate));
             }
             channels.push_back(std::move(x));
         }
@@ -140,10 +141,10 @@ fs::path made(const std::string& name, const std::string& command, const fs::pat
 // A 5.1 AC-4 stream whose presentation sends every value transcode carries:
 // dialnorm, the DRC profile, and each downmix value, with Lt/Rt preferred.
 fs::path metadata_ac4() {
-    static const fs::path path = made(
-        "meta_51.ac4", "ac4-encode", tones_wav("meta_51.wav", 6),
-        "192 dialnorm=23.5 drc=music-light lorocmixlev=-1.5 lorosurmixlev=-4.5 ltrtcmixlev=-6 "
-        "ltrtsurmixlev=-3 lfemix=-4.5 dmixmod=ltrt");
+    static const fs::path path =
+        made("meta_51.ac4", "ac4-encode", tones_wav("meta_51.wav", 6),
+             "192 dialnorm=23.5 drc=music-light lorocmixlev=-1.5 lorosurmixlev=-4.5 ltrtcmixlev=-6 "
+             "ltrtsurmixlev=-3 lfemix=-4.5 dmixmod=ltrt");
     return path;
 }
 
@@ -230,7 +231,8 @@ TEST_CASE("transcode sends an AC-3 or E-AC-3 source's metadata to AC-4 and drc= 
     const auto log = dir / "to_ac4.log";
     const auto wav = tones_wav("to_ac4_51.wav", 6);
 
-    const auto ac3_in = made("to_ac4.ac3", "encode", wav, "384 51 dialnorm=20 cmixlev=-3 surmixlev=-6");
+    const auto ac3_in =
+        made("to_ac4.ac3", "encode", wav, "384 51 dialnorm=20 cmixlev=-3 surmixlev=-6");
     const auto from_ac3 = dir / "from_ac3.ac4";
     REQUIRE(run_cli("transcode " + quoted(ac3_in) + " " + quoted(from_ac3) + " drc=film-standard",
                     log) == 0);
@@ -257,8 +259,8 @@ TEST_CASE("transcode sends an AC-3 or E-AC-3 source's metadata to AC-4 and drc= 
     REQUIRE(run_cli("transcode " + quoted(eac3_in) + " " + quoted(from_eac3) + " 256", log) == 0);
     INFO(read_log(log));
     CHECK(contains(read_log(log), "DRC      none"));
-    const auto eac3_metadata =
-        json_section(json_section(json_section(probe_json(from_eac3), "stream"), "ac4"), "metadata");
+    const auto eac3_metadata = json_section(
+        json_section(json_section(probe_json(from_eac3), "stream"), "ac4"), "metadata");
     CHECK(json_field(eac3_metadata, "drc") == "null");
     const auto eac3_downmix = json_section(eac3_metadata, "downmix");
     CHECK(json_field(eac3_downmix, "loro_centre_db") == "-1.5");
@@ -268,8 +270,7 @@ TEST_CASE("transcode sends an AC-3 or E-AC-3 source's metadata to AC-4 and drc= 
 
     // 3/0 without an LFE becomes AC-4's 5.0 rather than a 5.1 with a
     // silent LFE.
-    const auto three =
-        made("to_ac4_30.ac3", "encode", tones_wav("to_ac4_30.wav", 3), "256 L,C,R");
+    const auto three = made("to_ac4_30.ac3", "encode", tones_wav("to_ac4_30.wav", 3), "256 L,C,R");
     const auto from_three = dir / "from_30.ac4";
     REQUIRE(run_cli("transcode " + quoted(three) + " " + quoted(from_three) + " 128", log) == 0);
     CHECK(contains(read_log(log), "layout 5.0 <- 3 source channels"));
@@ -320,8 +321,9 @@ TEST_CASE("transcode measures an AC-4 source for dialnorm=auto", "[cli][ac4][tra
     const auto dir = scratch_dir();
     const auto log = dir / "auto.log";
     const auto out = dir / "auto.ac3";
-    REQUIRE(run_cli("transcode " + quoted(metadata_ac4()) + " " + quoted(out) + " 384 dialnorm=auto",
-                    log) == 0);
+    REQUIRE(
+        run_cli("transcode " + quoted(metadata_ac4()) + " " + quoted(out) + " 384 dialnorm=auto",
+                log) == 0);
     const auto status = read_log(log);
     INFO(status);
     CHECK(contains(status, "(measured, "));
@@ -336,7 +338,8 @@ TEST_CASE("transcode refuses what AC-4 cannot carry", "[cli][ac4][transcode]") {
     const auto out = dir / "refused.ac4";
     const auto stereo = made("refused_20.ac3", "encode", tones_wav("refused_20.wav", 2), "192");
     const auto dual = made("refused_11.ac3", "encode", tones_wav("refused_11.wav", 2), "192 1+1");
-    const auto slow = made("refused_32k.ac3", "encode", tones_wav("refused_32k.wav", 2, 32000), "192");
+    const auto slow =
+        made("refused_32k.ac3", "encode", tones_wav("refused_32k.wav", 2, 32000), "192");
     struct Row {
         std::string args;
         std::string message;
@@ -389,7 +392,8 @@ TEST_CASE("qc levels and loudness measure an AC-4 presentation as coded", "[cli]
     CHECK(contains(read_log(log), "AC-4, presentation 1"));
 
     // loudness reads AC-3 and E-AC-3 streams too, beside their own dialnorm.
-    const auto ac3_in = made("measure.ac3", "encode", tones_wav("measure.wav", 2), "192 dialnorm=27");
+    const auto ac3_in =
+        made("measure.ac3", "encode", tones_wav("measure.wav", 2), "192 dialnorm=27");
     REQUIRE(run_cli("loudness " + quoted(ac3_in), log) == 0);
     CHECK(contains(read_log(log), "AC-3"));
 }
@@ -398,11 +402,12 @@ TEST_CASE("qc levels and loudness measure an AC-4 presentation as coded", "[cli]
 // fmp4, mkv, probe, spdif
 // ---------------------------------------------------------------------------
 
-TEST_CASE("fmp4 fragments AC-4 at its I-frames with CMAF brands and manifests", "[cli][ac4][fmp4]") {
+TEST_CASE("fmp4 fragments AC-4 at its I-frames with CMAF brands and manifests",
+          "[cli][ac4][fmp4]") {
     const auto dir = scratch_dir();
     const auto log = dir / "fmp4.log";
-    const auto source = made("fmp4_20.ac4", "ac4-encode", tones_wav("fmp4_20.wav", 2),
-                             "96 iframe-interval=4");
+    const auto source =
+        made("fmp4_20.ac4", "ac4-encode", tones_wav("fmp4_20.wav", 2), "96 iframe-interval=4");
     const auto folder = dir / "fmp4_out";
     fs::remove_all(folder);
     REQUIRE(run_cli("fmp4 " + quoted(source) + " " + quoted(folder) + " 6", log) == 0);
@@ -480,7 +485,8 @@ TEST_CASE("help names AC-4 for every command that reads or writes it", "[cli][ac
     for (const char* command : {"qc", "levels", "loudness", "transcode", "monitor", "play"}) {
         CAPTURE(command);
         REQUIRE(run_cli(std::string{"help "} + command, log) == 0);
-        CHECK(contains(read_log(log), "AC-4 (decode, monitor, play, qc, levels, loudness, transcode)"));
+        CHECK(contains(read_log(log),
+                       "AC-4 (decode, monitor, play, qc, levels, loudness, transcode)"));
     }
     REQUIRE(run_cli("help record", log) == 0);
     CHECK(contains(read_log(log), "record/live codec=ac4"));

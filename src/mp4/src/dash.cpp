@@ -72,6 +72,7 @@ using manifest_detail::segment_infos;
     std::string out;
     out.reserve(text.size());
     for (const char c : text) {
+        // clang-format off
         switch (c) {
             case '&': out += "&amp;"; break;
             case '<': out += "&lt;"; break;
@@ -79,6 +80,7 @@ using manifest_detail::segment_infos;
             case '"': out += "&quot;"; break;
             default: out += c; break;
         }
+        // clang-format on
     }
     return out;
 }

@@ -643,10 +643,10 @@ std::string_view preferred_text(ac4::PreferredDownmix preferred) {
 }
 
 std::string downmix_text(const ac4::DownmixConfig& d) {
-    std::string text = fmt::format(
-        "{}{}; Lo/Ro centre {}, surround {}", preferred_text(d.preferred),
-        d.preferred == ac4::PreferredDownmix::kNotIndicated ? "" : " preferred",
-        db_text(d.loro_centre_db), db_text(d.loro_surround_db));
+    std::string text =
+        fmt::format("{}{}; Lo/Ro centre {}, surround {}", preferred_text(d.preferred),
+                    d.preferred == ac4::PreferredDownmix::kNotIndicated ? "" : " preferred",
+                    db_text(d.loro_centre_db), db_text(d.loro_surround_db));
     if (d.ltrt_centre_db.has_value() || d.ltrt_surround_db.has_value()) {
         text += fmt::format("; Lt/Rt centre {}, surround {}",
                             db_text(d.ltrt_centre_db.value_or(d.loro_centre_db)),
@@ -727,8 +727,8 @@ void carry_ac4_metadata(const ac4::PresentationMetadata& source, plan::Codec tar
                                           ac3::meta::SurroundMixLevel::kSilent};
     p.cmixlev =
         nearest_level(mix_level_of(ltrt ? d.ltrt_centre_db : d.loro_centre_db, false), kCentre);
-    p.surmixlev = nearest_level(
-        mix_level_of(ltrt ? d.ltrt_surround_db : d.loro_surround_db, true), kSurround);
+    p.surmixlev = nearest_level(mix_level_of(ltrt ? d.ltrt_surround_db : d.loro_surround_db, true),
+                                kSurround);
     p.lorocmixlev = mix_level_of(d.loro_centre_db, false);
     p.lorosurmixlev = mix_level_of(d.loro_surround_db, true);
     p.ltrtcmixlev = mix_level_of(d.ltrt_centre_db, false);
@@ -886,8 +886,9 @@ int transcode_from_ac4(std::string_view in_path, std::string_view out_path, std:
             return kExitInput;
         }
         if (!measured->integrated_lkfs.has_value()) {
-            fmt::println(stderr, "error: no audio above the -70 LKFS absolute gate; "
-                                 "pass dialnorm=<1..31> explicitly");
+            fmt::println(stderr,
+                         "error: no audio above the -70 LKFS absolute gate; "
+                         "pass dialnorm=<1..31> explicitly");
             return kExitRuntime;
         }
         p.meta.dialnorm = ac3::meta::dialnorm_from_lkfs(*measured->integrated_lkfs);
@@ -901,7 +902,8 @@ int transcode_from_ac4(std::string_view in_path, std::string_view out_path, std:
     std::string names;
     for (const ac4::Speaker speaker : source->speakers) {
         locations.push_back(ac4_location(speaker));
-        names += (names.empty() ? "" : ",") + std::string{ac3::eac3::chanmap::name(locations.back())};
+        names +=
+            (names.empty() ? "" : ",") + std::string{ac3::eac3::chanmap::name(locations.back())};
     }
     const std::vector<std::size_t> wav = plan::wav_order(locations);
     const std::size_t source_channels = locations.size();
@@ -1010,10 +1012,12 @@ int transcode_from_ac4(std::string_view in_path, std::string_view out_path, std:
 
 }  // namespace
 
-std::optional<DecodeRenderStats> decode_and_render(
-    std::string_view in_path, const LoadedStream& loaded, const plan::Routing& routing,
-    std::size_t coded_channels, const RenderedFrame& on_frame,
-    const std::function<void()>& on_abort) {
+std::optional<DecodeRenderStats> decode_and_render(std::string_view in_path,
+                                                   const LoadedStream& loaded,
+                                                   const plan::Routing& routing,
+                                                   std::size_t coded_channels,
+                                                   const RenderedFrame& on_frame,
+                                                   const std::function<void()>& on_abort) {
     // §E2.3.1.2's legacy core (kAc3CoreEac3Extension) opens with an AC-3
     // syncframe but carries Annex E dependents behind it. Eac3Decoder reads
     // the whole access unit correctly (it has folded a legacy core's own
@@ -1188,9 +1192,9 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     }
     // AC-3's and E-AC-3's own metadata has no AC-4 counterpart, so asking
     // for it is refused rather than dropped, as ac4-encode refuses it.
-    if (to_ac4 && (meta.p.heavy.has_value() || meta.p.heavy2.has_value() ||
-                   meta.p.drc2.has_value() || meta.p.mixmeta || meta.p.infomdat ||
-                   meta.p.annexd || meta.dialnorm2_given)) {
+    if (to_ac4 &&
+        (meta.p.heavy.has_value() || meta.p.heavy2.has_value() || meta.p.drc2.has_value() ||
+         meta.p.mixmeta || meta.p.infomdat || meta.p.annexd || meta.dialnorm2_given)) {
         fmt::println(stderr,
                      "error: heavy, heavy2, drc2=, dialnorm2=, infomdat, annexd and E-AC-3's "
                      "mixing metadata have no AC-4 counterpart; a transcode to AC-4 carries the "
@@ -1411,8 +1415,8 @@ int run_transcode(std::string_view in_path, std::string_view out_path, std::uint
     }
 
     status_println(status, "transcoded {} {} access units -> {} {} frames ({} kbps, {} Hz) in {}",
-                   stats->units_in, codec_label(loaded->scan.kind), encoder.frames(),
-                   target_label, bitrate, source_rate, out_path);
+                   stats->units_in, codec_label(loaded->scan.kind), encoder.frames(), target_label,
+                   bitrate, source_rate, out_path);
     status_println(status, "  layout {} <- {} source channels", label, source_channels);
     if (to_ac4) {
         status_println(status, "  dialnorm {:g} dBFS{}", ac4_dialnorm_db,

@@ -852,8 +852,8 @@ TEST_CASE("record encodes an AC-4 take with codec=ac4 into each container it off
     SECTION("raw sync frames") {
         const auto take = dir / "record.ac4";
         const auto log = dir / "record_ac4.log";
-        REQUIRE(run_cli(null_config(), "record \"" + take.string() + "\" 1 64 0 codec=ac4",
-                        log) == 0);
+        REQUIRE(run_cli(null_config(), "record \"" + take.string() + "\" 1 64 0 codec=ac4", log) ==
+                0);
         const auto out = read_text(log);
         check_clean(out);
         CHECK(contains(out, "AC-4 frames (64 kbps, 2/0 stereo)"));
@@ -897,8 +897,8 @@ TEST_CASE("record encodes an AC-4 take with codec=ac4 into each container it off
         const auto take = dir / "record_ac4.mkv";
         const auto log = dir / "record_ac4_mkv.log";
         CHECK(run_cli(null_config(),
-                      "record \"" + take.string() + "\" 1 64 0 codec=ac4 container=mkv", log) ==
-              kExitOutput);
+                      "record \"" + take.string() + "\" 1 64 0 codec=ac4 container=mkv",
+                      log) == kExitOutput);
         CHECK(contains(read_text(log), "Matroska registers no codec ID for AC-4"));
     }
     SECTION("a layout AC-4's encoder does not take is refused") {

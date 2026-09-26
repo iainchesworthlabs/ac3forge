@@ -887,9 +887,9 @@ std::optional<PlanError> validate_ac4(const Plan& plan) {
         if (!allocated.has_value()) {
             return PlanError::kInvalidChannels;
         }
-        const bool narrow = (allocated->bed_acmod == Acmod::k1_0 ||
-                             allocated->bed_acmod == Acmod::k2_0) &&
-                            !allocated->bed_lfe;
+        const bool narrow =
+            (allocated->bed_acmod == Acmod::k1_0 || allocated->bed_acmod == Acmod::k2_0) &&
+            !allocated->bed_lfe;
         const bool five = allocated->bed_acmod == Acmod::k3_2;
         if (!allocated->dependents.empty() || !(narrow || five)) {
             return PlanError::kLayoutNotInAc4;

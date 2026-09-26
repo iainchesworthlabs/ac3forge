@@ -432,9 +432,9 @@ std::expected<FragmentedOutput, MuxError> fragment(
     std::size_t start = 0;
     for (const std::size_t end : fragment_ends(frames.size(), step, sync)) {
         const std::size_t count = end - start;
-        auto segment =
-            build_media_segment(track, options, sequence_number, samples_emitted,
-                                frames.subspan(start, count), std::span{flags}.subspan(start, count));
+        auto segment = build_media_segment(track, options, sequence_number, samples_emitted,
+                                           frames.subspan(start, count),
+                                           std::span{flags}.subspan(start, count));
         if (!segment) {
             return std::unexpected(segment.error());
         }
@@ -473,8 +473,8 @@ std::expected<FragmentWriter, MuxError> FragmentWriter::create(const AudioTrack&
 
 std::expected<MediaSegment, MuxError> FragmentWriter::close_fragment() {
     const std::vector<std::span<const std::byte>> views(pending_.begin(), pending_.end());
-    auto segment =
-        build_media_segment(track_, options_, sequence_number_, decode_time_, views, pending_flags_);
+    auto segment = build_media_segment(track_, options_, sequence_number_, decode_time_, views,
+                                       pending_flags_);
     if (!segment) {
         return std::unexpected(segment.error());
     }

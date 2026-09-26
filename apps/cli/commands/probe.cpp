@@ -453,19 +453,19 @@ void print_container(const ac3::apps::ContainerFacts& facts) {
         case ContainerKind::kUnknown:
             return;
         case ContainerKind::kMpegTs:
-            fmt::println("{:<16}MPEG-TS, PID {}, program {}, stream_type 0x{:02X} ({}), {} PES "
-                         "payloads, {}-byte packets",
-                         "container", facts.track, facts.program_number, facts.stream_type,
-                         facts.signalling, facts.samples, facts.packet_size);
+            fmt::println(
+                "{:<16}MPEG-TS, PID {}, program {}, stream_type 0x{:02X} ({}), {} PES "
+                "payloads, {}-byte packets",
+                "container", facts.track, facts.program_number, facts.stream_type, facts.signalling,
+                facts.samples, facts.packet_size);
             return;
         case ContainerKind::kMp4:
         case ContainerKind::kMatroska:
             break;
     }
-    const std::string box =
-        facts.codec_box ? fmt::format(", {} of {} bytes", facts.codec_box->type,
-                                      facts.codec_box->bytes)
-                        : std::string{};
+    const std::string box = facts.codec_box ? fmt::format(", {} of {} bytes", facts.codec_box->type,
+                                                          facts.codec_box->bytes)
+                                            : std::string{};
     const std::string timescale =
         facts.kind == ContainerKind::kMp4 && facts.timescale != facts.sample_rate
             ? fmt::format(", timescale {}", facts.timescale)

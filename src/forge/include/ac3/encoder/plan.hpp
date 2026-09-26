@@ -53,6 +53,7 @@ enum class Codec : std::uint8_t {
     kAc4,
 };
 
+// clang-format off
 [[nodiscard]] constexpr std::string_view codec_name(Codec codec) {
     switch (codec) {
         case Codec::kAc3: return "ac3";
@@ -81,6 +82,7 @@ enum class Codec : std::uint8_t {
     }
     return {};
 }
+// clang-format on
 
 // The inverse of codec_name(), which is what a codec= option takes: "ac3",
 // "eac3" (or "ec3", the suffix) and "ac4". Nothing for any other spelling.
@@ -167,6 +169,7 @@ inline constexpr std::array<LayoutInfo, 8> kLayouts{{
 // ac4-encode codes 7.0 and 7.1 only as an experimental option, and immersive
 // layouts wait for the encoder's immersive element (planning/ac4.md, E8). A
 // channel list that is 5.0 reaches AC-4 through validate().
+// clang-format off
 [[nodiscard]] constexpr bool carries(Codec codec, LayoutId id) {
     switch (codec) {
         case Codec::kAc3: return layout(id).dependents == 0;
@@ -176,6 +179,7 @@ inline constexpr std::array<LayoutInfo, 8> kLayouts{{
     }
     return false;
 }
+// clang-format on
 
 // --- the general channel model -----------------------------------------------
 //

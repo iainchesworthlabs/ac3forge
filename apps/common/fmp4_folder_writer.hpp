@@ -58,8 +58,7 @@ class Fmp4FolderWriter {
     //
     // `described`: the track, where the caller describes it; the first frame
     // is then not scanned.
-    [[nodiscard]] std::string open(const std::string& directory,
-                                   std::uint32_t window_segments = 0,
+    [[nodiscard]] std::string open(const std::string& directory, std::uint32_t window_segments = 0,
                                    std::optional<Track> described = std::nullopt);
 
     // Scans the first frame to build the track (once), then buffers into the

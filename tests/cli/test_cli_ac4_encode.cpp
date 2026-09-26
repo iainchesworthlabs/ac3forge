@@ -703,8 +703,7 @@ TEST_CASE("ac4-encode gives the 7.X pair to a 7.X substream beside a mono one", 
           std::string::npos);
 }
 
-TEST_CASE("fmp4 fragments an AC-4 stream whose presentations keep CMAF's rules",
-          "[cli][ac4]") {
+TEST_CASE("fmp4 fragments an AC-4 stream whose presentations keep CMAF's rules", "[cli][ac4]") {
     // One presentation with its presentation_id: what Part 2 Annex H.1.2.1
     // asks. tests/cli/test_cli_ac4.cpp checks the fragments themselves
     // (planning/ac4.md's phase I1); the refusal for a configuration 6

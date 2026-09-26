@@ -393,8 +393,8 @@ int run_record(std::string_view out_path, std::uint32_t seconds, std::uint32_t b
     // the sink opens, so the take keeps its order.
     std::vector<TakeEncoder::Unit> pending;
     const auto open_sink = [&] {
-        if (const auto why = sink.open(std::string{out_path},
-                                       take_sink_config(meta, *take, rate_hz, &encoder));
+        if (const auto why =
+                sink.open(std::string{out_path}, take_sink_config(meta, *take, rate_hz, &encoder));
             !why.empty()) {
             fmt::println(stderr, "error: {}: {}", out_path, why);
             return false;

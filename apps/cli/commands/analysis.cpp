@@ -721,10 +721,9 @@ std::optional<std::size_t> decode_ac4_as_coded(
         return std::nullopt;
     }
     if (scan.stopped_at.has_value()) {
-        fmt::println(stderr,
-                     "warning: {}: the sync frames stop at byte {} ({}); measuring the {} before it",
-                     in_path, scan.stopped_at_offset, ac4::describe(*scan.stopped_at),
-                     scan.frames.size());
+        fmt::println(
+            stderr, "warning: {}: the sync frames stop at byte {} ({}); measuring the {} before it",
+            in_path, scan.stopped_at_offset, ac4::describe(*scan.stopped_at), scan.frames.size());
     }
     std::size_t decoded_frames = 0;
     std::vector<ac4::Speaker> layout;
@@ -778,8 +777,8 @@ Ac4Meter ac4_loudness_meter(const ac4::DecodedFrame& pcm, bool rendered) {
         pcm.sample_rate_hz == 44100 ? ac3::SampleRate::k44100 : ac3::SampleRate::k48000;
     const std::span<const ac4::Speaker> speakers{pcm.speakers};
     if (rendered) {
-        std::vector<std::size_t> order = ac4_order(
-            speakers, [](ac4::Speaker s) { return static_cast<int>(ac4_location(s)); });
+        std::vector<std::size_t> order =
+            ac4_order(speakers, [](ac4::Speaker s) { return static_cast<int>(ac4_location(s)); });
         ac3::eac3::chanmap::Layout layout{};
         for (const std::size_t c : order) {
             layout.items[static_cast<std::size_t>(layout.count++)] = ac4_location(speakers[c]);
@@ -816,8 +815,8 @@ std::optional<QcResult> measure_qc_ac4(std::span<const std::byte> stream, std::s
     std::optional<Ac4Meter> meter;
     std::uint64_t samples = 0;
     std::vector<std::span<const float>> views;
-    const auto frames = decode_ac4_as_coded(
-        stream, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+    const auto frames =
+        decode_ac4_as_coded(stream, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
             if (!meter.has_value()) {
                 meter.emplace(ac4_loudness_meter(pcm, rendered));
                 result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
@@ -904,11 +903,12 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
         const double delta = *p.integrated_lkfs - claimed_lkfs;
         const double implied = ac4_dialnorm_from_lkfs(*p.integrated_lkfs);
         fmt::println("{}dialnorm check:", heading);
-        fmt::println("  claimed              {:>+8.2f} LKFS  (from dialnorm {:g} dBFS)", claimed_lkfs,
-                     *p.dialnorm_db);
-        fmt::println("  delta                {:>+8.2f} dB    (measured - claimed; positive = "
-                     "measured is louder)",
-                     delta);
+        fmt::println("  claimed              {:>+8.2f} LKFS  (from dialnorm {:g} dBFS)",
+                     claimed_lkfs, *p.dialnorm_db);
+        fmt::println(
+            "  delta                {:>+8.2f} dB    (measured - claimed; positive = "
+            "measured is louder)",
+            delta);
         fmt::println("  measurement-derived dialnorm would be {:g} dBFS{}", implied,
                      implied == *p.dialnorm_db ? std::string{" (matches)"}
                                                : fmt::format(", not {:g}", *p.dialnorm_db));
@@ -1282,8 +1282,9 @@ int run_qc(std::string_view in_path, const Options& meta) {
                      "as well");
     }
     if (result->bed_hid_pair) {
-        fmt::println("  note: this presentation is 7.X, whose last pair is NOT in the figures "
-                     "above -");
+        fmt::println(
+            "  note: this presentation is 7.X, whose last pair is NOT in the figures "
+            "above -");
         fmt::println("        layout=rendered measures it as well");
     }
     bool all_pass = true;
@@ -1341,28 +1342,30 @@ int run_levels(std::string_view in_path, const Options& meta) {
         std::size_t presentation = 0;
         std::uint64_t samples = 0;
         int rate = 0;
-        const auto frames = decode_ac4_as_coded(bytes, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
-            if (!meter.has_value()) {
-                order = ac4_order(pcm.speakers, ac4_meter_rank);
-                const bool lfe = std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
-                meter.emplace(ac4_bed_acmod(pcm.speakers), lfe,
-                              static_cast<std::uint32_t>(pcm.sample_rate_hz),
-                              static_cast<int>(pcm.channels.size()));
-                presentation = pcm.presentation;
-                rate = pcm.sample_rate_hz;
-            }
-            views.clear();
-            for (const std::size_t c : order) {
-                views.emplace_back(pcm.channels[c]);
-            }
-            meter->process(views);
-            samples += pcm.samples;
-        });
+        const auto frames =
+            decode_ac4_as_coded(bytes, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+                if (!meter.has_value()) {
+                    order = ac4_order(pcm.speakers, ac4_meter_rank);
+                    const bool lfe =
+                        std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
+                    meter.emplace(ac4_bed_acmod(pcm.speakers), lfe,
+                                  static_cast<std::uint32_t>(pcm.sample_rate_hz),
+                                  static_cast<int>(pcm.channels.size()));
+                    presentation = pcm.presentation;
+                    rate = pcm.sample_rate_hz;
+                }
+                views.clear();
+                for (const std::size_t c : order) {
+                    views.emplace_back(pcm.channels[c]);
+                }
+                meter->process(views);
+                samples += pcm.samples;
+            });
         if (!frames.has_value() || !meter.has_value()) {
             return kExitInput;
         }
-        fmt::println("{}: {} AC-4 frames, presentation {}, {} channels, {} Hz, {:.2f} s", in_path, *frames,
-                     presentation, order.size(), rate,
+        fmt::println("{}: {} AC-4 frames, presentation {}, {} channels, {} Hz, {:.2f} s", in_path,
+                     *frames, presentation, order.size(), rate,
                      static_cast<double>(samples) / static_cast<double>(rate));
         print_channel_summary(*meter);
         return kExitOk;
@@ -1574,9 +1577,9 @@ int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
     std::size_t largest = 0;
     for (std::size_t i = 0; i < scan.frames.size(); ++i) {
         const std::size_t end =
-            i + 1 < scan.frames.size() ? scan.frames[i + 1].offset
-                                       : (scan.stopped_at.has_value() ? scan.stopped_at_offset
-                                                                      : stream.size());
+            i + 1 < scan.frames.size()
+                ? scan.frames[i + 1].offset
+                : (scan.stopped_at.has_value() ? scan.stopped_at_offset : stream.size());
         frames.push_back(stream.subspan(scan.frames[i].offset, end - scan.frames[i].offset));
         largest = std::max(largest, frames.back().size());
     }
@@ -1588,10 +1591,9 @@ int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
     }
     const auto type =
         ac3::iec61937::ac4_burst_type_for(largest, head->fs_index, head->frame_rate_index);
-    const auto timing =
-        type.has_value()
-            ? ac3::iec61937::ac4_burst_timing(*type, head->fs_index, head->frame_rate_index)
-            : std::nullopt;
+    const auto timing = type.has_value() ? ac3::iec61937::ac4_burst_timing(*type, head->fs_index,
+                                                                           head->frame_rate_index)
+                                         : std::nullopt;
     if (!type.has_value() || !timing.has_value()) {
         fmt::println(stderr,
                      "error: {}: no IEC 61937-14 burst type carries frames of {} bytes at this "
@@ -1624,7 +1626,8 @@ int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
         return kExitOutput;
     }
     const auto status = status_stream();
-    status_println(status, "wrapped {} AC-4 sync frames into IEC 61937-14 {} bursts -> {} ({} Hz{})",
+    status_println(status,
+                   "wrapped {} AC-4 sync frames into IEC 61937-14 {} bursts -> {} ({} Hz{})",
                    frames.size(), ac3::iec61937::data_type_name(*type), out_path, carrier_rate,
                    hbr16 ? ", eight channels" : " carrier");
     status_println(status,

@@ -21,8 +21,7 @@ constexpr const char* kNoAc4Matroska =
     "Matroska registers no codec ID for AC-4: record it raw, as MPEG-TS, as an IEC 61937 "
     "carrier or as fragmented MP4.";
 constexpr const char* kNotAc4SyncFrame = "An AC-4 frame was not a whole sync frame.";
-constexpr const char* kNoAc4Burst =
-    "No IEC 61937-14 burst type carries AC-4 frames at this rate.";
+constexpr const char* kNoAc4Burst = "No IEC 61937-14 burst type carries AC-4 frames at this rate.";
 
 // An AC-4 sync frame's raw_ac4_frame (ETSI TS 103 190-2 Annex G.3.1): past
 // the sync word and frame_size, 16 bits or 0xFFFF and 24 more, and before the

@@ -1110,7 +1110,8 @@ TEST_CASE("fragment() starts every fragment at a sync sample and lists each samp
 TEST_CASE("fragment() with every frame a sync sample writes what it writes without flags",
           "[fmp4][ac4]") {
     const auto frames = opaque_frames(7);
-    const auto plain = mp4::fragment(ac4_track(), frames, mp4::FragmentOptions{.frames_per_fragment = 3});
+    const auto plain =
+        mp4::fragment(ac4_track(), frames, mp4::FragmentOptions{.frames_per_fragment = 3});
     const auto flagged = mp4::fragment(
         ac4_track(), frames,
         mp4::FragmentOptions{.frames_per_fragment = 3, .sync_samples = std::vector<bool>(7, true)});
@@ -1174,8 +1175,8 @@ TEST_CASE("a track's timescale reaches its init segment and its decode times and
     CHECK(snippet.find("timescale=\"240000\"") != std::string::npos);
     CHECK(snippet.find("audioSamplingRate=\"48000\"") != std::string::npos);
     const auto mpd = mp4::build_dash_mpd(track, out->media_segments, snippet);
-    CHECK(mpd.find(fmt::format("mediaPresentationDuration=\"PT{:.3f}S\"", 5.0 * 8008.0 / 240000.0)) !=
-          std::string::npos);
+    CHECK(mpd.find(fmt::format("mediaPresentationDuration=\"PT{:.3f}S\"",
+                               5.0 * 8008.0 / 240000.0)) != std::string::npos);
 }
 
 TEST_CASE("FragmentWriter pushed with sync flags writes fragment()'s segments", "[fmp4][ac4]") {
@@ -1221,9 +1222,9 @@ TEST_CASE("FragmentWriter pushed with sync flags writes fragment()'s segments", 
 
 TEST_CASE("fragment() lists a caller's brands after the structural ones", "[fmp4][ac4]") {
     const auto frames = opaque_frames(3);
-    const auto out = mp4::fragment(
-        ac4_track(), frames,
-        mp4::FragmentOptions{.frames_per_fragment = 3, .brands = {"ca4m", "ca4s"}});
+    const auto out =
+        mp4::fragment(ac4_track(), frames,
+                      mp4::FragmentOptions{.frames_per_fragment = 3, .brands = {"ca4m", "ca4s"}});
     REQUIRE(out.has_value());
     const auto init = parse(out->init_segment);
     const auto* ftyp = find(init, "ftyp");
@@ -1272,7 +1273,8 @@ TEST_CASE("DASH writes a caller's channel configuration and supplemental propert
         "<SupplementalProperty schemeIdUri=\"tag:dolby.com,2017:dash:audio_frame_rate:2017\" "
         "value=\"375/16\"/>");
     const auto escaped = snippet.find(
-        "<SupplementalProperty schemeIdUri=\"urn:example:a&amp;b\" value=\"&lt;&quot;x&quot;&gt;\"/>");
+        "<SupplementalProperty schemeIdUri=\"urn:example:a&amp;b\" "
+        "value=\"&lt;&quot;x&quot;&gt;\"/>");
     REQUIRE(rate != std::string::npos);
     REQUIRE(escaped != std::string::npos);
     CHECK(rate < escaped);

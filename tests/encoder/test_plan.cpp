@@ -246,8 +246,9 @@ TEST_CASE("an AC-4 plan takes mono stereo 5.0 and 5.1 at 48 or 44.1 kHz", "[ac4]
                                                  cm::kLeftSurroundBit | cm::kRightSurroundBit);
     const ac3::plan::Plan five_zero{.codec = Codec::kAc4, .custom_locations = five};
     CHECK_FALSE(ac3::plan::validate(five_zero).has_value());
-    for (const auto bits : {static_cast<std::uint16_t>(cm::kLeftBit | cm::kCentreBit | cm::kRightBit),
-                            static_cast<std::uint16_t>(cm::kLeftBit | cm::kRightBit | cm::kLfeBit)}) {
+    for (const auto bits :
+         {static_cast<std::uint16_t>(cm::kLeftBit | cm::kCentreBit | cm::kRightBit),
+          static_cast<std::uint16_t>(cm::kLeftBit | cm::kRightBit | cm::kLfeBit)}) {
         const ac3::plan::Plan plan{.codec = Codec::kAc4, .custom_locations = bits};
         INFO("locations " << ac3::plan::format_channels(bits));
         CHECK(ac3::plan::validate(plan) == PlanError::kLayoutNotInAc4);

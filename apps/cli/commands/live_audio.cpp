@@ -141,8 +141,7 @@ int monitor_ac4(std::span<const std::byte> stream, std::string_view in_path,
             status_println(status_stream(),
                            "  {} channels on a {}-channel output: folding to {} (ETSI TS 103 "
                            "190-1 6.2.17)",
-                           speakers->size(), target.channels,
-                           ac4::describe(config.output.downmix));
+                           speakers->size(), target.channels, ac4::describe(config.output.downmix));
         }
     }
     ac4::Decoder decoder(config);
@@ -170,8 +169,9 @@ int monitor_ac4(std::span<const std::byte> stream, std::string_view in_path,
         if (order.empty()) {
             order = ac4_order(pcm.speakers, ac4_wav_rank);
             layout = pcm.speakers;
-            const auto started = sink.start(target.id, static_cast<std::uint32_t>(pcm.sample_rate_hz),
-                                            static_cast<std::uint16_t>(order.size()));
+            const auto started =
+                sink.start(target.id, static_cast<std::uint32_t>(pcm.sample_rate_hz),
+                           static_cast<std::uint16_t>(order.size()));
             if (!started.has_value()) {
                 fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
                 return kExitUnavailable;
@@ -1185,12 +1185,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
 
     RecordingSink sink;
     {
-        const auto config =
-            atmos ? RecordingSink::Config{.container = meta.container,
-                                          .eac3 = true,
-                                          .sample_rate = rate_hz,
-                                          .channels = 6}
-                  : take_sink_config(meta, *take, rate_hz, &take_encoder);
+        const auto config = atmos ? RecordingSink::Config{.container = meta.container,
+                                                          .eac3 = true,
+                                                          .sample_rate = rate_hz,
+                                                          .channels = 6}
+                                  : take_sink_config(meta, *take, rate_hz, &take_encoder);
         if (const auto why = sink.open(std::string{out_path}, config); !why.empty()) {
             fmt::println(stderr, "error: {}: {}", out_path, why);
             return kExitOutput;
@@ -1520,10 +1519,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                     }
                 }
             }
-            const bool delivered = std::ranges::all_of(bursts, [&](const std::vector<std::byte>& burst) {
-                return ac3::apps::submit_while_running(passthrough_sink,
-                                                       std::chrono::milliseconds(4), burst);
-            });
+            const bool delivered =
+                std::ranges::all_of(bursts, [&](const std::vector<std::byte>& burst) {
+                    return ac3::apps::submit_while_running(passthrough_sink,
+                                                           std::chrono::milliseconds(4), burst);
+                });
             if (!delivered) {
                 passing_through = false;
                 passthrough_sink.stop();

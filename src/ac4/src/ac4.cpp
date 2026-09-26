@@ -2536,15 +2536,15 @@ std::optional<SignalledChannels> signalled_channels(const Toc& toc) {
         return std::nullopt;
     }
     if (shape->ch_mode >= 0) {
-        return SignalledChannels{
-            .objects = false,
-            .groups = channel_groups(shape->ch_mode, shape->centre, shape->four_back,
-                                     shape->top_pairs)};
+        return SignalledChannels{.objects = false,
+                                 .groups = channel_groups(shape->ch_mode, shape->centre,
+                                                          shape->four_back, shape->top_pairs)};
     }
     // Pseudocode 25 leaves no channel mode for object audio, and for a
     // presentation without audio substreams, which is not object audio.
     for (const int ref : pres.group_refs) {
-        for (const GroupSubstream& s : toc.substream_groups[static_cast<std::size_t>(ref)].substreams) {
+        for (const GroupSubstream& s :
+             toc.substream_groups[static_cast<std::size_t>(ref)].substreams) {
             if (s.kind != GroupSubstream::Kind::kChan) {
                 return SignalledChannels{.objects = true, .groups = 0};
             }
@@ -2606,7 +2606,8 @@ std::optional<ManifestDescriptor> dash_channel_configuration(const Toc& toc) {
                                       .value = std::to_string(row.value)};
         }
     }
-    return ManifestDescriptor{.scheme_id_uri = std::string{kDolby}, .value = hex6(channels->groups)};
+    return ManifestDescriptor{.scheme_id_uri = std::string{kDolby},
+                              .value = hex6(channels->groups)};
 }
 
 std::vector<ManifestDescriptor> dash_supplemental_properties(const Toc& toc) {
@@ -2619,18 +2620,17 @@ std::vector<ManifestDescriptor> dash_supplemental_properties(const Toc& toc) {
         const std::uint32_t den = timing->sample_delta / divisor;
         out.push_back(ManifestDescriptor{
             .scheme_id_uri = "tag:dolby.com,2017:dash:audio_frame_rate:2017",
-            .value = den == 1 ? std::to_string(num)
-                              : std::to_string(num) + "/" + std::to_string(den)});
+            .value =
+                den == 1 ? std::to_string(num) : std::to_string(num) + "/" + std::to_string(den)});
     }
     const std::optional<std::size_t> index = signalled_presentation(toc);
     const bool virtualized =
-        index.has_value() && (!toc.presentations_v1.empty()
-                                  ? toc.presentations_v1[*index].b_pre_virtualized
-                                  : toc.presentations_v0[*index].b_pre_virtualized);
+        index.has_value() &&
+        (!toc.presentations_v1.empty() ? toc.presentations_v1[*index].b_pre_virtualized
+                                       : toc.presentations_v0[*index].b_pre_virtualized);
     if (virtualized) {
-        out.push_back(
-            ManifestDescriptor{.scheme_id_uri = "tag:dolby.com,2016:dash:virtualized_content:2016",
-                               .value = "1"});
+        out.push_back(ManifestDescriptor{
+            .scheme_id_uri = "tag:dolby.com,2016:dash:virtualized_content:2016", .value = "1"});
     }
     return out;
 }
@@ -2663,12 +2663,14 @@ std::string_view configuration_difference(const Toc& a, const Toc& b) {
         return "n_presentations";
     }
     for (std::size_t i = 0; i < a.presentations_v1.size(); ++i) {
-        if (a.presentations_v1[i].presentation_config != b.presentations_v1[i].presentation_config) {
+        if (a.presentations_v1[i].presentation_config !=
+            b.presentations_v1[i].presentation_config) {
             return "a presentation's b_single_substream_group or presentation_config";
         }
     }
     for (std::size_t i = 0; i < a.presentations_v0.size(); ++i) {
-        if (a.presentations_v0[i].presentation_config != b.presentations_v0[i].presentation_config) {
+        if (a.presentations_v0[i].presentation_config !=
+            b.presentations_v0[i].presentation_config) {
             return "a presentation's b_single_substream_group or presentation_config";
         }
     }
@@ -2689,7 +2691,8 @@ std::string_view configuration_difference(const Toc& a, const Toc& b) {
             }
             const bool language_a = ca.language_tag.has_value() || ca.serialized_language_tag;
             const bool language_b = cb.language_tag.has_value() || cb.serialized_language_tag;
-            if (language_a != language_b || ca.serialized_language_tag != cb.serialized_language_tag ||
+            if (language_a != language_b ||
+                ca.serialized_language_tag != cb.serialized_language_tag ||
                 (ca.language_tag && cb.language_tag &&
                  primary_subtag(*ca.language_tag) != primary_subtag(*cb.language_tag))) {
                 return "a substream group's language";

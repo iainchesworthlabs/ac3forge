@@ -593,11 +593,10 @@ int fmp4_ac4(Ac4Input& input, std::string_view in_path, std::string_view out_dir
                                 .codec_config = std::move(dac4),
                                 .rfc6381 = ac4::rfc6381_codec_string(input.toc),
                                 .timescale = timing->timescale};
-    auto fragmented = mp4::fragment(
-        track, input.mp4_samples,
-        mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment,
-                             .sync_samples = input.iframes,
-                             .brands = {"ca4m", "ca4s"}});
+    auto fragmented = mp4::fragment(track, input.mp4_samples,
+                                    mp4::FragmentOptions{.frames_per_fragment = frames_per_fragment,
+                                                         .sync_samples = input.iframes,
+                                                         .brands = {"ca4m", "ca4s"}});
     if (!fragmented.has_value()) {
         fmt::println(stderr, "error: {}", mp4::describe(fragmented.error()));
         return kExitInput;
@@ -635,17 +634,17 @@ int fmp4_ac4(Ac4Input& input, std::string_view in_path, std::string_view out_dir
     }
     const auto adaptation_set =
         mp4::build_dash_adaptation_set(track, rendition.fragmented.media_segments, dash);
-    if (!write_text_to_path(dir / "manifest.mpd",
-                            mp4::build_dash_mpd(track, rendition.fragmented.media_segments,
-                                                adaptation_set))) {
+    if (!write_text_to_path(
+            dir / "manifest.mpd",
+            mp4::build_dash_mpd(track, rendition.fragmented.media_segments, adaptation_set))) {
         return kExitOutput;
     }
     if (meta.hls_fallback_51) {
-        fmt::println("note: fallback-51 ignored - {} is AC-4, which carries no object layer to strip",
-                     in_path);
+        fmt::println(
+            "note: fallback-51 ignored - {} is AC-4, which carries no object layer to strip",
+            in_path);
     }
-    const std::size_t iframes =
-        static_cast<std::size_t>(std::ranges::count(input.iframes, true));
+    const std::size_t iframes = static_cast<std::size_t>(std::ranges::count(input.iframes, true));
     status_println(status_stream(),
                    "wrote {} AC-4 frames ({} of them I-frames; {} Hz, codecs {}) as {} fragment(s) "
                    "to {} (init.mp4, segment*.m4s, audio.m3u8, master.m3u8, manifest.mpd; brands "

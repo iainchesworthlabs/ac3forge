@@ -3928,13 +3928,14 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
     // time scale, Table H.1's brands, and the manifests' values for the
     // presentation with the widest compatibility, as fmp4 writes them.
     if (const auto timing = ac4::media_timing(*toc)) {
-        ac4.fmp4.audio = mp4::AudioTrack{.codec_id = std::string{mp4::kCodecAc4},
-                                         .sample_rate = static_cast<std::uint32_t>(toc->sample_rate_hz),
-                                         .channels = 2,  // TS 103 190-2 E.4.5
-                                         .samples_per_frame = timing->sample_delta,
-                                         .codec_config = ac4::build_dac4(*toc),
-                                         .rfc6381 = ac4::rfc6381_codec_string(*toc),
-                                         .timescale = timing->timescale};
+        ac4.fmp4.audio =
+            mp4::AudioTrack{.codec_id = std::string{mp4::kCodecAc4},
+                            .sample_rate = static_cast<std::uint32_t>(toc->sample_rate_hz),
+                            .channels = 2,  // TS 103 190-2 E.4.5
+                            .samples_per_frame = timing->sample_delta,
+                            .codec_config = ac4::build_dac4(*toc),
+                            .rfc6381 = ac4::rfc6381_codec_string(*toc),
+                            .timescale = timing->timescale};
     }
     ac4.fmp4.brands = {"ca4m", "ca4s"};
     if (const std::optional<int> channels = ac4::presentation_channel_count(*toc)) {
@@ -3954,10 +3955,9 @@ RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take
 }
 
 std::optional<ac3::meta::ProfileId> profile_id_of(const ac3::meta::Profile& p) {
-    for (const auto id :
-         {ac3::meta::ProfileId::kFilmStandard, ac3::meta::ProfileId::kFilmLight,
-          ac3::meta::ProfileId::kMusicStandard, ac3::meta::ProfileId::kMusicLight,
-          ac3::meta::ProfileId::kSpeech}) {
+    for (const auto id : {ac3::meta::ProfileId::kFilmStandard, ac3::meta::ProfileId::kFilmLight,
+                          ac3::meta::ProfileId::kMusicStandard, ac3::meta::ProfileId::kMusicLight,
+                          ac3::meta::ProfileId::kSpeech}) {
         const ac3::meta::Profile q = ac3::meta::profile(id);
         if (p.null_low_db == q.null_low_db && p.null_high_db == q.null_high_db &&
             p.boost_ratio == q.boost_ratio && p.max_boost_db == q.max_boost_db &&
@@ -4065,9 +4065,8 @@ std::string TakeEncoder::open(const plan::Plan& p, std::optional<ac4::EncoderCon
             const auto coded = plan::coded_channels(plan::resolve(p));
             ac4_order_.resize(coded.size());
             std::iota(ac4_order_.begin(), ac4_order_.end(), std::size_t{0});
-            std::ranges::stable_sort(ac4_order_, {}, [&](std::size_t c) {
-                return ac4_input_rank(coded[c].location);
-            });
+            std::ranges::stable_sort(
+                ac4_order_, {}, [&](std::size_t c) { return ac4_input_rank(coded[c].location); });
             ac4::EncoderConfig config = ac4.value_or(ac4_config_for(p));
             config.channels = static_cast<int>(coded.size());
             config.sample_rate_hz = static_cast<int>(ac3::sample_rate_hz(p.sample_rate));
@@ -4084,13 +4083,13 @@ std::string TakeEncoder::open(const plan::Plan& p, std::optional<ac4::EncoderCon
             // (a frame at 29.97 fps is a sample longer every other time), its
             // head with frame_size's escape, and its CRC.
             const auto timing = ac4::media_timing(ac4_->toc());
-            const double seconds =
-                timing.has_value() ? static_cast<double>(timing->sample_delta) /
-                                         static_cast<double>(timing->timescale)
-                                   : 2048.0 / static_cast<double>(config.sample_rate_hz);
+            const double seconds = timing.has_value()
+                                       ? static_cast<double>(timing->sample_delta) /
+                                             static_cast<double>(timing->timescale)
+                                       : 2048.0 / static_cast<double>(config.sample_rate_hz);
             ac4_max_frame_bytes_ =
-                static_cast<std::size_t>(std::ceil(static_cast<double>(p.bitrate_kbps) * 125.0 *
-                                                   seconds * 1.001)) +
+                static_cast<std::size_t>(
+                    std::ceil(static_cast<double>(p.bitrate_kbps) * 125.0 * seconds * 1.001)) +
                 9;
             return {};
         }
@@ -4103,7 +4102,8 @@ std::vector<TakeEncoder::Unit> TakeEncoder::ac4_units(
     std::vector<Unit> out;
     out.reserve(frames.size());
     for (const ac4::EncodedFrame& frame : frames) {
-        out.push_back(Unit{.bytes = ac4::sync_frame(frame.raw_ac4_frame, true), .sync = frame.iframe});
+        out.push_back(
+            Unit{.bytes = ac4::sync_frame(frame.raw_ac4_frame, true), .sync = frame.iframe});
     }
     return out;
 }
@@ -4308,7 +4308,8 @@ std::string ac4_processing(const ac4::OutputConfig& output) {
         add("for headphones");
     }
     if (output.dialogue_gain_db != 0.0) {
-        add(fmt::format("dialogue substreams at {:+g} dB where the stream allows", output.dialogue_gain_db));
+        add(fmt::format("dialogue substreams at {:+g} dB where the stream allows",
+                        output.dialogue_gain_db));
     }
     if (output.associated_gain_db != 0.0) {
         add(fmt::format("associated audio at {:+g} dB", output.associated_gain_db));
