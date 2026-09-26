@@ -1,11 +1,16 @@
 #include "test_room.hpp"
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
+#include <complex>
 #include <expected>
 #include <filesystem>
+#include <fstream>
+#include <limits>
 #include <mutex>
+#include <numbers>
 #include <optional>
 #include <span>
 #include <stop_token>
@@ -20,6 +25,7 @@
 #include "ac3/render/layout.hpp"
 #include "ac3/render/routing.hpp"
 #include "ac3/sendspin/discovery.hpp"
+#include "ac4enc/encoder.hpp"
 #include "network_sinks.hpp"
 #include "output_selector.hpp"
 #include "pcm_sink.hpp"
@@ -77,6 +83,9 @@ public:
         clock_frames_ = 0;
         carry_ = 0.0;
         ++opens_;
+        recent_.assign(format.layout.slots(), std::vector<float>(kToneWindow, 0.0F));
+        recent_at_ = 0;
+        recent_filled_ = 0;
         return OpenOutputFormat{.sample_rate = format.sample_rate, .channels = width_, .mode = OutputMode::kLocalPcm};
     }
 
@@ -100,8 +109,37 @@ public:
                 peak_ = std::max(peak_, static_cast<double>(std::fabs(slot[n])));
             }
         }
+        // The last kToneWindow samples of each slot, for tone_level_db().
+        for (std::size_t n = 0; n < frames; ++n) {
+            for (std::size_t s = 0; s < recent_.size(); ++s) {
+                recent_[s][recent_at_] =
+                    s < slots.size() && n < slots[s].size() ? slots[s][n] : 0.0F;
+            }
+            recent_at_ = (recent_at_ + 1) % kToneWindow;
+        }
+        recent_filled_ = std::min(recent_filled_ + frames, kToneWindow);
         submitted_ += frames;
         return true;
+    }
+
+    [[nodiscard]] double tone_level_db(std::size_t slot, double hz) const {
+        const std::scoped_lock lock(mutex_);
+        if (slot >= recent_.size() || recent_filled_ < kToneWindow || sample_rate_ == 0) {
+            return -std::numeric_limits<double>::infinity();
+        }
+        const double w = 2.0 * std::numbers::pi * hz / static_cast<double>(sample_rate_);
+        std::complex<double> sum{};
+        double weights = 0.0;
+        for (std::size_t k = 0; k < kToneWindow; ++k) {
+            const double hann =
+                0.5 - (0.5 * std::cos(2.0 * std::numbers::pi * static_cast<double>(k) /
+                                      static_cast<double>(kToneWindow - 1)));
+            const float sample = recent_[slot][(recent_at_ + k) % kToneWindow];
+            sum +=
+                hann * static_cast<double>(sample) * std::polar(1.0, -w * static_cast<double>(k));
+            weights += hann;
+        }
+        return 20.0 * std::log10(std::abs(2.0 * sum / weights));
     }
 
     [[nodiscard]] std::optional<audio::MonitorPosition> position() const {
@@ -233,6 +271,11 @@ private:
     double carry_ = 0.0;
     double speed_ = 1.0;
     double peak_ = 0.0;
+    // Each rendered slot's last kToneWindow samples as submitted, a ring
+    // written at recent_at_.
+    std::vector<std::vector<float>> recent_;
+    std::size_t recent_at_ = 0;
+    std::size_t recent_filled_ = 0;
     // Last, so it starts after, and is joined before, everything it reads.
     std::jthread clock_;
 };
@@ -315,6 +358,129 @@ void reset_peak(FakeRoom& room) {
 
 void set_speed(FakeRoom& room, double speed) {
     room.set_speed(speed);
+}
+
+double tone_level_db(const FakeRoom& room, std::size_t slot, double hz) {
+    return room.tone_level_db(slot, hz);
+}
+
+// --- AC-4 tone streams -----------------------------------------------------
+
+namespace {
+
+constexpr int kToneRate = 48000;
+constexpr std::size_t kToneSamples = 20 * 48000;
+constexpr double kToneAmplitude = 0.1;
+
+[[nodiscard]] std::vector<float> tone(double hz) {
+    std::vector<float> out(kToneSamples);
+    for (std::size_t n = 0; n < out.size(); ++n) {
+        out[n] = static_cast<float>(kToneAmplitude * std::sin(2.0 * std::numbers::pi * hz *
+                                                              static_cast<double>(n) / kToneRate));
+    }
+    return out;
+}
+
+[[nodiscard]] ac4::EncoderConfig tones_config() {
+    ac4::EncoderConfig config;
+    config.channels = 6;
+    config.bitrate_kbps = 384;
+    config.dialnorm_db = -24.0;
+    config.downmix = ac4::DownmixConfig{.loro_centre_db = -1.5,
+                                        .loro_surround_db = -4.5,
+                                        .ltrt_centre_db = -3.0,
+                                        .ltrt_surround_db = -6.0,
+                                        .lfe_db = -4.5,
+                                        .preferred = ac4::PreferredDownmix::kLtRt,
+                                        .loro_correction_db2 = std::nullopt,
+                                        .ltrt_correction_db2 = std::nullopt};
+    config.dialogue = ac4::DialogueConfig{};
+    config.dialogue->max_gain_db = 9;
+    return config;
+}
+
+[[nodiscard]] ac4::EncoderConfig presentations_config() {
+    ac4::EncoderConfig config;
+    config.bitrate_kbps = 256;
+    ac4::SubstreamConfig music;
+    music.channels = 2;
+    music.bitrate_kbps = 128;
+    music.content = ac4::ContentClassifier::kMusicAndEffects;
+    ac4::SubstreamConfig dialogue;
+    dialogue.channels = 1;
+    dialogue.bitrate_kbps = 64;
+    dialogue.content = ac4::ContentClassifier::kDialogue;
+    dialogue.language = "en";
+    dialogue.dialogue_mix = ac4::DialogueMix{.max_gain_db = 6, .pan_degrees = {}};
+    ac4::SubstreamConfig described;
+    described.channels = 1;
+    described.bitrate_kbps = 48;
+    described.content = ac4::ContentClassifier::kVisuallyImpaired;
+    described.language = "qad";
+    config.substreams = {music, dialogue, described};
+    ac4::PresentationConfig plain;
+    plain.config = 0;
+    plain.substreams = {0, 1};
+    plain.presentation_id = 1;
+    ac4::PresentationConfig with_description;
+    with_description.config = 3;
+    with_description.substreams = {0, 1, 2};
+    with_description.presentation_id = 2;
+    config.presentations = {plain, with_description};
+    return config;
+}
+
+}  // namespace
+
+bool write_ac4_stream(const std::string& path, const std::string& kind, std::string* error) {
+    const auto fail = [error](std::string why) {
+        if (error != nullptr) {
+            *error = std::move(why);
+        }
+        return false;
+    };
+    ac4::EncoderConfig config;
+    std::vector<std::vector<float>> input;
+    if (kind == "tones") {
+        config = tones_config();
+        for (const double hz : {440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0}) {
+            input.push_back(tone(hz));
+        }
+    } else if (kind == "presentations") {
+        config = presentations_config();
+        for (const double hz : {331.0, 457.0, 1117.0, 1531.0}) {
+            input.push_back(tone(hz));
+        }
+    } else {
+        return fail("no such kind of stream: " + kind);
+    }
+    auto encoder = ac4::Encoder::create(config);
+    if (!encoder) {
+        return fail(std::string{ac4::Encoder::refusal_reason(config)});
+    }
+    std::ofstream out(std::filesystem::path(path), std::ios::binary);
+    if (!out) {
+        return fail("could not open " + path);
+    }
+    const auto write = [&out](const std::vector<ac4::EncodedFrame>& frames) {
+        for (const ac4::EncodedFrame& frame : frames) {
+            const std::vector<std::byte> wrapped = ac4::sync_frame(frame.raw_ac4_frame, false);
+            out.write(reinterpret_cast<const char*>(wrapped.data()),
+                      static_cast<std::streamsize>(wrapped.size()));
+        }
+    };
+    const std::vector<std::span<const float>> views(input.begin(), input.end());
+    const auto frames = encoder->encode(views);
+    if (!frames) {
+        return fail("the encoder refused the input");
+    }
+    write(*frames);
+    const auto rest = encoder->flush();
+    if (!rest) {
+        return fail("the encoder could not flush");
+    }
+    write(*rest);
+    return out.good() ? true : fail("could not write " + path);
 }
 
 // --- the test sink ---------------------------------------------------------

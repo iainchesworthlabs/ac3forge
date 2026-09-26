@@ -78,7 +78,7 @@ Status:
 | 52 | Speakers | Identify button per speaker (Identify / Stop) | none | UI | SpeakersPage::test_identifyButtonAndLevel, Shell::test_escapeStops... |
 | 53 | Speakers | Crossover presets and exact field | none | UI | SpeakersPage::test_crossoverPresetAndExactField |
 | 54 | Speakers | Identify level | none | UI | SpeakersPage::test_identifyButtonAndLevel |
-| 55 | Decoder | E-AC-3 / AC-4 sub-page switch | UI | UI | DecoderSettings::test_formatSwitch..., DecoderApplied::test_ac4SubPageModeAndDownmix |
+| 55 | Decoder | E-AC-3 / AC-4 sub-page switch | UI | UI | DecoderSettings::test_formatSwitch..., DecoderApplied::test_ac4SubPageSharesTheDownmixAndNotTheMode, DecoderAc4::test_presentationDialogue... (the page turns to AC-4 when an AC-4 item plays) |
 | 56 | Decoder | Dynamic range mode | UI | UI | DecoderSettings::test_modeSegmentedControl..., DecoderApplied::* |
 | 57 | Decoder | DRC cut / boost sliders | logic | UI | DecoderApplied::test_customModeSlidersAndCheckboxes |
 | 58 | Decoder | Heavy compression / dialogue normalisation checkboxes | logic | UI | DecoderApplied::test_customModeSlidersAndCheckboxes |
@@ -88,7 +88,7 @@ Status:
 | 62 | Decoder | Dual mono, objects, JOC domain, concealment | UI | UI | DecoderSettings::test_dualMono... |
 | 63 | Decoder | Fast inverse transform checkbox | logic | UI | DecoderApplied::test_stereoAndTransformCheckboxes |
 | 64 | Decoder | This stream / Programme cards show the playing stream | none | UI | DecoderApplied::test_settingsReachWhatIsPlaying |
-| 65 | Decoder | AC-4 sub-page mode / downmix controls | none | UI | DecoderApplied::test_ac4SubPageModeAndDownmix |
+| 65 | Decoder | AC-4 sub-page's shared downmix / bad-frame controls (no operating mode: decision 12) | none | UI | DecoderApplied::test_ac4SubPageSharesTheDownmixAndNotTheMode, DecoderAc4::test_eachControlWritesItsSetting |
 | 66 | Decoder | Settings applied to what is playing | none | UI | DecoderApplied::test_settingsReachWhatIsPlaying (RF is louder than Line at the device) |
 | 67 | Network | Sink list shows a discovered sink | none | UI | NetworkPairing::test_discoveredSinkIsListedAndPairsWithTheCodeItShows (discovery injected, not mDNS) |
 | 68 | Network | Look again (rescan) | none | UI | NetworkPairing::test_discoveredSink... (clicked; mDNS itself not exercised) |
@@ -115,14 +115,23 @@ Status:
 | 89 | Dialogs | Licences: notices text, Close | none | UI | Dialogs::test_shortcutsAboutLicencesChain |
 | 90 | Dialogs | First run shows once; Not now / Open Speakers | none | UI | Dialogs::test_firstRunShowsOnceAndNotNowRemembersIt, test_firstRunOpenSpeakersGoesToTheSpeakersPage |
 | 91 | Output | Play to a network group (`selectOutputGroup`) | none | UI | OutputPicker::test_groupRowPinsPlaybackToTheGroup (the picker's group row, Play here, then a device row moves it back) |
+| 92 | Decoder | AC-4 presentation picker and table (the one playing in bold) | none | UI | DecoderAc4::test_presentationDialogueAndDescriptionAreHeard (picked by keyboard; the description goes with presentation 1) |
+| 93 | Decoder | AC-4 dialogue enhancement slider | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_levelAndEnhancementAreHeardAsTheirFormulasSay (C up by the gain, to the stream's 9 dB cap, measured at the device) |
+| 94 | Decoder | AC-4 dialogue level slider | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_presentationDialogue... (the dialogue alone, to the stream's 6 dB maximum) |
+| 95 | Decoder | AC-4 audio description checkbox and its level | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_presentationDialogue... (the presentation carrying it plays; its level heard) |
+| 96 | Decoder | AC-4 device list (the DRC decoder mode) | none | UI | DecoderAc4::test_eachControlWritesItsSetting (all six by keyboard; each mode's compression is held against the decoder's own by the [hearth][ac4] cases) |
+| 97 | Decoder | AC-4 output level slider and dialogue normalisation checkbox | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_levelAndEnhancement... (2^((Lout - dialnorm) / 6) at -31 and -17 dBFS) |
+| 98 | Decoder | AC-4 downmix, LFE in the fold, and the stream's preferred downmix | none | UI | DecoderAc4::test_downmixIsHeardWithTheStreamsGains (Lo/Ro, Lt/Rt and the LFE at the stream's gains, each tone against its coded level) |
+| 99 | Decoder | AC-4 page readouts (dB values beside the sliders, "Nothing AC-4 is playing.") | none | UI | DecoderAc4::test_aTheBannerIsGoneAndEveryCardIsLive, DecoderAc4::test_eachControlWritesItsSetting |
+| 100 | Media | AC-4 item: Stream, Presentations and Metadata cards, and it plays | none | UI | MediaPage::test_ac4ItemIsDescribedAndPlays |
 
 ### Totals
 
-| | Before (4 suites, 18 cases) | After (14 suites, 73 cases) |
+| | Before (4 suites, 18 cases) | After (15 suites, 80 cases) |
 |---|---|---|
-| UI | 5 | 90 |
+| UI | 5 | 99 |
 | logic only | 15 | 1 (row 15: no UI control exists) |
-| none | 71 | 0 |
+| none | 80 | 0 |
 
 Gaps that remain inside covered rows:
 

@@ -6,13 +6,14 @@ import Ac3ForgeHearthTest
 
 import "HearthTestHelpers.js" as H
 
-// Media.qml (FEATURE_COVERAGE.md rows 39-42) and the Play page's Objects card
-// (row 20): the Showing picker points the page at another queue item, whose
-// file is read by the real MediaInspector and shown card by card; Copy puts
-// the JSON document on the clipboard and Export JSON... writes it through the
-// page's own save dialog. The objects case plays an E-AC-3 stream carrying
-// object metadata into the fake device room (TestServices.useFakeRoom()) and
-// reads the Objects card while it plays.
+// Media.qml (FEATURE_COVERAGE.md rows 39-42 and 100) and the Play page's
+// Objects card (row 20): the Showing picker points the page at another queue
+// item, whose file is read by the real MediaInspector and shown card by card;
+// Copy puts the JSON document on the clipboard and Export JSON... writes it
+// through the page's own save dialog. The objects case plays an E-AC-3
+// stream carrying object metadata into the fake device room
+// (TestServices.useFakeRoom()) and reads the Objects card while it plays; the
+// AC-4 case plays a DEE stream and reads what the decoder says of it.
 TestCase {
     id: testCase
     name: "MediaPage"
@@ -24,6 +25,7 @@ TestCase {
     property string shortAc3: ""
     property string longEac3: ""
     property string objectsEac3: ""
+    property string filmAc4: ""
 
     Component { id: mediaComponent; Media { width: 1200; height: 2400 } }
     Component { id: objectsCardComponent; PlayObjectsCard { width: 320 } }
@@ -37,7 +39,10 @@ TestCase {
                                              "Long stereo.ec3");
         objectsEac3 = TestServices.stageFixture(repo + "esp-idf/ac3forge/examples/hearth_sink/www/objects-mdct.ec3",
                                                 "Objects.ec3");
-        verify(shortAc3.length > 0 && longEac3.length > 0 && objectsEac3.length > 0, "fixtures were not staged");
+        filmAc4 = TestServices.stageFixture(repo + "tests/golden/external-baseline/ac4-51-drc-ltrt-192/dee.ac4",
+                                            "Film 5.1.ac4");
+        verify(shortAc3.length > 0 && longEac3.length > 0 && objectsEac3.length > 0 && filmAc4.length > 0,
+               "fixtures were not staged");
     }
 
     function init() {
@@ -153,5 +158,31 @@ TestCase {
                   10000, "no objects placed while playing");
         tryVerify(function() { return H.textItem(card, HearthController.objectsPlaced + " placed") !== null; }, 5000,
                   "the Objects card does not say how many are placed");
+    }
+
+    // An AC-4 item (planning/ac4.md, I2) plays, and the page says what the
+    // decoder reads of it: the Stream card's frame rate and I-frames, the
+    // presentation table, and the Metadata card - with no banner saying it
+    // cannot play.
+    function test_ac4ItemIsDescribedAndPlays() {
+        HearthController.addFiles([filmAc4]);
+        tryVerify(function() { return HearthController.queue.length === 1; }, 10000);
+        const page = makePage();
+        TestServices.resetPeak();
+        HearthController.play();
+        tryCompare(HearthController, "state", "playing", 10000);
+        tryVerify(function() { return TestServices.device().peak > 0.001; }, 10000,
+                  "nothing the AC-4 decoder put out reached the device");
+        tryVerify(function() { return HearthController.inspectedMedia.codec === "ac4"; }, 10000);
+        tryVerify(function() { return H.textContaining(page, "AC-4 · bitstream version") !== null; }, 5000,
+                  "the Stream card does not name AC-4");
+        verify(H.textContaining(page, "samples a frame") !== null, "no frame rate");
+        verify(H.textContaining(page, ", every ") !== null, "no I-frame interval");
+        verify(H.textContaining(page, "NOT PLAYABLE") === null, "the not-playable banner is back");
+        // One presentation, 5.1, and its metadata: DEE writes a dialogue
+        // level and the Lt/Rt preference this leg asked for.
+        tryVerify(function() { return H.textItem(page, "5.1") !== null; }, 5000, "no 5.1 row in the presentation table");
+        verify(H.textContaining(page, "dialnorm ") !== null, "no dialogue level in the Metadata card");
+        verify(H.textContaining(page, "prefers Lt/Rt") !== null, "no downmix preference in the Metadata card");
     }
 }

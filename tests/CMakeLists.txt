@@ -976,6 +976,9 @@ if(AC3FORGE_BUILD_HEARTH)
             target_include_directories(ac3hearth_controller_tests PRIVATE
                 "${CMAKE_SOURCE_DIR}/apps/hearth/ui"
                 "${CMAKE_SOURCE_DIR}/apps/common")
+            # A DEE AC-4 stream, for media_ac4_to_map()'s case.
+            target_compile_definitions(ac3hearth_controller_tests PRIVATE
+                "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
             target_link_libraries(ac3hearth_controller_tests PRIVATE
                 ac3hearth_engine
                 matroska::matroska mp4::mp4 mpegts::mpegts

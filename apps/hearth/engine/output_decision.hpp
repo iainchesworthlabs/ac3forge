@@ -109,8 +109,9 @@ struct EndpointFacts {
 struct OutputRequest {
     std::span<const EndpointFacts> endpoints{};
     // What the item carries, and std::nullopt for anything that cannot be
-    // bitstreamed at all - a WAV, or an AC-4 stream, which no IEC 61937
-    // format covers.
+    // bitstreamed at all - a WAV. An AC-4 item's is its IEC 61937 burst type
+    // (ETSI TS 103 190-1 Annex B), which only a network sink that lists it
+    // is sent (player.hpp).
     std::optional<audio::BitstreamFormat> stream = std::nullopt;
     // Object audio (E-AC-3 JOC). It rides inside the ordinary Annex E
     // bitstream, so it changes no capability question - it only changes what

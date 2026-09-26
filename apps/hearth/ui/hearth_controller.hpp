@@ -67,9 +67,9 @@ class HearthController : public QObject {
     // --- queue and transport --------------------------------------------
     // Each entry: path, title, playable (bool), note (why not, or a
     // decode-time remark), durationMs, channels, sampleRate, hasObjects,
-    // streamKind ("AC-3", "E-AC-3" or "" before the item has been probed),
-    // codecBadge ("A3"/"E3", "" before probed or for an item a probe will
-    // never reach - AC-4, today), bitrateKbps (absent until probed).
+    // streamKind ("AC-3", "E-AC-3", "AC-4" or "" before the item has been
+    // probed), codecBadge ("A3"/"E3"/"A4", "" before probed), bitrateKbps
+    // (absent until probed).
     Q_PROPERTY(QVariantList queue READ queue NOTIFY queueChanged)
     Q_PROPERTY(int currentIndex READ currentIndex NOTIFY queueChanged)
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
@@ -116,17 +116,17 @@ class HearthController : public QObject {
     // currentMedia always follows the item playing now, empty when nothing
     // is. inspectedMedia follows whichever queue item inspectItem() last
     // asked for - the Media page's own "Showing" picker - and defaults to
-    // mirroring currentMedia until a different item is asked for; an AC-4
-    // item, never playing in this build, is reachable only through it.
+    // mirroring currentMedia until a different item is asked for.
     Q_PROPERTY(QVariantMap currentMedia READ currentMedia NOTIFY currentMediaChanged)
     Q_PROPERTY(QVariantMap inspectedMedia READ inspectedMedia NOTIFY inspectedMediaChanged)
     Q_PROPERTY(int inspectedIndex READ inspectedIndex NOTIFY inspectedMediaChanged)
 
-    // --- decoder settings (the Decoder page, AC-3 and E-AC-3) ------------
+    // --- decoder settings (the Decoder page, AC-3 and E-AC-3, and AC-4) ---
     // The whole of DecoderSettings, as one map QML reads field by field and
     // writes back through setDecoderSettings() - see that method's own
     // comment for the field names. Every control the design shows now has a
-    // field here.
+    // field here; AC-4's are the "ac4..." keys (DecoderAc4.qml), and mixLfe
+    // is absent until set, each page showing its own format's default.
     Q_PROPERTY(QVariantMap decoderSettings READ decoderSettings NOTIFY decoderSettingsChanged)
 
     // --- speaker setup (the Speakers page) -------------------------------
