@@ -541,7 +541,8 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 7.1.4 (two dependents) | no | yes |
 | E-AC-3 with cpl / spx / aht | yes | yes |
 | E-AC-3 7.1.4 with Annex E tools | no | yes |
-| E-AC-3 with enhanced coupling (`ecpl`) or transient pre-noise processing (`tpn`) | no | yes |
+| E-AC-3 with enhanced coupling (`ecpl`) | no | yes |
+| E-AC-3 with transient pre-noise processing (`tpn`) | yes, without applying the correction | yes |
 | E-AC-3 `fscod2` half rates (24/22.05/16 kHz) | header only | yes |
 | E-AC-3 with a second *independent* substream (two programmes) | no — and it poisons the first programme too | yes |
 | E-AC-3 with JOC objects (Atmos) | 5.1 bed only | yes, including the objects |
@@ -612,15 +613,32 @@ muxed file: that check is a direct guard on the access-unit boundaries, since a 
 has to end at the next independent substream of *any* programme rather than at its own next
 frame, or each span swallows the other programme's frame and FFmpeg refuses the container too.
 
-**Enhanced coupling and transient pre-noise processing have no external oracle at all — not even
-the partial one 7.1.4 gets.** FFmpeg's own Annex E parser was never written to read either
-tool's syntax, so it doesn't reject these streams the way it does a second dependent substream —
-it has no model of the bits at all, which makes `-xerror` unusable as a check here rather than
-merely unavailable. `tools/ci/quality_race.py`'s CI gate (`decode_scores_ours`) scores both through
-this project's own decoder instead, the same self-consistency posture 7.1.4 falls back to, with
-one weaker guarantee than 7.1.4 has: a defect both the encoder and decoder agree on — a
-misreading of the spec shared by both sides rather than a one-sided bug — is not caught by
-either the CI gate or the round-trip unit tests in `tests/decoder/test_eac3_decoder.cpp`.
+**Enhanced coupling has no external oracle at all — not even the partial one 7.1.4 gets.**
+FFmpeg's own Annex E parser was never written to read its syntax, so it doesn't reject these
+streams the way it does a second dependent substream — it has no model of the bits at all, which
+makes `-xerror` unusable as a check here rather than merely unavailable.
+`tools/ci/quality_race.py`'s CI gate (`decode_scores_ours`) scores it through this project's own
+decoder instead, the same self-consistency posture 7.1.4 falls back to, with one weaker guarantee
+than 7.1.4 has: a defect both the encoder and decoder agree on — a misreading of the spec shared
+by both sides rather than a one-sided bug — is not caught by either the CI gate or the round-trip
+unit tests in `tests/decoder/test_eac3_decoder.cpp`.
+
+**Transient pre-noise processing had the same gap, and it hid a defect of exactly that kind.**
+The decoder counted `transprocloc` from the first sample of a frame's decoded output, one block
+before where A/52 counts it from, and refused any correction whose transient lay past the frame
+that signalled it. This project's own encoder never places a transient there, and on its streams
+block switching leaves little pre-noise for a misplaced correction to show against, so nothing
+here noticed until the Dolby Encoding Engine's streams did: DEE puts most of its transients in the
+next frame. What closed the gap is a third-party stream and a reference decoder. FFmpeg's strict
+decode reads transient pre-noise streams — DEE's and this project's own — without error but does
+not apply the correction, so it checks everything except the correction: below 4 kHz and outside
+the corrected regions it agrees with this decoder to 37–40 dB on DEE's stream. Dolby's own decoder
+(the Reference Player, run locally, never in CI) does apply it, and where its corrections land is
+what settled the origin (`ac3/decoder/transient_prenoise.hpp`); on the same comparison it agrees
+with this decoder to about 70 dB. `tools/checks/verify_gold_reference.sh` scores a five-second
+excerpt of the DEE stream against its source and against FFmpeg, and
+`tests/decoder/test_eac3_transient_prenoise.cpp` holds the corrections to the places Dolby's
+decoder puts them.
 
 The E-AC-3 mirror self-check (#6 above) narrows that, and is worth being exact about what it
 narrows. It compares the encoder's and the decoder's *models* of each block — bit offsets,
@@ -634,7 +652,7 @@ persisted on one side and not the other. What it still cannot see is a misreadin
 make *identically*, which for anything decided in code they share (`compute_bit_allocation`,
 `group_bands`, `coupling::decode_coordinate`) is by construction. That residue is real, and only
 an external oracle or an independent transcription of the same spec text closes it — neither of
-which exists for `ecpl` or `tpn`. `tools/ci/run_codec_matrix.sh` runs the check over both tools
+which exists for `ecpl`, and for `tpn` only as far as the paragraph above says. `tools/ci/run_codec_matrix.sh` runs the check over both tools
 on the sanitizer leg.
 
 **`fscod2` audio content has no external decode oracle at all — not even Dolby's own.**
@@ -1194,6 +1212,10 @@ which takes it to the layout a system asks for. Where the text leaves a choice o
 - **librempeg** (git 2026-09-24) does not decode the element: on the 5.1.4 tone legs its L, R and C
   come out 6 to 9 dB down, its surrounds 12 to 15 dB down, all four top tones in its Lb at about -15
   dB, and its top channels silent.
+- **Dolby's AC-4 Online Delivery Kit 1.5** (local only): its two 5.1.4 streams, ASPX_ACPL_2 at 192
+  kbps at 25 and 29.97 fps, decode in full and core decoding with `ac3cli`, every frame (800 and 960)
+  with no error, to ten channels as coded and eight in core decoding, 1,920 samples a frame and
+  1,601 or 1,602.
 
 ### The decoder's API and packaging
 
@@ -1317,7 +1339,8 @@ under "Object audio syntax", "A-JOC" and "Object audio metadata and the ISF rend
 `src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 kHz at every
 frame rate of Part 1 Table 83 or at 44.1 kHz at `frame_rate_index` 13, at a constant, average or
 variable rate, with I-frames where a caller asks for them, the loudness values, DRC's decoder modes,
-the stereo downmix's values and dialogue enhancement, in the SIMPLE codec mode or the ASPX mode, with A-SPX
+the stereo downmix's values and dialogue enhancement, as one substream or as several in the
+presentations of Part 2 Table 53, in the SIMPLE codec mode or the ASPX mode, with A-SPX
 above a crossover: below 96 kbps a channel in mono and stereo, with companding below 64, and below
 76.8 kbps a channel in 5.X, as DEE's 5.1 streams switch between 320 and 384 kbps. Below 33.6 kbps a
 channel in 5.X it writes ASPX_ACPL_2, and below 22.4 ASPX_ACPL_3, as DEE's 5.1 streams are at 128
@@ -1328,8 +1351,8 @@ configurations, chosen frame by frame by the bits they save, 7.0 and 7.1 in the 
 ASPX_ACPL_1 and A-CPL in stereo are experimental options. It shares
 `src/ac4core`'s transforms, windows, codebooks, QMF banks and A-SPX tables and high frequency
 generator with the decoder, and writes the syntax through a transcription of the tables of its own.
-`ac3cli ac4-encode` writes it raw or in MP4. Five checks stand behind it (`planning/ac4.md`, the
-encoder's ladder, and phase E5's exit):
+`ac3cli ac4-encode` writes it raw or in MP4, with an option for each setting. Nine checks stand
+behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exits):
 
 - **Three transcriptions agree.** The encoder records each element it writes in the shape the decoder
   records what it reads. The encoder's tests and the fuzz target `fuzz_ac4_encode` require the
@@ -1343,8 +1366,19 @@ encoder's ladder, and phase E5's exit):
   metadata option, and its `--check-envelope` holds each A-CPL mode's least rate. A refusal of a rate
   as too low for the frame rate and metadata counts only for frames under 400 bytes, and only if the
   same case at 400 bytes a frame encodes.
-  The fuzz target reaches every A-CPL mode too. FFmpeg Validate runs it for 120 seconds on each pull request, and the nightly fuzz workflow
-  for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
+  The fuzz target reaches every A-CPL mode too, and phase E6's substreams and presentations: each
+  of Table 53's configurations over a second or third substream, a hybrid method's dialogue
+  enhancement substream, 3.0 dialogue, a presentation of each substream alone, names, languages,
+  levels, group gains, the associated audio's values and EMDF payloads. Since phase E7 the harness
+  draws them as well, through `ac3cli ac4-encode`'s `substreamN=` and `presentationN=`: one case in
+  five has further substreams in one of those configurations, or a presentation of each, with rate
+  shares, dialogue mixing values, ids, levels, names and payloads, now and then an EMDF-only
+  presentation, and decodes the first presentation at level 7. It found a frame at an average rate
+  that gave the substream taking what the others leave less than its least frame, and a frame
+  between I-frames sized for a dialogue stem's parameters where it falls back to the last frame's,
+  neither of which the encoder could then write; each substream now keeps its least frame first,
+  and a frame is sized for the metadata it falls back to. FFmpeg Validate runs it for 120 seconds
+  on each pull request, and the nightly fuzz workflow for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
   interleaving back through the decoder's parser, and hold the encoder's reading of the interval
   borders, envelope resolutions and noise borders to the parser's. The encoder undoes the three, four
   and five channel matrices as the 2 x 2 steps they cascade, in a transcription of Tables 178 and 179
@@ -1370,6 +1404,11 @@ encoder's ladder, and phase E5's exit):
   leaves out channel group 4, which Part 2 Table A.27 and Pseudocode E.3 both give its top front
   pair, and MediaInfo's summary names that pair Tfc (`src/ac4enc/ERRATA.md`). MediaInfo and the
   muxer read the A-CPL streams as configured as well, ASPX_ACPL_1 and A-CPL in stereo included.
+  The muxer refuses a stream of several presentations, and does not finish one of an alternative
+  presentation; for those the `dac4` (Part 2 Annex E.10) is held to the text and to MediaInfo's
+  trace, which reads every configuration's substream groups as written, and `tests/ac4/test_ac4.cpp`
+  holds `build_dac4()` to the muxer's box byte for byte for Chromium's A-JOC stream and DASH-IF's
+  5.1 test vectors, whose program identifier it copies.
   librempeg decodes the 5.X element's ASPX_ACPL_2 and ASPX_ACPL_3 streams' coded channels to within
   69 dB of the decoder's recovered downmixes, and stereo ASPX_ACPL_2's to 45 dB, and leaves the
   channels A-CPL rebuilds silent, as it does DEE's; it refuses the ASPX_ACPL_1 streams, whose
@@ -1421,6 +1460,58 @@ encoder's ladder, and phase E5's exit):
   interval and per-frame metadata cost more than the frame `create()` checked. A frame that holds
   nothing more now sends each as a stream starts it, and `create()` sizes it with the costlier
   interval, which takes stereo at 48 kHz in the ASPX mode from 8 kbps to 9.
+- **Presentations and several substreams** (phase E6, `tests/ac4enc/test_ac4enc_presentations.cpp`).
+  Four committed streams, each with its configuration beside it as JSON
+  (`tests/golden/ac4dec/presentations/encoder-*.ac4`): a broadcast of 5.1 music and effects, English
+  and German mono dialogue, a mono audio description, a stereo commentary and stereo French dialogue,
+  in 15 presentations of configurations 0, 2, 3 and 5, with an alternative presentation and its name,
+  each substream alone, and one presentation disabled and pre-virtualized; hybrid dialogue enhancement
+  in 5.1 (channel independent) and in stereo (the Mid), each with its dialogue enhancement substream,
+  in configurations 1 and 4 with audio description; a configuration 6 presentation of EMDF payloads
+  beside a stereo one; and, experimental, 3.0 dialogue with 5.1 music and effects, and a 5.1 main's
+  hybrid waveform in 3.0. Their tables of contents hold the configuration in every frame, both
+  transcriptions read every frame with the encoder's trace, and the Python parser's digests are with
+  the others in `tests/golden/ac4dec/`. Through D7's selection and mixing, with one tone per
+  substream, each presentation is selected as configured, by `presentation_id`, language, associated
+  audio and level, and every mix comes out at its formula's gains to 0.01 dB: g_dialog against each
+  dialogue's cap, pans, group gains, the main audio's scaling under associated audio, and each hybrid
+  method's waveform beside its parameters. `mix_ac4_decode.py`, in CI, fits the encoder's 46 mixes to
+  their formulas with 120 dB or more left over. A table of refusals holds the rules: dialogue or
+  associated audio with a channel the main audio lacks but for mono, 3.0 where Part 1 4.3.3.7.1 does
+  not allow it, more than 64 presentations, a `presentation_id` twice, a level below the tracks' or
+  reserved, a name over 31 bytes, and gains or associated audio's values the syntax cannot send.
+  MediaInfo (`check_ac4_encode_readers.py --only presentations`) lists the presentations and groups as
+  configured, with their configurations, classifiers, languages, levels and the name's bytes, and 128
+  substream fields as the encoder's trace wrote them. It reads no audio substream of a stream with a
+  configuration 6 presentation, so that one is a stream of its own, gives no language to a
+  presentation whose one group is associated audio, and shows the EMDF payloads substream framed but
+  not detailed. DEE's MP4 muxer takes a stream of one presentation only. librempeg decodes a
+  presentation's first group alone, as D7 found: the hybrid stream's main substreams to 78 to 86 dB of
+  the decoder's, the EMDF stream's companded stereo to 33 to 40 dB, and silence for the broadcast
+  stream's 15 presentations over 22 substreams, the counts at which D7 found it silent.
+- **The presentations' race** (`tools/checks/race_ac4_presentations.py`, locally): G1's legs of
+  music, dialogue and associated audio, which DEE encoded one at a time, multiplexed by D7's
+  multiplexer into music and effects with dialogue, with associated audio as well, and each alone,
+  against the encoder's encode of the same sources into the same presentations at the legs' rates,
+  both decoded by the decoder and scored against the sources' mix. With music at 128 kbps and dialogue
+  and associated audio at 64 the encoder's SNR is DEE's to within 0.1 dB or above it (by up to 1.1 dB
+  on the music alone) and ViSQOL within 0.03; at 192 and 128 kbps its SNR leads DEE's by 5.5 to 6.3 dB
+  on every presentation, ViSQOL within 0.02; on the tones it leads by 10 to 32 dB. librempeg gives
+  the music and effects alone of either stream's mixes.
+- **The API, the command and the package** (phase E7). `Encoder::refusal_reason()` names the rule a
+  refused configuration breaks, and a table of refusals holds each reason to its rule
+  (`test_ac4enc_encoder.cpp`), as the configuration's designated initializers hold its defaults;
+  `fuzz_ac4_encode` holds it to `create()` on every configuration it draws, and `fuzz_ac4_parse`
+  holds `dac4_refusal()` to `build_dac4()` on every table of contents that reads.
+  Every option of `ac3cli ac4-encode` has a test: `tests/cli/test_cli_ac4_encode.cpp` reads what
+  each writes back from the table of contents and the encoder's syntax trace (the codec modes,
+  the downmix, DRC and loudness values, the dialogue enhancement methods and the hybrid ones'
+  waveform, the I-frame options, each experimental tool, `crc=`, and every `substreamN-` and
+  `presentationN-` key), and `test_cli_options.cpp` holds each spelling's parse and each malformed
+  value's refusal. `tools/checks/check_install_consumer.sh` installs each build and encodes a
+  second of tone through the installed encoder, by CMake and by pkg-config, static and shared,
+  reading every sync frame and its CRC back with the installed inspector; the ABI gate holds
+  `libac4enc.so`'s exports to the header's API (`tools/ci/abi-allowlist/libac4enc.so.txt`).
 - **The race against DEE** (`score_ac4_encode.py --gold`, locally): phase G0's 2.0 legs of music,
   speech and tones from 48 to 768 kbps, encoded again here in the mode DEE writes at each rate, and
   both decoded by the decoder. In ASPX, from 48 to 144 kbps, ViSQOL is within 0.03 of DEE's or above
@@ -1488,6 +1579,43 @@ at four frame rates do the same. For the extension role, a loopback test
 to a test sink, whose output equals the local decode, rendered the same way, sample for sample.
 The two readings Part 14 leaves open, which frame starts a burst sequence and whether `Pd` counts
 bits or bytes, are given in `src/forge/src/iec61937/iec61937.cpp`.
+
+### Hearth's engine
+
+Phase I2 plays AC-4 in Hearth through the decoder's public API. The tests are in
+`tests/hearth/test_ac4_engine.cpp` unless named otherwise.
+
+- **Every committed stream**: the engine plays each committed stream the decoder decodes onto a
+  layout with a slot for each speaker, and its output equals `ac4::Decoder`'s own `decode()` of
+  the same frames, sample for sample: 46 of the 49. The other three, the 5.1.4 legs, are refused
+  when they open, with the decoder's reason (the immersive channel element, phase D9). Each unit
+  lasts what the decoder puts out for it, 1 601 or 1 602 samples at 29.97 fps as Table 47 gives
+  them, and a seek to 500 ms plays on within 1e-6 of an unbroken decode.
+- **Each control**, on streams of tones the encoder writes with the values the control reads: the
+  output level against 2^((Lout − dialnorm) / 6) at −31, −24, −17 and −6 dBFS; dialogue
+  enhancement on the centre, up to the stream's cap; Lo/Ro, Lt/Rt with its surrounds' sign, the
+  LFE in and out, the stream's preferred downmix and mono against Tables 217 and 218 with the
+  stream's gains; the presentation chosen; the dialogue level up to its maximum; audio description
+  at its level and off; and each DRC mode against the decoder's own. Each holds to 0.01 dB. A
+  change of settings while an item plays applies from the next frame, and nothing is lost or
+  decoded twice.
+- **From the page**: `apps/hearth/ui/tests/qml/tst_decoder_ac4.qml` drives each control on the
+  Decoder page's AC-4 tab with a click, a press or a key, and measures each tone's level at the
+  fake device, a Hann-windowed DFT over the last 16 384 samples the engine handed it, against the
+  same formulas, to 0.1 dB.
+- **The gain script through the engine**: `ac3hearth-render` plays an item through the player,
+  session and stream decoder into a WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds
+  it to the formulas it holds `ac3cli decode` to, with each of ac3cli's options given as the
+  Decoder page's setting for it. On the 13 committed legs and the encoder's 11, every gain is
+  within 0.0001 dB of its formula and what it leaves is 148 dB or more under the output; the Hearth
+  CI job runs both.
+- **To a network group** (`tests/hearth/test_engine_network_group.cpp`): the engine plays an AC-4
+  item to a group of a player@v1 sink, which is sent the decoded PCM, and a test sink on the
+  extension role that lists AC-4, which is sent each sync frame as a burst and decodes it. The
+  second's output equals `ac4::Decoder`'s decode of the frames, rendered on its layout, sample for
+  sample, and every burst puts the stream's first frame at the same time, within 1 ms. A
+  presentation the listener chose that a sink would not choose itself reaches the group as PCM
+  alone.
 
 ## What untrusted input is checked against
 

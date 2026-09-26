@@ -4,6 +4,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "mp4/export.hpp"
 #include "mp4/mp4.hpp"
@@ -15,6 +16,13 @@
 // codec-blindness this module keeps.
 
 namespace mp4 {
+
+// One DASH descriptor (ISO/IEC 23009-1 §5.8.2's DescriptorType): the scheme it
+// names and its value there.
+struct Descriptor {
+    std::string scheme_id_uri{};
+    std::string value{};
+};
 
 struct DashOptions {
     std::string init_segment_uri{"init.mp4"};
@@ -61,6 +69,17 @@ struct DashOptions {
     // same reason: an acmod/chanmap-to-channel-map mapping is AC-3 semantics,
     // not container syntax.
     std::string dolby_channel_configuration{};
+    // An AudioChannelConfiguration in whatever scheme the codec's own
+    // signalling names, which replaces both forms above: ETSI TS 103 190-2
+    // G.3.3's for AC-4 - the MPEG scheme with Table G.1's value where the
+    // presentation's channels map to one, its "Dolby:2015" scheme otherwise -
+    // which the caller reads off the bitstream as it does the forms above.
+    std::optional<Descriptor> channel_configuration{};
+    // SupplementalProperty descriptors after the Atmos pair above, in order:
+    // what a codec's own annex asks of a Representation beyond them, such as
+    // ETSI TS 103 190-2 G.3.2's frame rate and G.3.1's pre-virtualized
+    // content for AC-4. Codec semantics again, so the caller supplies them.
+    std::vector<Descriptor> supplemental_properties{};
 };
 
 // Which kind of Media Presentation Description build_dash_mpd() wraps an

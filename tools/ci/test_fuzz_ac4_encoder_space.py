@@ -6,7 +6,9 @@ whether a defect is reported:
 - the CRC and the sync frame walk, which read nothing of the encoder's, catching each
   framing defect they name;
 - the trace comparison naming the first record that differs;
-- draw_case purity, the configurations it draws, and the lengths a measurement needs;
+- draw_case purity, the configurations it draws, and the lengths a measurement needs; the
+  substreams and presentations it draws, apart from the other draws, and the rate shares
+  at_rate() turns into ac3cli's options; the immersive layouts, apart from the other draws;
 - run_case()'s verdicts: a refusal only with the encoder's own message, an out-of-range
   rate or a frame rate 44.1 kHz does not have that encodes is a failure, a stream whose
   frames do not cover the input at its lag is a failure, and a stream whose traces differ
@@ -101,12 +103,13 @@ class DrawCase(unittest.TestCase):
 
     def test_the_space_drawn(self):
         cases = [fa4.draw_case(seed) for seed in range(2000)]
-        self.assertEqual({c.channels for c in cases}, set(fa4.CHANNELS))
+        self.assertEqual({c.channels for c in cases},
+                         set(fa4.CHANNELS) | set(fa4.IMMERSIVE_CHANNELS))
         # Seven and eight channels always name a 7.X pair, and nothing else does; 5.X and 7.X
         # never draw a rate in range below their least.
         for case in cases:
             pairs = [p for o in case.options for p in fa4.SEVEN_X if p in o]
-            self.assertEqual(len(pairs), 1 if case.channels > 6 else 0)
+            self.assertEqual(len(pairs), 1 if case.channels in (7, 8) else 0)
             if case.channels > 2 and case.in_range:
                 self.assertGreaterEqual(case.bitrate, fa4.MULTICHANNEL_LOWEST_KBPS)
         self.assertTrue(any("coding-configs" in o for c in cases for o in c.options))
@@ -148,6 +151,96 @@ class DrawCase(unittest.TestCase):
                 self.assertTrue(case.stem)
             if any(o.startswith(("lorocmixlev=", "dmixmod=", "lfemix=")) for o in case.options):
                 self.assertGreaterEqual(case.channels, 5)
+
+    def test_several_substreams_and_their_presentations(self):
+        cases = [fa4.draw_case(seed) for seed in range(2000)]
+        several = [c for c in cases if c.substreams]
+        # About one case in five, with every configuration of Table 53 and the singles.
+        self.assertTrue(250 < len(several) < 550)
+        options = {o for c in several for o in c.options}
+        configs = {o.split("=", 1)[1] for o in options if "-config=" in o}
+        self.assertEqual(configs, {"0", "1", "2", "3", "4", "5", "6"})
+        self.assertTrue(any(c.substreams and 0 in c.substreams for c in several))
+        for case in several:
+            keys = [o.split("=", 1)[0] for o in case.options]
+            # The measured options take one programme, and ac3cli refuses them with several.
+            self.assertNotIn("dialnorm=auto", case.options)
+            self.assertFalse(any(k == "loudness" for k in keys))
+            # Substreams from 2 to the last drawn, and the first presentation plays substream 1.
+            numbers = {
+                int(k[len("substream") :].split("-")[0]) for k in keys if k.startswith("substream")
+            }
+            self.assertLessEqual(max(numbers), len(case.substreams) + 1)
+            first = next(o for o in case.options if o.startswith("presentation1="))
+            self.assertIn("1", first.split("=", 1)[1].split(","))
+            # A dialogue enhancement substream enhances substream 1, whose dialogue is hybrid.
+            if 0 in case.substreams:
+                self.assertTrue(any(o.startswith("dialogue-hybrid=") for o in case.options))
+            # The first presentation is decoded at the decoder's level, enabled.
+            self.assertNotIn("presentation1-md-compat=7", case.options)
+            self.assertNotIn("presentation1-enabled=off", case.options)
+
+    def test_the_immersive_layouts(self):
+        cases = [fa4.draw_case(seed) for seed in range(4000)]
+        immersive = [c for c in cases if c.channels > 8]
+        # About one case in eight, in every layout and codec mode, with the height downmix.
+        self.assertTrue(350 < len(immersive) < 650)
+        self.assertEqual({c.channels for c in immersive}, set(fa4.IMMERSIVE_CHANNELS))
+        options = {o for c in immersive for o in c.options}
+        self.assertTrue({f"codec-mode={m}" for m in fa4.IMMERSIVE_MODES} <= options)
+        self.assertTrue(any(not any(o.startswith("codec-mode=") for o in c.options)
+                            for c in immersive))
+        self.assertTrue({f"height-downmix={h}" for h in fa4.HEIGHT_DOWNMIXES} <= options)
+        self.assertTrue(any(c.substreams for c in immersive))
+        for case in immersive:
+            tools = [t for o in case.options if o.startswith("experimental=")
+                     for t in o.split("=", 1)[1].split(",")]
+            modes = [o.split("=", 1)[1] for o in case.options if o.startswith("codec-mode=")]
+            # The back pair with eleven and twelve channels alone; ASPX_ACPL_1 with
+            # experimental=acpl and ASPX_AJCC with experimental=ajcc; none of what the
+            # immersive element refuses.
+            self.assertEqual("back-pair" in tools, case.channels > 10)
+            self.assertEqual("acpl" in tools, modes == ["aspx-acpl-1"])
+            self.assertEqual("ajcc" in tools, modes == ["aspx-ajcc"])
+            self.assertFalse(any(t in tools for t in ("coding-configs", *fa4.SEVEN_X)))
+            self.assertFalse(any(t.startswith("drc-gains-") for t in tools))
+            self.assertTrue(set(modes) <= set(fa4.IMMERSIVE_MODES))
+            # height-gain= with height-downmix= alone, and no rate in range below the mode's least.
+            if any(o.startswith("height-gain=") for o in case.options):
+                self.assertTrue(any(o.startswith("height-downmix=") for o in case.options))
+            if case.in_range:
+                least = fa4.IMMERSIVE_LOWEST_KBPS[modes[0] if modes else "auto"]
+                self.assertGreaterEqual(case.bitrate, least)
+            # The LFE's downmix gain where there is an LFE.
+            if any(o.startswith("lfemix=") for o in case.options):
+                self.assertIn(case.channels, (10, 12))
+
+    def test_other_cases_draw_as_before_the_immersive_layouts(self):
+        # The immersive layouts come from a generator of their own: no regression seed draws one.
+        for seed in fa4.REGRESSION_SEEDS:
+            self.assertLessEqual(fa4.draw_case(seed).channels, 8)
+
+    def test_other_cases_draw_as_before_the_substreams(self):
+        # The substreams come from a generator of their own: a case without them is the case
+        # the seed drew before they were added, which the regression seeds depend on.
+        for seed in fa4.REGRESSION_SEEDS:
+            case = fa4.draw_case(seed)
+            if not case.substreams:
+                named = [o for o in case.options if o.startswith(("substream", "presentation"))]
+                self.assertEqual(named, [])
+
+
+class AtRate(unittest.TestCase):
+    def test_a_share_becomes_kbps_at_the_rate(self):
+        options = [
+            "substream2-bitrate-share=0.25",
+            "presentation1=1,2",
+            "substream3-bitrate-share=0.001",
+        ]
+        self.assertEqual(
+            fa4.at_rate(options, 200),
+            ["substream2-bitrate=50", "presentation1=1,2", "substream3-bitrate=1"],
+        )
 
 
 def completed(returncode=0, stdout="", stderr=""):
@@ -194,7 +287,7 @@ class RunCase(unittest.TestCase):
             def run(argv):
                 kbps = int(str(argv[4]))
                 if kbps == 16 or not accept_higher:
-                    return completed(1, stderr=fa4.REFUSALS["rate out of range"])
+                    return completed(1, stderr=fa4.REFUSALS["least frame"])
                 return completed(0, stdout="encoded 3 AC-4 frames")
             return run
 
@@ -207,7 +300,7 @@ class RunCase(unittest.TestCase):
             self.assertEqual(result.status, status)
         # A refusal of frames the cap holds is a failure outright, with no second encode.
         case.bitrate = 400
-        refusal = completed(1, stderr=fa4.REFUSALS["rate out of range"])
+        refusal = completed(1, stderr=fa4.REFUSALS["least frame"])
         with (
             tempfile.TemporaryDirectory() as tmp,
             mock.patch.object(fa4, "_run", return_value=refusal) as run,
@@ -224,7 +317,7 @@ class RunCase(unittest.TestCase):
 
         def run(argv):
             if int(str(argv[4])) == 8:
-                return completed(1, stderr=fa4.REFUSALS["rate out of range"])
+                return completed(1, stderr=fa4.REFUSALS["least frame"])
             return completed(5, stderr=fa4.REFUSALS["nothing to measure"])
 
         for options, status in ((["dialnorm=auto"], "refused"), ([], "fail")):

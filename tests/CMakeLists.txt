@@ -61,7 +61,9 @@ add_executable(ac3tests
     ac4dec/test_ac4dec_syntax.cpp
     ac4enc/test_ac4enc_encoder.cpp
     ac4enc/test_ac4enc_frame_rates.cpp
+    ac4enc/test_ac4enc_immersive.cpp
     ac4enc/test_ac4enc_metadata.cpp
+    ac4enc/test_ac4enc_presentations.cpp
     ac4enc/test_ac4enc_rates.cpp
     analysis/test_analysis.cpp
     encoder/test_assignment.cpp
@@ -93,6 +95,7 @@ add_executable(ac3tests
     encoder/test_eac3_short_syncframes.cpp
     decoder/test_eac3_decoder.cpp
     decoder/test_eac3_programmes.cpp
+    decoder/test_eac3_transient_prenoise.cpp
     io/test_elementary.cpp
     io/test_stream_accumulator.cpp
     io/test_firmware_image.cpp
@@ -283,6 +286,7 @@ if(NOT BUILD_SHARED_LIBS)
         ac4enc/test_ac4enc_acpl.cpp
         ac4enc/test_ac4enc_aspx.cpp
         ac4enc/test_ac4enc_multichannel.cpp
+        ac4enc/test_ac4enc_presentations_race.cpp
         ac4enc/test_ac4enc_writer.cpp
         "${CMAKE_SOURCE_DIR}/apps/common/ac4_object_render.cpp")
 endif()
@@ -397,12 +401,15 @@ endif()
 # test_ac4dec_presentations.cpp, for where to write their streams (and
 # test_ac4dec_objects.cpp for Chromium's A-JOC stream, and
 # test_ac4dec_object_render.cpp for where to write the streams to listen to),
-# and ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode.
+# ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode,
+# ac4enc/test_ac4enc_presentations.cpp, for where to write its streams, and
+# ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's.
 # iec61937/test_iec61937_ac4.cpp reads one too, for the census directory it packs.
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
         ac4dec/test_ac4dec_constructed.cpp ac4dec/test_ac4dec_objects.cpp ac4dec/test_ac4dec_presentations.cpp
         ac4dec/test_ac4dec_api.cpp ac4dec/test_ac4dec_object_render.cpp
+        ac4enc/test_ac4enc_presentations.cpp ac4enc/test_ac4enc_presentations_race.cpp
         iec61937/test_iec61937_ac4.cpp
         PROPERTIES COMPILE_OPTIONS "/wd4996")
 endif()
@@ -524,6 +531,18 @@ target_compile_definitions(ac3tests
 # it. Supplied the same way AC3CLI_EXE and AC3FORGE_GOLDEN_AUDIO_DIR above are.
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_TEST_SCRATCH_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/scratch\"")
+
+# Whether the tests run under the sanitizers (cmake/Sanitizers.cmake), for
+# tests/sanitized.hpp's kSanitized: there the heaviest tests take fewer frames,
+# shorter signals and fewer cases, each still running every code path it
+# covers, so that the ASan+UBSan leg, which runs ctest serially in a debug
+# build, finishes within its time (.github/workflows/_ci-linux.yml). Defined as
+# 0 otherwise, so that no source asks the preprocessor.
+if(AC3FORGE_SANITIZERS)
+    target_compile_definitions(ac3tests PRIVATE AC3FORGE_TEST_SANITIZED=1)
+else()
+    target_compile_definitions(ac3tests PRIVATE AC3FORGE_TEST_SANITIZED=0)
+endif()
 
 # ---------------------------------------------------------------------------
 # Toolchain hook: keep a failing assert from opening a modal dialog that hangs
@@ -647,7 +666,9 @@ target_include_directories(ac3tests PRIVATE "${AC3FORGE_AUDIO_NET_DIR}")
 # `ctest -L concurrency` (ThreadSanitizer leg).
 if(TARGET ac3cli)
     target_sources(ac3tests PRIVATE
-        cli/test_cli.cpp cli/test_cli_ac4_decode.cpp cli/test_cli_atmos_cbi.cpp cli/test_cli_containers.cpp
+        cli/test_cli.cpp cli/test_cli_ac4.cpp cli/test_cli_ac4_decode.cpp cli/test_cli_ac4_encode.cpp
+        cli/test_cli_atmos_cbi.cpp
+        cli/test_cli_containers.cpp
         cli/test_cli_live.cpp cli/test_cli_probe.cpp cli/test_cli_stream_tools.cpp
         cli/test_cli_options.cpp cli/test_cli_synth.cpp cli/test_cli_analysis.cpp
         cli/test_cli_encode_paths.cpp cli/test_cli_stream_edges.cpp
@@ -916,6 +937,7 @@ if(AC3FORGE_BUILD_HEARTH)
     # unlike the test sink further down.
     target_sources(ac3tests PRIVATE
         hearth/test_ac3_transcoder.cpp
+        hearth/test_ac4_engine.cpp
         hearth/test_decoder_settings.cpp
         hearth/test_diagnostics.cpp
         hearth/test_engine.cpp
@@ -934,6 +956,11 @@ if(AC3FORGE_BUILD_HEARTH)
         hearth/test_stream_decoder.cpp
         hearth/test_transport.cpp)
     target_link_libraries(ac3tests PRIVATE ac3hearth_engine)
+    # test_ac4_engine.cpp takes a directory of further AC-4 streams from std::getenv, as
+    # ac4dec/test_ac4dec_api.cpp does - the same C4996 reasoning as that file's.
+    if(AC3FORGE_IS_MSVC_LIKE)
+        set_source_files_properties(hearth/test_ac4_engine.cpp PROPERTIES COMPILE_OPTIONS "/wd4996")
+    endif()
 
     # ac3hearth_controller_tests - Catch2 coverage for hearth_controller.cpp's
     # QML-translation layer (issue #886, part 2: queue_row(), media_info_to_map()
@@ -976,6 +1003,9 @@ if(AC3FORGE_BUILD_HEARTH)
             target_include_directories(ac3hearth_controller_tests PRIVATE
                 "${CMAKE_SOURCE_DIR}/apps/hearth/ui"
                 "${CMAKE_SOURCE_DIR}/apps/common")
+            # A DEE AC-4 stream, for media_ac4_to_map()'s case.
+            target_compile_definitions(ac3hearth_controller_tests PRIVATE
+                "AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}/golden/external-baseline\"")
             target_link_libraries(ac3hearth_controller_tests PRIVATE
                 ac3hearth_engine
                 matroska::matroska mp4::mp4 mpegts::mpegts

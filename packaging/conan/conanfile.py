@@ -1,9 +1,11 @@
 # Conan (2.x) recipe for ac3forge - installs the library only (ac3::forge,
 # matroska::matroska/mp4::mp4/mpegts::mpegts behind their own default-on options, and
-# ac3::forge_c behind its own default-off "capi" option), never the CLI, GUI, tests, examples or
-# fuzz harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/ac3forge/) - one Conan
-# option <-> one AC3FORGE_BUILD_<NAME> CMake option, same pattern that port's
-# vcpkg_check_features() call already establishes. ac3adm::ac3adm/ac3::admbridge (the ADM/BW64
+# ac3::forge_c, the AC-4 libraries, ac3iab::ac3iab and iamf::iamf behind default-off "capi",
+# "ac4", "iab" and "iamf" options), never the CLI, GUI, Hearth, tests, examples or fuzz
+# harnesses. Same scope as the vcpkg port (packaging/vcpkg-port/ac3forge/) - one Conan option
+# <-> one AC3FORGE_BUILD_<NAME> CMake option, same pattern that port's vcpkg_check_features()
+# call already establishes, and tools/checks/check_packaging_versions.sh holds the two recipes to
+# the same components and options. ac3adm::ac3adm/ac3::admbridge (the ADM/BW64
 # reader and its Atmos bridge) are deliberately NOT options here even though upstream now
 # installs/exports both (shared-only - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_ADM
 # block): ac3adm needs Boost, and out-of-scope-for-now applies here the same way it does for the
@@ -47,19 +49,28 @@ class Ac3forgeConan(ConanFile):
         "mp4": [True, False],
         "mpegts": [True, False],
         "capi": [True, False],
+        "ac4": [True, False],
+        "iab": [True, False],
+        "iamf": [True, False],
     }
     default_options = {
         "shared": False,
         "fPIC": True,
-        # Matches packaging/vcpkg-port/ac3forge/vcpkg.json's default-features:
-        # all three container writers on by default.
+        # The three container writers are on by default here, as they have been since this
+        # recipe was written. The vcpkg port has had them off since its curated-registry review
+        # (a curated port's default features may enable behaviours, not public targets), so the
+        # two recipes differ on these three alone; check_packaging_versions.sh names them.
         "matroska": True,
         "mp4": True,
         "mpegts": True,
-        # Off by default, same reasoning as the vcpkg port's own "capi" feature: this adds a
-        # whole new installed library/binary (ac3::forge_c), not just a behavior toggle on an
-        # already-installed one - opt in explicitly with -o "&:capi=True".
+        # Off by default, same reasoning as the vcpkg port's own features of the same names: each
+        # adds whole new installed libraries and public targets (ac3::forge_c; ac4::ac4,
+        # ac4::decoder and ac4::encoder; ac3iab::ac3iab; iamf::iamf), not a behavior toggle on an
+        # already-installed one - opt in explicitly with -o "&:ac4=True" and the like.
         "capi": False,
+        "ac4": False,
+        "iab": False,
+        "iamf": False,
     }
 
     def config_options(self):
@@ -97,6 +108,10 @@ class Ac3forgeConan(ConanFile):
         # vcpkg_cmake_configure() call.
         tc.variables["AC3FORGE_BUILD_CLI"] = False
         tc.variables["AC3FORGE_BUILD_GUI"] = False
+        # Hearth, an application (apps/hearth) and a library nothing installs (src/sendspin), needs
+        # dependencies this recipe does not declare; upstream also refuses it beside
+        # AC3FORGE_BUILD_AC4=OFF.
+        tc.variables["AC3FORGE_BUILD_HEARTH"] = False
         tc.variables["AC3FORGE_BUILD_TESTS"] = False
         tc.variables["AC3FORGE_BUILD_EXAMPLES"] = False
         tc.variables["AC3FORGE_BUILD_FUZZERS"] = False
@@ -110,6 +125,10 @@ class Ac3forgeConan(ConanFile):
         tc.variables["AC3FORGE_BUILD_MP4"] = bool(self.options.mp4)
         tc.variables["AC3FORGE_BUILD_MPEGTS"] = bool(self.options.mpegts)
         tc.variables["AC3FORGE_BUILD_CAPI"] = bool(self.options.capi)
+        # Upstream defaults these three ON; the recipe's options, off unless asked for, decide.
+        tc.variables["AC3FORGE_BUILD_AC4"] = bool(self.options.ac4)
+        tc.variables["AC3FORGE_BUILD_IAB"] = bool(self.options.iab)
+        tc.variables["AC3FORGE_BUILD_IAMF"] = bool(self.options.iamf)
         tc.variables["BUILD_SHARED_LIBS"] = bool(self.options.shared)
         tc.generate()
         # Generates fmtConfig.cmake (from the requirements() dependency above)

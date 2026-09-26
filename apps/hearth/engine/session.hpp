@@ -11,6 +11,8 @@
 #include <vector>
 
 #include "ac3/io/elementary.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
 #include "container_input.hpp"
 #include "queue.hpp"
 #include "stream_decoder.hpp"
@@ -50,6 +52,26 @@
 // application supplies (reading the file and demuxing Matroska, MP4 or
 // MPEG-TS through apps/common/container_input.hpp, whose functions the engine
 // does not compile) and a test supplies over memory.
+//
+// AC-4 (planning/ac4.md, I2): the units are the stream's sync frames, and
+// each one's length the samples ac4::Decoder puts out for it, which
+// ac4_stream.hpp works out before anything is decoded. What differs is where
+// a decoder can start. An AC-4 decoder needs the configuration an I-frame
+// sends, and its output runs behind its input by latency_samples() - 1,313
+// samples at frame_rate_index 13, more where the sample rate converter runs -
+// through filters whose memory the frames before carry. So a decoder starting
+// part-way through starts at the last I-frame at least kAc4PreRollSamples
+// before the unit wanted, and everything before that unit is decoded and
+// dropped; what comes out from there is an unbroken decode's, but for the
+// dynamic range control's gain smoothing, whose state takes longer than any
+// pre-roll to settle where the stream compresses hard. A stream played from
+// its start gets no pre-roll: its first frames play as the decoder puts them
+// out, its latency included, as `ac3cli decode` writes them. A frame waiting
+// for an I-frame puts out nothing, and plays as silence of its length.
+//
+// One programme: an AC-4 stream is sent to a sink whole, and a sink decodes
+// the presentation it would choose with no preferences; ac4_presentation()
+// says which the listener's choice would play, for the player to compare.
 
 namespace ac3::hearth {
 
@@ -77,17 +99,29 @@ public:
     // A unit's report, with how many of the frames the item plays came from
     // it; units the item plays nothing of are not reported.
     using ReportFn = std::function<void(const UnitReport& report, std::size_t frames)>;
-    // An access unit the item plays, as the stream carries it, and the
-    // samples it codes: what a bitstream output sends.
-    using SentFn = std::function<void(std::span<const std::byte> unit, std::uint32_t samples)>;
+    // An access unit the item plays, as the stream carries it, the samples it
+    // codes, and where its first one is, counted from the start of what the
+    // item plays: what a bitstream output sends.
+    using SentFn = std::function<void(std::span<const std::byte> unit, std::uint32_t samples,
+                                      std::uint64_t start)>;
+
+    // What a decoder starting part-way through an AC-4 stream decodes and
+    // drops before the unit wanted, at least: past the decoder's latency
+    // (1,313 samples at frame_rate_index 13, up to about 2,300 with the
+    // sample rate converter) and the frame alignment and QMF history behind
+    // it, with room to spare.
+    static constexpr std::uint64_t kAc4PreRollSamples = 6144;
 
     // Loads `path` and scans it. The error is a sentence for the queue list.
     // `programme` picks one programme of a multi-programme E-AC-3 stream by
     // its independent substream id; unset, or naming one the stream does not
-    // carry (which the item's note then says), the first plays.
+    // carry (which the item's note then says), the first plays. An AC-4
+    // stream plays whichever presentation its decoder is set to, and
+    // `presentation` is only what the item's facts describe: its channels.
     [[nodiscard]] static std::expected<Session, std::string> open(
         const std::string& path, const ItemLoader& loader,
-        std::optional<int> programme = std::nullopt);
+        std::optional<int> programme = std::nullopt,
+        const ac4::PresentationChoice& presentation = {});
 
     // Movable: the access units are views of the item's own buffer, and a
     // moved vector keeps its buffer, so the views move with it.
@@ -101,11 +135,21 @@ public:
     [[nodiscard]] std::size_t unit_count() const { return units_.size(); }
     // The programme's first access unit, as the stream carries it.
     [[nodiscard]] std::span<const std::byte> first_unit() const { return units_.front(); }
-    // The programme playing: its independent substream id (0 for AC-3).
+    // The programme playing: its independent substream id (0 for AC-3 and
+    // AC-4).
     [[nodiscard]] int programme() const { return programme_; }
     // Whether that is the stream's first programme, which is the one a
-    // receiver decodes when the stream is sent to it whole.
+    // receiver decodes when the stream is sent to it whole. Always, for AC-4:
+    // see ac4_presentation().
     [[nodiscard]] bool first_programme() const { return first_programme_; }
+    // Whether the item is AC-4.
+    [[nodiscard]] bool ac4() const { return ac4_; }
+    // The presentation of the stream's first table of contents that an AC-4
+    // decoder set to `choice` plays (ac4::select_presentation()); nothing for
+    // an item that is not AC-4, or a choice nothing meets. A sink decodes the
+    // presentation of the default choice, {}.
+    [[nodiscard]] std::optional<std::size_t> ac4_presentation(
+        const ac4::PresentationChoice& choice) const;
     // The samples the unit covering `position` codes, counted from the start
     // of what the item plays.
     [[nodiscard]] std::uint32_t unit_samples_at(std::uint64_t position) const;
@@ -184,6 +228,11 @@ private:
     // decoded first and dropped.
     void start_at(std::size_t unit, StreamDecoder& decoder);
 
+    // The unit a decoder starting at `unit` begins with: the one before for
+    // AC-3 and E-AC-3, and for AC-4 an I-frame kAc4PreRollSamples or more
+    // before it, where the stream has one.
+    [[nodiscard]] std::size_t first_decoded(std::size_t unit) const;
+
     std::vector<std::byte> bytes_;
     io::ScannedStream scanned_{};
     // The programme's access units, and the stream sample each starts at -
@@ -192,6 +241,11 @@ private:
     std::vector<std::uint64_t> starts_;
     int programme_ = 0;
     bool first_programme_ = true;
+    // AC-4: the first frame's table of contents, and which units are
+    // I-frames (sized with the units, set by index).
+    bool ac4_ = false;
+    ac4::Toc ac4_toc_{};
+    std::vector<bool> iframes_;
     ItemFacts facts_{};
     // The part of the stream the item plays, in stream samples.
     std::uint64_t window_start_ = 0;

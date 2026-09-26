@@ -28,6 +28,15 @@
     },
     "capi": {
       "description": "Stable, minimal C11 API over the encode/decode core (ac3::forge_c) - for bindings and embedding by callers that cannot or do not want to link C++23"
+    },
+    "ac4": {
+      "description": "AC-4 (ETSI TS 103 190) sync frame and table of contents reader, decoder and encoder (ac4::ac4, ac4::decoder, ac4::encoder) - depends on nothing in ac3::forge"
+    },
+    "iab": {
+      "description": "Standalone SMPTE ST 2098-2 Immersive Audio Bitstream reader (ac3iab::ac3iab) - depends on nothing in ac3::forge"
+    },
+    "iamf": {
+      "description": "Standalone IAMF v1.1 OBU and ISOBMFF writer (iamf::iamf) - depends on nothing in ac3::forge"
     }
   }
 }

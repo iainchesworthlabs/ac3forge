@@ -48,9 +48,10 @@ std::string_view hls_codec_string(const AudioTrack& track) {
 std::string build_hls_media_playlist(const AudioTrack& track,
                                      std::span<const SegmentInfo> segments,
                                      const HlsOptions& options) {
+    const std::uint32_t timescale = timescale_of(track);
     double max_seconds = 0.0;
     for (const auto& segment : segments) {
-        max_seconds = std::max(max_seconds, segment_seconds(segment, track.sample_rate));
+        max_seconds = std::max(max_seconds, segment_seconds(segment, timescale));
     }
     // RFC 8216 §4.3.3.1: an integer number of seconds, "MUST be less than
     // or equal to the target duration" for every segment - rounding UP
@@ -70,7 +71,7 @@ std::string build_hls_media_playlist(const AudioTrack& track,
     }
     out += fmt::format("#EXT-X-MAP:URI=\"{}\"\n", options.init_segment_uri);
     for (const auto& segment : segments) {
-        out += fmt::format("#EXTINF:{:.5f},\n", segment_seconds(segment, track.sample_rate));
+        out += fmt::format("#EXTINF:{:.5f},\n", segment_seconds(segment, timescale));
         out += apply_sequence_number(options.segment_uri_pattern, segment.sequence_number);
         out += "\n";
     }
@@ -105,7 +106,7 @@ std::string build_hls_master_playlist(std::span<const HlsRendition> renditions,
     std::uint64_t bandwidth = 0;
     for (const auto& rendition : renditions) {
         bandwidth = std::max(
-            bandwidth, estimate_bandwidth_bps(rendition.segments, rendition.track.sample_rate));
+            bandwidth, estimate_bandwidth_bps(rendition.segments, timescale_of(rendition.track)));
     }
 
     std::string out;
@@ -113,7 +114,9 @@ std::string build_hls_master_playlist(std::span<const HlsRendition> renditions,
     out += fmt::format("#EXT-X-VERSION:{}\n", options.version);
     // RFC 8216 §4.3.5.1: every Media Segment is guaranteed to carry the
     // whole of any sample it starts (true of every AC-3/E-AC-3 access unit
-    // this module ever writes - see mp4.hpp), so this asset qualifies.
+    // this module ever writes - see mp4.hpp), so this asset qualifies. So
+    // does an AC-4 track's, whose fragments start at a sync sample
+    // (FragmentOptions::sync_samples).
     out += "#EXT-X-INDEPENDENT-SEGMENTS\n";
     for (std::size_t i = 0; i < renditions.size(); ++i) {
         const auto& rendition = renditions[i];

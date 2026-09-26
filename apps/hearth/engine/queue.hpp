@@ -32,7 +32,8 @@ namespace ac3::hearth {
 // that as "not known yet" rather than as a format.
 struct ItemFacts {
     // What it carries, and nullopt for anything IEC 61937 cannot wrap - a
-    // WAV, or an AC-4 stream, which is listed but not playable until chip D.
+    // WAV. An AC-4 stream's is the burst type its largest frame needs
+    // (Session::open()).
     std::optional<audio::BitstreamFormat> stream = std::nullopt;
     std::uint32_t sample_rate = 0;
     std::uint16_t channels = 0;
@@ -45,8 +46,9 @@ struct ItemFacts {
     // fixed 1536, which is wrong for an E-AC-3 frame with fewer than six
     // blocks (the plan's own note on apps/gui/stream_player_controller.cpp).
     std::optional<std::chrono::milliseconds> duration = std::nullopt;
-    // Set when the item was recognised but cannot be played here: AC-4
-    // today. It stays in the queue and is skipped, with the reason shown.
+    // Set when the item was recognised but cannot be played here: an AC-4
+    // stream with no presentation this build decodes, say. It stays in the
+    // queue and is skipped, with the reason shown.
     std::string unplayable_because{};
     // Something to show beside an item that does play: that its edit list
     // could not be applied, say.

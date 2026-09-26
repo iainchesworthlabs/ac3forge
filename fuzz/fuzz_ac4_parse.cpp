@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <optional>
 #include <span>
 #include <vector>
 
@@ -31,6 +32,13 @@
 //                    raw_ac4_frame - the form scan() hands on, reached here
 //                    directly so the TOC parser is pressed without a
 //                    well-formed syncframe having to be guessed first
+//   build_dac4       and dac4_refusal, cmaf_refusal and the codec string, on
+//                    every table of contents that reads: what `ac3cli mp4`
+//                    writes for a stream it is given
+//   signalled_presentation and the rest of what a manifest says of a track
+//                    (TS 103 190-2 Annex G), and Annex H.1.2.4's
+//                    configuration_difference: what `ac3cli fmp4` and a
+//                    record or live take's CMAF folder write
 //
 // That last call is the point of the harness. Requiring the fuzzer to produce
 // a valid 0xAC40/0xAC41 syncframe before any TOC byte is read would spend most
@@ -97,7 +105,34 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         size == 0 ? 1 : 1 + std::to_integer<std::size_t>(bytes[size - 1]) % 61;
     split(bytes, scanned, piece, 64);
     split(bytes, scanned, piece, size + 16);
-    (void)ac4::parse_raw_frame(bytes);
+    if (const auto frame = ac4::parse_raw_frame(bytes)) {
+        // What an MP4 or CMAF writer makes of a table of contents it did not
+        // write: the dac4 describes every presentation whole or is empty, and
+        // dac4_refusal() names a reason exactly where it is empty.
+        const std::vector<std::byte> dac4 = ac4::build_dac4(frame->toc);
+        if (dac4.empty() == ac4::dac4_refusal(frame->toc).empty()) {
+            std::abort();
+        }
+        (void)ac4::cmaf_refusal(frame->toc);
+        (void)ac4::rfc6381_codec_string(frame->toc);
+        // The presentation a manifest describes is one of the table's, where
+        // it has any; and a table of contents is equivalent to itself.
+        const ac4::Toc& toc = frame->toc;
+        const std::size_t presentations = toc.presentations_v1.empty()
+                                              ? toc.presentations_v0.size()
+                                              : toc.presentations_v1.size();
+        const std::optional<std::size_t> signalled = ac4::signalled_presentation(toc);
+        if (signalled.has_value() != (presentations > 0) ||
+            (signalled.has_value() && *signalled >= presentations)) {
+            std::abort();
+        }
+        (void)ac4::dash_channel_configuration(toc);
+        (void)ac4::dash_supplemental_properties(toc);
+        (void)ac4::presentation_channel_count(toc);
+        if (!ac4::configuration_difference(toc, toc).empty()) {
+            std::abort();
+        }
+    }
 
     return 0;
 }

@@ -123,7 +123,7 @@ public:
     }
 
     bool submit_burst(std::uint16_t pc, std::uint16_t pd, std::span<const std::byte> payload,
-                      std::int64_t frame) override {
+                      std::int64_t frame, std::int64_t frames) override {
         if (!group_) {
             return false;
         }
@@ -133,7 +133,8 @@ public:
         // Both alias unsigned char, so reinterpreting the span is well-defined.
         const std::span<const std::uint8_t> bytes(reinterpret_cast<const std::uint8_t*>(payload.data()),
                                                    payload.size());
-        return group_->push_burst({.pc = pc, .pd = pd, .payload = bytes, .frame = frame});
+        return group_->push_burst(
+            {.pc = pc, .pd = pd, .payload = bytes, .frame = frame, .frames = frames});
     }
 
     [[nodiscard]] std::optional<audio::MonitorPosition> position() const override {

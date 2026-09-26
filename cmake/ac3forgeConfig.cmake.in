@@ -40,9 +40,9 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/iamfTargets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/iamfTargets.cmake")
 endif()
-# The AC-4 inspector, decoder and core (AC3FORGE_BUILD_AC4), one export set under ac4:: - see
-# cmake/InstallLibrary.cmake's AC3FORGE_BUILD_AC4 block. ac4::core is there only when the static
-# decoder is, which links it.
+# The AC-4 inspector, decoder, encoder and core (AC3FORGE_BUILD_AC4), one export set under ac4::
+# - see cmake/InstallLibrary.cmake's AC3FORGE_BUILD_AC4 block. ac4::core is there only when the
+# static decoder and encoder are, which link it.
 if(EXISTS "${CMAKE_CURRENT_LIST_DIR}/ac4Targets.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/ac4Targets.cmake")
 endif()
@@ -103,6 +103,11 @@ if(TARGET ac4::decoder_shared AND NOT TARGET ac4::decoder_static)
     add_library(ac4::decoder ALIAS ac4::decoder_shared)
 elseif(TARGET ac4::decoder_static AND NOT TARGET ac4::decoder_shared)
     add_library(ac4::decoder ALIAS ac4::decoder_static)
+endif()
+if(TARGET ac4::encoder_shared AND NOT TARGET ac4::encoder_static)
+    add_library(ac4::encoder ALIAS ac4::encoder_shared)
+elseif(TARGET ac4::encoder_static AND NOT TARGET ac4::encoder_shared)
+    add_library(ac4::encoder ALIAS ac4::encoder_static)
 endif()
 if(TARGET ac3::forge_c_shared AND NOT TARGET ac3::forge_c_static)
     add_library(ac3::forge_c ALIAS ac3::forge_c_shared)

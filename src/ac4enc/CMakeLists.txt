@@ -3,18 +3,26 @@
 # V1.3.1, written from the published texts (planning/ac4.md, phase E1 on).
 #
 # A peer of src/ac4dec, in the same OBJECT + static + shared arrangement (see
-# src/forge/CMakeLists.txt's ac3::forge for why). It links ac4::ac4 PUBLIC,
-# since its own header describes what it writes with the inspector's Toc, and
-# the shared core ac4::core PRIVATE: the forward transform, the windows and
-# the codebooks. Its syntax writer is a transcription of the tables of its
-# own, separate from the decoder's reader.
+# src/forge/CMakeLists.txt's ac3::forge for why). It links ac4::ac4, since
+# its own header describes what it writes with the inspector's Toc and syntax
+# trace, and the shared core ac4::core: the forward transform, the windows
+# and the codebooks. Its syntax writer is a transcription of the tables of its
+# own, separate from the decoder's reader. Installed and exported with the
+# inspector, the decoder and the core as ac4::encoder_static and
+# ac4::encoder_shared (cmake/InstallLibrary.cmake), the names these aliases
+# give the targets in the tree; EXPORT_NAME below makes the installed names
+# the same.
 # ---------------------------------------------------------------------------
 add_library(ac4enc_objects OBJECT)
 add_library(ac4enc_static STATIC)
 add_library(ac4enc_shared SHARED)
 
-target_link_libraries(ac4enc_static PUBLIC ac4enc_objects)
-target_link_libraries(ac4enc_shared PUBLIC ac4enc_objects)
+# As src/ac4dec links them, for the reasons it gives: each library links the
+# inspector of its own kind PUBLIC and the core PRIVATE, which the static
+# library passes on as a link-only dependency and the shared one carries the
+# part of; the OBJECT library takes both for compiling only.
+target_link_libraries(ac4enc_static PUBLIC ac4enc_objects ac4::ac4_static PRIVATE ac4::core)
+target_link_libraries(ac4enc_shared PUBLIC ac4enc_objects ac4::ac4_shared PRIVATE ac4::core)
 
 add_library(ac4::encoder_static ALIAS ac4enc_static)
 add_library(ac4::encoder_shared ALIAS ac4enc_shared)
@@ -59,13 +67,14 @@ target_include_directories(ac4enc_objects
 
 target_compile_features(ac4enc_objects PUBLIC cxx_std_23)
 
-# ac4::ac4 is PUBLIC: the encoder's header names the inspector's Toc and the
-# shared syntax trace. ac4::core is PRIVATE, as it is to the decoder.
+# The inspector's and the core's usage requirements, compiled with and not
+# linked: the libraries above link them. ac4::ac4 is the one
+# BUILD_SHARED_LIBS picks, and $<BUILD_INTERFACE:...> is on all four for the
+# reason src/ac4dec/CMakeLists.txt gives.
 target_link_libraries(ac4enc_objects
-    PUBLIC
-        ac4::ac4
     PRIVATE
-        ac4::core
+        "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac4::ac4>>"
+        "$<BUILD_INTERFACE:$<COMPILE_ONLY:ac4::core>>"
         "$<BUILD_INTERFACE:ac3::warnings>"
         "$<BUILD_INTERFACE:ac3::coverage>")
 
@@ -94,3 +103,9 @@ set_target_properties(ac4enc_shared PROPERTIES
 
 set_target_properties(ac4enc_shared PROPERTIES OUTPUT_NAME "ac4enc")
 set_target_properties(ac4enc_static PROPERTIES OUTPUT_NAME "ac4enc_static")
+
+# The names install(EXPORT ... NAMESPACE ac4::) gives the targets, as the
+# tree's aliases have them: ac4::encoder_static, not ac4::ac4enc_static.
+set_target_properties(ac4enc_objects PROPERTIES EXPORT_NAME "encoder_objects")
+set_target_properties(ac4enc_static PROPERTIES EXPORT_NAME "encoder_static")
+set_target_properties(ac4enc_shared PROPERTIES EXPORT_NAME "encoder_shared")

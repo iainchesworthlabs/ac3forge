@@ -936,6 +936,38 @@ The sections below contain the complete change list and fixes.
     when it was due on each board (its own `worst_error_us`). A hidden `ac3tests` case,
     `[hearth-network-live]`, repeats that against the sinks named in `AC3HEARTH_LIVE_SINKS`, and
     withdraws its pairings afterwards.
+- **Hearth plays AC-4** (phase I2 of `planning/ac4.md`), through `ac4::Decoder`'s public API alone.
+  - `Session::open()` takes an AC-4 elementary stream. Its units are the sync frames, each as long
+    as Part 2 Table 47 makes it for the frame's place in the `sequence_counter` cycle, so an item's
+    duration and a join's sample count are exact at 29.97 fps too. A seek starts the decoder at an
+    I-frame at least 6 144 samples before the point asked for, and what plays from that point
+    equals an unbroken decode. A stream with no presentation the decoder decodes is refused when
+    it opens, with the decoder's reason.
+  - `StreamDecoder` decodes 256 samples at a time and renders onto the speaker layout; a change of
+    settings reaches the playing item at its next frame, in the same decoder.
+  - `DecoderSettings::ac4` holds AC-4's own controls: the presentation, by `presentation_id` or
+    place; the listener's language, which the window sets from its own; audio description and its
+    level; the dialogue level; dialogue enhancement; dialogue normalisation, with the output level
+    and the DRC decoder mode, which stay apart from AC-3's and E-AC-3's operating mode
+    (decision 12); and a fold by the stream's preferred downmix. The stereo fold, the LFE in a fold
+    and concealment are the settings AC-3 and E-AC-3 use. The LFE is unset until the listener sets
+    it, and unset means off for AC-3 and E-AC-3 and on for AC-4.
+  - The Decoder page's AC-4 tab loses its "Not in this build" banner, and each of those settings
+    is a control on it; the tab turns to the format of the item playing. The Media page drops its
+    "Not playable" banner and shows what the decoder reads of a stream: frame rate, bit rate,
+    I-frames, splices, each presentation, and the loudness, DRC, dialogue enhancement and downmix
+    metadata of the presentation a decoder selects with no preferences.
+  - AC-4 is decoded for every output. A network group is also sent the stream as IEC 61937-14
+    bursts, of the type its largest frame needs and timed from the session's units, for members on
+    the extension role that list `"ac4"`; an item whose bursts differ from what the group carries
+    starts the group again, which now also holds for AC-3 against E-AC-3.
+  - Checked: `[hearth][ac4]` cases play every committed AC-4 stream through the engine sample for
+    sample as `ac4::Decoder` decodes it, and hold each control on tone streams to Part 1's formula
+    for it; `tst_decoder_ac4.qml` drives each control from the page and measures what reaches the
+    fake device tone by tone, to 0.1 dB. `ac3hearth-render` plays an item through the engine into a
+    WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds its output level, downmixes and
+    dialogue enhancement to the formulas it holds `ac3cli decode` to, on the committed streams and
+    the encoder's, in the Hearth CI job.
 
 **Audio outputs**
 
@@ -1242,6 +1274,25 @@ The sections below contain the complete change list and fixes.
   `codec-mode=aspx-acpl-1|aspx-acpl-2|aspx-acpl-3` and names the mode in its summary.
   `tools/checks/score_ac4_encode.py` pins nine A-CPL legs and the A-CPL race with
   `score_ac4_decode.py`'s per-band checks, which now take ASPX_ACPL_1, 5.0 and the channel pair.
+- **AC-4 in the rest of `ac3cli`** (phase I1 of `planning/ac4.md`). `transcode` goes between AC-4
+  and AC-3 or E-AC-3 in both directions: an AC-4 presentation, chosen as `decode` chooses one, is
+  decoded without DRC and re-encoded with its `drc_eac3_profile` as the DRC profile (TS 103 190-1
+  clause 5.7.9.4, whose field name `src/ac4dec/ERRATA.md` reads), its dialnorm to the dB and its
+  downmix values; an AC-3 or E-AC-3 source's dialnorm and downmix values go to AC-4, `drc=` naming
+  its profile. `record` and `live` encode AC-4 with `codec=ac4`, raw, as MPEG-TS, IEC 61937-14
+  bursts or a CMAF folder; `live` monitors it and sends a receiver the 5.1 AC-3 leg. `monitor` and
+  `play` decode AC-4, `qc`, `levels` and `loudness` measure a presentation as coded, `spdif` wraps
+  AC-4, and `probe` reads it and AC-3/E-AC-3 inside MP4, MPEG-TS and Matroska and reports the
+  container's view of the track. `fmp4` fragments AC-4 as Annex H has a CMAF track: fragments start
+  at I-frames, non-sync samples are flagged, Table E.1's time scale, the `ca4m` and `ca4s` brands,
+  and Annex G's codecs, channel configuration and frame rate in the manifests
+  (`mp4::FragmentOptions::sync_samples` and `brands`, `FragmentWriter::push(frame, sync)`,
+  `DashOptions::channel_configuration` and `supplemental_properties`; `ac4::signalled_presentation()`
+  and the other manifest functions). `mkv` refuses AC-4, for which Matroska registers no codec ID.
+  `ac3::plan::Codec` gains `kAc4`, its helpers are switches, and `check_matrix_coverage.py` holds
+  every command whose usage names an `.ac4` file to a matrix leg that runs it on AC-4. `record` now
+  writes the frames it encoded while its bitstream check listened at the start of the take, where
+  they used to land at its end.
 - **AC-4 over IEC 61937** (phase D11 of `planning/ac4.md`), from IEC 61937-14:2017, with IEC
   61937-1 and 61937-2 for the burst format. `ac3::iec61937::Ac4BurstPacker` packs one AC-4 sync
   frame to a data-burst in any of Part 14's four burst types (`Pc` data type 24 with subdata types
@@ -1420,6 +1471,76 @@ The sections below contain the complete change list and fixes.
   renderer Hearth plays E-AC-3's objects with (`apps/common/ac4_object_render.hpp`), 7.1.4 by
   default, and a test holds each speaker to the objects' gains for their positions. librempeg
   refuses object coding; `src/ac4dec/ERRATA.md` records the readings.
+- **The AC-4 encoder writes several substreams and the presentations of Part 2 Table 53** (phase E6
+  of `planning/ac4.md`). `ac4::EncoderConfig::substreams` codes each substream from its own input
+  channels, at its share of the rate, in a substream group of its own with its content classifier
+  and language, and `presentations` plays them together: music and effects with dialogue, main with
+  dialogue enhancement, whose hybrid methods (`DialogueConfig::hybrid`) send the dialogue's waveform in
+  a substream of its own, main with associated audio, music and effects with both, main with both,
+  roles by content classifier, and EMDF payloads alone. Each presentation carries its
+  `presentation_id`, the least `md_compat` its tracks need (Table 55), an alternative presentation's
+  name, its dialnorm, loudness values, DRC and downmix, the substream groups' gains and the associated
+  audio's scaling and pan; a dialogue substream carries its g_dialog_max and pans, and EMDF payloads
+  pass through in a presentation's EMDF payloads substream or in a substream's `metadata()`.
+  `create()` refuses what Part 1 forbids, dialogue or associated audio with a channel the main audio
+  lacks but for mono, and 3.0 anywhere but a dialogue enhancement signal or the dialogue of a music
+  and effects presentation (3.0 is experimental), and what CMAF's Annex H.1.2 does, more than 64
+  presentations or a `presentation_id` twice. A stream of one presentation now carries
+  `presentation_id` 0 and its layout's level, 1 in 5.X and 2 in 7.X, as DEE's streams do, where E1 to
+  E5 wrote level 0 and no `presentation_id`. Through D7's selection and mixing every presentation of
+  the committed streams comes out as configured, one tone per substream, to 0.01 dB
+  (`tests/ac4enc/test_ac4enc_presentations.cpp`, and `mix_ac4_decode.py` in CI); MediaInfo lists the
+  presentations, groups, names, languages and levels as configured; against DEE's G1 legs multiplexed
+  into the same presentations, the encoder's SNR is within 0.1 dB of DEE's or above it at 128 kbps and
+  5.5 to 6.3 dB above at 192 (`tools/checks/race_ac4_presentations.py`). The substreams go
+  presentation substreams first, then audio, then EMDF payloads, since librempeg takes the substream
+  after the presentation substreams for the first group's audio. `fuzz_ac4_encode` draws the
+  substreams and presentations; `ac3cli ac4-encode` takes them in E7. `src/ac4enc/ERRATA.md` records
+  the readings.
+- **The AC-4 encoder codes 5.1.4** (phase E8 of `planning/ac4.md`). Nine or ten input channels, 5.0.4
+  and 5.1.4, are coded in Part 2's immersive channel element as DEE writes it: SCPL from 640 kbps, ASPX_SCPL
+  from 480 and ASPX_ACPL_2 below, each coupled pair as its sum and difference with the difference predicted
+  band by band (Table 20), A-SPX paired as Table 8 has it, and A-CPL's four modules rebuilding the pairs in
+  ASPX_ACPL_2. `DownmixConfig::height` sends the top channels' downmix to 5.X (custom downmix data, in
+  I-frames), and an immersive presentation carries `immersive_audio_indicator`. 7.0.4 and 7.1.4 with the
+  back pair (`experimental.back_pair`), ASPX_ACPL_1 and A-JCC (`experimental.ajcc`, which DEE's streams never
+  use) are experimental options. `ac3cli ac4-encode` takes the immersive layouts from the WAV's channel
+  count, with `codec-mode=scpl`, `aspx-scpl` and `aspx-ajcc`, `height-downmix=` and `height-gain=`. In full
+  decoding every channel's tone comes back on its own channel at unity, and in core decoding on the 5.X.2
+  core's speaker at the core's gain. `src/ac4dec/ERRATA.md`'s evidence for Table 20's prediction gains is
+  corrected: DEE's SCPL and ASPX_SCPL streams send them with `sap_mode` 3, not 0.
+- **The AC-4 encoder's API in its final form, `ac3cli ac4-encode`'s options, and the encoder
+  installed** (phase E7 of `planning/ac4.md`). `ac4::Encoder::refusal_reason()` names the rule a
+  configuration `create()` refuses breaks, as a string literal such as "a rate outside 8 to 3 000
+  kbps", and every field of the configuration's structures has a default, so a designated
+  initializer names only what it sets. `ac3cli ac4-encode` takes the rest of the configuration as
+  options: `substream2=` to `substream32=` add inputs as substreams of their own, with `substreamN-`
+  keys for each one's rate share, codec mode, content classifier, language, dialogue enhancement,
+  dialogue mixing values and EMDF payloads, and `substreamN-enhances=` for the waveform of a hybrid
+  dialogue enhancement (`dialogue-hybrid=`); `presentation1=` to `presentation64=` list the
+  substreams each presentation plays, with `presentationN-` keys for its configuration, id, level,
+  filters, alternative name, dialnorm, group gains, the associated audio's mixing values and EMDF
+  payloads; `crc=off` writes sync frames without their CRC, and `experimental=three-zero` takes 3.0.
+  A configuration the encoder refuses is refused naming its rule, and every option has a test.
+  `ac4::build_dac4()` describes every presentation in the MP4 sample entry (Part 2 Annex E.10 and
+  E.11: each configuration's substream groups, the presentation's channel mode, core and channel
+  groups, A-JOC and direct-coded object groups, the program identifier, and an alternative
+  presentation's name and targets, which the decoder now reports), as DEE's muxer does byte for byte
+  for Chromium's A-JOC stream and DASH-IF's test vectors, and writes nothing where it cannot describe
+  a presentation whole, which `ac4::dac4_refusal()` names and `ac3cli mp4` refuses. `ac4::cmaf_refusal()`
+  names the rule of Annex H.1.2.1 a stream breaks for a CMAF track: a configuration 6 presentation has
+  no field for the `presentation_id` CMAF asks of each, and `ac3cli fmp4` refuses such a stream,
+  fragmenting AC-4 itself being phase I1's. The encoder is installed and exported beside the decoder
+  (`ac4::encoder_static` and `ac4::encoder_shared`, each linking the inspector of its kind, and
+  pkg-config `ac4enc`), `tools/checks/check_install_consumer.sh` encodes through each installed
+  encoder by CMake and by pkg-config, and `tools/ci/abi-allowlist/libac4enc.so.txt` lists its
+  exports. The encoder-space harness draws substreams and presentations through the new options. It
+  found that a frame at an average rate could give the substream taking what the others leave less
+  than its least frame, and that a frame between I-frames was sized for a dialogue stem's parameters
+  coded against the last frame's where it falls back to the last frame's kept (phase E6's), both of
+  which the encoder then could not write; and that the 7.X layout's pair went to every substream, so
+  a 7.1 substream could not have mono dialogue beside it. All three are fixed. `docs/library/ac4.md`
+  describes the encoder.
 
 **Browser (WASM)**
 
@@ -1728,6 +1849,24 @@ The sections below contain the complete change list and fixes.
 - `ac3::version_details()` (and `ac3cli --version`) now puts commits-past-tag in the
   headline as semver build metadata (`0.10.0-beta.1+100`), so it no longer reads as a
   tagged release when it isn't.
+- **The vcpkg port and the Conan recipe install the AC-4 libraries, the IAB reader and the IAMF
+  writer only where asked for.** Each is a feature of the port and an option of the recipe, `ac4`
+  (`ac4::ac4`, `ac4::decoder`, `ac4::encoder`), `iab` (`ac3iab::ac3iab`) and `iamf`
+  (`iamf::iamf`), off by default, since a curated vcpkg port's default features may enable
+  behaviours and not public targets: `vcpkg install ac3forge[ac4,iab,iamf]` or
+  `-o "ac3forge/*:ac4=True"` and the like opt in. Until now the port and the recipe installed IAB
+  and IAMF with every install, and the AC-4 libraries since they were installed at all. Upstream's
+  `AC3FORGE_BUILD_AC4`, `AC3FORGE_BUILD_IAB` and `AC3FORGE_BUILD_IAMF` still default ON for direct
+  builds and the SDK packages. Both recipes now also pin `AC3FORGE_BUILD_HEARTH` off: upstream
+  defaults it ON, so from this tree the port and the recipe would build Hearth, an application and
+  a library nothing installs, and stop at `find_package(httplib)`, a dependency neither declares,
+  or, with the AC-4 libraries off, at upstream's refusal of Hearth without them; the release they
+  pin predates Hearth, so no published install met it. `tools/checks/check_packaging_versions.sh`
+  now holds the two recipes to the same components switching the same `AC3FORGE_BUILD_<NAME>`
+  options, fails a `default-features` entry in the port, an option the recipe turns on by default
+  beyond the container writers, and an option upstream defaults ON that a recipe neither offers nor
+  pins off, and `tools/checks/check_install_consumer.sh` checks that a tree built without a library
+  installs no file of it and one built with it installs its export and `.pc` file.
 
 ### Fixed
 
@@ -2009,6 +2148,50 @@ The sections below contain the complete change list and fixes.
 
 **Codec correctness**
 
+- **E-AC-3 streams from the Dolby Encoding Engine that use transient pre-noise processing would
+  not decode.** DEE turns §3.7's tool on at its lower rates - all 23 such streams in the DEE
+  golden-master set, stereo at 96-144 kbit/s, 5.1 at 192-368 and a 5.1 programme at 256 - and
+  puts most of its transients in the frame after the one that signals them, up to 1,260 samples
+  in. `Eac3Decoder` applied each correction while decoding the frame that signalled it and
+  refused, with `DecodeError::kUnsupported`, any that reached past that frame. A correction now
+  waits in the decoder until the frame its transient falls in has decoded, so every reach the
+  syntax can express decodes: a transient up to 4,092 samples past the first sample of its
+  frame's PCM, and a correction reaching up to 1,528 samples back from it. All 23 streams decode.
+  The first five seconds of one are committed
+  (`tests/golden/external-baseline/eac3-transient-stereo-128/`, cut by
+  `tools/generators/gen_dee_tpn_fixture.py`) and checked against their source and against FFmpeg
+  by `tools/checks/verify_gold_reference.sh`, and by
+  `tests/decoder/test_eac3_transient_prenoise.cpp`.
+- **Transient pre-noise corrections landed one block early.** The decoder counted
+  `transprocloc` from the first sample of a frame's decoded output. A/52 counts it from the first
+  sample of the frame's PCM, and a frame's PCM is its blocks' new samples, which start one block
+  (256 samples) into that output. Dolby's own decoder places its corrections on the second origin:
+  on DEE's streams it removes the pre-noise right up to each transient, where the first origin
+  left the 164 samples of pre-noise nearest it in place. `ac3/decoder/transient_prenoise.hpp`
+  records the origin as `kTransientPrenoiseOrigin`. On this project's own streams, where the
+  correction had been moving clean audio a block ahead of the pre-noise, `quality_race.py`'s
+  self-scored stereo rows at 192 kbit/s rise from 24.0 to 26.2 dB; the 5.1 rows at 256 move by
+  0.1 dB.
+- **A stream of one-, two- or three-block syncframes using transient pre-noise processing made
+  the decoder write past its buffers.** It spliced each correction through a buffer sized for a
+  six-block frame and copied all 1,536 samples back into channels of 256, 512 or 768. A
+  correction reaches up to 1,528 samples back from its transient whatever the syncframe length,
+  so the decoder now holds 1,536 samples back - one syncframe at six blocks, six at one - and
+  `eac3::eac3_latency()` charges that hold-back for every `numblkscod` rather than one
+  syncframe's length. `flush()` still returns one substream per identity, joining the short
+  syncframes it holds.
+- **A concealed frame could overtake the frames held back for transient pre-noise processing.**
+  With `DecoderConfig::concealment` set, a frame that failed to decode came back from
+  `decode_substream` at once while the frames before it were still held, so the audio came out
+  out of order. A concealed frame now takes its place behind them.
+- **Every refused decode was described as "valid AC-3 this decoder does not implement (bsid >
+  8)".** `DecodeError::kUnsupported` stood for an unreadable bsid, for the transient pre-noise
+  refusal above, and for `DecoderConfig::fast_imdct = false` in a build without the direct-form
+  transform, and one sentence described all three. `kUnsupported` now means a bsid the decoder
+  does not read and says so, the transform refusal is the new
+  `DecodeError::kNoReferenceTransform` with its own description (the C API, which cannot ask for
+  that transform, maps it to `AC3FORGE_ERROR_DECODE_UNSUPPORTED`), and transient pre-noise
+  processing is no longer refused at all.
 - **RF mode decoded 11 dB below a Dolby decoder.** `OperatingMode::kRf` normalised
   dialnorm onto −31 dBFS and applied `compr` with nothing on top, while the Dolby
   Reference Player's RF mode applies each `compr` word with 11 dB that put dialogue at

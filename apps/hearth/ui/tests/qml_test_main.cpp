@@ -25,6 +25,8 @@
 #include <QUrl>
 #include <QVariantMap>
 
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <string>
@@ -125,6 +127,33 @@ public:
         if (room_) {
             ac3::hearth::uitest::reset_peak(*room_);
         }
+    }
+
+    // The level of the tone at `hz` in rendered slot `slot`, in dBFS, over the
+    // last samples the engine handed the fake device (test_room.hpp's
+    // tone_level_db()); -Infinity before there are enough.
+    Q_INVOKABLE double toneLevelDb(int slot, double hz) const {
+        if (!room_ || slot < 0) {
+            return -std::numeric_limits<double>::infinity();
+        }
+        return ac3::hearth::uitest::tone_level_db(*room_, static_cast<std::size_t>(slot), hz);
+    }
+
+    // Writes an AC-4 stream of tones of `kind` (test_room.hpp's
+    // write_ac4_stream()) into this process's scratch folder as `name`, and
+    // returns its path - empty if it could not be written.
+    Q_INVOKABLE QString writeAc4Stream(const QString& name, const QString& kind) {
+        if (!scratch_.isValid()) {
+            return {};
+        }
+        const QString path = QDir(scratch_.path()).filePath(name);
+        std::string error;
+        if (!ac3::hearth::uitest::write_ac4_stream(path.toStdString(), kind.toStdString(),
+                                                   &error)) {
+            qWarning("writeAc4Stream: %s", error.c_str());
+            return {};
+        }
+        return path;
     }
 
     // Copies `source` (a path, or a file: URL) into this process's scratch

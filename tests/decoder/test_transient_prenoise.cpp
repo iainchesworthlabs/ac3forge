@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <numeric>
 #include <vector>
@@ -56,7 +57,10 @@ TEST_CASE("apply_transient_prenoise's first sample is a pure crossfade-out of th
     // At samp = 0 in region 1, win_fade_out1[0] should be ~1 (unity) and
     // win_fade_in1[0] should be ~0 - the correction starts by barely
     // touching the original decoded sample, not replacing it outright.
-    auto pcm = ramp(kBufLen, 1000.0f, 0.0f);  // constant 1000 everywhere
+    // Sample values inside [-1, 1], where PCM lives, so the cross-fade means
+    // the same in every scalar the decoder can be built with - the
+    // fixed-point one holds nothing past 128.
+    auto pcm = ramp(kBufLen, 1.0f, 0.0f);  // constant 1 everywhere
     const int transloc = 3000;
     const int translen = 100;
     const int block_start = (transloc / 256) * 256;
@@ -65,22 +69,22 @@ TEST_CASE("apply_transient_prenoise's first sample is a pure crossfade-out of th
     const int tot_corr_len = pnlen + translen + ac3::kTransientPrenoiseTC1;
     const int start_samp = transloc - tot_corr_len;
 
-    // Make the synthesis-source region distinctly different (500) so the
-    // blend at samp=0 is visibly close to the ORIGINAL (1000), not synth.
+    // Make the synthesis-source region distinctly different (0.5) so the
+    // blend at samp=0 is visibly close to the ORIGINAL (1), not synth.
     const int synth_start = transloc - 2 * ac3::kTransientPrenoiseTC1 - 2 * pnlen;
     for (int i = 0; i < 2 * ac3::kTransientPrenoiseTC1 + pnlen; ++i) {
-        pcm[static_cast<std::size_t>(synth_start + i)] = 500.0f;
+        pcm[static_cast<std::size_t>(synth_start + i)] = 0.5f;
     }
     // Restore the original value at exactly start_samp (it was inside the
     // synth-source range above, and region 1 needs to read the TRUE
     // original there for this check to mean anything) - use a value the
     // synth copy step wouldn't have touched: outside [synth_start,
     // synth_start + synth_len).
-    pcm[static_cast<std::size_t>(start_samp)] = 1000.0f;
+    pcm[static_cast<std::size_t>(start_samp)] = 1.0f;
 
     ac3::apply_transient_prenoise(pcm, transloc, translen);
-    // Should have moved only a little way from 1000 toward 500.
-    CHECK(pcm[static_cast<std::size_t>(start_samp)] > 900.0f);
+    // Should have moved only a little way from 1 toward 0.5.
+    CHECK(pcm[static_cast<std::size_t>(start_samp)] > 0.9f);
 }
 
 TEST_CASE("apply_transient_prenoise's last sample is a pure crossfade-in of the original",
@@ -88,7 +92,7 @@ TEST_CASE("apply_transient_prenoise's last sample is a pure crossfade-in of the 
     // At the final sample (tot_corr_len - 1), win_fade_in2 should be ~1 and
     // win_fade_out2 ~0 - the correction ends back at the original decoded
     // audio, not the synthesized copy.
-    auto pcm = ramp(kBufLen, 1000.0f, 0.0f);
+    auto pcm = ramp(kBufLen, 1.0f, 0.0f);
     const int transloc = 3000;
     const int translen = 100;
     const int block_start = (transloc / 256) * 256;
@@ -101,12 +105,12 @@ TEST_CASE("apply_transient_prenoise's last sample is a pure crossfade-in of the 
 
     const int synth_start = transloc - 2 * ac3::kTransientPrenoiseTC1 - 2 * pnlen;
     for (int i = 0; i < 2 * ac3::kTransientPrenoiseTC1 + pnlen; ++i) {
-        pcm[static_cast<std::size_t>(synth_start + i)] = 500.0f;
+        pcm[static_cast<std::size_t>(synth_start + i)] = 0.5f;
     }
     pcm[static_cast<std::size_t>(last)] = original_last;  // keep it distinguishable
 
     ac3::apply_transient_prenoise(pcm, transloc, translen);
-    CHECK(pcm[static_cast<std::size_t>(last)] > 900.0f);
+    CHECK(pcm[static_cast<std::size_t>(last)] > 0.9f);
 }
 
 TEST_CASE("apply_transient_prenoise reduces energy where a transient's pre-noise sat",
@@ -149,4 +153,32 @@ TEST_CASE("apply_transient_prenoise reduces energy where a transient's pre-noise
         corrected_energy += v * v;
     }
     CHECK(corrected_energy < noisy_energy * 0.01);
+}
+
+TEST_CASE("a correction reaches no further than the header's bounds say",
+          "[transient_prenoise]") {
+    // Every transient the syntax can place (transprocloc 0-1023, times 4) at
+    // every length (transproclen 0-255): what it touches ends at the transient
+    // and starts no more than kTransientPrenoiseMaxReach before it. Counted
+    // from the output frame the decoder signals it in - the transient at
+    // kTransientPrenoiseOrigin plus transprocloc * 4 - it reaches at most 1020
+    // samples before that frame's first sample, and its transient lies up to
+    // 4348 samples past it: in the frame after next.
+    int furthest_back = 0;
+    int earliest_in_frame = 0;
+    int latest_transient = 0;
+    for (int transprocloc = 0; transprocloc < 1024; ++transprocloc) {
+        const int transient = ac3::kTransientPrenoiseOrigin + transprocloc * 4;
+        for (int translen = 0; translen < 256; ++translen) {
+            const auto range = ac3::transient_prenoise_range(transient, translen);
+            REQUIRE(range.last == transient);
+            furthest_back = std::max(furthest_back, transient - range.first);
+            earliest_in_frame = std::min(earliest_in_frame, range.first);
+        }
+        latest_transient = std::max(latest_transient, transient);
+    }
+    CHECK(furthest_back == ac3::kTransientPrenoiseMaxReach);
+    CHECK(earliest_in_frame == -1020);
+    CHECK(latest_transient == 4348);
+    CHECK(latest_transient > 2 * ac3::kSamplesPerFrame);
 }

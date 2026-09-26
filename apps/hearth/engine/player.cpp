@@ -43,6 +43,12 @@ constexpr std::size_t kInitialPendingBlocks = 32;
     return "it could not be packed";
 }
 
+[[nodiscard]] bool same_choice(const ac4::PresentationChoice& a, const ac4::PresentationChoice& b) {
+    return a.presentation_id == b.presentation_id && a.index == b.index &&
+           a.language == b.language && a.associated == b.associated &&
+           a.associated_type == b.associated_type && a.headphones == b.headphones;
+}
+
 // What a transcode decodes onto: 5.1, whose slots are in the order the AC-3
 // encoder takes its channels.
 [[nodiscard]] const render::OutputLayout& transcode_layout() {
@@ -167,6 +173,17 @@ HeldOutput Player::held_output() const {
                       .stream = open.stream};
 }
 
+std::optional<audio::BitstreamFormat> Player::sent_stream(const Session& session) const {
+    if (session.ac4()) {
+        // A sink decodes the presentation of no preferences; one the
+        // listener's choice would not play is decoded here.
+        const std::optional<std::size_t> chosen =
+            session.ac4_presentation(presentation_choice(settings_));
+        return chosen == session.ac4_presentation({}) ? session.facts().stream : std::nullopt;
+    }
+    return session.first_programme() ? session.facts().stream : std::nullopt;
+}
+
 OutputChoice Player::decide(const Session& session) const {
     if (!choose_) {
         return OutputChoice{.mode = OutputMode::kLocalPcm,
@@ -175,17 +192,21 @@ OutputChoice Player::decide(const Session& session) const {
                             .reason = "Decoding here, to the output this player was given."};
     }
     // A receiver decodes a stream's first programme, and a stream cannot be
-    // sent to it without the others; another programme is decoded here.
+    // sent to it without the others; another programme is decoded here. So
+    // is an AC-4 presentation a sink would not choose itself.
     ItemFacts facts = session.facts();
-    const bool other_programme = !session.first_programme();
+    const bool other_programme = facts.stream && !sent_stream(session);
     if (other_programme) {
         facts.stream = std::nullopt;
     }
     OutputChoice choice = choose_(facts, held_output());
     if (other_programme && choice.mode == OutputMode::kLocalPcm) {
-        choice.reason += fmt::format(
-            " Programme {} is chosen, and a receiver plays only a stream's first.",
-            session.programme());
+        choice.reason += session.ac4()
+                             ? std::string{" A presentation is chosen that a sink would not choose "
+                                           "itself."}
+                             : fmt::format(" Programme {} is chosen, and a receiver plays only a "
+                                           "stream's first.",
+                                           session.programme());
     }
     return choice;
 }
@@ -209,6 +230,18 @@ std::string Player::join_blocked(const OutputChoice& next, std::string_view titl
         return fmt::format("\"{}\" folds to stereo at other levels, which an AC-3 encoder sets "
                            "once, so the output reopens - there is a gap.",
                            title);
+    }
+    if (mode_ == OutputMode::kNetworkGroup && prepared_ &&
+        sent_stream(*prepared_) != transport_.open_format().stream) {
+        // A member playing the bursts was told their data type when the
+        // group started, and takes no other.
+        return fmt::format(
+            "\"{}\" goes to the group's sinks as {}, not as what the group is "
+            "carrying, so the group starts again - there is a gap.",
+            title, [&] {
+                const std::optional<audio::BitstreamFormat> sent = sent_stream(*prepared_);
+                return sent ? audio::format_name(*sent) : std::string_view{"PCM alone"};
+            }());
     }
     if (mode_ != OutputMode::kBitstream || packed_frames_ == 0 || !prepared_) {
         return {};
@@ -244,18 +277,20 @@ std::string_view Player::settings_note() const {
 
 void Player::reset_packer() {
     packer_.reset();
+    ac4_packer_.reset();
     packed_frames_ = 0;
     packed_spans_.clear();
     group_payload_.clear();
     group_burst_start_frame_ = 0;
 }
 
-void Player::send_unit(std::span<const std::byte> unit, std::uint32_t samples) {
+void Player::send_unit(std::span<const std::byte> unit, std::uint32_t samples,
+                       std::uint64_t start) {
     if (history_.empty() || segments_.empty()) {
         return;
     }
     if (mode_ == OutputMode::kNetworkGroup) {
-        send_unit_to_group(unit);
+        send_unit_to_group(unit, samples, start);
         return;
     }
     const std::size_t record = history_.size() - 1;
@@ -311,7 +346,40 @@ void Player::send_unit(std::span<const std::byte> unit, std::uint32_t samples) {
     packed_spans_.clear();
 }
 
-void Player::send_unit_to_group(std::span<const std::byte> unit) {
+void Player::send_unit_to_group(std::span<const std::byte> unit, std::uint32_t samples,
+                                std::uint64_t start) {
+    const std::optional<audio::BitstreamFormat> stream = transport_.open_format().stream;
+    if (stream && audio::is_ac4(*stream)) {
+        // A sync frame to a burst, of the type the item's largest frame
+        // needs. Where it goes on the group's timeline comes from the
+        // session rather than from what has been queued, which the decoder's
+        // blocks run short of by what it holds back.
+        if (!ac4_packer_) {
+            ac4_packer_.emplace(
+                *stream == audio::BitstreamFormat::kAc4Hbr16  ? iec61937::BurstDataType::kAc4Hbr16
+                : *stream == audio::BitstreamFormat::kAc4Hbr4 ? iec61937::BurstDataType::kAc4Hbr4
+                                                              : iec61937::BurstDataType::kAc4);
+        }
+        const auto packed = ac4_packer_->push(unit);
+        if (!packed) {
+            note_unit_error(fmt::format("a unit could not be sent to the group, as {}",
+                                        describe(packed.error())));
+            return;
+        }
+        const iec61937::Ac4BurstPacker::Packed& last = *ac4_packer_->last();
+        const Segment& segment = segments_.back();
+        const std::uint64_t at =
+            segment.output_start + (start > segment.item_start ? start - segment.item_start : 0);
+        PendingGroupBurst burst{.pc = last.pc,
+                                .pd = last.pd,
+                                .payload = std::vector<std::byte>(unit.begin(), unit.end()),
+                                .frame = static_cast<std::int64_t>(at),
+                                .frames = static_cast<std::int64_t>(samples)};
+        // HBR16's payload runs on to a whole 8-byte unit, with zeros.
+        burst.payload.resize(std::max(burst.payload.size(), last.payload_bytes), std::byte{0});
+        pending_group_bursts_.push_back(std::move(burst));
+        return;
+    }
     // The programme frame the burst this unit joins will start at, latched
     // the first time group_payload_ is empty - the PCM this unit's own
     // frames belong to has not been queued yet (take_block() for this same
@@ -505,8 +573,11 @@ void Player::set_decoder_settings(const DecoderSettings& settings) {
     if (settings == settings_) {
         return;
     }
-    if (settings.programme != settings_.programme) {
-        // A prepared session holds the old programme's units.
+    const bool presentation_changed =
+        !same_choice(presentation_choice(settings), presentation_choice(settings_));
+    if (settings.programme != settings_.programme || presentation_changed) {
+        // A prepared session holds the old programme's units, or describes
+        // the old presentation.
         drop_prepared();
     }
     settings_ = settings;
@@ -519,6 +590,19 @@ void Player::set_decoder_settings(const DecoderSettings& settings) {
     if (decoder_fits(decoder_rate_, transcoder_.has_value())) {
         // A transcode's decode keeps its own settings, which few of these
         // reach.
+        return;
+    }
+    if (!transcoder_ && decoder_->apply(settings_)) {
+        // AC-4's decoder takes them from its next frame, keeping what it has
+        // read. A group whose sinks decode the bitstream themselves starts
+        // again where the listener now wants a presentation they would not
+        // choose, or wants theirs back.
+        if (presentation_changed && mode_ == OutputMode::kNetworkGroup) {
+            const std::string moved = refollow();
+            if (!moved.empty()) {
+                note(moved);
+            }
+        }
         return;
     }
     const StreamDecoder::BlockFn deliver =
@@ -1075,8 +1159,12 @@ std::string Player::refollow() {
     // (output_decision.cpp's own choose_output() leaves it empty, a group
     // being no endpoint of this machine), so endpoint_id alone cannot tell
     // one group the user has switched to from another already open.
+    // And for a group, the bitstream: whether a presentation the listener has
+    // chosen since still reaches the sinks that decode for themselves.
     if (choice.mode == mode_ && choice.endpoint_id == choice_.endpoint_id &&
-        choice.group_name == choice_.group_name) {
+        choice.group_name == choice_.group_name &&
+        (mode_ != OutputMode::kNetworkGroup ||
+         sent_stream(*session_) == transport_.open_format().stream)) {
         // Still right; the reason may read differently now.
         choice_ = choice;
         return {};
@@ -1122,7 +1210,8 @@ bool Player::start_session(std::size_t item) {
         return true;
     }
     drop_prepared();
-    auto opened = Session::open(queue_.items()[item].path, loader_, settings_.programme);
+    auto opened = Session::open(queue_.items()[item].path, loader_, settings_.programme,
+                                presentation_choice(settings_));
     if (!opened) {
         last_error_ = std::move(opened.error());
         return false;
@@ -1209,7 +1298,7 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
                 return refuse(OpenFailure::kOutput, "This player has no network group output.",
                               "could not start");
             }
-            if (facts.stream) {
+            if (sent_stream(*session_)) {
                 // Only whole units make a whole burst, the same reason
                 // kBitstream needs this below - a group offers bursts
                 // whenever the item has any, alongside the PCM every member
@@ -1236,9 +1325,12 @@ Player::OpenFailure Player::open_chosen(std::size_t item, PumpReport* report) {
         opened = bitstream_->open(BitstreamSink::Format{
             .format = *link, .sample_rate = rate, .endpoint_id = choice_.endpoint_id});
     } else if (choice_.mode == OutputMode::kNetworkGroup) {
-        opened = group_->open(choice_.group_name, NetworkGroupSink::Format{.sample_rate = rate,
-                                                                           .layout = layout_,
-                                                                           .stream = facts.stream});
+        // A programme or presentation a member would not decode from the
+        // stream whole goes as PCM alone.
+        opened = group_->open(
+            choice_.group_name,
+            NetworkGroupSink::Format{
+                .sample_rate = rate, .layout = layout_, .stream = sent_stream(*session_)});
     } else {
         opened = sink_->open(
             PcmSink::Format{.sample_rate = rate, .layout = layout_, .endpoint_id = choice_.endpoint_id});
@@ -1456,9 +1548,8 @@ void Player::fill(std::size_t frames) {
     // group's own members), is sent each unit as it is decoded.
     const Session::SentFn sent =
         mode_ == OutputMode::kBitstream || mode_ == OutputMode::kNetworkGroup
-            ? Session::SentFn{[this](std::span<const std::byte> unit, std::uint32_t samples) {
-                  send_unit(unit, samples);
-              }}
+            ? Session::SentFn{[this](std::span<const std::byte> unit, std::uint32_t samples,
+                                     std::uint64_t start) { send_unit(unit, samples, start); }}
             : Session::SentFn{};
     while (pending_frames_ < frames && !session_->finished() && !transcode_error_) {
         const auto got =
@@ -1534,7 +1625,7 @@ std::size_t Player::drain_group(std::size_t budget) {
     // why they are not counted here or in pending_frames_.
     while (!pending_group_bursts_.empty()) {
         const PendingGroupBurst& burst = pending_group_bursts_.front();
-        if (!group_->submit_burst(burst.pc, burst.pd, burst.payload, burst.frame)) {
+        if (!group_->submit_burst(burst.pc, burst.pd, burst.payload, burst.frame, burst.frames)) {
             break;
         }
         pending_group_bursts_.pop_front();
@@ -1652,7 +1743,8 @@ std::size_t Player::prepare_next(PumpReport& report) {
             return Queue::kNone;
         }
         drop_prepared();
-        auto opened = Session::open(path, loader_, settings_.programme);
+        auto opened =
+            Session::open(path, loader_, settings_.programme, presentation_choice(settings_));
         if (opened) {
             queue_.set_facts(next, opened->facts());
             prepared_ = std::move(*opened);

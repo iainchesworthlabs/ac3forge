@@ -43,6 +43,16 @@ directly, via the same error-message path real bad input hits:
              exists to catch - and only the CLI's own usage text said the
              [vbr] argument existed at all; the "avg:" half is checked the
              same way for the same reason.
+  ac4        every command whose usage row names an AC-4 file (in.ac4 or
+             out.ac4) - decode, probe, transcode, the containers and the rest
+             planning/ac4.md's phase I1 taught AC-4 - must be run on AC-4 at
+             least once: a `run <command>` line whose arguments name a file
+             with "ac4" in it. A command can reach AC-4 only through its own
+             code path for it (its own decoder, burst packer or track), so a
+             command the matrix runs on AC-3 alone has left that path
+             untouched, the gap the plain commands check cannot see. A build
+             whose usage names no AC-4 file at all skips it, as an older
+             build skips the vbr checks.
 
 Coverage is a presence check for commands, layouts, Atmos modes and vbr: each
 canonical token just has to appear as a whole word somewhere in the matrix
@@ -70,7 +80,7 @@ named anywhere else no longer counts. The other four checks are deliberately
 left on the looser whole-file test - narrowing a check that has never been
 fooled would just add a way for it to be wrong.
 
-All five checks match against the script with `#` comments stripped, so a
+Every check matches against the script with `#` comments stripped, so a
 token that appears only in prose never counts as coverage.
 
 Usage (repo root, after building):
@@ -124,6 +134,20 @@ def usage_commands(cli: str) -> set[str]:
             names.add(m.group(1))
     if not names:
         raise SystemExit("could not parse any commands from `ac3cli`'s usage output")
+    return names
+
+
+def ac4_commands(cli: str) -> set[str]:
+    """The commands whose usage row names an AC-4 file, in.ac4 or out.ac4 -
+    read off the same usage table usage_commands() reads, so a command that
+    learns AC-4 joins the check by saying so in its own usage. Empty for a
+    build that names none, which main() then skips."""
+    _, out, _ = run(cli)
+    names = set()
+    for line in out.splitlines():
+        m = re.match(r"\s*ac3cli\s+(\S+)\s+(.*)$", line)
+        if m and re.search(r"\b(?:in|out)\.ac4\b", m.group(2)):
+            names.add(m.group(1))
     return names
 
 
@@ -224,6 +248,17 @@ def commands_invoked(matrix_text: str) -> set[str]:
         r"\brun(?:_tolerate_eac3_tool_unsupported)?\s+([a-z][a-z0-9-]*)", matrix_text))
 
 
+def ac4_invocations(matrix_text: str) -> set[str]:
+    """Every command the matrix runs on AC-4: a `run <command> ...` whose
+    arguments name something with "ac4" in it (ac4_51_192.ac4,
+    i1_from_ac3.ac4, i1_ac4.ts). Continuation lines are joined first, so a
+    wrapped command line is read whole."""
+    text = join_continuations(matrix_text)
+    return {m.group(1)
+            for m in re.finditer(r"^\s*run\s+([a-z][a-z0-9-]*)\b(.*)$", text, re.M)
+            if "ac4" in m.group(2)}
+
+
 def matrix_tool_tokens(matrix_text: str) -> set[str]:
     """Every tool token the matrix actually ENCODES WITH, rather than every one
     it happens to contain - see the module docstring for the false pass that
@@ -303,6 +338,13 @@ def main() -> None:
         canonical_commands = usage_commands(cli) - EXCLUDED_COMMANDS
         invoked = commands_invoked(matrix_text)
         check("commands", canonical_commands, canonical_commands - invoked)
+
+        print("AC-4 commands - every command whose usage names an AC-4 file, run on AC-4")
+        canonical_ac4 = ac4_commands(cli) - EXCLUDED_COMMANDS
+        if canonical_ac4:
+            check("ac4-commands", canonical_ac4, canonical_ac4 - ac4_invocations(matrix_text))
+        else:
+            print("  SKIP  ac4-commands: this ac3cli build's usage names no AC-4 file")
 
         print("AC-3 layouts - ac3cli sine's own accepted set")
         ac3_layouts = layout_names(cli, tmp, "sine")

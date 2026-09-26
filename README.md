@@ -192,7 +192,7 @@ src/ac3iab/     ac3iab::ac3iab — a standalone SMPTE ST 2098-2 (IAB) bitstream 
 src/ac4/        ac4::ac4 — a standalone AC-4 sync frame/TOC/presentation/substream inspector
 src/ac4dec/     ac4::decoder — an AC-4 decoder, from ETSI TS 103 190-1 and -2; no ac3::forge
                 dependency
-src/ac4enc/     ac4::encoder — an AC-4 encoder, in-tree only until its API is final
+src/ac4enc/     ac4::encoder — an AC-4 encoder, from the same standards; no ac3::forge dependency
 src/ac4core/    ac4::core — the tables and transforms the AC-4 decoder and encoder share, a static
                 library with no headers of its own
 src/iamf/       iamf::iamf — a standalone IAMF v1.1 OBU/ISOBMFF writer, fed from an E-AC-3 decode
@@ -223,7 +223,7 @@ apps/windows/   the Windows-only pieces of Crucible: the Ac3ForgeNullSink driver
                 separately licensed) and the VMware guest it is verified in
 
 # Hearth — ESP32-S3 player; desktop engine in progress
-apps/hearth/    ac3hearth engine (no window yet), ac3hearth-testsink and ac3hearth-testserver
+apps/hearth/    ac3hearth engine and window, ac3hearth-testsink, ac3hearth-testserver, ac3hearth-render
 esp-idf/        ESP-IDF component and examples: hearth_sink (Sendspin player) and i2s_player
 esphome/        ESPHome external component wrapping the ESP32-S3 decoder; not a media_player yet
 

@@ -84,6 +84,13 @@
 // for a member playing player@v1, and the item's own units, packed into
 // bursts the same way a bitstream output's are, for a member playing
 // _ac3forge_player@v1 - network_group_sink.hpp's own comment has the shape.
+// An AC-4 item (planning/ac4.md, I2) is decoded for every output and reaches
+// a member as a bitstream only this way: a sync frame to a burst, packed by
+// ac3::iec61937::Ac4BurstPacker in the burst type the item's largest frame
+// needs, each burst placed at its frame's own start on the item's timeline.
+// A member decodes the presentation it would choose with no preferences, so
+// an item whose listener has chosen another is sent as PCM alone, as another
+// programme of an E-AC-3 stream is.
 // The two are unrelated deliveries of the same audio rather than one split
 // between two outputs, so this player's usual per-session bookkeeping
 // (submitted_since_open_, the history, position()) follows the PCM side only,
@@ -406,6 +413,9 @@ private:
         std::uint16_t pd = 0;
         std::vector<std::byte> payload{};
         std::int64_t frame = 0;
+        // The samples it decodes to: a burst period of AC-3 or E-AC-3, or an
+        // AC-4 frame's own length.
+        std::int64_t frames = kSamplesPerFrame;
     };
 
     // Why an item could not be started: the item itself, which is then
@@ -488,18 +498,21 @@ private:
     [[nodiscard]] std::string join_blocked(const OutputChoice& next, std::string_view title) const;
 
     // A unit the session sent, into the packer and, once it completes one,
-    // the pending ring as a burst.
-    void send_unit(std::span<const std::byte> unit, std::uint32_t samples);
+    // the pending ring as a burst. `start` is where it sits in what the item
+    // plays (Session::SentFn).
+    void send_unit(std::span<const std::byte> unit, std::uint32_t samples, std::uint64_t start);
     // A unit the session sent, for a network group: the same packer, into
     // group_payload_ instead of the pending ring, and pending_group_bursts_
-    // once a burst is whole (send_unit()'s own kNetworkGroup case). No
-    // sample count: unlike send_unit()'s own bitstream case, nothing here
-    // feeds pending_frames_/submitted_since_open_ (Pending's own comment on
-    // PendingGroupBurst says why), and Group::Burst carries no count of its
-    // own for the receiver to check against - a receiver derives it from
-    // the payload the same way a real IEC 61937 receiver derives a burst's
-    // frame count from the syncframe inside it.
-    void send_unit_to_group(std::span<const std::byte> unit);
+    // once a burst is whole (send_unit()'s own kNetworkGroup case). Nothing
+    // here feeds pending_frames_/submitted_since_open_ (Pending's own comment
+    // on PendingGroupBurst says why). An AC-4 unit is a burst of its own,
+    // `samples` long, at `start` on the item's timeline.
+    void send_unit_to_group(std::span<const std::byte> unit, std::uint32_t samples,
+                            std::uint64_t start);
+    // What `session` sends a bitstream sink: its stream, or nothing when the
+    // listener has chosen a programme or presentation other than the one a
+    // receiver decodes from the stream whole.
+    [[nodiscard]] std::optional<audio::BitstreamFormat> sent_stream(const Session& session) const;
     // Forgets what the packer holds: a flush, or a new output.
     void reset_packer();
     // A transcode's whole frames into the pending ring as bursts, or with
@@ -596,6 +609,9 @@ private:
     // network group's burst carries no span (send_unit_to_group()'s own
     // comment says why it does not need one).
     std::optional<iec61937::Eac3BurstPacker> packer_;
+    // An AC-4 item's, for a network group: one per stream, which follows its
+    // frames' phase (iec61937.hpp).
+    std::optional<iec61937::Ac4BurstPacker> ac4_packer_;
     std::uint64_t packed_frames_ = 0;
     std::vector<Span> packed_spans_;
     // A network group's own burst-in-progress: the raw (unwrapped)

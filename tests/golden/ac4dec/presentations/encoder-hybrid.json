@@ -1,0 +1,19 @@
+{
+  "substreams": [
+    {"ch_mode": 4, "content_classifier": 0, "language": "", "enhances": null},
+    {"ch_mode": 0, "content_classifier": null, "language": "", "enhances": 0},
+    {"ch_mode": 1, "content_classifier": 0, "language": "", "enhances": null},
+    {"ch_mode": 0, "content_classifier": null, "language": "", "enhances": 2},
+    {"ch_mode": 0, "content_classifier": 2, "language": "qad", "enhances": null}
+  ],
+  "presentations": [
+    {"presentation_config": 1, "substreams": [0, 1], "presentation_id": 1, "md_compat": 1, "name": "", "dialnorm_db": -31, "enabled": true},
+    {"presentation_config": 4, "substreams": [0, 1, 4], "presentation_id": 2, "md_compat": 2, "name": "", "dialnorm_db": -31, "enabled": true},
+    {"presentation_config": 1, "substreams": [2, 3], "presentation_id": 3, "md_compat": 1, "name": "", "dialnorm_db": -31, "enabled": true},
+    {"presentation_config": null, "substreams": [0], "presentation_id": 10, "md_compat": 1, "name": "", "dialnorm_db": -31, "enabled": true},
+    {"presentation_config": null, "substreams": [1], "presentation_id": 11, "md_compat": 0, "name": "", "dialnorm_db": -31, "enabled": true},
+    {"presentation_config": null, "substreams": [2], "presentation_id": 12, "md_compat": 0, "name": "", "dialnorm_db": -31, "enabled": true},
+    {"presentation_config": null, "substreams": [3], "presentation_id": 13, "md_compat": 0, "name": "", "dialnorm_db": -31, "enabled": true},
+    {"presentation_config": null, "substreams": [4], "presentation_id": 14, "md_compat": 0, "name": "", "dialnorm_db": -31, "enabled": true}
+  ]
+}

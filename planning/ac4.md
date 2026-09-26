@@ -1572,8 +1572,10 @@ gates.
   them committed with their digests. In ASPX_ACPL_2 DEE codes each top pair's sum and A-CPL makes
   the pair, so a top tone comes out across its pair, the sum at its level. librempeg does not decode
   the element: its L, R and C come out 6 to 9 dB down, its surrounds 12 to 15 dB down, all four top
-  tones in its Lb and its top channels silent. The Dolby delivery kit's 5.1.4 stream is not on this
-  machine, and fetching it waits on the user.
+  tones in its Lb and its top channels silent. The Dolby AC-4 Online Delivery Kit 1.5's two 5.1.4
+  streams (ASPX_ACPL_2 at 192 kbps, 25 and 29.97 fps, local only) decode in full and core decoding
+  with `ac3cli`: every frame (800 and 960) with no error, ten channels as coded and eight in core
+  decoding, 1,920 samples a frame and 1,601 or 1,602.
 
 **Exit:**
 
@@ -1930,6 +1932,31 @@ meet E1's and E2's checks; the race at 5.1 and 96, 128 and 144 kbps.
   lacks, except mono; 3.0 carries only a dialogue enhancement signal or the dialogue of a music and
   effects presentation; and CMAF's limits hold: 64 presentations at most, a `presentation_id` in
   every sample and one table of contents configuration throughout.
+- E6 found the text leaving a writer these choices (`src/ac4enc/ERRATA.md`, "Presentations"): the
+  tracks `md_compat` counts, every channel but the LFE of every substream a presentation names, the
+  dialogue enhancement substream's included, which DEE's levels agree with (0 in stereo, 1 in 5.1, 2
+  in 5.1.4, and `presentation_id` 0 on their one presentation, which E1 to E5 left out); a name sent
+  whole, at most 31 bytes; one target for an alternative presentation of channel-coded substreams,
+  whose `alt_data_set_index` has no object metadata to pick; the substreams' order, presentation
+  substreams, then audio, then EMDF payloads, which librempeg depends on; and what a hybrid method's
+  waveform carries: each processed channel's dialogue, the Mid's sum, or the dialogue projected on its
+  panning. A configuration 6 presentation has no field for the `presentation_id` CMAF asks of every
+  presentation, and DEE's muxer warns of it.
+- MediaInfo reads the encoder's tables of contents as configured, but reads no audio substream of a
+  stream with a configuration 6 presentation, gives no language to a presentation whose one group is
+  associated audio, and frames the EMDF payloads substream without detailing it. DEE's MP4 muxer
+  refuses a stream of more than one presentation, and on the 15 presentations of the broadcast stream
+  it hangs. librempeg decodes a presentation's first group alone, as D7 found, is silent on 15
+  presentations over 22 substreams, and refused a frame whose EMDF payloads substream came before the
+  audio.
+- In the race against G1's legs, which DEE encoded one at a time and D7's multiplexer puts into the
+  same presentations, the encoder's SNR is within 0.1 dB of DEE's or above it with music at 128 kbps
+  and dialogue and associated audio at 64, and 5.5 to 6.3 dB above it at 192 and 128 kbps, ViSQOL
+  within 0.03 of DEE's throughout.
+- Left for E7: the options of `ac3cli ac4-encode`, and the MP4's `dac4`, which `ac4::build_dac4()`
+  writes whole only for a presentation of one substream (Annex E.10 describes the others); and for
+  later, transmitted DRC gains computed from a presentation's mix, where E6 takes the main
+  substream's input.
 
 **Exit:** the decoder's D7 selection and mixing on the encoder's streams give the configured
 presentations, measured with one tone per substream; MediaInfo's trace lists presentations, names,
@@ -1946,6 +1973,55 @@ languages and levels as configured.
   downmix, I-frames, CRC and the experimental tools.
 - The encoder installed and exported beside the decoder, with an ABI allowlist and the package
   check; the documentation pages; the status table's encoder rows; CHANGELOG and a ROADMAP entry.
+- E7's `Encoder::refusal_reason()` names the first rule a configuration breaks, as a string
+  literal, across the substreams, the presentations, their metadata and the rate; `create()` still
+  answers `kInvalidConfig` alone. Every field of the configuration's structures has a default, so a
+  designated initializer names only what it sets, as D8's decoder configuration does. The members of
+  `Encoder::Impl` defined out of line are hidden, and `tools/ci/abi-allowlist/libac4enc.so.txt` lists
+  the header's API alone.
+- `ac3cli ac4-encode` takes the substreams and presentations as numbered options, `substream2=` to
+  `substream32=` and `presentation1=` to `presentation64=`, each with keys of its own
+  (`substreamN-content=`, `presentationN-config=` and the rest), substream 1's values being the bare
+  options or `substream1-` keys. Without them it builds the configuration as before, so the
+  committed commands' streams do not change. `crc=off` writes sync frames without Annex G's CRC, and
+  `dialogue-hybrid=` with `substreamN-enhances=` gives the hybrid methods their waveform. Every option
+  has a test that reads what it writes back from the table of contents or the syntax trace, and a
+  configuration the encoder refuses is refused with its reason.
+- The MP4's `dac4` (Part 2 Annex E.10) describes every presentation: each group its specifiers name,
+  the channel mode, core and channel groups by Pseudocodes 25, 26 and E.3 over all its substreams,
+  A-JOC and direct-coded object groups, the program identifier and an alternative presentation's
+  `alternative_info()`, whose name and target the decoder now reports. Where it cannot describe a
+  presentation whole it writes nothing, and `dac4_refusal()` says why. DEE's muxer refuses a stream
+  of more than one presentation and does not finish one of an alternative presentation, so the box
+  is held to the text and to MediaInfo's trace, and to the muxer's box byte for byte for Chromium's
+  A-JOC stream and DASH-IF's 5.1 test vectors. MediaInfo reads `n_targets` as `n_targets_minus1`.
+  `src/ac4enc/ERRATA.md` records the readings, among them where Pseudocode E.3 leaves channel groups
+  out and when `b_presentation_core_differs` is set.
+- A configuration 6 presentation has no field for the `presentation_id` Annex H.1.2.1 asks of every
+  presentation of a CMAF track. `ac4::cmaf_refusal()` names the rule a table of contents breaks, and
+  `ac3cli fmp4`, which fragments no AC-4 yet (I1), refuses such a stream by it; an MP4 that is not
+  fragmented carries it.
+- The encoder is installed and exported beside the decoder, `ac4::encoder_static` and
+  `ac4::encoder_shared` with pkg-config `ac4enc`, in the shape D8 gave the decoder: each library links
+  the inspector of its own kind and the core privately, and the core's archive is installed wherever
+  a static decoder or encoder is. `check_install_consumer.sh` encodes a tone through each installed
+  encoder by CMake and by pkg-config and reads it back with the inspector. The vcpkg port and the
+  Conan recipe install the AC-4 libraries only where asked for, through an `ac4` feature and
+  option that are off by default, and IAB and IAMF the same way (`iab`, `iamf`), as the user
+  decided on D8's question: a curated vcpkg port's default features may enable behaviours, not
+  public targets. Both pin Hearth off, which upstream refuses beside the AC-4 libraries off and
+  whose dependencies neither declares. `check_packaging_versions.sh` holds the two recipes to the
+  same components and fails an option upstream defaults ON that a recipe neither offers nor pins, and
+  `check_install_consumer.sh` checks that a tree built without a library installs no file of it.
+- The encoder-space harness draws further substreams in one case in five, in each configuration of
+  Table 53, with rate shares, mixing values, ids, levels, names and payloads, through the CLI's
+  options. It found three faults the tests had not: at an average rate a frame could give the
+  substream taking what the others leave less than its least frame, which the encoder then could not
+  write, so each substream now keeps its least frame first and the rest goes by need; a frame
+  between I-frames was sized for a dialogue stem's parameters coded against the last frame's, where
+  it falls back to the last frame's kept, and so found no size (E6's sizing, which it now checks
+  with the fallback's metadata); and the 7.X layout's pair went to every substream, so a 7.1
+  substream refused a mono one beside it.
 
 **Exit:** every CLI option has a test; the packages contain the encoder; the documentation gates
 pass.
@@ -1964,6 +2040,20 @@ decoding, and core decoding of the encoder's streams gives what D9 checks; the r
 192 to 768 kbps, scored in full and in core decoding.
 
 **Verified by:** as E1.
+
+**Built** (phase E8): 5.0.4 and 5.1.4 in the immersive element as DEE writes it, `core_5ch_grouping` 0
+with `2ch_mode` 0, SCPL from 640 kbps, ASPX_SCPL from 480 and ASPX_ACPL_2 below, with DEE's A-SPX
+configurations by rate; each coupled pair coded as its sum and difference, the difference predicted from
+the sum band by band where that costs fewer bits, which is what DEE's streams send (`sap_mode` 3, which
+corrected the decoder's register); the height downmix as custom downmix data in I-frames; and 7.0.4 and
+7.1.4 with the back pair, ASPX_ACPL_1 and A-JCC (`ajcc_core_mode` 0) as experimental options. Every
+channel's tone decodes on its own channel in full decoding and at the core's gain in core decoding, in each
+mode. Measured locally against DEE's 5.1.4 legs from 192 to 768 kbps, in full and core decoding
+(`tools/checks/score_ac4_encode.py --gold`, pinned): ViSQOL within 0.035 of DEE's or over it on music, film
+and speech, the SNR below the crossover up to 10.5 dB under DEE's from 192 to 320 kbps and within 1.4 dB
+of it or over it from 384;
+on sweeps above 16.5 kHz the shared A-SPX encoder leaves the band emptier than DEE's does, 0.03 to 0.18
+under DEE's ViSQOL from 256 to 512 kbps. librempeg does not decode the immersive element.
 
 #### E9: A-JOC objects
 
@@ -2008,6 +2098,19 @@ through `tools/checks/generate_support_matrices.py`).
   reads as E-AC-3 (`src/forge/include/ac3/encoder/plan.hpp`). The help topics' bitmask, which is
   full (`apps/cli/usage.hpp`), is widened.
 
+- Built: `transcode` decodes an AC-4 presentation as coded, since 5.7.9.4 asks a transcoder for no
+  DRC, and hands the AC-3 or E-AC-3 encoder the profile the stream names; 5.7.9.4 calls the field
+  `drc_eac3_transcode_curve`, which Part 1 does not have, and `src/ac4dec/ERRATA.md` reads it as
+  `drc_eac3_profile`. The downmix values map by linear coefficient, AC-4's half-dB LFE steps going
+  half a dB up to E-AC-3's whole dB and back down the other way, so the two directions undo each
+  other; a 7.X presentation keeps its pair in E-AC-3 at Table E2.5's locations and folds for AC-3
+  by Table 219. `record` and `live` share one `TakeEncoder` with `transcode`; `RecordingSink`
+  carries AC-4 in every container but Matroska, which has no AC-4 codec ID (FFmpeg 8.0.1 cannot
+  mux one either), and `record` no longer writes the frames of its bitstream check after the rest
+  of the take. `play` decodes AC-4 to PCM, since no receiver found takes it over IEC 61937, and
+  `live` sends a receiver the 5.1 AC-3 leg. `fmp4`'s CMAF track takes the readings
+  `src/ac4enc/ERRATA.md` records under "Manifests and CMAF tracks".
+
 **Exit:** every new option has a test; the codec matrix covers every AC-4 command, as
 `tools/checks/check_matrix_coverage.py` requires; the man page and completions list them.
 
@@ -2016,20 +2119,45 @@ through `tools/checks/generate_support_matrices.py`).
 #### I2: Hearth desktop
 
 - An AC-4 decoder in the engine's `StreamDecoder` shape (`apps/hearth/engine/stream_decoder.hpp`),
-  rendering onto `render::OutputLayout`, and `Session::open` accepting AC-4, which today requires
-  `io::scan` and so marks AC-4 items unplayable.
-- `DecoderSettings` gains AC-4's controls: presentation, DRC decoder mode and output level shown
-  apart from E-AC-3's ([decision 12](#decisions)), dialogue enhancement, the associated mix and the
-  downmix. `DecoderAc4.qml`'s disabled cards are enabled and its "Not in this build" banner goes;
-  media information comes from the decoder.
-- AC-4 decodes to PCM for every output, and is sent as a bitstream only over the extension role,
-  from D11 and Hearth's A4, to sinks that decode it.
+  rendering onto `render::OutputLayout`, and `Session::open` accepting AC-4
+  (`apps/hearth/engine/ac4_stream.hpp`). An item's units are its sync frames, each as long as Part 2
+  Table 47 makes it for the frame's place in the `sequence_counter` cycle, so a queue's sample
+  counts stay exact at the 1000/1001 rates. The decoder runs through `ac4::Decoder`'s public API
+  alone, 256 samples at a time; what it holds back is flushed before a frame that waits for an
+  I-frame, an error and an item's end, so each unit puts out its own length. A seek starts the
+  decoder at an I-frame at least 6 144 samples before the point asked for, and what plays from that
+  point equals an unbroken decode. A stream none of whose presentations the decoder decodes is
+  refused when it opens, with the decoder's reason.
+- `DecoderSettings` gains AC-4's controls: the presentation, by id or place, and the listener's
+  language; the DRC decoder mode and the output level, with normalisation, shown apart from
+  E-AC-3's ([decision 12](#decisions)); dialogue enhancement; the dialogue level; audio description
+  and its level; and a fold by the stream's preferred downmix. The stereo fold, the LFE and
+  concealment are E-AC-3's own settings ("One control for both formats"); the LFE is unset until
+  the listener sets it, which means off for E-AC-3 and on for AC-4. A change reaches the playing
+  item at its next frame in the same decoder. `DecoderAc4.qml`'s cards are live and its banner has
+  gone, the Decoder tab follows the playing item's format, and the Media page shows the decoder's
+  media information.
+- AC-4 decodes to PCM for every output. A network group is also sent the stream as D11's bursts,
+  of the type its largest frame needs and timed from the session's units, which the members on the
+  extension role that list `"ac4"` take; members on player@v1 get the decoded PCM, as with any item.
+  A presentation other than the one a sink chooses with no preferences is decoded here, for every
+  member.
+- I2 found three things. A sink on the extension role that does not list `"ac4"`, which is every
+  board until D14, is sent nothing for an AC-4 item; the pull request gives the options. The page
+  cannot ask for Pro Logic II, since the decoder takes Lt/Rt's Pro Logic II form only where the
+  stream prefers it (Table 150), so the design's third downmix segment became "Follow the stream's
+  preferred downmix". And a group item whose burst type differed from what the group carried, AC-3
+  after E-AC-3 as well as AC-4 after either, was sent on the first item's stream start; the group
+  now starts again.
 
 **Exit:** the engine plays every committed AC-4 stream through the decoder's public API; each
 control, driven from the page, changes the decoded output as its formula says, measured with tones;
 the UI tests pass.
 
-**Verified by:** the `[hearth]` tests; the QML tests; the gain scripts through the engine.
+**Verified by:** the `[hearth]` tests; the QML tests (`tst_decoder_ac4.qml` measures each control's
+effect tone by tone at the fake device); the gain scripts through the engine, with
+`ac3hearth-render` playing an item through the engine into a WAV file for
+`gain_ac4_decode.py --engine`, in the Hearth CI job.
 
 #### I3: Forge GUI
 

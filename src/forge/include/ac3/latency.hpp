@@ -52,12 +52,14 @@
 //                      block-switch decision by a block would add 256 here.
 //
 //   holdback_samples   Decoder-side only: §3.7 transient pre-noise processing
-//                      lets a correction reach BACKWARDS out of one frame into
-//                      the one before it, so a substream that sets transproce
-//                      returns frame N-1's PCM from the call that supplies
-//                      frame N (Eac3Decoder::decode_substream's own doc
-//                      comment). One frame period, permanently, from the first
-//                      frame that uses the tool onwards. Zero for AC-3, and
+//                      lets a correction reach ACROSS frame boundaries - back
+//                      up to 1528 samples from a transient that may itself
+//                      lie in a later frame - so a substream that sets
+//                      transproce returns each frame once nothing still to
+//                      come can reach it (Eac3Decoder::decode_substream's own
+//                      doc comment). 1536 samples, permanently, from the first
+//                      frame that uses the tool onwards: one six-block
+//                      syncframe, or six one-block ones. Zero for AC-3, and
 //                      zero for any E-AC-3 stream that never turns the tool on.
 //
 // total_samples() is the figure to budget with: no sample entering the encoder

@@ -8,11 +8,12 @@ import "HearthTestHelpers.js" as H
 
 // The Decoder page's controls tst_decoder_settings.qml could only reach
 // through the controller (FEATURE_COVERAGE.md rows 57-59, 61, 63-66): the
-// Cut/Boost sliders, the four checkboxes, the RF ceiling field and the AC-4
-// sub-page's own controls, each now driven by a real click, drag or typed
-// value - and the settings shown to reach what is actually playing: the
-// This stream card reads the playing item, and switching Line to RF on the
-// page changes what the fake device is handed.
+// Cut/Boost sliders, the four checkboxes, the RF ceiling field and the
+// controls the AC-4 sub-page shares with this one, each now driven by a real
+// click, drag or typed value - and the settings shown to reach what is
+// actually playing: the This stream card reads the playing item, and
+// switching Line to RF on the page changes what the fake device is handed.
+// tst_decoder_ac4.qml drives the rest of the AC-4 sub-page.
 //
 // DecoderEac3.qml's sliders carry no name of their own, only the "Cut" /
 // "Boost" Text beside them, so they are found by that label
@@ -129,7 +130,9 @@ TestCase {
         for (let i = 0; i < boxes.length; ++i) {
             const box = H.checkBox(page, boxes[i][0]);
             verify(box !== null, "no \"" + boxes[i][0] + "\" checkbox");
-            const before = setting(boxes[i][1]);
+            // The LFE in a fold is absent until set, and this page shows
+            // that as off (DecoderSettings::mix_lfe).
+            const before = setting(boxes[i][1]) ?? false;
             click(box, boxes[i][0]);
             tryVerify(function() { return setting(boxes[i][1]) === !before; }, 10000,
                       boxes[i][0] + " never reached the engine");
@@ -140,19 +143,31 @@ TestCase {
         }
     }
 
-    // AC-4's sub-page writes the same shared fields through its own
-    // controls (no AC-4 decode in this build, so only the settings move).
-    function test_ac4SubPageModeAndDownmix() {
+    // AC-4's sub-page writes the fields it shares with this one through its
+    // own controls ("One control for both formats", planning/ac4.md), and
+    // has no operating mode of its own to write: its dynamic range is its own
+    // (decision 12), so "mode" is left as it was.
+    function test_ac4SubPageSharesTheDownmixAndNotTheMode() {
         const page = makePage();
+        click(H.segment(page, "Mode", "rf"), "RF");
+        tryVerify(function() { return setting("mode") === "rf"; }, 10000);
         click(findChild(page, "seg-ac4"), "the AC-4 sub-page");
         compare(page.format, "ac4");
-        click(H.segment(page, "Mode", "rf"), "AC-4 RF");
-        tryVerify(function() { return setting("mode") === "rf"; }, 10000);
+        compare(H.segment(page, "Mode", "line"), null);
         click(H.segment(page, "Downmix", "ltrt"), "AC-4 Lt/Rt");
         tryVerify(function() { return setting("stereoFold") === "ltrt"; }, 10000);
-        click(H.segment(page, "Downmix", "loro"), "AC-4 Lo/Ro");
+        click(H.segment(page, "Bad frame", "mute"), "AC-4 Mute");
+        tryVerify(function() { return setting("concealment") === "mute"; }, 10000);
+        compare(setting("mode"), "rf");
+        // The AC-3 and E-AC-3 sub-page shows what AC-4's set.
+        click(findChild(page, "seg-eac3"), "the AC-3 and E-AC-3 sub-page");
+        compare(page.format, "eac3");
+        tryVerify(function() { return H.segment(page, "Downmix", "ltrt") !== null; }, 5000);
+        click(H.segment(page, "Downmix", "loro"), "Lo/Ro");
         tryVerify(function() { return setting("stereoFold") === "loro"; }, 10000);
-        click(H.segment(page, "Mode", "line"), "AC-4 Line");
+        click(H.segment(page, "Bad frame", "repeatFade"), "Repeat and fade");
+        tryVerify(function() { return setting("concealment") === "repeatFade"; }, 10000);
+        click(H.segment(page, "Mode", "line"), "Line");
         tryVerify(function() { return setting("mode") === "line"; }, 10000);
     }
 

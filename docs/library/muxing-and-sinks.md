@@ -521,6 +521,36 @@ for the same reason `HlsOptions::channels_attribute` is — `mp4::` never reads 
 layer, and the caller that scanned `oba_complexity_index` off the bitstream to build the `dec3`
 box already has it.
 
+### AC-4 fragments: sync samples, a time scale of its own, brands and descriptors
+
+An AC-4 track (`mp4::kCodecAc4`, its `dac4` from `ac4::build_dac4()`) fragments with four things an
+AC-3 or E-AC-3 track never needs, each supplied by the caller, since `mp4::` reads no AC-4 syntax:
+
+- **Sync samples.** Only an I-frame decodes on its own, and ETSI TS 103 190-2 Annex E.2 and E.3
+  make the I-frames the sync samples and start every fragment at one.
+  `FragmentOptions::sync_samples` gives `fragment()` one flag a frame (each frame's
+  `b_iframe_global`); a fragment then closes once it holds `frames_per_fragment` frames and the next
+  frame is a sync sample, and every `trun` that holds a sample which is not one lists each sample's
+  flags (`sample_is_non_sync_sample`, and `sample_depends_on` 1 for such a sample, ISO/IEC 14496-12
+  §8.8.3.1). `FragmentWriter::push(frame, sync)` takes the same flag frame by frame. A first frame
+  that is not a sync sample is `kInvalidOptions`.
+- **The time scale.** `AudioTrack::timescale` sets `mdhd`'s, which the decode times, the segment
+  durations and both manifests' timelines count in (`mp4::timescale_of()`): Table E.1's 240 000 at
+  29.97, 59.94 and 119.88 fps, whose frames alternate in length at 48 000 Hz, and the sample rate
+  elsewhere (`ac4::media_timing()` gives both).
+- **Brands.** `FragmentOptions::brands` lists a CMAF media profile's brands after `iso6` and `cmfc`
+  in the `ftyp` and every `styp`: Annex H's `ca4m` and `ca4s` for an AC-4 track.
+- **DASH descriptors.** `DashOptions::channel_configuration` replaces the Representation's
+  AudioChannelConfiguration, and `DashOptions::supplemental_properties` adds SupplementalProperty
+  descriptors, each a `mp4::Descriptor{scheme_id_uri, value}` with its attributes escaped:
+  `ac4::dash_channel_configuration()` gives Annex G's (Table G.1's CICP value, or the Dolby 2015
+  scheme's word for a layout the table lacks) and `ac4::dash_supplemental_properties()` the frame
+  rate and a pre-virtualized presentation's signal (Annex G.3).
+
+`ac3cli fmp4`, and `record` and `live` with `codec=ac4 container=fmp4`, fragment AC-4 this way;
+`ac4::cmaf_refusal()` and `ac4::configuration_difference()` say which streams Annex H.1.2 keeps out
+of a CMAF track.
+
 ### Incremental fragmenting: `mp4::FragmentWriter`
 
 Same header as `fragment`. The live counterpart, and `matroska::Writer`/`mpegts::Writer`'s
@@ -580,7 +610,9 @@ that is also what keeps the manifests deterministic under test.
 
 This is what `ac3cli record`/`ac3cli live` with `container=fmp4` and the GUI's live session with
 **fragmented MP4/CMAF** selected write through: the directory is a servable live origin while the
-session runs, and a closed VOD one afterwards.
+session runs, and a closed VOD one afterwards. `Fmp4FolderWriter` (`apps/common`) scans an AC-3 or
+E-AC-3 take's first frame for its track, and takes an AC-4 take's track, brands and manifest values
+from its caller (`Fmp4FolderWriter::Track`), with each frame's sync flag.
 
 ### External validation
 
@@ -599,7 +631,7 @@ with its own `describe()`:
 | Enum | Values |
 |---|---|
 | `matroska::MuxError` | `kNoFrames`; `kInvalidTrack` (zero/negative channels or sample rate, or an empty codec id); `kFrameTooLarge` (a single frame beyond what one SimpleBlock can carry). |
-| `mp4::MuxError` | `kNoFrames`; `kInvalidTrack` (here: an unrecognised codec id — only `ac-3`/`ec-3` are legal — or no `codec_config` payload, besides the zero-channel/rate cases); `kFileTooLarge` — `mdat` would need a 64-bit chunk offset (`co64`), which this module doesn't write, so whole-file offsets are 32-bit; `kInvalidOptions` (e.g. `FragmentOptions::frames_per_fragment == 0`). `mp4::FragmentWriter::create` returns the same two refusals as `fragment`, but never `kNoFrames`: a live writer stopped before its first frame simply has nothing to flush. |
+| `mp4::MuxError` | `kNoFrames`; `kInvalidTrack` (here: an unrecognised codec id — only `ac-3`/`ec-3`/`ac-4` are legal — or no `codec_config` payload, besides the zero-channel/rate cases); `kFileTooLarge` — `mdat` would need a 64-bit chunk offset (`co64`), which this module doesn't write, so whole-file offsets are 32-bit; `kInvalidOptions` (e.g. `FragmentOptions::frames_per_fragment == 0`, `sync_samples` of another length than the frames or whose first frame is not a sync sample, a brand that is not four characters, or `FragmentWriter::push` given a first frame that is not a sync sample). `mp4::FragmentWriter::create` returns the same two refusals as `fragment`, but never `kNoFrames`: a live writer stopped before its first frame simply has nothing to flush. |
 | `mpegts::MuxError` | `kNoFrames` and `kInvalidTrack` as above; `kInvalidOptions` (PID collisions); `kFrameTooLarge` — one access unit too large for a PES packet's 16-bit length field. |
 
 ## Demuxer errors

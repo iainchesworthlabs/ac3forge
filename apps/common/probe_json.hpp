@@ -14,6 +14,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac4/ac4.hpp"
 #include "ac4dec/decoder.hpp"
+#include "container_input.hpp"
 #include "json_sink.hpp"
 
 // The `stream` object of the ac3forge.probe/1 document (docs/forge/cli/
@@ -89,5 +90,10 @@ struct Ac4Summary {
 // The "stream" member for an AC-4 stream: codec "ac4", the counts, integrity,
 // and an "ac4" object in place of the AC-3/E-AC-3 fields.
 void write_ac4_stream(JsonSink& json, const Ac4Summary& summary);
+
+// The "container" member: what a Matroska, MP4 or MPEG-TS file said of the
+// track whose stream the document describes, in the members Hearth's media
+// information writes; null for a bare elementary stream.
+void write_container(JsonSink& json, const ContainerFacts& facts);
 
 }  // namespace ac3::apps::probe_json

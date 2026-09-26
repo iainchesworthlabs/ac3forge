@@ -125,6 +125,13 @@ Item {
             parts.push(programme.layoutLabel + (objectCount !== undefined
                         ? qsTr(" bed + %1 objects").arg(objectCount) : ""));
         }
+        // An AC-4 item's layout is its presentation's: the one the decoder
+        // chose with no preferences, which the media information describes.
+        var presentations = media.ac4?.presentations ?? [];
+        var described = presentations[media.ac4?.metadata?.presentation ?? 0];
+        if (described !== undefined) {
+            parts.push(described.channels);
+        }
         if (media.sampleRate) {
             parts.push(qsTr("%1 kHz").arg(media.sampleRate / 1000));
         }
@@ -234,12 +241,10 @@ Item {
                     radius: Theme.radius
 
                     // codecBadge answers "" for an item nothing has probed
-                    // yet, and always for AC-4: io::scan() refuses those
-                    // bytes at Session::open(), so ItemFacts.stream never
-                    // gets set (apps/hearth/ui/item_loader.cpp's own
-                    // comment). The extension is a presentation fallback
-                    // only, for this one row - the Media page's "Showing"
-                    // picker reads the real table of contents instead.
+                    // yet (ItemFacts.stream unset until Session::open() has
+                    // read it). The extension is a presentation fallback
+                    // only, for this one row until then - the Media page's
+                    // "Showing" picker reads the real table of contents.
                     readonly property string badge: modelData.codecBadge.length > 0 ? modelData.codecBadge
                                                      : (/\.ac4$/i.test(modelData.path) ? "A4" : "")
 
@@ -352,14 +357,14 @@ Item {
                     anchors.centerIn: parent
                     visible: queueList.count === 0
                     // Names what item_loader.cpp actually reads today -
-                    // AC-3/E-AC-3 files, and now a folder of them. Not MP4/
-                    // MKV/TS: list_folder_items() finds those too, but
+                    // AC-3, E-AC-3 and AC-4 files, and a folder of them. Not
+                    // MP4/MKV/TS: list_folder_items() finds those too, but
                     // make_file_item_loader() still can't open them, and
                     // naming a format that always lands "not playable"
                     // would overpromise (docs/hearth/design/screenshots/
                     // first-run.png's own text names them, for the slice
                     // that makes it true).
-                    text: qsTr("Nothing in the queue.\nDrop AC-3 or E-AC-3 files or a folder here.")
+                    text: qsTr("Nothing in the queue.\nDrop AC-3, E-AC-3 or AC-4 files or a folder here.")
                     color: Theme.textMuted
                     font.pixelSize: Theme.fontBody
                     horizontalAlignment: Text.AlignHCenter
@@ -738,7 +743,7 @@ Item {
         id: addFilesDialog
         title: qsTr("Add files")
         fileMode: FileDialog.OpenFiles
-        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
+        nameFilters: [qsTr("AC-3 / E-AC-3 / AC-4 (*.ac3 *.ec3 *.ac4)"), qsTr("All files (*)")]
         onAccepted: HearthController.addFiles(selectedFiles.map(function(u) { return HearthController.urlToLocalFile(u); }))
     }
 

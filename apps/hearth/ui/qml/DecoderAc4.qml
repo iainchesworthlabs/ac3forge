@@ -4,17 +4,21 @@ import QtQuick.Layouts
 
 import Ac3ForgeHearth
 
-// The AC-4 decoder page (planning/hearth-design.md), inactive: AC-4 needs a
-// decoder this build does not have (chip D). Every control the format will
-// use is drawn, held inactive with the "not in this build" banner the design
-// gives it, and the two controls AC-4 shares with AC-3/E-AC-3 (dynamic range
-// mode, stereo/mono downmix) mirror what the Decoder tab's own AC-3/E-AC-3
-// page holds, live, so the two pages cannot disagree once chip D lands and
-// this one turns on for real. One simplification: "01 Presentation" is a
-// single static ComboBox row, not the design's real #/language/channels/
-// content/groups table - there is no stream to read a real table's worth of
-// presentations from yet, so building it now would mean inventing rows
-// rather than reading them.
+// The AC-4 decoder page (planning/hearth-design.md; planning/ac4.md, I2):
+// every control DecoderSettings::ac4 holds, and the ones AC-4 shares with
+// AC-3 and E-AC-3, read from and written straight back to
+// HearthController.decoderSettings - the decoder the engine plays AC-4
+// through takes each from its next frame.
+//
+// Dynamic range and the output level are AC-4's own, apart from the AC-3 and
+// E-AC-3 page's operating mode (planning/ac4.md, decision 12). The stereo
+// fold, the LFE in it and what a bad frame does are one control for both
+// formats ("One control for both formats"), so they are the same settings
+// here as on that page.
+//
+// The presentation table and "This stream"'s lines read the playing item's
+// media information (HearthController.currentMedia.ac4), which the decoder
+// reads off the file (media_info.hpp).
 ScrollView {
     id: root
 
@@ -24,59 +28,102 @@ ScrollView {
     ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
     readonly property var settings: HearthController.decoderSettings
+    function set(key, value) {
+        const next = Object.assign({}, settings);
+        next[key] = value;
+        HearthController.setDecoderSettings(next);
+    }
+
+    readonly property var ac4: HearthController.currentMedia.ac4 ?? ({})
+    readonly property var presentations: root.ac4.presentations ?? []
+    readonly property var metadata: root.ac4.metadata ?? ({})
+    // The presentation the decoder is playing now, by its place, from the
+    // last frame heard.
+    readonly property int playingIndex: HearthController.thisFrame.ac4Presentation ?? -1
+
+    // What each member of a presentation is (hearth_controller.cpp's
+    // ac4_member_token()).
+    function contentLabel(tokens) {
+        const names = {
+            "main": qsTr("main"),
+            "musicAndEffects": qsTr("music and effects"),
+            "dialogue": qsTr("dialogue"),
+            "audioDescription": qsTr("audio description"),
+            "hearingImpaired": qsTr("hearing impaired"),
+            "commentary": qsTr("commentary"),
+            "emergency": qsTr("emergency"),
+            "voiceOver": qsTr("voice over"),
+            "associated": qsTr("associated audio")
+        };
+        return (tokens ?? []).map(function(token) { return names[token] ?? token; }).join(" + ");
+    }
+    function presentationLabel(p) {
+        let label = qsTr("%1 · %2 · %3 · %4").arg(p.index + 1)
+                        .arg(p.name.length > 0 ? p.name : (p.language.length > 0 ? p.language : qsTr("no language")))
+                        .arg(p.channels).arg(root.contentLabel(p.contents));
+        if (!p.decodable) {
+            label += qsTr(" (not decoded in this build)");
+        } else if (!p.enabled) {
+            label += qsTr(" (disabled)");
+        }
+        return label;
+    }
+    // The combo box's row for the choice in force: 0 for Automatic, else the
+    // presentation's row, or the last row where the choice names none of this
+    // stream's.
+    function chosenRow() {
+        const id = root.settings.ac4PresentationId ?? -1;
+        const index = root.settings.ac4PresentationIndex ?? -1;
+        if (id < 0 && index < 0) {
+            return 0;
+        }
+        for (let i = 0; i < root.presentations.length; ++i) {
+            const p = root.presentations[i];
+            if ((id >= 0 && p.id === id) || (id < 0 && p.index === index)) {
+                return i + 1;
+            }
+        }
+        return root.presentations.length + 1;
+    }
+    function choose(row) {
+        const next = Object.assign({}, root.settings);
+        if (row <= 0 || row > root.presentations.length) {
+            next.ac4PresentationId = -1;
+            next.ac4PresentationIndex = -1;
+        } else {
+            const p = root.presentations[row - 1];
+            next.ac4PresentationId = p.id !== undefined ? p.id : -1;
+            next.ac4PresentationIndex = p.id !== undefined ? -1 : p.index;
+        }
+        HearthController.setDecoderSettings(next);
+    }
+    function signedDb(value) {
+        const n = Number(value ?? 0);
+        return (n > 0 ? "+" : (n < 0 ? "−" : "")) + Math.abs(n).toFixed(0);
+    }
+    function drcModeName(id) {
+        switch (id) {
+            case 0: return qsTr("home theatre");
+            case 1: return qsTr("flat panel TV");
+            case 2: return qsTr("portable speakers");
+            case 3: return qsTr("portable headphones");
+            default: return qsTr("mode %1").arg(id);
+        }
+    }
+
+    readonly property var drcValues: ["auto", "homeTheatre", "flatPanelTv", "portableSpeakers",
+                                      "portableHeadphones", "off"]
 
     ColumnLayout {
         width: root.availableWidth
+        implicitWidth: root.availableWidth
         spacing: Theme.gap * 2
-
-        Rectangle {
-            Layout.fillWidth: true
-            color: Theme.neutral100
-            border.color: Theme.accentInk
-            border.width: 1
-            radius: Theme.radius
-            implicitHeight: banner.implicitHeight + Theme.pad * 2
-
-            ColumnLayout {
-                id: banner
-                anchors.fill: parent
-                anchors.margins: Theme.pad
-                spacing: Theme.gap / 2
-
-                Text {
-                    // Mixed case in the string, uppercased by the font
-                    // property: a locale whose casing rules differ should
-                    // not have "NOT IN THIS BUILD" baked into its catalogue.
-                    text: qsTr("Not in this build")
-                    color: Theme.accentInk
-                    font.pixelSize: Theme.fontSmall
-                    font.bold: true
-                    font.letterSpacing: Theme.trackingWide
-                    font.capitalization: Font.AllUppercase
-                }
-                Text {
-                    text: qsTr("AC-4 needs a decoder this build does not have")
-                    color: Theme.text
-                    font.pixelSize: Theme.fontHeading
-                    font.bold: true
-                }
-                Text {
-                    Layout.fillWidth: true
-                    font.pixelSize: Theme.fontBody
-                    text: qsTr("These are the AC-4 settings Hearth will use, shown so the page is complete. "
-                              + "They stay inactive until an AC-4 decoder is added; AC-4 items in the queue "
-                              + "show their media information and are skipped when they come up. The two "
-                              + "settings AC-4 shares with AC-3 and E-AC-3 are live here and on that tab.")
-                    color: Theme.textMuted
-                    wrapMode: Text.WordWrap
-                }
-            }
-        }
 
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.gap * 2
 
+            // --- left column ---------------------------------------------
             ColumnLayout {
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
@@ -87,13 +134,43 @@ ScrollView {
                     ordinal: "01"
                     title: qsTr("Presentation")
                     framed: true
-                    enabled: false
 
-                    AppComboBox {
-                        Layout.preferredWidth: Math.round(319 * Theme.fontScale)
-                        model: [qsTr("1 · English · 5.1 · main")]
-                        currentIndex: 0
-                        Accessible.name: qsTr("Presentation")
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Text { text: qsTr("Presentation"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppComboBox {
+                            id: presentationCombo
+                            objectName: "ac4PresentationCombo"
+                            Layout.fillWidth: true
+                            Layout.maximumWidth: Math.round(319 * Theme.fontScale)
+                            model: {
+                                const rows = [qsTr("Automatic")];
+                                for (let i = 0; i < root.presentations.length; ++i) {
+                                    rows.push(root.presentationLabel(root.presentations[i]));
+                                }
+                                if (root.chosenRow() > root.presentations.length) {
+                                    rows.push((root.settings.ac4PresentationId ?? -1) >= 0
+                                              ? qsTr("presentation_id %1, not in this stream")
+                                                    .arg(root.settings.ac4PresentationId)
+                                              : qsTr("presentation %1, not in this stream")
+                                                    .arg((root.settings.ac4PresentationIndex ?? 0) + 1));
+                                }
+                                return rows;
+                            }
+                            currentIndex: root.chosenRow()
+                            Accessible.name: qsTr("Presentation")
+                            onActivated: function(index) { root.choose(index); }
+                            // Activating writes currentIndex directly, and the
+                            // model is rebuilt with each settings change, so the
+                            // choice is re-read whenever the list is closed.
+                            Binding on currentIndex {
+                                value: root.chosenRow()
+                                when: !presentationCombo.popup.visible
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
+                        }
                     }
                     Text {
                         Layout.fillWidth: true
@@ -103,28 +180,130 @@ ScrollView {
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
                     }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.presentations.length === 0
+                        text: qsTr("Nothing AC-4 is playing.")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                    }
+
+                    // The design's table: one row a presentation, the one
+                    // playing in bold.
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        visible: root.presentations.length > 0
+                        spacing: 2
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.gap
+                            Text { text: qsTr("#"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.preferredWidth: 24 }
+                            Text { text: qsTr("Language"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.preferredWidth: 72 }
+                            Text { text: qsTr("Channels"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.preferredWidth: 64 }
+                            Text { text: qsTr("Content"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.fillWidth: true }
+                            Text { text: qsTr("Groups"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.preferredWidth: 56 }
+                        }
+                        Repeater {
+                            model: root.presentations
+                            delegate: RowLayout {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: Theme.gap
+                                readonly property bool playing: modelData.index === root.playingIndex
+                                Text { text: modelData.index + 1; color: Theme.text; font.bold: parent.playing
+                                       Layout.preferredWidth: 24 }
+                                Text { text: modelData.language.length > 0 ? modelData.language : "—"
+                                       color: Theme.text; font.bold: parent.playing; font.family: Theme.monoFamily
+                                       Layout.preferredWidth: 72; elide: Text.ElideRight }
+                                Text { text: modelData.channels; color: Theme.text; font.bold: parent.playing
+                                       Layout.preferredWidth: 64 }
+                                Text { text: root.contentLabel(modelData.contents)
+                                             + (modelData.name.length > 0 ? " · " + modelData.name : "")
+                                       color: modelData.decodable ? Theme.text : Theme.textMuted
+                                       font.bold: parent.playing; Layout.fillWidth: true; elide: Text.ElideRight }
+                                Text { text: (modelData.groups ?? []).join(", ")
+                                       color: Theme.text; font.bold: parent.playing; Layout.preferredWidth: 56 }
+                            }
+                        }
+                    }
                 }
 
                 Card {
                     ordinal: "02"
                     title: qsTr("Dialogue")
                     framed: true
-                    enabled: false
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
                         Text { text: qsTr("Enhancement"); color: Theme.text; font.pixelSize: Theme.fontNormal
                                elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
-                        AppSlider { id: enhancementSlider; Layout.preferredWidth: Math.round(200 * Theme.fontScale)
-                                   from: 0; to: 12; value: 6 }
-                        Text { text: qsTr("%1 dB").arg(enhancementSlider.value.toFixed(0)); color: Theme.textMuted
-                               font.family: Theme.monoFamily; font.pixelSize: Theme.fontNormal }
+                        AppSlider {
+                            id: enhancementSlider
+                            Layout.preferredWidth: Math.round(200 * Theme.fontScale)
+                            from: 0; to: 12; stepSize: 1; snapMode: Slider.SnapAlways
+                            value: root.settings.ac4DialogueEnhancementDb ?? 0
+                            Accessible.name: qsTr("Dialogue enhancement, dB")
+                            onMoved: root.set("ac4DialogueEnhancementDb", value)
+                            // A drag writes `value` directly and the binding
+                            // above is gone, so it is resynced from the
+                            // controller - TransportBar's scrubber's shape.
+                            Connections {
+                                target: HearthController
+                                function onDecoderSettingsChanged() {
+                                    enhancementSlider.value = root.settings.ac4DialogueEnhancementDb ?? 0;
+                                }
+                            }
+                        }
+                        Text { text: qsTr("%1 dB").arg(Number(root.settings.ac4DialogueEnhancementDb ?? 0).toFixed(0))
+                               color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontNormal }
+                        Item { Layout.fillWidth: true }
                     }
                     Text {
                         Layout.fillWidth: true
                         text: qsTr("Raises dialogue against the rest of the mix where the stream carries "
-                                  + "dialogue enhancement data. 0 to 12 dB.")
+                                  + "dialogue enhancement data, up to the stream's own limit. 0 to 12 dB.")
+                              + (root.metadata.dialogueEnhancement !== undefined
+                                 ? " " + qsTr("This stream allows up to %1 dB.")
+                                             .arg(Number(root.metadata.dialogueEnhancement.maxGainDb).toFixed(0))
+                                 : "")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Text { text: qsTr("Dialogue level"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppSlider {
+                            id: dialogueSlider
+                            Layout.preferredWidth: Math.round(200 * Theme.fontScale)
+                            from: -12; to: 12; stepSize: 1; snapMode: Slider.SnapAlways
+                            value: root.settings.ac4DialogueDb ?? 0
+                            Accessible.name: qsTr("Dialogue level, dB")
+                            onMoved: root.set("ac4DialogueDb", value)
+                            Connections {
+                                target: HearthController
+                                function onDecoderSettingsChanged() {
+                                    dialogueSlider.value = root.settings.ac4DialogueDb ?? 0;
+                                }
+                            }
+                        }
+                        Text { text: qsTr("%1 dB").arg(root.signedDb(root.settings.ac4DialogueDb))
+                               color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontNormal }
+                        Item { Layout.fillWidth: true }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("The dialogue against the music and effects, where a presentation carries "
+                                  + "them apart, up to the most the stream allows.")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
@@ -136,7 +315,10 @@ ScrollView {
                         AppCheckBox {
                             Layout.fillWidth: true
                             text: qsTr("Mix in audio description")
-                            note: qsTr("When the presentation carries an associated programme.")
+                            note: qsTr("When the presentation carries an associated programme. A presentation "
+                                      + "that carries one plays first.")
+                            checked: root.settings.ac4AudioDescription ?? false
+                            onToggled: function(on) { root.set("ac4AudioDescription", on); }
                         }
                     }
                     RowLayout {
@@ -144,15 +326,29 @@ ScrollView {
                         spacing: Theme.gap
                         Text { text: qsTr("Its level"); color: Theme.text; font.pixelSize: Theme.fontNormal
                                elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
-                        AppSlider { id: levelSlider; Layout.preferredWidth: Math.round(200 * Theme.fontScale)
-                                   from: -12; to: 0; value: -6 }
-                        Text { text: qsTr("%1 dB").arg(levelSlider.value.toFixed(0)).replace("-", "−")
-                               color: Theme.textMuted
-                               font.family: Theme.monoFamily; font.pixelSize: Theme.fontNormal }
+                        AppSlider {
+                            id: associatedSlider
+                            Layout.preferredWidth: Math.round(200 * Theme.fontScale)
+                            enabled: root.settings.ac4AudioDescription ?? false
+                            from: -12; to: 0; stepSize: 1; snapMode: Slider.SnapAlways
+                            value: root.settings.ac4AssociatedDb ?? 0
+                            Accessible.name: qsTr("Audio description level, dB")
+                            onMoved: root.set("ac4AssociatedDb", value)
+                            Connections {
+                                target: HearthController
+                                function onDecoderSettingsChanged() {
+                                    associatedSlider.value = root.settings.ac4AssociatedDb ?? 0;
+                                }
+                            }
+                        }
+                        Text { text: qsTr("%1 dB").arg(root.signedDb(root.settings.ac4AssociatedDb))
+                               color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontNormal }
+                        Item { Layout.fillWidth: true }
                     }
                 }
             }
 
+            // --- right column --------------------------------------------
             ColumnLayout {
                 Layout.preferredWidth: 1
                 Layout.fillWidth: true
@@ -163,50 +359,90 @@ ScrollView {
                     ordinal: "03"
                     title: qsTr("Dynamic range")
                     framed: true
+                    summary: qsTr("AC-4 only")
 
-                    Text {
-                        text: qsTr("SHARED WITH AC-3 AND E-AC-3 · LIVE")
-                        color: Theme.accentInk
-                        font.pixelSize: Theme.fontMicro
-                        font.bold: true
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Theme.gap
-                        Text { text: qsTr("Mode"); color: Theme.text; font.pixelSize: Theme.fontNormal
-                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
-                        SegmentedControl {
-                            accessibleName: qsTr("Mode")
-                            currentValue: root.settings.mode ?? "line"
-                            model: [
-                                { value: "line", label: qsTr("Line") },
-                                { value: "rf", label: qsTr("RF") },
-                                { value: "custom", label: qsTr("Custom") }
-                            ]
-                            onSelected: function(value) {
-                                const next = Object.assign({}, root.settings);
-                                next.mode = value;
-                                HearthController.setDecoderSettings(next);
-                            }
-                        }
-                    }
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: Theme.gap
                         Text { text: qsTr("Device"); color: Theme.text; font.pixelSize: Theme.fontNormal
                                elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
                         AppComboBox {
+                            id: deviceCombo
+                            objectName: "ac4DeviceCombo"
                             Layout.preferredWidth: Math.round(259 * Theme.fontScale)
-                            enabled: false
-                            model: [qsTr("Home theatre")]
+                            enabled: root.settings.ac4Normalise ?? true
+                            model: [qsTr("Automatic"), qsTr("Home theatre"), qsTr("Flat panel TV"),
+                                    qsTr("Portable speakers"), qsTr("Portable headphones"), qsTr("No compression")]
+                            currentIndex: Math.max(0, root.drcValues.indexOf(root.settings.ac4Drc ?? "auto"))
                             Accessible.name: qsTr("Device")
+                            onActivated: function(index) { root.set("ac4Drc", root.drcValues[index]); }
+                            Binding on currentIndex {
+                                value: Math.max(0, root.drcValues.indexOf(root.settings.ac4Drc ?? "auto"))
+                                when: !deviceCombo.popup.visible
+                                restoreMode: Binding.RestoreBindingOrValue
+                            }
                         }
                         Item { Layout.fillWidth: true }
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: qsTr("AC-4 carries a compression curve for each kind of device; this picks "
-                                  + "which one applies. AC-4 only.")
+                        text: qsTr("AC-4 carries a compression curve for each kind of device; this picks which "
+                                  + "one applies. Automatic takes the one for the output level: home theatre "
+                                  + "to −27 dBFS, flat panel TV to −17, portable above that.")
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Text { text: qsTr("Output level"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                               elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                        AppSlider {
+                            id: levelSlider
+                            Layout.preferredWidth: Math.round(200 * Theme.fontScale)
+                            enabled: root.settings.ac4Normalise ?? true
+                            from: -31; to: 0; stepSize: 1; snapMode: Slider.SnapAlways
+                            value: root.settings.ac4OutputLevelDbfs ?? -31
+                            Accessible.name: qsTr("Output level, dBFS")
+                            onMoved: root.set("ac4OutputLevelDbfs", value)
+                            Connections {
+                                target: HearthController
+                                function onDecoderSettingsChanged() {
+                                    levelSlider.value = root.settings.ac4OutputLevelDbfs ?? -31;
+                                }
+                            }
+                        }
+                        Text { text: qsTr("%1 dBFS").arg(root.signedDb(root.settings.ac4OutputLevelDbfs ?? -31))
+                               color: Theme.textMuted; font.family: Theme.monoFamily; font.pixelSize: Theme.fontNormal }
+                        Item { Layout.fillWidth: true }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        AppCheckBox {
+                            Layout.fillWidth: true
+                            text: qsTr("Dialogue normalisation")
+                            note: qsTr("Brings dialogue to the output level, cutting or boosting it. Off plays "
+                                      + "the stream at its coded level, with no compression.")
+                            checked: root.settings.ac4Normalise ?? true
+                            onToggled: function(on) { root.set("ac4Normalise", on); }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: root.metadata.dialnormDbfs !== undefined || root.metadata.drcModes !== undefined
+                        text: (root.metadata.dialnormDbfs !== undefined
+                               ? qsTr("This stream's dialogue is at %1 dBFS.")
+                                     .arg(Number(root.metadata.dialnormDbfs).toFixed(2).replace("-", "−"))
+                               : "")
+                              + (root.metadata.drcModes !== undefined
+                                 ? " " + qsTr("It carries compression for: %1.")
+                                             .arg(root.metadata.drcModes.map(function(m) {
+                                                 return root.drcModeName(m.id);
+                                             }).join(", "))
+                                 : "")
                         color: Theme.textMuted
                         font.pixelSize: Theme.fontSmall
                         wrapMode: Text.WordWrap
@@ -217,12 +453,19 @@ ScrollView {
                     ordinal: "04"
                     title: qsTr("Stereo and mono")
                     framed: true
+                    summary: qsTr("shared with AC-3 and E-AC-3")
 
                     Text {
-                        text: qsTr("SHARED WITH AC-3 AND E-AC-3 · LIVE")
-                        color: Theme.accentInk
-                        font.pixelSize: Theme.fontMicro
-                        font.bold: true
+                        Layout.fillWidth: true
+                        visible: text.length > 0
+                        text: HearthController.speakerLabels.length === 2
+                              ? qsTr("Used when the speaker layout is 2.0.")
+                              : (HearthController.speakerLabels.length === 1
+                                 ? qsTr("Used when the speaker layout is 1.0.")
+                                 : qsTr("Not used: the current layout is rendered instead of folded."))
+                        color: Theme.textMuted
+                        font.pixelSize: Theme.fontSmall
+                        wrapMode: Text.WordWrap
                     }
                     RowLayout {
                         Layout.fillWidth: true
@@ -236,27 +479,71 @@ ScrollView {
                                 { value: "loro", label: qsTr("Lo/Ro") },
                                 { value: "ltrt", label: qsTr("Lt/Rt") }
                             ]
-                            onSelected: function(value) {
-                                const next = Object.assign({}, root.settings);
-                                next.stereoFold = value;
-                                HearthController.setDecoderSettings(next);
-                            }
-                        }
-                        SegmentedControl {
-                            enabled: false
-                            accessibleName: qsTr("Pro Logic II")
-                            currentValue: ""
-                            model: [{ value: "plii", label: qsTr("Pro Logic II") }]
+                            onSelected: function(value) { root.set("stereoFold", value); }
                         }
                     }
-                    Text {
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: qsTr("Pro Logic II is an AC-4 downmix only, inactive until the decoder exists.")
-                        color: Theme.textMuted
-                        font.pixelSize: Theme.fontSmall
-                        wrapMode: Text.WordWrap
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        AppCheckBox {
+                            Layout.fillWidth: true
+                            text: qsTr("Follow the stream's preferred downmix")
+                            note: qsTr("Where the stream names one, in place of the choice above. Lt/Rt takes its "
+                                      + "Pro Logic II form where the stream prefers that. AC-4 only.")
+                            checked: root.settings.ac4PreferredDownmix ?? false
+                            onToggled: function(on) { root.set("ac4PreferredDownmix", on); }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Theme.gap
+                        Item { Layout.preferredWidth: root.labelWidth }
+                        AppCheckBox {
+                            Layout.fillWidth: true
+                            text: qsTr("Mix the LFE in")
+                            note: qsTr("At the stream's own LFE mix level, where it carries one. On for AC-4 "
+                                      + "until set here or on the AC-3 and E-AC-3 tab.")
+                            checked: root.settings.mixLfe ?? true
+                            onToggled: function(on) { root.set("mixLfe", on); }
+                        }
                     }
                 }
+            }
+        }
+
+        // Under both columns, full width: its three choices do not fit a
+        // column beside their label at the window's narrowest.
+        Card {
+            Layout.fillWidth: true
+            ordinal: "05"
+            title: qsTr("Errors")
+            framed: true
+            summary: qsTr("shared with AC-3 and E-AC-3")
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gap
+                Text { text: qsTr("Bad frame"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                       elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                SegmentedControl {
+                    accessibleName: qsTr("Bad frame")
+                    currentValue: root.settings.concealment ?? "repeatFade"
+                    model: [
+                        { value: "stop", label: qsTr("Stop") },
+                        { value: "repeatFade", label: qsTr("Repeat and fade") },
+                        { value: "mute", label: qsTr("Mute") }
+                    ]
+                    onSelected: function(value) { root.set("concealment", value); }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("What plays in place of a frame that will not decode. AC-4 is back to what "
+                          + "the stream carries at its next I-frame.")
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                wrapMode: Text.WordWrap
             }
         }
     }

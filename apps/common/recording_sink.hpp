@@ -59,6 +59,23 @@ class RecordingSink {
         kFmp4,
     };
 
+    // An AC-4 take (ETSI TS 103 190), which this class reads no syntax of, so
+    // its caller describes the stream to each container: the frames pushed
+    // are sync frames (TS 103 190-2 Annex G), push() is told which are
+    // I-frames, and Matroska, which registers no AC-4 codec ID, is refused.
+    struct Ac4Carriage {
+        // Samples a frame decodes to: an MPEG-TS PES timestamp's step.
+        std::uint32_t samples_per_frame = 2048;
+        // kSpdif: the IEC 61937-14 burst type the stream's largest frame
+        // needs, and the carrier a WAV file holds its link in (HBR16's eight
+        // channels at a quarter of the link's rate).
+        ac3::iec61937::BurstDataType burst_type = ac3::iec61937::BurstDataType::kAc4;
+        std::uint32_t carrier_rate_hz = 48000;
+        std::uint16_t carrier_channels = 2;
+        // kFmp4: the track, each sample the raw frame alone (Annex E.4).
+        Fmp4FolderWriter::Track fmp4{};
+    };
+
     struct Config {
         Container container = Container::kElementary;
         bool eac3 = false;
@@ -69,6 +86,8 @@ class RecordingSink {
         // (Fmp4FolderWriter::open's own parameter). 0, the default, lists
         // every segment.
         std::uint32_t fmp4_window_segments = 0;
+        // Set for an AC-4 take; `eac3` is then ignored.
+        std::optional<Ac4Carriage> ac4 = std::nullopt;
     };
 
     // Empty on success. A failure here happens before any capture is worth
@@ -83,7 +102,9 @@ class RecordingSink {
     // Empty on success. On failure the bytes already written stay on disk -
     // a partial take is a take, unlike a failed file encode whose input
     // still exists - and the caller decides whether to keep recording.
-    [[nodiscard]] std::string push(std::span<const std::byte> frame);
+    // `sync`: an AC-4 frame's b_iframe_global, where a fragmented MP4's
+    // fragments may start; every AC-3 and E-AC-3 frame is one.
+    [[nodiscard]] std::string push(std::span<const std::byte> frame, bool sync = true);
 
     // Finalizes the container. With zero frames pushed, removes the file
     // and reports "Nothing was encoded." - the whole-buffer path this
@@ -112,6 +133,7 @@ class RecordingSink {
     std::optional<mpegts::Writer> mpegts_;
     ac3::io::WavPcm16StreamWriter wav_;
     ac3::iec61937::Eac3BurstPacker packer_;
+    std::optional<ac3::iec61937::Ac4BurstPacker> ac4_packer_;
     // ...and kFmp4 writes a folder of its own files through this.
     Fmp4FolderWriter fmp4_;
 };
