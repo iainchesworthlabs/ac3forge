@@ -2,7 +2,7 @@
 
 Hearth plays AC-3, E-AC-3, and E-AC-3 with Atmos objects through speakers or an HDMI/S-PDIF
 receiver. It can decode a stream for local speakers or pass the encoded stream to a compatible
-receiver.
+receiver. The desktop player also plays channel-based AC-4, which it decodes for every output.
 
 !!! note "Status as of 2026-09-16: an ESP32-S3 sink plays in groups; the desktop player is being built"
     **The ESP32-S3 sink works on a network.** `hearth_sink` uses Improv Wi-Fi for initial network
@@ -27,7 +27,7 @@ receiver.
 | [ESP32-C3](../platforms/bare-metal/esp32-c3.md) | The same decoder, in the fixed-point tier | Correct under `qemu-riscv32` emulation. No board has run it |
 | [ESP32-C6](../platforms/bare-metal/esp32-c6.md) | Fixed-point decoder; `hearth_sink`'s Sendspin player, stereo only | All decode fixtures run on a board; a stereo Sendspin group with an ESP32-S3 played ten minutes with no underruns on either board ([setup guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)). CI builds the Sendspin player for this part now too - `idf.py qemu` refuses `esp32c6` outright, so nothing shorter than a board runs it |
 | [ESPHome](../platforms/bare-metal/esphome.md) | An external component wrapping the ESP32-S3 decoder | Config-checked in CI against the manifest; not yet a `media_player` or `speaker` source |
-| Windows, Linux and macOS | `ac3hearth` (the desktop window, Qt 6.8+) and its engine; `ac3hearth-testsink` and `ac3hearth-testserver` development tools | Engine and Sendspin interoperability tests run in CI. The window cannot yet send audio to a sink |
+| Windows, Linux and macOS | `ac3hearth` (the desktop window, Qt 6.8+) and its engine; `ac3hearth-testsink`, `ac3hearth-testserver` and `ac3hearth-render` development tools | Engine and Sendspin interoperability tests run in CI; AC-4 plays through the decoder's public API, and the UI tests measure what each AC-4 decoder control does to the output. The window cannot yet send audio to a sink |
 
 The desktop player's passthrough design uses the same path as `ac3cli play`. That command has
 played every supported stream shape, including signed Atmos, to a receiver through a Raspberry

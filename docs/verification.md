@@ -1455,6 +1455,43 @@ to a test sink, whose output equals the local decode, rendered the same way, sam
 The two readings Part 14 leaves open, which frame starts a burst sequence and whether `Pd` counts
 bits or bytes, are given in `src/forge/src/iec61937/iec61937.cpp`.
 
+### Hearth's engine
+
+Phase I2 plays AC-4 in Hearth through the decoder's public API. The tests are in
+`tests/hearth/test_ac4_engine.cpp` unless named otherwise.
+
+- **Every committed stream**: the engine plays each committed stream the decoder decodes onto a
+  layout with a slot for each speaker, and its output equals `ac4::Decoder`'s own `decode()` of
+  the same frames, sample for sample: 46 of the 49. The other three, the 5.1.4 legs, are refused
+  when they open, with the decoder's reason (the immersive channel element, phase D9). Each unit
+  lasts what the decoder puts out for it, 1 601 or 1 602 samples at 29.97 fps as Table 47 gives
+  them, and a seek to 500 ms plays on within 1e-6 of an unbroken decode.
+- **Each control**, on streams of tones the encoder writes with the values the control reads: the
+  output level against 2^((Lout − dialnorm) / 6) at −31, −24, −17 and −6 dBFS; dialogue
+  enhancement on the centre, up to the stream's cap; Lo/Ro, Lt/Rt with its surrounds' sign, the
+  LFE in and out, the stream's preferred downmix and mono against Tables 217 and 218 with the
+  stream's gains; the presentation chosen; the dialogue level up to its maximum; audio description
+  at its level and off; and each DRC mode against the decoder's own. Each holds to 0.01 dB. A
+  change of settings while an item plays applies from the next frame, and nothing is lost or
+  decoded twice.
+- **From the page**: `apps/hearth/ui/tests/qml/tst_decoder_ac4.qml` drives each control on the
+  Decoder page's AC-4 tab with a click, a press or a key, and measures each tone's level at the
+  fake device, a Hann-windowed DFT over the last 16 384 samples the engine handed it, against the
+  same formulas, to 0.1 dB.
+- **The gain script through the engine**: `ac3hearth-render` plays an item through the player,
+  session and stream decoder into a WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds
+  it to the formulas it holds `ac3cli decode` to, with each of ac3cli's options given as the
+  Decoder page's setting for it. On the 13 committed legs and the encoder's 11, every gain is
+  within 0.0001 dB of its formula and what it leaves is 148 dB or more under the output; the Hearth
+  CI job runs both.
+- **To a network group** (`tests/hearth/test_engine_network_group.cpp`): the engine plays an AC-4
+  item to a group of a player@v1 sink, which is sent the decoded PCM, and a test sink on the
+  extension role that lists AC-4, which is sent each sync frame as a burst and decodes it. The
+  second's output equals `ac4::Decoder`'s decode of the frames, rendered on its layout, sample for
+  sample, and every burst puts the stream's first frame at the same time, within 1 ms. A
+  presentation the listener chose that a sink would not choose itself reaches the group as PCM
+  alone.
+
 ## What untrusted input is checked against
 
 Correctness and robustness are different questions, and this page answers only the first. What
