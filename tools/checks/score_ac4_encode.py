@@ -1,8 +1,8 @@
 """Score ac3cli's AC-4 encoding: the encoder's streams, decoded, against their sources.
 
-planning/ac4.md, the encoder's ladder, items 4 and 5, as phases E1 to E5 need them: SIMPLE, ASPX
-and A-CPL, mono, stereo, 5.0 and 5.1, at frame_rate_index 13 and, in the frame-rate legs, the
-others. Each leg encodes a source with `ac3cli
+planning/ac4.md, the encoder's ladder, items 4 and 5, as phases E1 to E5 and E8 need them: SIMPLE,
+ASPX and A-CPL, mono, stereo, 5.0 and 5.1, at frame_rate_index 13 and, in the frame-rate legs, the
+others, and the immersive element's 5.1.4. Each leg encodes a source with `ac3cli
 ac4-encode`, which picks the codec mode from the rate, decodes the stream with `ac3cli decode`,
 aligns the output with the source by cross-correlation, fits a least-squares gain per channel,
 and checks, as score_ac4_decode.py scores DEE's streams:
@@ -41,6 +41,16 @@ silence, and a source panned between the channels, which the encoder's stereo pr
 A leg may name ac4-encode's options after its rate: the -configs legs take the experimental coding
 configurations.
 
+The immersive legs (phase E8) encode tones and music in 5.1.4, from 192 to 768 kbps, where the
+encoder picks ASPX_ACPL_2, ASPX_SCPL and SCPL as DEE does, and in ASPX_ACPL_1 by name
+(experimental), and score each in full and in core decoding with score_ac4_decode.py's
+score_immersive(): per channel (in full decoding ASPX_ACPL_2's top pairs as their sums, which A-CPL
+keeps; in core decoding the 5.1.2 the core renders to) the lag, the level, the SNR below the lowest
+crossover (in SCPL below 16 kHz), on a tone leg the routing margin, the LSD and the MOS, pinned in
+IMMERSIVE_FLOORS. In full decoding the A-SPX tiles above the lowest crossover, and in the A-CPL
+modes the top pairs' level difference and correlation per A-CPL parameter band, are held to
+IMMERSIVE_EXTRA as the tiles and bands above are held.
+
 The frame-rate legs (phase E5) encode music and speech in stereo and music in 5.1 at the other
 frame rates of Part 1 Table 83 and at index 13, in the same run, and hold each to the index-13
 stream of the same source and rate on the log-spectral distance and MOS alone: at the other frame
@@ -54,13 +64,18 @@ kbps and SIMPLE from 192 to 768, and its 5.1 legs from 96 to 768, ASPX_ACPL_3 at
 (DIR/streams/<leg>/dee.ac4) and this encoder's stream of the same source (DIR/sources/<source>.wav)
 at the same rate are both decoded and scored as above. The encoder's scores are checked against
 RACE, and in the A-CPL legs against RACE_ACPL, pinned the same way, and its gaps to DEE's are
-printed.
+printed. The race's 5.1.4 legs are G0's music and tones and G1's film, speech, sweeps and
+transients (the manifest's g1_legs) at each of DEE's 5.1.4 rates, 192 to 768 kbps, scored as the
+immersive legs are, in full and in core decoding, against RACE_IMMERSIVE and
+RACE_IMMERSIVE_EXTRA.
 
 --only TEXT runs only the legs whose names contain TEXT.
 
 --librempeg PATH also decodes every stream with librempeg's ffmpeg, run in WSL (the path is the
 WSL one), and reports its scores against the source and how far its output is from the
-decoder's. Nothing it measures is checked: planning/ac4.md, decision 13.
+decoder's; of a 5.1.4 stream, for each source channel the output channel that follows it most
+closely, with their correlation and level. Nothing it measures is checked: planning/ac4.md,
+decision 13.
 
 --measure prints what every leg measures and checks nothing, for pinning a new leg.
 
@@ -408,6 +423,95 @@ RACE_RATES = (48, 64, 96, 128, 144, 192, 256, 288, 320, 384, 448, 512, 768)
 # and 97).
 ACPL_MODES = {2: "ASPX_ACPL_1", 3: "ASPX_ACPL_2", 4: "ASPX_ACPL_3"}
 
+# The immersive legs (phase E8), 5.1.4: name: (source, kbps, *ac4-encode's options). The encoder
+# takes ASPX_ACPL_2 below 480 kbps, ASPX_SCPL below 640 and SCPL from there, and ASPX_ACPL_1 by
+# name, experimental. score_ac4_decode.py's score_immersive() scores them, in full and in core
+# decoding, against IMMERSIVE_FLOORS, in its IMMERSIVE_PINS form; in full decoding the A-SPX tiles
+# of every channel but the LFE above the frame's lowest crossover, and in the A-CPL modes the
+# level difference and correlation per A-CPL parameter band of the top pairs A-CPL rebuilds,
+# (Tfl, Tbl) and (Tfr, Tbr), are held to IMMERSIVE_EXTRA as E2 and E4 hold theirs.
+IMMERSIVE_LEGS = {
+    "514-tones-256": ("tones_514", 256),
+    "514-tones-512": ("tones_514", 512),
+    "514-tones-768": ("tones_514", 768),
+    "514-tones-448-acpl1": ("tones_514", 448, "codec-mode=aspx-acpl-1", "experimental=acpl"),
+    "514-music-192": ("music_514", 192),
+    "514-music-384": ("music_514", 384),
+    "514-music-512": ("music_514", 512),
+    "514-music-768": ("music_514", 768),
+    "514-music-448-acpl1": ("music_514", 448, "codec-mode=aspx-acpl-1", "experimental=acpl"),
+}
+# The immersive legs' pins, by (leg, "full" or "core"), in score_ac4_decode.py's IMMERSIVE_PINS
+# form: (SNR floors per scored signal, the routing floor on a tone leg, the LSD ceiling, the MOS
+# floor). Measured 2026-09-26 with the encoder of phase E8 and the decoder of phase D9.
+IMMERSIVE_FLOORS = {
+    ("514-tones-256", "full"): ((80.3, 80.3, 79.8, 69.1, 80.4, 78.3, 74.3, 75.2), 61.3, 10.48,
+                                4.63),
+    ("514-tones-256", "core"): ((80.3, 80.3, 79.8, 69.1, 80.4, 78.3, 74.3, 75.2), 61.3, 10.48,
+                                4.63),
+    ("514-tones-512", "full"): ((81.2, 81.5, 80.4, 69.1, 81.7, 79.1, 79.9, 80.7, 80.6, 78.5),
+                                61.3, 10.72, 4.63),
+    ("514-tones-512", "core"): ((81.2, 81.5, 80.4, 69.1, 81.6, 79.1, 74.6, 75.7), 61.3, 10.79,
+                                4.63),
+    ("514-tones-768", "full"): ((81.5, 82.0, 80.5, 69.1, 82.1, 79.4, 80.2, 81.0, 80.9, 78.7),
+                                61.3, 9.75, 4.63),
+    ("514-tones-768", "core"): ((81.5, 82.0, 80.5, 69.1, 82.1, 79.4, 74.7, 75.7), 61.3, 10.17,
+                                4.63),
+    ("514-tones-448-acpl1", "full"): ((80.9, 81.1, 80.2, 69.1, 81.2, 78.9, 80.0, 79.9, 80.1,
+                                      78.4), 61.3, 10.22, 4.63),
+    ("514-tones-448-acpl1", "core"): ((80.9, 81.1, 80.2, 69.1, 81.2, 78.9, 74.5, 75.5), 61.3,
+                                      10.34, 4.63),
+    ("514-music-192", "full"): ((15.4, 16.2, 18.2, 12.3, 16.0, 16.4, 13.1, 13.5), None, 2.23, 4.41),
+    ("514-music-192", "core"): ((15.4, 16.2, 18.2, 12.3, 16.0, 16.4, 13.1, 13.5), None, 2.23, 4.41),
+    ("514-music-384", "full"): ((25.5, 26.1, 28.8, 15.9, 26.5, 26.8, 23.1, 23.6), None, 1.59, 4.60),
+    ("514-music-384", "core"): ((25.5, 26.1, 28.8, 15.9, 26.5, 26.8, 23.1, 23.6), None, 1.59, 4.60),
+    ("514-music-512", "full"): ((27.4, 28.2, 30.6, 16.2, 28.4, 28.8, 23.8, 24.1, 24.8, 25.2),
+                                None, 1.52, 4.61),
+    ("514-music-512", "core"): ((27.4, 28.2, 30.6, 16.2, 28.4, 28.8, 24.9, 25.3), None, 1.60, 4.60),
+    ("514-music-768", "full"): ((38.0, 38.8, 41.5, 16.5, 39.2, 39.5, 34.5, 34.8, 35.3, 35.7),
+                                None, 1.96, 4.62),
+    ("514-music-768", "core"): ((38.0, 38.8, 41.5, 16.5, 39.2, 39.5, 35.5, 36.0), None, 2.05, 4.61),
+    ("514-music-448-acpl1", "full"): ((23.3, 24.0, 26.5, 15.6, 24.3, 24.6, 16.4, 16.9, 20.5,
+                                      20.9), None, 1.75, 4.61),
+    ("514-music-448-acpl1", "core"): ((23.3, 24.0, 26.5, 15.6, 24.2, 24.5, 20.8, 21.3), None,
+                                      1.66, 4.60),
+}
+# By leg: (the A-SPX tile ceiling, or None in SCPL; the ceilings per A-CPL parameter band of the
+# top pairs' level difference and correlation distances, or None where the leg is not in an A-CPL
+# mode or is a tone leg), the first measurement plus TILE_MARGIN_DB, decoding.ACPL_ILD_MARGIN_DB
+# and decoding.ACPL_RHO_MARGIN.
+IMMERSIVE_EXTRA = {
+    "514-tones-256": (None, None, None),
+    "514-tones-512": (None, None, None),
+    "514-tones-768": (None, None, None),
+    "514-tones-448-acpl1": (None, None, None),
+    "514-music-192": (
+        2.21,
+        (3.09, 3.74, 4.01, 4.22, 3.45, 3.49, 3.26, 3.70, 3.25, 2.92, 2.59, 2.72, 2.52, 2.39, None),
+        (0.389, 0.339, 0.312, 0.400, 0.333, 0.326, 0.309, 0.370, 0.333, 0.311, 0.282, 0.264, 0.265,
+         0.255, None)),
+    "514-music-384": (
+        None,
+        (3.09, 3.79, 4.07, 4.25, 3.56, 3.40, 3.16, 3.71, 3.18, 2.83, 2.35, 2.60, 2.27, 2.33, None),
+        (0.386, 0.337, 0.321, 0.391, 0.334, 0.335, 0.301, 0.358, 0.329, 0.284, 0.273, 0.245, 0.237,
+         0.248, None)),
+    "514-music-512": (None, None, None),
+    "514-music-768": (None, None, None),
+    "514-music-448-acpl1": (
+        None,
+        (0.78, 0.73, 1.09, 0.80, 1.03, 1.13, 1.60, 1.68, 3.04, 2.80, 2.41, 2.60, 2.27, 2.33, None),
+        (0.083, 0.074, 0.108, 0.080, 0.110, 0.121, 0.154, 0.169, 0.336, 0.301, 0.271, 0.246, 0.237,
+         0.248, None)),
+}
+# The race's 5.1.4 legs: G0's music and tones and G1's film, speech, sweeps and transients (the
+# gold manifest's g1_legs), at each of DEE's 5.1.4 rates, in IMMERSIVE_FLOORS' and
+# IMMERSIVE_EXTRA's forms.
+RACE_IMMERSIVE_CONTENT = ("music", "tones", "film", "speech", "sweep", "transient")
+RACE_IMMERSIVE = {
+}
+RACE_IMMERSIVE_EXTRA = {
+}
+
 # The frame-rate legs: name: (source, kbps, the frame_rate_index values scored against index 13).
 # frame-rate= spells each index as Table 83 prints its rate.
 FRAME_RATE_SOURCES = {
@@ -509,11 +613,15 @@ def synthetic(name, rate, programme):
 def build_sources(work):
     """Every leg's source WAV, by (source, rate)."""
     rebuilt = baseline.build_sources(
-        work / "fixtures", SECONDS, ["music_20", "speech_20", "music_51", "film_51", "tones_51"]
+        work / "fixtures",
+        SECONDS,
+        ["music_20", "speech_20", "music_51", "film_51", "tones_51", "music_514", "tones_514"],
     )
     programme = {name: decoding.read_wav(path)[0] for name, path in rebuilt.items()}
     paths = {}
-    for source, rate, *_ in LEGS.values():
+    wanted = [(source, rate) for source, rate, *_ in LEGS.values()]
+    wanted += [(source, 48000) for source, *_ in IMMERSIVE_LEGS.values()]
+    for source, rate in wanted:
         if (source, rate) in paths:
             continue
         path = work / f"{source}-{rate}.wav"
@@ -713,6 +821,210 @@ def score_acpl_leg(args, name, source_name, original, decoded, trace, failures, 
                                failures, pins, table=table)
 
 
+# The top pairs A-CPL rebuilds in the immersive element's full decoding, by score_ac4_decode.py's
+# IMMERSIVE_CHANNELS: (Tfl, Tbl) and (Tfr, Tbr).
+IMMERSIVE_TOP_PAIRS = ((6, 8), (7, 9))
+# The fewest tiles above the floor an immersive leg's tile distance is taken over. The programme
+# fixtures hold next to nothing above 13 kHz: from 384 kbps, where A-SPX starts at 12.75 kHz, a
+# music leg has one tile above the floor, whose distance says nothing of the tiles.
+IMMERSIVE_TILES_MIN = 20
+
+
+def larger(a, b):
+    """The larger of two band distances, either of which may be None."""
+    if a is None or b is None:
+        return b if a is None else a
+    return max(a, b)
+
+
+def immersive_extras(source_name, source, full):
+    """What an immersive leg's full decoding measures besides score_immersive()'s checks, from its
+    dict `full`: (the A-SPX tiles' mean absolute distance from the source's energy in dB, or None
+    in SCPL and where fewer than IMMERSIVE_TILES_MIN tiles are above the floor; the top pairs'
+    level difference and correlation distances per A-CPL parameter band, the larger of the two
+    pairs', or None outside the A-CPL modes, on a tone leg and where no band has frames to
+    score)."""
+    decoding.RATE = 48000
+    tiles = None
+    if full["mode"] != "SCPL" and full["found"] is not None:
+        config, offsets = full["found"]
+        groups = decoding.aspx_groups(config, min(offsets))
+        differences = []
+        for c in full["heard"]:
+            if full["names"][c] != "LFE":
+                differences += decoding.tile_error(full["ref"][:, c], full["out"][:, c], groups)
+        if len(differences) >= IMMERSIVE_TILES_MIN:
+            tiles = float(np.mean(np.abs(differences)))
+    ild = rho = None
+    if full["mode"] in ("ASPX_ACPL_1", "ASPX_ACPL_2") and not source_name.startswith("tones"):
+        _, ref, out = decoding.align(source, full["decoded"])
+        for a, b in IMMERSIVE_TOP_PAIRS:
+            pair_ild, pair_rho = decoding.acpl_band_scores(ref[:, [a, b]], out[:, [a, b]])
+            if ild is None:
+                ild, rho = pair_ild, pair_rho
+            else:
+                ild = [larger(x, y) for x, y in zip(ild, pair_ild, strict=True)]
+                rho = [larger(x, y) for x, y in zip(rho, pair_rho, strict=True)]
+        # A source whose top pairs never sound together in a frame (the transients) leaves no
+        # band to score.
+        if all(v is None for v in ild):
+            ild = rho = None
+    return tiles, ild, rho
+
+
+def extra_failures(label, extras, pin):
+    """`extras` (immersive_extras()) against its IMMERSIVE_EXTRA pin."""
+    if pin is None:
+        return [f"{label}: nothing pinned in IMMERSIVE_EXTRA"]
+    tiles, ild, rho = extras
+    tile_ceiling, ild_ceilings, rho_ceilings = pin
+    failures = []
+    if (tile_ceiling is None) != (tiles is None):
+        failures.append(f"{label}: tiles {tiles}, pinned {tile_ceiling}: the codec mode changed")
+    elif tiles is not None and tiles > tile_ceiling:
+        failures.append(f"{label}: A-SPX tiles {tiles:.2f} dB above the ceiling {tile_ceiling}")
+    if (ild_ceilings is None) != (ild is None):
+        failures.append(f"{label}: A-CPL bands measured where none are pinned, or none where some "
+                        "are: the codec mode changed")
+        return failures
+    if ild is None:
+        return failures
+    for band, (value, ceiling) in enumerate(zip(ild, ild_ceilings, strict=True)):
+        if (value is None) != (ceiling is None):
+            failures.append(f"{label} band {band}: frames to score where none were pinned, or "
+                            "none where some were")
+        elif value is not None and value > ceiling:
+            failures.append(f"{label} band {band}: the top pairs' level difference {value:.2f} dB "
+                            f"from the source's, above its ceiling {ceiling}")
+    for band, (value, ceiling) in enumerate(zip(rho, rho_ceilings, strict=True)):
+        if value is not None and ceiling is not None and value > ceiling:
+            failures.append(f"{label} band {band}: the top pairs' correlation {value:.3f} from the "
+                            f"source's, above its ceiling {ceiling}")
+    return failures
+
+
+def extra_pin_text(name, extras):
+    """An IMMERSIVE_EXTRA entry as --measure prints it, within 100 columns."""
+    tiles, ild, rho = extras
+    tile = "None" if tiles is None else f"{tiles + TILE_MARGIN_DB:.2f}"
+    if ild is None:
+        return f'    "{name}": ({tile}, None, None),'
+    lines = [f'    "{name}": (', f"        {tile},"]
+    for values, margin, digits in ((ild, decoding.ACPL_ILD_MARGIN_DB, 2),
+                                   (rho, decoding.ACPL_RHO_MARGIN, 3)):
+        cells = ["None" if v is None else f"{v + margin:.{digits}f}" for v in values]
+        line = "        ("
+        for i, cell in enumerate(cells):
+            piece = cell + ("), " if i == len(cells) - 1 else ", ")
+            if len(line) + len(piece.rstrip()) > 99:
+                lines.append(line.rstrip())
+                line = "         "
+            line += piece
+        lines.append(line.rstrip())
+    lines[-1] = lines[-1].removesuffix(",") + "),"
+    return "\n".join(lines)
+
+
+def extra_text(extras):
+    """immersive_extras()' measurements, as a line."""
+    tiles, ild, rho = extras
+    cells = [] if tiles is None else [f"tiles {tiles:.2f} dB"]
+    if ild is not None:
+        worst_ild = max(v for v in ild if v is not None)
+        worst_rho = max(v for v in rho if v is not None)
+        cells.append(f"top pairs' ILD {worst_ild:.2f} dB, rho {worst_rho:.3f} (worst band)")
+    return "  ".join(cells)
+
+
+def librempeg_reading(args, stream, out_wav, source):
+    """What librempeg makes of an immersive stream, as a line: its error, or its channel count, the
+    lag, and for each of the source's channels the output channel that follows it most closely,
+    with their correlation and the least-squares gain."""
+    try:
+        other, _ = decode_librempeg(args, stream, out_wav)
+    except SystemExit as refusal:
+        lines = [line for line in str(refusal).splitlines()[1:] if line.strip()]
+        return f"  librempeg: fails, {lines[-1] if lines else 'with no message'}"
+    lag, ref, out = decoding.align(source, other)
+    cells = []
+    for c, column in enumerate(decoding.IMMERSIVE_CHANNELS[:source.shape[1]]):
+        r = ref[:, c]
+        best, closest = 0.0, None
+        for k in range(out.shape[1]):
+            o = out[:, k]
+            energy = float(np.sqrt(np.dot(r, r) * np.dot(o, o)))
+            if energy > 0.0 and abs(float(np.dot(r, o)) / energy) > abs(best):
+                best, closest = float(np.dot(r, o)) / energy, k
+        if closest is None:
+            cells.append(f"{column} -")
+            continue
+        gain = float(np.dot(r, out[:, closest]) / np.dot(r, r))
+        cells.append(f"{column} ch{closest} r {best:.3f} {20.0 * np.log10(abs(gain)):+.2f} dB")
+    return (f"  librempeg: {other.shape[1]} channels, lag {lag}; each source channel's closest "
+            f"output: {'  '.join(cells)}")
+
+
+def wrapped(line):
+    """A pin line as --measure prints it, broken within 100 columns, each further line under the
+    first value."""
+    if len(line) <= 100:
+        return line
+    indent = " " * (line.index(": (") + 3)
+    lines = []
+    while len(line) > 100:
+        cut = line.rindex(", ", 0, 99) + 1
+        lines.append(line[:cut])
+        line = indent + line[cut:].lstrip()
+    lines.append(line)
+    return "\n".join(lines)
+
+
+def score_immersive_leg(args, name, stream, source, source_name, failures, pins, extra_pins,
+                        tables, work):
+    """An immersive leg's full and core decoding (IMMERSIVE_LEGS' comment) against `tables`, its
+    IMMERSIVE_FLOORS and IMMERSIVE_EXTRA forms: what score_immersive() measured, by "full" and
+    "core", and the full decoding's immersive_extras(), or None where a decode is not the leg's
+    layout."""
+    table, extra_table = tables
+    measured = {}
+    for core in (False, True):
+        measured["core" if core else "full"] = decoding.score_immersive(
+            name, stream, source, source_name, core, args, work, failures, pins, table=table,
+            gain_tolerance_db=GAIN_TOLERANCE_DB, gain_min_snr_db=GAIN_MIN_SNR_DB)
+    if measured["full"] is None or measured["core"] is None:
+        return None
+    extras = immersive_extras(source_name, source, measured["full"])
+    text = extra_text(extras)
+    if text:
+        print(f"{'':<40} {text}", flush=True)
+    extra_pins.append(extra_pin_text(name, extras))
+    if not args.measure:
+        failures += extra_failures(name, extras, extra_table.get(name))
+    return measured, extras
+
+
+def immersive_run(args, work, paths):
+    """The immersive legs, against IMMERSIVE_FLOORS and IMMERSIVE_EXTRA."""
+    failures, pins, extra_pins = [], [], []
+    count = 0
+    for name, (source_name, kbps, *options) in IMMERSIVE_LEGS.items():
+        if args.only is not None and args.only not in name:
+            continue
+        count += 1
+        path = paths[(source_name, 48000)]
+        stream = work / f"{name}.ac4"
+        encode(args.cli, path, kbps, stream, options)
+        source, _ = decoding.read_wav(path)
+        score_immersive_leg(args, name, stream, source, source_name, failures, pins, extra_pins,
+                            (IMMERSIVE_FLOORS, IMMERSIVE_EXTRA), work)
+        if args.librempeg:
+            print(librempeg_reading(args, stream, work / f"{name}.librempeg.wav", source))
+    if args.measure and count:
+        print("\nIMMERSIVE_FLOORS = {\n" + "\n".join(wrapped(pin) for pin in pins) + "\n}")
+        print("\nIMMERSIVE_EXTRA = {\n" + "\n".join(extra_pins) + "\n}")
+    return failures, count
+
+
 def committed_run(args, work):
     paths = build_sources(work)
     failures = []
@@ -748,7 +1060,9 @@ def committed_run(args, work):
         print("\nFLOORS = {\n" + "\n".join(pins) + "\n}")
         print("\nACPL_FLOORS = {\n" + "\n".join(acpl_pins) + "\n}")
     rate_failures, rate_legs = frame_rate_run(args, work, paths)
-    return failures + rate_failures, len(legs) + rate_legs
+    immersive_failures, immersive_legs = immersive_run(args, work, paths)
+    return (failures + rate_failures + immersive_failures,
+            len(legs) + rate_legs + immersive_legs)
 
 
 def frame_rate_scores(args, work, source_path, kbps, index):
@@ -829,8 +1143,9 @@ def gold_run(args, work):
         and leg.get("bitrate_kbps") in RACE_RATES
         and (args.only is None or args.only in name)
     ]
-    if not legs:
-        raise SystemExit(f"no 2.0 or 5.1 leg at the race's rates in {args.gold}")
+    immersive = immersive_race_legs(args, manifest)
+    if not legs and not immersive:
+        raise SystemExit(f"no 2.0, 5.1 or 5.1.4 leg at the race's rates in {args.gold}")
     failures = []
     pins = []
     acpl_pins = []
@@ -879,10 +1194,91 @@ def gold_run(args, work):
             failures += pinned_failures(name, RACE.get(name), ours)
             if leg["source"].startswith("tones"):
                 failures += routing_failures(f"{name} ours", ours.aligned, rate)
-    if args.measure:
+    if args.measure and legs:
         print("\nRACE = {\n" + "\n".join(pins) + "\n}")
         print("\nRACE_ACPL = {\n" + "\n".join(acpl_pins) + "\n}")
-    return failures, len(legs)
+    failures += immersive_race(args, work, immersive)
+    return failures, len(legs) + len(immersive)
+
+
+def immersive_race_legs(args, manifest):
+    """The race's 5.1.4 legs (RACE_IMMERSIVE_CONTENT at RACE_RATES), from G0's legs and G1's."""
+    legs = []
+    for key in ("legs", "g1_legs"):
+        for name, leg in sorted(manifest.get(key, {}).items()):
+            parts = name.split("-")
+            if (len(parts) == 3 and parts[0] == "514" and parts[1] in RACE_IMMERSIVE_CONTENT
+                    and leg.get("frame_rate_index") == 13
+                    and leg.get("bitrate_kbps") in RACE_RATES
+                    and (args.only is None or args.only in name)):
+                legs.append((name, leg))
+    return legs
+
+
+def immersive_gaps(ours, dee):
+    """The encoder's immersive scores less DEE's, as a line, from two score_immersive_leg()
+    results of one decoding: ((measured, extras), (measured, extras))."""
+    (o, o_extras), (d, d_extras) = ours, dee
+    if o["names"] != d["names"]:
+        return f"codec modes differ: ours {o['mode']}, DEE's {d['mode']}"
+    snrs = "  ".join(f"{column} {a - b:+.2f}" for column, a, b in zip(o["names"], o["snrs"],
+                                                                      d["snrs"], strict=True)
+                     if a is not None and b is not None)
+    text = f"SNR {snrs} dB, LSD {o['lsd'] - d['lsd']:+.2f} dB"
+    if o["routing"] is not None and d["routing"] is not None:
+        text += f", routing {o['routing'] - d['routing']:+.1f} dB"
+    if o["mos"] is not None and d["mos"] is not None:
+        text += f", MOS {o['mos'] - d['mos']:+.3f}"
+    if o_extras is not None and d_extras is not None:
+        if o_extras[0] is not None and d_extras[0] is not None:
+            text += f", tiles {o_extras[0] - d_extras[0]:+.2f} dB"
+        if o_extras[1] is not None and d_extras[1] is not None:
+            def mean(values):
+                return float(np.mean([v for v in values if v is not None]))
+
+            text += (f", top pairs' ILD mean {mean(o_extras[1]) - mean(d_extras[1]):+.2f} dB"
+                     f", rho mean {mean(o_extras[2]) - mean(d_extras[2]):+.3f}")
+    return text
+
+
+def immersive_race(args, work, legs):
+    """The race's 5.1.4 legs: DEE's stream and the encoder's of the same source and rate, each
+    scored as the immersive legs are, the encoder's against RACE_IMMERSIVE and
+    RACE_IMMERSIVE_EXTRA."""
+    failures, pins, extra_pins = [], [], []
+    for name, leg in legs:
+        source_path = args.gold / "sources" / f"{leg['source']}.wav"
+        source, _ = decoding.read_wav(source_path)
+        dee_stream = args.gold / "streams" / name / "dee.ac4"
+        ours_stream = work / f"{name}.ours.ac4"
+        encode(args.cli, source_path, leg["bitrate_kbps"], ours_stream)
+        results = {}
+        for label, stream in (("DEE", dee_stream), ("ours", ours_stream)):
+            ours = label == "ours"
+            # DEE's scores are printed, not checked, nor pinned.
+            tables = (({(f"{leg_name} ours", decode): pin
+                        for (leg_name, decode), pin in RACE_IMMERSIVE.items()},
+                       {f"{leg_name} ours": pin for leg_name, pin in RACE_IMMERSIVE_EXTRA.items()})
+                      if ours else ({}, {}))
+            results[label] = score_immersive_leg(args, f"{name} {label}", stream, source,
+                                                 leg["source"], failures if ours else [],
+                                                 pins if ours else [],
+                                                 extra_pins if ours else [], tables, work)
+            if args.librempeg:
+                print(librempeg_reading(args, stream, work / f"{name}.{label}.librempeg.wav",
+                                        source))
+        if results["ours"] is None or results["DEE"] is None:
+            continue
+        for decode in ("full", "core"):
+            ours = (results["ours"][0][decode], results["ours"][1] if decode == "full" else None)
+            dee = (results["DEE"][0][decode], results["DEE"][1] if decode == "full" else None)
+            print(f"{'':<40} ours less DEE's ({decode}): {immersive_gaps(ours, dee)}", flush=True)
+    if args.measure and legs:
+        pins = [wrapped(pin.replace(' ours"', '"')) for pin in pins]
+        print("\nRACE_IMMERSIVE = {\n" + "\n".join(pins) + "\n}")
+        print("\nRACE_IMMERSIVE_EXTRA = {\n" + "\n".join(extra_pins).replace(' ours"', '"')
+              + "\n}")
+    return failures
 
 
 def main():
