@@ -49,6 +49,6 @@ performance, decoder-accuracy, listening-quality, object-quality, and memory his
 
 !!! warning "Standards and trademarks"
     "Dolby", "Dolby Digital", and "Dolby Atmos" are trademarks of Dolby Laboratories. This
-    project implements ATSC A/52:2018, ETSI TS 102 366, and ETSI TS 103 420. It is not
+    project implements ATSC A/52:2018, ETSI TS 102 366, ETSI TS 103 420, and ETSI TS 103 190. It is not
     affiliated with, endorsed by, or certified by Dolby Laboratories. Patent requirements
     depend on how and where the formats are used.

@@ -12,9 +12,9 @@
   {% if not page.url %}
     <section class="ac3f-hero">
       <div class="ac3f-hero-inner">
-        <p class="ac3f-kicker">AC&#8209;3 &middot; E&#8209;AC&#8209;3 &middot; AC&#8209;4 &middot; Dolby Atmos</p>
+        <p class="ac3f-kicker">AC&#8209;3 &middot; E&#8209;AC&#8209;3 &middot; Dolby Atmos</p>
         <h1>AC3Forge</h1>
-        <p class="ac3f-lede">A clean-room AC-3, E-AC-3, AC-4 and Dolby Atmos codec, written from the
+        <p class="ac3f-lede">A clean-room AC-3, E-AC-3 and Dolby Atmos codec, written from the
           published standards in C++23 — <strong>Library</strong> — with <strong>Forge</strong>,
           the CLI and GUI; <strong>Crucible</strong>, a desktop per-application Atmos mixer; and
           <strong>Hearth</strong>, the playback project.</p>
@@ -35,8 +35,7 @@
           <span class="ac3f-fam-tag">ac3::forge</span>
           <h3>Library</h3>
           <p>Encodes and decodes AC-3 and E-AC-3, including Atmos objects via Joint Object
-            Coding, and decodes and encodes AC-4. C++23, with C, Python, Rust and WebAssembly
-            bindings for AC-3 and E-AC-3.</p>
+            Coding. C++23, with C, Python, Rust and WebAssembly bindings.</p>
           <span class="ac3f-fam-go">Read the library docs &rarr;</span>
         </a>
         <a class="ac3f-fam-card" href="{{ 'forge/'|url }}">
@@ -44,7 +43,7 @@
           <h3>Forge</h3>
           <p><code>ac3cli</code> and <code>ac3gui</code> are one product: they build together,
             ship together, and the GUI shows the equivalent CLI command live at the bottom of
-            its window. <code>ac3cli</code> also decodes and encodes AC-4.</p>
+            its window.</p>
           <span class="ac3f-fam-go">Read the Forge docs &rarr;</span>
         </a>
         <a class="ac3f-fam-card" href="{{ 'crucible/'|url }}">
@@ -58,9 +57,8 @@
         <a class="ac3f-fam-card" href="{{ 'hearth/'|url }}">
           <span class="ac3f-fam-tag">desktop &middot; ESP32</span>
           <h3>Hearth</h3>
-          <p>Plays through local speakers, a receiver, or synchronised ESP32 network sinks.
-            The desktop player finds sinks on the network, plays to them, and plays AC-4; sink
-            firmware is built for the ESP32-S3, ESP32-C6 and ESP32-P4.</p>
+          <p>Plays through local speakers, a receiver, or a synchronised ESP32 network sink.
+            The ESP32-S3 sink works today; the desktop player is in development.</p>
           <span class="ac3f-fam-go">Read the Hearth docs &rarr;</span>
         </a>
       </div>
@@ -139,7 +137,7 @@
           <h3>Station broadcast</h3>
           <p>A multi-object scene built up step by step, from source to encoded stream.</p>
         </a>
-        <a class="ac3f-demo-card" href="{{ 'forge/cli/commands/'|url }}">
+        <a class="ac3f-demo-card" href="{{ 'cli/commands/'|url }}">
           <span class="ac3f-demo-tag">CLI</span>
           <h3>Probe a stream</h3>
           <p><code>ac3cli probe --json</code> — every declared field, no decode required.</p>

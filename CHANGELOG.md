@@ -1843,6 +1843,19 @@ The sections below contain the complete change list and fixes.
 - The threat model, the WebAssembly page, the ADM page and the building guide no longer describe
   the codec libraries as free of third-party dependencies. {fmt} is compiled into `ac3::forge`
   and `mp4::mp4`.
+- The Forge GUI screenshots were taken again from a current build (14 of 17): the header gained
+  Inspect objects, Open stream and About, and the preset row lost 5.2. The Metadata page describes
+  the Service and production card, which had no section.
+- The Hearth page describes the desktop player as it is: it plays to network sinks, plays
+  channel-based AC-4, packages for Windows, macOS and Linux, and updates a sink's firmware. The
+  ESP32-P4 has its row, and its page is in the navigation.
+- The front page, the README and the site description name AC-4 and say where it is and is not
+  supported.
+- The performance and quality pages say which codecs their series cover: AC-4 has no speed, memory
+  or quality history, and its scoring scripts and the local race against DEE are named.
+- CONTRIBUTING.md lists the four AC-4 directories and their header layout. The file I/O, Rust API
+  and signing pages were checked against their headers and corrected.
+- ROADMAP.md lists the Hearth work as it stands and the gaps found in the documentation.
 
 **Release engineering**
 
