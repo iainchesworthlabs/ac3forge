@@ -198,8 +198,8 @@ class AcplEncoder {
 
 // The channels the spectral frontend codes for a layout, from one sample of
 // the input's channels in the layout's order: the channel pair's x0; the 5.X
-// element's two downmixes and C; ASPX_ACPL_3's Lo and Ro over 1 + sqrt 2; or
-// the immersive element's four sums, D'' to G''.
+// element's two downmixes and C; ASPX_ACPL_3's Lo and Ro over 1 + sqrt 2; the
+// immersive element's four sums, D'' to G''; or ASPX_AJCC's core (ajcc_core()).
 [[nodiscard]] std::vector<double> acpl_downmix(AcplLayout layout, std::span<const double> input);
 
 // ASPX_ACPL_1's residuals, from one sample of the input's channels in the

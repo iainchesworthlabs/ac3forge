@@ -829,6 +829,10 @@ std::vector<double> acpl_downmix(AcplLayout layout, std::span<const double> inpu
         case AcplLayout::kImmersive:
             return {kCoupled * (input[0] + input[1]), kCoupled * (input[2] + input[3]),
                     kCoupled * (input[4] + input[5]), kCoupled * (input[6] + input[7])};
+        case AcplLayout::kJoint: {
+            const std::array<double, 5> core = ajcc_core(input);
+            return {core.begin(), core.end()};
+        }
         case AcplLayout::kCoupling:
             break;
     }
