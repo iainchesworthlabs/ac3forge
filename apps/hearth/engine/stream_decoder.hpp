@@ -9,6 +9,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <vector>
 
 #include "ac3/core/eac3_tables.hpp"
 #include "ac3/core/tables.hpp"
@@ -18,6 +19,7 @@
 #include "ac3/render/layout.hpp"
 #include "ac3/render/render.hpp"
 #include "ac3/render/serving.hpp"
+#include "ac4dec/decoder.hpp"
 #include "decoder_settings.hpp"
 
 // Access units in, rendered blocks out (planning/hearth-reference-player.md,
@@ -62,8 +64,53 @@
 // between frames - the Lt/Rt phase shift's filter tail and RF mode's
 // protection gain - restart for that one frame; everything else, dialnorm
 // included, is exactly what the decoder would have applied.
+//
+// AC-4 (planning/ac4.md, I2): a unit that starts with an AC-4 sync word is one
+// sync frame, which goes to ac4::Decoder through its public API alone
+// (ac4dec/decoder.hpp): decode_by_block() hands its channels over in blocks of
+// 256 samples as the frame completes them, holding the rest for the next, and
+// each block is placed on the layout by the channels' speakers (ac4_bed()). A
+// one- or two-speaker layout takes the decoder's own downmix in place of
+// §7.8's fold, as decoder_setup() configures it. Settings change in place
+// (apply()): set_output() and set_presentation() take them from the next
+// frame, and the decoder keeps what it has read. A frame waiting for an
+// I-frame puts out nothing and is delivered as silence of the unit's length,
+// the samples the caller says it codes; a frame that fails, under no
+// concealment policy, first releases what the decoder holds, so the caller's
+// count of what came out stays true. The unit report says what the frame
+// was: its presentation, its speakers as an acmod, its dialnorm and DRC mode
+// and the decoder's latency.
 
 namespace ac3::hearth {
+
+// The coded layout an AC-4 decoder's channels make, for the renderer: each
+// speaker at the E-AC-3 channel map's location of the same place. Ls and Rs
+// stay the surround pair, which a 7.X mode keeps at the sides; Lb and Rb, Lw
+// and Rw, and Tfl and Tfr are the rear, wide and front height pairs (ETSI TS
+// 103 190-1 clause D.1; A/52 Table E2.5).
+[[nodiscard]] eac3::chanmap::Layout ac4_bed(std::span<const ac4::Speaker> speakers);
+
+// The A/52 audio coding mode with those speakers' front and surround channels,
+// which is how an AC-4 unit's layout reads where an acmod is asked for:
+// 1/0, 2/0, 3/0 or 3/2, any back, wide or height pair left out.
+[[nodiscard]] Acmod ac4_acmod(std::span<const ac4::Speaker> speakers);
+
+// What an AC-4 frame said about itself, as decoded.
+struct Ac4UnitReport {
+    // The presentation decoded, by its place in the table of contents, its
+    // presentation_id where it has one, and its name where it has been sent
+    // one.
+    std::size_t presentation = 0;
+    std::optional<int> presentation_id = std::nullopt;
+    // The dialnorm the output level was taken from (TS 103 190-1 clause
+    // 4.3.12.2.1), in dBFS, once the stream has sent one.
+    std::optional<double> dialnorm_dbfs = std::nullopt;
+    // Table 161's DRC decoder mode compressing, where one is.
+    std::optional<int> drc_mode = std::nullopt;
+    // The frame's samples at the output rate, and the decoder's delay.
+    std::size_t samples = 0;
+    int latency_samples = 0;
+};
 
 // What one access unit said about itself, as decoded.
 struct UnitReport {
@@ -104,6 +151,10 @@ struct UnitReport {
     // construction and is not rewound by reset() (a seek), the honest
     // choice given what a decoder alone can know.
     std::uint64_t sequence = 0;
+    // Set for an AC-4 unit, whose own words these are; the fields above then
+    // hold what maps (acmod, lfe, layout, concealment, bitrate), `blocks` is
+    // 0 and compr, dynrng and dialnorm are A/52's and unset or default.
+    std::optional<Ac4UnitReport> ac4 = std::nullopt;
 };
 
 // Which of an access unit's substreams are decoded.
@@ -137,10 +188,23 @@ public:
     // report arrive during the call that releases it. Returns the frames this
     // call delivered, or a sentence saying why the unit could not be decoded -
     // after which the decoders are reset, so the next unit starts clean rather
-    // than inheriting a broken state.
+    // than inheriting a broken state. An AC-4 decoder is not reset: it
+    // attempts each frame afresh, and keeps what the stream has configured.
+    // `unit_samples`, what the unit codes, is delivered as silence for an AC-4
+    // frame that waits for an I-frame; 0 delivers nothing for it.
     [[nodiscard]] std::expected<std::size_t, std::string> decode(std::span<const std::byte> unit,
                                                                  const BlockFn& deliver,
-                                                                 const UnitFn& reported = {});
+                                                                 const UnitFn& reported = {},
+                                                                 std::uint32_t unit_samples = 0);
+
+    // `settings` from the next unit, without a new decoder: true where that
+    // is how they take effect - an AC-4 stream, whose decoder takes its
+    // output processing and presentation from its next frame and keeps what
+    // it has read, or nothing decoded yet since the last reset. False, with
+    // nothing changed, while AC-3 or E-AC-3 plays: their decoders are built
+    // with their configuration, and the caller hands over to a new
+    // StreamDecoder (Session::hand_over()).
+    bool apply(const DecoderSettings& settings);
 
     // End of stream: releases and delivers whatever is still held back, and
     // reports it. Returns the frames delivered. Leaves the decoder ready for a
@@ -186,6 +250,16 @@ private:
     void place(const PcmBlock& block, const BlockFn& deliver);
     std::size_t render_flushed(std::span<DecodedSubstream> substreams, const BlockFn& deliver,
                                const UnitFn& reported);
+    // The AC-4 path (the header comment says what differs).
+    [[nodiscard]] std::expected<std::size_t, std::string> decode_ac4(
+        std::span<const std::byte> unit, const BlockFn& deliver, const UnitFn& reported,
+        std::uint32_t unit_samples);
+    void place_ac4(const ac4::PcmBlock& block, const BlockFn& deliver);
+    // Hands `frames` of silence on every slot to `deliver`, a block at a time.
+    void deliver_silence(std::size_t frames, const BlockFn& deliver);
+    // What the AC-4 decoder holds back, delivered now.
+    void flush_ac4(const BlockFn& deliver);
+    void report_ac4(const ac4::FrameInfo& info, std::size_t unit_bytes, const UnitFn& reported);
     // The two fields report_frame()/report_unit() cannot fill in themselves:
     // `out.blocks` must already be set (both of those, or render_flushed()'s
     // own manual block, do this first). `unit_bytes` is the raw bytes this
@@ -216,6 +290,13 @@ private:
     UnitReport report_{};
     // finish_report()'s own counter - see UnitReport::sequence's comment.
     std::uint64_t sequence_ = 0;
+    // AC-4: the decoder's configuration, the decoder once a unit has needed
+    // it, and the speakers renderer_'s bed was last set from.
+    ac4::DecoderConfig ac4_config_{};
+    std::optional<ac4::Decoder> ac4_decoder_;
+    std::vector<ac4::Speaker> ac4_speakers_;
+    // A block of silence, for deliver_silence().
+    std::array<float, kSamplesPerBlock> zeros_{};
 };
 
 }  // namespace ac3::hearth

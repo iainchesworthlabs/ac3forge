@@ -315,10 +315,12 @@ TEST_CASE("diagnostics: the process log is one log, and survives", "[hearth][dia
 TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "[hearth][diagnostics]") {
     CHECK(describe(DecoderSettings{}) ==
-          "line mode, stereo fold Lo/Ro, no LFE in folds, the stream's mix levels, "
+          "line mode, stereo fold Lo/Ro, LFE in AC-4's folds only, the stream's mix levels, "
           "dual mono: both, the first programme, objects for height layouts, "
           "objects reconstructed in the QMF domain, concealment: repeat and fade, "
-          "fast inverse transform");
+          "fast inverse transform, AC-4: the stream's presentation, dialogue to -31 dBFS, "
+          "the DRC mode for the output level, dialogue enhancement 0 dB, dialogue +0.0 dB, "
+          "no audio description, the stereo fold's downmix");
     DecoderSettings custom;
     custom.mode = ac3::OperatingMode::kCustom;
     custom.drc_cut = 0.5;
@@ -336,13 +338,23 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
     custom.objects = ac3::render::ObjectsPolicy::kNever;
     custom.concealment = ac3::ConcealmentPolicy::kNone;
     custom.fast_inverse_transform = false;
+    custom.ac4.presentation_id = 7;
+    custom.ac4.output_level_dbfs = -20.0;
+    custom.ac4.drc = ac4::DrcMode::kPortableHeadphones;
+    custom.ac4.dialogue_enhancement_db = 6.0;
+    custom.ac4.dialogue_db = -3.0;
+    custom.ac4.audio_description = true;
+    custom.ac4.associated_db = -9.5;
+    custom.ac4.preferred_downmix = true;
     CHECK(describe(custom) ==
           "custom mode (cut 0.50, boost 0.25, compr on, dialogue as coded), "
           "stereo fold Lt/Rt (phase shift off), LFE in folds, "
           "mix levels Lo/Ro centre 0.500, Lt/Rt surround 0.707, LFE -3.0 dB, "
           "dual mono: channel 2, programme 2, objects never, "
           "objects reconstructed in the QMF domain, no concealment, "
-          "reference inverse transform");
+          "reference inverse transform, AC-4: presentation_id 7, dialogue to -20 dBFS, "
+          "portable headphones DRC, dialogue enhancement 6 dB, dialogue -3.0 dB, "
+          "audio description at -9.5 dB, the stream's preferred downmix");
     DecoderSettings rf;
     rf.mode = ac3::OperatingMode::kRf;
     rf.mix_levels.loro_slev = 0.0;
@@ -350,12 +362,17 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
     rf.dual_mono = ac3::hearth::DualMonoChoice::kFirst;
     rf.objects = ac3::render::ObjectsPolicy::kAlways;
     rf.concealment = ac3::ConcealmentPolicy::kMute;
+    rf.mix_lfe = false;
+    rf.ac4.normalise = false;
+    rf.ac4.language = "fr";
     CHECK(describe(rf) ==
           "RF mode (ceiling 0.0 dBFS), stereo fold Lo/Ro, no LFE in folds, "
           "mix levels Lo/Ro surround 0.000, Lt/Rt centre 1.000, "
           "dual mono: channel 1, the first programme, objects always, "
           "objects reconstructed in the QMF domain, concealment: mute, "
-          "fast inverse transform");
+          "fast inverse transform, AC-4: a presentation in fr, the coded level, no compression, "
+          "dialogue enhancement 0 dB, dialogue +0.0 dB, no audio description, the stereo fold's "
+          "downmix");
 
     CHECK(ac3::hearth::describe_item(0, "First") == "item 1 \"First\"");
     CHECK(ac3::hearth::describe_item(ac3::hearth::Queue::kNone, "Gone") ==

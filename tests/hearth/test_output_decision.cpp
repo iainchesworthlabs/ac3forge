@@ -308,6 +308,36 @@ TEST_CASE("output decision: no outputs at all, and an item that cannot be bitstr
     CHECK_FALSE(mentions(decoded.reason, "IEC 61937"));
 }
 
+TEST_CASE("output decision: an AC-4 item is decoded here whatever is pinned",
+          "[hearth][output-decision][ac4]") {
+    // planning/ac4.md, I2: AC-4 decodes to PCM for every output of this
+    // machine, and no IEC 61937 link carries it, even to a receiver that takes
+    // AC-3 - AC-4 is not transcoded - or to one that says it takes E-AC-3.
+    const std::vector<EndpointFacts> endpoints{receiver("Onkyo", /*eac3=*/true, /*ac3=*/true,
+                                                        /*is_default=*/true)};
+    for (const BitstreamFormat link :
+         {BitstreamFormat::kAc4, BitstreamFormat::kAc4Hbr4, BitstreamFormat::kAc4Hbr16}) {
+        CAPTURE(ac3::audio::format_name(link));
+        const auto automatic = choose_output(asking(endpoints, link));
+        CHECK(automatic.mode == OutputMode::kLocalPcm);
+        CHECK(mentions(automatic.reason, "No output takes AC-4"));
+
+        auto pinned = asking(endpoints, link);
+        pinned.pinned = OutputMode::kBitstream;
+        const auto bitstream = choose_output(pinned);
+        CHECK(bitstream.mode == OutputMode::kLocalPcm);
+        CHECK(mentions(bitstream.reason, "output takes AC-4"));
+
+        pinned.pinned = OutputMode::kBitstreamAsAc3;
+        const auto as_ac3 = choose_output(pinned);
+        CHECK(as_ac3.mode == OutputMode::kLocalPcm);
+        CHECK(mentions(as_ac3.reason, "cannot be transcoded to AC-3"));
+
+        pinned.follow_sink = false;
+        CHECK(choose_output(pinned).mode == OutputMode::kNone);
+    }
+}
+
 TEST_CASE("output decision: holding the default endpoint exclusively is called out",
           "[hearth][output-decision]") {
     const std::vector<EndpointFacts> endpoints{

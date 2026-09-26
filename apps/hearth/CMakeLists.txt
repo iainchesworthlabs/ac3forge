@@ -8,7 +8,9 @@
 # packaged, notices for what it bundles; A7's packaging targets neither a
 # fuzz build nor AC3FORGE_SENDSPIN_CORE_ONLY has ever meant to reach), so an
 # AC3FORGE_SENDSPIN_CORE_ONLY build (fuzz/run.sh, the only thing that sets it)
-# leaves all three out, along with the notices for what they link.
+# leaves all three out, along with the notices for what they link, and
+# ac3hearth-render with them: it needs only the engine, but it is a tool for
+# the checks, which a fuzz build does not run.
 add_subdirectory(engine)
 
 if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
@@ -49,5 +51,6 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     endif()
     add_subdirectory(testsink)
     add_subdirectory(testserver)
+    add_subdirectory(render)
     include("${CMAKE_CURRENT_SOURCE_DIR}/notices/notices.cmake")
 endif()

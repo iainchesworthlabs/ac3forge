@@ -936,6 +936,38 @@ The sections below contain the complete change list and fixes.
     when it was due on each board (its own `worst_error_us`). A hidden `ac3tests` case,
     `[hearth-network-live]`, repeats that against the sinks named in `AC3HEARTH_LIVE_SINKS`, and
     withdraws its pairings afterwards.
+- **Hearth plays AC-4** (phase I2 of `planning/ac4.md`), through `ac4::Decoder`'s public API alone.
+  - `Session::open()` takes an AC-4 elementary stream. Its units are the sync frames, each as long
+    as Part 2 Table 47 makes it for the frame's place in the `sequence_counter` cycle, so an item's
+    duration and a join's sample count are exact at 29.97 fps too. A seek starts the decoder at an
+    I-frame at least 6 144 samples before the point asked for, and what plays from that point
+    equals an unbroken decode. A stream with no presentation the decoder decodes is refused when
+    it opens, with the decoder's reason.
+  - `StreamDecoder` decodes 256 samples at a time and renders onto the speaker layout; a change of
+    settings reaches the playing item at its next frame, in the same decoder.
+  - `DecoderSettings::ac4` holds AC-4's own controls: the presentation, by `presentation_id` or
+    place; the listener's language, which the window sets from its own; audio description and its
+    level; the dialogue level; dialogue enhancement; dialogue normalisation, with the output level
+    and the DRC decoder mode, which stay apart from AC-3's and E-AC-3's operating mode
+    (decision 12); and a fold by the stream's preferred downmix. The stereo fold, the LFE in a fold
+    and concealment are the settings AC-3 and E-AC-3 use. The LFE is unset until the listener sets
+    it, and unset means off for AC-3 and E-AC-3 and on for AC-4.
+  - The Decoder page's AC-4 tab loses its "Not in this build" banner, and each of those settings
+    is a control on it; the tab turns to the format of the item playing. The Media page drops its
+    "Not playable" banner and shows what the decoder reads of a stream: frame rate, bit rate,
+    I-frames, splices, each presentation, and the loudness, DRC, dialogue enhancement and downmix
+    metadata of the presentation a decoder selects with no preferences.
+  - AC-4 is decoded for every output. A network group is also sent the stream as IEC 61937-14
+    bursts, of the type its largest frame needs and timed from the session's units, for members on
+    the extension role that list `"ac4"`; an item whose bursts differ from what the group carries
+    starts the group again, which now also holds for AC-3 against E-AC-3.
+  - Checked: `[hearth][ac4]` cases play every committed AC-4 stream through the engine sample for
+    sample as `ac4::Decoder` decodes it, and hold each control on tone streams to Part 1's formula
+    for it; `tst_decoder_ac4.qml` drives each control from the page and measures what reaches the
+    fake device tone by tone, to 0.1 dB. `ac3hearth-render` plays an item through the engine into a
+    WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds its output level, downmixes and
+    dialogue enhancement to the formulas it holds `ac3cli decode` to, on the committed streams and
+    the encoder's, in the Hearth CI job.
 
 **Audio outputs**
 

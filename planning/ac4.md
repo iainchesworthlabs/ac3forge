@@ -2119,20 +2119,45 @@ through `tools/checks/generate_support_matrices.py`).
 #### I2: Hearth desktop
 
 - An AC-4 decoder in the engine's `StreamDecoder` shape (`apps/hearth/engine/stream_decoder.hpp`),
-  rendering onto `render::OutputLayout`, and `Session::open` accepting AC-4, which today requires
-  `io::scan` and so marks AC-4 items unplayable.
-- `DecoderSettings` gains AC-4's controls: presentation, DRC decoder mode and output level shown
-  apart from E-AC-3's ([decision 12](#decisions)), dialogue enhancement, the associated mix and the
-  downmix. `DecoderAc4.qml`'s disabled cards are enabled and its "Not in this build" banner goes;
-  media information comes from the decoder.
-- AC-4 decodes to PCM for every output, and is sent as a bitstream only over the extension role,
-  from D11 and Hearth's A4, to sinks that decode it.
+  rendering onto `render::OutputLayout`, and `Session::open` accepting AC-4
+  (`apps/hearth/engine/ac4_stream.hpp`). An item's units are its sync frames, each as long as Part 2
+  Table 47 makes it for the frame's place in the `sequence_counter` cycle, so a queue's sample
+  counts stay exact at the 1000/1001 rates. The decoder runs through `ac4::Decoder`'s public API
+  alone, 256 samples at a time; what it holds back is flushed before a frame that waits for an
+  I-frame, an error and an item's end, so each unit puts out its own length. A seek starts the
+  decoder at an I-frame at least 6 144 samples before the point asked for, and what plays from that
+  point equals an unbroken decode. A stream none of whose presentations the decoder decodes is
+  refused when it opens, with the decoder's reason.
+- `DecoderSettings` gains AC-4's controls: the presentation, by id or place, and the listener's
+  language; the DRC decoder mode and the output level, with normalisation, shown apart from
+  E-AC-3's ([decision 12](#decisions)); dialogue enhancement; the dialogue level; audio description
+  and its level; and a fold by the stream's preferred downmix. The stereo fold, the LFE and
+  concealment are E-AC-3's own settings ("One control for both formats"); the LFE is unset until
+  the listener sets it, which means off for E-AC-3 and on for AC-4. A change reaches the playing
+  item at its next frame in the same decoder. `DecoderAc4.qml`'s cards are live and its banner has
+  gone, the Decoder tab follows the playing item's format, and the Media page shows the decoder's
+  media information.
+- AC-4 decodes to PCM for every output. A network group is also sent the stream as D11's bursts,
+  of the type its largest frame needs and timed from the session's units, which the members on the
+  extension role that list `"ac4"` take; members on player@v1 get the decoded PCM, as with any item.
+  A presentation other than the one a sink chooses with no preferences is decoded here, for every
+  member.
+- I2 found three things. A sink on the extension role that does not list `"ac4"`, which is every
+  board until D14, is sent nothing for an AC-4 item; the pull request gives the options. The page
+  cannot ask for Pro Logic II, since the decoder takes Lt/Rt's Pro Logic II form only where the
+  stream prefers it (Table 150), so the design's third downmix segment became "Follow the stream's
+  preferred downmix". And a group item whose burst type differed from what the group carried, AC-3
+  after E-AC-3 as well as AC-4 after either, was sent on the first item's stream start; the group
+  now starts again.
 
 **Exit:** the engine plays every committed AC-4 stream through the decoder's public API; each
 control, driven from the page, changes the decoded output as its formula says, measured with tones;
 the UI tests pass.
 
-**Verified by:** the `[hearth]` tests; the QML tests; the gain scripts through the engine.
+**Verified by:** the `[hearth]` tests; the QML tests (`tst_decoder_ac4.qml` measures each control's
+effect tone by tone at the fake device); the gain scripts through the engine, with
+`ac3hearth-render` playing an item through the engine into a WAV file for
+`gain_ac4_decode.py --engine`, in the Hearth CI job.
 
 #### I3: Forge GUI
 

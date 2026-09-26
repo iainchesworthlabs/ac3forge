@@ -54,11 +54,20 @@ encoder's immersive codec modes, the experimental ASPX_AJCC among them, with eac
 whose renders are held to Part 2's channel renderer with the custom downmix data the stream sends
 (phase E8).
 
+--engine RENDER decodes through Hearth's engine instead (planning/ac4.md, phase I2): RENDER is
+ac3hearth-render (apps/hearth/render), which plays a stream through the player, session and stream
+decoder the window uses, and each of ac3cli's options above becomes the Decoder page's setting for
+it (engine_settings()). The coded output is the engine's too, on a layout of the stream's own
+channels in ac3cli's order; the stream's values still come from ac3cli's syntax trace, and the
+formulas and tolerances are the same.
+
 Usage:
     python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
     python tools/checks/gain_ac4_decode.py --cli ac3cli.exe --gold D:/ac3bld/ac4-gold
     python tools/checks/gain_ac4_decode.py --cli ac3cli.exe --gold D:/ac3bld/ac4-gold --g1
     python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli --encoder
+    python tools/checks/gain_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli \
+        --engine build/config-linux-llvm/bin/ac3hearth-render
 """
 
 import argparse
@@ -142,6 +151,9 @@ TONES_HZ = (440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0)
 # A 5.1.4 leg's top channels' tones, Tfl Tfr Tbl Tbr.
 TOP_TONES_HZ = (1490.0, 1730.0, 1970.0, 2210.0)
 ENCODER_SECONDS = 4
+# --engine: the layout of a stream's own channels, in the order ac3cli decode writes them.
+ENGINE_LAYOUTS = {1: "1.0", 2: "2.0", 5: "L,R,C,Ls,Rs", 6: "L,R,C,LFE,Ls,Rs"}
+
 # The G1 legs (the gold manifest's g1_legs) --g1 adds, for the immersive element's renders: DEE's
 # 5.1.4 tones with each height downmix its options give (custom downmix data for 5.X.0), with each
 # stereo downmix method and each centre and surround mix gain, and film at each of DEE's 5.1.4
@@ -563,6 +575,44 @@ def decode(cli, stream, out_wav, *options):
     return samples
 
 
+def engine_settings(options, layout):
+    """ac3cli decode's `options` as ac3hearth-render's settings, the Decoder page's AC-4 controls
+    (apps/hearth/engine/decoder_settings.hpp), on `layout` unless an option folds it."""
+    settings = []
+    for option in options:
+        key, _, value = option.partition("=")
+        if key == "output-level":
+            settings += ["normalise=on", option]
+        elif key == "drcmode":
+            settings.append(f"drc={value}")
+        elif key == "dialogue-enhancement":
+            settings.append(option)
+        elif key == "channels" and value == "2":
+            # A stereo fold by the stream's preferred method.
+            layout = "2.0"
+            settings.append("preferred-downmix=on")
+        elif key == "downmix" and value in ("loro", "ltrt"):
+            layout = "2.0"
+            settings.append(option)
+        elif key == "downmix" and value == "mono":
+            # A one-speaker layout, which folds to L + R of the stream's preferred downmix.
+            layout = "1.0"
+        else:
+            raise SystemExit(f"--engine: ac3cli's {option} has no setting here")
+    return [f"layout={layout}", *settings]
+
+
+def render(engine, stream, out_wav, layout, *options):
+    """decode()'s output through Hearth's engine: ac3hearth-render with engine_settings()."""
+    command = [str(engine), str(stream), str(out_wav), *engine_settings(options, layout)]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise SystemExit(f"{stream}: ac3hearth-render {' '.join(command[3:])} failed "
+                         f"({result.returncode}):\n{result.stdout}{result.stderr}")
+    samples, _ = read_wav(out_wav)
+    return samples
+
+
 def residual_db(expected, got):
     """How far under `expected` what separates it from `got` is, in dB; -inf where nothing does."""
     error = float(np.sum((got - expected) ** 2))
@@ -613,6 +663,8 @@ def main():
                         help="with --gold, check the G1 legs G1_LEGS names as well")
     parser.add_argument("--encoder", action="store_true",
                         help="check streams ac4-encode writes here (ENCODER_LEGS)")
+    parser.add_argument("--engine", type=Path,
+                        help="decode through Hearth's engine with this ac3hearth-render")
     parser.add_argument("--work", type=Path, help="scratch directory (default: a temporary one)")
     parser.add_argument("--only", nargs="+", metavar="LEG", help="check only these legs")
     args = parser.parse_args()
@@ -633,6 +685,21 @@ def main():
         for name, stream, dialogue, layout in legs:
             trace = work / f"{name}.trace"
             coded = decode(args.cli, stream, work / f"{name}.wav", f"syntax-trace={trace}")
+            if args.engine:
+                layout = ENGINE_LAYOUTS.get(coded.shape[1])
+                if layout is None:
+                    failures.append(f"{name}: no layout for its {coded.shape[1]} channels")
+                    continue
+
+                def output(path, *options, stream=stream, layout=layout):
+                    return render(args.engine, stream, path, layout, *options)
+
+                coded = output(work / f"{name}-engine.wav")
+            else:
+
+                def output(path, *options, stream=stream):
+                    return decode(args.cli, stream, path, *options)
+
             values, change, frames = stream_values(trace)
             cdmx, cdmx_change = cdmx_values(trace)
             if cdmx_change is not None:
@@ -653,8 +720,7 @@ def main():
             dialnorm = -values["dialnorm_bits"] / 4.0
             cells = [] if change is None else [f"(to frame {change})"]
             for lout in OUTPUT_LEVELS:
-                out = decode(args.cli, stream, work / f"{name}-level.wav", f"output-level={lout:g}",
-                             "drcmode=off")
+                out = output(work / f"{name}-level.wav", f"output-level={lout:g}", "drcmode=off")
                 a, b = coded[skip:end], out[skip:end]
                 gain_db = db(float(np.sum(a * b) / np.sum(a * a)))
                 expected_db = db(2.0 ** ((lout - dialnorm) / 6.0))
@@ -671,8 +737,7 @@ def main():
                 cap = 3.0 * (values.get("de_max_gain", 0) + 1)
                 cells = []
                 for gain in DE_GAINS:
-                    out = decode(args.cli, stream, work / f"{name}-de.wav",
-                                 f"dialogue-enhancement={gain:g}")
+                    out = output(work / f"{name}-de.wav", f"dialogue-enhancement={gain:g}")
                     worst = 0.0
                     for c in range(coded.shape[1]):
                         a, b = coded[skip:end, c], out[skip:end, c]
@@ -706,7 +771,7 @@ def main():
             cells = []
             for target, options in (("stereo", ("channels=2",)), ("loro", ("downmix=loro",)),
                                     ("ltrt", ("downmix=ltrt",)), ("mono", ("downmix=mono",))):
-                out = decode(args.cli, stream, work / f"{name}-{target}.wav", *options)
+                out = output(work / f"{name}-{target}.wav", *options)
                 matrix = stereo_matrix(downmix, target)
                 if out.shape[1] != matrix.shape[0]:
                     failures.append(f"{name}: {target} gives {out.shape[1]} channels, not "

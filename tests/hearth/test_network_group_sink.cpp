@@ -254,7 +254,7 @@ TEST_CASE("network group sink: PCM and a burst reach real sinks through the wrap
     std::int64_t next_frame = 0;
     const auto burst_deadline = std::chrono::steady_clock::now() + 30s;
     while (played_burst() < 1 && std::chrono::steady_clock::now() < burst_deadline) {
-        if (sink->submit_burst(pc, pd, unit, next_frame)) {
+        if (sink->submit_burst(pc, pd, unit, next_frame, ac3::kSamplesPerFrame)) {
             next_frame += ac3::kSamplesPerFrame;
         }
         std::this_thread::sleep_for(32ms);
