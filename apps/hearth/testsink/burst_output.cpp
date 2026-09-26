@@ -110,9 +110,8 @@ BurstOutput::BurstOutput(std::filesystem::path directory, std::string prefix, co
       config_(configured(serving_)),
       renderer_(layout) {}
 
-BurstOutput::~BurstOutput() {
-    end();
-}
+// As WavOutput's: writer_'s and log_'s own destructors close both files as end() does.
+BurstOutput::~BurstOutput() = default;
 
 bool BurstOutput::start(const ac::StreamStart& stream) {
     end();

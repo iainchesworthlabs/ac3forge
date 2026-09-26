@@ -316,9 +316,14 @@ On the new image:
 - A panic, a watchdog reset, a brownout or a power cut before acceptance also rolls back, through
   the bootloader. A board that hangs during its trial can therefore be unplugged and plugged back
   in, and it comes back on the previous image.
-- The trial runs on a task of its own, not in app_main's loop, so a stuck loop still rolls back.
-  An `esp_timer` 30 s past the deadline restarts the board if that task has not acted, and a
-  restart while on trial is itself a rollback.
+- The trial is read once a second by an `esp_timer`, not in app_main's loop, so a stuck loop
+  still rolls back. It has no task of its own until it has decided: a short-lived task then
+  writes the decision to otadata and NVS, which needs more stack than `esp_timer`'s task has. A
+  task kept for the whole trial took 6 KiB of internal RAM as the board started, and on the S3
+  board that left the Sendspin player without the 32 KiB block it starts with, so no update
+  could pass its trial there (found by O2). A second `esp_timer`, 30 s past the deadline,
+  restarts the board if the trial has not acted, and a restart while on trial is itself a
+  rollback.
 - The task watchdog is left as the builds set it: it reports and does not panic
   (`CONFIG_ESP_TASK_WDT_PANIC` is off in every board build). A decode that keeps the idle task
   from running for 5 s makes it fire. That is a problem of load, not a broken image, and a trial
@@ -530,6 +535,21 @@ After an upload the page polls `GET /hardware` until the board answers with the 
 reloads. Pages are already served `Cache-Control: no-cache`, so the page that reloads is the new
 image's. The device-UI suite gains the routes in `stub.js` and in `contract.spec.js`'s route
 check. The page budget (45,056 bytes, 42,846 used) is derived again, as each redesign did.
+
+**Built 2026-09-25**, as [the device page's plan](esp32-device-ui.md#firmware) describes, with
+three changes to the sketch:
+
+- The page reads `GET /firmware` rather than `GET /hardware` for what the board runs. When the
+  board answers again running another image than the page was loaded with, the page loads
+  again, whoever made the update.
+- It reads the image's head before sending, and keeps back a file the board would refuse on it
+  alone. An upload enters flash mode before the board reads a byte, so a wrong file would stop
+  what plays for nothing.
+- It sends no `Content-Digest`. A page on plain HTTP has no `crypto.subtle`, and the board
+  checks the image's own SHA-256 and reads back what it wrote. The device page's decision 29
+  has the reasoning.
+
+The budget is 57,344 bytes, against 55,454 used.
 
 ## ac3hearth (O5)
 
@@ -813,7 +833,7 @@ that image has to be able to take the next update.
   - the time each step takes;
   - the C6's internal heap low-water mark during an upload;
   - on the P4, a v3.1 image is refused before anything is written.
-- **O3.** The page's Firmware section.
+- **O3.** The page's Firmware section ([built](#the-web-page-o3)).
 - **O4, diagnostics without a cable.** Core dumps to the `coredump` partition, fetched with
   `GET /firmware/coredump` and read with `idf.py coredump-info`. Also a ring of recent console
   lines at `GET /log`, since flashing without a cable also means reading the console without one.

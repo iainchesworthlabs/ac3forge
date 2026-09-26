@@ -243,7 +243,10 @@ The sections below contain the complete change list and fixes.
     check stops before an update writes anything.
   - **The trial.** The new image boots on trial and is accepted after 30 s holding a network
     address, the HTTP server and the Sendspin player. It goes back to the previous image if
-    it does not get there within 5 minutes, or if it resets first.
+    it does not get there within 5 minutes, or if it resets first. The trial is read from a
+    timer and takes a task only to write what it decided: a task kept for the whole trial
+    left the S3 board's Sendspin player without the internal RAM it starts with, so no update
+    could pass its trial on that board.
   - **`Host`.** The firmware PUTs answer only requests addressed to the board's IP address or
     its own name.
   - **Built-in networks.** A network built into an image is now stored in NVS at first boot,
@@ -251,6 +254,12 @@ The sections below contain the complete change list and fixes.
   - **`tools/hearth/ota.py`**, and `idf.py ota` through the example's `idf_ext.py`, push a
     build to one board or to every board on the network, and wait for each to accept or go
     back.
+  - **The board's web page has a Firmware section.** It shows both slots, a trial and its time
+    left, an update under way and how the last one ended. **Update firmware…** sends an image
+    chosen from a file and shows the bytes sent; **Restart** and **Roll back** ask first. A
+    file the board would refuse on its head alone is not sent, since an upload stops what plays
+    before the board reads it. When the board comes back running another image, the page loads
+    again.
   - **A QEMU test.** CI updates the emulated ESP32-S3 end to end
     (`tools/checks/run_ota_qemu.py`): an accepted update, five refusals, an image that never
     becomes healthy, one that panics on its trial, a rollback by request, and a damaged slot
@@ -1023,6 +1032,19 @@ The sections below contain the complete change list and fixes.
   `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
   `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
   rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
+- **Golden masters for the AC-4 phases still to come** (phase G1 of `planning/ac4.md`). DEE's
+  licence ends on 2026-11-06 and is not renewed, so the gold set gains 439 legs beside G0's, each
+  made from committed material by `gen_ac4_baseline.py` and grouped by the phases it serves: sweeps,
+  noise and transients at every 2.0, 5.1 and 5.1.4 rate; film and speech at 5.1.4, with the
+  immersive codec mode each rate gives; immersive stereo at every rate and frame rate, and in
+  gapless parts that meet at DEE's splices; metadata at 2.0, 5.1, 5.1.4 and immersive stereo,
+  among it stepped tones under each DRC profile, every mix level and height downmix gain, loudness
+  targets from −31 to −10 and language tags; substreams for presentations; 60 s programmes; 7.1
+  input; and E-AC-3, AC-3 and E-AC-3 JOC from the same sources. Each keeps MediaInfo's trace of
+  every frame, DEE's MP4 of it and what `ac3cli` made of it. Three 5 s 5.1.4 streams of one tone
+  per channel, one in each immersive codec mode, are committed. DEE writes no AC-4 from objects:
+  its object encoders take only an Atmos master, and refuse every ADM BWF master this project
+  writes as not authored with Dolby tools.
 - **AC-4 decodes to PCM for mono and stereo in the SIMPLE codec mode** (phase D2 of
   `planning/ac4.md`). `ac4::Decoder::decode()` reconstructs the audio spectral frontend
   (dequantisation, scale factors, noise fill), stereo processing (M/S and prediction), the inverse
@@ -1562,6 +1584,9 @@ The sections below contain the complete change list and fixes.
   rows, and four stale claims corrected.
 - The CLI reference lists all forty-two commands, including the previously-undocumented
   `spatial`.
+- The threat model, the WebAssembly page, the ADM page and the building guide no longer describe
+  the codec libraries as free of third-party dependencies. {fmt} is compiled into `ac3::forge`
+  and `mp4::mp4`.
 
 **Release engineering**
 

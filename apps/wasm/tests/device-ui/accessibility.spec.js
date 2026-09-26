@@ -25,10 +25,10 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
     await expect(page.getByRole('main')).toBeVisible();
     await expect(page.getByRole('contentinfo')).toBeVisible();
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('hearth-a1b2c3');
-    for (const name of ['Now', 'Sendspin', 'Settings', 'Real time']) {
+    for (const name of ['Now', 'Sendspin', 'Settings', 'Real time', 'Firmware']) {
         await expect(page.getByRole('heading', { level: 2, name })).toBeVisible();
     }
-    for (const name of ['Now', 'Sendspin', 'Settings', 'Real time']) {
+    for (const name of ['Now', 'Sendspin', 'Settings', 'Real time', 'Firmware']) {
         await expect(page.getByRole('region', { name })).toBeVisible();
     }
     await expect(page.getByRole('textbox', { name: 'Name' })).toBeVisible();
@@ -48,14 +48,18 @@ test('landmarks, headings and a name for every control', async ({ page }) => {
     await expect(page.locator('summary', { hasText: 'What an output layout does' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Apply' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Forget every server' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Update firmware…' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Restart' })).toBeVisible();
     await expect(page.getByRole('status')).toHaveCount(1);
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
 
 test('every action from the keyboard, in page order', async ({ page, stub }) => {
+    // The firmware section shows once GET /firmware has answered.
+    await expect(page.getByRole('region', { name: 'Firmware' })).toBeVisible();
     await page.locator('body').click({ position: { x: 1, y: 1 } });
     // A radio group is one stop, at its chosen radio.
-    const order = ['ss-forget', 'wiring', 'slot-width=32', 'layout=2.0', 'layout-input', 'Apply', 'What an output layout does', 'name-input', 'Save', 'ssid-input', 'pass-input', 'pass-show', 'Save', 'Counters'];
+    const order = ['ss-forget', 'wiring', 'slot-width=32', 'layout=2.0', 'layout-input', 'Apply', 'What an output layout does', 'name-input', 'Save', 'ssid-input', 'pass-input', 'pass-show', 'Save', 'fw-pick', 'fw-restart', 'Counters'];
     const focused = () =>
         page.evaluate(() => {
             const el = /** @type {HTMLInputElement} */ (document.activeElement);
@@ -246,6 +250,8 @@ test('controls at least 44 CSS pixels tall', async ({ page, stub }) => {
         page.locator('summary', { hasText: 'What an output layout does' }),
         page.locator('summary', { hasText: 'Counters' }),
         page.getByRole('button', { name: 'Forget every server' }),
+        page.getByRole('button', { name: 'Update firmware…' }),
+        page.getByRole('button', { name: 'Restart' }),
     ]) {
         const box = await control.boundingBox();
         expect(box && box.height, await control.evaluate((el) => el.outerHTML.slice(0, 60))).toBeGreaterThanOrEqual(44);

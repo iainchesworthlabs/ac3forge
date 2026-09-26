@@ -1060,7 +1060,10 @@ class IdfExtension(unittest.TestCase):
 
     def test_the_ota_action(self) -> None:
         module = self.load()
-        action = module.action_extensions({}, str(EXAMPLE))["actions"]["ota"]
+        extensions = module.action_extensions({}, str(EXAMPLE))
+        # ESP-IDF v6.1's idf.py loads no extension without one.
+        self.assertTrue(extensions.get("version"))
+        action = extensions["actions"]["ota"]
         self.assertEqual(
             [option["names"] for option in action["options"]], [["--host"], ["--yes"], ["--force"]]
         )

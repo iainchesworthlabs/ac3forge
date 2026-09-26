@@ -153,8 +153,8 @@ than cartesian (a default-constructed `AudioBlockFormat` is one: its `position` 
 
 ## Built on the EBU's own reference implementations
 
-Unlike every other module in this project, `ac3adm::ac3adm` is not a from-scratch, dependency-free
-implementation. It is a thin translation layer over two vendored third-party libraries, fetched
+Unlike every other module in this project, `ac3adm::ac3adm` is not a from-scratch implementation
+of its format. It is a thin translation layer over two vendored third-party libraries, fetched
 via CMake `FetchContent` (see [`src/ac3adm/CMakeLists.txt`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/CMakeLists.txt)):
 
 - **[libbw64](https://github.com/pwnified/libbw64)** (Apache-2.0, header-only, no dependency of

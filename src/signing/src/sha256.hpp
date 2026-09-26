@@ -3,7 +3,7 @@
 // SHA-256 (FIPS 180-4), self-contained. Internal to ac3::signing - not on the
 // target's public include path, since callers want hmac_sha256 (and the EMDF
 // signer above that), never the raw hash. No third-party dependency by design:
-// the codec and everything linked beside it stay dependency-free (see the top
+// the codec's only third-party library is {fmt}, for formatting (see the top
 // of vcpkg.json), so this is a from-the-standard implementation rather than a
 // pull of OpenSSL/mbedTLS for one primitive.
 
