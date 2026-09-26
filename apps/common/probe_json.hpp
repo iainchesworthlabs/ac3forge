@@ -93,7 +93,7 @@ void write_ac4_stream(JsonSink& json, const Ac4Summary& summary);
 
 // The "container" member: what a Matroska, MP4 or MPEG-TS file said of the
 // track whose stream the document describes, in the members Hearth's media
-// information writes. A bare elementary stream's document has no such member.
+// information writes; null for a bare elementary stream.
 void write_container(JsonSink& json, const ContainerFacts& facts);
 
 }  // namespace ac3::apps::probe_json

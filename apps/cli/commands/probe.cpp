@@ -620,9 +620,8 @@ int run_probe_ac4(std::string_view in_path, std::istream& in, const Options& met
         json.member("schema", "ac3forge.probe/1");
         json.member("generator", ac3::version_full);
         json.member("file", in_path);
-        if (container.kind != ac3::apps::ContainerKind::kUnknown) {
-            write_container(json, container);
-        }
+        // null for a bare stream: the schema's members are never omitted.
+        write_container(json, container);
         write_ac4_stream(json, summary);
         json.end_object();
         json.finish();
@@ -719,9 +718,8 @@ int run_probe(std::string_view in_path, const Options& meta) {
         json.member("schema", "ac3forge.probe/1");
         json.member("generator", ac3::version_full);
         json.member("file", in_path);
-        if (container.kind != ac3::apps::ContainerKind::kUnknown) {
-            write_container(json, container);
-        }
+        // null for a bare stream: the schema's members are never omitted.
+        write_container(json, container);
         if (detail != Detail::kNone) {
             json.key("access_units");
             json.begin_array();

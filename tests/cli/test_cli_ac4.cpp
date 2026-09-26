@@ -452,8 +452,9 @@ TEST_CASE("probe reads AC-4 inside MP4 and MPEG-TS and says what the container s
     const auto from_ts = probe_json(ts);
     CHECK(json_field(json_section(from_ts, "container"), "format") == "\"mpegts\"");
     CHECK(json_field(json_section(from_ts, "stream"), "codec") == "\"ac4\"");
-    // A bare stream's document has no container member.
-    CHECK_FALSE(contains(probe_json(metadata_ac4()), "\"container\""));
+    // A bare stream's container is null, as the schema's members are never
+    // omitted.
+    CHECK(contains(probe_json(metadata_ac4()), "\"container\": null"));
 }
 
 TEST_CASE("spdif wraps AC-4 in IEC 61937-14 bursts that unspdif reads back unchanged",
