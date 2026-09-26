@@ -29,9 +29,11 @@
 #include "ac4enc/encoder.hpp"
 #include "dsp/qmf.hpp"
 #include "pcm/drc.hpp"
+#include "sanitized.hpp"
 
 namespace {
 
+using ac3::test::kSanitized;
 namespace detail = ac4::detail;
 using QmfValue = std::complex<double>;
 
@@ -446,7 +448,11 @@ TEST_CASE(
         input[0][n] = x;
         input[1][n] = x;
     }
-    for (const double dialnorm : {-31.0, -27.0, -24.0, -20.0, -17.0}) {
+    // Under the sanitizers the two ends and the middle.
+    const std::vector<double> dialnorms =
+        kSanitized ? std::vector<double>{-31.0, -24.0, -17.0}
+                   : std::vector<double>{-31.0, -27.0, -24.0, -20.0, -17.0};
+    for (const double dialnorm : dialnorms) {
         CAPTURE(dialnorm);
         ac4::EncoderConfig config;
         config.dialnorm_db = dialnorm;
@@ -493,6 +499,11 @@ TEST_CASE("DEE's 5.1 stream compresses in the modes it configures, within its cu
     std::vector<std::span<const std::byte>> raw;
     for (const ac4::SyncFrame& frame : scan.frames) {
         raw.push_back(frame.raw_ac4_frame);
+    }
+    // Under the sanitizers the first 72 frames, three seconds, over which both
+    // modes compress by as much as over the whole stream.
+    if (kSanitized) {
+        raw.resize(std::min<std::size_t>(raw.size(), 72));
     }
     const auto off = decode_all(
         raw, {.output_level_dbfs = -31.0, .drc = ac4::DrcMode::kOff, .headphones = false});

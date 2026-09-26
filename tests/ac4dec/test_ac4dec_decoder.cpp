@@ -21,10 +21,12 @@
 
 #include "ac4/ac4.hpp"
 #include "ac4dec/decoder.hpp"
+#include "sanitized.hpp"
 
 namespace {
 
 namespace fs = std::filesystem;
+using ac3::test::kSanitized;
 
 std::vector<std::byte> read_stream(const std::string& leg) {
     const fs::path path = fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / leg / "dee.ac4";
@@ -600,7 +602,12 @@ TEST_CASE("a decode begun at an I-frame gives the whole stream's output from the
     }};
     for (const Leg& leg : kLegs) {
         CAPTURE(leg.name);
-        const auto frames = raw_frames(read_stream(leg.name));
+        auto frames = raw_frames(read_stream(leg.name));
+        // Under the sanitizers the first 34 frames: the first two I-frames,
+        // and the frames after each that the comparison takes.
+        if (kSanitized) {
+            frames.resize(std::min<std::size_t>(frames.size(), 34));
+        }
         ac4::Decoder whole_decoder;
         const Decoded whole = decode_frames(whole_decoder, frames);
         REQUIRE(whole.lengths.size() == frames.size());
@@ -621,8 +628,9 @@ TEST_CASE("a decode begun at an I-frame gives the whole stream's output from the
             ++checked;
         }
         // DEE's second frame, an I-frame after its priming frame, and the
-        // I-frames every 23 or 24 frames after it that leave room to compare.
-        CHECK(checked == 5);
+        // I-frames every 23 or 24 frames after it that leave room to compare:
+        // under the sanitizers the first of those.
+        CHECK(checked == (kSanitized ? 2U : 5U));
     }
 }
 
@@ -655,6 +663,11 @@ TEST_CASE("a splice at an I-frame joins the two streams' audio without a gap", "
         REQUIRE(is_iframe(second_stream[kFrom]));
         std::vector<std::vector<std::byte>> tail(second_stream.begin() + kFrom,
                                                  second_stream.end());
+        // Under the sanitizers the second stream's first dozen frames from
+        // its I-frame.
+        if (kSanitized) {
+            tail.resize(12);
+        }
         if (marked) {
             set_sequence_counter(tail.front(), 0);
         }
@@ -779,8 +792,12 @@ TEST_CASE("without a concealment policy a frame that does not decode fails and t
 
 TEST_CASE("a concealment policy puts a frame in place of each one that does not decode",
           "[ac4dec][pcm]") {
-    // SIMPLE stereo tones, at -20 dBFS: three frames lost in a row.
-    const auto frames = raw_frames(read_stream("ac4-20-tones-192"));
+    // SIMPLE stereo tones, at -20 dBFS: three frames lost in a row. Under the
+    // sanitizers the stream's first 20 frames, six of them past the losses.
+    auto frames = raw_frames(read_stream("ac4-20-tones-192"));
+    if (kSanitized) {
+        frames.resize(20);
+    }
     constexpr std::size_t kLost = 10;
     constexpr std::size_t kLosses = 3;
     auto damaged = frames;

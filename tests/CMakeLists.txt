@@ -525,6 +525,18 @@ target_compile_definitions(ac3tests
 target_compile_definitions(ac3tests
     PRIVATE "AC3FORGE_TEST_SCRATCH_DIR=\"${CMAKE_CURRENT_BINARY_DIR}/scratch\"")
 
+# Whether the tests run under the sanitizers (cmake/Sanitizers.cmake), for
+# tests/sanitized.hpp's kSanitized: there the heaviest tests take fewer frames,
+# shorter signals and fewer cases, each still running every code path it
+# covers, so that the ASan+UBSan leg, which runs ctest serially in a debug
+# build, finishes within its time (.github/workflows/_ci-linux.yml). Defined as
+# 0 otherwise, so that no source asks the preprocessor.
+if(AC3FORGE_SANITIZERS)
+    target_compile_definitions(ac3tests PRIVATE AC3FORGE_TEST_SANITIZED=1)
+else()
+    target_compile_definitions(ac3tests PRIVATE AC3FORGE_TEST_SANITIZED=0)
+endif()
+
 # ---------------------------------------------------------------------------
 # Toolchain hook: keep a failing assert from opening a modal dialog that hangs
 # a headless CTest run. Each directory holds the same filenames; CMake selects
