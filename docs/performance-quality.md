@@ -4,6 +4,10 @@ CI records performance, quality, and memory measurements after merges. This page
 shows the latest values from `main`, explains each measure, and links to the
 append-only histories.
 
+The series cover AC-3, E-AC-3, and the Atmos object layer. AC-4 is not in them: its speed and
+memory are not benchmarked in CI, and its audio is checked by pass/fail scripts that record no
+history. [Validation](verification.md#ac-4) describes how AC-4 is checked.
+
 New to codec benchmarks: start with
 [How to read these numbers](#how-to-read-these-numbers).
 

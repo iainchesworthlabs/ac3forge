@@ -1,5 +1,10 @@
 # Quality trend
 
+This series covers AC-3 and E-AC-3. AC-4 has no gold-reference gate and no history here: CI
+holds its decoder and encoder to pinned floors with `tools/checks/score_ac4_decode.py` and
+`tools/checks/score_ac4_encode.py`, which record no history. See
+[Validation](verification.md#ac-4).
+
 Every push to `main` that gets through the [gold-reference
 gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)
 (encode the checked-in golden 5.1 WAV, strict-decode with FFmpeg and with

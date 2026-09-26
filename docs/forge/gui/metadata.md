@@ -4,10 +4,10 @@ Expert tier only — Advanced folds the Loudness half of this onto the
 [Format tab](format-and-channels.md#presets-codec-bit-rate-container) instead and leaves the rest
 at their defaults. Guided has no separate Loudness step of its own; instead it applies its own
 [loudness contract](index.md#the-loudness-contract) automatically, unless the fields here have
-already been edited by hand. Downmix, Heavy compression and Mixing metadata are Expert-only in
-every tier.
+already been edited by hand. Downmix, Heavy compression, Mixing metadata and Service and
+production are Expert-only in every tier.
 
-![Metadata tab: Loudness, Downmix, Heavy compression, Mixing metadata](screenshots/metadata-tab.png)
+![Metadata tab: Loudness, Downmix, Heavy compression, Mixing metadata, Service and production](screenshots/metadata-tab.png)
 
 ## Loudness
 
@@ -41,6 +41,30 @@ own compr2 bounds Ch2's own signal, never Ch1's.
 
 E-AC-3 only. A checkbox reveals a preferred stereo downmix mode and an LFE mix level — the
 `mixmdate` group, Table E1.2.
+
+## Service and production
+
+What the stream says about itself, as opposed to how to decode it. The card holds:
+
+- **service** — which kind of service the stream is: complete main, music and effects, visually
+  impaired, hearing impaired, dialogue, commentary, emergency, or voice over / karaoke (`bsmod`).
+  ATSC A/53 and DVB key associated-service handling off this field. Voice over and karaoke share
+  one value, since no bit separates them.
+- **mixed at** and **room type** — the level the mix was monitored at, from 80 to 111 dB SPL, or
+  `not stated`; the room type (`not indicated`, `large, X curve` or `small, flat`) can be set once
+  a level is stated.
+- **Dolby Surround** and **Dolby Headphone** — whether the programme was made for either; shown
+  for a 2/0 bed only. **Surround EX** — shown for a bed with surround channels (2/2 and 3/2).
+  Each reads `not indicated` until set.
+- **A/D** — the analogue-to-digital converter type, `standard` or `HDCD`.
+- **Copyright** and **Original bit stream** — the two flags of those names.
+- **Annex D (bsid 6)** — AC-3 only. AC-3 carries the surround, headphone and Surround EX flags
+  only under Annex D, which reuses the two time code fields that §D1 says were never applied for
+  their original purpose. E-AC-3 gathers the whole group into `infomdat`, which setting any of
+  these turns on.
+
+The library page on [Metadata](../../library/metadata.md#bit-stream-information-ac3metabsihpp)
+lists these fields and their sections of the standard.
 
 Every field on this tab maps directly onto the [Metadata](../../library/metadata.md) library page's
 config structs, and onto the [CLI's metadata options](../cli/metadata-options.md)
