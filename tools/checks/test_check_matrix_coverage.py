@@ -2,7 +2,8 @@
 touch every CLI option at all" gate.
 
 What it must catch: a command, layout, Annex E tool, Atmos mode or VBR/ABR
-rate control the CLI exposes that run_codec_matrix.sh never exercises - and in
+rate control the CLI exposes that run_codec_matrix.sh never exercises, or a
+command that reads or writes AC-4 the matrix never runs on AC-4 - and in
 particular the 2026-08-17 false pass, where the `auto` tool set read as covered
 only because `dialnorm=auto` appeared elsewhere in the script. Tokens that
 appear only in `#` comments must not count either.
@@ -35,6 +36,15 @@ usage:
   ac3cli play <in>
   ac3cli --version
 vbr    off | q:0..1[,min:kbps][,max:kbps] | avg:kbps[,win:frames]
+"""
+
+
+# A build whose commands read and write AC-4: monitor needs a device, so the
+# AC-4 check leaves it out as the commands check does.
+USAGE_AC4 = USAGE + """\
+  ac3cli ac4-encode <in.wav> <out.ac4|out.mp4> [kbps]
+  ac3cli decode <in.ac3|in.ec3|in.ac4> <out.wav>
+  ac3cli monitor <in.ac3|in.ac4> [device]
 """
 
 
@@ -117,6 +127,21 @@ class Parsing(unittest.TestCase):
         self.assertEqual(cmc.commands_invoked(GOOD_MATRIX),
                          {"encode", "sine", "eac3-sine", "eac3-encode", "atmos"})
 
+    def test_ac4_commands_are_the_rows_that_name_an_ac4_file(self):
+        with mock.patch.object(cmc, "run", FakeCli(usage=USAGE_AC4)):
+            self.assertEqual(cmc.ac4_commands("cli"), {"ac4-encode", "decode", "monitor"})
+        with mock.patch.object(cmc, "run", FakeCli()):
+            self.assertEqual(cmc.ac4_commands("cli"), set())
+
+    def test_ac4_invocations_are_runs_that_name_ac4(self):
+        text = cmc.strip_comments(
+            "run decode in.ac3 out.wav\n"
+            "run decode ac4_51.ac4 out.wav channels=2\n"
+            "run ac4-encode in.wav \\\n    out.ac4 96\n"
+            "run probe in.ac3  # and ac4_51.ac4\n"
+            "run_ac4_frames_check ac4_51.ac4\n")
+        self.assertEqual(cmc.ac4_invocations(text), {"decode", "ac4-encode"})
+
 
 class Main(unittest.TestCase):
     def setUp(self):
@@ -161,6 +186,22 @@ class Main(unittest.TestCase):
             self.assertIn(gap, out)
         self.assertIn("6 coverage gap(s)", out)
 
+    def test_every_ac4_command_must_run_on_ac4(self):
+        ac4_matrix = GOOD_MATRIX + "run ac4-encode in.wav a.ac4 96\n"
+        with_decode = ac4_matrix + "run decode a.ac4 a.wav\n"
+        code, out = self.run_main(with_decode, FakeCli(usage=USAGE_AC4))
+        self.assertIn(code, (0, None), out)
+        self.assertIn("PASS  ac4-commands", out)
+        # decode runs, but only on AC-3: its AC-4 path is untouched.
+        code, out = self.run_main(ac4_matrix + "run decode in.ac3 a.wav\n",
+                                  FakeCli(usage=USAGE_AC4))
+        self.assertEqual(code, 1)
+        self.assertIn("ac4-commands (decode)", out)
+
+    def test_a_build_naming_no_ac4_file_skips_the_ac4_check(self):
+        _, out = self.run_main(GOOD_MATRIX)
+        self.assertIn("SKIP  ac4-commands", out)
+
     def test_older_builds_skip_vbr_and_abr(self):
         no_abr = USAGE.replace("vbr    off", "vbrx   off")
         _, out = self.run_main(GOOD_MATRIX, FakeCli(usage=no_abr))
@@ -189,6 +230,15 @@ class Main(unittest.TestCase):
         otherwise main() would refuse to run in CI."""
         real = cmc.REPO / "tools" / "ci" / "run_codec_matrix.sh"
         self.assertTrue(cmc.matrix_tool_tokens(real.read_text()))
+
+    def test_real_matrix_script_runs_the_ac4_commands_on_ac4(self):
+        """The commands phase I1 taught AC-4, each with an AC-4 leg in the
+        committed matrix."""
+        real = cmc.REPO / "tools" / "ci" / "run_codec_matrix.sh"
+        invoked = cmc.ac4_invocations(cmc.strip_comments(real.read_text()))
+        for command in ("ac4-encode", "decode", "probe", "transcode", "qc", "levels",
+                        "loudness", "spdif", "unspdif", "ts", "demux", "mp4", "fmp4"):
+            self.assertIn(command, invoked)
 
 
 if __name__ == "__main__":
