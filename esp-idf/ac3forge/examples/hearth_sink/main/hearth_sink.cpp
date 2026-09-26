@@ -597,10 +597,16 @@ ac3forge::FirmwareHooks firmware_hooks() {
     ac3forge::FirmwareHooks hooks;
     // On the firmware's task: the teardown itself is app_main's, which owns
     // the player (CommandKind::kFlashMode below).
+    // Bounded both ways: this runs on the HTTP server's task for an upload and
+    // for PUT /firmware/mode, and an app_main stuck with a full queue would
+    // otherwise hold every route with it.
     hooks.enter_flash_mode = [] {
         Command c;
         c.kind = CommandKind::kFlashMode;
-        (void)xQueueSend(g_commands, &c, portMAX_DELAY);
+        if (xQueueSend(g_commands, &c, pdMS_TO_TICKS(15000)) != pdTRUE) {
+            std::printf("firmware: the player took no command for 15 s; going on without stopping it\n");
+            return;
+        }
         if (xSemaphoreTake(g_flash_mode_done, pdMS_TO_TICKS(15000)) != pdTRUE) {
             std::printf("firmware: the player had not stopped after 15 s; going on without it\n");
         }
