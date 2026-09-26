@@ -44,8 +44,8 @@ Pi 4B without an underrun. See [Raspberry Pi passthrough](../platforms/raspberry
 
 ## What it does not do
 
-- **Play immersive or object AC-4.** The app plays channel-based AC-4 only. The
-  [library decodes](../library/ac4.md) immersive and object streams too; the app does not use
+- **Play AC-4 objects.** The app plays channel-based AC-4 up to 7.1.4. The
+  [library decodes](../library/ac4.md) A-JOC and direct-coded objects too; the app does not use
   that yet. No local output takes AC-4 as a bitstream, and no ESP32 sink decodes AC-4: only the
   development test sink takes the AC-4 bursts a group is sent.
 - **Come with a user guide.** This page and the sink guides are the Hearth documentation. The
