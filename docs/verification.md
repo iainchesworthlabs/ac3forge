@@ -1194,6 +1194,10 @@ which takes it to the layout a system asks for. Where the text leaves a choice o
 - **librempeg** (git 2026-09-24) does not decode the element: on the 5.1.4 tone legs its L, R and C
   come out 6 to 9 dB down, its surrounds 12 to 15 dB down, all four top tones in its Lb at about -15
   dB, and its top channels silent.
+- **Dolby's AC-4 Online Delivery Kit 1.5** (local only): its two 5.1.4 streams, ASPX_ACPL_2 at 192
+  kbps at 25 and 29.97 fps, decode in full and core decoding with `ac3cli`, every frame (800 and 960)
+  with no error, to ten channels as coded and eight in core decoding, 1,920 samples a frame and
+  1,601 or 1,602.
 
 ### The decoder's API and packaging
 
