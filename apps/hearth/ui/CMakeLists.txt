@@ -123,6 +123,7 @@ else()
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkSettings.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkSpeakers.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkDecoder.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkFirmware.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkReport.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkSinkOnlyOnSink.qml"
         "${CMAKE_CURRENT_SOURCE_DIR}/qml/NetworkGroupEdit.qml"

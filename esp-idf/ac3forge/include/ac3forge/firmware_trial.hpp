@@ -24,8 +24,8 @@
 // 2^32, so a clock that wraps does no harm either.
 //
 // Free of ESP-IDF, like firmware_image.hpp beside it: firmware.cpp calls step()
-// once a second from its trial task with esp_timer's milliseconds and whether
-// the owner's conditions hold, and does what it answers.
+// once a second from a timer with esp_timer's milliseconds and whether the
+// owner's conditions hold, and does what it answers.
 // tests/io/test_firmware_trial.cpp runs the rules on a laptop.
 
 namespace ac3forge {

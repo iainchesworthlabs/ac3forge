@@ -64,8 +64,9 @@
 # src/firmware.cpp is the update over the network behind Control's firmware
 # routes (include/ac3forge/firmware.hpp, planning/esp32-ota.md): like the rest
 # of this archive it reaches a firmware only when something in it makes a
-# Firmware.
-set(AC3FORGE_COMPONENT_SRCS "src/player.cpp" "src/control.cpp" "src/firmware.cpp" "src/tcp_arrivals.cpp")
+# Firmware. src/log.cpp keeps the console's recent output for GET /log
+# (include/ac3forge/log.hpp), once the firmware calls log_start().
+set(AC3FORGE_COMPONENT_SRCS "src/player.cpp" "src/control.cpp" "src/firmware.cpp" "src/log.cpp" "src/tcp_arrivals.cpp")
 if(CONFIG_LWIP_IPV6)
     list(APPEND AC3FORGE_COMPONENT_SRCS "src/peer/dual_stack/ipv4_peer.cpp")
 else()
@@ -92,7 +93,10 @@ idf_component_register(
     # app_update, esp_partition, spi_flash and hal: src/firmware.cpp's
     # esp_ota_* calls, its reads of a slot, the flash's size, and the chip
     # revision the image checks hold an image against (hal/efuse_hal.h).
-    PRIV_REQUIRES lwip esp_psram esp_app_format app_update esp_partition spi_flash hal
+    # espcoredump: the same file's report and routes for the last crash's
+    # core dump, when the project keeps one (CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH).
+    # vfs: src/log.cpp's device, which stdout is reopened on.
+    PRIV_REQUIRES lwip esp_psram esp_app_format app_update esp_partition spi_flash hal espcoredump vfs
     EMBED_FILES "ui/ac3forge_ui.html" "ui/ac3forge_ui.js")
 
 # ac3forge_lwip_ip4_input (src/tcp_arrivals.cpp) is called only from lwIP's own

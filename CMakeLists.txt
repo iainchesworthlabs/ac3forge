@@ -167,8 +167,8 @@ option(AC3FORGE_BUILD_MPEGTS "Build the standalone MPEG-TS container writer (src
 option(AC3FORGE_BUILD_AC4 "Build the standalone AC-4 bitstream inspector, decoder and encoder (src/ac4, src/ac4core, src/ac4dec, src/ac4enc)" ON)
 
 # ac3iab::ac3iab (src/ac3iab) - IAB reader, phase 1: a standalone reader for SMPTE
-# ST 2098-2's Immersive Audio Bitstream. Same zero-third-party-dependency shape as the three
-# container writers above (unlike ac3adm, see its own option() below), so it defaults ON the
+# ST 2098-2's Immersive Audio Bitstream. Like the three container writers above, it needs no
+# opt-in third-party library (unlike ac3adm, see its own option() below), so it defaults ON the
 # same way; unlike them, nothing in apps/cli, apps/gui or examples/ links it yet (IAB reader's
 # phase 3 is what will eventually give it a consumer), so there is no matching FATAL_ERROR
 # guard here - tests/CMakeLists.txt only adds ac3iab's own test file and links ac3iab::ac3iab

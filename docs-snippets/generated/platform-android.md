@@ -10,4 +10,5 @@
 | Crucible | **Unavailable** |
 | Hearth | **Unavailable** |
 | Atmos encode and HDMI output | **Source**<br>confirmed on hardware<br>confirmed through an AV receiver |
+| AC-4 IEC 61937 output | **Source**<br>build only<br>ENCODING_IEC61937; no receiver accepts AC-4 |
 | Audio capture | **Unavailable**<br>playback-only demo |

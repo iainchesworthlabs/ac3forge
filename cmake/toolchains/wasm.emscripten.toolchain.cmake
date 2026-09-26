@@ -4,14 +4,15 @@
 # Unlike every other toolchain file in this directory, this one is NOT
 # chainloaded through vcpkg (compare config-wasm-emscripten's "wasm-emscripten"
 # hidden preset in CMakePresets.json against "core": it does not inherit
-# "core" at all, so vcpkg.cmake is never the primary toolchain here). vcpkg.json
-# itself says why that is fine: ac3::forge's codec code has zero third-party
-# dependencies, and the only manifest dependency (catch2) is tests-only, which
-# this preset turns off (AC3FORGE_BUILD_TESTS=OFF) - so there is nothing for
-# vcpkg to supply a WASM build of, and going through vcpkg's own community
-# wasm32-emscripten triplet would only add a slow, fragile catch2-for-wasm
-# build for a package nothing here links. This preset's toolchainFile IS this
-# file directly.
+# "core" at all, so vcpkg.cmake is never the primary toolchain here). That is
+# fine because the manifest's base dependencies are catch2, which is
+# tests-only and which this preset turns off (AC3FORGE_BUILD_TESTS=OFF), and
+# {fmt}, which ac3::forge compiles into the modules and cmake/Fmt.cmake builds
+# from source with FetchContent when no local copy is found - so there is
+# nothing for vcpkg to supply a WASM build of, and going through vcpkg's own
+# community wasm32-emscripten triplet would only add a slow, fragile
+# catch2-for-wasm build for a package nothing here links. This preset's
+# toolchainFile IS this file directly.
 #
 # Requires $EMSDK to be set - `source <emsdk>/emsdk_env.sh` (or
 # emsdk_env.bat/.ps1 on Windows) before configuring, same as any other

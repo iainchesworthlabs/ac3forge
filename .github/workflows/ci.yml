@@ -738,7 +738,9 @@ jobs:
   npm:
     name: npm package
     needs: changes
-    if: needs.changes.outputs.npm == 'true'
+    # Not on a pull_request run: GitHub-hosted, so it waits for the merge
+    # queue instead - see build-and-test's run_android comment below.
+    if: needs.changes.outputs.npm == 'true' && github.event_name != 'pull_request'
     uses: ./.github/workflows/npm.yml
     # Ceiling for npm.yml's publish job (id-token: write) - same reasoning as
     # the wheels call above; publish is unreachable here (disarmed except on
@@ -751,7 +753,9 @@ jobs:
   esp-component:
     name: ESP-IDF component
     needs: changes
-    if: needs.changes.outputs.esp == 'true'
+    # Not on a pull_request run, like npm above. build-and-test's run_esp
+    # stays on: the ESP32 QEMU legs it gates run on the self-hosted fleet.
+    if: needs.changes.outputs.esp == 'true' && github.event_name != 'pull_request'
     uses: ./.github/workflows/esp-component.yml
 
   build-and-test:
@@ -801,8 +805,15 @@ jobs:
       # dispatch CI on itself (`gh workflow run ci.yml --ref <branch>`),
       # which forces every lane on (see the changes job).
       run_macos: ${{ needs.changes.outputs.macos == 'true' && github.event_name != 'pull_request' }}
-      run_android: ${{ needs.changes.outputs.android == 'true' }}
-      run_wasm: ${{ needs.changes.outputs.wasm == 'true' }}
+      # Android, WASM and the device web page skip pull_request runs too, as
+      # do the AppImage (_build.yml's linux-appimage), npm and the ESP-IDF
+      # component. All run on ubuntu-latest, and with the legs above
+      # deferred, PR pushes alone still held the hosted queue at about 2.4
+      # hours on 2026-09-25, most of it these jobs. They run in the merge
+      # queue, on main and on a dispatch, like the legs above. A PR merged
+      # past the queue gets them only from main's run afterwards.
+      run_android: ${{ needs.changes.outputs.android == 'true' && github.event_name != 'pull_request' }}
+      run_wasm: ${{ needs.changes.outputs.wasm == 'true' && github.event_name != 'pull_request' }}
       run_esp: ${{ needs.changes.outputs.esp == 'true' }}
       run_rust: ${{ needs.changes.outputs.rust == 'true' && github.event_name != 'pull_request' }}
     secrets:

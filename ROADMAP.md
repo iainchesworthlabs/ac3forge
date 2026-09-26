@@ -62,13 +62,15 @@ fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https
 | Syntax transcription (`src/ac4dec`) | **Shipped** — reads channel-coded substream syntax, cross-checked against a second transcription |
 | PCM decode | **In progress** — mono, stereo, 3.0, 5.X and 7.X decode to PCM in every codec mode Part 1 gives them, SIMPLE, ASPX and A-CPL (phases D2 to D5), through the QMF banks, companding, A-SPX and A-CPL; every frame rate, with the output level, DRC, dialogue enhancement and the downmix (D6); streams of several presentations, the presentation chosen and its substreams mixed (D7); the API in its final form for channel-based streams, with the output and the presentation changed while a stream plays, output by block, and each presentation and the metadata reported, and the inspector, decoder and core installed and exported (D8, [AC-4 decoding](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/ac4.md)) |
 | Immersive paths, objects | **Not started** — plan phases D9 and D10; the speech frontend waits for a stream that uses it |
+| IEC 61937 carriage (`ac3::iec61937`, `PassthroughSink`, Hearth's extension role) | **Built** (phase D11) — the four IEC 61937-14 burst types at every frame rate, read back unchanged; passthrough on ALSA and Android, the platforms whose APIs can send AC-4; the extension role's AC-4 data type, decoded by the test sink; no receiver found accepts AC-4 |
 | Encoder (`src/ac4enc`) | **In progress** — mono, stereo, 5.0 and 5.1 in the SIMPLE, ASPX and A-CPL codec modes (phases E1 to E4), A-SPX below 96 kbps a channel in mono and stereo and below 384 kbps in 5.1, companding in mono and stereo below 64 kbps a channel, ASPX_ACPL_2 and ASPX_ACPL_3 in 5.1 below 168 and 112 kbps, `ac3cli ac4-encode`; 7.X, the 5.X element's other coding configurations, ASPX_ACPL_1 and A-CPL in stereo as experimental options; every frame rate, the rate modes, I-frames on demand and the metadata (E5); several substreams in the presentations of Part 2 Table 53 (E6); the API in its final form for channel-based streams, which names the rule a configuration it refuses breaks, `ac3cli ac4-encode` with an option for each setting, the MP4's `dac4` describing every presentation, and the encoder installed and exported beside the decoder (E7, [AC-4](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/library/ac4.md#encoding-a-stream)); immersive layouts and objects follow in E8 and E9 |
 | Applications (`ac3cli`, Hearth, Forge GUI, bindings) | **Not started** — plan phases I1 to I6, after the channel-based library |
+| ESP32 (`float` on the P4, then the S3; fixed point on the C6) | **Not started** — plan phase D14, after D10: the decoder on `double`, `float` and fixed point by target, as AC-3 and E-AC-3 are, the P4 first |
 
 Hearth and Forge playback of AC-4 waits on the application phases. Plan:
 [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md). Its
-first phase makes the DEE reference streams the others need before the local DEE licence ends on
-2026-11-06.
+first phase made the DEE reference streams the others need; the local DEE licence ends on
+2026-11-06 and will not be renewed, so G1 adds every stream the remaining phases need before then.
 
 ### Library — API freeze → v1.0.0 (was AP1, L)
 
@@ -85,7 +87,10 @@ C version macros; release criteria written.
 Substantial internal codec on branch `feature/truehd-atmos-support` — not on `main`. To merge:
 rebase, gate as `ac3::mlp` / `AC3FORGE_BUILD_MLP`, remove non-redistributable PDFs, label output
 accurately (no real TrueHD decoder reads the current block layout). Forge front ends follow as a
-separate item (was UX10).
+separate item (was UX10). Dolby Encoding Engine's TrueHD streams of known sources (2, 6 and 8
+channels, 48 and 96 kHz, 16 and 24 bits, several presentations), made by
+`tools/generators/gen_dee_gold.py` while DEE's licence runs (it ends on 2026-11-06), are kept
+locally for what the clean-room rule below allows.
 
 **Authenticity note (for that branch):** TrueHD carries a separate keyed check from DD+ EMDF
 object signing — **Evolution frame protection**, a truncated HMAC-SHA-256 over the access unit

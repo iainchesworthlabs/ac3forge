@@ -60,7 +60,7 @@ namespace ac3::coreaudio {
 // device-name rate both do.
 [[nodiscard]] constexpr std::uint32_t carrier_rate(audio::BitstreamFormat format,
                                                     std::uint32_t content_rate) {
-    return format == audio::BitstreamFormat::kEac3 ? content_rate * 4 : content_rate;
+    return content_rate * audio::carrier_ratio(format);
 }
 
 // The physical-format fourCC a digital output stream is asked for.
@@ -81,9 +81,23 @@ namespace ac3::coreaudio {
 // where the driver does not publish it, supports_eac3_passthrough simply
 // comes back false, the honest answer under the same "a platform can gain
 // one and not the other" contract ac3::audio::RenderDeviceInfo already documents.
-[[nodiscard]] constexpr AudioFormatID physical_format_id(audio::BitstreamFormat format) {
-    return format == audio::BitstreamFormat::kEac3 ? kAudioFormatEnhancedAC3
-                                                     : kAudioFormat60958AC3;
+//
+// Nothing for AC-4: CoreAudioBaseTypes.h defines no AC-4 format ID at all, so
+// there is nothing to look for among a stream's physical formats or to retune
+// one to, and start() refuses AC-4 with kUnsupportedFormat.
+[[nodiscard]] constexpr std::optional<AudioFormatID> physical_format_id(
+    audio::BitstreamFormat format) {
+    switch (format) {
+        case audio::BitstreamFormat::kAc3:
+            return kAudioFormat60958AC3;
+        case audio::BitstreamFormat::kEac3:
+            return kAudioFormatEnhancedAC3;
+        case audio::BitstreamFormat::kAc4:
+        case audio::BitstreamFormat::kAc4Hbr4:
+        case audio::BitstreamFormat::kAc4Hbr16:
+            break;
+    }
+    return std::nullopt;
 }
 
 // Whether `formats` (as kAudioStreamPropertyAvailablePhysicalFormats returns

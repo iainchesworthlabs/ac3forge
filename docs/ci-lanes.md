@@ -43,7 +43,7 @@ job-level conditions.
 |---|---|
 | `android` | `build-android` |
 | `wasm` | `build-wasm`, `device-ui` |
-| `esp` | `build-esp32s3`, `hearth-esp32s3` (Hearth Sendspin sink under QEMU), `build-esp32c3` (also builds the ESP32-C6 probe), `build-footprint`, `ci.yml`'s `esp-component` job-call (`.github/workflows/esp-component.yml`: `pack`, `esphome`) |
+| `esp` | `build-esp32s3` (also builds the S3 sink image), `hearth-esp32s3` (Hearth Sendspin sink under QEMU), `build-esp32c3` (also builds the ESP32-C6 probe, and the C6 and P4 sink images), `package-esp32-firmware` (the four published sink images and their manifest), `build-footprint`, `ci.yml`'s `esp-component` job-call (`.github/workflows/esp-component.yml`: `pack`, `esphome`) |
 | `rust` | `build-rust` |
 | `windows` | `build-windows` (windows-msvc, windows-llvm, windows-msvc-arm64), `windows-driver` |
 | `linux` | `build-linux` (linux-gcc, linux-llvm, linux-gcc-arm64, linux-llvm-arm64, linux-llvm-asan-ubsan, linux-llvm-tsan), `linux-appimage` |
@@ -226,11 +226,17 @@ few minutes:
 
 ## Scarce hosted legs wait for the merge queue
 
-On a `pull_request` run, three lanes' GitHub-hosted legs are skipped, even when
-their lane is true:
+On a `pull_request` run, these GitHub-hosted legs are skipped, even when their
+lane is true:
 - `macos`: `build-macos`
 - `rust`: `build-rust`, three runners, one of them macOS
 - `python`: the `wheels` call, five runners, two of them macOS
+- `android`: `build-android`
+- `wasm`: `build-wasm` and `device-ui` (the device web page)
+- `linux`: `linux-appimage` only. The Linux build matrix still runs on PRs.
+- `npm`: the `npm` call
+- `esp`: the `esp-component` call only. The ESP32 QEMU legs run on the
+  self-hosted fleet and still run on PRs.
 
 They run in the `merge_group` run, on a push to `main` (for the newest `main`
 commit only, see the next section) and on a dispatch. `CI Status` reads their
@@ -238,7 +244,9 @@ commit only, see the next section) and on a dispatch. `CI Status` reads their
 
 **Why:** GitHub Free runs 20 GitHub-hosted jobs at a time, org-wide. A PR push with
 every lane set used to ask for about 25. On 2026-09-25 about 400 were queued, some
-for over five hours, holding back every PR's `CI Status`.
+for over five hours, holding back every PR's `CI Status`. With only the first
+three deferred, PR pushes alone still held the queue at about 2.4 hours later that
+day, most of it the `ubuntu-latest` jobs in the rest of the list.
 
 **What still guards merges:** the merge queue runs these legs against the exact
 merge commit before it lands. A PR that bypasses the queue gets them only from a
