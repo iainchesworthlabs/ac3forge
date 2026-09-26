@@ -103,7 +103,9 @@ template <typename Rank>
 // Where an AC-4 speaker is among A/52's Table E2.5 locations, for a meter that
 // weights channels by where they are (BS.1770-5 Annex 3) and for placing a
 // decoded presentation on an AC-3 or E-AC-3 layout: Lb and Rb are the rear
-// surrounds, Lw and Rw the wides, and the top front pair the vertical heights.
+// surrounds, Lw and Rw the wides, the top front pair the vertical heights, the
+// top back and top side pairs the top surrounds (Table E2.5 has one pair for
+// both, as the object renderer places them), and the second LFE LFE2.
 [[nodiscard]] inline ac3::eac3::chanmap::Location ac4_location(ac4::Speaker speaker) {
     using L = ac3::eac3::chanmap::Location;
     switch (speaker) {
@@ -131,6 +133,14 @@ template <typename Rank>
             return L::kVhl;
         case ac4::Speaker::kTopFrontRight:
             return L::kVhr;
+        case ac4::Speaker::kTopBackLeft:
+        case ac4::Speaker::kTopSideLeft:
+            return L::kLts;
+        case ac4::Speaker::kTopBackRight:
+        case ac4::Speaker::kTopSideRight:
+            return L::kRts;
+        case ac4::Speaker::kLfe2:
+            return L::kLfe2;
     }
     return L::kCentre;
 }
