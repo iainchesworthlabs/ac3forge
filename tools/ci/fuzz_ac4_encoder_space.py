@@ -996,9 +996,11 @@ def check_envelope(cli):
                 lowest = [(least - 1, False), (least, True)]
                 if channels > 2:
                     forced = [o.split("=", 1)[1] for o in options if o.startswith("codec-mode=")]
-                    least = ACPL_LOWEST_KBPS[forced[0]] if forced else MULTICHANNEL_LOWEST_KBPS
+                    # The immersive layouts' modes (scpl among them) are only in their own table.
                     if channels > 8:
                         least = IMMERSIVE_LOWEST_KBPS[forced[0] if forced else "auto"]
+                    else:
+                        least = ACPL_LOWEST_KBPS[forced[0]] if forced else MULTICHANNEL_LOWEST_KBPS
                     lowest = [(least, True)]
                 for kbps, accepted in (*lowest, (HIGHEST_KBPS, True), (HIGHEST_KBPS + 1, False)):
                     result = _run(
