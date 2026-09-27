@@ -951,7 +951,7 @@ void print_exit_codes() {
     fmt::println("     configuration the encoder cannot express (an illegal bitrate for a");
     fmt::println("     layout, more objects than a stream can carry). Retrying the same command");
     fmt::println("     line cannot help.");
-    fmt::println("  {}  input: the input could not be read, or is not a valid AC-3/E-AC-3/WAV/",
+    fmt::println("  {}  input: the input could not be read, or is not a valid AC-3/E-AC-3/AC-4/WAV/",
                  kExitInput);
     fmt::println("     ADM file, or stopped decoding part-way.");
     fmt::println("  {}  output: the destination could not be created, written or finalized.",
@@ -989,8 +989,8 @@ void print_command_index(std::span<const CommandInfo> commands) {
 }
 
 void print_usage(std::span<const CommandInfo> commands) {
-    fmt::println("Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) "
-                 "encoder/decoder");
+    fmt::println("Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 (ATSC A/52) and "
+                 "AC-4 (ETSI TS 103 190) encoder/decoder");
     fmt::println("");
     print_command_index(commands);
     print_unavailable_reasons(commands);

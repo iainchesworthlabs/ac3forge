@@ -63,6 +63,19 @@ class LoadLegResults(unittest.TestCase):
         self.assertIsNone(old["p95_ms_per_frame"])
         self.assertEqual((old["spread"], old["cpu_model"]), (0.0, ""))
 
+    def test_a_result_budget_overrides_the_file_budget(self):
+        """AC-4 rows carry their own 2 048-sample budget; rows without one
+        keep the file's A/52 budget."""
+        with tempfile.TemporaryDirectory() as tmp:
+            res = Path(tmp)
+            write_leg(res, "linux", [[
+                row("plain_51", 1.0),
+                row("ac4_51_encode", 2.0, real_time_budget_ms_per_frame=42.667),
+            ]])
+            recs = {r["config"]: r for r in aph.load_leg_results(res)}
+        self.assertEqual(recs["plain_51"]["real_time_budget_ms_per_frame"], 32.0)
+        self.assertEqual(recs["ac4_51_encode"]["real_time_budget_ms_per_frame"], 42.667)
+
 
 class TrailingMean(unittest.TestCase):
     def test_window_and_matching(self):

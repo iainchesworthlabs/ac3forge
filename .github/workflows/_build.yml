@@ -3595,6 +3595,13 @@ jobs:
           pattern: gold-reference-*
           path: results
 
+      - name: Download AC-4 decode quality results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: ac4-quality-decode-*
+          path: ac4-results
+        continue-on-error: true
+
       # Plain git over an HTTPS remote carrying the token, mirroring docs.yml's
       # own gh-deploy pattern - not actions/checkout, because that fails
       # outright if `quality-history` does not exist yet (true only on this
@@ -3646,6 +3653,17 @@ jobs:
             --branch "$BRANCH" \
             --commit "$COMMIT_SHA" \
             --commit-date "$commit_date"
+          ac4_json="$(find ac4-results -name 'ac4-decode-quality.json' -print -quit || true)"
+          if [ -n "$ac4_json" ]; then
+            python3 tools/ci/append_ac4_quality_history.py \
+              --json-in "$ac4_json" \
+              --history-dir history \
+              --branch "$BRANCH" \
+              --commit "$COMMIT_SHA" \
+              --commit-date "$commit_date"
+          else
+            echo "No AC-4 decode quality artifact on this run; skipping ac4-quality history."
+          fi
 
       - name: Commit and push quality-history update
         shell: bash
@@ -3702,4 +3720,13 @@ jobs:
         shell: bash
         run: |
           echo "::error::A leg/codec dropped more than the hard quality-trend threshold below its trailing average - see the job log above and docs/quality-trend.md for the recorded numbers."
+          exit 1
+
+      # The same, for AC-4 decode quality (tools/ci/append_ac4_quality_history.py's
+      # SNR_HARD_DROP_DB and LSD_HARD_RISE_DB).
+      - name: Fail on hard AC-4 quality regression
+        if: steps.append.outputs.ac4_hard_regression == 'true'
+        shell: bash
+        run: |
+          echo "::error::An AC-4 stream's decode quality fell past the hard trend threshold against its trailing average - see the job log above and docs/quality-trend.md#ac-4-decode-quality."
           exit 1

@@ -1,31 +1,26 @@
 # Hearth: a desktop reference player and Sendspin sinks
 
-!!! note "Status as of 2026-09-22: being built"
+!!! note "Status as of 2026-09-26: partial — see ROADMAP"
     Written and decided on 2026-09-15, in one session of questions and answers recorded under
-    [Decisions](#decisions). What has merged since, by chip:
+    [Decisions](#decisions). The live status board is [ROADMAP.md](../ROADMAP.md); by chip:
 
-    - **[The desktop app](#chip-a-the-desktop-app).**
-        - Merged: A1 (#686), A2 (#708) and A3 (#714, #720, #727, #732, #736, #742 and #745 to
-          #752).
-        - A4 has merged (#684, #704 and #706), but its Music Assistant exit is still open.
-        - A0 is signed off (2026-09-22; [planning/hearth-design.md](hearth-design.md)). A5 is
-          under way: the application shell and Play page (#787) and the engine's routing/trim/
-          delay/crossover surface (#793) have merged; the Speakers and Decoder pages (#810) are
-          open. A6 to A8 follow it.
-    - **[The ESP32-S3 sink](#chip-b-the-esp32-s3-sink).**
-        - Merged: B1 (#709), B2 (#726), B3 (#737), B4 (#738) and B5 (#756), with fixes in #741
-          and #743.
-        - The exits on the boards wait for the TDM DAC boards, and B3's Music Assistant exit is
-          still open. So is B5's second check: someone setting up a board from the guide alone.
-    - **[The ESP32-C6](#chip-c-the-esp32-c6).**
-        - Merged: C1 (#677) and C2 (#678 and #701), with the C6's fixed-point speed-up in #694.
-        - C2's exit on a TDM DAC waits for a board. C3 follows chip B.
-    - **[The AC-4 decoder](#chip-d-the-ac-4-decoder).** The plan is [`planning/ac4.md`](ac4.md),
-      which since 2026-09-24 covers an AC-4 encoder and the applications too. Its first code has
-      merged: the channel-coded substream syntax (#700), with #712, #715, #739, #744 and #786.
-
-    Checks on the user's hardware are still to run for A2 and A3: the identify tone, and the
-    passthrough and monitor position tests, on the Onkyo receiver and the Pi.
+    - **[The desktop app](#chip-a-the-desktop-app).** Merged: engine, Qt window (Play, Media,
+      Speakers, Decoder, Network, Settings), packages for Windows, macOS and Linux, network
+      output to Sendspin groups, and channel-based AC-4 playback (phase I2 of
+      [`planning/ac4.md`](ac4.md)). Not done: user guide, running-app screenshots, AC-4 objects in
+      the app. A4's Music Assistant exit on real hardware is still open.
+    - **[The ESP32-S3 sink](#chip-b-the-esp32-s3-sink).** Merged: Sendspin player, Improv, groups,
+      network OTA, CI and published firmware packaging. TDM DAC hardware exits (ES9080 pair) and
+      B3's Music Assistant exit are still open.
+    - **[The ESP32-C6](#chip-c-the-esp32-c6).** Merged: fixed-point decode probe and stereo
+      `hearth_sink` Sendspin player with published firmware images. C2's TDM DAC exit waits for a
+      board.
+    - **[The ESP32-P4](#chip-b-the-esp32-s3-sink).** Merged: decode probe at 360 MHz; `hearth_sink`
+      for silicon revision v1.x with Wi-Fi through the onboard C6. Wide TDM sink (tier P2+) not
+      started.
+    - **[The AC-4 decoder in Hearth](#chip-d-the-ac-4-decoder).** Plan: [`planning/ac4.md`](ac4.md).
+      Hearth plays channel-based AC-4 through the library decoder (I2); ESP32 sinks do not decode
+      AC-4 yet (D14).
 
     This page replaces the **form** of [the appliance plan](player-appliance.md): its headless
     daemon, web control page, kiosk window and HLS client are dropped. Hearth's name, its place

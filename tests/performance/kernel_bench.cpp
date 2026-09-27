@@ -23,6 +23,8 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <complex>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -45,6 +47,9 @@
 #include "ac3/oba/atmos.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/joc_tables.hpp"
+#include "dsp/fft.hpp"
+#include "dsp/mdct.hpp"
+#include "dsp/qmf.hpp"
 #include "real_audio.hpp"
 
 namespace {
@@ -511,6 +516,59 @@ int main(int argc, char** argv) {
                 g_sink += static_cast<double>(out[0][128]);
             }));
         }
+    }
+
+    // --- AC-4's shared transforms (src/ac4core) ------------------------------
+    // The transforms the AC-4 decoder and encoder share, at 512 bins, one of
+    // the transform lengths the 2 048-sample frame divides into, and one
+    // 64-subband slot of the QMF analysis bank (Pseudocode 65) behind A-SPX and
+    // A-CPL. Real audio in, same as every kernel above.
+    {
+        namespace dsp = ac4::detail::dsp;
+        const std::span<const float> ch0 = audio.channel(0);
+        std::vector<double> mdct_in(1024);
+        for (std::size_t i = 0; i < mdct_in.size(); ++i) {
+            mdct_in[i] = static_cast<double>(ch0[i % ch0.size()]);
+        }
+        std::vector<double> spectrum(512);
+        dsp::Mdct<double> mdct(512);
+        results.push_back(time_kernel("ac4_mdct512_forward", [&] {
+            mdct.forward(mdct_in, spectrum);
+            g_sink += spectrum[128];
+        }));
+
+        std::vector<double> imdct_out(1024);
+        dsp::Imdct<double> imdct(512);
+        results.push_back(time_kernel("ac4_imdct512_inverse", [&] {
+            imdct.inverse(spectrum, imdct_out);
+            g_sink += imdct_out[256];
+        }));
+
+        std::vector<std::complex<double>> fft_source(512);
+        for (std::size_t i = 0; i < fft_source.size(); ++i) {
+            fft_source[i] = {mdct_in[i], 0.0};
+        }
+        std::vector<std::complex<double>> fft_buf(512);
+        dsp::Fft<double> fft(512);
+        results.push_back(time_kernel("ac4_fft512_forward", [&] {
+            // In place, so each run starts from the same input rather than
+            // from the previous run's transform.
+            std::ranges::copy(fft_source, fft_buf.begin());
+            fft.forward(fft_buf);
+            g_sink += fft_buf[64].real();
+        }));
+
+        constexpr auto kSubbands = static_cast<std::size_t>(dsp::kQmfSubbands);
+        std::vector<double> slot(kSubbands);
+        for (std::size_t i = 0; i < slot.size(); ++i) {
+            slot[i] = static_cast<double>(ch0[i]);
+        }
+        std::vector<std::complex<double>> subbands(kSubbands);
+        dsp::QmfAnalysis<double> analysis;
+        results.push_back(time_kernel("ac4_qmf_analysis64", [&] {
+            analysis.process(slot, subbands);
+            g_sink += subbands[32].real();
+        }));
     }
 
     // --- one full bits_at evaluation ------------------------------------------

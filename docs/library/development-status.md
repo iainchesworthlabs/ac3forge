@@ -139,7 +139,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | OAMD substream DATA body (`oamd_substream()`) | 🔴 | Medium | Important | Byte-range only — not field-parsed |
 | | EMDF-only presentations (config 6) | 🟢 | Low | Optional | Synthetic + dual transcription |
 | | `dac4` / RFC 6381 codec string | 🟢 | Medium | Important | MP4 / TS / HLS / DASH wiring |
-| | Audio PCM decode | 🔴 | High | Essential | Inspector by design — content is byte ranges only; `ac4::decoder` decodes it |
+| | Audio PCM decode (inspector) | 🔴 | High | Essential | By design — content is byte ranges only; see **Decoder** below for `ac4::decoder` PCM output |
 | **Decoder (`ac4::decoder`)** | Presentation + channel-coded syntax | 🟡 | High | Essential | Full syntax trace |
 | | ASF / ASPX / A-CPL / metadata() | 🟡 | High | Essential | DEE digest CI; dual transcription vs Python |
 | | Channel-coded paths without fixtures | 🟡 | Medium | Optional | Noise fill, VARVAR ASPX, time-interleaved ASPX, the mono element, alt presentations, transmitted DRC gains — transcribed, oracle-poor; 3.0, 7.X and every A-CPL mode read on constructed streams |

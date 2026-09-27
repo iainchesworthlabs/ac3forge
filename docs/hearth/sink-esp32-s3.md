@@ -6,15 +6,15 @@ E-AC-3 (including Atmos objects) for its configured speakers.
 
 This guide covers building, flashing, network setup, pairing, and group playback. The example
 [README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md)
-contains implementation details and measurements.
+and the [ESP-IDF component overview](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/README.md)
+contain implementation details and measurements. For the stereo ESP32-C6 player, see
+[An ESP32-C6 sink](sink-esp32-c6.md).
 
-!!! note "Status as of 2026-09-16: played in a group on two boards, with no DAC wired"
-    Two boards played one E-AC-3 JOC programme for ten minutes as a group, one at 2.0 and one at
-    5.1, with no underrun and their play times within 549 µs of each other. The 2.0 board's
-    levels matched a test sink's. No DAC was connected to either board's I2S pins.
-    `ac3hearth` cannot play
-    to a sink yet. Until it can, a developer tool, `ac3hearth-testserver`, plays E-AC-3 to
-    boards ([Play AC-3 and E-AC-3](#play-ac-3-and-e-ac-3)).
+!!! note "Status as of 2026-09-26: Hearth plays to sinks; AC-4 not on ESP32"
+    The desktop app discovers sinks, pairs, plays to groups and updates firmware over the network
+    ([Hearth index](index.md)). These boards decode AC-3 and E-AC-3 only — not AC-4. For
+    development without Hearth, `ac3hearth-testserver` still plays E-AC-3 to boards
+    ([Play AC-3 and E-AC-3](#play-ac-3-and-e-ac-3)).
 
 ## What you need
 

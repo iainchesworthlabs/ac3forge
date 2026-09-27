@@ -2,7 +2,9 @@
 
 ac3forge builds and is tested on Linux today, on both GCC and Clang, CLI and GUI alike. This
 page covers what is specific to Linux; for the full preset reference, options list and
-troubleshooting, see [Building from source](../building.md).
+troubleshooting, see [Building from source](../building.md). Crucible's Linux-only host tooling
+(live under [`apps/linux/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/linux/README.md))
+is separate from the application in `apps/crucible/`.
 
 ## Status
 
