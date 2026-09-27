@@ -333,7 +333,7 @@ output level's gain and no DRC, so an object presentation refuses DRC gains.
   input i reads the element's full-band track that Pseudocode 14a gives it, so the encoder puts downmix
   signal i there.
 - **Evidence:** Readers: each object of a computed downmix, a static 5.1 bed and one with bed objects
-  decodes at 40 to 70 dB SNR against the object given, and core decoding gives each downmix signal at its
+  decodes at 40 to 74 dB SNR against the object given, and core decoding gives each downmix signal at its
   group's centre (`tests/ac4enc/test_ac4enc_objects.cpp`). Chromium's `ac4-ajoc.ac4` has a computed downmix
   of ten signals.
 
