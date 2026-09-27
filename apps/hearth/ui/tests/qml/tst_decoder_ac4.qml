@@ -152,7 +152,13 @@ TestCase {
         return condition();
     }
     function stateNow() {
-        return " (state " + HearthController.state + ", settings "
+        let tones = "";
+        for (const l of HearthController.speakerLabels) {
+            for (const hz of [440, 620, 800, 90, 1030, 1270]) {
+                tones += " " + l + "@" + hz + "=" + level(l, hz).toFixed(3);
+            }
+        }
+        return " (state " + HearthController.state + ", tones" + tones + ", settings "
                + JSON.stringify(HearthController.decoderSettings) + ")";
     }
     // Waits until the tone's level is `expected` dB, within the tolerance.
