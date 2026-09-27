@@ -1457,7 +1457,13 @@ void HearthController::poll() {
         emit positionChanged();
     }
 
-    const QVariantMap new_decoder_settings = decoder_settings_to_map(status.settings);
+    const QVariantMap applied_decoder_settings = decoder_settings_to_map(status.settings);
+    if (applied_decoder_settings == requested_decoder_settings_) {
+        requested_decoder_settings_.clear();
+    }
+    const QVariantMap& new_decoder_settings = requested_decoder_settings_.isEmpty()
+                                                  ? applied_decoder_settings
+                                                  : requested_decoder_settings_;
     if (new_decoder_settings != decoder_settings_) {
         decoder_settings_ = new_decoder_settings;
         emit decoderSettingsChanged();
@@ -1685,7 +1691,18 @@ void HearthController::setDecoderSettings(const QVariantMap& settings) {
     // decoder_settings.hpp) ahead of this header's own Qt includes and
     // reintroduce the slots-macro collision hearth_controller.cpp's own
     // #undef only guards its own translation unit against.
-    engine_->set_decoder_settings(decoder_settings_from_map(settings, engine_->status().settings));
+    const ac3::hearth::DecoderSettings applied = engine_->status().settings;
+    const ac3::hearth::DecoderSettings base =
+        requested_decoder_settings_.isEmpty()
+            ? applied
+            : decoder_settings_from_map(requested_decoder_settings_, applied);
+    const ac3::hearth::DecoderSettings next = decoder_settings_from_map(settings, base);
+    engine_->set_decoder_settings(next);
+    requested_decoder_settings_ = decoder_settings_to_map(next);
+    if (requested_decoder_settings_ != decoder_settings_) {
+        decoder_settings_ = requested_decoder_settings_;
+        emit decoderSettingsChanged();
+    }
 }
 
 void HearthController::setTrimDb(int slot, double db) {

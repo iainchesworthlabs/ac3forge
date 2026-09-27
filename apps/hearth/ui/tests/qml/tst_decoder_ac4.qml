@@ -138,18 +138,34 @@ TestCase {
                 return true;
             }
             return false;
-        }, 15000, "the " + hz + " Hz tone in " + label + " never settled: " + level(label, hz) + " dB");
+        }, 15000, "the " + hz + " Hz tone in " + label + " never settled");
         return settled;
+    }
+    // tryVerify's message is built before it waits, so it would report the
+    // level the wait started from. These poll instead, and fail with the level
+    // the wait ended on and the settings in force then.
+    function waitUntil(condition, timeout) {
+        const deadline = Date.now() + timeout;
+        while (!condition() && Date.now() < deadline) {
+            wait(50);
+        }
+        return condition();
+    }
+    function stateNow() {
+        return " (state " + HearthController.state + ", settings "
+               + JSON.stringify(HearthController.decoderSettings) + ")";
     }
     // Waits until the tone's level is `expected` dB, within the tolerance.
     function heardAt(label, hz, expected, what) {
-        tryVerify(function() { return Math.abs(level(label, hz) - expected) < tolerance; }, 15000,
-                  what + ": the " + hz + " Hz tone in " + label + " reads " + level(label, hz)
-                  + " dB, not " + expected);
+        const held = waitUntil(function() { return Math.abs(level(label, hz) - expected) < tolerance; },
+                               15000);
+        verify(held, what + ": the " + hz + " Hz tone in " + label + " reads " + level(label, hz)
+               + " dB after 15 s, not " + expected + stateNow());
     }
     function heardOff(label, hz, reference, what) {
-        tryVerify(function() { return level(label, hz) < reference - 60; }, 15000,
-                  what + ": the " + hz + " Hz tone in " + label + " is still there at " + level(label, hz) + " dB");
+        const gone = waitUntil(function() { return level(label, hz) < reference - 60; }, 15000);
+        verify(gone, what + ": the " + hz + " Hz tone in " + label + " is still there at "
+               + level(label, hz) + " dB after 15 s" + stateNow());
     }
     // 20 log10 of Part 1 clause 5.7.9.3.3's 2^((Lout - dialnorm) / 6), the
     // gain dialogue normalisation takes the stream's -24 dBFS dialogue by.
@@ -366,6 +382,24 @@ TestCase {
         heardAt("L", 1270, coded.rightSurround - 6, "the stream's preferred Lt/Rt");
         mouseClick(H.checkBox(page, "Follow the stream's preferred downmix"));
         tryVerify(function() { return setting("ac4PreferredDownmix") === false; }, 10000);
+    }
+
+    // Two controls changed in one turn of the event loop, before the engine's
+    // status can show the first: each page write used to copy the settings it
+    // last read, so the second put the first back.
+    function test_twoChangesInOneTurnBothLand() {
+        settle({ stereoFold: "loro", mixLfe: true });
+        const page = makePage();
+        mouseClick(H.segment(page, "Downmix", "ltrt"));
+        mouseClick(H.checkBox(page, "Mix the LFE in"));
+        const landed = waitUntil(function() {
+            return setting("stereoFold") === "ltrt" && setting("mixLfe") === false;
+        }, 10000);
+        verify(landed, "the settings came to " + JSON.stringify(HearthController.decoderSettings));
+        // And they hold once the engine's own status has caught up.
+        wait(500);
+        compare(setting("stereoFold"), "ltrt");
+        compare(setting("mixLfe"), false);
     }
 
     // The presentation picker, the dialogue level and audio description,
