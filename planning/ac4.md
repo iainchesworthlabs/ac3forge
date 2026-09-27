@@ -2174,6 +2174,22 @@ effect tone by tone at the fake device); the gain scripts through the engine, wi
   (`apps/gui/encoder_controller.cpp`), with its encode options and the command line the page echoes.
 - AC-4 decode in the QC, object and stream player controllers, which dispatch on `stream_bsid`
   today.
+- I3 built both. The page encodes one source in its own layout, mono to 5.1, to a raw stream or an
+  MP4 file, as `ac4-encode` takes a WAV file; its AC-4 tab carries the frame rate, the rate and
+  codec modes, the I-frame interval, the CRC, dialnorm, the loudness values, the DRC profile, the
+  stereo downmix and dialogue enhancement, and the page echoes one `ac3cli ac4-encode` command.
+  The steps that decide the bytes (the input's channel order, the BS.1770 measurement behind
+  `dialnorm=auto` and `loudness=`, and the raw or MP4 packaging) moved from `ac4-encode` to
+  `apps/common/ac4_encode_core.hpp`, with `ac4_channels.hpp` and `is_ac4_stream`, so the page and
+  the command run the same code. QC, the player and the object page recognise AC-4 by its sync
+  word; QC and the player take a presentation by position as `presentation=` does, and the object
+  page shows the presentations, beds and objects the decoder reports, read-only, saying in its
+  own text that exporting AC-4 objects is I5's.
+- I3 left to the command line what one source in one layout cannot say: several substreams and
+  presentations, dialogue stems and hybrid dialogue enhancement, a DRC profile per decoder mode,
+  Lt/Rt's own levels, the LFE mix, the downmix corrections, I-frames at named frames, and the
+  3.0, 7.X and immersive layouts. A live session under AC-4 is refused, since `ac3cli live` has
+  none.
 
 **Exit:** each control has a test, and the command line the page echoes, run through `ac3cli`,
 writes the same bytes as the page.

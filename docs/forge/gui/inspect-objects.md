@@ -54,6 +54,20 @@ reconstruction, not the original source audio recovered losslessly — see
 [Spatial audio & Dolby Atmos](../../library/spatial-and-atmos.md) for what JOC can and cannot pull
 apart.
 
+## AC-4
+
+An AC-4 file, raw (`*.ac4`) or in an MP4, is recognised by its sync word and opened read-only: the
+dialog shows what `ac4::Decoder` reports of it. Under **Presentations** it lists the table of
+contents' presentations by position, each with its channels as coded, its language and its
+`presentation_id`, and marks the one the decoder chose with no preference; below them, how many
+bed objects and dynamic objects that presentation decoded. A presentation with object audio
+fills the room view and the object list frame by frame from the decoder's Annex F properties, a
+bed object labelled with its loudspeaker; a channel-based presentation, which is what this
+project's encoder writes today, has its beds as channels and no objects to place.
+
+Exporting AC-4 objects arrives with plan phase I5, and the dialog says so in its own text rather
+than offering an export that would fail.
+
 ## What it does not do
 
 This reads a stream that already exists; it has no connection to the workbench's own encode plan
