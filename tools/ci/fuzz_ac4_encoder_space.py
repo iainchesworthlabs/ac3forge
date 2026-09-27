@@ -210,6 +210,11 @@ REGRESSION_SEEDS = {
     "I-frames was sized for the stem's parameters coded against the last frame's, which it could "
     "not hold, where it falls back to the last frame's kept, and the encoder threw "
     "bad_optional_access (phase E6's, fixed in E7)",
+    12674821545285173751: "5.1.4 in ASPX_ACPL_1 over mixed material: (H'', I'') and (J'', K'') chose "
+    "their transform layouts apart from (D'', E'') and (F'', G''), which step 4 pairs them with line "
+    "for line, and the decoder refused the frame",
+    15488767694425248866: "7.1.4 in ASPX_ACPL_1 with the back pair, the same: a difference pair "
+    "split its blocks where its sum pair did not",
 }
 
 

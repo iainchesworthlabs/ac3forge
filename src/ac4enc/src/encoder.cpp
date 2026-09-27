@@ -281,6 +281,11 @@ struct Plan {
     // Each layout group's coded band where it is not the substream's: in the
     // immersive element's ASPX_ACPL_1, H'' to K'' below acpl_qmf_band alone.
     std::vector<double> group_cutoff{};
+    // Each layout group whose transform layouts are another's, that group's
+    // index (an earlier one), else -1: in the immersive element's ASPX_ACPL_1,
+    // (H'', I'') takes (D'', E'')'s and (J'', K'') (F'', G'')'s, since step 4
+    // of Part 2 clause 5.2.3.2 combines them line for line, window for window.
+    std::vector<int> group_follows{};
 
     [[nodiscard]] bool five_x() const noexcept { return ch_mode == 3 || ch_mode == 4; }
     [[nodiscard]] bool seven_x() const noexcept { return ch_mode >= 5 && ch_mode <= 10; }
@@ -418,19 +423,24 @@ struct Plan {
         p.groups = {{p.l, p.r}, {p.ls, p.rs}, {p.c}, {p.x1, p.x2}};
     }
     p.group_cutoff.assign(p.groups.size(), 0.0);
+    p.group_follows.assign(p.groups.size(), -1);
     if (p.immersive == immersive_mode::kAspxAcpl1) {
         // The differences, which A-CPL's modules take below acpl_qmf_band
         // alone (Pseudocode 116), in groups of their own coded to there: -1
         // stands for that band's top, which the internal rate places. Table
         // 20's prediction, which would need them in their sums' groups, is
-        // not sent (sap_mode 0).
+        // not sent (sap_mode 0), but step 4 still pairs each with its sum
+        // line for line, so each group takes its sum's transform layouts:
+        // groups 1, (D'', E''), and 3, (F'', G'').
         p.groups.push_back({p.h, p.i});
         p.groups.push_back({p.j, p.k});
         p.group_cutoff.insert(p.group_cutoff.end(), {-1.0, -1.0});
+        p.group_follows.insert(p.group_follows.end(), {1, 3});
     }
     if (lfe) {
         p.groups.push_back({p.lfe});
         p.group_cutoff.push_back(0.0);
+        p.group_follows.push_back(-1);
     }
     p.coded = n;
     switch (p.immersive) {
@@ -887,6 +897,10 @@ struct SubstreamCoder {
         std::deque<FrameLayout> layouts;
         int previous_last = 2048;  // the frame's length at first
         double cutoff = 0.0;       // where it is not the substream's (Plan::group_cutoff)
+        int follows = -1;          // the group whose layouts these are (Plan::group_follows)
+        // The channels whose transients decide the layouts: the group's own
+        // and those of the groups that follow it.
+        std::vector<int> detect;
     };
     std::vector<Group> groups;
     std::vector<std::size_t> group_of;  // per input channel
@@ -1111,7 +1125,7 @@ struct SubstreamCoder {
 
     // Transient detection over the frame's centre, where its blocks are:
     // the first difference's energy per sub-block against the four before,
-    // summed over the group's channels.
+    // summed over the group's detecting channels.
     [[nodiscard]] FrameLayout decide(std::int64_t frame, const Group& group) const {
         if (group.lfe) {
             return detail::long_layout(frame_length);
@@ -1120,7 +1134,7 @@ struct SubstreamCoder {
         std::array<double, kSubBlocks + 4> energy{};
         for (int k = -4; k < kSubBlocks; ++k) {
             double e = 0.0;
-            for (const int channel : group.channels) {
+            for (const int channel : group.detect) {
                 const auto c = static_cast<std::size_t>(channel);
                 const std::int64_t start = centre + static_cast<std::int64_t>(k) * sub_block;
                 for (std::int64_t s = start; s < start + sub_block; ++s) {
@@ -1133,7 +1147,7 @@ struct SubstreamCoder {
         std::array<int, 2> attack{-1, -1};
         int first_attack = -1;
         const double quietest =
-            kAttackFloor * sub_block * static_cast<double>(group.channels.size());
+            kAttackFloor * sub_block * static_cast<double>(group.detect.size());
         for (int k = 0; k < kSubBlocks; ++k) {
             const auto i = static_cast<std::size_t>(k + 4);
             const double before = (energy[i - 1] + energy[i - 2] + energy[i - 3] + energy[i - 4]) / 4.0;
@@ -2120,6 +2134,12 @@ struct SubstreamCoder {
     void before_frame(std::int64_t frame) {
         for (Group& group : groups) {
             while (static_cast<std::int64_t>(group.layouts.size()) < 2) {
+                if (group.follows >= 0) {
+                    // An earlier group's, decided above in this same pass.
+                    const Group& leader = groups[static_cast<std::size_t>(group.follows)];
+                    group.layouts.push_back(leader.layouts[group.layouts.size()]);
+                    continue;
+                }
                 group.layouts.push_back(
                     decide(frame + static_cast<std::int64_t>(group.layouts.size()), group));
             }
@@ -2245,7 +2265,17 @@ std::expected<std::unique_ptr<SubstreamCoder>, Refusal> SubstreamCoder::make(
                                ? kAcplResidualQmfBand * static_cast<double>(coder->rate_hz) / 128.0
                                : own;
         }
+        if (g < plan->group_follows.size()) {
+            group.follows = plan->group_follows[g];
+        }
+        group.detect = group.channels;
         coder->groups.push_back(std::move(group));
+    }
+    for (const SubstreamCoder::Group& group : coder->groups) {
+        if (group.follows >= 0) {
+            auto& detect = coder->groups[static_cast<std::size_t>(group.follows)].detect;
+            detect.insert(detect.end(), group.channels.begin(), group.channels.end());
+        }
     }
     if (plan->immersive_element()) {
         // DEE's A-SPX configuration for the rate, and A-CPL's four modules as
