@@ -403,15 +403,16 @@ endif()
 # test_ac4dec_objects.cpp for Chromium's A-JOC stream, and
 # test_ac4dec_object_render.cpp for where to write the streams to listen to),
 # ac4dec/test_ac4dec_api.cpp, for a directory of further streams to decode,
-# ac4enc/test_ac4enc_presentations.cpp, for where to write its streams, and
-# ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's.
+# ac4enc/test_ac4enc_presentations.cpp, for where to write its streams,
+# ac4enc/test_ac4enc_objects.cpp, for where to write its streams and those to
+# listen to, and ac4enc/test_ac4enc_presentations_race.cpp, for the gold set's.
 # iec61937/test_iec61937_ac4.cpp reads one too, for the census directory it packs.
 if(AC3FORGE_IS_MSVC_LIKE)
     set_source_files_properties(core/test_simd_kernels.cpp ac4dec/test_ac4dec_syntax.cpp
         ac4dec/test_ac4dec_constructed.cpp ac4dec/test_ac4dec_objects.cpp ac4dec/test_ac4dec_presentations.cpp
         ac4dec/test_ac4dec_api.cpp ac4dec/test_ac4dec_object_render.cpp
-        ac4enc/test_ac4enc_presentations.cpp ac4enc/test_ac4enc_presentations_race.cpp
-        iec61937/test_iec61937_ac4.cpp
+        ac4enc/test_ac4enc_objects.cpp ac4enc/test_ac4enc_presentations.cpp
+        ac4enc/test_ac4enc_presentations_race.cpp iec61937/test_iec61937_ac4.cpp
         PROPERTIES COMPILE_OPTIONS "/wd4996")
 endif()
 

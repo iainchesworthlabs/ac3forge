@@ -306,13 +306,14 @@ PortionWriter::PortionWriter(std::vector<bool> dynamic)
     : dynamic_(std::move(dynamic)), held_(dynamic_.size()), standard_(dynamic_.size()) {}
 
 PortionFrame PortionWriter::frame(std::span<const BlockPlan> plans, bool iframe) const {
-    PortionFrame out;
-    out.n_blocks = static_cast<int>(plans.size());
+    PortionFrame out{.timing = {},
+                     .n_blocks = static_cast<int>(plans.size()),
+                     .blocks = {},
+                     .held = held_,
+                     .standard = standard_};
     for (const BlockPlan& plan : plans) {
         out.timing.blocks.push_back(timing_block(plan.offset_factor, plan.ramp));
     }
-    out.held = held_;
-    out.standard = standard_;
     for (std::size_t o = 0; o < dynamic_.size(); ++o) {
         const bool dynamic = dynamic_[o];
         bool known = have_;
@@ -376,10 +377,7 @@ PortionFrame PortionWriter::frame(std::span<const BlockPlan> plans, bool iframe)
 
 PortionFrame PortionWriter::least(const BlockPlan& now, bool iframe) const {
     if (!iframe) {
-        PortionFrame out;
-        out.held = held_;
-        out.standard = standard_;
-        return out;
+        return PortionFrame{.timing = {}, .n_blocks = 0, .blocks = {}, .held = held_, .standard = standard_};
     }
     BlockPlan bounded = now;
     bounded.offset_factor = 0;

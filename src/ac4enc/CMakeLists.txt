@@ -60,6 +60,13 @@ target_sources(ac4enc_objects
         src/oamd/object_metadata.cpp
         src/oamd/oamd_syntax.cpp)
 
+# -Wnull-dereference false positive, GNU only: GCC 16 at -O3 (Release) flags
+# PortionWriter's copies of its held ObjectCodes, whose std::optional
+# members it traces into <optional>'s _M_copy_assign, the libstdc++ category
+# cmake/CompilerWarnings.cmake describes. Scoped to the one file.
+set_source_files_properties(src/oamd/object_metadata.cpp
+    PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:GNU>:-Wno-null-dereference>")
+
 target_include_directories(ac4enc_objects
     PUBLIC
         "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
