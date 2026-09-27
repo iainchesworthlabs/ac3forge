@@ -41,6 +41,7 @@ Dialog {
         // QcController sniffs the actual bytes rather than trusting the
         // extension, so this list is a convenience for the picker only.
         nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"),
+                     qsTr("AC-4 (*.ac4)"),
                      qsTr("Containers (*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts)"),
                      qsTr("All files (*)")]
         onAccepted: QcController.measureFile(selectedFile)
@@ -145,6 +146,34 @@ Dialog {
                     ({ value: String(index), label: label }))
                 currentValue: String(QcController.presetIndex)
                 onSelected: (value) => QcController.presetIndex = parseInt(value)
+            }
+        }
+
+        // AC-4: which presentation is measured, as `ac3cli qc presentation=<n>`
+        // chooses it; the first entry is qc's default, the one the decoder
+        // takes with no preference.
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.space3
+            visible: QcController.isAc4
+            Text {
+                id: qcPresentationLabel
+                text: qsTr("PRESENTATION")
+                font.pixelSize: Theme.fontMicro
+                font.letterSpacing: 1.2
+                color: Theme.textMuted
+            }
+            ComboBox {
+                objectName: "qcPresentation"
+                Accessible.name: qcPresentationLabel.text
+                Layout.fillWidth: true
+                enabled: !QcController.busy
+                model: [qsTr("The decoder's choice")].concat(QcController.presentationNames)
+                currentIndex: QcController.presentationIndex + 1
+                // Each measurement hands the model over anew, which resets
+                // the shown entry; a pick has already replaced the binding.
+                onModelChanged: currentIndex = QcController.presentationIndex + 1
+                onActivated: QcController.presentationIndex = currentIndex - 1
             }
         }
 
@@ -261,6 +290,7 @@ Dialog {
 
                             Text {
                                 objectName: "qcDialnormLine"
+                                visible: programmeCard.modelData.hasDialnorm
                                 text: qsTr("dialnorm %1  (claims dialogue at %2 LKFS)")
                                           .arg(programmeCard.modelData.dialnorm)
                                           .arg(programmeCard.modelData.claimedLkfs.toFixed(2))
@@ -279,7 +309,19 @@ Dialog {
                                 font.family: Theme.monoFamily
                                 color: Theme.text
                             }
+                            // AC-4 states its loudness rather than sending
+                            // compr (ETSI TS 103 190-1 clause 4.3.12.3).
                             Text {
+                                objectName: "qcStatedLine"
+                                visible: programmeCard.modelData.hasStatedLkfs
+                                text: qsTr("stated loudness %1 LKFS (further loudness information)")
+                                          .arg(programmeCard.modelData.statedLkfs.toFixed(2))
+                                font.pixelSize: Theme.fontMono
+                                font.family: Theme.monoFamily
+                                color: Theme.text
+                            }
+                            Text {
+                                visible: !QcController.isAc4
                                 text: programmeCard.modelData.hasCompr
                                       ? qsTr("compr present, %1 dB").arg(programmeCard.modelData.comprDb.toFixed(2))
                                       : qsTr("compr absent")

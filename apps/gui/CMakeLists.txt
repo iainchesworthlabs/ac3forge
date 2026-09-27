@@ -34,12 +34,20 @@ qt_add_executable(ac3gui
     channel_geometry.hpp
     gui_diagnostics.cpp
     gui_diagnostics.hpp
+    ac4_encode_settings.cpp
+    ac4_encode_settings.hpp
+    ac4_presentations.cpp
+    ac4_presentations.hpp
+    ../common/ac4_stream.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
     ../common/recording_sink.hpp
     ../common/container_input.cpp
     ../common/container_input.hpp
+    ../common/ac4_encode_core.cpp
+    ../common/ac4_encode_core.hpp
+    ../common/ac4_channels.hpp
     system_theme.cpp
     system_theme.hpp
     language_manager.cpp
@@ -90,6 +98,7 @@ set(AC3_QML_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/FocusRing.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/LoudnessGroup.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/VbrPanel.qml"
+    "${CMAKE_CURRENT_SOURCE_DIR}/qml/Ac4Panel.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/GuidedWizard.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/RailBlock.qml"
     "${CMAKE_CURRENT_SOURCE_DIR}/qml/AssignmentPanel.qml"
@@ -300,6 +309,11 @@ target_link_libraries(ac3gui
         # 'fmp4'/'ts' commands - see EncoderController::writeOutput().
         mp4::mp4
         mpegts::mpegts
+        # AC-4 in the codec list, the QC, the player and the object page, through
+        # the decoder's and the encoder's public APIs.
+        ac4::ac4
+        ac4::decoder
+        ac4::encoder
         ac3::warnings
         ac3::fmt
         # Unlike ac3::forge's own PRIVATE, $<BUILD_INTERFACE:...>-wrapped link

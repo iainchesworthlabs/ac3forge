@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <ios>
@@ -20,6 +21,11 @@
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
 #include "ac3/meta/qc.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4_channels.hpp"
+#include "ac4_presentations.hpp"
+#include "ac4_stream.hpp"
+#include "ac4dec/decoder.hpp"
 #include "container_input.hpp"
 
 using qc_detail::RawProgramme;
@@ -266,10 +272,98 @@ std::optional<RawResult> measure_eac3(std::span<const std::byte> stream, QString
     return result;
 }
 
-// Reads the whole file, dispatches on bsid (same convention run_qc uses:
-// bsid > 8 is E-AC-3) and measures it. Runs entirely on the calling thread -
-// measureFile() below is what moves this off the GUI thread.
-MeasureOutcome measure_file(const QString& path) {
+// AC-4: mirrors ac3cli's measure_qc_ac4 (apps/cli/commands/analysis.cpp) at
+// layout=bed - the presentation `presentation` chooses (the decoder's own
+// choice where unset), decoded as the stream codes it (no output level, so no
+// DRC, dialogue enhancement or downmix), metered over its 1/0, 2/0, 3/0 or 3/2
+// bed in A/52's order, a 7.X element's last pair left out, and compared with
+// the dialnorm and stated loudness the stream sends.
+std::optional<RawResult> measure_ac4(std::span<const std::byte> stream,
+                                     std::optional<std::size_t> presentation, QString& error) {
+    const ac4::ScanResult scan = ac4::scan(stream);
+    if (scan.frames.empty()) {
+        error = QStringLiteral("Not a valid AC-4 stream.");
+        return std::nullopt;
+    }
+    ac4::DecoderConfig config;
+    config.presentation.index = presentation;
+    ac4::Decoder decoder(config);
+    RawResult result;
+    result.codec_label = QStringLiteral("AC-4");
+    result.unit_label = QStringLiteral("frame(s)");
+    result.ac4 = true;
+    for (const auto& row : ac3gui::ac4_presentation_rows(scan.frames)) {
+        result.presentations.append(QString::fromStdString(row.label));
+    }
+    std::optional<ac3::meta::LoudnessMeter> meter;
+    std::vector<std::size_t> order;
+    std::vector<ac4::Speaker> layout;
+    std::uint64_t samples = 0;
+    std::vector<std::span<const float>> views;
+    std::size_t number = 0;
+    for (const ac4::SyncFrame& frame : scan.frames) {
+        ++number;
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        if (!decoded.has_value()) {
+            error = QStringLiteral("Frame %1: %2")
+                        .arg(number)
+                        .arg(to_qstring(decoder.refusal_reason()));
+            return std::nullopt;
+        }
+        if (!decoded->has_value()) {
+            continue;  // waiting for an I-frame
+        }
+        const ac4::DecodedFrame& pcm = **decoded;
+        if (!meter) {
+            layout = pcm.speakers;
+            result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
+            result.presentation = pcm.presentation;
+            order = ac3::apps::ac4_order(std::span{pcm.speakers}, ac3::apps::ac4_meter_rank);
+            std::erase_if(order, [&](std::size_t c) {
+                return ac3::apps::ac4_meter_rank(pcm.speakers[c]) >= 99;
+            });
+            const bool lfe =
+                std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
+            const ac3::Acmod acmod = ac3::apps::ac4_bed_acmod(pcm.speakers);
+            const ac3::SampleRate rate = pcm.sample_rate_hz == 44100 ? ac3::SampleRate::k44100
+                                                                     : ac3::SampleRate::k48000;
+            meter.emplace(rate, acmod, lfe);
+            result.layout_label = to_qstring(ac3::analysis::layout_name(acmod, lfe));
+        } else if (pcm.speakers != layout ||
+                   static_cast<std::uint32_t>(pcm.sample_rate_hz) != result.sample_rate_hz) {
+            error = QStringLiteral(
+                        "Frame %1: the channel layout or sample rate changes mid-stream.")
+                        .arg(number);
+            return std::nullopt;
+        }
+        views.clear();
+        for (const std::size_t c : order) {
+            views.emplace_back(pcm.channels[c]);
+        }
+        meter->push(views);
+        samples += pcm.samples;
+        ++result.unit_count;
+    }
+    if (!meter) {
+        error = QStringLiteral("No frame decoded; the stream sent no I-frame.");
+        return std::nullopt;
+    }
+    const ac4::PresentationMetadata& metadata = decoder.metadata();
+    result.programmes.push_back(RawProgramme{.integrated_lkfs = meter->integrated_lkfs(),
+                                             .lra_lu = meter->loudness_range(),
+                                             .true_peak_dbtp = meter->true_peak_dbtp(),
+                                             .ac4 = true,
+                                             .ac4_dialnorm_dbfs = metadata.loudness.dialnorm_dbfs,
+                                             .stated_lkfs = metadata.loudness.integrated_lkfs});
+    result.seconds = static_cast<double>(samples) / static_cast<double>(result.sample_rate_hz);
+    return result;
+}
+
+// Reads the whole file, dispatches on the AC-4 sync word and then on bsid
+// (same convention run_qc uses: bsid > 8 is E-AC-3) and measures it. Runs
+// entirely on the calling thread - measureFile() below is what moves this off
+// the GUI thread.
+MeasureOutcome measure_file(const QString& path, std::optional<std::size_t> presentation) {
     MeasureOutcome outcome;
     std::ifstream in{path.toStdString(), std::ios::binary};
     if (!in) {
@@ -296,13 +390,22 @@ MeasureOutcome measure_file(const QString& path) {
     }
     const auto stream = std::move(demuxed.bytes);
 
+    QString error;
+    if (ac3::apps::is_ac4_stream(stream)) {
+        auto measured = measure_ac4(stream, presentation, error);
+        if (!measured) {
+            outcome.error = error;
+            return outcome;
+        }
+        outcome.result = std::move(*measured);
+        return outcome;
+    }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         outcome.error = QStringLiteral("%1 is too short to hold a syncframe.").arg(path);
         return outcome;
     }
 
-    QString error;
     auto measured = *bsid > 8 ? measure_eac3(stream, error) : measure_ac3(stream, error);
     if (!measured) {
         outcome.error = error;
@@ -363,18 +466,41 @@ QVariantList QcController::programmes() const {
         const bool has_true_peak = p.true_peak_dbtp.has_value();
         row[QStringLiteral("hasTruePeak")] = has_true_peak;
         row[QStringLiteral("truePeakDbtp")] = p.true_peak_dbtp.value_or(0.0);
-        row[QStringLiteral("dialnorm")] = p.dialnorm;
-        const double claimed_lkfs = -static_cast<double>(p.dialnorm);
-        row[QStringLiteral("claimedLkfs")] = claimed_lkfs;
         row[QStringLiteral("hasCompr")] = p.compr.has_value();
         row[QStringLiteral("comprDb")] =
             p.compr ? ac3::meta::to_db(ac3::meta::compr_gain(*p.compr)) : 0.0;
-        if (has_loudness) {
+        row[QStringLiteral("hasStatedLkfs")] = p.stated_lkfs.has_value();
+        row[QStringLiteral("statedLkfs")] = p.stated_lkfs.value_or(0.0);
+        if (p.ac4) {
+            // AC-4's dialnorm in dB below full scale, in its steps of 0.25
+            // (ETSI TS 103 190-1 clause 4.3.12.2.1), and the dialnorm the
+            // measured loudness would give, to the same step; 0.0 - x so that
+            // 0 dB is not -0.
+            const bool has_dialnorm = p.ac4_dialnorm_dbfs.has_value();
+            const double dialnorm = has_dialnorm ? 0.0 - *p.ac4_dialnorm_dbfs : 0.0;
+            const double implied =
+                has_loudness ? std::clamp(std::round(-*p.integrated_lkfs * 4.0) / 4.0, 0.0, 31.75)
+                             : dialnorm;
+            row[QStringLiteral("hasDialnorm")] = has_dialnorm;
+            row[QStringLiteral("dialnorm")] = dialnorm;
+            row[QStringLiteral("claimedLkfs")] = -dialnorm;
+            row[QStringLiteral("deltaDb")] = has_loudness ? *p.integrated_lkfs + dialnorm : 0.0;
+            row[QStringLiteral("impliedDialnorm")] = implied;
+            row[QStringLiteral("dialnormMatches")] =
+                has_loudness && has_dialnorm && implied == dialnorm;
+        } else if (has_loudness) {
+            const double claimed_lkfs = -static_cast<double>(p.dialnorm);
+            row[QStringLiteral("hasDialnorm")] = true;
+            row[QStringLiteral("dialnorm")] = p.dialnorm;
+            row[QStringLiteral("claimedLkfs")] = claimed_lkfs;
             const int implied = ac3::meta::dialnorm_from_lkfs(*p.integrated_lkfs);
             row[QStringLiteral("deltaDb")] = *p.integrated_lkfs - claimed_lkfs;
             row[QStringLiteral("impliedDialnorm")] = implied;
             row[QStringLiteral("dialnormMatches")] = implied == p.dialnorm;
         } else {
+            row[QStringLiteral("hasDialnorm")] = true;
+            row[QStringLiteral("dialnorm")] = p.dialnorm;
+            row[QStringLiteral("claimedLkfs")] = -static_cast<double>(p.dialnorm);
             row[QStringLiteral("deltaDb")] = 0.0;
             row[QStringLiteral("impliedDialnorm")] = p.dialnorm;
             row[QStringLiteral("dialnormMatches")] = false;
@@ -429,13 +555,38 @@ void QcController::measureFile(const QUrl& url) {
     if (path.isEmpty()) {
         return;
     }
+    // A new file starts at the decoder's own choice of presentation, as a
+    // plain `ac3cli qc` does.
+    if (path != file_path_ && presentation_index_ != -1) {
+        presentation_index_ = -1;
+        emit presentationChanged();
+    }
     file_path_ = path;
     emit filePathChanged();
+    measurePath(path);
+}
+
+void QcController::setPresentationIndex(int index) {
+    const int wanted = std::max(index, -1);
+    if (busy_ || wanted == presentation_index_) {
+        return;
+    }
+    presentation_index_ = wanted;
+    emit presentationChanged();
+    if (result_ && result_->ac4 && !file_path_.isEmpty()) {
+        measurePath(file_path_);
+    }
+}
+
+void QcController::measurePath(const QString& path) {
     busy_ = true;
     emit busyChanged();
-
-    std::ignore = QtConcurrent::run([this, path] {
-        auto outcome = measure_file(path);
+    const std::optional<std::size_t> presentation =
+        presentation_index_ >= 0
+            ? std::optional<std::size_t>{static_cast<std::size_t>(presentation_index_)}
+            : std::nullopt;
+    std::ignore = QtConcurrent::run([this, path, presentation] {
+        auto outcome = measure_file(path, presentation);
         QMetaObject::invokeMethod(this, [this, outcome = std::move(outcome)]() mutable {
             busy_ = false;
             error_ = outcome.error;

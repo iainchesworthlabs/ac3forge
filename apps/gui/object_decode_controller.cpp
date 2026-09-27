@@ -17,6 +17,12 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/audio/monitor.hpp"
+#include "ac3/core/eac3_tables.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4_channels.hpp"
+#include "ac4_presentations.hpp"
+#include "ac4_stream.hpp"
+#include "ac4dec/decoder.hpp"
 #include "container_input.hpp"
 
 using objdec_detail::RawFrame;
@@ -158,8 +164,98 @@ std::optional<RawResult> measure_eac3_objects(std::span<const std::byte> stream,
     return result;
 }
 
-// Reads the whole file, dispatches on bsid (AC-3's bsid <= 8 never carries
-// OAMD - it is an Annex E / E-AC-3-only tool) and decodes it. Runs entirely
+// AC-4: what ac4::Decoder reports of the stream, read-only - the table of
+// contents' presentations, and for the one it chooses with no preference its
+// channels and, frame by frame, its objects (Part 2 Annex F's properties, as
+// DecodedFrame::objects gives them), a bed object at its speaker and labelled
+// with it. Every frame's objects are recorded, and their audio kept for the
+// dialog's audition as E-AC-3's JOC objects' is.
+std::optional<RawResult> measure_ac4_objects(std::span<const std::byte> stream, QString& error) {
+    const ac4::ScanResult scan = ac4::scan(stream);
+    if (scan.frames.empty()) {
+        error = QStringLiteral("Not a valid AC-4 stream.");
+        return std::nullopt;
+    }
+    RawResult result;
+    result.codec_label = QStringLiteral("AC-4");
+    result.ac4 = true;
+    for (const auto& row : ac3gui::ac4_presentation_rows(scan.frames)) {
+        result.presentations.append(QString::fromStdString(row.label));
+    }
+    ac4::Decoder decoder;
+    double time_s = 0.0;
+    std::size_t number = 0;
+    bool have_first = false;
+    for (const ac4::SyncFrame& frame : scan.frames) {
+        ++number;
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        if (!decoded.has_value()) {
+            error = QStringLiteral("Frame %1: %2")
+                        .arg(number)
+                        .arg(to_qstring(decoder.refusal_reason()));
+            return std::nullopt;
+        }
+        if (!decoded->has_value()) {
+            continue;  // waiting for an I-frame
+        }
+        const ac4::DecodedFrame& pcm = **decoded;
+        if (!have_first) {
+            have_first = true;
+            result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
+            result.presentation = pcm.presentation;
+            result.layout_label = to_qstring(ac3gui::ac4_speaker_names(pcm.speakers));
+            result.has_lfe =
+                std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
+        }
+        time_s += static_cast<double>(pcm.samples) / static_cast<double>(pcm.sample_rate_hz);
+        ++result.unit_count;
+        if (pcm.objects.empty()) {
+            continue;
+        }
+        RawFrame f;
+        f.time_s = time_s;
+        int beds = 0;
+        for (const ac4::DecodedObject& object : pcm.objects) {
+            const ac4::ObjectProperties& p = object.properties;
+            f.x.push_back(p.position[0]);
+            f.y.push_back(p.position[1]);
+            f.z.push_back(p.position[2]);
+            f.gain_db.push_back(p.gain_db);
+            f.width.push_back(p.width[0]);
+            f.depth.push_back(p.width[1]);
+            f.height.push_back(p.width[2]);
+            f.snap.push_back(p.snap);
+            const bool bed = object.kind == ac4::ObjectKind::kBed;
+            beds += bed ? 1 : 0;
+            f.labels.push_back(bed && object.speaker
+                                   ? to_qstring(ac3::eac3::chanmap::name(
+                                         ac3::apps::ac4_location(*object.speaker)))
+                                   : QString());
+        }
+        result.ac4_bed_objects = beds;
+        result.ac4_dynamic_objects = static_cast<int>(pcm.objects.size()) - beds;
+        result.dynamic_object_count = static_cast<int>(pcm.objects.size());
+        result.dynamic_only = beds == 0;
+        if (result.object_audio.size() != pcm.objects.size()) {
+            result.object_audio.assign(pcm.objects.size(), {});
+        }
+        for (std::size_t i = 0; i < pcm.objects.size(); ++i) {
+            auto& dst = result.object_audio[i];
+            dst.insert(dst.end(), pcm.objects[i].samples.begin(), pcm.objects[i].samples.end());
+        }
+        result.frames.push_back(std::move(f));
+    }
+    if (!have_first) {
+        error = QStringLiteral("No frame decoded; the stream sent no I-frame.");
+        return std::nullopt;
+    }
+    result.duration_seconds = time_s;
+    return result;
+}
+
+// Reads the whole file, dispatches on the AC-4 sync word and then on bsid
+// (AC-3's bsid <= 8 never carries OAMD - it is an Annex E / E-AC-3-only tool)
+// and decodes it. Runs entirely
 // on the calling thread - inspectFile() below is what moves this off the GUI
 // thread, mirroring qc_controller.cpp's own measure_file().
 InspectOutcome inspect_file(const QString& path) {
@@ -190,6 +286,16 @@ InspectOutcome inspect_file(const QString& path) {
     }
     const auto stream = std::move(demuxed.bytes);
 
+    if (ac3::apps::is_ac4_stream(stream)) {
+        QString error;
+        auto measured = measure_ac4_objects(stream, error);
+        if (!measured) {
+            outcome.error = error;
+            return outcome;
+        }
+        outcome.result = std::move(*measured);
+        return outcome;
+    }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         outcome.error = QStringLiteral("%1 is too short to hold a syncframe.").arg(path);
@@ -232,7 +338,7 @@ QString ObjectDecodeController::summaryLine() const {
     return QStringLiteral("%1 · %2 · %3 Hz · %4 frame(s) · %5 s")
         .arg(result_->codec_label, result_->layout_label)
         .arg(result_->sample_rate_hz)
-        .arg(result_->frames.size())
+        .arg(result_->ac4 ? result_->unit_count : result_->frames.size())
         .arg(result_->duration_seconds, 0, 'f', 2);
 }
 

@@ -34,12 +34,20 @@ qt_add_executable(ac3gui_qmltests
     channel_geometry.hpp
     gui_diagnostics.cpp
     gui_diagnostics.hpp
+    ac4_encode_settings.cpp
+    ac4_encode_settings.hpp
+    ac4_presentations.cpp
+    ac4_presentations.hpp
+    ../common/ac4_stream.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
     ../common/recording_sink.hpp
     ../common/container_input.cpp
     ../common/container_input.hpp
+    ../common/ac4_encode_core.cpp
+    ../common/ac4_encode_core.hpp
+    ../common/ac4_channels.hpp
     system_theme.cpp
     system_theme.hpp
     language_manager.cpp
@@ -115,6 +123,17 @@ qt6_add_resources(ac3gui_qmltests "ac3gui_qmltests_translations"
 target_compile_definitions(ac3gui_qmltests PRIVATE
     QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/qml")
 
+# The byte-equality suites (tst_e2e_ac4.qml) run the command line a page
+# echoes through this build's own ac3cli (qml_test_main.cpp's CliRunner), so
+# the binary is built first and named here. apps/cli is configured before
+# apps/gui (the root CMakeLists.txt), so the target exists by now wherever the
+# build has one; without it the suites skip.
+if(TARGET ac3cli)
+    target_compile_definitions(ac3gui_qmltests PRIVATE
+        AC3GUI_TEST_AC3CLI="$<TARGET_FILE:ac3cli>")
+    add_dependencies(ac3gui_qmltests ac3cli)
+endif()
+
 # Same rationale as ../CMakeLists.txt's identical loop: Qt's generated
 # moc/rcc/qmlcachegen output for THIS target compiles under the strict
 # warning set unless excluded, and qmlcachegen is known to emit at least one
@@ -138,6 +157,9 @@ target_link_libraries(ac3gui_qmltests
         matroska::matroska
         mp4::mp4
         mpegts::mpegts
+        ac4::ac4
+        ac4::decoder
+        ac4::encoder
         ac3::warnings
         ac3::fmt
         # This target recompiles encoder_controller.cpp/stream_player_controller.cpp

@@ -98,6 +98,7 @@ Dialog {
         // trusting the extension, so this list is a convenience for the
         // picker only.
         nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"),
+                     qsTr("AC-4 (*.ac4)"),
                      qsTr("Containers (*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts)"),
                      qsTr("All files (*)")]
         onAccepted: ObjectDecodeController.inspectFile(selectedFile)
@@ -208,6 +209,53 @@ Dialog {
                     font.family: Theme.monoFamily
                     font.weight: Font.DemiBold
                     color: Theme.text
+                }
+
+                // ---- AC-4: what the decoder reports, read-only -------------
+                ColumnLayout {
+                    objectName: "oiAc4Block"
+                    Layout.fillWidth: true
+                    visible: ObjectDecodeController.isAc4
+                    spacing: 2
+
+                    Text {
+                        text: qsTr("PRESENTATIONS")
+                        font.pixelSize: Theme.fontMicro
+                        font.letterSpacing: 1.2
+                        color: Theme.textMuted
+                    }
+                    Repeater {
+                        objectName: "oiAc4Presentations"
+                        model: ObjectDecodeController.presentationNames
+                        delegate: Text {
+                            required property string modelData
+                            required property int index
+                            text: (index === ObjectDecodeController.decodedPresentation ? "▸ " : "  ")
+                                  + modelData
+                            font.pixelSize: Theme.fontMono
+                            font.family: Theme.monoFamily
+                            color: Theme.text
+                        }
+                    }
+                    Text {
+                        objectName: "oiAc4Objects"
+                        Layout.fillWidth: true
+                        text: qsTr("Presentation %1 decoded: %2 bed object(s), %3 dynamic object(s)")
+                                  .arg(ObjectDecodeController.decodedPresentation)
+                                  .arg(ObjectDecodeController.ac4BedObjects)
+                                  .arg(ObjectDecodeController.ac4DynamicObjects)
+                        font.pixelSize: Theme.fontSmall
+                        color: Theme.text
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        objectName: "oiAc4ExportNote"
+                        Layout.fillWidth: true
+                        text: qsTr("Exporting AC-4 objects arrives in a later release; this page shows what the decoder reports and exports nothing.")
+                        font.pixelSize: Theme.fontSmall
+                        color: Theme.neutral700
+                        wrapMode: Text.WordWrap
+                    }
                 }
 
                 // ---- scrub / play -------------------------------------------

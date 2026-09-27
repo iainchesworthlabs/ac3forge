@@ -1,13 +1,18 @@
 #include <QtQuickTest/quicktest.h>
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QObject>
+#include <QProcess>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickStyle>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QUrl>
 
 #include <optional>
 
@@ -32,6 +37,79 @@
 // normally and evaporate with the process; session restore itself is
 // seeded OFF because restoring is a fresh-process feature no test wants
 // firing under a shared controller.
+// The seam the byte-equality suites need and QML does not have: running the
+// command line a page echoes through the ac3cli this build made, in a folder
+// of the test's choosing, and comparing what it wrote with what the page
+// wrote. The path is the build's own (AC3GUI_TEST_AC3CLI, set in
+// apps/gui/tests/CMakeLists.txt where the build has ac3cli); without it
+// available() is false and a suite skips.
+class CliRunner : public QObject {
+    Q_OBJECT
+
+public:
+    [[nodiscard]] Q_INVOKABLE bool available() const {
+#ifdef AC3GUI_TEST_AC3CLI
+        return QFile::exists(QStringLiteral(AC3GUI_TEST_AC3CLI));
+#else
+        return false;
+#endif
+    }
+
+    // Runs `line` ("ac3cli <command> <args>", quoted as the command bar quotes
+    // a path with a space) with `folder` as the working directory; the exit
+    // code, or -1 where it did not start or finish within two minutes.
+    [[nodiscard]] Q_INVOKABLE int run(const QString& line, const QUrl& folder) {
+#ifdef AC3GUI_TEST_AC3CLI
+        QStringList args = QProcess::splitCommand(line);
+        if (args.isEmpty() || args.front() != QStringLiteral("ac3cli")) {
+            return -1;
+        }
+        args.removeFirst();
+        QProcess process;
+        process.setWorkingDirectory(folder.toLocalFile());
+        process.setProcessChannelMode(QProcess::ForwardedChannels);
+        process.start(QStringLiteral(AC3GUI_TEST_AC3CLI), args);
+        if (!process.waitForFinished(120000) || process.exitStatus() != QProcess::NormalExit) {
+            return -1;
+        }
+        return process.exitCode();
+#else
+        static_cast<void>(line);
+        static_cast<void>(folder);
+        return -1;
+#endif
+    }
+
+    // A fresh, empty folder at `folder`, and `source` copied into it under its
+    // own name - the working directory an echoed line names its files in.
+    [[nodiscard]] Q_INVOKABLE bool prepare(const QUrl& folder, const QUrl& source) {
+        QDir dir(folder.toLocalFile());
+        if (dir.exists() && !dir.removeRecursively()) {
+            return false;
+        }
+        if (!QDir().mkpath(dir.path())) {
+            return false;
+        }
+        const QString from = source.toLocalFile();
+        return QFile::copy(from, dir.filePath(QFileInfo(from).fileName()));
+    }
+
+    // Whether the two files hold the same bytes, both present and non-empty.
+    [[nodiscard]] Q_INVOKABLE bool sameBytes(const QUrl& a, const QUrl& b) const {
+        QFile first(a.toLocalFile());
+        QFile second(b.toLocalFile());
+        if (!first.open(QIODevice::ReadOnly) || !second.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        const QByteArray left = first.readAll();
+        return !left.isEmpty() && left == second.readAll();
+    }
+
+    [[nodiscard]] Q_INVOKABLE qint64 size(const QUrl& file) const {
+        return QFileInfo(file.toLocalFile()).size();
+    }
+};
+
 class SettingsIsolation : public QObject {
     Q_OBJECT
 
@@ -98,11 +176,13 @@ public slots:
         // dialog could only ever be tested showing nothing.
         engine->rootContext()->setContextProperty(
             QStringLiteral("appVersionDetails"), QString::fromStdString(ac3::version_details()));
+        engine->rootContext()->setContextProperty(QStringLiteral("cliRunner"), &cli_runner_);
     }
 
 private:
     std::optional<QTemporaryDir> scratch_;
     std::optional<LanguageManager> language_manager_;
+    CliRunner cli_runner_;
 };
 
 QUICK_TEST_MAIN_WITH_SETUP(ac3gui, SettingsIsolation)

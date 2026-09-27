@@ -37,6 +37,13 @@ struct RawProgramme {
     std::optional<double> true_peak_dbtp = std::nullopt;
     int dialnorm = 31;
     std::optional<std::uint8_t> compr = std::nullopt;
+    // AC-4 (ETSI TS 103 190-1 clause 4.3.12): its dialnorm, 0 to -31.75 dBFS
+    // in steps of 0.25, in place of `dialnorm` and `compr`, and the integrated
+    // loudness the stream states where it sends one - what `ac3cli qc` reports
+    // for AC-4.
+    bool ac4 = false;
+    std::optional<double> ac4_dialnorm_dbfs = std::nullopt;
+    std::optional<double> stated_lkfs = std::nullopt;
 };
 
 struct RawResult {
@@ -47,6 +54,11 @@ struct RawResult {
     std::size_t unit_count = 0;
     double seconds = 0.0;
     std::vector<RawProgramme> programmes = {};
+    // AC-4: the table of contents' presentations, each by the label
+    // ac3gui::ac4_presentation_label gives it, and the one measured.
+    bool ac4 = false;
+    QStringList presentations = {};
+    std::size_t presentation = 0;
 };
 
 }  // namespace qc_detail
@@ -110,6 +122,16 @@ class QcController : public QObject {
     // rather than with a count repeated here.
     Q_PROPERTY(QStringList presetNames READ presetNames CONSTANT)
     Q_PROPERTY(int presetIndex READ presetIndex WRITE setPresetIndex NOTIFY presetChanged)
+    // AC-4: whether the file measured is AC-4, its presentations, and which
+    // one to measure - `ac3cli qc presentation=<n>`'s n, or -1 for the one the
+    // decoder chooses with no preference, which is qc's default. Setting it
+    // measures the file again.
+    Q_PROPERTY(bool isAc4 READ isAc4 NOTIFY resultChanged)
+    Q_PROPERTY(QStringList presentationNames READ presentationNames NOTIFY resultChanged)
+    Q_PROPERTY(int presentationIndex READ presentationIndex WRITE setPresentationIndex NOTIFY
+                   presentationChanged)
+    // The presentation the last measurement decoded, by position; -1 before one.
+    Q_PROPERTY(int measuredPresentation READ measuredPresentation NOTIFY resultChanged)
 
    public:
     explicit QcController(QObject* parent = nullptr);
@@ -123,11 +145,21 @@ class QcController : public QObject {
     [[nodiscard]] QStringList presetNames() const;
     [[nodiscard]] int presetIndex() const { return preset_index_; }
     void setPresetIndex(int index);
+    [[nodiscard]] bool isAc4() const { return result_ && result_->ac4; }
+    [[nodiscard]] QStringList presentationNames() const {
+        return result_ ? result_->presentations : QStringList{};
+    }
+    [[nodiscard]] int presentationIndex() const { return presentation_index_; }
+    void setPresentationIndex(int index);
+    [[nodiscard]] int measuredPresentation() const {
+        return result_ && result_->ac4 ? static_cast<int>(result_->presentation) : -1;
+    }
 
-    // Reads `url`, decodes it as AC-3 or E-AC-3 (by bsid, same dispatch
-    // run_qc uses) and measures it - off the GUI thread via QtConcurrent, the
-    // same worker pattern every one of EncoderController's own encode/decode
-    // paths already uses, since a long stream's decode-and-measure pass is
+    // Reads `url`, decodes it as AC-4 (by its sync word) or as AC-3 or E-AC-3
+    // (by bsid, same dispatch run_qc uses) and measures it - off the GUI
+    // thread via QtConcurrent, the same worker pattern every one of
+    // EncoderController's own encode/decode paths already uses, since a long
+    // stream's decode-and-measure pass is
     // exactly the kind of work that must not stall the window. Refused
     // (silently, the app's usual convention for a start-a-thing entry point)
     // while already busy.
@@ -138,11 +170,15 @@ class QcController : public QObject {
     void busyChanged();
     void resultChanged();
     void presetChanged();
+    void presentationChanged();
 
    private:
+    void measurePath(const QString& path);
+
     QString file_path_;
     bool busy_ = false;
     QString error_;
     std::optional<qc_detail::RawResult> result_;
     int preset_index_ = 0;
+    int presentation_index_ = -1;
 };

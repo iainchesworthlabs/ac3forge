@@ -4,12 +4,16 @@
     <context>
         <name>AboutDialog</name>
         <message>
-            <source>About ac3forge</source>
-            <translation>[Àbõût àc3fõrgé ~~~~~~]</translation>
+            <source>About Forge</source>
+            <translation>[Àbõût Fõrgé ~~~~]</translation>
         </message>
         <message>
-            <source>ac3forge</source>
-            <translation>[àc3fõrgé ~~~]</translation>
+            <source>Forge</source>
+            <translation>[Fõrgé ~~]</translation>
+        </message>
+        <message>
+            <source>the AC3Forge encoder tools, %1</source>
+            <translation>[thé ÀC3Fõrgé éncõdér tõõls, %1 ~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Clean-room AC-3 / E-AC-3 encoder — ATSC A/52, ETSI TS 103 420</source>
@@ -24,8 +28,8 @@
             <translation>[LÎCÉNSÉ ~~~]</translation>
         </message>
         <message>
-            <source>ac3forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNU General Public License&lt;/a&gt; for details.</source>
-            <translation>[àc3fõrgé îs fréé sõftwàré: yõû càn rédîstrîbûté ît ànd/õr mõdîfy ît ûndér thé térms õf thé GNÛ Généràl Pûblîc Lîcénsé às pûblîshéd by thé Fréé Sõftwàré Fõûndàtîõn, éîthér vérsîõn 3 õf thé Lîcénsé, õr (àt yõûr õptîõn) àny làtér vérsîõn. Ît îs dîstrîbûtéd WÎTHÕÛT ÀNY WÀRRÀNTY; séé thé &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNÛ Généràl Pûblîc Lîcénsé&lt;/a&gt; fõr détàîls. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <source>AC3Forge is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. It is distributed WITHOUT ANY WARRANTY; see the &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNU General Public License&lt;/a&gt; for details.</source>
+            <translation>[ÀC3Fõrgé îs fréé sõftwàré: yõû càn rédîstrîbûté ît ànd/õr mõdîfy ît ûndér thé térms õf thé GNÛ Généràl Pûblîc Lîcénsé às pûblîshéd by thé Fréé Sõftwàré Fõûndàtîõn, éîthér vérsîõn 3 õf thé Lîcénsé, õr (àt yõûr õptîõn) àny làtér vérsîõn. Ît îs dîstrîbûtéd WÎTHÕÛT ÀNY WÀRRÀNTY; séé thé &lt;a href="https://www.gnu.org/licenses/gpl-3.0.html"&gt;GNÛ Généràl Pûblîc Lîcénsé&lt;/a&gt; fõr détàîls. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Includes the Archivo typeface, licensed under the SIL Open Font License 1.1.</source>
@@ -34,6 +38,93 @@
         <message>
             <source>Close</source>
             <translation>[Clõsé ~~]</translation>
+        </message>
+    </context>
+    <context>
+        <name>Ac4Panel</name>
+        <message>
+            <source>AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “ac3cli ac4-encode” does.</source>
+            <translation>[ÀC-4 éncõdés thé sõûrcé în îts õwn làyõût (mõnõ, stéréõ, 5.0 õr 5.1) tõ à ràw stréàm õr àn MP4 fîlé, às “àc3clî àc4-éncõdé” dõés. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Frames and rate</source>
+            <translation>[Fràmés ànd ràté ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Frame rate</source>
+            <translation>[Fràmé ràté ~~~~]</translation>
+        </message>
+        <message>
+            <source>Rate mode</source>
+            <translation>[Ràté mõdé ~~~~]</translation>
+        </message>
+        <message>
+            <source>Codec mode</source>
+            <translation>[Cõdéc mõdé ~~~~]</translation>
+        </message>
+        <message>
+            <source>I-frame interval</source>
+            <translation>[Î-fràmé întérvàl ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>CRC on each raw sync frame</source>
+            <translation>[CRC õn éàch ràw sync fràmé ~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Loudness and DRC</source>
+            <translation>[Lõûdnéss ànd DRC ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>dialnorm (dB below full scale)</source>
+            <translation>[dîàlnõrm (dB bélõw fûll scàlé) ~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Measure dialnorm from the programme</source>
+            <translation>[Méàsûré dîàlnõrm frõm thé prõgràmmé ~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Loudness values</source>
+            <translation>[Lõûdnéss vàlûés ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>DRC profile</source>
+            <translation>[DRC prõfîlé ~~~~]</translation>
+        </message>
+        <message>
+            <source>Stereo downmix</source>
+            <translation>[Stéréõ dõwnmîx ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Centre (Lo/Ro)</source>
+            <translation>[Céntré (Lõ/Rõ) ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Surround (Lo/Ro)</source>
+            <translation>[Sûrrõûnd (Lõ/Rõ) ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Preferred downmix</source>
+            <translation>[Préférréd dõwnmîx ~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Dialogue enhancement</source>
+            <translation>[Dîàlõgûé énhàncémént ~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Dialogue in %1</source>
+            <translation>[Dîàlõgûé în %1 ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Raise the Mid of L and R</source>
+            <translation>[Ràîsé thé Mîd õf L ànd R ~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Largest dialogue boost</source>
+            <translation>[Làrgést dîàlõgûé bõõst ~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Left to “ac3cli ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.</source>
+            <translation>[Léft tõ “àc3clî àc4-éncõdé”: sévéràl sûbstréàms ànd préséntàtîõns, dîàlõgûé stéms, à DRC prõfîlé pér décõdér mõdé, thé LFÉ mîx ànd thé õthér làyõûts. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
     </context>
     <context>
@@ -180,6 +271,17 @@
         <message>
             <source>CLIP</source>
             <translation>[CLÎP ~~]</translation>
+        </message>
+    </context>
+    <context>
+        <name>EncoderController</name>
+        <message>
+            <source>Saved to %1</source>
+            <translation>[Sàvéd tõ %1 ~~~~]</translation>
+        </message>
+        <message>
+            <source>Could not write %1: %2</source>
+            <translation>[Cõûld nõt wrîté %1: %2 ~~~~~~~~~]</translation>
         </message>
     </context>
     <context>
@@ -1182,6 +1284,30 @@
             <translation>[Rémõvé %1 ~~~~]</translation>
         </message>
         <message>
+            <source>AC-4</source>
+            <translation>[ÀC-4 ~~]</translation>
+        </message>
+        <message>
+            <source>Controls</source>
+            <translation>[Cõntrõls ~~~]</translation>
+        </message>
+        <message>
+            <source>Where the sound comes from</source>
+            <translation>[Whéré thé sõûnd cõmés frõm ~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Start offset for %1</source>
+            <translation>[Stàrt õffsét fõr %1 ~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Seconds before this source begins, in tenths.</source>
+            <translation>[Sécõnds béfõré thîs sõûrcé bégîns, în ténths. ~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Opens a file picker. WAV files can also be dropped anywhere on the window.</source>
+            <translation>[Õpéns à fîlé pîckér. WÀV fîlés càn àlsõ bé drõppéd ànywhéré õn thé wîndõw. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>No capture devices were found.</source>
             <translation>[Nõ càptûré dévîcés wéré fõûnd. ~~~~~~~~~~~~]</translation>
         </message>
@@ -1228,6 +1354,10 @@
         <message>
             <source>LEVELS</source>
             <translation>[LÉVÉLS ~~]</translation>
+        </message>
+        <message>
+            <source>Meters — show</source>
+            <translation>[Métérs — shõw ~~~~~]</translation>
         </message>
         <message>
             <source>Coded</source>
@@ -1428,6 +1558,10 @@
         <message>
             <source>pairs toggle together</source>
             <translation>[pàîrs tõgglé tõgéthér ~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>%1. %2</source>
+            <translation>[%1. %2 ~~]</translation>
         </message>
         <message>
             <source>moves to Dolby Digital Plus</source>
@@ -1842,6 +1976,10 @@
             <translation>[ÕBJÉCTS ~~~]</translation>
         </message>
         <message>
+            <source>How objects move</source>
+            <translation>[Hõw õbjécts mõvé ~~~~~~]</translation>
+        </message>
+        <message>
             <source>Author a path</source>
             <translation>[Àûthõr à pàth ~~~~~]</translation>
         </message>
@@ -2118,6 +2256,14 @@
             <translation>[õbj %1 · %2 · dràggîng ~~~~~~~~~]</translation>
         </message>
         <message>
+            <source>An encode is running. The runs strip shows its progress.</source>
+            <translation>[Àn éncõdé îs rûnnîng. Thé rûns strîp shõws îts prõgréss. ~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Encodes the loaded sources into the output folder set in Preferences. The runs strip reports the result.</source>
+            <translation>[Éncõdés thé lõàdéd sõûrcés întõ thé õûtpût fõldér sét în Préféréncés. Thé rûns strîp répõrts thé résûlt. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>obj %1 · %2</source>
             <translation>[õbj %1 · %2 ~~~~]</translation>
         </message>
@@ -2242,6 +2388,10 @@
             <translation>[%1 · %2 · %3 · %4%5 ~~~~~~~~]</translation>
         </message>
         <message>
+            <source>Opens this run's details, including the command line it was started with.</source>
+            <translation>[Õpéns thîs rûn's détàîls, înclûdîng thé cõmmànd lîné ît wàs stàrtéd wîth. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>Progress</source>
             <translation>[Prõgréss ~~~]</translation>
         </message>
@@ -2250,16 +2400,36 @@
             <translation>[%1% ~]</translation>
         </message>
         <message>
+            <source>Cancel run %1</source>
+            <translation>[Càncél rûn %1 ~~~~~]</translation>
+        </message>
+        <message>
+            <source>Play run %1 to the receiver</source>
+            <translation>[Plày rûn %1 tõ thé récéîvér ~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>Show in folder</source>
             <translation>[Shõw în fõldér ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Show run %1 in its folder</source>
+            <translation>[Shõw rûn %1 în îts fõldér ~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Details</source>
             <translation>[Détàîls ~~~]</translation>
         </message>
         <message>
+            <source>Why run %1 did not finish</source>
+            <translation>[Why rûn %1 dîd nõt fînîsh ~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>More…</source>
             <translation>[Mõré… ~~]</translation>
+        </message>
+        <message>
+            <source>More for run %1</source>
+            <translation>[Mõré fõr rûn %1 ~~~~~~]</translation>
         </message>
         <message>
             <source>QC this run</source>
@@ -2272,6 +2442,10 @@
         <message>
             <source>ac3cli command line</source>
             <translation>[àc3clî cõmmànd lîné ~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Opens the command line that reproduces this encode, with a Copy button.</source>
+            <translation>[Õpéns thé cõmmànd lîné thàt réprõdûcés thîs éncõdé, wîth à Cõpy bûttõn. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>ac3cli</source>
@@ -2317,6 +2491,10 @@
             <translation>[ÀC-3 / É-ÀC-3 (*.àc3 *.éc3) ~~~~~~~~~~~]</translation>
         </message>
         <message>
+            <source>AC-4 (*.ac4)</source>
+            <translation>[ÀC-4 (*.àc4) ~~~~~]</translation>
+        </message>
+        <message>
             <source>Containers (*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts)</source>
             <translation>[Cõntàînérs (*.mkv *.wébm *.mp4 *.m4à *.mõv *.ts *.m2ts) ~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
@@ -2351,6 +2529,18 @@
         <message>
             <source>Choose an E-AC-3 file above to see the objects decoded out of it.</source>
             <translation>[Chõõsé àn É-ÀC-3 fîlé àbõvé tõ séé thé õbjécts décõdéd õût õf ît. ~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>PRESENTATIONS</source>
+            <translation>[PRÉSÉNTÀTÎÕNS ~~~~~]</translation>
+        </message>
+        <message>
+            <source>Presentation %1 decoded: %2 bed object(s), %3 dynamic object(s)</source>
+            <translation>[Préséntàtîõn %1 décõdéd: %2 béd õbjéct(s), %3 dynàmîc õbjéct(s) ~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Exporting AC-4 objects arrives in a later release; this page shows what the decoder reports and exports nothing.</source>
+            <translation>[Éxpõrtîng ÀC-4 õbjécts àrrîvés în à làtér réléàsé; thîs pàgé shõws whàt thé décõdér répõrts ànd éxpõrts nõthîng. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Pause</source>
@@ -2472,6 +2662,18 @@
             <translation>[Chõõsé thé õûtpût fõldér ~~~~~~~~~~]</translation>
         </message>
         <message>
+            <source>Save diagnostics</source>
+            <translation>[Sàvé dîàgnõstîcs ~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Text files (*.txt)</source>
+            <translation>[Téxt fîlés (*.txt) ~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>All files (*)</source>
+            <translation>[Àll fîlés (*) ~~~~~]</translation>
+        </message>
+        <message>
             <source>Preferences</source>
             <translation>[Préféréncés ~~~~]</translation>
         </message>
@@ -2498,6 +2700,14 @@
         <message>
             <source>Light and dark are each hand-tuned per palette; the level thresholds never move.</source>
             <translation>[Lîght ànd dàrk àré éàch hànd-tûnéd pér pàlétté; thé lévél thréshõlds névér mõvé. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Text size</source>
+            <translation>[Téxt sîzé ~~~~]</translation>
+        </message>
+        <message>
+            <source>Every size in the window follows this; 100% is the size it is drawn at. System takes the text size the desktop reports and counts 9 pt as 100%, so on a desktop whose base size is larger the window starts larger too. Some panels still hold their controls at a fixed height and can clip the largest sizes — docs/forge/gui/accessibility.md says which.</source>
+            <translation>[Évéry sîzé în thé wîndõw fõllõws thîs; 100% îs thé sîzé ît îs dràwn àt. Systém tàkés thé téxt sîzé thé désktõp répõrts ànd cõûnts 9 pt às 100%, sõ õn à désktõp whõsé bàsé sîzé îs làrgér thé wîndõw stàrts làrgér tõõ. Sõmé pànéls stîll hõld théîr cõntrõls àt à fîxéd héîght ànd càn clîp thé làrgést sîzés — dõcs/fõrgé/gûî/àccéssîbîlîty.md sàys whîch. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Palette</source>
@@ -2532,8 +2742,8 @@
             <translation>[Swîtchés thé àpp's õwn téxt; Àràbîc, Hébréw ànd Yîddîsh àlsõ mîrrõr thé whõlé wîndõw rîght-tõ-léft. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
-            <source>French, German, Spanish, Arabic, Hebrew and Yiddish are partially translated today. Anything not yet translated stays in English rather than showing blank.</source>
-            <translation>[Frénch, Gérmàn, Spànîsh, Àràbîc, Hébréw ànd Yîddîsh àré pàrtîàlly trànslàtéd tõdày. Ànythîng nõt yét trànslàtéd stàys în Énglîsh ràthér thàn shõwîng blànk. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+            <source>System follows the language the desktop is set to. The translations are machine-made and have not been read by a speaker.</source>
+            <translation>[Systém fõllõws thé làngûàgé thé désktõp îs sét tõ. Thé trànslàtîõns àré màchîné-màdé ànd hàvé nõt béén réàd by à spéàkér. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source>Meters — show</source>
@@ -2708,6 +2918,22 @@
             <translation>[Kéép thé àc3clî lîné vîsîblé ~~~~~~~~~~~]</translation>
         </message>
         <message>
+            <source>DIAGNOSTICS</source>
+            <translation>[DÎÀGNÕSTÎCS ~~~~]</translation>
+        </message>
+        <message>
+            <source>A plain-text file to attach to a bug report: the versions, this machine's platform, what is loaded, the settings in force and the last messages the window logged. It carries no audio, no part of any file you loaded, no signing key and no value of any environment variable — only whether the two signing variables are set at all.</source>
+            <translation>[À plàîn-téxt fîlé tõ àttàch tõ à bûg répõrt: thé vérsîõns, thîs màchîné's plàtfõrm, whàt îs lõàdéd, thé séttîngs în fõrcé ànd thé làst méssàgés thé wîndõw lõggéd. Ît càrrîés nõ àûdîõ, nõ pàrt õf àny fîlé yõû lõàdéd, nõ sîgnîng kéy ànd nõ vàlûé õf àny énvîrõnmént vàrîàblé — õnly whéthér thé twõ sîgnîng vàrîàblés àré sét àt àll. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Save diagnostics…</source>
+            <translation>[Sàvé dîàgnõstîcs… ~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>Writes a plain-text support file where you choose. Nothing is sent anywhere.</source>
+            <translation>[Wrîtés à plàîn-téxt sûppõrt fîlé whéré yõû chõõsé. Nõthîng îs sént ànywhéré. ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>Cancel</source>
             <translation>[Càncél ~~]</translation>
         </message>
@@ -2725,6 +2951,10 @@
         <message>
             <source>AC-3 / E-AC-3 (*.ac3 *.ec3)</source>
             <translation>[ÀC-3 / É-ÀC-3 (*.àc3 *.éc3) ~~~~~~~~~~~]</translation>
+        </message>
+        <message>
+            <source>AC-4 (*.ac4)</source>
+            <translation>[ÀC-4 (*.àc4) ~~~~~]</translation>
         </message>
         <message>
             <source>Containers (*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts)</source>
@@ -2763,6 +2993,14 @@
             <translation>[DÉLÎVÉRY PRÉSÉT ~~~~~~]</translation>
         </message>
         <message>
+            <source>PRESENTATION</source>
+            <translation>[PRÉSÉNTÀTÎÕN ~~~~~]</translation>
+        </message>
+        <message>
+            <source>The decoder's choice</source>
+            <translation>[Thé décõdér's chõîcé ~~~~~~~~]</translation>
+        </message>
+        <message>
             <source>Choose a file above to measure it against these gates.</source>
             <translation>[Chõõsé à fîlé àbõvé tõ méàsûré ît àgàînst thésé gàtés. ~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
@@ -2797,6 +3035,10 @@
         <message>
             <source> — matches</source>
             <translation>[ — màtchés ~~~~]</translation>
+        </message>
+        <message>
+            <source>stated loudness %1 LKFS (further loudness information)</source>
+            <translation>[stàtéd lõûdnéss %1 LKFS (fûrthér lõûdnéss înfõrmàtîõn) ~~~~~~~~~~~~~~~~~~~~~~]</translation>
         </message>
         <message>
             <source />
@@ -2956,6 +3198,10 @@
             <translation>[ÀC-3 / É-ÀC-3 (*.àc3 *.éc3) ~~~~~~~~~~~]</translation>
         </message>
         <message>
+            <source>AC-4 (*.ac4)</source>
+            <translation>[ÀC-4 (*.àc4) ~~~~~]</translation>
+        </message>
+        <message>
             <source>All files (*)</source>
             <translation>[Àll fîlés (*) ~~~~~]</translation>
         </message>
@@ -2994,6 +3240,14 @@
         <message>
             <source>Decoding…</source>
             <translation>[Décõdîng… ~~~~]</translation>
+        </message>
+        <message>
+            <source>PRESENTATION</source>
+            <translation>[PRÉSÉNTÀTÎÕN ~~~~~]</translation>
+        </message>
+        <message>
+            <source>The decoder's choice</source>
+            <translation>[Thé décõdér's chõîcé ~~~~~~~~]</translation>
         </message>
         <message>
             <source>Choose an AC-3/E-AC-3 file above to play it.</source>
