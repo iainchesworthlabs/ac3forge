@@ -131,15 +131,24 @@ their targets are not `EXCLUDE_FROM_ALL`.
 
 ### The applications today
 
-AC-4 reaches the applications only through the inspector. `ac3cli` links `ac4::ac4` alone
-(`apps/cli/CMakeLists.txt:101`): `probe` reads raw AC-4, and `mp4`, `ts` (the DVB profile; ATSC is
-refused), `remux` and `demux` carry it. `fmp4` with its HLS and DASH output, `mkv`, `decode`,
-`transcode`, `monitor`, `play`, `qc`, `levels` and `spdif` have no AC-4 path, and `encode` and
-`eac3-encode` write AC-3 and E-AC-3 only. Hearth lists AC-4 items with their table of contents and
-marks them unplayable, since `Session::open` needs `io::scan`; its AC-4 decoder page
-(`apps/hearth/ui/qml/DecoderAc4.qml`) is drawn and disabled. Forge GUI, Crucible, the C API, the
-Python and Rust bindings and the WebAssembly modules have no AC-4 at all, and
-`docs/assets/data/support-catalogue.json` has no AC-4 row.
+Status board: [ROADMAP.md](../ROADMAP.md) (reviewed 2026-09-26). This section records what is on
+`main` today; phase numbers below are the plan's, not the roadmap's.
+
+**`ac3cli` (phase I1, shipped).** Reads and writes AC-4 in `probe`, `decode`, `transcode`,
+`monitor`, `play`, `qc`, `levels`, `loudness`, `spdif`, `record`, `live`, `mp4`, `ts` and `fmp4`;
+`ac4-encode` writes mono, stereo, 5.0 and 5.1; `mkv` refuses it (Matroska registers no codec ID).
+The banner and man page still name AC-3 and E-AC-3 only — see ROADMAP Proposed.
+
+**Hearth desktop (phase I2, shipped for channel-based content).** The engine plays channel-based
+AC-4 through `ac4::Decoder`'s public API, up to 7.1.4, with the Decoder page's AC-4 tab and the
+Media page's AC-4 information. A network group gets the stream as IEC 61937-14 bursts for members
+that list AC-4; only the development test sink decodes those bursts today — ESP32 sinks still
+advertise AC-3 and E-AC-3 only. AC-4 objects in the app and a user guide are not done yet.
+
+**Not in the applications yet (phases I3–I6).** Forge GUI, Crucible, the C API, the Python and
+Rust bindings, the WebAssembly modules, and AC-4 decode on ESP32 (`AC3FORGE_BUILD_AC4` is off in
+the ESP-IDF build). `docs/assets/data/support-catalogue.json` and
+`docs-snippets/generated/application-capabilities.md` record the CLI and Hearth rows.
 
 ### The specifications
 

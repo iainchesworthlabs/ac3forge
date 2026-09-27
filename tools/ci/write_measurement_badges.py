@@ -81,15 +81,18 @@ def speed_badge(rows):
 
     The slowest, not the mean: "is it fast enough" is a worst-case question,
     and an average over ten workloads would hide one of them dropping below
-    real time behind nine that did not.
+    real time behind nine that did not. Slowest against its own budget, not in
+    raw ms/frame: an AC-4 frame is 2 048 samples against A/52's 1 536.
     """
     timed = [r for r in rows
              if isinstance(r.get("ms_per_frame"), (int, float)) and r["ms_per_frame"] > 0]
     if not timed:
         return badge("encode speed", NO_DATA, GREY)
-    worst = max(timed, key=lambda r: r["ms_per_frame"])
-    budget = worst.get("real_time_budget_ms_per_frame") or 32
-    times = budget / worst["ms_per_frame"]
+
+    def times_real_time(r):
+        return (r.get("real_time_budget_ms_per_frame") or 32) / r["ms_per_frame"]
+
+    times = min(times_real_time(r) for r in timed)
     return badge("encode speed", f"{times:.0f}x real time",
                  GREEN if times >= 1 else AMBER)
 

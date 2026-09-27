@@ -122,3 +122,4 @@ the path to it. See [Object signing](../concepts/object-signing.md).
 - [Languages](localisation.md) — the seven the window ships in, and what changes when one reads right to left
 - [Troubleshooting](troubleshooting.md) — when you hear nothing, or hear everything twice
 - [The promotion plan](design/promotion.md) — the design record, phase by phase, and what is unverified
+- [Crucible QML feature coverage](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/crucible/ui/tests/FEATURE_COVERAGE.md) — what the headless QML suites exercise

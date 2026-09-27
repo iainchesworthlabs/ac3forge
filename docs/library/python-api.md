@@ -16,6 +16,9 @@ here uses:
 pip install ./python
 ```
 
+The package's own readme — layout, build notes and examples not duplicated here — lives at
+[`python/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/python/README.md).
+
 `ac3forge.__version__` reports the installed package's own PEP 440 version string, derived from
 the nearest `git describe` tag the same way `PROJECT_VERSION_FULL` is on the C++ side (see
 [docs/releasing.md](../releasing.md#versioning)) but rendered by `setuptools_scm` rather than

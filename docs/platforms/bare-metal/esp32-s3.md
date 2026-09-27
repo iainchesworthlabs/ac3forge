@@ -66,7 +66,8 @@ ac3forge preset for this target and no entry in `cmake/toolchains/`.
 
 ### The ESP-IDF component
 
-`esp-idf/ac3forge/` is the profile packaged as a component. A project outside this repository
+[`esp-idf/ac3forge/`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/README.md)
+is the profile packaged as a component. A project outside this repository
 builds against it in two lines, without vendoring the source list:
 
 ```cmake

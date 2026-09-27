@@ -1,10 +1,5 @@
 # Quality trend
 
-This series covers AC-3 and E-AC-3. AC-4 has no gold-reference gate and no history here: CI
-holds its decoder and encoder to pinned floors with `tools/checks/score_ac4_decode.py` and
-`tools/checks/score_ac4_encode.py`, which record no history. See
-[Validation](verification.md#ac-4).
-
 Every push to `main` that gets through the [gold-reference
 gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)
 (encode the checked-in golden 5.1 WAV, strict-decode with FFmpeg and with
@@ -50,7 +45,7 @@ that question — see [Landscape](landscape.md) and
 </div>
 
 <style>
-#quality-trend-app { margin: 1.5em 0; }
+#quality-trend-app, #ac4-quality-trend-app { margin: 1.5em 0; }
 .quality-trend-status { color: var(--md-default-fg-color--light); font-style: italic; }
 .quality-trend-controls { display: flex; gap: 1.25em; align-items: center; margin-bottom: 0.75em; flex-wrap: wrap; }
 .quality-trend-controls label { font-size: 0.85em; color: var(--md-default-fg-color--light); display: inline-flex; align-items: center; gap: 0.35em; white-space: nowrap; }
@@ -65,8 +60,8 @@ that question — see [Landscape](landscape.md) and
 .quality-trend-legend span { display: inline-flex; align-items: center; gap: 0.4em; }
 .quality-trend-legend i { width: 0.9em; height: 0.9em; border-radius: 50%; display: inline-block; }
 .quality-trend-table-wrap { overflow-x: auto; }
-#quality-trend-app table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
-#quality-trend-app th, #quality-trend-app td { padding: 0.35em 0.6em; text-align: left; border-bottom: 1px solid var(--md-default-fg-color--lightest); white-space: nowrap; }
+#quality-trend-app table, #ac4-quality-trend-app table { width: 100%; border-collapse: collapse; font-size: 0.85em; }
+#quality-trend-app th, #quality-trend-app td, #ac4-quality-trend-app th, #ac4-quality-trend-app td { padding: 0.35em 0.6em; text-align: left; border-bottom: 1px solid var(--md-default-fg-color--lightest); white-space: nowrap; }
 .quality-trend-regression { color: var(--md-typeset-mark-color, #c62828); font-weight: 600; }
 .quality-trend-secondary-check { color: var(--md-default-fg-color--light); cursor: help; }
 .quality-trend-release-row { background: color-mix(in srgb, var(--md-accent-fg-color, #7c4dff) 8%, transparent); }
@@ -769,3 +764,196 @@ window again from the result, so what this page reads carries every commit's
 numbers whichever run finishes first. Anything it cannot account for fails the
 publishing job rather than being guessed at, which is what happened to
 `main@681a083a` on 2026-09-18 before the script existed.
+
+## AC-4 decode quality
+
+Everything above is AC-3 and E-AC-3. AC-4 has its own series, because its oracle is different:
+[`tools/checks/score_ac4_decode.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/score_ac4_decode.py)
+decodes the Dolby Encoding Engine's AC-4 streams and scores each against the source it was encoded
+from ([Validation](verification.md#ac-4) describes how). Its pinned floors fail CI on every
+push. On a push to `main`, the `linux-llvm` leg's scores are also appended to
+`ac4-quality-main.jsonl` on the same `quality-history` branch, one row per stream, by
+[`tools/ci/append_ac4_quality_history.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/append_ac4_quality_history.py).
+The AC-4 encoder's own scores (`score_ac4_encode.py`) are held to pinned floors only and have no
+series yet.
+
+<div id="ac4-quality-trend-app">
+  <p class="quality-trend-status">Loading AC-4 decode quality…</p>
+</div>
+
+<script>
+(function () {
+  const REPO = "iainchesworthlabs/ac3forge";
+  const HISTORY_BRANCH = "quality-history";
+  const HISTORY_FILE = "ac4-quality-main";
+  // Mirrors tools/ci/append_ac4_quality_history.py's thresholds - a display
+  // echo of that script's judgment, not a second source of truth for it.
+  const REGRESSION_WINDOW = 10;
+  const SNR_DROP_DB = 0.5;
+  const LSD_RISE_DB = 0.5;
+  const TABLE_ROWS = 40;
+  const COLOR = "#fb8c00";
+  // Which way is worse, per measure: the chart plots each commit's worst
+  // stream, so a drop in any one stream shows.
+  const METRICS = {
+    min_snr_db: { label: "Minimum SNR (dB)", worse: (a, b) => a < b },
+    lsd_db: { label: "LSD (dB)", worse: (a, b) => a > b },
+    mos_lqo: { label: "MOS-LQO", worse: (a, b) => a < b },
+  };
+  const root = document.getElementById("ac4-quality-trend-app");
+  const state = { metric: "min_snr_db" };
+
+  function rawUrl(file) {
+    return `https://raw.githubusercontent.com/${REPO}/${HISTORY_BRANCH}/${file}`;
+  }
+
+  // The generated window first, the full file if there is none - the same
+  // fallback the AC-3 series above uses.
+  async function fetchHistory() {
+    for (const file of [`${HISTORY_FILE}.recent.jsonl`, `${HISTORY_FILE}.jsonl`]) {
+      try {
+        const resp = await fetch(rawUrl(file));
+        if (!resp.ok) continue;
+        const text = await resp.text();
+        return text.split("\n").filter((l) => l.trim()).map((l) => JSON.parse(l));
+      } catch (e) {
+        // Try the next candidate.
+      }
+    }
+    return [];
+  }
+
+  function value(r, key) {
+    return typeof r[key] === "number" ? r[key] : null;
+  }
+
+  function worstPerCommit(records, key) {
+    const byCommit = new Map();
+    for (const r of records) {
+      const v = value(r, key);
+      if (v === null) continue;
+      const cur = byCommit.get(r.commit);
+      if (!cur || METRICS[key].worse(v, value(cur, key))) byCommit.set(r.commit, r);
+    }
+    return Array.from(byCommit.values()).sort((a, b) => a.commit_date.localeCompare(b.commit_date));
+  }
+
+  function baseline(records, stream, key, beforeDate) {
+    const trail = records
+      .filter((r) => r.leg === stream && r.commit_date < beforeDate && value(r, key) !== null)
+      .sort((a, b) => a.commit_date.localeCompare(b.commit_date))
+      .slice(-REGRESSION_WINDOW);
+    if (!trail.length) return null;
+    return trail.reduce((s, r) => s + value(r, key), 0) / trail.length;
+  }
+
+  // Only the soft tier is shown: a hard regression fails its own CI run.
+  function flag(r, records) {
+    const notes = [];
+    const snr = value(r, "min_snr_db");
+    const snrBase = baseline(records, r.leg, "min_snr_db", r.commit_date);
+    if (snr !== null && snrBase !== null && snrBase - snr >= SNR_DROP_DB) {
+      notes.push(`SNR ${(snrBase - snr).toFixed(2)} dB below the trailing mean`);
+    }
+    const lsd = value(r, "lsd_db");
+    const lsdBase = baseline(records, r.leg, "lsd_db", r.commit_date);
+    if (lsd !== null && lsdBase !== null && lsd - lsdBase >= LSD_RISE_DB) {
+      notes.push(`LSD ${(lsd - lsdBase).toFixed(2)} dB above the trailing mean`);
+    }
+    return notes.length
+      ? `<span class="quality-trend-regression" title="${notes.join("; ")}">▼ regression</span>`
+      : "";
+  }
+
+  function buildChart(points, key) {
+    if (!points.length) {
+      return `<p class="quality-trend-status">No ${METRICS[key].label} history yet.</p>`;
+    }
+    const width = 760, height = 200, pad = { top: 12, right: 12, bottom: 32, left: 48 };
+    const values = points.map((p) => value(p, key));
+    const span = Math.max(...values) - Math.min(...values);
+    const lo = Math.min(...values) - (span * 0.1 || 1);
+    const hi = Math.max(...values) + (span * 0.1 || 1);
+    const times = points.map((p) => Date.parse(p.commit_date));
+    const minT = Math.min(...times);
+    const maxT = Math.max(...times);
+    const x = (t) => pad.left + (maxT === minT ? (width - pad.left - pad.right) / 2
+      : ((t - minT) / (maxT - minT)) * (width - pad.left - pad.right));
+    const y = (v) => height - pad.bottom - ((v - lo) / (hi - lo)) * (height - pad.top - pad.bottom);
+    let svg = `<svg class="quality-trend-chart" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="AC-4 ${METRICS[key].label}, worst stream per commit">`;
+    for (let i = 0; i <= 4; i++) {
+      const v = lo + ((hi - lo) * i) / 4;
+      svg += `<line x1="${pad.left}" y1="${y(v)}" x2="${width - pad.right}" y2="${y(v)}" stroke="var(--md-default-fg-color--lightest)" stroke-width="1"/>`;
+      svg += `<text x="${pad.left - 6}" y="${y(v) + 3}" text-anchor="end" font-size="10" fill="var(--md-default-fg-color--light)">${v.toFixed(1)}</text>`;
+    }
+    if (points.length > 1) {
+      const path = points.map((p, i) =>
+        `${i === 0 ? "M" : "L"}${x(Date.parse(p.commit_date)).toFixed(1)},${y(value(p, key)).toFixed(1)}`).join(" ");
+      svg += `<path d="${path}" fill="none" stroke="${COLOR}" stroke-width="2"/>`;
+    }
+    for (const p of points) {
+      svg += `<circle cx="${x(Date.parse(p.commit_date)).toFixed(1)}" cy="${y(value(p, key)).toFixed(1)}" r="3" fill="${COLOR}"><title>${p.commit.slice(0, 8)}: ${value(p, key).toFixed(2)}, ${p.leg}, on ${p.commit_date.slice(0, 10)}</title></circle>`;
+    }
+    return svg + "</svg>";
+  }
+
+  function cell(v) {
+    return v === null ? "—" : v.toFixed(2);
+  }
+
+  function buildTable(records) {
+    const rows = records.slice()
+      .sort((a, b) => b.commit_date.localeCompare(a.commit_date) || a.leg.localeCompare(b.leg))
+      .slice(0, TABLE_ROWS)
+      .map((r) => `<tr>
+        <td>${r.commit_date.slice(0, 10)}</td>
+        <td><a href="https://github.com/${REPO}/commit/${r.commit}">${r.commit.slice(0, 8)}</a></td>
+        <td>${r.leg}</td>
+        <td>${cell(value(r, "min_snr_db"))}</td>
+        <td>${cell(value(r, "lsd_db"))}</td>
+        <td>${cell(value(r, "mos_lqo"))}</td>
+        <td>${flag(r, records)}</td>
+      </tr>`).join("");
+    return `<div class="quality-trend-table-wrap"><table>
+      <thead><tr><th>Date</th><th>Commit</th><th>Stream</th><th>Minimum SNR</th><th>LSD</th><th>MOS-LQO</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+  }
+
+  function render(records) {
+    const options = Object.entries(METRICS).map(([key, m]) =>
+      `<option value="${key}" ${state.metric === key ? "selected" : ""}>${m.label}</option>`).join("");
+    root.innerHTML = `
+      <div class="quality-trend-controls">
+        <label for="ac4-quality-metric">Measure <select id="ac4-quality-metric">${options}</select></label>
+      </div>
+      <div class="quality-trend-chart-wrap">${buildChart(worstPerCommit(records, state.metric), state.metric)}</div>
+      <div class="quality-trend-legend"><span><i style="background:${COLOR}"></i>worst stream per commit</span></div>
+      ${buildTable(records)}
+    `;
+    document.getElementById("ac4-quality-metric").addEventListener("change", (e) => {
+      state.metric = e.target.value;
+      render(records);
+    });
+  }
+
+  fetchHistory().then((records) => {
+    if (!records.length) {
+      root.innerHTML = '<p class="quality-trend-status">No AC-4 decode quality history yet - it is written by CI on the first push to main after this section landed.</p>';
+      return;
+    }
+    render(records);
+  });
+})();
+</script>
+
+Each row is one DEE stream on one commit: the streams scored channel by channel against their
+source. The A-CPL streams, scored through their downmixes, and the immersive streams, scored
+with their routing, are held to their floors in CI but have no series. **Minimum SNR** is the
+stream's lowest full-band channel SNR against its source; the LFE is left out, since its SNR
+against the full-band source is about −2.3 dB on every 5.1 stream and its own floor holds it.
+**LSD** is the log-spectral distance and **MOS-LQO** ViSQOL's predicted listening score, all
+from the same scoring pass. The chart plots the worst stream for each commit
+on the chosen measure. A row is flagged when its SNR falls, or its LSD rises, 0.5 dB past that
+stream's own trailing ten-run mean. A hard regression (3 dB of SNR, or 2 dB of LSD) fails the
+`Publish quality trend` job after the numbers are pushed, as the AC-3 series does.

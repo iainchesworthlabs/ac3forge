@@ -222,7 +222,7 @@ apps/crucible/  AC3Forge Crucible: the engine, the ac3crucible-run runner, the a
 apps/windows/   the Windows-only pieces of Crucible: the Ac3ForgeNullSink driver (MS-PL,
                 separately licensed) and the VMware guest it is verified in
 
-# Hearth — ESP32-S3 player; desktop engine in progress
+# Hearth — desktop player and ESP32 Sendspin sinks
 apps/hearth/    ac3hearth engine and window, ac3hearth-testsink, ac3hearth-testserver, ac3hearth-render
 esp-idf/        ESP-IDF component and examples: hearth_sink (Sendspin player) and i2s_player
 esphome/        ESPHome external component wrapping the ESP32-S3 decoder; not a media_player yet
