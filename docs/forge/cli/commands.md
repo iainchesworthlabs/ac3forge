@@ -187,6 +187,23 @@ downmix to 3 kHz; with `aspx-acpl-1` or `aspx-acpl-2`, A-CPL in stereo) and `drc
 and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR; and `three-zero`, which takes
 three channels, L R C, as 3.0, the dialogue of a music and effects presentation (below).
 
+**Objects.** With `experimental=objects`, `objects=<scene file>` takes the WAV file's channels as the
+objects of one object substream, written as a raw stream. The scene file is text, one directive a
+line, `#` starting a comment; channels count from 0, and one the file does not name is a dynamic
+object at the room's centre. It is written in the library's terms (`ac4::ObjectsConfig`, `ac4::ObjectProperties`);
+reading ADM BWF, IAB and object scenes into them belongs to the applications.
+
+| Directive | What it sets |
+|---|---|
+| `coding ajoc` or `coding direct` | An A-JOC substream (the default) or direct-coded object substreams |
+| `downmix computed`, `5.0` or `5.1` | A-JOC's downmix: computed signals, or a static bed |
+| `downmix-signals <n>` | The computed downmix's signals |
+| `decorrelation on` | A-JOC's decorrelators |
+| `object <channel> dynamic <x> <y> <z> [<gain dB>]` | A dynamic object where it starts: X, Y 0 to 1, Z -1 to 1 |
+| `object <channel> bed <L\|R\|C\|Ls\|Rs\|Lb\|Rb\|Tfl\|Tfr\|Tsl\|Tsr\|Tbl\|Tbr\|Lw\|Rw> [<gain dB>]` | A bed object on that loudspeaker |
+| `object <channel> lfe` | The LFE |
+| `update <channel> <sample> <ramp> <x> <y> <z> [<gain dB>]` | The object moves there from that input sample over `<ramp>` samples (0 to 2 048) |
+
 **Frame rate and rate mode.** `frame-rate=` is one of Table 83's rates, `23.976`, `24`, `25`,
 `29.97`, `30`, `47.95`, `48`, `50`, `59.94`, `60`, `100`, `119.88` or `120`, or `native`, the
 default: 2 048-sample frames, the only ones at 44.1 kHz. Away from the native frame rate the

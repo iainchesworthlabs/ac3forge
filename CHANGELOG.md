@@ -1497,6 +1497,20 @@ The sections below contain the complete change list and fixes.
   after the presentation substreams for the first group's audio. `fuzz_ac4_encode` draws the
   substreams and presentations; `ac3cli ac4-encode` takes them in E7. `src/ac4enc/ERRATA.md` records
   the readings.
+- **The AC-4 encoder codes objects** (phase E9 of `planning/ac4.md`), behind `experimental.objects`. A
+  substream of objects (`SubstreamConfig::objects`, `ObjectsConfig`) takes each object's PCM and its Annex
+  F properties over time, `encode()` taking `ObjectMetadataUpdate`s beside the input; `ObjectProperties`
+  moves to `ac4/ac4.hpp`, where the decoder and the encoder share it. The objects are coded as an A-JOC
+  substream, over a computed downmix of one to eleven signals in a `var_channel_element()` (each the sum
+  of a run of the objects in azimuth order, with its group's centre for core decoding) or a static 5.0 or
+  5.1 bed, the matrices chosen frame by frame by running the decoder's reconstruction on candidate fits,
+  with bed objects, the LFE and, as an option, decorrelators; or as direct-coded object substreams with
+  the group's OAMD substream. Each update lands at the output sample its input sample does, to within 32
+  samples. Decoded in full, each object of the tests comes back at 40 to 75 dB SNR against its source;
+  core decoding gives the downmix at its metadata. `ac3cli ac4-encode objects=<scene file>` takes a scene
+  in the library's terms, the encoder-space harness draws object cases, and
+  `check_ac4_encode_readers.py --only objects` reads the committed streams with MediaInfo where DEE is
+  installed. `src/ac4enc/ERRATA.md` records the readings.
 - **The AC-4 encoder codes 5.1.4** (phase E8 of `planning/ac4.md`). Nine or ten input channels, 5.0.4
   and 5.1.4, are coded in Part 2's immersive channel element as DEE writes it: SCPL from 640 kbps, ASPX_SCPL
   from 480 and ASPX_ACPL_2 below, each coupled pair as its sum and difference with the difference predicted

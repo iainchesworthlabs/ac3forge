@@ -63,6 +63,7 @@ add_executable(ac3tests
     ac4enc/test_ac4enc_frame_rates.cpp
     ac4enc/test_ac4enc_immersive.cpp
     ac4enc/test_ac4enc_metadata.cpp
+    ac4enc/test_ac4enc_objects.cpp
     ac4enc/test_ac4enc_presentations.cpp
     ac4enc/test_ac4enc_rates.cpp
     analysis/test_analysis.cpp

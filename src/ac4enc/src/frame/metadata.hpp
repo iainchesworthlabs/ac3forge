@@ -263,11 +263,12 @@ void write_further_loudness_info(BitWriter& w, const LoudnessCodes& codes, bool 
 void write_drc_frame(BitWriter& w, const DrcCodes* codes, bool iframe,
                      std::span<const DrcModeGains> gains = {});
 
-// A channel-based presentation's channels, as custom_dmx_data() and
-// loud_corr() read them (ETSI TS 103 190-2 V1.3.1 clause 6.2.9): pres_ch_mode,
-// pres_ch_mode_core (-1 but for the immersive modes, Table 71),
-// b_pres_4_back_channels_present, pres_top_channel_pairs (Table 72) and
-// b_pres_has_lfe.
+// A presentation's channels, as custom_dmx_data() and loud_corr() read them
+// (ETSI TS 103 190-2 V1.3.1 clause 6.2.9): pres_ch_mode, pres_ch_mode_core
+// (-1 but for the immersive modes and an A-JOC substream's static 5.X
+// downmix, Table 71), b_pres_4_back_channels_present, pres_top_channel_pairs
+// (Table 72) and b_pres_has_lfe. An object presentation's pres_ch_mode is -1,
+// and loud_corr() sends it b_obj_loud_corr.
 struct PresentationChannels {
     int ch_mode = 1;
     int ch_mode_core = -1;

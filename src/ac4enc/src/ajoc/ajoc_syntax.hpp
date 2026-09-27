@@ -2,6 +2,8 @@
 
 #include <array>
 #include <cstddef>
+#include <optional>
+#include <span>
 #include <vector>
 
 #include "bit_writer.hpp"
@@ -72,6 +74,20 @@ struct AjocDmxDeFields {
 // another.
 [[nodiscard]] bool ajoc_codable(bool wet, int quant_select, int diff_type, bool first,
                                 int value) noexcept;
+
+// The bits ajoc_huff_data() takes to send `set`, its diff_type among them
+// unless `dfonly`.
+[[nodiscard]] std::size_t ajoc_set_bits(bool wet, int quant_select, bool dfonly,
+                                        const AjocSetFields& set);
+
+// Quantised values `q`, 0 to nquant - 1 band by band, as ajoc_huff_data()
+// sends them: along frequency, each difference modulo nquant taken as the
+// codable one of the fewest bits; or along time from `previous`, nothing where
+// a difference has no codeword.
+[[nodiscard]] AjocSetFields ajoc_freq_set(bool wet, int quant_select, std::span<const int> q);
+[[nodiscard]] std::optional<AjocSetFields> ajoc_time_set(bool wet, int quant_select,
+                                                         std::span<const int> q,
+                                                         std::span<const int> previous);
 
 void write_ajoc(BitWriter& w, int num_dmx_signals, const AjocFields& fields);
 

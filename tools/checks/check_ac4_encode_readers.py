@@ -39,12 +39,18 @@ reads there, which tests/ac4enc/test_ac4enc_presentations.cpp holds equal to the
 MediaInfo reads no substream after a presentation_config 6 (EMDF-only) presentation, so the
 encoder's streams list that presentation last.
 
+Phase E9's objects: the encoder's object streams under tests/golden/ac4dec/objects/ (encoder-*.ac4,
+which tests/ac4enc/test_ac4enc_objects.cpp writes with AC4ENC_WRITE_OBJECTS), whose MediaInfo
+reading (`--Output=JSON`) gives, among the audio track's fields that name objects, the count of
+the objects the stream was configured with, and names a bed where it has bed objects or a static
+bed.
+
 MediaInfo and DEE's muxer come from DEE's install, so this runs locally, never in CI
 (tools/generators/gen_ac4_baseline.py's DEE_DIR).
 
 Usage:
     python tools/checks/check_ac4_encode_readers.py --cli ac3cli.exe [--dee-dir DIR] [--work DIR]
-        [--only presentations]
+        [--only presentations|objects]
 """
 
 import argparse
@@ -589,13 +595,46 @@ def check_presentations(mediainfo, cli, work):
     return failures
 
 
+# --- Phase E9: the encoder's objects --------------------------------------------------------------
+
+OBJECT_STREAMS = REPO / "tests" / "golden" / "ac4dec" / "objects"
+# Each committed stream's objects, the LFE among them, its bed objects and whether its downmix is a
+# static bed, as tests/ac4enc/test_ac4enc_objects.cpp configures them.
+OBJECT_CONFIGURATIONS = {
+    "encoder-ajoc-computed.ac4": (8, 0, False),
+    "encoder-ajoc-static-5_1.ac4": (7, 0, True),
+    "encoder-ajoc-beds-decorr.ac4": (6, 2, False),
+    "encoder-direct.ac4": (5, 0, False),
+}
+
+
+def check_objects(mediainfo):
+    failures = []
+    for name, (objects, beds, static) in OBJECT_CONFIGURATIONS.items():
+        stream = OBJECT_STREAMS / name
+        if not stream.exists():
+            failures.append(f"{stream} is missing")
+            continue
+        info = json.loads(run([mediainfo, "--Output=JSON", stream]))
+        audio = [t for t in info["media"]["track"] if t.get("@type") == "Audio"]
+        fields = {k: v for t in audio for k, v in t.items() if "bject" in k or "Bed" in k}
+        counts = {k: v for k, v in fields.items() if "bject" in k and str(v).isdigit()}
+        print(f"{stream.name}: {objects} objects, {beds} bed objects"
+              f"{', a static bed' if static else ''}; MediaInfo: {fields}")
+        if str(objects) not in {str(v) for v in counts.values()}:
+            failures.append(f"{stream.name}: no MediaInfo object count of {objects} in {counts}")
+        if (beds or static) and not any("Bed" in k for k in fields):
+            failures.append(f"{stream.name}: MediaInfo names no bed in {fields}")
+    return failures
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cli", required=True, type=Path)
     parser.add_argument("--dee-dir", type=Path, default=DEE_DIR)
     parser.add_argument("--work", type=Path)
-    parser.add_argument("--only", choices=("presentations",),
-                        help="run phase E6's presentation checks alone")
+    parser.add_argument("--only", choices=("presentations", "objects"),
+                        help="run phase E6's presentation checks or E9's object checks alone")
     args = parser.parse_args()
     mediainfo = args.dee_dir / "MediaInfo.exe"
     muxer = args.dee_dir / "dee_mp4muxer.exe"
@@ -607,7 +646,10 @@ def main():
     with tempfile.TemporaryDirectory() as temporary:
         work = args.work or Path(temporary)
         work.mkdir(parents=True, exist_ok=True)
-        failures += check_presentations(mediainfo, args.cli, work)
+        if args.only in (None, "presentations"):
+            failures += check_presentations(mediainfo, args.cli, work)
+        if args.only in (None, "objects"):
+            failures += check_objects(mediainfo)
         for config in CONFIGURATIONS if args.only is None else ():
             channels, rate, kbps = config.channels, config.rate, config.kbps
             options = config.options

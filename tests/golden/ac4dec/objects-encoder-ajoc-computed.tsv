@@ -1,0 +1,20 @@
+# ac4-syntax-digest/1 ../ac4dec/objects/encoder-ajoc-computed.ac4
+# frame	substream	kind	records	end_bit	crc32
+0	0	presentation	8	18	0x8ed0df0d
+0	1	audio	2927	10782	0xf327339d
+1	0	presentation	8	18	0x8ed0df0d
+1	1	audio	2526	10782	0xa78b1635
+2	0	presentation	8	18	0x8ed0df0d
+2	1	audio	2796	10782	0x592fdd82
+3	0	presentation	8	18	0x8ed0df0d
+3	1	audio	3044	10790	0xc6b6eaba
+4	0	presentation	8	18	0x8ed0df0d
+4	1	audio	3044	10782	0xe3ba254e
+5	0	presentation	8	18	0x8ed0df0d
+5	1	audio	3044	10782	0x56a07112
+6	0	presentation	8	18	0x8ed0df0d
+6	1	audio	2755	10790	0x573b02cb
+7	0	presentation	8	18	0x8ed0df0d
+7	1	audio	2538	10782	0xef1c2e81
+8	0	presentation	8	18	0x8ed0df0d
+8	1	audio	182	10782	0x0d740d1c

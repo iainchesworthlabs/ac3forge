@@ -2072,6 +2072,29 @@ listening.
 
 **Verified by:** `ac3tests`; listening; the librempeg comparison.
 
+**Built** (phase E9): with `experimental.objects`, one object substream of objects and their Annex F
+properties over time (`ObjectsConfig`, and `encode()` taking `ObjectMetadataUpdate`s beside the PCM;
+`ObjectProperties` moved to `ac4/ac4.hpp`, where the decoder reports it). As an A-JOC substream: a
+computed downmix of one to eleven signals in a `var_channel_element()`, each the sum of a run of the
+objects in azimuth order and sent for core decoding at its group's centre, or a static 5.0 or 5.1 bed
+the objects are panned onto, coded in SIMPLE or ASPX; the dry matrices chosen frame by frame by running
+`src/ac4core`'s reconstruction on candidate fits and keeping the one that comes closest to the objects,
+the decorrelators' wet matrices as an option; bed objects listed in the upmix; and the metadata's blocks
+at the 32-sample step of each update, landing where its input sample comes out. Or direct-coded, the
+dynamic objects in mono, stereo, 3.0 and 5.0 elements with the LFE's `mono_data(1)` before the first,
+and the group's OAMD substream. One presentation of the substream alone, at md_compat 3 for A-JOC and by
+its tracks direct-coded, through E6's presentation machinery. Decoded in full, each object of the
+committed cases comes back at 40 to 75 dB SNR against its source, the tones each in a parameter band of
+their own (pinned in `tests/ac4enc/test_ac4enc_objects.cpp`), and core decoding gives the downmix at its
+metadata; the encoder's trace, the decoder's and the Python parser's agree on the committed streams
+(`tests/golden/ac4dec/objects/encoder-*.ac4`) and on the encoder-space harness's object draws.
+`ac3cli ac4-encode objects=` takes a scene file of the library's terms for the harness and the listening
+streams; the applications' scene readers are I5's. DEE writes no A-JOC from this project's masters, so
+there is no race, and librempeg refuses object coding, so there is no second decode; MediaInfo's reading
+(`tools/checks/check_ac4_encode_readers.py --only objects`) needs DEE's install. Bed objects in
+direct-coded substreams, objects beside channel-coded substreams, frame rates other than index 13 and
+the intermediate spatial format are refused.
+
 ### Application phases
 
 `ac3cli` grows with the library: D2 and D8 give it AC-4 decoding and media information, and E1 and

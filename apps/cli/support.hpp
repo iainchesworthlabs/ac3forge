@@ -144,6 +144,11 @@ struct Options {
     bool ac4_experimental_back_pair = false;
     bool ac4_experimental_ajcc = false;
     std::string ac4_experimental_seven_x;
+    // 'ac4-encode' only: experimental=objects, and objects=, the path of a
+    // scene file that makes the WAV file's channels objects
+    // (commands/ac4_encode_objects.cpp), empty for none.
+    bool ac4_experimental_objects = false;
+    std::string ac4_objects_path;
     // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
     // dialnorm is taken to (ac4::OutputConfig::output_level_dbfs), unset to
     // leave the coded level; and the DRC decoder mode drcmode= names there,

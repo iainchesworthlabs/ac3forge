@@ -310,6 +310,85 @@ reading of each of these, and the tests hold the three traces equal on every imm
 - **Evidence:** Readers: one tone per channel decodes on its own channel in full decoding, and in core
   decoding at Pseudocode 14's gains (`tests/ac4enc/test_ac4enc_immersive.cpp`).
 
+## Objects
+
+The writer takes the decoder's readings of [A-JOC](../ac4dec/ERRATA.md#a-joc) and of [object audio
+metadata and the ISF renderer](../ac4dec/ERRATA.md#object-audio-metadata-and-the-isf-renderer) by
+running the decoder's own reconstruction (`src/ac4core`'s `ajoc::Reconstruction`) on the parameters it
+weighs: the ramp's counter, the decorrelation input matrix by subband, H'_M by object. Objects take the
+output level's gain and no DRC, so an object presentation refuses DRC gains.
+
+### A-JOC's downmix
+
+- **Where:** Part 2 p. 161: the standard does not specify the downmix; 5.7 gives the upmix alone, and
+  4.8.3.4.2 a computed downmix's signals their own metadata for core decoding.
+- **Reading:** a computed downmix sums the objects in groups: the full-band objects in the order of their
+  azimuth about the room's centre as they start, from the back left through the front to the back right,
+  cut into as many runs as there are downmix signals, as equal as can be. The groups stay for the stream,
+  so that each A-JOC coefficient keeps its meaning from frame to frame. Each signal's metadata is one block
+  a frame at the energy-weighted centre of its group over the frame, ramped over the frame. A static 5.X
+  bed pans each object between the front row (L, C, R) and the back row (Ls, Rs) by the sine and cosine of
+  a quarter turn of Y, and along each row the same way by X; Z is left out, and the LFE object goes to the
+  LFE. The pans move linearly across each 32 samples from the object's positions at their ends. A-JOC's
+  input i reads the element's full-band track that Pseudocode 14a gives it, so the encoder puts downmix
+  signal i there.
+- **Evidence:** Readers: each object of a computed downmix, a static 5.1 bed and one with bed objects
+  decodes at 40 to 70 dB SNR against the object given, and core decoding gives each downmix signal at its
+  group's centre (`tests/ac4enc/test_ac4enc_objects.cpp`). Chromium's `ac4-ajoc.ac4` has a computed downmix
+  of ten signals.
+
+### A-JOC's parameters
+
+- **Where:** Part 2 5.7.3, pp. 83 to 91, gives the reconstruction; nothing gives how a writer chooses the
+  matrices.
+- **Reading:** one data point a frame at its first slot, over the frame's A-SPX interval as A-CPL's
+  parameters are. The candidates are the last frame's values again; the least-squares fit of each object
+  from the downmix per parameter band over the frame, as a ramp of 32 slots from the last frame's matrix
+  takes it there, and as a step at the second slot; and the fit over the 32 slots centred on the frame's
+  end. Each is quantised within Tables 29 to 32's ranges, its smallest coefficients dropped in turn where
+  it takes more than 30 per cent of the frame, run through the reconstruction from the state the frames
+  sent leave it in, and the one whose objects come closest to the objects given is sent. With
+  decorrelators, object o takes decorrelator o mod `ajoc_num_decorr`, whose wet coefficient gives it the
+  energy the dry matrix leaves out. Each set goes along frequency, or along time where that takes fewer
+  bits outside I-frames, each object sparse where that takes fewer, and not present where every value is
+  0. `ajoc_dmx_de_data()` names no dialogue objects.
+- **Evidence:** Readers (`tests/ac4enc/test_ac4enc_objects.cpp`).
+
+### When an object's metadata changes
+
+- **Where:** Part 2 6.3.9.3 and 5.9.2: a block's update takes effect at `sample_offset` + 32
+  `block_offset_factor` into its codec frame, counted with the decoder's delay.
+- **Reading:** an update at input sample n is at sample n + the encoder's delay of the signal's axis, and
+  goes in the frame that codes that sample, in the block of its 32-sample step, with `oa_sample_offset` 0;
+  the decoder reports it at n + `delay_samples()` + `decoder_delay_samples()`, to within 32 samples. A
+  frame sends a block at each step an update starts in, at most seven, the latest kept, each object's
+  properties those in force at the step's end; an I-frame's first block sends every object whole
+  (`b_no_delta`). Otherwise a block reuses an object's basic information and each render group that has
+  not changed, and sends the position as a difference where each coordinate's is -4 to 3.
+  `add_per_object_md()` is sent in every block of an object with trim or headphone data, since each block
+  sets them afresh. The ramp is Table 94's code, Table 95's entry or `ramp_duration`, at most 2 047 samples.
+- **Evidence:** Readers: each update of a moving object decodes at its sample, in A-JOC and direct-coded
+  streams (`tests/ac4enc/test_ac4enc_objects.cpp`).
+
+### md_compat for objects
+
+- **Where:** Part 2 Table 55, p. 157: md_compat 0 to 3 allow 2, 6, 9 and 11 tracks; the decoder's reading
+  of the table for A-JOC is 17 objects and an LFE at md_compat 3 ([The objects oamd_dyndata_multi()
+  lists](../ac4dec/ERRATA.md#the-objects-oamd_dyndata_multi-lists)).
+- **Reading:** an A-JOC presentation's tracks are its downmix signals, and it takes md_compat 3 at the
+  least, 7 above 17 objects; a direct-coded one's tracks are its full-band objects, as a channel-based
+  presentation's are its channels.
+- **Evidence:** Text. Chromium's stream of ten downmix signals and seventeen objects is one DEE wrote.
+
+### Direct-coded objects
+
+- **Where:** Part 2 6.2.1.11 and 6.2.3.2: `audio_data_objs(n_objects, b_lfe)` codes the objects in the
+  element `objs_to_channel_mode()` names, one, two, three or five, the LFE's `mono_data(1)` before it.
+- **Reading:** the dynamic objects in their order, five a substream while five are left, then three, two or
+  one; the LFE object in the first substream. The group's OAMD substream lists each substream's objects,
+  the LFE first, then the element's channels in L, R, C, Ls, Rs order. Bed objects are refused here.
+- **Evidence:** Readers (`tests/ac4enc/test_ac4enc_objects.cpp`).
+
 ## The MP4 sample entry's dac4
 
 `ac4::build_dac4()` in `src/ac4` writes Annex E.6's `ac4_dsi_v1()` from a table of contents, for the
@@ -407,9 +486,14 @@ every configuration's substream groups as written.
 - **Reading:** the upmix holds bed objects where the assignment lists one, ISF objects likewise, and
   dynamic objects where it lists fewer objects than `n_fullband_upmix_signals`, all of them where
   `b_dyn_objects_only` is set. A direct-coded object substream holds what its `b_dynamic_objects`,
-  `b_bed_objects` and `b_isf` say, a substream continuing a bed or an ISF set included.
+  `b_bed_objects` and `b_isf` say, a substream continuing a bed or an ISF set included. The encoder's
+  A-JOC substreams send the downmix's signals as dynamic objects only, and the upmix's bed objects first,
+  listed by `nonstd_bed_channel_assignment` (`b_channel_assignment_flags_present` 0), with its dynamic
+  objects after them.
 - **Evidence:** Streams, for the dynamic case: DEE's muxer writes 0, 1 and 0 for Chromium's A-JOC
-  stream, whose upmix of seventeen signals is dynamic objects only. Text for the rest.
+  stream, whose upmix of seventeen signals is dynamic objects only. Readers for the encoder's bed objects,
+  which decode as the bed objects they were given (`tests/ac4enc/test_ac4enc_objects.cpp`). Text for the
+  rest.
 
 ### An alternative presentation's dac4
 

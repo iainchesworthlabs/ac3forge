@@ -426,6 +426,9 @@ struct Input {
 
 int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                    const ac3cli::Options& meta) {
+    if (!meta.ac4_objects_path.empty()) {
+        return run_ac4_encode_objects(in_path, out_path, bitrate, meta);
+    }
     const Options::Ac4Encode& opts = meta.ac4enc;
     // AC-3's and E-AC-3's own metadata has no AC-4 counterpart, so asking for
     // it is refused rather than dropped.

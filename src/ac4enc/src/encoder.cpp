@@ -14,6 +14,9 @@
 
 #include "acpl/acpl_encoder.hpp"
 #include "acpl/acpl_syntax.hpp"
+#include "ajoc/ajoc_encoder.hpp"
+#include "ajoc/ajoc_syntax.hpp"
+#include "ajoc/downmix.hpp"
 #include "asf/analysis.hpp"
 #include "asf/coder.hpp"
 #include "asf/layout.hpp"
@@ -28,6 +31,8 @@
 #include "frame/frame_writer.hpp"
 #include "frame/metadata.hpp"
 #include "frame/timing.hpp"
+#include "oamd/object_metadata.hpp"
+#include "oamd/oamd_syntax.hpp"
 #include "tables/sfb_tables.hpp"
 
 namespace ac4 {
@@ -281,6 +286,13 @@ struct Plan {
     // Each layout group's coded band where it is not the substream's: in the
     // immersive element's ASPX_ACPL_1, H'' to K'' below acpl_qmf_band alone.
     std::vector<double> group_cutoff{};
+    // An A-JOC substream's var_channel_element() (Part 2 clause 6.2.4.4),
+    // ch_mode -1: its full-band tracks the coded channels 0 up in the syntax's
+    // order, pairs and then an odd one alone, and the LFE after them. And a
+    // direct-coded object substream's LFE, which audio_data_objs() sends as
+    // mono_data(1) before the element (clause 6.2.3.2): its coded channel.
+    bool var = false;
+    int objs_lfe = -1;
 
     [[nodiscard]] bool five_x() const noexcept { return ch_mode == 3 || ch_mode == 4; }
     [[nodiscard]] bool seven_x() const noexcept { return ch_mode >= 5 && ch_mode <= 10; }
@@ -643,6 +655,56 @@ struct Plan {
     return p;
 }
 
+// An A-JOC substream's var_channel_element() of `signals` full-band downmix
+// signals and the LFE where `lfe`: each pair, and an odd one, a layout group
+// and an aspx_data element of its own, as the element sends them, the LFE
+// after, and companding never on (companding_control() is sent for five
+// signals or fewer, each off).
+[[nodiscard]] Plan plan_var(int signals, bool lfe, CodecMode mode) {
+    Plan p;
+    p.mode = mode;
+    p.var = true;
+    p.ch_mode = -1;
+    for (int k = 0; k + 1 < signals; k += 2) {
+        p.groups.push_back({k, k + 1});
+        p.aspx_elements.push_back({k, k + 1});
+    }
+    if (signals % 2 != 0) {
+        p.groups.push_back({signals - 1});
+        p.aspx_elements.push_back({signals - 1});
+    }
+    if (signals <= 5) {
+        for (int k = 0; k < signals; ++k) {
+            p.companded.push_back(k);
+        }
+    }
+    p.coded = signals;
+    if (lfe) {
+        p.lfe = signals;
+        p.groups.push_back({p.lfe});
+        ++p.coded;
+    }
+    return p;
+}
+
+// A direct-coded object substream of `objects` full-band objects (1, 2, 3 or
+// 5), coded as the mono, stereo, 3.0 or 5.0 element objs_to_channel_mode()
+// names (Part 2 clause 6.2.3.3), and its LFE object where `lfe`, after them.
+[[nodiscard]] std::expected<Plan, Refusal> plan_objects(const EncoderConfig& config, int objects,
+                                                        bool lfe, CodecMode mode) {
+    EncoderConfig element = config;
+    element.channels = objects;
+    element.experimental.three_zero = true;
+    element.experimental.coding_configs = false;
+    std::expected<Plan, Refusal> p = plan_for(element, mode);
+    if (p && lfe) {
+        p->objs_lfe = p->coded;
+        p->groups.push_back({p->objs_lfe});
+        ++p->coded;
+    }
+    return p;
+}
+
 // A coding unit: one channel data element, with its one sf_info() and its
 // tracks. Its outputs are the input channels its matrix gives, in the order
 // of the matrix's outputs, O0 first; once its matrix is undone they hold its
@@ -666,6 +728,7 @@ struct Unit {
     UnitKind kind = UnitKind::kMono;
     std::vector<int> outputs{};
     bool additional = false;  // the 7.X element's additional pair
+    bool prefix = false;      // audio_data_objs()'s LFE, before the element
     detail::UnitChoice choice{};
 };
 
@@ -687,6 +750,29 @@ struct Structure {
     s.coding_config = coding_config;
     s.two_ch_mode = two_ch_mode;
     s.chel_matsel = chel_matsel;
+    if (p.objs_lfe >= 0) {
+        Plan element = p;
+        element.objs_lfe = -1;
+        s = structure_for(element, coding_config, two_ch_mode, chel_matsel);
+        s.units.insert(s.units.begin(),
+                       Unit{.kind = UnitKind::kLfe, .outputs = {p.objs_lfe}, .prefix = true});
+        return s;
+    }
+    if (p.var) {
+        // Part 2 clause 6.2.4.4: the LFE, then the pairs, then an odd signal
+        // alone (var_coding_config 0).
+        if (p.lfe >= 0) {
+            s.units.push_back({.kind = UnitKind::kLfe, .outputs = {p.lfe}});
+        }
+        const int signals = p.coded - (p.lfe >= 0 ? 1 : 0);
+        for (int k = 0; k + 1 < signals; k += 2) {
+            s.units.push_back({.kind = UnitKind::kPair, .outputs = {k, k + 1}});
+        }
+        if (signals % 2 != 0) {
+            s.units.push_back({.kind = UnitKind::kMono, .outputs = {signals - 1}});
+        }
+        return s;
+    }
     if (p.immersive_element()) {
         // Part 2 clause 6.2.4.1 with core_5ch_grouping 0 and 2ch_mode 0: the
         // LFE, (A'', B''), (D'', E''), C'' and but in ASPX_AJCC (F'', G''), then
@@ -817,9 +903,10 @@ struct SubstreamCoder {
     // channels, codec mode, share of the rate and dialogue enhancement), or
     // why the configuration is not one the encoder writes in that mode.
     // Without `converts` the input arrives at the internal rate already, as a
-    // dialogue enhancement substream's does.
+    // dialogue enhancement substream's does. An object substream's coder
+    // takes the plan it is `given` in place of the channels'.
     [[nodiscard]] static std::expected<std::unique_ptr<SubstreamCoder>, Refusal> make(
-        const EncoderConfig& config, CodecMode mode, bool converts);
+        const EncoderConfig& config, CodecMode mode, bool converts, const Plan* given = nullptr);
 
     EncoderConfig config{};
     Plan plan{};
@@ -912,6 +999,189 @@ struct SubstreamCoder {
         std::vector<detail::AspxElement> elements;
     };
 
+    // An A-JOC substream's data beside its downmix in a frame: ajoc(), and
+    // each OAMD portion's timing and blocks, the downmix's where it is
+    // computed; `least` where they are what a frame falls back to.
+    struct ObjectFrame {
+        bool least = false;
+        detail::AjocFields ajoc{};
+        std::optional<detail::PortionFrame> dmx{};
+        detail::PortionFrame umx{};
+    };
+
+    // An A-JOC substream (SubstreamConfig::objects): the objects' metadata on
+    // the signal's axis, which the stream shares; the full-band objects the
+    // upmix rebuilds and the LFE, by their index there; for a computed
+    // downmix each full-band object's downmix signal, which is A-JOC's input
+    // of that index; each A-JOC input's coded channel; the full-band objects
+    // on the signal's axis from `base`; A-JOC's estimation and the most bits
+    // its data may take; and each OAMD portion's objects, the timeline's
+    // index of each (the downmix's the LFE's alone), and blocks.
+    struct AjocCoding {
+        std::shared_ptr<detail::ObjectTimeline> timeline;
+        bool static_dmx = false;
+        std::vector<int> fullband;
+        int lfe = -1;
+        std::vector<int> group_of;
+        std::vector<int> input_channel;
+        std::vector<std::vector<double>> objects;
+        detail::AjocEncoder estimator;
+        std::size_t max_bits = 0;
+        std::vector<detail::OamdObject> dmx_objects;
+        std::vector<detail::OamdObject> umx_objects;
+        std::vector<int> umx_order;
+        detail::PortionWriter dmx_portion;
+        detail::PortionWriter umx_portion;
+
+        [[nodiscard]] std::size_t umx_signals() const noexcept { return fullband.size(); }
+    };
+    std::unique_ptr<AjocCoding> ajoc;
+
+    [[nodiscard]] double object_sample(std::size_t k, std::int64_t s) const noexcept {
+        if (s < base || s >= signal_end()) {
+            return 0.0;
+        }
+        return ajoc->objects[k][static_cast<std::size_t>(s - base)];
+    }
+
+    // Analyses the QMF slots of the downmix and the objects that frame f's
+    // A-JOC parameters read.
+    void analyse_ajoc(std::int64_t frame) {
+        detail::AjocEncoder& e = ajoc->estimator;
+        std::vector<std::array<double, kQmfSlot>> dmx(ajoc->input_channel.size());
+        std::vector<std::array<double, kQmfSlot>> objects(ajoc->fullband.size());
+        while (e.slots() < e.slots_needed(frame)) {
+            const std::int64_t from = kQmfSlot * e.slots() - timing.alignment_delay;
+            for (std::size_t i = 0; i < dmx.size(); ++i) {
+                const auto c = static_cast<std::size_t>(ajoc->input_channel[i]);
+                for (std::size_t n = 0; n < dmx[i].size(); ++n) {
+                    dmx[i][n] = sample(c, from + static_cast<std::int64_t>(n));
+                }
+            }
+            for (std::size_t k = 0; k < objects.size(); ++k) {
+                for (std::size_t n = 0; n < objects[k].size(); ++n) {
+                    objects[k][n] = object_sample(k, from + static_cast<std::int64_t>(n));
+                }
+            }
+            e.push_slot(dmx, objects);
+        }
+    }
+
+    // A computed downmix's objects in a frame from `start`: the LFE's
+    // metadata, and each downmix signal at the energy-weighted centre of its
+    // objects over the frame, the plain centre of a silent group's.
+    [[nodiscard]] std::vector<ObjectProperties> dmx_properties(std::int64_t start) const {
+        std::vector<ObjectProperties> out;
+        if (ajoc->lfe >= 0) {
+            out.push_back(ajoc->timeline->at(ajoc->lfe, start));
+        }
+        const std::size_t signals = ajoc->input_channel.size();
+        for (std::size_t g = 0; g < signals; ++g) {
+            std::array<double, 3> weighted{};
+            std::array<double, 3> plain{};
+            double energy = 0.0;
+            int members = 0;
+            for (std::size_t k = 0; k < ajoc->fullband.size(); ++k) {
+                if (ajoc->group_of[k] != static_cast<int>(g)) {
+                    continue;
+                }
+                const std::array<double, 3> p =
+                    ajoc->timeline->position(ajoc->fullband[k], start + frame_length / 2);
+                double e = 0.0;
+                for (std::int64_t s = start; s < start + frame_length; ++s) {
+                    const double x = object_sample(k, s);
+                    e += x * x;
+                }
+                for (std::size_t d = 0; d < 3; ++d) {
+                    weighted[d] += e * p[d];
+                    plain[d] += p[d];
+                }
+                energy += e;
+                ++members;
+            }
+            ObjectProperties p;
+            for (std::size_t d = 0; d < 3; ++d) {
+                p.position[d] = energy > 0.0 ? weighted[d] / energy
+                                             : plain[d] / std::max(members, 1);
+            }
+            out.push_back(p);
+        }
+        return out;
+    }
+
+    // Frame f's object data: A-JOC's parameters, the upmix's blocks where its
+    // objects' metadata changes, and a computed downmix's one block at the
+    // frame's start, ramped over the frame.
+    [[nodiscard]] ObjectFrame ajoc_frame(std::int64_t frame, bool iframe) {
+        ObjectFrame out;
+        const std::int64_t start = frame * frame_length;
+        out.ajoc = ajoc->estimator.propose(frame, iframe, ajoc->max_bits);
+        out.umx = ajoc->umx_portion.frame(
+            detail::plan_blocks(*ajoc->timeline, ajoc->umx_order, start, frame_length, iframe),
+            iframe);
+        if (!ajoc->static_dmx) {
+            detail::BlockPlan block;
+            block.ramp = frame_length;
+            block.properties = dmx_properties(start);
+            out.dmx = ajoc->dmx_portion.frame(std::span(&block, 1), iframe);
+        }
+        return out;
+    }
+
+    // Appends the objects' input at the internal rate: the full-band objects
+    // as they are, the LFE object on the LFE's coded channel, and the
+    // downmix: each group's sum, or the static bed's pans, the gains moved
+    // linearly across each 32 samples from the positions at their ends.
+    void ajoc_take(const std::vector<std::vector<double>>& input) {
+        const std::size_t count = input.front().size();
+        const std::int64_t first = signal_end();
+        for (std::size_t k = 0; k < ajoc->fullband.size(); ++k) {
+            const std::vector<double>& x = input[static_cast<std::size_t>(ajoc->fullband[k])];
+            ajoc->objects[k].insert(ajoc->objects[k].end(), x.begin(), x.end());
+        }
+        if (ajoc->lfe >= 0) {
+            const auto c = static_cast<std::size_t>(plan.lfe);
+            const std::vector<double>& x = input[static_cast<std::size_t>(ajoc->lfe)];
+            signal[c].insert(signal[c].end(), x.begin(), x.end());
+        }
+        const std::size_t signals = ajoc->input_channel.size();
+        std::vector<std::vector<double>> dmx(signals, std::vector<double>(count, 0.0));
+        if (!ajoc->static_dmx) {
+            for (std::size_t k = 0; k < ajoc->fullband.size(); ++k) {
+                const std::vector<double>& x = input[static_cast<std::size_t>(ajoc->fullband[k])];
+                std::vector<double>& to = dmx[static_cast<std::size_t>(ajoc->group_of[k])];
+                for (std::size_t n = 0; n < count; ++n) {
+                    to[n] += x[n];
+                }
+            }
+        } else {
+            constexpr std::int64_t kStep = 32;
+            for (std::size_t k = 0; k < ajoc->fullband.size(); ++k) {
+                const int object = ajoc->fullband[k];
+                const std::vector<double>& x = input[static_cast<std::size_t>(object)];
+                for (std::size_t n = 0; n < count;) {
+                    const std::int64_t s = first + static_cast<std::int64_t>(n);
+                    const std::int64_t from = s - ((s % kStep) + kStep) % kStep;
+                    const std::array<double, 5> g0 =
+                        detail::static_downmix_gains(ajoc->timeline->position(object, from));
+                    const std::array<double, 5> g1 =
+                        detail::static_downmix_gains(ajoc->timeline->position(object, from + kStep));
+                    for (; n < count && first + static_cast<std::int64_t>(n) < from + kStep; ++n) {
+                        const double t =
+                            static_cast<double>(first + static_cast<std::int64_t>(n) - from) / kStep;
+                        for (std::size_t i = 0; i < signals; ++i) {
+                            dmx[i][n] += (g0[i] + t * (g1[i] - g0[i])) * x[n];
+                        }
+                    }
+                }
+            }
+        }
+        for (std::size_t i = 0; i < signals; ++i) {
+            const auto c = static_cast<std::size_t>(ajoc->input_channel[i]);
+            signal[c].insert(signal[c].end(), dmx[i].begin(), dmx[i].end());
+        }
+    }
+
     // What a frame's channel element is written from.
     struct Coding {
         bool iframe = false;
@@ -928,6 +1198,8 @@ struct SubstreamCoder {
         // The immersive element's Table 20 (Part 2 clause 5.2.3.2 step 5): the
         // chparam_info() predicting H'' to K'' from D'' to G'', band by band.
         std::array<detail::StereoChoice, 4> prediction{};
+        // An A-JOC substream's data around the downmix.
+        std::optional<ObjectFrame> objects;
     };
 
     [[nodiscard]] bool residual(std::size_t c) const noexcept {
@@ -1403,10 +1675,49 @@ struct SubstreamCoder {
     // of the substream. Without `data`, all of it but the sf_data() elements:
     // the side information the rate loop's budget leaves out.
     void write_element(BitWriter& w, const Coding& f, bool data) const {
+        if (ajoc) {
+            write_ajoc_data(w, f, data);
+            return;
+        }
+        write_channel_element(w, f, data);
+    }
+
+    // Part 2 clause 6.2.3.4, audio_data_ajoc(): the downmix, a static 5.X
+    // bed's element or a var_channel_element() with its own metadata for core
+    // decoding (b_some_signals_inactive 0, its timing, its objects' blocks and
+    // no extension), then ajoc(), ajoc_dmx_de_data() with no dialogue objects,
+    // and the upmix's timing and blocks.
+    void write_ajoc_data(BitWriter& w, const Coding& f, bool data) const {
+        const ObjectFrame& o = *f.objects;
+        const int m = ajoc->estimator.setup().num_dmx;
+        if (!ajoc->static_dmx) {
+            w.write(1, 0, "b_some_signals_inactive");
+        }
+        write_channel_element(w, f, data);
+        if (!ajoc->static_dmx) {
+            w.write(1, 1, "b_dmx_timing");
+            detail::write_oamd_timing_data(w, o.dmx->timing);
+            detail::write_oamd_dyndata(w, ajoc->dmx_objects, o.dmx->n_blocks, f.iframe,
+                                       o.dmx->blocks, false, nullptr);
+            w.write(1, 0, "b_oamd_extension_present");
+        }
+        detail::write_ajoc(w, m, o.ajoc);
+        detail::AjocDmxDeFields de;
+        de.cfg = f.iframe;
+        de.keep_coeffs = !f.iframe;
+        de.dialogue.assign(ajoc->umx_signals(), 0);
+        detail::write_ajoc_dmx_de_data(w, m, de, 0);
+        w.write(1, 1, "b_umx_timing");
+        detail::write_oamd_timing_data(w, o.umx.timing);
+        detail::write_oamd_dyndata(w, ajoc->umx_objects, o.umx.n_blocks, f.iframe, o.umx.blocks,
+                                   false, nullptr);
+    }
+
+    void write_channel_element(BitWriter& w, const Coding& f, bool data) const {
         const bool with_aspx = f.aspx.has_value();
         const auto units = [&](const auto& pick) {
             for (const Unit& unit : f.structure.units) {
-                if (pick(unit)) {
+                if (!unit.prefix && pick(unit)) {
                     write_unit(w, unit, f, data);
                 }
             }
@@ -1418,6 +1729,43 @@ struct SubstreamCoder {
                 }
             }
         };
+        // audio_data_objs(): the LFE's mono_data(1) before the element.
+        for (const Unit& unit : f.structure.units) {
+            if (unit.prefix) {
+                write_unit(w, unit, f, data);
+            }
+        }
+        if (plan.var) {
+            // var_channel_element(b_iframe, n_dmx_signals, b_has_lfe): the
+            // codec mode, aspx_config() in an I-frame and companding_control()
+            // for five signals or fewer, the LFE, the pairs, var_coding_config
+            // 0 before the last pair where an odd signal follows it, and the
+            // aspx_data elements.
+            const int signals = plan.coded - (plan.lfe >= 0 ? 1 : 0);
+            w.write(1, with_aspx ? 1U : 0U, "var_codec_mode");
+            if (with_aspx) {
+                if (f.iframe) {
+                    detail::write_aspx_config(w, aspx->config);
+                }
+                if (signals <= 5) {
+                    detail::write_companding_control(w, f.aspx->companding);
+                }
+            }
+            units([](const Unit& u) { return u.kind == UnitKind::kLfe; });
+            const int pairs = signals / 2;
+            int pair = 0;
+            for (const Unit& unit : f.structure.units) {
+                if (unit.kind == UnitKind::kLfe) {
+                    continue;
+                }
+                if (unit.kind == UnitKind::kPair && signals % 2 != 0 && ++pair == pairs) {
+                    w.write(1, 0, "var_coding_config");
+                }
+                write_unit(w, unit, f, data);
+            }
+            tails();
+            return;
+        }
         if (plan.immersive_element()) {
             write_immersive_element(w, f, data);
             return;
@@ -1480,7 +1828,7 @@ struct SubstreamCoder {
         // then C's mono_data() where coding_config 0 and 2 send one.
         const auto additional = std::ranges::find_if(f.structure.units, [](const Unit& u) { return u.additional; });
         for (auto it = f.structure.units.begin(); it != f.structure.units.end(); ++it) {
-            if (it->kind == UnitKind::kLfe) {
+            if (it->kind == UnitKind::kLfe || it->prefix) {
                 continue;
             }
             if (it == additional) {
@@ -1621,6 +1969,9 @@ struct SubstreamCoder {
         }
         f.layout = layout;
         f.max_sfb.assign(groups.size(), {0, 0});
+        if (ajoc) {
+            f.objects = least_objects(iframe);
+        }
         f.tracks.resize(signal.size());
         for (std::size_t c = 0; c < signal.size(); ++c) {
             const FrameLayout& l = layout[group_of[c]];
@@ -1628,6 +1979,27 @@ struct SubstreamCoder {
             f.tracks[c] = detail::code_track(grouped, std::vector<std::vector<int>>(grouped.offset.size()), 0, l);
         }
         return f;
+    }
+
+    // An A-JOC substream's least object data, which bound what it takes: the
+    // estimator's and each portion's least, the portions' built from the
+    // properties in force at the frame's start.
+    [[nodiscard]] ObjectFrame least_objects(bool iframe) const {
+        ObjectFrame out;
+        out.least = true;
+        const std::int64_t start = pending.frame * frame_length;
+        detail::BlockPlan now;
+        for (const int object : ajoc->umx_order) {
+            now.properties.push_back(ajoc->timeline->at(object, start));
+        }
+        out.ajoc = ajoc->estimator.least(iframe);
+        out.umx = ajoc->umx_portion.least(now, iframe);
+        if (!ajoc->static_dmx) {
+            detail::BlockPlan block;
+            block.properties.resize(ajoc->dmx_portion.objects());
+            out.dmx = ajoc->dmx_portion.least(block, iframe);
+        }
+        return out;
     }
 
     // What code() lowers, in turn, when not even a frame with no bands fits.
@@ -1689,6 +2061,10 @@ struct SubstreamCoder {
         if (acpl) {
             analyse_acpl(frame);
             f.acpl = acpl->propose(frame, iframe);
+        }
+        if (ajoc) {
+            analyse_ajoc(frame);
+            f.objects = ajoc_frame(frame, iframe);
         }
         const auto aspx_fields = [&](std::size_t c) -> const detail::AspxChannelFields& {
             for (std::size_t e = 0; e < plan.aspx_elements.size(); ++e) {
@@ -1965,8 +2341,10 @@ struct SubstreamCoder {
             // create() checks the rate holds, whatever the frame's content.
             const std::optional<AspxFrame> proposed = std::move(f.aspx);
             std::optional<detail::AcplFrameFields> parameters = std::move(f.acpl);
+            const std::optional<ObjectFrame> objects = std::move(f.objects);
             const bool coupled = parameters.has_value();
             f = silent(f.iframe, f.layout);
+            const std::optional<ObjectFrame> least = std::move(f.objects);
             for (const Fallback step : {Fallback::kProposed, Fallback::kHeld, Fallback::kLeast,
                                         Fallback::kLeastMetadata}) {
                 if (step == Fallback::kHeld || step == Fallback::kLeast) {
@@ -1981,6 +2359,7 @@ struct SubstreamCoder {
                         de_current = least_parameters(f.iframe);
                     }
                 }
+                f.objects = step == Fallback::kLeastMetadata ? least : objects;
                 f.acpl = parameters;
                 f.aspx = proposed;
                 raw = write();
@@ -2031,6 +2410,14 @@ struct SubstreamCoder {
         if (f.acpl) {
             acpl->commit(*f.acpl);
             acpl->drop_before_frame(frame + 1);
+        }
+        if (f.objects) {
+            ajoc->estimator.commit(f.objects->least);
+            ajoc->estimator.drop_before_frame(frame + 1);
+            ajoc->umx_portion.commit(f.objects->umx);
+            if (f.objects->dmx) {
+                ajoc->dmx_portion.commit(*f.objects->dmx);
+            }
         }
         for (std::size_t g = 0; g < groups.size(); ++g) {
             groups[g].previous_last = f.layout[g].window_length.back();
@@ -2136,7 +2523,9 @@ struct SubstreamCoder {
         if (keep_from > base) {
             const auto drop =
                 static_cast<std::size_t>(std::min(keep_from - base, signal_end() - base));
-            for (auto* buffers : {&signal, &source, &de_programme, &de_dialogue, &kept_input}) {
+            std::vector<std::vector<double>> none;
+            for (auto* buffers : {&signal, &source, &de_programme, &de_dialogue, &kept_input,
+                                  ajoc ? &ajoc->objects : &none}) {
                 for (std::vector<double>& channel : *buffers) {
                     channel.erase(channel.begin(),
                                   channel.begin() + static_cast<std::ptrdiff_t>(drop));
@@ -2172,6 +2561,9 @@ struct SubstreamCoder {
         if (acpl) {
             needed = std::max(needed, through_slot(acpl->slots_needed(frame)));
         }
+        if (ajoc) {
+            needed = std::max(needed, through_slot(ajoc->estimator.slots_needed(frame)));
+        }
         if (stem()) {
             needed = std::max(needed,
                               dialogue_window(frame) + 2 * static_cast<std::int64_t>(frame_length));
@@ -2181,8 +2573,9 @@ struct SubstreamCoder {
 };
 
 std::expected<std::unique_ptr<SubstreamCoder>, Refusal> SubstreamCoder::make(
-    const EncoderConfig& config, CodecMode mode, bool converts) {
-    const std::expected<Plan, Refusal> plan = plan_for(config, mode);
+    const EncoderConfig& config, CodecMode mode, bool converts, const Plan* given) {
+    const std::expected<Plan, Refusal> plan =
+        given != nullptr ? std::expected<Plan, Refusal>(*given) : plan_for(config, mode);
     if (!plan) {
         return std::unexpected(plan.error());
     }
@@ -2225,15 +2618,17 @@ std::expected<std::unique_ptr<SubstreamCoder>, Refusal> SubstreamCoder::make(
                                       detail::dsp::Resampler<double>(filter));
     }
     const auto channels = static_cast<std::size_t>(plan->coded);
-    const int full_channels = config.channels - (plan->lfe >= 0 ? 1 : 0);
+    const int full_channels =
+        std::max(config.channels - (plan->lfe >= 0 ? 1 : 0) - (plan->objs_lfe >= 0 ? 1 : 0), 1);
     const double kbps_per_channel = static_cast<double>(config.bitrate_kbps) / full_channels;
-    const bool multichannel = plan->ch_mode >= 3;
+    const bool multichannel = plan->ch_mode >= 3 || (plan->var && full_channels >= 3);
     coder->cutoff = cutoff_hz(kbps_per_channel);
     coder->group_of.assign(channels, 0);
     for (std::size_t g = 0; g < plan->groups.size(); ++g) {
         SubstreamCoder::Group group;
         group.channels = plan->groups[g];
-        group.lfe = group.channels.size() == 1 && group.channels.front() == plan->lfe;
+        group.lfe = group.channels.size() == 1 && (group.channels.front() == plan->lfe ||
+                                                   group.channels.front() == plan->objs_lfe);
         for (const int c : group.channels) {
             coder->group_of[static_cast<std::size_t>(c)] = g;
         }
@@ -2284,6 +2679,9 @@ std::expected<std::unique_ptr<SubstreamCoder>, Refusal> SubstreamCoder::make(
     } else if (mode == CodecMode::kAspx) {
         coder->aspx =
             detail::aspx_setup_for(kbps_per_channel, config.sample_rate_hz, multichannel, *timing);
+        if (coder->aspx && plan->var) {
+            coder->aspx->companding = false;
+        }
     }
     const bool uses_aspx = plan->immersive_element() ? plan->immersive != immersive_mode::kScpl
                                                      : mode != CodecMode::kSimple;
@@ -2494,6 +2892,9 @@ struct StreamSubstream {
     std::unique_ptr<SubstreamCoder> coder;
     std::size_t first_input = 0;
     int inputs = 0;
+    // An object substream's coder: the input channels it takes, in its order,
+    // in place of `inputs` from `first_input`.
+    std::vector<int> input_map;
     std::optional<std::size_t> enhances;
     double weight = 1.0;
     std::optional<int> content_classifier;
@@ -2597,6 +2998,152 @@ struct StreamPresentation {
     return out;
 }
 
+// Part 2 Table 55 reads md_compat 3 as holding 17 A-JOC objects and an LFE;
+// the writer takes an A-JOC substream to need that level, and 7 above 17
+// objects (src/ac4enc/ERRATA.md, "md_compat for objects").
+constexpr int kAjocObjectsAtLevel3 = 17;
+// The most objects the decoder keeps in one portion (src/ac4dec/ERRATA.md,
+// "The objects oamd_dyndata_multi() lists").
+constexpr int kMaxObjects = 64;
+// The share of an A-JOC substream's frame its parameters may take.
+constexpr double kAjocShare = 0.3;
+
+// An object substream's objects as the encoder codes them: the input index of
+// each bed, dynamic and LFE object; the coding, and for A-JOC the downmix,
+// its full-band signals, the parameters' bands and quantisation and the
+// decorrelators; the common data; and the tracks and least md_compat of a
+// presentation of it (Part 2 Table 55): A-JOC's downmix signals, or the
+// direct-coded objects, the LFE not counted.
+struct ObjectLayout {
+    std::vector<int> beds;
+    std::vector<int> dynamic;
+    std::vector<BedChannel> bed_channels;
+    int lfe = -1;
+    int count = 0;
+    bool ajoc = true;
+    bool static_dmx = false;
+    int dmx_signals = 0;
+    int num_bands_code = 0;
+    int quant_select = 0;
+    int num_decorr = 0;
+    std::optional<detail::OamdCommonFields> common;
+    CodecMode mode = CodecMode::kSimple;
+
+    [[nodiscard]] int fullband() const noexcept {
+        return static_cast<int>(beds.size() + dynamic.size());
+    }
+    [[nodiscard]] int tracks() const noexcept { return ajoc ? dmx_signals : fullband(); }
+    [[nodiscard]] int md_compat() const noexcept {
+        if (!ajoc) {
+            return least_md_compat(tracks());
+        }
+        return fullband() > kAjocObjectsAtLevel3 ? 7 : std::max(least_md_compat(tracks()), 3);
+    }
+};
+
+// Table 78's ajoc_num_bands_code of `bands`, -1 for a count it lacks.
+[[nodiscard]] int ajoc_bands_code(int bands) noexcept {
+    constexpr std::array<int, 8> kBands = {23, 15, 12, 9, 7, 5, 3, 1};
+    const auto found = std::ranges::find(kBands, bands);
+    return found == kBands.end() ? -1 : static_cast<int>(found - kBands.begin());
+}
+
+[[nodiscard]] std::expected<ObjectLayout, Refusal> object_layout_of(const SubstreamConfig& s,
+                                                                     int kbps) {
+    const ObjectsConfig& oc = *s.objects;
+    ObjectLayout out;
+    out.count = static_cast<int>(oc.objects.size());
+    if (oc.objects.empty()) {
+        return std::unexpected("an object substream without objects");
+    }
+    if (out.count > kMaxObjects) {
+        return std::unexpected("more than 64 objects");
+    }
+    for (std::size_t o = 0; o < oc.objects.size(); ++o) {
+        const ObjectConfig& object = oc.objects[o];
+        if (!detail::properties_valid(object.properties)) {
+            return std::unexpected("an object's properties off the ranges ObjectProperties gives them");
+        }
+        const int index = static_cast<int>(o);
+        if (object.lfe) {
+            if (out.lfe >= 0) {
+                return std::unexpected("more than one LFE object");
+            }
+            out.lfe = index;
+        } else if (object.bed) {
+            out.beds.push_back(index);
+            out.bed_channels.push_back(*object.bed);
+        } else {
+            out.dynamic.push_back(index);
+        }
+    }
+    if (out.fullband() == 0) {
+        return std::unexpected("an object substream of the LFE alone");
+    }
+    if (s.dialogue || s.dialogue_mix || s.enhances) {
+        return std::unexpected(
+            "dialogue enhancement, dialogue mixing values or a dialogue enhancement waveform in an "
+            "object substream");
+    }
+    if (s.codec_mode != CodecMode::kAuto && s.codec_mode != CodecMode::kSimple &&
+        s.codec_mode != CodecMode::kAspx) {
+        return std::unexpected("an object substream's codec mode other than kAuto, kSimple or kAspx");
+    }
+    if (oc.screen_size_ratio_code && (*oc.screen_size_ratio_code < 0 || *oc.screen_size_ratio_code > 31)) {
+        return std::unexpected("a master_screen_size_ratio_code outside 0 to 31");
+    }
+    if (oc.screen_size_ratio_code || oc.bed_object_chan_distribute) {
+        detail::OamdCommonFields common;
+        common.screen_size_ratio_code = oc.screen_size_ratio_code;
+        common.bed_object_chan_distribute = oc.bed_object_chan_distribute;
+        out.common = common;
+    }
+    out.ajoc = oc.coding == ObjectCoding::kAjoc;
+    int coded = out.fullband();
+    if (!out.ajoc) {
+        if (!out.beds.empty()) {
+            return std::unexpected("bed objects in direct-coded object substreams");
+        }
+    } else {
+        out.static_dmx = oc.downmix != AjocDownmix::kComputed;
+        if (out.static_dmx) {
+            if (oc.downmix == AjocDownmix::kStatic50 && out.lfe >= 0) {
+                return std::unexpected("an LFE object with a static 5.0 downmix");
+            }
+            if (oc.downmix == AjocDownmix::kStatic51 && out.lfe < 0) {
+                return std::unexpected("a static 5.1 downmix without an LFE object");
+            }
+            out.dmx_signals = 5;
+        } else {
+            const int most = std::min(out.fullband(), 11);
+            out.dmx_signals = oc.downmix_signals.value_or(std::clamp(kbps / 32, 1, std::min(most, 10)));
+            if (out.dmx_signals < 1 || out.dmx_signals > most) {
+                return std::unexpected(
+                    "a computed downmix of no signal, of more than 11 or of more than its full-band "
+                    "objects");
+            }
+        }
+        coded = out.dmx_signals;
+        const double per_signal = static_cast<double>(kbps) / out.dmx_signals;
+        const int bands = oc.parameter_bands.value_or(per_signal >= 64.0 ? 23 : (per_signal >= 32.0 ? 15 : 12));
+        out.num_bands_code = ajoc_bands_code(bands);
+        if (out.num_bands_code < 0) {
+            return std::unexpected("A-JOC parameter bands other than Table 78's 23, 15, 12, 9, 7, 5, 3 or 1");
+        }
+        out.quant_select = oc.coarse.value_or(per_signal < 32.0) ? 1 : 0;
+        out.num_decorr = oc.decorrelation ? std::min(out.fullband(), 3) : 0;
+    }
+    // The downmix's or the objects' elements in SIMPLE or ASPX, by the rate a
+    // coded channel as the channel modes take it.
+    out.mode = s.codec_mode;
+    if (out.mode == CodecMode::kAuto) {
+        const double per_channel = static_cast<double>(kbps) / coded;
+        const double aspx_below = coded >= 3 ? kAspxBelowKbpsMultichannel : kAspxBelowKbps;
+        out.mode = per_channel < aspx_below ? CodecMode::kAspx : CodecMode::kSimple;
+    }
+    return out;
+}
+
 }  // namespace
 
 // Nested in an exported class, Impl takes its visibility, so each member
@@ -2608,6 +3155,16 @@ struct Encoder::Impl {
     // or its rate cannot hold its least frame.
     [[nodiscard]] AC4ENC_NO_EXPORT static std::expected<std::unique_ptr<Impl>, Refusal> make(
         const EncoderConfig& config);
+
+    // The object substream `s`'s coders in place of the one substream the
+    // stream has so far: an A-JOC substream, or direct-coded substreams and
+    // their OAMD substream; or why not.
+    [[nodiscard]] AC4ENC_NO_EXPORT static std::optional<Refusal> make_objects(
+        Impl& impl, const SubstreamConfig& s, const ObjectLayout& layout);
+    // The object substream's group in the table of contents, once the
+    // substreams' indices are known.
+    [[nodiscard]] AC4ENC_NO_EXPORT static detail::TocGroup object_group(const Impl& impl,
+                                                                        const ObjectLayout& layout);
 
     EncoderConfig config{};
     detail::FrameTiming timing{};
@@ -2664,6 +3221,44 @@ struct Encoder::Impl {
     std::int64_t frames_out = 0;
     bool flushed = false;
 
+    // An object substream: the objects' metadata on the signal's axis, which
+    // its coders share, and for direct-coded objects the group's OAMD
+    // substream (Part 2 clause 6.2.2.4): its objects as oamd_dyndata_multi()
+    // lists them, each's index in the timeline, their blocks, the common data
+    // I-frames send, and the frame written's, `least` where it fell back.
+    std::shared_ptr<detail::ObjectTimeline> timeline;
+    struct OamdGroup {
+        std::vector<detail::OamdObject> objects;
+        std::vector<int> order;
+        detail::PortionWriter portion;
+        std::optional<detail::OamdCommonFields> common;
+        std::optional<detail::PortionFrame> sent;
+    };
+    std::optional<OamdGroup> oamd;
+
+    // The OAMD substream of frame f: its blocks where the objects' metadata
+    // changes, or with `least` the least of them.
+    [[nodiscard]] BitWriter oamd_substream(std::int64_t frame, bool is_iframe, bool least,
+                                           detail::PortionFrame& blocks) const {
+        const std::int64_t start = frame * timing.frame_length;
+        if (least) {
+            detail::BlockPlan now;
+            for (const int object : oamd->order) {
+                now.properties.push_back(timeline->at(object, start));
+            }
+            blocks = oamd->portion.least(now, is_iframe);
+        } else {
+            blocks = oamd->portion.frame(
+                detail::plan_blocks(*timeline, oamd->order, start, timing.frame_length, is_iframe),
+                is_iframe);
+        }
+        BitWriter w = BitWriter::buffered();
+        detail::write_oamd_substream(w, is_iframe ? oamd->common : std::nullopt, blocks.timing,
+                                     oamd->objects, blocks.n_blocks, is_iframe, false,
+                                     blocks.blocks);
+        return w;
+    }
+
     // Table 81's wait_frames for a frame that leaves `left` shares in the
     // buffer: the whole frames a decoder that starts at it waits, counted in
     // twos at indices 10 to 12.
@@ -2699,6 +3294,10 @@ struct Encoder::Impl {
             for (detail::TocSubstream& s : g.substreams) {
                 s.iframe = is_iframe;
             }
+            for (detail::TocObjectSubstream& s : g.objects) {
+                s.iframe = is_iframe;
+            }
+            g.oamd_iframe = is_iframe;
         }
         return out;
     }
@@ -2845,11 +3444,12 @@ struct Encoder::Impl {
 
     [[nodiscard]] AC4ENC_NO_EXPORT EncodedFrame encode_frame(std::int64_t frame);
 
-    // Takes the input, and with a stem the dialogue in it, and returns the
-    // frames it completes.
+    // Takes the input, with a stem the dialogue in it and with objects the
+    // changes to their metadata, and returns the frames it completes.
     [[nodiscard]] AC4ENC_NO_EXPORT std::expected<std::vector<EncodedFrame>, EncodeError> push(
         std::span<const std::span<const float>> channels,
-        std::span<const std::span<const float>> dialogue);
+        std::span<const std::span<const float>> dialogue,
+        std::span<const ObjectMetadataUpdate> updates);
 
     // Appends one piece of input at the internal rate to every substream:
     // each its own channels (and their dialogue), and each dialogue
@@ -2869,6 +3469,244 @@ struct Encoder::Impl {
     // converter.
     [[nodiscard]] AC4ENC_NO_EXPORT std::vector<EncodedFrame> drain();
 };
+
+std::optional<Refusal> Encoder::Impl::make_objects(Impl& impl, const SubstreamConfig& s,
+                                                   const ObjectLayout& layout) {
+    const ObjectsConfig& oc = *s.objects;
+    std::vector<ObjectProperties> initial;
+    for (const ObjectConfig& object : oc.objects) {
+        initial.push_back(object.properties);
+    }
+    impl.timeline = std::make_shared<detail::ObjectTimeline>(std::move(initial));
+    std::vector<detail::EmdfPayloadCodes> payloads;
+    for (const EmdfPayload& payload : s.emdf) {
+        const auto codes = detail::resolve_emdf(payload);
+        if (!codes) {
+            return "an EMDF payload with an id below 1 or a field outside Part 1 Table 79's range";
+        }
+        payloads.push_back(*codes);
+    }
+    const StreamSubstream model = std::move(impl.substreams.front());
+    impl.substreams.clear();
+    impl.fallbacks.clear();
+    const double kbps = model.weight;
+    const auto one_of = [&](int channels, double share) {
+        EncoderConfig one = impl.config;
+        one.channels = channels;
+        one.codec_mode = layout.mode;
+        one.bitrate_kbps = std::max(1, static_cast<int>(std::lround(share)));
+        one.dialogue.reset();
+        one.loudness.reset();
+        one.drc.reset();
+        one.downmix.reset();
+        one.substreams.clear();
+        one.presentations.clear();
+        one.experimental.seven_x = AdditionalPair::kNone;
+        one.trace = {};
+        return one;
+    };
+    const auto add = [&](std::unique_ptr<SubstreamCoder> coder, double weight, std::vector<int> inputs) {
+        coder->emdf = payloads;
+        StreamSubstream sub;
+        sub.coder = std::move(coder);
+        sub.weight = weight;
+        sub.content_classifier = model.content_classifier;
+        sub.language = model.language;
+        sub.inputs = static_cast<int>(inputs.size());
+        sub.input_map = std::move(inputs);
+        impl.substreams.push_back(std::move(sub));
+        impl.fallbacks.emplace_back();
+    };
+    const bool lfe = layout.lfe >= 0;
+    // The full-band objects in the upmix's order, beds first (bed_dyn_obj_
+    // assignment() lists them ahead of the dynamic objects).
+    std::vector<int> fullband = layout.beds;
+    fullband.insert(fullband.end(), layout.dynamic.begin(), layout.dynamic.end());
+
+    if (layout.ajoc) {
+        const int m = layout.dmx_signals;
+        EncoderConfig one = one_of(m + (lfe ? 1 : 0), kbps);
+        Plan plan;
+        if (layout.static_dmx) {
+            std::expected<Plan, Refusal> bed = plan_for(one, layout.mode);
+            if (!bed) {
+                return bed.error();
+            }
+            plan = *bed;
+        } else {
+            plan = plan_var(m, lfe, layout.mode);
+        }
+        auto coder = SubstreamCoder::make(one, layout.mode, false, &plan);
+        if (!coder) {
+            return coder.error();
+        }
+        SubstreamCoder& c = **coder;
+        std::vector<std::array<double, 3>> positions;
+        for (const int object : fullband) {
+            positions.push_back(oc.objects[static_cast<std::size_t>(object)].properties.position);
+        }
+        std::vector<int> input_channel;
+        std::vector<int> groups;
+        if (layout.static_dmx) {
+            // L R C Ls Rs, in the 5.X element's coded order around the LFE.
+            input_channel = {plan.l, plan.r, plan.c, plan.ls, plan.rs};
+        } else {
+            groups = detail::downmix_groups(positions, m);
+            for (int i = 0; i < m; ++i) {
+                input_channel.push_back(detail::ajoc_input_track(i, m));
+            }
+        }
+        std::vector<detail::OamdObject> dmx_objects;
+        std::vector<detail::OamdObject> umx_objects;
+        std::vector<bool> dmx_dynamic;
+        std::vector<bool> umx_dynamic;
+        std::vector<int> umx_order;
+        if (lfe) {
+            dmx_objects.push_back({detail::OamdObjectKind::kBed, true, true});
+            umx_objects.push_back({detail::OamdObjectKind::kBed, true, true});
+            dmx_dynamic.push_back(false);
+            umx_dynamic.push_back(false);
+            umx_order.push_back(layout.lfe);
+        }
+        for (int i = 0; i < m; ++i) {
+            dmx_objects.push_back({detail::OamdObjectKind::kDynamic, false, true});
+            dmx_dynamic.push_back(true);
+        }
+        for (std::size_t k = 0; k < fullband.size(); ++k) {
+            const bool bed = k < layout.beds.size();
+            umx_objects.push_back(
+                {bed ? detail::OamdObjectKind::kBed : detail::OamdObjectKind::kDynamic, false, true});
+            umx_dynamic.push_back(!bed);
+            umx_order.push_back(fullband[k]);
+        }
+        const double frame_bits = one.bitrate_kbps * 1000.0 * c.frame_length / c.rate_hz;
+        c.ajoc = std::make_unique<SubstreamCoder::AjocCoding>(SubstreamCoder::AjocCoding{
+            .timeline = impl.timeline,
+            .static_dmx = layout.static_dmx,
+            .fullband = fullband,
+            .lfe = layout.lfe,
+            .group_of = groups,
+            .input_channel = input_channel,
+            .objects = std::vector<std::vector<double>>(
+                fullband.size(), std::vector<double>(static_cast<std::size_t>(c.delay), 0.0)),
+            .estimator = detail::AjocEncoder(
+                detail::AjocSetup{.num_dmx = m,
+                                  .num_umx = static_cast<int>(fullband.size()),
+                                  .num_bands_code = layout.num_bands_code,
+                                  .quant_select = layout.quant_select,
+                                  .num_decorr = layout.num_decorr},
+                c.timing),
+            .max_bits = static_cast<std::size_t>(kAjocShare * frame_bits),
+            .dmx_objects = std::move(dmx_objects),
+            .umx_objects = std::move(umx_objects),
+            .umx_order = std::move(umx_order),
+            .dmx_portion = detail::PortionWriter(std::move(dmx_dynamic)),
+            .umx_portion = detail::PortionWriter(std::move(umx_dynamic))});
+        std::vector<int> inputs(static_cast<std::size_t>(layout.count));
+        for (std::size_t k = 0; k < inputs.size(); ++k) {
+            inputs[k] = static_cast<int>(k);
+        }
+        add(std::move(*coder), kbps, std::move(inputs));
+        return std::nullopt;
+    }
+
+    // Direct-coded: the dynamic objects five, three, two or one a substream in
+    // their order, the LFE with the first, and the group's OAMD substream
+    // listing each substream's, the LFE first.
+    OamdGroup group{.objects = {},
+                    .order = {},
+                    .portion = detail::PortionWriter({}),
+                    .common = layout.common,
+                    .sent = std::nullopt};
+    std::vector<bool> dynamic;
+    std::size_t next = 0;
+    const auto total = static_cast<double>(layout.dynamic.size());
+    while (next < layout.dynamic.size()) {
+        const std::size_t left = layout.dynamic.size() - next;
+        const int size = left >= 5 ? 5 : (left >= 3 ? 3 : static_cast<int>(left));
+        const bool with_lfe = lfe && next == 0;
+        EncoderConfig one = one_of(size + (with_lfe ? 1 : 0), kbps * size / total);
+        std::expected<Plan, Refusal> plan = plan_objects(one, size, with_lfe, layout.mode);
+        if (!plan) {
+            return plan.error();
+        }
+        auto coder = SubstreamCoder::make(one, layout.mode, false, &*plan);
+        if (!coder) {
+            return coder.error();
+        }
+        std::vector<int> inputs(layout.dynamic.begin() + static_cast<std::ptrdiff_t>(next),
+                                layout.dynamic.begin() + static_cast<std::ptrdiff_t>(next) + size);
+        if (with_lfe) {
+            group.objects.push_back({detail::OamdObjectKind::kBed, true, false});
+            group.order.push_back(layout.lfe);
+            dynamic.push_back(false);
+        }
+        for (const int object : inputs) {
+            group.objects.push_back({detail::OamdObjectKind::kDynamic, false, false});
+            group.order.push_back(object);
+            dynamic.push_back(true);
+        }
+        if (with_lfe) {
+            inputs.push_back(layout.lfe);
+        }
+        add(std::move(*coder), kbps * size / total, std::move(inputs));
+        next += static_cast<std::size_t>(size);
+    }
+    group.portion = detail::PortionWriter(std::move(dynamic));
+    impl.oamd = std::move(group);
+    return std::nullopt;
+}
+
+detail::TocGroup Encoder::Impl::object_group(const Impl& impl, const ObjectLayout& layout) {
+    using detail::TocObjectAssignment;
+    using detail::TocObjectSubstream;
+    detail::TocGroup group;
+    group.content_classifier = impl.substreams.front().content_classifier;
+    group.language = impl.substreams.front().language;
+    const bool lfe = layout.lfe >= 0;
+    if (layout.ajoc) {
+        // ac4_substream_info_ajoc(): the downmix's signals, dynamic objects
+        // only; the upmix's, its bed objects listed by
+        // nonstd_bed_channel_assignment where it has any and the dynamic
+        // objects after them (src/ac4enc/ERRATA.md, "An A-JOC substream's
+        // objects"); the common data where it is configured.
+        TocObjectSubstream info;
+        info.ajoc = true;
+        info.lfe = lfe;
+        info.static_dmx = layout.static_dmx;
+        info.dmx_signals = layout.dmx_signals;
+        info.dmx = TocObjectAssignment{.kind = TocObjectAssignment::Kind::kDynamic};
+        info.umx_signals = layout.fullband();
+        if (!layout.beds.empty()) {
+            TocObjectAssignment beds{.kind = TocObjectAssignment::Kind::kBedList};
+            for (const BedChannel channel : layout.bed_channels) {
+                beds.list.push_back(static_cast<int>(channel));
+            }
+            info.umx = beds;
+        }
+        info.oamd_common = layout.common;
+        info.substream_index = static_cast<int>(impl.first_audio);
+        group.objects.push_back(std::move(info));
+        return group;
+    }
+    // ac4_substream_info_obj() for each substream: Table 60's n_objects_code
+    // for its full-band objects, dynamic, the LFE in the first; and the
+    // group's OAMD substream after the EMDF payload substreams.
+    for (std::size_t i = 0; i < impl.substreams.size(); ++i) {
+        const SubstreamCoder& coder = *impl.substreams[i].coder;
+        const bool has_lfe = coder.plan.objs_lfe >= 0;
+        const int size = coder.plan.coded - (has_lfe ? 1 : 0);
+        TocObjectSubstream info;
+        info.ajoc = false;
+        info.lfe = has_lfe;
+        info.n_objects_code = size == 5 ? 4 : size;
+        info.dynamic = true;
+        info.substream_index = static_cast<int>(impl.first_audio + i);
+        group.objects.push_back(std::move(info));
+    }
+    group.oamd_substream = static_cast<int>(impl.first_emdf + impl.emdf_substreams.size());
+    return group;
+}
 
 EncodedFrame Encoder::Impl::encode_frame(std::int64_t frame) {
     const bool is_iframe = iframe(frame);
@@ -2901,6 +3739,12 @@ EncodedFrame Encoder::Impl::encode_frame(std::int64_t frame) {
         }
         for (const std::vector<detail::EmdfPayloadCodes>& payloads : emdf_substreams) {
             fixed.push_back(detail::write_emdf_payloads_substream(payloads));
+        }
+        // The objects' OAMD substream, its least blocks where the audio does
+        // not fit beside its own.
+        detail::PortionFrame oamd_blocks;
+        if (oamd) {
+            fixed.push_back(oamd_substream(frame, is_iframe, least_gains, oamd_blocks));
         }
         detail::TocLayout frame_layout = layout_for(frame, is_iframe, 0);
         if (config.rate_mode != RateMode::kConstant) {
@@ -2964,17 +3808,39 @@ EncodedFrame Encoder::Impl::encode_frame(std::int64_t frame) {
             continue;
         }
         if (config.trace) {
-            for (std::size_t index = 0; index < written.size(); ++index) {
+            // In the order a reader reads them: a group's OAMD substream
+            // first, then the rest by index.
+            const std::size_t oamd_index =
+                oamd ? fixed_index(fixed.size() - 1) : written.size();
+            const auto send = [&](std::size_t index) {
                 for (SyntaxRecord record : written[index].kept()) {
                     record.substream = static_cast<int>(index);
                     config.trace(record);
                 }
+            };
+            if (oamd) {
+                send(oamd_index);
             }
+            for (std::size_t index = 0; index < written.size(); ++index) {
+                if (index != oamd_index) {
+                    send(index);
+                }
+            }
+        }
+        if (oamd) {
+            oamd->sent = std::move(oamd_blocks);
         }
         break;
     }
     for (StreamSubstream& s : substreams) {
         s.coder->commit();
+    }
+    if (oamd && oamd->sent) {
+        oamd->portion.commit(*oamd->sent);
+        oamd->sent.reset();
+    }
+    if (timeline) {
+        timeline->drop_before((frame + 1) * timing.frame_length);
     }
     if (config.rate_mode == RateMode::kConstant) {
         byte_carry = exact - static_cast<double>(frame_bytes);
@@ -3200,6 +4066,28 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     }
     const std::size_t n = subs.size();
 
+    // An object substream: the stream's one, its objects and their metadata
+    // within the codes' ranges.
+    const bool objects = std::ranges::any_of(subs, [](const SubstreamConfig& s) { return s.objects.has_value(); });
+    ObjectLayout object_layout;
+    if (objects) {
+        if (!config.experimental.objects) {
+            return invalid("objects without experimental.objects");
+        }
+        if (n != 1) {
+            return invalid("an object substream beside other substreams: it is the stream's one");
+        }
+        if (timing->frame_rate_index != 13) {
+            return invalid("objects at a frame_rate_index other than 13");
+        }
+        const std::expected<ObjectLayout, Refusal> laid =
+            object_layout_of(subs.front(), subs.front().bitrate_kbps.value_or(config.bitrate_kbps));
+        if (!laid) {
+            return invalid(laid.error());
+        }
+        object_layout = *laid;
+    }
+
     // Each substream's channel mode, as its coder would code it: what the
     // rules below take (a dialogue enhancement substream's follows its method).
     const auto channels_of = [&subs](std::size_t i) -> std::optional<int> {
@@ -3231,7 +4119,10 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
                 "a dialogue enhancement substream for no substream, for another dialogue "
                 "enhancement substream, or for one without a hybrid method");
         }
-        switch (*channels) {
+        if (subs[i].objects) {
+            // Objects have no channel mode (pres_ch_mode -1).
+            ch_modes[i] = -1;
+        } else switch (*channels) {
             case 9:
             case 10:
                 // 5.0.4 and 5.1.4: the 7.0.4 and 7.1.4 modes without the back
@@ -3360,6 +4251,11 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
             return invalid(
                 "a presentation of more or fewer substreams than its configuration plays");
         }
+        if (objects && pc.config) {
+            return invalid(
+                "a presentation_config for a presentation of objects, which plays the object "
+                "substream alone");
+        }
         std::vector<Role> roles;
         for (std::size_t position = 0; position < count; ++position) {
             const int index = pc.substreams[position];
@@ -3427,7 +4323,8 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
         if (!p.anchor) {
             return invalid("a presentation without main or music and effects audio");
         }
-        const std::uint32_t anchor_channels = held_channels(ch_modes[*p.anchor], backs[*p.anchor]);
+        const std::uint32_t anchor_channels =
+            objects ? 0U : held_channels(ch_modes[*p.anchor], backs[*p.anchor]);
         bool associated = false;
         bool music_and_effects = false;
         for (std::size_t m = 0; m < count; ++m) {
@@ -3436,7 +4333,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
         }
         int tracks = 0;
         int pres_ch_mode = -1;
-        for (std::size_t m = 0; m < count; ++m) {
+        for (std::size_t m = 0; m < count && !objects; ++m) {
             const std::size_t i = p.members[m];
             const int mode = ch_modes[i];
             const std::uint32_t own = held_channels(mode, backs[i]);
@@ -3464,7 +4361,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
             tracks += static_cast<int>(std::popcount(own & ~kLfe));
             pres_ch_mode = superset(pres_ch_mode, mode);
         }
-        if (pres_ch_mode < 0) {
+        if (pres_ch_mode < 0 && !objects) {
             return invalid("substreams no channel mode holds together");
         }
         // pres_ch_mode, and for an immersive substream what Part 2 clause
@@ -3485,8 +4382,15 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
         if (p.channels.ch_mode_core == p.channels.ch_mode) {
             p.channels.ch_mode_core = -1;
         }
+        if (objects) {
+            // pres_ch_mode -1, and Table 71's core for a static 5.X downmix:
+            // 5.0 or 5.1.
+            const bool lfe = object_layout.lfe >= 0;
+            p.channels.ch_mode_core = object_layout.static_dmx ? (lfe ? 4 : 3) : -1;
+            p.channels.lfe = lfe;
+        }
         // Part 2 Table 55: the least level its tracks allow, or one above.
-        const int least = least_md_compat(tracks);
+        const int least = objects ? object_layout.md_compat() : least_md_compat(tracks);
         const int md_compat = pc.md_compat.value_or(least);
         if (md_compat < least || (md_compat > 3 && md_compat != 7)) {
             return invalid(
@@ -3681,9 +4585,13 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     // channels.
     double set_kbps = 0.0;
     double unset_channels = 0.0;
+    const auto full_channels = [&](std::size_t i) {
+        return subs[i].objects
+                   ? object_layout.fullband()
+                   : static_cast<int>(std::popcount(held_channels(ch_modes[i], backs[i]) & ~kLfe));
+    };
     for (std::size_t i = 0; i < n; ++i) {
-        const int full =
-            static_cast<int>(std::popcount(held_channels(ch_modes[i], backs[i]) & ~kLfe));
+        const int full = full_channels(i);
         if (subs[i].bitrate_kbps) {
             set_kbps += *subs[i].bitrate_kbps;
         } else {
@@ -3698,8 +4606,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     for (std::size_t i = 0; i < n; ++i) {
         const SubstreamConfig& s = subs[i];
         StreamSubstream stream_sub;
-        const int full =
-            static_cast<int>(std::popcount(held_channels(ch_modes[i], backs[i]) & ~kLfe));
+        const int full = full_channels(i);
         stream_sub.weight = s.bitrate_kbps
                                 ? static_cast<double>(*s.bitrate_kbps)
                                 : (config.bitrate_kbps - set_kbps) * full / unset_channels;
@@ -3710,14 +4617,21 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
             s.content ? std::optional<int>{static_cast<int>(*s.content)} : std::nullopt;
         stream_sub.language = s.language;
         if (!s.enhances) {
+            const int inputs = s.objects ? object_layout.count : s.channels;
             stream_sub.first_input = impl->input_channels;
-            stream_sub.inputs = s.channels;
-            impl->input_channels += static_cast<std::size_t>(s.channels);
+            stream_sub.inputs = inputs;
+            impl->input_channels += static_cast<std::size_t>(inputs);
         }
         impl->substreams.push_back(std::move(stream_sub));
     }
     for (std::size_t i = 0; i < n; ++i) {
         const SubstreamConfig& s = subs[i];
+        if (s.objects) {
+            if (const std::optional<Refusal> refused = make_objects(*impl, s, object_layout)) {
+                return invalid(*refused);
+            }
+            continue;
+        }
         // The substream alone, as a coder takes it.
         EncoderConfig one = config;
         one.channels = *channels_of(i);
@@ -3788,8 +4702,11 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
         candidates.erase(candidates.begin());
         impl->fallbacks.push_back(std::move(candidates));
     }
+    // The audio substreams the coders write: one a configured substream, or
+    // an object substream's.
+    const std::size_t coded = impl->substreams.size();
     // The slack: the substream with the most of the rate.
-    for (std::size_t i = 1; i < n; ++i) {
+    for (std::size_t i = 1; i < coded; ++i) {
         if (impl->substreams[i].weight > impl->substreams[impl->slack].weight) {
             impl->slack = i;
         }
@@ -3800,6 +4717,11 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     for (StreamPresentation& p : impl->presentations) {
         if (!p.drc || !p.drc->gains) {
             continue;
+        }
+        if (objects) {
+            // Objects take the output level's gain and no DRC (src/ac4dec/
+            // ERRATA.md, "Object audio metadata and the ISF renderer").
+            return invalid("DRC gains for a presentation of objects");
         }
         SubstreamCoder& anchor = *impl->substreams[*p.anchor].coder;
         if (impl->substreams[*p.anchor].enhances) {
@@ -3857,8 +4779,9 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     // --- The table of contents --------------------------------------------------
     //
     // The presentation substreams first, in the presentations' order, then
-    // the audio substreams, each in a group of its own, then the EMDF payload
-    // substreams.
+    // the audio substreams, each in a group of its own (an object substream's
+    // in one), then the EMDF payload substreams and a direct-coded group's
+    // OAMD substream.
     std::size_t index = 0;
     for (StreamPresentation& p : impl->presentations) {
         if (p.toc.presentation_config != 6) {
@@ -3866,7 +4789,7 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
         }
     }
     impl->first_audio = index;
-    impl->first_emdf = index + n;
+    impl->first_emdf = index + coded;
     for (StreamPresentation& p : impl->presentations) {
         if (!p.emdf.empty()) {
             const int emdf_index =
@@ -3884,7 +4807,10 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     for (const StreamPresentation& p : impl->presentations) {
         impl->layout.presentations.push_back(p.toc);
     }
-    for (std::size_t i = 0; i < n; ++i) {
+    if (objects) {
+        impl->layout.groups.push_back(object_group(*impl, object_layout));
+    }
+    for (std::size_t i = 0; i < n && !objects; ++i) {
         const StreamSubstream& s = impl->substreams[i];
         detail::TocGroup group;
         // An immersive substream's source: the back pair where it has one, the
@@ -3920,6 +4846,10 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     for (const std::vector<detail::EmdfPayloadCodes>& payloads : impl->emdf_substreams) {
         fixed.push_back(detail::write_emdf_payloads_substream(payloads));
     }
+    if (impl->oamd) {
+        detail::PortionFrame blocks;
+        fixed.push_back(impl->oamd_substream(0, true, true, blocks));
+    }
     const auto frame_bytes = static_cast<std::size_t>(impl->bytes_per_frame);
     const int wait = config.rate_mode == RateMode::kConstant
                          ? 0
@@ -3928,13 +4858,13 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
     for (StreamSubstream& s : impl->substreams) {
         s.coder->pending.fields = s.coder->fields_for(true);
     }
-    impl->least_sizes.assign(n, 0);
+    impl->least_sizes.assign(coded, 0);
     const auto sized = impl->sizes_for(least_layout, fixed, frame_bytes, {}, impl->least_sizes);
     if (!sized) {
         return invalid("a rate that cannot hold the presentation and EMDF payload substreams");
     }
     const std::vector<std::size_t>& sizes = sized->first;
-    for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t i = 0; i < coded; ++i) {
         StreamSubstream& s = impl->substreams[i];
         const std::size_t size = sizes[impl->first_audio + i];
         std::size_t next = 0;
@@ -3949,11 +4879,11 @@ std::expected<std::unique_ptr<Encoder::Impl>, Refusal> Encoder::Impl::make(
         impl->least_sizes[i] = s.coder->least_bytes();
     }
     impl->fallbacks.clear();
-    std::vector<BitWriter> written(fixed.size() + n);
+    std::vector<BitWriter> written(fixed.size() + coded);
     for (std::size_t k = 0; k < fixed.size(); ++k) {
         written[impl->fixed_index(k)] = fixed[k];
     }
-    for (std::size_t i = 0; i < n; ++i) {
+    for (std::size_t i = 0; i < coded; ++i) {
         BitWriter audio = BitWriter::buffered();
         audio.write(1, 0, "b_tmp");  // any content: only the table of contents is read back
         written[impl->first_audio + i] =
@@ -4015,10 +4945,18 @@ Encoder& Encoder::operator=(Encoder&&) noexcept = default;
 
 std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::Impl::push(
     std::span<const std::span<const float>> channels,
-    std::span<const std::span<const float>> dialogue) {
+    std::span<const std::span<const float>> dialogue,
+    std::span<const ObjectMetadataUpdate> updates) {
     if (flushed || channels.size() != input_channels || channels.empty() ||
         (stem && dialogue.size() != channels.size())) {
         return std::unexpected(EncodeError::kInvalidInput);
+    }
+    for (const ObjectMetadataUpdate& u : updates) {
+        if (!timeline || u.substream != 0 || u.object < 0 ||
+            static_cast<std::size_t>(u.object) >= timeline->objects() || u.sample < 0 ||
+            u.ramp_samples < 0 || u.ramp_samples > 2048 || !detail::properties_valid(u.properties)) {
+            return std::unexpected(EncodeError::kInvalidInput);
+        }
     }
     const std::size_t count = channels.front().size();
     for (const auto& input : {channels, dialogue}) {
@@ -4041,12 +4979,25 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::Impl::push(
             continue;
         }
         const auto inputs = static_cast<std::size_t>(s.inputs);
+        if (!s.input_map.empty()) {
+            std::vector<std::span<const float>> mapped;
+            for (const int c : s.input_map) {
+                mapped.push_back(channels[static_cast<std::size_t>(c)]);
+            }
+            programmes[i] = SubstreamCoder::internal(mapped, s.coder->converters);
+            continue;
+        }
         programmes[i] =
             SubstreamCoder::internal(channels.subspan(s.first_input, inputs), s.coder->converters);
         if (s.coder->stem()) {
             stems[i] = SubstreamCoder::internal(dialogue.subspan(s.first_input, inputs),
                                                 s.coder->stem_converters);
         }
+    }
+    // Each update from its input sample's place on the signal's axis, behind
+    // the silence ahead of the input.
+    for (const ObjectMetadataUpdate& u : updates) {
+        timeline->add(u.object, input_samples + delay + u.sample, u.ramp_samples, u.properties);
     }
     take(programmes, stems);
     return drain();
@@ -4071,6 +5022,10 @@ std::vector<std::vector<double>> SubstreamCoder::internal(
 void SubstreamCoder::take(const std::vector<std::vector<double>>& programme_input,
                           const std::vector<std::vector<double>>& stem_input) {
     const std::size_t count = programme_input.front().size();
+    if (ajoc) {
+        ajoc_take(programme_input);
+        return;
+    }
     if (plan.immersive_element() && plan.immersive == immersive_mode::kAspxAjcc) {
         // ASPX_AJCC: the core A'' to E'' and the LFE are coded, and A-JCC's
         // analysis reads the channels it rebuilds (Plan::source; C, the last,
@@ -4186,7 +5141,7 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
     if (impl_->stem) {
         return std::unexpected(EncodeError::kInvalidInput);  // the stem goes with the programme
     }
-    return impl_->push(channels, {});
+    return impl_->push(channels, {}, {});
 }
 
 std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
@@ -4195,7 +5150,16 @@ std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
     if (!impl_->stem) {
         return std::unexpected(EncodeError::kInvalidInput);
     }
-    return impl_->push(channels, dialogue);
+    return impl_->push(channels, dialogue, {});
+}
+
+std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::encode(
+    std::span<const std::span<const float>> channels,
+    std::span<const ObjectMetadataUpdate> updates) {
+    if (impl_->stem) {
+        return std::unexpected(EncodeError::kInvalidInput);
+    }
+    return impl_->push(channels, {}, updates);
 }
 
 std::expected<std::vector<EncodedFrame>, EncodeError> Encoder::flush() {
