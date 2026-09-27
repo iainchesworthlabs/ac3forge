@@ -1,6 +1,5 @@
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -15,15 +14,13 @@
 #include <utility>
 #include <vector>
 
-#include "../ac4_channels.hpp"
 #include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "ac3/io/wav.hpp"
-#include "ac3/meta/loudness.hpp"
 #include "ac4/ac4.hpp"
+#include "ac4_encode_core.hpp"
 #include "ac4enc/encoder.hpp"
 #include "encode.hpp"
-#include "mp4/mp4.hpp"
 
 // ac4-encode: WAV to AC-4 through ac4::Encoder (src/ac4enc), as a raw stream
 // of sync frames with the CRC of TS 103 190-2 Annex G (without it where
@@ -37,7 +34,9 @@
 // substreamN= and presentationN=, several substreams, each an input of its
 // own or a hybrid dialogue enhancement's waveform, and the presentations of
 // Part 2 Table 53 made of them. Each WAV file's channels are taken in the
-// order `decode` writes them (ac4_channels.hpp).
+// order `decode` writes them (apps/common/ac4_channels.hpp). The steps ac3gui's
+// AC-4 encode shares, so that the two write the same bytes, are in
+// apps/common/ac4_encode_core.hpp.
 
 namespace ac3cli::commands {
 namespace {
@@ -93,192 +92,6 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
     const std::string ext = std::filesystem::path{std::string{out_path}}.extension().string();
     return std::ranges::any_of(kMp4Exts,
                                [&](std::string_view candidate) { return ext == candidate; });
-}
-
-// The encoder's input channels, in ac4::Decoder's order, for a WAV file of
-// `count` channels, the 7.X element's additional pair, which seven or eight
-// channels need and the other counts leave to another substream, whether the
-// 3.0 element is asked for, and whether the immersive layouts' back pair is:
-// nine and ten channels are 5.0.4 and 5.1.4, eleven and twelve 7.0.4 and
-// 7.1.4. Empty for a count the encoder does not take so.
-[[nodiscard]] std::vector<ac4::Speaker> input_speakers(std::size_t count, ac4::AdditionalPair pair,
-                                                       bool three_zero, bool back_pair) {
-    using S = ac4::Speaker;
-    const bool seven = count == 7 || count == 8;
-    if (seven && pair == ac4::AdditionalPair::kNone) {
-        return {};
-    }
-    if ((count == 11 || count == 12) && !back_pair) {
-        return {};
-    }
-    switch (count) {
-        case 1:
-            return {S::kCentre};
-        case 2:
-            return {S::kLeft, S::kRight};
-        case 3:
-            if (three_zero) {
-                return {S::kLeft, S::kRight, S::kCentre};
-            }
-            return {};
-        case 5:
-        case 6:
-        case 7:
-        case 8:
-        case 9:
-        case 10:
-        case 11:
-        case 12:
-            break;
-        default:
-            return {};
-    }
-    std::vector<S> out = {S::kLeft, S::kRight, S::kCentre};
-    if (count % 2 == 0) {
-        out.push_back(S::kLfe);
-    }
-    out.push_back(S::kLeftSurround);
-    out.push_back(S::kRightSurround);
-    if (count >= 9) {
-        if (count >= 11) {
-            out.insert(out.end(), {S::kLeftBack, S::kRightBack});
-        }
-        out.insert(out.end(),
-                   {S::kTopFrontLeft, S::kTopFrontRight, S::kTopBackLeft, S::kTopBackRight});
-        return out;
-    }
-    if (!seven) {
-        return out;
-    }
-    if (pair == ac4::AdditionalPair::kBack) {
-        out.insert(out.end(), {S::kLeftBack, S::kRightBack});
-    } else if (pair == ac4::AdditionalPair::kWide) {
-        out.insert(out.end(), {S::kLeftWide, S::kRightWide});
-    } else if (pair == ac4::AdditionalPair::kTopFront) {
-        out.insert(out.end(), {S::kTopFrontLeft, S::kTopFrontRight});
-    }
-    return out;
-}
-
-[[nodiscard]] std::string_view layout_name(std::size_t count, ac4::AdditionalPair pair) {
-    switch (count) {
-        case 1:
-            return "mono";
-        case 2:
-            return "stereo";
-        case 3:
-            return "3.0";
-        case 5:
-            return "5.0";
-        case 6:
-            return "5.1";
-        case 9:
-            return "5.0.4";
-        case 10:
-            return "5.1.4";
-        case 11:
-            return "7.0.4";
-        case 12:
-            return "7.1.4";
-        default:
-            break;
-    }
-    const bool lfe = count == 8;
-    switch (pair) {
-        case ac4::AdditionalPair::kBack:
-            return lfe ? "7.1, 3/4/0" : "7.0, 3/4/0";
-        case ac4::AdditionalPair::kWide:
-            return lfe ? "7.1, 5/2/0" : "7.0, 5/2/0";
-        default:
-            return lfe ? "7.1, 3/2/2" : "7.0, 3/2/2";
-    }
-}
-
-// BS.1770's measurements of the programme, for dialnorm=auto and loudness=:
-// the integrated loudness, the loudness range, the true peak, and the highest
-// momentary and short-term loudness, read every 100 ms, the step at which the
-// meter's 400 ms blocks overlap.
-struct Measured {
-    double integrated = 0.0;
-    std::optional<double> range;
-    std::optional<double> true_peak;
-    std::optional<double> max_momentary;
-    std::optional<double> max_short_term;
-};
-
-// Over the channels the encoder takes, `channels` in its order: the loudness
-// over the 5.1 or 5.0 bed of a 7.X or immersive layout, as encode measures
-// E-AC-3's, and the true peak over every channel. Nothing where no block
-// passes the absolute gate.
-[[nodiscard]] std::optional<Measured> measure_programme(
-    std::span<const std::span<const float>> channels, std::uint32_t sample_rate) {
-    const std::size_t count = channels.size();
-    // The bed: every channel up to 5.1, L R C Ls Rs and the LFE where there is
-    // one past that; the pairs after it, the 7.X pair or the immersive
-    // layouts' back and top pairs, add their true peaks.
-    const bool lfe_after_five = count == 8 || count == 10 || count == 12;
-    const std::size_t bed = count <= 6 ? count : (lfe_after_five ? 6 : 5);
-    const bool lfe = bed == 6;
-    const auto acmod = bed == 1   ? ac3::Acmod::k1_0
-                       : bed == 2 ? ac3::Acmod::k2_0
-                                  : (bed == 3 ? ac3::Acmod::k3_0 : ac3::Acmod::k3_2);
-    const auto rate = sample_rate == 48000 ? ac3::SampleRate::k48000 : ac3::SampleRate::k44100;
-    ac3::meta::LoudnessMeter meter{rate, acmod, lfe};
-    // The meter takes AC-3's coded order, L C R Ls Rs and the LFE last, and
-    // the encoder's order for the bed is a 5.1 WAV file's, whose permutation
-    // ac3_layout_for gives.
-    std::vector<std::size_t> order(bed);
-    if (const auto layout = ac3::io::ac3_layout_for(bed);
-        layout && layout->wav_index.size() == bed) {
-        order.assign(layout->wav_index.begin(), layout->wav_index.end());
-    } else {
-        for (std::size_t k = 0; k < bed; ++k) {
-            order[k] = k;
-        }
-    }
-    // Each pair's true peak after the bed, from a stereo meter of its own.
-    std::vector<ac3::meta::LoudnessMeter> pair_meters;
-    for (std::size_t k = bed; k + 1 < count; k += 2) {
-        pair_meters.emplace_back(rate, ac3::Acmod::k2_0, false);
-    }
-    Measured out;
-    const std::size_t length = channels.empty() ? 0 : channels.front().size();
-    const std::size_t step = sample_rate / 10;
-    std::vector<std::span<const float>> views(bed);
-    std::vector<std::span<const float>> pair_views(2);
-    for (std::size_t at = 0; at < length; at += step) {
-        const std::size_t n = std::min(step, length - at);
-        for (std::size_t k = 0; k < bed; ++k) {
-            views[k] = channels[order[k]].subspan(at, n);
-        }
-        meter.push(views);
-        for (std::size_t p = 0; p < pair_meters.size(); ++p) {
-            pair_views[0] = channels[bed + 2 * p].subspan(at, n);
-            pair_views[1] = channels[bed + 2 * p + 1].subspan(at, n);
-            pair_meters[p].push(pair_views);
-        }
-        const auto keep_max = [](std::optional<double>& max, std::optional<double> value) {
-            if (value && (!max || *value > *max)) {
-                max = value;
-            }
-        };
-        keep_max(out.max_momentary, meter.momentary_lkfs());
-        keep_max(out.max_short_term, meter.short_term_lkfs());
-    }
-    const auto integrated = meter.integrated_lkfs();
-    if (!integrated) {
-        return std::nullopt;
-    }
-    out.integrated = *integrated;
-    out.range = meter.loudness_range();
-    out.true_peak = meter.true_peak_dbtp();
-    for (const ac3::meta::LoudnessMeter& pair_meter : pair_meters) {
-        if (const auto pair_peak = pair_meter.true_peak_dbtp();
-            pair_peak && (!out.true_peak || *pair_peak > *out.true_peak)) {
-            out.true_peak = pair_peak;
-        }
-    }
-    return out;
 }
 
 // dialogue-channels=, "l,r,c" or any of the three.
@@ -345,7 +158,8 @@ struct Input {
         return std::nullopt;
     }
     Input input;
-    input.speakers = input_speakers(wav->channels.size(), pair, three_zero, back_pair);
+    input.speakers =
+        ac3::apps::ac4_input_speakers(wav->channels.size(), pair, three_zero, back_pair);
     if (input.speakers.empty()) {
         fmt::println(stderr,
                      "error: {}: AC-4 encoding takes mono, stereo, 5.0, 5.1, 5.0.4 and 5.1.4, 7.0 "
@@ -360,11 +174,7 @@ struct Input {
                      path, wav->sample_rate);
         return std::nullopt;
     }
-    const std::vector<std::size_t> wav_order = ac4_order(std::span{input.speakers}, ac4_wav_rank);
-    input.wav_index.resize(input.speakers.size());
-    for (std::size_t w = 0; w < wav_order.size(); ++w) {
-        input.wav_index[wav_order[w]] = w;
-    }
+    input.wav_index = ac3::apps::ac4_wav_index(input.speakers);
     // dialogue-stem=: the dialogue in the programme's channels, sample for
     // sample.
     if (!dialogue.stem.empty()) {
@@ -600,7 +410,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             stderr,
             "error: the downmix options describe the stereo downmix of 5.0, 5.1, 7.0, 7.1 and the "
             "immersive layouts; the source is {}",
-            layout_name(speakers.size(), pair));
+            ac3::apps::ac4_layout_name(speakers.size(), pair));
         return kExitUsage;
     }
     if (opts.height_db && !opts.height_downmix) {
@@ -613,12 +423,12 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
         fmt::println(stderr,
                      "error: height-downmix= describes the top channels' downmix of 5.0.4, 5.1.4, "
                      "7.0.4 and 7.1.4; the source is {}",
-                     layout_name(speakers.size(), pair));
+                     ac3::apps::ac4_layout_name(speakers.size(), pair));
         return kExitUsage;
     }
     if (count == 1 && opts.lfe_db && !has_lfe) {
         fmt::println(stderr, "error: lfemix= is the LFE's gain into the downmix, and {} has no LFE",
-                     layout_name(speakers.size(), pair));
+                     ac3::apps::ac4_layout_name(speakers.size(), pair));
         return kExitUsage;
     }
 
@@ -793,7 +603,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     const bool measure_dialnorm =
         meta.p.measure_dialnorm || (opts.loudness && !meta.dialnorm_given);
     if (measure_dialnorm || opts.loudness) {
-        const auto measured = measure_programme(main_views, main.wav.sample_rate);
+        const auto measured = ac3::apps::measure_ac4_programme(main_views, main.wav.sample_rate);
         if (!measured) {
             fmt::println(
                 stderr,
@@ -802,24 +612,12 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             return kExitRuntime;
         }
         if (measure_dialnorm) {
-            dialnorm = std::clamp(std::round(-measured->integrated * 4.0) / 4.0, 0.0, 31.75);
+            dialnorm = ac3::apps::ac4_dialnorm_for(measured->integrated);
         }
         status_println(status, "measured {:.2f} LKFS (BS.1770-4, gated) -> dialnorm -{:g} dB",
                        measured->integrated, dialnorm);
         if (opts.loudness) {
-            // Each within what its code holds: -102.4 to +102.3, the range 0
-            // to 102.3 LU (Part 1 clauses 4.3.12.3.8 to 4.3.12.3.30).
-            const auto held = [](std::optional<double> value, double low) {
-                return value ? std::optional<double>{std::clamp(*value, low, 102.3)} : value;
-            };
-            ac4::FurtherLoudness loudness;
-            loudness.practice = *opts.loudness;
-            loudness.integrated_lkfs = held(measured->integrated, -102.4);
-            loudness.loudness_range_lu = held(measured->range, 0.0);
-            loudness.max_true_peak_dbtp = held(measured->true_peak, -102.4);
-            loudness.max_momentary_lufs = held(measured->max_momentary, -102.4);
-            loudness.max_short_term_lufs = held(measured->max_short_term, -102.4);
-            config.loudness = loudness;
+            config.loudness = ac3::apps::ac4_further_loudness(*opts.loudness, *measured);
             const auto show = [](std::optional<double> value) {
                 return value ? fmt::format("{:.1f}", *value) : std::string{"none"};
             };
@@ -871,57 +669,13 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
     frames->insert(frames->end(), rest->begin(), rest->end());
 
     const ac4::Toc& toc = encoder->toc();
-    std::vector<std::vector<std::byte>> bytes;
-    std::string rfc6381;
-    if (to_mp4) {
-        // Part 2 Annex E: each frame a sample, the I-frames its sync samples,
-        // timed as Table E.1 says.
-        std::vector<std::span<const std::byte>> samples;
-        mp4::MuxOptions options;
-        samples.reserve(frames->size());
-        // Sized, not reserved: GCC 16's -Wnull-dereference flags vector<bool>::reserve on an
-        // empty vector.
-        options.sync_samples = std::vector<bool>(frames->size());
-        for (std::size_t i = 0; i < frames->size(); ++i) {
-            samples.emplace_back((*frames)[i].raw_ac4_frame);
-            options.sync_samples[i] = (*frames)[i].iframe;
-        }
-        const auto timing = ac4::media_timing(toc);
-        if (!timing) {
-            fmt::println(stderr, "error: frame_rate_index {} has no MP4 timing (Part 2 Table E.1)",
-                         toc.frame_rate_index);
-            return kExitOutput;
-        }
-        std::vector<std::byte> dac4 = ac4::build_dac4(toc);
-        if (dac4.empty()) {
-            fmt::println(stderr,
-                         "error: the MP4 sample entry's dac4 cannot describe {}; write a raw .ac4 "
-                         "instead",
-                         ac4::dac4_refusal(toc));
-            return kExitUsage;
-        }
-        const mp4::AudioTrack track{.codec_id = std::string{mp4::kCodecAc4},
-                                    .sample_rate = static_cast<std::uint32_t>(toc.sample_rate_hz),
-                                    .channels = 2,  // TS 103 190-2 E.4.5: "should be set to 2"
-                                    .samples_per_frame = timing->sample_delta,
-                                    .codec_config = std::move(dac4),
-                                    .rfc6381 = ac4::rfc6381_codec_string(toc),
-                                    .timescale = timing->timescale};
-        rfc6381 = track.rfc6381;
-        auto muxed = mp4::mux(track, samples, options);
-        if (!muxed.has_value()) {
-            fmt::println(stderr, "error: {}", mp4::describe(muxed.error()));
-            return kExitOutput;
-        }
-        bytes.push_back(std::move(*muxed));
-    } else {
-        const bool crc = opts.crc.value_or(true);
-        bytes.reserve(frames->size());
-        for (const ac4::EncodedFrame& frame : *frames) {
-            bytes.push_back(ac4::sync_frame(frame.raw_ac4_frame, crc));
-        }
+    const auto packaged = ac3::apps::package_ac4(*frames, toc, to_mp4, opts.crc.value_or(true));
+    if (!packaged.has_value()) {
+        fmt::println(stderr, "error: {}", packaged.error().message);
+        return packaged.error().usage ? kExitUsage : kExitOutput;
     }
-    if (!write_frames(out_path, bytes)) {
+    const std::string& rfc6381 = packaged->rfc6381;
+    if (!write_frames(out_path, packaged->chunks)) {
         return kExitOutput;
     }
     if (trace_file.is_open()) {
@@ -931,8 +685,9 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             return kExitOutput;
         }
     }
-    const std::string shape = count > 1 ? fmt::format("{} substreams", count)
-                                        : std::string{layout_name(speakers.size(), pair)};
+    const std::string shape =
+        count > 1 ? fmt::format("{} substreams", count)
+                  : std::string{ac3::apps::ac4_layout_name(speakers.size(), pair)};
     const std::string presentations = toc.n_presentations > 1
                                           ? fmt::format(", {} presentations", toc.n_presentations)
                                           : std::string{};

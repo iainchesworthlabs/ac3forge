@@ -236,7 +236,7 @@ def stereo_matrix(values, target):
 # Part 2 5.10.2.2's generalized rendering matrix: its channels by index.
 GENERAL = ("L", "R", "C", "Ls", "Rs", "Lb", "Rb", "Tfl", "Tfr", "Tbl", "Tbr", "LFE", "Tsl", "Tsr")
 # The immersive element's layouts by speakers= name: the configuration each is (Table 34's names)
-# and its channels in ac3cli's WAV order (apps/cli/ac4_channels.hpp).
+# and its channels in ac3cli's WAV order (apps/common/ac4_channels.hpp).
 IMMERSIVE_LAYOUTS = {
     "7.1.4": ("7.X.4", ("L", "R", "C", "LFE", "Lb", "Rb", "Ls", "Rs", "Tfl", "Tfr", "Tbl", "Tbr")),
     "7.1.2": ("7.X.2", ("L", "R", "C", "LFE", "Lb", "Rb", "Ls", "Rs", "Tsl", "Tsr")),
