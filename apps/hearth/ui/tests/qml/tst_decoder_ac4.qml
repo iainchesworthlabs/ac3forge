@@ -174,13 +174,19 @@ TestCase {
     function heardAt(label, hz, expected, what) {
         const held = waitUntil(function() { return Math.abs(level(label, hz) - expected) < tolerance; },
                                15000);
-        verify(held, what + ": the " + hz + " Hz tone in " + label + " reads " + level(label, hz)
-               + " dB after 15 s, not " + expected + stateNow());
+        // Built only on failure: stateNow() waits, and a message passed to
+        // verify() is built whether it fails or not.
+        if (!held) {
+            fail(what + ": the " + hz + " Hz tone in " + label + " reads " + level(label, hz)
+                 + " dB after 15 s, not " + expected + stateNow());
+        }
     }
     function heardOff(label, hz, reference, what) {
         const gone = waitUntil(function() { return level(label, hz) < reference - 60; }, 15000);
-        verify(gone, what + ": the " + hz + " Hz tone in " + label + " is still there at "
-               + level(label, hz) + " dB after 15 s" + stateNow());
+        if (!gone) {
+            fail(what + ": the " + hz + " Hz tone in " + label + " is still there at "
+                 + level(label, hz) + " dB after 15 s" + stateNow());
+        }
     }
     // 20 log10 of Part 1 clause 5.7.9.3.3's 2^((Lout - dialnorm) / 6), the
     // gain dialogue normalisation takes the stream's -24 dBFS dialogue by.
