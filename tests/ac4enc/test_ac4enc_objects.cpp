@@ -35,17 +35,17 @@
 #include "ac4/syntax.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
-#include "sanitized.hpp"
 
 namespace {
 
 namespace fs = std::filesystem;
-using ac3::test::kSanitized;
 
 constexpr double kRate = 48000.0;
 constexpr int kFrame = 2048;
 constexpr double kAmplitude = 0.1;  // -20 dBFS
-constexpr std::size_t kSamples = kSanitized ? 24576 : 48000;
+// The floors below were measured on this length, and the last metadata
+// update is at sample 33333, so sanitizer builds keep it too.
+constexpr std::size_t kSamples = 48000;
 constexpr double kLfeHz = 47.0;
 // QMF subbands 375 Hz wide at 48 kHz, each object's tone at the middle of
 // one, in a parameter band of its own at 15 and 23 bands (Table 28).
