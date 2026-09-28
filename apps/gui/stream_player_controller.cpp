@@ -21,7 +21,7 @@
 #include "ac4/ac4.hpp"
 #include "ac4_channels.hpp"
 #include "ac4_presentations.hpp"
-#include "ac4_stream.hpp"
+#include "ac4_sync_word.hpp"
 #include "ac4dec/decoder.hpp"
 #include "channel_geometry.hpp"
 

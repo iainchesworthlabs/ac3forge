@@ -24,60 +24,38 @@
 // real EncoderController the qmldir already embedded into this binary
 // resolves - see CMakeLists.txt for why that is a second embedding of the
 // module rather than a shared library with ac3gui.
-//
-// The setup object exists for one reason: Main.qml's QML Settings must be
-// HERMETIC here. With no organization/application identifiers, Qt 6.8's
-// Settings failed to initialise and every window saw in-memory defaults -
-// accidental but perfect isolation. Qt 6.10's fallback store PERSISTS
-// instead, across windows and across runs, so every freshly created test
-// window restored the previous window's saved session on top of the one
-// live controller they all share - one duplicated source per test, and
-// assignments reappearing from runs that finished days earlier. Real
-// identifiers plus a QTemporaryDir settings path make the store behave
-// normally and evaporate with the process; session restore itself is
-// seeded OFF because restoring is a fresh-process feature no test wants
-// firing under a shared controller.
+
 // The seam the byte-equality suites need and QML does not have: running the
 // command line a page echoes through the ac3cli this build made, in a folder
 // of the test's choosing, and comparing what it wrote with what the page
-// wrote. The path is the build's own (AC3GUI_TEST_AC3CLI, set in
-// apps/gui/tests/CMakeLists.txt where the build has ac3cli); without it
-// available() is false and a suite skips.
+// wrote. AC3GUI_TEST_AC3CLI is the build's own ac3cli, or empty where the
+// build has none (apps/gui/tests/CMakeLists.txt); then available() is false
+// and a suite skips.
 class CliRunner : public QObject {
     Q_OBJECT
 
 public:
     [[nodiscard]] Q_INVOKABLE bool available() const {
-#ifdef AC3GUI_TEST_AC3CLI
-        return QFile::exists(QStringLiteral(AC3GUI_TEST_AC3CLI));
-#else
-        return false;
-#endif
+        return !program().isEmpty() && QFile::exists(program());
     }
 
     // Runs `line` ("ac3cli <command> <args>", quoted as the command bar quotes
     // a path with a space) with `folder` as the working directory; the exit
     // code, or -1 where it did not start or finish within two minutes.
     [[nodiscard]] Q_INVOKABLE int run(const QString& line, const QUrl& folder) {
-#ifdef AC3GUI_TEST_AC3CLI
         QStringList args = QProcess::splitCommand(line);
-        if (args.isEmpty() || args.front() != QStringLiteral("ac3cli")) {
+        if (!available() || args.isEmpty() || args.front() != QStringLiteral("ac3cli")) {
             return -1;
         }
         args.removeFirst();
         QProcess process;
         process.setWorkingDirectory(folder.toLocalFile());
         process.setProcessChannelMode(QProcess::ForwardedChannels);
-        process.start(QStringLiteral(AC3GUI_TEST_AC3CLI), args);
+        process.start(program(), args);
         if (!process.waitForFinished(120000) || process.exitStatus() != QProcess::NormalExit) {
             return -1;
         }
         return process.exitCode();
-#else
-        static_cast<void>(line);
-        static_cast<void>(folder);
-        return -1;
-#endif
     }
 
     // A fresh, empty folder at `folder`, and `source` copied into it under its
@@ -108,8 +86,23 @@ public:
     [[nodiscard]] Q_INVOKABLE qint64 size(const QUrl& file) const {
         return QFileInfo(file.toLocalFile()).size();
     }
+
+private:
+    [[nodiscard]] static QString program() { return QStringLiteral(AC3GUI_TEST_AC3CLI); }
 };
 
+// The setup object exists for one reason: Main.qml's QML Settings must be
+// HERMETIC here. With no organization/application identifiers, Qt 6.8's
+// Settings failed to initialise and every window saw in-memory defaults -
+// accidental but perfect isolation. Qt 6.10's fallback store PERSISTS
+// instead, across windows and across runs, so every freshly created test
+// window restored the previous window's saved session on top of the one
+// live controller they all share - one duplicated source per test, and
+// assignments reappearing from runs that finished days earlier. Real
+// identifiers plus a QTemporaryDir settings path make the store behave
+// normally and evaporate with the process; session restore itself is
+// seeded OFF because restoring is a fresh-process feature no test wants
+// firing under a shared controller.
 class SettingsIsolation : public QObject {
     Q_OBJECT
 

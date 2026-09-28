@@ -38,7 +38,7 @@ qt_add_executable(ac3gui
     ac4_encode_settings.hpp
     ac4_presentations.cpp
     ac4_presentations.hpp
-    ../common/ac4_stream.hpp
+    ../common/ac4_sync_word.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp

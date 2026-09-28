@@ -33,7 +33,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
-#include "ac4_stream.hpp"
+#include "ac4_sync_word.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
 #include "matroska/matroska.hpp"
@@ -1237,7 +1237,7 @@ std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std
 
 // --- AC-4 ----------------------------------------------------------------------
 
-// Whether `bytes` opens with an AC-4 sync word (apps/common/ac4_stream.hpp):
+// Whether `bytes` opens with an AC-4 sync word (apps/common/ac4_sync_word.hpp):
 // how every command that reads a stream decides which decoder reads it.
 using ac3::apps::is_ac4_stream;
 

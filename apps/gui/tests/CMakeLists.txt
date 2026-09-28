@@ -38,7 +38,7 @@ qt_add_executable(ac3gui_qmltests
     ac4_encode_settings.hpp
     ac4_presentations.cpp
     ac4_presentations.hpp
-    ../common/ac4_stream.hpp
+    ../common/ac4_sync_word.hpp
     ../common/fmp4_folder_writer.cpp
     ../common/fmp4_folder_writer.hpp
     ../common/recording_sink.cpp
@@ -127,11 +127,15 @@ target_compile_definitions(ac3gui_qmltests PRIVATE
 # echoes through this build's own ac3cli (qml_test_main.cpp's CliRunner), so
 # the binary is built first and named here. apps/cli is configured before
 # apps/gui (the root CMakeLists.txt), so the target exists by now wherever the
-# build has one; without it the suites skip.
+# build has one; without it the path is empty and the suites skip. The choice
+# is made here rather than behind an #ifdef, which
+# tools/checks/check_platform_macros.ps1 refuses.
 if(TARGET ac3cli)
     target_compile_definitions(ac3gui_qmltests PRIVATE
         AC3GUI_TEST_AC3CLI="$<TARGET_FILE:ac3cli>")
     add_dependencies(ac3gui_qmltests ac3cli)
+else()
+    target_compile_definitions(ac3gui_qmltests PRIVATE AC3GUI_TEST_AC3CLI="")
 endif()
 
 # Same rationale as ../CMakeLists.txt's identical loop: Qt's generated
