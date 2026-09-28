@@ -151,8 +151,19 @@ TONES_HZ = (440.0, 620.0, 800.0, 90.0, 1030.0, 1270.0)
 # A 5.1.4 leg's top channels' tones, Tfl Tfr Tbl Tbr.
 TOP_TONES_HZ = (1490.0, 1730.0, 1970.0, 2210.0)
 ENCODER_SECONDS = 4
-# --engine: the layout of a stream's own channels, in the order ac3cli decode writes them.
-ENGINE_LAYOUTS = {1: "1.0", 2: "2.0", 5: "L,R,C,Ls,Rs", 6: "L,R,C,LFE,Ls,Rs"}
+# --engine: the layout of a stream's own channels, in the order ac3cli decode writes them. The
+# heights take the locations Hearth's engine places them at (apps/hearth/engine/stream_decoder.cpp):
+# Tfl and Tfr at Vhl and Vhr, Tbl and Tbr at Lts and Rts, and an immersive layout's Lb and Rb at
+# Lrs and Rrs. Eight channels are left out, being 7.1 or 5.1.2 by the count alone.
+ENGINE_LAYOUTS = {
+    1: "1.0",
+    2: "2.0",
+    5: "L,R,C,Ls,Rs",
+    6: "L,R,C,LFE,Ls,Rs",
+    9: "L,R,C,Ls,Rs,Vhl,Vhr,Lts,Rts",
+    10: "L,R,C,LFE,Ls,Rs,Vhl,Vhr,Lts,Rts",
+    12: "L,R,C,LFE,Ls,Rs,Lrs,Rrs,Vhl,Vhr,Lts,Rts",
+}
 
 # The G1 legs (the gold manifest's g1_legs) --g1 adds, for the immersive element's renders: DEE's
 # 5.1.4 tones with each height downmix its options give (custom downmix data for 5.X.0), with each
