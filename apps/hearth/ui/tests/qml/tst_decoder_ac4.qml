@@ -151,6 +151,9 @@ TestCase {
         }
         return condition();
     }
+    // What a failed check was looking at: every tone at every speaker, where
+    // playback is, whether the device is still being fed (its frames heard
+    // over half a second), what the engine last said, and the settings.
     function stateNow() {
         let tones = "";
         for (const l of HearthController.speakerLabels) {
@@ -158,8 +161,14 @@ TestCase {
                 tones += " " + l + "@" + hz + "=" + level(l, hz).toFixed(3);
             }
         }
-        return " (state " + HearthController.state + ", tones" + tones + ", settings "
-               + JSON.stringify(HearthController.decoderSettings) + ")";
+        const heardBefore = TestServices.device().framesHeard;
+        wait(500);
+        const device = TestServices.device();
+        return " (state " + HearthController.state + ", position " + HearthController.positionMs + "/"
+               + HearthController.durationMs + " ms, device " + JSON.stringify(device)
+               + ", frames heard in 500 ms " + (device.framesHeard - heardBefore)
+               + ", note '" + HearthController.noteText + "', error '" + HearthController.errorText
+               + "', tones" + tones + ", settings " + JSON.stringify(HearthController.decoderSettings) + ")";
     }
     // Waits until the tone's level is `expected` dB, within the tolerance.
     function heardAt(label, hz, expected, what) {
