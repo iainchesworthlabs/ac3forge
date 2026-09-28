@@ -29,6 +29,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import fuzz_ac4_encoder_space as fa4
 
+# The regression seeds kept before the immersive layouts had a generator.
+SEEDS_BEFORE_IMMERSIVE = frozenset({
+    5756050987806798014,
+    10507227253340255992,
+    11618868545183904483,
+    6658067609366379392,
+    8555004500497304315,
+})
+
 
 def sync_frame(raw, crc=True):
     size = len(raw)
@@ -254,9 +263,19 @@ class DrawCase(unittest.TestCase):
             self.assertEqual(fa4.draw_case(seed).scene, [])
 
     def test_other_cases_draw_as_before_the_immersive_layouts(self):
-        # The immersive layouts come from a generator of their own: no regression seed draws one.
-        for seed in fa4.REGRESSION_SEEDS:
+        # The immersive layouts come from a generator of their own: no seed kept before it draws
+        # one, so each still draws the case it was kept for.
+        self.assertLessEqual(SEEDS_BEFORE_IMMERSIVE, set(fa4.REGRESSION_SEEDS))
+        for seed in SEEDS_BEFORE_IMMERSIVE:
             self.assertLessEqual(fa4.draw_case(seed).channels, 8)
+
+    def test_the_acpl_1_step_4_seeds_draw_immersive_acpl_1(self):
+        # Kept for the immersive element's ASPX_ACPL_1 transform layouts: each must still draw it.
+        for seed in (12674821545285173751, 15488767694425248866):
+            case = fa4.draw_case(seed)
+            self.assertIn(seed, fa4.REGRESSION_SEEDS)
+            self.assertGreaterEqual(case.channels, 10)
+            self.assertIn("codec-mode=aspx-acpl-1", case.options)
 
     def test_other_cases_draw_as_before_the_substreams(self):
         # The substreams come from a generator of their own: a case without them is the case
