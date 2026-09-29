@@ -50,7 +50,10 @@ fn ac4_stereo_round_trip_carries_real_signal() {
                 for (ch, buf) in decoded_channels.iter_mut().enumerate() {
                     buf.extend_from_slice(decoded.channel_samples(ch));
                 }
-                assert!(decoded.objects().is_empty(), "channel-based content carries no objects");
+                assert!(
+                    decoded.objects().is_empty(),
+                    "channel-based content carries no objects"
+                );
             }
         }
     }
@@ -68,7 +71,10 @@ fn ac4_stereo_round_trip_carries_real_signal() {
     for (ch, buf) in decoded_channels.iter().enumerate() {
         assert!(buf.len() > tail, "channel {ch}: too little output to check");
         let level = rms(&buf[tail..]);
-        assert!(level > 0.02, "channel {ch}: reads as near-silent ({level}) - real tone lost?");
+        assert!(
+            level > 0.02,
+            "channel {ch}: reads as near-silent ({level}) - real tone lost?"
+        );
     }
 }
 
@@ -119,7 +125,10 @@ fn ac4_decoder_rejects_a_corrupted_frame() {
     let right = tone_channel(800.0, 48_000.0, 0);
     let mut frames = encoder.encode(&[&left, &right]).unwrap();
     frames.extend(encoder.flush().unwrap());
-    let frame = frames.into_iter().find(|f| !f.data().is_empty()).expect("no frame produced");
+    let frame = frames
+        .into_iter()
+        .find(|f| !f.data().is_empty())
+        .expect("no frame produced");
 
     let mut corrupted = frame.data().to_vec();
     for byte in corrupted.iter_mut().take(4) {
@@ -139,14 +148,19 @@ fn ac4_encoder_toc_feeds_build_dac4_and_media_timing() {
     let left = vec![0.0f32; FRAME_SAMPLES];
     let right = vec![0.0f32; FRAME_SAMPLES];
     let frames = encoder.encode(&[&left, &right]).unwrap();
-    assert!(!frames.is_empty(), "one whole frame_rate_index-13 frame must complete in one call");
+    assert!(
+        !frames.is_empty(),
+        "one whole frame_rate_index-13 frame must complete in one call"
+    );
 
     let toc = encoder.toc().unwrap();
     let dac4 = toc.build_dac4().unwrap();
     assert!(!dac4.is_empty());
     assert!(toc.dac4_refusal().is_empty());
 
-    let timing = toc.media_timing().expect("frame_rate_index 13 has a single time scale");
+    let timing = toc
+        .media_timing()
+        .expect("frame_rate_index 13 has a single time scale");
     assert!(timing.timescale > 0);
     assert!(timing.sample_delta > 0);
     assert_eq!(toc.samples_per_frame(), Some(2048));
