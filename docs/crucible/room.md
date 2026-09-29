@@ -195,9 +195,9 @@ object metadata, and there is none.
 
 The window says this in four places rather than leaving it to the receiver not to show: a notice
 above the room, a dimmed and captioned elevation view, the line under the size slider, and the
-`Page Up` announcement. It is a refusal rather than a degradation — an unsigned object container
-is a hard error on a validating decoder, so Crucible sends no object metadata at all. The mode
-table names that case DD+ 5.1, and
+`Page Up` announcement. Without a key Crucible sends no object metadata at all, because a decoder
+that validates the tag can refuse an unsigned object container outright. The mode table names
+that case DD+ 5.1, and
 [Troubleshooting](troubleshooting.md#placements-pan-but-height-does-nothing) says how to tell.
 
 ## The full-screen rule

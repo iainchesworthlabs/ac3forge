@@ -83,8 +83,8 @@ Station 3's line names the mode Crucible chose and why:
 Two of these need saying plainly.
 
 **Without a signing key you get DD+ 5.1, not Atmos.** Placements still pan, but height does
-nothing. That is a deliberate refusal rather than a degradation: an unsigned object container is
-a hard error on a validating decoder.
+nothing. That is deliberate: a decoder that validates the tag can refuse an unsigned object
+container outright, so Crucible sends no object metadata.
 
 **Headphones is Windows-only.** It needs an OS object renderer, and neither Linux nor macOS
 exposes one a third party can hand Atmos objects to. On those platforms the headphone route

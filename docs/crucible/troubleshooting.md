@@ -40,10 +40,11 @@ Work down the three stations.
 You have no signing key, so objects are off and Crucible is streaming plain 5.1. Your placements
 pan within the bed; there is nothing to carry height.
 
-This is deliberate. An unsigned-but-present object container is a hard refusal on a validating
-decoder, not a graceful fallback, so Crucible sends no object metadata rather than something that
-would be rejected outright. The Room page says so where the placing happens, and the elevation
-view is dimmed and captioned.
+This is deliberate. A decoder that validates the object container's tag can refuse an unsigned
+container outright instead of falling back to the bed, so Crucible sends no object metadata rather
+than something such a decoder could reject. The one Atmos receiver tried played the bed
+([Raspberry Pi passthrough](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
+The Room page says so where the placing happens, and the elevation view is dimmed and captioned.
 
 Load a key ([Install](install.md#a-signing-key-on-any-platform)) and the mode line changes from
 DD+ 5.1 to Atmos.
