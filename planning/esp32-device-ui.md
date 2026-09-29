@@ -351,7 +351,9 @@ the page loads rather than polled every second, since nothing in it changes whil
 For a P4 dev board built with `CONFIG_ESP32P4_SELECTS_REV_LESS_V3` (so the bootloader admits
 anything from v1.0 up), running genuinely v3.0+ silicon - the notice checks against v3.0
 specifically (where both `hal/i2s_ll.h`'s own clock-source choice and `esp32p4/Kconfig.cpu`'s own
-CPU-frequency choice change), not against this build's own lowered floor:
+CPU-frequency choice change), not against this build's own lowered floor. (The two bodies below
+leave out `project`, `version` and `idf_version`, which the route writes after
+`sink_max_slots_bits` and before `capabilities`.)
 
 ```json
 {"target":"esp32p4","chip":"ESP32-P4","revision":"3.0","cores":2,"fpu":true,"cpu_freq_mhz":360,

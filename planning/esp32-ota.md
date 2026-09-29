@@ -1455,10 +1455,11 @@ buffers in PSRAM (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`).
 
 ## Decisions
 
-Outcomes, 2026-09-30. Decisions 1 and 3 to 21 were built as recommended, the recommended (a) each
-time; decision 6 is a decision not to build something, and it stands. Decision 2 was taken as (c)
-while the boards are in development, and its (a) is O7, which is not built. Decision 9 was taken
-as (a), and the study is all of it that exists. Decision 22 is open: nothing pins `esp_hosted`.
+Outcomes, 2026-09-30. Decisions 1, 3 to 8 and 10 to 21 were built as recommended, the recommended
+(a) each time; decision 6 is a decision not to build something, and it stands. Decision 2 was
+taken as (c) while the boards are in development, and its (a) is O7, which is not built.
+Decision 9 was taken as (a), and the study is all of it that exists. Decision 22 is open: nothing
+pins `esp_hosted`.
 
 1. **Update scheme.** (a) **two slots and a rollback bootloader**; (b) a small factory recovery
    app plus one update slot; (c) one slot and a staging area. **Recommend (a).** It is the only
