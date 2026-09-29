@@ -582,20 +582,24 @@ ota.py log      --host H [--follow]
    image itself: the chip ID, the revision range, the flash size, and `esp_app_desc_t` (project,
    version, ELF SHA-256). The tool checks the image's own appended SHA-256, which refuses a
    damaged file before anything is sent, and takes a SHA-256 of the whole file.
-2. **Pre-flight**, from `GET /hardware` and `GET /firmware`. It refuses when:
+2. **Pre-flight**, from `GET /hardware`, `GET /firmware` and `GET /status` (whether the board is
+   playing). It refuses when:
    - the target or chip differs;
    - the chip's revision is outside the image's range;
+   - the image is another project's;
    - the layout differs from the build's (an update cannot change it: "this needs one USB
      flash");
    - the image does not fit the slot;
    - the flash size differs;
-   - the running image is on trial;
+   - the running image is on trial, or an update is already under way;
+   - the board has one app slot, so it is still on the old layout;
    - the board's only network is built into its image, and the new image has none
      ([Flash layout](#flash-layout));
    - the board already runs this image (skipped unless `--force`).
 
-   A board that is playing is asked about first, and `--yes` answers for it. Each of the two
-   reads is asked up to three times, so one slow name lookup does not refuse the push.
+   A board that is playing is asked about first on a terminal, and refused without one; `--yes`
+   answers for it. `GET /hardware` and `GET /firmware` are each asked up to three times, so one
+   slow name lookup does not refuse the push.
 3. **Upload.** `PUT /firmware` with the file's `Content-Digest`, and a progress line.
    - **An upload that breaks off** is followed by the board's own account of it, once it
      answers with no upload running:
@@ -906,6 +910,9 @@ machine before upload. O7 decides which.
 - `build-esp32s3` packages the S3 board's image and `build-esp32c3` the other three; the 16 MB C6
   is one more build there. `package-esp32-firmware` merges and checks them, and uploads
   `esp32-firmware` (14 days) and, on a release, `packages-esp32-firmware`.
+- `build-esp32c3` builds one more P4 image, with the AC-4 decoder (`sdkconfig.ac4`, phase D14b of
+  [`ac4.md`](ac4.md)) and the stage timers on, to hold that it compiles. It is not packaged: the
+  release images have the AC-4 decoder off, so they decode AC-3 and E-AC-3 only.
 - `release.yml` lists the four factory images and the manifest in its completeness check. It adds
   `*.bin` and the manifest to the files it checksums, signs and attests, whose lists name
   extensions and had no `.bin`.
