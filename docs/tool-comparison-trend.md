@@ -2,15 +2,17 @@
 
 This page compares AC-3 and E-AC-3 encoders. AC-4 is not compared here. Its encoder is raced
 against Dolby's DEE encoder by `tools/checks/score_ac4_encode.py --gold`, which runs locally
-because DEE is not available in CI; see [Validation](verification.md#ac-4).
+because DEE is licensed and never runs in CI; see [Validation](verification.md#ac-4).
 
 The commit-level half of the external-encoder landscape comparison — see
-[Landscape](landscape.md) for the release-facing headline number. Every push
-to `main` encodes the same three fixed legs
+[Landscape](landscape.md) for the release-facing headline number. Each nightly run on
+`main` encodes the same eight fixed legs
 [`tools/generators/gen_external_baseline.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/gen_external_baseline.py)
 measures FFmpeg's and Dolby DEE's encoders against, scores this build's own
 output through `ac3cli`'s own decoder (no FFmpeg, no DEE, at CI time — see
-`tools/ci/quality_race.py`'s `trend` mode), and appends the numbers here. It
+`tools/ci/quality_race.py`'s `trend` mode), and appends the numbers here. The
+job that computes them, FFmpeg Validate, runs nightly, so the series has a point a
+night, not one per merge. It
 exists to answer a narrower question than the landscape page: not "are we
 competitive with the outside world" but "did this specific Annex E tool get
 better or worse as the code changed" — one row per (leg, tool-set), not just
@@ -30,9 +32,9 @@ the other rows don't, since only `landscape` has a matching external number
 to compare against. A leg whose DEE score is marked unverified in
 [`tests/golden/external-baseline/manifest.json`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tests/golden/external-baseline/manifest.json)
 (see that file's own header) shows no `vs_dee` value rather than one
-computed against a number that was never real. No leg is unverified at
-baseline version 2 — the two 5.1 legs that used to be are fixed — but rows
-recorded against an earlier baseline keep the gap they were recorded with.
+computed against a number that was never real. At baseline version 2 that is the two
+64 kbit/s stereo legs, where DEE's stereo range starts at 96 kbit/s, and rows recorded
+against an earlier baseline keep the gap they were recorded with.
 
 Same two-tier regression check as [Quality trend](quality-trend.md): a soft
 one (0.5 dB below the trailing 10-run mean for the same leg/variant/branch)
@@ -507,7 +509,7 @@ the column was never populated. Rows from that point on carry real numbers.
   Promise.all([fetchTrack("main"), fetchTrack("develop"), fetchReleaseShaMap()]).then(([mainRecords, developRecords, releasesBySha]) => {
     const allRecords = [...mainRecords, ...developRecords];
     if (allRecords.length === 0) {
-      root.innerHTML = '<p class="tool-trend-status">No tool-comparison history yet - it is written by CI on the first push to main after this page landed.</p>';
+      root.innerHTML = '<p class="tool-trend-status">No tool-comparison history yet - the first run on main after this page landed writes it.</p>';
       return;
     }
     render(allRecords, releasesBySha);
@@ -529,7 +531,7 @@ relative to its siblings — e.g. `cpl` alone trending down while `all` holds
 steady — is visible as its own line rather than something you'd only catch
 by toggling the focus variant one at a time. AC-3's only variant is
 `landscape`, so switching to "By variant" on an AC-3 leg draws a single line
-— the other nine simply have no points there. The table below can still show
+— the other ten simply have no points there. The table below can still show
 several variants' rows at once via the checkboxes regardless of which chart
 mode is active, so you can compare e.g. `none` against `all` without
 switching the chart back and forth.
@@ -557,8 +559,8 @@ Same mechanism as [Quality trend](quality-trend.md#where-the-data-lives): a
 dedicated `quality-history` branch, `external-comparison-<branch>.jsonl`
 this time, written by a job in `_ci-core.yml`
 (`persist-external-comparison-trend`, called from `ci.yml`) downstream of
-`ffmpeg-validate`'s compute-only `trend` step, on direct pushes to `main`
-only.
+`ffmpeg-validate`'s compute-only `trend` step, on `main` only. FFmpeg Validate
+runs in the nightly run and not after a merge, so the job publishes once a night.
 
 `external-comparison-develop.jsonl` stopped gaining rows on 2026-08-24, the
 same migration to trunk-based development that froze

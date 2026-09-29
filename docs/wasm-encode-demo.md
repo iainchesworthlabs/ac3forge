@@ -1,7 +1,8 @@
 # Live encode demo (WASM)
 
-`ac3::forge`'s AC-3/E-AC-3 encoder, compiled to WebAssembly, encoding a `.wav` file you drop in
-entirely in your browser — no server-side encode, no upload. This is the same C++ encode path
+`ac3::forge`'s AC-3/E-AC-3 encoder, compiled to WebAssembly, encoding a `.wav` file you drop in,
+or audio you record from the microphone, entirely in your browser — no server-side encode, no
+upload. This is the same C++ encode path
 `ac3cli encode` uses, running as WASM instead of a native binary, alongside a BS.1770
 loudness/true-peak QC verdict against five delivery presets — the same measurement `ac3cli qc`
 makes.
@@ -25,13 +26,26 @@ audio objects around a room canvas and encode the result as E-AC-3 + JOC, live
 
 ## What this demonstrates
 
-Dropping a `.wav` decodes it through the browser's own `AudioContext`, encodes it frame by
-frame through `ac3::FrameEncoder`/`ac3::eac3::FrameEncoder`, measures the same PCM with
-`ac3::meta::LoudnessMeter`, and evaluates it against [`ac3cli qc`](forge/cli/commands.md)'s own five
-delivery presets (`ac3::meta::evaluate_qc_gate`): a loud file fails every preset, a
-properly-mastered one passes the presets it meets. The round-trip preview decodes the bytes
-this page just produced through the existing [decode demo](wasm-demo.md)'s own module and
-plays them back, so the encoded stream can be checked, not just assumed.
+Dropping a `.wav` decodes it through the browser's own `AudioContext`, which resamples it to the
+chosen coding rate (32, 44.1 or 48 kHz). The page then makes two passes. The first measures the PCM
+with `ac3::meta::LoudnessMeter` and derives the stream's dialnorm from the integrated loudness. The
+second encodes it frame by frame through `ac3::FrameEncoder` (AC-3) or `ac3::eac3::FrameEncoder`
+(E-AC-3), with that dialnorm in every frame. The same measurement is evaluated against
+[`ac3cli qc`](forge/cli/commands.md)'s own five delivery presets (`ac3::meta::evaluate_qc_gate`): a
+loud file fails every preset, a properly-mastered one passes the presets it meets.
+
+Mono, stereo and 5.1 files encode as either format. The wide layouts, 7.1, 5.1.4 and 7.1.4 (8, 10
+and 12 channels), need E-AC-3, which codes them as a 5.1 bed plus dependent substreams. "Record
+from microphone" runs the same encoder live, after measuring about a second and a half of the
+microphone for the dialnorm.
+
+The round-trip preview decodes the bytes this page just produced through the existing
+[decode demo](wasm-demo.md)'s own module and plays them back, so the encoded stream can be
+checked, not just assumed.
+
+The page encodes AC-3 and E-AC-3 only. `ac3forge_wasm_ac4`, a separate module, wraps the AC-4
+encoder and decoder and has no demo page yet. See
+[WebAssembly → AC-4 module](platforms/wasm.md#ac-4-module).
 
 ## Third-party notices
 

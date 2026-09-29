@@ -64,7 +64,7 @@ back and prints what it found.
   `audioBlockFormat` time-divisions — position, gain, width/height/depth, `channelLock`,
   `jumpPosition`, HOA order/degree/normalization) → `audioStreamFormat`/`audioTrackFormat` →
   `audioTrackUID`. See [`ac3adm/model.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/model.hpp) for exactly which sub-elements are carried and which
-  are deliberately out of phase 1's scope (`zoneExclusion`, `objectDivergence`, `screenRef`, the
+  are deliberately out of scope (`zoneExclusion`, `objectDivergence`, `screenRef`, the
   Matrix/Binaural-specific sub-elements, and loudness metadata — `ac3::meta::loudness` already
   measures loudness independently).
 
@@ -74,7 +74,7 @@ pack/channel/stream/track/block formats (one set per standard loudspeaker layout
 third-order HOA component) and merges the file's own content into it, so that a file referencing
 a common-definition ID (e.g. a stereo bed's pack format `AP_00010002`) without locally
 re-declaring it still resolves. This module keeps that merge rather than filtering it back out:
-phase 2 needs exactly this, a pack/channel/stream/track format reference that resolves regardless
+[`ac3::admbridge`](adm-bridge.md) needs exactly this, a pack/channel/stream/track format reference that resolves regardless
 of whether the file re-declared it — so `model.pack_formats`/`channel_formats`/`stream_formats`/
 `track_formats` are never just "what this one file defined". `model.programmes`/`contents`/
 `objects`/`track_uids` are unaffected (the common set defines none of those four).
@@ -86,7 +86,7 @@ above), `chna` (the join table, one `ChnaEntry` per physical-track-to-ADM-ID row
 `kMalformedXml`, `kMalformedAdm`, `kOther`;
 see [`ac3adm/ac3adm.hpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/include/ac3adm/ac3adm.hpp) for the full list. In practice, the two libraries underneath this
 module (see below) report almost everything through one broad exception family each, so most
-real failures currently surface as `kCannotOpen` (bad/truncated container), `kMalformedXml` (axml
+real failures surface as `kCannotOpen` (bad/truncated container), `kMalformedXml` (axml
 isn't well-formed XML) or `kMalformedAdm` (well-formed XML that isn't a valid ADM document) — see
 [`src/ac3adm/src/adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/ac3adm/src/adm.cpp)'s own comments for exactly which library exception maps to which `AdmError`.
 

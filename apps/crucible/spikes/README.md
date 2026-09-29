@@ -6,11 +6,21 @@ WASAPI directly, while `s1_library_tap` links `ac3::audio` and S4 links `ac3::fo
 pulling the repo root in) and their answers are recorded here and on that page. Nothing in
 this directory is reused as code.
 
-```bash
-cmake -S apps/crucible/spikes -B D:/aa-wt-builds/spikes -G Ninja \
-      -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/windows.msvc.toolchain.cmake
+From the repository root, in PowerShell:
+
+```powershell
+cmake -S apps/crucible/spikes -B D:/aa-wt-builds/spikes -G Ninja `
+      "-DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/toolchains/windows.msvc.toolchain.cmake" `
+      -DAC3FORGE_BUILD_HEARTH=OFF
 cmake --build D:/aa-wt-builds/spikes
 ```
+
+The toolchain path has to be absolute: from the repository root, the relative path
+`cmake/toolchains/windows.msvc.toolchain.cmake` is not found. `AC3FORGE_BUILD_HEARTH=OFF` is
+needed because the spikes configure the repository root, where Hearth is on by default and
+asks for libraries that only the vcpkg `hearth` feature supplies (MbedTLS is the first it
+misses). With `-DAC3FORGE_SPIKES_WITH_LIBRARY=OFF` the repository root is not configured and
+only the four raw spikes (`tone_player`, `s1_taps`, `s5_latency` and `period_probe`) build.
 
 ## S1: process-loopback taps (`s1_taps`, `tone_player`)
 
@@ -27,6 +37,8 @@ s1_taps --spawn N [--device SUBSTR]     tap N players (rendering to SUBSTR, defa
         [--probe-at S]                  IsFormatSupported(EXCLUSIVE) only, no Initialize
         [--taps-first]                  open the taps before the players start (spawn suspended)
         [--channels 2|6|8]              format requested from the tap
+        [--pid P]...                    tap an existing process (repeatable)
+        [--seconds S]                   how long to tap (default 8)
 ```
 
 ### Results, 2026-09-03
@@ -49,7 +61,8 @@ virtual endpoint present and idle.
 
 - Per-application separation needs no driver and scales past the encoder's 15-object budget.
 - The direct path cannot be silenced by muting sessions. The null-sink endpoint is the way, and
-  FxSound's idle endpoint stands in for it until the driver exists.
+  FxSound's idle endpoint stood in for it until [the null-sink driver](../../../docs/platforms/windows-driver-acx.md)
+  existed.
 - The output stage must **never call `Initialize` in exclusive mode on an endpoint that carries
   live shared streams**. Probing with `IsFormatSupported` is fine and is what
   `enumerate_render_devices()` does. Before taking HDMI exclusively the app must confirm the
@@ -90,7 +103,8 @@ Quiet machine (the full-repo build had just finished), RelWithDebInfo, MSVC 14.5
 
 A 1-block frame at 640 kb/s was **refused at frame 0**: the per-frame EMDF/OAMD/JOC container
 for 15 objects does not fit a 256-sample frame at that rate. The floor lies somewhere between
-640 and 1536 kb/s and is Phase 5's to pin down when low-latency mode gets built.
+640 and 1536 kb/s. Low-latency mode defaults to 1536 kb/s, the lowest rate in this table that
+worked.
 
 ### What this means for the plan
 
@@ -158,4 +172,5 @@ not a shared-mode offer.
 - The render period would move if the endpoint offered a smaller shared-mode one, and this
   one does not; exclusive-mode PCM output would, and that is a new sink, not a flag.
 - The AVR path leaves through the exclusive-mode bitstream sink with none of the PCM-side
-  terms; its unknown is the receiver's decode, which waits on S2.
+  terms; its unknown was the receiver's decode, which waited on S2. S2 has since been confirmed
+  on a receiver, through `ac3cli` ([the Windows demo page](../../../docs/platforms/windows-demo.md)).

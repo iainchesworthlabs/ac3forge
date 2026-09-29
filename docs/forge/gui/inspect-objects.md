@@ -4,8 +4,9 @@ The decode-side counterpart to [QC a stream](qc.md), and to this window's own Ob
 & motion (see [Objects & motion](objects-and-motion.md)) *authors* a plan still to come — where an
 object should sit, how it should move. This dialog does the opposite: it opens an
 **already-encoded** `.ec3` file and shows what Dolby Atmos object metadata (OAMD) and per-object
-audio (JOC) the decoder actually recovered from it, with no source, no plan and no encoder involved
-anywhere in the path — the same "distinct surface, reachable from the header" shape
+audio (JOC) the decoder actually recovered from it (an AC-4 file gets [its own reading](#ac-4)),
+with no source, no plan and no encoder involved anywhere in the path — the same "distinct
+surface, reachable from the header" shape
 [QC a stream](qc.md#opening-it) already uses, for the same reason.
 
 ## Opening it
@@ -13,8 +14,8 @@ anywhere in the path — the same "distinct surface, reachable from the header" 
 **Inspect objects…**, in the header beside **QC a stream…** and **Preferences**. It opens
 regardless of what (if anything) is loaded in the main workbench.
 
-**Choose file…** opens a standard file picker with three filters — `*.ac3`/`*.ec3`, **Containers**
-(`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`) and **All files**. The filters are a
+**Choose file…** opens a standard file picker with four filters — `*.ac3`/`*.ec3`, `*.ac4`,
+**Containers** (`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`) and **All files**. The filters are a
 convenience for the picker only: `ObjectDecodeController` sniffs the actual bytes rather than
 trusting the extension, so a container works whatever the name says.
 Picking one starts the decode immediately, off the window's own event loop so the dialog stays
@@ -62,13 +63,13 @@ contents' presentations by position, each with its channels as coded, its langua
 `presentation_id`, and marks the one the decoder chose with no preference; below them, how many
 bed objects and dynamic objects that presentation decoded. A presentation with object audio
 fills the room view and the object list frame by frame from the decoder's Annex F properties, a
-bed object labelled with its loudspeaker; a channel-based presentation, which is what this
-project's encoder writes today, has its beds as channels and no objects to place.
+bed object labelled with its loudspeaker; a channel-based presentation has its beds as channels
+and no objects to place.
 
 This page exports nothing, and says so in its own text: an AC-4 stream's objects are exported from
 [Open stream](open-stream.md) (**Export objects…**), one WAV file a decoded object. An AC-4 file
-the encoder page wrote from its Objects tab is read here too, each object at the place and the
-gain it was given.
+the encoder page wrote from its Objects tab, or `ac3cli atmos-encode … codec=ac4` wrote, is read
+here too, each object at the place and the gain it was given.
 
 ## What it does not do
 

@@ -46,8 +46,9 @@ floating to the top does not take the arrow keys with it.
 
 Each row carries the application's icon (or a monogram where no icon was found), its name, a tag
 reading **placed** or **full-screen**, a detail line, and a level bar spanning −60 to 0 dBFS. The
-detail line says the slot and the position — `slot 3 · 0.85, 0.15, +0.00` — for a placed
-application, and for one in the bed it says `bed` and then why it is there: `full-screen`,
+detail line says the slot and the position — `slot 3 · 0.85, 0.15, +0.00`, or `slots 3+4` for a
+split pair — for a placed application, and for one in the bed it says `bed` and then why it is
+there: `full-screen`,
 `no audio`, `idle`, `no tap`, `background`.
 
 Two Behaviour settings decide who is in the list at all — applications with no audio, and
@@ -142,7 +143,7 @@ Under them is a row of nine quick placements, for lining things up without a dra
 | in front, behind | the centre line, a tenth of the room from the front wall or the back |
 | left, right | beside you, a tenth of the room from that wall, at ear level |
 | overhead | the middle of the room, near the ceiling (z +0.80) |
-| front left, front right, rear left, rear right | the four corners, at ear level |
+| front left, front right, rear left, rear right | the four corners, 0.15 of the room from each wall, at ear level |
 
 **Size** is the last control on the card: a slider from a point to the whole room. It is the
 extent carried in the object's metadata for the receiver's renderer to spread the object over.
@@ -194,9 +195,9 @@ object metadata, and there is none.
 
 The window says this in four places rather than leaving it to the receiver not to show: a notice
 above the room, a dimmed and captioned elevation view, the line under the size slider, and the
-`Page Up` announcement. It is a refusal rather than a degradation — an unsigned object container
-is a hard error on a validating decoder, so Crucible sends no object metadata at all. The mode
-table names that case DD+ 5.1, and
+`Page Up` announcement. Without a key Crucible sends no object metadata at all, because a decoder
+that validates the tag can refuse an unsigned object container outright. The mode table names
+that case DD+ 5.1, and
 [Troubleshooting](troubleshooting.md#placements-pan-but-height-does-nothing) says how to tell.
 
 ## The full-screen rule
@@ -214,7 +215,7 @@ claim.
 | Platform | The rule |
 |---|---|
 | **Windows** | On. The shell is asked for the notification state, and the foreground window's process is taken from there. |
-| **Linux, X11** | On. Crucible reads `_NET_WM_STATE` and `_NET_WM_PID` on the active window through libxcb. A build configured without libxcb has no reader and says so. |
+| **Linux, X11** | On. Crucible reads `_NET_WM_STATE` and `_NET_WM_PID` on the active window through libxcb. A build configured without libxcb has no reader and says so. The reader is tested over a fake connection; no run in a real X11 session is recorded. |
 | **Linux, Wayland** | Off. A Wayland client is given no way to ask about another client's windows, and no portal exposes it. |
 | **Linux, no display** | Off. An ssh login or a container has no window manager to ask. |
 | **macOS** | Off, and written to be. `NSWorkspace` can't say which windows an application has, and AppKit gives no cross-application window query, so the seam reports it can't answer — a window session exists but won't say what's full-screen, or there's no window session at all. `CGWindowListCopyWindowInfo` against `CGDisplayBounds` would answer it and isn't written. Compiles on both macOS CI legs, which read the refusal; nothing has polled it on a Mac. |
@@ -240,9 +241,9 @@ to move it.
 | `Shift` + arrow | the fine step, 0.01 |
 | `Ctrl` + arrow | the coarse step, 0.25 — a quarter of the room |
 | `Home` | back to the centre |
-| `Enter` | place one that is still in the bed; for one already placed, say where it is |
+| `Enter` `Space` | place one that is still in the bed; for one already placed, say where it is |
 | `Delete` `Backspace` | back to the bed |
-| `Plus` `Minus` | grow and shrink the object's size |
+| `Plus` `Minus` | grow and shrink the object's size, 5% a press (`=` counts as `Plus`) |
 
 An application still in the bed starts from the centre, so one arrow press both places it and
 moves it. A press does not wait for the engine to answer before the next one is allowed: the room
