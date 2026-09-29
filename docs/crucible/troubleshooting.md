@@ -9,7 +9,7 @@ Applications are still playing to a device you can hear, so you get the direct m
 Crucible's.
 
 Station 1 of the path needs to be a silent device. The header pill says
-`⚠ apps heard direct → …` while it is not, and offers the one button that fixes it.
+`⚠ APPS HEARD DIRECT → …` while it is not, and the Room rail offers the one button that fixes it.
 
 If there is no silent device to send them to:
 
@@ -30,6 +30,8 @@ Work down the three stations.
    applications are still rendering to it. Make sure applications have moved to the silent device
    first — that ordering is [the one rule](signal-path.md#the-one-rule-that-is-not-obvious) worth
    remembering.
+   If the output device was unplugged or lost and came back, **Re-probe** on the Signal path page
+   makes Crucible find the dead output and restart it; a device change does the same by itself.
 4. **Is the receiver on the right input?** Crucible cannot tell a receiver on the wrong input from
    one that is not listening.
 
@@ -38,10 +40,11 @@ Work down the three stations.
 You have no signing key, so objects are off and Crucible is streaming plain 5.1. Your placements
 pan within the bed; there is nothing to carry height.
 
-This is deliberate. An unsigned-but-present object container is a hard refusal on a validating
-decoder, not a graceful fallback, so Crucible sends no object metadata rather than something that
-would be rejected outright. The Room page says so where the placing happens, and the elevation
-view is dimmed and captioned.
+This is deliberate. A decoder that validates the object container's tag can refuse an unsigned
+container outright instead of falling back to the bed, so Crucible sends no object metadata rather
+than something such a decoder could reject. The one Atmos receiver tried played the bed
+([Raspberry Pi passthrough](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)).
+The Room page says so where the placing happens, and the elevation view is dimmed and captioned.
 
 Load a key ([Install](install.md#a-signing-key-on-any-platform)) and the mode line changes from
 DD+ 5.1 to Atmos.
@@ -84,7 +87,9 @@ that would exceed the budget and says so rather than silently dropping one.
 
 ## Sound is behind the picture
 
-Expect roughly 150–200 ms once a receiver has decoded, which is a visible lip-sync error on video.
+The normal chain is estimated at roughly 150–200 ms behind the picture once a receiver has
+decoded it, which is a visible lip-sync error on video. That is an estimate: no end-to-end
+measurement has been made.
 
 **Low-latency mode** trades bitrate and headroom for a one-block frame. It needs roughly
 1.5 Mb/s or more — below that the object metadata no longer fits in a single block and the encoder
@@ -99,8 +104,10 @@ ALSA wins whenever both sets of headers are present. Reconfigure:
 cmake --preset config-linux-gcc -B build/crucible -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON
 ```
 
-Note what that trades: ALSA's `iec958` passthrough is the path confirmed against a real receiver,
-and PipeWire's is not. See [the plan](design/promotion.md#alsa-or-pipewire).
+Note what that trades: ALSA's `iec958` passthrough was the first path confirmed against a real
+receiver, and PipeWire's has since been read off a receiver on one machine
+([Install](install.md#what-you-get-and-what-you-do-not)). See
+[the plan](design/promotion.md#alsa-or-pipewire).
 
 ## Linux: the receiver is plugged in and on, but there is no HDMI sink
 
@@ -142,10 +149,9 @@ get it back from.
 Most Linux panels are hosts; some minimal window managers are not. `busctl --user list | grep
 StatusNotifier` says whether anything on your session owns the name.
 
-Builds before 2026-09-06 published no tray on Linux at all, because doing so crashed the window.
-That was a Qt bug — a menu nested inside a tray icon's menu is handed the wrong kind of handle —
-and the tray menu is flat now so it cannot happen. `docs/crucible/design/promotion.md` has the whole
-finding.
+The tray menu is flat because a menu nested inside a tray icon's menu crashed the window on
+Linux: that is a Qt bug, in which the nested menu is handed the wrong kind of handle.
+[The promotion record](design/promotion.md) has the whole finding.
 
 ## Saving a diagnostics file
 

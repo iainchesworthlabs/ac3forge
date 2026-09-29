@@ -5,7 +5,8 @@ with the inspector both work through, `ac4/ac4.hpp` in library `ac4::ac4`. An AC
 encoder written from ETSI TS 103 190-1 V1.4.1 (channel-based coding) and TS 103 190-2 V1.3.1
 (immersive and personalized audio). The libraries are in namespace `ac4` and link nothing from
 `ac3::forge`: AC-4 shares no bitstream syntax with AC-3 or E-AC-3. The encoder is described under
-[Encoding a stream](#encoding-a-stream).
+[Encoding a stream](#encoding-a-stream), and the [AC-4 concepts page](../concepts/ac4.md)
+explains the format.
 
 It decodes the mono, stereo, 3.0, 5.X and 7.X channel elements in each of Part 1's codec modes
 (SIMPLE, ASPX and the three A-CPL modes) at every frame rate; the immersive element of 7.0.4 and
