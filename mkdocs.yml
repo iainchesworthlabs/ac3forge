@@ -80,6 +80,7 @@ nav:
           - AC-3 & E-AC-3: concepts/ac3-eac3.md
           - Atmos & JOC: concepts/atmos-joc.md
           - Object signing: concepts/object-signing.md
+          - AC-4: concepts/ac4.md
       - Building from source: building.md
   - Library:
       - Overview: library/index.md
