@@ -544,11 +544,13 @@ int main(int argc, char** argv) {
             g_sink += imdct_out[256];
         }));
 
-        std::vector<std::complex<double>> fft_source(512);
+        // The project's own complex type (src/ac4core/src/dsp/complex.hpp), which
+        // the AC-4 transforms take since D14a in place of std::complex.
+        std::vector<dsp::Complex<double>> fft_source(512);
         for (std::size_t i = 0; i < fft_source.size(); ++i) {
             fft_source[i] = {mdct_in[i], 0.0};
         }
-        std::vector<std::complex<double>> fft_buf(512);
+        std::vector<dsp::Complex<double>> fft_buf(512);
         dsp::Fft<double> fft(512);
         results.push_back(time_kernel("ac4_fft512_forward", [&] {
             // In place, so each run starts from the same input rather than
@@ -563,7 +565,7 @@ int main(int argc, char** argv) {
         for (std::size_t i = 0; i < slot.size(); ++i) {
             slot[i] = static_cast<double>(ch0[i]);
         }
-        std::vector<std::complex<double>> subbands(kSubbands);
+        std::vector<dsp::Complex<double>> subbands(kSubbands);
         dsp::QmfAnalysis<double> analysis;
         results.push_back(time_kernel("ac4_qmf_analysis64", [&] {
             analysis.process(slot, subbands);
