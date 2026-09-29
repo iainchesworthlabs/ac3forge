@@ -139,7 +139,7 @@
         "browser": ["source", "ci", "WebAssembly module; no demo page"],
         "android": ["source", "build", "library builds; demo does not expose decode"],
         "esp32": ["limited", "hardware", "P4 only, behind a build option; real time for 2.0 only"],
-        "bare-metal": ["source", "emulated", "float probe; five committed streams"]
+        "bare-metal": ["source", "emulated", "float probe; six committed streams"]
       }
     },
     {
@@ -432,7 +432,7 @@
         ["AC-3 and E-AC-3 decode", ["source", "emulated", "all fixtures"], ["source", "hardware", "all fixtures in real time"], ["limited", "emulated", "12 of 14; 7.1.4 exceeds heap"], ["limited", "hardware", "all except 7.1.4 fit; most real time with Wi-Fi"], ["source", "hardware", "all fixtures in real time at 360 MHz"], ["source", "ci", "wraps the S3 decoder"]],
         ["AC-3 and E-AC-3 encode", ["source", "emulated", "six fixture rows"], ["limited", "hardware", "correct; widest layouts miss real time"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "not measured"], ["unavailable", "not-applicable", ""]],
         ["Atmos object reconstruction", ["source", "emulated", "fixture coverage"], ["source", "hardware", "placed onto 7.1.4"], ["unavailable", "not-applicable", "7.1.4 fixtures exceed heap"], ["unavailable", "not-applicable", "7.1.4 exceeds heap"], ["source", "hardware", "objects placed onto 7.1.4 in real time"], ["source", "ci", "inherits S3 component"]],
-        ["AC-4 decode", ["source", "emulated", "float probe; five committed streams"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "no floating-point unit"], ["unavailable", "not-applicable", "no floating-point unit"], ["limited", "hardware", "behind a build option; real time for 2.0 only"], ["unavailable", "not-applicable", ""]],
+        ["AC-4 decode", ["source", "emulated", "float probe; six committed streams"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "no floating-point unit"], ["unavailable", "not-applicable", "no floating-point unit"], ["limited", "hardware", "behind a build option; real time for 2.0 only"], ["unavailable", "not-applicable", ""]],
         ["Hearth Sendspin sink", ["unavailable", "not-applicable", ""], ["source", "hardware", "two-board group run; no DAC connected"], ["unavailable", "not-applicable", ""], ["limited", "hardware", "two-board group run with S3; stereo only; no DAC; CI builds it without running it"], ["limited", "hardware", "plays from an HTTP source; no Sendspin group run; CI builds the image"], ["unavailable", "not-applicable", "not yet a media_player or speaker"]],
         ["Downloadable firmware", ["unavailable", "not-applicable", "build from source"], ["configured", "ci", "hearth_sink image; no release has carried it"], ["unavailable", "not-applicable", "probe target only"], ["configured", "ci", "hearth_sink images for 4 MB and 16 MB flash; no release has carried them"], ["configured", "ci", "hearth_sink image for silicon revision v1.x; no release has carried it"], ["unavailable", "not-applicable", "external component source"]]
       ]
