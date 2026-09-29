@@ -1,9 +1,9 @@
-"""Unit tests for compare_performance.py, the PR-time throughput gate.
+"""Unit tests for compare_performance.py, the merge queue's throughput comparison.
 
-The regression this exists to catch is a pull request that doubles the
+The regression this exists to catch is a change that doubles the
 encoder's (or one kernel's) time per frame: it must publish
 hard_regression=true on $GITHUB_OUTPUT, because that output - not this
-script's exit code - is what ci.yml's performance-gate job fails on. A 20%
+script's exit code - is what _compare.yml's performance-gate job fails on. A 20%
 slowdown must only warn, noise must read as unchanged, and a missing side
 must read as an explicit hard_regression=false rather than an unset output.
 
