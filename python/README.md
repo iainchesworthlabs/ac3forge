@@ -1,8 +1,9 @@
 # ac3forge
 
 Python bindings for [ac3forge](https://github.com/iainchesworthlabs/ac3forge), a clean-room
-AC-3/E-AC-3 (Dolby Digital/Digital Plus) encoder and decoder written in C++23, including the
-Atmos-in-DD+ object layer (OAMD + JOC).
+AC-3/E-AC-3 (Dolby Digital/Digital Plus) and AC-4 encoder and decoder written in C++23,
+including the Atmos-in-DD+ object layer (OAMD + JOC). The AC-4 half is the `ac3forge.ac4`
+submodule.
 
 ```python
 import numpy as np
@@ -18,7 +19,7 @@ print(decoded.channels[0].shape)  # (1536,)
 ```
 
 See [docs/library/python-api.md](https://iainchesworthlabs.github.io/ac3forge/library/python-api/)
-for the full surface (E-AC-3 and Atmos object encode/decode included) and
+for the full surface (E-AC-3, Atmos object encode/decode and AC-4 included) and
 [the main project README](https://github.com/iainchesworthlabs/ac3forge) for what the codec
-itself covers. Licensed GPL-3.0-only, same as the rest of the project — see
+itself covers. Licensed GPL-3.0-or-later, same as the rest of the project — see
 [LICENSE](https://github.com/iainchesworthlabs/ac3forge/blob/main/LICENSE).
