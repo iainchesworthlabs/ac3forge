@@ -4,8 +4,8 @@
 
 | Capability | Cortex-M3 | ESP32-S3 | ESP32-C3 | ESP32-C6 | ESPHome/S3 |
 |---|---|---|---|---|---|
-| AC-3 and E-AC-3 decode | **Source**<br>emulation<br>all fixtures | **Source**<br>confirmed on hardware<br>all fixtures in real time | **Limited**<br>emulation<br>12 of 14; 7.1.4 exceeds heap | **Limited**<br>confirmed on hardware<br>all except 7.1.4 fit; most real time with Wi-Fi | **Source**<br>required CI<br>wraps the S3 decoder |
+| AC-3 and E-AC-3 decode | **Source**<br>emulation<br>all fixtures | **Source**<br>confirmed on hardware<br>all fixtures in real time | **Limited**<br>emulation<br>12 of 14; 7.1.4 exceeds heap | **Limited**<br>confirmed on hardware<br>all except 7.1.4 fit; most real time with Wi-Fi | **Source**<br>built and tested in CI<br>wraps the S3 decoder |
 | AC-3 and E-AC-3 encode | **Source**<br>emulation<br>six fixture rows | **Limited**<br>confirmed on hardware<br>correct; widest layouts miss real time | **Unavailable**<br>not validated | **Unavailable**<br>not validated | **Unavailable** |
-| Atmos object reconstruction | **Source**<br>emulation<br>fixture coverage | **Source**<br>confirmed on hardware<br>placed onto 7.1.4 | **Unavailable**<br>7.1.4 fixtures exceed heap | **Unavailable**<br>7.1.4 exceeds heap | **Source**<br>required CI<br>inherits S3 component |
+| Atmos object reconstruction | **Source**<br>emulation<br>fixture coverage | **Source**<br>confirmed on hardware<br>placed onto 7.1.4 | **Unavailable**<br>7.1.4 fixtures exceed heap | **Unavailable**<br>7.1.4 exceeds heap | **Source**<br>built and tested in CI<br>inherits S3 component |
 | Hearth Sendspin sink | **Unavailable** | **Source**<br>confirmed on hardware<br>two-board group run; no DAC connected | **Unavailable** | **Limited**<br>confirmed on hardware<br>two-board group run with S3; stereo only; no DAC; no Sendspin CI | **Unavailable**<br>not yet a media_player or speaker |
 | Downloadable firmware | **Unavailable**<br>build from source | **Unavailable**<br>build and flash from source | **Unavailable**<br>probe target only | **Unavailable**<br>probe/overlay only | **Unavailable**<br>external component source |

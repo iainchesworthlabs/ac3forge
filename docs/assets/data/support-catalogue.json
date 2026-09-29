@@ -32,7 +32,7 @@
   },
   "evidence": {
     "hardware": "confirmed on hardware",
-    "ci": "required CI",
+    "ci": "built and tested in CI",
     "experimental-ci": "experimental CI",
     "emulated": "emulation",
     "build": "build only",

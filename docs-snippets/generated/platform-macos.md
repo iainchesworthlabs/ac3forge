@@ -4,13 +4,13 @@
 
 | Capability | Apple Silicon | Intel | Universal package |
 |---|---|---|---|
-| C++ library | **Source**<br>required CI<br>native arm64 | **Source**<br>required CI<br>native x86_64 | **Published**<br>required CI<br>best-effort development archive |
-| Forge CLI | **Source**<br>required CI<br>native arm64 | **Source**<br>required CI<br>native x86_64 | **Published**<br>required CI<br>DMG |
-| Forge GUI | **Source**<br>required CI<br>native arm64 | **Source**<br>required CI<br>native x86_64 | **Published**<br>required CI<br>DMG; never used on a Mac |
-| Crucible | **In development**<br>required CI<br>builds and tests | **In development**<br>required CI<br>builds and tests | **Unavailable**<br>no package |
-| Hearth desktop player | **In development**<br>required CI<br>Qt/QML window with six pages, built in CI; no macOS release package | **In development**<br>required CI<br>Qt/QML window with six pages, built in CI; no macOS release package | **Unavailable**<br>no package |
+| C++ library | **Source**<br>built and tested in CI<br>native arm64 | **Source**<br>built and tested in CI<br>native x86_64 | **Published**<br>built and tested in CI<br>best-effort development archive |
+| Forge CLI | **Source**<br>built and tested in CI<br>native arm64 | **Source**<br>built and tested in CI<br>native x86_64 | **Published**<br>built and tested in CI<br>DMG |
+| Forge GUI | **Source**<br>built and tested in CI<br>native arm64 | **Source**<br>built and tested in CI<br>native x86_64 | **Published**<br>built and tested in CI<br>DMG; never used on a Mac |
+| Crucible | **In development**<br>built and tested in CI<br>builds and tests | **In development**<br>built and tested in CI<br>builds and tests | **Unavailable**<br>no package |
+| Hearth desktop player | **In development**<br>built and tested in CI<br>Qt/QML window with six pages, built in CI; no macOS release package | **In development**<br>built and tested in CI<br>Qt/QML window with six pages, built in CI; no macOS release package | **Unavailable**<br>no package |
 | Live capture and PCM monitor | **Source**<br>build only<br>Core Audio; no audio run | **Source**<br>build only<br>Core Audio; no audio run | **Unavailable** |
 | IEC 61937 output | **Source**<br>build only<br>no receiver run | **Source**<br>build only<br>no receiver run | **Unavailable** |
-| AC-4 decode and encode | **Source**<br>required CI<br>ac3cli and ac3gui; audio untested | **Source**<br>required CI<br>ac3cli and ac3gui; audio untested | **Next release**<br>required CI<br>the DMG carries ac3cli and ac3gui |
+| AC-4 decode and encode | **Source**<br>built and tested in CI<br>ac3cli and ac3gui; audio untested | **Source**<br>built and tested in CI<br>ac3cli and ac3gui; audio untested | **Next release**<br>built and tested in CI<br>the DMG carries ac3cli and ac3gui |
 | AC-4 IEC 61937 output | **Unavailable**<br>Core Audio has no AC-4 format | **Unavailable**<br>Core Audio has no AC-4 format | **Unavailable** |
 | Per-application capture | **In development**<br>not run<br>disabled by default after a CI hang | **In development**<br>not run<br>creation path unconfirmed | **Unavailable** |

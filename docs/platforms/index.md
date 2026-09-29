@@ -12,8 +12,8 @@ levels that appear.
 
 This table compares the broad feature set across platform families. **Source** means the feature
 is available to code or applications built from this tree; **Limited** identifies a family where
-variants differ. The evidence line says whether the claim rests on hardware, required CI,
-experimental CI, a build, or emulation. Select the platform heading for its variant-level table.
+variants differ. The evidence line says whether the claim rests on hardware, a build and test run
+in CI, an experimental CI leg, a build alone, or emulation. Select the platform heading for its variant-level table.
 
 --8<-- "docs-snippets/generated/platform-feature-overview.md"
 
@@ -71,9 +71,9 @@ covers running without it. [The null-sink driver on ACX](windows-driver-acx.md) 
 
 Four strengths of claim appear throughout these tables, and the distance between them matters:
 
-- **Confirmed on real hardware.** Somebody connected it and it worked: Windows passthrough, the
+- **Confirmed on hardware.** Somebody connected it and it worked: Windows passthrough, the
   Pi 4B driving an AVR, the Shield playing to a receiver.
-- **Required and green in CI.** The code builds and its tests pass on real runners. The
+- **Built and tested in CI.** The code builds and its tests pass on hosted runners. The
   pull-request gate builds Linux GCC, the merge queue adds Windows MSVC, the run after a merge to
   main adds the other legs a merge can break, and the nightly run adds the rest (see
   [CI for many agents](../ci-agentic.md#the-stages)). This is where macOS sits in full and where
