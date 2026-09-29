@@ -243,8 +243,8 @@ load-bearing enough to flag up front:
     two confirmed configurations on one box, not as Linux generally.
 
 !!! warning "AC-4 objects have no second decoder, and no receiver has taken AC-4"
-    The decoder refuses the speech spectral frontend, the 9.X.4 and 22.2 channel elements and
-    output at 96 or 192 kHz. Object audio has no reference decode to compare with: librempeg
+    The decoder refuses the speech spectral frontend, the 9.X.4 and 22.2 channel elements, the
+    efficient high frame rate mode and output at 96 or 192 kHz. Object audio has no reference decode to compare with: librempeg
     refuses object coding, and DEE writes no A-JOC from this project's masters, so A-JOC is
     checked against constructed streams and one third-party file, Chromium's `ac4-ajoc.ac4`, which
     is kept out of the tree. The encoder's objects are experimental, and no reader outside the

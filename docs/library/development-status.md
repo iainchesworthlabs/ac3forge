@@ -148,6 +148,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Speech spectral frontend (SSF) | 🔴 | Low | Nice-to-have | Refused `kUnsupported` |
 | | Immersive channel element (7.0.4, 7.1.4) | 🟢 | High | Essential | Part 2 6.2.4 to 6.2.6 in both transcriptions; SCPL, ASPX_SCPL, ASPX_ACPL_1, ASPX_ACPL_2 and ASPX_AJCC: 5.2's track assignment, S-CPL, A-SPX's pairing and gains, A-CPL's four modules and A-JCC, in full and core decoding (`ac4::DecoderConfig::decoding`); DEE's 5.1.4 in its three modes with each tone on its own channel, the rest on constructed streams; `ac3cli decode decoding=` |
 | | 9.X.4 and 22.2 channel elements | 🔴 | Low | Nice-to-have | Refused `kUnsupported` by name |
+| | Efficient high frame rate mode | 🔴 | Low | Nice-to-have | A frame whose presentation has a `frame_rate_fraction` above 1 has every substream refused `kUnsupported`, naming the mode; the decoder keeps no partial frames (Part 2 5.1.3), and no stream here uses the mode |
 | | Object audio: A-JOC and direct-coded objects | 🟢 | Medium | Important | Part 2 6.2.3 to 6.2.8 in both transcriptions, the OAMD substream included; A-JOC's reconstruction (5.7) in full decoding and its downmix or static bed in core decoding, dialogue enhancement for objects (5.8.2.3 to 5.8.2.5), each object's Annex F properties at its update sample, and the ISF renderer (5.10.3); Chromium's `ac4-ajoc.ac4` in both modes, eight constructed streams scored tone by tone. No reference decode to compare with: librempeg refuses object coding, and DEE writes no A-JOC from this project's masters |
 | | HSF / 96–192 kHz | 🟡 | Low | Nice-to-have | The extension substream's content is read when it resolves to its owning channel substream (an unresolved link is refused `kUnsupported`), on synthetic frames only, no real HSF stream being available; `decode()` refuses a 96 or 192 kHz substream, so there is no PCM at those rates |
 | | PCM: SIMPLE mono and stereo | 🟢 | High | Essential | ASF, stereo processing, block switching, frame alignment and the QMF banks at `frame_rate_index` 13; DEE's 2.0 streams at unity gain and pinned SNR floors in CI; librempeg agrees to 83 dB or better |
@@ -318,6 +319,7 @@ this register is the checklist that those bounds appear here too.
 | Part 1 / 2 TOC legacy | `bitstream_version` 0/1 | 🟡 |
 | Channel-coded syntax without fixtures | Noise fill, VARVAR, … | 🟡 |
 | SSF | Decode | 🔴 |
+| Part 2 5.1.3 | Efficient high frame rate mode (`frame_rate_fraction` 2 or 4): refused | 🔴 |
 | §4.2.4.3 | HSF extension substream content: syntax read on synthetic frames, PCM at 96 and 192 kHz refused | 🟡 |
 | Whole codec | PCM reconstruction of the 9.X.4 and 22.2 elements | 🔴 |
 | Whole codec | Encoding the speech frontend, the 9.X.4 and 22.2 elements and 96 or 192 kHz | 🔴 |
