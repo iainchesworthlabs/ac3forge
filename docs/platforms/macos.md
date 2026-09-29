@@ -297,8 +297,9 @@ ctest --preset test-macos-llvm-debug
 Swap `macos-llvm` for `macos-llvm-x64` throughout on Intel; drop `-debug` from all three preset
 names for a Release build either way. The `ci-macos-llvm`/`ci-macos-llvm-x64` workflow presets
 each chain the same three steps in one command. Homebrew's `llvm` formula must be installed (CI
-runs `brew install llvm`), and `VCPKG_ROOT` must point at a vcpkg checkout — it supplies Catch2,
-plus Boost and Tracy only if you opt into the `adm`/`profiling` features (see
+runs `brew install llvm`), and `VCPKG_ROOT` must point at a vcpkg checkout — it supplies Catch2
+and {fmt}, mbedTLS, cpp-httplib, libFLAC, Opus and mdns through the `hearth` feature the desktop
+presets select, and Boost and Tracy only if you opt into the `adm`/`profiling` features (see
 [building.md](../building.md)). `AC3FORGE_BUILD_GUI` defaults **OFF** on both presets, as on Linux
 — see [GUI on macOS](#gui-on-macos) below to opt in.
 
@@ -379,7 +380,7 @@ leg's first-ever GUI run, confirmed clean on a second push after two real fixes
 the test binary for a native-`ComboBox`-under-offscreen hang - see [GUI on macOS](#gui-on-macos)
 above and `apps/gui/tests/CMakeLists.txt`/`qml_test_main.cpp` for the full detail). Real SNR
 numbers from the CI run that first proved the gate on macOS: 61.81/61.82 dB, against 67.84/67.82
-dB on Linux and Windows for the same material, comfortably clear of the gate's 30 dB floor. That
+dB on Linux and Windows for the same material, above the gate's 30 dB floor. That
 gap is **not** a Homebrew-LLVM-libm-vs-glibc/MSVC difference, despite what this page and
 `ci.yml` used to say (see `docs/building.md`'s "Floating-point contraction"
 section) traced it to every real arm64/aarch64 CI leg, `macos-llvm` included, landing on the

@@ -73,7 +73,7 @@ The r26 pin also reaches into the library itself: r26's bundled libc++ does not 
 `<format>` at all unless the compiler is invoked with `-fexperimental-library`, which nothing in
 this project's Android build passes. Rather than avoiding formatted output file by file to route
 around that, the whole project uses [{fmt}](https://github.com/fmtlib/fmt) — `fmt::format`/
-`fmt::print` in place of `std::format`/`std::print` everywhere, not just here — since {fmt} has no
+`fmt::print` in place of `std::format`/`std::print` everywhere — since {fmt} has no
 such gap (see `cmake/Fmt.cmake` and `CONTRIBUTING.md`'s code-conventions section). That single
 choice is also what lets `mp4::mp4`'s HLS/DASH signaling helpers build for Android at all; see the
 note in `apps/android/app/src/main/cpp/CMakeLists.txt` for why this app still doesn't link them
@@ -402,12 +402,12 @@ believing anything the panel says.
   this encoder, and it is the one thing on the dashboard that shows the wire format's own resolution
   rather than the demo's intent.
 - **What is falsifiable:** that the container survives on the wire at all, and that
-  [OBJECTS OFF](#objects-off-taking-the-object-layer-away-live) really removes it. A decoder reading
+  [OBJECTS OFF](#objects-off-taking-the-object-layer-away-live) removes it. A decoder reading
   the post-strip bytes and reporting zero objects is independent of the byte counter that claims the
   removal. Frames with no object layer are drawn as a **gap** with a baseline marker, never as zero
   — "the decoder found nothing here", not "the object dropped to the floor".
 
-**`skip_reconstruction` is what makes it safe, not merely cheap.** `DecoderConfig::skip_reconstruction`
+**`skip_reconstruction` is what makes it safe.** `DecoderConfig::skip_reconstruction`
 returns before the IMDCT, the overlap-add and JOC reconstruction, so no cross-frame state is carried
 and frames are mutually **independent**. The ring between the two threads may therefore drop under
 load without corrupting anything drawn. A full decode could not: its per-identity IMDCT delay lines
@@ -604,7 +604,7 @@ competing for the same screen space:
   some [waiting](#hdmi-receiver-resilience-waiting-not-crashing) — never while still waiting, which
   would just be confusing). Dismissed by the first real input, or auto-fades after 5s.
 - **Idle/attract prompt** — "Press any button to take control," shown after 14s of no input (a demo
-  left alone between visitors should invite the next person, not just sit there), dismissed the
+  left alone between visitors should invite the next person), dismissed the
   instant real input resumes.
 
 ![First-launch orientation cue over the 3D track panel](screenshots/android-orientation-cue.png)
@@ -615,7 +615,7 @@ Earlier hands-on use found a real annoyance: an AVR off (or not yet HDMI-negotia
 powered off mid-session, left the app sitting there having silently done nothing — the only fix
 was a force-restart. `MainActivity.reconcileReceiverState()` closes that gap:
 `nativeStartLiveCursor()` is no longer called unconditionally in `onCreate` — it's gated on the
-receiver actually accepting E-AC3 right now, re-evaluated on every
+receiver actually accepting E-AC-3 right now, re-evaluated on every
 `AudioManager.ACTION_HDMI_AUDIO_PLUG` broadcast (the system's own "HDMI audio route capabilities
 changed" signal) and a slow (2.5s) periodic fallback, since that broadcast isn't guaranteed on
 every real AVR power-off (some receivers don't change their reported EDID/HPD state on standby). A
@@ -694,7 +694,7 @@ or you drop one in by hand for a local signed build. `init_signing()` loads it o
 `AAssetManager` the lead-voice asset uses and decodes it (base64 or raw) via the same
 `ac3::signing::decode_signing_key()` the CLI applies.
 
-**Unsigned builds omit the object container entirely, not just leave it unsigned.** An unsigned
+**Unsigned builds omit the object container entirely.** An unsigned
 but *present* EMDF container is not a safe degraded mode — per `AtmosConfig::emit_object_metadata`'s
 own comment, a decoder that validates the `emdf_protection` field treats the container's sync word
 as a commitment to object decoding and refuses the whole stream if it doesn't validate, rather than
@@ -764,7 +764,7 @@ include `*.apk`).
 
 **Promoted, not experimental.** This job used to run `continue-on-error: true`, before it had ever
 actually run on GitHub's hosted runners. It has since gone green three consecutive times on real
-hosted runners (`feature/shield-atmos-platform`'s own PR history) — comfortably past the bar
+hosted runners (`feature/shield-atmos-platform`'s own PR history) — past the bar
 `macos-llvm` was promoted at — so that line is gone: a `build-android` failure now fails its run
 like any other non-experimental job.
 
@@ -781,7 +781,7 @@ like any other non-experimental job.
     room visualization tracks the encode loop's own state throughout.
 
     **The object-signed build's object audio has been confirmed reconstructable on the real
-    receiver** — not just the always-audible panned bed. With the delta-bit-allocation fix
+    receiver**, beyond the always-audible panned bed. With the delta-bit-allocation fix
     described in the signer's own history (an unrelated bit-tracking bug that had been silently
     corrupting a large fraction of signed frames) and the real receiver powered on and HDMI-linked,
     the receiver's own front-panel display read **Atmos/DD+, 48kHz in, 5.0.4 out**, and the object's
@@ -794,7 +794,7 @@ like any other non-experimental job.
     samples (4.00s)` in logcat, zero underruns through extended runs), and the dashboard redesign —
     the 3D/top-down/elevation three-panel layout, the speaker-activity meter, the first-launch
     orientation cue, and the idle/attract prompt — has been confirmed rendering correctly via real
-    device screenshots (`adb shell screencap`), not just compiled.
+    device screenshots (`adb shell screencap`).
 
     **HDMI receiver resilience** (see [that section](#hdmi-receiver-resilience-waiting-not-crashing)
     above) has been verified in full on real hardware, including the two scenarios that can only be
@@ -806,7 +806,7 @@ like any other non-experimental job.
 
     Both the release (unsigned) and local-signed debug builds install and launch without crashing;
     that locally-built, keyless release build's logcat confirms `object container: bed51 (omitted,
-    unsigned build)` — the safe public default actually takes effect, not just compiles. Note this
+    unsigned build)` — the safe public default takes effect. Note this
     was verified on a **local** release build, which never had a key asset; what CI publishes is
     covered by the key-free assertion in [Release / CI](#release-ci) instead. `build-android` has itself now run
     green three consecutive times on GitHub's hosted runners — see [Release / CI](#release-ci) above.

@@ -233,9 +233,10 @@ ctest --preset test-linux-gcc-debug
 Substitute `linux-llvm` for `linux-gcc` to build with Clang instead. Add
 `-DAC3FORGE_BUILD_GUI=ON` to either configure line to build `ac3gui` too, once Qt is installed
 (see [GUI](#gui-opt-in-not-on-by-default) above). `VCPKG_ROOT` must point at a vcpkg checkout —
-it supplies Catch2, plus Boost and Tracy only if you opt into the `adm`/`profiling` features
-(see [building.md](../building.md)), same as on Windows; this project's own convention keeps it
-at `/opt/vcpkg`, but any path works.
+it supplies Catch2 and {fmt}, mbedTLS, cpp-httplib, libFLAC, Opus and mdns through the `hearth`
+feature the desktop presets select, and Boost and Tracy only if you opt into the
+`adm`/`profiling` features (see [building.md](../building.md)), same as on Windows; this
+project's own convention keeps it at `/opt/vcpkg`, but any path works.
 
 ## Packaging
 
@@ -339,7 +340,7 @@ the built AppImage headlessly (`ac3gui --smoke`, `QT_QPA_PLATFORM=offscreen`) in
 container that never had Qt or a single build tool installed** — `debian:12-slim`, reached via
 Docker against the GitHub-hosted runner's own Docker daemon — and asserts it exits 0. That is the
 concrete answer to "does this actually run on a distro whose own Qt packages were never
-installed", not just "did packaging exit 0". No real desktop has installed the produced
+installed". No real desktop has installed the produced
 `.AppImage` and double-clicked an `.ac3` file, the same caveat the `.deb`/`.rpm` packaging above
 carries.
 

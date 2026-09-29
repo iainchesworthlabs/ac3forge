@@ -67,8 +67,8 @@ WSL2/Emscripten 6.0.6 toolchain `build-wasm` uses:
 - **Real-time factor.** Timed under Node/V8 (a reasonable proxy for Chrome's own engine),
   single-threaded, no WASM SIMD, `-O3`, real encoder code paths (not a timing loop around a stub):
   AC-3 2.0 encodes at **385x real-time**, E-AC-3 3/2+LFE at **120x**, a 4-object Atmos/JOC encode at
-  **82x**. There is enormous headroom below 1x even accounting for a slower mobile CPU and for
-  optional encoder work not exercised in that measurement (`search=distortion`, coupling). This is
+  **82x**. That leaves a wide margin for a slower mobile CPU and for optional encoder work not
+  exercised in that measurement (`search=distortion`, coupling). This is
   why the encode module needs no `pthreads`/`SharedArrayBuffer` — everything above runs on the main
   thread (or a plain `postMessage`-fed Worker) with room to spare, which also means a future
   real-time (microphone-capture) product is a plumbing problem, not a CPU one.
@@ -376,7 +376,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     code ran, and the room-view canvas paints non-empty content from it. Each "Solo object N"
     button was confirmed to switch playback to a buffer that (a) sample-for-sample matches
     `tanh()` of that specific object's own `object_audio`, (b) differs from every other object's
-    audio, and (c) differs from the bed downmix: the isolated object plays, not just some audio.
+    audio, and (c) differs from the bed downmix: the isolated object plays.
 
 !!! note "Encode module, verified in a browser"
     A dropped multi-second WAV (a known tone at a known level) encodes through
@@ -397,8 +397,8 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     3 Atmos objects, 8.0s`, that the same object's decoded position differs between its
     first and last frame, and that the AudioWorklet pipeline (a Worker
     doing the WASM decode, a `SharedArrayBuffer` ring buffer, an `AudioWorkletNode`)
-    produces non-silent decoded audio out an `OfflineAudioContext` — not just that the worker
-    didn't throw. `encode.spec.js` does the same for the encode module: encodes a 997 Hz tone
+    produces non-silent decoded audio out an `OfflineAudioContext`. `encode.spec.js` does the same
+    for the encode module: encodes a 997 Hz tone
     through the bound `Encoder`, measures it with `QcMeter`, asserts the true peak and every preset
     verdict land where that known signal predicts, and round-trips the result through the decode
     module. A regression in any of those numbers now fails CI rather than waiting for the next
@@ -408,7 +408,7 @@ would never trigger a redeploy at all, and the live demo would silently drift fr
     `decoder_bindings.cpp`'s rewrite (the old whole-file `Decoder` class replaced by
     `scanStream()`/`PushDecoder`) was built and linked clean, and both decode Playwright specs
     (the whole-file `decodeFile()` path and the new AudioWorklet pipeline) passed against that
-    build, not just against source review. `js/`'s own `node:test` suite — the fMP4 box
+    build. `js/`'s own `node:test` suite — the fMP4 box
     walker against an ffmpeg-remuxed fixture (every extracted sample landing exactly on an
     AC-3/E-AC-3 syncword), the ring buffer's wraparound/underrun/overrun arithmetic, and the
     `MediaSource`/`addSourceBuffer` shim's mechanics against a fake `MediaSource` stub — passed

@@ -90,7 +90,9 @@ ctest --preset test-linux-gcc-arm64-debug
 ```
 
 Substitute `linux-llvm-arm64` for `linux-gcc-arm64` to build with Clang instead - same tradeoff as on
-x64. `VCPKG_ROOT` only ever supplies Catch2, exactly as on every other platform.
+x64. `VCPKG_ROOT` supplies what it supplies on every other platform: Catch2 and {fmt}, and the packages
+behind Hearth (mbedTLS, cpp-httplib, libFLAC, Opus, mdns) through the `hearth` feature the presets
+select by default.
 
 ## HDMI output
 
@@ -137,7 +139,7 @@ Run for real, over SSH, and recorded on 2026-08-15, on:
 
 Both `config-linux-gcc-arm64[-debug]` and `config-linux-llvm-arm64[-debug]` configure, build and
 `ctest` all clean: **440/440 tests passing on both compilers**, including the `Performance` label
-(`ac3perf`'s hard real-time encode gate) - both the Atmos/JOC and plain 5.1 encoders stay comfortably
+(`ac3perf`'s hard real-time encode gate) - both the Atmos/JOC and plain 5.1 encoders stay
 inside their real-time budget on this hardware, and the Qt Quick Test GUI harness
 (`ac3gui_qmltests`) passes headless. `ac3gui --smoke` (`QT_QPA_PLATFORM=offscreen`) also runs clean,
 encoding real audio and instantiating real QML channel meters. A full Release build (`config-linux-gcc-arm64`)

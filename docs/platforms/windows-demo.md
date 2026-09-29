@@ -216,6 +216,9 @@ drag is smoothed across a few frames because a 32 ms step in position is a click
 | **Headphones** | the default endpoint has a spatial format enabled (Windows Sonic, Dolby Atmos for Headphones, DTS Headphone:X) | encoded, then decoded, objects handed to the OS renderer at their OAMD positions | `SpatialObjectSink` |
 | **Stereo** | nothing above applies | encoded, then decoded, Lo/Ro fold | `MonitorSink`, 2 channels |
 
+None of these modes sends AC-4. The engine encodes E-AC-3 JOC or AC-3 only, and on Windows
+`PassthroughSink` refuses AC-4 whatever the source (see [Windows](windows.md#audio-backend-wasapi)).
+
 Detection on Windows is a live probe, not an EDID read: `enumerate_render_devices()` asks each
 endpoint whether it accepts AC-3 and E-AC-3 exclusive formats and how many shared-mode channels
 it has, and `probe_spatial_capability()` asks whether a spatial format is on. Windows does not

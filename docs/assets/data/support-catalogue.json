@@ -291,8 +291,8 @@
       "label": "Hearth desktop player",
       "page": "hearth/index.md",
       "cells": {
-        "windows": ["configured", "hardware", "Qt/QML window with six pages, built and run; ZIP and installer from the next release"],
-        "linux": ["configured", "ci", "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM from the next release"],
+        "windows": ["configured", "hardware", "Qt/QML window with six pages, built and run; ZIP and installer"],
+        "linux": ["configured", "ci", "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM"],
         "macos": ["development", "ci", "Qt/QML window with six pages, built in CI; no macOS release package"],
         "browser": ["unavailable", "not-applicable", ""],
         "android": ["unavailable", "not-applicable", ""],
@@ -349,7 +349,7 @@
         ["Forge CLI", ["published", "hardware", "ZIP and NSIS installer"], ["published", "experimental-ci", "ZIP and NSIS installer"]],
         ["Forge GUI", ["published", "hardware", "ships with Forge"], ["unavailable", "not-applicable", "Qt kit is not wired"]],
         ["Crucible", ["configured", "hardware", "UI/driver run; receiver output untested"], ["unavailable", "not-applicable", ""]],
-        ["Hearth desktop player", ["configured", "hardware", "Qt/QML window with six pages, built and run; ZIP and installer from the next release"], ["unavailable", "not-applicable", ""]],
+        ["Hearth desktop player", ["configured", "hardware", "Qt/QML window with six pages, built and run; ZIP and installer"], ["unavailable", "not-applicable", ""]],
         ["Live capture and PCM monitor", ["source", "hardware", "WASAPI"], ["source", "experimental-ci", "compiled with the CLI"]],
         ["IEC 61937 output", ["source", "hardware", "AC-3, E-AC-3 and signed Atmos"], ["source", "experimental-ci", "no receiver run"]],
         ["AC-4 decode and encode", ["configured", "ci", "ac3cli, ac3gui and Hearth; decoded AC-4 plays through the PCM monitor"], ["configured", "experimental-ci", "ac3cli only"]],
@@ -366,7 +366,7 @@
         ["Forge CLI", ["published", "ci", "TGZ, DEB and RPM"], ["published", "hardware", "TGZ, DEB and RPM"]],
         ["Forge GUI", ["published", "ci", "packages plus AppImage"], ["published", "hardware", "packages; no AppImage"]],
         ["Crucible", ["configured", "ci", "TGZ and DEB; check the release assets"], ["configured", "hardware", "TGZ and DEB; check the release assets"]],
-        ["Hearth desktop player", ["configured", "ci", "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM from the next release"], ["configured", "ci", "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM from the next release"]],
+        ["Hearth desktop player", ["configured", "ci", "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM"], ["configured", "ci", "Qt/QML window with six pages, built in CI; TGZ, DEB and RPM"]],
         ["Live capture and PCM monitor", ["source", "ci", "ALSA or PipeWire"], ["source", "hardware", "ALSA or PipeWire"]],
         ["IEC 61937 output", ["source", "ci", "hardware untried"], ["source", "hardware", "ALSA and PipeWire on one Pi 4B"]],
         ["AC-4 decode and encode", ["configured", "ci", "ac3cli, ac3gui and Hearth; decoded AC-4 plays through the PCM monitor"], ["configured", "ci", "ac3cli, ac3gui and Hearth"]],
@@ -608,7 +608,7 @@
       "artifact": "Build overlay only",
       "action": "Read Hearth status",
       "url": "hearth/",
-      "note": "The example's README documents a two-board Sendspin group run confirmed on hardware; the sink is stereo only, and there is still no Sendspin CI job for the C6."
+      "note": "The example's README documents a two-board Sendspin group run confirmed on hardware; the sink is stereo only, and CI builds the C6 Sendspin player without running it, since QEMU does not emulate the part."
     },
     {
       "product": "C++ library",
@@ -654,7 +654,7 @@
       "product": "C++ library",
       "platform": "macOS",
       "variant": "Universal (Apple Silicon + Intel)",
-      "state": "configured",
+      "state": "published",
       "artifact": "Best-effort ac3forge-dev ZIP",
       "action": "Open GitHub releases",
       "url": "https://github.com/iainchesworthlabs/ac3forge/releases/latest",

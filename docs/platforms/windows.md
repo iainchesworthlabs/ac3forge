@@ -65,6 +65,15 @@ On Windows, the five pieces that touch sound hardware are all implemented over *
   reads no AC-4 stream (on a spatial-enabled endpoint it answers "not a valid E-AC-3 stream", exit
   code 2).
 
+What each can carry:
+
+| Path | Carries | Does not carry |
+|---|---|---|
+| Capture (`ac3::audio`) | PCM from an input, an endpoint's loopback or one process tree; IEC 61937 bursts that arrive as PCM, which the detector recognises for AC-3, E-AC-3 and AC-4 | |
+| `MonitorSink` | PCM the library decoded: AC-3, E-AC-3 (an Atmos stream's bed) and AC-4, whose objects the layout renderer puts on speakers | A bitstream |
+| `PassthroughSink` | IEC 61937 bursts of AC-3 and E-AC-3, the latter with its JOC objects | AC-4, refused with `kUnsupportedFormat` |
+| `SpatialObjectSink` | E-AC-3 object streams, as dynamic objects and a static LFE | AC-4 objects |
+
 These five are not equally verified against real hardware, and the project's own documentation
 is deliberately explicit about the difference.
 
@@ -316,8 +325,9 @@ cmake --build --preset build-windows-llvm-debug
 ctest --preset test-windows-llvm-debug
 ```
 
-`VCPKG_ROOT` must point at a vcpkg checkout (it supplies Catch2 — plus Boost and Tracy only if
-you opt into the `adm`/`profiling` features; see [building.md](../building.md)). See
+`VCPKG_ROOT` must point at a vcpkg checkout (it supplies Catch2 and {fmt}, mbedTLS, cpp-httplib,
+libFLAC, Opus and mdns through the `hearth` feature the desktop presets select, and Boost and
+Tracy only if you opt into the `adm`/`profiling` features; see [building.md](../building.md)). See
 [Presets](../building.md#presets) for the full preset table and the `ci-windows-msvc` /
 `ci-windows-llvm` workflow presets that chain all three steps.
 
