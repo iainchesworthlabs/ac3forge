@@ -22,7 +22,7 @@ uncompressed tracks.
 
 ## One family, three names
 
-The formats ac3forge implements form a single lineage, each one building on the last:
+The first three formats ac3forge implements form a single lineage, each one building on the last:
 
 - **AC-3** — better known by its trademarked name **Dolby Digital**. The original: a 1990s
   standard for cinema, DVD, and broadcast, supporting up to 5.1 channels (left, centre,
@@ -47,22 +47,31 @@ play an Atmos stream — it just plays the ordinary 5.1 mix underneath and ignor
 doesn't understand. The [AC-3 & E-AC-3](ac3-eac3.md) page covers the first two links in that
 chain; [Atmos & JOC](atmos-joc.md) covers the third.
 
+## A separate codec: AC-4
+
+**AC-4** is not another link in that chain. It has its own bitstream syntax, defined by ETSI
+TS 103 190, so an AC-3 or E-AC-3 decoder cannot read it. A stream can carry several
+**presentations**, such as a choice of language or audio description. Its loudness model has the
+listening system set the output level, and it codes objects in two ways. The [AC-4](ac4.md) page
+covers what it is and how much of it ac3forge implements.
+
 !!! note "Trademarks and standards"
     "Dolby", "Dolby Digital" and "Dolby Atmos" are trademarks of Dolby Laboratories. ac3forge
     implements the openly published standards behind them — ATSC A/52:2018 (of which E-AC-3
-    is normative Annex E), ETSI TS 102 366, and ETSI TS 103 420 — using the technical names
-    AC-3 and E-AC-3 throughout its code and docs. It is not affiliated with, endorsed by, or
-    certified by Dolby Laboratories.
+    is normative Annex E), ETSI TS 102 366, ETSI TS 103 420, and ETSI TS 103 190 (AC-4) — using
+    the technical names AC-3, E-AC-3 and AC-4 throughout its code and docs. It is not
+    affiliated with, endorsed by, or certified by Dolby Laboratories.
 
 ## Why this project exists
 
 ac3forge is a clean-room implementation: it is built entirely from the published standards
 above, not by studying or reusing any existing codec's code. It links no other codec library —
 not even to decode. During development, FFmpeg is used only as an independent, external pair
-of eyes: encoder output gets checked against FFmpeg's own decoder as a sanity check, but the
-project never depends on FFmpeg to build or run. The point is to understand these formats from
-first principles, by implementing the standards directly, rather than to wrap or extend
-existing tooling.
+of eyes: AC-3 and E-AC-3 encoder output gets checked against FFmpeg's own decoder as a sanity
+check, but the project never depends on FFmpeg to build or run. FFmpeg has no AC-4 decoder, so
+AC-4 is checked by other means ([Validation: AC-4](../verification.md#ac-4)). The point is to
+understand these formats from first principles, by implementing the standards directly, rather
+than to wrap or extend existing tooling.
 
 ## Where to go next
 
@@ -73,6 +82,8 @@ existing tooling.
 - [Object signing](object-signing.md) — the keyed EMDF protection tag a licensed decoder checks
   before reconstructing objects, why the algorithm is in-tree but the key isn't, and how to turn
   it on.
+- [AC-4](ac4.md) — a separate codec: frames and presentations, its coding tools, and what the
+  library decodes and encodes.
 
 Once the formats make sense, [Capabilities](../library/capabilities.md) lists the implemented
 parts. [Forge](../forge/index.md), [Crucible](../crucible/index.md), and

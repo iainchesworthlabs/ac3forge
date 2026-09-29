@@ -1,14 +1,21 @@
 # Source, transport, sink: how the encoder and decoder reach people
 
-!!! note "Status as of 2026-09-08: one decision taken, nothing built"
-    Written 2026-09-07. The transport question is settled ([decision 1](#decisions)); no code
-    on this page has been written, and the applications it frames — a plugin, a player, a
-    reporter — remain unstarted.
+!!! note "Status as of 2026-09-30: the frame stands; none of the HTTP transport was built, and Sendspin carries Hearth's"
+    Written 2026-09-07. The transport question was settled ([decision 1](#decisions)): HLS/CMAF
+    over HTTP now, a Sendspin extension after.
 
     **On 2026-09-15 [the reference player plan](hearth-reference-player.md) replaced decision 1
     for Hearth's own sinks:** `ac3hearth` reaches them as a conformant Sendspin server, with the
     IEC 61937 bitstream in an extension role, and Sendspin's groups replace this page's Phase 4
-    for them. HLS/CMAF remains this page's answer for any other source and sink.
+    for them. That is built: the desktop player plays to groups of ESP32 and test sinks
+    ([the extension page](hearth-sendspin-extension.md)), and the role carries AC-3, E-AC-3 and,
+    for the test sink, AC-4. HLS/CMAF remains this page's answer for any other source and sink,
+    and none of its transport exists: the source half was already shipped and is unchanged
+    (`Fmp4FolderWriter` still writes a servable live folder for `ac3cli record` and `live` and the
+    GUI, and `ac3cli fmp4` now writes AC-4 too), but nothing serves the folder and no HLS client
+    exists, so Phases 2 and 3 are not built and have no owner. Phase 1 is done, Phases 4 and 5
+    were built over Sendspin instead of HTTP, and Phase 6, the conversation with the Sendspin
+    project, has not happened. Each phase below says so.
 
     Four plans are in flight, each scoped as an application — a plugin, a player, a reporter,
     an embedded port. This page is the frame they are missing: the roles those applications
@@ -26,9 +33,9 @@ and the repository now has four wrappers planned at once, written independently:
 
 | In flight | Wraps | State |
 |---|---|---|
-| [Host plugin study](host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. |
-| [Delivery-QC report](qc-report.md) | the analysis code | Plan. |
-| [Hearth reference player](hearth-reference-player.md) | the decoder, in a room and on ESP32 sinks | **Being built** — replaced [the playback appliance](player-appliance.md) on 2026-09-15. |
+| [Host plugin study](host-plugin.md) | the encoder, in a DAW | Study done. No open plugin format carries object metadata; beds only. The VST 3 SDK is MIT, per Steinberg's licensing FAQ. Still a study on 2026-09-30: no plugin code exists. |
+| [Delivery-QC report](qc-report.md) | the analysis code | Plan. On 2026-09-30 `ac3cli qc` still prints its findings and writes no report file. |
+| [Hearth reference player](hearth-reference-player.md) | the decoder, in a room and on ESP32 sinks | **Built** (2026-09-30): the desktop player, the Sendspin server and the S3, C6 and P4 sinks. It replaced [the playback appliance](player-appliance.md) on 2026-09-15. |
 | The ESP32-S3 port | the decoder, on a microcontroller | **Shipped** as `hearth_sink` and bare-metal examples. [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546). |
 
 Each was scoped as "what application is this". None of them asks what they have in common, and
@@ -56,6 +63,11 @@ Every path in the tree today is one of two shapes:
 three separate things that looked unrelated: why Crucible can only ever feed the one receiver it
 is cabled to, why the appliance plan had nowhere to put multi-room audio, and why the ESP32-S3
 port reads as a curiosity rather than as a product.
+
+*The three roles table and the two shapes are the tree of 2026-09-07. Since 2026-09-15 a third shape exists for
+stored files: `ac3hearth` sends a file's bitstream over Sendspin to ESP32 and test sinks that decode it, so the
+transport row also lists Sendspin with the extension role, and the sink row lists the Hearth desktop player and
+the ESP32 sinks. A live source feeding a network sink, from Crucible or `ac3cli live`, still does not exist.*
 
 ## Why no existing ecosystem closes the gap
 
@@ -119,7 +131,7 @@ signalling:
 fragment is 1.536 s segments; a player holding three of them is roughly 5 s behind live. That is
 fine for music in another room and wrong for anything watched. Low-Latency HLS is **not**
 implemented — `#EXT-X-PART` appears nowhere, and the only tag beyond the basics is
-`#EXT-X-INDEPENDENT-SEGMENTS` (`src/mp4/src/hls.cpp:117`).
+`#EXT-X-INDEPENDENT-SEGMENTS` (in `src/mp4/src/hls.cpp`).
 
 It may not be needed. `FragmentOptions`' own comment records the property that makes segment
 length free: *"Every AC-3/E-AC-3 access unit this project produces is independently decodable
@@ -127,7 +139,9 @@ length free: *"Every AC-3/E-AC-3 access unit this project produces is independen
 latency."* Four frames per fragment is 128 ms segments. The cost is playlist churn and HTTP
 request rate, not correctness — so the latency lever exists today and LL-HLS becomes an
 optimisation rather than a prerequisite. What that costs in practice is measured in
-[Phase 2](#phase-2-one-source-one-sink-over-http), not assumed here.
+[Phase 2](#phase-2-one-source-one-sink-over-http), not assumed here. *The property is AC-3 and
+E-AC-3's. AC-4 frames are not all independently decodable, and the same comment now says an AC-4
+fragment starts at a sync sample ([Phase 3](#phase-3-the-latency-and-window-numbers)).*
 
 **Bandwidth, which is the argument for carrying the encoded stream at all.** A 5.1.4 object bed
 as E-AC-3 with JOC is on the order of 768 kb/s. The same content as 10-channel 48 kHz 16-bit PCM
@@ -154,7 +168,7 @@ than research:
    onward to a receiver rather than render it, which the server needs in order to know that this
    endpoint's latency is unknown and unbounded.
 
-**Why it is strategically the right target.** It is where Home Assistant is going, ESPHome will
+**Why it is the target.** It is where Home Assistant is going, ESPHome will
 ship the client, and Music Assistant is already the controller. An endpoint that speaks Sendspin
 appears in an existing installation with no integration to write. And the extension would be
 useful to that project independently of this one: Opus at multi-channel is not what anyone wants
@@ -207,7 +221,9 @@ on.
   S3's FPU is single-precision only. The full build is untouched.
 - **Real-time throughput is still unknown and cannot be answered there.** QEMU-Xtensa is not
   cycle-accurate and reports a clock disagreeing with its own boot log. It needs an
-  `ESP32-S3-DevKitC-1-N16R8`, and everything for it is wired.
+  `ESP32-S3-DevKitC-1-N16R8`, and everything for it is wired. *A board has since answered it:
+  every decode fixture runs in real time at 240 MHz, from 0.07x for AC-3 mono to 0.92x for
+  E-AC-3 7.1.4 folded to stereo ([the S3 page](../docs/platforms/bare-metal/esp32-s3.md#timing)).*
 - **The port paid for itself beyond this target.** A 32 KB `thread_local` in `eac3_tools.cpp`
   made `ac3::forge_minimal` unlinkable into *any* FreeRTOS application — FreeRTOS carves each
   task's thread-local area out of that task's own stack, and IDF's IPC task has 1 KB, so the app
@@ -236,16 +252,16 @@ because the population of possible sinks is no longer "a Pi or a PC".
 
 | Thing | Role | Transport it uses | Status |
 |---|---|---|---|
-| Crucible | source | IEC 61937 today; HTTP origin would be new | shipped; the network output is a scope question, [decision 3](#decisions) |
+| Crucible | source | IEC 61937 today; HTTP origin would be new | shipped; the network output is a scope question, [decision 3](#decisions), and Crucible has none on 2026-09-30 |
 | `ac3cli record` / `live`, `ac3gui` live session | source | **already writes a servable HTTP origin** through `Fmp4FolderWriter` | shipped, unconnected to any sink |
 | A DAW **encode** plugin | source | whatever the host renders to; **bed-only, unconditionally** | [study](host-plugin.md) done; the constrained one |
 | The Shield demo | source | IEC 61937 over the Shield's HDMI | shipped |
 | The WASM encode page | source | none — it produces a file | shipped |
 | An out-of-tree GStreamer element or FFmpeg wrapper | source | whatever the pipeline is muxing into | [Proposed in ROADMAP.md](../ROADMAP.md#proposed) (GStreamer / FFmpeg encode wrapper); AP5 (C API) is done |
 | A third-party AV receiver | sink | IEC 61937 | not ours; **cannot be synchronised** |
-| The playback appliance | sink | local files today; HTTP client is the new work | [plan](player-appliance.md), to be rewritten against this page |
-| An ESP32-S3 node | sink | HTTP client, then Sendspin | **both codecs decode, fits internal SRAM** ([#546](https://github.com/iainchesworthlabs/ac3forge/pull/546)); real time unmeasured |
-| The WASM decode page | sink | a file today; could be an HLS client for free | shipped |
+| The playback appliance | sink | local files today; HTTP client is the new work | [plan](player-appliance.md), replaced on 2026-09-15 by Hearth: a desktop app and Sendspin sinks, with no daemon and no HTTP client |
+| An ESP32-S3 node | sink | HTTP client, then Sendspin | a Sendspin player (`hearth_sink`); it also fetches a stream from a URL for debugging (`POST /play`). Both codecs decode and fit internal SRAM ([#546](https://github.com/iainchesworthlabs/ac3forge/pull/546)), and every decode fixture runs in real time on a board |
+| The WASM decode page | sink | a file today; could be an HLS client for free | shipped as a file page; the JS package has an hls.js bridge (`js/src/hls-bridge.ts`) with no live-server soak test |
 | A DAW **metering** plugin | **neither** — an instrument, not a node | n/a | what [the study](host-plugin.md)'s Part 2 actually plans; no capability blocker |
 | The delivery-QC report | **neither** — an instrument, not a node | n/a | [plan](qc-report.md); belongs under Forge, and this page is why |
 
@@ -295,6 +311,12 @@ So the helper should return a capability set, not a wire-specific answer, and th
 transports become additional providers of the same struct rather than a parallel mechanism. That
 is a design constraint on work already planned, not new work.
 
+*Not built as one helper, as of 2026-09-30. Crucible's `output_policy` and Hearth's
+`output_decision` each define their own `EndpointFacts`, and `ac3cli play` decides inline; what
+they share is `ac3::audio::read_sink_capabilities()`, which now has a PipeWire reading beside the
+ALSA one. No network transport provides capabilities to it: a Sendspin sink reports its own in its
+role's support object.*
+
 ## What this page does not change
 
 - **It creates no new member.** The topology is a frame. The sink member is still whatever
@@ -306,6 +328,11 @@ is a design constraint on work already planned, not new work.
 ## Phases
 
 ### Phase 1: this page, and the plans repointed
+
+**Status: done** (2026-09-07). The role paragraph is in each of the four plans' first screens. The
+exit's second clause, "no plan proposes joining a third-party protocol as a client", stopped
+holding on 2026-09-15, when Hearth's sinks became Sendspin players; this page's own scope list
+says so below.
 
 Land the frame; rewrite [the appliance plan](player-appliance.md) against it (it currently
 answers a whole-house question this page makes obsolete, and predates the ESP32 result and the
@@ -320,6 +347,11 @@ path (`ci.yml:314`) classifies each PR as docs-only.
 
 ### Phase 2: one source, one sink, over HTTP
 
+**Status: not built.** Nothing serves an `Fmp4FolderWriter` folder and no code follows an HLS
+playlist. `mp4::reader` exists, and `js/src/hls-bridge.ts` feeds an hls.js player's fragments to
+the WebAssembly decoder, which is a different client with no soak test behind it
+([WebAssembly](../docs/platforms/wasm.md)). For Hearth the phase was replaced by Sendspin.
+
 The smallest end-to-end proof. Serve an existing `Fmp4FolderWriter` output over `cpp-httplib`;
 write the HLS client that follows the playlist, pulls segments, extracts access units through
 `mp4::reader` and decodes them. No discovery, no sync, no UI.
@@ -333,6 +365,14 @@ two-machine run. Latency measured, not assumed, at 48, 16, 8 and 4 frames per fr
 
 ### Phase 3: the latency and window numbers
 
+**Status: not built.** No segment-length measurement exists, `frames_per_fragment` still defaults to
+48 and `playlist_window_segments` to 0, and Low-Latency HLS is still absent (`#EXT-X-PART` appears
+nowhere in `src/mp4/src/hls.cpp`). One constraint the phase would meet has changed: an AC-4
+frame is decodable alone only where its table of contents sets `b_iframe_global`, so an AC-4
+fragment holds at least `frames_per_fragment` frames and closes on the next sync sample, and
+cannot be shorter than the interval between the stream's I-frames (`FragmentOptions` in
+`mp4.hpp`; ETSI TS 103 190-2 E.2 and E.3).
+
 Set `playlist_window_segments`, choose a default segment length for each of the two cases (a
 file being played, and a live source), and record what LL-HLS would add over the shortest
 segment length that works.
@@ -345,6 +385,12 @@ them over Wi-Fi rather than Ethernet.
 
 ### Phase 4: discovery, and more than one sink
 
+**Status: built over Sendspin, not HTTP.** `src/sendspin` discovers players by mDNS and
+`ac3hearth` plays one programme to a group of sinks, each aligned in the PCM domain. The number
+the exit asks for exists in software terms: on a home Wi-Fi network two boards' reported play
+times stayed within 549 µs of each other over ten minutes, and nobody has measured two DAC outputs
+together ([the S3 sink guide](../docs/hearth/sink-esp32-s3.md#groups)).
+
 mDNS for sources and sinks; a group of our own sinks playing the same origin; PCM-domain
 alignment between them.
 
@@ -356,6 +402,12 @@ to capture both, so this phase says how before it starts.
 
 ### Phase 5: the ESP32-S3 sink
 
+**Status: built over Sendspin, not HTTP.** `float` decode, E-AC-3 in internal SRAM and the
+network client are in `hearth_sink`. Every decode fixture runs in real time on an S3 board at
+240 MHz, from 0.07x for AC-3 mono to 0.92x for E-AC-3 7.1.4 folded to stereo
+([the S3 page](../docs/platforms/bare-metal/esp32-s3.md)), and two boards played a group for ten
+minutes with no underrun.
+
 float32 for the `double` buffers, E-AC-3 fitting in internal SRAM, and the HLS client on the
 device. Depends on a board for the real-time answer.
 
@@ -365,6 +417,11 @@ of how far short it falls.
 **Verified by:** an `ESP32-S3-DevKitC-1-N16R8`; QEMU cannot answer it. **Needs hardware.**
 
 ### Phase 6, conditional: the Sendspin conversation
+
+**Status: not begun.** Nothing has been proposed to the Sendspin project. The extension role
+runs beside `player@v1` instead, which Sendspin's specification allows, and the questions its
+reading raised are recorded on [the extension page](hearth-sendspin-extension.md#open-questions)
+and not yet raised.
 
 With Phases 2–5 as the argument, propose codec negotiation and a passthrough-capable endpoint
 capability to the Sendspin project.
@@ -406,20 +463,26 @@ afterwards, since Script Lint (`ci.yml:434`) has no docs-only gate and already r
 
 **The ESP32-S3 work is [PR #546](https://github.com/iainchesworthlabs/ac3forge/pull/546)**, opened after this page was first written. Its
 `docs/platforms/bare-metal/esp32-s3.md` is a fifth cross-branch link if this page ever cites it directly — it
-does not today, and should not until one of the two lands.
+does not today, and should not until one of the two lands. *Closed 2026-09-07: #546 merged that
+day, and the page now cites it.*
 
 **PF7's footprint table is being re-measured** in
 [#540](https://github.com/iainchesworthlabs/ac3forge/pull/540), and [#546](https://github.com/iainchesworthlabs/ac3forge/pull/546) moves the same
 numbers much further (the ARM image by 32%, `.bss` from 237,592 to 97,152). Those two PRs are
 measuring the same table against different trees, and the sequencing between them is open — it
 is the one coordination item on this page with a real chance of landing a wrong number on `main`.
+*Closed 2026-09-07: #540 merged at 12:00 UTC and #546 at 17:02, in that order, and
+[the footprint table](../docs/performance-trend.md#minimum-footprint-decoder) carries the current
+figures.*
 
 ## Deliberately not in scope
 
 - **Inventing a protocol.** HLS and CMAF exist, are implemented here, and need nobody's
   agreement.
 - **Becoming a Snapcast, Sendspin or Music Assistant *client*.** Each would mean receiving PCM,
-  which puts the codec out of the loop and leaves no reason for the member to exist.
+  which puts the codec out of the loop and leaves no reason for the member to exist. *Superseded
+  for Hearth on 2026-09-15: its sinks are Sendspin players and the compressed stream travels in an
+  extension role, so the codec stays in the loop. Snapcast and Music Assistant remain out.*
 - **Video, or any A/V sync.**
 - **A media library, catalogue or metadata store.** That is Music Assistant and it stays
   Music Assistant.
@@ -435,7 +498,8 @@ is the one coordination item on this page with a real chance of landing a wrong 
    something to argue from**; (b) Sendspin first; (c) a protocol of our own; (d) HLS only, never
    Sendspin. **Taken 2026-09-07: (a).** Cost: two transports to support eventually, and the
    Sendspin half may be refused by its own project. The reason it is cheap now is that the
-   source side is already shipped and unconnected.
+   source side is already shipped and unconnected. *Replaced for Hearth's sinks on 2026-09-15 by
+   Sendspin with an extension role, which is built; the HTTP half was not built.*
 
 2. **Is the sink one member or two?** (a) **one member covering Pi, PC and ESP32-S3, with the
    microcontroller as a platform of it**; (b) two — a desktop-class appliance and a separate
@@ -443,30 +507,38 @@ is the one coordination item on this page with a real chance of landing a wrong 
    **Recommend (a)**: it is one decoder, one client and one protocol, differing only in size,
    and the platform tree already expresses that split
    (`apps/baremetal/platform/{baremetal,host,esp32s3}`). Cost: one member's CI has to build for
-   Xtensa, which nothing in the repository does today.
+   Xtensa, which nothing in the repository does today. *Taken in effect: Hearth is one member
+   with the desktop player and the ESP32 sinks as its two forms, and CI builds the sink for
+   Xtensa and RISC-V (`build-esp32s3`, `hearth-esp32s3`, `build-esp32c3`).*
 
 3. **Does Crucible gain a network output?** (a) **yes, in a later phase — it is a source and the
    transport is the point**; (b) no, Crucible stays a local-AVR application. **Recommend (a)**,
    because Crucible plus this transport is the one thing on the page with no competitor: live
    desktop audio as Atmos, to every room. Cost: a scope change to a shipped member, and its
-   `OutputStage` gains a mode that is not a sink at all.
+   `OutputStage` gains a mode that is not a sink at all. *Not built and not decided since:
+   Crucible has no network output.*
 
 4. **Who serves the HTTP origin?** (a) **the source serves it itself** (`cpp-httplib`, already
    chosen for the appliance); (b) the source writes a folder and the user points a web server at
    it; (c) both. **Recommend (a)** with (b) documented, since (b) already works today and needs
-   no code. Cost: every source gains a listener, and therefore a threat-model section.
+   no code. Cost: every source gains a listener, and therefore a threat-model section. *Open:
+   nothing serves the folder, so (b) is the only route today.*
 
 5. **Default segment length.** (a) **choose it from Phase 3's measurements, one default for
    file playback and one for live**; (b) keep 48 frames everywhere; (c) go straight to LL-HLS.
-   **Recommend (a)**. Cost: one phase ships before the defaults are right.
+   **Recommend (a)**. Cost: one phase ships before the defaults are right. *Open: Phase 3 has
+   not run, and the defaults are still 48 frames and no window.*
 
 6. **When to approach the Sendspin project.** (a) **after Phase 2, with a working
    implementation**; (b) now, before building; (c) never. **Recommend (a)**: a protocol
    extension proposed without an implementation is a wish. Cost: if they are designing codec
    negotiation right now, we miss the window — worth watching their spec repository for that
-   specifically.
+   specifically. *Not yet: the extension page's decision 3 records its questions there and
+   nowhere else.*
 
 7. **Does the WASM decode page become an HLS sink?** (a) **yes, nearly free — browsers already
    do HLS, and the decode module exists**; (b) no. **Recommend (a)** as a demo rather than a
    product: it makes the transport visible to anyone with a browser, which is the cheapest
-   possible proof that the origin is standard. Cost: a page and a fetch loop.
+   possible proof that the origin is standard. Cost: a page and a fetch loop. *Not built as a
+   page: the decode demo takes a file. The JS package has an hls.js bridge that feeds an HLS
+   player's fragments to the decoder, with no soak test against a live server.*

@@ -185,7 +185,7 @@ ac3forge_pkgconfig_libname(_ac3forge_forge_pc_libname forge_shared ac3forge ac3f
     "${_ac3forge_forge_install_targets}")
 ac3forge_install_pkgconfig(
     NAME ac3forge
-    DESCRIPTION "${PROJECT_DESCRIPTION}"
+    DESCRIPTION "Clean-room AC-3 (ATSC A/52) and E-AC-3 encoder and decoder with a spatial object layer"
     LIBNAME "${_ac3forge_forge_pc_libname}")
 
 # ac3::signing is mandatory, not an AC3FORGE_BUILD_<NAME>-gated optional component (same as
@@ -537,9 +537,18 @@ if(AC3FORGE_BUILD_CAPI)
     # libac3forge_c.so embeds the codec and needs no libac3forge.so beside it.
     ac3forge_pkgconfig_libname(_ac3forge_capi_pc_libname forge_c_shared ac3forge_c ac3forge_c_static
         "${_ac3forge_capi_install_targets}")
+    # ac3forge.h declares its AC-4 section either way; with AC3FORGE_BUILD_AC4 off those functions
+    # return AC3FORGE_ERROR_UNSUPPORTED (src/capi/src/ac4_absent.cpp).
+    if(AC3FORGE_BUILD_AC4)
+        set(_ac3forge_capi_pc_description
+            "Stable C11 API over the AC-3, E-AC-3 and AC-4 encoders and decoders")
+    else()
+        set(_ac3forge_capi_pc_description
+            "Stable C11 API over the AC-3 and E-AC-3 encoders and decoders")
+    endif()
     ac3forge_install_pkgconfig(
         NAME ac3forge_c
-        DESCRIPTION "Stable C11 API over ac3::forge's encode/decode core"
+        DESCRIPTION "${_ac3forge_capi_pc_description}"
         LIBNAME "${_ac3forge_capi_pc_libname}"
         STATIC_REQUIRES ac3forge)
 endif()

@@ -2,37 +2,48 @@
 
 Five separate mechanisms, not one, and it matters which is which:
 
-- **The hard gate**: `ac3perf` (`tests/performance/test_performance.cpp`) asserts the
-  encoder stays faster than real time (with a 2x safety margin), on every push and
-  every PR. A failure here blocks CI outright - see
-  [CI Status](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/ci.yml).
+- **The hard gate**: `ac3perf` (`tests/performance/test_performance.cpp`) asserts that
+  each workload, encode or decode, of AC-3, E-AC-3, the Atmos object layer and AC-4
+  finishes within twice its real-time budget (`kSlackFactor`): real time is the
+  functional requirement, and the second factor is headroom for a runner slower than a
+  development machine. It runs in the pull-request gate, where the `Performance` ctest
+  label runs alone and last, in the merge queue and after each merge. A failure here
+  blocks CI outright - see
+  [CI Status](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml).
   Not run under the ASan/UBSan leg: instrumented code has nothing useful to say about
   throughput at any slack factor, so that leg excludes the `Performance` label entirely
   (`CMakePresets.json`'s `test-linux-llvm-asan-ubsan` preset).
-- **The pull-request comparison and gate**: `performance-compare` measures the
-  PR head against its merge base and publishes the table. Its infrastructure is
-  informational (`continue-on-error`), but an explicit hard-regression verdict
-  is passed to the separate blocking `performance-gate` job. No measurement or
-  an approved `perf-regression-approved` label passes the gate.
+- **The merge queue's comparison and gate**: for an entry that changes `src/`,
+  `performance-compare` (`_compare.yml`, called from `pr-gate.yml`) measures the
+  entry's head against the commit it is queued on and publishes the table. Its
+  infrastructure is informational (`continue-on-error`), but an explicit
+  hard-regression verdict is passed to the separate blocking `performance-gate`
+  job. No measurement or an approved `perf-regression-approved` label on the
+  pull request passes the gate.
 - **This page's whole-frame tables**: `ac3bench` (`tests/performance/bench_encoder.cpp`)
   runs the same configurations for longer (200 frames) and records the actual
-  ms/frame number, not just a pass/fail, on every push to `main`. It exists
+  ms/frame number, not just a pass/fail, in the run after each merge to `main`, one
+  record per run (a burst of merges is one run). It exists
   to answer a question the hard gate cannot: is throughput quietly drifting slower
-  over time even while it keeps passing.
+  over time even while it keeps passing. The series is Speed: a workload's ms per frame
+  against its own frame budget.
 - **This page's per-kernel tables**: `ac3kernelbench`
   (`tests/performance/kernel_bench.cpp`) times each hot kernel in isolation (ns/call,
-  fed real audio through the real windowing + forward MDCT) on the same pushes. It
+  fed real audio through the real windowing + forward MDCT) in the same runs. It
   answers the question one level below `ac3bench`'s: when a whole-frame number
   drifts, *which stage* moved - without anyone having to reattach a profiler to find
   out.
 - **This page's memory tables**: `ac3membench`
   (`tests/performance/bench_memory.cpp`) counts what the others time: heap
-  allocations and allocator traffic per frame, live-byte drift, and peak RSS,
+  allocations and allocator traffic per frame (Allocation per frame), the live bytes
+  still held after the steady-state frames (Live growth), and peak RSS,
   across the same encoder configurations *plus* the decode paths the timing
   benches never covered. It records the memory-usage programme's progress the
   same way the whole-frame series recorded the CPU programme's, and - unlike
   ms/frame - its numbers are near-deterministic for a fixed workload, so a
-  flagged row is a real behavioural change, not runner noise.
+  flagged row is a real behavioural change, not runner noise. Allocation per frame
+  counts allocator traffic, not memory in use: a buffer allocated and freed every frame
+  counts every time and is held by none.
 
 All of this exists because a severe encoder regression (a per-call recomputation the
 forward MDCT should have cached) once shipped with no coverage to catch it: the hard
@@ -47,13 +58,19 @@ The AC-3, E-AC-3 and Atmos encoders are `plain_51` and `plain_51_fast_mdct`,
 `atmos_4obj_decode`. AC-4 adds `ac4_stereo_encode` and `ac4_51_encode`, and
 `ac4_stereo_decode` and `ac4_51_decode`, which read those encoders' streams. The decode series
 are timed against streams encoded in the same run: a decode number only means something against
-a stream whose rate and tool set are known.
+a stream whose rate and tool set are known. By name, `plain_*` and `ac3_*` are AC-3 (`plain_51`
+is `ac3::FrameEncoder` at 5.1, 448 kbit/s), `eac3_*`, `ecpl_*` and `atmos_*` are E-AC-3 (Atmos is
+joint object coding carried in E-AC-3) and `ac4_*` is AC-4. The memory series name their
+workloads `<codec>_<layout>_encode` and `_decode` (`ac3_51_encode`, `ecpl_51_encode`,
+`atmos_4obj_decode`), with one for enhanced coupling that the timing series lack.
 
 An AC-4 frame is longer than an AC-3 one. At `frame_rate_index` 13 it is 2 048 samples, 42.67 ms
 at 48 kHz, against A/52's 1 536 samples and 32 ms, so each result carries its own real-time
-budget and the AC-4 rows are held to theirs. The per-kernel tables add AC-4's shared transforms:
-`ac4_mdct512_forward`, `ac4_imdct512_inverse`, `ac4_fft512_forward` and `ac4_qmf_analysis64`.
-AC-4 decode quality has its own series on [Quality trend](quality-trend.md#ac-4-decode-quality).
+budget and the AC-4 rows are held to theirs. The AC-4 workloads encode the same fixture at
+`frame_rate_index` 13, stereo at 192 kbit/s and 5.1 at 448. The per-kernel tables add AC-4's
+shared transforms: `ac4_mdct512_forward`, `ac4_imdct512_inverse`, `ac4_fft512_forward`,
+`ac4_qmf_analysis64` and `ac4_qmf_synthesis64`. AC-4 decode quality has its own series on
+[Quality trend](quality-trend.md#ac-4-decode-quality).
 
 Every workload is fed real programme material (`tests/golden/audio/reference_51.wav`,
 through `tests/performance/real_audio.hpp`), not the 440 Hz tone `ac3bench` and
@@ -126,7 +143,8 @@ pass forever while the thing it nominally covers rots.
 to the `quality-history` branch (reused, not a new branch - the same reasoning
 [Quality trend](quality-trend.md) already gives for a dedicated branch over
 `gh-pages`: incremental, no publish-cadence coupling, fetchable client-side with no
-auth). On top of the hard gate's absolute 32ms budget, it applies a trailing-baseline
+auth). On top of the hard gate's absolute per-frame budget (32 ms for AC-3 and E-AC-3,
+42.67 ms for AC-4), it applies a trailing-baseline
 check: a soft one (20% slower than the trailing 10-run mean, `::warning::` only) and
 a hard one (100% slower - i.e. at least doubled - `::error::`, fails the
 `persist-performance-trend` CI job *after* the numbers are still recorded, so a big
@@ -155,10 +173,10 @@ tiers on **two** churn metrics per series - allocations/frame and bytes/frame,
 either one regressing flags the record - and it gates like the whole-frame
 series does (the hard tier fails the job, after the push). One check is absolute
 rather than trend-relative: `steady_live_growth`, the bytes still held live
-after ~200 steady-state frames, warns above 4 KiB and hard-fails above 1 MiB,
+after the steady-state frames (Live growth), warns above 4 KiB and hard-fails above 1 MiB,
 because a leak is a leak regardless of what last week's runs did.
 
-Only `linux-gcc` is measured, not the full CI matrix: a timing trend's value is in
+Only `linux-gcc` (and, for the whole-frame series, `linux-gcc-arm64`) is measured, not the full CI matrix: a timing trend's value is in
 comparing one consistent runner against its own history over time, not in comparing
 GitHub's runner classes against each other the way the gold-reference SNR numbers
 usefully are cross-platform.
@@ -589,16 +607,19 @@ decode spends; the bare row is what the oracle costs.
 
 ## Memory trend
 
-Same commits, a different resource: each workload's heap-allocation count and
-allocator traffic per frame from `ac3membench`, one series per workload -
-including the decode paths the timing benches don't cover. The Δ column is
+Same runs, a different measure: **Allocation per frame**, each workload's
+heap-allocation count and allocator traffic per frame from `ac3membench`, one
+series per workload - including the decode paths the timing benches don't
+cover. It counts allocator traffic, not memory in use: a buffer allocated and
+freed every frame counts every time and is held by none. The Δ column is
 bytes/frame against the series' trailing 10-run mean, the same window and
-thresholds `append_memory_history.py` gates with (≥ +20% soft, ≥ +100% hard on
-*either* churn metric); a non-zero **live growth** is its own signal (bytes
-still held after ~200 steady-state frames - on the trunk that check is
-absolute rather than trend-relative; see below for how it is scoped before a
-merge). These counts are near-deterministic for a fixed workload: a
-flagged row is a real change in allocation behaviour, not runner noise. The
+thresholds `append_memory_history.py` flags with (≥ +20% soft, ≥ +100% hard on
+*either* churn metric); no absolute limit sits on Allocation per frame. A
+non-zero **live growth** is its own signal (bytes still held after the
+steady-state frames, 199 of a 200-frame run for most workloads - on the trunk
+that check is absolute rather than trend-relative, warning above 4 KiB and
+failing above 1 MiB). These counts are near-deterministic for a fixed workload:
+a flagged row is a real change in allocation behaviour, not runner noise. The
 memory-usage optimization programme's phases land as visible downward steps in
 these series - that is what this table exists to show.
 
@@ -609,21 +630,24 @@ already-merged commit, blocking nothing and belonging to whoever pushed next.
 The E-AC-3 encode step from 67 to 199 allocs/frame in 2026-08 (issue #544) is
 exactly how it was found: the gate fired on the merge, and by then the merge
 was the thing it was reporting on. The
-`Memory vs merge base` job (`tools/ci/compare_memory.py`) closes that: it
-builds `ac3membench` at the pull request's head and at its merge base and runs
+`Memory vs base` job (`tools/ci/compare_memory.py`, in `_compare.yml`, run for a
+merge queue entry that changes `src/`) closes that: it
+builds `ac3membench` at the entry's head and at the commit it is queued on and runs
 each once, comparing the same two churn metrics against the same thresholds,
 imported from `append_memory_history.py` so the two gates cannot disagree. One
 run per side is the whole measurement - these counts do not move between runs
 of a fixed binary, which is why this gate needs none of the repetition and
-interleaving the `Performance vs merge base` job uses to see past timing
-noise. Its hard tier fails the `Memory gate` check;
+interleaving the `Performance vs base` job uses to see past timing
+noise. Its hard tier fails the `Memory gate` job, and with it the queue entry;
 `memory-regression-approved` on the pull request turns that back into an
-annotation, the way `perf-regression-approved` does for speed.
+annotation, the way `perf-regression-approved` does for speed. The gate reads
+the label when it runs, so add it before the entry gets there, or after a
+failure and queue the pull request again.
 
 In that pre-merge job the leak check keeps its absolute thresholds but applies
-them to what the branch changed - crossing a threshold the merge base was
-under, or growing by more than one. Three of the six workloads already retain
-bytes across their steady state and two of them sit past the 4 KiB warn line,
+them to what the entry changed - crossing a threshold the base was
+under, or growing by more than one. Most of the workloads already retain
+bytes across their steady state and several sit past the 4 KiB warn line,
 so a per-PR check copied over unchanged would annotate every pull request for
 the merge base's own findings. `persist-performance-trend` keeps the
 unconditional absolute view on the trunk.
@@ -645,11 +669,11 @@ every output-producing CLI command memory-flat at any programme length (a
 3-minute 5.1 encode peaked at 437.8 MiB before the programme and 9.3 MiB
 after; decode 217 → 28.5 MiB, `spdif` 225.7 → 18.0 MiB).
 
-Two of those three encode figures no longer describe the code. At `main` =
-`e982712b` the same leg records E-AC-3 encode at 53,845.7 bytes/frame and
-199.11 allocations, and Atmos at 53,606.4 and 219.10 - both of them above the
-*pre*-programme baselines quoted above, 157 and 196 allocations. The decode
-series is unaffected, and so is AC-3 encode, which still reads 26,778.5 and
+Two of those three encode figures stopped describing the code for a while. At
+`main` = `e982712b` the same leg recorded E-AC-3 encode at 53,845.7 bytes/frame
+and 199.11 allocations, and Atmos at 53,606.4 and 219.10 - both of them above
+the *pre*-programme baselines quoted above, 157 and 196 allocations. The decode
+series was unaffected, and so was AC-3 encode, which still read 26,778.5 and
 86.04. That last row is why the other two can be read at all: a workload that
 still matches its landed figure to the decimal, on the same leg, rules out
 platform, stdlib and measurement-context drift. Without that control the two
@@ -665,18 +689,24 @@ step to PR #352's per-channel exponent-run planner: the commit before it
 table's, the step does not). AC-3 encode is untouched because it plans its
 exponent runs through its own encoder.
 
-The extra churn is a defect rather than the planner's intended cost, and is
+The extra churn was a defect rather than the planner's intended cost, and was
 tracked as [#544](https://github.com/iainchesworthlabs/ac3forge/issues/544).
-`encode_run` in `src/forge/src/encoder/eac3_frame.cpp` assigns the by-value
+`encode_run` in `src/forge/src/encoder/eac3_frame.cpp` assigned the by-value
 return of `ac3::encode_exponents`, which owns a `std::vector`, so each run
-reallocates that buffer on every frame; the planner multiplied the number of
+reallocated that buffer on every frame; the planner multiplied the number of
 runs from one per channel to one per run per channel. The bench's own columns
-carry the signature. Before the step each encode workload's steady-state
+carried the signature. Before the step each encode workload's steady-state
 count sat below its first frame's (E-AC-3 134 first, 67.00 steady), which is
-warm-up followed by reuse. After it the steady-state count exceeds the first
+warm-up followed by reuse. After it the steady-state count exceeded the first
 frame's (159 first, 199.11 steady), which is a path allocating fresh storage
-every frame. `run.decoded` and `run.bap` in the same function reuse their
-capacity correctly, as does `ChannelPlan::runs`.
+every frame. `run.decoded` and `run.bap` in the same function reused their
+capacity correctly, as did `ChannelPlan::runs`.
+
+The fixes of 2026-09-11 (`6927156da`, `9d5dcb136`) closed #544, and the series
+shows the steps. By the record for 2026-09-12 (`4e64769f`) E-AC-3 encode read 41.15
+allocations/frame against 67 when the programme landed, and 34,582 bytes against 28,792;
+Atmos encode read 81.14 against 106 and 32,980 against 32,656; and AC-3 encode, whose own
+churn had fallen too, read 58.06 against 86 and 20,111 against 26,778.
 
 The fast-IMDCT rollout that followed
 ([Validation → Performance and reference modes](verification.md#performance-and-reference-modes))
@@ -693,6 +723,10 @@ encode only; roadmap PF1 added the three decode series after the fact):
 measured 180-second decodes went from 3.53 s to 0.79 s (AC-3) and 3.49 s to
 0.75 s (E-AC-3) when the fast path became the default - `mode=reference`
 runs the old numbers on purpose.
+
+<div id="memory-trend-app">
+  <p class="performance-trend-status">Loading memory trend data…</p>
+</div>
 
 ## Minimum-footprint decoder
 
@@ -714,10 +748,10 @@ objects reconstructed, the two 5.1 streams and the 7.1.4 one are decoded a secon
 the §7.8 output stage, folded to Lo/Ro stereo in line mode (`ac3_fold`, `eac3_fold`,
 `eac3_714_fold`), the dynrng stream is decoded in line mode without a fold (`eac3_line`, the
 one fixture where line mode has work to do), and the height stream's objects are reconstructed
-and placed onto 7.1.4 (`eac3_atmos_render`). Numbers below are from runs of
-`feature/esp32-output-stage-profile` on 2026-09-11, `arm-none-eabi` GCC 14.2.1 under QEMU
-10.2.1's `mps2-an385`; `build-footprint` in
-`.github/workflows/_build.yml` reproduces them on every push, and
+and placed onto 7.1.4 (`eac3_atmos_render`). Numbers below were measured on 2026-09-11 for
+PR #654, `arm-none-eabi` GCC 14.2.1 under QEMU 10.2.1's `mps2-an385`; `build-footprint` in
+`.github/workflows/_build.yml` reproduces them, after a merge that changes the ESP lane's
+trees ([CI lane partitions](ci-lanes.md)) and in every nightly run, and
 `tools/checks/run_baremetal_probe.sh` reproduces them locally.
 
 The table below was first measured early in PF6/PF7's own feature branch (PR #351). Several
@@ -731,7 +765,7 @@ or the ceiling before merging. The image had already reached 412,516 bytes by th
 The same thing happened a second time. The largest movement in that re-measurement was a
 relocation rather than growth. AP3's Pimpl sweep (`ee5ff91e`) gave both decoders a
 `struct Impl; std::unique_ptr<Impl> impl_;`
-(`src/forge/include/ac3/decoder/decoder.hpp:435` and `:758`), so `sizeof(ac3::FrameDecoder)` and
+(both in `src/forge/include/ac3/decoder/decoder.hpp`), so `sizeof(ac3::FrameDecoder)` and
 `sizeof(ac3::Eac3Decoder)` fell from 12,952 and 27,408 bytes to a single 4-byte pointer each, and
 the state they used to hold in place now lives on the heap. That state came out of automatic
 storage: both decoders are locals in `decode_ac3()` and `decode_eac3()`, and `.bss` was unchanged
@@ -1152,10 +1186,6 @@ built as the stream's layout is first seen; the steady state allocates 69 to 157
 387 to 408 KB at 5.1 and 673 KB at 5.1.4, the syntax layer's element vectors built afresh each
 frame (`vector<Track>` the largest). That is the gap to zero here, as it is for the AC-3 and E-AC-3
 decoders above, and the peak is what D14c has to bring under the S3's 245,000 bytes for 2.0.
-
-<div id="memory-trend-app">
-  <p class="performance-trend-status">Loading memory trend data…</p>
-</div>
 
 <style>
 #memory-trend-app { margin: 1.5em 0; }

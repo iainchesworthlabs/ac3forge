@@ -1,28 +1,57 @@
 # Recasting ac3forge as a family: the library, Forge and Crucible
 
-!!! success "Status as of 2026-09-08: mostly landed"
-    Written and decided 2026-09-05. **Phases 1 to 5 are in.** Phase 6 is partly in — the
-    `ac3forge-crucible-*` packages and the release-doc rows exist, the per-component description
-    strings do not. **Phase 7 has not started**: it is sequenced by the driver signing session,
-    and the driver's INF still declares the endpoint as "Desktop Atmos".
+!!! success "Status as of 2026-09-30: phases 1 to 6 largely built, phase 7 not started; the naming decisions were overtaken"
+    Written and decided 2026-09-05. **Phases 2 to 5 are in.** Phase 1 is in except the
+    `AC3DESK_*` fold (49 uses remain under `apps/crucible`) and one sentence of Crucible's About
+    dialog. Phase 4's display strings are in; Crucible's bundle identifier and a configure
+    summary grouped by member are not. Phase 6 is partly in: the `ac3forge-crucible-*` packages,
+    the release-doc rows and an extended DEB description for the Crucible and Hearth components
+    exist, and the one-line synopsis `apt show` opens with still names the library. **Phase 7 has
+    not started**: it is sequenced by the driver signing session, and the driver's INF still
+    declares the endpoint as "Desktop Atmos". Each phase below carries its own status line.
+
+    **The naming decisions on this page were overtaken by the AC-4 programme.** On 2026-09-25 the
+    user chose to rename the programs (decision 35 of [the AC-4 plan](ac4.md#decisions-of-2026-09-25)),
+    and on 2026-09-26 chose the members' own names: `ac3cli`, `ac3gui`, `ac3hearth` and
+    `ac3crucible` become `forge`, `forge-gui`, `hearth` and `crucible`. On 2026-09-29 the user named
+    the family "ICL Forge" in place of `ac3forge` (identifiers `iclforge` and `ICLFORGE_`;
+    plain `forge` is taken on PyPI, npm, crates.io and Homebrew core) and, reading that nothing
+    is published, that no shim or kept-working period is needed. (Checked 2026-09-30: PyPI holds
+    two prereleases of `ac3forge`, 0.9.0b1 and 0.10.0b1, and the Homebrew tap is public; npm and
+    crates.io hold nothing under the family's names.) That replaces this page's decisions 2, 5
+    and 6 and its recommended scheme S1: the scheme it costed as S3 was taken, with `forge` and
+    `forge-gui`, and the family name changed as well.
+    **The execution is still a plan.** It is phase N1 of the AC-4 plan, in two tasks, N1A (the
+    programs) and N1B (the libraries, studied in [layout.md](layout.md)); the study's fourteen
+    decisions wait for the user, and nothing moves before they are answered. Until N1 runs the
+    tree, the docs and this page use the current names (`ac3cli`, `ac3gui`, `ac3hearth`,
+    `ac3crucible`, `ac3forge`).
 
     This page plans the recasting of the repository from one name over everything into three
     named products: **the library**, **Forge** (the `ac3cli` and `ac3gui` tooling) and
-    **Crucible** ([the Crucible guide](../docs/crucible/index.md)). Design sections say what changes
-    and why, each phase carries an exit criterion and says how it is verified, and
-    [Decisions](#decisions) records the fifteen open questions and the option taken on each.
+    **Crucible** ([the Crucible guide](../docs/crucible/index.md)). Hearth became a fourth member
+    on 2026-09-07 ([the appliance plan](player-appliance.md#which-member-it-belongs-to)), and
+    is built (`apps/hearth`, `src/sendspin`); the tables below have no column for it. Design
+    sections say what changes and why, each phase carries an exit criterion and says how it is
+    verified, and [Decisions](#decisions) records the fifteen open questions and the option taken
+    on each.
 
-Today `ac3forge` names everything at once. It is the repository, the site, `project(ac3forge)`
-(`CMakeLists.txt:8`), the CPack package, the PyPI project, the vcpkg port, the Conan recipe, the
-winget identifier, the Homebrew formula and its tap; it is the library (`ac3::forge`,
-`libac3forge`, `find_package(ac3forge)`, 215 C functions prefixed `ac3forge_`); and it is the
-tooling's product name, because the GUI sets `setApplicationName("ac3forge")`
-(`apps/gui/main.cpp:515`), titles its window `ac3forge — <source>` and heads its About box
-`ac3forge`, and `ac3cli` opens its usage text with `ac3forge — clean-room AC-3 / E-AC-3`
-(`apps/cli/usage.cpp:760`). The word appears in 331 files. Crucible, named on 2026-09-04, is the
-one member with a name of its own applied consistently: display "Crucible", binary
-`ac3crucible`, namespace `ac3::crucible`, option `AC3FORGE_BUILD_CRUCIBLE`, package
-`ac3forge-crucible`. "Forge" as a word on its own appears nowhere in the tree.
+    The counts, line numbers and CI descriptions in the design sections are from the tree of
+    2026-09-05 and are not kept current; where a statement has since been overtaken, a note in
+    the section says so.
+
+On 2026-09-05 `ac3forge` named everything at once. It was the repository, the site,
+`project(ac3forge)` (`CMakeLists.txt:8`), the CPack package, the PyPI project, the vcpkg port, the
+Conan recipe, the winget identifier, the Homebrew formula and its tap; it was the library
+(`ac3::forge`, `libac3forge`, `find_package(ac3forge)`, 215 C functions prefixed `ac3forge_`); and
+it was the tooling's product name, because the GUI set `setApplicationName("ac3forge")`, titled
+its window `ac3forge — <source>` and headed its About box `ac3forge`, and `ac3cli` opened its
+usage text with `ac3forge — clean-room AC-3 / E-AC-3`. The word appeared in 331 files. Crucible,
+named on 2026-09-04, was the one member with a name of its own applied consistently: display
+"Crucible", binary `ac3crucible`, namespace `ac3::crucible`, option `AC3FORGE_BUILD_CRUCIBLE`,
+package `ac3forge-crucible`. "Forge" as a word on its own appeared nowhere in the tree. Phase 4
+has since put "Forge" in the CLI's banner and the GUI's About box, with the family named beneath
+it; `setApplicationName("ac3forge")` is unchanged.
 
 This page names the members, says what each owns, and lists the cheapest way to make the family
 visible without touching an identifier anyone has installed.
@@ -30,6 +59,10 @@ visible without touching an identifier anyone has installed.
 ## The model
 
 Three members, one family name, and a shared floor.
+
+*This is the model of 2026-09-05. Hearth has since become a fourth member, and the family name and
+the program names are to change in phase N1 of the AC-4 plan (see the status block above), so
+"None of it changes" below no longer holds for the names.*
 
 **The family is `ac3forge`.** The repository, the site, the CMake project, the CPack name, the
 `v*` tag stream, the SBOM and signing-key names, the GitHub slug (91 files). None of it changes.
@@ -99,6 +132,16 @@ URIs, the driver and the npm exports.
 | S4, rename the library's identifiers | as S1 | `ac3::codec` or similar | Forge is unambiguous | as now | unchanged | `libac3forge0` and the `-dev` packages renamed | the C ABI, the ABI allowlists, every package config and registry, 683 files using `ac3::`, 245 using `AC3FORGE_`; a breaking release |
 | S5, a new umbrella name | new | `ac3forge` becomes a member name | Forge | Crucible | any | every published id | 331 files; the repository, Pages URL, PyPI trusted publisher, tap name and every verify snippet key on the literal `ac3forge` |
 
+**What was decided instead.** The user's choices of 2026-09-25 to 2026-09-29 are none of these rows
+as written. The programs take the names S3 offered as `forge` and `forge-gui`, with `hearth` and
+`crucible` beside them. The family is renamed as well, which is S5's umbrella-name row with
+`iclforge` as the identifier and "ICL Forge" in prose; and the identifiers that carry the family
+name go with it, as S4 costed: N1B renames the C API prefix, the CMake package, the Kconfig
+prefix, the environment variables and the wire strings outright, with no shim
+([the AC-4 plan](ac4.md#n1-the-names)). The C++ namespace is a question the layout study puts to
+the user (its decision 2), and it has not been answered. **Not yet done**: the tree still uses the
+current names throughout. The three rules below are S1's, and hold until N1 replaces them.
+
 Under S1 three rules are written down once, on the Library index page, the Forge index page and
 in CONTRIBUTING.md:
 
@@ -114,6 +157,8 @@ The tooling's namespaces are the one code-level inconsistency worth folding whil
 `ac3cli` and `ac3cli::commands` (38 declarations), `ac3::cli::platform` (3), `ac3gui` (2) and
 `ac3::apps` against Crucible's `ac3::crucible`. A fold to `ac3::cli`, `ac3::gui` and `ac3::apps`
 is internal, touches no consumer, and is optional ([Phase 4](#phase-4-display-strings-and-in-tree-identities)).
+It was not made: `namespace ac3cli` is in 41 files and `namespace ac3gui` in 18, and Hearth has
+`ac3::hearth` beside Crucible's.
 
 ## Directory layout
 
@@ -121,6 +166,16 @@ Recommended: nothing moves. The tree already separates the members at the direct
 (`src/`, `apps/cli` + `apps/gui` + `apps/common`, `apps/crucible`), and the places that would
 say the family are prose: the README's layout block, CONTRIBUTING's layout rule, the configure
 summary.
+
+**As built, and overtaken.** The only move the table below advised against that happened is in
+`docs/`: on 2026-09-14 the CLI reference and the GUI guide went to `docs/forge/cli/` and
+`docs/forge/gui/`, Crucible's promotion record to `docs/crucible/design/`, and the flat
+bare-metal page was split into `docs/platforms/bare-metal/` (#674). The tree also gained
+`apps/hearth`, `src/sendspin`, `src/arithmetic` and the four AC-4 libraries, `src/ac4`,
+`src/ac4core`, `src/ac4dec` and `src/ac4enc`. N1B ([layout.md](layout.md)) reopens the source
+layout: its recommended L2 renames `src/forge` to `src/ac3` and takes five libraries that know
+no codec out of it, so that AC-4 sits beside AC-3 and E-AC-3. That study is a proposal, and
+its decisions are with the user.
 
 | Path | Today | After (recommended) | The move that was considered, and what it breaks |
 |---|---|---|---|
@@ -144,6 +199,16 @@ it is missing today (`src/capi`, `src/ac4`, `src/ac3iab`, `src/iamf`, `src/admbr
 Under the recommended scheme every token below is unchanged. The table records what each is,
 which member owns it, and what a rename would need, so the cost of any later scheme is on the
 page rather than discovered.
+
+**As of 2026-09-30, and overtaken.** The State column is from 2026-09-05; checked against the
+registries and the tree on 2026-09-30, it still holds: PyPI has `ac3forge` 0.9.0b1 and 0.10.0b1;
+npm has no `ac3forge-wasm-decoder`, and crates.io no `ac3forge` or `ac3forge-sys`; the tap
+`iainchesworthlabs/homebrew-ac3forge` is public; the four winget versions are staged; and the
+latest release, v0.10.0-beta.1 (2026-09-01), carries no Crucible or Hearth package. The last two
+columns cost a rename with compatibility paths. N1 renames the tokens in the table outright
+instead, with no path: the family's in N1B (its naming map is in
+[layout.md](layout.md#e-the-naming-map)) and the programs' registrations in N1A. The costs it
+names are GitHub's, the repository name, the Pages address, release tags and asset names.
 
 | Identity | Member | Where | State | Under S2 | Deprecation path if ever renamed |
 |---|---|---|---|---|---|
@@ -199,12 +264,19 @@ family docs say so and this plan does not fight it.
 ## The docs
 
 !!! note "The counts in this section are as of 2026-09-05, when the page was written"
-    The regroup below has since landed: `main` carries **seven** tabs and 81 pages, and the nav
-    begins at `mkdocs.yml:65`. No end line is cited, here or anywhere else in this section — the
-    nav is append-only, so every addition moves it, and the original `65-147` had already gone
-    stale by two whole tabs (it stopped at the end of Crucible and omitted Platforms and
-    Project). The "Today" columns and the "Before" list below are kept as written, because they
-    are what the plan reasoned from.
+    The regroup below has since landed, and grown. On 2026-09-08 `main` carried seven tabs and 81
+    pages; on 2026-09-30 it carries ten top-level entries and 100 pages, all of them in the nav:
+    Home, Getting started, Library, Validation, Performance & quality, Forge, Crucible, Hearth,
+    Platforms and Project. It differs from the plan below in these ways. Concepts sits under
+    Getting started, and Validation and Performance & quality are tabs of their own rather than
+    parts of Library. Hearth has a tab. The CLI reference and the GUI guide moved to
+    `docs/forge/cli/` and `docs/forge/gui/` on 2026-09-14 (#674), where the plan said no page
+    moves. `docs/forge/index.md`, `docs/library/capabilities.md` and `docs/security.md` exist, as
+    proposed. This page and the other plans are not on the site: they were taken off it on
+    2026-09-08, so the `family/recasting.md` entry below does not exist. No line of the nav is
+    cited, here or anywhere else in this section, because every addition moves it. The "Today"
+    columns and the "Before" list below are kept as written, because they are what the plan
+    reasoned from.
 
 The site had 73 pages under 12 tabs when this was written. Crucible is absent from the home page,
 the quick start and the concepts overview; `README.md:64-68` still places it in `apps/windows/`
@@ -332,6 +404,13 @@ promises they are stable. So the regrouping is a tag, not a renumbering:
 
 ## CI
 
+*This section describes the CI of 2026-09-05. Since 2026-09-29 pull requests run `pr-gate.yml`, whose
+planner decides what a change builds, the merge queue adds Windows MSVC and the Qt GUI, and the
+legs in the table below run after the merge ([CI for many agents](../docs/ci-agentic.md)). There
+are 28 workflow files. The legs are now defined in `_ci-windows.yml`, `_ci-linux.yml` and
+`_ci-macos.yml`, which `_build.yml` calls, and the docs-only rule described below is now the
+planner's "documentation only" class.*
+
 Seventeen workflow files; `_build.yml` is the reusable matrix (11 legs) plus eight standalone
 jobs; `ci.yml` aggregates 22 jobs behind the required check `CI Status`
 (`.github/branch-protection.md:27-31`, alongside `Branch Name` and `Scan dependency diff`).
@@ -368,6 +447,14 @@ every scheme and can start before a single decision is taken. Phase 3 onward dep
 decisions named in each.
 
 ### Phase 1: the stale facts and Crucible's loose ends
+
+**Status, 2026-09-30: in, except two items.** The README, CONTRIBUTING, the option's help string,
+the comments in `tests/CMakeLists.txt` and `coverage_crucible.ps1`, the `.desktop` `GenericName`,
+the six translation catalogues, the QML tests' settings store and the gold-reference script's
+comments were corrected. Not done: the `AC3DESK_*` fold, of which 49 uses remain in
+`apps/crucible/CMakeLists.txt`, `apps/crucible/ui/tests/CMakeLists.txt` and
+`crucible_controller.{cpp,hpp}`, so the exit criterion's grep is not empty; and the About dialog's
+text still ends with "An ac3forge demonstration".
 
 One rename already happened and left the tree saying two things. This phase makes the current
 state true everywhere before the family is drawn over it.
@@ -413,6 +500,9 @@ only source-string changes.
 
 ### Phase 2: a path-literal check
 
+**Status, 2026-09-30: built.** `tools/checks/check_doc_paths.py` exists and runs in the Script
+Lint job, which now lives in `_static.yml`. Its prose exemption list names the plans by file.
+
 Every earlier move left a stale path somewhere `--strict` cannot see. Before any page or nav
 moves, a small check makes that class of drift visible: `tools/checks/check_doc_paths.py`
 resolves every markdown link target under `docs/`, `README.md`, `CONTRIBUTING.md`, `SECURITY.md`
@@ -432,6 +522,14 @@ link turns it red.
 
 ### Phase 3: the family statement
 
+**Status, 2026-09-30: built, with differences.** The README opens with a table of the family, now
+four rows (the library, Forge, Crucible and Hearth); `docs/index.md`, `quickstart.md` and
+`concepts/index.md` each name Crucible; `docs/forge/index.md`, `docs/library/capabilities.md` and
+`docs/security.md` exist; and "AC3Forge Forge" is written nowhere as a name. The three naming
+rules are in `CONTRIBUTING.md` and not on the Library and Forge index pages. The nav has ten
+top-level entries where the plan had seven, and the CLI and GUI pages moved (#674): see the note
+in [The docs](#the-docs).
+
 Depends on decisions 1, 3, 7, 8, 10 and 11. Lands the README first screen, the `docs/index.md`
 landing page (and `docs/library/capabilities.md` under 8(b)), the seven-tab nav,
 `docs/forge/index.md`, this page in the nav, the CONTRIBUTING layout rule, the `security.md`
@@ -448,6 +546,16 @@ seven tabs; the README rendered on GitHub; `grep -rn "AC3Forge Forge"` returns n
 bundle comparison still passes (nothing under `docs/assets/` changed).
 
 ### Phase 4: display strings and in-tree identities
+
+**Status, 2026-09-30: partly built.** In: the CLI banner and the GUI's About box say "Forge" with
+the family beneath ("Forge — the AC3Forge encoder tools"), the `ac3gui.desktop` `Comment`, and the
+`ac3cli --version` line, which still prints `ac3forge <version>`. `setApplicationName` and the
+settings stores are unchanged. Not built: Crucible's `MACOSX_BUNDLE_GUI_IDENTIFIER` (the GUI's and
+Hearth's are set, `com.iainchesworthlabs.ac3gui` and `com.iainchesworthlabs.ac3hearth`), the
+configure summary grouped by member (it prints CLI, GUI, tests, examples and Python, and no line
+for Crucible or Hearth being built), and the optional namespace fold. The CLI banner names AC-4;
+the `ac3gui.desktop` text still says AC-3 and E-AC-3 alone, and phase N1A of the AC-4 plan
+rewrites that wording.
 
 Depends on decisions 2, 3, 4 and 12. Lands the About heading and CLI usage banner (`usage.cpp:760`;
 the man page `.TH` line at :793 keeps `ac3forge` as the version source), the `.desktop`
@@ -469,6 +577,12 @@ string (`Formula/ac3forge.rb:65`) unchanged; screenshots in `docs/gui/screenshot
 where the About box or banner appears, and `mkdocs build --strict` after.
 
 ### Phase 5: the roadmap
+
+**Status, 2026-09-30: built on 2026-09-06, then superseded.** On 2026-09-17 the roadmap was
+rebuilt as a status board with plain-English names and no new numeric IDs
+([ROADMAP.md](../ROADMAP.md), [roadmap-inventory.md](roadmap-inventory.md)), so the Member column,
+the per-item tags and the counts below no longer exist. The `CR1` item survives as "Crucible
+translations" in the board's partial tails.
 
 Depends on decision 9. Lands the Member column, the tags, the recount, the `CR` code, the two
 link fixes and the wrapper note.
@@ -534,6 +648,16 @@ opening `ROADMAP.md` on GitHub and following each of the DR8 links; a one-off co
 
 ### Phase 6: packaging and release shape
 
+**Status, 2026-09-30: partly built.** The `packages-crucible-<preset>` artifact and the
+`ac3forge-crucible-*` packages exist, and `docs/releasing.md` has a row for each. The DEB packages
+of the Crucible and Hearth components carry a description that names the member
+(`CPACK_DEBIAN_CRUCIBLE_DESCRIPTION`, `CPACK_DEBIAN_HEARTH_DESCRIPTION`), in the extended text
+only: no CPack setting changes the one-line synopsis, so `apt show` still opens with the library's,
+as the fourth pre-tag fact above says. The `hearth` component is a fifth, packaged on every
+Windows, macOS and Linux packaging leg and checked by `tools/ci/check_hearth_package.py`. No tag
+has been cut since v0.10.0-beta.1 (2026-09-01), which has neither a Crucible nor a Hearth
+package, so no release has collected either.
+
 Depends on decisions 5, 6, 13 and 14. Under S1 nothing renames. Two of the three pre-tag facts
 are in already: the artifact is `packages-crucible-<preset>` (`_build.yml:1652-1660`), and
 docs/releasing.md's table (:571-581) carries a row for each Linux Crucible package, x86_64 and
@@ -551,6 +675,10 @@ linux-llvm leg's Crucible pass in CI; a `release.yml` dry run (the way DR8 was v
 dry run's assets finds both patterns it looks for.
 
 ### Phase 7: the driver, at signing time
+
+**Status, 2026-09-30: not started.** `Ac3ForgeNullSink.inx` still declares the device, its
+service and its speaker as "Desktop Atmos", the endpoint-match string is unchanged, and the driver
+is still test-signed. The phase waits for the signing session.
 
 Sequenced by [the promotion plan](../docs/crucible/design/promotion.md#coordination-with-the-driver-signing-session),
 and by decision 14. In one change after the signing session lands: the four INF strings
@@ -575,6 +703,10 @@ identifiers give up the word, whether members get their own tag streams. Each is
 change somewhere users have typed a name, and each is cheaper to take once, at the ABI freeze,
 than twice.
 
+The first two were taken early, between 2026-09-25 and 2026-09-29, before 1.0: the binaries take
+the members' names and the family gives up `ac3forge` for `iclforge` (see the status block).
+Whether members get their own tag streams has not been asked; decision 15 stands.
+
 ## What cannot be verified, and why
 
 | Claim | Can it be verified | Blocker |
@@ -585,6 +717,11 @@ than twice.
 | The winget and vcpkg submissions survive a naming change | yes, by reading the open upstream PRs | outside the tree |
 | The GUI's settings store is unaffected by Phase 4 | yes | a manual run on Windows and Linux; the QML tests isolate to a temporary INI and cannot see the native store |
 
+The first row was the reason the binaries were to keep their names; the user decided to rename
+them regardless, without a kept-working period. The second row's check was made again for N1:
+`forge` is taken on PyPI, npm, crates.io and Homebrew core, and `iclforge` is free (PyPI, npm and
+crates.io returned 404 for it on 2026-09-30).
+
 ## Coordination
 
 **The driver-signing session.** `apps/windows/driver/` is being worked in a separate session.
@@ -593,13 +730,21 @@ Phase 7 is that work landing plus one coordinated change.
 
 **Open pull requests.** A tree-wide edit (Phase 1's `AC3DESK_*` fold, Phase 4's strings) lands
 in one short-lived PR with the queue drained, the way UX12's Phase 1 did; check `gh pr list`
-first. Phases 2, 3 and 5 are docs-heavy and can ride beside code PRs.
+first. Phases 2, 3 and 5 are docs-heavy and can ride beside code PRs. N1 is now the tree-wide
+edit, and the AC-4 plan places it in one quiet window after the current wave of phase branches
+has merged.
 
 **The docs-only fast path.** A PR that touches only `docs/`, `*.md` and `mkdocs.yml` runs the docs
 strict build and skips the matrix (`ci.yml:314`). Phase 3 should stay inside that set; the moment
-it touches a `.cmake` or a `.qml` it pays for eleven legs.
+it touches a `.cmake` or a `.qml` it pays for eleven legs. Today the gate's planner makes that
+decision, as the CI note above says.
 
 ## Deliberately not in scope
+
+*Several of these were overtaken: renaming the binaries, the package tokens and the library's
+identifiers is decided (see the status block), moving `src/forge` is proposed by N1B, and pages
+under `docs/` moved on 2026-09-14 (#674). The bullets are kept as the record of what this page
+decided on 2026-09-05.*
 
 - **A repository, site or umbrella rename.** GitHub redirects git and web URLs; the Pages URL,
   the PyPI trusted publisher, the tap name and every verify snippet key on the literal name.
@@ -626,6 +771,17 @@ it touches a `.cmake` or a `.qml` it pays for eleven legs.
 
 The open questions. Each carries the recommendation and the cost of taking it;
 every one was taken as recommended on 2026-09-05, so the recommendation is the decision.
+
+**Where they stand on 2026-09-30.** Overtaken by the naming decisions of 2026-09-25 to 2026-09-29
+(status block): 2 (the library's identifiers are renamed with the family, before 1.0), 3 (the
+family's spelling becomes `iclforge` and "ICL Forge"), 5 (package tokens follow the family name)
+and 6 (the binaries are renamed). Overtaken by the layout study, which is a proposal: 7 (nothing
+moves). Built as decided: 1, 4 (in part, see Phase 4), 8 (with the differences noted under
+[The docs](#the-docs)), 9 (then superseded by the 2026-09-17 roadmap) and 13. Taken and built
+differently: 11 (the WebAssembly pages sit under Platforms in the nav, not under Library). Taken
+and not carried out: 10 (the Shield app's display name is still "Shield Atmos Demo" and its
+`versionName` is still hardcoded), 12 (Crucible has no bundle identifier yet) and 14 (Phase 7 has
+not started). Unchanged: 15.
 
 1. **What Forge covers.** (a) the CLI alone; (b) `ac3cli` + `ac3gui` + `apps/common`; (c) the
    pair plus the bindings. **Recommend (b)**: it is the boundary the build, install rules,
