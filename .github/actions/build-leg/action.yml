@@ -70,13 +70,14 @@ inputs:
   ctest-jobs:
     description: >-
       Empty (the default) runs ctest serially, exactly as before. A number, or
-      'auto' for the runner's CPU count, runs the suite in parallel, except the
-      throughput guards (label Performance), which run alone afterwards because
-      a real-time assertion measured beside eight other tests measures the
-      neighbours. A failing test is retried once (`--repeat until-pass:2`) and
-      the run says so, so a collision between parallel tests cannot block a
-      merge unseen. Failures are summarised on the run's summary page with the
-      command that reproduces each.
+      'auto' for the runner's CPU count, runs the Catch2 cases in parallel. The
+      Qt Quick suites (`_qml_tests_`) then run one at a time, because they share
+      the user's QSettings directory, and the throughput guards (label
+      Performance) run alone after that, because a real-time assertion measured
+      beside eight other tests measures the neighbours. A failing test is retried
+      once (`--repeat until-pass:2`) and the run says so, so a collision between
+      tests cannot block a merge unseen. Failures are summarised on the run's
+      summary page with the command that reproduces each.
     default: ""
 
 runs:
@@ -383,12 +384,22 @@ runs:
           ctest --preset "test-$LEG_PRESET"
           exit 0
         fi
-        # Parallel. The suite is 3,000+ cases, 96% of them under a second, and
-        # ran serially for ten minutes. Every writing test folds its process id
-        # into its scratch directory (f85aff2cb), which is what makes running
-        # them side by side safe. A failing case is retried once and the retry is
-        # reported, so a collision that slipped through shows up as a warning
-        # instead of an unexplained red.
+        # Three phases. The suite is 3,000+ cases, 96% of them under a second, and
+        # ran serially for ten minutes.
+        #
+        # 1. Parallel, for the Catch2 cases. Every writing test folds its process
+        #    id into its scratch directory (f85aff2cb), which is what makes
+        #    running them side by side safe. A failing case is retried once and
+        #    the retry is reported, so a collision that slipped through shows up
+        #    as a warning instead of an unexplained red.
+        # 2. One at a time, for the Qt Quick suites (ac3gui_, ac3hearth_ and
+        #    ac3crucible_qml_tests_*). Each is its own process, and they share
+        #    the user's QSettings: QStandardPaths test mode moves that to
+        #    ~/.qttest, one directory for every process. The first parallel run
+        #    of this gate failed two Hearth suites that way (pairing records and
+        #    the diagnostics report read back different from what was written).
+        # 3. Alone, for the throughput guards: a real-time assertion measured
+        #    beside seven other tests measures them.
         jobs="$CTEST_JOBS"
         if [ "$jobs" = "auto" ]; then
           jobs="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-2}")"
@@ -396,10 +407,12 @@ runs:
         log="${RUNNER_TEMP}/ctest.log"
         : > "$log"
         rc=0
-        ctest --preset "test-$LEG_PRESET" -j "$jobs" --repeat until-pass:2 -LE Performance 2>&1 \
+        ctest --preset "test-$LEG_PRESET" -j "$jobs" --repeat until-pass:2 -LE Performance -E '_qml_tests_' 2>&1 \
           | tee -a "$log" || rc=$?
-        # Alone: a throughput assertion beside seven other tests measures them.
-        # --no-tests=ignore, since not every preset builds the ac3perf target.
+        # --no-tests=ignore on the other two, since a preset may build no Qt
+        # (the sanitizer legs) or no ac3perf target.
+        ctest --preset "test-$LEG_PRESET" --repeat until-pass:2 -R '_qml_tests_' --no-tests=ignore 2>&1 \
+          | tee -a "$log" || rc=$?
         ctest --preset "test-$LEG_PRESET" -L Performance --no-tests=ignore 2>&1 \
           | tee -a "$log" || rc=$?
         retried="$(grep -c '\*\*\*Failed' "$log" || true)"

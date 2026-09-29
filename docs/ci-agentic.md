@@ -63,10 +63,13 @@ ruff, shellcheck, actionlint, the unit tests of the oracle scripts, the document
 packaging consistency, the fixture corpus, the quarantine check and patch attribution. Every
 check runs even when an earlier one failed, so one run lists every failure.
 
-The build goes through ccache and runs ctest in parallel. A failing case is retried once, and a
-case that fails and then passes is reported as a warning, since under parallel execution that can
-be two tests sharing a resource. The throughput guards (label `Performance`) run alone afterwards.
-When a run fails, its summary page lists the failed tests and the command that reproduces one.
+The build goes through ccache and runs ctest in three phases. The Catch2 cases run in parallel.
+The Qt Quick suites (`*_qml_tests_*`) then run one at a time, because each is its own process and
+they share the user's settings directory (Qt's test mode moves it to `~/.qttest` for all of them).
+The throughput guards (label `Performance`) run alone last. A failing case is retried once, and a
+case that fails and then passes is reported as a warning, since that can be two tests sharing a
+resource. When a run fails, its summary page lists the compiler errors or the failed tests and the
+command that reproduces them.
 
 To get more than the gate before merging (an ESP-IDF, Android or WASM change, a sanitizer
 question), dispatch the full matrix on the branch: `gh workflow run ci.yml --ref <branch>`.
