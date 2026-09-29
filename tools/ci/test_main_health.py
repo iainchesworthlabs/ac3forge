@@ -271,6 +271,76 @@ class ExcerptContext(unittest.TestCase):
         self.assertTrue(got.endswith("line 99"))
 
 
+class ExcerptCause(unittest.TestCase):
+    """A compiler's diagnostic sits above the build tool's own lines, not just before them."""
+
+    def wheel_log(self) -> str:
+        progress = [f"[{n}/227] Building CXX object x{n}.o" for n in range(20)]
+        return "\n".join(
+            ["setup"] * 40
+            + ["FAILED: [code=1] src/ac4dec/decoder.cpp.o", "g++ -c decoder.cpp " + "-DX " * 300]
+            + ["/opt/gcc/stl_vector.h:388:9: error: " + "a" * 3000]
+            + ["cc1plus: all warnings being treated as errors"]
+            + progress
+            + ["ninja: build stopped: subcommand failed.", "*** CMake build failed"]
+            + ["##[error]cibuildwheel: Command failed with code 1."]
+            + ["##[error]Process completed with exit code 1."]
+        )
+
+    def test_the_failed_command_and_its_error_are_shown_ahead_of_the_tail(self):
+        got = mh.excerpt(self.wheel_log())
+        self.assertIn("FAILED: [code=1] src/ac4dec/decoder.cpp.o", got)
+        self.assertIn("stl_vector.h:388:9: error:", got)
+        self.assertIn("ninja: build stopped", got)
+        self.assertIn("exit code 1", got)
+        self.assertLess(got.index("FAILED: [code=1]"), got.index("ninja: build stopped"))
+
+    def test_a_long_line_is_clipped_and_the_whole_is_bounded(self):
+        got = mh.excerpt(self.wheel_log())
+        self.assertLessEqual(max(len(ln) for ln in got.splitlines()), mh.EXCERPT_LINE_CHARS + 3)
+        self.assertLessEqual(len(got), mh.EXCERPT_CHARS)
+
+    def test_the_last_failed_command_wins_over_an_earlier_expected_error(self):
+        log = "\n".join(
+            ["refused (encode): error: expected refusal"]
+            + ["noise"] * 60
+            + ["FAILED: real.o", "a.cpp:1:1: error: the real one"]
+            + ["noise"] * 30
+            + ["##[error]Process completed with exit code 1."]
+        )
+        got = mh.excerpt(log)
+        self.assertIn("the real one", got)
+        self.assertNotIn("expected refusal", got)
+
+    def test_timestamps_are_dropped(self):
+        stamped = "2026-09-29T16:44:26.3061560Z ##[error]Process completed with exit code 1."
+        self.assertEqual(mh.excerpt(stamped), "##[error]Process completed with exit code 1.")
+
+
+class EvidenceDiagnostics(unittest.TestCase):
+    def test_an_unreadable_log_is_said_in_the_evidence_and_in_the_run_log(self):
+        refused = mh.CommandError(
+            ["gh", "api", "x"], 1, "gh: Resource not accessible by integration (HTTP 403)\n"
+        )
+        sh = FakeSh(
+            {
+                ("gh", "api", "repos/o/r/check-runs/1/annotations"): "exit code 1.",
+                ("gh", "api", "repos/o/r/actions/jobs/1/logs"): refused,
+            }
+        )
+        failed = job("Build & Test / Linux GCC")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            mh.gather_evidence(ctx(), sh, [failed], mh.load_flakes())
+        self.assertIn("exit code 1.", failed.evidence)
+        self.assertIn("could not read the log of this job", failed.evidence)
+        self.assertIn("Resource not accessible", failed.evidence)
+        self.assertIn(
+            "::warning title=main-health::could not read the log of Build & Test / Linux GCC",
+            out.getvalue(),
+        )
+
+
 class Flow(unittest.TestCase):
     JOBS = json.dumps(
         {
