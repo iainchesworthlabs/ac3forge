@@ -52,10 +52,11 @@ above shows the current one, and [CHANGELOG.md](CHANGELOG.md) records what each 
 
 **CI.** A pull request runs a gate: the static checks, then a Linux GCC build with every test and
 the gold-reference gate. The merge queue runs the gate again on the merged tree, with the Qt GUI
-built, and adds Windows MSVC. After a merge, one run at a time builds and tests the other
-compilers and platforms (Linux Clang and arm64, Windows clang-cl, macOS), and a nightly run adds
-the sanitizers, coverage, the ABI gate and the FFmpeg validation. `Branch Name`, `CI Status` and
-the dependency review are the required checks. The stages are in
+built, and adds Windows MSVC and, for a change under `src/`, a speed and a heap-churn comparison
+against the commit the entry is queued on. After a merge, one run at a time builds and tests the
+other compilers and platforms (Linux Clang and arm64, Windows clang-cl, macOS), and a nightly run
+adds the sanitizers, coverage, the ABI gate and the FFmpeg validation. `Branch Name`,
+`CI Status` and the dependency review are the required checks. The stages are in
 [CI for many agents](docs/ci-agentic.md); toolchain versions and what each leg covers are in
 [Verified configuration](docs/building.md#verified-configuration); what has run on real hardware
 is in [Where it runs](#where-it-runs).

@@ -37,7 +37,8 @@ on the repo. Configure a protection rule (or ruleset) for `main` with:
   **Since 2026-09-29 these come from `pr-gate.yml`, not `ci.yml`.** A pull
   request and each merge-queue entry run the gate: the static checks (one job,
   `_static.yml`), Linux GCC (with the Qt GUI when the change touches it, and
-  always in the queue), and in the queue Windows MSVC. `ci.yml` runs after the
+  always in the queue), and in the queue Windows MSVC and, for an entry that
+  changes `src/`, the performance and memory comparisons. `ci.yml` runs after the
   merge, one run at a time: the legs a merge can break, and nightly and on
   request the whole matrix. Its aggregate is named `Verify Status` so it can
   never be mistaken for the required check on a commit both ran on. The names of
@@ -74,8 +75,8 @@ repository admin's decision.
 
 `CI Status` needs the gate's own jobs and nothing else: `Plan`, `Branch Name`,
 `Static checks`, `Toolchain versions`, `Linux GCC` and, when the plan or the
-queue asks for it, `Windows MSVC`. It fails closed: a job the plan asked for
-that was skipped is a failure. The static job (`_static.yml`) holds the
+queue asks for them, `Windows MSVC` and `Compare`. It fails closed: a job the
+plan asked for that was skipped is a failure. The static job (`_static.yml`) holds the
 lint, the oracle scripts' unit tests, the documentation path check, the
 generated support matrices, the packaging, fixture and quarantine checks and
 patch attribution, so all of them gate every merge through `CI Status`.
@@ -87,18 +88,21 @@ after the merge and cannot block one. A failure there reaches
 `main-health.yml`, which opens a `main-red` issue naming the merges since the
 `verified` branch. None of that is a required check.
 
-Two rules from earlier arrangements still hold:
+Two rules still hold:
 
 - Keep `CI Status`'s own `name:` stable. That rendered string is what the
   required check above is selected by, and renaming it leaves every PR pending
   until an admin edits the rule.
-- `performance-compare` and `memory-compare` (`_ci-core.yml`, the PR-time
-  comparisons with their `perf-regression-approved` and
-  `memory-regression-approved` labels) have not run since the gate replaced
-  `ci.yml` on pull requests. If they return, they must not be made required:
-  they are informational and carry `continue-on-error`, so requiring them would
-  turn hosted-runner timing noise into a merge blocker. The trend jobs after
-  the merge fail at the same +100% thresholds instead.
+- `Compare` (`_compare.yml`) runs in the queue for an entry that changes
+  `src/`: the encoder's speed and heap churn at the commit the entry is queued
+  on and at its head. Its measuring jobs (`Performance vs base`, `Memory vs
+  base`) are informational and carry `continue-on-error`, so a build that
+  flakes blocks nothing, and they must not be made required in their own right:
+  that would turn hosted-runner timing noise into a merge blocker. Their
+  verdicts reach `CI Status` through `Performance gate` and `Memory gate`, which
+  fail an entry whose workload takes twice as long or whose heap churn at least
+  doubles, unless its pull request carries `perf-regression-approved` or
+  `memory-regression-approved`.
 
 Ruleset edits are the repository admin's, not a pull request's. If any check
 is wanted as a required one, add it by its exact name as rendered.

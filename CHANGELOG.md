@@ -1724,9 +1724,9 @@ The sections below contain the complete change list and fixes.
   builds and compares `ac3membench` at the PR's head and merge base; the hard tier
   (churn at least doubled) fails the gate, with `memory-regression-approved` as the
   override. The `steady_live_growth` leak check now applies its absolute thresholds to
-  what the branch changed rather than the head alone. The pull-request gate that replaced
-  `ci.yml` on pull requests does not run this comparison; the memory trend job after the merge
-  fails at the same threshold.
+  what the branch changed rather than the head alone. Since the pull-request gate replaced
+  `ci.yml` on pull requests, the comparison runs in the merge queue (`_compare.yml`), against the
+  commit the entry is queued on.
 - **CI now asserts that Linux and macOS packages carry the `ac3cli` man page and shell
   completions** (`check_cli_docs_package.py`), so the packaging bug fixed below cannot
   come back unseen — nothing had checked these five files before, and the only test that
@@ -2151,9 +2151,14 @@ The sections below contain the complete change list and fixes.
   in parallel, the Qt Quick suites in a phase of their own, the throughput guards alone; a failing
   case is retried once, and a parallel phase's failures are rerun one at a time), the
   gold-reference gate and, when the change touches the GUI trees or in the queue, the Qt GUI; the
-  queue adds Windows MSVC once per entry. A planner (`tools/ci/plan_gate.py`) skips the build for
-  documentation and for trees a Linux C++ build does not read. `Branch Name` and `CI Status` keep
-  their names, so no ruleset edit was needed, and `CI Status` fails closed. `ci.yml` runs on a
+  queue adds Windows MSVC once per entry and, for an entry that changes `src/`, the performance
+  and memory comparisons (`_compare.yml`): `ac3bench`, `ac3kernelbench` and `ac3membench` built
+  and measured at the commit the entry is queued on and at its head, and a workload that takes
+  twice as long, or whose heap churn at least doubles, fails the entry unless its pull request
+  carries `perf-regression-approved` or `memory-regression-approved`. A planner
+  (`tools/ci/plan_gate.py`) skips the build for documentation and for trees a Linux C++ build
+  does not read. `Branch Name` and `CI Status` keep their names, so no ruleset edit was needed,
+  and `CI Status` fails closed. `ci.yml` runs on a
   push to `main` and on dispatch, one run at a time with the newest push waiting, and its
   aggregate is `Verify Status`. `main-health.yml` reads each finished run: a green one advances
   the `verified` branch and closes the `main-red` issue, a failure that matches
@@ -2177,8 +2182,7 @@ The sections below contain the complete change list and fixes.
   keeps its own `verified-nightly` and `main-red-nightly`, and blames the merges since the last
   green one. The `ci:deep` label runs the nightly tier on a pull request's branch. ccache and
   parallel ctest apply in the run after a merge as well; a cache is saved only by a push to
-  `main`. The PR-time performance and memory comparisons have not run since the gate replaced
-  `ci.yml` on pull requests; the trend jobs after the merge fail at the same +100% thresholds.
+  `main`.
 - **Code analysis now runs nightly against `main` instead of on every PR/push/merge-
   queue entry**: CodeQL, MSVC Code Analysis and clang-tidy (moved to its own workflow)
   each open or refresh a `nightly-analysis` issue on a finding. `CI Status` no longer

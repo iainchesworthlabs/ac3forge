@@ -37,8 +37,11 @@ PRs target `main`. To merge, a PR must pass the required checks: `Branch Name`, 
 aggregate and the `Scan dependency diff` dependency review. `CI Status` is the pull-request gate
 (`pr-gate.yml`): the static checks, then a Linux GCC build with every test and the gold-reference
 gate. A merge queue serializes landing when several PRs are ready at once, and runs the gate on
-the merged tree with the Qt GUI built, plus Windows MSVC. The rest runs after the merge: the other
-compilers and platforms one run at a time, and nightly the sanitizers, coverage, the FFmpeg
+the merged tree with the Qt GUI built, plus Windows MSVC and, for a change under `src/`, a speed
+and a heap-churn comparison against the commit the entry is queued on: a workload that takes
+twice as long, or whose heap churn at least doubles, fails the entry unless the PR carries
+`perf-regression-approved` or `memory-regression-approved`. The rest runs after the merge: the
+other compilers and platforms one run at a time, and nightly the sanitizers, coverage, the FFmpeg
 validation and every other leg. When a merge breaks `main`, `main-health` opens a `main-red`
 issue naming the merges since the last verified commit. A change that needs more than the gate
 before it merges (an ESP-IDF, Android or WASM change, a sanitizer question) can label its PR
