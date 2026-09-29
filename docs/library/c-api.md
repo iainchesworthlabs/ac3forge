@@ -68,8 +68,8 @@ C++ exception — realistically only `std::bad_alloc` for a codec core that neve
 `AC3FORGE_ERROR_INTERNAL` instead of propagating into a (possibly non-C++) caller frame.
 
 **No ABI-compatibility promise before v1.0.** Same pre-1.0 stance as the rest of the project (see
-see [API stability](api-stability.md)): a rebuild against a newer `ac3forge` may need a recompile, not merely a relink.
-`ac3forge_version()` reports what was actually linked at runtime.
+[API stability](api-stability.md)): a rebuild against a newer `ac3forge` may need a recompile, not
+merely a relink. `ac3forge_version()` reports what was actually linked at runtime.
 
 ## Encoding
 
@@ -82,6 +82,12 @@ encoder_config.acmod = AC3FORGE_ACMOD_2_0;        // L, R
 ac3forge_encoder_t* encoder = NULL;
 ac3forge_status_t status = ac3forge_encoder_create(&encoder_config, &encoder);
 ```
+
+`ac3forge_encoder_config_t` also carries `sample_rate`, `dialnorm` (1 to 31: a zero-initialised
+struct's 0 is invalid, which is why `_init()` exists), `chbwcod` (-1 for auto from the bit rate),
+`lfe`, `coupling` with `cplbegf`/`cplendf` (-1 for auto), `fast_mdct`, and the `cmixlev`/`surmixlev`
+downmix levels; a `has_*` flag stands in for each `std::optional`, and the paired field is read
+only when its flag is non-zero.
 
 `ac3forge_encoder_encode_frame` takes `ac3forge_encoder_channel_count(encoder)` channel pointers,
 each exactly `AC3FORGE_SAMPLES_PER_FRAME` (1536) samples, and writes one complete syncframe into an
@@ -97,7 +103,10 @@ status = ac3forge_encoder_encode_frame(encoder, channels, 2, AC3FORGE_SAMPLES_PE
 `EncoderConfig`'s DRC field is exposed through the five named `ac3forge_drc_profile_t` presets
 (`AC3FORGE_DRC_FILM_STANDARD`, `..._SPEECH`, …) — the same presets `ac3cli --drc` accepts — rather
 than the full custom curve struct, which stays a C++-only tuning knob; see [Metadata](metadata.md)
-for what each preset means.
+for what each preset means. Heavy compression (§7.7.2) is exposed field for field: `has_heavy` and
+an `ac3forge_heavy_config_t` (`dialogue_target_dbfs`, `peak_ceiling_dbfs`, `release_db_per_second`,
+filled by `ac3forge_heavy_config_init()`), and dual mono's second channel has its own
+`has_drc2`/`drc2_profile`/`has_heavy2`/`heavy2`.
 
 ## E-AC-3 encoding (multiple substreams, Annex E tools)
 
@@ -199,12 +208,25 @@ Positions use the room-anchored coordinates described under
 destroyed:
 
 ```c
+ac3forge_decoder_config_t decoder_config;
+ac3forge_decoder_config_init(&decoder_config);   // drc_scale 0.0, heavy_compression 0
+ac3forge_decoder_t* decoder = NULL;
+status = ac3forge_decoder_create(&decoder_config, &decoder);
+
 ac3forge_decoded_frame_t* decoded = NULL;
 status = ac3forge_decoder_decode_frame(decoder, data, size, &decoded);
 int channels = (int)ac3forge_decoded_frame_channel_count(decoded);
 const float* left = ac3forge_decoded_frame_channel_samples(decoded, 0);
 ac3forge_decoded_frame_destroy(decoded);
+ac3forge_decoder_destroy(decoder);
 ```
+
+`ac3forge_decoder_config_t` mirrors `ac3::DecoderConfig`'s two fields, `drc_scale` (0.0 to 1.0, §7.7.1's
+partial compression) and `heavy_compression`, and `ac3forge_eac3_decoder_create` takes the same
+struct. A decoded frame also reports its sample rate, bit rate, `acmod`, `lfe`, `dialnorm`, the
+`compr` and `dynrng` words (`has_compr` says whether `compr` was sent), a second set for 1+1 (the
+`..._dialnorm2`, `..._compr2` and `..._dynrng2` accessors), `samples_per_channel` and
+`block_switched`.
 
 `decode_substream`/`decode_access_unit` keep the C++ API's `std::optional`-via-return convention
 for transient pre-noise processing's held-back frame (see [Decoding](decoding.md)): a return of
@@ -259,9 +281,33 @@ bed programme they are its bed channels instead, and the C++ surface
 [Spatial & Atmos objects](spatial-and-atmos.md) for what the position/gain values mean and how
 `ac3forge_atmos_encoder_t` (the C counterpart to `ac3::oba::AtmosEncoder`) produces them.
 
+## Latency
+
+`ac3forge_latency_t` is the four-term budget of [Encoding AC-3](encoding-ac3.md#latency):
+`frame_samples`, `transform_samples`, `lookahead_samples` (zero throughout this library) and
+`holdback_samples` (the E-AC-3 §3.7 transient pre-noise hold-back, one frame or zero).
+`ac3forge_encoder_latency`, `ac3forge_eac3_encoder_latency`,
+`ac3forge_eac3_access_unit_encoder_latency` and `ac3forge_atmos_encoder_latency` fill one for their
+encoder, each with a `..._latency_samples` accessor for the total, and
+`ac3forge_atmos_encoder_bed_latency` gives the 5.1 bed's own budget, which is what a legacy decoder
+that ignores the object container hears. `ac3forge_latency_total_samples` sums a struct, and
+`ac3forge_latency_ms(samples, sample_rate)` turns a sample count into milliseconds: 1792 samples,
+the figure for every AC-3 configuration, is 37.33 ms at 48 kHz.
+
+A decoder adds its own delay on top: `ac3forge_decoder_latency_samples` is always 0 for AC-3, and
+`ac3forge_eac3_decoder_latency_samples` is 0 until a stream engages the hold-back and one frame
+from then on. The AC-4 encoder and decoder report theirs through
+`ac3forge_ac4_encoder_delay_samples`, `ac3forge_ac4_encoder_decoder_delay_samples` and
+`ac3forge_ac4_decoder_latency_samples` ([AC-4](#ac-4)).
+
 ## Stream scan
 
-`ac3forge_split_frames`/`ac3forge_split_access_units`/`ac3forge_stream_bsid` only delimit a
+`ac3forge_split_frames` (syncframes, by sync word and declared size) and
+`ac3forge_split_access_units` (a new one at each independent substream) write an owned
+`ac3forge_spans_t`, read with `ac3forge_spans_count`/`ac3forge_spans_get` as `ac3forge_span_t`
+offset/length pairs into the caller's buffer and destroyed with `ac3forge_spans_destroy`;
+`ac3forge_stream_bsid` reads the `bsid` of one frame without committing to either generation. They
+only delimit a
 stream. `ac3forge_scan` — the C mirror of `ac3::io::scan`/`ScannedStream` — actually reads what
 it contains: sample rate, layout, every programme it carries (§E2.3.1.2 allows up to eight for
 E-AC-3), and the raw bsid/bsmod/bit-rate and DVB/ATSC service fields a container muxer's own
@@ -314,7 +360,13 @@ application layer, which composes the same three the way a caller of this API wo
   is the §5.4.2.8 conversion the encoder's own dialnorm field needs from a measured result.
 - **`ac3forge_level_meter_t`** mirrors `ac3::analysis::LevelMeter` — unweighted peak/RMS/clip
   ballistics per channel, the front-end meter both `ac3cli`/`ac3gui` already share one
-  implementation for. `ac3forge_level_meter_level` is the live ballistic view (`peak_db`/
+  implementation for. `ac3forge_level_meter_create` takes `acmod`, `lfe`, the sample rate, a channel
+  count (0 for exactly the `acmod`'s, more for a wider layout) and an optional
+  `ac3forge_level_meter_ballistics_t` (`NULL`, or one filled by
+  `ac3forge_level_meter_ballistics_init()`, gives 300 ms RMS integration, a 20 dB/s peak decay and
+  a 1200 ms hold); `ac3forge_level_meter_process` takes planar spans, and `..._reset` drops the
+  ballistic state and the summary. Levels floor at `AC3FORGE_LEVEL_METER_FLOOR_DB` (-120 dB).
+  `ac3forge_level_meter_level` is the live ballistic view (`peak_db`/
   `hold_db`/`rms_db`/`clipped`); `ac3forge_level_meter_summary` is the exact, unweighted
   whole-run statistic a file report wants instead. Not mirrored: `process_interleaved` (planar
   spans only, matching every other buffer convention in this header), and the presentational
@@ -327,7 +379,11 @@ application layer, which composes the same three the way a caller of this API wo
   read out of. `ac3forge_evaluate_qc_gate` takes a loudness meter's own `has_integrated_lkfs`/
   `integrated_lkfs`/`has_true_peak_dbtp`/`true_peak_dbtp` straight through; a measurement that was
   itself unavailable leaves that half of the verdict at its not-passing default rather than a
-  false pass, matching `ac3::meta::QcVerdict`'s own convention.
+  false pass, matching `ac3::meta::QcVerdict`'s own convention. `ac3forge_qc_preset_count` is the
+  number of preset ids (each valid in `[0, count)`); an `ac3forge_qc_preset_t` holds `target_lkfs`,
+  `tolerance_lu`, `max_true_peak_dbtp`, a `loudness_limit` (a band around the target, or a ceiling)
+  and the `source` string; and `ac3forge_qc_verdict_pass` is 1 when both halves of an
+  `ac3forge_qc_verdict_t` passed.
 
 ## AC-4
 
@@ -339,7 +395,7 @@ own AC-4 section for the full surface. The section is declared whether or not th
 configured with `AC3FORGE_BUILD_AC4` (on by default): built without it, every fallible function
 returns `AC3FORGE_ERROR_UNSUPPORTED` (4), a `_create()` leaves its out-parameter `NULL`, and
 `ac3forge_c/version.h`'s `AC3FORGE_HAS_AC4`, which `#cmakedefine`s that option, says which library
-a program was built against. Two new status code ranges: `AC3FORGE_ERROR_AC4_DECODE_*` at 60–64
+a program was built against. Two status code ranges belong to AC-4: `AC3FORGE_ERROR_AC4_DECODE_*` at 60–64
 (`TRUNCATED`, `INVALID_TOC`, `INVALID_STREAM`, `UNSUPPORTED`, `MISSING_IFRAME`) and
 `AC3FORGE_ERROR_AC4_ENCODE_*` at 80–81 (`INVALID_CONFIG`, `INVALID_INPUT`).
 
@@ -378,7 +434,12 @@ container muxer: `ac3forge_ac4_build_dac4` writes the `dac4` box payload (empty,
 from `ac3forge_ac4_dac4_refusal`, where the table of contents holds something it cannot describe
 whole), and `ac3forge_ac4_media_timing`/`ac3forge_ac4_samples_per_frame` give an ISOBMFF track's
 timing. `ac3forge_ac4_sync_frame` wraps a raw frame with Annex G.3.1's sync word and an optional
-CRC for a raw `.ac4` file or MPEG-2 TS.
+CRC for a raw `.ac4` file or MPEG-2 TS. An `ac3forge_ac4_encoded_frame_t` reports `_data`, `_size`,
+`_samples` (the PCM samples per channel it decodes to) and `_iframe`. `ac3forge_ac4_encoder_codec_mode`
+gives the codec mode the stream is coded in, which is what `AC3FORGE_AC4_CODEC_AUTO` resolved to,
+and `ac3forge_ac4_encoder_delay_samples` and `ac3forge_ac4_encoder_decoder_delay_samples` give the
+silence the encoder puts before the input and the delay a decoder adds on top, both at the input's
+rate.
 
 `ac3forge_ac4_encoder_config_t` also carries `iframes` and `fragment_starts` (a pointer and a count
 each: frames, counted from 0, that must be I-frames, and where an MP4's fragments start in samples
@@ -494,8 +555,19 @@ AC-3/E-AC-3 decoders above. Planar PCM comes back through
 so `ac3forge_ac4_decoded_frame_samples_per_channel()` reports each frame's length rather than a
 fixed constant. `ac3forge_ac4_decoder_set_output`/`_set_presentation` change the output processing
 and the chosen presentation from the next frame, needing no I-frame.
-`ac3forge_ac4_decoder_presentation_*` reads the last frame's table of contents, and
-`ac3forge_ac4_decoder_metadata_loudness` reads the selected presentation's loudness fields. A
+`ac3forge_ac4_decoder_presentation_count` and the accessors that take a presentation index
+(`_toc_index`, `_has_id`/`_id`, `_has_md_compat`/`_md_compat`, `_enabled`, `_alternative`,
+`_pre_virtualized`, `_name`, `_language`, `_decodable`, `_selectable` and
+`_speaker_count`/`_speaker`) read the last frame's table of contents in its own order; the `name`
+and `language` strings stay valid until the next `ac3forge_ac4_decoder_decode` call or the decoder's
+destruction. `ac3forge_ac4_decoder_metadata_loudness` reads the selected presentation's loudness
+fields. `ac3forge_ac4_decoder_reset` forgets everything carried between frames, and
+`ac3forge_ac4_decoder_latency_samples` is the decoder's own added delay at the output rate, 0 before
+a frame has decoded. A decoded frame also reports its `_sample_rate_hz`, `_sequence_counter`,
+`_presentation_index` and `_presentation_id` (with `_has_presentation_id`), and, when the decoder's
+concealment policy made it in place of a frame that did not decode, `_has_concealed`,
+`_concealment_action` and `_concealment_error`; `ac3forge_ac4_decoder_refusal_reason` says why the
+last call failed, returned nothing or returned a concealed frame. A
 presentation with object audio hands its objects over through `ac3forge_ac4_decoded_frame_object_*`
 — kind, LFE, speaker, samples, the `ac3forge_ac4_object_properties_t` in force at the frame's
 first sample, and the updates within the frame (`ac3forge_ac4_decoded_frame_object_update_count`
