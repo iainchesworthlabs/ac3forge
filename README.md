@@ -79,9 +79,10 @@ table. E-AC-3 supports constant and variable bit rate, and AC-4 constant, averag
 
 **Limits of independent checking.** Enhanced coupling, transient pre-noise processing, and JOC
 object decoding have no external reference decoder. These paths are scored with the in-repo
-decoder. AC-4 has no public conformance streams: its decoder is scored against Dolby Encoding
-Engine's encodes of known sources and, where it can read them, librempeg's decoder, which does not
-decode AC-4's immersive element or objects. See
+decoder. The AC-4 standard has no conformance clause, reference decoder or test vector with
+expected output: the decoder is scored against Dolby Encoding Engine's encodes of known sources
+and, where it can read them, librempeg's decoder, which does not decode AC-4's immersive element
+or objects. See
 [where the oracles do not reach](docs/verification.md#where-the-oracles-dont-reach) and
 [Validation: AC-4](docs/verification.md#ac-4). No listening panel has been run; published quality
 values are waveform or model-based measures.
