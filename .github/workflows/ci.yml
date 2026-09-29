@@ -344,11 +344,17 @@ jobs:
             # main-health.yml blames a failure on. With no `verified` ref yet, or a
             # range GitHub lists only in part, the list stays empty and every lane runs.
             files=""
-            verified="$(gh api "repos/$REPO/git/ref/heads/verified" --jq .object.sha 2>/dev/null || true)"
-            if [ -n "$verified" ]; then
-              files="$(gh api --paginate "repos/$REPO/compare/$verified...$SHA" --jq '.files[].filename' 2>/dev/null || true)"
-              if [ "$(printf '%s\n' "$files" | grep -c .)" -ge 3000 ]; then files=""; fi
-              echo "Range since verified ${verified:0:8}: $(printf '%s\n' "$files" | grep -c .) file(s)"
+            # gh prints a failed request's JSON body on stdout, so the exit status
+            # decides, not whether anything was printed.
+            if verified="$(gh api "repos/$REPO/git/ref/heads/verified" --jq .object.sha 2>/dev/null)" \
+                && [ "${#verified}" -eq 40 ]; then
+              if files="$(gh api --paginate "repos/$REPO/compare/$verified...$SHA" --jq '.files[].filename' 2>/dev/null)"; then
+                if [ "$(printf '%s\n' "$files" | grep -c .)" -ge 3000 ]; then files=""; fi
+                echo "Range since verified ${verified:0:8}: $(printf '%s\n' "$files" | grep -c .) file(s)"
+              else
+                files=""
+                echo "Could not list the range since verified ${verified:0:8}; every lane runs."
+              fi
             else
               echo "No verified ref yet."
             fi
