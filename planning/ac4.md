@@ -1792,24 +1792,30 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
 
   On the board, at 360 MHz with the network up, twenty plays of DEE's streams cover 2.0, 5.1 and
   5.1.4 in full decoding, the three 5.1.4 modes in core decoding, and the converter's ratios (24,
-  23.976, 25 and 29.97 fps). The P4 decodes 2.0 in SIMPLE mode in real time, at 0.86 of a frame, and
-  2.0 in A-SPX mode at the line, at 1.04, and nothing wider: 5.1 takes 3.5 to 6.7, 5.1.4 in full
-  decoding 5.4 to 6.1 (3.8 to 4.7 in core decoding) and the converter's frame rates 5.9 to 6.5,
-  where AC-3 and E-AC-3 through the same image take 0.19 for 5.1 and 0.38 for 7.1.4. Four findings
-  say where the time goes. The decoder holds 0.96 MB at 2.0 and 2.8 MB at 5.1.4 and uses all the
-  internal RAM, so whether a QMF bank's state lands in internal RAM or in PSRAM depends on the order
-  of allocation, and the bank costs 3.4 ms a channel-frame or up to 17.4. The converter runs in
-  `double` on an FPU that is single precision: 183 to 229 ms a frame, five times real time by
-  itself, and 5.4 s more than an ordinary first frame to design its table at 1001/960. Parse and
-  reconstruction are half of a 2.0 frame. The decode task needs 50 KB of stack. The `float` output
-  equals the host's on 15 of the 20 plays and differs on the five with companding, because
-  `std::pow` and `std::exp2` at `float` in `pcm/companding.cpp` and `pcm/aspx.cpp` give a different
-  last bit in each C library; routed through `scalar_exp2` and `scalar_log2` in a scratch copy, the
-  host, a Cortex-M3 program and the board give the same hashes on four cuts. **Of the exit criteria:
-  the per-stream time against real time, the heap and the stack, and the statement beside AC-3 and
-  E-AC-3 hold, and decision 26's identical output holds on every stream without companding and on
-  the four cuts with the three calls routed; the change itself is not in this phase.** The options,
-  a recommendation and their cost are in the pull request's report.
+  23.976, 25 and 29.97 fps), under ESP-IDF's default allocation policy and under one that sends
+  allocations over 512 bytes to PSRAM first, which `sdkconfig.ac4` sets. With it the P4 decodes 2.0
+  in SIMPLE mode in real time, at 0.74 of a frame, and 2.0 in A-SPX mode at 0.92, and nothing wider:
+  5.1 takes 1.9 to 4.6, 5.1.4 in full decoding 3.8 to 4.8 (3.0 to 3.8 in core decoding) and the
+  converter's frame rates 5.8 to 6.5. Under the default, 2.0 in SIMPLE mode alone is in real time
+  (0.86) and 2.0 in A-SPX mode is at 1.04. AC-3 and E-AC-3 through the same image take 0.23 to 0.31
+  for 5.1 and 0.65 for 7.1.4, and 0.19 and 0.38 under the default. Four findings say where the time
+  goes. The policy itself: the AC-4 decoder takes up to 1.9 times less time with allocations over
+  512 bytes in PSRAM than with ESP-IDF's 16 KB going to internal RAM first, which it then
+  exhausts, and the AC-3 and E-AC-3 decoders take 1.2 to 1.7 times more; the cause is not
+  established. The QMF banks take 3.3 to 3.8 ms a channel-frame, 46% of a 2.0 SIMPLE frame and 52%
+  of a 5.1 one; their objects reference the soft-float `double` routines, and how many calls a
+  frame makes was not measured. The converter runs in `double` on an FPU that is single precision:
+  184 to 229 ms a frame, five times real time by itself, and 5.4 s more than an ordinary first
+  frame to design its table at 1001/960. The decoder is in PSRAM, 0.86 MB at 2.0 and 2.7 MB at
+  5.1.4, and its task needs 50 KB of stack. The `float` output equals the host's on 15 of the 20
+  plays and differs on the five with companding, because `std::pow` and `std::exp2` at `float` in
+  `pcm/companding.cpp` and `pcm/aspx.cpp` give a different last bit in each C library; routed
+  through `scalar_exp2` and `scalar_log2` in a scratch copy, the host, a Cortex-M3 program and the
+  board give the same hashes on four cuts. **Of the exit criteria: the per-stream time against real
+  time, the heap and the stack, and the statement beside AC-3 and E-AC-3 hold, and decision 26's
+  identical output holds on every stream without companding and on the four cuts with the three
+  calls routed; the change itself is not in this phase.** The options, a recommendation and their
+  cost are in the pull request's report.
   [ESP32-P4](../docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables.
 
   **Exit:** per stream, the time per frame against real time, peak heap and stack left, and a
