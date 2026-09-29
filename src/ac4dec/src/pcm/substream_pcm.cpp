@@ -599,7 +599,7 @@ void SubstreamPcm::synthesise_objects(const FrameInputs& frame_inputs, const Drc
     pcm_.resize(at(full_length_));
     for (std::size_t o = 0; o < count; ++o) {
         Output& output = object_outputs_[o];
-        output.synthesis.process(*object_matrices_[o], pcm_);
+        output.synthesis.process(*object_matrices_[o], pcm_, qmf_scratch_);
         std::span<const Real> produced = pcm_;
         if (output.converter) {
             if (!converter_phase_) {
@@ -961,7 +961,8 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
         std::copy_n(held.begin(), frame, aligned_.begin());
         held.erase(held.begin(), held.begin() + static_cast<std::ptrdiff_t>(frame));
         // Clause 5.7.3: this frame's slots after the history.
-        channels_[c].analysis.process(aligned_, std::span<QmfValue>(channels_[c].ext).subspan(history));
+        channels_[c].analysis.process(
+            aligned_, std::span<QmfValue>(channels_[c].ext).subspan(history), qmf_scratch_);
     }
 
     // Clause 5.7.2: this frame's control data waits d_ctrl frames; the
@@ -1063,7 +1064,7 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
     const bool jumped = converter_phase_ && converter_phase != (*converter_phase_ + 1) % 5;
     for (std::size_t o = 0; o < outputs_.size(); ++o) {
         Output& output = outputs_[o];
-        output.synthesis.process(*rendered[o], pcm_);
+        output.synthesis.process(*rendered[o], pcm_, qmf_scratch_);
         std::span<const Real> produced = pcm_;
         if (output.converter) {
             if (!converter_phase_) {

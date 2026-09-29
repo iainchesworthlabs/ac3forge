@@ -344,6 +344,9 @@ class SubstreamPcm {
     bool side_kept_ = false;  // whether the last frame's side chain is side_ rather than the matrices
 
     // Scratch, kept to save an allocation per frame.
+    // The QMF banks' working space, which they use one after another: the banks
+    // of the substream's channels share this one.
+    dsp::QmfScratch<Real> qmf_scratch_{};
     ElementRoute route_;
     std::vector<StereoParameters> parameters_;  // one channel data element's, 16 or 32 KiB each
     std::vector<std::vector<Real>> scaled_;     // per track, in bitstream order
