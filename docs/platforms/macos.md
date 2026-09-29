@@ -12,8 +12,8 @@
     both. Neither is experimental any more. `macos-llvm`'s first-ever run surfaced one
     fully-understood issue (Homebrew's unpinned `llvm` formula flagging Catch2's `__COUNTER__`
     usage under `-Wc2y-extensions` — see `cmake/CompilerWarnings.cmake`), fixed in one commit,
-    followed by two consecutive clean runs. `macos-llvm-x64` (DR8's new leg, on a brand-new
-    `macos-15-intel` runner label never exercised before this project used it) went three
+    followed by two consecutive clean runs. `macos-llvm-x64` (the Intel leg that the universal package needs, on a
+    `macos-15-intel` runner label this project had not used before) went three
     consecutive clean runs — two `release.yml` dry runs and a feature branch's own PR CI — with
     gold-reference SNR numbers (67.80/67.82/67.76 dB, matching the x86 baseline every other
     non-arm64 leg reports) before its own `continue-on-error` escape hatch came off the same way
@@ -56,7 +56,7 @@ version: Homebrew's core `llvm` formula has no versioned sibling to pin against 
 `apt.llvm.org` or the official Windows installer do, so CI installs and reports whatever Homebrew
 currently ships rather than asserting a specific one.
 
-## Universal binaries (DR8)
+## Universal binaries
 
 A release's macOS package is a single **universal (arm64 + x86_64) `.dmg`**, not two per-arch
 ones. `macos-llvm` and `macos-llvm-x64` each build and `cmake --install` their own single-arch
@@ -349,7 +349,7 @@ a nightly packaging smoke test of that architecture alone. Neither `macos-llvm` 
 `macos-llvm-x64` carries `release_package` any more, though: a real tagged release
 (`release.yml`, `do_package: true`) instead runs a separate `package-macos-universal` job that
 `lipo`-merges both legs' install trees into one universal `.dmg` and ships that as the canonical
-macOS package — see [Universal binaries (DR8)](#universal-binaries-dr8) above and
+macOS package — see [Universal binaries](#universal-binaries) above and
 [docs/releasing.md](../releasing.md#what-gets-published). That path has been exercised for real on
 the arm64 half: nine beta releases, v0.2.0-beta.1 through v0.9.0-beta.1, shipped a macOS package
 through the tag-triggered workflow before the universal merge existed, and v0.10.0-beta.1 shipped

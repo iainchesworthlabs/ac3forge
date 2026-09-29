@@ -1046,7 +1046,7 @@ publishes packages for the four `release_package` legs — `windows-msvc`, `wind
 `macos-llvm`'s (arm64) and `macos-llvm-x64`'s (x86_64) install trees into one universal `.dmg`
 rather than either leg packaging solo: one canonical build per OS/architecture, whenever a
 `vX.Y.Z` tag is pushed; a packaging failure on any of them blocks the release like any other
-required leg. See [docs/platforms/macos.md](platforms/macos.md#universal-binaries-dr8) for how
+required leg. See [docs/platforms/macos.md](platforms/macos.md#universal-binaries) for how
 the macOS merge works. The release carries GPG signing (when the key is provisioned, which it is),
 keyless Sigstore/OIDC build provenance, an SPDX SBOM, and a GitHub Release; ten beta releases
 (v0.2.0-beta.1 through v0.10.0-beta.1) have shipped through this path for real. See
