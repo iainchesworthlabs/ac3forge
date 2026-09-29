@@ -50,7 +50,8 @@ class Triggers(unittest.TestCase):
     def test_ci_runs_after_a_merge_and_nightly_and_on_request(self):
         ci = text("ci.yml")
         self.assertRegex(ci, r"(?m)^  push:\n    branches: \[ main \]")
-        self.assertRegex(ci, r"(?m)^  schedule:\n    - cron: '47 19 \* \* \*'")
+        # 13:17 UTC starts the run at about 19:47 UTC once GitHub's delay is added (see ci.yml).
+        self.assertRegex(ci, r"(?m)^  schedule:\n    - cron: '17 13 \* \* \*'")
         self.assertIn("workflow_dispatch:", ci)
 
     def test_the_label_workflow_reacts_only_to_ci_deep_on_a_pull_request_from_this_repository(self):

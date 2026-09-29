@@ -161,10 +161,15 @@ on:
   # The nightly run: every build leg with every extra pass, and every lane,
   # including the ones the run after a merge leaves out (the sanitizers,
   # coverage, the ABI gate, FFmpeg Validate, the wheels, Android, WASM, Rust,
-  # the AppImage, macOS x64). 19:47 UTC is 05:47 in Sydney and Melbourne, when
-  # merges are rare. main-health.yml judges it against its own last green run.
+  # the AppImage, macOS x64). It is wanted at about 19:47 UTC, which is 05:47 in
+  # Sydney and Melbourne, when merges are rare. GitHub starts this repository's
+  # scheduled workflows four to six and a half hours after their cron time
+  # (CodeQL, Fuzz, Interop and the others, measured over the two weeks to
+  # 2026-09-29), so the cron is 6.5 hours earlier than that. When the delay
+  # changes, move the cron by the difference. main-health.yml judges the run
+  # against its own last green run.
   schedule:
-    - cron: '47 19 * * *'
+    - cron: '17 13 * * *'
   # A branch that wants the full matrix before it merges (a change to ESP-IDF,
   # Android, WASM, the sanitizers) asks for it: `gh workflow run ci.yml --ref
   # <branch>`. A dispatch forces every lane on (see the `changes` job).

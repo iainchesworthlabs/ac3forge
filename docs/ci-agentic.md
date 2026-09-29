@@ -33,7 +33,7 @@ Measured over 3.5 days in September 2026, across 300 runs of `ci.yml` and about 
 | Pull request | every push to the branch | [`pr-gate.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml): static checks, then Linux GCC build, every ctest case and the gold-reference gate | GitHub-hosted |
 | Merge queue | each queue entry | the same on the merged tree, with the Qt GUI always built, plus Windows MSVC | GitHub-hosted |
 | After a merge | every push to main, one at a time | [`ci.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/ci.yml), tier `t2`: the legs and lanes a merge can break (see [The tiers](#the-tiers)), then [`main-health.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/main-health.yml) | the fleet, plus hosted for macOS, arm64 and the satellites |
-| Nightly | 19:47 UTC (05:47 in Sydney), and on request | `ci.yml`, tier `all`: every leg with every extra pass, every lane | the same |
+| Nightly | about 19:47 UTC (05:47 in Sydney), and on request | `ci.yml`, tier `all`: every leg with every extra pass, every lane | the same |
 
 A Linux gate cannot see another compiler, another operating system, an architecture, the
 sanitizers or a QEMU board. The run after a merge covers the first three and the nightly run the
@@ -159,6 +159,11 @@ documentation or a Python-only change builds little or nothing. A satellite lane
 path in its own tree changed: a change to the core library lights the desktop platforms and reaches
 the satellites in the nightly run. Anything the classifier does not recognise, and any change to
 the workflows themselves, lights every lane. With no `verified` ref yet, every lane runs.
+
+The nightly run is wanted at about 19:47 UTC. GitHub starts this repository's scheduled workflows
+four to six and a half hours after their cron time: over the two weeks to 29 September 2026,
+CodeQL's cron said 02:17 and its run began between 07:20 and 08:50 UTC. So `ci.yml` sets the cron
+6.5 hours earlier, at 13:17 UTC. When the delay changes, move the cron by the difference.
 
 To get the nightly tier on a branch before it merges, label the pull request `ci:deep`, or run
 `gh workflow run ci.yml --ref <branch>` (the default tier is `all`). `-f tier=t2` runs the legs the
