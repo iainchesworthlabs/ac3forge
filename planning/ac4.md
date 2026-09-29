@@ -2491,9 +2491,9 @@ for each control and refusal); `tst_e2e_ac4_objects.qml` (new, 3: a raw stream a
 equal to the echoed line run through `ac3cli`, and the ADM master); `tst_guided_wizard.qml` (1
 new); and, unchanged and passing, the accessibility and channel-count suites, `tst_e2e_objects.qml`,
 `tst_objects_per_source.qml` and the localisation pipeline. The whole of `ac3tests` and `ctest -L
-gui` ran once at the end; their numbers are in the phase's report.
+gui` ran once at the end; their numbers are in the pull request.
 
-Left for the user, each with its options in the phase's report: an ADM or IAB master as a source
+Left for the user, each with its options in the pull request: an ADM or IAB master as a source
 on the page; AC-4 bed objects (A-JOC's static bed) for the channels assigned to speakers, in place
 of dynamic objects at ring positions; a Preview taken from a decode of the AC-4 stream; AC-4 in
 Guided's Movement step. The object inspector's note on export now points to Open stream, where
