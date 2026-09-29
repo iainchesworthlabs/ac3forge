@@ -172,7 +172,7 @@
     {
       "name": "wasm-emscripten",
       "hidden": true,
-      "description": "Emscripten/WASM toolchain selection for the roadmap-F3 browser decode demo. Unlike every other platform preset here, this does NOT inherit \"core\": there is no host-OS condition (Emscripten cross-compiles from any host with $EMSDK set) and, more importantly, no vcpkg toolchainFile - see cmake/toolchains/wasm.emscripten.toolchain.cmake's own header for why going through vcpkg's community wasm32-emscripten triplet would be pure cost for zero benefit here. Everything \"core\" would otherwise supply (Ninja generator, binaryDir, the default ON options) is set directly below instead, deliberately turning off everything this preset does not need (CLI/GUI/tests/live-audio-linking containers) rather than inheriting defaults meant for a full desktop build. The AC-4 libraries (src/ac4, src/ac4dec, src/ac4enc) build here from the root default (AC3FORGE_BUILD_AC4 ON, unlisted below) for the apps/wasm/ ac3forge_wasm_ac4 embind target (plan phase I4).",
+      "description": "Emscripten/WASM toolchain selection for the browser decode demo. Unlike every other platform preset here, this does NOT inherit \"core\": there is no host-OS condition (Emscripten cross-compiles from any host with $EMSDK set) and, more importantly, no vcpkg toolchainFile - see cmake/toolchains/wasm.emscripten.toolchain.cmake's own header for why going through vcpkg's community wasm32-emscripten triplet would be pure cost for zero benefit here. Everything \"core\" would otherwise supply (Ninja generator, binaryDir, the default ON options) is set directly below instead, deliberately turning off everything this preset does not need (CLI/GUI/tests/live-audio-linking containers) rather than inheriting defaults meant for a full desktop build. The AC-4 libraries (src/ac4, src/ac4dec, src/ac4enc) build here from the root default (AC3FORGE_BUILD_AC4 ON, unlisted below) for the apps/wasm/ ac3forge_wasm_ac4 embind target (plan phase I4).",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/toolchains/wasm.emscripten.toolchain.cmake",
@@ -200,7 +200,7 @@
     {
       "name": "sanitize-tsan",
       "hidden": true,
-      "description": "ThreadSanitizer. A SEPARATE preset from sanitize-asan-ubsan rather than more entries in its list, because the two runtimes are mutually exclusive - clang refuses -fsanitize=address,thread outright - and because they answer different questions: ASan/UBSan ask whether a single thread's memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing in the ASan+UBSan leg can see a data race, which is the whole reason this exists (ThreadSanitizer leg): src/audio is a lock-free SPSC ring, a silence watchdog and a clock-drift servo shared between a real-time callback thread and the encoder thread, and a missing acquire/release there is invisible to every other gate in this repository. cmake/Sanitizers.cmake already took an arbitrary comma-separated list, so this preset adds no build-system machinery of its own.",
+      "description": "ThreadSanitizer. A SEPARATE preset from sanitize-asan-ubsan rather than more entries in its list, because the two runtimes are mutually exclusive - clang refuses -fsanitize=address,thread outright - and because they answer different questions: ASan/UBSan ask whether a single thread's memory and arithmetic are sound, TSan asks whether two threads agree on who owns what. Nothing in the ASan+UBSan leg can see a data race, which is the whole reason this exists: src/audio is a lock-free SPSC ring, a silence watchdog and a clock-drift servo shared between a real-time callback thread and the encoder thread, and a missing acquire/release there is invisible to every other gate in this repository. cmake/Sanitizers.cmake already took an arbitrary comma-separated list, so this preset adds no build-system machinery of its own.",
       "cacheVariables": {
         "AC3FORGE_SANITIZERS": "thread"
       }
@@ -220,7 +220,7 @@
     {
       "name": "minimal-decoder",
       "hidden": true,
-      "description": "minimum-footprint decoder profile's minimum-footprint decoder profile: ONE decode-only static library (ac3::forge_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
+      "description": "The minimum-footprint decoder profile: ONE decode-only static library (ac3::forge_minimal) plus apps/baremetal's probe, built without exceptions, without RTTI and without the direct-form transform tables. Every other component is off - not as a time saving but because the root CMakeLists.txt refuses the combination: nothing under apps/, tests/, examples/ or the container modules builds against a decode-only archive. See cmake/MinimalDecoder.cmake and docs/building.md.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_DECODER": "ON",
         "AC3FORGE_BUILD_HEARTH": "OFF",
@@ -378,7 +378,7 @@
     {
       "name": "minimal-encoder",
       "hidden": true,
-      "description": "minimum-footprint decoder profile's minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (ac3::forge_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/forge/minimal.cmake and docs/building.md.",
+      "description": "The minimum-footprint profile pointed at ENCODE instead of decode: one encode-only static library (ac3::forge_minimal) carrying both codecs, plus apps/baremetal's encode probe, built without exceptions or RTTI. Mutually exclusive with minimal-decoder, and measured to be: on an ESP32-S3 with 277,400 bytes of internal SRAM free, decode peaks at 233,546, AC-3 encode at 201,770 and E-AC-3 encode at 243,770 - each fits alone, no two fit at once. See src/forge/minimal.cmake and docs/building.md.",
       "cacheVariables": {
         "AC3FORGE_MINIMAL_ENCODER": "ON",
         "AC3FORGE_BUILD_HEARTH": "OFF",
@@ -425,7 +425,7 @@
       "name": "config-arm-none-eabi-minimal",
       "inherits": [ "minimal-decoder" ],
       "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint decoder",
-      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target minimum-footprint decoder profile names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
+      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",
@@ -465,7 +465,7 @@
       "name": "config-arm-none-eabi-minimal-encoder",
       "inherits": [ "minimal-encoder" ],
       "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint encoder",
-      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint decoder profile - the concrete target minimum-footprint decoder profile names, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
+      "description": "arm-none-eabi (Cortex-M3, no OS) cross build of the minimum-footprint encoder profile, run under QEMU's mps2-an385 machine by tools/checks/run_baremetal_probe.sh --encoder. Like the Emscripten preset and for the same reasons, this does NOT inherit \"core\": there is no vcpkg triplet for bare-metal arm and nothing this profile builds has a third-party dependency, so the generator, binaryDir and options are set here directly rather than inherited from a preset meant for a hosted build.",
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
       "toolchainFile": "${sourceDir}/cmake/toolchains/arm-none-eabi.toolchain.cmake",
@@ -613,7 +613,7 @@
     {
       "name": "build-linux-gcc-minimal-encoder",
       "configurePreset": "config-linux-gcc-minimal-encoder",
-      "displayName": "Linux GCC minimum-footprint decoder"
+      "displayName": "Linux GCC minimum-footprint encoder"
     },
     {
       "name": "build-linux-gcc-minimal-ac4",

@@ -1,8 +1,9 @@
 # ---------------------------------------------------------------------------
 # ac3::forge_minimal - the whole of src/forge under the minimum-footprint
-# decoder profile (AC3FORGE_MINIMAL_DECODER, minimum-footprint decoder profile). Included and
-# returned from by CMakeLists.txt in this directory, so the ordinary
-# static+shared build below it cannot be perturbed by this profile at all:
+# profile (AC3FORGE_MINIMAL_DECODER, or AC3FORGE_MINIMAL_ENCODER for the
+# encode-only archive). Included and returned from by CMakeLists.txt in this
+# directory, so the ordinary static+shared build below it cannot be perturbed
+# by this profile at all:
 # there is exactly one `if` between the two shapes, at the top of that file,
 # and everything specific to this one lives here.
 #
@@ -73,7 +74,7 @@ target_sources(forge_minimal
         # decode half made the encode profile fail to link.
         src/verify/mirror.cpp
         src/verify/eac3_mirror.cpp
-        # SIMD kernels's runtime-dispatch follow-on. mdct.cpp asks
+        # Runtime AVX2 dispatch. mdct.cpp asks
         # ac3::internal::cpu::has_avx2() before each vectorised kernel, so
         # this profile has to answer - and both answers must LINK, not just
         # compile.
