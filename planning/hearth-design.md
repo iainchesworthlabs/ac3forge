@@ -1,5 +1,15 @@
 # Hearth: the desktop app's design (A0)
 
+!!! note "Status as of 2026-09-30: signed off 2026-09-22, and built"
+    `apps/hearth/ui/` was built to this design (phases A5 and A6 of
+    [the plan](hearth-reference-player.md)): the Play, Media, Speakers, Decoder, Network and
+    Settings pages and the first-run, About, Licences and shortcuts dialogs. The images below are
+    the design canvas's mockups, not screenshots of the app, and none of the running app exists
+    yet. Two artboards show a state the build has since changed. The AC-4 decoder page was drawn
+    inactive and AC-4 media information marked not playable, because no decoder existed; AC-4
+    plays since phase I2 of [the AC-4 plan](ac4.md), and the Decoder page's AC-4 tab is live. Both
+    are kept as approved.
+
 The record for [A0](hearth-reference-player.md#a0-design-rounds), the first phase of
 [chip A](hearth-reference-player.md#chip-a-the-desktop-app). A design canvas, built with the
 `design` skill, drew an artboard for each part of `ac3hearth` from the family's existing QML
@@ -95,13 +105,15 @@ has.
 
 **The AC-4 decoder, inactive**: every control the format will use, shown so the page is complete,
 with the reason it cannot be used yet stated at the top and the two controls AC-4 shares with
-AC-3/E-AC-3 left live.
+AC-3/E-AC-3 left live. *As built, every control is live: presentation, dialogue, dynamic range,
+output level, downmix, error handling, the immersive layout and core decoding.*
 
 ![The AC-4 decoder page, marked "not in this build" with its presentation table, dialogue enhancement, dynamic range and downmix controls shown inactive](../docs/hearth/design/screenshots/decoder-ac4-inactive.png)
 
 ### Media information
 
-**E-AC-3 JOC in MP4**, **AC-3**, and **AC-4** (not playable, shown for its metadata only).
+**E-AC-3 JOC in MP4**, **AC-3**, and **AC-4** (not playable, shown for its metadata only; *as
+built, AC-4 plays*).
 
 ![Media information for an E-AC-3 JOC stream in an MP4 container](../docs/hearth/design/screenshots/media-eac3-joc.png)
 
