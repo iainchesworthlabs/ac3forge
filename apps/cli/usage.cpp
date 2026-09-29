@@ -113,7 +113,8 @@ constexpr std::array<OptionToken, 102> kOptionTokens{{
     {"dialogue-method=", "ac4-encode: independent, mid or cross"},
     {"dialogue-max-gain=", "ac4-encode: the most a decoder may raise the dialogue, 3 to 12 dB"},
     {"dialogue-hybrid=", "ac4-encode: a hybrid dialogue enhancement, its waveform's share, 0 to 1"},
-    {"crc=", "ac4-encode: on (the default) or off, a raw stream's sync frames' Annex G CRC"},
+    {"crc=", "ac4-encode, atmos-encode with codec=ac4: on (the default) or off, a raw stream's "
+             "sync frames' Annex G CRC"},
     {"substream2=", "ac4-encode: another input WAV file, coded as substream 2; substream3= up to "
                     "substream32= work the same way"},
     {"substream2-<option>=", "ac4-encode: that substream's own bitrate=, codec-mode=, content=, "
@@ -133,9 +134,9 @@ constexpr std::array<OptionToken, 102> kOptionTokens{{
     {"fmp4-window=", "record/live container=fmp4: rolling segment-list window, 0 keeps all"},
     {"layout=", "record/live: the encoded layout (default stereo)"},
     {"codec=", "record/live: ac3, eac3 or ac4, instead of deriving it from layout=; transcode: "
-               "the output codec where the name cannot say; atmos-adm/atmos-iab: ac4 for an "
-               "A-JOC or direct-coded object substream instead of DD+ JOC E-AC-3"},
-    {"coding=", "atmos-adm/atmos-iab with codec=ac4: ajoc (default) or direct"},
+               "the output codec where the name cannot say; atmos-encode/atmos-adm/atmos-iab: ac4 "
+               "for an A-JOC or direct-coded object substream instead of DD+ JOC E-AC-3"},
+    {"coding=", "atmos-encode/atmos-adm/atmos-iab with codec=ac4: ajoc (default) or direct"},
     {"watchdog=", "record/live: capture-silence timeout in seconds (0 disables)"},
     {"bed-only", "decode: render an Atmos stream's 5.1 bed and skip its objects (§6 JOC "
                  "reconstruction needs ~233 KB of state; the bed does not)"},
@@ -375,6 +376,17 @@ void print_atmos_topic() {
     fmt::println("atmos mode: objects (default) writes the JOC+OAMD container; bed51 omits");
     fmt::println("       it so the 5.1 bed still plays on a decoder that refuses an object");
     fmt::println("       container it cannot validate instead of falling back to the bed.");
+    fmt::println("atmos-encode codec=ac4 writes the objects as AC-4 objects instead: A-JOC");
+    fmt::println("       coded (coding=ajoc, the default) or direct-coded (coding=direct), a");
+    fmt::println("       raw stream (crc=off drops the sync frames' CRC) or, for an .mp4,");
+    fmt::println("       .m4a or .mov name, an MP4 file. Every object is written at 2 048");
+    fmt::println("       samples a frame, one metadata update a frame, 64 objects at most.");
+    fmt::println("       With map=, a channel sent to a speaker is an object held at the");
+    fmt::println("       speaker's place on the ring ADM's polar coordinates give a bed");
+    fmt::println("       channel, at unity, and one sent to an LFE the stream's one LFE");
+    fmt::println("       object; the objects are the map='s obj and objm ones in its order,");
+    fmt::println("       then the speakers' and the LFE. A source shorter than the longest is");
+    fmt::println("       silent past its end. dialnorm=1..31 is its dialnorm.");
 }
 
 void print_paths_topic() {

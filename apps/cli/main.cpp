@@ -241,9 +241,11 @@ constexpr std::array<Command, 44> kCommands{{
                                          x.u32(5, 0), x.meta)
                         : kExitUsage;
      }},
-    {"atmos-encode", 3, "<in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt]",
+    {"atmos-encode", 3, "<in.wav> <out.ec3|out.ac4|out.mp4> [bitrate_kbps] [objects] [paths.txt]",
      "every source channel as an object; optional: authored per-object motion from a scene "
-     "file (same formats as atmos-path), objects it doesn't mention keep their default placement",
+     "file (same formats as atmos-path), objects it doesn't mention keep their default "
+     "placement; with codec=ac4, AC-4 objects (A-JOC, or coding=direct) in a raw stream or an "
+     "MP4 file",
      topic::kStdio | topic::kAtmos | topic::kPaths | topic::kMulti | topic::kMeta | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) {

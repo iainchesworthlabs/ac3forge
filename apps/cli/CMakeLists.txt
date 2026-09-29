@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # ac3cli - the command-line front end over ac3::forge.
 # ---------------------------------------------------------------------------
-add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp ../common/stream_playback.cpp ../common/ac4_object_render.cpp ../common/ac4_encode_core.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/ac4_encode.cpp commands/ac4_encode_objects.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
+add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp ../common/fmp4_folder_writer.cpp ../common/recording_sink.cpp ../common/container_input.cpp ../common/stream_playback.cpp ../common/ac4_object_render.cpp ../common/ac4_encode_core.cpp ../common/ac4_objects_core.cpp commands/containers.cpp commands/audio_io.cpp commands/live_audio.cpp commands/synth.cpp commands/atmos.cpp commands/encode.cpp commands/ac4_encode.cpp commands/ac4_encode_objects.cpp commands/decode.cpp commands/analysis.cpp commands/probe.cpp commands/stream_tools.cpp)
 
 # ../common/recording_sink.cpp + fmp4_folder_writer.cpp: the take writer
 # 'record' and 'live' stream their output through (wide-layout record/live paths), shared
@@ -12,8 +12,10 @@ add_executable(ac3cli main.cpp support.cpp usage.cpp json.cpp multi_source.cpp .
 # ac3tests. ../common/container_input.cpp (container readers (mkv/mp4/ts)) is the same shape,
 # for turning a container file into an elementary stream instead, and so is
 # ../common/stream_playback.cpp, the decoder choice and end-of-stream flush
-# 'monitor' and 'spatial' play a stream with, and ../common/ac4_encode_core.cpp,
-# the steps of 'ac4-encode' ac3gui's AC-4 encode takes too.
+# 'monitor' and 'spatial' play a stream with, ../common/ac4_encode_core.cpp,
+# the steps of 'ac4-encode' ac3gui's AC-4 encode takes too, and
+# ../common/ac4_objects_core.cpp, the object slots and the AC-4 objects' steps
+# 'atmos-encode', 'atmos-adm' and 'atmos-iab' take, which ac3gui's AC-4 objects take too.
 target_include_directories(ac3cli PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../common")
 
 # ac3cli's platform-specific code, two seams' worth: putting stdin/stdout into

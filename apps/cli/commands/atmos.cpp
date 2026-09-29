@@ -37,6 +37,8 @@
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
 #include "ac4/ac4.hpp"
+#include "ac4_encode_core.hpp"
+#include "ac4_objects_core.hpp"
 #include "ac4enc/encoder.hpp"
 #include "../adm/atmos_adm.hpp"
 #include "../adm/atmos_iab.hpp"
@@ -185,15 +187,8 @@ constexpr std::array<CbiLayout, 3> kCbiLayouts{{
 // room coordinate system - X 0 (left wall) to 1 (right), Y 0 (front) to 1 (back), Z -1 (floor) to 1
 // (ceiling), confirmed against apps/common/ac4_object_render.hpp's own header comment - so position
 // carries over unconverted; gain does not, since oba's is linear and AC-4's is dB (Table 108-adjacent
-// range +15 to -49, or -infinity for silence).
-[[nodiscard]] ac4::ObjectProperties to_ac4_properties(const ac3::oba::ObjectPlacement& p) {
-    ac4::ObjectProperties out;
-    out.position = {p.position.x, p.position.y, p.position.z};
-    out.gain_db = p.gain > 0.0 ? 20.0 * std::log10(p.gain)
-                               : -std::numeric_limits<double>::infinity();
-    return out;
-}
-
+// range +15 to -49, or -infinity for silence). ac3::apps::ac4_object_properties does both.
+//
 // The AC-4 branch of run_atmos_adm/run_atmos_iab (codec=ac4): every bed/object channel the source
 // names becomes a dynamic AC-4 object driven by its own ObjectPath, the same treatment the E-AC-3
 // branches beside this function give a bed channel (panned by position, no speaker-anchored
@@ -201,7 +196,8 @@ constexpr std::array<CbiLayout, 3> kCbiLayouts{{
 // it already is for E-AC-3 above. AC-4's object substream is frame_rate_index 13 only
 // (ac4enc/encoder.hpp, SubstreamConfig::objects), so metadata updates land on that fixed 2048-sample
 // grid: one update per object per frame, ramped over the whole frame from the previous one, evaluated
-// at the frame's END time - the convention every Atmos-encode command in this file uses.
+// at the frame's END time - the convention every Atmos-encode command in this file uses. The steps
+// themselves are apps/common/ac4_objects_core.cpp's, which ac3gui's AC-4 objects take too.
 int run_atmos_objects_to_ac4(std::string_view source_kind, std::uint32_t sample_rate,
                              const std::vector<bool>& is_bed,
                              const std::vector<ac3::oba::ObjectPath>& paths,
@@ -220,57 +216,34 @@ int run_atmos_objects_to_ac4(std::string_view source_kind, std::uint32_t sample_
         fmt::println(stderr, "error: {} names no bed/object channel", in_path);
         return kExitInput;
     }
-    constexpr std::int64_t kFrameSamples = 2048;  // frame_rate_index 13's frame length
-    const std::size_t total = pcm.empty() ? 0 : pcm.front().size();
 
-    ac4::ObjectsConfig objects_config;
-    objects_config.coding = meta.ac4_atmos_coding.value_or(ac4::ObjectCoding::kAjoc);
-    objects_config.objects.resize(count);
-    for (std::size_t i = 0; i < count; ++i) {
-        objects_config.objects[i].properties = to_ac4_properties(paths[i].evaluate(0.0));
-    }
-    std::vector<ac4::ObjectMetadataUpdate> updates;
-    for (std::int64_t start = 0; static_cast<std::uint64_t>(start) < total; start += kFrameSamples) {
-        const auto ramp = std::min<std::int64_t>(kFrameSamples, static_cast<std::int64_t>(total) - start);
-        const double t = static_cast<double>(start + ramp) / static_cast<double>(sample_rate);
-        const auto placements = ac3::oba::evaluate_placements(paths, t);
-        for (std::size_t i = 0; i < count; ++i) {
-            updates.push_back({.object = static_cast<int>(i),
-                               .sample = start,
-                               .ramp_samples = static_cast<int>(ramp),
-                               .properties = to_ac4_properties(placements[i])});
+    const ac3::apps::Ac4ObjectsParams params{
+        .sample_rate_hz = sample_rate,
+        .bitrate_kbps = static_cast<int>(bitrate),
+        .dialnorm_db = static_cast<double>(meta.p.dialnorm),
+        .coding = meta.ac4_atmos_coding.value_or(ac4::ObjectCoding::kAjoc)};
+    const auto encoded = ac3::apps::encode_ac4_objects(
+        params, std::vector<bool>{}, pcm, [&paths](double time_s) {
+            return ac3::oba::evaluate_placements(paths, time_s);
+        });
+    if (!encoded.has_value()) {
+        switch (encoded.error().kind) {
+            case ac3::apps::Ac4ObjectsError::Kind::kRefused:
+                fmt::println(stderr, "error: the encoder refuses {} objects at {} kbps ({})",
+                             source_kind, bitrate, encoded.error().message);
+                return kExitUsage;
+            case ac3::apps::Ac4ObjectsError::Kind::kEncode:
+                fmt::println(stderr, "error: {}: {}", in_path, encoded.error().message);
+                return kExitInput;
+            case ac3::apps::Ac4ObjectsError::Kind::kFlush:
+                break;
         }
-    }
-
-    ac4::EncoderConfig config;
-    config.sample_rate_hz = static_cast<int>(sample_rate);
-    config.frame_rate_index = 13;
-    config.bitrate_kbps = static_cast<int>(bitrate);
-    config.dialnorm_db = -static_cast<double>(meta.p.dialnorm);
-    config.experimental.objects = true;
-    ac4::SubstreamConfig substream;
-    substream.objects = objects_config;
-    config.substreams = {substream};
-    auto encoder = ac4::Encoder::create(config);
-    if (!encoder.has_value()) {
-        fmt::println(stderr, "error: the encoder refuses {} objects at {} kbps ({})", source_kind,
-                     bitrate, ac4::Encoder::refusal_reason(config));
-        return kExitUsage;
-    }
-    auto frames = encoder->encode(pcm, updates);
-    if (!frames.has_value()) {
-        fmt::println(stderr, "error: {}: {}", in_path, ac4::describe(frames.error()));
+        fmt::println(stderr, "error: {}", encoded.error().message);
         return kExitInput;
     }
-    auto rest = encoder->flush();
-    if (!rest.has_value()) {
-        fmt::println(stderr, "error: {}", ac4::describe(rest.error()));
-        return kExitInput;
-    }
-    frames->insert(frames->end(), rest->begin(), rest->end());
     std::vector<std::vector<std::byte>> bytes;
-    bytes.reserve(frames->size());
-    for (const ac4::EncodedFrame& frame : *frames) {
+    bytes.reserve(encoded->frames.size());
+    for (const ac4::EncodedFrame& frame : encoded->frames) {
         bytes.push_back(ac4::sync_frame(frame.raw_ac4_frame, /*crc=*/true));
     }
     if (!write_frames(out_path, bytes)) {
@@ -281,14 +254,14 @@ int run_atmos_objects_to_ac4(std::string_view source_kind, std::uint32_t sample_
         bed_count += b ? 1U : 0U;
     }
     const auto status = status_stream(out_path);
-    status_println(status, "encoded {} AC-4 frames ({} kbps, {} Hz) from {} to {}", frames->size(),
-                   bitrate, sample_rate, in_path, out_path);
+    status_println(status, "encoded {} AC-4 frames ({} kbps, {} Hz) from {} to {}",
+                   encoded->frames.size(), bitrate, sample_rate, in_path, out_path);
     status_println(status,
                    "  {} bed speaker feed(s) + {} dynamic object(s) = {} objects, {}-coded",
                    bed_count, count - bed_count, count,
-                   objects_config.coding == ac4::ObjectCoding::kAjoc ? "A-JOC" : "direct");
+                   params.coding == ac4::ObjectCoding::kAjoc ? "A-JOC" : "direct");
     status_println(status, "  the decoder's output lags the input by {} samples",
-                   encoder->delay_samples() + encoder->decoder_delay_samples());
+                   encoded->lag_samples);
     return kExitOk;
 }
 
@@ -543,6 +516,64 @@ int run_atmos_path(std::string_view out_path, std::string_view paths_path, std::
     return kExitOk;
 }
 
+namespace {
+
+// atmos-encode's default placement of `count` objects with no direction of their own (a src=/map=
+// run has no source layout to take one from): an even fan around the room at ear height, each at
+// the inverse-root gain 'atmos' and the GUI use, so that objects panned into the same five channels
+// add to about unity.
+std::vector<ac3::oba::ObjectPlacement> fan_placements(std::size_t count) {
+    std::vector<ac3::oba::ObjectPlacement> placement(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const double azimuth = 360.0 * static_cast<double>(i) / static_cast<double>(count);
+        const double radians = azimuth * std::numbers::pi / 180.0;
+        placement[i] = {.position = {.x = 0.5 - 0.5 * std::sin(radians),
+                                     .y = 0.5 - 0.5 * std::cos(radians),
+                                     .z = 0.0},
+                        .gain = 0.7 / std::sqrt(static_cast<double>(count)),
+                        .lfe_send = 0.0};
+    }
+    return placement;
+}
+
+// The same for the first `count` channels of one file of `src_channels`: a channel that already
+// has a direction keeps it, the rest fan out evenly.
+std::vector<ac3::oba::ObjectPlacement> layout_placements(std::size_t src_channels,
+                                                         std::size_t count) {
+    std::vector<ac3::oba::ObjectPlacement> placement(count);
+    const auto layout = ac3::io::ac3_layout_for(src_channels);
+    for (std::size_t i = 0; i < count; ++i) {
+        double azimuth = 0.0;
+        if (layout.has_value()) {
+            // wav_index maps a coded channel to a WAV one; this needs the
+            // inverse, so the channel is found rather than indexed.
+            for (std::size_t k = 0; k < layout->wav_index.size(); ++k) {
+                if (layout->wav_index[k] != i) {
+                    continue;
+                }
+                azimuth = ac3::analysis::channel_azimuth_deg(layout->acmod, layout->lfe,
+                                                             static_cast<int>(k))
+                              .value_or(0.0);
+            }
+        } else {
+            azimuth = 360.0 * static_cast<double>(i) / static_cast<double>(count);
+        }
+        const double radians = azimuth * std::numbers::pi / 180.0;
+        placement[i] = {.position = {.x = 0.5 - 0.5 * std::sin(radians),
+                                     .y = 0.5 - 0.5 * std::cos(radians),
+                                     .z = 0.0},
+                        // Every object is panned into the same five channels,
+                        // so their contributions add there. The same
+                        // inverse-root law 'atmos' and the GUI use, so a file
+                        // encoded either way comes out at the same level.
+                        .gain = 0.7 / std::sqrt(static_cast<double>(count)),
+                        .lfe_send = 0.0};
+    }
+    return placement;
+}
+
+}  // namespace
+
 // atmos-encode with src=/map= (wide-layout record/live paths): several sources, and an explicit
 // statement of which of their channels become which objects, instead of the
 // single-file "every channel is an object, in file order" default.
@@ -634,16 +665,7 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
     // rather than stacked at one point. A multi-source map= has no source
     // layout to take a direction from the way one file does, so this is the
     // even fan every time.
-    std::vector<ac3::oba::ObjectPlacement> placement(count);
-    for (std::size_t i = 0; i < count; ++i) {
-        const double azimuth = 360.0 * static_cast<double>(i) / static_cast<double>(count);
-        const double radians = azimuth * std::numbers::pi / 180.0;
-        placement[i] = {.position = {.x = 0.5 - 0.5 * std::sin(radians),
-                                     .y = 0.5 - 0.5 * std::cos(radians),
-                                     .z = 0.0},
-                        .gain = 0.7 / std::sqrt(static_cast<double>(count)),
-                        .lfe_send = 0.0};
-    }
+    const std::vector<ac3::oba::ObjectPlacement> placement = fan_placements(count);
 
     // Authored motion, keyed by OBJECT index (the order map= produced them
     // in), not by channel: with several sources a channel index alone would
@@ -751,9 +773,190 @@ int run_atmos_encode_multi(std::string_view in_path, std::string_view out_path,
     return kExitOk;
 }
 
+namespace {
+
+// atmos-encode with codec=ac4 (planning/ac4.md, I5b): the source's channels as AC-4 objects, A-JOC
+// coded by default or, with coding=direct, direct-coded, written as a raw stream or, for an
+// .mp4/.m4a/.mov name, an MP4 file. Which channels are objects follows src=/map= as it does for
+// E-AC-3 (object_slots_from_assignment, with a channel mapped to a speaker a dynamic object held
+// there and one mapped to an LFE the LFE object - ac3::apps::ac4_object_slots), and an authored
+// scene file moves the dynamic objects, in that order; without one each keeps atmos-encode's
+// default placement. The steps from there are apps/common/ac4_objects_core.cpp's and
+// ac4_encode_core.cpp's, which ac3gui's AC-4 objects take too, so the line the GUI echoes writes
+// the bytes the GUI does.
+int run_atmos_encode_ac4(std::string_view in_path, std::string_view out_path,
+                         std::uint32_t bitrate, std::uint32_t objects, const Options& meta,
+                         std::string_view paths_path) {
+    if (meta.sign_objects) {
+        fmt::println(stderr,
+                     "error: sign-objects signs E-AC-3's EMDF object container; an AC-4 object "
+                     "stream carries no such signature");
+        return kExitUsage;
+    }
+    if (meta.p.measure_dialnorm) {
+        fmt::println(stderr,
+                     "error: dialnorm=auto measures a bed's loudness, which an AC-4 object stream "
+                     "has none of; pass dialnorm=<1..31> explicitly");
+        return kExitUsage;
+    }
+    const bool to_mp4 = ac3::apps::ac4_output_names_mp4(out_path);
+    if (meta.ac4enc.crc && to_mp4) {
+        fmt::println(stderr,
+                     "error: crc= is a raw stream's sync frames' CRC; an MP4 sample is the raw "
+                     "frame alone, with no sync word and no CRC");
+        return kExitUsage;
+    }
+    const bool routed = !meta.sources.empty() || meta.map_spec.has_value();
+    if (routed && objects != 0) {
+        fmt::println(stderr,
+                     "error: [objects] counts the source channels to turn into objects, "
+                     "which map= states instead - give one or the other");
+        return kExitUsage;
+    }
+
+    // The sources, whole: src=/map= go through load_sources as everywhere, the single file the
+    // classic way (so "-" reads stdin), with offset= on it either way.
+    std::vector<ac3::io::WavData> wavs;
+    std::vector<plan::SourceShape> shapes;
+    std::vector<std::size_t> offsets;
+    if (routed) {
+        auto loaded = load_sources(in_path, meta.sources, meta.offsets);
+        if (!loaded.has_value()) {
+            return kExitInput;
+        }
+        wavs = std::move(loaded->wavs);
+        shapes = std::move(loaded->shapes);
+        offsets = std::move(loaded->offset_samples);
+    } else {
+        auto wav = read_wav_arg(in_path);
+        if (!wav.has_value()) {
+            fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
+            return kExitInput;
+        }
+        shapes.push_back({.channels = wav->channels.size(), .label = std::string{in_path}});
+        offsets.push_back(offset_samples_for(meta.offsets, 0, wav->sample_rate));
+        wavs.push_back(std::move(*wav));
+    }
+    const std::uint32_t sample_rate = wavs.front().sample_rate;
+
+    // What each channel is. Without map= every channel is an object - the first `objects` of a
+    // single file when a count is given.
+    plan::Assignment assignment;
+    if (meta.map_spec.has_value()) {
+        if (!plan::parse_assignment(*meta.map_spec, shapes, assignment)) {
+            fmt::println(stderr, "error: bad map= spec ({})", plan::kAssignmentSyntax);
+            return kExitUsage;
+        }
+    } else {
+        std::size_t rows = 0;
+        for (const plan::SourceShape& shape : shapes) {
+            rows += shape.channels;
+        }
+        if (!routed && objects != 0) {
+            rows = std::min<std::size_t>(objects, rows);
+        }
+        std::size_t flat = 0;
+        for (std::size_t s = 0; s < shapes.size(); ++s) {
+            for (std::size_t c = 0; c < shapes[s].channels; ++c, ++flat) {
+                if (flat < rows) {
+                    assignment.set(s, c, {.kind = plan::DestinationKind::kObject});
+                }
+            }
+        }
+    }
+    const std::vector<ac3::apps::Ac4ObjectSlot> slots =
+        ac3::apps::ac4_object_slots(assignment, shapes);
+    const ac3::apps::Ac4ObjectsParams params{
+        .sample_rate_hz = sample_rate,
+        .bitrate_kbps = static_cast<int>(bitrate),
+        .dialnorm_db = static_cast<double>(meta.p.dialnorm),
+        .coding = meta.ac4_atmos_coding.value_or(ac4::ObjectCoding::kAjoc)};
+    if (const auto refused = ac3::apps::ac4_objects_refusal(slots, params)) {
+        fmt::println(stderr, "error: {}: {}", in_path, *refused);
+        return kExitUsage;
+    }
+    const auto dynamic =
+        static_cast<std::size_t>(std::ranges::count_if(slots, [](const auto& slot) {
+            return slot.kind == ac3::apps::Ac4ObjectSlot::Kind::kDynamic;
+        }));
+
+    // The dynamic objects' motion: the scene file's, and the default placement of any it does not
+    // mention (or of all, without one).
+    const std::vector<ac3::oba::ObjectPlacement> placement =
+        routed ? fan_placements(dynamic) : layout_placements(shapes.front().channels, dynamic);
+    ac3::oba::SceneContents contents;
+    if (!paths_path.empty()) {
+        auto read = read_scene_file(paths_path);
+        if (!read.has_value()) {
+            return kExitInput;
+        }
+        contents = std::move(*read);
+    }
+    const auto scene = scene_of(paths_path, std::move(contents), dynamic,
+                                [&placement](std::size_t i) { return placement[i]; });
+    if (!scene.has_value()) {
+        return kExitInput;
+    }
+
+    std::vector<ac3::apps::Ac4SourceView> views;
+    views.reserve(wavs.size());
+    for (std::size_t i = 0; i < wavs.size(); ++i) {
+        views.push_back({.channels = wavs[i].channels, .offset_samples = offsets[i]});
+    }
+    const std::vector<std::vector<float>> flat = ac3::apps::ac4_flat_planes(views);
+    const auto encoded = ac3::apps::encode_ac4_scene(params, slots, flat, *scene);
+    if (!encoded.has_value()) {
+        switch (encoded.error().kind) {
+            case ac3::apps::Ac4ObjectsError::Kind::kRefused:
+                fmt::println(stderr, "error: the encoder refuses {} objects at {} kbps ({})",
+                             slots.size(), bitrate, encoded.error().message);
+                return kExitUsage;
+            case ac3::apps::Ac4ObjectsError::Kind::kEncode:
+                fmt::println(stderr, "error: {}: {}", in_path, encoded.error().message);
+                return kExitInput;
+            case ac3::apps::Ac4ObjectsError::Kind::kFlush:
+                break;
+        }
+        fmt::println(stderr, "error: {}", encoded.error().message);
+        return kExitInput;
+    }
+    const bool crc = meta.ac4enc.crc.value_or(true);
+    const auto packaged = ac3::apps::package_ac4(encoded->frames, encoded->toc, to_mp4, crc);
+    if (!packaged.has_value()) {
+        fmt::println(stderr, "error: {}", packaged.error().message);
+        return packaged.error().usage ? kExitUsage : kExitOutput;
+    }
+    if (!write_frames(out_path, packaged->chunks)) {
+        return kExitOutput;
+    }
+    const auto status = status_stream(out_path);
+    status_println(status, "encoded {} AC-4 frames ({} kbps, {} Hz) from {} to {}",
+                   encoded->frames.size(), bitrate, sample_rate, in_path, out_path);
+    status_println(status, "  {} objects ({} dynamic), {}-coded, {}", slots.size(), dynamic,
+                   params.coding == ac4::ObjectCoding::kAjoc ? "A-JOC" : "direct",
+                   to_mp4 ? fmt::format("MP4, codecs {}", packaged->rfc6381)
+                          : std::string{crc ? "raw with CRC" : "raw without CRC"});
+    status_println(status, "  the decoder's output lags the input by {} samples",
+                   encoded->lag_samples);
+    return kExitOk;
+}
+
+}  // namespace
+
 int run_atmos_encode(std::string_view in_path, std::string_view out_path,
                      std::uint32_t bitrate, std::uint32_t objects,
                      const Options& meta, std::string_view paths_path) {
+    // codec=ac4 takes the AC-4 objects path above, src=/map= and all.
+    if (meta.take_codec == ac3::plan::Codec::kAc4) {
+        return run_atmos_encode_ac4(in_path, out_path, bitrate, objects, meta, paths_path);
+    }
+    // coding= and crc= are AC-4 objects' options; an E-AC-3 stream has neither, and a flag that
+    // is dropped reads exactly like one that did not work.
+    if (meta.ac4_atmos_coding.has_value() || meta.ac4enc.crc.has_value()) {
+        fmt::println(stderr,
+                     "error: coding= and crc= are the options of AC-4 objects: add codec=ac4");
+        return kExitUsage;
+    }
     // src=/map= route to the multi-source path above, which is what makes
     // obj/objm real destinations on this command (wide-layout record/live paths - they parsed
     // and did nothing here before). Without either, everything below is
@@ -836,35 +1039,7 @@ int run_atmos_encode(std::string_view in_path, std::string_view out_path,
     // cannot pull apart again, so the source's channels are spread across the
     // room rather than stacked at one point. A channel that already has a
     // direction keeps it; the rest fan out evenly.
-    std::vector<ac3::oba::ObjectPlacement> placement(count);
-    const auto layout = ac3::io::ac3_layout_for(src_channels);
-    for (std::size_t i = 0; i < count; ++i) {
-        double azimuth = 0.0;
-        if (layout.has_value()) {
-            // wav_index maps a coded channel to a WAV one; this needs the
-            // inverse, so the channel is found rather than indexed.
-            for (std::size_t k = 0; k < layout->wav_index.size(); ++k) {
-                if (layout->wav_index[k] != i) {
-                    continue;
-                }
-                azimuth = ac3::analysis::channel_azimuth_deg(layout->acmod, layout->lfe,
-                                                             static_cast<int>(k))
-                              .value_or(0.0);
-            }
-        } else {
-            azimuth = 360.0 * static_cast<double>(i) / static_cast<double>(count);
-        }
-        const double radians = azimuth * std::numbers::pi / 180.0;
-        placement[i] = {.position = {.x = 0.5 - 0.5 * std::sin(radians),
-                                     .y = 0.5 - 0.5 * std::cos(radians),
-                                     .z = 0.0},
-                        // Every object is panned into the same five channels,
-                        // so their contributions add there. The same
-                        // inverse-root law 'atmos' and the GUI use, so a file
-                        // encoded either way comes out at the same level.
-                        .gain = 0.7 / std::sqrt(static_cast<double>(count)),
-                        .lfe_send = 0.0};
-    }
+    const std::vector<ac3::oba::ObjectPlacement> placement = layout_placements(src_channels, count);
 
     // An authored scene file (same format/addressing as atmos-path, object
     // index == this WAV channel index) drives motion instead of the static
