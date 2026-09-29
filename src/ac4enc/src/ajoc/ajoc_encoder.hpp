@@ -1,7 +1,6 @@
 #pragma once
 
 #include <array>
-#include <complex>
 #include <cstddef>
 #include <deque>
 #include <span>
@@ -88,7 +87,7 @@ class AjocEncoder {
     void drop_before_frame(long long frame);
 
    private:
-    using Slot = std::array<std::complex<double>, dsp::kQmfSubbands>;
+    using Slot = std::array<dsp::Complex<double>, dsp::kQmfSubbands>;
     using Reconstruction = ajoc::Reconstruction<double>;
 
     // A candidate's quantised values: per object, dry [ch][pb] and wet
@@ -116,7 +115,7 @@ class AjocEncoder {
     // Runs `values` on a copy of the state from the frames sent: the objects'
     // error over the frame, and the copy and its output.
     [[nodiscard]] double run(const Values& values, Reconstruction& state,
-                             std::vector<std::vector<std::complex<double>>>& out);
+                             std::vector<std::vector<dsp::Complex<double>>>& out);
 
     AjocSetup setup_;
     FrameTiming timing_;
@@ -131,8 +130,8 @@ class AjocEncoder {
     bool held_valid_ = false;
     // The frame being proposed: its downmix and objects over its slots, and
     // what propose() chose, with the state it leaves.
-    std::vector<std::vector<std::complex<double>>> x_;
-    std::vector<std::vector<std::complex<double>>> z_;
+    std::vector<std::vector<dsp::Complex<double>>> x_;
+    std::vector<std::vector<dsp::Complex<double>>> z_;
     Values proposed_;
     Reconstruction proposed_state_;
     bool proposed_iframe_ = true;
