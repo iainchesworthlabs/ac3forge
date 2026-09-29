@@ -76,8 +76,12 @@ inputs:
       after that, because a real-time assertion measured beside eight other
       tests measures the neighbours. A failing test is retried once
       (`--repeat until-pass:2`) and the run says so, so a collision between
-      tests cannot block a merge unseen. Failures are summarised on the run's
-      summary page with the command that reproduces each.
+      tests cannot block a merge unseen. A parallel phase that still has
+      failures runs them again one at a time: a test that passes alone passes
+      the phase with a warning that names it (it is short of CPU or shares a
+      resource under load), and one that fails alone is a failure. Failures are
+      summarised on the run's summary page with the command that reproduces
+      each.
     default: ""
   ctest-qml-jobs:
     description: >-
@@ -450,22 +454,64 @@ runs:
         #    part of a warm run, which is why the setting exists.
         # 3. Alone, for the throughput guards: a real-time assertion measured
         #    beside seven other tests measures them.
+        #
+        # A test that fails twice in a row while others share the machine may only be
+        # short of CPU: on hosted Windows a concurrency case whose threads had not
+        # started when its main thread finished failed that way on every run. So a
+        # parallel phase that still has failures runs those again, one test at a time.
+        # A test that passes alone passes the phase, with a warning that names it,
+        # because it has a timing or shared-resource assumption and refusing a change
+        # that broke nothing is the worse trade. One that fails alone is a failure.
         cpus="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-2}")"
         jobs="$CTEST_JOBS"
         if [ "$jobs" = "auto" ]; then jobs="$cpus"; fi
         qml_jobs="${CTEST_QML_JOBS:-1}"
         if [ "$qml_jobs" = "auto" ]; then qml_jobs="$cpus"; fi
         log="${RUNNER_TEMP}/ctest.log"
+        failed_log="${RUNNER_TEMP}/ctest-failed.log"
+        phase_log="${RUNNER_TEMP}/ctest-phase.log"
         : > "$log"
+        : > "$failed_log"
+        # One phase: $1 tests at once, $2 is `retry` to run a failing case once more
+        # (anything else runs it once), and the rest is ctest's own filters. What is
+        # still failing at the end of it goes to $failed_log for the summary.
+        run_phase() {
+          local at_once="$1" retry="$2"
+          shift 2
+          local status=0 again=0 names=""
+          if [ "$retry" = retry ]; then
+            ctest --preset "test-$LEG_PRESET" -j "$at_once" --repeat until-pass:2 "$@" 2>&1 \
+              | tee "$phase_log" | tee -a "$log" || status=$?
+          else
+            ctest --preset "test-$LEG_PRESET" -j "$at_once" "$@" 2>&1 \
+              | tee "$phase_log" | tee -a "$log" || status=$?
+          fi
+          if [ "$status" -eq 0 ]; then
+            return 0
+          fi
+          if [ "$at_once" -gt 1 ]; then
+            names="$(sed -n '/The following tests FAILED:/,/^Errors while running CTest/p' "$phase_log" \
+              | sed -n -E 's/^[[:space:]]+[0-9]+ - (.*) \((Failed|Timeout|SEGFAULT|Exception|Not Run|Subprocess aborted|Child aborted|Bus error|Illegal|Interrupted|OTHER_FAULT|Numerical)\).*/\1/p' \
+              | head -8 | paste -sd ';' - || true)"
+            echo "::group::Still failing at ${at_once} tests at a time: running what failed again, one at a time"
+            ctest --preset "test-$LEG_PRESET" --rerun-failed --output-on-failure 2>&1 \
+              | tee "$phase_log" | tee -a "$log" || again=$?
+            echo "::endgroup::"
+            if [ "$again" -eq 0 ]; then
+              echo "::warning title=ctest::Failed under -j${at_once} and passed when run alone: ${names:-see the ctest output above}. The test has a timing or shared-resource assumption."
+              return 0
+            fi
+            status="$again"
+          fi
+          cat "$phase_log" >> "$failed_log"
+          return "$status"
+        }
         rc=0
-        ctest --preset "test-$LEG_PRESET" -j "$jobs" --repeat until-pass:2 -LE Performance -E '_qml_tests_' 2>&1 \
-          | tee -a "$log" || rc=$?
+        run_phase "$jobs" retry -LE Performance -E '_qml_tests_' || rc=$?
         # --no-tests=ignore on the other two, since a preset may build no Qt
         # (the sanitizer legs) or no ac3perf target.
-        ctest --preset "test-$LEG_PRESET" -j "$qml_jobs" --repeat until-pass:2 -R '_qml_tests_' --no-tests=ignore 2>&1 \
-          | tee -a "$log" || rc=$?
-        ctest --preset "test-$LEG_PRESET" -L Performance --no-tests=ignore 2>&1 \
-          | tee -a "$log" || rc=$?
+        run_phase "$qml_jobs" retry -R '_qml_tests_' --no-tests=ignore || rc=$?
+        run_phase 1 once -L Performance --no-tests=ignore || rc=$?
         retried="$(grep -c '\*\*\*Failed' "$log" || true)"
         if [ "$rc" -eq 0 ] && [ "$retried" -gt 0 ]; then
           echo "::warning title=ctest::${retried} test attempt(s) failed and then passed on retry. Under -j$jobs that can be two tests sharing a resource; the ctest output above shows which."
@@ -484,7 +530,10 @@ runs:
       run: |
         set -euo pipefail
         build_log="${RUNNER_TEMP}/build.log"
-        test_log="${RUNNER_TEMP}/ctest.log"
+        # What was still failing when each phase ended, not the whole log, which also
+        # holds failures that passed when run again.
+        test_log="${RUNNER_TEMP}/ctest-failed.log"
+        if [ ! -s "$test_log" ]; then test_log="${RUNNER_TEMP}/ctest.log"; fi
         if [ -f "$build_log" ] && grep -q -E 'FAILED:|: error[ :]|error C[0-9]+|error LNK[0-9]+|undefined reference|ld returned' "$build_log"; then
           {
             echo "### Build errors"
