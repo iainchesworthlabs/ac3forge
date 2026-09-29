@@ -155,6 +155,7 @@ suites, so **Before** reads "new".
 | Play / Pause button | none | UI (hardware) | E2eInspect::test_playerPlayScrubAndPauseFromItsOwnControls. With no output: error line shown. With an output: plays, then pauses. |
 | Export decoded WAV (loads back as a source) | none | UI | E2eEncode::test_playerExportsDecodedWavThatLoadsBackAsASource |
 | Export objects (one WAV per object) | none | UI | E2eInspect::test_playerExportsOneWavPerObjectFromAnAtmosStream |
+| Export objects, AC-4 (A-JOC or direct-coded) | none | UI | E2eInspect::test_playerExportsOneWavPerObjectFromAnAc4Stream |
 | Closing the dialog stops playback | none | UI | E2eInspect::test_playerPlayScrubAndPauseFromItsOwnControls |
 
 ## QC panel and gate meters

@@ -548,5 +548,59 @@ ScrollView {
                 wrapMode: Text.WordWrap
             }
         }
+
+        // Under both columns, full width, for the same reason "Errors" above is
+        // (planning/ac4.md, I5): the immersive layout's six choices do not fit a
+        // column beside their label at the window's narrowest.
+        Card {
+            Layout.fillWidth: true
+            ordinal: "06"
+            title: qsTr("Immersive and objects")
+            framed: true
+            summary: qsTr("AC-4 only")
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gap
+                Text { text: qsTr("Layout"); color: Theme.text; font.pixelSize: Theme.fontNormal
+                       elide: Text.ElideRight; Layout.preferredWidth: root.labelWidth }
+                SegmentedControl {
+                    accessibleName: qsTr("Immersive layout")
+                    currentValue: root.settings.ac4ImmersiveLayout ?? "asCoded"
+                    model: [
+                        { value: "asCoded", label: qsTr("As coded") },
+                        { value: "5.1", label: qsTr("5.1") },
+                        { value: "5.1.2", label: qsTr("5.1.2") },
+                        { value: "5.1.4", label: qsTr("5.1.4") },
+                        { value: "7.1", label: qsTr("7.1") },
+                        { value: "7.1.2", label: qsTr("7.1.2") },
+                        { value: "7.1.4", label: qsTr("7.1.4") }
+                    ]
+                    onSelected: function(value) { root.set("ac4ImmersiveLayout", value); }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("What the immersive element's own renderer folds down to, when the speaker "
+                          + "layout does not itself ask for a stereo or mono fold (the \"Stereo and "
+                          + "mono\" card above, which takes priority when it applies).")
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                wrapMode: Text.WordWrap
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Theme.gap
+                Item { Layout.preferredWidth: root.labelWidth }
+                AppCheckBox {
+                    Layout.fillWidth: true
+                    text: qsTr("Core decoding")
+                    note: qsTr("A lighter reconstruction of the immersive element and its objects, for "
+                              + "low-complexity playback. Off decodes in full.")
+                    checked: root.settings.ac4CoreDecoding ?? false
+                    onToggled: function(on) { root.set("ac4CoreDecoding", on); }
+                }
+            }
+        }
     }
 }

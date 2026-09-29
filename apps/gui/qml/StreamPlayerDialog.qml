@@ -7,8 +7,8 @@ import Ac3Forge
 
 // "Open stream" — the GUI twin of `ac3cli monitor` (play an already-encoded
 // file's decoded bed through an ordinary output) fused with `ac3cli decode`'s
-// export (a WAV of the bed, and for an Atmos stream one WAV per
-// JOC-reconstructed object). Open → decode → real transport, the same
+// export (a WAV of the bed, and for an Atmos or an AC-4 object stream one WAV
+// per decoded object - planning/ac4.md, I5). Open → decode → real transport, the same
 // "distinct surface, reachable from the header" shape QcDialog.qml/
 // ObjectInspectorDialog.qml already use, for the identical reason: this
 // reads a stream that already exists, with no plan, no source and no
@@ -57,8 +57,9 @@ Dialog {
     }
 
     // A folder picker, not a file one: exportObjects() writes one
-    // object_NN.wav per JOC-reconstructed object into the folder chosen,
-    // the same objects_dir shape `ac3cli decode` takes - see
+    // object_NN.wav per decoded object (JOC-reconstructed for E-AC-3, D10's
+    // own for AC-4) into the folder chosen, the same objects_dir shape
+    // `ac3cli decode` takes - see
     // Main.qml's saveFolderDialog for the identical "no filename field"
     // reasoning.
     FolderDialog {

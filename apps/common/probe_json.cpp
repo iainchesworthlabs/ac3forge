@@ -516,6 +516,27 @@ void write_ac4_object_entries(JsonSink& json, const std::vector<ac4::ObjectEntry
     json.end_array();
 }
 
+// oamd_common_data() (§6.2.8.1), as an ac4_substream_info_ajoc() embeds it - additive to the probe
+// schema (planning/ac4.md, I5): the top-level fields in full, and a presence flag for each of the
+// three optional nested groups (trim, bed_render_info, headphone), whose own many sub-fields stay
+// text-only for now (a direct-coded group's separate oamd_substream is a further gap this phase
+// leaves - see the final report).
+void write_ac4_oamd_common(JsonSink& json, const ac4::OamdCommonData& common) {
+    json.begin_object();
+    json.member("b_default_screen_size_ratio", common.b_default_screen_size_ratio);
+    if (common.master_screen_size_ratio_code.has_value()) {
+        json.member("master_screen_size_ratio_code",
+                    static_cast<std::int64_t>(*common.master_screen_size_ratio_code));
+    } else {
+        json.member_null("master_screen_size_ratio_code");
+    }
+    json.member("b_bed_object_chan_distribute", common.b_bed_object_chan_distribute);
+    json.member("trim_present", common.trim.has_value());
+    json.member("bed_render_info_present", common.bed_render_info.has_value());
+    json.member("headphone_present", common.headphone.has_value());
+    json.end_object();
+}
+
 void write_ac4_ajoc_substream_info(JsonSink& json, const ac4::AjocSubstreamInfo& sub) {
     json.begin_object();
     json.member("b_lfe", sub.b_lfe);
@@ -523,6 +544,12 @@ void write_ac4_ajoc_substream_info(JsonSink& json, const ac4::AjocSubstreamInfo&
     json.member("n_fullband_dmx_signals", static_cast<std::int64_t>(sub.n_fullband_dmx_signals));
     json.key("static_objects");
     write_ac4_object_entries(json, sub.static_objects);
+    if (sub.oamd_common_data.has_value()) {
+        json.key("oamd_common_data");
+        write_ac4_oamd_common(json, *sub.oamd_common_data);
+    } else {
+        json.member_null("oamd_common_data");
+    }
     json.member("n_fullband_upmix_signals", static_cast<std::int64_t>(sub.n_fullband_upmix_signals));
     json.key("upmix_objects");
     write_ac4_object_entries(json, sub.upmix_objects);

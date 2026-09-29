@@ -51,16 +51,17 @@ coded (`AC-4 · L R C LFE Ls Rs · 48000 Hz · …`).
 A **Presentation** picker appears for an AC-4 file: the decoder's own choice with no preference
 first, then each presentation of the table of contents by position, with its channels, language
 and `presentation_id`. Picking one decodes that presentation, as `ac3cli play presentation=<n>`
-does, and the meters follow its channels. An AC-4 stream has no JOC objects, so **Export
-objects…** stays hidden; **Export decoded WAV…** writes the presentation playing.
+does, and the meters follow its channels. A presentation with A-JOC or direct-coded objects
+(planning/ac4.md, I5) shows **Export objects…** the same as an Atmos stream does; one without
+objects hides it, as before. **Export decoded WAV…** writes the presentation playing either way.
 
 ## Exporting
 
 - **Export decoded WAV…** writes the whole decode to a WAV file, the GUI twin of `ac3cli decode`'s
   primary output.
-- **Export objects…** — an Atmos stream only — writes one `object_NN.wav` per JOC-reconstructed
-  object into a chosen folder, the same naming `ac3cli decode`'s own `objects_dir` argument
-  writes.
+- **Export objects…** — an Atmos stream, or an AC-4 stream whose presentation carries A-JOC or
+  direct-coded objects — writes one `object_NN.wav` per decoded object into a chosen folder, the
+  same naming `ac3cli decode`'s own `objects_dir` argument writes.
 
 ## From a finished run
 

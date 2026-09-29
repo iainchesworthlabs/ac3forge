@@ -250,22 +250,24 @@ constexpr std::array<Command, 44> kCommands{{
          return run_atmos_encode(x.str(1), x.str(2), x.u32(3, 448), x.u32(4, 0), x.meta,
                                  x.str(5));
      }},
-    {"atmos-adm", 3, "<in.adm.wav> <out.ec3> [bitrate_kbps] [programme_id]",
+    {"atmos-adm", 3, "<in.adm.wav> <out.ec3|out.ac4> [bitrate_kbps] [programme_id]",
      "a real ADM BWF master (BS.2076-2 ADM XML + BW64/RF64, ADM BWF reader) straight to DD+ JOC "
-     "E-AC-3; every bed/object channel the resolved audioProgramme names becomes an AtmosEncoder "
-     "object, driven by the file's own authored automation - no scene file needed. Only in "
-     "builds with -DAC3FORGE_BUILD_ADM=ON",
+     "E-AC-3 (default) or, with codec=ac4, to an AC-4 A-JOC or direct-coded object substream "
+     "(coding=ajoc, the default, or coding=direct); every bed/object channel the resolved "
+     "audioProgramme names becomes a dynamic object, driven by the file's own authored automation "
+     "- no scene file needed. Only in builds with -DAC3FORGE_BUILD_ADM=ON",
      topic::kAtmos | topic::kMeta | topic::kObjects,
      Needs::kAdm,
      [](const Args& x) {
          return run_atmos_adm(x.str(1), x.str(2), x.u32(3, 448), x.meta, x.str(4));
      }},
-    {"atmos-iab", 3, "<in.iab|in.mxf> <out.ec3> [bitrate_kbps]",
+    {"atmos-iab", 3, "<in.iab|in.mxf> <out.ec3|out.ac4> [bitrate_kbps]",
      "a real Dolby Atmos cinema/IMF master (SMPTE ST 2098-2 Immersive Audio Bitstream, a bare "
      "elementary .iab file or a real MXF Track File alike - IAB reader) straight to DD+ JOC "
-     "E-AC-3; every Bed channel/Object the file names becomes an AtmosEncoder object, driven by "
-     "the file's own authored panning - no scene file needed. Only in builds with "
-     "-DAC3FORGE_BUILD_ADM=ON",
+     "E-AC-3 (default) or, with codec=ac4, to an AC-4 A-JOC or direct-coded object substream "
+     "(coding=ajoc, the default, or coding=direct); every Bed channel/Object the file names "
+     "becomes a dynamic object, driven by the file's own authored panning - no scene file needed. "
+     "Only in builds with -DAC3FORGE_BUILD_ADM=ON",
      topic::kAtmos | topic::kMeta | topic::kObjects,
      Needs::kAdm,
      [](const Args& x) { return run_atmos_iab(x.str(1), x.str(2), x.u32(3, 448), x.meta); }},
@@ -357,14 +359,15 @@ constexpr std::array<Command, 44> kCommands{{
      Needs::kNothing,
      [](const Args& x) { return run_ac4_encode(x.str(1), x.str(2), x.u32(3, 192), x.meta); }},
     {"decode", 3, "<in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out]",
-     "AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: mono, stereo, 3.0, "
-     "5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes so far, and syntax-trace=<file> writes "
-     "what the decoder reads. "
-     "objects_dir (E-AC-3 Atmos only): "
-     "export each JOC-reconstructed object as its own object_NN.wav there. adm_out (E-AC-3 "
-     "dynamic-object Atmos only, needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM "
-     "Profile BW64 there (legacy item IM2) - bed LFE plus every dynamic object, positioned by its own "
-     "decoded OAMD",
+     "AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: every layout up "
+     "to 7.1.4 and the immersive element in every codec mode; a presentation with A-JOC or "
+     "direct-coded objects renders them to the output's speakers as coded (7.1.4 by default), and "
+     "syntax-trace=<file> writes what the decoder reads. "
+     "objects_dir: export each object's own PCM as its own object_NN.wav there - JOC-reconstructed "
+     "for E-AC-3 Atmos, D10's decoded objects for AC-4. adm_out (needs -DAC3FORGE_BUILD_ADM=ON): "
+     "write a Dolby Atmos Master ADM Profile BW64 there (legacy item IM2 for E-AC-3; for AC-4, "
+     "every bed and dynamic object with its own decoded Annex F properties) - bed/LFE channels "
+     "pinned to their speaker, dynamic objects positioned by their own timeline",
      topic::kStdio | topic::kDecode | topic::kAc4Decode | topic::kObjects,
      Needs::kNothing,
      [](const Args& x) { return run_decode(x.str(1), x.str(2), x.meta, x.str(3), x.str(4)); }},

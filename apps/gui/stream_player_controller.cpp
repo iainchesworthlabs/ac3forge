@@ -108,6 +108,12 @@ bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream
     }
     std::vector<std::size_t> order;
     std::vector<ac4::Speaker> layout;
+    // Whether the frame-1 setup below has run - NOT order.empty(): a presentation of objects
+    // alone has no speakers or channels at all (ac4::DecodedFrame's own comment), so `order`
+    // legitimately stays empty for the life of the decode (planning/ac4.md, I5). Before this fix,
+    // such a stream re-ran the block below on every frame and still read as "no frame decoded" at
+    // the end, since nothing ever made `order` non-empty to signal that decoding had succeeded.
+    bool initialized = false;
     double time_s = 0.0;
     std::size_t number = 0;
     for (const ac4::SyncFrame& frame : scan.frames) {
@@ -124,7 +130,8 @@ bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream
             continue;  // waiting for an I-frame
         }
         const ac4::DecodedFrame& pcm = **decoded;
-        if (order.empty()) {
+        if (!initialized) {
+            initialized = true;
             layout = pcm.speakers;
             order = ac3::apps::ac4_order(std::span{pcm.speakers}, ac3::apps::ac4_wav_rank);
             result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
@@ -142,10 +149,26 @@ bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream
             return false;
         }
         append_planar(result.channels, pcm.channels, order);
+        // Objects (planning/ac4.md, I5): D10's DecodedFrame::objects into the same
+        // has_objects/object_count/object_audio fields the E-AC-3 path above fills, so
+        // exportObjects() - already codec-agnostic - writes AC-4's objects the same way it
+        // already writes E-AC-3 JOC's. A mid-stream count change is skipped, the same
+        // convention run_decode_eac3's own append_objects (apps/cli/commands/decode.cpp) uses.
+        if (!pcm.objects.empty()) {
+            result.has_objects = true;
+            result.object_count = static_cast<int>(pcm.objects.size());
+            if (result.object_audio.size() != pcm.objects.size()) {
+                result.object_audio.assign(pcm.objects.size(), {});
+            }
+            for (std::size_t i = 0; i < pcm.objects.size(); ++i) {
+                auto& dst = result.object_audio[i];
+                dst.insert(dst.end(), pcm.objects[i].samples.begin(), pcm.objects[i].samples.end());
+            }
+        }
         time_s += static_cast<double>(pcm.samples) / static_cast<double>(pcm.sample_rate_hz);
         ++result.unit_count;
     }
-    if (order.empty()) {
+    if (!initialized) {
         error = QStringLiteral("%1: no frame decoded; the stream sent no I-frame.").arg(path);
         return false;
     }

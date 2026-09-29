@@ -2871,6 +2871,17 @@ bool parse_options(std::span<char*> tokens, Options& out, std::string_view comma
             }
             continue;
         }
+        if (key == "coding" && (command == "atmos-adm" || command == "atmos-iab")) {
+            if (value == "ajoc") {
+                out.ac4_atmos_coding = ac4::ObjectCoding::kAjoc;
+            } else if (value == "direct") {
+                out.ac4_atmos_coding = ac4::ObjectCoding::kDirect;
+            } else {
+                fmt::println(stderr, "error: coding must be ajoc or direct (got '{}')", token);
+                return false;
+            }
+            continue;
+        }
         if (key == "watchdog") {
             double seconds = 0.0;
             if (!parse_double(value, seconds) || seconds < 0.0 || seconds > 3600.0) {

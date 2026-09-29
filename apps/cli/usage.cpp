@@ -41,7 +41,7 @@ struct OptionToken {
     std::string_view summary;
 };
 
-constexpr std::array<OptionToken, 101> kOptionTokens{{
+constexpr std::array<OptionToken, 102> kOptionTokens{{
     {"couple", "enable channel coupling wherever this command encodes"},
     {"heavy", "§7.7.2 heavy compression"},
     {"heavy2", "Ch2's own heavy compression (layout 1+1)"},
@@ -133,7 +133,9 @@ constexpr std::array<OptionToken, 101> kOptionTokens{{
     {"fmp4-window=", "record/live container=fmp4: rolling segment-list window, 0 keeps all"},
     {"layout=", "record/live: the encoded layout (default stereo)"},
     {"codec=", "record/live: ac3, eac3 or ac4, instead of deriving it from layout=; transcode: "
-               "the output codec where the name cannot say"},
+               "the output codec where the name cannot say; atmos-adm/atmos-iab: ac4 for an "
+               "A-JOC or direct-coded object substream instead of DD+ JOC E-AC-3"},
+    {"coding=", "atmos-adm/atmos-iab with codec=ac4: ajoc (default) or direct"},
     {"watchdog=", "record/live: capture-silence timeout in seconds (0 disables)"},
     {"bed-only", "decode: render an Atmos stream's 5.1 bed and skip its objects (§6 JOC "
                  "reconstruction needs ~233 KB of state; the bed does not)"},
@@ -393,8 +395,9 @@ void print_decode_topic() {
     fmt::println("");
     fmt::println("For decode, drc=<scale> applies §7.7.1 partial compression (0 = ignore,");
     fmt::println("1 = as encoded) and 'heavy' prefers compr where the stream carries it.");
-    fmt::println("decode objects_dir (E-AC-3 Atmos only): exports each JOC-reconstructed object");
-    fmt::println("       as its own object_NN.wav, alongside the usual 5.1 bed WAV.");
+    fmt::println("decode objects_dir: exports each decoded object as its own object_NN.wav");
+    fmt::println("       alongside the usual bed WAV - JOC-reconstructed for E-AC-3 Atmos,");
+    fmt::println("       D10's own decoded objects for AC-4 (A-JOC or direct-coded).");
     fmt::println("");
     fmt::println("decode/monitor also take the §7.8 output stage (ac3/decoder/output.hpp), off");
     fmt::println("       by default so a plain invocation still emits the coded channels");
