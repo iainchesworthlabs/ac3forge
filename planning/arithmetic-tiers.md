@@ -1,18 +1,28 @@
 # One implementation, three arithmetics, one effort axis
 
-!!! note "Status as of 2026-09-10: three tiers built, the third measured on the host and the Cortex-M3 leg, no C3 yet"
-    All three arithmetic tiers exist and are gated. `double`, the reference, in every ordinary
-    build; `float`, the ESP32-S3's, for decode since 2026-09-09 and for encode since 2026-09-10
-    (#617, #618); and `fixed`, the decoder for parts with no floating-point unit, whose phases
-    A to C below are done on the host and the Cortex-M3 leg with the numbers each measured.
-    What is not done: the timing half of Phase D, which needs an ESP32-C3 board - the target,
-    the RISC-V emulator and the correctness half are done, and the tier's hashes agree across
-    three architectures on the 12 of fourteen fixtures that fit in the part's SRAM. The effort
-    axis has its first measured point: the search and the planner cost (#619, on the ESP32-S3).
+!!! note "Status as of 2026-09-30: three tiers built for AC-3 and E-AC-3; AC-4's decoder has two of them"
+    All three arithmetic tiers exist for AC-3 and E-AC-3 and are gated. `double`, the reference, in
+    every ordinary build; `float`, the ESP32-S3's, for decode since 2026-09-09 and for encode since
+    2026-09-10 (#617, #618); and `fixed`, the decoder for parts with no floating-point unit, whose
+    phases A to C below are done on the host and the Cortex-M3 leg with the numbers each measured.
+    Phase D's correctness half is done on the ESP32-C3 target under `qemu-riscv32`, where the
+    tier's hashes agree across three architectures on the 12 of fourteen fixtures that fit in the
+    part's SRAM. Its timing half is not done for the C3, which has never been on a board; an
+    ESP32-C6 took its place on 2026-09-15 and ran all fourteen fixtures on the same hashes. The
+    effort axis has its first measured point: the search and the planner cost (#619, on the
+    ESP32-S3).
+
+    **AC-4 joined the seam in phase D14 of [the AC-4 plan](ac4.md#d14-ac-4-on-the-esp32s).**
+    D14a moved `Fixed32`, the float scalar functions and the SIMD seam into a header-only target,
+    `src/arithmetic`, and made the AC-4 decoder's kernels take `AC3FORGE_DECODE_SCALAR`: `double`
+    (the default) or `float`. D14b built the `float` decoder into the ESP-IDF component behind
+    `CONFIG_AC3FORGE_AC4` and measured it on an ESP32-P4. AC-4 has no fixed-point tier (D14d, the
+    C6), no S3 phase (D14c), and its encoder stays in `double` on every platform. See
+    [AC-4 on the same seam](#ac-4-on-the-same-seam).
 
     Design sections say what each tier and each effort level is and what it guarantees; each
     phase carries an exit criterion and how it is verified; [Decisions](#decisions) lists what
-    is open and the option recommended on each; [What cannot be verified, and why](#what-cannot-be-verified-and-why)
+    was open, the option recommended on each and what came of it; [What cannot be verified, and why](#what-cannot-be-verified-and-why)
     says where the evidence runs out. Plain tone, like the other pages here.
 
 ## Why three, and why one implementation
@@ -85,8 +95,11 @@ component's profile is where the ESP32 chooses.
 | `reduced` | §7.2.2.6 delta bit allocation off (`delta_allocation = false`, `delta=off`, `nodelta`): no segments chosen, no second search to weigh them | About 9 ms of an E-AC-3 5.1 frame's 55.5 on the ESP32-S3: the segments' own stage (4.8 ms), the second search (about 4.6) and the side-information re-measurement between them | 0.01 dB on the worst channel of the two E-AC-3 gold streams, nothing on the two AC-3 ones (the race was already dropping the segments on most of their frames) |
 | `minimal` (proposed) | `reduced`, plus the hoisted frame form only and a search that stops within four offset units of the boundary | Not measured | Not measured; four units is 0.75 dB of offset |
 
-The first level after `reference` is the one this branch adds, measured as the table says; the
-third is listed so the axis has a shape, not because it is decided.
+The first level after `reference` is the one #619 added, measured as the table says
+(`EncoderConfig::delta_allocation` and `eac3::FrameConfig::delta_allocation`, spelled `delta=off`
+or `nodelta` on the CLI); the third is listed so the axis has a shape, not because it is
+decided, and nothing in the tree implements it. The effort axis is AC-3 and E-AC-3's: the AC-4
+encoder has no effort levels.
 
 ## The choice matrix
 
@@ -99,9 +112,33 @@ Platform to arithmetic to effort, with the state of each cell. "Real time" is a 
 | WASM | `double` | `double` | `reference` | Shipping ([the WASM page](../docs/platforms/wasm.md)) |
 | ESP32-S3 (LX7, single-precision FPU) | `float` | `float` | `reference` for 2/0; `reduced` is the candidate for 5.1 | Decode: every fixture in real time. Encode: AC-3 2/0 and E-AC-3 2/0 in real time, AC-3 5.1 at the line, E-AC-3 5.1 at 1.7x |
 | ESP32 (LX6, single-precision FPU) | `float` | `float` | as the S3 | Not measured; the S3's arithmetic without the PIE and with a smaller cache |
+| ESP32-P4 (RV32IMAFC, single-precision FPU, 360 MHz on chip revision v1.3) | `float` | `float` | as the S3 | Decode: every one of the fourteen fixtures in real time on a board with no network, 0.027x to 0.448x ([its page](../docs/platforms/bare-metal/esp32-p4.md)). Encode: not measured |
 | ESP32-C3 / C6 (RV32IMC / RV32IMAC, no FPU) | `Fixed32` | none at first | `reduced` | C3: built and gated, a probe target under `qemu-riscv32`, 12 of fourteen fixtures decoding to PCM identical to the host's and the Cortex-M3 leg's; the two 7.1.4 rows do not fit in the part's SRAM; time on a board unmeasured. C6: timed on a board ([its page](../docs/platforms/bare-metal/esp32-c6.md)), all fourteen fixtures on the same hashes; AC-3 and E-AC-3 5.1, stereo and mono in real time with WiFi running (5.1 at 0.82x and 0.96x) |
 | Cortex-M3 (the CI leg, QEMU) | `float`, soft | `float`, soft | `reference` | Correctness and instruction counts only; the soft-float proxy every embedded estimate rests on |
 | Cortex-M4F / M7 (single-precision FPU) | `float` | `float` | `reference` | Not targeted; would behave as the S3 without its vector loads |
+
+The matrix is AC-3 and E-AC-3's. AC-4's rows are in [the section that follows](#ac-4-on-the-same-seam).
+
+## AC-4 on the same seam
+
+The choice above was carried to AC-4 by phase D14 of [the AC-4 plan](ac4.md#d14-ac-4-on-the-esp32s),
+as [decision 25](ac4.md#decisions-of-2026-09-25) took it: one implementation with three scalars, as
+AC-3 and E-AC-3 have. What is built, and what is not:
+
+| Part | State |
+|---|---|
+| The scalar (D14a) | `src/ac4core`'s kernels and `src/ac4dec/src/pcm` are templated on `Real`, with a complex type of the project's own (`dsp::Complex<Real>`) in place of `std::complex`. `AC3FORGE_DECODE_SCALAR` selects `double` (the default) or `float` for AC-4 as it does for AC-3 and E-AC-3. `fixed` builds the AC-4 libraries in `double`, because no AC-4 kernel is instantiated at `Fixed32` yet. The `float` build of `src/ac4core` compiles with `-Wdouble-promotion` as an error. The whole suite passes at both scalars |
+| The shared target (D14a) | `src/arithmetic` (`ac3::arithmetic`) is header-only and holds `Fixed32` (`ac3/internal/fixed32.hpp`), the float scalar functions (`ac3/internal/scalar_math.hpp`) and the SIMD seam (`arch/generic`, `arch/x86_64`, `arch/aarch64`). `ac3::forge` and `src/ac4core` link it, so nothing is copied ([decision 31](ac4.md#decisions-of-2026-09-25)). Before D14a the first two lived in `src/forge` |
+| The decoder's size (D14a) | `SubstreamPcm` fell from 299 KB to 10.9 KB at `double`, D14a removed every guarded function-local static from `src/ac4core`, `src/ac4dec` and `src/ac4`, the QMF banks run on split real and imaginary planes with vector kernels that equal their scalar loops bit for bit, and the bit reader and the Huffman decoder are cached and table-driven |
+| The probe's AC-4 rows (D14a) | `tools/checks/run_baremetal_probe.sh --ac4` decodes five committed streams (2.0 and 5.1 with and without A-CPL, and DEE's 5.1.4 tones) on the Cortex-M3 leg in `float`: 54.5 M to 205.8 M instructions a frame, a peak heap of 0.43 to 1.93 MB, a 486,192-byte image. The PCM equals the x86-64 host's, and the hashes are pinned in `tests/golden/ac4-probe-pcm-hashes.json` |
+| `float` against `double` (D14a's exit) | On the 67 committed streams (`tools/checks/check_ac4_decode_scalar_snr.py`), the worst channel is 109.4 to 136.0 dB from the `double` decode below the lowest A-SPX crossover, and 37.5 to 102.1 dB above the highest where a stream has A-SPX. The floors are pinned 3 dB under those figures in `tests/golden/ac4dec/scalar-agreement.json`. The cause of the high band's gap is open |
+| The ESP32-P4 (D14b) | `CONFIG_AC3FORGE_AC4` builds the `float` decoder into the ESP-IDF component, off by default and offered only on a part with a floating-point unit. On a board at 360 MHz with Wi-Fi up, 2.0 in SIMPLE mode decodes in 0.53 of real time and 2.0 in A-SPX mode in 0.74; nothing wider does (5.1 takes 1.4 to 4.1, 5.1.4 in full decoding 2.8 to 3.7, and the converter's frame rates 5.6 to 6.6). The output equals the probe's pinned `float` hashes and the host's on 15 of 20 plays, and differs where companding runs, since `std::pow` and `std::exp2` at `float` give a different last bit in each C library. [The P4 page](../docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables |
+| The ESP32-S3 (D14c) | Not built. The Cortex-M3 probe's 2.0 stream peaks at 432 KB of heap, where the S3's probe allows 245,000 bytes, so 2.0 in internal RAM needs the allocations halved again, or PSRAM |
+| The ESP32-C6 (D14d) | Not built. It needs `Fixed32` kernels with a block exponent per QMF slot and per transform block |
+| The encoder | `double` on every platform. The AC-4 encoder has no `float` or fixed-point tier and never runs on an ESP32 ([decision 34](ac4.md#decisions-of-2026-09-25)); a `float` build of `src/ac4core` instantiates the kernels the encoder calls at `double` as well (`AC4CORE_ALSO_AT_DOUBLE`) |
+
+The figures are those of the AC-4 plan's D14a and D14b records, which name their sources; this page
+does not re-derive them.
 
 ## The fixed-point tier
 
@@ -150,8 +187,8 @@ channel of the gold AC-3 stream came out 98.8 dB from the double decode, the E-A
 and the E-AC-3 coupling one 87.8. A raw unit is 2^-24 of full scale wherever a value sits, so a
 mantissa of sixteen bits under an exponent of twelve keeps twelve of them; the transform sums
 two hundred and fifty-six such errors; and standard coupling's factor of eight scales them by
-eight. The information was on the wire and lost at dequantisation. The store was not too
-narrow - it was in the wrong place.
+eight. The information was on the wire and lost at dequantisation, because the store put every
+value at one absolute scale; a wider store would not have kept it.
 
 So the store is normalised (`src/forge/src/decoder/block_norm.hpp`): each stream's
 coefficients are kept scaled up by 2^norm per block, with norm chosen so the largest sits just
@@ -240,7 +277,8 @@ Enhanced coupling also had no SNR measurement until this phase: none of the gold
 the tool. `check_decode_scalar_snr.py` now encodes and checks a fourth stream that does, for
 both non-double scalars.
 
-**Phase D - the part. Correctness done 2026-09-10; the timing needs a board.**
+**Phase D - the part. Correctness done 2026-09-10; the C3's timing needs a board, and a C6's was
+measured on 2026-09-15.**
 `apps/baremetal/platform/esp32c3/` is the probe's third target: an ESP-IDF project like the S3's,
 defaulting to `-DAC3FORGE_DECODE_SCALAR=fixed` because the part has no floating-point unit.
 `qemu-riscv32` is installed beside the Xtensa one, `tools/checks/run_esp32c3_probe.sh` drives the
@@ -290,18 +328,24 @@ library routines. The pinned hashes do not move. AC-3 5.1 takes 20.5 ms a frame 
 time with the network up; the float tier is now 2.3x to 4.6x slower. The C6 page has the per-change
 table.
 
-**Phase E (optional) - the encoder.** Not planned in this round. The encoder's analysis is
-more precision-sensitive than the decoder's synthesis, and the S3's float encoder is the shape
-a C3 encoder would take only after the decoder has shown what the fixed tier costs.
+**Phase E (optional) - the encoder.** Not planned in this round, and not built. The encoder's
+analysis is more precision-sensitive than the decoder's synthesis, and the S3's float encoder is
+the shape a C3 encoder would take only after the decoder has shown what the fixed tier costs.
 
 ## Decisions
+
+Each carries the option recommended when the page was written and, in the last sentence, what
+came of it.
 
 1. **Which fidelity the fixed tier promises.** Options: bit-exact to a spec-defined fixed-point
    reference (there is none in A/52), a stated SNR to the double decode, or "conforms to
    FFmpeg's fixed decoder". Recommended: a stated SNR, measured, with 100 dB as the target -
-   it is the same kind of promise the float tier makes and the same tool measures it.
+   it is the same kind of promise the float tier makes and the same tool measures it. *Taken as
+   recommended; the measured figures (121 dB and above on the gold streams, 111 dB on the
+   third-party ones, held to 110 in CI) are in the tier table above.*
 2. **Decoder first, encoder later or never.** Recommended: decoder first (Phase E optional).
-   The C3 is a sink-class part; nothing on the platform matrix asks it to encode.
+   The C3 is a sink-class part; nothing on the platform matrix asks it to encode. *Taken; Phase E
+   has not started.*
 3. **Q-format.** Q7.24, constants included. The plan's alternative - a narrower format with
    block exponents everywhere - was half right: the format stayed, and Phase A's measurement
    put the exponent on the store anyway (see [The block exponent](#the-block-exponent)),
@@ -309,13 +353,15 @@ a C3 encoder would take only after the decoder has shown what the fixed tier cos
 4. **The soft-float proxy.** The Cortex-M3 leg is what every embedded estimate rests on; a
    RISC-V QEMU leg would be a second. Recommended: install `qemu-riscv32` through ESP-IDF's
    `idf_tools.py` (about 30 MB into `D:\esp\tools`) when Phase D starts, not before; the M3
-   carries Phases A to C.
+   carries Phases A to C. *Taken; the leg exists (`tools/checks/run_esp32c3_probe.sh`).*
 5. **A C3 board.** QEMU gives correctness and instruction counts, not the part's cache
    behaviour, and the C3 executes from flash through a 16 KB cache. Recommended: a board for
-   Phase D; the S3 work showed QEMU's timing is not the board's.
+   Phase D; the S3 work showed QEMU's timing is not the board's. *Not met for the C3: no
+   board has run it. An ESP32-C6 board, the same core at the same clock, supplied the
+   measurements on 2026-09-15.*
 6. **The effort axis's first level.** Recommended: `reduced` = delta bit allocation off, as a
    configuration field on both encoders with a CLI spelling, measured on the board and the
-   gold gates before it is documented as a level.
+   gold gates before it is documented as a level. *Taken and built (#619).*
 
 ## What cannot be verified, and why
 
@@ -329,7 +375,20 @@ a C3 encoder would take only after the decoder has shown what the fixed tier cos
   probe's hashes would still agree across legs.
 - **Exactness of a search-path change.** The rate-control predicate is not monotone, so no
   change to the probe sequence can be shown stream-preserving; it is shown quality-preserving
-  by the gates and re-pinned. The exact changes on this branch are shown exact by their
-  reference tests and by the hashes not moving.
+  by the gates and re-pinned. The exact changes in #619 are shown exact by their reference
+  tests and by the hashes not moving.
 - **The effort levels' quality on material other than the five gold streams.** The gates are
   what a laptop can hold in a minute; the ViSQOL trend in CI is the broader measure.
+- **The AC-4 `float` decode above A-SPX's crossover.** The gap to the `double` decode is measured
+  (37.5 to 102.1 dB on the committed streams that use A-SPX) and pinned, and its cause is open:
+  accumulating Pseudocode 86's covariances and solving Pseudocode 87 in `double` moved no figure
+  by 0.1 dB, so the prediction is not it, and the worst frames of a channel are far below its
+  aggregate, which points at a few decisions or gains that flip or move.
+- **AC-4 companding streams on a board.** The ESP32-P4's `float` output equals the host's on 15
+  of the 20 plays and differs on the five where companding runs, because `std::pow` and
+  `std::exp2` at `float` give a different last bit in each C library. Routing them through the
+  project's own functions gave one hash on the host, a Cortex-M3 program and the board in a
+  scratch copy; that change is not in the tree.
+- **AC-4 on the S3 and the C6.** Nothing is built or measured on either; the P4's figures say
+  what a single-precision FPU manages at 360 MHz, not what the S3's 240 MHz or the C6's
+  fixed-point tier will.

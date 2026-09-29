@@ -19,7 +19,7 @@ a ::warning:: annotation and a row in the summary table and fails nothing - a
 shared runner's timings are noisy enough that blocking at that threshold would
 cost more in re-runs than it caught. A HARD regression (100% - the workload ran
 at least twice as slow) additionally reports `hard_regression=true` on
-$GITHUB_OUTPUT, which .github/workflows/ci.yml turns into a failing check.
+$GITHUB_OUTPUT, which .github/workflows/_compare.yml turns into a failing job.
 
 The hard tier did not block here originally, on the same noise argument as the
 soft tier. Two things stop that argument applying at 100%:
@@ -41,7 +41,8 @@ soft tier. Two things stop that argument applying at 100%:
 The escape hatch is a label, not an admin merge: a deliberate 2x slowdown (a
 correctness fix that costs real work, a slower-but-right algorithm) is a
 legitimate thing to merge, so `perf-regression-approved` on the PR turns the
-gate back into an annotation. See ci.yml's performance-gate job.
+gate back into an annotation. See _compare.yml's performance-gate job and
+tools/ci/compare_gate.py.
 
 The soft and hard tiers are imported from append_performance_history.py rather
 than restated, so a PR and its eventual merge cannot disagree about what counts
@@ -78,7 +79,7 @@ NOISE_FLOOR_FRACTION = 0.03
 
 
 def report_hard_regression(hard: bool) -> None:
-    """Publish the verdict on $GITHUB_OUTPUT for ci.yml's performance-gate job.
+    """Publish the verdict on $GITHUB_OUTPUT for _compare.yml's performance-gate job.
 
     A step output rather than this script's own exit code, because the job that
     runs it is `continue-on-error: true` and must STAY that way. That flag is
@@ -218,8 +219,9 @@ def main() -> int:
            "same job, interleaved. Lower is better. A `regression` row is advisory. A "
            "**HARD REGRESSION** row - at least "
            f"{HARD_REGRESSION_SLOWDOWN_FRACTION * 100:.0f}% slower, i.e. twice the time - "
-           "fails the `Performance gate` check; label the PR `perf-regression-approved` if "
-           "the slowdown is intended. See tools/ci/compare_performance.py.", ""]
+           "fails the `Performance gate` job, and with it the queue entry; label the PR "
+           "`perf-regression-approved` and queue it again if the slowdown is intended. "
+           "See tools/ci/compare_performance.py.", ""]
 
     annotations = []
     for base_runs, head_runs, unit, label in (
