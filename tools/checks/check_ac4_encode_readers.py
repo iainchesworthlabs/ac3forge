@@ -41,9 +41,11 @@ encoder's streams list that presentation last.
 
 Phase E9's objects: the encoder's object streams under tests/golden/ac4dec/objects/ (encoder-*.ac4,
 which tests/ac4enc/test_ac4enc_objects.cpp writes with AC4ENC_WRITE_OBJECTS), whose MediaInfo
-reading (`--Output=JSON`) gives, among the audio track's fields that name objects, the count of
-the objects the stream was configured with, and names a bed where it has bed objects or a static
-bed.
+reading (`--Output=JSON`) gives the count of the objects the stream was configured with, in the
+substreams' `ChannelMode` strings under the audio track's `extra`: an A-JOC substream reads
+`A-JOC <objects>.<LFE> (<core>)`, the core `<n>.<m> object core` for a computed downmix and
+`5.1 channel core` for a static bed, and a direct-coded one `<objects>.<LFE> objects`. MediaInfo
+does not tell a bed object from a dynamic one, so only a static bed is checked for by name.
 
 MediaInfo and DEE's muxer come from DEE's install, so this runs locally, never in CI
 (tools/generators/gen_ac4_baseline.py's DEE_DIR).
@@ -608,6 +610,24 @@ OBJECT_CONFIGURATIONS = {
 }
 
 
+# `A-JOC 8.0 (4.0 object core)`, `A-JOC 6.1 (5.1 channel core)`, `3.1 objects`, `1 objects`: the
+# objects, a dot and the LFE where there is one, then the core an A-JOC downmix has, if any.
+CHANNEL_MODE = re.compile(r"^(?:A-JOC )?(\d+)(?:\.(\d+))?(?: objects)?(?: \((.*)\))?$")
+
+
+def mediainfo_objects(audio):
+    """(objects with the LFE, static bed) from the audio track's substream ChannelModes."""
+    total, static = 0, False
+    for track in audio:
+        for substream in track.get("extra", {}).get("Substream", []):
+            m = CHANNEL_MODE.match(substream.get("ChannelMode", ""))
+            if not m:
+                continue
+            total += int(m.group(1)) + int(m.group(2) or 0)
+            static = static or "channel core" in (m.group(3) or "")
+    return total, static
+
+
 def check_objects(mediainfo):
     failures = []
     for name, (objects, beds, static) in OBJECT_CONFIGURATIONS.items():
@@ -617,14 +637,15 @@ def check_objects(mediainfo):
             continue
         info = json.loads(run([mediainfo, "--Output=JSON", stream]))
         audio = [t for t in info["media"]["track"] if t.get("@type") == "Audio"]
-        fields = {k: v for t in audio for k, v in t.items() if "bject" in k or "Bed" in k}
-        counts = {k: v for k, v in fields.items() if "bject" in k and str(v).isdigit()}
+        seen, seen_static = mediainfo_objects(audio)
         print(f"{stream.name}: {objects} objects, {beds} bed objects"
-              f"{', a static bed' if static else ''}; MediaInfo: {fields}")
-        if str(objects) not in {str(v) for v in counts.values()}:
-            failures.append(f"{stream.name}: no MediaInfo object count of {objects} in {counts}")
-        if (beds or static) and not any("Bed" in k for k in fields):
-            failures.append(f"{stream.name}: MediaInfo names no bed in {fields}")
+              f"{', a static bed' if static else ''}; MediaInfo: {seen} objects"
+              f"{', a static bed' if seen_static else ''}")
+        if seen != objects:
+            failures.append(f"{stream.name}: MediaInfo counts {seen} objects, not {objects}")
+        if seen_static != static:
+            failures.append(f"{stream.name}: MediaInfo {'names' if seen_static else 'names no'} "
+                            f"static bed, configured {'with' if static else 'without'} one")
     return failures
 
 
