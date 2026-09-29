@@ -115,4 +115,7 @@ extern const Codebook kAjocHcbWetFineDf;
 extern const Codebook kAjocHcbWetCoarseDt;
 extern const Codebook kAjocHcbWetFineDt;
 
+// Every codebook above, for a test that walks them all.
+extern const std::array<const Codebook*, 84> kAllCodebooks;
+
 }  // namespace ac4::detail::tables

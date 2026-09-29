@@ -7,11 +7,15 @@
 // run at 2048 samples a frame and do not reach the short frame lengths or the
 // 96/192 kHz extension at all.
 
+#include <algorithm>
 #include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <cstdlib>
+#include <random>
+#include <span>
+#include <utility>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -865,5 +869,247 @@ TEST_CASE("huff_codeword reports a codeword cut short as truncated in every code
         CHECK(result.error().error == DecodeError::kTruncated);
         CHECK(result.error().reason == "cut");
         CHECK(reader.position() == static_cast<std::size_t>(pad));
+    }
+}
+
+namespace {
+
+// The reader as it was before its 64-bit cache: every peek a loop over single
+// bits, zeros past the end, the same sticky overflow and the same seek. The
+// cached BitReader is held to it operation by operation.
+class BitByBitReader {
+   public:
+    explicit BitByBitReader(std::span<const std::byte> data) : data_(data) {}
+
+    [[nodiscard]] std::uint32_t peek(int bits) const {
+        std::uint32_t value = 0;
+        for (int i = 0; i < bits; ++i) {
+            value = (value << 1U) | bit_at(pos_ + static_cast<std::size_t>(i));
+        }
+        return value;
+    }
+    std::uint32_t read(int bits) {
+        const std::uint32_t value = peek(bits);
+        skip(static_cast<std::size_t>(bits));
+        return value;
+    }
+    void skip(std::size_t bits) {
+        pos_ += bits;
+        if (pos_ > size_bits()) {
+            overflow_ = true;
+        }
+    }
+    void align() { skip((8 - (pos_ % 8)) % 8); }
+    void seek(std::size_t bit_position) {
+        if (bit_position > size_bits()) {
+            overflow_ = true;
+            pos_ = size_bits();
+        } else {
+            pos_ = bit_position;
+        }
+    }
+    [[nodiscard]] std::size_t position() const { return pos_; }
+    [[nodiscard]] std::size_t size_bits() const { return data_.size() * 8U; }
+    [[nodiscard]] std::size_t remaining_bits() const {
+        return pos_ >= size_bits() ? 0 : size_bits() - pos_;
+    }
+    [[nodiscard]] bool overflow() const { return overflow_; }
+
+   private:
+    [[nodiscard]] std::uint32_t bit_at(std::size_t bit) const {
+        if (bit >= size_bits()) {
+            return 0;
+        }
+        return (static_cast<std::uint32_t>(data_[bit / 8U]) >>
+                (7U - static_cast<unsigned>(bit % 8U))) &
+               1U;
+    }
+    std::span<const std::byte> data_;
+    std::size_t pos_ = 0;
+    bool overflow_ = false;
+};
+
+std::vector<std::byte> random_bytes(std::size_t count, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::vector<std::byte> bytes(count);
+    for (std::byte& b : bytes) {
+        b = static_cast<std::byte>(rng() & 0xFFU);
+    }
+    return bytes;
+}
+
+}  // namespace
+
+TEST_CASE("the bit reader's cache gives what reading bit by bit gives", "[ac4dec][asf][reader]") {
+    // Data of every length from nothing to a few words, so that the cache is loaded
+    // whole, near the end and past it; then a long run of reads, peeks, skips,
+    // alignments and seeks, some past the end.
+    std::mt19937 rng(20260929);
+    for (std::size_t length = 0; length <= 41; ++length) {
+        const std::vector<std::byte> data =
+            random_bytes(length, static_cast<unsigned>(length) + 7U);
+        BitReader fast(data, 0, {});
+        BitByBitReader slow(data);
+        for (int step = 0; step < 300; ++step) {
+            const int bits = static_cast<int>(rng() % 33U);  // 0 to 32
+            switch (rng() % 7U) {
+                case 0:
+                case 1:
+                    REQUIRE(fast.peek_raw(bits) == slow.peek(bits));
+                    break;
+                case 2:
+                case 3:
+                    if (bits > 0) {
+                        REQUIRE(fast.read(bits, "x") == slow.read(bits));
+                    }
+                    break;
+                case 4: {
+                    const std::size_t count = rng() % 70U;
+                    fast.skip(count);
+                    slow.skip(count);
+                    break;
+                }
+                case 5:
+                    fast.align();
+                    slow.align();
+                    break;
+                default: {
+                    // An absolute position, mostly inside the data, sometimes past it.
+                    const std::size_t target = rng() % (data.size() * 8U + 40U);
+                    fast.seek(target);
+                    slow.seek(target);
+                    break;
+                }
+            }
+            REQUIRE(fast.position() == slow.position());
+            REQUIRE(fast.overflow() == slow.overflow());
+            REQUIRE(fast.remaining_bits() == slow.remaining_bits());
+            // Wherever it stands, a peek of every width agrees.
+            for (const int width : {1, 7, 8, 9, 16, 25, 31, 32}) {
+                REQUIRE(fast.peek_raw(width) == slow.peek(width));
+            }
+            if (slow.overflow() && rng() % 4U == 0U) {
+                break;  // past the end there is nothing more to compare, and a new run starts
+            }
+        }
+    }
+}
+
+namespace {
+
+// huff_decode() as it was before the shortcut: at each length up to the bits
+// left, the leading bits looked up among that length's entries, here by a linear
+// scan; the index and length of the codeword, or -1.
+std::pair<int, int> search_decode(std::span<const std::byte> data, std::size_t pos,
+                                  const Codebook& book) {
+    BitByBitReader at(data);
+    at.seek(pos);
+    const int max_bits = std::min<int>(book.max_bits, static_cast<int>(at.remaining_bits()));
+    const std::uint32_t window = at.peek(max_bits);
+    for (int length = 1; length <= max_bits; ++length) {
+        const std::uint32_t code = window >> static_cast<unsigned>(max_bits - length);
+        for (const auto& entry : book.sorted) {
+            if (entry.bits == length && entry.code == code) {
+                return {entry.index, length};
+            }
+        }
+    }
+    return {-1, 0};
+}
+
+}  // namespace
+
+TEST_CASE("every codebook's shortcut table names only real codewords", "[ac4dec][asf][huffman]") {
+    for (const Codebook* book : tables::kAllCodebooks) {
+        CAPTURE(book->name);
+        REQUIRE(book->fast.size() == ac4::detail::kHuffFastSize);
+        std::size_t filled = 0;
+        for (std::size_t v = 0; v < book->fast.size(); ++v) {
+            const std::uint16_t entry = book->fast[v];
+            if (entry == 0) {
+                continue;
+            }
+            ++filled;
+            const int length = entry & 15;
+            const int index = entry >> 4;
+            REQUIRE(length >= 1);
+            REQUIRE(length <= ac4::detail::kHuffFastBits);
+            // The codeword this value begins: its leading `length` bits.
+            const auto code = static_cast<std::uint32_t>(
+                v >> static_cast<unsigned>(ac4::detail::kHuffFastBits - length));
+            bool found = false;
+            for (const auto& e : book->sorted) {
+                if (e.bits == length && e.code == code && e.index == index) {
+                    found = true;
+                }
+            }
+            REQUIRE(found);
+        }
+        // Every codeword of kHuffFastBits or fewer fills its share of the table.
+        std::size_t expected = 0;
+        for (const auto& e : book->sorted) {
+            if (e.bits <= ac4::detail::kHuffFastBits) {
+                expected += std::size_t{1} << (ac4::detail::kHuffFastBits - e.bits);
+            }
+        }
+        CHECK(filled == expected);
+    }
+}
+
+TEST_CASE("huff_decode with its shortcut reads every codeword of every codebook",
+          "[ac4dec][asf][huffman]") {
+    std::mt19937_64 rng(929);
+    for (const Codebook* book : tables::kAllCodebooks) {
+        CAPTURE(book->name);
+        for (const auto& entry : book->sorted) {
+            // The codeword, then random bits, over 8 bytes; and again cut to the
+            // bytes the codeword needs, whose last byte is zero-padded.
+            const std::uint64_t tail = rng() >> entry.bits;
+            const std::uint64_t word =
+                (static_cast<std::uint64_t>(entry.code) << (64 - entry.bits)) | tail;
+            std::vector<std::byte> full(8);
+            for (std::size_t i = 0; i < 8; ++i) {
+                full[i] = static_cast<std::byte>((word >> (56 - 8 * i)) & 0xFFU);
+            }
+            BitReader whole(full, 0, {});
+            REQUIRE(ac4::detail::huff_decode(whole, *book, "hcw") == entry.index);
+            REQUIRE(whole.position() == entry.bits);
+            const std::vector<std::byte> cut(full.begin(), full.begin() + (entry.bits + 7) / 8);
+            BitReader exact(cut, 0, {});
+            REQUIRE(ac4::detail::huff_decode(exact, *book, "hcw") == entry.index);
+            REQUIRE(exact.position() == entry.bits);
+            // One bit less than the codeword needs: none found, nothing consumed.
+            if (entry.bits % 8 != 0) {
+                continue;  // the padding bits are still data; only a whole-byte cut ends inside
+            }
+            const std::vector<std::byte> shorter(full.begin(), full.begin() + entry.bits / 8 - 1);
+            BitReader short_reader(shorter, 0, {});
+            REQUIRE(ac4::detail::huff_decode(short_reader, *book, "hcw") == -1);
+            REQUIRE(short_reader.position() == 0);
+        }
+    }
+}
+
+TEST_CASE(
+    "huff_decode with its shortcut agrees with the search on random bits and on the end of the "
+    "data",
+    "[ac4dec][asf][huffman]") {
+    std::mt19937 rng(930);
+    for (const Codebook* book : tables::kAllCodebooks) {
+        CAPTURE(book->name);
+        for (int trial = 0; trial < 400; ++trial) {
+            // 1 to 6 bytes, read from a random bit: the codeword lands anywhere, and
+            // often runs past the end.
+            const std::vector<std::byte> data =
+                random_bytes(1 + rng() % 6U, static_cast<unsigned>(rng() & 0xFFFFFFFFU));
+            const std::size_t pos = rng() % (data.size() * 8U + 8U);
+            BitReader reader(data, 0, {});
+            reader.seek(pos);
+            const std::size_t start = reader.position();
+            const auto [index, length] = search_decode(data, start, *book);
+            const int got = ac4::detail::huff_decode(reader, *book, "hcw");
+            REQUIRE(got == index);
+            REQUIRE(reader.position() == start + static_cast<std::size_t>(length));
+        }
     }
 }
