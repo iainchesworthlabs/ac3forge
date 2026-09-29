@@ -38,18 +38,20 @@ and [`docs/hearth/index.md`](https://github.com/iainchesworthlabs/ac3forge/blob/
 |---|---|---|---|
 | Desktop player | Queue, transport, gapless, passthrough, meters, settings, diagnostics (`apps/hearth/engine/`; `[hearth]` tests); the Qt window (Play, Media, Speakers, Decoder, Network and Settings pages); channel-based AC-4 playback up to 7.1.4; packages for Windows, macOS and Linux | A user guide for the app; screenshots of the running app (the Hearth images in the repository are design mockups); AC-4 objects in the app | [Hearth index](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/index.md) |
 | Network output | Sendspin discovery, pairing, groups and playing to a group from the app; updating a sink's firmware from the app; aiosendspin CI exit | Music Assistant tested against a real instance | [Sendspin extension plan](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/hearth-sendspin-extension.md) |
-| ESP32 sinks | `hearth_sink` on the ESP32-S3, the ESP32-C6 (stereo) and the ESP32-P4 (revision 1.x): Improv, groups, updates over the network, QEMU CI; firmware images for each, published from the next release | TDM DAC hardware exits (ES9080 pair); the wide P4 sink; AC-4 on the ESP32 parts (see the AC-4 section) | [ESP32-S3 sink guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-esp32-s3.md), [Sink firmware](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-firmware.md) |
+| ESP32 sinks | `hearth_sink` on the ESP32-S3, the ESP32-C6 (stereo) and the ESP32-P4 (revision 1.x): Improv, groups, updates over the network, QEMU CI; firmware images for each, published from the next release | TDM DAC hardware exits (ES9080 pair); TDM on the P4 (this board's chip revision cannot open it); AC-4 in a Sendspin group on any ESP32 part (phase I6, see the AC-4 section) | [ESP32-S3 sink guide](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-esp32-s3.md), [Sink firmware](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/hearth/sink-firmware.md) |
 
-**Sink module tiers (shared PCB → pair of ES9080s):** **good** C6 (5.1, one DAC) · **better**
-S3 (7.1.4 without enhanced coupling, both DACs @ 16-bit) · **best** P4 (9.1.6 + full tools
-desired, both DACs @ 32-bit on one I2S). Study:
+**Sink module tiers (shared PCB → pair of ES9080s):** **OK** C6 (2.0, shipped, one DAC) ·
+**good** C61 (5.1 desired, proposed, no board) · **better** S3 (7.1.4 without enhanced coupling,
+both DACs @ 16-bit) · **best** P4 (9.1.6 + full tools desired, both DACs @ 32-bit on one I2S).
+Study:
 [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md).
 
-**Not started:** the wide ESP32-P4 sink (tier study P2 and later: a networked shape onto TDM and
-the ES9080 pair).
+**Not built:** the C61 tier (no board, no code); TDM on the P4, which this board's revision v1.3
+chip cannot open above two channels; the ES9080 pair and its PCB.
 
 **Done:** ESP32-P4 probe and board timing table, no network (tier study P1) — real time on every
-fixture at this board's 360 MHz. [`docs/platforms/bare-metal/esp32-p4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-p4.md).
+fixture at this board's 360 MHz — and `hearth_sink` on the P4 over the onboard C6 (P3, 2026-09-23).
+[`docs/platforms/bare-metal/esp32-p4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-p4.md).
 
 ### Library — AC-4 decode and encode (Partial)
 
@@ -156,7 +158,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 | Object authenticity: multi-key + licensed gate | Completes the Partial tail above — keyring verify and AVR-like bed-only soft-gate for EMDF; Evolution HMAC for TrueHD rides IM5 | — |
 | QC delivery report file | `ac3cli qc` writes stdout today | [`planning/qc-report.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/qc-report.md) |
 | DAW / NLE host plugin | Feasibility study only | [`planning/host-plugin.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/host-plugin.md) |
-| ESP32 sink tiers (C6 / S3 / P4) on one ES9080 PCB | Modular MCU: C6 ≤5.1 / one DAC; S3 ≤7.1.4 no ecpl / both DACs @ 16-bit; P4 ≤9.1.6 full tools desired / both DACs @ 32-bit on one I2S. P4 reopened only as best tier | [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) |
+| ESP32 sink tiers (C6 / C61 / S3 / P4) on one ES9080 PCB | Modular MCU: C6 2.0 / one DAC (shipped); C61 5.1 desired (no board); S3 ≤7.1.4 no ecpl / both DACs @ 16-bit (shipped); P4 ≤9.1.6 full tools desired / both DACs @ 32-bit on one I2S. P4 reopened only as best tier; its probe and hosted-Wi-Fi sink are built, its TDM output and the PCB are not | [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) |
 | vcpkg git registry | Consumers install via `vcpkg install ac3forge` | DR3 |
 | winget and ConanCenter | Manifests staged; CLA and submission pending | DR4 |
 | AC-4 in the performance and quality reporting | **Partial** — stereo and 5.1 encode/decode in `ac3perf`, `ac3bench` and `ac3membench`; AC-4 kernels in `ac3kernelbench`; decode quality in `ac4-quality-main.jsonl` with a chart on [Quality trend](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/quality-trend.md#ac-4-decode-quality). Still open: encode quality trend, tool-comparison series, PR performance gates for AC-4 legs. **M** | [Performance and quality](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/performance-quality.md) |
@@ -190,7 +192,7 @@ These shipped but have an open follow-on. They do not belong in "In progress" as
 - **HOA, Matrix and Binaural ADM pack types** — refused with `kUnsupportedType` until a design exists.
 - **AC-4 in Matroska** — Matroska registers no codec ID for AC-4, so `ac3cli mkv` refuses it; MP4, CMAF and MPEG-TS carry it.
 - **APT/DNF repositories and Docker images** — not planned; see [`docs/releasing.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/releasing.md).
-- **ESP32-P4 as a replacement for the S3 Wi-Fi Sendspin sink** — closed 2026-09-08 (no on-die radio; no float PIE win; S3 probe already real-time). **Complementary P4 “best” module** (Ethernet / hosted C6, dual ES9080 @ 32-bit) is Proposed — see [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) and [`esp32-c3.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-c3.md#why-not-the-esp32-p4).
+- **ESP32-P4 as a replacement for the S3 Wi-Fi Sendspin sink** — closed 2026-09-08 (no on-die radio; no float PIE win; S3 probe already real-time). **Complementary P4 “best” module** (Ethernet / hosted C6, dual ES9080 @ 32-bit) is partly built: the probe and the hosted-Wi-Fi sink exist, TDM and the ES9080 pair do not — see [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md) and [`esp32-c3.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-c3.md#why-not-the-esp32-p4).
 - **Per-channel and per-block SNR offsets** — tried and declined (EQ2); reference encoders agree with shipped behaviour.
 - **Multi-service (multi-PID) MPEG-TS authoring** — one PMT with a main-service PID plus associated-service PIDs, built in one invocation. `mpegts::mux` stays a single-elementary-stream muxer (its own header comment calls a general multiplexer out of scope); `mainid`/`asvc` describe links an operator authors across separately-muxed files, not a multiplex this tool builds for them.
 
