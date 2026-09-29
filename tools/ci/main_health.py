@@ -95,6 +95,8 @@ CAUSE_LINE = re.compile(
 )
 FAILED_LINE = re.compile(r"\bFAILED: ")
 LOG_TIMESTAMP = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z ")
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
+ESCAPES_FLAG = "--allow-escape-sequences"
 
 Runner = Callable[[Sequence[str], "str | None"], str]
 
@@ -382,6 +384,20 @@ def failed_jobs(ctx: Context, sh: Runner) -> list[FailedJob]:
     return jobs[:MAX_JOBS]
 
 
+def read_text(sh: Runner, cmd: Sequence[str]) -> str:
+    """Run a gh command whose output is text from a job. A newer gh refuses to print a
+    response that holds terminal escape sequences, which a log with colour codes does,
+    unless it is told to; an older one does not know the flag and does not need it.
+    The escape sequences are dropped, so the excerpt and the signatures see plain text."""
+    try:
+        out = sh(cmd, None)
+    except CommandError as e:
+        if ESCAPES_FLAG not in e.stderr:
+            raise
+        out = sh([*cmd, ESCAPES_FLAG], None)
+    return ANSI_ESCAPE.sub("", out)
+
+
 def gather_evidence(ctx: Context, sh: Runner, jobs: Sequence[FailedJob], flakes) -> None:
     for j in jobs:
         parts = []
@@ -391,7 +407,7 @@ def gather_evidence(ctx: Context, sh: Runner, jobs: Sequence[FailedJob], flakes)
         for what, path in (note, log):
             cmd = ["gh", "api", path] + (["--jq", ".[].message"] if what == "annotations" else [])
             try:
-                out = sh(cmd, None)
+                out = read_text(sh, cmd)
             except CommandError as e:
                 # Say so, in the report and in this run's log: a report built from the
                 # annotations alone ("Process completed with exit code 1") names no cause.
