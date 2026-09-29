@@ -1142,6 +1142,7 @@ the channel-based library.
 | | [I4b](#i4b-the-object-encoder-in-the-c-api-python-rust-and-webassembly) | the object encoder in the bindings, and I4's leftovers | I4, E9 |
 | 21b | [I5b](#i5b-the-encoder-pages-ac-4-objects) | the encoder page's AC-4 objects | I3, I5 |
 | 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 |
+| | [D14a4](#d14a4-libm-parity-and-the-converter-at-float) | libm parity and the frame-rate converter at `float`: what D14b's board work left in D14a's build | D14a, D14b |
 | 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures |
 | 24 | [N1](#n1-the-names) | the names | I5 |
 | | [G1](#g0-the-gold-set) | the golden masters, extending G0's set | any time before DEE's licence ends on 2026-11-06 |
@@ -1899,8 +1900,8 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   four cuts. **Of the exit criteria: the per-stream time against real time, the heap and the stack,
   and the statement beside AC-3 and E-AC-3 hold, and decision 26's identical output holds on the
   probe's pinned fixtures and on every stream without companding; the change that would make the
-  companding streams agree is not in this phase.** The options, a recommendation and their cost are
-  in the pull request's report.
+  companding streams agree is not in this phase.** D14a4, below, made it. The options, a
+  recommendation and their cost are in the pull request's report.
   [ESP32-P4](../docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables.
 
   **Exit:** per stream, the time per frame against real time, peak heap and stack left, and a
@@ -1927,6 +1928,67 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   which streams fit the C6 and keep up with WiFi, and how the rest reach a C6 sink.
 
   **Verified by:** the fixed gate and the C3 probe in CI; the board.
+
+#### D14a4: libm parity and the converter at float
+
+After D14a and D14b. D14b's board work found two things in D14a's float build. The board's PCM equalled
+the host's on the probe's five pinned fixtures and on fifteen of the twenty plays and differed on the five
+with companding, because `std::pow` and `std::exp2` at `float` give a different last bit in each C
+library; and the frame-rate converter ran in `double` on a part whose FPU is single precision, 185 to
+231 ms a frame and 84 to 88% of those plays' frames. The user took both on 2026-09-30, the second with the
+table designed once in `double`. One pull request.
+
+- **Libm parity.** Where the float decoder calls libm at `float` and the answer reaches the output, it calls
+  the project's own functions: companding's gain L^((1 - alpha) / alpha) is 2^(e log2 L) through
+  `ac3::internal::scalar_exp2` and `scalar_log2`, G = 2^(1 / alpha) and A-SPX's `exp2` go through
+  `scalar_exp2`, and Pseudocode 87's limit |alpha| >= 4 compares the squared magnitude with 16 in place of
+  `hypotf`. At `double` the calls are libm's as they were (`scalar_exp2` is `std::exp2` there), so the
+  `double` output does not move. What remains of libm in the float decode, read from the symbols of the
+  Cortex-M3 image, is `sqrtf` and `floorf`, which are exact, and calls at `double` whose results are rounded
+  to `float` once.
+- **The converter.** `BasicResamplerFilter<Coefficient>` keeps the table in the scalar the converter runs at:
+  every phase is designed and normalised in `double` and rounded once, `ResamplerFilter` stays the `double`
+  one the encoder and the tests take, and `Resampler<Real>` keeps its history in `Real`. At `float` an output
+  is a sum of `float` products over four lanes of the seam's `f32x4` in an order fixed in
+  `dsp/resampler_vector.hpp` (lane j takes taps j, j + 4, ...; the lanes are added (0 + 1) + (2 + 3); the
+  taps left over follow), the same float on the x86-64 seam and the generic one. A sequential `float` sum
+  on the P4 is a chain of dependent adds. At `double` the sum is the loop it was.
+- **A probe fixture with companding.** None of the probe's five had it, so its Cortex-M3 and host legs could
+  not see what the C libraries disagreed on: a sixth, DEE's 2.0 at 48 kbit/s (a committed fuzz seed), and a
+  test that pins the bits of the converter's `float` table at the three ratios.
+
+**Built in D14a4.** The changes above, in `pcm/companding.cpp`, `pcm/aspx.cpp`, `aspx/hf_generator.cpp`,
+`dsp/resampler.{hpp,cpp}` and the new `dsp/resampler_vector.hpp`, with `ac4dec` linking `ac3::arithmetic`
+for the header. The five probe fixtures' hashes did not move; the sixth, `ac4_20_companding`, is
+`5b93c61c57566b0c` on the Cortex-M3 under QEMU, on the x86-64 host and on the board, at 58.6 M instructions
+a frame, 466,163 bytes of peak heap and 75 allocations a frame. The `float` decode of every committed
+stream still agrees with the `double` one to the floors of `scalar-agreement.json`, except that the three
+IMS streams, whose converter now rounds to `float`, sit 1.4 to 3.3 dB lower above their crossover than
+before (91.4, 60.9 and 94.9 dB), and their floors are pinned again.
+
+**Exit, as measured.** (a) The `float` PCM equal on the host (MSVC, GCC 16 and Clang 22), the Cortex-M3
+leg and the P4 for D14b's twenty plays and six core plays, on the M3 for the 24-frame cut of each, for
+the probe's six fixtures and for D14b's four cuts: 84 plays and cuts compared across the five, under ESP-IDF's
+default allocation policy and under the 512-byte one, none different; before, the five plays with
+companding differed. (b) The `double` output byte-identical to main: 357 decodes (119 committed and
+played streams, as coded, folded and in core decoding) and 6 encodes, at index 13 and at 24, 25, 23.976,
+29.97 and 30 fps, with the whole of `ac3tests` passing at both scalars with no `double` pin moved. (c)
+`score_ac4_decode.py` (15 legs) and `score_ac4_encode.py` (72) hold their pins with the `float` CLI. (d)
+The converter on the P4, per frame of two channels, before and after: 204,951 to 7,321 us at 25/24,
+208,009 to 7,169 at 15/16, 230,897 to 22,395 at 1001/960 and 23.976 fps and 184,609 to 98,547 at 29.97
+fps, where the default policy's sporadic slow stage falls on it (17,454 under the 512-byte policy). The
+frame is 0.92 and 0.82 of its duration at 24 and 25 fps, from 5.64 and 5.92, and 1.25 and 3.65 (1.21 and
+1.26) at the 1001/960 rates. On the host, in one channel's frame, the `double` sum takes 119 to 143 us
+and the `float` lanes 41 to 54 (2.6 to 3.1 times, MSVC). The first frame at 1001/960 still takes 5.9 s
+more than an ordinary one, the table being designed in `double`.
+[ESP32-P4](../docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables.
+
+**Exit:** the `float` PCM equal on the host, the Cortex-M3 leg and the P4 for D14b's twenty plays, where
+it differed on five; the `double` output byte-identical to main; the scorers at their pins with the `float`
+CLI; the converter's time on the P4 before and after. Met.
+
+**Verified by:** `ac3tests` at both scalars on MSVC; the WSL GCC 16 and Clang 22 gates at both scalars and the
+assertion-checked Clang tree; `run_baremetal_probe.sh --ac4` on the Cortex-M3 and on the host; the board.
 
 ### Encoder phases
 
