@@ -9,4 +9,4 @@
 | Crucible | **Next release**<br>confirmed on hardware<br>Linux aarch64 package path | **Next release**<br>not run<br>expected through Linux aarch64 | **Unavailable**<br>not supported |
 | Live capture and PCM monitor | **Source**<br>confirmed on hardware<br>Linux backends | **Source**<br>not run<br>expected through Linux backends | **Unavailable** |
 | IEC 61937 output | **Source**<br>confirmed on hardware<br>ALSA and PipeWire to an AVR | **Source**<br>not run<br>expected; no receiver run | **Unavailable** |
-| AC-4 IEC 61937 output | **Source**<br>build only<br>ALSA; PipeWire has no AC-4 codec; no receiver accepts AC-4 | **Source**<br>not run<br>expected through Linux aarch64 | **Unavailable** |
+| AC-4 IEC 61937 output | **Source**<br>build only<br>ALSA; PipeWire has no AC-4 codec; no receiver accepts AC-4 | **Source**<br>not run<br>expected through Linux aarch64; no receiver accepts AC-4 | **Unavailable** |

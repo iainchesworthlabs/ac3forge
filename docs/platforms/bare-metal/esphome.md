@@ -6,6 +6,10 @@ bytes and hands back planar float PCM. It is **not** a `media_player` or a `spea
 ESPHome's `speaker` platform is ESP-IDF-only, so that is the obvious next step rather than a
 blocked one.
 
+`FrameDecoder` reads AC-3 alone. An E-AC-3 stream (bsid above 8), Atmos included, is framed but
+not decoded: `decode()` returns null and `failed()` is set. The component has no AC-4 either, and
+it has been validated on an ESP32-S3 board configuration only.
+
 ```yaml
 external_components:
   - source:
@@ -31,7 +35,8 @@ meant to keep working.
 
 `buffer_size` is the framer's working buffer, floored at 4,160 bytes — one syncframe plus the
 next header, which is what deciding where an access unit ends requires. 16 KB holds an independent
-substream plus three dependents, which covers Atmos.
+substream plus three dependents, the shape of an Atmos access unit, which the framer can hold and
+`FrameDecoder` cannot decode.
 
 The component reaches the library by git reference rather than the registry:
 `add_idf_component` writes `git:`, `version:` and `path:` into the generated
@@ -42,7 +47,10 @@ CI runs `esphome config` over `esphome/tests/ac3forge-test.yaml` against a local
 at the working tree, which exercises the schema and `to_code` including the `add_idf_component`
 call, and asserts that a `buffer_size` no access unit fits in is rejected. It does **not** compile
 the firmware: that would clone ac3forge at the configured ref and build the whole IDF project,
-which says nothing about the code under review, since the ref it fetched is not that code.
+which says nothing about the code under review, since the ref it fetched is not that code. The
+job is the `esp-component` call in the `esp` lane of `ci.yml`, which runs after a merge to main that
+changes the ESP32 trees or a tree its component ships, and nightly ([the lane table](../../ci-lanes.md#lane-table),
+[CI for many agents](../../ci-agentic.md#the-tiers)).
 
 [`esphome/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/esphome/README.md)
 has the rest, including why PSRAM is worth having on a board that also runs WiFi.

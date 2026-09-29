@@ -15,8 +15,8 @@ placement in an E-AC-3 + JOC stream. The third surface is
 **[`js/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/js)**, the
 `ac3forge-wasm-decoder` npm package that turns the same decode path into a
 push-frame API, a realtime AudioWorklet pipeline, and an hls.js/MSE bridge, answering the fact
-that **Chrome still cannot decode EC-3**
-([video.js http-streaming#1297](https://github.com/videojs/http-streaming/issues/1297) is open).
+that a browser cannot be relied on to decode EC-3: [Chrome reports a decoder error](https://github.com/videojs/http-streaming/issues/1297)
+when an EC-3 track turns up in an MPD, in a report that has been open since 2023.
 That package is named but **not published**: this repository has never released it to npm, so
 building it from `js/` is the only way to get it — see [Publishing](#publishing)
 below. A fourth piece, the [AC-4 module](#ac-4-module), wraps the AC-4 decoder and encoder over
@@ -40,7 +40,7 @@ pages in this section.
 | Encode demo, and the Atmos authoring page | Built and [published live](../wasm-encode-demo.md) |
 | `ac3forge-wasm-decoder` npm package | **Never released to npm.** Building it from `js/` is the only way to get it |
 | AC-4 module | Decodes and encodes AC-4, objects included. Built in the same CI job as the two modules above, and the package's Node tests drive its wrapper against a fake module; no test runs the compiled module, and there is no demo page yet |
-| Why the package exists | Chrome still cannot decode EC-3 |
+| Why the package exists | A browser cannot be relied on to decode EC-3 |
 | Correctness | CI asserts stream properties and known-signal measurements (channel count, sample rate, object count and movement, non-silent output, a 997 Hz tone's true peak, a decode round trip). It does not compare the WebAssembly decoder's samples with the native decoder's |
 | Real hardware | Not applicable — the browser is the target |
 
