@@ -431,7 +431,7 @@
     <message>
         <location filename="../qml/DecoderAc4.qml" line="584"/>
         <source>What the immersive element&apos;s own renderer folds down to, when the speaker layout does not itself ask for a stereo or mono fold (the &quot;Stereo and mono&quot; card above, which takes priority when it applies).</source>
-        <translation>וווהין דער אייגנער רענדערער פונעם אימערסיון עלעמענט פאלט צונויף, ווען די רמקול-אויסלייג זעלבסט בעט נישט קיין סטערעא צי מאנא פאלד (די קארטל "סטערעא און מאנא" אויבן האט פריאריטעט ווען עס גילט).</translation>
+        <translation>וווהין דער אייגנער רענדערער פונעם אימערסיון עלעמענט פאלט צונויף, ווען די רמקול-אויסלייג זעלבסט בעט נישט קיין סטערעא צי מאנא פאלד (די קארטל &quot;סטערעא און מאנא&quot; אויבן האט פריאריטעט ווען עס גילט).</translation>
     </message>
     <message>
         <location filename="../qml/DecoderAc4.qml" line="597"/>
