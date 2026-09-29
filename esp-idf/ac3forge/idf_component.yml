@@ -8,7 +8,9 @@
 # registry is a distribution decision rather than a build one and the version
 # below is not yet a released one. It is here so the shape is right and the
 # metadata is reviewed alongside the code it describes rather than written in a
-# hurry at upload time.
+# hurry at upload time. The description below names the AC-4 option, whose sources an
+# archive carries only when tools/packaging/pack_esp_component.py packed it with
+# --with-ac4: settle that before an upload.
 
 version: "0.10.0-beta.1"
 description: >-
