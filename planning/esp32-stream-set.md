@@ -1,12 +1,22 @@
 # The ESP32 player's stream set
 
-!!! note "Status as of 2026-09-11: built; played under QEMU in CI's twelve-slot shape, and on a board"
+!!! note "Status as of 2026-09-30: built and in use; all eight decisions taken as recommended"
     Streams for the player's `http` source, in one directory a device can be pointed at: 7.1.4
     streams that decode to all twelve slots of a 7.1.4 output, and beside them a range across the
     layouts the player renders onto, both codecs, dependent substreams, two programmes, dual
     mono, the Annex E coding tools, short frames, VBR, DRC metadata, other encoders' streams and
     object audio. A manifest says what each stream is and the level each slot of a 7.1.4 output
     should get from it. CI plays the set under QEMU onto 7.1.4 and holds every slot to its level.
+
+    The set is 38 streams and `streams.json` in
+    `esp-idf/ac3forge/examples/hearth_sink/www/`, and the table under [The set](#the-set) matches
+    that manifest. Since Hearth B3 (2026-09-16) servers play to a board over Sendspin; the `http`
+    source this set is served to remains for `POST /play`, for the checks in CI and for board
+    measurements, the P4's among them
+    ([ESP32-P4 → Stream set](../docs/platforms/bare-metal/esp32-p4.md#stream-set)). Two things
+    the set found are still open: a stream using transient pre-noise processing ends one access
+    unit short, and `714-ecpl` and `714-tpn` need PSRAM ([What the set
+    found](#what-the-set-found), [Measured again on 2026-09-16](#measured-again-on-2026-09-16)).
 
     Playing the set found four things in the player ([What the set found](#what-the-set-found)):
     a stream carrying two programmes had both played, a frame of each, and now plays its first;
@@ -113,7 +123,7 @@ Every stream but `ac3-51-44k.ac3` is at 48 kHz; that one is in the set to be ref
 ## How the streams are made
 
 `tools/generators/gen_device_streams.py --ac3cli <a host ac3cli>` writes the directory and its
-manifest, `streams.json`. It synthesises four signals and encodes them with this repository's
+manifest, `streams.json`. It synthesises these signals and encodes them with this repository's
 encoder:
 
 - a tone per speaker, a third of an octave apart (L 250 Hz up to Rts 2,500 Hz, the LFE at
@@ -286,7 +296,9 @@ With both changes, `714-ecpl` plays in this shape, and its levels are the host's
 low is 2,236 bytes with the player as it is, and 7,496 to 7,700 over three runs with the block
 storage sized to the layout. In one of those three runs the lap line's sampled `heap_free`,
 15,980, fell under the step's 24,576 floor. The 7.1.4 streams CI plays keep 30 to 35 KB, so
-`714-ecpl` stays marked until the spectrum scratch shrinks.
+`714-ecpl` stays marked until the spectrum scratch shrinks. (The floor is 20,480 bytes now: when
+Hearth B2 put mDNS on the board, which costs about 8 KB of internal RAM in every shape, the step
+moved it, as its comment in `_build.yml` records.)
 
 **TPN** is short by about 51 KB. Holding a frame back for §3.7 keeps a second full set of PCM for
 every substream - 86 KB for a 7.1.4 stream's fourteen coded channels - and each substream using
@@ -409,12 +421,22 @@ channels leave an S3, and what that costs in time and internal RAM, is still ope
   task 32 KB, and has not placed objects over the network.
 - **7.1.4 out of the part.** One TDM line on the S3 carries at most four 32-bit or eight 16-bit
   slots, so no sink here sends twelve channels to a DAC; QEMU has no I2S, and the board has no
-  DAC. The board's figures are the decode and the render.
+  DAC. The board's figures are the decode and the render. Since 2026-09-12 the `i2s` sink can
+  take a second line for sixteen 16-bit slots (PR #666), and it has not run into DACs either. The
+  P4's one controller holds a 512-bit frame, but the chip revision on the P4 board cannot open
+  TDM above two channels ([the sink tiers plan](esp32-sink-tiers.md)).
 - **The streams marked "no", in CI** - `714-ecpl` and `714-tpn` since 2026-09-16. They played
   on the board on 2026-09-11, and CI's shape has no PSRAM, so a change that breaks them shows
   only on a board.
 
 ## Decisions
+
+Status, 2026-09-30: all eight were taken as (a), as recommended, and are built. The set lives in
+`www/` (1) and `gen_device_streams.py` makes it (2). `check_stream_set.py` holds a play to the
+host's levels (3), and CI's shape plays objects as their bed (4). The player plays a stream's
+first programme (5) and refuses a stream at another sample rate (6). The manifest marks the
+PSRAM-only streams, two of them since 2026-09-16 (7). The fold at 2.0 was handed to the decoder
+core and changed there (8).
 
 1. **Where the set lives.** (a) **`www/` beside the example, left out of the registry archive**;
    (b) `apps/wasm/assets/`, which CI's HTTP step already serves; (c) served from where the streams
@@ -451,8 +473,8 @@ channels leave an S3, and what that costs in time and internal RAM, is still ope
 6. **A stream whose sample rate is not the sink's.** (a) **the player refuses it: the play fails
    with the reason `sample rate` and the stream's rate in `error`**; (b) the sink re-clocked for
    each play; (c) left as it is. **Recommend (a).** (b) needs every sink to reopen at another
-   rate, which the I2S and TDM sinks do not do today. Cost: a stream at 44.1 or 32 kHz, which a
-   DAC could play at its own rate, does not play at all until (b).
+   rate, which the I2S sink, standard or TDM, does not do today. Cost: a stream at 44.1 or 32 kHz,
+   which a DAC could play at its own rate, does not play at all until (b).
 
 7. **The coding tools 7.1.4 cannot carry without PSRAM.** (a) **in the set at 7.1.4, marked
    PSRAM-only, and at 5.1, which CI plays**; (b) left out of the set. **Recommend (a).** A board
