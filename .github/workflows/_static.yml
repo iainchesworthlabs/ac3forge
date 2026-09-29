@@ -194,6 +194,20 @@ jobs:
         shell: bash
         run: python3 tools/checks/check_platform_matrix.py
 
+      # The libraries under src/ form a graph with no cycle, and nothing but the
+      # habit of the people editing it keeps it so. tools/checks/layering.json
+      # lists each library and the libraries it may include from
+      # (planning/layout.md); this resolves every #include under src/ the way the
+      # compiler does and fails one that crosses into a library the table does not
+      # list. The includes a pending cut still has to remove are listed in
+      # tools/checks/layering_debt/, one file per cut, and a listed include that is
+      # gone fails too, so the change that removes it deletes its line. Its own
+      # suite runs in the Oracle unit tests step above.
+      - name: Library layering
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: python3 tools/checks/check_layering.py
+
       # A board flashed from this tree has to stay recoverable over USB, and
       # its bootloader has to keep checking an image before it boots it
       # (planning/esp32-ota.md). Either can be lost to one line in an sdkconfig

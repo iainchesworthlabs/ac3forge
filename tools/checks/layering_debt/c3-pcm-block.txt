@@ -1,0 +1,4 @@
+# C3: PcmBlock and BlockSink leave decoder/decoder.hpp for render/pcm_block.hpp
+# planning/layout.md, stage S1. The change that makes this cut deletes this file.
+
+src/forge/include/ac3/render/render.hpp ac3/decoder/decoder.hpp

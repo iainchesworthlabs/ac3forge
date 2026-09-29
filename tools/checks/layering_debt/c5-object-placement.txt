@@ -1,0 +1,9 @@
+# C5: ObjectPlacement leaves oba/atmos.hpp for oba/placement.hpp
+# planning/layout.md, stage S1. The change that makes this cut deletes this file.
+
+src/forge/include/ac3/oba/motion.hpp ac3/oba/atmos.hpp
+src/forge/include/ac3/oba/scene.hpp ac3/oba/atmos.hpp
+src/forge/include/ac3/oba/scene_osc.hpp ac3/oba/atmos.hpp
+src/forge/src/oba/motion.cpp ac3/oba/atmos.hpp
+src/forge/src/oba/scene.cpp ac3/oba/atmos.hpp
+src/forge/src/oba/scene_osc.cpp ac3/oba/atmos.hpp

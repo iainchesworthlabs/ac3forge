@@ -1,0 +1,9 @@
+# C1: Location and Layout leave core/eac3_tables.hpp for core/layout.hpp
+# planning/layout.md, stage S1. The change that makes this cut deletes this file.
+
+src/audio/include/ac3/audio/speakers.hpp ac3/core/eac3_tables.hpp
+src/audio/src/speakers.cpp ac3/core/eac3_tables.hpp
+src/forge/include/ac3/render/layout.hpp ac3/core/eac3_tables.hpp
+src/forge/include/ac3/render/render.hpp ac3/core/eac3_tables.hpp
+src/forge/include/ac3/spatial/spatial.hpp ac3/core/eac3_tables.hpp
+src/forge/src/spatial/spatial.cpp ac3/core/eac3_tables.hpp

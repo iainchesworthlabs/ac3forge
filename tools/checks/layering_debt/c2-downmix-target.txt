@@ -1,0 +1,4 @@
+# C2: DownmixTarget leaves decoder/output.hpp for core/downmix_target.hpp
+# planning/layout.md, stage S1. The change that makes this cut deletes this file.
+
+src/forge/include/ac3/render/layout.hpp ac3/decoder/output.hpp
