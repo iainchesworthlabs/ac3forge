@@ -333,7 +333,7 @@ AC-4 stream 19 to 35 times.
 `20-music-192` and `20-music-96` are 2.0; the `51-` streams are 5.1 at 384, 192, 128 and 96 kbps,
 and the `514-` streams 5.1.4 at 256, 512 and 768, each in the mode DEE writes at that rate; the
 `ims-` streams are DEE's immersive stereo at 64 kbps at 23.976, 24, 25 and 29.97 fps. Core
-decoding of the three 5.1.4 streams, which Part 2 lets a decoder do for the immersive element:
+decoding of the three 5.1.4 streams, which the standard lets a decoder do for the immersive element:
 
 | Stream | To | us/frame | x real time | First frame s | Peak heap MB | Internal RAM least free KB | Stack left KB |
 |---|---|---:|---:|---:|---:|---:|---:|
