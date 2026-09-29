@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "../ac4_channels.hpp"
 #include "../exit_codes.hpp"
 #include "../support.hpp"
 #include "ac4/ac4.hpp"
@@ -47,11 +46,15 @@
 #include "ac3/encoder/assignment.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/iec61937/iec61937.hpp"
+#include "ac4_channels.hpp"
 #include "recording_sink.hpp"
 #include "sink_wait.hpp"
 #include "stream_playback.hpp"
 
 namespace ac3cli::commands {
+
+using ac3::apps::ac4_order;
+using ac3::apps::ac4_wav_rank;
 
 namespace plan = ac3::plan;
 

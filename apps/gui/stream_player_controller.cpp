@@ -18,6 +18,11 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4_channels.hpp"
+#include "ac4_presentations.hpp"
+#include "ac4_sync_word.hpp"
+#include "ac4dec/decoder.hpp"
 #include "channel_geometry.hpp"
 
 using splayer_detail::RawResult;
@@ -79,14 +84,85 @@ struct DecodeOutcome {
     std::shared_ptr<RawResult> result;
 };
 
-// Reads the whole file, dispatches on bsid and decodes every frame/access
-// unit into whole-file planar buffers - the GUI twin of `ac3cli monitor`
+// AC-4 through ac4::Decoder's public API, as `ac3cli play` (monitor_ac4 in
+// apps/cli/commands/live_audio.cpp) and Hearth's engine decode it: the
+// presentation `presentation` chooses (the decoder's own choice where unset),
+// each frame's channels in the WAV order `ac3cli decode` writes, frames that
+// wait for an I-frame playing nothing. A layout that changes mid-stream is
+// refused, as monitor refuses it.
+bool decode_ac4_to_memory(const QString& path, std::span<const std::byte> stream,
+                          std::optional<std::size_t> presentation, RawResult& result,
+                          QString& error) {
+    const ac4::ScanResult scan = ac4::scan(stream);
+    if (scan.frames.empty()) {
+        error = QStringLiteral("%1 holds no AC-4 sync frame.").arg(path);
+        return false;
+    }
+    ac4::DecoderConfig config;
+    config.presentation.index = presentation;
+    ac4::Decoder decoder(config);
+    result.codec_label = QStringLiteral("AC-4");
+    result.ac4 = true;
+    for (const auto& row : ac3gui::ac4_presentation_rows(scan.frames)) {
+        result.presentations.append(QString::fromStdString(row.label));
+    }
+    std::vector<std::size_t> order;
+    std::vector<ac4::Speaker> layout;
+    double time_s = 0.0;
+    std::size_t number = 0;
+    for (const ac4::SyncFrame& frame : scan.frames) {
+        ++number;
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        if (!decoded.has_value()) {
+            error = QStringLiteral("%1: frame %2: %3")
+                        .arg(path)
+                        .arg(number)
+                        .arg(to_qstring(decoder.refusal_reason()));
+            return false;
+        }
+        if (!decoded->has_value()) {
+            continue;  // waiting for an I-frame
+        }
+        const ac4::DecodedFrame& pcm = **decoded;
+        if (order.empty()) {
+            layout = pcm.speakers;
+            order = ac3::apps::ac4_order(std::span{pcm.speakers}, ac3::apps::ac4_wav_rank);
+            result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
+            result.presentation = pcm.presentation;
+            result.acmod = ac3::apps::ac4_bed_acmod(pcm.speakers);
+            result.lfe = std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
+            result.layout_label = to_qstring(ac3gui::ac4_speaker_names(pcm.speakers));
+            for (const std::size_t c : order) {
+                result.locations.push_back(ac3::apps::ac4_location(pcm.speakers[c]));
+            }
+        } else if (pcm.speakers != layout) {
+            error = QStringLiteral("%1: frame %2: the channel layout changes mid-stream.")
+                        .arg(path)
+                        .arg(number);
+            return false;
+        }
+        append_planar(result.channels, pcm.channels, order);
+        time_s += static_cast<double>(pcm.samples) / static_cast<double>(pcm.sample_rate_hz);
+        ++result.unit_count;
+    }
+    if (order.empty()) {
+        error = QStringLiteral("%1: no frame decoded; the stream sent no I-frame.").arg(path);
+        return false;
+    }
+    result.duration_seconds = time_s;
+    return true;
+}
+
+// Reads the whole file, dispatches on the AC-4 sync word and then on bsid,
+// and decodes every frame/access unit into whole-file planar buffers - the
+// GUI twin of `ac3cli monitor`
 // (bed playback) fused with `ac3cli decode`'s object export (objects_dir),
 // since this dialog offers both from one decode pass rather than two. Runs
 // entirely on the calling thread; openFile() is what moves this off the GUI
 // thread, mirroring ObjectDecodeController::inspectFile/
 // QcController::measureFile.
-DecodeOutcome decode_stream_to_memory(const QString& path) {
+DecodeOutcome decode_stream_to_memory(const QString& path,
+                                      std::optional<std::size_t> presentation) {
     DecodeOutcome outcome;
     std::ifstream in{path.toStdString(), std::ios::binary};
     if (!in) {
@@ -104,6 +180,15 @@ DecodeOutcome decode_stream_to_memory(const QString& path) {
         stream[i] = static_cast<std::byte>(static_cast<unsigned char>(raw[i]));
     }
 
+    if (ac3::apps::is_ac4_stream(stream)) {
+        auto result = std::make_shared<RawResult>();
+        if (!decode_ac4_to_memory(path, stream, presentation, *result, outcome.error)) {
+            return outcome;
+        }
+        result->frame_count = result->channels.empty() ? 0 : result->channels.front().size();
+        outcome.result = std::move(result);
+        return outcome;
+    }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid) {
         outcome.error = QStringLiteral("%1 is too short to hold a syncframe.").arg(path);
@@ -360,13 +445,39 @@ void StreamPlayerController::openFile(const QUrl& url) {
     if (path.isEmpty()) {
         return;
     }
+    // A new file starts at the decoder's own choice of presentation, as a
+    // plain `ac3cli play` does.
+    if (path != file_path_ && presentation_index_ != -1) {
+        presentation_index_ = -1;
+        emit presentationChanged();
+    }
     file_path_ = path;
     emit filePathChanged();
+    decodePath(path);
+}
+
+void StreamPlayerController::setPresentationIndex(int index) {
+    const int wanted = std::max(index, -1);
+    if (busy_ || wanted == presentation_index_) {
+        return;
+    }
+    presentation_index_ = wanted;
+    emit presentationChanged();
+    if (result_ && result_->ac4 && !file_path_.isEmpty()) {
+        pause();
+        decodePath(file_path_);
+    }
+}
+
+void StreamPlayerController::decodePath(const QString& path) {
     busy_ = true;
     emit busyChanged();
-
-    std::ignore = QtConcurrent::run([this, path] {
-        auto outcome = decode_stream_to_memory(path);
+    const std::optional<std::size_t> presentation =
+        presentation_index_ >= 0
+            ? std::optional<std::size_t>{static_cast<std::size_t>(presentation_index_)}
+            : std::nullopt;
+    std::ignore = QtConcurrent::run([this, path, presentation] {
+        auto outcome = decode_stream_to_memory(path, presentation);
         QMetaObject::invokeMethod(this, [this, outcome = std::move(outcome)]() mutable {
             busy_ = false;
             error_ = outcome.error;

@@ -41,7 +41,8 @@ Dialog {
         id: spFileDialog
         objectName: "spFileDialog"
         title: qsTr("Choose an AC-3 / E-AC-3 stream")
-        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("All files (*)")]
+        nameFilters: [qsTr("AC-3 / E-AC-3 (*.ac3 *.ec3)"), qsTr("AC-4 (*.ac4)"),
+                      qsTr("All files (*)")]
         onAccepted: StreamPlayerController.openFile(selectedFile)
     }
 
@@ -129,6 +130,34 @@ Dialog {
                 implicitHeight: 24
                 Accessible.role: Accessible.Indicator
                 Accessible.name: qsTr("Decoding…")
+            }
+        }
+
+        // AC-4: which presentation plays, as `ac3cli play presentation=<n>`
+        // chooses it; the first entry is the one the decoder takes with no
+        // preference.
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.space3
+            visible: StreamPlayerController.isAc4
+            Text {
+                id: spPresentationLabel
+                text: qsTr("PRESENTATION")
+                font.pixelSize: Theme.fontMicro
+                font.letterSpacing: 1.2
+                color: Theme.textMuted
+            }
+            ComboBox {
+                objectName: "spPresentation"
+                Accessible.name: spPresentationLabel.text
+                Layout.fillWidth: true
+                enabled: !StreamPlayerController.busy
+                model: [qsTr("The decoder's choice")].concat(StreamPlayerController.presentationNames)
+                currentIndex: StreamPlayerController.presentationIndex + 1
+                // Each decode hands the model over anew, which resets the
+                // shown entry; a pick has already replaced the binding.
+                onModelChanged: currentIndex = StreamPlayerController.presentationIndex + 1
+                onActivated: StreamPlayerController.presentationIndex = currentIndex - 1
             }
         }
 

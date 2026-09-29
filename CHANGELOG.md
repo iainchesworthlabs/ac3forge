@@ -968,6 +968,24 @@ The sections below contain the complete change list and fixes.
     WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds its output level, downmixes and
     dialogue enhancement to the formulas it holds `ac3cli decode` to, on the committed streams and
     the encoder's, in the Hearth CI job.
+- **The Forge GUI encodes and reads AC-4** (phase I3 of `planning/ac4.md`).
+  - AC-4 is the codec picker's third choice. The AC-4 tab, in place of Coding tools and Metadata,
+    sets the frame rate, the rate and codec modes, the I-frame interval, the CRC, dialnorm (or
+    measures it), the loudness values, the DRC profile, the stereo downmix of a 5.0 or 5.1 source
+    and dialogue enhancement. The page encodes one source in its own layout, mono to 5.1, to a raw
+    stream or an MP4 file, and echoes the `ac3cli ac4-encode` line that reproduces it; run through
+    `ac3cli`, the line writes the same bytes, which `tst_e2e_ac4.qml` and `tst_ac4_encode.qml`
+    check for a raw stream, an MP4 file and a 5.1 downmix. The steps that decide those bytes, the
+    channel order, the BS.1770 measurement and the packaging, moved from `ac4-encode` to
+    `apps/common` so both run the same code.
+  - QC, Open stream and Inspect objects recognise AC-4 by its sync word. QC measures a chosen
+    presentation as `ac3cli qc` does, with AC-4's quarter-dB dialnorm and the stream's stated
+    loudness; the player decodes a chosen presentation through `ac4::Decoder` as `ac3cli play`
+    does; the object page lists the presentations and the beds and objects the decoder reports,
+    read-only, and says that exporting AC-4 objects comes later (I5).
+  - Substreams and presentations, dialogue stems, per-mode DRC profiles, the LFE mix and the
+    layouts past 5.1 stay with `ac3cli ac4-encode`. A live session under AC-4 is refused, as
+    `ac3cli live` has no AC-4.
 
 **Audio outputs**
 

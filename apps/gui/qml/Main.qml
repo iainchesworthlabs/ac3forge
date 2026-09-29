@@ -446,10 +446,18 @@ ApplicationWindow {
                                                      ? EncoderController.captureDeviceRows[0].name
                                                      : ""
 
-    readonly property var tabOrder: ["format", "coding", "meta", "objects", "session"]
+    readonly property var tabOrder: ["format", "coding", "meta", "objects", "session", "ac4"]
+    // AC-4 has options of its own and none of the other two codecs' coding
+    // tools or metadata, so its tab takes the place of those two.
+    readonly property bool ac4Selected: EncoderController.codecIndex === 2
+                                        && !EncoderController.atmosEnabled
     readonly property var visibleTabs: {
         const tabs = [{ key: "format", label: qsTr("Format"), badge: "" }];
-        if (tier === "expert") {
+        if (ac4Selected && tier !== "guided") {
+            tabs.push({ key: "ac4", label: qsTr("AC-4"),
+                        badge: EncoderController.ac4Tokens.length > 0
+                               ? String(EncoderController.ac4Tokens.split(" ").length) : "" });
+        } else if (tier === "expert") {
             const toolsOn = (EncoderController.coupling ? 1 : 0)
                           + (EncoderController.spx ? 1 : 0)
                           + (EncoderController.aht ? 1 : 0);
@@ -703,6 +711,15 @@ ApplicationWindow {
         const mpegTs = EncoderController.containerIndex === 5;
         const streamOut = "out." + (eac3Stream ? "ec3" : "ac3");
         const rate = String(EncoderController.bitrateKbps);
+        // AC-4 is one command: ac4-encode writes the MP4 file itself when the
+        // output is named .mp4, and takes one WAV file in its own layout.
+        if (window.ac4Selected) {
+            const ac4Parts = ["ac3cli", "ac4-encode", source, mp4 ? "out.mp4" : "out.ac4", rate];
+            if (EncoderController.ac4Tokens.length > 0) {
+                ac4Parts.push(EncoderController.ac4Tokens);
+            }
+            return ac4Parts.join(" ");
+        }
         const meta = EncoderController.metaTokens;
         const trailing = [];
         for (const row of EncoderController.sourceModel) {
@@ -3380,7 +3397,7 @@ ApplicationWindow {
                                                             return extraRow.modelData.reason;
                                                         }
                                                         if (!extraRow.modelData.checked
-                                                            && EncoderController.codecIndex === 0
+                                                            && EncoderController.codecIndex !== 1
                                                             && !EncoderController.atmosEnabled
                                                             && !EncoderController.dualMono) {
                                                             return qsTr("moves to Dolby Digital Plus");
@@ -7063,6 +7080,11 @@ ApplicationWindow {
 
                             Item { Layout.fillHeight: true }
                         }
+
+                        // =====================================================
+                        // AC-4 (the codec's own options)
+                        // =====================================================
+                        Ac4Panel {}
                     }
                 }
 

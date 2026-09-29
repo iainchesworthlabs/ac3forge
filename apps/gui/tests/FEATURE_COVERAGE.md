@@ -115,6 +115,37 @@ reach without a device.
 | Command bar CLI chip → popover, Copy | UI | UI | SweepConformance::test_cliChipOpensThePopoverWithTheLiveLine |
 | CLI line content (src map, meta tokens, containers) | logic | logic | SweepConformance::test_cliLine*, test_*IsHonestlyTwoCommands |
 
+## AC-4 (encode, QC, player, object page)
+
+These controls arrived with AC-4 (planning/ac4.md, I3), after the tst_e2e_*
+suites, so **Before** reads "new".
+
+| Feature | Before | Now | Test case(s) |
+|---|---|---|---|
+| Codec combo → AC-4; the AC-4 tab takes the place of Coding tools and Metadata | new | UI | E2eAc4::test_rawStreamFromThePageEqualsTheEchoedLine, test_mp4FileFromThePageEqualsTheEchoedLine |
+| Container combo → MP4 for AC-4 (`out.mp4` on the echoed line) | new | UI | E2eAc4::test_mp4FileFromThePageEqualsTheEchoedLine |
+| Frame rate combo | new | UI | E2eAc4::test_rawStreamFromThePageEqualsTheEchoedLine |
+| Rate mode combo | new | UI | E2eAc4::test_rawStream… (average), test_mp4File… (variable) |
+| Codec mode combo | new | UI | E2eAc4::test_mp4FileFromThePageEqualsTheEchoedLine |
+| I-frame interval spin box | new | UI | E2eAc4::test_rawStreamFromThePageEqualsTheEchoedLine |
+| CRC checkbox (disabled for MP4) | new | UI | E2eAc4::test_rawStream…, test_mp4File… |
+| dialnorm spin box (quarter-dB steps) | new | UI | E2eAc4::test_mp4FileFromThePageEqualsTheEchoedLine |
+| Measure dialnorm checkbox | new | UI | E2eAc4::test_rawStreamFromThePageEqualsTheEchoedLine |
+| Loudness values combo | new | UI | E2eAc4::test_rawStreamFromThePageEqualsTheEchoedLine |
+| DRC profile combo | new | UI | E2eAc4::test_rawStreamFromThePageEqualsTheEchoedLine |
+| Stereo downmix: centre, surround and preferred combos (5.1 source; disabled for stereo) | new | UI | Ac4Encode::test_surroundDownmixFromThePageEqualsTheEchoedLine, test_stereoSourceLeavesTheDownmixDisabled |
+| Dialogue enhancement: L and R checkboxes | new | UI | E2eAc4::test_rawStreamFromThePageEqualsTheEchoedLine |
+| Dialogue enhancement: C and Mid checkboxes, largest boost combo; tab badge | new | UI | Ac4Encode::test_dialogueCentreMidAndLargestBoostReachTheEchoedLine |
+| The echoed `ac3cli ac4-encode` line, run through ac3cli, writes the page's bytes (raw, MP4, 5.1 raw) | new | UI | E2eAc4::test_rawStream…, test_mp4File…; Ac4Encode::test_surroundDownmix… (qml_test_main.cpp's cliRunner) |
+| A container other than raw or MP4 is refused before the run | new | UI | Ac4Encode::test_ac4RefusesAContainerOtherThanRawOrMp4 |
+| A preset that needs an extra moves AC-4 to E-AC-3 | new | UI | Ac4Encode::test_aPresetNeedingAnExtraMovesAc4ToEac3 |
+| Player: an AC-4 file decoded through ac4::Decoder | new | UI | E2eAc4::test_rawStreamFromThePageEqualsTheEchoedLine |
+| Player: presentation picker | new | UI | Ac4Decode::test_playerPlaysThePresentationItsPickerChooses |
+| QC of AC-4: dialnorm and stated loudness, raw and in MP4 | new | UI | E2eAc4::test_rawStream…, test_mp4File… |
+| QC: presentation picker | new | UI | Ac4Decode::test_qcMeasuresThePresentationItsPickerChooses |
+| Object page: presentations, bed and dynamic objects, the note that export comes later | new | UI | Ac4Decode::test_objectPageListsWhatTheDecoderReports, E2eAc4::test_rawStream… |
+| AC-4 page settings → ac4-encode tokens and ac4::EncoderConfig; presentation labels | new | logic | ac3tests [gui]: tests/gui/test_ac4_encode_settings.cpp (Qt-free) |
+
 ## Stream player (decode)
 
 | Feature | Before | Now | Test case(s) |
@@ -196,12 +227,13 @@ reach without a device.
 
 | | Before | Now |
 |---|---|---|
-| Rows (features) | 99 | 99 |
-| Driven from the UI | 15 | 50 |
-| Logic only (controller or QML function called directly) | 65 | 40 |
+| Rows (features) | 99 | 122 |
+| Driven from the UI | 15 | 72 |
+| Logic only (controller or QML function called directly) | 65 | 41 |
 | Not covered | 19 | 9 |
 
-"UI (hardware)" and "UI/logic" rows count as UI.
+"UI (hardware)" and "UI/logic" rows count as UI. The 23 AC-4 rows are new,
+so **Before** counts only the 99 rows that existed then.
 
 C++ line coverage of `apps/gui/*.cpp|hpp`, from the QML suites plus the
 C++ unit tests that also compile `gui_diagnostics.cpp`. It was measured with

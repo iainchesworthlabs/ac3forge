@@ -10,17 +10,18 @@
 #include "ac3/core/tables.hpp"
 #include "ac4dec/decoder.hpp"
 
-// AC-4's channels in WAV files, for `decode` and `ac4-encode` alike: a WAV
-// file holds them in the WAVEFORMATEXTENSIBLE speaker order the E-AC-3 path
-// writes (plan::wav_order: FL FR FC LFE BL BR, then SL SR and the top front
-// pair), with Ls and Rs at SL and SR, Lb and Rb at BL and BR, the top back
-// pair at TBL and TBR, and Lw and Rw, which that order has no place for, last.
+// AC-4's channels in WAV files, for ac3cli's `decode` and `ac4-encode` and
+// ac3gui's AC-4 pages alike: a WAV file holds them in the WAVEFORMATEXTENSIBLE
+// speaker order the E-AC-3 path writes (plan::wav_order: FL FR FC LFE BL BR,
+// then SL SR and the top front pair), with Ls and Rs at SL and SR, Lb and Rb at
+// BL and BR, the top back pair at TBL and TBR, and Lw and Rw, which that order
+// has no place for, last.
 // So 5.1's surrounds take the fifth and sixth channels, as E-AC-3's do, and
 // 5.1.4 and 7.1.4 come out as DEE takes them in. The top side pair of an X.2
 // layout, which the order has no place for either, takes the top front pair's
 // places, which an X.2 layout leaves empty.
 
-namespace ac3cli {
+namespace ac3::apps {
 
 [[nodiscard]] inline int ac4_wav_rank(ac4::Speaker speaker) {
     switch (speaker) {
@@ -145,4 +146,4 @@ template <typename Rank>
     return L::kCentre;
 }
 
-}  // namespace ac3cli
+}  // namespace ac3::apps

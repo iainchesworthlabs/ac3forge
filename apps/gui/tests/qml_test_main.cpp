@@ -1,13 +1,18 @@
 #include <QtQuickTest/quicktest.h>
 
 #include <QCoreApplication>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QObject>
+#include <QProcess>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickStyle>
 #include <QSettings>
 #include <QTemporaryDir>
+#include <QUrl>
 
 #include <optional>
 
@@ -19,7 +24,73 @@
 // real EncoderController the qmldir already embedded into this binary
 // resolves - see CMakeLists.txt for why that is a second embedding of the
 // module rather than a shared library with ac3gui.
-//
+
+// The seam the byte-equality suites need and QML does not have: running the
+// command line a page echoes through the ac3cli this build made, in a folder
+// of the test's choosing, and comparing what it wrote with what the page
+// wrote. AC3GUI_TEST_AC3CLI is the build's own ac3cli, or empty where the
+// build has none (apps/gui/tests/CMakeLists.txt); then available() is false
+// and a suite skips.
+class CliRunner : public QObject {
+    Q_OBJECT
+
+public:
+    [[nodiscard]] Q_INVOKABLE bool available() const {
+        return !program().isEmpty() && QFile::exists(program());
+    }
+
+    // Runs `line` ("ac3cli <command> <args>", quoted as the command bar quotes
+    // a path with a space) with `folder` as the working directory; the exit
+    // code, or -1 where it did not start or finish within two minutes.
+    [[nodiscard]] Q_INVOKABLE int run(const QString& line, const QUrl& folder) {
+        QStringList args = QProcess::splitCommand(line);
+        if (!available() || args.isEmpty() || args.front() != QStringLiteral("ac3cli")) {
+            return -1;
+        }
+        args.removeFirst();
+        QProcess process;
+        process.setWorkingDirectory(folder.toLocalFile());
+        process.setProcessChannelMode(QProcess::ForwardedChannels);
+        process.start(program(), args);
+        if (!process.waitForFinished(120000) || process.exitStatus() != QProcess::NormalExit) {
+            return -1;
+        }
+        return process.exitCode();
+    }
+
+    // A fresh, empty folder at `folder`, and `source` copied into it under its
+    // own name - the working directory an echoed line names its files in.
+    [[nodiscard]] Q_INVOKABLE bool prepare(const QUrl& folder, const QUrl& source) {
+        QDir dir(folder.toLocalFile());
+        if (dir.exists() && !dir.removeRecursively()) {
+            return false;
+        }
+        if (!QDir().mkpath(dir.path())) {
+            return false;
+        }
+        const QString from = source.toLocalFile();
+        return QFile::copy(from, dir.filePath(QFileInfo(from).fileName()));
+    }
+
+    // Whether the two files hold the same bytes, both present and non-empty.
+    [[nodiscard]] Q_INVOKABLE bool sameBytes(const QUrl& a, const QUrl& b) const {
+        QFile first(a.toLocalFile());
+        QFile second(b.toLocalFile());
+        if (!first.open(QIODevice::ReadOnly) || !second.open(QIODevice::ReadOnly)) {
+            return false;
+        }
+        const QByteArray left = first.readAll();
+        return !left.isEmpty() && left == second.readAll();
+    }
+
+    [[nodiscard]] Q_INVOKABLE qint64 size(const QUrl& file) const {
+        return QFileInfo(file.toLocalFile()).size();
+    }
+
+private:
+    [[nodiscard]] static QString program() { return QStringLiteral(AC3GUI_TEST_AC3CLI); }
+};
+
 // The setup object exists for one reason: Main.qml's QML Settings must be
 // HERMETIC here. With no organization/application identifiers, Qt 6.8's
 // Settings failed to initialise and every window saw in-memory defaults -
@@ -98,11 +169,13 @@ public slots:
         // dialog could only ever be tested showing nothing.
         engine->rootContext()->setContextProperty(
             QStringLiteral("appVersionDetails"), QString::fromStdString(ac3::version_details()));
+        engine->rootContext()->setContextProperty(QStringLiteral("cliRunner"), &cli_runner_);
     }
 
 private:
     std::optional<QTemporaryDir> scratch_;
     std::optional<LanguageManager> language_manager_;
+    CliRunner cli_runner_;
 };
 
 QUICK_TEST_MAIN_WITH_SETUP(ac3gui, SettingsIsolation)
