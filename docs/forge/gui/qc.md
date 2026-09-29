@@ -2,9 +2,9 @@
 
 The same verification `ac3cli qc` runs on the command line, reachable from the window itself.
 Everything else in this guide configures and runs an **encode** — a source loaded, a plan built,
-Encode writing a new file. QC is the opposite shape: an **already-encoded** `.ac3`/`.ec3` file is
-opened, decoded and measured against its own embedded `dialnorm`/`compr`, with no source, no plan
-and no encoder involved. That's why it lives as its own dialog rather than a tab — opened from a
+Encode writing a new file. QC is the opposite shape: an **already-encoded** `.ac3`, `.ec3` or
+`.ac4` file is opened, decoded and measured against its own embedded `dialnorm` (and `compr`, for
+AC-3 and E-AC-3), with no source, no plan and no encoder involved. That's why it lives as its own dialog rather than a tab — opened from a
 **QC a stream…** button in the header beside **Preferences**, the same "distinct surface,
 reachable from the header" shape [Preferences](index.md#preferences) and a run chip's own details
 popover use.
@@ -16,8 +16,8 @@ regardless of what (if anything) is loaded in the main workbench — QC-ing a fi
 nothing to do with whatever source is currently being configured for a new encode, and the two
 never interact.
 
-**Choose file…** opens a standard file picker with three filters — `*.ac3`/`*.ec3`, **Containers**
-(`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`) and **All files**. The filters are a
+**Choose file…** opens a standard file picker with four filters — `*.ac3`/`*.ec3`, `*.ac4`,
+**Containers** (`*.mkv *.webm *.mp4 *.m4a *.mov *.ts *.m2ts`) and **All files**. The filters are a
 convenience for the picker only: `QcController` sniffs the actual bytes rather than trusting the
 extension, so a container works whatever the name says.
 Picking one starts the measurement immediately, the same way `ac3cli qc <file>` runs the moment
@@ -58,24 +58,18 @@ Once a file has been measured, the dialog fills with:
 
 ## Delivery preset
 
-A segmented control — **All**, **EBU R 128 s2**, **ATSC A/85**, **Netflix** — mirrors `ac3cli
-qc`'s own `preset=<name>|all` argument:
+A segmented control — **All presets**, **EBU R 128 s2**, **ATSC A/85**, **ATSC A/85 streaming**,
+**Netflix** and **Apple Music Atmos** — mirrors `ac3cli qc`'s own `preset=<name>|all` argument. It
+is built from `QcController.presetNames`, "All presets" and then `kQcPresetIds` in order, so a
+preset added to that table reaches it without a change to the dialog:
 
-- **All** (the default) lists every preset's own verdict, with no single target/ceiling to draw
-  as a line on the meters above (five different presets would mean five different bands on the
-  same bar) — the meters show plain measured values, and the report becomes a compact overview of
-  where the stream sits against all five deliveries at once.
+- **All presets** (the default) lists every preset's own verdict, with no single target/ceiling to
+  draw as a line on the meters above (five different presets would mean five different bands on
+  the same bar) — the meters show plain measured values, and the report becomes a compact
+  overview of where the stream sits against all five deliveries at once.
 - Choosing **one** preset narrows the verdict list to it and feeds that preset's own numbers into
   the meters as the tolerance band / ceiling line, so the report can show exactly *why* a gate
   passed or failed rather than only *that* it did.
-
-**Known gap.** The control is four hardcoded entries in `QcDialog.qml`, not a binding to
-`QcController.presetNames` (which is "All presets" plus `kQcPresetIds` in order, and grows with
-that table). Since `programmes()` selects `kQcPresetIds[presetIndex - 1]`, the three named
-positions reach `ebu-r128-s2`, `atsc-a85` and `atsc-a85-streaming` — so the third one is labelled
-**Netflix** but selects ATSC A/85 streaming, and neither `netflix` nor `apple-music-atmos` can be
-selected at all. **All** is unaffected: it iterates the whole table, so every preset's verdict row
-is still reported. `ac3cli qc preset=<name>` reaches all five.
 
 ## AC-4
 

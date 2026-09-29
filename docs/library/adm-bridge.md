@@ -1,18 +1,20 @@
 # ADM ↔ Atmos bridging: `ac3::admbridge`
 
 `ac3/admbridge/bridge.hpp`, `ac3/admbridge/coordinates.hpp`, library `ac3::admbridge`. Two
-directions live here now:
+directions live here:
 
-- **Read** (phase 2 of 3):
-  maps the ADM object graph [`ac3adm::ac3adm`](adm.md) parses from a BW64/ADM master onto
+- **Read**: maps the ADM object graph [`ac3adm::ac3adm`](adm.md) parses from a BW64/ADM master onto
   [`ac3::oba::AtmosEncoder`](spatial-and-atmos.md)'s input shape — one `ac3::oba::ObjectPath` plus
   one mono PCM span per bed speaker feed or dynamic object, ready to drive `encode_frame()` in a
   loop. Driven end to end by `ac3cli atmos-adm` and
   [`examples/encode_adm.cpp`](https://github.com/iainchesworthlabs/ac3forge/blob/main/examples/encode_adm.cpp).
-- **Write** ("JOC → ADM BWF writer"): the mirror image — maps a decoded
-  `ac3::Eac3Decoder` programme's own bed/object PCM and OAMD automation onto an
-  `ac3adm::AdmDocument`, ready for `ac3adm::write_bw64()`. Driven end to end by
-  `ac3cli decode ... adm_out`.
+  `build_iab()` does the same for a parsed IAB sequence ([below](#bridging-iab)), driven by
+  `ac3cli atmos-iab`. With `codec=ac4` those two commands hand the same result to the AC-4 object
+  encoder instead ([AC-4](ac4.md#encoding-objects)).
+- **Write** ("JOC → ADM BWF writer"): the mirror image — maps a decoded programme's own bed/object
+  PCM and object automation onto an `ac3adm::AdmDocument`, ready for `ac3adm::write_bw64()`. The
+  programme is an `ac3::Eac3Decoder`'s (its OAMD automation) or an `ac4::Decoder`'s (each object's
+  Annex F properties and updates). Driven end to end by `ac3cli decode ... adm_out`.
 
 Both directions are the same "one place `ac3adm` and `ac3::forge`/`ac3::oba` are allowed to meet"
 seam this module has always been, see [Commands](../forge/cli/commands.md) for both commands.
@@ -53,12 +55,9 @@ Two hard constraints rule out folding this into either side it bridges:
 shape `ac3::signing` uses for its own `ac3::forge` dependency. Like `ac3adm::ac3adm` itself
 (see [ADM / BW64 reading](adm.md)), it IS part of the installed `find_package(ac3forge)` package,
 but shared-only: `ac3::admbridge_shared`/the bare `ac3::admbridge` alias, no `_static` variant.
-The IAB / SMPTE ST 2098-2 reader (which replaced a DAMF reader, since no public
-specification for that format exists) named this module
-as the "mapping layer" it intended to share, and phase 3 has now landed: `build_iab()`
-(`ac3/admbridge/iab_bridge.hpp`) maps a whole parsed `ac3iab::IABitstreamFrame` sequence — from
-either of `ac3iab::ac3iab`'s two readers (`src/ac3iab`, phases 1-2: a bare elementary `.iab` file
-or a real MXF Track File) — onto this same `ObjectPath` layer, driven end to end by `ac3cli
+`build_iab()` (`ac3/admbridge/iab_bridge.hpp`) maps a whole parsed `ac3iab::IABitstreamFrame`
+sequence — from either of `ac3iab::ac3iab`'s two readers (`src/ac3iab`: a bare elementary `.iab`
+file or a real MXF Track File) — onto this same `ObjectPath` layer, driven end to end by `ac3cli
 atmos-iab` (see [Commands](../forge/cli/commands.md)). `ac3adm::AdmDocument` and `ac3iab::
 IABitstreamFrame` are therefore both input shapes here, sharing the coordinate-conversion and
 `ObjectPath`-construction logic this module exists to keep independent of either container's own
@@ -72,7 +71,7 @@ parsing — see "Bridging IAB" below for exactly what differs between the two.
   `kUserCustom`, `kUnknown`, a nested `audioPackFormat`, or an object whose several packs disagree
   with each other all fail clearly with `BridgeError::kUnsupportedType` rather than being silently
   mishandled — none of them map onto `AtmosEncoder`'s plain position+gain+lfe_send object model
-  without a design of their own this phase does not attempt.
+  without a design of their own, which the bridge does not have.
 - **`AtmosEncoder` has no separate bed-feeding method** — its constructor takes a plain object
   count and `encode_frame()` takes one flat span of objects plus one flat span of placements,
   nothing in that signature distinguishing a bed channel from a dynamic object — so a bed channel
@@ -226,12 +225,14 @@ Each `audioTrackUID` carries the input's `sampleRate` and a `bitDepth` of `ac3ad
 the width `write_bw64()` stores the PCM at, and `audio.bits_per_sample` holds the same width, so
 the returned document already describes the master it becomes.
 
-Scoped to exactly what this project's own decoder ever produces: a dynamic-object-only-or-single-
+Scoped to exactly what this project's own decoders produce: a dynamic-object-only-or-single-
 bed-instance programme (`Eac3Decoder` never emits ISF objects, several bed instances, or
-non-standard Table 13 assignments — see `oamd.hpp`'s own `Program` comment), no nested
-`audioObject`s, cartesian positions only. `ac3cli decode`'s own `--adm` wiring (`decode.cpp`)
-additionally only attempts this for a `dynamic_only` programme — a channel-based bed program (
-based-immersive third-party content) is warned about and skipped, not written incorrectly.
+non-standard Table 13 assignments — see `oamd.hpp`'s own `Program` comment; an AC-4 presentation's
+objects come from `ac4::DecodedFrame::objects`, which lists bed and dynamic objects and renders an
+intermediate spatial format into channels instead), no nested `audioObject`s, cartesian positions
+only. `ac3cli decode`'s `adm_out` wiring (`decode.cpp`) additionally only attempts this for an
+E-AC-3 `dynamic_only` programme — a channel-based-immersive bed programme (third-party content) is
+warned about and skipped, not written incorrectly.
 
 **`WriteObjectUpdate` is the write-direction input for one OAMD update**, timestamped in absolute
 samples from the start of the whole decode (not the access unit it arrived in) — a caller
@@ -315,7 +316,9 @@ usable as the `std::span<const ac3::oba::ObjectPath>` `ac3::oba::evaluate_placem
 no projection step. `channel_count() <= 15`: `AtmosEncoder`'s own constructor `objects` parameter
 is dynamic objects only, with the bed's own LFE bookkeeping as an implicit, always-present 16th
 (TS 103 420 §8.3.2.2 caps the total at 16) — the same cap `ac3cli`'s `run_atmos_encode`/
-`run_atmos_path` already enforce, reused here rather than re-derived. `sample_rate` is the raw
+`run_atmos_path` already enforce, reused here rather than re-derived. `build()` and `build_iab()`
+refuse more channels than that whatever consumes the result, so `atmos-adm` and `atmos-iab` with
+`codec=ac4` are held to 15 as well, though the AC-4 object encoder takes 64. `sample_rate` is the raw
 `ac3adm::PcmAudio::sample_rate`, unconverted — mapping it to `ac3::SampleRate` (and rejecting an
 unsupported rate) is left to the caller, the same way every existing WAV-reading entry point
 already does that itself.
@@ -339,7 +342,7 @@ the decoded bitstream's channel energy actually lands where the authored ADM pos
 jump timing say it should, the same standard `tests/oba/test_atmos_motion.cpp`'s own flagship test
 holds itself to.
 
-`tests/cli/test_cli_atmos_adm.cpp` (phase 3) covers the same fixture shape one level up: it runs the
+`tests/cli/test_cli_atmos_adm.cpp` covers the same fixture shape one level up: it runs the
 real, built `ac3cli` binary's `atmos-adm` command as a subprocess against a real ADM BWF file on
 disk, then decodes what that binary actually wrote and checks the same channel-energy assertions —
 proving the CLI's own argument parsing and its `parse_bw64` → `build` → `AtmosEncoder` wiring, not
@@ -356,8 +359,8 @@ start), and one flagship test with the identical rigor `test_adm_bridge.cpp`'s o
 — a real byte-level IAB fixture (one Bed Center channel, one Object holding hard right then
 jumping hard left), parsed with the real `ac3iab::parse_iabitstream()`, bridged, and driven through
 a real `AtmosEncoder`/`Eac3Decoder` round trip confirming decoded channel energy lands where
-authored. `tests/cli/test_cli_atmos_iab.cpp` (phase 3's own CLI wiring) covers the same fixture
-shape one level up, the same way `test_cli_atmos_adm.cpp` does for `atmos-adm`.
+authored. `tests/cli/test_cli_atmos_iab.cpp` covers the same fixture shape one level up, the same
+way `test_cli_atmos_adm.cpp` does for `atmos-adm`.
 
 ---
 

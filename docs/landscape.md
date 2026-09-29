@@ -13,8 +13,13 @@ spectral extension" against them the way this project can against its own
 history. What's shown is `landscape` — this project's `auto`-tools E-AC-3
 encode (the set the encoder picks from the per-channel rate, which is the
 like-for-like answer to FFmpeg's and DEE's own automatic choices), or AC-3's
-unconditionally-automatic encode — since that's the number a real user of
-either tool actually gets, not an internal detail.
+unconditionally-automatic encode — since that's the number a user of
+either tool gets, not an internal detail.
+
+This page covers the AC-3 and E-AC-3 encoders. AC-4 is not in it: its encoder is scored in CI
+against floors, decoded and compared with its own source (`tools/checks/score_ac4_encode.py`),
+and raced against DEE's streams of the same sources on a maintainer's machine, and neither keeps
+a history to show here ([Validation: AC-4](verification.md#the-encoder)).
 
 <div id="landscape-app">
   <p class="landscape-status">Loading landscape data…</p>
@@ -240,7 +245,7 @@ no DEE panel, because DEE had no trustworthy score for them.
   </figure>
   <figure>
     <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-192.png" alt="eac3-stereo-192 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
-    <figcaption>eac3-stereo-192 (E-AC-3, stereo @ 192 kbit/s) — synthetic fixture; 96 kbit/s per channel, above both Annex E crossovers, so <code>auto</code> selects no tools here.</figcaption>
+    <figcaption>eac3-stereo-192 (E-AC-3, stereo @ 192 kbit/s) — synthetic fixture; 96 kbit/s per channel.</figcaption>
   </figure>
   <figure>
     <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-51-256.png" alt="eac3-51-256 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
@@ -248,11 +253,11 @@ no DEE panel, because DEE had no trustworthy score for them.
   </figure>
   <figure>
     <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-96.png" alt="eac3-stereo-96 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
-    <figcaption>eac3-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — synthetic fixture; 48 kbit/s per channel, where spectral extension runs and coupling does not.</figcaption>
+    <figcaption>eac3-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — synthetic fixture; 48 kbit/s per channel, where spectral extension runs in every block.</figcaption>
   </figure>
   <figure>
     <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-stereo-64.png" alt="eac3-stereo-64 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
-    <figcaption>eac3-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — synthetic fixture; 32 kbit/s per channel, where both coupling and spectral extension run.</figcaption>
+    <figcaption>eac3-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — synthetic fixture; 32 kbit/s per channel, where spectral extension runs in every block.</figcaption>
   </figure>
   <figure>
     <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/ac3-music-stereo-192.png" alt="ac3-music-stereo-192 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
@@ -260,11 +265,11 @@ no DEE panel, because DEE had no trustworthy score for them.
   </figure>
   <figure>
     <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-music-stereo-96.png" alt="eac3-music-stereo-96 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
-    <figcaption>eac3-music-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — real music at the spectral-extension crossover.</figcaption>
+    <figcaption>eac3-music-stereo-96 (E-AC-3, stereo @ 96 kbit/s) — 30 s of real music, 48 kbit/s per channel.</figcaption>
   </figure>
   <figure>
     <img src="https://raw.githubusercontent.com/iainchesworthlabs/ac3forge/quality-history/spectrograms/eac3-speech-stereo-64.png" alt="eac3-speech-stereo-64 spectrogram: original vs ac3forge vs FFmpeg vs DEE" loading="lazy">
-    <figcaption>eac3-speech-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — 30 s of real connected speech, at the rate where both Annex E tools run.</figcaption>
+    <figcaption>eac3-speech-stereo-64 (E-AC-3, stereo @ 64 kbit/s) — 30 s of real connected speech, 32 kbit/s per channel.</figcaption>
   </figure>
 </div>
 
@@ -276,11 +281,11 @@ no DEE panel, because DEE had no trustworthy score for them.
 </style>
 
 These are **not** tied to any specific release row above — there is only a
-single "latest" image per leg, regenerated on every push to `main` (i.e.
-every release promotion, same cadence as a row landing in the table), never
-one per historical release. If the image looks newer than the table row
-you're comparing it against, it is: the images have no history of their own,
-only a current snapshot. They come from the same `quality-history` branch
+single "latest" image per leg, regenerated by each run of FFmpeg Validate on
+`main` (the nightly run, see [CI for many agents](ci-agentic.md)), never one
+per historical release. If the image looks newer than the table row you're
+comparing it against, it is: the images have no history of their own, only a
+current snapshot. They come from the same `quality-history` branch
 mechanism as the table's own numbers (see "Where the data lives" below) —
 generated in CI by `tools/ci/quality_race.py`'s `render_spectrograms()`
 (`trend --spectrogram-dir`), decoding this build's own encode plus the
@@ -310,13 +315,17 @@ first baseline and are unchanged, so their series are continuous:
 
 The five added at version 2 close two different gaps.
 
-**Rates where the Annex E tools actually run.** ac3forge's `auto` enables
-coupling below 12 + 14n kbit/s per channel and spectral extension below 56.
-The only stereo leg sat at 192 kbit/s — 96 per channel, above both — so
-`auto` chose no tools at all there, and this page had never once compared
-this project's Annex E work against FFmpeg's or DEE's at a rate where it
-exists. 96 kbit/s stereo is 48 per channel (spectral extension only) and 64
-is 32 per channel (both tools).
+**Rates where the Annex E tools run.** ac3forge's `auto` decides per frame,
+from the rate and the frame's own content
+(`src/forge/src/encoder/eac3_frame.cpp`): coupling starts below about
+12 + 14n kbit/s per channel for n channels, and spectral extension below a
+ceiling of 55 to 110 kbit/s per channel, higher the emptier the frame's top
+end. The
+first baseline had one stereo leg, at 192 kbit/s (96 per channel), where
+`auto` on the synthetic fixture uses spectral extension in most blocks and
+coupling in a few. The two stereo legs added at version 2 sit at 96 kbit/s
+(48 per channel) and 64 (32 per channel), where `auto` uses spectral
+extension in every block.
 
 **Material that is not band-limited.** The synthetic fixtures are 2.5–3 s of
 `sin()`, pseudo-random noise and FIR smoothing, which leaves a flat noise
@@ -397,7 +406,7 @@ longer window, measured).
 Everything above this section is a waveform or model measure. SNR and LSD are
 distances; MOS-LQO is a *prediction* of what a panel would say, from a model
 trained on panels — which is closer to "how it sounds" than a distance is, and
-still not a listener. This section is where a real one goes.
+still not a listener. This section is where a listening session's result goes.
 
 **No session has been run yet.** The apparatus is in the repository
 ([`tools/listening/`](https://github.com/iainchesworthlabs/ac3forge/tree/main/tools/listening));
@@ -408,7 +417,7 @@ run" sentences stay as they are until it is not.
 
 ### Protocol
 
-**Systems under test.** The same three legs as the table above, and the same
+**Systems under test.** The first three legs of the table above, and the same
 conditions:
 
 | Leg | Codec | Layout | Rate | Arms |
@@ -486,7 +495,7 @@ used is part of the result — the two are not the same experiment.
 
 **Decoder complaints ride through to the table.** FFmpeg reports two
 out-of-range exponents decoding DEE's own committed stereo stream. A concealed
-error is a real artifact a listener hears, but it is that decoder reading that
+error is an artifact a listener hears, but it is that decoder reading that
 stream, not DEE's encoder being worse, and any row scored from a flagged
 stimulus carries the flag.
 

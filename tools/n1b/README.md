@@ -27,8 +27,13 @@ All the passes are idempotent: a second run on a finished tree changes nothing.
 the public headers, the pinned-hash gate's streams, the exports of every shared library and the bytes of
 44 `ac3cli` commands. `record` writes one file per kind; `verify` records again and compares with the
 files committed under `tools/n1b/baselines`; `compare` compares two recorded directories; `check-moves`
-checks a move plan against the recorded headers. `export_diff.py` compares two `symbols` records where a
-library became several (`--map l2`) or a namespace changed (`--rewrite cuts,names`).
+checks a move plan against the recorded headers. The header record is read from git, so
+`record --root <worktree> --only headers` needs no build; a change to the doc comment of a public
+header changes it, and the committed one is recorded again when that happens. `export_diff.py` compares two `symbols` records where a
+library became several (`--map l2`) or a namespace changed (`--rewrite cuts,names`), and with `--copies`
+lets a library lose names that another library of the new record still exports: `admbridge.dll` links
+the codec statically and re-exports the members it pulls in, so a change to what its headers include
+changes how many it carries. The union of every library's names is compared in any case.
 
 `tools/checks/check_layering.py` fails an include that crosses from one library into another its row of
 `tools/checks/layering.json` does not list. The includes a pending cut still removes are listed in

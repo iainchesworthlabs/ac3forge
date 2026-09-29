@@ -28,7 +28,7 @@ Usage:
   ac3cli eac3-silence  <out.ec3> [seconds] [bitrate_kbps] [layout]
   ac3cli eac3-sine     <out.ec3> [seconds] [bitrate_kbps] [freq_hz] [amp_pct] [layout]
   ac3cli eac3-encode   <in.wav> <out.ec3> [bitrate_kbps] [tools] [layout] [vbr] [in2.wav] (in2.wav: layout 1+1's Ch2, when Ch1 is a separate mono file; or use src=/map= for more than one source. programme2= (up to programme8=) is a different thing entirely - another independent E-AC-3 substream (its own layout/bitrate/dialnorm and metadata via programmeN-layout=/-bitrate=/-<field>=), not another channel of this one)
-  ac3cli ac4-encode    <in.wav> <out.ac4|out.mp4> [bitrate_kbps] (mono, stereo, 5.0 or 5.1 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is .mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a channel and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode (A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 kbps a channel, 76.8 in 5.X, and SIMPLE from there. The options below set the codec mode, the frame rate, the rate mode, the I-frames, the CRC, and the loudness, DRC, downmix and dialogue enhancement metadata; substreamN= and presentationN= add substreams, each an input of its own, and the presentations that play them; syntax-trace=<file> writes what the encoder writes)
+  ac3cli ac4-encode    <in.wav> <out.ac4|out.mp4> [bitrate_kbps] (mono, stereo, 5.0, 5.1, 5.0.4 or 5.1.4 at 48 or 44.1 kHz, in the WAV order decode writes, to AC-4: raw sync frames with CRC, or an MP4 with the 'ac-4' sample entry when the output is .mp4/.m4a/.mov. In 5.X, ASPX_ACPL_3 (a Lo/Ro downmix and A-CPL) below 22.4 kbps a channel and ASPX_ACPL_2 (downmixes of each side and C, and A-CPL) below 33.6; the ASPX codec mode (A-SPX above a crossover, with companding at the lower rates in mono and stereo) below 96 kbps a channel, 76.8 in 5.X, and SIMPLE from there. 5.1.4 takes the immersive element in ASPX_ACPL_2 below 480 kbps, ASPX_SCPL below 640 and SCPL from there, as DEE's 5.1.4 streams do. The options below set the codec mode, the frame rate, the rate mode, the I-frames, the CRC, and the loudness, DRC, downmix and dialogue enhancement metadata; substreamN= and presentationN= add substreams, each an input of its own, and the presentations that play them; syntax-trace=<file> writes what the encoder writes)
   ac3cli decode        <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> <out.wav> [objects_dir] [adm_out] (AC-3, E-AC-3 or AC-4, bare or inside a container; the stream decides. AC-4: every layout up to 7.1.4 and the immersive element in every codec mode; a presentation with A-JOC or direct-coded objects renders them to the output's speakers as coded (7.1.4 by default), and syntax-trace=<file> writes what the decoder reads. objects_dir: export each object's own PCM as its own object_NN.wav there - JOC-reconstructed for E-AC-3 Atmos, D10's decoded objects for AC-4. adm_out (needs -DAC3FORGE_BUILD_ADM=ON): write a Dolby Atmos Master ADM Profile BW64 there (legacy item IM2 for E-AC-3; for AC-4, every bed and dynamic object with its own decoded Annex F properties) - bed/LFE channels pinned to their speaker, dynamic objects positioned by their own timeline)
   ac3cli probe         <in.ac3|in.ec3|in.ac4|in.mkv|in.mp4|in.ts> [json=1] [detail=frames|blocks] (inspect AC-3/E-AC-3 layout, substreams, metadata, objects, tools and CRC, or AC-4 TOC/presentations/substream groups, bare or inside a container, and what the container says of its track; table or documented JSON)
   ac3cli transcode     <in.ac3|in.ec3|in.ac4> <out.ac3|out.ec3|out.ac4> [bitrate_kbps] [layout] (decode and re-encode, carrying dialnorm, compr and the mix metadata across - the DD+-to-DD path for optical and AC-3-only HDMI sinks - or between AC-4 and AC-3 or E-AC-3 either way: an AC-4 presentation, chosen as decode chooses one, becomes the programme, decoded without DRC and re-encoded with its drc_eac3_profile, dialnorm and downmix values; an AC-3 or E-AC-3 source's dialnorm and downmix values go to AC-4, and drc= names its DRC profile. The output codec comes from the output name's suffix, or from codec=; the bitrate defaults to 448 kbps, or 192 for AC-4)
@@ -113,7 +113,7 @@ so a misrouted channel is identifiable by ear.)
 | `eac3-encode` | WAV → E-AC-3, with the Annex E `tools:` token and an optional `vbr:` token available (see [Options & grammars](metadata-options.md)). Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1, 8→7.1, 10→5.1.4, 12→7.1.4). |
 | `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement. With `codec=ac4` it writes AC-4 objects instead: see [AC-4 objects from a WAV](#ac-4-objects-from-a-wav) below |
 | `atmos-cbi` | WAV already mixed into a fixed channel-based-immersive (CBI) bed layout → E-AC-3 Atmos with `program.bed != 0` and 0 dynamic objects — Dolby's `dee_ddpjoc_encoder --input-format cbi_wav` shape, not free-floating objects |
-| `ac4-encode` | WAV → AC-4: mono, stereo, 5.0 or 5.1 (7.0, 7.1 and 3.0 experimental), at 48 kHz at every frame rate of Part 1 Table 83 or at 44.1 kHz at the native one, as raw sync frames with their CRC (or without, `crc=off`) or, for `.mp4`, `.m4a` or `.mov`, an MP4 file with the `ac-4` sample entry and its `dac4`. The codec mode follows the rate: SIMPLE from 96 kbps a channel (76.8 in 5.X), the ASPX mode below, and in 5.X the A-CPL modes lower still. The frame rate, the rate mode, the I-frames, the metadata, and further substreams and the presentations that play them are options: see [`ac4-encode`](#ac4-encode) below |
+| `ac4-encode` | WAV → AC-4: mono, stereo, 5.0, 5.1, 5.0.4 or 5.1.4 (7.0, 7.1, 7.0.4, 7.1.4 and 3.0 experimental), at 48 kHz at every frame rate of Part 1 Table 83 or at 44.1 kHz at the native one, as raw sync frames with their CRC (or without, `crc=off`) or, for `.mp4`, `.m4a` or `.mov`, an MP4 file with the `ac-4` sample entry and its `dac4`. The codec mode follows the rate: SIMPLE from 96 kbps a channel (76.8 in 5.X), the ASPX mode below, in 5.X the A-CPL modes lower still, and in the immersive layouts ASPX_ACPL_2, ASPX_SCPL and SCPL by the rate. The frame rate, the rate mode, the I-frames, the metadata, and further substreams and the presentations that play them are options: see [`ac4-encode`](#ac4-encode) below |
 
 ```bash
 ac3cli encode in.wav out.ac3 448 couple
@@ -133,8 +133,10 @@ ac3cli encode narration_en.wav out.ac3 192 1+1 narration_fr.wav  # Ch1, Ch2 as s
 See [Options & grammars](metadata-options.md) for `dialnorm2=` — Ch2's own dialnorm, alongside
 the usual `dialnorm=`.
 
-`encode`, `eac3-encode` and `atmos-encode` all take `-` in place of `<in.wav>` or the output path
-to mean stdin or stdout, so a pipeline never has to touch a temporary file:
+`encode`, `eac3-encode`, `ac4-encode`, `atmos-encode` and `atmos-cbi` all take `-` in place of
+`<in.wav>` or the output path to mean stdin or stdout (the other commands that take it are listed
+under [Conventions](index.md#conventions-shared-across-commands)), so a pipeline never has to touch
+a temporary file:
 
 ```bash
 ac3cli encode - - 448 couple < in.wav > out.ac3
@@ -161,7 +163,11 @@ is no `[paths.txt]` argument and `dialnorm=auto` is refused for the same reason 
 #### `ac4-encode`
 
 A WAV file's channels are taken in the order `decode` writes them: FL FR FC LFE BL BR for 5.1, the
-surrounds in BL and BR.
+surrounds in BL and BR; 5.1.4 adds the top front pair (TFL TFR) and then the top back pair (TBL
+TBR), and 5.0.4 is the same without the LFE. The layout is the channel count: 1 mono, 2 stereo, 5
+and 6 5.0 and 5.1, 9 and 10 5.0.4 and 5.1.4 (ETSI TS 103 190-2's immersive element with its back
+pair absent, which is how DEE writes 5.1.4). The experimental options below name the other layouts
+the encoder writes: 7.0 and 7.1, 7.0.4 and 7.1.4, and 3.0.
 
 **Codec mode.** Below 96 kbps a channel the ASPX codec mode: the spectral frontend up to a crossover
 of 7.5, 10.5 or 13.5 kHz by rate, A-SPX above it, and companding below 64 kbps a channel; in 5.X
@@ -172,33 +178,48 @@ downmixes of each side's pair and C, and ASPX_ACPL_3 below 22.4 (112 kbps for 5.
 downmix, as DEE's 5.1 streams are at 128 and 96 kbps; where the rate cannot hold that mode's least
 frame, the next of ASPX_ACPL_2 and ASPX that it can. The rate must hold a silent I-frame with
 every metadata element the options send: at the native frame rate from 8 kbps (9 in stereo at
-48 kHz in the ASPX mode) and from 20 in 5.X, more at the higher frame rates and with more
-metadata. `codec-mode=simple`, `aspx`, `aspx-acpl-2` or `aspx-acpl-3` picks one whatever the
-rate.
+48 kHz in the ASPX mode) and, in 5.X, from 13 kbps by default (14 in ASPX_ACPL_3, 15 in ASPX), more
+at the higher frame rates and with more metadata.
+
+The immersive layouts choose by the rate over 5.1.4's nine full-band channels, as DEE's 5.1.4
+streams do: ASPX_ACPL_2 below 480 kbps (53.3 kbps a channel), which codes L, R and C and the sum of
+each coupled pair and rebuilds each pair by A-CPL; ASPX_SCPL below 640 kbps (71.1), which codes
+each pair's sum and difference with simple coupling and A-SPX from 12.75 kHz; and SCPL from there,
+simple coupling over the whole band. `codec-mode=` picks one whatever the rate: `auto` (the
+default), `simple`, `aspx`, `aspx-acpl-1` (with `experimental=acpl`), `aspx-acpl-2`,
+`aspx-acpl-3` (5.0 and 5.1 alone), `scpl`, `aspx-scpl` and `aspx-ajcc` (with
+`experimental=ajcc`); the last three are the immersive layouts' alone. An encode names the mode it
+used on its second summary line.
 
 **Experimental.** `experimental=` takes a comma-separated list of the tools no reader outside this
 project has read from the encoder yet: `aspx-balance`, `aspx-varvar`, `aspx-interleave`,
 `coding-configs` (the 5.X element's coding configurations 1 to 3 and `2ch_mode` 1), `acpl` (with
-`codec-mode=aspx-acpl-1`, ASPX_ACPL_1 in 5.X, which also codes each side's difference from its
-downmix to 3 kHz; with `aspx-acpl-1` or `aspx-acpl-2`, A-CPL in stereo) and `drc-gains-0` to
-`drc-gains-3` (the DRC modes send gains in that `drc_gains_config` of Part 1 Table 163);
-`7x-back`, `7x-wide` or `7x-top-front`, which takes seven or eight channels as 7.0 or 7.1 in that
-7.X layout, in the WAV order `decode` writes: 3/4/0's back pair in BL and BR and its surrounds in SL
-and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR; and `three-zero`, which takes
-three channels, L R C, as 3.0, the dialogue of a music and effects presentation (below).
+`codec-mode=aspx-acpl-1`, ASPX_ACPL_1 in 5.X and the immersive layouts, which also codes each
+side's difference from its downmix to 3 kHz; with `aspx-acpl-1` or `aspx-acpl-2`, A-CPL in stereo),
+`ajcc` (with `codec-mode=aspx-ajcc`, the immersive layouts coded through A-JCC's 5.X core) and
+`drc-gains-0` to `drc-gains-3` (the DRC modes send gains in that `drc_gains_config` of Part 1
+Table 163); `7x-back`, `7x-wide` or `7x-top-front`, which takes seven or eight channels as 7.0 or
+7.1 in that 7.X layout, in the WAV order `decode` writes: 3/4/0's back pair in BL and BR and its
+surrounds in SL and SR, 5/2/0's wide pair last, 3/2/2's top front pair in TFL and TFR;
+`back-pair`, which takes 11 and 12 channels as 7.0.4 and 7.1.4, with Lb and Rb; `three-zero`, which
+takes three channels, L R C, as 3.0, the dialogue of a music and effects presentation (below); and
+`objects`, which `objects=<scene file>` needs.
 
 **Objects.** With `experimental=objects`, `objects=<scene file>` takes the WAV file's channels as the
 objects of one object substream, written as a raw stream. The scene file is text, one directive a
 line, `#` starting a comment; channels count from 0, and one the file does not name is a dynamic
 object at the room's centre. It is written in the library's terms (`ac4::ObjectsConfig`, `ac4::ObjectProperties`);
-reading ADM BWF, IAB and object scenes into them belongs to the applications.
+reading ADM BWF, IAB and object scenes into them belongs to the applications (`atmos-encode`,
+`atmos-adm` and `atmos-iab` below write AC-4 objects from those). An object stream reads
+`frame-rate=`, `rate-mode=`, `iframe-interval=`, `crc=`, `dialnorm=` (a number, not `auto`),
+`codec-mode=simple` or `aspx` and `syntax-trace=`; the other options are not read.
 
 | Directive | What it sets |
 |---|---|
 | `coding ajoc` or `coding direct` | An A-JOC substream (the default) or direct-coded object substreams |
 | `downmix computed`, `5.0` or `5.1` | A-JOC's downmix: computed signals, or a static bed |
 | `downmix-signals <n>` | The computed downmix's signals |
-| `decorrelation on` | A-JOC's decorrelators |
+| `decorrelation on` or `decorrelation off` | A-JOC's decorrelators |
 | `object <channel> dynamic <x> <y> <z> [<gain dB>]` | A dynamic object where it starts: X, Y 0 to 1, Z -1 to 1 |
 | `object <channel> bed <L\|R\|C\|Ls\|Rs\|Lb\|Rb\|Tfl\|Tfr\|Tsl\|Tsr\|Tbl\|Tbr\|Lw\|Rw> [<gain dB>]` | A bed object on that loudspeaker |
 | `object <channel> lfe` | The LFE |
@@ -230,12 +251,20 @@ that profile; `drc-home-theatre=`, `drc-flat-panel-tv=`, `drc-portable-speakers=
 `drc-portable-headphones=` give one mode a profile of its own, sent as its curve or as a repeat
 of an earlier mode on the same profile.
 
-**Downmix, 5.X and 7.X.** `cmixlev=` or `lorocmixlev=` is the Lo/Ro downmix's centre gain, +3,
-+1.5, 0, -1.5, -3, -4.5 or -6 dB or `off`; `surmixlev=` or `lorosurmixlev=` its surround gain, 0,
--1.5, -3, -4.5 or -6 dB or `off`; `ltrtcmixlev=` and `ltrtsurmixlev=` Lt/Rt's where they differ.
-`lfemix=` is the LFE's gain into the downmix, +5.5 to -25.5 dB in steps of 1 dB, and `dmixmod=` the
-preferred downmix, `loro`, `ltrt`, `pl2` (Lt/Rt for Pro Logic II) or `none`. `loro-correction=`
-and `ltrt-correction=` are each downmix's loudness correction, -7.5 to +7.5 dB in steps of 0.5.
+**Downmix, 5.X, 7.X and the immersive layouts.** `cmixlev=` or `lorocmixlev=` is the Lo/Ro
+downmix's centre gain, +3, +1.5, 0, -1.5, -3, -4.5 or -6 dB or `off`; `surmixlev=` or
+`lorosurmixlev=` its surround gain, 0, -1.5, -3, -4.5 or -6 dB or `off`; `ltrtcmixlev=` and
+`ltrtsurmixlev=` Lt/Rt's where they differ. `lfemix=` is the LFE's gain into the downmix, +5.5 to
+-25.5 dB in steps of 1 dB, and `dmixmod=` the preferred downmix, `loro`, `ltrt`, `pl2` (Lt/Rt for
+Pro Logic II) or `none`. `loro-correction=` and `ltrt-correction=` are each downmix's loudness
+correction, -7.5 to +7.5 dB in steps of 0.5. A layout with fewer than five channels has no such
+downmix, and the encoder refuses these options for it. The immersive layouts (5.0.4, 5.1.4, 7.0.4,
+7.1.4) take them for their stereo downmix and add a second downmix, to 5.X, which they send as TS
+103 190-2's custom downmix data in the I-frames, as DEE does: `height-downmix=front` puts both top
+pairs into L and R, `surround` both into Ls and Rs, and `front-and-surround` the top front pair
+into L and R and the top back pair into Ls and Rs. `height-gain=` is the gain the top channels go
+in at, `0`, `-1.5`, `-3` (the default), `-4.5`, `-6`, `-9` or `-12` dB, or `off`, and needs
+`height-downmix=`.
 
 **Dialogue enhancement.** `dialogue-channels=` marks which of `l`, `r` and `c` carry dialogue
 alone, whose parameters are then 1 in every band; `dialogue-stem=<wav>` gives the dialogue, in the
@@ -491,10 +520,10 @@ requirements ask for beside an Atmos one.
 | Command | What it does |
 |---|---|
 | `decode` | AC-3, E-AC-3 or AC-4 → WAV; the stream decides which decoder runs (for AC-4, mono, stereo, 3.0, 5.X and 7.X in the SIMPLE, ASPX and A-CPL codec modes, and 7.0.4 and 7.1.4 in every immersive codec mode, in [full or core decoding and to the layout `speakers=` names](#ac-4-immersive-speakers-and-decoding), written in WAV speaker order, and of a stream of several presentations the one [`presentation=`, `language=` and `associated=`](#ac-4-presentations-presentation-language-associated) choose, its substreams mixed; a presentation with A-JOC or direct-coded objects renders them to the output's speakers as coded, 7.1.4 by default). The input may be a Matroska/MP4/MPEG-TS container as well as a bare elementary stream, sniffed by content rather than by name — the same three readers `demux` uses. For an Atmos E-AC-3 stream or an AC-4 stream with objects, reports the object count found and, with `objects_dir`, exports each decoded object as its own `object_NN.wav` there — JOC-reconstructed for E-AC-3, D10's own decoded objects for AC-4. With `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`), also writes a Dolby Atmos Master ADM Profile BW64 there: for E-AC-3, the bed's LFE plus every dynamic object, positioned by its own decoded OAMD automation; for AC-4, every bed and dynamic object with its own decoded Annex F properties |
-| `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. An AC-4 stream gets its table of contents, frame rate, bit rate, I-frames and splices, and each presentation with the metadata the decoder reads of it. The input may be a Matroska, MP4 or MPEG-TS container, sniffed by content: the report then also says what the container declares of the track (codec ID, sample entry or descriptor, time scale, language), in the JSON document as `container`, a member a bare stream's document leaves out |
+| `probe` | What a stream *declares*, without rendering its audio: bsid, sample rate, layout, substream map, counts, duration, bit rate, metadata ranges, EMDF/OAMD/JOC, authenticity, per-frame CRC and coding-tool usage. Human table by default, or the `ac3forge.probe/1` JSON document with `json=1`. An AC-4 stream gets its table of contents, frame rate, bit rate, I-frames and splices, and each presentation with the metadata the decoder reads of it. The input may be a Matroska, MP4 or MPEG-TS container, sniffed by content: the report then also says what the container declares of the track (codec ID, sample entry or descriptor, time scale, language), in the JSON document as `container`, which is `null` for a bare stream |
 | `levels` | Per-channel peak/RMS report — takes a WAV, a bare encoded stream, or a Matroska/MP4/MPEG-TS container carrying one; of an AC-4 stream, the presentation [`presentation=` and the rest](#ac-4-presentations-presentation-language-associated) choose, as coded |
 | `loudness` | BS.1770-4 gated loudness, reported as the `dialnorm` it implies: of a WAV; of an AC-3 or E-AC-3 stream's first programme, beside the `dialnorm` it carries; or of an AC-4 presentation as coded, in AC-4's steps of 0.25 dB, beside the stream's own. Bare or inside a container |
-| `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3, E-AC-3 or AC-4 stream — bare, or inside a Matroska/MP4/MPEG-TS container — measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, the whole rendered program with `layout=rendered`, or a dynamic-object-only programme's objects re-rendered onto a named layout with `objects=<layout>` (BS.1770-5 Annex 4) — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate. An AC-4 presentation is measured as coded (no output level, so no DRC) against its `dialnorm` and the loudness it states |
+| `qc` | Bitstream-aware loudness QC: decodes an already-encoded AC-3, E-AC-3 or AC-4 stream — bare, or inside a Matroska/MP4/MPEG-TS container — measures it with the real BS.1770-4/EBU Tech 3342 meter — the Table 5.8 bed by default, the whole rendered program with `layout=rendered`, or a dynamic-object-only programme's objects re-rendered onto a named layout with `objects=<layout>` (BS.1770-5 Annex 4) — and compares the result against the stream's own embedded `dialnorm`/`compr` and, optionally, a named delivery-spec gate. An AC-4 presentation is measured as coded (no output level, so no DRC) against its `dialnorm` and the loudness it states; `layout=` takes it too, and `objects=` does not (see below) |
 
 ```bash
 ac3cli decode out.ec3 out.wav
@@ -720,15 +749,22 @@ ac3cli decode ajoc.ac4 out.wav channels=2        # two channels
 ac3cli decode ajoc.ac4 out.wav decoding=core     # the downmix's signals as the objects
 ```
 
-`decode`'s objects directory and ADM output write E-AC-3's objects; given an AC-4 stream they
-write nothing, and a warning says so.
+`decode`'s objects directory and ADM output take an AC-4 stream's objects as they take E-AC-3's,
+beside the rendered file: `objects_dir` gets each object's own decoded PCM as `object_NN.wav`, and
+`adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`, as for E-AC-3) an ADM BWF master of every bed and
+dynamic object with the properties (Annex F) it decoded, its bed and LFE objects on their
+speakers and the dynamic ones on their own timelines. The status output says how many objects it
+wrote. A presentation without objects writes no `object_NN.wav`, and an `adm_out` on it draws a
+warning.
 
 Each format's decode reads options the other's does not. Given an AC-4 stream, `decode` names
 the AC-3 and E-AC-3 ones it was given (`drc=`, `heavy`, `ltrt-phase=`, `fast-imdct`, `mode=`,
-`programme=`, `bed-only`, `joc-domain=`) in a warning and ignores them, as it does the object
-options, and given an AC-3 or E-AC-3 stream it does the same with AC-4's. The options that promise
-what the other format cannot give stop the run: `bap-census=` and `verify-objects` for AC-4, and
-`channels=5.1` and `syntax-trace=` for AC-3 and E-AC-3.
+`programme=`, `bed-only`, `joc-domain=`) in a warning and ignores them, and given an AC-3 or
+E-AC-3 stream it does the same with AC-4's (`output-level=`, `dialogue-enhancement=`,
+`presentation=`, `presentation-id=`, `language=`, `associated=`, `dialogue-gain=`,
+`associated-gain=`, `headphones`, `md-compat=` and AC-4's `drcmode=` names). The options that
+promise what the other format cannot give stop the run: `bap-census=` and `verify-objects` for
+AC-4, and `channels=5.1` and `syntax-trace=` for AC-3 and E-AC-3.
 
 ```text
 warning: stream.ac4 is AC-4: heavy is AC-3's and E-AC-3's, and ignored
@@ -801,12 +837,10 @@ syncinfo plus the whole of bsi — answers for every syncframe whether or not it
 readable, so a stream this decoder refuses is still described in full. The **parse tier** runs
 the real decoder with the inverse transform switched off, which is where the `dynrng` words,
 the EMDF payload ids, the object layer and the per-block tool usage come from. A syncframe the
-parse tier declines is counted and reported; the header tier's answers for it stand.
-
-That is not a hypothetical: the committed DEE-encoded E-AC-3 baseline is exactly such a stream.
-`ac3cli decode` on it fails with `decode failed (code 5)` and stops. `probe` reports its layout,
-rate, duration, substream map and CRC state, says that 76 of its 79 syncframes were refused and
-why, and tells you it uses AHT — which is the first thing a bug report about it would need.
+parse tier declines is counted and reported (`parse errors` in the table, `parse_failures` in the
+JSON); the header tier's answers for it stand. On a stream the decoder reads throughout, such as
+`tests/golden/external-baseline/eac3-51-256/dee.ec3`, the parse tier accepts every syncframe and
+the tool lines show what the encoder used: coupling, spectral extension and AHT there.
 
 **Exit code** is 0 only when every syncframe passed its CRC *and* the parser accepted it, so
 `probe` works as a pipeline gate without anything having to read its output:
@@ -815,10 +849,14 @@ why, and tells you it uses AHT — which is the first thing a bug report about i
 ac3cli probe delivery.ec3 || echo "stream is not clean"
 ```
 
-Memory is flat in the length of the stream: input is pulled through a fixed window rather than
-loaded, and the per-frame dump is written as the walk produces it. Probing a two-hour file costs
-what probing a two-second one does. `-` in place of the path reads the stream from stdin, so
-`probe` sits in a pipe.
+Every failure exits `1`, an unreadable file or bytes that are no stream among them; the `2` that
+[Exit codes](#exit-codes) gives an input problem is not what `probe` returns.
+
+Memory is flat in the length of a bare AC-3 or E-AC-3 stream: input is pulled through a fixed
+window rather than loaded, and the per-frame dump is written as the walk produces it. Probing a
+two-hour file costs what probing a two-second one does. `-` in place of the path reads the stream
+from stdin, so `probe` sits in a pipe. An AC-4 stream and a container are read whole before they
+are walked, so their memory grows with the file.
 
 ##### Per-frame and per-block detail
 
@@ -850,6 +888,10 @@ description.
 ac3cli probe programme.ec3 json=1
 ```
 
+The switch is the `json=1` token. There is no `--json`: a bare token the command line does not
+recognise as an option is taken for a positional argument and never read, so
+`ac3cli probe programme.ec3 --json` exits 0 and prints the table.
+
 **Versioning.** The top-level `schema` member names the contract: `"ac3forge.probe/1"`. Within
 one version, members are only ever *added*; an existing member never changes its type, its units
 or its meaning, and never disappears. A member that does not apply to a given stream is present
@@ -875,14 +917,29 @@ Top level:
 | `schema` | string | `"ac3forge.probe/1"` |
 | `generator` | string | The `ac3cli` version that wrote it |
 | `file` | string | The input path as given |
+| `container` | object or `null` | What a Matroska, MP4 or MPEG-TS input says of its audio track; `null` for a bare stream |
 | `access_units` | array | Present only with `detail=` — see below |
 | `stream` | object | The summary |
+
+`container`, for a container input: `format` (`"matroska"`, `"mp4"` or `"mpegts"`), `codec_id` (the
+Matroska CodecID or MP4 sample entry, such as `"A_EAC3"`, `"ec-3"` or `"ac-4"`; `null` for
+MPEG-TS), `track`, `language`, `samples`, `sample_rate_hz` and `channels` (each `null` where the
+container does not state it, as MPEG-TS does not), and two members of which the one for another
+format is `null`. `mp4`: `timescale`, `movie_timescale`, `edits` and `codec_box`, the sample
+entry's `dac3`, `dec3` or `dac4` as `type`, `bytes`, `fscod`, `bsid`, `bsmod`, `bsmod_label`,
+`acmod`, `lfeon`, `bit_rate_code`, `data_rate_kbps`, `independent_substreams`, `num_dep_sub`,
+`chan_loc`, `asvc`, `asvc_label` and `complexity_index` (a `dac4` reads as zero in the fields that
+are AC-3's and E-AC-3's, and `null` for the complexity index where the box sends none).
+`mpegts`: `program_number`, `pmt_pid`, `stream_type`, `signalling`, `packet_size` and `service`,
+the decoded AC-3 or E-AC-3 descriptor (`bsmod`, `bsmod_present`, `full_service`, `bsid`, `mainid`,
+`priority`, `asvc`, `mix_metadata`), `null` where the stream has none. Hearth's media
+information writes the same `codec_box` members.
 
 `stream`:
 
 | Member | Type | Meaning |
 |---|---|---|
-| `codec` | `"ac3"` or `"eac3"` | Which generation, from `bsid` |
+| `codec` | `"ac3"`, `"eac3"` or `"ac4"` | Which codec: from `bsid` for the first two, from the sync word for AC-4, whose `stream` has its own shape ([below](#ac-4)) |
 | `bsid`, `bsmod` | int | §5.4.1.3 / §5.4.2.1 as transmitted; `bsmod_label` names it (Table 5.7) |
 | `sample_rate_hz` | int | 48000/44100/32000, or Annex E's 24000/22050/16000 |
 | `reduced_rate` | bool | The rate came from `fscod2` (§E2.3.1.3) |
@@ -928,11 +985,13 @@ decode. There is no `detail=frames`/`detail=blocks` equivalent (see
 cover, including the narrower evidence behind the A-JOC/object/OAMD path).
 
 ```bash
-ac3cli probe stream.ac4
+ac3cli probe tests/golden/external-baseline/ac4-51-film-96/dee.ac4
 ```
 
+That is a stream DEE encoded, committed with the tests:
+
 ```text
-file            stream.ac4
+file            tests/golden/external-baseline/ac4-51-film-96/dee.ac4
 codec           AC-4
 access units    120 (120 sync frame(s)), 62160 bytes
 CRC             120 of 120 valid
@@ -999,7 +1058,8 @@ The decoder's reading adds, after those:
   `dialogue_enhancement` or `associated`), `group`, `content_classifier`, `language`, `channels`.
 - `selected_presentation`: the index of the presentation the decoder would decode by default, null
   where it would decode none.
-- `metadata`, that presentation's as the stream sent it up to its last frame: `loudness` (`dialnorm_dbfs` and
+- `metadata`, that presentation's as the stream sent it up to its last frame: `presentation` (its
+  index), `loudness` (`dialnorm_dbfs` and
   Part 1 clause 4.3.12.3's further values, each null where the stream sends none), `drc`
   (`eac3_profile`, `modes[]` with each decoder mode's output level range and how it compresses,
   `applied_mode`), `dialogue_enhancement` (`method`, `left`, `right`, `centre`, `max_gain_db`) and
@@ -1077,7 +1137,7 @@ qc: atmos.ec3 (E-AC-3, 3/2 + LFE, 48000 Hz, 62 access unit(s), 1.98 s)
   position, via ac3::spatial's direction panner, then Annex 3)
 ```
 
-See [Options & grammars](metadata-options.md#objectslayout) for why this needs a dynamic-object-only programme and what a bed-and-objects one gets instead.
+See [Options & grammars](metadata-options.md#objectslayout) for why this needs a dynamic-object-only programme and what a bed-and-objects one gets instead. It reads an E-AC-3 stream's JOC objects: `qc` given `objects=` with an AC-4 stream refuses the run (exit `1`), and an AC-3 stream is refused too (exit `2`). `layout=` and `preset=` work on AC-4 as on the other two.
 
 `qc`'s exit code is 0 only when the file decodes cleanly **and** (if a preset was given) every requested gate passes, which is what makes it usable as an actual CI/pipeline QC step: `ac3cli qc out.ec3 preset=ebu-r128-s2 || echo "loudness QC failed"`. With no `preset=` at all it only ever measures and reports (no verdict to fail), so a plain `ac3cli qc <file>` is non-zero solely on an input error. The two non-zero halves are now distinct: `6` means a gate failed (a result), `2` means the stream could not be read (a fault) — see [Exit codes](#exit-codes) below, so a pipeline can react differently to each:
 
@@ -1203,6 +1263,11 @@ no way to be told the format changed.
 path to AC-3 — which `ac3::plan::validate` already refuses. Nothing here produces or consumes
 one.
 
+**AC-4 and the four that copy.** `metadata`, `normalize`, `cut` and `cat` frame AC-3 and E-AC-3
+syncframes and do not read AC-4: given an AC-4 stream they stop with exit `2` (`lost sync:
+expected 0x0B77`). `strip-objects` refuses an AC-4 stream the way it refuses AC-3 (exit `2`, only
+Annex E frames can carry an object layer).
+
 **What `metadata` cannot do:** only fields already on the wire can change. `compr` lives behind
 `compre` and E-AC-3's `bsmod`/`dsurmod` behind `infomdate`; a stream that did not transmit one
 has no bits to overwrite, and inserting them would re-frame the syncframe, which is a re-encode
@@ -1214,8 +1279,8 @@ practice; `dsurmod` additionally exists only for coding mode 2/0 (§5.4.2.7).
 
 | Command | What it does |
 |---|---|
-| `spdif` | Wraps AC-3, E-AC-3 or AC-4 as IEC 61937 bursts inside a playable PCM16 WAV — `bsid` in the stream decides which, and the E-AC-3 carrier runs at four times the content sample rate. AC-4 goes in IEC 61937-14's bursts, the smallest of AC-4, AC-4 HBR4 and AC-4 HBR16 that holds the stream's largest frame, on the link its frame rate gives (HBR16's as eight channels at a quarter of the link rate). For feeding a receiver through an ordinary audio path |
-| `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3, E-AC-3 or AC-4 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3 vs. E-AC-3, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte. `-` works on either end — a capture tool piped straight in, the stream piped straight out — with the report going to stderr, same convention as `encode`/`decode` |
+| `spdif` | Wraps AC-3, E-AC-3 or AC-4 as IEC 61937 bursts inside a playable PCM16 WAV — the stream's `bsid`, or its AC-4 sync word, decides which, and the E-AC-3 carrier runs at four times the content sample rate. AC-4 goes in IEC 61937-14's bursts, the smallest of AC-4, AC-4 HBR4 and AC-4 HBR16 that holds the stream's largest frame, on the link its frame rate gives (HBR16's as eight channels at a quarter of the link rate). For feeding a receiver through an ordinary audio path |
+| `unspdif` | The inverse of `spdif`: reads IEC 61937 bursts back and writes the AC-3, E-AC-3 or AC-4 elementary stream inside them. Takes the WAV `spdif` writes, a capture of an S/PDIF or HDMI input, or a bare dump of carrier bytes with no RIFF header at all — the data type in `Pc` decides AC-3, E-AC-3 or AC-4, and both 16-bit word orders are read. Nothing is re-encoded: the output is what the source sent, byte for byte. `-` works on either end — a capture tool piped straight in, the stream piped straight out — with the report going to stderr, same convention as `encode`/`decode` |
 | `mkv` | Wraps AC-3 or E-AC-3 as Matroska, reading format/packet boundaries/sample rate/channel count from the bitstream itself so the container can't be told the wrong ones. The input may itself be a container — Matroska/MP4/MPEG-TS are sniffed by content, not by name — which is what makes `mkv`/`mp4`/`ts` container-to-container remuxers as well as encode targets. AC-4 is refused: Matroska's codec specification registers no codec ID for it, and a file under one of this project's invention would be one no other reader could name |
 | `mp4` | Wraps AC-3, E-AC-3 **or AC-4** as a single-file MP4/ISOBMFF (an AC-4 input takes TS 103 190-2 Annex E's `ac-4`/`dac4` path, with the Annex E.13 codecs string reported), writing a spec-correct `dac3`/`dec3` sample-entry box (fscod/bsid/bsmod/acmod/lfeon, plus the Atmos complexity-index extension for JOC content) read straight off the bitstream — never off whatever a container INPUT declared, which is the dec3-repair case: a source with a broken or missing Atmos `dec3` flag gets a correct one on the way out |
 | `ts` | Wraps AC-3, E-AC-3 **or AC-4** (DVB profile only — EN 300 468 Annex D.7; `atsc` is refused for AC-4) as an MPEG-2 Transport Stream (PAT + PMT + one PES-wrapped audio PID), identified per whichever broadcast profile the optional third argument names — `dvb` (the default) or `atsc`. See below |
@@ -1275,8 +1340,8 @@ each OS.
 | `outputs` | Lists render endpoints and whether each supports AC-3/E-AC-3 passthrough |
 | `identify` | Walks the identify tone across an output's speakers: pink noise on one rendered channel at a time, placed by the routing patch, so which speaker each channel reaches can be heard rather than assumed. The stream is opened at the device's own channel count and each rendered channel placed by the patch — see [`identify`](#identify-hearing-which-speaker-a-channel-reaches) below |
 | `record` | Captures from a device straight to a file, metering live. `layout=`/`codec=` choose the shape (any layout up to 7.1.4, AC-3 or E-AC-3; with `codec=ac4`, AC-4 in mono, stereo, 5.0 or 5.1), `container=` the wrapper (`raw`, `mkv`, `ts`, `spdif`, `fmp4`), `watchdog=` how long a silent device is tolerated. If the endpoint turns out to be bitstreaming IEC 61937 rather than delivering PCM (an HDMI/S/PDIF capture card, or a loopback of a player set to bitstream), `record` recognises that within about a quarter of a second and writes the **elementary stream** instead of encoding the bursts as if they were audio — see [passthrough capture](#passthrough-capture) below |
-| `play` | Exclusive-mode IEC 61937 passthrough of an existing file, bare or inside a container — `bsid` decides AC-3 vs. E-AC-3. When a `device_index` is named, `play` follows the sink: a source format it rejects gets transcoded to AC-3 or decoded to PCM automatically instead of refused — see [Following the sink](#following-the-sink) below. AC-4, which no receiver found takes over IEC 61937, is decoded and played as PCM, as `monitor` plays it |
-| `monitor` | Decodes an existing file, bare or inside a container, and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. An AC-4 stream plays the presentation `presentation=` and the rest choose, with `decode`'s output level, DRC, dialogue enhancement and downmix options. |
+| `play` | Exclusive-mode IEC 61937 passthrough of an existing file, bare or inside a container — `bsid` decides AC-3 vs. E-AC-3. When a `device_index` is named, `play` follows the sink: a source format it rejects gets transcoded to AC-3 or decoded to PCM automatically instead of refused — see [Following the sink](#following-the-sink) below. AC-4, which no receiver found takes over IEC 61937, is decoded and played as PCM, as `monitor` plays it (`follow=off`, which asks for passthrough alone, refuses it with exit `4`) |
+| `monitor` | Decodes an existing file, bare or inside a container, and plays it on an ordinary, non-bitstreamed output — the shared-mode preview path. For an Atmos-mode stream, this plays the 5.1 **bed** and reports the object count found: the decoder reads TS 103 420's object layer (OAMD/JOC) but this path does not render or export objects, so this is what a legacy decoder hears, not unmixed objects — use `decode` with `objects_dir` for the object audio itself. An AC-4 stream plays the presentation `presentation=` and the rest choose, with `decode`'s output level, DRC, dialogue enhancement and downmix options; on an endpoint with fewer channels than the presentation it folds by the stream's own downmix. It plays the channels a presentation decodes to: the layout renderer that puts a presentation's objects on speakers belongs to `decode` (and to Hearth), not to `monitor` or `play`. |
 | `spatial` | Decodes an E-AC-3 stream's object layer and hands the objects to the platform's spatial renderer, each at its own OAMD position — the one playback path that renders objects as objects rather than as a bed. Windows only today; see [`spatial`](#spatial-objects-on-the-platform-renderer) below |
 | `live` | Capture → encode → optional live monitor and/or IEC 61937 passthrough, running continuously, still writing the file `record` always has. Everything `record` takes, plus a second clock-conformed capture device (`capture2=`), an object-slot budget and `map=` binding (`objects=`, `mode=atmos`), and a parallel 5.1 AC-3 leg for an AC-3-only receiver (`downmix=`) |
 
@@ -1362,8 +1427,8 @@ cannot separate, which is why the orbit spreads them at all) — at this session
 yet addressing some of its objects therefore degrades gracefully: those objects sit still and
 audible, never silent, never snapped to room centre.
 
-Status lines at session start and end report what actually happened — read the live text out of
-`apps/cli/commands/live_audio.cpp` (search for `"positions:"`) if this drifts, but as of writing:
+Status lines at session start and end report what actually happened (the text is in
+`apps/cli/commands/live_audio.cpp`, searchable as `"positions:"`):
 
 ```text
 positions: OSC on 127.0.0.1:9000, objects 0-3 (/object/<n>/xyz|gain|lfe|release)
@@ -1449,7 +1514,9 @@ ac3cli spatial programme.ec3 2     # an index from 'ac3cli outputs'
 ```
 
 Two refusals come before anything is decoded. A plain AC-3 input is rejected because only E-AC-3
-carries the object layer, with the error naming `monitor` as the command that plays an AC-3 bed.
+carries the object layer, with the error naming `monitor` as the command that plays an AC-3 bed;
+an AC-4 input gets the same refusal (exit `2`), since `spatial` reads E-AC-3's object layer alone
+and does not take AC-4's objects.
 An endpoint with no spatial format enabled on it — `GetMaxDynamicObjectCount` reading zero — is
 rejected with exit `4`, rather than quietly falling back to an ordinary render path: that
 fallback would make `spatial` indistinguishable from `monitor` while claiming to be something
@@ -1510,6 +1577,10 @@ fallback instead of a plain refusal:
 escape hatch for a script that wants a hard failure rather than an automatic re-encode. The
 default endpoint (no `device_index` given) is unaffected either way: its capabilities were
 never probed before this either, and it is taken at its word exactly as before.
+
+AC-4 takes none of these paths. No receiver found takes it over IEC 61937, so `play` decodes an
+AC-4 stream to PCM on an ordinary output whatever the sink accepts, and with `follow=off`, which
+asks for passthrough alone, it refuses the stream (exit `4`).
 
 ```bash
 ac3cli play programme.ec3 2 follow=off   # refuse instead of adapting

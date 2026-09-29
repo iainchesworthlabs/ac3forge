@@ -1,5 +1,8 @@
 # Decoding
 
+This page covers AC-3 and E-AC-3. AC-4 has a decoder of its own, `ac4::Decoder`, with its own
+controls, presentations and objects, and none of `ac3::io` reads it: see [AC-4](ac4.md).
+
 ## Reading a stream: `ac3::io::scan`
 
 `ac3/io/elementary.hpp`. Finds access-unit boundaries in raw bytes and reports what the stream
@@ -28,6 +31,43 @@ following it.
 
 Both formats put `bsid` at bit 40 deliberately, so a reader can tell them apart before
 committing to a layout. `ac3::stream_bsid` exposes that on its own.
+
+## A stream that arrives in pieces: `ac3::io::AccessUnitAccumulator`
+
+`ac3/io/stream_accumulator.hpp`. `scan`, `split_frames` and `split_access_units` take the whole
+stream as one span. `AccessUnitAccumulator` applies the same boundary rule incrementally, for an
+HTTP body, a file read a block at a time or a flash partition read a page at a time. The caller
+owns the storage, appends through `writable()` and `commit()`, and takes each whole access unit
+from `next()`; nothing is allocated.
+
+```cpp
+std::array<std::byte, ac3::io::kRecommendedBuffer> storage;
+ac3::io::AccessUnitAccumulator accumulator{storage};
+for (;;) {
+    const auto next = accumulator.next();
+    if (next.status == ac3::io::AccessUnitAccumulator::Status::kNeedMoreInput) {
+        const std::size_t got = read_from_somewhere(accumulator.writable());
+        if (got == 0) {
+            accumulator.finish();
+        } else {
+            accumulator.commit(got);
+        }
+        continue;
+    }
+    if (next.status != ac3::io::AccessUnitAccumulator::Status::kUnit) {
+        break;  // kEndOfStream, kBufferTooSmall or kError
+    }
+    // next.bytes is one access unit, valid until the next call
+}
+```
+
+A unit ends where the next begins, so `finish()` is what closes the last one. The storage has to
+hold the largest access unit and the start of the frame after it: `kMinimumBuffer` (4 160 bytes)
+suits a stream whose access units are one syncframe, and `kRecommendedBuffer` (16 384) an
+independent substream with three dependents. A buffer that is too small gives `kBufferTooSmall`,
+and `error()` says which `ScanError` a `kError` was. `resynchronised_bytes()` counts the bytes
+skipped looking for a sync word. `ac4::SyncFrameSplitter` is the AC-4 counterpart
+([AC-4](ac4.md#the-inspector)).
 
 ## Where access unit *i* starts: `ac3::io::access_unit_timing`
 
@@ -223,6 +263,8 @@ decoder as a check on the encoder: a test can assert on the `dynrng` words the e
 | `programme` | none | `std::optional<int>` (§E2.3.1.2). Which independent substream's programme `decode_access_unit` renders when a stream carries several — they are alternatives, not layers. `std::nullopt` renders whichever programme each call's access unit belongs to; set to an id and an access unit belonging to any other is skipped without being decoded at all. Ignored by `decode_substream`, which sits below the programme layer. See below. |
 | `syntax` | `nullptr` | `FrameSyntax*` (`ac3/decoder/syntax_trace.hpp`): which coding tools each block used and what exponent strategy each stream carried, recorded on the way past. Written by **both** decoders, unlike `trace`/`eac3_trace` — the Annex E tools are most of what makes it worth having. Filled incrementally, so a refused frame still leaves behind everything read before the refusal. |
 | `skip_reconstruction` | `false` | Parse every field exactly as a full decode does, but stop short of turning the coefficients into audio: no inverse transform, no overlap-add, no JOC object reconstruction, and no per-access-unit channel combination. The metadata (and any trace above) is identical to a full decode's; `channels` and `object_audio` come back empty. What `ac3cli probe` runs a whole file through. Note what it does *not* skip: the mantissas are still read, because the bit position of every field after them depends on it. |
+| `skip_object_reconstruction` | `false` | Decode the bed and leave the objects alone: no JOC reconstruction, `object_audio` and `object_indices` come back empty, and everything else (the bed's PCM, `object_metadata`, the trace) is what a full decode gives. Unlike `skip_reconstruction` it still renders audio, the 5.1 downmix the objects were coded against. It exists for memory: the reconstruction state is 147,504 bytes on a 32-bit target, more than the largest contiguous block an ESP32-S3 decode leaves free. |
+| `diagnostics`, `diagnostics_context` | `nullptr`, `nullptr` | A plain function pointer and the pointer passed to it, called for the recoverable events the return value does not carry: a CRC that failed, and an EMDF payload id the decoder does not interpret. One branch per occurrence when unset. |
 
 ### Block-granular output
 
@@ -808,7 +850,8 @@ If the stream comes from the network or from a user, read
 
 - `scan`, `split_frames` and `split_access_units` take the **whole** stream as one span and
   return one span per access unit, so peak memory is O(input) and the library imposes no upper
-  bound. Bound the input yourself, or drive `decode_frame`/`decode_substream` one unit at a time.
+  bound. Bound the input yourself, drive `decode_frame`/`decode_substream` one unit at a time, or
+  feed an `AccessUnitAccumulator`, whose memory is the storage you hand it.
 - Every per-access-unit allocation is bounded by a bitstream field of fixed width — a single
   frame cannot be made to consume an unbounded amount of memory or time — and a hostile `frmsiz`
   is refused (`kTruncated` if it overruns the input, `kInvalidStream` if it is shorter than the

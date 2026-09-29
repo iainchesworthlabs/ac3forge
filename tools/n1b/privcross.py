@@ -3,10 +3,10 @@
     privcross.py --graph <include_graph.json> [--out <file>]
 
 A header that another library includes has to be reachable by that library, so it becomes a public
-header or a
-`detail/` header of its own (layoutdef.CROSS_DETAIL) when the libraries are split. This lists them
-from an include graph that include_graph.py wrote, by owning library and by the libraries that
-include each one (layout-inventory.md section B.5). Only includes made from files under src/ count.
+header or a `detail/` header of its own (layoutdef.CROSS_DETAIL) when the libraries are split.
+This lists them from an include graph that include_graph.py wrote, by owning library and by the
+libraries that include each one (layout-inventory.md section B.5). Only includes made from files
+under src/ count.
 """
 
 from __future__ import annotations

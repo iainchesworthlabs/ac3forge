@@ -6,7 +6,7 @@ E-AC-3 and gets its own page, [Atmos & JOC](atmos-joc.md).
 
 ## Frames
 
-Both formats chop audio into fixed-size chunks called **frames**, sometimes called
+Both formats chop audio into short chunks called **frames**, sometimes called
 **syncframes** because each one starts with a recognisable sync pattern a decoder can search
 for. Each frame is compressed independently enough that a decoder can find one, decode it, and
 start playing without needing any frame before it. That is what makes it possible to seek
@@ -169,10 +169,10 @@ has no ABR either.
 
 ## E-AC-3 rate control: what VBR and ABR are worth
 
-The paragraph above used to be the whole story, and "cost rises steeply in the top part of the
-range" was a warning with no number behind it. `python tools/ci/quality_race.py vbr` is that
-number. It sweeps the quality target, measures what each point actually costs, and then encodes
-the *same programme at that same measured rate* three other ways — CBR, ABR, and FFmpeg's own
+The paragraph above says cost rises steeply in the top part of the quality range.
+`python tools/ci/quality_race.py vbr` measures how steeply. It sweeps the quality target, measures
+what each point actually costs, and then encodes the *same programme at that same measured rate*
+three other ways — CBR, ABR, and FFmpeg's own
 E-AC-3 encoder — so every comparison is like for like. Measured 2026-08-23 against a real build,
 stereo, `tools=none`, FFmpeg 8.0.1, on the synthesized multi-segment programme
 `quality_race.py` uses everywhere else (chord, sweep, filtered noise, near-mono speech-like
@@ -199,10 +199,10 @@ frames that need it without ever paying that back. Below 0.3 it *loses*, by 1.3 
 0.10 and 5.0 dB at 0.20: a quality target that low leaves the rate it does spend badly
 distributed, and CBR's flat budget does better with the same bits.
 
-**The top of the range is waste, not headroom.** Everything at 0.6 and above scores 59.04 dB.
+**The top of the range buys nothing.** Everything at 0.6 and above scores 59.04 dB.
 Quality 0.5 reaches 58.96 dB for 404 kbit/s; 0.8 pays 961 kbit/s — 2.4× the bits — for another
-0.08 dB. MOS-LQO saturates even earlier, at 0.40. The old warning was right about the shape and
-understated the conclusion: past about 0.5 there is nothing left to buy on this encoder.
+0.08 dB. MOS-LQO saturates even earlier, at 0.40. Past about 0.5 there is nothing left to buy on
+this encoder.
 
 **ABR scores with CBR, not with VBR — and that is what it is for.** Holding an average is the
 same constraint CBR encodes under, so an ABR stream lands within a few tenths of a dB of CBR at
@@ -256,9 +256,9 @@ coupling frequency; spectral extension gives up the high band's fine structure e
 a described one back in its place. Each is a gain below some bitrate and a loss above it, so an
 encoder has to choose — and this one will choose for you if you ask it to (`tools=auto`).
 
-It used to choose from the bitrate alone. It now also measures the frame: how well the channels'
-high band would survive being replaced by one shared copy, and how much of the signal is up in the
-band synthesis would take over. That matters because the same bitrate can afford a nearly empty
+It reads the bitrate, and it also measures the frame: how well the channels' high band would
+survive being replaced by one shared copy, and how much of the signal is up in the band synthesis
+would take over. That matters because the same bitrate can afford a nearly empty
 top end and not a busy one, and because two channels that are already nearly the same thing above
 8 kHz can be coupled almost for free while two different ones cannot.
 
@@ -275,9 +275,10 @@ Two of the tools are not in that automatic set, and the reasons are worth statin
   widening as the bitrate rises — and listeners' predicted scores do not move at all. The reason
   is that block switching already handles the problem: the encoder shortens its transform around
   a transient, which confines the noise, and the correction then substitutes for audio that was
-  not damaged in the first place. (Those measurements predate a decoder fix that moved each
-  correction one block later, onto the pre-noise itself; they have not been repeated since.) It remains implemented and correct, as a demonstration of the
-  syntax rather than as a quality tool.
+  not damaged in the first place. Those measurements predate a decoder fix that moved each
+  correction one block later, onto the pre-noise itself, and have not been repeated. The tool
+  remains implemented and correct, as a demonstration of the syntax rather than as a quality
+  tool.
 
 !!! example "See it in code"
     - [Encoding AC-3](../library/encoding-ac3.md)

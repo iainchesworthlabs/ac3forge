@@ -54,7 +54,10 @@ Full program: [`examples/encode_ac3.cpp`](https://github.com/iainchesworthlabs/a
 | `drc2` | none | `std::optional<meta::Profile>`. Ch2's own DRC, meaningful only under `kDualMono` — no fallback to `drc` when unset (see below). |
 | `heavy2` | none | `std::optional<meta::HeavyConfig>`. Ch2's own heavy compression, same rule as `drc2`. |
 | `cmixlev`, `surmixlev` | −4.5 dB, −6 dB | Tables 5.9/5.10. Always define the §7.8 downmix, whatever `acmod` is. |
+| `info` | all defaults | `meta::BsiInfo`, the informational bsi fields (§5.4.2): service type, surround mode, mixing level and room type, copyright bits, time code — see [Bit stream information](metadata.md#bit-stream-information-ac3metabsihpp). |
+| `alternate_bsi` | none | `std::optional<meta::AlternateBsi>`: Annex D's `xbsi1`/`xbsi2`, which writes `bsid` 6 — see [Annex D's alternate syntax](metadata.md#annex-ds-alternate-syntax-bsid-6). |
 | `search` | `kNone` | Per-frame search over §7.2.2's transmitted bit allocation parameters, judged on the error the decoder will reconstruct — see below. `kDistortion` or `kPerceptual` turn it on; the CLI spells it `search=distortion` / `search=perceptual`. |
+| `trace` | `nullptr` | `verify::FrameTrace*`: the encoder's half of the [mirror self-check](decoding.md#the-mirror-self-check). Null costs one branch per block. |
 
 Coupling is what makes 5.1 viable below 448 kbit/s: above the coupling frequency the
 full-bandwidth channels stop carrying their own coefficients and share one coupling channel
@@ -65,8 +68,8 @@ plus per-band coordinates.
 `chbwcod` decides where the coded spectrum stops. At -1 — the default, and the same default
 `ac3::eac3::FrameConfig` now takes — the encoder answers from two things.
 
-The **bit rate sets a ceiling**, on the curve AC-3 has used since 0.7.0: roughly two thirds of
-the per-channel kbit/s, clamped to 24–60. Below about 90 kbit/s per channel the bits the top of
+The **bit rate sets a ceiling**, on the curve the AC-3 encoder used before the content half
+existed: two thirds of the per-channel kbit/s, clamped to 24–60. Below about 90 kbit/s per channel the bits the top of
 the band costs are bits the rest of the spectrum needed, and no amount of content up there
 changes that. Measured on real programme material, AC-3 5.1 at 192 kbit/s scores MOS 3.145 at
 `chbwcod` 24 (13.6 kHz) falling to 2.411 at 59 (23.4 kHz).
@@ -267,8 +270,7 @@ number rather than a shrug:
 
 ```cpp
 const auto budget = encoder->latency();
-std::printf("%d samples, %.2f ms
-",
+std::printf("%d samples, %.2f ms\n",
             budget.total_samples(),
             ac3::latency_ms(budget, encoder->config().sample_rate));
 // 1792 samples, 37.33 ms

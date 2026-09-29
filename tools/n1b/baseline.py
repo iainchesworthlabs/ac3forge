@@ -1,36 +1,36 @@
 """The baselines the stages of planning/layout.md are proved against: record, compare, re-check.
 
-    baseline.py record  --build <cmake build dir> [--label msvc] [--out <dir>] [--only
-    headers,hashes,symbols,cli] baseline.py verify  --build <cmake build dir> [--label msvc]
-    [--baseline <dir>] [--only ...] baseline.py compare <recorded dir> <recorded dir> [--only ...]
+    baseline.py record  --build <cmake build dir> [--label msvc] [--out <dir>] [--only <kinds>]
+    baseline.py record  --root <worktree> --only headers [--out <dir>]
+    baseline.py verify  --build <cmake build dir> [--label msvc] [--baseline <dir>] [--only <kinds>]
+    baseline.py compare <recorded dir> <recorded dir> [--only <kinds>]
     baseline.py check-moves --plan <plan.json> [--baseline <dir>] [--root <worktree>] [--pure]
+
+<kinds> is a comma-separated list of headers, hashes, symbols and cli (the default is all four).
 
 A stage that changes names and paths must change nothing else. Four things stand for "nothing else":
 
-  headers  every public header (a tracked file under src/*/include/) with its git blob id. After the
-  moves each
-           one must exist at the place the move plan sends it (`check-moves`), and after the pure
-           `git mv` commit with the same blob id (`--pure`): a header cannot be lost or edited by a
-           move.
+  headers  every public header (a tracked file under src/*/include/) with its git blob id. After
+           the moves each one must exist at the place the move plan sends it (`check-moves`), and
+           after the pure `git mv` commit with the same blob id (`--pure`): a header cannot be
+           lost or edited by a move. It is read from git, so it needs no build.
   hashes   the three streams the pinned-hash gate encodes from tests/golden/audio/reference_51.wav,
-  in fast
-           and reference mode, and what tools/checks/check_cross_platform_hash.py says of them
-           against tests/golden/bitstream-hashes.json, which S1 to S6 leave unchanged.
+           in fast and reference mode, and what tools/checks/check_cross_platform_hash.py says of
+           them against tests/golden/bitstream-hashes.json, which S1 to S6 leave unchanged.
   symbols  the names each shared library exports, undecorated (MSVC: dumpbin /exports and undname),
-  so that
-           the union of the libraries a library was split into can be compared with what it exported
-           (export_diff.py).
+           so that the union of the libraries a library was split into can be compared with what
+           it exported (export_diff.py).
   cli      the bytes ac3cli writes over a fixed corpus of commands (cli_bytes.py): exit code,
-  SHA-256 of every
-           output file and of stdout. Recorded per compiler, since the float code of the AC-4 codec
-           is only bit-exact within one.
+           SHA-256 of every output file and of stdout. Recorded per compiler, since the float code
+           of the AC-4 codec is only bit-exact within one.
 
 `record` measures a built tree and writes one JSON file per kind, `<kind>-<label>.json` (headers
 carry no label). The record names the commit it was measured at, which `compare` and `verify`
 ignore. `verify` records into a scratch directory and compares with the committed baseline: the
 check that a re-run reproduces it. The baselines committed under tools/n1b/baselines were measured
 on the merge of the pull request that added them; a stage takes its own `before` from its parent,
-since main moves between stages.
+since main moves between stages, and a change to the doc comment of a public header, which the
+`headers` record notices, is a reason to record it again.
 """
 
 from __future__ import annotations
@@ -265,25 +265,37 @@ def file_name(kind: str, label: str) -> str:
     return "headers.json" if kind == "headers" else f"{kind}-{label}.json"
 
 
-def record(build: Path, label: str, kinds: tuple[str, ...], work: Path) -> dict[str, dict]:
-    root = source_root(build)
-    cli = executable(build, "ac3cli")
+def record(
+    build: Path | None,
+    label: str,
+    kinds: tuple[str, ...],
+    work: Path,
+    root: Path | None = None,
+) -> dict[str, dict]:
+    """Measure `kinds`. Only the header record can do without a build: it is read from git."""
+    if build is None and set(kinds) != {"headers"}:
+        raise SystemExit("baseline: --build is needed for every kind but headers")
+    if root is None:
+        if build is None:
+            raise SystemExit("baseline: give --build, or --root with --only headers")
+        root = source_root(build)
     made: dict[str, dict] = {}
     for kind in kinds:
         if kind == "headers":
             body = record_headers(root)
         elif kind == "hashes":
-            body = record_hashes(root, cli, work)
+            body = record_hashes(root, executable(build, "ac3cli"), work)
         elif kind == "symbols":
             body = record_symbols(build)
         elif kind == "cli":
-            body = record_cli(root, cli, work)
+            body = record_cli(root, executable(build, "ac3cli"), work)
         else:
             raise SystemExit(f"baseline: unknown kind {kind!r}")
         made[kind] = {
             "schema": SCHEMA,
             "kind": kind,
-            "label": label,
+            # the headers are the same whatever compiler built the tree
+            "label": "" if kind == "headers" else label,
             "measured_at": head_of(root),
             **body,
         }
@@ -400,7 +412,10 @@ def main(argv: list[str] | None = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     for name in ("record", "verify"):
         p = sub.add_parser(name)
-        p.add_argument("--build", required=True, type=Path)
+        p.add_argument("--build", type=Path, default=None, help="required but for --only headers")
+        p.add_argument(
+            "--root", type=Path, default=None, help="the source tree, if not the build's"
+        )
         p.add_argument("--label", default=None)
         p.add_argument("--only", default=",".join(KINDS))
         p.add_argument(
@@ -422,10 +437,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "check-moves":
         return check_moves(args.plan, args.baseline, args.root, args.pure)
 
-    label = args.label or label_of(args.build)
+    label = args.label or (label_of(args.build) if args.build else "none")
     kinds = parse_kinds(args.only)
     with tempfile.TemporaryDirectory(prefix="n1b-baseline-") as tmp:
-        made = record(args.build, label, kinds, Path(tmp))
+        made = record(args.build, label, kinds, Path(tmp), args.root)
         if args.cmd == "record":
             for path in write_records(made, args.out, label):
                 print("wrote", path)

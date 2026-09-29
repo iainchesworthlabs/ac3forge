@@ -5,8 +5,8 @@
 Phases (each idempotent on an already-processed tree; run them in this order):
   plan      print what would move and which include spellings would change; touches nothing
   moves     `git mv` every file layoutdef.l2_new() relocates (scope src: only under src/)
-  includes  rewrite #include spellings from the old tree's resolution, and the per-library export
-  macros
+  includes  rewrite #include spellings from the old tree's resolution, and the export macros of
+            each library
 
 The include rewrite resolves every include of the OLD tree the way the compiler would (quote-
 relative, then the spelling index) and rewrites it only when the target moved and its spelling

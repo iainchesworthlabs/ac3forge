@@ -3,6 +3,13 @@
 Quality is measured, not asserted, and coverage has known edges. This page is both: how output
 is checked, and exactly where checking runs out.
 
+The codecs are not checked alike. AC-3 and E-AC-3 have FFmpeg's decoder and Dolby's encoder as
+outside references. AC-4 has Dolby's encoder here and no reference decoder: FFmpeg does not
+decode it, and Dolby's own decoder returned no audio when tried. The sections before
+[AC-4](#ac-4) are about AC-3 and E-AC-3 unless they say otherwise; the AC-4 section describes
+its checks from the inspector to the encoder and Hearth's engine, and
+[Where each check runs](#where-each-check-runs) says which stage of CI runs what.
+
 ## Six independent checks
 
 In rough order of strength:
@@ -14,10 +21,13 @@ In rough order of strength:
    Engine's, and pinned commercial-encoder excerpts from FFmpeg's FATE archive — see
    [Third-party bitstreams](#third-party-bitstreams) for what that corpus is, and for the five
    decoder defects wiring it up exposed.
-2. **FFmpeg as an external oracle.** Every stream this project produces is strict-decoded with
-   `-xerror -err_detect crccheck+bitstream+buffer+explode`, which fails on a CRC error, a
-   bitstream violation or a buffer problem rather than concealing it. Automated and required in
-   CI.
+2. **FFmpeg as an external oracle.** The streams the gold-reference gate, the codec matrix and
+   the encoder-space searches produce are strict-decoded with
+   `-err_detect crccheck+bitstream+buffer+explode` (and `-xerror`, where the script reads the
+   exit code), which fails on a CRC error, a bitstream violation or a buffer problem rather than
+   concealing it. The gold-reference gate does this in the pull-request gate; the matrix and the
+   searches do it nightly in FFmpeg Validate. FFmpeg has no AC-4 decoder, so for AC-4 it checks
+   framing only.
 3. **Independent Python transcriptions.** `tools/` holds second implementations of the spec
    pseudocode, written from the standard separately from the C++: the §7.2.2 bit allocation, the
    Tables 7.29/7.30 DRC lookups, MDCT goldens. Agreement between two transcriptions of the same
@@ -56,28 +66,34 @@ In rough order of strength:
    by the in-repo encode round trip instead. And retail Atmos discs, whatever they would exercise,
    are not redistributable and are not used here.
 5. **Fuzzing, in both directions.** Into the decoder: the libFuzzer harnesses under `fuzz/` drive
-   the codec's untrusted-input entry points looking for crashes and undefined behaviour
-   (ASan+UBSan), and two differential harnesses decode each mutated stream with both this
-   project's decoder and FFmpeg's and diff the PCM. CI runs both: the `Fuzz Regress` job replays
-   the checked-in seed and regression corpora on every push and PR, and the `Fuzz Differential`
-   job adds a bounded mutation budget on pushes.
+   the codecs' untrusted-input entry points looking for crashes and undefined behaviour
+   (ASan+UBSan). There are 24, listed in [Threat model](threat-model.md#memory-safety-posture);
+   AC-4's are `fuzz_ac4_parse` (the inspector and the sync-frame splitter), `fuzz_ac4_decode`
+   (the syntax layer and the reconstruction to PCM) and `fuzz_ac4_encode`. Two differential
+   harnesses decode each mutated stream with both this project's decoder and FFmpeg's and diff
+   the PCM; they cover AC-3 and E-AC-3, since FFmpeg does not decode AC-4. CI runs them:
+   `Fuzz Regress` replays the checked-in seed and regression corpora on every push and on pull
+   requests (a repository variable can pause the pull-request run; see
+   [Where each check runs](#where-each-check-runs)), `Fuzz Short` and `Fuzz Differential` add a
+   bounded mutation budget on pushes, and `Fuzz Nightly` goes deeper.
 
    The object and metadata layer is driven directly rather than through the decoder: separate
    harnesses over `emdf::parse_container`, `oba::parse_payload`, `oba::joc::parse_payload`,
    `signing::verify_atmos_stream`/`verify_atmos_frame` and (opt-in) `ac3adm::parse_bw64`, each
    seeded from the real payloads inside this project's own Atmos streams. A sixth,
-   `oba::parse_osc_packet` — the OSC 1.0 wire form a live session's object positions arrive over
-  , driving `live mode=atmos positions=osc:<port>` and the GUI live room — is
-   covered the same direct way by `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list
-   and so covered by CI exactly as the five above are; its own seeds are hand-built OSC packets
-   (`fuzz/seeds/fuzz_osc_parse/`) rather than extracted from an Atmos stream, since there is no
-   bitstream to extract them from. See [Threat model](threat-model.md#trust-boundary). That
-   matters because
-   the indirect route was mostly closed: both decoders check their CRC words before reading the
+   `oba::parse_osc_packet` — the OSC 1.0 wire form a live session's object positions arrive over,
+   driving `live mode=atmos positions=osc:<port>` and the GUI live room — is covered the same
+   direct way by `fuzz_osc_parse`, part of `fuzz/run.sh`'s default target list and so covered by
+   CI exactly as the object and metadata harnesses are, ADM's opt-in one apart; its own seeds are
+   hand-built OSC packets (`fuzz/seeds/fuzz_osc_parse/`) rather than extracted from an Atmos
+   stream, since there is no bitstream to extract them from. See
+   [Threat model](threat-model.md#trust-boundary). That matters because the indirect route was
+   mostly closed: both the AC-3 and the E-AC-3 decoder check their CRC words before reading the
    frame behind them, so a mutation landing in a skip field died at the checksum. The two decode
    harnesses now carry a custom mutator that re-stamps crc1 and crc2 after mutating — crc1
    through the GF(2) polynomial inverse it has to be solved with — while leaving one mutation in
-   four unrepaired so the rejection path itself stays reachable.
+   four unrepaired so the rejection path itself stays reachable. AC-4's decoder does not refuse a
+   frame on its CRC, so its harnesses need no such mutator.
 
    Out of the encoder: `tools/ci/fuzz_encoder_space.py` (AC-3) and
    `tools/ci/fuzz_eac3_encoder_space.py` (E-AC-3) draw random legal encoder
@@ -88,8 +104,13 @@ In rough order of strength:
    decoders reject needed a specific input shape to reach, and so escaped every other check on
    this page. The E-AC-3 half additionally covers the Annex E tool tokens, the `fscod2` half
    rates, VBR, the layouts that need dependent substreams and Atmos object counts, and classifies
-   each case by which oracle can actually read it (the table below). Bounded on every pull
-   request, deeper nightly. See
+   each case by which oracle can actually read it (the table below).
+   `tools/ci/fuzz_ac4_encoder_space.py` asks the same of AC-4 against the checks that exist
+   there: the encoder's syntax trace, the decoder's and `tools/references/ac4_syntax.py`'s must
+   agree record for record, FFmpeg's demuxers must find every frame, and the decoder must decode
+   them ([The encoder](#the-encoder)). The searches run bounded, 120 seconds each, in FFmpeg
+   Validate, which is a nightly job, and deeper, 900 seconds each, in the `Encoder Space Nightly`
+   job of the Fuzz workflow. See
    [fuzz/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/fuzz/README.md).
 
 6. **The encoder/decoder mirror self-check** (`ac3::verify`, opt-in). Not an oracle: it compares
@@ -111,11 +132,47 @@ In rough order of strength:
    sides make *identically* — anything decided in code they share (`compute_bit_allocation`,
    `group_bands`, `decode_coordinate`) is shared by construction, and only checks 2–4 above reach
    that. Off by default at the cost of one branch per block; `ac3cli eac3-encode … verify` turns
-   it on for a whole encode, and `tools/ci/run_codec_matrix.sh` runs it across the tool matrix on
-   the sanitizer leg.
+   it on for a whole encode, and `tools/ci/run_codec_matrix.sh` runs it across the tool matrix,
+   both in FFmpeg Validate and on the sanitizer leg. The AC-4 encoder has no mirror; the decoder's
+   trace, the encoder's own and the Python parser's, which must agree, do that job there
+   ([The encoder](#the-encoder)).
 
 Contributor-facing detail on which oracle to reach for and how — including the exact FFmpeg
 flags and the CI jobs that run them — is in [Oracles](https://github.com/iainchesworthlabs/ac3forge/blob/main/CONTRIBUTING.md#oracles).
+
+## Where each check runs
+
+CI has three stages ([CI for many agents](ci-agentic.md)): the pull-request gate, which builds
+Linux GCC and runs every `ctest` case and the gold-reference gate (the merge queue adds Windows
+MSVC, the Qt GUI, and for a change under `src/` the
+[performance and memory comparisons](performance-trend.md)); the run after each merge to `main`,
+which covers the compilers, operating systems and architectures the gate does not; and the
+nightly run, which adds the sanitizers, coverage and FFmpeg Validate. Fuzzing and the other
+scheduled workflows are separate.
+
+| Check | Codecs | Runs |
+|---|---|---|
+| The Catch2 suites, the example programs and the Qt Quick tests (`ctest`); the AC-4 tests named in the AC-4 section are among them, apart from those that read local streams | AC-3, E-AC-3, AC-4 | Gate, queue, after a merge, nightly |
+| The unit tests of the oracle scripts (`tools/checks`, `tools/ci`), which include the AC-4 syntax digests and presentation tables | all | The gate's static job |
+| The gold-reference gate, `tools/checks/verify_gold_reference.sh`: our decode against FFmpeg's, per-channel floors, the committed DEE and FFmpeg streams, the cross-platform bitstream hashes | AC-3, E-AC-3 | Gate on Linux GCC, queue on Windows MSVC, up to six legs after a merge, nine nightly |
+| FFmpeg Validate: the codec matrix, the metadata and coupling checks, `quality_race.py ci`, the encoder-space searches, and the AC-4 scorers (`score_ac4_decode.py`, `score_ac4_encode.py`, `gain_ac4_decode.py`, `mix_ac4_decode.py`, `check_ac4_decode_scalar_snr.py`) | all | Nightly, and on request (the `ci:deep` label, `gh workflow run ci.yml`) |
+| Hearth's engine against the AC-4 gain formulas (`gain_ac4_decode.py --engine`) | AC-4 | After a merge, nightly |
+| The ASan + UBSan leg with the codec matrix, and the TSan leg | all | Nightly |
+| `Fuzz Regress` | all | Every push to `main`, and every pull request unless the repository variable `PAUSE_NONESSENTIAL_CI` is `true` |
+| `Fuzz Short` and `Fuzz Differential` (the latter AC-3 and E-AC-3 only) | all | Every push to `main` |
+| `Fuzz Nightly`, `Fuzz ADM Nightly` and `Encoder Space Nightly` | all | Daily |
+| `Interop`: eight FATE excerpts | AC-3, E-AC-3 | Daily, and on pull requests that change the decode path |
+| `tools/checks/ac4_syntax_differential.py`, 3,000 mutated DEE frames and 800 synthetic tables of contents at a fixed seed | AC-4 | Daily, in the SonarCloud workflow, where it feeds the coverage scan and does not gate |
+| `tools/checks/check_install_consumer.sh`, and the ABI gate (advisory until the API freeze) | all | Nightly |
+| Dolby Encoding Engine, MediaInfo, librempeg and the Reference Player; the `--gold` races and the census; `check_ac4_encode_readers.py`; `race_ac4_presentations.py`; listening | AC-4 mostly | Locally, by hand |
+
+`PAUSE_NONESSENTIAL_CI` is a pause the workflows describe as temporary: while it is `true`, pull
+requests skip `Fuzz Regress`, OSV Scanner and Zizmor, which leaves the hosted runners to the
+merge queue, and runs on `main` and on a schedule are unaffected. It was `true` on 2026-09-30.
+
+A failure in the run after a merge or in the nightly run reaches [Main health](ci-agentic.md#after-the-merge),
+which reruns a known flake or opens the `main-red` issue. The trend series are published by
+jobs of those runs: [Where the data lives](quality-trend.md#where-the-data-lives) says which.
 
 ## Quality
 
@@ -132,8 +189,10 @@ cross-correlation, and reports SNR against the original:
 
 Measured with FFmpeg 8.0.1 on 2026-08-09; reproduce with `python tools/ci/quality_race.py ac3`.
 Unlike the trend pages beside it, this table is a point measurement rather than a gated series:
-nothing on the `quality-history` branch carries an ac3forge-against-FFmpeg comparison, so no CI
-run reproduces these four numbers or would notice them drifting.
+no CI run repeats it, so nothing would notice these four numbers drifting. The nearest series is
+[Tool comparison trend](tool-comparison-trend.md), which scores this encoder on fixed legs and
+reports its difference from FFmpeg's and Dolby's encodes of the same legs, made once and
+committed under `tests/golden/external-baseline/`.
 SNR on synthetic material is a narrow metric — it says the waveform is closer, not that it
 sounds better, and no *subjective* listening test has been run. `quality_race.py`'s tables (and
 [Tool comparison trend](tool-comparison-trend.md)/[Landscape](landscape.md)) also carry an
@@ -158,14 +217,16 @@ has, and tuning the encoder's bandwidth against it once produced a measured 2.1 
 an artefact of the fixture. See [tools/generators/README.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/generators/README.md)
 for the measured spectra, the licences, and which fixture is evidence about what.
 
-That is a one-off snapshot. [Quality trend](quality-trend.md) tracks the same gold-reference SNR
-by commit, on every push to `main`, so a regression shows up as a trend line
-rather than only in that run's CI log.
+That is a one-off snapshot. [Quality trend](quality-trend.md) tracks a different measure, the
+gold-reference gate's per-channel agreement between this decoder and FFmpeg's on fixed fixtures,
+for each commit a run publishes, so a regression shows up as a trend line rather than only in
+that run's CI log. AC-4's decode has a series of its own on the same page, scored against the
+sources Dolby's encoder was given ([AC-4 decode quality](quality-trend.md#ac-4-decode-quality)).
 
 The object layer has its own series, [Object quality trend](object-quality-trend.md): a fixed
-five-object Atmos scene encoded and decoded by each build, one delay-compensated SNR/LSD/leakage
+five-object Atmos scene encoded and decoded by a nightly run, one delay-compensated SNR/LSD/leakage
 row per object per rate. It is a self-consistency series throughout — see "Where the oracles
-don't reach" below for why no other kind is available.
+don't reach" below for why no other kind is available. AC-4's objects have no series.
 
 ### One floor per channel, not one per file
 
@@ -207,8 +268,8 @@ that channel's lowest value across every CI leg and every recorded commit —
 move is reviewable against evidence rather than asserted.
 
 The 1.0 dB covers commit-to-commit noise and nothing else, because `min_observed` has
-already absorbed everything else. Measured over 520 (check, leg, channel) series, one
-leg's own number moves by a median of **0.000 dB** across the whole recorded history,
+already absorbed everything else. Measured when the floors were derived, over 520 (check, leg,
+channel) series, one leg's own number moves by a median of **0.000 dB** across the whole recorded history,
 and 495 of them stay under 0.5 dB; the 25 that do not are a single real step change on
 one check, not noise. A new leg landing below a floor is not a false alarm under this
 policy — it is platform behaviour nobody has reviewed, and stopping to look at it is the
@@ -224,8 +285,8 @@ if the single-floor form is ever restored.
 ### Why arm64 and x86-64 disagree
 
 The legs split into two groups on the high-SNR channels, ~6.02 dB apart, and this was
-carried for a long time as an unexplained effect attributed to "arm64 and macOS" legs
-. Two things are now settled.
+carried for a long time as an unexplained effect attributed to "arm64 and macOS" legs.
+Two things are now settled.
 
 **It is architecture, not OS or compiler.** `macos-llvm` (arm64) sits with the arm64
 group; `macos-llvm-x64` sits with the x86-64 group. Same OS, same Homebrew LLVM, opposite
@@ -377,22 +438,26 @@ count, ~2.2 s over a 30 s `kMdctBand` decode. It has no effect under the default
 ## Test suite
 
 The Catch2 suites (`ac3tests` plus the `ac3perf` throughput suite) plus one `ctest` entry per
-example program, run per platform. The GUI's Qt Quick Test harness (`ac3gui_qmltests`) adds one
-entry per `tst_*.qml` suite under `apps/gui/tests/qml/` (21 today) on a GUI-enabled build, and the
-ALSA backend's `tests/backend/alsa/` adds 15 on a Linux build with libasound present — or
-`tests/backend/pipewire/`'s 5, on a build that selected PipeWire instead; `ctest` runs whatever
-the configuration registered:
+example program, run per platform. The Qt Quick Test harnesses add one entry per `tst_*.qml`
+suite on a build with the application enabled: `ac3gui_qmltests` for `apps/gui/tests/qml/` (36
+today), Hearth's for `apps/hearth/ui/tests/qml/` (15) and Crucible's for
+`apps/crucible/ui/tests/qml/` (16). The audio backend's device-free tests
+(`tests/backend/<backend>/`) join `ac3tests` for whichever backend the build selected, ALSA,
+PipeWire, macOS, Windows or Android, and an ALSA build also runs
+`tests/audio/test_alsa_null_backend.cpp` against software ALSA devices, so its success paths run
+without a card. `ctest` runs whatever the configuration registered:
 
 ```bash
 ctest --preset test-windows-msvc-debug
 ```
 
-`examples/CMakeLists.txt` registers 21 example programs as their own `ctest` cases, plus
-`read_adm`/`encode_adm` under `AC3FORGE_BUILD_ADM` and the two C-API examples under
-`AC3FORGE_BUILD_CAPI`. The ones that touch the filesystem (`wav_roundtrip`, `read_adm`,
-`encode_adm`) write scratch files under a name unique to that run, not a fixed name in the OS
-temp directory — two checkouts running `ctest` at once would otherwise read and delete each
-other's fixture.
+`examples/CMakeLists.txt` registers 22 example programs as their own `ctest` cases, plus
+`mux_iamf` and `read_iab` (their libraries build by default), `decode_ac4` (given a committed DEE
+stream), `read_adm`, `encode_adm` and `encode_iab` under `AC3FORGE_BUILD_ADM` and the two C-API
+examples under `AC3FORGE_BUILD_CAPI`. The ones that touch the filesystem (`wav_roundtrip`,
+`read_adm`, `encode_adm`) write scratch files under a name unique to that run, not a fixed name
+in the OS temp directory — two checkouts running `ctest` at once would otherwise read and delete
+each other's fixture.
 
 ## Third-party bitstreams
 
@@ -405,13 +470,15 @@ attached to it, not a conformance suite.
 
 Two tiers, both gated in CI:
 
-- **Committed** — `tests/golden/external-baseline/` holds 14 streams from Dolby Encoding Engine
-  6.5.4 and FFmpeg 8.0.1 across 8 codec/layout/bitrate legs (`manifest.json`, `baseline_version`
-  2), each encoded from this repository's own source WAVs (see
+- **Committed** — `tests/golden/external-baseline/` holds 14 AC-3 and E-AC-3 streams from Dolby
+  Encoding Engine 6.5.4 and FFmpeg 8.0.1 across 8 codec/layout/bitrate legs (`manifest.json`,
+  `baseline_version` 2), each encoded from this repository's own source WAVs (see
   `tools/generators/gen_external_baseline.py`) and each carrying the DEE, FFmpeg and
-  ours-at-baseline-time scores it was measured at. `tools/checks/verify_gold_reference.sh` gates
-  on a six-stream subset of that: it decodes all six with `ac3cli` on every gold-reference leg and
-  diffs each against FFmpeg's own decode, with per-fixture floors quoted beside the measured
+  ours-at-baseline-time scores it was measured at. Beside them sit the transient pre-noise stream
+  described under [Where the oracles don't reach](#where-the-oracles-dont-reach) and AC-4's 16 DEE
+  streams (`ac4-manifest.json`; see [AC-4](#ac-4)). `tools/checks/verify_gold_reference.sh` gates
+  on a six-stream subset of the 14: it decodes all six with `ac3cli` on every gold-reference leg
+  and diffs each against FFmpeg's own decode, with per-fixture floors quoted beside the measured
   numbers in the script. The other eight are not gated:
   `tools/ci/append_external_comparison_history.py` walks every leg in the manifest for the
   [tool-comparison trend](tool-comparison-trend.md). They also seed the
@@ -425,7 +492,8 @@ Two tiers, both gated in CI:
   in use, the 3/1 acmod nothing in this tree can encode, and an A/52 Annex E §E2.3.1.2
   legacy-core delivery (below). Fetched at run time and never committed — they are film
   excerpts, and pinning by hash is what keeps an upstream change from quietly moving the
-  numbers. Runs nightly in the `Interop` workflow.
+  numbers. Runs nightly in the `Interop` workflow, and on a pull request that changes the decode
+  path or the harness.
 
 A third set is neither committed nor gated. `tools/generators/gen_dee_gold.py` keeps 1,086 of
 DEE's own streams on a local disk, made before DEE's licence ends on 2026-11-06, each rebuildable
@@ -436,8 +504,8 @@ encoder mode, which its help does not list), E-AC-3 JOC from 5.1.4, 7.1.4 and 9.
 rate, TrueHD at 2, 6 and 8 channels, 48 and 96 kHz and 16 and 24 bits, each metadata option DEE
 takes, and 60 and 300 s programmes. Each keeps MediaInfo's trace, DEE's MP4 of it, and what
 `ac3cli` and FFmpeg make of it. `ac3cli`'s decoder reads every AC-3 and E-AC-3 elementary stream
-in it but the 23 that use transient pre-noise processing, whose correction reaches further back
-than the one frame of history the decoder keeps, and which it reports as unimplemented; FFmpeg
+in it, the 23 that use transient pre-noise processing included since the decoder began to hold a
+correction until the frame its transient falls in has decoded (below); FFmpeg
 reports errors in 67 of the E-AC-3 streams, most of them exponents out of range, as below. DEE
 uses coupling, spectral extension and the AHT by rate and never enhanced coupling. At 48 kHz,
 FFmpeg's decode of each TrueHD stream DEE was not asked to alter equals its source sample for
@@ -547,6 +615,9 @@ only the in-repo decoder can read is checked against itself, not against anythin
 | E-AC-3 with a second *independent* substream (two programmes) | no — and it poisons the first programme too | yes |
 | E-AC-3 with JOC objects (Atmos) | 5.1 bed only | yes, including the objects |
 
+AC-4 is not in this table because FFmpeg has no AC-4 decoder: every AC-4 stream is a "no" for its
+audio, and FFmpeg's demuxers are the only outside reader of its framing ([AC-4](#ac-4)).
+
 Every "no" in that column is a cell where a generated stream has to be checked some other way,
 which is what [`tools/ci/fuzz_eac3_encoder_space.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/fuzz_eac3_encoder_space.py)
  is built around: it classifies every case it draws by which of these rows it lands
@@ -629,7 +700,8 @@ before where A/52 counts it from, and refused any correction whose transient lay
 that signalled it. This project's own encoder never places a transient there, and on its streams
 block switching leaves little pre-noise for a misplaced correction to show against, so nothing
 here noticed until the Dolby Encoding Engine's streams did: DEE puts most of its transients in the
-next frame. What closed the gap is a third-party stream and a reference decoder. FFmpeg's strict
+next frame. Both are fixed (a correction now waits until the frame its transient falls in has
+decoded). What closed the gap is a third-party stream and a reference decoder. FFmpeg's strict
 decode reads transient pre-noise streams — DEE's and this project's own — without error but does
 not apply the correction, so it checks everything except the correction: below 4 kHz and outside
 the corrected regions it agrees with this decoder to 37–40 dB on DEE's stream. Dolby's own decoder
@@ -652,8 +724,9 @@ persisted on one side and not the other. What it still cannot see is a misreadin
 make *identically*, which for anything decided in code they share (`compute_bit_allocation`,
 `group_bands`, `coupling::decode_coordinate`) is by construction. That residue is real, and only
 an external oracle or an independent transcription of the same spec text closes it — neither of
-which exists for `ecpl`, and for `tpn` only as far as the paragraph above says. `tools/ci/run_codec_matrix.sh` runs the check over both tools
-on the sanitizer leg.
+which exists for `ecpl`, and for `tpn` only as far as the paragraph above says.
+`tools/ci/run_codec_matrix.sh` runs the check over both tools, in FFmpeg Validate and on the
+sanitizer leg.
 
 **`fscod2` audio content has no external decode oracle at all — not even Dolby's own.**
 `ffprobe` walks every syncframe of a reduced-rate stream correctly (frame count, exact byte size,
@@ -680,8 +753,10 @@ plays them as the bed too. Nothing outside this repository can currently produce
 object decode of an ac3forge stream, which makes this the one layer where even the partial
 oracle 7.1.4 gets is unavailable. What covers it instead is a self-consistency series with real
 resolution: [Object quality trend](object-quality-trend.md) scores each of a fixed scene's five
-objects, per commit, at two rates. The same caveat as `ecpl`/`tpn` applies with full force — a
-defect the encoder and decoder share is invisible to it.
+objects, in each nightly run, at two rates. The same caveat as `ecpl`/`tpn` applies with full
+force — a defect the encoder and decoder share is invisible to it. AC-4's objects are in the same
+position, without the series: librempeg refuses object coding, and DEE writes no AC-4 objects from
+this project's masters ([The decoder's objects](#the-decoders-objects)).
 
 **Containers and manifests are checked externally where a reader exists, and only there.**
 `mp4::fragment`'s and `mp4::FragmentWriter`'s CMAF output both pass FFmpeg 8.0.1's strict decode
@@ -719,11 +794,11 @@ metadata is. It is covered bit-by-bit instead
 ## Going the other way: published conformance vectors
 
 Everything above consumes someone else's streams as an oracle. Every release also publishes a
-set this project produces — 60 streams covering each coding tool, layout and sample rate the
-encoder can emit, each with the source PCM it was encoded from, the expected decode hashes and
-per-channel levels, and a manifest saying what each vector exercises. It ships as
-`ac3forge-conformance-vectors-<version>.tar.gz`, signed and attested like every other release
-asset.
+set this project produces — 60 AC-3 and E-AC-3 streams covering each coding tool, layout and
+sample rate the AC-3 and E-AC-3 encoders can emit, each with the source PCM it was encoded from,
+the expected decode hashes and per-channel levels, and a manifest saying what each vector
+exercises. It ships as `ac3forge-conformance-vectors-<version>.tar.gz`, signed and attested like
+every other release asset. It has no AC-4 vector.
 
 The `ffmpeg` field on each vector is derived from the table above rather than typed in, so the
 published set cannot drift out of step with what this page says the oracles reach: `full` where
@@ -735,11 +810,11 @@ synthetic, and the hashes are per-toolchain. On the first, the CC0
 speech and music fixtures are committed (`tests/golden/audio/programme_{speech,music}_stereo.flac`),
 but the vector generator was never pointed at them: `tools/generators/gen_conformance_vectors.py`
 still synthesizes its own sources and marks the spot where those files would join the set. Wiring
-this bundle to that material is outstanding work. On the second —
-encoded output is not bit-identical across compilers or architectures, so a bundle regenerated
-elsewhere differs from the published one for the same correct streams. VX11 closed without
-explaining the 6.02 dB arm64 offset (both hypotheses it proposed were falsified by direct
-measurement); VX12, gating byte-identical encodes across every leg, is the one still open.
+this bundle to that material is outstanding work. On the second, the decoded-PCM hashes differ
+between x86-64 and arm64, where the decoder's last bit differs (the 6.02 dB offset above, still
+unexplained: both hypotheses its investigation proposed were falsified by direct measurement),
+and the encoded bytes are pinned across toolchains for three streams only, so a bundle
+regenerated elsewhere may differ from the published one for the same correct streams.
 Regenerating with the toolchain the manifest names reproduces every hash exactly, and the
 generator asserts that with `--check-determinism` rather than assuming it.
 
@@ -747,26 +822,45 @@ See [Conformance vectors](conformance-vectors.md).
 
 ## AC-4
 
-Three libraries read and write AC-4 (ETSI TS 103 190-1/-2). `ac4::ac4`, the inspector, parses the
+Four libraries read and write AC-4 (ETSI TS 103 190-1/-2). `ac4::ac4`, the inspector, parses the
 sync frame, table of contents, presentation and substream-group framing — channel-coded,
 A-JOC-coded, direct-coded-object and OAMD alike — and reports `audio_data`/`metadata()` payloads
 as byte ranges. `ac4::decoder` decodes them, from [The decoder's syntax](#the-decoders-syntax)
-on, and `ac4::encoder` writes AC-4 ([The encoder](#the-encoder)). What comes first here is the
-inspector's, and its narrower scope changes which of this page's usual checks apply.
+on, `ac4::encoder` writes AC-4 ([The encoder](#the-encoder)), and `ac4::core` holds the
+transforms, QMF banks and A-SPX, A-CPL, A-JCC and A-JOC kernels the decoder and the encoder
+share.
+
+With no reference decoder, AC-4's correctness rests on several checks, each weaker than a
+comparison with one. What each outside program can check:
+
+| Oracle | For the decoder | For the encoder | Runs |
+|---|---|---|---|
+| Two transcriptions of the syntax, in C++ and in `tools/references/ac4_syntax.py` | Every syntax element of DEE's, third-party and constructed streams | Every stream it writes, against the encoder's own write trace as well | The gate |
+| Dolby Encoding Engine (DEE) | Its streams, scored against their sources | The race: the same sources at the same settings | Locally; the licence ends on 2026-11-06 |
+| librempeg, an experimental second decoder | Its decode of the same streams | Its decode of the encoder's streams | Locally |
+| MediaInfo | Table of contents, presentation substream, `metadata()`, EMDF payloads and `crc_word`, frame by frame | Each value the encoder was asked to write | Locally |
+| FFmpeg 8.0.1 | Framing only: it has no AC-4 decoder | Framing of raw and MP4 output | FFmpeg Validate |
+| DEE's MP4 muxer | | The encoder's raw output muxes, and the `dac4` it writes equals the encoder's | Locally |
+| This project's decoder | | PCM from every stream the encoder writes | The gate, FFmpeg Validate |
+| Listening | Rendering and objects | Objects | Locally |
+
+The rest of this section takes them in the order the libraries were built: the inspector's
+framing, then the decoder, then the encoder, then IEC 61937 and Hearth's engine. What comes first
+is the inspector's, and its narrower scope changes which of this page's usual checks apply.
 
 **Where real AC-4 streams come from.** Nothing open encodes AC-4 — the same gap this page states
 for AC-3/E-AC-3, just with no third-party corpus to fall back on either, since neither ATSC nor
 ETSI publish AC-4 conformance vectors. The substitute is the same tool this project already
 treats as a licensed, local-only, never-in-CI oracle for the AC-3/E-AC-3 "Committed" tier: Dolby
 Encoding Engine 6.5.4, whose install here also carries `dee_ac4_encoder.exe` (2.0, 5.1 and 5.1.4
-channel-based-immersive; 7.1 input is written as 5.1) and
-`dee_ac4ajoc_encoder.exe`/`dee_ac4ims_encoder.exe` (A-JOC and
-object-based encodes this parser does not read — see below). `tools/generators/gen_ac4_baseline.py`
+channel-based-immersive; 7.1 input is written as 5.1), `dee_ac4ims_encoder.exe` (immersive stereo,
+which stays channel-coded) and `dee_ac4ajoc_encoder.exe` (A-JOC, which takes only an Atmos master
+no master this project writes satisfies — see below). `tools/generators/gen_ac4_baseline.py`
 generates `tests/golden/external-baseline/ac4-*/dee.ac4` from it, the same local-generation,
 committed-output pattern `gen_external_baseline.py` uses.
 
-**What is actually verified**, in the same "how much does this prove" ordering CONTRIBUTING.md's
-Oracles list uses:
+**What the inspector's framing is checked against**, in the same "how much does this prove"
+ordering CONTRIBUTING.md's Oracles list uses:
 
 1. **Annex G's CRC-16**, over every sync frame of the committed DEE fixtures — not a
    self-consistency check, since the polynomial, initial state and no-reflection/no-final-XOR are
@@ -800,21 +894,23 @@ run as a command-line oracle ([The decoder's output](#the-decoders-output)).
 **A-JOC / direct-coded-object / OAMD substream groups** (`b_channel_coded == 0`, TS 103 190-2
 clause 6.3.2.8-6.3.2.12 — `ac4_substream_info_ajoc()`, `ac4_substream_info_obj()`,
 `bed_dyn_obj_assignment()`, `oamd_substream_info()`) are parsed the same way the channel-coded
-path is, as of the IM4 follow-up that added them. Their verification story is narrower than tier
-1/2/3 above, though, because no stream this project can encode reaches this path:
-`dee_ac4ajoc_encoder.exe` accepts only an Atmos ADM BWF mezzanine as input, and this project has no
-tooling that produces one DEE
-accepts (the same "gates on content provenance, not syntax" limit this page already states for
-the AC-3/E-AC-3 JOC side); `dee_ac4ims_encoder.exe` — the other locally available object-adjacent
-encoder, despite its "immersive stereo" name — was confirmed to stay channel-coded regardless of
-input. What stands in for a real fixture is a set of **synthetic, hand-built bitstreams**
-(`tests/ac4/test_ac4.cpp`), each assembled by a from-scratch `BitWriter` sharing no code with
-either `ac4::` or `tools/references/ac4_parse.py`, field-traced against the spec text (including
-Table 64/65's array-position-to-bit-index mapping, cross-checked against §6.3.2.10.8's own worked
-EXAMPLE 2/3 values) rather than against an external reader. This is weaker evidence than tiers
-2-3 — a shared misreading of the spec between this parser and its own test vectors cannot be
-ruled out the way MediaInfo or DEE's own output rules it out for the channel-coded path — but it
-is stronger than self-consistency alone: the vectors caught two real bugs during construction (an
+path is. Their verification story is narrower than tier 1/2/3 above, though, because no DEE stream
+reaches this path: `dee_ac4ajoc_encoder.exe` accepts only an Atmos ADM BWF mezzanine as input, and
+this project has no tooling that produces one DEE accepts (the same "gates on content provenance,
+not syntax" limit this page already states for the AC-3/E-AC-3 JOC side); `dee_ac4ims_encoder.exe`
+— the other locally available object-adjacent encoder, despite its "immersive stereo" name — was
+confirmed to stay channel-coded regardless of input. What stands in for a DEE fixture is a set of
+**synthetic, hand-built bitstreams** (`tests/ac4/test_ac4.cpp`), each assembled by a from-scratch
+`BitWriter` sharing no code with either `ac4::` or `tools/references/ac4_parse.py`, field-traced
+against the spec text (including Table 64/65's array-position-to-bit-index mapping, cross-checked
+against §6.3.2.10.8's own worked EXAMPLE 2/3 values) rather than against an external reader. Two
+streams from elsewhere now go through the same framing: Chromium's public A-JOC test file, which
+sets `b_oamd_common_data_present` in every frame and whose substreams both transcriptions read to
+their ends, and the object streams the encoder writes since phase E9, four of them committed
+([The decoder's objects](#the-decoders-objects)). This is weaker evidence than tiers 2-3 — a
+shared misreading of the spec between this parser and its own test vectors cannot be ruled out
+the way MediaInfo or DEE's own output rules it out for the channel-coded path — but it is
+stronger than self-consistency alone: the vectors caught two real bugs during construction (an
 array-index formula that was reversed for one of the two flag-array widths, and this parser's own
 handling of LFE at the same array position - included for `ac4_substream_info_obj()`'s std-flags
 branch but excluded for `bed_dyn_obj_assignment()`'s, a spec difference this project's
@@ -823,11 +919,10 @@ behavior changes, that would upgrade this to a tier 2/3 check. `oamd_common_data
 transcribed at the one TOC-level site that reaches it, `ac4_substream_info_ajoc()`'s own
 `b_oamd_common_data_present` flag — bed render info, trim and headphone metadata, plus the
 declared-length `add_data` tail a nested element that reads past its own byte budget fails against,
-the same synthetic-vector evidence as the rest of this section. The OAMD substream DATA payload
-itself (`oamd_substream()`, §6.2.2.4, which embeds a second, independent `oamd_common_data()` of its
-own) stays out of scope, reported as a byte range like every other non-audio substream. Chromium's
-public A-JOC test file sets `b_oamd_common_data_present` in every frame; re-checking this reading
-against it is still open.
+the same synthetic-vector evidence as the rest of this section. The inspector reports the OAMD
+substream DATA payload itself (`oamd_substream()`, §6.2.2.4, which embeds a second, independent
+`oamd_common_data()` of its own) as a byte range like every other non-audio substream; the
+decoder reads it.
 
 **The `bitstream_version <= 1` legacy path**
 (`ac4_toc()`/`ac4_presentation_info()` as TS 103 190-1 alone defines them) is transcribed and
@@ -850,16 +945,18 @@ in `tools/references/ac4_parse.py`.
 ### The decoder's syntax
 
 `src/ac4dec` is an AC-4 decoder written from the same two standards. It reads every
-syntax element of a frame's substreams, and decodes the audio of some of them (see "The decoder's
+syntax element of a frame's substreams and decodes their audio (see "The decoder's
 output" below): the presentation substream,
 channel-coded audio substreams in the Part 1 channel elements (ASF spectral data, stereo processing,
 companding, A-SPX and A-CPL data, and `metadata()` with its DRC and dialogue enhancement), a
 channel-coded substream's HSF extension substream where one resolves to a distinct, readable
 substream (the additional scale factor bands, spectral data and noise fill above 24 kHz a 96 kHz or
-192 kHz substream carries), and EMDF payload substreams. It refuses, with a named reason, the speech
-spectral frontend, the immersive and 22.2 channel elements, object substreams, a 96/192 kHz
-substream whose HSF extension substream could not be resolved, and a substream no element of the
-table of contents names.
+192 kHz substream carries), the immersive element of the 7.X.4 channel modes, object substreams
+(A-JOC and direct-coded objects, with their object audio metadata), and EMDF payload substreams.
+It refuses, with a named reason, the speech spectral frontend, the 9.X.4 channel modes and the
+22.2 channel element, an intermediate spatial format mixed into channels Annex A.2.1 has no
+matrix for, a 96/192 kHz substream whose HSF extension substream could not be resolved, and a
+substream no element of the table of contents names.
 
 With no reference output to compare against, the syntax is transcribed twice, separately, from the
 text: in C++ in the decoder, and in Python in `tools/references/ac4_syntax.py`, which takes its table
@@ -973,16 +1070,17 @@ shares with the encoder. Six checks stand in for the reference output neither pa
   pair in ASPX_ACPL_2 with beta 1.4 puts the decorrelated part in L and R with opposite signs: it cancels
   in their sum to 0.1 dB and is the tone 1.4 times over in their difference. Twenty of the streams are
   committed, with the Python parser's digests, which both transcriptions reproduce.
-- **DEE's streams against their sources** (`tools/checks/score_ac4_decode.py`): pinned floors gate CI;
-  `--json-out` feeds `ac4-quality-main.jsonl` on the `quality-history` branch for
-  [AC-4 decode quality trend](quality-trend.md#ac-4-decode-quality). The decoded output is
+- **DEE's streams against their sources** (`tools/checks/score_ac4_decode.py`): pinned floors gate
+  FFmpeg Validate, a nightly job; `--json-out` feeds `ac4-quality-main.jsonl` on the
+  `quality-history` branch for [AC-4 decode quality trend](quality-trend.md#ac-4-decode-quality). The decoded output is
   aligned with the source by cross-correlation and fitted with a gain per channel. Every leg must lag
   its source by the same 4,385 samples (DEE's encoder's 3,072 and this decoder's 1,313; DEE's immersive
   stereo encoder runs a frame shorter, 2,337), sit within 0.2 dB of unity gain, and meet floors pinned
   at the first measurement: per-channel SNR over the whole band for SIMPLE and below the A-SPX crossover
   for ASPX; above the crossover, each frame's energy in each A-SPX subband group against the source's;
   log-spectral distance and ViSQOL. Each tone must land on its own channel. FFmpeg Validate runs it on
-  the nine committed legs, six of them 5.1, three ASPX and two A-CPL; locally it runs over phase G0's 99
+  the 15 committed legs, every committed DEE stream but `ac4-stereo-64`: three at 2.0, six at 5.1
+  (two of them A-CPL), three immersive stereo and three 5.1.4. Locally it runs over phase G0's 99
   legs at index 13: 2.0 from 48 to 768 kbps, 5.1 from 96 to 768 and immersive stereo from 64 to 320,
   every 2.0 channel within 0.17 dB of unity and every 5.1 channel but the LFE within 0.11 dB in SIMPLE
   and ASPX. DEE low-passes the
@@ -996,7 +1094,8 @@ shares with the encoder. Six checks stand in for the reference output neither pa
   those tiles sat 0.9 to 2.3 dB below; film's 5.1 centre sat 4.6 dB below in the top group of its first
   patch at 256 kbps, all of it lost to the limiter, and 10.9 dB below at 192.
   The immersive stereo legs, made from 5.1, are compared with the source's Lo/Ro downmix, which they
-  correlate with at 0.977 to 0.984. DEE's 2.0 streams carry the same audio from 256 kbps up, the rest of
+  must correlate with at 0.95 or better (`IMS_CORRELATION`) and do, at 0.977 to 0.984. DEE's 2.0
+  streams carry the same audio from 256 kbps up, the rest of
   each frame being fill, so those rates decode to the same samples.
   DEE's 5.1 streams at 96 kbps (ASPX_ACPL_3) and at 128 and 144 (ASPX_ACPL_2) code a pair of downmixes,
   and A-CPL makes the surrounds of them, and the centre in ASPX_ACPL_3, so they are scored as A-CPL
@@ -1101,7 +1200,7 @@ processing" and in "A change of source" and "What an I-frame does not restore".
   2^((Lout - dialnorm) / 6) to 0.01 dB, with what is left beside that gain 100 dB down; each 5.1
   stream's two-channel, Lo/Ro, Lt/Rt and mono outputs are clause 6.2.17's matrix, with the stream's own
   values read from its syntax trace, applied to its coded output, to 80 dB. Both hold to the output's
-  rounding. CI runs the committed streams, dialnorms from -26 to -16 dBFS; locally the 115 legs of the
+  rounding. FFmpeg Validate runs the committed streams, dialnorms from -26 to -16 dBFS; locally the 115 legs of the
   gold set, dialnorms from -24 (the ATSC A/85 preset) to -16, with DEE's own Lo/Ro and Lt/Rt gains,
   each preferred downmix method and Lt/Rt's Pro Logic II form. DEE's immersive stereo at 24 and 25 fps
   sends a dialnorm of -24 dBFS in its last frame, so the checks stop before it.
@@ -1145,7 +1244,7 @@ reading is in `src/ac4dec/ERRATA.md`, under "Presentations".
 - **The mixes**: in the decoder's tests each substream's tones come out of each mix at their formula's
   gain to 0.01 dB and 60 dB under that everywhere else, and the formula applied to the substreams
   decoded alone leaves the whole output 100 dB under it or more. `tools/checks/mix_ac4_decode.py`, in
-  CI, reads each stream's gains, pans and dialogue enhancement from `ac3cli`'s syntax trace and fits
+  FFmpeg Validate, reads each stream's gains, pans and dialogue enhancement from `ac3cli`'s syntax trace and fits
   each output channel on the substreams decoded alone: over 68 mixes (the three streams, g_dialog and
   g_assoc at 0, -6 and -10 dB and +9 dB, and at an output level of -31 dBFS) every coefficient equals
   its formula to 0.01 dB, and the formula leaves the output 110 dB under it or more. Mono associated
@@ -1208,7 +1307,7 @@ which takes it to the layout a system asks for. Where the text leaves a choice o
   decoding to 5.1 and to Lo/Ro in the tests, and in the gain script to every layout the renderer
   gives, in full and core decoding, with the stream's custom downmix data, its stereo coefficients and
   its corrections read from the syntax trace: what the matrix leaves is 149 dB under the output, its
-  rounding. CI runs the committed legs; locally 77 of the gold set's, G1's 23 height downmixes among
+  rounding. FFmpeg Validate runs the committed legs; locally 77 of the gold set's, G1's 23 height downmixes among
   them, which send custom downmix data from 0 dB to silence in I-frames alone, its 24 stereo downmix
   legs and its film at every rate, and G0's 22.
 - **librempeg** (git 2026-09-24) does not decode the element: on the 5.1.4 tone legs its L, R and C
@@ -1226,15 +1325,17 @@ what a stream carries through it, and installs the inspector, the decoder and th
 ([AC-4 decoding](library/ac4.md)). The tests are in `tests/ac4dec/test_ac4dec_api.cpp` unless
 named otherwise.
 
-- **Through the public API alone**: a test standing in for Hearth's engine decodes each of the 42
-  committed streams (DEE's 13, the 20 constructed ones and the 9 of the presentation multiplexer)
-  by block through `ac4dec/decoder.hpp` alone, placing each block's channels by their speakers and
-  changing the output level and dialogue enhancement half way through. No frame is refused, only a
-  frame before a stream's first I-frame comes out empty, a stream ends in one short block at most,
-  and the output equals `decode()`'s configured the same way, sample for sample. Pointed at DEE's
-  local set with `AC4DEC_API_STREAM_DIR`, the same test decodes 406 of its 533 streams and refuses
-  the other 127, its 5.1.4 streams, by name (the immersive channel element, phase D9); of the 13
-  third-party streams it decodes 12 and refuses the A-JOC one, naming the substream.
+- **Through the public API alone**: a test standing in for Hearth's engine decodes every committed
+  AC-4 stream (those under `tests/golden/external-baseline/ac4-*` and `tests/golden/ac4dec/`: 66
+  today) by block through `ac4dec/decoder.hpp` alone, placing each block's channels by their
+  speakers and changing the output level and dialogue enhancement half way through. No frame is
+  refused, only a frame before a stream's first I-frame comes out empty, a stream ends in one short
+  block at most, and the output equals `decode()`'s configured the same way, sample for sample.
+  Pointed at a directory of local streams with `AC4DEC_API_STREAM_DIR`, the same test reports how
+  many decode and counts the refusals by reason. When phase D8 wrote it, before the immersive
+  element and the objects were decoded, it decoded 406 of DEE's 533 local streams and refused the
+  127 5.1.4 ones by name, and of 13 third-party streams it decoded 12 and refused the A-JOC one;
+  [The decoder's objects](#the-decoders-objects) has the count now.
 - **By block**: `decode_by_block()` hands over the same samples as `decode()` in blocks of 256, on
   2 048-sample frames and on the 2 000-sample and alternating 1 601/1 602-sample frames of 24 and
   29.97 fps, and a change of layout hands over what it holds first, as a shorter block.
@@ -1260,7 +1361,8 @@ named otherwise.
   storage too small, and reads an escaped frame size. `fuzz_ac4_parse` holds it to `ac4::scan` on
   every input, at two storage sizes, and `fuzz_ac4_decode` changes the output and the presentation
   half way and alternates `decode()` with `decode_by_block()`.
-- **The package** (`tools/checks/check_install_consumer.sh`, in CI's Linux LLVM leg): each tree it
+- **The package** (`tools/checks/check_install_consumer.sh`, in the shared-library pass of the
+  Linux LLVM leg, which runs nightly): each tree it
   installs, with both linkages, shared and static-only, is consumed by a C++ program that decodes a
   committed stream through the installed inspector and decoder, linked through
   `find_package(ac3forge)` for each exported decoder target and again through
@@ -1286,8 +1388,11 @@ Four items of the review of #700 have a test each, and each test failed before i
   contents names is refused as unread (`tests/ac4dec/test_ac4dec_decoder.cpp`,
   `tests/ac4dec/test_ac4dec_frames.cpp`).
 - **Android, WebAssembly and the Python wheel** compiled the AC-4 libraries and linked none of
-  them. Each turns `AC3FORGE_BUILD_AC4` off until phase I4 binds them, and
-  `tools/checks/test_ac4_build_configurations.py` reads the three configurations.
+  them. Each turned `AC3FORGE_BUILD_AC4` off until phase I4 bound them, and
+  `tools/checks/test_ac4_build_configurations.py` reads the configurations: the wheel and the
+  WebAssembly module now link AC-4, the Android app builds the libraries and its CMake wrapper
+  links none, and the minimum-footprint profile takes the decoder through
+  `AC3FORGE_MINIMAL_AC4`.
 
 ### The decoder's objects
 
@@ -1330,15 +1435,67 @@ under "Object audio syntax", "A-JOC" and "Object audio metadata and the ISF rend
 - **Rendered** (`tests/ac4dec/test_ac4dec_object_render.cpp`): `ac3cli decode`'s rendering, through
   the layout renderer Hearth plays E-AC-3's objects with, puts each tone at each speaker at the sum
   of the objects' components at the gains the layout renderer gives their positions, frame by frame,
-  in full and core decoding, as object 0 crosses the front from the left wall to the right. Listening
-  to it is the user's, on ten-second versions the test writes with `AC4DEC_WRITE_LISTENING`.
+  in full and core decoding, as object 0 crosses the front from the left wall to the right. Whether
+  it sounds right is for a listener to judge, on ten-second versions the test writes with
+  `AC4DEC_WRITE_LISTENING`.
 - **No second decoder.** librempeg (git 2026-09-24) refuses every object substream ("object coding
   is not implemented"), Chromium's and the eight constructed ones alike, and DEE's A-JOC encoder
   takes no master this project writes, so no reading here rests on another decoder.
 
+### The decoder in float, and on small targets
+
+Phase D14a gives the decoder's arithmetic a scalar seam: `AC3FORGE_DECODE_SCALAR` builds the
+transforms, QMF banks and the A-SPX, A-CPL, A-JCC and A-JOC kernels of `src/ac4core` and
+`src/ac4dec/src/pcm` in `double`, the default, or `float`. The encoder is `double` in every build,
+and no fixed-point tier exists for AC-4 yet. What is checked:
+
+- **The float decode against the double one** (`tools/checks/check_ac4_decode_scalar_snr.py`, in
+  FFmpeg Validate; the floors are in `tests/golden/ac4dec/scalar-agreement.json`): every committed
+  AC-4 stream, 67 with the GUI's fixture, is decoded by a float CLI and a double CLI, and the float
+  decode is held to the double one in two regions, below the lowest A-SPX crossover and above the
+  highest, by the worst channel's SNR over half-overlapped Hann frames of 2 048 samples. When the
+  floors were pinned, below the crossover the two agreed to 109.4 to 136.0 dB (132.1 to 136.0 on
+  DEE's streams), and above it to 37.5 to 102.1 dB where a stream has A-SPX (47.2 to 102.1 on
+  DEE's; the constructed streams, whose payloads are random, and the A-SPX object streams are the
+  low end). The floors are 3 dB under those figures. The high band is where the builds part, and
+  the cause is open: accumulating the predictor's covariances in `double` in a float build moved no
+  figure by 0.1 dB on eight of the streams, so the prediction is not it. MSVC, GCC 16 and Clang 22
+  agree to 0.1 dB. The check says the two builds agree, not that either is right.
+- **The scorers with a float CLI**: FFmpeg Validate runs `score_ac4_decode.py` and
+  `score_ac4_encode.py` again with a float CLI, at the same pins, and the encoder's streams are
+  decoded by the float decoder.
+- **What the scalar work moved**: 61 of the 66 streams under `tests/golden` decode with a few
+  samples different in the float32 output, by at most 2.3e-10 (about −193 dBFS), and the
+  encoder's output is byte-identical on the five encodes checked, so nothing of the encoder's was
+  re-pinned.
+- **The bare-metal probe** (`tools/checks/run_baremetal_probe.sh --ac4`, in the ESP lane's
+  `build-footprint` job, which the run after a merge lights for a change to the lane's trees
+  ([CI lane partitions](ci-lanes.md)) and the nightly run lights always): five committed streams
+  (2.0 from DEE with A-SPX, 2.0 constructed in A-CPL, 5.1 from DEE, 5.1
+  constructed in A-CPL and DEE's 5.1.4 tones; `apps/baremetal/ac4_fixture.hpp`, made by
+  `tools/generators/gen_baremetal_ac4_fixture.py`) decode in float on the Cortex-M3 leg under QEMU
+  with each channel's level checked, and the image, the peak heap, the allocations a frame, the
+  stack and the bytes retained after teardown are held to ceilings about a tenth over the measured
+  figures; `--icount` counts instructions a frame the same way. The PCM of every fixture is
+  bit-identical between the x86-64 host (GCC 16, SSE) and the Cortex-M3 (soft float, the generic
+  seam), and the hashes are pinned in `tests/golden/ac4-probe-pcm-hashes.json`
+  (`tools/checks/check_probe_hashes.py`). The `linux-gcc` leg also runs the probe natively on
+  x86-64 after a merge and in the nightly run, and holds its hashes to the same pins. The rows are
+  in [Performance trend](performance-trend.md#the-ac-4-decoder).
+- **On the ESP32-P4** (phase D14b, `CONFIG_AC3FORGE_AC4`): no QEMU runs the P4, so CI builds
+  `hearth_sink` with AC-4 in it and does not run it, and the checks are on a board. Twenty plays
+  of DEE's streams (2.0, 5.1 and 5.1.4 in full decoding, the three 5.1.4 modes in core decoding and
+  the converter's four frame rates) measured time, heap, stack and a PCM hash. The board's float
+  output equals the probe's pinned hashes on the five fixtures, and the host's on 15 of the 20
+  plays and all six core plays; it differs on the five plays with companding, where `std::pow` and
+  `std::exp2` at `float` give a different last bit in each C library. [ESP32-P4](platforms/bare-metal/esp32-p4.md#ac-4)
+  has the times: the P4 decodes 2.0 in SIMPLE and in A-SPX mode in real time and nothing wider.
+  AC-4 on the S3 and on the C6 is not built.
+
 ### The encoder
 
-`src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1 at 48 kHz at every
+`src/ac4enc` writes AC-4 from the same two standards: mono, stereo, 5.0 or 5.1, and 5.0.4 or 5.1.4
+in the immersive element (phase E8), at 48 kHz at every
 frame rate of Part 1 Table 83 or at 44.1 kHz at `frame_rate_index` 13, at a constant, average or
 variable rate, with I-frames where a caller asks for them, the loudness values, DRC's decoder modes,
 the stereo downmix's values and dialogue enhancement, as one substream or as several in the
@@ -1350,11 +1507,14 @@ and 96 kbps: a downmix coded in the ASPX way and A-CPL's parameters, from which 
 the channels. 5.0 and 5.1 take the 5.X element in the one form DEE's streams have (`coding_config` 0
 and `2ch_mode` 0: L and R a pair, Ls and Rs a pair, C alone, the LFE); its other coding
 configurations, chosen frame by frame by the bits they save, 7.0 and 7.1 in the 7.X element,
-ASPX_ACPL_1 and A-CPL in stereo are experimental options. It shares
+ASPX_ACPL_1 and A-CPL in stereo, and 7.0.4 and 7.1.4 with the back pair, ASPX_ACPL_1 and A-JCC in
+the immersive element are experimental options. Objects, as an A-JOC substream or direct-coded, are
+an experimental option too (phase E9). It shares
 `src/ac4core`'s transforms, windows, codebooks, QMF banks and A-SPX tables and high frequency
 generator with the decoder, and writes the syntax through a transcription of the tables of its own.
-`ac3cli ac4-encode` writes it raw or in MP4, with an option for each setting. Nine checks stand
-behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exits):
+`ac3cli ac4-encode` writes it raw or in MP4, with an option for each setting. Ten checks stand
+behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E8's exits), and a
+paragraph on the objects follows them:
 
 - **Three transcriptions agree.** The encoder records each element it writes in the shape the decoder
   records what it reads. The encoder's tests and the fuzz target `fuzz_ac4_encode` require the
@@ -1365,7 +1525,8 @@ behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exit
   `tools/references/ac4_syntax.py`'s through `ac3cli`'s `syntax-trace=` option; it draws mono to
   5.1 and the 7.X layouts, the codec mode the rate picks, SIMPLE or ASPX forced or an A-CPL mode
   forced, the experimental tools, every frame rate, the rate modes, the I-frame options and each
-  metadata option, and its `--check-envelope` holds each A-CPL mode's least rate. A refusal of a rate
+  metadata option, in a case in eight the immersive layouts in each of their codec modes, and in a
+  case in ten one to twelve objects, and its `--check-envelope` holds each A-CPL mode's least rate. A refusal of a rate
   as too low for the frame rate and metadata counts only for frames under 400 bytes, and only if the
   same case at 400 bytes a frame encodes.
   The fuzz target reaches every A-CPL mode too, and phase E6's substreams and presentations: each
@@ -1379,8 +1540,8 @@ behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exit
   that gave the substream taking what the others leave less than its least frame, and a frame
   between I-frames sized for a dialogue stem's parameters where it falls back to the last frame's,
   neither of which the encoder could then write; each substream now keeps its least frame first,
-  and a frame is sized for the metadata it falls back to. FFmpeg Validate runs it for 120 seconds
-  on each pull request, and the nightly fuzz workflow for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
+  and a frame is sized for the metadata it falls back to. FFmpeg Validate, a nightly job, runs it
+  for 120 seconds, and the Fuzz workflow's `Encoder Space Nightly` job for 900. The A-SPX writer's tests read every interval class, balance, sinusoids and both kinds of
   interleaving back through the decoder's parser, and hold the encoder's reading of the interval
   borders, envelope resolutions and noise borders to the parser's. The encoder undoes the three, four
   and five channel matrices as the 2 x 2 steps they cascade, in a transcription of Tables 178 and 179
@@ -1452,7 +1613,8 @@ behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exit
   120 fps music at 128 kbps 0.63 to 0.87 dB over and 0.09 to 0.18 under, where the frames' fixed side
   information takes five times its share of the rate. An average-rate stream never needs more than
   the input buffer it signals: `test_ac4enc_rates.cpp` starts a decoder at every frame and runs its
-  buffer. Through the decoder's output processing (`gain_ac4_decode.py --encoder`, in CI) the output
+  buffer. Through the decoder's output processing (`gain_ac4_decode.py --encoder`, in FFmpeg
+  Validate) the output
   level, each downmix and dialogue enhancement's gains on the encoder's streams equal their formulas
   to 0.01 dB. MediaInfo reads every loudness, DRC, downmix and dialogue enhancement field of 23
   further configurations as the encoder wrote it, and the table of contents' `wait_frames`, frame
@@ -1477,7 +1639,8 @@ behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exit
   substream, each presentation is selected as configured, by `presentation_id`, language, associated
   audio and level, and every mix comes out at its formula's gains to 0.01 dB: g_dialog against each
   dialogue's cap, pans, group gains, the main audio's scaling under associated audio, and each hybrid
-  method's waveform beside its parameters. `mix_ac4_decode.py`, in CI, fits the encoder's 46 mixes to
+  method's waveform beside its parameters. `mix_ac4_decode.py`, in FFmpeg Validate, fits the
+  encoder's 46 mixes to
   their formulas with 120 dB or more left over. A table of refusals holds the rules: dialogue or
   associated audio with a channel the main audio lacks but for mono, 3.0 where Part 1 4.3.3.7.1 does
   not allow it, more than 64 presentations, a `presentation_id` twice, a level below the tracks' or
@@ -1512,8 +1675,23 @@ behind it (`planning/ac4.md`, the encoder's ladder, and phases E5's to E7's exit
   `presentationN-` key), and `test_cli_options.cpp` holds each spelling's parse and each malformed
   value's refusal. `tools/checks/check_install_consumer.sh` installs each build and encodes a
   second of tone through the installed encoder, by CMake and by pkg-config, static and shared,
-  reading every sync frame and its CRC back with the installed inspector; the ABI gate holds
-  `libac4enc.so`'s exports to the header's API (`tools/ci/abi-allowlist/libac4enc.so.txt`).
+  reading every sync frame and its CRC back with the installed inspector; the ABI gate compares
+  `libac4enc.so`'s exports with the header's API (`tools/ci/abi-allowlist/libac4enc.so.txt`), and
+  is advisory until the API freeze. Both run nightly.
+- **The immersive element** (phase E8, `tests/ac4enc/test_ac4enc_immersive.cpp`). 5.0.4 and 5.1.4
+  are written in the immersive element as DEE writes it: SCPL from 640 kbps, ASPX_SCPL from 480
+  and ASPX_ACPL_2 below, each coupled pair coded as its sum and difference; 7.0.4 and 7.1.4 with
+  the back pair, ASPX_ACPL_1 and A-JCC are experimental options. Each stream reads back with the
+  trace the encoder recorded, every channel's tone decodes on its own channel in full decoding and
+  at the core's gain in core decoding, in each mode, and the height downmix sends DEE's custom
+  downmix data, which the renderer applies. `score_ac4_encode.py` holds 12 immersive legs, tones
+  and music at 5.1.4 from 192 to 768 kbps and ASPX_ACPL_1 and A-JCC by name, to floors pinned at the
+  first measurement, in full and in core decoding, in FFmpeg Validate. Against DEE's 5.1.4 legs from
+  192 to 768 kbps (`score_ac4_encode.py --gold`, locally) ViSQOL is within 0.035 of DEE's or over
+  it on music, film and speech, and the SNR below the crossover up to 10.5 dB under DEE's from 192
+  to 320 kbps and within 1.4 dB of it or over it from 384; on sweeps it was 0.03 to 0.18 under
+  until phase E10, described under the race below. librempeg does not decode the immersive
+  element.
 - **The race against DEE** (`score_ac4_encode.py --gold`, locally): phase G0's 2.0 legs of music,
   speech and tones from 48 to 768 kbps, encoded again here in the mode DEE writes at each rate, and
   both decoded by the decoder. In ASPX, from 48 to 144 kbps, ViSQOL is within 0.03 of DEE's or above
@@ -1616,10 +1794,13 @@ Phase I2 plays AC-4 in Hearth through the decoder's public API. The tests are in
 
 - **Every committed stream**: the engine plays each committed stream the decoder decodes onto a
   layout with a slot for each speaker, and its output equals `ac4::Decoder`'s own `decode()` of
-  the same frames, sample for sample: 46 of the 49. The other three, the 5.1.4 legs, are refused
-  when they open, with the decoder's reason (the immersive channel element, phase D9). Each unit
-  lasts what the decoder puts out for it, 1 601 or 1 602 samples at 29.97 fps as Table 47 gives
-  them, and a seek to 500 ms plays on within 1e-6 of an unbroken decode.
+  the same frames, sample for sample. A stream none of whose presentations the build decodes is
+  refused when it opens, with the decoder's reason, and the test reports how many played and why
+  the rest did not. When phase I2 wrote it that was 46 of 49, the three refused being the 5.1.4
+  legs, which the decoder did not yet read (phase D9); the test requires at least the 42 phase D8
+  decoded through the API. Each unit lasts what the decoder puts out for it, 1 601 or 1 602
+  samples at 29.97 fps as Table 47 gives them, and a seek to 500 ms plays on within 1e-6 of an
+  unbroken decode.
 - **Each control**, on streams of tones the encoder writes with the values the control reads: the
   output level against 2^((Lout − dialnorm) / 6) at −31, −24, −17 and −6 dBFS; dialogue
   enhancement on the centre, up to the stream's cap; Lo/Ro, Lt/Rt with its surrounds' sign, the
@@ -1635,9 +1816,9 @@ Phase I2 plays AC-4 in Hearth through the decoder's public API. The tests are in
 - **The gain script through the engine**: `ac3hearth-render` plays an item through the player,
   session and stream decoder into a WAV file, and `tools/checks/gain_ac4_decode.py --engine` holds
   it to the formulas it holds `ac3cli decode` to, with each of ac3cli's options given as the
-  Decoder page's setting for it. On the 13 committed legs and the encoder's 11, every gain is
-  within 0.0001 dB of its formula and what it leaves is 148 dB or more under the output; the Hearth
-  CI job runs both.
+  Decoder page's setting for it. On the committed legs and the encoder's, every gain was within
+  0.0001 dB of its formula and what it left was 148 dB or more under the output when phase I2
+  wrote it; the Hearth CI job runs both, after each merge and nightly.
 - **To a network group** (`tests/hearth/test_engine_network_group.cpp`): the engine plays an AC-4
   item to a group of a player@v1 sink, which is sent the decoded PCM, and a test sink on the
   extension role that lists AC-4, which is sent each sync frame as a burst and decodes it. The
@@ -1673,14 +1854,18 @@ covered where it's most relevant rather than repeated here:
   Atmos-capable AVR](platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) — every
   stream shape tried, including signed Atmos with height channels, locked correctly at zero
   underruns.
-- [Android (Shield Atmos Demo)](platforms/android.md#what-has-and-has-not-been-verified) — the
-  most thoroughly hardware-verified platform in the project: real E-AC-3/Atmos passthrough over
-  HDMI to a real AV receiver, with object audio confirmed reconstructable (not just the panned
-  bed). Verification specific to this one Android app on this one Shield + receiver pair, not a
-  general claim about Android as a platform.
+- [Android (Shield Atmos Demo)](platforms/android.md#what-has-and-has-not-been-verified) — real
+  E-AC-3/Atmos passthrough over HDMI to a real AV receiver, with object audio confirmed
+  reconstructable (not just the panned bed). Verification specific to this one Android app on this
+  one Shield + receiver pair, not a general claim about Android as a platform.
 - [AC-4 passthrough](library/muxing-and-sinks.md) — no receiver found accepts AC-4, so no AC-4
-  burst has reached hardware; ALSA's path runs against ALSA's `null` device, and Windows, PipeWire
-  and macOS cannot send AC-4 at all.
+  burst has reached hardware; ALSA's and Android's paths send the bursts as opaque data (ALSA's
+  runs against ALSA's `null` device), and Windows, PipeWire and macOS cannot send AC-4 at all.
+  The AC-4 decoder on an ESP32-P4 board is checked on hardware ([above](#the-decoder-in-float-and-on-small-targets)).
+- ESP32 boards ([S3](platforms/bare-metal/esp32-s3.md), [P4](platforms/bare-metal/esp32-p4.md),
+  [C6](platforms/bare-metal/esp32-c6.md)) — the decoders and the Sendspin sink are measured on
+  boards; those pages give the boards, the figures and what only QEMU covers, and QEMU runs no P4
+  or C6.
 - [Atmos & JOC](concepts/atmos-joc.md#two-limitations) — Dolby's own decoder gates object
   decoding on a keyed authenticity tag; the signer ships in-tree (`ac3::signing`) but this
   project ships no key for it, so its streams are unsigned unless an operator supplies one.

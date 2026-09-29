@@ -8,7 +8,7 @@ AC-3, E-AC-3 or the JOC/Atmos object layer, and takes already-rendered PCM in, t
 
 **Why a writer exists at all.** IAMF's codec list is Opus, AAC-LC, FLAC and LPCM — E-AC-3 can
 never be carried inside it. This is therefore a decode → rewrap bridge rather than a new encoder
-output, phase 1 of three. A caller decoding a stream that is
+output. A caller decoding a stream that is
 already coded as a 7.1.4 channel layout (`ac3::plan::LayoutId::k714` — an independent substream
 plus two E-AC-3 dependents) gets the 12 discrete channels straight off
 `ac3::Eac3Decoder::decode_access_unit`; this module needs them permuted into its own channel
@@ -97,17 +97,17 @@ from.
   `iamf` `IASampleEntry` wrapping an `iacb` `IAConfigurationBox` (the four Descriptor OBUs above),
   and `mdat` holding one IA Sample per frame.
 
-## What phase 1 does not cover
+## What it does not cover
 
 - **Object elements.** IAMF v1.1.0 has no object-based audio element type at all; v2.0's
-  working-group-approved draft (2026-07-27) adds one, but is not final. Phase 2, once it is.
-- **An OBU reader.** Nothing in this repository can read an IAMF file back yet — phase 3.
+  working-group-approved draft (2026-07-27) adds one, but is not final.
+- **An OBU reader.** Nothing in this repository can read an IAMF file back.
 - **The standalone raw-OBU representation** (IAMF §5) — only the ISO-BMFF encapsulation (§6) is
   implemented; the underlying OBU bytes are identical either way, so adding the bare form later
   needs no change to `obu_detail.hpp`.
 - **No Parameter Block OBUs, no Temporal Delimiter OBU, no trimming** — none are mandatory for a
   single static layer (see `iamf/iamf.hpp`'s own header comment for the citations), and this
-  phase does not need them.
+  writer does not need them.
 - **A fragmented or live writer.** `iamf::mux()` is batch-only, matching where
   `mp4::mux`/`matroska::mux` themselves started.
 
