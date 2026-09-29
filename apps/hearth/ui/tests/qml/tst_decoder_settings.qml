@@ -100,6 +100,21 @@ TestCase {
         compare(HearthController.decoderSettings.mode, before);
     }
 
+    // Two keys written in one turn of the event loop, each alone: the second
+    // builds on the first as requested, not on an engine status that has not
+    // caught up with it, and decoderSettings shows both at once.
+    function test_twoWritesInOneTurnBothLand() {
+        setAndVerify("dualMono", "both");
+        setAndVerify("concealment", "repeatFade");
+        HearthController.setDecoderSettings({ dualMono: "first" });
+        HearthController.setDecoderSettings({ concealment: "mute" });
+        compare(HearthController.decoderSettings.dualMono, "first");
+        compare(HearthController.decoderSettings.concealment, "mute");
+        wait(500);
+        compare(HearthController.decoderSettings.dualMono, "first");
+        compare(HearthController.decoderSettings.concealment, "mute");
+    }
+
     // DecoderPage.qml's own "01 AC-3 / E-AC-3 · AC-4" switch - the one
     // control on this page reachable by name that this file does not use
     // for anything else, so it is worth its own test rather than only being
