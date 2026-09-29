@@ -192,14 +192,13 @@ def bump_conan(root: Path, plan: BumpPlan, *, dry_run: bool) -> None:
 
 _WINGET_INSTALLER_TEMPLATE = """\
 # Points at the win64.zip release asset (.github/workflows/release.yml's
-# windows-msvc leg), not an NSIS .exe: this release didn't produce one
-# (makensis wasn't on the runner - see cmake/Packaging.cmake), and the zip
-# already carries both end-user binaries (bin/ac3cli.exe, bin/ac3gui.exe -
+# windows-msvc leg) rather than an NSIS .exe: tools/release/bump_manifests.py
+# renders this zip shape and never downloads the .exe (docs/releasing.md#winget-manifest
+# says how a release that ships an installer is converted by hand). The zip
+# carries both end-user binaries (bin/ac3cli.exe, bin/ac3gui.exe -
 # CPack's "runtime" component, see docs/releasing.md#what-gets-published).
 # InstallerType zip + NestedInstallerType portable installs straight from
-# that archive with no separate installer to build - see
-# docs/releasing.md#winget-manifest for what changes this if a real NSIS
-# installer becomes available for a future release.
+# that archive with no separate installer to run.
 # yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.12.0.schema.json
 PackageIdentifier: iainchesworthlabs.ac3forge
 PackageVersion: {version}
@@ -257,13 +256,14 @@ Description: >-
   ac3forge is a clean-room C++23 implementation of the AC-3 (ATSC A/52, "Dolby Digital"),
   E-AC-3 ("Dolby Digital Plus") and AC-4 codecs, including a spatial object layer for
   Atmos-style authoring and decode. This package installs ac3cli (the command-line
-  encoder/decoder, which also reads and writes AC-4) and ac3gui (the Qt6 desktop application,
-  which does AC-3 and E-AC-3) as portable executables.
+  encoder and decoder) and ac3gui (the Qt6 desktop application) as portable executables;
+  both encode and decode AC-3, E-AC-3 and AC-4.
 Moniker: ac3forge
 Tags:
   - audio
   - codec
   - ac3
+  - ac4
   - dolby-digital
   - atmos
 ReleaseNotesUrl: {release_notes_url}

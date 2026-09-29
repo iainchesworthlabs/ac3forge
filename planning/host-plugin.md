@@ -1,13 +1,31 @@
 # A host plugin: what one could do, which formats are open, and what shipping one takes
 
-!!! note "Status as of 2026-09-08: a study, not started and not decided"
-    Written 2026-09-07. No decision on this page has been taken and no code exists for it.
-    Read Part 1 as a capability survey; Part 2 is what would follow if the survey is accepted.
+!!! note "Status as of 2026-09-30: a study, still not started and not decided"
+    Written 2026-09-07. No decision on this page has been taken and no code exists for it: there
+    is no plugin target or `AC3FORGE_BUILD_ASSAY` option, the library gaps the study names are
+    both open (`LoudnessMeter` still keeps one double per 100 ms and its getters still scan the
+    whole history, and there is no `encode_frame_into()`), and the ROADMAP lists the plugin as a
+    feasibility study only. Read Part 1 as a capability survey; Part 2 is what would follow if the
+    survey is accepted.
+
+    Two things have changed around it. The library also encodes AC-4 now (phases E1 to E10 of
+    [the AC-4 plan](ac4.md)). Its encoder has the shape of the others as a host sees it, spans in
+    and an owning vector out (`ac4enc::Encoder::encode` returns `std::vector<EncodedFrame>`), runs
+    in `double` throughout and has no worst-case block-time figure, so an AC-4 encode plugin would
+    sit behind the same unmade measurement as the AC-3 and E-AC-3 ones; the study's answer is
+    unchanged. And the family's name is to change: phase N1 of the AC-4 plan renames `ac3forge` to
+    `iclforge` (see [the recasting plan](recasting.md)). The plugin's identifiers freeze on the first
+    release, and the CLAP plugin id proposed below, `com.iainchesworthlabs.ac3forge.assay`, carries
+    the family name (the VST3 class UID and the AU codes are chosen once and do not), so the family
+    name should be settled first. Nothing has shipped, so nothing is frozen yet. The names and
+    counts below are those of 2026-09-07, and where the study says "fourth member" it means the
+    fifth: Hearth became the fourth on the day this was written
+    ([the appliance plan](player-appliance.md#which-member-it-belongs-to)).
 
     The library has C, Python, Rust and npm bindings and no form a DAW, an NLE or a media
     pipeline can load. This page asks first whether a useful plugin is possible at all
-    ([Part 1](#part-1-the-capability-study)), and then plans the one Part 1 recommends
-    ([Part 2](#part-2-the-plan)). It keeps the shape of
+    ([Part 1](#part-1--the-capability-study)), and then plans the one Part 1 recommends
+    ([Part 2](#part-2--the-plan)). It keeps the shape of
     [the family recasting](recasting.md) and [the Crucible promotion](../docs/crucible/design/promotion.md):
     design sections saying what changes and why, phases carrying an exit criterion and how it is
     verified, a [Decisions](#decisions) section listing the open questions, and a
@@ -35,7 +53,7 @@ is the frame that says how an encoded stream reaches something that renders it.
   unconditionally, for the reason in [Object audio](#object-audio-is-where-it-stops). That
   matters less than it looks: objects still cross the transport, because they travel inside the
   E-AC-3 bitstream; a plugin is simply not a place they can enter.
-- A **metering** plugin — what [Part 2](#part-2-the-plan) actually plans — is **not a node at
+- A **metering** plugin — what [Part 2](#part-2--the-plan) actually plans — is **not a node at
   all**. It measures a stream rather than producing, carrying or rendering one, which makes it an
   instrument, beside the delivery-QC report rather than beside Crucible.
 
@@ -326,9 +344,9 @@ The recommendation is therefore:
 
 - **Type: metering and QC.** It is the only candidate the library supports today, it needs no
   encoder on the audio thread, and it is the one whose value does not depend on a format feature
-  that does not exist. It also puts the project's loudness and QC instruments — which are
-  unusually complete, including BS.1770-5 Annex 3 wide layouts and named broadcast presets — in
-  front of people who cannot use a CLI.
+  that does not exist. It also puts the project's loudness and QC instruments, which include
+  BS.1770-5 Annex 3 wide layouts and named broadcast presets, in front of people who cannot use a
+  CLI.
 - **Formats: CLAP first, VST3 alongside it.** Both are MIT as of 2026-09-07, both have a
   command-line validator that can run in CI, and both build on all three platforms the project
   already targets. CLAP is first because `clap-validator` is the easier CI citizen and the
@@ -553,6 +571,12 @@ The eleven `_build.yml` matrix legs today are Windows MSVC, Windows LLVM (clang-
 MSVC arm64, Linux GCC, Linux LLVM, Linux GCC arm64, Linux LLVM arm64, Linux LLVM ASan+UBSan,
 Linux LLVM TSan, macOS LLVM and macOS LLVM x64.
 
+*This describes the CI of 2026-09-07. The legs are now defined in `_ci-windows.yml`,
+`_ci-linux.yml` and `_ci-macos.yml`, which `_build.yml` calls, and since 2026-09-29 a pull request
+runs `pr-gate.yml` and the legs run after the merge ([CI for many
+agents](../docs/ci-agentic.md)). An `assay: true` flag would be a field of those legs, and the
+"Cost" paragraph below would have to be re-derived against the gate.*
+
 **Proposed: an `assay: true` flag on four legs**, matching how `crucible: true` is placed
 (`_build.yml:329,342,430,487`):
 
@@ -604,7 +628,7 @@ never change with it.
 ### 9. Documentation
 
 A new **Assay** tab, making eight, placed after Crucible so the nav reads library → tools →
-application → plugin:
+application → plugin (the nav has ten top-level entries on 2026-09-30, Hearth's tab among them):
 
 | Page | Contents |
 |---|---|
@@ -785,6 +809,8 @@ Each phase has an exit criterion and says how it is verified.
 
 #### Phase 0: the decisions
 
+**Status: not started.** No decision has been recorded on this page or elsewhere.
+
 Nothing is built until [Decisions](#decisions) 1, 2 and 3 are taken — the name, whether there is
 a fourth member, and which formats. Every identifier in
 [section 1](#1-the-name) freezes on first release and several are derived from the name.
@@ -793,6 +819,9 @@ a fourth member, and which formats. Every identifier in
 **Verified by:** this page saying which option was taken and on what date.
 
 #### Phase 1: the library gap
+
+**Status: not built.** `LoudnessMeter` still appends one double per 100 ms block to `block_power_` and
+to `short_term_power_history_`, and `integrated_lkfs()` and `loudness_range()` still scan the whole history.
 
 Bound `LoudnessMeter`'s history and make its getters cheap
 ([section 4](#4-what-it-builds-on)): a fixed-cost integrated statistic and a bounded structure
@@ -807,6 +836,8 @@ multi-hour input confirming memory is flat.
 
 #### Phase 2: the core, with no plugin in sight
 
+**Status: not built.** There is no `ac3assay_core` and no `[assay]` test tag.
+
 `ac3assay_core`: samples in, measurements out, no format dependency and no UI.
 
 **Exit:** the core's numbers match `ac3cli`'s on the same fixtures, to the last digit either
@@ -815,6 +846,8 @@ reports.
 corpus and compare, so a divergence fails CI rather than being discovered in a DAW.
 
 #### Phase 3: CLAP, then VST3
+
+**Status: not built.** No CLAP or VST3 code exists, and neither SDK is vendored.
 
 The two wrappers, and the UI. CLAP first because its validator is the simpler CI citizen.
 
@@ -825,6 +858,9 @@ into `docs/assay/hosts.md`.
 — which is stated as hand-checked, since no CI job can produce it.
 
 #### Phase 4: the encoder question decides itself
+
+**Status: not built.** There is no worst-case block-time probe and no `encode_frame_into()`; the AC-4 encoder
+(`ac4enc::Encoder::encode`) returns an owning vector too, so the phase would cover it as well.
 
 Not "build an encode plugin". **Measure**, and let the numbers answer:
 
@@ -844,6 +880,8 @@ the measurement is worth having either way: it is the same number Crucible's fra
 implicitly relying on and has never had stated.
 
 #### Phase 5: macOS, when DR6 allows
+
+**Status: not started.** DR6, the signing certificates, is still blocked ([ROADMAP.md](../ROADMAP.md#blocked)).
 
 The macOS bundle layouts, and AU only if DR6 has landed and
 [decision 4](#decisions) says to.
@@ -917,7 +955,7 @@ code is finished.
 ## Decisions
 
 The open questions. Each carries options, a recommendation and the cost of taking
-it. **None of these is taken as this page is written.**
+it. **None of these is taken as this page is written**, and none had been on 2026-09-30.
 
 1. **The name.** (a) AC3Forge Assay; (b) AC3Forge Gauge; (c) AC3Forge Touchstone; (d) AC3Forge
    Meter. **Recommend (a)** — it names the test for a metal's purity, sits in the forge and
