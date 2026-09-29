@@ -1,8 +1,9 @@
 # Linux
 
-ac3forge builds and is tested on Linux today, on both GCC and Clang, CLI and GUI alike. This
-page covers what is specific to Linux; for the full preset reference, options list and
-troubleshooting, see [Building from source](../building.md). Crucible's Linux-only host tooling
+ac3forge builds and is tested on Linux on both GCC and Clang, CLI and GUI alike: Linux GCC in
+every pull request, and the other legs in the run after a merge to main or the nightly run (see
+[CI for many agents](../ci-agentic.md)). This page covers what is specific to Linux; for the full
+preset reference, options list and troubleshooting, see [Building from source](../building.md). Crucible's Linux-only host tooling
 (live under [`apps/linux/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/linux/README.md))
 is separate from the application in `apps/crucible/`.
 
@@ -10,13 +11,14 @@ is separate from the application in `apps/crucible/`.
 
 | | |
 |---|---|
-| What runs here | The library, `ac3cli`, `ac3gui` and Crucible |
-| Build | GCC and Clang, x64 and arm64, all four required and green in CI |
+| What runs here | The library, `ac3cli`, `ac3gui` and Crucible. Hearth (`ac3hearth`) builds and is packaged, and has not been run on Linux |
+| Build | GCC and Clang on x64, GCC on arm64: Linux GCC in the pull-request gate, all three after each merge to main. Clang on arm64, the two sanitizer legs and the AppImage run nightly |
 | GUI | Opt-in at build time (`-DAC3FORGE_BUILD_GUI=ON`), not on by default as it is on Windows |
 | Audio backends | ALSA or PipeWire, selected at configure time. Crucible requires PipeWire |
 | Bitstream to a real receiver | Confirmed on one machine, a Raspberry Pi 4B: over ALSA on 2026-08-20, and over PipeWire on 2026-09-05, the receiver's own front panel read both times |
 | Other Linux hardware | Untried. Treat the Pi as two confirmed configurations on one box, not as Linux generally |
-| Packaging | DEB and RPM, plus an AppImage — see [Packaging](#packaging) |
+| AC-4 | Decoded and encoded by `ac3cli`, `ac3gui` and Hearth. ALSA carries AC-4 bursts (IEC 61937-14), tested against ALSA's null device; PipeWire has no AC-4 codec, and no receiver is known to accept AC-4 — see [AC-4](#ac-4) |
+| Packaging | TGZ, DEB and RPM, plus an x86_64 AppImage — see [Packaging](#packaging). v0.10.0-beta.1, the latest release, predates the AC-4 decoder and encoder |
 
 The table below separates x86_64 from aarch64 and records where the evidence comes from. The
 hardware-confirmed aarch64 entries are measurements from one Raspberry Pi 4B.
@@ -116,12 +118,19 @@ frame, so the sink queues bursts of different lengths at the 1000/1001 frame rat
 names the codec instead, and its IEC 958 codec list (`spa/param/audio/iec958.h`, 1.6) has no
 AC-4, so the PipeWire backend refuses AC-4 with `kUnsupportedFormat`. Both refuse AC-4 HBR16,
 which needs the eight-channel high-bit-rate link neither opens. The ALSA path is tested against
-ALSA's `null` device; no receiver found so far accepts AC-4, so none has been tried.
+ALSA's `null` device (`tests/audio/test_alsa_null_backend.cpp`); no receiver found so far accepts
+AC-4, so none has been tried.
+
+So `ac3cli play` decodes an AC-4 stream and plays it as PCM, the way `monitor` does, and `ac3cli
+live` with `codec=ac4` gives a bitstream output a 5.1 AC-3 leg. `ac3cli spdif` writes AC-4's
+bursts to a WAV and `unspdif` reads them back. In the other direction the capture-side detector
+recognises AC-4 bursts as it does AC-3's, and `ac3cli record` then writes the AC-4 elementary
+stream; that is tested on synthetic carriers, and no capture device or receiver has produced one.
 
 ### What has and has not been verified
 
 !!! note "ALSA is hardware-confirmed via Raspberry Pi; PipeWire is not, anywhere"
-    The development loop itself — WSL2 Ubuntu 26.04 with GCC 15.2 and Clang 22.1 — is still
+    The development loop itself — WSL2 Ubuntu 26.04 with GCC 16 and Clang 22.1 — is still
     headless: ALSA with libasound present and absent and under ASan+UBSan with leak detection;
     PipeWire (libpipewire-0.3 1.6.2) with the selection forced via `-DAC3FORGE_WITH_ALSA=OFF
     -DAC3FORGE_WITH_PIPEWIRE=ON`, since WSL2's image has both sets of headers and ALSA wins by
@@ -206,7 +215,9 @@ sudo apt install qt6-base-dev qt6-base-dev-tools qt6-declarative-dev qt6-declara
 ```
 
 Other distros need the equivalent Qt6 base + declarative (QML/Quick) packages (Fedora:
-`qt6-qtbase-devel` / `qt6-qtdeclarative-devel`). See [GUI on Linux](../building.md#gui-on-linux)
+`qt6-qtbase-devel` / `qt6-qtdeclarative-devel`). Hearth's and Crucible's windows need Qt 6.8 or
+later and are skipped with a warning on an older kit; Hearth builds by default when Qt is found,
+and Crucible needs `-DAC3FORGE_BUILD_CRUCIBLE=ON` and PipeWire. See [GUI on Linux](../building.md#gui-on-linux)
 for the CMake warnings you'll see about unlinked QML plugins (harmless — a property of how
 distro-packaged Qt6 is built, not a missing dependency).
 
@@ -238,15 +249,21 @@ run packages whatever the tree was configured with — the GUI only if you opted
 releases run `pack-linux-gcc` and `pack-linux-gcc-arm64` for real, and CI configures those legs
 with `-DAC3FORGE_BUILD_GUI=ON`, so released Linux packages include `ac3gui`; a real arm64 `.deb`
 has also been produced and inspected on Raspberry Pi hardware (see
-[Raspberry Pi](raspberry-pi.md#verified-configuration)). See
+[Raspberry Pi](raspberry-pi.md#verified-configuration)). The packages split by component:
+`ac3forge` (`ac3cli` and `ac3gui`), `libac3forge0`, `libac3forge-dev` (`ac3forge-devel` as an
+RPM) and, from main on, `ac3forge-hearth`; Crucible's `ac3forge-crucible` comes from its own
+PipeWire pass. v0.10.0-beta.1, the latest release, has the first three for both architectures
+and the x86_64 AppImage; the Hearth and Crucible packages are in no release yet. See
 [Packaging](../building.md#packaging).
 
-A GUI-enabled package also installs `ac3gui.desktop` (`Exec=ac3gui %F`, `MimeType=audio/ac3;
-audio/eac3;`), an AppStream metainfo file, and a shared-mime-info fragment declaring the two media
-types against `*.ac3`/`*.ec3` — `apps/gui/packaging/linux/`, wired into `install()` behind
-`if(LINUX)` in `apps/gui/CMakeLists.txt`. Configure/build-verified only: nobody has installed the
-resulting `.deb`/`.rpm` on a real desktop and double-clicked an `.ac3` file to confirm the
-launcher fires.
+A GUI-enabled package also installs `ac3gui.desktop` (`Exec=ac3gui %F`), an AppStream metainfo
+file, and a shared-mime-info fragment declaring the two media types (`audio/ac3` and
+`audio/eac3`) against `*.ac3`/`*.ec3` — `apps/gui/packaging/linux/`, wired into `install()`
+behind `if(LINUX)` in `apps/gui/CMakeLists.txt`. `ac3gui.desktop` claims no media type, because
+Hearth is the default handler: `ac3hearth.desktop` in the `ac3forge-hearth` package
+(`apps/hearth/ui/packaging/linux/`) carries `MimeType=audio/ac3;audio/eac3;`. Nothing declares or
+claims AC-4. Configure/build-verified only: nobody has installed the resulting `.deb`/`.rpm` on a
+real desktop and double-clicked an `.ac3` file to confirm the launcher fires.
 
 ## AppImage
 
@@ -316,10 +333,9 @@ narrow.
 ### How this is verified
 
 Configure/build/package-verified in CI (the `linux-appimage` job in `.github/workflows/_build.yml`,
-which runs on every push, the same "standing smoke test of the packaging path" reasoning
-[windows.md](windows.md#packaging) gives for why `windows-msvc` packages continuously) — and, one
-step further than a plain `.deb`/`.rpm` gets, actually run: the same job then launches the built
-AppImage headlessly (`ac3gui --smoke`, `QT_QPA_PLATFORM=offscreen`) inside a **second, separate
+which runs in the nightly run and in a release, never in a pull request or the run after a merge)
+— and, one step further than a plain `.deb`/`.rpm` gets, actually run: the same job then launches
+the built AppImage headlessly (`ac3gui --smoke`, `QT_QPA_PLATFORM=offscreen`) inside a **second, separate
 container that never had Qt or a single build tool installed** — `debian:12-slim`, reached via
 Docker against the GitHub-hosted runner's own Docker daemon — and asserts it exits 0. That is the
 concrete answer to "does this actually run on a distro whose own Qt packages were never
@@ -342,28 +358,34 @@ access works exactly like a normal installed binary").
 
 ## CI
 
-`linux-gcc` and `linux-llvm` both run on every push and are **required**; both install a Qt6 kit
-and build and smoke-test `ac3gui` in addition to the CLI. Two sanitizer legs,
-`linux-llvm-asan-ubsan` (AddressSanitizer + UndefinedBehaviorSanitizer) and `linux-llvm-tsan`
-(ThreadSanitizer, over the `concurrency` ctest label only — `tests/audio/` plus
-`tests/cli/test_cli_live.cpp`), are also required and both stay **CLI-only on purpose**, to keep a
-Qt kit out of the sanitizer legs' install time. They are separate presets because the two runtimes
-are mutually exclusive: Clang refuses `-fsanitize=address,thread`.
+The pull-request gate builds and tests `linux-gcc`, and the run after a merge to main runs
+`linux-gcc`, `linux-llvm` and `linux-gcc-arm64` ([CI for many agents](../ci-agentic.md#the-tiers)).
+Each of those installs a Qt6 kit and builds and smoke-tests `ac3gui` in addition to the CLI. The
+nightly run adds the rest. Two sanitizer legs, `linux-llvm-asan-ubsan` (AddressSanitizer +
+UndefinedBehaviorSanitizer) and `linux-llvm-tsan` (ThreadSanitizer, over the `concurrency` ctest
+label only — `tests/audio/` plus `tests/cli/test_cli_live.cpp`), run only in the nightly run, and
+both stay **CLI-only on purpose**, to keep a Qt kit out of the sanitizer legs' install time. They
+are separate presets because the two runtimes are mutually exclusive: Clang refuses
+`-fsanitize=address,thread`. Some slow passes inside the plain legs are nightly-only too: the
+no-ALSA pass and the float32 and fixed-point variants on `linux-gcc`, the no-ALSA pass on
+`linux-gcc-arm64`, and the shared-library pass on `linux-llvm` (`deep_only` in
+`.github/ci/legs.jsonc`).
 
-Two more legs, `linux-gcc-arm64` and `linux-llvm-arm64`, run the same matrix on real ARM hardware
-(GitHub's `ubuntu-24.04-arm` hosted runner, not QEMU emulation) — see
-[Raspberry Pi](raspberry-pi.md), which is the hardware this arch target is validated
-against. `linux-llvm-arm64` also carries the Crucible pass, so the window, its Qt Quick suite and
-its `.deb` are built and checked on aarch64 as well as on x86_64 — aarch64 being the
-architecture Crucible's Linux half was verified on in the first place.
+Two arm64 legs, `linux-gcc-arm64` and `linux-llvm-arm64`, run the same matrix on real ARM hardware
+(GitHub's `ubuntu-24.04-arm` hosted runner, not QEMU emulation), the first after each merge and
+the second nightly — see [Raspberry Pi](raspberry-pi.md), which is the hardware this arch target
+is validated against. `linux-llvm-arm64` also carries the Crucible pass, so the window, its Qt
+Quick suite and its `.deb` are built and checked on aarch64 as well as on x86_64 — aarch64 being
+the architecture Crucible's Linux half was verified on in the first place.
 
-A fifth Linux leg, `linux-appimage`, is separate from all of the above: an `ubuntu:22.04`
-container (deliberately older than `ubuntu:26.04`) building `ac3gui`'s AppImage and then
-launching it inside a second container that never had Qt installed at all — see
-[AppImage](#appimage) above for what it builds and why.
+A separate job, `linux-appimage`, is nightly-only as well: an `ubuntu:22.04` container
+(deliberately older than `ubuntu:26.04`) building `ac3gui`'s AppImage and then launching it inside
+a second container that never had Qt installed at all — see [AppImage](#appimage) above for what
+it builds and why.
 
-The ALSA backend adds 15 tests of its own (`tests/backend/alsa/`) on top of the base suite: a
-Linux build with the GUI on and `libasound2-dev` absent runs the same suite as Windows, and ALSA
-adds those 15. `ctest --preset test-linux-gcc-debug` (or whichever preset matches your build)
-runs the full suite. See [Verified configuration](../building.md#verified-configuration)
+The ALSA backend has tests of its own (`tests/backend/alsa/`, `tests/audio/test_alsa_null_backend.cpp`
+and `tests/cli/test_cli_live_alsa.cpp`) on top of the base suite, and they run only in a build that
+selected ALSA: a Linux build with the GUI on and `libasound2-dev` absent runs the same suite as
+Windows without them. `ctest --preset test-linux-gcc-debug` (or whichever preset matches your
+build) runs the full suite. See [Verified configuration](../building.md#verified-configuration)
 for the full CI matrix.
