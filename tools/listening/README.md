@@ -13,7 +13,7 @@ been run, and ViSQOL's MOS-LQO — the closest thing here to a perceptual score
 
 | | |
 |---|---|
-| `gen_listening_stimuli.py` | builds the stimulus set: encodes with `ac3cli`, decodes everything with FFmpeg, aligns, blinds, and writes the trials key. Needs numpy and an `ffmpeg` binary. |
+| `gen_listening_stimuli.py` | builds the stimulus set for every leg of `tests/golden/external-baseline/manifest.json`: encodes with `ac3cli`, decodes everything with FFmpeg, aligns, blinds, and writes the trials key. Needs numpy and an `ffmpeg` binary. |
 | `score_listening_test.py` | reads the key plus one response CSV per listener and prints the results table with confidence intervals. Stdlib-only — no build, no numpy, no FFmpeg. |
 | `responses/` | where filled-in response CSVs go. See its own README for the schema and for what has been run so far. |
 
@@ -32,12 +32,16 @@ AC3CLI=build/config-linux-llvm/bin/ac3cli python3 tools/listening/gen_listening_
 Read what it prints. Two things it reports decide how the results can be
 read at all, and both are true of the material committed today:
 
-- **Anchor viability.** BS.1534-3's low-pass anchors only anchor the scale if
-  removing the band above the cutoff is audible. `reference_51.wav` carries
-  0.059% of its energy above 3.5 kHz, so **both anchors are inaudible on both
-  5.1 legs** and a MUSHRA session there cannot be scaled against any other
-  panel's. The stereo leg's anchors are fine. Real programme material would
-  fix this; until then, run MUSHRA on the stereo leg and ABX on the 5.1 legs.
+- **Anchor viability.** BS.1534-3's low-pass anchors (3.5 and 7 kHz) only
+  anchor the scale if removing the band above the cutoff is audible, which the
+  script tests as at least 1% of the reference's energy above it. `reference_51.wav`
+  carries 0.059% of its energy above 3.5 kHz, so **both anchors are inaudible on
+  both 5.1 legs**, and a MUSHRA session there cannot be scaled against any other
+  panel's. Measured over the whole file, the music programme fixture has 0.50%
+  above 3.5 kHz and 0.019% above 7 kHz, so both fail there; the speech
+  fixture passes at 3.5 kHz (2.4%) and fails at 7 kHz (0.28%). The synthetic
+  stereo legs pass (27% and 5.9% of `reference_stereo.wav`). The script prints which legs fail; run
+  MUSHRA on a leg whose anchors pass and ABX on the others.
 - **Decoder complaints.** FFmpeg reports two out-of-range exponents decoding
   DEE's own committed stereo stream. That is audible, and it is that decoder
   reading that stream rather than DEE's encoder being worse — the flag rides
