@@ -3,7 +3,7 @@
 // AC3FORGE_BUILD_AC4 is off): every function ac3forge.h's AC-4 section
 // declares, given a body that names no ac4:: C++ type. The public header
 // declares them unconditionally either way (that header's own comment), so a
-// caller sees the same 68 symbols whatever this library was built with; here
+// caller sees the same 76 symbols whatever this library was built with; here
 // every fallible one returns AC3FORGE_ERROR_UNSUPPORTED, a *_create()
 // leaves its out-parameter NULL, and anything else returns a NULL pointer,
 // 0, or a zero-initialized struct, as its type allows. An opaque handle
@@ -66,6 +66,60 @@ void ac3forge_ac4_decoder_config_init(ac3forge_ac4_decoder_config_t* config) {
     config->decoding = AC3FORGE_AC4_DECODING_FULL;
 }
 
+// ac4::ObjectProperties{}'s defaults (src/ac4/include/ac4/ac4.hpp).
+void ac3forge_ac4_object_properties_init(ac3forge_ac4_object_properties_t* properties) {
+    if (properties == nullptr) {
+        return;
+    }
+    *properties = ac3forge_ac4_object_properties_t{.active = 1,
+                                                   .gain_db = 0.0,
+                                                   .priority = 1.0,
+                                                   .x = 0.5,
+                                                   .y = 0.5,
+                                                   .z = 0.0,
+                                                   .zone_mask = 0,
+                                                   .enable_elevation = 1,
+                                                   .snap = 0,
+                                                   .width_x = 0.0,
+                                                   .width_y = 0.0,
+                                                   .width_z = 0.0,
+                                                   .screen_factor = 0.0,
+                                                   .depth_exponent = 1.0,
+                                                   .has_distance = 0,
+                                                   .distance = 0.0,
+                                                   .divergence = 0.0,
+                                                   .trim_disabled = 0,
+                                                   .has_headphone_render_mode = 0,
+                                                   .headphone_render_mode = 0,
+                                                   .head_track_disabled = 0};
+}
+
+void ac3forge_ac4_object_config_init(ac3forge_ac4_object_config_t* config) {
+    if (config == nullptr) {
+        return;
+    }
+    *config = ac3forge_ac4_object_config_t{};
+    config->bed = AC3FORGE_AC4_BED_LEFT;
+    ac3forge_ac4_object_properties_init(&config->properties);
+}
+
+void ac3forge_ac4_objects_config_init(ac3forge_ac4_objects_config_t* config) {
+    if (config == nullptr) {
+        return;
+    }
+    *config = ac3forge_ac4_objects_config_t{};
+    config->coding = AC3FORGE_AC4_OBJECT_CODING_AJOC;
+    config->downmix = AC3FORGE_AC4_AJOC_DOWNMIX_COMPUTED;
+}
+
+void ac3forge_ac4_object_metadata_update_init(ac3forge_ac4_object_metadata_update_t* update) {
+    if (update == nullptr) {
+        return;
+    }
+    *update = ac3forge_ac4_object_metadata_update_t{};
+    ac3forge_ac4_object_properties_init(&update->properties);
+}
+
 void ac3forge_ac4_encoder_config_init(ac3forge_ac4_encoder_config_t* config) {
     if (config == nullptr) {
         return;
@@ -77,7 +131,17 @@ void ac3forge_ac4_encoder_config_init(ac3forge_ac4_encoder_config_t* config) {
                                             .rate_mode = AC3FORGE_AC4_RATE_CONSTANT,
                                             .codec_mode = AC3FORGE_AC4_CODEC_AUTO,
                                             .iframe_interval = 24,
-                                            .dialnorm_db = -31.0};
+                                            .dialnorm_db = -31.0,
+                                            .iframes = nullptr,
+                                            .iframe_count = 0,
+                                            .fragment_starts = nullptr,
+                                            .fragment_start_count = 0,
+                                            .experimental = ac3forge_ac4_experimental_t{},
+                                            .objects = nullptr};
+}
+
+const char* ac3forge_ac4_encoder_refusal_reason(const ac3forge_ac4_encoder_config_t*) {
+    return "this library was built without AC-4 support (AC3FORGE_BUILD_AC4 was off)";
 }
 
 // --- decoder -------------------------------------------------------------
@@ -166,6 +230,13 @@ ac3forge_ac4_object_properties_t ac3forge_ac4_decoded_frame_object_properties(
     const ac3forge_ac4_decoded_frame_t*, size_t) {
     return ac3forge_ac4_object_properties_t{};
 }
+size_t ac3forge_ac4_decoded_frame_object_update_count(const ac3forge_ac4_decoded_frame_t*, size_t) {
+    return 0;
+}
+ac3forge_ac4_object_update_t ac3forge_ac4_decoded_frame_object_update(
+    const ac3forge_ac4_decoded_frame_t*, size_t, size_t) {
+    return ac3forge_ac4_object_update_t{};
+}
 
 void ac3forge_ac4_decoded_frame_destroy(ac3forge_ac4_decoded_frame_t*) {}
 
@@ -243,6 +314,21 @@ ac3forge_status_t ac3forge_ac4_encoder_encode(ac3forge_ac4_encoder_t*, const flo
                                               size_t, size_t,
                                               ac3forge_ac4_encoded_frame_t*** out_frames,
                                               size_t* out_count) {
+    if (out_frames != nullptr) {
+        *out_frames = nullptr;
+    }
+    if (out_count != nullptr) {
+        *out_count = 0;
+    }
+    return AC3FORGE_ERROR_UNSUPPORTED;
+}
+
+ac3forge_status_t ac3forge_ac4_encoder_encode_objects(ac3forge_ac4_encoder_t*, const float* const*,
+                                                      size_t, size_t,
+                                                      const ac3forge_ac4_object_metadata_update_t*,
+                                                      size_t,
+                                                      ac3forge_ac4_encoded_frame_t*** out_frames,
+                                                      size_t* out_count) {
     if (out_frames != nullptr) {
         *out_frames = nullptr;
     }

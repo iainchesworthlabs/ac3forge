@@ -936,7 +936,7 @@ endif()
 # CMakeLists.txt) - test_capi.cpp (C API) only exists to build when it was actually built,
 # the same shape as the AC3FORGE_BUILD_ADM-gated sources above.
 if(AC3FORGE_BUILD_CAPI)
-    target_sources(ac3tests PRIVATE capi/test_capi.cpp)
+    target_sources(ac3tests PRIVATE capi/test_capi.cpp capi/test_capi_ac4_arguments.cpp)
     target_link_libraries(ac3tests PRIVATE ac3::forge_c)
 endif()
 

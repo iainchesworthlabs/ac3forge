@@ -90,15 +90,17 @@ closed everything that list deferred:
   stay valid and unmodified" clause instead of documentation asking for it.
 - `meter::LoudnessMeter` (both constructors — acmod/lfe and the BS.1770-5 chanmap form) and
   `meter::dialnorm_from_lkfs`.
-- `ac4::Decoder`/`Encoder` (roadmap plan phase I4) — a distinct codec (ETSI TS 103 190), wrapping
-  `ac3forge_ac4_*` unconditionally, with no Cargo feature of its own: the C library has no matching
-  build option to mirror, so this module sits on the same footing `atmos` already did. Channel-based
-  and channel-based-immersive encode/decode (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4), presentations,
-  concealment, loudness metadata and the `Toc`/`sync_frame` container helpers, round-tripped in
-  `tests/ac4_roundtrip.rs`. The encoder's own core-config subset — no loudness/DRC/downmix/
-  dialogue-enhancement metadata groups, no several substreams or presentations, no A-JOC or
-  direct-coded objects — mirrors the C API's identical cut for the same reason; the decoder's
-  object accessors still read whatever object audio a stream actually carries.
+- `ac4::Decoder`/`Encoder` (roadmap plan phases I4 and I4b) — a distinct codec (ETSI TS 103 190),
+  wrapping `ac3forge_ac4_*` unconditionally, with no Cargo feature of its own: the C library has no
+  matching build option to mirror, so this module sits on the same footing `atmos` already did.
+  Channel-based and channel-based-immersive encode/decode (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4),
+  presentations, concealment, loudness metadata and the `Toc`/`sync_frame` container helpers,
+  round-tripped in `tests/ac4_roundtrip.rs`; and the encoder's object substream (A-JOC or
+  direct-coded objects with their metadata and its updates), the I-frame lists and the
+  experimental flags that need no nested group, with the decoder's update ramps, in
+  `tests/ac4_objects.rs`. The encoder's own subset — no loudness/DRC/downmix/dialogue-enhancement
+  metadata groups, no several substreams or presentations, no EMDF payloads, no `drc_gains` or
+  `three_zero` flags — mirrors the C API's identical cut for the same reason.
 
 Still deliberately out: the caller-buffer `_into` decode forms (a realtime-embedder
 convenience whose Rust ergonomics want `&mut [f32]` scratch the value forms already avoid

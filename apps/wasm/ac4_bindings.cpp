@@ -14,41 +14,43 @@
 //   - syncFrame: wraps ac4::sync_frame() (src/ac4enc, declared beside Encoder).
 //
 // Scope cut (the same "reasonable cost" cut used for every other binding in
-// this task): every config knob that reaches this file is a flat, cheap-to-
-// marshal primitive - what's deliberately left out is the deep, rarely-
-// touched-from-a-UI structure either header carries: ObjectUpdate's ramp
-// list (DecodedObject::updates - only the properties in force at the frame's
-// first sample are returned, not the ramp), and on the encoder side
-// EncoderConfig's loudness/drc/downmix/dialogue/substreams/presentations/
-// experimental fields (every multi-substream, multi-presentation and DRC/
-// loudness-metadata feature) - a caller who needs those still has the full
-// C++ API; this binding is the common single-substream, single-presentation
-// path, matching the "core config" subset every other binding in this task
-// exposes for the encoder side.
+// this task): what is left out is the deep, rarely-touched-from-a-UI
+// structure either header carries - on the encoder side EncoderConfig's
+// loudness/drc/downmix/dialogue/substreams/presentations fields and the
+// drc_gains and three_zero experimental flags (every multi-substream,
+// multi-presentation and DRC/loudness-metadata feature); a caller who needs
+// those still has the full C++ API. The encoder takes the core fields, the
+// I-frame lists, the experimental flags that need no nested group and one
+// object substream (A-JOC or direct-coded, ObjectsConfig) with its metadata
+// updates; the decoder returns each object's properties and the block
+// updates within the frame (DecodedObject::updates).
 //
-// Two sentinel conventions cross the embind boundary, used because NEITHER
-// existing AC-3 binding (decoder_bindings.cpp's PushDecoder, encoder_
-// bindings.cpp's WasmEncoder/WasmAtmosBedEncoder/WasmQcMeter) takes an
-// optional numeric constructor argument to copy a convention from - every
-// constructor argument over there is a plain, always-present int/bool. These
-// are introduced fresh here and documented in js/src/ac4.ts alongside them:
-//   - An optional double (only OutputConfig::output_level_dbfs) is NaN for
-//     "unset". This is not just a convenience: assigning a JS `undefined`
-//     into a wasm heap Float64Array - which is what embind's generated
-//     constructor invoker does for a `double` parameter - already coerces to
-//     NaN by ordinary JS TypedArray semantics, so "NaN" and "undefined" are
-//     the SAME wire value for a double parameter, not two conventions to
-//     support separately.
-//   - An optional int that is semantically non-negative (a presentation_id
-//     or a table-of-contents index) uses -1 for "unset" instead: an int has
-//     no NaN of its own, and coercing undefined into an Int32Array slot
-//     gives 0 - which would collide with a real presentation_id/index of 0 -
-//     so -1 is used, not 0, and not NaN.
+// Two conventions cross the embind boundary:
+//   - The decoder's constructor and setters take flat primitives, with two
+//     sentinels because neither existing AC-3 binding (decoder_bindings.cpp's
+//     PushDecoder, encoder_bindings.cpp's WasmEncoder/WasmAtmosBedEncoder/
+//     WasmQcMeter) takes an optional numeric argument to copy a convention
+//     from. An optional double (only OutputConfig::output_level_dbfs) is NaN
+//     for "unset": assigning a JS `undefined` into a wasm heap Float64Array -
+//     which is what embind's generated invoker does for a `double` parameter -
+//     already coerces to NaN, so "NaN" and "undefined" are the SAME wire value
+//     for a double parameter. An optional non-negative int (a presentation_id
+//     or a table-of-contents index) uses -1: an int has no NaN of its own, and
+//     undefined coerces to 0, which would collide with a real id of 0.
+//   - The encoder's constructor and the metadata updates are plain JS
+//     objects (an emscripten::val), because the object substream is a list of
+//     objects each with its own metadata and no flat parameter list holds
+//     that. A field the object lacks, or holds undefined or null, keeps the
+//     C++ struct's default, so the defaults live here in one place: js/src/
+//     ac4.ts passes the caller's options as given. An enumerator the C++
+//     header does not define is refused at construction (constructionError()
+//     says so), as ac3forge_ac4_encoder_create() refuses one.
 //
 // Every return shape is a hand-built emscripten::val::object()/val::array(),
 // the same technique decoder_bindings.cpp and encoder_bindings.cpp both use
 // throughout (neither uses emscripten::value_object<> anywhere).
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -56,6 +58,7 @@
 #include <expected>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -105,6 +108,231 @@ std::string_view object_kind_name(ac4::ObjectKind kind) {
         case ac4::ObjectKind::kIsf: return "isf";
     }
     return "dyn";
+}
+
+// --- ac4::ObjectProperties, both ways ---------------------------------------
+//
+// The decoder returns every field of an object's metadata (Part 2 Annex F.2 to
+// F.10) and the encoder takes the same fields, under the same names: gainDb
+// (-Infinity for silence), priority, position [x, y, z], zoneMask,
+// enableElevation, snap, width [x, y, z], screenFactor, depthExponent,
+// distance (a number or null; Infinity for an object at infinity),
+// divergence, trimDisabled, headphoneRenderMode (a number or null) and
+// headTrackDisabled, with active.
+emscripten::val describe_properties(const ac4::ObjectProperties& p) {
+    auto properties = emscripten::val::object();
+    properties.set("active", p.active);
+    properties.set("gainDb", p.gain_db);
+    properties.set("priority", p.priority);
+    properties.set("position", make_number_array(p.position));
+    properties.set("zoneMask", p.zone_mask);
+    properties.set("enableElevation", p.enable_elevation);
+    properties.set("snap", p.snap);
+    properties.set("width", make_number_array(p.width));
+    properties.set("screenFactor", p.screen_factor);
+    properties.set("depthExponent", p.depth_exponent);
+    properties.set("distance", p.distance ? emscripten::val(*p.distance) : emscripten::val::null());
+    properties.set("divergence", p.divergence);
+    properties.set("trimDisabled", p.trim_disabled);
+    properties.set("headphoneRenderMode", p.headphone_render_mode
+                                              ? emscripten::val(*p.headphone_render_mode)
+                                              : emscripten::val::null());
+    properties.set("headTrackDisabled", p.head_track_disabled);
+    return properties;
+}
+
+// --- ac4::EncoderConfig and the object metadata updates from JS objects -------
+//
+// A field the JS object lacks, or holds undefined or null, keeps the C++
+// struct's default; a value that is not one the C++ header defines is an
+// OptionError, which the encoder's constructor reports as constructionError()
+// and encode() as the update it refuses.
+
+struct OptionError : std::runtime_error {
+    using std::runtime_error::runtime_error;
+};
+
+// Whether `object` has `key` set to something other than undefined or null.
+bool has(const emscripten::val& object, const char* key) {
+    if (!object.hasOwnProperty(key)) {
+        return false;
+    }
+    const emscripten::val value = object[key];
+    return !value.isUndefined() && !value.isNull();
+}
+
+template <typename T>
+void read(const emscripten::val& object, const char* key, T& out) {
+    if (has(object, key)) {
+        out = object[key].as<T>();
+    }
+}
+
+template <typename T>
+void read_optional(const emscripten::val& object, const char* key, std::optional<T>& out) {
+    if (has(object, key)) {
+        out = object[key].as<T>();
+    }
+}
+
+// An enumerator by its number, refused outside `least` to `most`.
+template <typename E>
+void read_enum(const emscripten::val& object, const char* key, E& out, int least, int most) {
+    if (!has(object, key)) {
+        return;
+    }
+    const int code = object[key].as<int>();
+    if (code < least || code > most) {
+        throw OptionError(std::string(key) + " is not one of the values the encoder defines");
+    }
+    out = static_cast<E>(code);
+}
+
+std::array<double, 3> read_triple(const emscripten::val& object, const char* key,
+                                  const std::array<double, 3>& fallback) {
+    if (!has(object, key)) {
+        return fallback;
+    }
+    const std::vector<double> values = emscripten::vecFromJSArray<double>(object[key]);
+    if (values.size() != 3) {
+        throw OptionError(std::string(key) + " is not three numbers");
+    }
+    return {values[0], values[1], values[2]};
+}
+
+std::vector<std::int64_t> read_int64s(const emscripten::val& object, const char* key) {
+    std::vector<std::int64_t> out;
+    if (has(object, key)) {
+        // JS numbers, exact to 2^53 samples.
+        for (const double value : emscripten::vecFromJSArray<double>(object[key])) {
+            out.push_back(static_cast<std::int64_t>(value));
+        }
+    }
+    return out;
+}
+
+ac4::ObjectProperties properties_from_js(const emscripten::val& js) {
+    ac4::ObjectProperties p;
+    if (js.isUndefined() || js.isNull()) {
+        return p;
+    }
+    read(js, "active", p.active);
+    read(js, "gainDb", p.gain_db);
+    read(js, "priority", p.priority);
+    p.position = read_triple(js, "position", p.position);
+    read(js, "zoneMask", p.zone_mask);
+    read(js, "enableElevation", p.enable_elevation);
+    read(js, "snap", p.snap);
+    p.width = read_triple(js, "width", p.width);
+    read(js, "screenFactor", p.screen_factor);
+    read(js, "depthExponent", p.depth_exponent);
+    read_optional(js, "distance", p.distance);
+    read(js, "divergence", p.divergence);
+    read(js, "trimDisabled", p.trim_disabled);
+    read_optional(js, "headphoneRenderMode", p.headphone_render_mode);
+    read(js, "headTrackDisabled", p.head_track_disabled);
+    return p;
+}
+
+// Part 2 Table 66's codes: 3 is not a loudspeaker a bed object can name.
+bool valid_bed_channel(int code) {
+    return code >= 0 && code <= 15 && code != 3;
+}
+
+ac4::ObjectsConfig objects_config_from_js(const emscripten::val& js) {
+    ac4::ObjectsConfig out;
+    if (has(js, "objects")) {
+        const emscripten::val list = js["objects"];
+        // Only as many as the encoder accepts, and one more, which it refuses by
+        // count first: a caller's absurd length costs no more than 65.
+        const int count = std::min(list["length"].as<int>(), 65);
+        for (int i = 0; i < count; ++i) {
+            const emscripten::val entry = list[i];
+            ac4::ObjectConfig object;
+            if (has(entry, "bed")) {
+                const int code = entry["bed"].as<int>();
+                if (!valid_bed_channel(code)) {
+                    throw OptionError("a bed channel Part 2 Table 66 has no code for");
+                }
+                object.bed = static_cast<ac4::BedChannel>(code);
+            }
+            read(entry, "lfe", object.lfe);
+            if (has(entry, "properties")) {
+                object.properties = properties_from_js(entry["properties"]);
+            }
+            out.objects.push_back(object);
+        }
+    }
+    read_enum(js, "coding", out.coding, 0, 1);
+    read_enum(js, "downmix", out.downmix, 0, 2);
+    read_optional(js, "downmixSignals", out.downmix_signals);
+    read(js, "decorrelation", out.decorrelation);
+    read_optional(js, "parameterBands", out.parameter_bands);
+    read_optional(js, "coarse", out.coarse);
+    read_optional(js, "screenSizeRatioCode", out.screen_size_ratio_code);
+    read(js, "bedObjectChanDistribute", out.bed_object_chan_distribute);
+    return out;
+}
+
+ac4::EncoderConfig encoder_config_from_js(const emscripten::val& js) {
+    ac4::EncoderConfig config;
+    read(js, "channels", config.channels);
+    read(js, "sampleRateHz", config.sample_rate_hz);
+    read(js, "frameRateIndex", config.frame_rate_index);
+    read(js, "bitrateKbps", config.bitrate_kbps);
+    read_enum(js, "rateMode", config.rate_mode, 0, 2);
+    read_enum(js, "codecMode", config.codec_mode, 0, 8);
+    read(js, "iframeInterval", config.iframe_interval);
+    read(js, "dialnormDb", config.dialnorm_db);
+    config.iframes = read_int64s(js, "iframes");
+    config.fragment_starts = read_int64s(js, "fragmentStarts");
+    if (has(js, "experimental")) {
+        const emscripten::val experimental = js["experimental"];
+        ac4::EncoderConfig::Experimental& flags = config.experimental;
+        read(experimental, "aspxBalance", flags.aspx_balance);
+        read(experimental, "aspxVarvar", flags.aspx_varvar);
+        read(experimental, "aspxInterleave", flags.aspx_interleave);
+        read(experimental, "codingConfigs", flags.coding_configs);
+        read_enum(experimental, "sevenX", flags.seven_x, 0, 3);
+        read(experimental, "acpl", flags.acpl);
+        read(experimental, "backPair", flags.back_pair);
+        read(experimental, "ajcc", flags.ajcc);
+        read(experimental, "objects", flags.objects);
+    }
+    if (has(js, "objects")) {
+        // With substreams set, the substreams' own codec_mode is the one in
+        // force: the mode given is the object substream's, and the stream's own
+        // stays kAuto (ac4::EncoderConfig::substreams; the C API does the same).
+        ac4::SubstreamConfig substream;
+        substream.codec_mode = config.codec_mode;
+        config.codec_mode = ac4::CodecMode::kAuto;
+        substream.objects = objects_config_from_js(js["objects"]);
+        config.substreams.push_back(std::move(substream));
+    }
+    return config;
+}
+
+// One update per entry: {object, sample, rampSamples, properties}.
+std::vector<ac4::ObjectMetadataUpdate> updates_from_js(const emscripten::val& js) {
+    std::vector<ac4::ObjectMetadataUpdate> out;
+    if (js.isUndefined() || js.isNull()) {
+        return out;
+    }
+    const int count = js["length"].as<int>();
+    for (int i = 0; i < count; ++i) {
+        const emscripten::val entry = js[i];
+        ac4::ObjectMetadataUpdate update;
+        read(entry, "object", update.object);
+        if (has(entry, "sample")) {
+            update.sample = static_cast<std::int64_t>(entry["sample"].as<double>());
+        }
+        read(entry, "rampSamples", update.ramp_samples);
+        if (has(entry, "properties")) {
+            update.properties = properties_from_js(entry["properties"]);
+        }
+        out.push_back(update);
+    }
+    return out;
 }
 
 // --- ac4::Decoder configuration from primitive embind arguments -------------
@@ -252,15 +480,21 @@ class Ac4Decoder {
                    object.speaker ? emscripten::val(std::string(ac4::describe(*object.speaker))) : emscripten::val::null());
         result.set("samples", emscripten::val(emscripten::typed_memory_view(object.samples.size(), object.samples.data())));
 
-        // Annex F.2-F.10's current properties alone (what is in force at the
-        // frame's first sample) - ObjectProperties::updates' ramp list is the
-        // scope cut this file's header comment names.
-        auto properties = emscripten::val::object();
-        properties.set("active", object.properties.active);
-        properties.set("gainDb", object.properties.gain_db);
-        properties.set("position", make_number_array(object.properties.position));
-        properties.set("priority", object.properties.priority);
-        result.set("properties", properties);
+        // Annex F.2-F.10's properties in force at the frame's first sample, and
+        // the block updates within the frame (Annex F.11), in the order they
+        // take effect: the output sample of the frame each takes effect at,
+        // counted with the decoder's delay as the frame's channels are, and the
+        // samples a renderer takes to move to its properties.
+        result.set("properties", describe_properties(object.properties));
+        auto updates = emscripten::val::array();
+        for (std::size_t u = 0; u < object.updates.size(); ++u) {
+            auto entry = emscripten::val::object();
+            entry.set("sample", static_cast<unsigned>(object.updates[u].sample));
+            entry.set("rampSamples", object.updates[u].ramp_samples);
+            entry.set("properties", describe_properties(object.updates[u].properties));
+            updates.set(static_cast<unsigned>(u), entry);
+        }
+        result.set("updates", updates);
 
         return result;
     }
@@ -319,24 +553,27 @@ class Ac4Decoder {
 
 class Ac4Encoder {
    public:
-    // The "core config" subset this task's encoder bindings all expose:
-    // channels/sample_rate_hz/frame_rate_index/bitrate_kbps/rate_mode/
-    // codec_mode/iframe_interval/dialnorm_db. Every other EncoderConfig field
-    // (loudness/drc/downmix/dialogue/substreams/presentations/experimental)
-    // keeps its struct default (unset/empty), the same scope cut named at
-    // the top of this file.
-    Ac4Encoder(int channels, int sample_rate_hz, int frame_rate_index, int bitrate_kbps, int rate_mode,
-               int codec_mode, int iframe_interval, double dialnorm_db) {
+    // `options` is a plain JS object (see this file's header comment): the
+    // core fields channels/sampleRateHz/frameRateIndex/bitrateKbps/rateMode/
+    // codecMode/iframeInterval/dialnormDb, iframes and fragmentStarts,
+    // `experimental` (aspxBalance, aspxVarvar, aspxInterleave, codingConfigs,
+    // sevenX, acpl, backPair, ajcc, objects) and `objects`, an object
+    // substream - {objects: [{bed, lfe, properties}], coding, downmix,
+    // downmixSignals, decorrelation, parameterBands, coarse,
+    // screenSizeRatioCode, bedObjectChanDistribute} - whose codecMode is then
+    // the object substream's. Every other EncoderConfig field
+    // (loudness/drc/downmix/dialogue/substreams/presentations) keeps its
+    // struct default, the same scope cut named at the top of this file. A
+    // configuration the encoder refuses leaves no encoder, and
+    // constructionError() says why.
+    explicit Ac4Encoder(emscripten::val options) {
         ac4::EncoderConfig config;
-        config.channels = channels;
-        config.sample_rate_hz = sample_rate_hz;
-        config.frame_rate_index = frame_rate_index;
-        config.bitrate_kbps = bitrate_kbps;
-        config.rate_mode = static_cast<ac4::RateMode>(rate_mode);
-        config.codec_mode = static_cast<ac4::CodecMode>(codec_mode);
-        config.iframe_interval = iframe_interval;
-        config.dialnorm_db = dialnorm_db;
-
+        try {
+            config = encoder_config_from_js(options);
+        } catch (const OptionError& e) {
+            ctor_error_ = e.what();
+            return;
+        }
         auto result = ac4::Encoder::create(config);
         if (!result) {
             // refusal_reason() "does create()'s work to find out" (encoder.hpp)
@@ -351,12 +588,18 @@ class Ac4Encoder {
         encoder_.emplace(std::move(*result));
     }
 
-    // Planar samples at full scale 1.0, one Float32Array per input channel -
-    // the same shape encoder_bindings.cpp's copy_channels()/spans_of() take,
-    // reimplemented locally here since this is a separate translation unit
-    // (apps/wasm/decoder_bindings.cpp and encoder_bindings.cpp are likewise
-    // each fully self-contained, sharing no helper header between them).
-    emscripten::val encode(const emscripten::val& channels_js) {
+    // Planar samples at full scale 1.0, one Float32Array per input channel (or
+    // per object of the object substream) - the same shape encoder_
+    // bindings.cpp's copy_channels()/spans_of() take, reimplemented locally
+    // here since this is a separate translation unit (apps/wasm/decoder_
+    // bindings.cpp and encoder_bindings.cpp are likewise each fully
+    // self-contained, sharing no helper header between them) - and the changes
+    // to the objects' metadata within this input or after it, as an array of
+    // {object, sample, rampSamples, properties} (empty for none). One the
+    // encoder refuses - an object it lacks, a sample before this input's
+    // first, a property off its range - fails the whole call: no frames, and
+    // error() says why.
+    emscripten::val encode(const emscripten::val& channels_js, const emscripten::val& updates_js) {
         error_.clear();
         if (!encoder_) {
             error_ = ctor_error_;
@@ -364,8 +607,15 @@ class Ac4Encoder {
         }
         const auto storage = copy_channels(channels_js);
         const auto spans = spans_of(storage);
+        std::vector<ac4::ObjectMetadataUpdate> updates;
         try {
-            auto result = encoder_->encode(spans);
+            updates = updates_from_js(updates_js);
+        } catch (const OptionError& e) {
+            error_ = e.what();
+            return emscripten::val::array();
+        }
+        try {
+            auto result = encoder_->encode(spans, updates);
             if (!result) {
                 error_ = std::string(ac4::describe(result.error()));
                 return emscripten::val::array();
@@ -404,6 +654,11 @@ class Ac4Encoder {
     // EncodeError::kInvalidInput would be silently indistinguishable from
     // "the encoder's delay simply had nothing to emit yet".
     [[nodiscard]] std::string error() const { return error_; }
+
+    // Why the constructor made no encoder - the first rule the configuration
+    // breaks (ac4::Encoder::refusal_reason()), or the option it could not read;
+    // empty once construction succeeded.
+    [[nodiscard]] std::string constructionError() const { return ctor_error_; }
 
     [[nodiscard]] int codecMode() const {
         return encoder_ ? static_cast<int>(encoder_->codec_mode()) : -1;
@@ -486,10 +741,11 @@ EMSCRIPTEN_BINDINGS(ac3forge_wasm_ac4) {
         .function("presentations", &Ac4Decoder::presentations);
 
     emscripten::class_<Ac4Encoder>("Ac4Encoder")
-        .constructor<int, int, int, int, int, int, int, double>()
+        .constructor<emscripten::val>()
         .function("encode", &Ac4Encoder::encode)
         .function("flush", &Ac4Encoder::flush)
         .function("error", &Ac4Encoder::error)
+        .function("constructionError", &Ac4Encoder::constructionError)
         .function("codecMode", &Ac4Encoder::codecMode)
         .function("delaySamples", &Ac4Encoder::delaySamples)
         .function("decoderDelaySamples", &Ac4Encoder::decoderDelaySamples)

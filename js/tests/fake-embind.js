@@ -164,6 +164,7 @@ export function makeFakeAc4Module({
   encodeScript = [],
   flushScript = [],
   encoderError = "",
+  constructionError = "",
   codecMode = 0,
   delaySamples = 0,
   decoderDelaySamples = 0,
@@ -180,6 +181,7 @@ export function makeFakeAc4Module({
     decoderDeleted: 0,
     encoderConstructed: [],
     encoded: [],
+    encodedUpdates: [],
     encoderDeleted: 0,
     syncFramed: [],
   };
@@ -221,13 +223,14 @@ export function makeFakeAc4Module({
 
   class FakeNativeAc4Encoder {
     #encodeStep = 0;
-    constructor(channels, sampleRateHz, frameRateIndex, bitrateKbps, rateMode, codecModeArg, iframeInterval, dialnormDb) {
-      log.encoderConstructed.push({
-        channels, sampleRateHz, frameRateIndex, bitrateKbps, rateMode, codecMode: codecModeArg, iframeInterval, dialnormDb,
-      });
+    constructor(options) {
+      // The options object as it was when the constructor ran: the real
+      // constructor reads it once and keeps nothing of it.
+      log.encoderConstructed.push(structuredClone(options));
     }
-    encode(channels) {
+    encode(channels, updates) {
       log.encoded.push(channels.map((channel) => Array.from(channel)));
+      log.encodedUpdates.push(structuredClone(updates));
       return encodeScript[this.#encodeStep++] ?? [];
     }
     flush() {
@@ -235,6 +238,9 @@ export function makeFakeAc4Module({
     }
     error() {
       return encoderError;
+    }
+    constructionError() {
+      return constructionError;
     }
     codecMode() {
       return codecMode;
@@ -265,4 +271,147 @@ export function makeFakeAc4Module({
     },
   };
   return { module, log };
+}
+
+/**
+ * A stand-in for the same module with a codec model in place of the script: an
+ * encoder that writes what it is given as frames (JSON, one 2 048-sample frame
+ * of every object's PCM, its properties in force at the frame's first sample
+ * and the updates within the frame) and a decoder that reads them back, with
+ * every property quantised to the steps its code has (Part 2 Annex F, as
+ * ac4::ObjectProperties documents them) and an inactive object sending none.
+ * Objects come out in the decoder's order: the LFE, then the bed objects, then
+ * the dynamic objects, each in the order they were listed. There is no delay,
+ * and no refusal of any configuration: what it tests is the wrapper's traffic
+ * with the native module (the options in, the updates in, the frames and the
+ * objects out), not the codec, which is the C API's, Rust's and Python's tests'
+ * to hold to ac4::Encoder and this module's C++ side's to a real Emscripten
+ * build. It implements only what a round trip calls: encode(), flush(),
+ * decodeFrame() and delete().
+ */
+export function makeLoopbackAc4Module() {
+  const FRAME = 2048;
+  const DEFAULTS = {
+    active: true,
+    gainDb: 0,
+    priority: 1,
+    position: [0.5, 0.5, 0],
+    zoneMask: 0,
+    enableElevation: true,
+    snap: false,
+    width: [0, 0, 0],
+    screenFactor: 0,
+    depthExponent: 1,
+    distance: null,
+    divergence: 0,
+    trimDisabled: false,
+    headphoneRenderMode: null,
+    headTrackDisabled: false,
+  };
+  const steps = (v, n) => Math.round(v * n) / n;
+  const complete = (p = {}) => ({
+    ...DEFAULTS,
+    ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)),
+  });
+  const quantise = (given, dynamic) => {
+    const p = complete(given);
+    if (!p.active) return { ...DEFAULTS, active: false, gainDb: -Infinity, priority: 0, enableElevation: false };
+    return {
+      ...p,
+      gainDb: p.gainDb === -Infinity ? p.gainDb : Math.min(15, Math.max(-49, Math.round(p.gainDb))),
+      priority: steps(p.priority, 31),
+      position: dynamic ? [steps(p.position[0], 62), steps(p.position[1], 62), steps(p.position[2], 15)] : DEFAULTS.position,
+      width: dynamic ? p.width.map((w) => steps(w, 31)) : DEFAULTS.width,
+      screenFactor: p.screenFactor === 0 ? 0 : Math.max(1, steps(p.screenFactor * 8, 1)) / 8,
+    };
+  };
+
+  class LoopbackEncoder {
+    #objects;
+    #pcm;
+    #updates = [];
+    #consumed = 0;
+    #index = 0;
+    constructor(options) {
+      this.#objects = options.objects.objects.map((o) => ({
+        lfe: o.lfe ?? false,
+        bed: o.bed ?? null,
+        properties: complete(o.properties),
+      }));
+      this.#pcm = this.#objects.map(() => []);
+    }
+    #frame(count) {
+      const start = this.#consumed;
+      const end = start + FRAME;
+      const inFrame = this.#updates.filter((u) => u.sample >= start && u.sample < end);
+      const inForce = this.#objects.map((o, k) => {
+        const before = this.#updates.filter((u) => u.object === k && u.sample < start).at(-1);
+        return before ? before.properties : o.properties;
+      });
+      const frame = {
+        index: this.#index++,
+        objects: this.#objects.map((o, k) => ({
+          lfe: o.lfe,
+          bed: o.bed,
+          properties: quantise(inForce[k], !o.lfe && o.bed === null),
+          pcm: Array.from({ length: FRAME }, (_, n) => (n < count ? this.#pcm[k][n] : 0)),
+        })),
+        updates: inFrame.map((u) => ({
+          object: u.object,
+          sample: u.sample - start,
+          rampSamples: u.rampSamples,
+          properties: quantise(u.properties, !this.#objects[u.object].lfe && this.#objects[u.object].bed === null),
+        })),
+      };
+      this.#consumed = end;
+      this.#pcm = this.#pcm.map((channel) => channel.slice(count));
+      return { data: new TextEncoder().encode(JSON.stringify(frame)), samples: FRAME, iframe: frame.index === 0 };
+    }
+    encode(channels, updates) {
+      // An update's sample is counted from the start of this call's input.
+      for (const u of updates) {
+        this.#updates.push({
+          object: u.object,
+          sample: this.#consumed + this.#pcm[0].length + u.sample,
+          rampSamples: u.rampSamples ?? 0,
+          properties: complete(u.properties),
+        });
+      }
+      channels.forEach((channel, k) => this.#pcm[k].push(...channel));
+      const frames = [];
+      while (this.#pcm[0].length >= FRAME) frames.push(this.#frame(FRAME));
+      return frames;
+    }
+    flush() {
+      const left = this.#pcm[0].length;
+      return left > 0 ? [this.#frame(left)] : [];
+    }
+    delete() {}
+  }
+
+  class LoopbackDecoder {
+    decodeFrame(bytes) {
+      const frame = JSON.parse(new TextDecoder().decode(bytes));
+      const order = [...frame.objects.keys()];
+      const rank = (o) => (o.lfe ? 0 : o.bed !== null ? 1 : 2);
+      order.sort((a, b) => rank(frame.objects[a]) - rank(frame.objects[b]) || a - b);
+      const objects = order.map((k) => {
+        const o = frame.objects[k];
+        return {
+          kind: o.bed !== null ? "bed" : "dyn",
+          lfe: o.lfe,
+          speaker: o.lfe ? "LFE" : o.bed !== null ? "L" : null,
+          samples: Float32Array.from(o.pcm),
+          properties: o.properties,
+          updates: frame.updates
+            .filter((u) => u.object === k)
+            .map((u) => ({ sample: u.sample, rampSamples: u.rampSamples, properties: u.properties })),
+        };
+      });
+      return ac4Frame({ sequenceCounter: frame.index, samples: FRAME, objects });
+    }
+    delete() {}
+  }
+
+  return { Ac4Decoder: LoopbackDecoder, Ac4Encoder: LoopbackEncoder };
 }
