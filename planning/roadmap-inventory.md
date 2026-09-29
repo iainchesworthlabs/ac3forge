@@ -1,5 +1,29 @@
 # Roadmap inventory (codebase reconciliation)
 
+!!! note "Status as of 2026-09-30: a snapshot of 2026-09-17, not kept current"
+    This page reconciled the roadmap, the plans and the tree on 2026-09-17 so that the slim
+    [ROADMAP.md](../ROADMAP.md) could be written, and that work is done. The tables below are
+    left as they were and are not updated; the roadmap is the live board. These rows are the ones
+    the tree has since overtaken:
+
+    | Row | On 2026-09-17 | On 2026-09-30 |
+    |---|---|---|
+    | Hearth desktop window | The engine only; no `apps/hearth/ui/` | The Qt window, network output to Sendspin groups, and packages are built; a user guide and screenshots of the running app are not |
+    | Hearth Sendspin server in the app | Protocol library and test tools; the engine had no `ServerHost` | The engine hosts the server, and the app plays to groups |
+    | Hearth UI design (A0) | No signed design record | Signed off on 2026-09-22 ([hearth-design.md](hearth-design.md)) |
+    | Hearth ESP32-C6 sink | Not started | Built as a stereo player, with firmware images published from the next release; also an ESP32-P4 sink for silicon revision v1.x |
+    | AC-4 audio decode | Syntax only, "produces no audio yet" | The decoder (D1 to D11), the encoder (E1 to E10) and the applications (I1 to I5b) are built; ESP32 sinks taking AC-4 in a group (I6) are not ([ac4.md](ac4.md)) |
+    | Multi-programme E-AC-3 | Authoring done; mixing-metadata reporting open | Reporting done (#797); combining an associated service with the main programme is not built ([the plan](eac3-programme-mixing-metadata.md)) |
+    | QC delivery report file, DAW host plugin, topology | Proposed | Unchanged: nothing is built ([qc-report.md](qc-report.md), [host-plugin.md](host-plugin.md), [topology.md](topology.md)) |
+    | `AC3FORGE_BUILD_HEARTH` | Default OFF | Default ON; `AC3FORGE_BUILD_AC4` now builds the encoder as well as the inspector and decoder |
+    | The "UX12 stale text" | To fix when rewriting | Fixed by the rewrite |
+
+    The other rows (IM5, VX9, VX12, AP1, UX12, UX7, DR9 and the proposed and blocked items) were
+    not re-audited for this note; ROADMAP.md, reviewed on 2026-09-26, is their source. The
+    scorecard in section D is the Hearth chips as they stood then: by 2026-09-30 A0 to A7 and B1 to
+    B5 and C1 to C3 are built, A8 partly, and chip D is built apart from the ESP32 sinks
+    ([hearth-reference-player.md](hearth-reference-player.md) has the per-phase state).
+
 Working document for the `feature/roadmap-simplify` rewrite. **Not published to the
 documentation site.** Reconciles `ROADMAP.md`, `planning/*.md`, product index pages, and the
 tree as of **2026-09-17** on `main` (`a7d3bd56`).
