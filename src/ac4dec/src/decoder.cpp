@@ -9,6 +9,7 @@
 #include <limits>
 #include <map>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <set>
 #include <span>
@@ -2556,7 +2557,18 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
         substream.refused_reason = kUnnamedSubstream;
         report.substreams.push_back(substream);
     }
-    std::ranges::sort(report.substreams, {}, &SubstreamReport::index);
+    // Put in order of index by sorting positions and moving each report once. Sorting the
+    // reports themselves gives GCC 14's -O3 heap sort (the manylinux wheel build) a false
+    // maybe-uninitialized on the vectors inside a moved-from oamd_common_data.
+    std::vector<std::size_t> order(report.substreams.size());
+    std::iota(order.begin(), order.end(), std::size_t{0});
+    std::ranges::sort(order, {}, [&report](std::size_t i) { return report.substreams[i].index; });
+    std::vector<SubstreamReport> in_order;
+    in_order.reserve(order.size());
+    for (const std::size_t i : order) {
+        in_order.push_back(std::move(report.substreams[i]));
+    }
+    report.substreams = std::move(in_order);
     report_presentations(toc);
     report_metadata();
     return report;
