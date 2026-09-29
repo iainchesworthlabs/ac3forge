@@ -33,6 +33,14 @@ const char* ac3forge_status_message(ac3forge_status_t status) {
         case AC3FORGE_ERROR_SCAN_RESERVED_VALUE: return "reserved value";
         case AC3FORGE_ERROR_SCAN_TRUNCATED: return "truncated stream";
         case AC3FORGE_ERROR_SCAN_UNSUPPORTED_STRUCTURE: return "unsupported stream structure";
+        case AC3FORGE_ERROR_AC4_DECODE_TRUNCATED: return "truncated AC-4 substream";
+        case AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC: return "invalid AC-4 table of contents";
+        case AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM: return "invalid AC-4 stream";
+        case AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED: return "legal but unsupported AC-4 syntax";
+        case AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME:
+            return "AC-4 substream needs an I-frame not yet seen";
+        case AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG: return "invalid AC-4 encoder configuration";
+        case AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT: return "invalid AC-4 encoder input";
     }
     return "unknown status";
 }

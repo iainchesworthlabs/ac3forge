@@ -22,6 +22,12 @@
 #include "ac3/oba/atmos.hpp"
 #include "ac3forge_c/ac3forge.h"
 
+#ifdef AC3FORGE_HAS_AC4
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
+#include "ac4enc/encoder.hpp"
+#endif
+
 // --- enum-ordinal contract ---------------------------------------------
 // ac3forge_c's enums are declared with the same ordinals as their C++
 // counterparts on purpose, so translation is a bare static_cast rather than
@@ -89,6 +95,89 @@ static_assert(static_cast<int>(ac3::meta::QcPresetId::kNetflix) == AC3FORGE_QC_P
 static_assert(static_cast<int>(ac3::meta::QcPresetId::kAppleMusicAtmos) ==
               AC3FORGE_QC_PRESET_APPLE_MUSIC_ATMOS);
 static_assert(ac3::meta::kQcPresetIds.size() == 5);
+
+#ifdef AC3FORGE_HAS_AC4
+static_assert(static_cast<int>(ac4::Speaker::kLeft) == AC3FORGE_AC4_SPEAKER_LEFT);
+static_assert(static_cast<int>(ac4::Speaker::kRight) == AC3FORGE_AC4_SPEAKER_RIGHT);
+static_assert(static_cast<int>(ac4::Speaker::kCentre) == AC3FORGE_AC4_SPEAKER_CENTRE);
+static_assert(static_cast<int>(ac4::Speaker::kLfe) == AC3FORGE_AC4_SPEAKER_LFE);
+static_assert(static_cast<int>(ac4::Speaker::kLeftSurround) == AC3FORGE_AC4_SPEAKER_LEFT_SURROUND);
+static_assert(static_cast<int>(ac4::Speaker::kRightSurround) == AC3FORGE_AC4_SPEAKER_RIGHT_SURROUND);
+static_assert(static_cast<int>(ac4::Speaker::kLeftBack) == AC3FORGE_AC4_SPEAKER_LEFT_BACK);
+static_assert(static_cast<int>(ac4::Speaker::kRightBack) == AC3FORGE_AC4_SPEAKER_RIGHT_BACK);
+static_assert(static_cast<int>(ac4::Speaker::kLeftWide) == AC3FORGE_AC4_SPEAKER_LEFT_WIDE);
+static_assert(static_cast<int>(ac4::Speaker::kRightWide) == AC3FORGE_AC4_SPEAKER_RIGHT_WIDE);
+static_assert(static_cast<int>(ac4::Speaker::kTopFrontLeft) == AC3FORGE_AC4_SPEAKER_TOP_FRONT_LEFT);
+static_assert(static_cast<int>(ac4::Speaker::kTopFrontRight) ==
+              AC3FORGE_AC4_SPEAKER_TOP_FRONT_RIGHT);
+static_assert(static_cast<int>(ac4::Speaker::kTopBackLeft) == AC3FORGE_AC4_SPEAKER_TOP_BACK_LEFT);
+static_assert(static_cast<int>(ac4::Speaker::kTopBackRight) == AC3FORGE_AC4_SPEAKER_TOP_BACK_RIGHT);
+static_assert(static_cast<int>(ac4::Speaker::kTopSideLeft) == AC3FORGE_AC4_SPEAKER_TOP_SIDE_LEFT);
+static_assert(static_cast<int>(ac4::Speaker::kTopSideRight) == AC3FORGE_AC4_SPEAKER_TOP_SIDE_RIGHT);
+static_assert(static_cast<int>(ac4::Speaker::kLfe2) == AC3FORGE_AC4_SPEAKER_LFE2);
+
+static_assert(static_cast<int>(ac4::ObjectKind::kBed) == AC3FORGE_AC4_OBJECT_BED);
+static_assert(static_cast<int>(ac4::ObjectKind::kDyn) == AC3FORGE_AC4_OBJECT_DYN);
+static_assert(static_cast<int>(ac4::ObjectKind::kIsf) == AC3FORGE_AC4_OBJECT_ISF);
+
+static_assert(static_cast<int>(ac4::DownmixTarget::kAsCoded) == AC3FORGE_AC4_DOWNMIX_AS_CODED);
+static_assert(static_cast<int>(ac4::DownmixTarget::k5X) == AC3FORGE_AC4_DOWNMIX_5X);
+static_assert(static_cast<int>(ac4::DownmixTarget::kStereo) == AC3FORGE_AC4_DOWNMIX_STEREO);
+static_assert(static_cast<int>(ac4::DownmixTarget::kLoRo) == AC3FORGE_AC4_DOWNMIX_LORO);
+static_assert(static_cast<int>(ac4::DownmixTarget::kLtRt) == AC3FORGE_AC4_DOWNMIX_LTRT);
+static_assert(static_cast<int>(ac4::DownmixTarget::kMono) == AC3FORGE_AC4_DOWNMIX_MONO);
+static_assert(static_cast<int>(ac4::DownmixTarget::k7X4) == AC3FORGE_AC4_DOWNMIX_7X4);
+static_assert(static_cast<int>(ac4::DownmixTarget::k7X2) == AC3FORGE_AC4_DOWNMIX_7X2);
+static_assert(static_cast<int>(ac4::DownmixTarget::k7X0) == AC3FORGE_AC4_DOWNMIX_7X0);
+static_assert(static_cast<int>(ac4::DownmixTarget::k5X4) == AC3FORGE_AC4_DOWNMIX_5X4);
+static_assert(static_cast<int>(ac4::DownmixTarget::k5X2) == AC3FORGE_AC4_DOWNMIX_5X2);
+
+static_assert(static_cast<int>(ac4::DrcMode::kOff) == AC3FORGE_AC4_DRC_OFF);
+static_assert(static_cast<int>(ac4::DrcMode::kDefault) == AC3FORGE_AC4_DRC_DEFAULT);
+static_assert(static_cast<int>(ac4::DrcMode::kHomeTheatre) == AC3FORGE_AC4_DRC_HOME_THEATRE);
+static_assert(static_cast<int>(ac4::DrcMode::kFlatPanelTv) == AC3FORGE_AC4_DRC_FLAT_PANEL_TV);
+static_assert(static_cast<int>(ac4::DrcMode::kPortableSpeakers) ==
+              AC3FORGE_AC4_DRC_PORTABLE_SPEAKERS);
+static_assert(static_cast<int>(ac4::DrcMode::kPortableHeadphones) ==
+              AC3FORGE_AC4_DRC_PORTABLE_HEADPHONES);
+
+static_assert(static_cast<int>(ac4::DecodingMode::kFull) == AC3FORGE_AC4_DECODING_FULL);
+static_assert(static_cast<int>(ac4::DecodingMode::kCore) == AC3FORGE_AC4_DECODING_CORE);
+
+static_assert(static_cast<int>(ac4::ConcealmentPolicy::kNone) == AC3FORGE_AC4_CONCEALMENT_NONE);
+static_assert(static_cast<int>(ac4::ConcealmentPolicy::kRepeatFade) ==
+              AC3FORGE_AC4_CONCEALMENT_REPEAT_FADE);
+static_assert(static_cast<int>(ac4::ConcealmentPolicy::kMute) == AC3FORGE_AC4_CONCEALMENT_MUTE);
+
+static_assert(static_cast<int>(ac4::ConcealmentAction::kRepeatFade) ==
+              AC3FORGE_AC4_CONCEALMENT_ACTION_REPEAT_FADE);
+static_assert(static_cast<int>(ac4::ConcealmentAction::kMute) ==
+              AC3FORGE_AC4_CONCEALMENT_ACTION_MUTE);
+
+static_assert(static_cast<int>(ac4::AssociatedType::kAny) == AC3FORGE_AC4_ASSOCIATED_ANY);
+static_assert(static_cast<int>(ac4::AssociatedType::kAudioDescription) ==
+              AC3FORGE_AC4_ASSOCIATED_AUDIO_DESCRIPTION);
+static_assert(static_cast<int>(ac4::AssociatedType::kAudioDescriptionSubtitles) ==
+              AC3FORGE_AC4_ASSOCIATED_AUDIO_DESCRIPTION_SUBTITLES);
+static_assert(static_cast<int>(ac4::AssociatedType::kSpokenSubtitles) ==
+              AC3FORGE_AC4_ASSOCIATED_SPOKEN_SUBTITLES);
+static_assert(static_cast<int>(ac4::AssociatedType::kEmergencyInformation) ==
+              AC3FORGE_AC4_ASSOCIATED_EMERGENCY_INFORMATION);
+
+static_assert(static_cast<int>(ac4::CodecMode::kAuto) == AC3FORGE_AC4_CODEC_AUTO);
+static_assert(static_cast<int>(ac4::CodecMode::kSimple) == AC3FORGE_AC4_CODEC_SIMPLE);
+static_assert(static_cast<int>(ac4::CodecMode::kAspx) == AC3FORGE_AC4_CODEC_ASPX);
+static_assert(static_cast<int>(ac4::CodecMode::kAspxAcpl1) == AC3FORGE_AC4_CODEC_ASPX_ACPL1);
+static_assert(static_cast<int>(ac4::CodecMode::kAspxAcpl2) == AC3FORGE_AC4_CODEC_ASPX_ACPL2);
+static_assert(static_cast<int>(ac4::CodecMode::kAspxAcpl3) == AC3FORGE_AC4_CODEC_ASPX_ACPL3);
+static_assert(static_cast<int>(ac4::CodecMode::kScpl) == AC3FORGE_AC4_CODEC_SCPL);
+static_assert(static_cast<int>(ac4::CodecMode::kAspxScpl) == AC3FORGE_AC4_CODEC_ASPX_SCPL);
+static_assert(static_cast<int>(ac4::CodecMode::kAspxAjcc) == AC3FORGE_AC4_CODEC_ASPX_AJCC);
+
+static_assert(static_cast<int>(ac4::RateMode::kConstant) == AC3FORGE_AC4_RATE_CONSTANT);
+static_assert(static_cast<int>(ac4::RateMode::kAverage) == AC3FORGE_AC4_RATE_AVERAGE);
+static_assert(static_cast<int>(ac4::RateMode::kVariable) == AC3FORGE_AC4_RATE_VARIABLE);
+#endif  // AC3FORGE_HAS_AC4
 
 namespace ac3forge_c {
 
@@ -181,6 +270,75 @@ namespace ac3forge_c {
     }
     return AC3FORGE_ERROR_INTERNAL;
 }
+
+#ifdef AC3FORGE_HAS_AC4
+
+[[nodiscard]] inline ac3forge_ac4_speaker_t from_cpp(ac4::Speaker speaker) {
+    return static_cast<ac3forge_ac4_speaker_t>(speaker);
+}
+[[nodiscard]] inline ac3forge_ac4_object_kind_t from_cpp(ac4::ObjectKind kind) {
+    return static_cast<ac3forge_ac4_object_kind_t>(kind);
+}
+[[nodiscard]] inline ac4::DownmixTarget to_cpp(ac3forge_ac4_downmix_target_t target) {
+    return static_cast<ac4::DownmixTarget>(target);
+}
+[[nodiscard]] inline ac3forge_ac4_downmix_target_t from_cpp(ac4::DownmixTarget target) {
+    return static_cast<ac3forge_ac4_downmix_target_t>(target);
+}
+[[nodiscard]] inline ac4::DrcMode to_cpp(ac3forge_ac4_drc_mode_t mode) {
+    return static_cast<ac4::DrcMode>(mode);
+}
+[[nodiscard]] inline ac3forge_ac4_drc_mode_t from_cpp(ac4::DrcMode mode) {
+    return static_cast<ac3forge_ac4_drc_mode_t>(mode);
+}
+[[nodiscard]] inline ac4::DecodingMode to_cpp(ac3forge_ac4_decoding_mode_t mode) {
+    return static_cast<ac4::DecodingMode>(mode);
+}
+[[nodiscard]] inline ac4::ConcealmentPolicy to_cpp(ac3forge_ac4_concealment_policy_t policy) {
+    return static_cast<ac4::ConcealmentPolicy>(policy);
+}
+[[nodiscard]] inline ac3forge_ac4_concealment_policy_t from_cpp(ac4::ConcealmentPolicy policy) {
+    return static_cast<ac3forge_ac4_concealment_policy_t>(policy);
+}
+[[nodiscard]] inline ac3forge_ac4_concealment_action_t from_cpp(ac4::ConcealmentAction action) {
+    return static_cast<ac3forge_ac4_concealment_action_t>(action);
+}
+[[nodiscard]] inline ac4::AssociatedType to_cpp(ac3forge_ac4_associated_type_t type) {
+    return static_cast<ac4::AssociatedType>(type);
+}
+[[nodiscard]] inline ac4::CodecMode to_cpp(ac3forge_ac4_codec_mode_t mode) {
+    return static_cast<ac4::CodecMode>(mode);
+}
+[[nodiscard]] inline ac3forge_ac4_codec_mode_t from_cpp(ac4::CodecMode mode) {
+    return static_cast<ac3forge_ac4_codec_mode_t>(mode);
+}
+[[nodiscard]] inline ac4::RateMode to_cpp(ac3forge_ac4_rate_mode_t mode) {
+    return static_cast<ac4::RateMode>(mode);
+}
+[[nodiscard]] inline ac3forge_ac4_rate_mode_t from_cpp(ac4::RateMode mode) {
+    return static_cast<ac3forge_ac4_rate_mode_t>(mode);
+}
+
+[[nodiscard]] inline ac3forge_status_t from_cpp(ac4::DecodeError error) {
+    switch (error) {
+        case ac4::DecodeError::kTruncated: return AC3FORGE_ERROR_AC4_DECODE_TRUNCATED;
+        case ac4::DecodeError::kInvalidToc: return AC3FORGE_ERROR_AC4_DECODE_INVALID_TOC;
+        case ac4::DecodeError::kInvalidStream: return AC3FORGE_ERROR_AC4_DECODE_INVALID_STREAM;
+        case ac4::DecodeError::kUnsupported: return AC3FORGE_ERROR_AC4_DECODE_UNSUPPORTED;
+        case ac4::DecodeError::kMissingIFrame: return AC3FORGE_ERROR_AC4_DECODE_MISSING_IFRAME;
+    }
+    return AC3FORGE_ERROR_INTERNAL;
+}
+
+[[nodiscard]] inline ac3forge_status_t from_cpp(ac4::EncodeError error) {
+    switch (error) {
+        case ac4::EncodeError::kInvalidConfig: return AC3FORGE_ERROR_AC4_ENCODE_INVALID_CONFIG;
+        case ac4::EncodeError::kInvalidInput: return AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT;
+    }
+    return AC3FORGE_ERROR_INTERNAL;
+}
+
+#endif  // AC3FORGE_HAS_AC4
 
 // Every entry point in ac3forge.h that can fail funnels through this: `body`
 // returns ac3forge_status_t on its own successful path (AC3FORGE_OK or an
@@ -299,3 +457,35 @@ struct ac3forge_level_meter {
     // default-constructible either.
     std::unique_ptr<ac3::analysis::LevelMeter> impl;
 };
+
+#ifdef AC3FORGE_HAS_AC4
+
+struct ac3forge_ac4_decoder {
+    explicit ac3forge_ac4_decoder(const ac4::DecoderConfig& config) : impl(config) {}
+    ac4::Decoder impl;
+};
+
+struct ac3forge_ac4_decoded_frame {
+    ac4::DecodedFrame data;
+};
+
+struct ac3forge_ac4_encoder {
+    // ac4::Encoder has no public constructor (only the static create() this
+    // library's ac3forge_ac4_encoder_create() calls) but is move-constructible,
+    // so this takes ownership by move rather than constructing in place the
+    // way ac3forge_encoder/ac3forge_eac3_encoder above do.
+    explicit ac3forge_ac4_encoder(ac4::Encoder&& encoder) : impl(std::move(encoder)) {}
+    ac4::Encoder impl;
+};
+
+struct ac3forge_ac4_encoded_frame {
+    ac4::EncodedFrame data;
+};
+
+// An owned copy of ac4::Encoder::toc()'s result - see
+// ac3forge_ac4_encoder_toc()'s own comment in ac3forge.h.
+struct ac3forge_ac4_toc {
+    ac4::Toc data;
+};
+
+#endif  // AC3FORGE_HAS_AC4
