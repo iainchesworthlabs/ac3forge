@@ -23,8 +23,18 @@ on:
     branches: [ main ]
 
 concurrency:
-  # One at a time, in order, so an issue is never opened twice for the same red.
-  group: main-health
+  # One group per finished run, so no event can wait behind another or replace
+  # it. A group shared by every run holds one running and one PENDING run and
+  # cancels the pending one when a newer arrives, whatever cancel-in-progress
+  # says (that only protects the running one). On 2026-09-29 four events arrived
+  # within a minute and one main-health run was cancelled before it started; it
+  # could as easily have been the one reporting a failure. CI runs on main one at
+  # a time (ci.yml's ci-main group), so two of these events are minutes apart in
+  # practice. If two did overlap, the `verified` push cannot go backwards (a plain
+  # push, refused unless it moves forward) and the worst case is two main-red
+  # issues. The attempt is in the key because a rerun of a CI run finishes again
+  # and is a new event for the same run.
+  group: main-health-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
   cancel-in-progress: false
 
 permissions: {}
@@ -32,6 +42,9 @@ permissions: {}
 jobs:
   health:
     name: Verify, rerun or report
+    # A cancelled or skipped run is a superseded one and needs nothing: no runner
+    # is started for it.
+    if: ${{ contains(fromJSON('["success","failure","timed_out","startup_failure","action_required"]'), github.event.workflow_run.conclusion) }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
