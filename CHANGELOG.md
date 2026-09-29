@@ -1597,6 +1597,34 @@ The sections below contain the complete change list and fixes.
   whichever frame decodes first. `stereo_parameters()` returned a 32 KiB `StereoParameters` by value
   at every call, a stack temporary despite every caller already owning a slot to write into; it now
   takes the destination by reference.
+- **`src/ac4dec/src/pcm` is now templated on `Real`, finishing D14a's seam.** The decoder's own
+  QMF-domain and spectral reconstruction (all nineteen modules: A-SPX, A-CPL, A-JCC, A-JOC,
+  companding, dialogue enhancement, DRC, the downmix, S-CPL, stereo and multichannel processing,
+  and the substream orchestrator itself) name their samples through `Real` rather than a hardcoded
+  `double`, following the pattern `src/ac4core`'s kernels already set: `ac3cli`, and the whole test
+  suite, now build, link and pass at `AC3FORGE_DECODE_SCALAR=float` on the host - a working
+  float decoder, where before only the seam existed. A handful of values that are set once
+  per frame or per configuration change rather than once per QMF sample - a downmix or DRC gain
+  matrix, A-CPL's and A-JCC's own interpolated coefficients (`ac4core`'s `acpl::interpolate()` is
+  deliberately not retemplated, the same handful of values every frame regardless of the decoder's
+  scalar) - keep `double`, narrowed once where they multiply a `Real` or `QmfValue`, in the same
+  shape the QMF banks' own twiddle factors already used. `hf_generator.cpp`'s dB gains, flagged by
+  the seam's own PR as not yet cross-platform-safe at `float`, now go through a new `scalar_exp2`
+  (`src/arithmetic`, beside the existing `scalar_log2`/`scalar_exp`) rather than `std::log10`/
+  `std::pow` directly, so two platforms' libm cannot disagree in a decoded sample's last bit; the
+  `double` path is untouched (still `std::log10`/`std::pow`, bit-identical). A second gap the seam
+  did not anticipate: `src/ac4enc` calls several of `src/ac4core`'s kernels (`Mdct`, `QmfAnalysis`,
+  `QmfSynthesis`, `Resampler`, `ajoc::Reconstruction`, `aspx::generate_high_band`) always at
+  `double`, since the encoder has no float tier of its own (decision 34) and `ac4core` is one shared
+  library rather than `ac3::forge`'s separately-compiled encoder and decoder DSP; those kernels (and
+  a few others `ac4core`'s own tests exercise directly at `double`) now also explicitly instantiate
+  `<double>` when `Real` is not already `double`, guarded by a new `AC4CORE_ALSO_DOUBLE` macro that
+  adds nothing to a `double`-configured build. The `double` build's output is unchanged bit for bit:
+  the whole test suite - 2,389 cases, 11,171,235 assertions - passes identically before and after,
+  on both scalars. The QMF bank rewrite (real and imaginary planes, an index-moving delay line), the
+  wider memory audit beyond the three findings above, the cached bit reader and Huffman table, the
+  host's vector kernels, and the probe's AC-4 rows remain - D14b (the P4 board) does not start until
+  those land.
 
 **Browser (WASM)**
 
