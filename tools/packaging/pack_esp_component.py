@@ -51,6 +51,12 @@ COMPONENT = REPO / "esp-idf" / "ac3forge"
 # carry the part that builds for this chip.
 STAGED_TREES = (
     "src/forge",
+    # The header-only Fixed32 / scalar-function target src/forge and src/ac4core
+    # both link (planning/ac4.md decision 31); the root CMakeLists.txt adds it
+    # with add_subdirectory before it reaches src/forge, so a staged tree
+    # without it stops the configure with "source src/arithmetic ... is not an
+    # existing directory" - the failure this list produced when D14a added it.
+    "src/arithmetic",
     "cmake",
 )
 

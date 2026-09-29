@@ -424,9 +424,11 @@ ac3::oba::BedLabel to_oba_bed_label(ac4::Speaker speaker) {
 // zone_mask, trim_disabled, headphone_render_mode and head_track_disabled, which have no ADM
 // representation and are dropped here (they reach neither ADM's schema nor this decode's other
 // outputs, objects_dir and the rendered WAV, so nothing this decode already promised is lost).
-// zone_mask (Annex F.8, Table 104) and ac3::oba::ZoneConstraint (TS 103 420 Table 20) enumerate the
-// same six room-zone exclusions in the same order; values this decoder does not expect (6 and 7,
-// reserved in Table 104) fall back to kNone rather than propagate a reserved code into the ADM file.
+// zone_mask (Annex F.8, Table 104) and ac3::oba::ZoneConstraint (TS 103 420 Table 20) number the
+// same six room-zone constraints alike, 0 to 5. Table 104 goes on to 6, "Only proscenium zone
+// enabled", which TS 103 420 has no counterpart for (its 6 and 7 are reserved), and reserves 7: both
+// fall back to kNone rather than carry a code the E-AC-3 side cannot hold into the ADM file. Checked
+// against both tables' text, 2026-09-29.
 ac3::oba::DynamicObject to_oba_dynamic_object(const ac4::ObjectProperties& p) {
     ac3::oba::DynamicObject out;
     out.position = {.x = p.position[0], .y = p.position[1], .z = p.position[2]};
