@@ -78,7 +78,7 @@ These five are not equally verified against real hardware, and the project's own
 is deliberately explicit about the difference.
 
 !!! note "MonitorSink is confirmed against real hardware"
-    `ac3cli monitor` / `ac3cli live --monitor` have actually played decoded AC-3 and E-AC-3
+    `ac3cli monitor` and `ac3cli live`'s monitor leg have actually played decoded AC-3 and E-AC-3
     (including an Atmos stream's 5.1 bed) through a real Realtek output in real time, and a live
     microphone capture→encode→monitor session has run end to end. Building this path against
     real hardware surfaced two bugs that neither unit tests nor silent/synthetic input

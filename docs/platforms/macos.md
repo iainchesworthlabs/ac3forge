@@ -130,8 +130,8 @@ output has no display EDID to read in the first place. `play` falls back to the 
 
 ## Per-application capture: the Core Audio process tap
 
-`ac3cli devices` never lists a loopback entry here, and `ac3cli record`/`live --loopback` refuse
-outright rather than silently opening a microphone instead — unlike
+`ac3cli devices` never lists a loopback entry here, and the capture class refuses
+`DeviceKind::kLoopback` outright rather than silently opening a microphone instead — unlike
 [Windows](windows.md) (any render endpoint reopened via WASAPI loopback) or
 [Linux/PipeWire](linux.md#audio-backend-alsa-or-pipewire) (a sink's monitor), the Audio HAL this
 backend otherwise uses has no "capture what a render device is playing" concept at all.

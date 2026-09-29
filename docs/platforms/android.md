@@ -700,9 +700,9 @@ own comment, a decoder that validates the `emdf_protection` field treats the con
 as a commitment to object decoding and refuses the whole stream if it doesn't validate, rather than
 falling back to plain 5.1. `shield_signing_hook.hpp`'s `signing_available()` (`true` only once a key
 asset actually loaded) lets `live_cursor.cpp` decide this once at startup: `emit_object_metadata`
-is set to `signing_available()`, so a keyless build runs the same `bed51` mode `ac3cli mode bed51`
-exposes — no container at all, always safe, on every receiver — while only a build carrying the key
-ever emits and signs one.
+is set to `signing_available()`, so a keyless build runs the same `bed51` mode that `ac3cli atmos`
+takes as its last argument — no container at all, always safe, on every receiver — while only a
+build carrying the key ever emits and signs one.
 
 To build a signed APK on your own machine, drop your own `signing.key` (base64 or raw bytes) into
 `app/src/main/assets/` — gitignored, so `git status` never shows it — and build as normal:
