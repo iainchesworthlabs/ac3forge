@@ -2676,6 +2676,24 @@ The sections below contain the complete change list and fixes.
   Atmos object layer surfaced it. Now recognises the format and refuses ambiguous
   hex/array-shaped content instead of silently taking it as raw key bytes.
 
+**Hearth**
+
+- **A `player@v1` stream that ended before the clock's first exchange completed lost
+  every chunk it had ever carried, not just the ones still in flight.** `PlayerSession`
+  holds an aiosendspin 9.1.1 server's early chunks until the clock's first reply arrives
+  (`planning/hearth-sendspin-extension.md`, C13), but `restart_audio()` discarded the
+  held buffer outright whenever the stream ended, on the assumption that a reply was
+  always close behind. Dynamic-code pairing's extra CPace round trips, and raw PCM's
+  own lack of an encoder's setup latency to absorb them, can together push a short
+  stream's whole run past the clock exchange's `kReplyTimeout` (five seconds) with no
+  reply ever seen — reproduced against `ac3hearth-testsink` under CPU contention, where
+  it reliably dropped an entire PCM stream paired by dynamic code while the same stream
+  paired by token, or encoded as FLAC or Opus, kept its lead time. `PlayerSession` now
+  delivers what is held before forgetting it when a stream genuinely ends (a
+  `stream/end` message or a deactivating `server/activate`), on whatever time mapping
+  the clock can give pre-convergence; a stream/clear or a format change within a
+  running stream still discards it, since that data really is stale.
+
 ## [0.10.0-beta.1] - 2026-09-01
 
 Tenth tagged release. The E-AC-3 encoder catches up with the decision quality AC-3 got in 0.7.0,
