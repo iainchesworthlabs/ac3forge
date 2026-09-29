@@ -3,7 +3,8 @@
 This page puts `hearth_sink` onto an ESP32-S3, ESP32-C6 or ESP32-P4 board over its USB cable,
 from the newest release, with nothing to install on the computer. It uses
 [ESP Web Tools](https://esphome.github.io/esp-web-tools/) and the browser's Web Serial, so it
-needs Chrome, Edge or Firefox on a computer. Safari cannot do it, and neither can anything on iOS.
+needs Chrome or Edge on a computer, or Firefox from version 151, which added Web Serial in May
+2026. Safari cannot do it, and neither can anything on iOS.
 
 The site copies the images from the release when it is published, and each release publishes it
 again. A browser cannot fetch a release's files from another site, so they are served from here.
@@ -116,7 +117,7 @@ document.body.addEventListener("keydown", (event) => {
       button.appendChild(activate);
       const unsupported = document.createElement("span");
       unsupported.setAttribute("slot", "unsupported");
-      unsupported.textContent = "This browser has no Web Serial: use Chrome, Edge or Firefox on a computer.";
+      unsupported.textContent = "This browser has no Web Serial: use Chrome or Edge, or Firefox 151 or later, on a computer.";
       button.appendChild(unsupported);
       const notAllowed = document.createElement("span");
       notAllowed.setAttribute("slot", "not-allowed");
@@ -166,8 +167,10 @@ document.body.addEventListener("keydown", (event) => {
   [Which image](sink-firmware.md#which-image). The installer checks the chip before it writes
   anything: an image for another chip is refused.
 - **A USB cable to the board's serial connector.** On an ESP32-S3 DevKitC-1 that is the
-  connector marked USB. On a FireBeetle 2 ESP32-P4 it is the USB-C connector that carries the
-  console; the board's other connector is a separate USB peripheral.
+  connector marked USB. A FireBeetle 2 ESP32-P4 has two USB-C connectors on two different USB
+  peripherals and no auto-reset circuit. Its ROM download mode answers on the one marked USB 2.0
+  OTG, once you hold BOOT, tap RST and release BOOT by hand (step 3 below), and its console is on
+  the other ([ESP32-P4](../platforms/bare-metal/esp32-p4.md#reading-the-console)).
 
 ## Installing
 
