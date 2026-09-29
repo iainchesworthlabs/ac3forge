@@ -119,6 +119,14 @@ TEST_CASE("ac3forge_status_message never returns null", "[capi]") {
     CHECK(std::string_view(ac3forge_status_message(AC3FORGE_OK)) == "ok");
     CHECK(ac3forge_status_message(AC3FORGE_ERROR_DECODE_BAD_SYNC_WORD) != nullptr);
     CHECK(ac3forge_status_message(AC3FORGE_ERROR_DECODE_INVALID_STREAM) != nullptr);
+    // AC3FORGE_ERROR_UNSUPPORTED is what a build without a codec (an
+    // AC3FORGE_BUILD_AC4=OFF one, today) returns from that codec's every
+    // fallible entry point - see ac3forge.h's own comment on it - so this
+    // build, with AC4 on, never produces it through a real call; message()
+    // is a pure enum-to-string map, so checking it directly needs no such
+    // build to exist.
+    CHECK(std::string_view(ac3forge_status_message(AC3FORGE_ERROR_UNSUPPORTED)) ==
+          "not built into this library");
 }
 
 TEST_CASE("ac3forge_encoder_config_init matches EncoderConfig{}'s own defaults", "[capi]") {
@@ -2900,14 +2908,16 @@ TEST_CASE("scan/metering C accessors take their documented defaults on null hand
 
 // --- AC-4 (ac3forge_ac4_*) -------------------------------------------------
 //
-// Present only when this build was configured with AC3FORGE_BUILD_AC4 on -
-// AC3FORGE_HAS_AC4 mirrors that (ac3forge_c/version.h). Every round trip below
-// is a stereo, 5.1 or 5.1.4 configuration (channel-based / channel-based-
-// immersive - the encoder's own scope as of this phase; A-JOC and
-// direct-coded objects are phase E9, tracked separately), so
-// ac3forge_ac4_decoded_frame_object_count() is exercised only at 0: there is
-// no encoder here yet that can produce object content to decode back.
-#ifdef AC3FORGE_HAS_AC4
+// This file only builds under AC3FORGE_BUILD_CAPI, which (root CMakeLists.txt)
+// requires AC3FORGE_BUILD_AC4 on whenever AC3FORGE_BUILD_TESTS is - so
+// ac3forge.h's AC-4 section, always declared either way (that header's own
+// comment), is always backed by the real ac4.cpp/ac4_encoder.cpp here, never
+// ac4_absent.cpp. Every round trip below is a stereo, 5.1 or 5.1.4
+// configuration (channel-based / channel-based-immersive - the encoder's own
+// scope as of this phase; A-JOC and direct-coded objects are phase E9,
+// tracked separately), so ac3forge_ac4_decoded_frame_object_count() is
+// exercised only at 0: there is no encoder here yet that can produce object
+// content to decode back.
 
 TEST_CASE("ac3forge_ac4_*_config_init match their C++ struct defaults", "[capi][ac4]") {
     ac3forge_ac4_output_config_t output;
@@ -3248,5 +3258,3 @@ TEST_CASE("AC-4 accessors are null-safe", "[capi][ac4]") {
     ac3forge_ac4_decoder_destroy(nullptr);
     ac3forge_ac4_encoder_destroy(nullptr);
 }
-
-#endif  // AC3FORGE_HAS_AC4

@@ -13,6 +13,7 @@ const char* ac3forge_status_message(ac3forge_status_t status) {
         case AC3FORGE_ERROR_INVALID_ARGUMENT: return "invalid argument";
         case AC3FORGE_ERROR_OUT_OF_MEMORY: return "out of memory";
         case AC3FORGE_ERROR_INTERNAL: return "internal error";
+        case AC3FORGE_ERROR_UNSUPPORTED: return "not built into this library";
         case AC3FORGE_ERROR_ENCODE_INVALID_BITRATE: return "invalid bitrate";
         case AC3FORGE_ERROR_ENCODE_INVALID_DIALNORM: return "invalid dialnorm";
         case AC3FORGE_ERROR_ENCODE_INVALID_SUBSTREAM: return "invalid substream";

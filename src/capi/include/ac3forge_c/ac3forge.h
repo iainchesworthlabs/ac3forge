@@ -52,6 +52,13 @@ typedef enum ac3forge_status {
     AC3FORGE_ERROR_INVALID_ARGUMENT = 1,
     AC3FORGE_ERROR_OUT_OF_MEMORY = 2,
     AC3FORGE_ERROR_INTERNAL = 3, /* an exception crossed the C boundary; see docs/library/c-api.md */
+    /* A call this library was not built to answer - a codec this build left
+     * out (AC3FORGE_BUILD_AC4 off), not a bad argument or a bad stream. Every
+     * fallible entry point of that codec's section returns it, including
+     * *_create() (the created-object out-parameter is left NULL); a function
+     * that returns something else directly returns a NULL pointer, 0, or a
+     * zero-initialized struct as its type allows. */
+    AC3FORGE_ERROR_UNSUPPORTED = 4,
 
     /* ac3::FrameError — FrameEncoder::encode_frame(), AtmosEncoder::encode_frame() */
     AC3FORGE_ERROR_ENCODE_INVALID_BITRATE = 10,
@@ -1416,10 +1423,14 @@ AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
  * TS 103 190-2 V1.3.1
  * --------------------------------------------------------------------- *
  *
- * Present only when this library was configured with AC3FORGE_BUILD_AC4 on
- * (the default) - ac3forge_c/version.h's AC3FORGE_HAS_AC4, #cmakedefine'd
- * from that same option, guards it below so a caller's own code can #ifdef
- * around a library built either way instead of failing to link. Mirrors
+ * Always declared, whether or not this library was configured with
+ * AC3FORGE_BUILD_AC4 (the default is on): the codebase selects a variant by
+ * CMake, never by preprocessor conditional, so a caller does not need an
+ * #ifdef of its own either. Built without it, every function below still
+ * links; *_create() returns NULL, and everything else fallible returns
+ * AC3FORGE_ERROR_UNSUPPORTED (or NULL/0, for a pointer or count).
+ * ac3forge_c/version.h's AC3FORGE_HAS_AC4 (a plain #define, #cmakedefine'd
+ * from that option) still tells a caller which behaviour to expect. Mirrors
  * ac4::Decoder (src/ac4dec/include/ac4dec/decoder.hpp) and ac4::Encoder
  * (src/ac4enc/include/ac4enc/encoder.hpp), plus the table-of-contents helpers
  * of src/ac4/include/ac4/ac4.hpp a container muxer needs beside the encoder.
@@ -1432,7 +1443,6 @@ AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
  * has as of this header (planning/ac4.md phase E9, A-JOC and direct-coded
  * objects, was still open when this was written). The decoder's object
  * accessors below read whatever object audio a stream carries regardless. */
-#ifdef AC3FORGE_HAS_AC4
 
 /* --- shared enums -------------------------------------------------------- */
 
@@ -1930,7 +1940,6 @@ AC3FORGEC_EXPORT ac3forge_status_t ac3forge_ac4_sync_frame(const uint8_t* raw_fr
                                                            size_t raw_frame_size, int crc,
                                                            ac3forge_bytes_t** out_bytes);
 
-#endif /* AC3FORGE_HAS_AC4 */
 
 #ifdef __cplusplus
 } /* extern "C" */

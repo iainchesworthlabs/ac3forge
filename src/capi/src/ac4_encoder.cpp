@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "internal.hpp"
+#include "internal_ac4.hpp"
 
 using ac3forge_c::guard;
 using ac3forge_c::to_cpp;
