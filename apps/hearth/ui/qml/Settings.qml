@@ -561,6 +561,25 @@ ScrollView {
                             Accessible.description: qsTr("Opens the same report in a window that keeps itself up to date. Nothing is sent anywhere.")
                             onClicked: liveDiagnosticsDialog.open()
                         }
+                        AppButton {
+                            objectName: "settingsDiagnosticsCopyButton"
+                            text: qsTr("Copy diagnostics")
+                            Accessible.description: qsTr("Copies the same report to the clipboard. Nothing is sent anywhere.")
+                            onClicked: {
+                                diagnosticsClipboard.text = HearthController.diagnosticsReport();
+                                diagnosticsClipboard.selectAll();
+                                diagnosticsClipboard.copy();
+                            }
+                        }
+                    }
+                    // A hidden TextEdit is the portable way to reach the system
+                    // clipboard from pure QML (Media.qml's own copyJson() carries
+                    // the identical comment). Set just before each copy rather
+                    // than bound to it, since diagnosticsReport() is a plain
+                    // invokable with no signal a reactive binding could follow.
+                    TextEdit {
+                        id: diagnosticsClipboard
+                        visible: false
                     }
                     Text {
                         objectName: "settingsDiagnosticsMessage"

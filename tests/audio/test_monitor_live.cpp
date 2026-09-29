@@ -132,6 +132,50 @@ TEST_CASE("monitor live: the position follows the device, and pause and flush ho
     CHECK_FALSE(sink.position().has_value());
 }
 
+// A rate the output is not running at.
+//
+// A shared-mode endpoint has one mix format, and WASAPI passes a stream in any
+// other rate or width to its own converter only when the stream asks it to
+// (AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM). Without that, a 44.1 kHz item on the
+// 48 kHz endpoint nearly every machine has was refused, and a caller that opens
+// at each item's own rate - Hearth - could not play a song there at all. Of the
+// three rates below at least two are not the one the output runs at, so those go
+// through the engine's conversion; each has to open and to play. Silence rather
+// than a tone, so a run on somebody's desk makes no sound.
+TEST_CASE("monitor live: a rate the output is not running at still opens and plays",
+          "[.][monitor-live]") {
+    for (const std::uint32_t rate : {44'100U, 48'000U, 96'000U}) {
+        CAPTURE(rate);
+        ac3::audio::MonitorSink sink;
+        const auto started = sink.start(/*device_id=*/"", rate, kChannels);
+        if (!started) {
+            INFO("start() said: " << ac3::audio::describe(started.error()));
+            // A machine with no output says something else; this refusal is the bug.
+            REQUIRE(started.error() != ac3::audio::MonitorError::kFormatRejected);
+            WARN("no default output device: " << ac3::audio::describe(started.error()));
+            return;
+        }
+        REQUIRE(sink.running());
+
+        const std::vector<float> silence(kChunkFrames * kChannels, 0.0F);
+        for (int i = 0; i < 25; ++i) {
+            for (int attempt = 0; attempt < 200 && !sink.submit(silence); ++attempt) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+
+        // The device's own clock moved, counted in the stream's own frames.
+        const auto position = sink.position();
+        REQUIRE(position.has_value());
+        CHECK(position->frames_played > 0);
+        CHECK(position->frames_played < rate);
+
+        sink.stop();
+        CHECK_FALSE(sink.running());
+    }
+}
+
 // An output that goes away mid-stream, with a person to take it away.
 //
 // Hidden, under a tag of its own so that "[monitor-live]" never waits for

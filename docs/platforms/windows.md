@@ -91,6 +91,27 @@ is deliberately explicit about the difference.
     default output to run at all, but the CLI and the test now say why instead of only the
     generic WASAPI/COM message.
 
+!!! note "MonitorSink asks the engine to resample, so any rate plays on any endpoint"
+    Found 2026-09-26, when Hearth would not play a 44.1 kHz AC-3 file on a machine whose only
+    output, "Speakers (Realtek(R) Audio)", runs its shared-mode engine at 48 kHz: every play
+    ended in `kFormatRejected`. The note above put the refusal down to the endpoint, which
+    "converts bit depth but not sample rate". That is what WASAPI's shared mode does for a
+    client that asks for nothing more: it takes the mix format's own rate and channel count and
+    refuses any other with `AUDCLNT_E_UNSUPPORTED_FORMAT`, unless the stream is initialised
+    with `AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM`, which puts the engine's own resampler and channel
+    matrixer in front of the mix (`AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY` picks its better
+    filter). `start()` set neither flag, so every rate but the endpoint's own was refused, and a
+    caller that opens at each item's own rate - Hearth - could not play a song there at all.
+
+    A probe of that Realtek endpoint gave `0x88890008` at 44.1 kHz and at 96 kHz without the
+    flag and success at both with it; 48 kHz opened either way. `start()` now sets both flags on
+    its ordinary shared-mode initialise. The `IAudioClient3` low-latency path is unchanged, and
+    still falls back to that initialise when the engine will not run the format at its smallest
+    period, so a format that needs converting plays through the fallback. `kFormatRejected`
+    stays for what the converter cannot take. `"[monitor-live]"` opens at 44.1, 48 and 96 kHz on
+    the default output, with silence, and needs each to play; `"[hearth-device]"` does the same
+    through Hearth's own output sink, which no other test opens on a real device.
+
 !!! note "Playback position, pause and flush are confirmed; a multichannel patch is not"
     `MonitorSink`'s playback position, `pause()`/`resume()` and `flush()` have been exercised
     against the default Realtek endpoint by `ac3tests "[monitor-live]"` — a hidden case, since it

@@ -78,6 +78,24 @@ RowLayout {
                     wrapMode: Text.WordWrap
                 }
             }
+
+            // These tabs are this sink's OWN settings - none of them make it
+            // something Hearth plays to. That still takes a group, the same
+            // as any other paired sink (Network.qml's own "paired" card, for
+            // a sink that does NOT offer this settings view, already says
+            // so; this one said nothing at all, which is what left a paired-
+            // but-ungrouped Hearth sink with no hint here -
+            // hearth-followups-group-ux-and-live-diagnostics-2026-09-26).
+            Text {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                objectName: "networkSinkSettingsGroupHint"
+                text: qsTr("Add this sink to a group from the list on the left, or make a new one, to "
+                          + "play to it.")
+                color: Theme.textMuted
+                font.pixelSize: Theme.fontSmall
+                wrapMode: Text.WordWrap
+            }
         }
 
         Loader {

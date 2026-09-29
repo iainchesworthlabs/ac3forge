@@ -709,8 +709,13 @@ void write_downmix(BitWriter& w, const PresentationChannels& p, const DownmixCod
                     "preferred_dmx_method");
         }
     }
-    // loud_corr(pres_ch_mode, pres_ch_mode_core, 0), with no corrections for
-    // the immersive outputs (b_corr_for_immersive_out 0).
+    // loud_corr(pres_ch_mode, pres_ch_mode_core, b_objects), with no
+    // corrections for the immersive outputs (b_corr_for_immersive_out 0) and
+    // none for objects (b_obj_loud_corr 0), which then read as a channel
+    // mode's would.
+    if (ch_mode < 0) {
+        w.write(1, 0, "b_obj_loud_corr");
+    }
     if (ch_mode > 4) {
         w.write(1, 0, "b_corr_for_immersive_out");
     }

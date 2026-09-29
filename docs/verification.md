@@ -1564,6 +1564,23 @@ slots and reads the bins of its own band, all of them where its neighbours' comp
 band; the prediction is 1 and 0 there (DEE's 0.9 and 0), and the routing 9.7 dB. The readings the
 writer takes, and those it shares with the decoder, are in `src/ac4enc/ERRATA.md`.
 
+The encoder's objects (phase E9, behind `experimental.objects`) are checked against the decoder
+alone, since no reader outside the project decodes them: DEE writes no A-JOC from this project's
+masters and librempeg refuses object coding. `tests/ac4enc/test_ac4enc_objects.cpp` codes an A-JOC
+substream over a computed downmix of four signals for eight objects, over a static 5.1 bed for six
+objects and the LFE, and with bed objects, the LFE and decorrelators, and direct-coded dynamic objects
+with the LFE, each object a tone at the middle of a QMF subband of a parameter band of its own. Decoded
+in full, each object comes back at 40 to 75 dB SNR against its source with a correlation above 0.99999;
+floors at the first measurement less 1 dB and 0.02 are pinned. Core decoding gives each downmix signal,
+the sum of its group, at 71 to 75 dB SNR and at its group's centre. A moving object's updates come out
+at the sample their input samples do, to within 32 samples, in both codings; a second encode is byte
+for byte the first; and the encoder's trace, the decoder's and the Python parser's agree on the four
+committed streams (`tests/golden/ac4dec/objects/encoder-*.ac4`, with their digests) and on the
+encoder-space harness's object draws. MediaInfo's reading of the object count and the bed
+(`tools/checks/check_ac4_encode_readers.py --only objects`) needs DEE's install. Whether the objects
+move as their metadata says is the listener's to hear, from the streams the test writes with
+`AC4ENC_WRITE_LISTENING` set.
+
 ### IEC 61937
 
 AC-4's burst types (IEC 61937-14, phase D11) have no oracle: nothing else here writes or reads

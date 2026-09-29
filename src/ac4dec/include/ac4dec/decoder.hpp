@@ -360,41 +360,8 @@ enum class Speaker : std::uint8_t {
 // Speaker does not name. An alternative presentation's alternative object
 // properties (Part 2 clause 6.3.9.4) are read and not applied.
 
-// Annex F.2 to F.10, and add_per_object_md()'s data (Part 2 clause 6.3.9.11):
-// what one block update of an object's metadata sets (clause 6.3.9).
-struct ObjectProperties {
-    // Whether the object's essence carries sound (!b_object_not_active).
-    bool active = true;
-    // F.5, object_gain in dB; -infinity for silence.
-    double gain_db = 0.0;
-    // F.7, 0 to 1.
-    double priority = 1.0;
-    // F.2, for a dynamic object: X from the left wall (0) to the right (1), Y
-    // from the front wall (0) to the back (1), Z from the floor (-1) through
-    // the height of the screen (0) to the ceiling (1).
-    std::array<double, 3> position{0.5, 0.5, 0.0};
-    // F.8: zone_mask (Table 104) and b_enable_elevation; F.10: b_object_snap.
-    int zone_mask = 0;
-    bool enable_elevation = true;
-    bool snap = false;
-    // F.6, the object's width in X, Y and Z, 0 to 1 (object_width in all
-    // three where the stream sends one value).
-    std::array<double, 3> width{};
-    // F.4: object_screen_factor, and the exponent object_depth_factor gives
-    // the Y position (Table 107).
-    double screen_factor = 0.0;
-    double depth_exponent = 1.0;
-    // object_distance_factor (Table 108), infinity for b_obj_at_infinity;
-    // unset where the stream sends none.
-    std::optional<double> distance;
-    // F.9, object_divergence, 0 to 1.
-    double divergence = 0.0;
-    // b_obj_trim_disable, hp_render_mode_obj (Table 121) and
-    // b_head_track_disable_obj.
-    bool trim_disabled = false;
-    std::optional<int> headphone_render_mode;
-    bool head_track_disabled = false;
-};
+// ObjectProperties (ac4/ac4.hpp): Annex F.2 to F.10 and add_per_object_md()'s
+// data, what one block update of an object's metadata sets (clause 6.3.9).
 
 // F.11: one block update, from the output sample of the frame at which it
 // takes effect (sample_offset + 32 x block_offset_factor into its codec frame,
