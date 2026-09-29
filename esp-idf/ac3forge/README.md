@@ -1,8 +1,12 @@
 # ac3forge as an ESP-IDF component
 
-Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decoding, or encoding, for the ESP32-S3, in
-the library's minimum-footprint profile: a static archive built without exceptions or RTTI,
-sized to run out of internal SRAM with no PSRAM.
+Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decoding for the ESP32-S3, ESP32-C3,
+ESP32-C6 and ESP32-P4 (the manifest's targets), and encoding, which only the S3 has run, in the
+library's minimum-footprint profile: a static archive built without exceptions or RTTI, sized to
+run out of internal SRAM with no PSRAM. The decode arithmetic is `float` on a part with a
+floating-point unit and fixed point on one without. On a part with a floating-point unit and
+PSRAM the component can also decode AC-4, behind `CONFIG_AC3FORGE_AC4` ([AC-4](#ac-4)); only the
+ESP32-P4 has run it.
 
 This directory is the component. For the codec it is a wrapper: `CMakeLists.txt` pre-seeds the
 repository's options, `add_subdirectory()`s the repository root and links `ac3::forge_minimal`,
@@ -19,11 +23,15 @@ live in the library because it is made of FreeRTOS:
   how low the ring ran, and why a run ended. An integrator implements the two seams for their
   transport and their DAC and gets the rest.
 - **`ac3forge::Control`** ([`include/ac3forge/control.hpp`](include/ac3forge/control.hpp)): a REST
-  surface over whatever owns a player - `GET /status`, `POST /play` with a location, `POST /stop`,
-  `POST /volume`, `GET`/`PUT /layout` - on `esp_http_server`, with callbacks the owner supplies so
-  the server's task never touches the player itself. `GET /` is a web page for the same routes,
-  and the only client they need: the state, the stream, the layout, the volume and the decode's
-  timing, and the four actions, from two files in [`ui/`](ui) sent from flash as they are
+  surface over whatever owns a player - `GET /status`, `GET /hardware`, `POST /play` with a
+  location, `POST /stop`, `POST /volume`, `GET`/`PUT /layout` - on `esp_http_server`, with
+  callbacks the owner supplies so the server's task never touches the player itself. The board's
+  own settings (`/name`, `/slot-width`, `/wiring`, `PUT /network`), a Sendspin player's pairings
+  (`/pairing`) and updates over the network (`/firmware`, `/firmware/mode`, `/firmware/rollback`,
+  `/firmware/coredump`, `POST /restart`, and the console's recent output at `GET /log`) go
+  through the same server. `GET /` is a web page for the routes, and the only client they need:
+  the state, the stream, the layout, the volume and the decode's timing, and the four actions,
+  from two files in [`ui/`](ui) sent from flash as they are
   ([`planning/esp32-device-ui.md`](../../planning/esp32-device-ui.md)). `GET /api` lists the
   routes.
 - **`ac3forge/interleave.hpp`**: planar float to interleaved 16-bit or 24-in-32 with slot padding,
@@ -34,7 +42,7 @@ live in the library because it is made of FreeRTOS:
   the sample rate. A sink tells it when each block arrives and when its write has returned, by a
   clock the sink passes in, and it counts, per play, the blocks that arrived to an empty queue,
   how long the queue was dry, and the least that was left. The streaming example's `i2s` and
-  `tdm` sinks keep one each for their `sink.*` line. Free of ESP-IDF and tested on the host
+  `i2s_wide` sinks keep one each for their `sink.*` line. Free of ESP-IDF and tested on the host
   against a simulated DMA (`tests/io/test_dac_queue_model.cpp`).
 
 The player renders through the library's `ac3::render` headers, which began in this component
@@ -78,20 +86,25 @@ the component's own CMake finds the library either way.
 floating-point unit) builds the AC-4 inspector, core and decoder into the component, in single
 precision, and lets the player read a stream that opens with an AC-4 sync word: the same ring,
 renderer and sinks, and `ac4::SyncFrameSplitter` and `ac4::Decoder` in place of the AC-3 and
-E-AC-3 framer and decoders. With it off the component builds as it always did. It needs PSRAM and
-a decode task with a stack of about 24 KB; the
-[ESP32-P4 page](../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of each kind
-held and how fast it decoded on a board. A component archive carries the AC-4 sources only when it
-was packed with `pack_esp_component.py --with-ac4`.
+E-AC-3 framer and decoders. With it off the component builds as it always did. It needs PSRAM,
+since the decoder alone peaks at 432 KB of heap at 2.0 and 1.93 MB at 5.1.4 on the footprint
+probe's streams, and a decode task with a stack of 40 KB, which `examples/hearth_sink/sdkconfig.ac4`
+sets: the decoder uses 20 to 24 KB of it. The [ESP32-P4 page](../../docs/platforms/bare-metal/esp32-p4.md#ac-4) has what a stream of
+each kind held and how fast it decoded on a board: 2.0 in SIMPLE and A-SPX modes in real time,
+wider layouts slower. It is not built for the ESP32-S3, the ESP32-C6 or the ESP32-C3 yet, and no
+sink built on the component takes AC-4 in a Sendspin group. A component archive carries the AC-4
+sources only when it was packed with `pack_esp_component.py --with-ac4`.
 
 ## The examples
 
 | Example | What it shows |
 |---|---|
 | [`examples/i2s_player`](examples/i2s_player/README.md) | Decodes a fixture linked into the image and plays it out of an I2S DAC, printing per-lap timing from the DAC's own clock. The measurement anyone with a board can repeat. |
-| [`examples/hearth_sink`](examples/hearth_sink/README.md) | Bytes from a flash partition, an SD card or an HTTP body over WiFi, through the incremental framer, rendered onto a configured layout - stereo, 5.1, 7.1.4 with the objects placed - to an I2S or TDM DAC; a `capture` sink for CI. How a real player gets its audio. |
+| [`examples/hearth_sink`](examples/hearth_sink/README.md) | Bytes from a flash partition, an SD card, a FAT volume in flash or an HTTP body over WiFi, through the incremental framer, rendered onto a configured layout - stereo, 5.1, 7.1.4 with the objects placed - to an I2S or TDM DAC; a `capture` sink for CI. With `sdkconfig.sendspin` it is a Sendspin player that takes updates over its network. How a real player gets its audio. |
 
-Both are built by CI under `espressif/idf:v6.1`, and `hearth_sink` runs under QEMU there in four
+Both are built by CI under `espressif/idf:v6.1`, in the `esp` lane of `ci.yml`, which runs after a
+merge to main that changes the ESP32 trees or a tree its component ships, and nightly
+([the lane table](../../docs/ci-lanes.md#lane-table)). `hearth_sink` runs under QEMU there in seven
 shapes, one of which renders a height-object stream onto 7.1.4 and checks every slot's level
 against the footprint probe's. Timing figures come only from a board: QEMU is not cycle-accurate.
 

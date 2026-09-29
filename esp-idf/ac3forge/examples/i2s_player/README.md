@@ -114,7 +114,9 @@ them): 9.9 ms a frame here against 11.5 at `-Os`, for 7.6 KB of flash and no
 SRAM. A project that needs the flash back sets `AC3FORGE_MINIMAL_HOT_O2` off
 before `project()`.
 
-Less than the footprint probe's 134,676 bytes, because this reaches only the
+CI's build of this example, with the default UART console, reads 97,263 bytes
+used and 244,497 remaining on 2026-09-29. That is less than the footprint
+probe's 102,596 bytes in the same run, because this reaches only the
 AC-3 path: no Annex E decoder, no QMF bank, no object reconstruction. An
 E-AC-3 or Atmos player is a bigger build — `docs/platforms/bare-metal/esp32-s3.md` has those
 numbers.

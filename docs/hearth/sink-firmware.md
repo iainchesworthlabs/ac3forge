@@ -1,8 +1,10 @@
 # Sink firmware: install, update, go back
 
 Every tagged release publishes `hearth_sink` built for four boards, so a board can be set up and
-kept up to date without ESP-IDF. CI packages the images on every run; the release workflow attaches
-them to the GitHub release. This guide is for someone with a board and a release. It covers:
+kept up to date without ESP-IDF. CI packages the images whenever its `esp` lane runs, which is
+after a merge to main that changes the ESP32 trees or a tree its component ships, and nightly
+([the lane table](../ci-lanes.md#lane-table)); the release workflow attaches them to the GitHub
+release. This guide is for someone with a board and a release. It covers:
 
 - which image a board takes, and checking a download;
 - installing a new board, and moving a board that runs an older build;
@@ -13,7 +15,7 @@ To build the firmware yourself instead, see [An ESP32-S3 sink](sink-esp32-s3.md#
 [planning/esp32-ota.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-ota.md)
 has the design and the reasons for it.
 
-!!! note "Status as of 2026-09-26: unsigned development images"
+!!! note "Status as of 2026-09-30: unsigned development images"
     The images are checked for damage at every step, but not signed: while the boards are in
     development, anyone on a board's network can update it, as anyone with a USB cable can.
     Signed images come when the boards leave development. Until the first tagged release that
@@ -74,7 +76,8 @@ against the release's manifest and `SHA512SUMS` before they write anything.
 ## A new board
 
 **In the browser:** [the installer](sink-installer.md) writes the image over USB from Chrome, Edge
-or Firefox, and then gives the board its network over Improv. Choose to erase a new board.
+or Firefox 151 and later, and then gives the board its network over Improv. Choose to erase a new
+board.
 
 **With esptool:** write the factory image at address 0, from any computer with Python:
 

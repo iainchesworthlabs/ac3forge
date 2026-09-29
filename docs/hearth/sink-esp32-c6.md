@@ -5,10 +5,17 @@ of up to two coded channels. A wider stream is refused before a decoder opens fo
 console says why once per stream.
 
 The limit is memory, not decode speed. The C6 has no PSRAM, so the player's buffers and WiFi's
-receive buffers share the internal RAM. On a board, AC-3 and E-AC-3 5.1 each stopped within about
-12 seconds when the decoder could not allocate its working memory. The part does decode 5.1 in
-real time with WiFi running: see the [ESP32-C6 platform page](../platforms/bare-metal/esp32-c6.md).
-The sink firmware does not decode AC-4 on any board.
+receive buffers share the internal RAM. On a board on 2026-09-22, AC-3 and E-AC-3 5.1 each stopped
+within about 12 seconds when the decoder could not allocate its working memory. The part does
+decode 5.1 in real time with WiFi running: see the
+[ESP32-C6 platform page](../platforms/bare-metal/esp32-c6.md). The E-AC-3 decoder has used less
+memory since (its 5.1 peak in the fixed tier is 109,806 bytes now, from 164,066), and the sink
+has not been run again on a board to see whether the limit has moved.
+
+The C6 build does not decode AC-4: the option is offered only on a part with a floating-point
+unit, and the AC-4 decoder has no fixed-point tier yet. No ESP32 sink takes AC-4 in a Sendspin
+group; an ESP32-P4 built with `sdkconfig.ac4` decodes it from an HTTP source
+([ESP32-P4](../platforms/bare-metal/esp32-p4.md#ac-4)).
 
 A stereo group of a C6 and an S3 has played ten minutes with no underrun on either board
 ([example README](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6)).
