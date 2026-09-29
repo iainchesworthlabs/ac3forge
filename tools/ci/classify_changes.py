@@ -63,7 +63,18 @@ LANE_PREFIXES: dict[str, tuple[str, ...]] = {
     "wasm": ("apps/wasm/", "js/"),
     # tools/packaging/ holds only pack_esp_component.py (the ESP-IDF
     # component/ESPHome workflow's own packaging step) - see docs/ci-lanes.md.
-    "esp": ("esp-idf/", "esphome/", "apps/baremetal/", "tools/packaging/"),
+    # src/forge/, src/arithmetic/ and cmake/ are the trees that script stages
+    # into the component (its STAGED_TREES, and the root CMakeLists.txt in
+    # ESP_ROOT_FILES below): the run after a merge leaves a core change to the
+    # nightly run for every other satellite, and these are the exception,
+    # because a change there is what breaks the package and the QEMU images
+    # (a new tree missing from the pack list stopped the ESP-IDF configure on
+    # 2026-09-29). The AC-4 trees are staged only for `--with-ac4` and stay
+    # with the nightly run.
+    "esp": (
+        "esp-idf/", "esphome/", "apps/baremetal/", "tools/packaging/",
+        "src/forge/", "src/arithmetic/", "cmake/",
+    ),
     "rust": ("rust/",),
     # examples/python/ alongside python/ itself - the rest of examples/ is
     # plain C++, already core's concern via its own build, not this lane's.
@@ -80,6 +91,9 @@ LANE_PREFIXES: dict[str, tuple[str, ...]] = {
 # apps/*/CMakeLists.txt must light only its own app's lane (already covered
 # by that app's prefix above), never core.
 CORE_ROOT_FILES = ("CMakeLists.txt", "CMakePresets.json", "vcpkg.json")
+# The root files the ESP-IDF component ships that a build reads (STAGED_FILES in
+# tools/packaging/pack_esp_component.py; its LICENSE and README.md are documentation).
+ESP_ROOT_FILES = ("CMakeLists.txt",)
 DOCS_ROOT_FILES = ("LICENSE", "mkdocs.yml")
 DOCS_SUFFIX = ".md"
 
@@ -132,6 +146,8 @@ def classify(
         if "/" not in path and path in CORE_ROOT_FILES:
             hits["core"] = True
             matched = True
+        if "/" not in path and path in ESP_ROOT_FILES:
+            hits["esp"] = True
         if path.endswith(DOCS_SUFFIX) or ("/" not in path and path in DOCS_ROOT_FILES):
             hits["docs"] = True
             matched = True

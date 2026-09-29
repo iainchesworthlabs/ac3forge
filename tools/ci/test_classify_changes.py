@@ -16,6 +16,7 @@ building rather than silently skipping.
 Run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 """
 
+import ast
 import contextlib
 import io
 import sys
@@ -212,6 +213,65 @@ class SatellitesDirectTest(unittest.TestCase):
         self.assertTrue(set(gate.SATELLITES) <= set(gate.LANES))
         held = set(gate.CORE_FANOUT) & set(gate.SATELLITES)
         self.assertEqual(held, {"android", "wasm", "esp", "rust", "python"})
+
+    def test_the_trees_the_esp_component_ships_light_the_esp_lane_too(self):
+        for path in (
+            "src/forge/coder/eac3_encoder.cpp",
+            "src/arithmetic/fixed32.hpp",
+            "cmake/Compiler.cmake",
+            "CMakeLists.txt",
+        ):
+            with self.subTest(path=path):
+                hits = self.classify(path)
+                # The other satellites stay with the nightly run.
+                self.assertEqual(lit(hits, *gate.SATELLITES), {"esp"})
+                self.assertTrue(hits["core"])
+
+    def test_the_ac4_trees_leave_the_esp_lane_to_the_nightly_run(self):
+        hits = self.classify("src/ac4dec/src/decoder.cpp")
+        self.assertEqual(lit(hits, *ALL_LANES), {"core", "windows", "linux", "macos"})
+
+    def test_a_root_file_the_component_does_not_ship_does_not_light_it(self):
+        hits = self.classify("CMakePresets.json")
+        self.assertFalse(hits["esp"])
+        self.assertTrue(hits["core"])
+
+
+class EspComponentStagingTest(unittest.TestCase):
+    """The lane has to light for everything the ESP-IDF component's packer stages.
+
+    tools/packaging/pack_esp_component.py stages an explicit list, and a tree or file
+    added to it without the lane learning about it is a change the run after a merge
+    would not build (the 2026-09-29 break was a new src/ tree missing from that list).
+    """
+
+    @staticmethod
+    def staged(name):
+        packaging = Path(__file__).resolve().parents[2] / "tools" / "packaging"
+        packer = packaging / "pack_esp_component.py"
+        for node in ast.parse(packer.read_text(encoding="utf-8")).body:
+            if isinstance(node, ast.Assign) and any(
+                getattr(target, "id", "") == name for target in node.targets
+            ):
+                return ast.literal_eval(node.value)
+        raise AssertionError(f"{name} is not assigned in {packer}")
+
+    def test_every_staged_tree_lights_the_esp_lane_in_the_run_after_a_merge(self):
+        trees = self.staged("STAGED_TREES")
+        self.assertTrue(trees)
+        for tree in trees:
+            with self.subTest(tree=tree):
+                hits = gate.classify([f"{tree}/anything.cpp"], satellites_direct=True)
+                self.assertTrue(hits["esp"])
+
+    def test_every_staged_file_a_build_reads_lights_it_too(self):
+        files = self.staged("STAGED_FILES")
+        self.assertIn("CMakeLists.txt", files)
+        for name in files:
+            if name.endswith(gate.DOCS_SUFFIX) or name in gate.DOCS_ROOT_FILES:
+                continue  # documentation: no build reads it
+            with self.subTest(name=name):
+                self.assertTrue(gate.classify([name], satellites_direct=True)["esp"])
 
 
 class MainTest(unittest.TestCase):
