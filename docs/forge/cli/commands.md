@@ -974,8 +974,8 @@ The decoder's reading adds, after those:
 An A-JOC substream's `oamd_common_data()` (§6.2.8.1), present when its
 `b_oamd_common_data_present` flag is set, is read as part of the table of contents, and `probe`
 reports it as `oamd_common_data` on the substream's entry. A group's own OAMD substream
-(`oamd_substream()`, §6.2.2.4, which a direct-coded object group has and an A-JOC group can)
-carries a second `oamd_common_data()`: the decoder reads it from the frame, and `probe` reports
+(`oamd_substream()`, §6.2.2.4, which an object group can have, direct-coded or A-JOC) carries a
+second `oamd_common_data()`: the decoder reads it from the frame, and `probe` reports
 the first one the substream sends as `oamd_common_data` on the group's `oamd` member. Both are the
 same object: `b_default_screen_size_ratio`, `master_screen_size_ratio_code` (null with the default
 ratio), `b_bed_object_chan_distribute`, and a flag for each of the optional `trim()`,
