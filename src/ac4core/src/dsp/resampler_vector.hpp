@@ -10,14 +10,15 @@
 // A sequential sum of 94 to 100 products is a chain of dependent adds, and on the ESP32-P4's
 // single-precision FPU each add waits for the last. The sum is therefore split over four
 // lanes, and its order is part of the converter's definition at float, the same on every
-// platform: lane j adds the products of
-// taps j, j + 4, j + 8 and so on, in that order; the lanes are added as (0 + 1) + (2 + 3); and
-// the taps that do not fill a vector, n mod 4 of them, are added to that in order. Every
-// operation is one IEEE multiply or add (no fused multiply-add: the build pins
-// -ffp-contract=off and the seam's operators are single operations per lane), so the x86-64
-// seam's SSE, the generic seam's four scalars on the Cortex-M3 and the ESP32s, and the aarch64
-// seam's NEON give the same float. tests/ac4core/test_ac4core_resampler.cpp holds it to a loop
-// of that description, written out, bit for bit.
+// platform: lane j adds the products of taps j, j + 4, j + 8 and so on, in that order; the
+// lanes are added as (0 + 1) + (2 + 3); and the taps that do not fill a vector, n mod 4 of
+// them, are added to that in order. Every operation is one IEEE multiply or add (no fused
+// multiply-add: the build pins -ffp-contract=off and the seam's operators are single
+// operations per lane), which is the seam's contract for its three directories: the x86-64
+// seam's SSE and the generic seam's four scalars, on the Cortex-M3 and the ESP32s, give the
+// same float, and the aarch64 seam's NEON is held to the same. tests/ac4core/
+// test_ac4core_resampler.cpp holds the kernel to a loop of that description, written out, bit
+// for bit.
 //
 // At double the converter's sum stays a sequential loop, as it always was: the encoder's
 // converters and the default build's decoder keep their output.
