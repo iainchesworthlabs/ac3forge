@@ -1,7 +1,7 @@
-# The ESP Component Registry manifest for ac3forge's minimum-footprint profile
-# (minimum-footprint decoder profile). Read by `idf.py add-dependency` and by the registry's own
-# upload tooling; ignored by a build that reaches this component through
-# EXTRA_COMPONENT_DIRS, which is how this repo's own probe uses it.
+# The ESP Component Registry manifest for ac3forge's minimum-footprint profile.
+# Read by `idf.py add-dependency` and by the registry's own upload tooling; ignored by a
+# build that reaches this component through EXTRA_COMPONENT_DIRS, which is how this repo's
+# own probe uses it.
 #
 # NOT PUBLISHED YET. Nothing uploads this - there is no `compote component
 # upload` step in .github/workflows/, deliberately, because publishing to a
@@ -12,19 +12,20 @@
 
 version: "0.10.0-beta.1"
 description: >-
-  Dolby Digital (AC-3) and Dolby Digital Plus (E-AC-3) decoding and encoding for
+  AC-3 and E-AC-3 decoding and encoding (Dolby Digital and Dolby Digital Plus) for
   ESP32-S3, ESP32-C3, ESP32-C6 and ESP32-P4, in the minimum-footprint profile: a static
   archive built without exceptions or RTTI, decode-only or encode-only, sized to run out of
   internal SRAM with no PSRAM. The decode arithmetic follows the part - single
   precision where there is a floating-point unit, fixed point where there is
-  not.
+  not. AC-4 decoding is an option for the ESP32-P4 (CONFIG_AC3FORGE_AC4, off by default);
+  it needs PSRAM.
 url: https://github.com/iainchesworthlabs/ac3forge
 repository: https://github.com/iainchesworthlabs/ac3forge.git
 documentation: https://github.com/iainchesworthlabs/ac3forge/blob/main/docs/platforms/bare-metal/esp32-s3.md
 issues: https://github.com/iainchesworthlabs/ac3forge/issues
 license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
 
-# Three parts, each a measurement rather than a shrug at the others.
+# Four parts, each with a CI run or a measurement behind it.
 #
 #   - The ESP32-S3 is the part this was ported to first and the one CI has run
 #     under QEMU on every push since. Its LX7 has a single-precision FPU, which
@@ -52,6 +53,8 @@ license: "GPL-3.0-or-later"  # matches LICENSE at the repo root
 #     single-precision FPU, so it decodes in the same float tier as the S3,
 #     and 768 KB of L2MEM. No radio of its own; a board wanting one pairs it
 #     with a companion ESP32-C6 over SDIO, which this probe does not touch.
+#     It is the part AC-4 decoding was built for first (CONFIG_AC3FORGE_AC4,
+#     docs/platforms/bare-metal/esp32-p4.md).
 targets:
   - esp32s3
   - esp32c3
