@@ -1,8 +1,9 @@
 # C API
 
 A stable, minimal C-callable surface over `ac3::forge`'s encode/decode core —
-AC-3, E-AC-3 and Atmos (OAMD + JOC) — for bindings and embedding by callers that cannot or do not
-want to link C++23. The whole surface is one header,
+AC-3, E-AC-3 and Atmos (OAMD + JOC) — and over the AC-4 decoder and encoder ([AC-4](#ac-4)), for
+bindings and embedding by callers that cannot or do not want to link C++23. The whole surface is
+one header,
 [`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/ac3forge_c/ac3forge.h),
 plain C11 with no C++ type crossing it anywhere — only opaque handles and POD structs. It is a
 separate library from `ac3::forge`: link `ac3::forge_c` instead, not both.
@@ -20,7 +21,8 @@ target_link_libraries(your_target PRIVATE ac3::forge_c)
 `BUILD_SHARED_LIBS` asks for, same as `ac3::forge`; an installed package exports both variants
 explicitly as `ac3::forge_c_static`/`ac3::forge_c_shared` — see [Using ac3::forge](index.md) for
 the equivalent `ac3::forge` linking recipe. Unlike `ac3::forge`, **both** `ac3forge_c` variants
-statically embed the codec core regardless of `BUILD_SHARED_LIBS`: a binding or embedder reaching
+statically embed the codec core, and the AC-4 libraries where `AC3FORGE_BUILD_AC4` is on,
+regardless of `BUILD_SHARED_LIBS`: a binding or embedder reaching
 for a C ABI wants exactly one library to `dlopen`/`ctypes`/`ffi.dlopen`, not a second
 `libac3forge.so` to also track down and ship — see `src/capi/CMakeLists.txt`'s header comment. On
 Linux the shared library exports the C API and nothing else, so a program that links it beside
@@ -59,7 +61,8 @@ pointee is left untouched on failure. Read it through the type's accessor functi
 it.
 
 **No exception ever crosses this boundary.** `ac3::FrameError`/`ac3::DecodeError` map one-for-one
-onto `ac3forge_status_t` codes (`AC3FORGE_ERROR_ENCODE_*`/`AC3FORGE_ERROR_DECODE_*`); an actual
+onto `ac3forge_status_t` codes (`AC3FORGE_ERROR_ENCODE_*`/`AC3FORGE_ERROR_DECODE_*`), and
+`ac4::DecodeError`/`ac4::EncodeError` onto `AC3FORGE_ERROR_AC4_DECODE_*`/`AC3FORGE_ERROR_AC4_ENCODE_*`; an actual
 C++ exception — realistically only `std::bad_alloc` for a codec core that never throws on its own
 — is caught inside the library and reported as `AC3FORGE_ERROR_OUT_OF_MEMORY` or
 `AC3FORGE_ERROR_INTERNAL` instead of propagating into a (possibly non-C++) caller frame.
@@ -116,8 +119,9 @@ ac3forge_status_t status = ac3forge_eac3_encoder_create(&config, &encoder);
 ```
 
 `ac3forge_eac3_encoder_encode_frame` takes `ac3forge_eac3_encoder_channel_count(encoder)` channel
-pointers, each `ac3forge_eac3_encoder_samples_per_frame(encoder)` samples (`AC3FORGE_SAMPLES_PER_FRAME`
-today), an optional `ac3forge_eac3_frame_metadata_t*` (`NULL` measures the §7.7 words internally),
+pointers, each `ac3forge_eac3_encoder_samples_per_frame(encoder)` samples (always
+`AC3FORGE_SAMPLES_PER_FRAME`, since `numblkscod` is not exposed), an optional
+`ac3forge_eac3_frame_metadata_t*` (`NULL` measures the §7.7 words internally),
 and an optional EMDF aux payload:
 
 ```c
@@ -333,11 +337,11 @@ and out-parameter conventions as the rest of this header — see
 [`ac3forge_c/ac3forge.h`](https://github.com/iainchesworthlabs/ac3forge/blob/main/src/capi/include/ac3forge_c/ac3forge.h)'s
 own AC-4 section for the full surface. The section is declared whether or not this library was
 configured with `AC3FORGE_BUILD_AC4` (on by default): built without it, every fallible function
-returns `AC3FORGE_ERROR_UNSUPPORTED` and `ac3forge_c/version.h`'s `AC3FORGE_HAS_AC4`, which
-`#cmakedefine`s that option, says which library a program was built against. Two new status code
-ranges: `AC3FORGE_ERROR_AC4_DECODE_*` at 60–64 (`TRUNCATED`, `INVALID_TOC`, `INVALID_STREAM`,
-`UNSUPPORTED`, `MISSING_IFRAME`) and `AC3FORGE_ERROR_AC4_ENCODE_*` at 80–81 (`INVALID_CONFIG`,
-`INVALID_INPUT`).
+returns `AC3FORGE_ERROR_UNSUPPORTED` (4), a `_create()` leaves its out-parameter `NULL`, and
+`ac3forge_c/version.h`'s `AC3FORGE_HAS_AC4`, which `#cmakedefine`s that option, says which library
+a program was built against. Two new status code ranges: `AC3FORGE_ERROR_AC4_DECODE_*` at 60–64
+(`TRUNCATED`, `INVALID_TOC`, `INVALID_STREAM`, `UNSUPPORTED`, `MISSING_IFRAME`) and
+`AC3FORGE_ERROR_AC4_ENCODE_*` at 80–81 (`INVALID_CONFIG`, `INVALID_INPUT`).
 
 The encoder writes channel-based and channel-based-immersive content (mono, stereo, 5.0, 5.1,
 5.0.4, 5.1.4) and, given an objects configuration, one object substream of A-JOC or direct-coded
@@ -447,12 +451,47 @@ An update for an object the configuration lacks, before the input's first sample
 property off its range fails with `AC3FORGE_ERROR_AC4_ENCODE_INVALID_INPUT`, and
 `ac3forge_ac4_encoder_refusal_reason()` names the rule a configuration breaks.
 
-Decoding keeps the same shape: `ac3forge_ac4_decoder_decode` takes one `raw_ac4_frame` and writes
+### Decoding
+
+`ac3forge_ac4_decoder_config_t` holds `output` (`ac3forge_ac4_output_config_t`: the output level,
+DRC mode, headphones, dialogue enhancement, downmix layout, LFE mixing and the two mix gains of
+[AC-4](ac4.md#the-controls)), `presentation` (`ac3forge_ac4_presentation_choice_t`),
+`concealment`, `level` and `decoding`; the syntax trace is not mirrored. Each struct has an
+`_init()`:
+
+```c
+ac3forge_ac4_decoder_config_t config;
+ac3forge_ac4_decoder_config_init(&config);
+config.output.has_output_level_dbfs = 1;
+config.output.output_level_dbfs = -24.0;      /* Lout: the level the stream's dialnorm is taken to */
+config.output.downmix = AC3FORGE_AC4_DOWNMIX_STEREO;
+config.presentation.language = "en";          /* read during the call, not kept */
+
+ac3forge_ac4_decoder_t* decoder = NULL;
+ac3forge_status_t status = ac3forge_ac4_decoder_create(&config, &decoder);
+
+ac3forge_ac4_decoded_frame_t* decoded = NULL;
+status = ac3forge_ac4_decoder_decode(decoder, frame, frame_size, &decoded);
+if (status == AC3FORGE_OK && decoded != NULL) {
+    size_t samples = ac3forge_ac4_decoded_frame_samples_per_channel(decoded);
+    for (size_t ch = 0; ch < ac3forge_ac4_decoded_frame_channel_count(decoded); ++ch) {
+        const float* pcm = ac3forge_ac4_decoded_frame_channel_samples(decoded, ch);
+        ac3forge_ac4_speaker_t speaker = ac3forge_ac4_decoded_frame_speaker(decoded, ch);
+        /* `samples` floats in `pcm`, for `speaker` */
+    }
+    ac3forge_ac4_decoded_frame_destroy(decoded);
+} else if (status != AC3FORGE_OK) {
+    /* ac3forge_ac4_decoder_refusal_reason(decoder) says why, in words */
+}
+```
+
+`ac3forge_ac4_decoder_decode` takes one `raw_ac4_frame`, an MP4 sample or the payload of a sync
+frame (the C API has no counterpart of `ac4::SyncFrameSplitter`), and writes
 an owned `ac3forge_ac4_decoded_frame_t*`, left `NULL` (with `AC3FORGE_OK`) when the frame has no
 output yet rather than as an error — the same `std::optional`-via-out-parameter convention as the
 AC-3/E-AC-3 decoders above. Planar PCM comes back through
 `ac3forge_ac4_decoded_frame_channel_samples`/`_speaker`; AC-4's frame length varies by frame rate,
-so `ac3forge_ac4_decoded_frame_samples_per_channel()` is a real per-frame accessor rather than a
+so `ac3forge_ac4_decoded_frame_samples_per_channel()` reports each frame's length rather than a
 fixed constant. `ac3forge_ac4_decoder_set_output`/`_set_presentation` change the output processing
 and the chosen presentation from the next frame, needing no I-frame.
 `ac3forge_ac4_decoder_presentation_*` reads the last frame's table of contents, and
@@ -464,7 +503,7 @@ and `_update`: the output sample each takes effect at, the ramp a renderer takes
 the properties). The objects come in the decoder's order, not the encoder's: the LFE first, then
 the bed objects, then the dynamic objects, each group in the order the configuration lists it.
 
-`tests/capi/test_capi.cpp` covers the rest. An A-JOC scene and a direct-coded one are encoded
+The AC-4 cases of `tests/capi/test_capi.cpp` cover the rest. An A-JOC scene and a direct-coded one are encoded
 through the C API and through `ac4::Encoder` itself, and the two streams are the same bytes; the
 C API's decoder reads each object back within what each field's code can hold, with its own tone
 and a metadata update at the sample its input sample comes out. Its other cases hold the limits
@@ -496,16 +535,24 @@ end-of-programme marker — part of the substream identity
 `ac3forge_eac3_frame_config_init()` and read back always agrees with a default `FrameConfig{}` on
 every field this struct doesn't carry.
 
+The AC-4 surface is a subset in the same way. `ac3forge_ac4_encoder_config_t` describes one
+substream in one presentation: the loudness, DRC, downmix and dialogue-enhancement metadata groups,
+several substreams and presentations, EMDF payloads, the syntax trace and the `drc_gains` and
+`three_zero` experimental flags are not mirrored, so a configuration left at its defaults writes
+the shape DEE's streams have for its channel count. The decoder side leaves out the syntax trace,
+`Decoder::parse()` and its `FrameReport`, `decode_by_block()`, `select_presentation()` and the
+metadata beyond the loudness values (the DRC, dialogue enhancement and downmix information of
+`Decoder::metadata()`). The inspector's own functions (`ac4::scan`, `SyncFrameSplitter`,
+`parse_raw_frame`, `rfc6381_codec_string`, `cmaf_refusal` and the manifest helpers) are C++ only;
+`ac3forge_ac4_encoder_toc()` and the functions that take its result cover what a container muxer
+needs from the encoder's own stream.
+
 `ac3::oba::ObjectScene` (the object-scene timeline behind `ac3cli atmos-path` and the GUI's
 export - see [Spatial & Atmos objects](spatial-and-atmos.md#the-scene-ac3obaobjectscene)) is not
-here either, and that is a decision rather than an omission - but no longer the shape-instability
-one it used to be. `SceneCursor` existed precisely because the seam a live position source would
-plug into wasn't finished; the OSC wire form
-([`ac3/oba/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)) has since landed as a sibling
-header, and it changed nothing about `scene.hpp`: no method on `ObjectScene`/`SceneCursor` gained
-or lost a parameter, nothing was added to either class. The shape has settled. What is left is a
-plain "not done yet": this surface is a candidate for the coming API freeze, where an
-experimental type would be a lasting commitment, and exposing half of it - the serialisation
-without the type, say - would still be worse than exposing none, because a caller would get a
-scene it could load and not evaluate. Read and write the JSON form from the host language and
-hand the resulting placements to the encoder entry points above until it is exposed properly.
+here either. Its shape has settled: `SceneCursor` is the seam a live position source plugs into,
+and the OSC wire form ([`ac3/oba/scene_osc.hpp`](spatial-and-atmos.md#the-osc-wire-form)), a
+sibling header, changed nothing about `scene.hpp`. It is left out because this surface is a
+candidate for the coming API freeze, where an experimental type would be a lasting commitment, and
+exposing half of it - the serialisation without the type, say - would be worse than exposing none,
+because a caller would get a scene it could load and not evaluate. Read and write the JSON form
+from the host language and hand the resulting placements to the encoder entry points above.

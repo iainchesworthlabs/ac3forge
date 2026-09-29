@@ -25,7 +25,7 @@
  *     buffers, so no accessor here requires the caller to predict a size in
  *     advance.
  *   - This library has no ABI-compatibility promise before v1.0 (see
- *     roadmap item F5): a rebuild against a newer ac3forge may require a
+ *     docs/library/api-stability.md): a rebuild against a newer ac3forge may require a
  *     recompile, not merely a relink. ac3forge_version() reports what was
  *     actually linked at runtime.
  *
@@ -530,12 +530,12 @@ AC3FORGEC_EXPORT void ac3forge_eac3_encoder_destroy(ac3forge_eac3_encoder_t* enc
 /* Full-bandwidth channels (per config.acmod) plus, when config.lfe is set,
  * the LFE channel last - the same count encode_frame() below expects. */
 AC3FORGEC_EXPORT size_t ac3forge_eac3_encoder_channel_count(const ac3forge_eac3_encoder_t* encoder);
-/* Always AC3FORGE_SAMPLES_PER_FRAME today (numblkscod is not exposed above,
+/* Always AC3FORGE_SAMPLES_PER_FRAME (numblkscod is not exposed above,
  * so every substream this API builds carries six blocks); exposed as its own
  * accessor rather than assumed so a caller never has to special-case this
  * encoder against the AC-3 one - ac3::eac3::FrameEncoder::samples_per_frame()
- * genuinely varies once a caller reaches numblkscod, even though nothing
- * here can ask for that yet. */
+ * varies once a caller reaches numblkscod, which nothing here can ask
+ * for. */
 AC3FORGEC_EXPORT size_t ac3forge_eac3_encoder_samples_per_frame(
     const ac3forge_eac3_encoder_t* encoder);
 
@@ -1427,8 +1427,10 @@ AC3FORGEC_EXPORT ac3forge_qc_verdict_t ac3forge_evaluate_qc_gate(
  * AC3FORGE_BUILD_AC4 (the default is on): the codebase selects a variant by
  * CMake, never by preprocessor conditional, so a caller does not need an
  * #ifdef of its own either. Built without it, every function below still
- * links; *_create() returns NULL, and everything else fallible returns
- * AC3FORGE_ERROR_UNSUPPORTED (or NULL/0, for a pointer or count).
+ * links; every fallible one, *_create() included, returns
+ * AC3FORGE_ERROR_UNSUPPORTED (a *_create() leaves its out-parameter NULL),
+ * and one that returns something else gives NULL, 0 or a zero-initialized
+ * struct as its type allows.
  * ac3forge_c/version.h's AC3FORGE_HAS_AC4 (a plain #define, #cmakedefine'd
  * from that option) still tells a caller which behaviour to expect. Mirrors
  * ac4::Decoder (src/ac4dec/include/ac4dec/decoder.hpp) and ac4::Encoder
