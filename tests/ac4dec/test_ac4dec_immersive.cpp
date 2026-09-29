@@ -150,8 +150,8 @@ TEST_CASE("S-CPL makes the channels of Tables 23 and 24", "[ac4dec][immersive]")
              {S::kTopFrontRight, S::kTopBackRight}}};
         for (const auto& [x, y] : coupled) {
             // Ls = m_gain (D'' + H''), Lb = m_gain (D'' - H''), and alike.
-            CHECK(abs(at(time, x) - m_gain * (at(in, x) + at(in, y))) < 1e-12);
-            CHECK(abs(at(time, y) - m_gain * (at(in, x) - at(in, y))) < 1e-12);
+            CHECK(std::abs(at(time, x) - m_gain * (at(in, x) + at(in, y))) < 1e-12);
+            CHECK(std::abs(at(time, y) - m_gain * (at(in, x) - at(in, y))) < 1e-12);
         }
 
         // Core decoding: c_gain on the seven core channels, the LFE as it is.

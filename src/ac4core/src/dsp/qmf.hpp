@@ -37,7 +37,7 @@ inline constexpr int kQmfWindowLength = 640;
 template <typename Real>
 class QmfAnalysis {
    public:
-    using Complex = Complex<Real>;
+    using Complex = ac4::detail::dsp::Complex<Real>;
 
     QmfAnalysis();
 
@@ -60,7 +60,7 @@ class QmfAnalysis {
 template <typename Real>
 class QmfSynthesis {
    public:
-    using Complex = Complex<Real>;
+    using Complex = ac4::detail::dsp::Complex<Real>;
 
     QmfSynthesis();
 

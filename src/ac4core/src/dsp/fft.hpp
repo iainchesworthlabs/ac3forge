@@ -29,7 +29,7 @@ namespace ac4::detail::dsp {
 template <typename Real>
 class Fft {
    public:
-    using Complex = Complex<Real>;
+    using Complex = ac4::detail::dsp::Complex<Real>;
 
     // A length with a prime factor above 5, or 0, gives a plan that is not
     // valid() and transforms nothing.

@@ -40,7 +40,7 @@ namespace ac4::detail::dsp {
 template <typename Real>
 class Imdct {
    public:
-    using Complex = Complex<Real>;
+    using Complex = ac4::detail::dsp::Complex<Real>;
 
     explicit Imdct(std::size_t length);
 
@@ -60,7 +60,7 @@ class Imdct {
 template <typename Real>
 class Mdct {
    public:
-    using Complex = Complex<Real>;
+    using Complex = ac4::detail::dsp::Complex<Real>;
 
     explicit Mdct(std::size_t length);
 
