@@ -880,7 +880,7 @@ template, `to_fixed25_block`, `accumulate_peak_exponents`,
 `choose_delta_segments` and `PerceptualModel::analyse` take either scalar,
 `DitherBallot` is the `double` instantiation of `BasicDitherBallot<Scalar>`),
 and the float path has its own `log2` and `exp`
-(`src/forge/src/core/scalar_math.hpp`) rather than libm's: this profile's
+(`src/arithmetic/include/ac3/internal/scalar_math.hpp`) rather than libm's: this profile's
 fixture hashes are checked on the x86 host, the Cortex-M3 leg and this part,
 and three C libraries' `logf` do not agree in their last bit. The `double`
 overloads are libm's, called as before, so the ordinary build is unchanged.

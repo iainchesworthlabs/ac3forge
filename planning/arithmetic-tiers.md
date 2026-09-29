@@ -122,7 +122,7 @@ The decode path is templated on `decode_scalar_t` in the files the survey found
 
 ### The type
 
-`Fixed32` (`src/forge/src/core/fixed32.hpp`): a signed 32-bit integer in Q7.24 - seven bits of
+`Fixed32` (`src/arithmetic/include/ac3/internal/fixed32.hpp`): a signed 32-bit integer in Q7.24 - seven bits of
 headroom above unity, twenty-four below. Products go through 64 bits (`mul`/`mulh` on RV32IM,
 `smull` on Cortex-M3), round half up on the shift back and saturate; sums wrap; conversions
 from a wider type saturate. Constants - the twiddles, the window, a downmix coefficient - are
