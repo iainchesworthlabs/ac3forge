@@ -1,6 +1,27 @@
 # The ESP32-S3 player: from two examples to a component and an ESPHome media player
 
-!!! note "Status as of 2026-09-16: Phases 0 and 1 met on a board; Phase 2 owes only the DSP board; the Sendspin player is built"
+!!! note "Status as of 2026-09-30: Phases 0 to 2 and 6 built; Phases 3 to 5 not built; Phase 7 replaced"
+    - **Phase 0, the board:** met on 2026-09-10.
+    - **Phase 1, the player in the component and its control:** built, and its ten-minute exit met,
+      on 2026-09-10.
+    - **Phase 2, sinks and layouts:** built on 2026-09-10. It owes what needs the SigmaDSP board:
+      the slave role against a real master, and TDM into a DAC.
+    - **Phase 3, ESPHome:** not built. `esphome/components/ac3forge/` is still the plumbing, on
+      `ac3::FrameDecoder`, with no `media_player`
+      ([ESPHome](../docs/platforms/bare-metal/esphome.md)).
+    - **Phase 4, upstream to ESPHome:** not started. It waits on Phase 3.
+    - **Phase 5, the encode direction:** not built. The encode timings Phase 0 asked for were
+      taken: E-AC-3 5.1 does not encode in real time on the S3
+      ([ESP32-S3 → Encoding](../docs/platforms/bare-metal/esp32-s3.md#encoding)).
+    - **Phase 6, a Sendspin player shape:** built on 2026-09-16, on the repository's own
+      library, `src/sendspin`, in place of `sendspin-cpp`. [The reference player
+      plan](hearth-reference-player.md) replaced it.
+    - **Phase 7, E-AC-3 over Sendspin:** replaced. E-AC-3 travels in Hearth's own role,
+      `_ac3forge_player@v1` ([the extension plan](hearth-sendspin-extension.md)), and not as a
+      fourth codec in the Sendspin specification.
+    - **The hand-over to the decoder core:** item 1 is fixed, item 5 partly, and items 2, 3, 4 and
+      6 are not; [the list](#hand-over-to-the-decoder-core) has each.
+
     Written 2026-09-10 for a second `ESP32-S3-DevKitC-1-N16R8`, and run on it the same day - see
     [What the board showed](#what-the-board-showed). Phase 0: both examples measured on silicon,
     with the lines in their READMEs. Phase 1: `ac3forge::Player` and `ac3forge::Control` in the
@@ -14,7 +35,8 @@
     compile the decoder's hot sources at `-O2`, the level meter cost twice the decode, ESP-IDF's
     I2S write sends the rest of a partly written DMA buffer as silence, every pass ended in a
     100 ms wait, and the network shape did not fit without PSRAM for the decoder. All five are
-    fixed. Nothing from Phase 3 onward exists in the tree.
+    fixed. Nothing from Phase 3 onward existed in the tree then; Phase 6 was built on 2026-09-16,
+    as below.
 
     **On 2026-09-15 [the reference player plan](hearth-reference-player.md) replaced
     [Sendspin](#sendspin), Phases 6 and 7, and decisions 11 and 12.** The streaming example
@@ -45,7 +67,7 @@ how bytes that have already arrived on the part become sound, and how that layer
 the two consumers that exist today, an ESP-IDF integrator and an ESPHome configuration, and the
 one that comes later, the HLS client, all sit on the same code.
 
-## What exists, by path
+## What existed on 2026-09-10, by path
 
 | Path | What it is | State |
 |---|---|---|
@@ -60,6 +82,17 @@ Two things about that table decide the shape of everything below.
 **The decode loop has been written three times.** `hearth_sink.cpp`, `esphome/components/ac3forge/ac3forge.cpp` and the probe's `decode_eac3()` each drive the accumulator, call a decoder into caller-owned storage and hand the result on. Two of the three used `ac3::FrameDecoder`, which reads AC-3 alone: bsid above 8 returns `DecodeError::kUnsupported`, so neither the streaming example nor the ESPHome component could ever have played an E-AC-3 stream, and CI did not notice because its only sample is AC-3. `ac3::Eac3Decoder::decode_access_unit_into` takes the access units the accumulator produces, decodes Annex E, and accepts a plain AC-3 syncframe as one access unit of one substream. Phase 0 moves the example onto it; Phase 3 moves the ESPHome component.
 
 **Nothing between the source and the decoder buffers.** The `http` source reads from the socket inside the decode loop. The I2S DMA queue holds 20 ms, less than the 32 ms one frame lasts, so from the moment playback is under way the loop has 20 ms to fetch and decode each frame before the DAC runs dry. The decode alone is 11 ms for 5.1 E-AC-3 at 240 MHz. What the network adds is what Phase 0 measures.
+
+**As built, 2026-09-30.** The component has sources of its own in `esp-idf/ac3forge/src/`:
+`player.cpp`, `control.cpp`, `firmware.cpp`, `log.cpp` and `tcp_arrivals.cpp`, and with
+`CONFIG_AC3FORGE_SENDSPIN` the Sendspin host and burst player
+(`esp-idf/ac3forge/CMakeLists.txt`). The streaming example is `hearth_sink`,
+renamed in #709 (2026-09-16), and its player runs a fetch task and a decode task. Its sinks are
+`i2s`, which opens standard I2S or TDM for each layout, `i2s_wide` for the P4, `capture` and
+`null`: the `tdm` sink was folded into `i2s` on 2026-09-12 (#666). The example decodes through
+`Eac3Decoder`, and sends a unit that is exactly one AC-3 syncframe to `FrameDecoder` (hand-over
+item 1). The ESPHome component is unchanged: it still drives `ac3::FrameDecoder`, so it reads
+AC-3 only. #603 has landed, and the S3 page has a Hearth sink section.
 
 ## What the board showed
 
@@ -110,6 +143,13 @@ Seven, and five of them exist. The order is the order bytes take.
    example. A SigmaDSP such as the ADAU1452 or ADAU1467 wants 32-bit slots and can be the clock
    master, which needs an I2S slave role; neither is configurable yet.
 
+**As built,** all seven exist. Layer 6 is `ac3forge::Player` in the component (Phase 1). Layers 4
+and 5 are in the component too, not the library: `ac3forge/interleave.hpp` is there, and the loop
+over layers 1 to 4 is the player's own, with no `StreamDecoder` in the library
+([hand-over](#hand-over-to-the-decoder-core), items 2 and 3). Layer 7's slot width and slave role
+are Kconfig options, `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS` (32 by default) and
+`CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE`; the slot width is also a setting on the board's page.
+
 ## Where each layer belongs
 
 Three homes, and the rule for choosing is the one the repository already uses: platform-free code
@@ -121,12 +161,16 @@ has host tests. A `StreamDecoder` over the accumulator, the E-AC-3 decoder and t
 with `feed()` and `next()` into caller-owned spans, is the loop written three times, written once.
 Both are hand-over items for whoever owns `src/forge`, so this page describes them and does not
 touch that tree. Until they land, the component carries copies, marked as
-such, and the day they land is the day the copies are deleted.
+such, and the day they land is the day the copies are deleted. **As built,** neither has landed:
+`ac3forge/interleave.hpp` and the player's loop are still the component's. The layout and the
+renderer did move into the library, as `ac3::render` (`src/forge/include/ac3/render/`, tests in
+`tests/render/`), for Hearth.
 
-**The component, `esp-idf/ac3forge/`.** Layer 6, and the seams for 7. The component today registers
-no sources; it gains `include/ac3forge/player.hpp` and `src/player.cpp`, registered as component
-sources beside the interface link it already has. Two abstract seams, mirroring the example's
-`byte_source.hpp` and `audio_sink.hpp`, one pipeline:
+**The component, `esp-idf/ac3forge/`.** Layer 6, and the seams for 7. The component registered no
+sources when this was written; it gains `esp-idf/ac3forge/include/ac3forge/player.hpp` and
+`esp-idf/ac3forge/src/player.cpp`, registered as component sources beside the interface link it
+already has. Two abstract seams, mirroring the example's `byte_source.hpp` and `audio_sink.hpp`,
+one pipeline:
 
 ```cpp
 namespace ac3forge {
@@ -167,11 +211,15 @@ The sketch is a shape, not a signature freeze. What it fixes is the division of 
 player knows about tasks, cores, the ring and the decoder; the sink knows about a peripheral; the
 source knows about a transport. The example's four sources and four sinks become implementations
 of the two seams, and `hearth_sink.cpp` becomes the wiring of a configured pair into a
-`Player`. **Built 2026-09-10** as `include/ac3forge/player.hpp` and `src/player.cpp`, with the
-example's seams adapted rather than rewritten (a `SeamSource` and a `MeteredSink` over the
-existing free functions) and the ring's size, placement and both cores in the example's Kconfig.
-The Sendspin shape later needs an interleaved 16-bit entry on the I2S sink beside the planar one;
-that is that sink's, not the seam's.
+`Player`. **Built 2026-09-10** as `esp-idf/ac3forge/include/ac3forge/player.hpp` and
+`esp-idf/ac3forge/src/player.cpp`, with the example's seams adapted rather than rewritten (a
+`SeamSource` and a `MeteredSink` over the existing free functions) and the ring's size, placement
+and both cores in the example's Kconfig. The Sendspin shape later needs an interleaved 16-bit
+entry on the I2S sink beside the planar one; that is that sink's, not the seam's.
+
+As built, `PlayerConfig` differs from the sketch: it takes the layout, the stereo fold and an
+objects policy in place of `output` and `skip_object_reconstruction`, and `PcmSink::write` takes
+one block of each slot, not a frame's channels. `player.hpp` has the declarations.
 
 Registering sources changes how the component is consumed in one respect: it acquires
 `REQUIRES freertos esp_timer`, which every IDF project has. The packing script stages the
@@ -183,6 +231,11 @@ stay visible rather than move behind a class. `hearth_sink` becomes a consumer o
 and the place its Kconfig lives: pins, DMA depth, slot width, role, source and sink choice.
 
 ## ESPHome
+
+**Status, 2026-09-30: not built** (Phases 3 and 4). `esphome/components/ac3forge/` is the
+plumbing component it was on 2026-09-10: it owns an `ac3::FrameDecoder`, so it reads AC-3 alone,
+and it has no `media_player` platform. CI runs `esphome config` over it and compiles no firmware.
+The two routes below are still the options, and (a) is still the recommendation.
 
 What the ESPHome side is, from its sources at `esphome/components/{speaker,audio,media_player}`
 on the `dev` branch as of 2026-09-10, and what that decides.
@@ -248,7 +301,7 @@ layout, in increasing cost, and the configuration names one of them:
 | Layout | How it is made | State |
 |---|---|---|
 | **2.0** | The §7.8 fold of the bed, in the decoder (`DownmixTarget::kLoRo` or `kLtRt`). | Exists; what both examples play today. |
-| **As coded: 5.1, 7.1** | The bed's channels as decoded, one TDM slot each. An Atmos bed is the complete mix, so objects need not be reconstructed. | The `tdm` sink exists and has never run on hardware. |
+| **As coded: 5.1, 7.1** | The bed's channels as decoded, one TDM slot each. An Atmos bed is the complete mix, so objects need not be reconstructed. | The `tdm` sink existed and had never run on hardware. Since #666 the `i2s` sink opens TDM for three or more channels: it has opened it on an S3 board with no DAC wired, and never into a DAC. |
 | **With height: 5.0.4, 5.1.4, 7.1.4, 9.2.4, …** | Objects reconstructed from the bed (`skip_object_reconstruction = false`), then each object panned onto the configured speaker set by `ac3::spatial::pan_direction` over two rings, horizontal and upper, with the bed's own channels placed at their nominal positions and the LFE sends summed. | **Exists on the target as of main's #611, in the probe**: the `eac3_atmos_render` row places a height-object stream onto 7.1.4 through the block form (`decode_access_unit_by_block`, one 256-sample block at a time), every level the host's, the render 5% of the row's instructions, 210,573 bytes of peak heap. `spatial.cpp` is in the profile. **Wired the same day** (Phase 2): a layout in `PlayerConfig`, the block-form decode, `LayoutRenderer`, and a TDM sink (at most four 32-bit slots on one S3 line, a board found on 2026-09-11); the QEMU shape `sdkconfig.ci-render` plays this row's stream through the player onto 7.1.4 at the row's own levels. |
 
 The configuration takes a named layout (`5.1.4`) or a speaker list, each with an azimuth, an
@@ -289,7 +342,23 @@ Hearth, with Home Assistant sending commands to an entity.
   above, because a speaker set is a property of the installation and the entity should not have
   to carry it.
 
+**As built,** the ESP-IDF half is `ac3forge::Control` in the component, with 27 route
+registrations now (`esp-idf/ac3forge/src/control.cpp`): the ones above, and the page,
+`/hardware`, the settings, the pairing list and the firmware routes that [the device page's
+plan](esp32-device-ui.md) and [the update plan](esp32-ota.md) describe. `/status` does not carry
+the sink's underrun counters (the device page's decision 8): the sinks print them on the console,
+and the Sendspin section of `/status` reports its own. mDNS is built (`main/discovery.cpp`,
+`_sendspin._tcp`). The ESPHome half is not built.
+
 ## The encode direction
+
+**Status, 2026-09-30: not built** (Phase 5). The timing this section asked for exists: the encode
+probe prints `encode_us`, `us_per_frame` and `realtime_permille`, and the S3 page has the board's
+figures. AC-3 2/0 and E-AC-3 2/0 encode in real time, AC-3 5.1 sits at the line (1.01x), and
+E-AC-3 5.1 is at 1.7x, where 1x is a frame's duration of work for each frame
+([ESP32-S3 → Encoding](../docs/platforms/bare-metal/esp32-s3.md#encoding)). There is no
+`PcmSource`, no bitstream server, no S/PDIF output, and the Atmos encoder is not in the encoder
+profile; the S3 page carries a bench estimate for it and no board figure.
 
 The component builds the other profile too (`AC3FORGE_ESP_PROFILE=encoder`): the AC-3 and
 E-AC-3 `FrameEncoder`s and the `AccessUnitEncoder`, in an image of 110,900 bytes of DIRAM with a
@@ -354,6 +423,14 @@ from here. The realistic first result is audio in, E-AC-3 5.1 out, in real time 
 statement of how far short it falls.
 
 ## Sendspin
+
+**Status, 2026-09-30: replaced, and built otherwise.** [The reference player
+plan](hearth-reference-player.md) replaced this section on 2026-09-15, and its phase B3 built the
+player on 2026-09-16. `hearth_sink` is a Sendspin player on the repository's own library,
+`src/sendspin`, not `sendspin-cpp`. It takes stereo PCM at 48 kHz through `player@v1`, for Music
+Assistant, and AC-3 and E-AC-3 undecoded through Hearth's own role, `_ac3forge_player@v1`; it
+offers no FLAC or Opus. [An ESP32-S3 sink](../docs/hearth/sink-esp32-s3.md) is the guide. What
+follows is the design as it stood on 2026-09-10, kept for its reasoning.
 
 [The topology](topology.md#the-transport-later-a-sendspin-extension) already names Sendspin as
 the transport to approach after HLS. Two things have moved since it was written, both read from
@@ -492,6 +569,10 @@ rather than code:
 Both become Kconfig choices on the `i2s` sink in Phase 2 and fields of `PcmSink` implementations
 in the component. Neither can be verified without the DSP board; see below.
 
+**As built,** both are Kconfig options: `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS`, 32 by default, and
+`CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE`, 0 by default. The slave role compiles and has not been tried
+against a DSP ([An ESP32-S3 sink → Wiring](../docs/hearth/sink-esp32-s3.md#wiring)).
+
 ## Memory, and the question PSRAM raises
 
 The probe keeps PSRAM off so the internal-SRAM budget is enforced on every build, and the
@@ -503,9 +584,15 @@ internal heap does not hold both, the answer is PSRAM for the WiFi and LwIP buff
 (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`) and the ring buffer, with the decoder's own allocations
 kept internal: the probe's policy was about the decoder, and the decoder still fits.
 
+**Answered by the board on 2026-09-10** (decision 4): the network shape needs PSRAM for the
+decoder's larger allocations too, and a 64 ms DMA queue. `sdkconfig.psram` is that shape, and the
+S3 sink guide says the network build needs a board with 8 MB of octal PSRAM.
+
 ## Phases
 
 ### Phase 0: the board
+
+**Status, 2026-09-30: met on 2026-09-10** ([What the board showed](#what-the-board-showed)).
 
 Both examples on a second `ESP32-S3-DevKitC-1-N16R8` over its native USB connector, at 240 MHz.
 The streaming example moved onto `Eac3Decoder`, its I2S sink counting underruns against the DAC's
@@ -519,6 +606,8 @@ needed.
 QEMU through the changed player.
 
 ### Phase 1: the player in the component, and its control
+
+**Status, 2026-09-30: built, and its exit met on 2026-09-10.**
 
 `ac3forge::Player`, `ByteSource` and `PcmSink` in `esp-idf/ac3forge/`; the streaming example's
 sources and sinks become implementations; `hearth_sink.cpp` becomes the wiring. The fetch task
@@ -540,6 +629,10 @@ audio, the host's levels to the digit, and no underrun while it played, with
 
 ### Phase 2: sinks and layouts
 
+**Status, 2026-09-30: built on 2026-09-10; two of the three exit items met.** The slot layout is
+checked by the `capture` sink, and a 7.1.4 stream is decoded and rendered through the player on the
+board. The slave role has not been played against a SigmaDSP, and no TDM DAC has been connected.
+
 32-bit slots as the I2S default and the slave role as a Kconfig choice, carried by the
 component's I2S `PcmSink`. The as-coded layouts on the TDM sink. The height layouts by moving
 the player onto the block form and the render the probe's `eac3_atmos_render` row already
@@ -559,9 +652,9 @@ levels; hardware for the role and the timing, which have no substitute.
 **Built 2026-09-10, everything but what needs a board.** (Both headers and their tests have since
 moved into the library, as `src/forge/include/ac3/render/` and `tests/render/test_layout.cpp`,
 for [Hearth](hearth-reference-player.md#a1-the-renderer-moves-into-the-library).)
-`include/ac3forge/layout.hpp` holds
-`OutputLayout` - a name (`7.1.4`) or a speaker list (`L,R,C,LFE,Ls,Rs`, or angles), one speaker
-per slot, sixteen at most - and `render.hpp` holds `LayoutRenderer`, which turns a `PcmBlock`
+`OutputLayout` (now `src/forge/include/ac3/render/layout.hpp`) is a name (`7.1.4`) or a speaker
+list (`L,R,C,LFE,Ls,Rs`, or angles), one speaker per slot, sixteen at most, and `LayoutRenderer`
+(now `render.hpp` beside it) turns a `PcmBlock`
 into one block per slot: unit gain to a slot whose location matches, `pan_direction` for one that
 does not, the LFE to the LFE feeds, and, when the unit carries objects and the player asked for
 them, the objects placed by their positions with the bed's LFE passed through and the bed's other
@@ -574,7 +667,8 @@ disagreement is counted in `layout_mismatches`, and none has been seen. The exam
 runs 32-bit slots by default and takes the slave role from Kconfig, the TDM sink carries up to
 four 32-bit slots (an S3 TDM frame holds 128 bits) with its DMA descriptors sized from the bus
 width, and `PUT /layout` changes the
-layout for the next play. Host tests: `tests/io/test_layout.cpp`, eleven cases. QEMU: the
+layout for the next play. Host tests: eleven cases in `tests/io/test_layout.cpp`, which moved with
+the header and has 22 now (`tests/render/test_layout.cpp`). QEMU: the
 stereo, TDM and HTTP shapes unchanged to the digit, and a fourth, `sdkconfig.ci-render`, that
 plays the probe's height-object fixture onto 7.1.4 through the twelve-slot TDM conversion with
 every slot's RMS equal to `render_fixture.hpp`'s - one lap, as coded, MDCT-band domain, an 8 KB
@@ -588,6 +682,9 @@ the board's PSRAM, as does everything in the exit criterion that says "board".
 QMF domain is not measured. The slave role and TDM into a DAC still wait for the SigmaDSP board.
 
 ### Phase 3: ESPHome
+
+**Status, 2026-09-30: not built.** `Ac3ForgeComponent` still owns an `ac3::FrameDecoder`, and there
+is no `media_player` platform ([ESPHome](../docs/platforms/bare-metal/esphome.md)).
 
 `Ac3ForgeComponent` onto `Eac3Decoder`; a `media_player` platform over `Player` and a configured
 `speaker::Speaker`, advertising `eac3` at 48 kHz, six channels; the layout as YAML on the
@@ -603,6 +700,8 @@ Assistant instance and a board.
 
 ### Phase 4, conditional: upstream
 
+**Status, 2026-09-30: not started.** It waits on Phase 3.
+
 Propose `AudioFileType::EAC3` to ESPHome with Phase 3 as the argument.
 
 **Exit:** a pull request or issue opened, and the answer recorded here whichever way it goes.
@@ -610,6 +709,10 @@ Propose `AudioFileType::EAC3` to ESPHome with Phase 3 as the argument.
 **Verified by:** the thread. Not schedulable.
 
 ### Phase 5: the encode direction
+
+**Status, 2026-09-30: not built.** The condition was answered: the encode probe's timings exist,
+and E-AC-3 5.1 does not encode in real time on the S3 (see [The encode
+direction](#the-encode-direction)). Nothing else in this phase was started.
 
 Conditional on the encode probe's timing from Phase 0. A `PcmSource` over I2S or TDM receive,
 `ac3::eac3::FrameEncoder` at 5.1, and an HTTP server serving the stream as it is made; AC-3 over
@@ -627,6 +730,11 @@ receive channel.
 
 ### Phase 6: a Sendspin player shape
 
+**Status, 2026-09-30: built on 2026-09-16 as Hearth B3, on the repository's own library.** The
+exit was met in the terms the status note gives: two boards played one E-AC-3 JOC programme as a
+group for ten minutes with no underrun, and their reported play times stayed within 549 µs of each
+other. The offset is from reported play times, since no two-channel capture of both boards exists.
+
 On ESP-IDF only; ESPHome has it. `sendspin-cpp` from the registry, a `PlayerRoleListener` over
 the component's `PcmSink`, `notify_audio_played` from the sink's write path, an mDNS
 advertisement, PSRAM on for the library's ring. Opus and FLAC from the Music Assistant already on
@@ -641,6 +749,11 @@ measured on this hardware.
 capture of both players for the offset.
 
 ### Phase 7, conditional: E-AC-3 over Sendspin
+
+**Status, 2026-09-30: replaced.** E-AC-3 travels in Hearth's own role, `_ac3forge_player@v1`
+([the extension plan](hearth-sendspin-extension.md)), so the tree needs none of the three changes
+below: not a decoder interface in `sendspin-cpp`, not `eac3` in the specification, and not a
+passthrough path in Music Assistant.
 
 The three changes in [Atmos over Sendspin](#atmos-over-sendspin), proposed with Phases 0 to 6 as
 the argument: a decoder interface in `sendspin-cpp`, `eac3` in the spec, and a production or
@@ -662,10 +775,17 @@ that tree.
    plain AC-3 stream through `decode_access_unit_into` with `kLoRo` set. Until it lands, the
    streaming example dispatches single-syncframe AC-3 units to `FrameDecoder` itself, and a legacy
    core with dependents under a fold still fails.
-2. `ac3::io::interleave`, moved from the example with its host tests.
+
+   **Status, 2026-09-30: fixed on 2026-09-15** (`eff353589`): `decode_ac3_core` builds its
+   `FrameDecoder` from a copy of the config with `output` reset. The player still sends a unit
+   that is exactly one AC-3 syncframe to `FrameDecoder` itself (`player.cpp`, `decode_unit`), and
+   the comment above the two decoders in `player.hpp` still says `Eac3Decoder` does not survive a
+   fold.
+2. `ac3::io::interleave`, moved from the example with its host tests. **Status: not done.**
+   `ac3forge/interleave.hpp` is still the component's, with `tests/io/test_interleave.cpp`.
 3. `ac3::io::StreamDecoder` over the accumulator, both decoders and the output stage, with
    `feed()` and `next()` into caller-owned spans, tested over both generations. The component's
-   copy goes when it lands.
+   copy goes when it lands. **Status: not done.** The library has no `StreamDecoder`.
 4. **A flush in the block form, found by [the stream set](esp32-stream-set.md#what-the-set-found)
    on 2026-09-11.** A stream using §3.7's transient pre-noise processing ends with its last
    access unit held back, and `Eac3Decoder::flush()` releases it only as raw per-substream
@@ -674,7 +794,9 @@ that tree.
    access unit short (15 of 16 for the set's `51-tpn.ec3`). A `flush_by_block(BlockSink)` that
    assembles what is held and delivers it as the unit's blocks would close it; a test is a TPN
    stream decoded block by block, whose samples then match `decode_access_unit` followed by
-   `flush()`.
+   `flush()`. **Status: not done.** The decoder has no `flush_by_block`, and a TPN stream still
+   plays one access unit short; `check_stream_set.py` counts a play's units played and held
+   together.
 5. **The fold of a wide programme, found the same day.** Played to `2.0` in the emulated
    network shape, which has no PSRAM, a stream with a four-channel dependent substream - 7.1,
    5.1.4, 7.1.4 - runs out of internal RAM: `OutputStage::apply` (`output.cpp`, the fold's
@@ -694,12 +816,21 @@ that tree.
    seed's 7.1.4 as the fifth after boot, still aborted on the decoder's frame-long channel
    buffers (`Eac3Decoder::decode_substream_core`, 6,144 bytes with no block that large). What is
    left is that, and the time of the 7.1.4 decode itself.
+
+   **Status, 2026-09-30: done in part.** #654 made the fold block-wise. The abort on the decoder's
+   frame-long channel buffers was seen once, on 2026-09-12, before the decoder pooled those
+   buffers ([the 7.1.4 plan](esp32-714-realtime.md#decisions), decision 4). The time of the 7.1.4
+   decode is item 6.
 6. **The Annex E tools at 7.1.4, found the same day.** Decoded and rendered onto twelve slots
    over WiFi, a 32 ms frame of 7.1.4 takes 26.7 ms with no coding tools, 30.4 with TPN, 30.7
    with coupling, 31.1 with spectral extension, 35.2 with AHT, 39.1 with all of them and 59.2 with
    enhanced coupling. So a 7.1.4 stream from an encoder that uses AHT or enhanced coupling cannot
    play in real time on this part as the decoder stands, and the rest leave a sink 1 to 2 ms. The
    figures are the board run in [the stream set](esp32-stream-set.md#on-a-board).
+
+   **Status, 2026-09-30: not done for AHT and enhanced coupling.** They stay over the frame on the
+   S3 on the figures of 2026-09-11 ([the 7.1.4 plan](esp32-714-realtime.md#what-stays-out-of-reach)).
+   The P4 decodes them inside a frame.
 
 ## What cannot be verified, and why
 
@@ -718,6 +849,16 @@ that tree.
   negotiation is read from Home Assistant's source rather than exercised until then.
 
 ## Decisions
+
+Outcomes, 2026-09-30:
+
+- **1, 4, 5, 7, 8:** taken as recommended, (a) each, and built. Decision 8 is built for ESP-IDF
+  only: the ESPHome half of it is not.
+- **2, 3, 6, 9, 10:** not acted on. They belong to Phases 3 and 5, which are not built.
+- **11, 12:** replaced by [the reference player plan](hearth-reference-player.md). The player is
+  on `src/sendspin`, which the plan measured against `sendspin-cpp` (173,604 bytes more flash and
+  50,504 bytes less internal RAM free while streaming, and a `Lost sync` 0.8 s into ten seconds of
+  PCM). E-AC-3 travels in `_ac3forge_player@v1`.
 
 1. **Where the player layer lives.** (a) **the component**, as sources it registers; (b) the
    library, behind a FreeRTOS abstraction; (c) the example, as it is. **Recommend (a).** The
@@ -761,9 +902,9 @@ that tree.
    **Recommend (a)**: names for the installations that have a standard name, the list for the
    ones that do not, and the list is what the panner consumes either way. Cost: two schemas that
    must agree, checked by expanding every name through the list form in a test. **Taken, (a),
-   2026-09-10**: `ac3forge::OutputLayout` parses both from one string - `7.1.4`, or
-   `L,R,C,LFE,Ls,Rs`, or `30/0,-30/0,lfe` - and a name is exactly the list of its Table E2.5
-   locations, which `tests/io/test_layout.cpp` checks.
+   2026-09-10**: `ac3forge::OutputLayout` (now `ac3::render::OutputLayout`) parses both from one
+   string - `7.1.4`, or `L,R,C,LFE,Ls,Rs`, or `30/0,-30/0,lfe` - and a name is exactly the list of
+   its Table E2.5 locations, which `tests/render/test_layout.cpp` checks.
 
 8. **The control surface.** (a) **REST in the component for ESP-IDF, the `media_player` entity
    for ESPHome, sensors for the counters**; (b) REST everywhere, including under ESPHome; (c) the
