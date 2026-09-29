@@ -27,7 +27,7 @@ type with the desktop, so a double-click in the file manager does not reach it:
   installs only declares the `audio/ac3` and `audio/eac3` types with their `*.ac3` and `*.ec3`
   globs.
 - On macOS `Info.plist` carries no document types.
-- The Windows installer points `.ac3` and `.ec3` at [Hearth](../hearth/index.md), the desktop
+- The Windows installer points `.ac3` and `.ec3` at [Hearth](../../hearth/index.md), the desktop
   player, and at `ac3gui.exe` only in a package built without Hearth (the one case where a
   double-click does start `ac3gui`).
 - Hearth is the registered opener for `.ac3` and `.ec3` on all three; no platform registers `.ac4`.

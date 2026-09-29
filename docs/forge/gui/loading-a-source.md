@@ -29,7 +29,7 @@ picking it from **Open stream…**. `ac3gui` also accepts a file path on the com
 launch. The distinction is by suffix, `.ac3` and `.ec3` alone: an `.ac4` file dropped or named on
 the command line is read as a WAV source and refused, and **Open stream…** is the way in for it.
 `ac3gui` claims no file type with the desktop (the `.ac3`/`.ec3` associations belong to
-[Hearth](../hearth/index.md); the [window overview](index.md) lists what each platform registers),
+[Hearth](../../hearth/index.md); the [window overview](index.md) lists what each platform registers),
 so double-clicking an encoded file in the file manager does not start it (a Windows package built
 without Hearth is the one exception).
 
