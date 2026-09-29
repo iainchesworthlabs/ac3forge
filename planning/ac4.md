@@ -59,7 +59,7 @@
 Each phase with its pull request and where it stands. Dates are UTC, as GitHub records a merge.
 "Exit met" is as the phase's pull request reports it, and any exit criterion not met in the pull
 request is named in the last column; the phase's own section below says what it built and how it was
-checked. The table is of `main` at `d490ab1aa`.
+checked. The table is of `main` at `b23c8eb63`.
 
 | Phase | Builds | Pull request | State |
 |---|---|---|---|
@@ -1906,7 +1906,7 @@ After D10. One implementation with three scalars, as `ac3::forge`'s decoder has
 first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3 manage on each part
 ([The ESP32](#the-esp32)) sets what AC-4 aims for there. One pull request per part.
 
-- **D14a, the scalar and the decoder's size, on the host.**
+- **D14a, the scalar and the decoder's size, on the host** (merged as #1096, #1102 and #1123).
   - `src/ac4dec/src/pcm` on the decoder's scalar, as `src/ac4core` is, with a complex type of the
     project's own in place of `std::complex<Real>`; AC-4 in `AC3FORGE_DECODE_SCALAR`, the `float`
     build compiling with `-Wdouble-promotion` as an error; `ac3::forge`'s `Fixed32`, vector types
@@ -2056,11 +2056,11 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   both are scored again. Met; the figures are above.
 
   **Verified by:** `ac3tests`; the `float` gate and the scorers in CI; `run_baremetal_probe.sh`.
-- **D14b, the P4.** The component builds the inspector, the core and the decoder in `float`,
-  behind a switch off by default. On the board, at 360 MHz with the network up: 2.0, 5.1 and 5.1.4
-  in full and core decoding, in each mode DEE writes, and the converter's three ratios, with stage
-  timers per part of the decode. The `float` output is identical on the host, the Cortex-M3 leg and
-  the P4 ([decision 26](#decisions-of-2026-09-25)).
+- **D14b, the P4** (merged as #1118). The component builds the inspector, the core and the decoder
+  in `float`, behind a switch off by default. On the board, at 360 MHz with the network up: 2.0,
+  5.1 and 5.1.4 in full and core decoding, in each mode DEE writes, and the converter's three
+  ratios, with stage timers per part of the decode. The `float` output is identical on the host,
+  the Cortex-M3 leg and the P4 ([decision 26](#decisions-of-2026-09-25)).
 
   **Built in D14b.** `CONFIG_AC3FORGE_AC4` builds the inspector, the core and the decoder into the
   component in `float`, behind a switch that is off by default and offered only on a part with a
@@ -3794,7 +3794,9 @@ period, and that the family's name, the library's identifiers and the C API stay
   `docs/assets/data/support-catalogue.json`, `src/capi/`, `python/`, `rust/` and `apps/wasm/`.
 - `tools/ci/classify_changes.py` has no lane of its own for AC-4 (`src/ac4*` is in the core lane),
   and `tools/generators/` and `tools/references/` match no lane, so every lane runs when they
-  change. No phase gave AC-4 a lane.
+  change. No phase gave AC-4 a lane. The ESP32 lane lights after a merge for `src/forge/`,
+  `src/arithmetic/` and `cmake/` (#1131) and leaves the AC-4 trees, which the component's pack stages
+  only for `--with-ac4`, to the nightly run.
 - librempeg's binary is named `ffmpeg`; nothing puts it on `PATH` ([The oracles](#the-oracles)).
 - D11's change sits in `ac3::iec61937`, inside `ac3::forge`, beside the passthrough work of
   Hearth's A3.
