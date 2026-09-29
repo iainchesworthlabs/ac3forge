@@ -16,8 +16,9 @@ platforms, see [Building from source](../building.md) and the other pages in thi
 | Live Atmos out HDMI passthrough | Confirmed on real 2017 Shield hardware, into an AV receiver |
 | Object motion from the controller | Confirmed moving; nobody has listened to check a flyover arrives overhead |
 | Capture | None. The app plays; it records nothing |
-| Distribution | Personal sideload via `adb install`, **never the Play Store** |
-| CI | A required build leg; the hardware behaviour is not reproducible in CI |
+| AC-4 | None. The app does not decode, encode or play AC-4. The NDK build compiles the AC-4 libraries and the app links none of them — see [AC-4](#ac-4) |
+| Distribution | Personal sideload via `adb install`, **never the Play Store**. A release carries the APK (every release since v0.3.0-beta.1 has one) |
+| CI | The `build-android` job builds it in the nightly run and in the run after a merge that changes `apps/android/`; the hardware behaviour is not reproducible in CI |
 
 --8<-- "docs-snippets/generated/platform-android.md"
 
@@ -93,8 +94,10 @@ compile error.
 
 `minSdk = 26` (Oreo) is a hard floor, not a target: `monitor.cpp` depends on AAudio outright, which
 does not exist below API 26, and there is no fallback path. Real Shield TV hardware (2017 model
-onward) ships well above this. Only `arm64-v8a` is built — every real Shield TV is arm64, and
-building the other ABIs would only slow local iteration for targets that can never run the app.
+onward) ships well above this. Only `arm64-v8a` is built for a device — every real Shield TV is
+arm64, and building the other ABIs would only slow local iteration for targets that can never run
+the app. The debug build type also builds `x86_64`, for the emulator the CI tests run on (see
+[Automated in CI](#what-has-and-has-not-been-verified)); the release build is `arm64-v8a` only.
 
 ## Audio backend: AAudio for monitor, JNI-bridged `AudioTrack` for passthrough
 
@@ -141,13 +144,36 @@ So the backend is split, unlike the other three:
   path to the sink's raw EDID would not add anything the existing probe does not already give —
   see [Linux](linux.md#reading-a-sinks-own-edideld) for where that read is real.
 
-AC-4 (IEC 61937-14) goes through the same track. `ENCODING_IEC61937` takes the bursts as opaque
-two-channel data, whatever codec they hold, so `PassthroughSink` sends AC-4 on a track at the
-content rate, the one AC-3 uses, and AC-4 HBR4 on the four-times track E-AC-3 uses. An AC-4 burst
-is as long as its frame, so `submit()` takes any whole number of link frames up to the longest.
-AC-4 HBR16, whose link has eight channels, is refused with `kUnsupportedFormat`.
-`supports_ac4_passthrough` takes the AC-3 probe's answer, since the track is the same one. No
-receiver found so far decodes AC-4, and this path has been compiled but never run on a device.
+### AC-4
+
+**The app does nothing with AC-4.** Its native library, `ac3forge_jni`, links `ac3::forge`,
+`ac3::audio` and `ac3::signing` and none of the AC-4 libraries (`src/ac4`, `src/ac4core`,
+`src/ac4dec`, `src/ac4enc`). The wrapper `CMakeLists.txt` leaves `AC3FORGE_BUILD_AC4` at its
+default, on, so the NDK build compiles those libraries and holds their sources to building under
+NDK r26 (`tools/checks/test_ac4_build_configurations.py` holds it to that default), and nothing
+calls them. The live encode loop makes E-AC-3 only. The `play_file` diagnostic (below) replays
+E-AC-3 files only, and refuses a file that does not open with an AC-3 or E-AC-3 syncframe, an
+AC-4 file included. The app never asks the passthrough sink for AC-4.
+
+What the library under it can do is a separate matter. AC-4 (IEC 61937-14) would go through the
+same track. `ENCODING_IEC61937` takes the bursts as opaque two-channel data, whatever codec they
+hold, so `PassthroughSink` sends AC-4 on a track at the content rate, the one AC-3 uses, and AC-4
+HBR4 on the four-times track E-AC-3 uses. An AC-4 burst is as long as its frame, so `submit()`
+takes any whole number of link frames up to the longest. AC-4 HBR16, whose link has eight
+channels, is refused with `kUnsupportedFormat`. `supports_ac4_passthrough` takes the AC-3 probe's
+answer, since the track is the same one. No receiver found so far decodes AC-4, and this path has
+been compiled but never run on a device.
+
+### Diagnostic file replay
+
+`am start ... --es play_file /sdcard/Download/<file>.ec3` skips the live cursor and the demo and
+streams that already-encoded E-AC-3 file through the same `PassthroughSink`
+(`apps/android/app/src/main/cpp/file_replay.cpp`). It exists to separate "is this app's
+`AudioTrack` passthrough configuration right" from "is this project's own Atmos output right":
+a known-good commercial Dolby stream either lights the receiver's Atmos indicator through this
+code path or it does not. It groups access units by each frame's `bsid` rather than by
+`ac3::split_access_units`, for the reason the file's header gives, and it ends after five seconds
+in which the sink accepts nothing.
 
 ### Partial `AudioTrack` writes are resumed from, not restarted
 
@@ -709,12 +735,13 @@ build, also drop a `signing.key` asset into `app/src/main/assets/` as described 
 ## Release / CI
 
 The app builds alongside the desktop packages rather than only ever being hand-built locally:
-`.github/workflows/_build.yml`'s `build-android` job builds the **debug** variant on every push
-(no Android SDK/NDK setup beyond what `ubuntu-latest` ships plus an explicit pin of the exact NDK
-version, `26.1.10909125`, the same "don't trust whatever the image happens to cache" reasoning
-every other toolchain step in that workflow already follows) — a continuous smoke test proving the
-Gradle/CMake/NDK toolchain and every native source file still build, the same role `windows-msvc`'s
-always-on packaging step plays for the desktop legs. **Object signing in CI reaches the debug APK
+`.github/workflows/_build.yml`'s `build-android` job builds the **debug** variant in every run in
+which the Android lane runs: the nightly run, and the run after a merge that changes
+`apps/android/` (no Android SDK/NDK setup beyond what `ubuntu-latest` ships plus an explicit
+`sdkmanager` install of the exact NDK version, `26.1.10909125`, the same "don't trust whatever the
+image happens to cache" reasoning every other toolchain step in that workflow already follows) — a
+smoke test proving the Gradle/CMake/NDK toolchain and every native source file still build. A
+change to `src/` reaches it in the nightly run. **Object signing in CI reaches the debug APK
 only.** Both `ci.yml` and `release.yml` forward `ATMOS_SIGNING_KEY`, and when it is set the
 materialize step writes the key asset so the debug build — which is never uploaded anywhere — is a
 live smoke test of the on-device signing path. The asset is then deleted again before the release
@@ -738,8 +765,8 @@ include `*.apk`).
 **Promoted, not experimental.** This job used to run `continue-on-error: true`, before it had ever
 actually run on GitHub's hosted runners. It has since gone green three consecutive times on real
 hosted runners (`feature/shield-atmos-platform`'s own PR history) — comfortably past the bar
-`macos-llvm` was promoted at — so that line is gone: a `build-android` failure now blocks like
-every other required leg.
+`macos-llvm` was promoted at — so that line is gone: a `build-android` failure now fails its run
+like any other non-experimental job.
 
 ## What has and has not been verified
 
@@ -855,7 +882,8 @@ every other required leg.
     Shield + receiver pair, not a repeatable check. Other Android TV hardware (a different SoC, a
     different receiver's own EDID/HDMI behavior) is untested. Along with
     [Raspberry Pi](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver), which drives a real
-    Atmos AVR from a Pi 4B, this is one of only two platform pages in the project where anything
+    Atmos AVR from a Pi 4B, and [Windows](windows.md#audio-backend-wasapi), which drives an Onkyo
+    TX-RZ740 over HDMI, this is one of three platform pages in the project where anything
     has run on real target hardware with a real receiver attached — a platform's CI legs passing
     (Linux's `alsa` backend included) is a materially different claim than "installed and run on a
     real device", and should not be read as implying it.

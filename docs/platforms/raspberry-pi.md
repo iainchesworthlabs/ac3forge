@@ -11,8 +11,9 @@ unchanged, just with `-arm64` presets.
 | | |
 |---|---|
 | What runs here | Everything Linux arm64 runs. There is no Pi-specific code |
-| Pi 4 Model B | Validated on the board: 440/440 tests on both compilers, including the hard real-time encode gate |
+| Pi 4 Model B | Validated on the board, as recorded on 2026-08-15: 440 of 440 tests on both compilers, including the hard real-time encode gate. The suite has grown since (the arm64 CI leg ran 3,175 tests on 2026-09-29) and this page records no later full run on the board |
 | Bitstream to a real receiver | Confirmed over HDMI to a powered Atmos-capable AVR, over ALSA and over PipeWire |
+| AC-4 | The AC-4 decoder and encoder build in the aarch64 legs and no Pi has run them. ALSA can carry AC-4 bursts (see [Linux](linux.md#ac-4)); no receiver is known to accept them |
 | Pi 5 | Expected to behave identically; **not validated** on real hardware |
 | Pi 3 | Not a supported target — the weaker CPU puts the real-time encode gate at risk |
 | OS | 64-bit required (`aarch64`); there is no 32-bit ARM triplet |
@@ -122,7 +123,7 @@ publishes.
 
 ## Verified configuration
 
-Run for real, over SSH, on:
+Run for real, over SSH, and recorded on 2026-08-15, on:
 
 | | |
 |---|---|
@@ -200,7 +201,9 @@ EDID-populated, and its `HDMI Jack` ALSA control reading `on`. Fixed by falling 
 id/name when the PCM's own name gives no signal; a regression test in `test_alsa_device_names.cpp`
 pins the vc4-hdmi case specifically, alongside the existing HDA-style cases it doesn't change.
 
-With the fix, `ac3cli outputs` reports both HDMI ports correctly:
+With the fix, `ac3cli outputs` reported both HDMI ports correctly (the columns as that build
+printed them; the current build adds a `ch` column and `speakers` and `rates` lines under each
+row):
 
 ```
 idx  AC-3       E-AC-3     excl PCM   name
