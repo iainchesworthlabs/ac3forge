@@ -54,7 +54,11 @@ FLAKES_PATH = Path(__file__).with_name("known_flakes.json")
 
 MAX_JOBS = 10  # failed jobs examined for evidence
 LOG_TAIL_LINES = 300
-EXCERPT_CHARS = 1800
+EXCERPT_CHARS = 2700
+EXCERPT_LINE_CHARS = 220  # a compiler's diagnostic can run to thousands of characters
+EXCERPT_TAIL = 8  # lines before the marker that ends a failed step
+EXCERPT_CAUSES = 3  # lines that name the cause, when it is further up than the tail
+CAUSE_WINDOW = 250  # how far above the tail to look for them
 MAX_SUSPECTS = 8
 NO_BASELINE_LOOKBACK = 10
 
@@ -75,6 +79,22 @@ PRESET_BY_LEG = {
 }
 
 MERGE_SUBJECT = re.compile(r"^Merge pull request #(\d+) from (\S+)")
+
+# Lines that say what failed, in the output of the tools this repository builds and
+# tests with: gcc and clang ("file:1:2: error: ..."), MSVC ("error C2065"), the linker,
+# rustc, ninja and Catch2 ("FAILED:"), ctest, CMake, Python.
+CAUSE_LINE = re.compile(
+    r"(?:^|[\s:])(?:fatal )?error:"
+    r"|\berror (?:C|LNK|CS|TS)\d+"
+    r"|\berror\[E\d+\]"
+    r"|\bFAILED: "
+    r"|\*\*\*\s?Failed"
+    r"|CMake Error"
+    r"|Traceback \(most recent call last\)"
+    r"|undefined reference to"
+)
+FAILED_LINE = re.compile(r"\bFAILED: ")
+LOG_TIMESTAMP = re.compile(r"^\d{4}-\d\d-\d\dT[\d:.]+Z ")
 
 Runner = Callable[[Sequence[str], "str | None"], str]
 
@@ -198,22 +218,46 @@ def suspects(sh: Runner, base: str | None, head: str) -> tuple[list[Suspect], in
     return found[:MAX_SUSPECTS], len(found)
 
 
+def _cause_lines(lines: Sequence[str], lo: int, hi: int) -> list[int]:
+    """Indexes in lines[lo:hi] that name the cause: the last failed command and what it
+    printed, else the newest few. A test that checks a refusal prints "error:" too, so
+    what is nearest the end of the step is the better guess."""
+    hits = [i for i in range(lo, hi) if CAUSE_LINE.search(lines[i])]
+    failed = [i for i in hits if FAILED_LINE.search(lines[i])]
+    if failed:
+        return [i for i in hits if i >= failed[-1]][:EXCERPT_CAUSES]
+    return hits[-EXCERPT_CAUSES:]
+
+
+def _clip(line: str) -> str:
+    line = LOG_TIMESTAMP.sub("", line)
+    return line if len(line) <= EXCERPT_LINE_CHARS else line[:EXCERPT_LINE_CHARS] + "..."
+
+
 def excerpt(text: str) -> str:
     """The lines that say what went wrong.
 
-    A failed step ends with an `##[error]` line, and what explains it is the output
-    just before, so that is what is returned. Matching every line that contains the
-    word "error" picks up expected output (a test that checks a refusal prints one);
-    it is only the fallback when the log has no marker, and then only the newest few.
+    A failed step ends with an `##[error]` line, and what explains it is usually the
+    output just before it. A compiler's diagnostic is often further up, above the build
+    tool's own "stopped" lines and the progress lines of the jobs that were still
+    running, so the lines that name a cause are added ahead of that tail. Matching every
+    line that contains the word "error" picks up expected output; it is only the
+    fallback when the log has no marker, and then only the newest few.
     """
     lines = text.splitlines()
     marks = [i for i, ln in enumerate(lines) if "##[error]" in ln]
     if marks:
-        chosen = lines[max(0, marks[-1] - 12) : marks[-1] + 1]
+        end = marks[-1]
+        first_tail = max(0, end - EXCERPT_TAIL)
+        causes = _cause_lines(lines, max(0, first_tail - CAUSE_WINDOW), first_tail)
+        chosen = [lines[i] for i in causes]
+        if chosen:
+            chosen.append("...")
+        chosen += lines[first_tail : end + 1]
     else:
         picked = [ln for ln in lines if re.search(r"\berror\b", ln, re.I)]
         chosen = picked[-12:] if picked else lines[-15:]
-    return "\n".join(chosen)[-EXCERPT_CHARS:]
+    return "\n".join(_clip(ln) for ln in chosen)[-EXCERPT_CHARS:]
 
 
 def _leg(name: str) -> str:
@@ -342,13 +386,19 @@ def gather_evidence(ctx: Context, sh: Runner, jobs: Sequence[FailedJob], flakes)
     for j in jobs:
         parts = []
         # The annotation is what a lost runner leaves behind: its log is usually gone.
-        for cmd in (
-            ["gh", "api", f"repos/{ctx.repo}/check-runs/{j.id}/annotations", "--jq", ".[].message"],
-            ["gh", "api", f"repos/{ctx.repo}/actions/jobs/{j.id}/logs"],
-        ):
+        note = "annotations", f"repos/{ctx.repo}/check-runs/{j.id}/annotations"
+        log = "log", f"repos/{ctx.repo}/actions/jobs/{j.id}/logs"
+        for what, path in (note, log):
+            cmd = ["gh", "api", path] + (["--jq", ".[].message"] if what == "annotations" else [])
             try:
                 out = sh(cmd, None)
-            except CommandError:
+            except CommandError as e:
+                # Say so, in the report and in this run's log: a report built from the
+                # annotations alone ("Process completed with exit code 1") names no cause.
+                reason = (e.stderr.strip().splitlines() or [str(e)])[0][:160]
+                parts.append(f"(main-health could not read the {what} of this job: {reason})")
+                trouble = f"could not read the {what} of {j.name}: {reason}"
+                print(f"::warning title=main-health::{trouble}")
                 continue
             parts.append("\n".join(out.splitlines()[-LOG_TAIL_LINES:]))
         j.evidence = "\n".join(parts)
