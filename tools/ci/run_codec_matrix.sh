@@ -1213,6 +1213,15 @@ run ac4-encode "$FIXTURES/reference_stereo.wav" ac4_objects_direct.ac4 128 exper
     objects=ac4_objects_scene_direct.txt
 run_ac4_frames_check ac4_objects_direct.ac4 -f ac4
 run decode ac4_objects_direct.ac4 ac4_objects_direct.wav ac4_objects_direct_dir
+# atmos-encode codec=ac4 (planning/ac4.md, phase I5b): a WAV file's channels as AC-4 objects, the
+# command the Forge GUI's encoder page echoes. A-JOC in a raw stream and direct-coded in an MP4
+# file (atmos-encode writes the MP4 itself), each read back by ffprobe's demuxer and by decode.
+run atmos-encode bootstrap_51.wav atmos_enc_ajoc.ac4 256 6 codec=ac4
+run_ac4_frames_check atmos_enc_ajoc.ac4 -f ac4
+run decode atmos_enc_ajoc.ac4 atmos_enc_ajoc.wav atmos_enc_ajoc_dir
+run atmos-encode bootstrap_51.wav atmos_enc_direct.mp4 256 6 codec=ac4 coding=direct dialnorm=27
+run_ac4_frames_check atmos_enc_direct.mp4
+run decode atmos_enc_direct.mp4 atmos_enc_direct.wav atmos_enc_direct_dir
 # Phase E5: frame rates other than the native one, the average and variable
 # rates, I-frames at an interval, and the metadata options, raw and in MP4,
 # where 29.97 fps counts at 240 000 Hz (TS 103 190-2 Table E.1) and the

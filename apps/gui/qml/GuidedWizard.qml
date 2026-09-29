@@ -1349,6 +1349,11 @@ ColumnLayout {
                         onTapped: {
                             if (!EncoderController.atmosEnabled) {
                                 EncoderController.applyChannelPreset("5.1");
+                                // Guided's objects are Dolby Digital Plus's, as the card
+                                // says; AC-4's are the Advanced and Expert tiers'.
+                                if (EncoderController.codecIndex === 2) {
+                                    EncoderController.codecIndex = 1;
+                                }
                                 EncoderController.atmosEnabled = true;
                                 if (EncoderController.bitrateKbps < 384) {
                                     EncoderController.bitrateKbps = 384;

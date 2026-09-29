@@ -48,6 +48,8 @@ qt_add_executable(ac3gui_qmltests
     ../common/container_input.hpp
     ../common/ac4_encode_core.cpp
     ../common/ac4_encode_core.hpp
+    ../common/ac4_objects_core.cpp
+    ../common/ac4_objects_core.hpp
     ../common/ac4_channels.hpp
     system_theme.cpp
     system_theme.hpp

@@ -1878,7 +1878,7 @@ The sections below contain the complete change list and fixes.
   the existing, already codec-agnostic export function needed no change of its own
   (`apps/gui/tests/qml/tst_e2e_inspect.qml`, 1 new test). The object inspector's own read-only
   listing already covered AC-4 before this phase and is unchanged; the encoder page's Atmos/object
-  authoring UI stays E-AC-3-only.
+  authoring follows in the next two entries (phase I5b).
 - **Fixed a pre-existing bug this phase's own new test found**: `decode_ac4_to_memory()` used
   `order.empty()` - the WAV channel order, computed from the frame's speakers - as its "has the
   first frame been read" flag. A presentation of objects alone has no channels or speakers at all,
@@ -1888,6 +1888,40 @@ The sections below contain the complete change list and fixes.
   `ObjectDecodeController::measure_ac4_objects()` already used correctly. Shipped with I3
   (channel-based AC-4 only, so nothing exercised the all-objects case until this phase's own
   export path did).
+- **`ac3cli atmos-encode` takes `codec=ac4`** (phase I5b of `planning/ac4.md`): a WAV file's
+  channels, or `src=`, `map=` and `offset=`, become AC-4 objects, A-JOC-coded or, with
+  `coding=direct`, direct-coded, moved by the optional scene file (the same formats as for E-AC-3), in a
+  raw stream (`crc=off` drops Part 2 Annex G's CRC) or, for an `.mp4`, `.m4a` or `.mov` name, an MP4
+  file; `dialnorm=` sets the stream's dialnorm, and `coding=` or `crc=` without `codec=ac4` are
+  refused rather than dropped. A channel mapped to a speaker is an object held at that speaker's
+  place on the ring ADM's polar coordinates give a bed channel, and one mapped to an LFE is the
+  stream's LFE object. The object steps (which channels become which objects, each one's audio, one
+  metadata update per object per frame, and the call into E9's writer) moved into
+  `apps/common/ac4_objects_core.hpp`; `atmos-adm` and `atmos-iab` call them for `codec=ac4` and
+  write the bytes they wrote, and the E-AC-3 paths of the three commands are unchanged
+  (`tests/cli/test_cli_atmos_encode_ac4.cpp`, 6 Catch2 test cases;
+  `tests/gui/test_ac4_objects_core.cpp`, 8).
+- **The Forge GUI's encoder page authors AC-4 objects** (phase I5b). With AC-4 chosen, the Objects
+  tab's switch writes AC-4 objects in place of E-AC-3's JOC over a 5.1 bed: the codec stays AC-4
+  (the codec list greys out AC-3 in object mode), and the AC-4 tab, which takes the place of Coding
+  tools and Metadata, carries what an object stream takes, A-JOC or direct coding, a dialnorm in
+  whole dB and the CRC. The frame rate and rate mode show as fixed, and the loudness values, DRC,
+  downmix and dialogue enhancement, which describe channels, are off. The page gives the writer's
+  limits in its own text (2 048 samples a frame, 64 objects at most with one LFE, a raw stream or an
+  MP4 file) and names what it cannot write, in the words Encode would refuse it with, on the
+  Objects tab and at the top of the AC-4 tab. It echoes one `ac3cli atmos-encode ... codec=ac4`
+  command, and encoding writes the scene that command reads beside the stream, as
+  `<name>-paths.json`; run through `ac3cli` with the sources beside it, the command writes the
+  same bytes, raw and MP4 (`tst_e2e_ac4_objects.qml`, 3 tests). An ADM master's scene (the two
+  bed channels and the one jumping object of I5's round trip) authored on the page decodes in the
+  GUI's object decoding with each object within I5's tolerances, 0.06 in each axis and 2 dB; the
+  fixture is `apps/gui/tests/fixtures/adm-two-beds-one-object.wav`. The controls have a test each
+  (`tst_ac4_objects.qml`, 10 tests; `tst_guided_wizard.qml`, 1; `tests/gui/test_ac4_encode_settings.cpp`,
+  4 new cases). A live session and Guided's Movement step stay with E-AC-3, Preview plays an AC-4
+  object encode through E-AC-3's bed, and the page reads audio with no ADM BWF or IAB reader; the
+  object inspector's note on exporting now points to Open stream, where I5 put the export. The
+  support catalogue's AC-4 encode row and the GUI's pages say so, and the translation catalogues
+  take the new strings.
 
 ### Changed
 

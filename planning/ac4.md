@@ -1140,6 +1140,7 @@ the channel-based library.
 | 20 | [E9](#e9-a-joc-objects) | A-JOC objects | D10, E8 |
 | 21 | [I5](#i5-immersive-and-object-content-in-the-applications) | immersive and object content in the applications | D10, E9 |
 | | [I4b](#i4b-the-object-encoder-in-the-c-api-python-rust-and-webassembly) | the object encoder in the bindings, and I4's leftovers | I4, E9 |
+| 21b | [I5b](#i5b-the-encoder-pages-ac-4-objects) | the encoder page's AC-4 objects | I3, I5 |
 | 22 | [D14](#d14-ac-4-on-the-esp32s) | AC-4 on the ESP32s: the P4 first, then the S3 and the C6 | D10 |
 | 23 | [I6](#i6-the-esp32-sinks) | the ESP32 sinks | each part's D14 figures |
 | 24 | [N1](#n1-the-names) | the names | I5 |
@@ -2659,8 +2660,8 @@ of objects alone has no channels or speakers to make `order` non-empty with, so 
 frame decoded" for every such stream despite decoding it correctly; fixed with an explicit flag,
 the pattern `ObjectDecodeController::measure_ac4_objects()` already used. The object inspector's
 own read-only listing already covered AC-4 before this phase. The encoder page's Atmos/object
-authoring UI is real but E-AC-3-only (`EncoderController::setAtmosEnabled` forces `codec_` away
-from `kAc4`); giving it an AC-4 path is left open - see the phase's own report for the options.
+authoring UI was E-AC-3-only when this phase merged (`EncoderController::setAtmosEnabled` forced
+`codec_` away from `kAc4`); [I5b](#i5b-the-encoder-pages-ac-4-objects) gave it an AC-4 path.
 
 Checks: `tests/cli/test_cli_atmos_adm_ac4.cpp` (new), the extended `tests/cli/test_cli_ac4_decode.cpp`,
 `tests/hearth/test_ac4_engine.cpp` and `tests/hearth/test_decoder_settings.cpp` (new cases), the
@@ -2668,12 +2669,98 @@ extended `tests/hearth/test_diagnostics.cpp`, `apps/gui/tests/qml/tst_e2e_inspec
 `tools/ci/run_codec_matrix.sh`'s new AC-4 legs (5.1.4, objects both codings, both Atmos-ingest
 commands' `codec=ac4`), and the whole of `ac3tests` once, at the end (a full run's own numbers are in
 the phase's report rather than repeated here, since a later merge would make them stale immediately).
-Not done: the GUI's encoder-page AC-4 object path; `zone_mask`'s mapping onto
+Not done: `zone_mask`'s mapping onto
 `ac3::oba::ZoneConstraint` is a reading, not independently checked against the spec text (neither
 library's syntax, so not an ERRATA entry). A direct-coded group's own separate `oamd_substream`,
 which this phase left out of `probe`'s JSON, landed afterwards: `ac4::SubstreamReport` holds the
 substream's `oamd_common_data()`, and `probe` writes the first one as `oamd_common_data` on the
-group's `oamd` member, in the shape of the A-JOC substream's.
+group's `oamd` member, in the shape of the A-JOC substream's. The GUI's encoder-page AC-4 object
+path, which this list named when the phase merged, landed as I5b, below.
+
+#### I5b: the encoder page's AC-4 objects
+
+After I3 and I5. I5 left the encoder page's Atmos and object authoring to E-AC-3 and gave the
+options in its report; the user asked for the page to author AC-4 objects.
+
+- The page's Atmos switch and its object pages work with AC-4: what the page offers for E-AC-3 it
+  offers for AC-4, A-JOC by default and a control for direct-coded object substreams, to a raw
+  stream or an MP4 file. The limits of E9's writer (frame_rate_index 13 alone, 64 objects at most,
+  one of them the LFE) are in the page's own text, and what cannot apply is named and, where a
+  control can be, disabled, before Encode is pressed.
+- The page echoes one `ac3cli` command that writes the same bytes. The object steps both need move
+  into `apps/common`; the command line's behaviour and its tests stay as they are.
+
+**Exit:** each new control has a test; the command line the page echoes, run through `ac3cli`,
+writes the same bytes as the page; an ADM master (the fixture I5's round trip commits: two bed
+channels and one dynamic object that jumps position) authored on the page as AC-4 decodes in the
+GUI's own object decoding with its objects at their places and gains, within I5's tolerances (0.06
+in each axis, 2 dB).
+
+**Verified by:** the GUI's Qt Quick Tests and C++ tests, and the CLI matrix.
+
+**Built (phase I5b):** `apps/common/ac4_objects_core.hpp` holds the steps `ac3cli` and the page
+both run: `ObjectSlot` and `object_slots_from_assignment` (moved from `apps/cli/support.hpp`),
+`location_azimuth_deg` (moved from the GUI's `channel_geometry.cpp`, which forwards to it), the
+order of a stream's objects (each `obj` row, each `objm` group, each channel assigned to a speaker,
+then the LFE), the audio each carries, one metadata update per object per 2 048-sample frame,
+ramped over the frame and taken at its end, and the call into E9's writer. `atmos-adm` and
+`atmos-iab` call it for `codec=ac4` and write the bytes they wrote. `atmos-encode` takes
+`codec=ac4` beside E-AC-3: `src=`, `map=`, `offset=` and a scene file as for E-AC-3, `coding=direct`,
+`dialnorm=` and, for a raw stream, `crc=off`, with an output named `.mp4`, `.m4a` or `.mov` written as
+an MP4 file. `coding=` and `crc=` without `codec=ac4` are refused rather than dropped, and the
+E-AC-3 command and its tests are as they were.
+
+A channel assigned to a speaker is a dynamic object held at that speaker's place on the ring ADM's
+polar coordinates give a bed channel (radius 0.5 about the room's centre), at unity, as
+`atmos-adm codec=ac4` writes an ADM bed channel; one assigned to an LFE is the stream's LFE
+object, and the LFE send has no AC-4 counterpart. An object with no path keeps the inverse-root
+gain E-AC-3 gives it, which AC-4 codes in whole dB. Sources shorter than the longest are silent
+past their end, where E-AC-3's `src=` holds the last sample.
+
+On the page, `EncoderController::setAtmosEnabled` keeps AC-4 as the codec, the codec list greys
+out AC-3 in object mode, and the AC-4 tab keeps its place beside the Objects tab. It carries what
+an object stream takes: A-JOC or direct coding, a dialnorm in whole dB, and the CRC; the frame
+rate and the rate mode show as fixed, and the loudness values, DRC, downmix and dialogue
+enhancement, which describe channels, are off. The Objects tab gives the writer's limits under
+its header and counts against 64. A request the page can tell is refused (a container other than
+a raw stream or an MP4 file, more than 64 objects, a second LFE channel or no object but the LFE,
+a measured or out-of-range dialnorm, sources resampled to one rate) is named there and at the top
+of the AC-4 tab, in the words Encode refuses it with, before a run opens; a key outside +15 to
+-49 dB or outside the room, and a bit rate the writer refuses, are refused at Encode. The echoed
+command is `ac3cli atmos-encode <source> out.ac4 <kbps> <objects> <name>-paths.json [src= map=
+offset=] codec=ac4 [coding=direct] [dialnorm=] [crc=off]`, with `out.mp4` for an MP4 file.
+Encoding writes the scene the command reads beside the stream, as `<name>-paths.json`, and
+**Export paths...** suggests the same name.
+
+A live session refuses AC-4, since `ac3cli live` has none; Guided's Movement step writes E-AC-3
+objects; and Preview plays an AC-4 object encode through the E-AC-3 object encoder's bed, the
+first fifteen objects, whichever codec is chosen. The page reads audio, with the scene authored on
+it, and has no reader for ADM BWF or IAB masters, which `atmos-adm` and `atmos-iab` write to AC-4
+with `codec=ac4`. The exit's ADM master is therefore the one `tests/cli/test_cli_atmos_adm.cpp`
+builds, written to `apps/gui/tests/fixtures/adm-two-beds-one-object.wav` with its `axml` and `chna`
+chunks as that test builds them. The page reads its audio, and the scene is authored on the page:
+the two bed channels assigned to L and R, and the third channel an object at azimuth -110 degrees
+for 0.096 s and then dead ahead. The stream the page writes, read by `ObjectDecodeController` as
+the object page reads it, has its three objects at those places at unity within 0.06 in each axis
+and 2 dB, before the jump and after it (0.0081 and 0.000 dB at worst), and the object's jump is
+there.
+
+Checks: `tests/cli/test_cli_atmos_encode_ac4.cpp` (new, 6 Catch2 test cases: the raw and
+direct-coded bytes equal the shared core's, `crc=off` and an MP4 file, `src=`, `map=` and
+`offset=` with a speaker and an LFE, the default placements, the refusals with their exit codes,
+and E-AC-3 unchanged); `tests/gui/test_ac4_objects_core.cpp` (new, 8); `tests/gui/
+test_ac4_encode_settings.cpp` (4 new); `apps/gui/tests/qml/tst_ac4_objects.qml` (new, 10 tests, one
+for each control and refusal); `tst_e2e_ac4_objects.qml` (new, 3: a raw stream and an MP4 file
+equal to the echoed line run through `ac3cli`, and the ADM master); `tst_guided_wizard.qml` (1
+new); and, unchanged and passing, the accessibility and channel-count suites, `tst_e2e_objects.qml`,
+`tst_objects_per_source.qml` and the localisation pipeline. The whole of `ac3tests` and `ctest -L
+gui` ran once at the end; their numbers are in the pull request.
+
+Left for the user, each with its options in the pull request: an ADM or IAB master as a source
+on the page; AC-4 bed objects (A-JOC's static bed) for the channels assigned to speakers, in place
+of dynamic objects at ring positions; a Preview taken from a decode of the AC-4 stream; AC-4 in
+Guided's Movement step. The object inspector's note on export now points to Open stream, where
+I5 put the export; it had said the export would arrive in a later release.
 
 #### I6: the ESP32 sinks
 

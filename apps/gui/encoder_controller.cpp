@@ -73,6 +73,8 @@ struct Ac4Outcome {
     QString problem;  // empty on success
     std::size_t frames = 0;
     std::size_t bytes = 0;
+    // An object encode's: where an input sample comes out of the decoder.
+    int lag_samples = 0;
 };
 
 // `ac3cli ac4-encode`'s steps for one input and one substream
@@ -164,6 +166,61 @@ Ac4Outcome encode_ac4_file(const QString& path, const ac3gui::Ac4EncodeSettings&
         return out;
     }
     out.frames = frames->size();
+    return out;
+}
+
+// `ac3cli atmos-encode ... codec=ac4`'s steps for the objects of one or more
+// sources (apps/cli/commands/atmos.cpp): the scene the command reads written
+// beside the output, then the objects' audio and metadata through E9's writer
+// (ac3::apps::encode_ac4_scene) and the sync frames or MP4 file written to
+// `path`. `flat` is every source's channels in flat order, offsets applied.
+Ac4Outcome encode_ac4_objects_file(const QString& path, const QString& scene_path,
+                                   const std::string& scene_json,
+                                   const std::vector<ac3::apps::Ac4ObjectSlot>& stream_objects,
+                                   const std::vector<std::vector<float>>& flat,
+                                   const ac3::oba::ObjectScene& motion,
+                                   const ac3::apps::Ac4ObjectsParams& params, bool mp4, bool crc) {
+    Ac4Outcome out;
+    // The file the echoed command names, first: a stream whose command cannot be run is not
+    // what the page shows beside it.
+    {
+        QSaveFile scene_file(scene_path);
+        if (!scene_file.open(QIODevice::WriteOnly) ||
+            scene_file.write(scene_json.data(), static_cast<qint64>(scene_json.size())) !=
+                static_cast<qint64>(scene_json.size()) ||
+            !scene_file.commit()) {
+            out.problem = QStringLiteral("Could not write %1 beside the output.").arg(scene_path);
+            return out;
+        }
+    }
+    const auto encoded = ac3::apps::encode_ac4_scene(params, stream_objects, flat, motion);
+    if (!encoded.has_value()) {
+        out.problem = encoded.error().kind == ac3::apps::Ac4ObjectsError::Kind::kRefused
+                          ? QStringLiteral("The AC-4 encoder refuses %1.")
+                                .arg(to_qstring(encoded.error().message))
+                          : to_qstring(encoded.error().message);
+        return out;
+    }
+    const auto packaged = ac3::apps::package_ac4(encoded->frames, encoded->toc, mp4, crc);
+    if (!packaged.has_value()) {
+        out.problem = QString::fromStdString(packaged.error().message);
+        return out;
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly)) {
+        out.problem = QStringLiteral("Could not open the output file for writing.");
+        return out;
+    }
+    for (const auto& chunk : packaged->chunks) {
+        file.write(reinterpret_cast<const char*>(chunk.data()), static_cast<qint64>(chunk.size()));
+        out.bytes += chunk.size();
+    }
+    if (!file.commit()) {
+        out.problem = QStringLiteral("Writing the stream failed.");
+        return out;
+    }
+    out.frames = encoded->frames.size();
+    out.lag_samples = encoded->lag_samples;
     return out;
 }
 
@@ -720,8 +777,9 @@ EncoderController::EncoderController(QObject* parent)
 
 // Each worker that can still be running polls one of these flags, so set them
 // all and wait (see background_jobs.hpp): nothing then reads a member or posts
-// to this object after it is gone. The exception is encodeAc4(), one call into
-// the encoder library with no flag to poll, which this waits out.
+// to this object after it is gone. The exceptions are encodeAc4() and
+// encodeAc4Objects(), each one call into the encoder library with no flag to
+// poll, which this waits out.
 EncoderController::~EncoderController() {
     cancel_requested_.store(true, std::memory_order_relaxed);
     stop_recording_.store(true, std::memory_order_relaxed);
@@ -806,12 +864,35 @@ bool EncoderController::ac4DownmixAvailable() const {
     return source_ && source_->wav.channels.size() >= 5;
 }
 
+QStringList EncoderController::ac4ObjectCodingNames() const {
+    return choice_labels(ac3gui::kAc4ObjectCodings);
+}
+
 QString EncoderController::ac4Tokens() const {
     QStringList tokens;
-    for (const auto& token : ac3gui::ac4_cli_tokens(ac4_, container_index_ == kContainerMp4)) {
+    const bool mp4 = container_index_ == kContainerMp4;
+    // Object mode echoes atmos-encode's tokens: the coding, a dialnorm off 31 and the CRC.
+    const auto listed =
+        ac4Objects() ? ac3gui::ac4_object_cli_tokens(ac4_, mp4) : ac3gui::ac4_cli_tokens(ac4_, mp4);
+    for (const auto& token : listed) {
         tokens.append(QString::fromStdString(token));
     }
     return tokens.join(QLatin1Char(' '));
+}
+
+void EncoderController::setAc4ObjectCodingIndex(int index) {
+    if (busy_ || index < 0 || static_cast<std::size_t>(index) >= ac3gui::kAc4ObjectCodings.size() ||
+        static_cast<std::size_t>(index) == ac4_.object_coding) {
+        return;
+    }
+    ac4_.object_coding = static_cast<std::size_t>(index);
+    emit planChanged();
+}
+
+int EncoderController::objectLimit() const {
+    // E-AC-3: TS 103 420 8.3.2.2's sixteen objects with the bed's LFE one of them. AC-4: what the
+    // writer holds, the LFE object among them.
+    return ac4Objects() ? static_cast<int>(ac3::apps::kAc4MaxObjects) : 15;
 }
 
 void EncoderController::setAc4Choice(std::optional<std::size_t>& choice, int index,
@@ -1013,6 +1094,145 @@ QString EncoderController::ac4Refusal() const {
     if (const auto refused = ac3gui::ac4_settings_refusal(
             ac4_, channels, static_cast<int>(source_->wav.sample_rate))) {
         return QStringLiteral("ac4-encode refuses this: %1.").arg(QString::fromStdString(*refused));
+    }
+    return QString();
+}
+
+QString EncoderController::ac4PathsName() const {
+    const QString stem = source_path_.isEmpty() ? QStringLiteral("paths")
+                                                : QFileInfo(source_path_).completeBaseName() +
+                                                      QStringLiteral("-paths");
+    return stem + QStringLiteral(".json");
+}
+
+plan::Assignment EncoderController::ac4ObjectAssignment() const {
+    if (has_explicit_assignment_) {
+        return assignment_;
+    }
+    // Nothing assigned: every channel of every source is an object, as `atmos-encode` reads a
+    // file with no map=.
+    plan::Assignment every;
+    const auto shapes = sourceShapes();
+    for (std::size_t s = 0; s < shapes.size(); ++s) {
+        for (std::size_t c = 0; c < shapes[s].channels; ++c) {
+            every.set(s, c, {.kind = plan::DestinationKind::kObject});
+        }
+    }
+    return every;
+}
+
+std::optional<ac3::oba::ObjectScene> EncoderController::ac4ObjectScene(
+    const std::vector<ac3::apps::Ac4ObjectSlot>& stream_objects) const {
+    const auto dynamic =
+        static_cast<std::size_t>(std::ranges::count_if(stream_objects, [](const auto& slot) {
+            return slot.kind == ac3::apps::Ac4ObjectSlot::Kind::kDynamic;
+        }));
+    // The inverse-root gain E-AC-3's fallback gives a path-less object: objects panned into the
+    // same speakers add there, so they share the headroom.
+    const double scale = 1.0 / std::sqrt(static_cast<double>(std::max<std::size_t>(dynamic, 1)));
+    std::vector<ac3::oba::SceneObject> objects;
+    for (const auto& slot : stream_objects) {
+        if (slot.kind != ac3::apps::Ac4ObjectSlot::Kind::kDynamic || slot.taps.empty()) {
+            continue;
+        }
+        // The identity its authored state hangs from: its first channel's (source, channel), as
+        // keyForObjectIndex resolves an objm group.
+        const auto key = sourceChannelForFlatIndex(slot.taps.front().first);
+        ac3::oba::SceneObject object;
+        const QString label = map_value(object_path_labels_, key);
+        object.name =
+            (label.isEmpty() ? QStringLiteral("object %1").arg(objects.size() + 1) : label)
+                .toStdString();
+        auto keyframes = map_value(object_keyframes_, key);
+        std::ranges::sort(keyframes, {}, &ac3::oba::Keyframe::time_s);
+        if (keyframes.empty()) {
+            const auto config = map_value(object_configs_, key);
+            object.automation.push_back({.time_s = 0.0,
+                                         .position = {.x = config.x, .y = config.y, .z = config.z},
+                                         .gain = 0.7 * scale,
+                                         .lfe_send = config.lfe_send * scale});
+        }
+        for (const auto& keyframe : keyframes) {
+            object.automation.push_back({.time_s = keyframe.time_s,
+                                         .position = keyframe.position,
+                                         .gain = keyframe.gain,
+                                         .lfe_send = keyframe.lfe_send});
+        }
+        objects.push_back(std::move(object));
+    }
+    auto scene = ac3::oba::ObjectScene::create(std::move(objects));
+    if (!scene.has_value()) {
+        return std::nullopt;
+    }
+    return std::move(*scene);
+}
+
+QString EncoderController::ac4ObjectsRefusal() const {
+    if (!ac4Objects() || !source_) {
+        return QString();
+    }
+    if (container_index_ != 0 && container_index_ != kContainerMp4) {
+        return QStringLiteral(
+            "AC-4 is written as a raw stream or an MP4 file; pick one of those "
+            "containers.");
+    }
+    // ac3cli's src= takes sources at one rate; this page resamples a later one to the first's,
+    // which no command line reproduces.
+    if (std::ranges::any_of(extra_source_original_rates_,
+                            [](const auto& rate) { return rate.has_value(); })) {
+        return QStringLiteral(
+            "AC-4 objects take every source at one sample rate, as ac3cli's src= "
+            "does; a source was resampled to the first's here. Load the sources "
+            "at one rate.");
+    }
+    if (const auto refused = ac3gui::ac4_object_settings_refusal(ac4_)) {
+        return QStringLiteral("ac3cli refuses this: %1.").arg(QString::fromStdString(*refused));
+    }
+    const auto stream_objects = ac3::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
+    const auto params = ac3gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
+    if (const auto refused = ac3::apps::ac4_objects_refusal(stream_objects, params)) {
+        return QString::fromStdString(*refused) + QLatin1Char('.');
+    }
+    return QString();
+}
+
+QString EncoderController::ac4ObjectsDeepRefusal(
+    const std::vector<ac3::apps::Ac4ObjectSlot>& stream_objects,
+    const ac3::oba::ObjectScene& scene) const {
+    // AC-4 codes an object's gain from +15 to -49 dB, or silence, and its place inside the room.
+    std::size_t number = 0;
+    for (const ac3::oba::SceneObject& object : scene.objects()) {
+        ++number;
+        for (const ac3::oba::AutomationPoint& point : object.automation) {
+            const auto p =
+                ac3::apps::ac4_object_properties({.position = point.position, .gain = point.gain});
+            const bool gain_ok =
+                std::isinf(p.gain_db) ? p.gain_db < 0.0 : (p.gain_db >= -49.0 && p.gain_db <= 15.0);
+            const bool room_ok = point.position.x >= 0.0 && point.position.x <= 1.0 &&
+                                 point.position.y >= 0.0 && point.position.y <= 1.0 &&
+                                 point.position.z >= -1.0 && point.position.z <= 1.0;
+            if (!gain_ok || !room_ok) {
+                return QStringLiteral(
+                           "Object %1's key at %2 s is outside what AC-4 codes: a gain "
+                           "from +15 to -49 dB (or silent), and a place inside the room.")
+                    .arg(number)
+                    .arg(point.time_s, 0, 'f', 2);
+            }
+        }
+    }
+    // The writer's own refusals for this many objects at this rate.
+    const auto params = ac3gui::ac4_objects_params(ac4_, source_->wav.sample_rate, bitrate_kbps_);
+    std::vector<bool> lfe(stream_objects.size());
+    for (std::size_t i = 0; i < stream_objects.size(); ++i) {
+        lfe[i] = stream_objects[i].kind == ac3::apps::Ac4ObjectSlot::Kind::kLfe;
+    }
+    const auto initial = ac3::apps::ac4_scene_placements(stream_objects, scene, 0.0);
+    const auto config = ac3::apps::ac4_objects_config(params, lfe, initial);
+    if (const auto why = ac4::Encoder::refusal_reason(config); !why.empty()) {
+        return QStringLiteral("The AC-4 encoder refuses %1 objects at %2 kbps (%3).")
+            .arg(stream_objects.size())
+            .arg(bitrate_kbps_)
+            .arg(to_qstring(why));
     }
     return QString();
 }
@@ -1254,6 +1474,17 @@ QString EncoderController::channelLocationsText() const {
 }
 
 QString EncoderController::layoutDetail() const {
+    if (ac4Objects()) {
+        // No bed: every object is written as an object, at the coding the AC-4 tab names.
+        const auto stream_objects =
+            ac3::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
+        return QStringLiteral(
+                   "%1 objects · %2 · positions ride as object audio metadata, one "
+                   "update a frame")
+            .arg(stream_objects.size())
+            .arg(ac4_.object_coding == 0 ? QStringLiteral("A-JOC")
+                                         : QStringLiteral("direct-coded"));
+    }
     if (atmos_enabled_) {
         // "4 of 6 bed positions fed" - counted by panning the objects
         // exactly as the encoder will (fedChannels' own atmos branch), so
@@ -1289,6 +1520,10 @@ QString EncoderController::layoutDetail() const {
 }
 
 int EncoderController::codedChannelCount() const {
+    if (ac4Objects()) {
+        return static_cast<int>(
+            ac3::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes()).size());
+    }
     if (isDualMono() && !atmos_enabled_) {
         return 2;
     }
@@ -1298,6 +1533,9 @@ int EncoderController::codedChannelCount() const {
 }
 
 int EncoderController::renderedChannelCount() const {
+    if (ac4Objects()) {
+        return codedChannelCount();
+    }
     if (isDualMono() && !atmos_enabled_) {
         return 2;
     }
@@ -1657,15 +1895,32 @@ void EncoderController::setCodecIndex(int index) {
     if (codec == codec_ || busy_) {
         return;
     }
+    // Objects ride in E-AC-3 or AC-4, and a plain AC-3 stream has no place for
+    // them: object mode keeps to the two, as setAtmosEnabled moves any other
+    // codec to E-AC-3.
+    if (atmos_enabled_ && codec == plan::Codec::kAc3) {
+        return;
+    }
     codec_ = codec;
     // AC-4 takes the source in its own layout, as `ac4-encode` takes a WAV
     // file, to a raw stream or an MP4 file.
     if (codec_ == plan::Codec::kAc4) {
         extras_mask_ = 0;
-        followSourceLayoutForAc4();
+        // Its objects have no bed to follow the source's layout.
+        if (!atmos_enabled_) {
+            followSourceLayoutForAc4();
+        }
         if (container_index_ != kContainerMp4) {
             container_index_ = 0;
         }
+    }
+    if (atmos_enabled_) {
+        // E-AC-3's objects want the frame to hold a 5.1 bed and the JOC payload, as
+        // setAtmosEnabled raises it to; AC-4's rate is the page's to choose.
+        if (codec_ == plan::Codec::kEac3 && bitrate_kbps_ < 384) {
+            bitrate_kbps_ = 384;
+        }
+        recomputeObjectCount();
     }
     // AC-3 has no dependent substreams at all, so extras that needed one have
     // to go somewhere: dropping them is what the extras lock itself would
@@ -2199,10 +2454,16 @@ void EncoderController::setAtmosEnabled(bool enabled) {
         return;
     }
     atmos_enabled_ = enabled;
-    // Objects are carried in an E-AC-3 stream and nothing else: the EMDF
-    // container rides in Annex E aux data, and AC-3 has no addbsi field to
-    // flag it with.
-    if (atmos_enabled_) {
+    // Objects are carried in an E-AC-3 stream or an AC-4 one and nothing else:
+    // the EMDF container rides in Annex E aux data, and AC-3 has no addbsi field
+    // to flag it with. AC-4, where it is the codec, stays; anything else moves
+    // to E-AC-3.
+    if (atmos_enabled_ && codec_ == plan::Codec::kAc4) {
+        // A raw stream or an MP4 file, as AC-4 channels are.
+        if (container_index_ != kContainerMp4) {
+            container_index_ = 0;
+        }
+    } else if (atmos_enabled_) {
         codec_ = plan::Codec::kEac3;
         // The frame must hold a 5.1 bed plus the JOC+OAMD payload - the same
         // floor the assignment table's "obj" path already raises to, applied
@@ -2210,7 +2471,12 @@ void EncoderController::setAtmosEnabled(bool enabled) {
         if (bitrate_kbps_ < 384) {
             bitrate_kbps_ = 384;
         }
+    } else if (codec_ == plan::Codec::kAc4) {
+        // Back to AC-4's channels: the bed is the source's own again.
+        followSourceLayoutForAc4();
     }
+    // The objects the codec takes: fifteen and the LFE, or 64.
+    recomputeObjectCount();
     emit planChanged();
     emit outputChanged();
     refreshRouting();
@@ -2399,7 +2665,9 @@ void EncoderController::addObjectKeyframe(int objectIndex, double timeS) {
     // for. If keyframes already carry an authored gain, that gain is theirs;
     // this only decides what a NEW cue starts from.
     const auto ndynamic =
-        std::max<std::size_t>(std::min<std::size_t>(dynamicObjectChannels().size(), 15), 1);
+        std::max<std::size_t>(std::min<std::size_t>(dynamicObjectChannels().size(),
+                                                    static_cast<std::size_t>(objectLimit())),
+                              1);
     ac3::oba::Keyframe key{.time_s = timeS,
                            .position = {.x = config.x, .y = config.y, .z = config.z},
                            .gain = 0.7 / std::sqrt(static_cast<double>(ndynamic)),
@@ -2532,8 +2800,8 @@ QVariantMap EncoderController::evaluateObjectPath(int objectIndex, double timeS)
 
 std::vector<ac3::oba::SceneObject> EncoderController::exportableSceneObjects() const {
     const auto dynamic = dynamicObjectChannels();
-    const auto ndynamic =
-        std::max<std::size_t>(std::min<std::size_t>(dynamic.size(), 15), 1);
+    const auto ndynamic = std::max<std::size_t>(
+        std::min<std::size_t>(dynamic.size(), static_cast<std::size_t>(objectLimit())), 1);
     std::vector<ac3::oba::SceneObject> objects;
     for (int i = 0; i < object_count_; ++i) {
         // An objm group's export uses its first channel's flat index - the
@@ -2595,6 +2863,14 @@ bool EncoderController::writeTextFile(const QUrl& url, const std::string& text) 
 }
 
 bool EncoderController::exportObjectPaths(const QUrl& url) const {
+    if (ac4Objects()) {
+        // The AC-4 objects' scene, as atmos-encode codec=ac4 reads it: the dynamic objects in the
+        // stream's order.
+        const auto stream_objects =
+            ac3::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
+        const auto scene = ac4ObjectScene(stream_objects);
+        return scene && writeTextFile(url, ac3::oba::to_keyframe_text(*scene));
+    }
     // The grammar itself lives in ac3::oba now (scene.hpp), so this writes
     // through the same function ac3cli's own reader is paired with rather
     // than through a second, hand-rolled copy of the column layout that could
@@ -2604,6 +2880,13 @@ bool EncoderController::exportObjectPaths(const QUrl& url) const {
 }
 
 bool EncoderController::exportObjectScene(const QUrl& url) const {
+    if (ac4Objects()) {
+        // The file an AC-4 object encode writes beside its output, and the echoed command reads.
+        const auto stream_objects =
+            ac3::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
+        const auto scene = ac4ObjectScene(stream_objects);
+        return scene && writeTextFile(url, ac3::oba::to_json(*scene));
+    }
     // The same objects as an ac3::oba::ObjectScene in JSON: named, with
     // per-segment interpolation and an orientation the keyframe columns have
     // nowhere to put. ac3cli's atmos-path and atmos-encode read this form too,
@@ -2635,7 +2918,12 @@ void EncoderController::startMotionPreview() {
         return;
     }
 
-    const auto p = currentPlan();
+    auto p = currentPlan();
+    // The preview plays the objects through E-AC-3's object encoder, whichever codec is chosen,
+    // and its frame must hold a 5.1 bed and the JOC payload: AC-4's rate is not that encoder's.
+    if (ac4Objects()) {
+        p.bitrate_kbps = std::max<std::uint32_t>(p.bitrate_kbps, 384);
+    }
 
     // Exactly encodeObjects()'s own `paths` construction: authored keyframes
     // where the GUI has some, else each object's static position, plus one
@@ -2936,6 +3224,9 @@ plan::ChannelPlan EncoderController::effectiveChannelPlan() const {
 }
 
 QString EncoderController::effectiveLabel() const {
+    if (ac4Objects()) {
+        return QStringLiteral("AC-4 objects");
+    }
     if (atmos_enabled_) {
         return QStringLiteral("5.1 bed");
     }
@@ -3177,8 +3468,8 @@ bool EncoderController::outputDeviceSupportsFormat(int deviceIndex, bool eac3) c
 }
 
 void EncoderController::recomputeObjectCount() {
-    object_count_ =
-        static_cast<int>(std::min<std::size_t>(dynamicObjectChannels().size(), 15));
+    object_count_ = static_cast<int>(std::min<std::size_t>(
+        dynamicObjectChannels().size(), static_cast<std::size_t>(objectLimit())));
     refreshObjectConfigs();
 }
 
@@ -3216,6 +3507,30 @@ void EncoderController::refreshRouting() {
 void EncoderController::refreshRoutingSummary() {
     const auto p = currentPlan();
     const auto label = effectiveLabel();
+
+    if (ac4Objects()) {
+        const auto npinned = pinnedObjectChannels().size();
+        if (object_count_ > 0 && npinned > 0) {
+            routing_summary_ = QStringLiteral(
+                                   "%1 objects and %2 channels held at speakers, "
+                                   "written as AC-4 objects.")
+                                   .arg(object_count_)
+                                   .arg(static_cast<int>(npinned));
+        } else if (object_count_ > 0) {
+            routing_summary_ =
+                QStringLiteral("%1 objects, written as AC-4 objects.").arg(object_count_);
+        } else if (npinned > 0) {
+            routing_summary_ = QStringLiteral(
+                                   "%1 channels are held at speakers and nothing is a "
+                                   "dynamic object — send a channel to \"an object\" "
+                                   "or turn object mode off.")
+                                   .arg(static_cast<int>(npinned));
+        } else {
+            routing_summary_ = QStringLiteral("Each source channel becomes an AC-4 object.");
+        }
+        emit routingChanged();
+        return;
+    }
 
     if (atmos_enabled_) {
         const auto npinned = pinnedObjectChannels().size();
@@ -3330,9 +3645,10 @@ QString EncoderController::outputSuffix() const {
         // save dialog, the "Encode to .%1" button) branch on instead.
         return QString();
     }
-    // Object mode is E-AC-3 whatever the codec box says, so the suffix follows
-    // the plan rather than the control.
-    return to_qstring(plan::codec_suffix(atmos_enabled_ ? plan::Codec::kEac3 : codec_));
+    // Object mode is E-AC-3 or AC-4, and never AC-3 whatever the codec box says, so
+    // the suffix follows the plan rather than the control.
+    return to_qstring(plan::codec_suffix(
+        atmos_enabled_ && codec_ != plan::Codec::kAc4 ? plan::Codec::kEac3 : codec_));
 }
 
 QString EncoderController::suggestedOutputName() const {
@@ -3573,7 +3889,7 @@ void EncoderController::startRun(const QString& path, const QString& durationTex
     // Snapshotted at start, not recomputed when the details popover opens -
     // see runs' and setPendingCliLine's own doc comments.
     run[QStringLiteral("cliLine")] = pending_cli_line_;
-    run[QStringLiteral("eac3")] = atmos_enabled_ || codec_ == plan::Codec::kEac3;
+    run[QStringLiteral("eac3")] = eac3Stream();
     run[QStringLiteral("playDeviceIndex")] = pending_play_device_;
     pending_cli_line_.clear();
     pending_play_device_ = -1;
@@ -4604,7 +4920,7 @@ void EncoderController::startLiveSession(int captureDeviceIndex, bool monitor,
     if (busy_ || recording_ || live_active_) {
         return;
     }
-    if (codec_ == plan::Codec::kAc4 && !atmos_enabled_) {
+    if (codec_ == plan::Codec::kAc4) {
         setStatus(QStringLiteral("A live session encodes AC-3 or E-AC-3, as ac3cli live does; "
                                  "pick one of those codecs."));
         emit encodeRefused(status_);
@@ -6908,7 +7224,37 @@ void EncoderController::encodeTo(const QUrl& url) {
         emit encodeRefused(status_);
         return;
     }
-    if (codec_ == plan::Codec::kAc4 && !atmos_enabled_) {
+    if (codec_ == plan::Codec::kAc4 && atmos_enabled_) {
+        // AC-4 objects: refused here, before a run opens, for what ac4ObjectsRefusal() already
+        // says beside the controls and for what only the keyframes and the writer know.
+        QString why = ac4ObjectsRefusal();
+        if (why.isEmpty()) {
+            const auto stream_objects =
+                ac3::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
+            if (const auto scene = ac4ObjectScene(stream_objects)) {
+                why = ac4ObjectsDeepRefusal(stream_objects, *scene);
+            } else {
+                why = QStringLiteral("Two keys of one object share an instant; move one.");
+            }
+        }
+        if (!why.isEmpty()) {
+            setStatus(why);
+            emit encodeRefused(status_);
+            return;
+        }
+        const QString path = url.isLocalFile() ? url.toLocalFile() : url.toString();
+        output_path_ = path;
+        output_eac3_ = false;
+        emit outputChanged();
+        cancel_requested_.store(false, std::memory_order_relaxed);
+        startRun(path);
+        setBusy(true);
+        setProgress(0.0);
+        setStatus(QStringLiteral("Encoding…"));
+        encodeAc4Objects(path);
+        return;
+    }
+    if (codec_ == plan::Codec::kAc4) {
         if (const QString why = ac4Refusal(); !why.isEmpty()) {
             setStatus(why);
             emit encodeRefused(status_);
@@ -7343,6 +7689,69 @@ void EncoderController::encodeAc4(const QString& path, std::vector<std::vector<f
                               .arg(layout)
                               .arg(outcome.bytes / 1024)
                               .arg(QFileInfo(output_path_).fileName()));
+                pending_rate_text_ = QStringLiteral("%1 kbps").arg(kbps);
+            } else {
+                setStatus(outcome.problem);
+            }
+            emit encodeFinished(ok, status());
+        });
+    });
+}
+
+void EncoderController::encodeAc4Objects(const QString& path) {
+    const auto stream_objects = ac3::apps::ac4_object_slots(ac4ObjectAssignment(), sourceShapes());
+    auto scene = ac4ObjectScene(stream_objects);
+    if (!scene.has_value() || !source_) {
+        // encodeTo checked both before it opened the run.
+        setBusy(false);
+        setStatus(QStringLiteral("There are no objects to encode."));
+        emit encodeFinished(false, status());
+        return;
+    }
+    const std::uint32_t sample_rate = source_->wav.sample_rate;
+    // Each source's channels, its own offset ahead of them: the flat input `atmos-encode`
+    // builds from src= and offset=, owned here so the GUI thread stays free while it runs.
+    const auto to_samples = [sample_rate](double seconds) {
+        return static_cast<std::size_t>(
+            std::llround(std::max(0.0, seconds) * static_cast<double>(sample_rate)));
+    };
+    std::vector<ac3::apps::Ac4SourceView> views;
+    views.push_back(
+        {.channels = source_->wav.channels, .offset_samples = to_samples(source_offset_seconds_)});
+    for (std::size_t i = 0; i < extra_sources_.size(); ++i) {
+        views.push_back({.channels = extra_sources_[i]->wav.channels,
+                         .offset_samples = to_samples(i < extra_source_offsets_seconds_.size()
+                                                          ? extra_source_offsets_seconds_[i]
+                                                          : 0.0)});
+    }
+    std::vector<std::vector<float>> flat = ac3::apps::ac4_flat_planes(views);
+    const ac3::apps::Ac4ObjectsParams params =
+        ac3gui::ac4_objects_params(ac4_, sample_rate, bitrate_kbps_);
+    const bool mp4 = container_index_ == kContainerMp4;
+    const bool crc = ac4_.crc;
+    const int kbps = bitrate_kbps_;
+    const QString scene_path = QFileInfo(path).absoluteDir().filePath(ac4PathsName());
+    const std::size_t count = stream_objects.size();
+    const QString coding =
+        ac4_.object_coding == 0 ? QStringLiteral("A-JOC") : QStringLiteral("direct-coded");
+    jobs_.run([this, path, scene_path, json = ac3::oba::to_json(*scene), stream_objects,
+               flat = std::move(flat), scene = std::move(*scene), params, mp4, crc, kbps, count,
+               coding] {
+        const Ac4Outcome outcome = encode_ac4_objects_file(path, scene_path, json, stream_objects,
+                                                           flat, scene, params, mp4, crc);
+        QMetaObject::invokeMethod(this, [this, outcome, count, coding, kbps] {
+            const bool ok = outcome.problem.isEmpty();
+            setBusy(false);
+            setProgress(ok ? 1.0 : 0.0);
+            if (ok) {
+                setStatus(QStringLiteral("Wrote %1 AC-4 object frames (%2 KB) to %3 — %4 objects, "
+                                         "%5; the decoder's output lags the input by %6 samples")
+                              .arg(outcome.frames)
+                              .arg(outcome.bytes / 1024)
+                              .arg(QFileInfo(output_path_).fileName())
+                              .arg(count)
+                              .arg(coding)
+                              .arg(outcome.lag_samples));
                 pending_rate_text_ = QStringLiteral("%1 kbps").arg(kbps);
             } else {
                 setStatus(outcome.problem);

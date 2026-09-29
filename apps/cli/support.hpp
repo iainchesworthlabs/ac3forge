@@ -33,6 +33,7 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "ac4_objects_core.hpp"
 #include "ac4_sync_word.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
@@ -1201,33 +1202,13 @@ class TakeEncoder {
     std::size_t coded_channels_ = 0;
 };
 
-// One dynamic object's source taps: (flattened source channel, linear gain).
-// The flattened space concatenates every source's channels in load order -
-// source 0's first, then source 1's - which is the same numbering
-// gather_frame() fills and the same one `live`'s two capture devices use.
-//
-// One tap is a plain `obj` row. Several are `objm`: a contiguous range of ONE
-// source's channels folded to a single mono object, each tap already scaled by
-// 1/n so several full-range channels summed together do not clip past what one
-// alone would (ac3::plan::DestinationKind::kObjectMono's own contract). A slot
-// with no taps is allocated but unbound, and carried silent - the state
-// `live objects=<N>` leaves a slot in when nothing is mapped onto it.
-struct ObjectSlot {
-    std::vector<std::pair<std::size_t, double>> taps;
-};
-
-// The object slots a map= assignment describes, over `shapes`' flattened
-// channel space: every `obj` row its own slot first, in (source, channel)
-// order, then each maximal contiguous run of `objm` rows within one source
-// folded to one. Empty when the assignment names no object destination at all
-// - which is a real answer (a purely location-mapped assignment), not an
-// error, so the caller decides what to do about it.
-//
-// Shared by `atmos-encode` and `live mode=atmos` so that the objects a given
-// map= produces are the same objects either way - wide-layout record/live paths's actual point:
-// a GUI assignment reproduced headlessly has to reproduce.
-[[nodiscard]] std::vector<ObjectSlot> object_slots_from_assignment(
-    const ac3::plan::Assignment& assignment, std::span<const ac3::plan::SourceShape> shapes);
+// One dynamic object's source taps and the object slots a map= assignment
+// describes: shared by `atmos-encode`, `live mode=atmos` and the AC-4 objects,
+// and by the GUI, so that the objects a given map= produces are the same
+// objects every way - a GUI assignment reproduced headlessly has to reproduce.
+// They live in apps/common/ac4_objects_core.hpp, where the GUI reaches them.
+using ac3::apps::object_slots_from_assignment;
+using ac3::apps::ObjectSlot;
 
 // What a "wrote N frames to <path>" line says about the container it went
 // into - " (Matroska)", " (MPEG-TS)", " (IEC 61937 WAV carrier)", or nothing

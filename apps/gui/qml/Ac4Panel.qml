@@ -8,20 +8,46 @@ import Ac3Forge
 // read from and written to EncoderController's AC-4 block. What it leaves to
 // the command line (substreams, presentations, dialogue stems and the rest)
 // is named at the foot of the tab and in ac4_encode_settings.hpp.
+//
+// In object mode (EncoderController.ac4Objects) the tab is `ac3cli atmos-encode
+// ... codec=ac4`'s instead: the coding of the objects, a dialnorm in whole dB
+// and a raw stream's CRC. The frame rate is fixed at the native one, the rate is
+// constant, and the loudness values, DRC, downmix and dialogue enhancement
+// describe channels, so those controls are off (and the two cards that hold
+// nothing else are hidden) rather than left to fail after Encode.
 ColumnLayout {
     id: panel
     Layout.fillWidth: true
     spacing: Theme.gap
 
     readonly property bool idle: !EncoderController.busy
+    readonly property bool objects: EncoderController.ac4Objects
 
     Text {
         Layout.fillWidth: true
         Layout.leftMargin: 24
         Layout.rightMargin: 24
         Layout.topMargin: Theme.space4
-        text: qsTr("AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “ac3cli ac4-encode” does.")
+        text: panel.objects
+              ? qsTr("AC-4 objects take the coding, the dialnorm in whole dB and a raw stream's CRC, as “ac3cli atmos-encode … codec=ac4” does. They are written at the native frame rate, 2 048 samples, at a constant rate.")
+              : qsTr("AC-4 encodes the source in its own layout (mono, stereo, 5.0 or 5.1) to a raw stream or an MP4 file, as “ac3cli ac4-encode” does.")
         color: Theme.textMuted
+        font.pixelSize: Theme.fontSmall
+        wrapMode: Text.WordWrap
+    }
+
+    // What an object encode cannot do now, in the words Encode would refuse with.
+    Text {
+        objectName: "ac4TabRefusal"
+        Layout.fillWidth: true
+        Layout.leftMargin: 24
+        Layout.rightMargin: 24
+        text: {
+            void EncoderController.sourceModel;
+            return EncoderController.ac4ObjectsRefusal;
+        }
+        visible: panel.objects && text.length > 0
+        color: Theme.accent700
         font.pixelSize: Theme.fontSmall
         wrapMode: Text.WordWrap
     }
@@ -57,9 +83,11 @@ ColumnLayout {
                         objectName: "ac4FrameRate"
                         Accessible.name: frameRateLabel.text
                         Layout.fillWidth: true
-                        enabled: panel.idle
+                        enabled: panel.idle && !panel.objects
                         model: EncoderController.ac4FrameRateNames
-                        currentIndex: EncoderController.ac4FrameRateIndex
+                        // Objects are written at index 13, whatever the channels' setting is.
+                        currentIndex: panel.objects ? EncoderController.ac4FrameRateNames.length - 1
+                                                    : EncoderController.ac4FrameRateIndex
                         onActivated: EncoderController.ac4FrameRateIndex = currentIndex
                     }
 
@@ -73,7 +101,7 @@ ColumnLayout {
                         objectName: "ac4RateMode"
                         Accessible.name: rateModeLabel.text
                         Layout.fillWidth: true
-                        enabled: panel.idle
+                        enabled: panel.idle && !panel.objects
                         model: EncoderController.ac4RateModeNames
                         currentIndex: EncoderController.ac4RateModeIndex
                         onActivated: EncoderController.ac4RateModeIndex = currentIndex
@@ -89,7 +117,7 @@ ColumnLayout {
                         objectName: "ac4CodecMode"
                         Accessible.name: codecModeLabel.text
                         Layout.fillWidth: true
-                        enabled: panel.idle
+                        enabled: panel.idle && !panel.objects
                         model: EncoderController.ac4CodecModeNames
                         currentIndex: EncoderController.ac4CodecModeIndex
                         onActivated: EncoderController.ac4CodecModeIndex = currentIndex
@@ -107,7 +135,7 @@ ColumnLayout {
                         from: 1
                         to: 1000
                         editable: true
-                        enabled: panel.idle
+                        enabled: panel.idle && !panel.objects
                         value: EncoderController.ac4IframeInterval
                         onValueModified: EncoderController.ac4IframeInterval = value
                     }
@@ -142,18 +170,25 @@ ColumnLayout {
                         font.pixelSize: Theme.fontNormal
                     }
                     // Quarter-dB steps, 0 to 31.75 (TS 103 190-1 4.3.12.2.1):
-                    // the SpinBox counts quarters and shows decibels.
+                    // the SpinBox counts quarters and shows decibels. An object
+                    // stream takes whole dB from 1 to 31, as atmos-encode's dialnorm=
+                    // reads it, so there it counts whole decibels.
                     SpinBox {
                         objectName: "ac4Dialnorm"
                         Accessible.name: dialnormLabel.text
-                        from: 0
-                        to: 127
+                        from: panel.objects ? 1 : 0
+                        to: panel.objects ? 31 : 127
                         editable: true
                         enabled: panel.idle && !EncoderController.ac4MeasureDialnorm
-                        value: Math.round(EncoderController.ac4Dialnorm * 4)
-                        textFromValue: function(value) { return String(value / 4); }
-                        valueFromText: function(text) { return Math.round(Number(text) * 4); }
-                        onValueModified: EncoderController.ac4Dialnorm = value / 4
+                        value: panel.objects ? Math.round(EncoderController.ac4Dialnorm)
+                                             : Math.round(EncoderController.ac4Dialnorm * 4)
+                        textFromValue: function(value) {
+                            return String(panel.objects ? value : value / 4);
+                        }
+                        valueFromText: function(text) {
+                            return Math.round(Number(text) * (panel.objects ? 1 : 4));
+                        }
+                        onValueModified: EncoderController.ac4Dialnorm = panel.objects ? value : value / 4
                     }
 
                     CheckBox {
@@ -176,7 +211,7 @@ ColumnLayout {
                         objectName: "ac4Loudness"
                         Accessible.name: loudnessLabel.text
                         Layout.fillWidth: true
-                        enabled: panel.idle
+                        enabled: panel.idle && !panel.objects
                         model: EncoderController.ac4LoudnessNames
                         currentIndex: EncoderController.ac4LoudnessIndex
                         onActivated: EncoderController.ac4LoudnessIndex = currentIndex
@@ -192,7 +227,7 @@ ColumnLayout {
                         objectName: "ac4Drc"
                         Accessible.name: drcLabel.text
                         Layout.fillWidth: true
-                        enabled: panel.idle
+                        enabled: panel.idle && !panel.objects
                         model: EncoderController.ac4DrcNames
                         currentIndex: EncoderController.ac4DrcIndex
                         onActivated: EncoderController.ac4DrcIndex = currentIndex
@@ -207,7 +242,36 @@ ColumnLayout {
             spacing: Theme.gap
 
             Card {
+                title: qsTr("Objects")
+                visible: panel.objects
+
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 2
+                    columnSpacing: Theme.gap
+                    rowSpacing: Theme.gap
+
+                    Text {
+                        id: objectCodingLabel
+                        text: qsTr("Coding")
+                        color: Theme.text
+                        font.pixelSize: Theme.fontNormal
+                    }
+                    ComboBox {
+                        objectName: "ac4ObjectCoding"
+                        Accessible.name: objectCodingLabel.text
+                        Layout.fillWidth: true
+                        enabled: panel.idle
+                        model: EncoderController.ac4ObjectCodingNames
+                        currentIndex: EncoderController.ac4ObjectCodingIndex
+                        onActivated: EncoderController.ac4ObjectCodingIndex = currentIndex
+                    }
+                }
+            }
+
+            Card {
                 title: qsTr("Stereo downmix")
+                visible: !panel.objects
 
                 // A 5.0 or 5.1 source alone has a stereo downmix to describe.
                 GridLayout {
@@ -269,6 +333,7 @@ ColumnLayout {
 
             Card {
                 title: qsTr("Dialogue enhancement")
+                visible: !panel.objects
 
                 // The channels that carry dialogue alone, which a decoder may
                 // then raise.
@@ -336,6 +401,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.leftMargin: 24
         Layout.rightMargin: 24
+        visible: !panel.objects
         text: qsTr("Left to “ac3cli ac4-encode”: several substreams and presentations, dialogue stems, a DRC profile per decoder mode, the LFE mix and the other layouts.")
         color: Theme.textMuted
         font.pixelSize: Theme.fontSmall

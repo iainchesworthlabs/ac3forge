@@ -87,4 +87,10 @@ struct Ac4PackageError {
 [[nodiscard]] std::expected<Ac4Packaged, Ac4PackageError> package_ac4(
     std::span<const ac4::EncodedFrame> frames, const ac4::Toc& toc, bool mp4, bool crc);
 
+// Whether an output path names an MP4 file, as `remux` matches them: by the
+// path's extension, case kept, .mp4, .m4a or .mov. What ac3cli's ac4-encode and
+// atmos-encode write an MP4 file for; the page writes one for its MP4
+// container.
+[[nodiscard]] bool ac4_output_names_mp4(std::string_view out_path);
+
 }  // namespace ac3::apps

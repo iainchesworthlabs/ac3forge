@@ -1,7 +1,9 @@
 #include "ac4_encode_core.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <filesystem>
 #include <fmt/format.h>
 #include <utility>
 
@@ -203,6 +205,13 @@ ac4::FurtherLoudness ac4_further_loudness(ac4::LoudnessPractice practice,
     loudness.max_momentary_lufs = held(measured.max_momentary, -102.4);
     loudness.max_short_term_lufs = held(measured.max_short_term, -102.4);
     return loudness;
+}
+
+bool ac4_output_names_mp4(std::string_view out_path) {
+    constexpr std::array<std::string_view, 3> kMp4Exts{".mp4", ".m4a", ".mov"};
+    const std::string ext = std::filesystem::path{std::string{out_path}}.extension().string();
+    return std::ranges::any_of(kMp4Exts,
+                               [&](std::string_view candidate) { return ext == candidate; });
 }
 
 std::expected<Ac4Packaged, Ac4PackageError> package_ac4(std::span<const ac4::EncodedFrame> frames,

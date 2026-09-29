@@ -85,15 +85,6 @@ constexpr std::array<std::string_view, 13> kFrameRates = {
     return "constant";
 }
 
-// Matched as 'remux' matches them: std::filesystem::path::extension(), case
-// kept.
-[[nodiscard]] bool names_mp4(std::string_view out_path) {
-    constexpr std::array<std::string_view, 3> kMp4Exts{".mp4", ".m4a", ".mov"};
-    const std::string ext = std::filesystem::path{std::string{out_path}}.extension().string();
-    return std::ranges::any_of(kMp4Exts,
-                               [&](std::string_view candidate) { return ext == candidate; });
-}
-
 // dialogue-channels=, "l,r,c" or any of the three.
 [[nodiscard]] bool names_channel(std::string_view list, std::string_view channel) {
     while (!list.empty()) {
@@ -261,7 +252,7 @@ int run_ac4_encode(std::string_view in_path, std::string_view out_path, std::uin
             *opts.drc_gains);
         return kExitUsage;
     }
-    const bool to_mp4 = names_mp4(out_path);
+    const bool to_mp4 = ac3::apps::ac4_output_names_mp4(out_path);
     if (opts.crc && to_mp4) {
         fmt::println(stderr,
                      "error: crc= is a raw stream's sync frames' CRC; an MP4 sample is the raw "
