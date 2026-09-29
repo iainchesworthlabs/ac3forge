@@ -187,7 +187,7 @@ CodeQL incident this constraint comes from.
 | `macos` | `apps/notices/platform/macos/`, `packaging/homebrew/`, `packaging/conan/`, `packaging/vcpkg-port/` | `core`; shared desktop apps below |
 | `android` | `apps/android/` | `core` |
 | `wasm` | `apps/wasm/`, `js/` (its E2E demo) | `core` |
-| `esp` | `esp-idf/`, `esphome/`, `apps/baremetal/` | `core` |
+| `esp` | `esp-idf/`, `esphome/`, `apps/baremetal/`, `tools/packaging/`, and the trees its component ships: `src/forge/`, `src/arithmetic/`, `cmake/`, root `CMakeLists.txt` | `core` (in the nightly run; see below) |
 | `rust` | `rust/` | `core` |
 | `python` | `python/` | `core` |
 | `npm` | `js/` (the package's own unit tests) | nothing - see below |
@@ -245,6 +245,14 @@ few minutes:
   their own tree. With no `verified` ref, or a range GitHub will not list in full,
   the list is empty and every lane is true.
 
+  The ESP-IDF lane has one more way to light: the trees its component ships. They are
+  the ones `tools/packaging/pack_esp_component.py` stages (`STAGED_TREES` and
+  `STAGED_FILES`): `src/forge/`, `src/arithmetic/`, `cmake/` and the root
+  `CMakeLists.txt`. A change there is what breaks the package and the QEMU images, so it
+  does not wait for the nightly run. The AC-4 trees, staged only for `--with-ac4`, do.
+  `test_classify_changes.py` reads the packer's list, so a tree added to it without the
+  lane learning about it fails a test.
+
 ## Scarce hosted legs wait for the merge queue
 
 On a `pull_request` run, these GitHub-hosted legs are skipped, even when their
@@ -263,7 +271,8 @@ They run in the `merge_group` run, on a push to `main` (for the newest `main`
 commit only, see the next section) and on a dispatch. `CI Status` reads their
 `skipped` as a pass, as it does for any lane-skipped job. After a merge, the
 satellite lanes among them (`rust`, `python`, `android`, `wasm`, `npm`, `esp`)
-run only when a path in their own tree changed; the nightly run runs them all.
+run only when a path in their own tree changed (for `esp`, or in a tree its component
+ships); the nightly run runs them all.
 
 **Why:** GitHub Free runs 20 GitHub-hosted jobs at a time, org-wide. A PR push with
 every lane set used to ask for about 25. On 2026-09-25 about 400 were queued, some
