@@ -18,6 +18,15 @@ the remediation that need no judgement:
              that reproduces each, and comment once on each suspect pull request.
   cancelled  a superseded run: nothing.
 
+The scheduled run (`--event schedule`) is the whole matrix, including the legs the run
+after a merge leaves out, so it keeps its own books. Its green moves `verified-nightly`
+as well as `verified` and closes both issues, because it proves everything the other
+run does. Its red is blamed on the merges since the last green nightly, not since
+`verified` (a sanitizer failure can come from a merge that the run after it passed
+without ever running the sanitizers), goes to its own `main-red-nightly` issue, and does
+not comment on pull requests: a day of merges is too wide a range to name anyone. A green
+run after a merge closes only the `main-red` issue.
+
 It never reverts anything. A revert is one command, printed in the issue, and
 someone (or an agent) decides. Auto-merging a revert needs a token that can start
 CI on the pull request it opens, which the built-in GITHUB_TOKEN cannot.
@@ -38,7 +47,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 LABEL = "main-red"
+LABEL_NIGHTLY = "main-red-nightly"
 VERIFIED_REF = "verified"
+VERIFIED_NIGHTLY_REF = "verified-nightly"
 FLAKES_PATH = Path(__file__).with_name("known_flakes.json")
 
 MAX_JOBS = 10  # failed jobs examined for evidence
@@ -94,6 +105,20 @@ class Context:
     attempt: int
     run_url: str
     dry_run: bool = False
+    event: str = ""  # what started the run: push, schedule or workflow_dispatch
+
+
+def nightly(ctx: Context) -> bool:
+    """A scheduled run: the whole matrix, with its own baseline and its own issue."""
+    return ctx.event == "schedule"
+
+
+def label_of(ctx: Context) -> str:
+    return LABEL_NIGHTLY if nightly(ctx) else LABEL
+
+
+def baseline_ref_of(ctx: Context) -> str:
+    return VERIFIED_NIGHTLY_REF if nightly(ctx) else VERIFIED_REF
 
 
 @dataclass(frozen=True)
@@ -203,13 +228,17 @@ def render_issue_body(
     baseline: str | None,
 ) -> str:
     short = ctx.head_sha[:8]
-    out = [
-        f"Post-merge verification of `main` failed at `{short}`: "
-        f"[run {ctx.run_id}]({ctx.run_url}).",
-        "",
-        "### Failed jobs",
-        "",
-    ]
+    if nightly(ctx):
+        lead = (
+            f"The nightly run of `main` failed at `{short}`: [run {ctx.run_id}]({ctx.run_url}). "
+            "It runs every leg, including the ones the run after a merge leaves out."
+        )
+    else:
+        lead = (
+            f"Post-merge verification of `main` failed at `{short}`: "
+            f"[run {ctx.run_id}]({ctx.run_url})."
+        )
+    out = [lead, "", "### Failed jobs", ""]
     if not jobs:
         out.append("No failed job was found: the run failed outside a job (a workflow error).")
     for j in jobs:
@@ -224,8 +253,17 @@ def render_issue_body(
                 "",
             ]
     out += ["", "### Merges in the range", ""]
-    if baseline:
+    if baseline and nightly(ctx):
+        out.append(
+            f"Everything merged after the last commit the nightly run verified, `{baseline[:8]}`:"
+        )
+    elif baseline:
         out.append(f"Everything merged after the last verified commit `{baseline[:8]}`:")
+    elif nightly(ctx):
+        out.append(
+            "The nightly run has not verified a commit yet, so these are only the newest "
+            "merges, not a proven range:"
+        )
     else:
         out.append(
             "There is no verified commit yet, so these are only the newest merges, "
@@ -327,19 +365,17 @@ def is_ancestor(sh: Runner, older: str, newer: str) -> bool:
     return True
 
 
-def verified_sha(sh: Runner) -> str | None:
+def verified_sha(sh: Runner, ref: str = VERIFIED_REF) -> str | None:
     try:
-        out = sh(
-            ["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{VERIFIED_REF}"], None
-        )
+        out = sh(["git", "rev-parse", "--verify", "--quiet", f"refs/remotes/origin/{ref}"], None)
     except CommandError:
         return None
     return out.strip() or None
 
 
-def open_issue(ctx: Context, sh: Runner) -> int | None:
+def open_issue(ctx: Context, sh: Runner, label: str = LABEL) -> int | None:
     out = sh(
-        ["gh", "issue", "list", "-R", ctx.repo, "--label", LABEL, "--state", "open",
+        ["gh", "issue", "list", "-R", ctx.repo, "--label", label, "--state", "open",
          "--json", "number", "--limit", "1"],
         None,
     )  # fmt: skip
@@ -348,41 +384,57 @@ def open_issue(ctx: Context, sh: Runner) -> int | None:
 
 
 def advance(ctx: Context, sh: Runner) -> None:
-    current = verified_sha(sh)
-    if current is None or is_ancestor(sh, current, ctx.head_sha):
-        # A plain push, never forced: if `verified` has moved past this commit (a
-        # rerun finishing late), the remote refuses and nothing is lost.
-        try:
-            _mutate(ctx, sh, ["git", "push", "origin", f"{ctx.head_sha}:refs/heads/{VERIFIED_REF}"])
-        except CommandError as e:
-            print(f"::notice::verified not advanced: {e}")
-    issue = open_issue(ctx, sh)
-    if issue is not None:
-        note = (
-            f"main is green again: verified at `{ctx.head_sha[:8]}` "
-            f"([run {ctx.run_id}]({ctx.run_url}))."
-        )
-        _mutate(ctx, sh, ["gh", "issue", "close", str(issue), "-R", ctx.repo, "--comment", note])
+    # A green nightly run is the whole matrix, so it proves what the run after a merge
+    # proves and more: it moves both refs and closes both issues. The run after a merge
+    # proves only its own tier.
+    refs = [VERIFIED_REF, VERIFIED_NIGHTLY_REF] if nightly(ctx) else [VERIFIED_REF]
+    labels = [LABEL, LABEL_NIGHTLY] if nightly(ctx) else [LABEL]
+    for ref in refs:
+        current = verified_sha(sh, ref)
+        if current is None or is_ancestor(sh, current, ctx.head_sha):
+            # A plain push, never forced: if the ref has moved past this commit (a
+            # rerun finishing late), the remote refuses and nothing is lost.
+            try:
+                _mutate(ctx, sh, ["git", "push", "origin", f"{ctx.head_sha}:refs/heads/{ref}"])
+            except CommandError as e:
+                print(f"::notice::{ref} not advanced: {e}")
+    for label in labels:
+        issue = open_issue(ctx, sh, label)
+        if issue is not None:
+            note = (
+                f"main is green again: verified at `{ctx.head_sha[:8]}` "
+                f"([run {ctx.run_id}]({ctx.run_url}))."
+            )
+            _mutate(
+                ctx, sh, ["gh", "issue", "close", str(issue), "-R", ctx.repo, "--comment", note]
+            )
 
 
 def report(ctx: Context, sh: Runner, jobs: Sequence[FailedJob]) -> None:
-    baseline = verified_sha(sh)
+    baseline = verified_sha(sh, baseline_ref_of(ctx))
     found, total = suspects(sh, baseline, ctx.head_sha)
     body = render_issue_body(ctx, jobs, found, total, baseline)
-    issue = open_issue(ctx, sh)
+    label = label_of(ctx)
+    issue = open_issue(ctx, sh, label)
     if issue is None:
+        described = (
+            "the nightly run of main failed"
+            if nightly(ctx)
+            else "main failed post-merge verification"
+        )
         _mutate(
             ctx, sh,
-            ["gh", "label", "create", LABEL, "-R", ctx.repo, "--color", "B60205", "--force",
-             "--description", "main failed post-merge verification"],
+            ["gh", "label", "create", label, "-R", ctx.repo, "--color", "B60205", "--force",
+             "--description", described],
         )  # fmt: skip
         first = jobs[0].name if jobs else "the run failed outside a job"
         more = f" and {len(jobs) - 1} more" if len(jobs) > 1 else ""
+        what = "the nightly run is red" if nightly(ctx) else "main is red"
         _mutate(
             ctx, sh,
             ["gh", "issue", "create", "-R", ctx.repo, "--title",
-             f"main is red at {ctx.head_sha[:8]}: {_leg(first)}{more}",
-             "--label", LABEL, "--body-file", "-"],
+             f"{what} at {ctx.head_sha[:8]}: {_leg(first)}{more}",
+             "--label", label, "--body-file", "-"],
             body,
         )  # fmt: skip
     else:
@@ -392,6 +444,8 @@ def report(ctx: Context, sh: Runner, jobs: Sequence[FailedJob]) -> None:
             ["gh", "issue", "comment", str(issue), "-R", ctx.repo, "--body-file", "-"],
             body,
         )
+    if nightly(ctx):
+        return  # a day of merges is too wide a range to name anyone; the issue lists them
     tracking = f"#{issue}" if issue is not None else "the main-red issue"
     for s in found:
         if s.pr is None:
@@ -448,6 +502,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     p.add_argument("--conclusion", required=True)
     p.add_argument("--attempt", type=int, default=1)
     p.add_argument("--run-url", required=True)
+    p.add_argument("--event", default="", help="what started the run (schedule is the nightly run)")
     p.add_argument("--dry-run", action="store_true")
     return p.parse_args(argv)
 
@@ -462,6 +517,7 @@ def main(argv: Sequence[str]) -> int:
         attempt=args.attempt,
         run_url=args.run_url,
         dry_run=args.dry_run or os.environ.get("MAIN_HEALTH_DRY_RUN") == "1",
+        event=args.event,
     )
     action = health(ctx, shell)
     print(f"main-health: {action} (run {ctx.run_id}, {ctx.conclusion}, attempt {ctx.attempt})")
