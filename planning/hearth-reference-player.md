@@ -10,8 +10,8 @@
       output to Sendspin groups, firmware updates for a paired sink, and AC-4 playback:
       channel-based, immersive and object content (phases I2 and I5 of
       [`planning/ac4.md`](ac4.md)). Not built: a user guide, and screenshots of the running app
-      (the Hearth images in the repository are the design mockups). A4's Music Assistant exit on
-      real hardware is open.
+      (the Hearth images in the repository are the design mockups). A4's Music Assistant exit, with
+      Music Assistant itself, is open.
     - **[The ESP32-S3 sink](#chip-b-the-esp32-s3-sink).** Built: Sendspin player, Improv, groups,
       network OTA, CI and published firmware packaging. TDM DAC hardware exits (ES9080 pair) and
       B3's Music Assistant exit are open.
@@ -115,15 +115,16 @@ installed or packaged.*
   and marked as not playable until [chip D](#chip-d-the-ac-4-decoder) delivers a decoder.
   *As built, chip D delivered it and AC-4 plays.*
 - Duration and seek come from each stream's samples per access unit. The GUI's stream player
-  assumes 1,536 (`ac3::kSamplesPerFrame` in `apps/gui/stream_player_controller.cpp`), which is wrong for E-AC-3 with
-  fewer than six blocks per frame.
+  assumes 1,536 (`ac3::kSamplesPerFrame` in `apps/gui/stream_player_controller.cpp`), which is
+  wrong for E-AC-3 with fewer than six blocks per frame.
 
 ### Playback configuration
 
 - **Output**, one of: a local PCM device; a passthrough-capable device (IEC 61937 to HDMI or
   S/PDIF); a Sendspin group of sinks and players ([Groups](#groups)).
 - **Speaker layout**, in the renderer's grammar (`esp-idf/ac3forge/include/ac3forge/layout.hpp`
-  on 2026-09-15; A1 moved it to `src/forge/include/ac3/render/layout.hpp`): a named `F.L.H` layout of up to sixteen speakers or a per-speaker list of locations and
+  on 2026-09-15; A1 moved it to `src/forge/include/ac3/render/layout.hpp`): a named `F.L.H` layout
+  of up to sixteen speakers or a per-speaker list of locations and
   angles, with `:small`, `:height`, `:top` and `:upfiring`. A coded channel whose location is in
   the layout goes to that speaker, other channels are panned, objects are panned by position, and
   nothing is upmixed. Stereo and mono targets use the decoder's §7.8 fold.
@@ -590,7 +591,7 @@ targets (`fuzz_sendspin_json`, `_messages`, `_frames` and `_handshake`), the thr
 section and the `hearth` vcpkg feature (cpp-httplib, libFLAC, mbedTLS, mdns, Opus) are in. The
 exit's "Sendspin's reference Python player" became a scripted player on aiosendspin 9.1.1, as
 [the extension page](hearth-sendspin-extension.md#decisions) records (its decision 2). Open: the
-Music Assistant run, which has not been made against a real instance.
+Music Assistant run, which has not been made against Music Assistant itself.
 
 1. **The conformance reading.** The specification's obligations on a server (roles, codecs, both
    Noise suites), the CPace ciphersuite, pairing records and group messages, written as a
@@ -650,7 +651,7 @@ sets volumes, shows a sink another server holds as in use with a **Take it back*
 settings page for a sink's speakers and decoder, and shows reported levels; the output picker
 sends playback to a group. It also updates a paired sink's firmware, which this plan did not
 list ([the OTA plan](esp32-ota.md)). The Music Assistant half of the exit ("taking a test sink
-over from Music Assistant") has not been run against a real Music Assistant; the scripted
+over from Music Assistant") has not been run against Music Assistant itself; the scripted
 aiosendspin 9.1.1 server stands in for it in CI.
 
 The discovery list, pairing, groups (create, add, remove, volume, mute), a sink in use elsewhere
@@ -750,9 +751,9 @@ board, with its per-slot RMS lines checked against the host decode as
 
 ### B2: joining a network
 
-**Status: built.** Improv Wi-Fi over USB serial, credentials and the sink's own settings in NVS,
-and mDNS under the sink's name are in, with the status page rebuilt around status and sink-owned
-settings. Improv is offered on the console port only ([the S3 sink
+**Status: built.** Improv Wi-Fi over USB serial, the network, the sink's name and its pairing keys
+in NVS, and mDNS under the sink's name are in, with the status page rebuilt around status and
+sink-owned settings. Improv is offered on the console port only ([the S3 sink
 guide](../docs/hearth/sink-esp32-s3.md#join-a-network)); the BLE variant the text allowed was not
 built. Also built and not in this plan: the browser installer
 ([Install from the browser](../docs/hearth/sink-installer.md)).
@@ -774,8 +775,8 @@ console and the page, the time filter, decoder settings at runtime and per-slot 
 `hearth_sink`. Two S3 boards on a home Wi-Fi network played as a group for ten minutes with no
 underrun, and their reported play times stayed within 549 µs of each other; those are the times
 the software scheduled, and no DAC output was measured ([the S3 sink
-guide](../docs/hearth/sink-esp32-s3.md#groups)). The same boards have not played from a real
-Music Assistant.
+guide](../docs/hearth/sink-esp32-s3.md#groups)). The same boards have not played from Music
+Assistant itself.
 
 First the choice between `src/sendspin`'s player half and `sendspin-cpp`, measured and recorded
 ([The firmware](#the-firmware): `src/sendspin`). Then: the Noise responder, pairing codes on serial and the page, the time filter, playout

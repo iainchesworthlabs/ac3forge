@@ -10,7 +10,7 @@
     `src/sendspin/include/ac3/sendspin/ac3forge_player.hpp` and its burst chunk, ID 192, is in
     `chunks.hpp`; both halves and `ac3hearth`'s server use them. The scripts in `tools/sendspin`
     run aiosendspin 9.1.1's client and server against Hearth in CI (`hearth-validate`), and stand
-    in for Music Assistant: no run has been made against a real Music Assistant. The
+    in for Music Assistant: no run has been made against Music Assistant itself. The
     [open questions](#open-questions) have not been raised with the Sendspin project
     ([decision 3](#decisions)).
 
