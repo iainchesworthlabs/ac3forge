@@ -347,14 +347,17 @@ elseif(UNIX)
         # when tried (both CPACK_COMPONENT_<C>_DESCRIPTION and this variable
         # feed only the indented part). So the crucible .deb headlines as the
         # library and says what it is on the next line. Cosmetic, and noted in
-        # docs/releasing.md rather than hidden.
+        # docs/releasing.md rather than hidden. CPack puts one space before
+        # every line of the value, so the lines carry none of their own: a
+        # line that starts with a space comes out with two, which Debian
+        # displays as preformatted text.
         set(CPACK_DEBIAN_CRUCIBLE_DESCRIPTION
-            "AC3Forge Crucible - your applications, placed in a live Dolby Atmos room
- Every application making sound on the desk becomes an object in a Dolby Atmos
- scene: drag each to a place in the room and the result streams to a receiver
- as E-AC-3 JOC, or as Dolby Digital, multichannel PCM or stereo, following the
- hardware. Needs a running PipeWire session; the silent device applications
- play into is a PipeWire node Crucible creates while it runs.")
+            "AC3Forge Crucible captures each application separately and places it as an
+object in a live Dolby Atmos scene. Drag an application to a place in the
+room and the result streams to a receiver as E-AC-3 JOC, or as Dolby
+Digital, multichannel PCM or stereo, following the hardware. It needs a
+running PipeWire session; the silent device that applications play into is
+a PipeWire node Crucible creates while it runs.")
 
         # The -dev package's headers/static-archives are useless without a
         # matching runtime .so to actually link and load - and since this
@@ -383,11 +386,12 @@ elseif(UNIX)
             set(CPACK_DEBIAN_HEARTH_FILE_NAME DEB-DEFAULT)
             set(CPACK_DEBIAN_HEARTH_PACKAGE_SECTION "sound")
             set(CPACK_DEBIAN_HEARTH_DESCRIPTION
-                "AC3Forge Hearth - the desktop reference player
- Decodes AC-3, E-AC-3 and Dolby Atmos object-layer streams under every decoder
- setting the library has, renders to a chosen speaker layout, and plays to a
- local device, a passthrough receiver over HDMI or S/PDIF, or a group of
- Sendspin network sinks.")
+                "AC3Forge Hearth is the desktop player. It plays AC-3, E-AC-3 (with Dolby
+Atmos objects) and AC-4, decodes to a chosen speaker layout with each
+format's decoder settings, and plays to a local device or to a group of
+Sendspin network sinks. AC-3 and E-AC-3 streams can also be sent to a
+receiver over HDMI or S/PDIF as a bitstream. In a group, the ESP32 sinks take
+AC-3 and E-AC-3 only.")
             # The QML modules THIS window's own qml/*.qml files import today
             # (apps/hearth/ui/qml/, plus the shared family components it
             # copies from apps/gui/qml/) - the same shlibdeps gap and the
@@ -544,7 +548,7 @@ endif()
 # macOS package for as long as it stood).
 set(CPACK_COMPONENTS_ALL runtime library libruntime)
 
-# The AC3Forge Crucible (WASAPI loopback tap) as a fourth component, and so its own
+# The AC3Forge Crucible as a fourth component, and so its own
 # archive rather than part of the runtime one: on Windows and macOS it carries
 # a second Qt deployment of its own (Linux leaves Qt to the system loader),
 # and on Windows its null-sink driver is still test-signed, so someone
