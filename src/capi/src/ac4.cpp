@@ -283,60 +283,40 @@ const float* ac3forge_ac4_decoded_frame_object_samples(const ac3forge_ac4_decode
     return object == nullptr ? nullptr : object->samples.data();
 }
 
+void ac3forge_ac4_object_properties_init(ac3forge_ac4_object_properties_t* properties) {
+    if (properties == nullptr) {
+        return;
+    }
+    // ac4::ObjectProperties' own default member initializers - room centre,
+    // unity gain, no width - the same "safe default" convention as
+    // ac3forge_object_placement_init() above.
+    *properties = ac3forge_c::from_cpp(ac4::ObjectProperties{});
+}
+
 ac3forge_ac4_object_properties_t ac3forge_ac4_decoded_frame_object_properties(
     const ac3forge_ac4_decoded_frame_t* frame, size_t object_index) {
-    ac3forge_ac4_object_properties_t out{};
     const auto* object = find_object(frame, object_index);
-    if (object == nullptr) {
-        // ac4::ObjectProperties' own default member initializers - room
-        // centre, unity gain, full width available - the same "safe default"
-        // convention as ac3forge_object_placement_init() above.
-        const ac4::ObjectProperties defaults{};
-        out.active = defaults.active ? 1 : 0;
-        out.gain_db = defaults.gain_db;
-        out.priority = defaults.priority;
-        out.x = defaults.position[0];
-        out.y = defaults.position[1];
-        out.z = defaults.position[2];
-        out.zone_mask = defaults.zone_mask;
-        out.enable_elevation = defaults.enable_elevation ? 1 : 0;
-        out.snap = defaults.snap ? 1 : 0;
-        out.width_x = defaults.width[0];
-        out.width_y = defaults.width[1];
-        out.width_z = defaults.width[2];
-        out.screen_factor = defaults.screen_factor;
-        out.depth_exponent = defaults.depth_exponent;
-        out.has_distance = defaults.distance.has_value() ? 1 : 0;
-        out.distance = defaults.distance.value_or(0.0);
-        out.divergence = defaults.divergence;
-        out.trim_disabled = defaults.trim_disabled ? 1 : 0;
-        out.has_headphone_render_mode = defaults.headphone_render_mode.has_value() ? 1 : 0;
-        out.headphone_render_mode = defaults.headphone_render_mode.value_or(0);
-        out.head_track_disabled = defaults.head_track_disabled ? 1 : 0;
+    return ac3forge_c::from_cpp(object == nullptr ? ac4::ObjectProperties{} : object->properties);
+}
+
+size_t ac3forge_ac4_decoded_frame_object_update_count(const ac3forge_ac4_decoded_frame_t* frame,
+                                                      size_t object_index) {
+    const auto* object = find_object(frame, object_index);
+    return object == nullptr ? 0 : object->updates.size();
+}
+
+ac3forge_ac4_object_update_t ac3forge_ac4_decoded_frame_object_update(
+    const ac3forge_ac4_decoded_frame_t* frame, size_t object_index, size_t update_index) {
+    ac3forge_ac4_object_update_t out{};
+    const auto* object = find_object(frame, object_index);
+    if (object == nullptr || update_index >= object->updates.size()) {
+        out.properties = ac3forge_c::from_cpp(ac4::ObjectProperties{});
         return out;
     }
-    const auto& properties = object->properties;
-    out.active = properties.active ? 1 : 0;
-    out.gain_db = properties.gain_db;
-    out.priority = properties.priority;
-    out.x = properties.position[0];
-    out.y = properties.position[1];
-    out.z = properties.position[2];
-    out.zone_mask = properties.zone_mask;
-    out.enable_elevation = properties.enable_elevation ? 1 : 0;
-    out.snap = properties.snap ? 1 : 0;
-    out.width_x = properties.width[0];
-    out.width_y = properties.width[1];
-    out.width_z = properties.width[2];
-    out.screen_factor = properties.screen_factor;
-    out.depth_exponent = properties.depth_exponent;
-    out.has_distance = properties.distance.has_value() ? 1 : 0;
-    out.distance = properties.distance.value_or(0.0);
-    out.divergence = properties.divergence;
-    out.trim_disabled = properties.trim_disabled ? 1 : 0;
-    out.has_headphone_render_mode = properties.headphone_render_mode.has_value() ? 1 : 0;
-    out.headphone_render_mode = properties.headphone_render_mode.value_or(0);
-    out.head_track_disabled = properties.head_track_disabled ? 1 : 0;
+    const ac4::ObjectUpdate& update = object->updates[update_index];
+    out.sample = update.sample;
+    out.ramp_samples = update.ramp_samples;
+    out.properties = ac3forge_c::from_cpp(update.properties);
     return out;
 }
 

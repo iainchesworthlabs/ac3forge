@@ -88,18 +88,30 @@ top of the bound `AtmosBedEncoder` is page-only work for a later PR, not a modul
 `ac4::Encoder` (ETSI TS 103 190) beside the decode and encode modules above. Unlike those two, it
 is one combined decode-and-encode module: AC-4's decoder and encoder share one table-of-contents/
 framing library regardless of which side needs it, so a second executable had less to gain here
-than splitting AC-3's decode-only and encode-only builds did. It covers channel-based and
-channel-based-immersive content only (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4) — the encoder's own
-scope as of this module; the decoder's object accessors read whatever object audio a stream
-actually carries regardless of what this project's own encoder can produce.
+than splitting AC-3's decode-only and encode-only builds did. The encoder writes channel-based and
+channel-based-immersive content (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4) and one object substream of
+A-JOC or direct-coded objects; the decoder returns each object's properties, in every field
+`ac4::ObjectProperties` has, and the block updates within the frame.
+
+`Ac4Encoder`'s constructor takes one plain JS object: the core fields, `iframes` and
+`fragmentStarts`, the `experimental` flags that need no nested group, and `objects`, the object
+substream (`{objects: [{bed, lfe, properties}], coding, downmix, downmixSignals, decorrelation,
+parameterBands, coarse, screenSizeRatioCode, bedObjectChanDistribute}`, whose `codecMode` is then
+the object substream's). A field the object leaves out keeps the C++ default, so the defaults are
+in `ac4_bindings.cpp` alone. A configuration the encoder refuses leaves no encoder, and
+`constructionError` says which rule it breaks; the limits are the encoder's (1 to 64 objects, at
+most one the LFE, `frameRateIndex` 13 only, an A-JOC downmix of 1 to 11 signals). `encode()` takes
+the changes to the objects' metadata beside the PCM, as `{object, sample, rampSamples,
+properties}` entries, and the decoder returns the objects in its own order: the LFE first, then
+the bed objects, then the dynamic objects, each group in the order the encoder lists it.
 
 `js/src/ac4.ts` is the typed JS wrapper, exporting `Ac4Decoder`/`Ac4Encoder` classes directly
 rather than through a Worker protocol: unlike `decoder-worker.ts`'s realtime AudioWorklet
 pipeline, there is no existing realtime precedent to extend on the AC-4 side, and this module
 covers both decode and encode with a wider decoder surface (presentations, concealment, object
-audio) that does not fit that pipeline's shape. It compiles into `js/dist/ac4.js` alongside the
-rest of the package's sources, but is not yet wired into `package.json`'s `exports` map, so it is
-reached only by a path into `dist/`, not through the package's published entry points.
+audio) that does not fit that pipeline's shape. It compiles into `js/dist/ac4.js`, and
+`package.json`'s `exports` map has it as `./ac4` (`import { Ac4Encoder } from
+"ac3forge-wasm-decoder/ac4"`), with its declarations.
 
 Guarded on `AC3FORGE_BUILD_AC4` (default on; the `wasm-emscripten` preset no longer forces it
 off). Unlike the decode and encode modules above, no demo directory or page exists for it yet, so
@@ -108,7 +120,14 @@ nothing to serve it. It builds in the same CI job
 (`build-wasm`, one `cmake --build` over the whole preset) as the decode and encode modules, but
 has no Playwright coverage of its own since there is no page to drive it.
 `js/tests/ac4.test.js` tests the JS wrapper under Node against a fake Embind module — the same
-harness `decoder-worker.test.js` uses for the decode side.
+harness `decoder-worker.test.js` uses for the decode side. The fake records what the native
+encoder is handed (the options, the updates) and, in a loopback codec model that quantises each
+property to the steps its code has, round-trips an A-JOC scene and a direct-coded one through the
+wrapper with their metadata within the codec's tolerance; it holds the wrapper's traffic with the
+native module, not the codec, which the C API's, Rust's and Python's tests hold to `ac4::Encoder`.
+`js/tests/package-exports.test.js` holds the `exports` map to the files the build writes and
+imports `./ac4` through the package's own name. `ac4_bindings.cpp` itself is built by `build-wasm`
+in CI; Emscripten is not part of the development machines' setup.
 
 ## Build and run
 

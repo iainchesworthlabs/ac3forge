@@ -18,8 +18,8 @@ This release adds:
 - per-channel quality gates and continued performance, quality, and memory histories;
 - AC-4 container support, wider WebAssembly encoding, microphone capture, and expanded Rust
   bindings;
-- AC-4 decode and encode bindings for the C API, Python, Rust and WebAssembly, and Android
-  building the AC-4 libraries.
+- AC-4 decode and encode bindings for the C API, Python, Rust and WebAssembly, with the object
+  encoder in each, and Android building the AC-4 libraries.
 
 The sections below contain the complete change list and fixes.
 
@@ -1794,10 +1794,45 @@ The sections below contain the complete change list and fixes.
   on nothing outside this tree and cross-compile cleanly under the NDK; nothing in the Shield app's
   own `target_link_libraries` links them yet — giving the app an AC-4 feature is later application
   work, not this phase's.
-- Every binding covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
-  5.1, 5.0.4, 5.1.4) — the encoder's own scope as of this phase; A-JOC and direct-coded objects are
-  a separate, in-flight phase. Each decoder's object accessors read whatever object audio a stream
-  actually carries regardless of what this project's own encoder can produce.
+- Every binding covered channel-based and channel-based-immersive content only (mono, stereo, 5.0,
+  5.1, 5.0.4, 5.1.4) as of this phase, the encoder's own scope then; the object encoder followed in
+  phase I4b (below). Each decoder's object accessors read whatever object audio a stream carries.
+
+**AC-4 object encoder in the bindings**
+
+- **The C API, Rust, Python and WebAssembly encode objects** (phase I4b of `planning/ac4.md`): one
+  object substream, A-JOC over a computed downmix or a static 5.0 or 5.1 bed, or direct-coded, with
+  each object's metadata (position, gain, size, zone constraint, screen factor, depth exponent,
+  distance, divergence, headphone render mode and the rest of Part 2 Annex F) and the changes to it
+  given with the input (`ac3forge_ac4_encoder_encode_objects()`, `Encoder::encode_objects()`,
+  `Encoder.encode(channels, updates=)`, `Ac4Encoder.encode(channels, updates)`). The object
+  substream is experimental: `experimental.objects` has to be set beside the objects, as in C++.
+  The frame-rate constraint (index 13 only) and the limits (1 to 64 objects, at most one the LFE, an
+  A-JOC downmix of 1 to 11 signals) are the encoder's, and the new
+  `ac3forge_ac4_encoder_refusal_reason()`, `Encoder::refusal_reason()`, `Encoder.refusal_reason()`
+  and WebAssembly's `constructionError` name the rule a configuration breaks. The C API gains 8
+  functions (76 in its AC-4 section, each with a stub for a build without AC-4).
+- **The encoder configuration is wider in each**: the I-frame lists (`iframes`, `fragment_starts`)
+  and the experimental flags that need no nested group (`aspx_balance`, `aspx_varvar`,
+  `aspx_interleave`, `coding_configs`, `seven_x`, `acpl`, `back_pair`, `ajcc`). Rust's
+  `EncoderConfig` owns vectors now, so it is `Clone` and no longer `Copy`; WebAssembly's
+  `Ac4Encoder` takes its configuration as one JS object in place of eight positional arguments,
+  and a field it leaves out keeps the C++ default.
+- **The decoder's objects report their update ramps**: the block updates within a frame, each at its
+  output sample with the ramp a renderer takes to reach it
+  (`ac3forge_ac4_decoded_frame_object_update()`, `DecodedObject::updates`,
+  `DecodedObject.updates`, `updates` on WebAssembly's objects, which now carry every property).
+- **Python's AC-4 failures are typed**: `Ac4Error` derives from `ValueError`, so code that caught
+  `ValueError` still catches them, with `Ac4DecodeError` and `Ac4EncodeError` under it, each
+  carrying the C++ enumerator as `.error`. `ObjectProperties` is settable, and a new one starts from
+  the encoder's defaults.
+- **`js/src/ac4.ts` is in the npm package's `exports` as `./ac4`**, with its declarations.
+- Tests: the C API, Rust and Python encode an A-JOC scene and a direct-coded one and read every
+  object back within what each field's code can hold, with its own tone and a metadata update at
+  the sample its input sample comes out; the C API's streams are `ac4::Encoder`'s byte for byte,
+  Rust's are the raw C API's, and Python's are the same from two ways of configuring them. The
+  WebAssembly wrapper is tested against the fake Embind module and a loopback codec model; its C++
+  side is built in `build-wasm`.
 
 **AC-4 immersive and object content in the applications**
 

@@ -333,19 +333,18 @@ holds them to the compiled module on every push.
 `ac3forge.ac4` is a submodule in the present-or-absent pattern `containers`/`meta`/`signing`
 above already use — pybind11-direct on `ac4::Decoder`/`ac4::Encoder` (ETSI TS 103 190-1 V1.4.1,
 TS 103 190-2 V1.3.1), not layered on the C API. It binds a deliberate subset of both C++ headers:
-decoder output config, presentation selection, concealment, decoded PCM/speakers/objects and
-loudness metadata; encoder core config, `encode`/`flush`, and a minimal `Toc` wrapper for
-container muxing. Left out on both sides: the syntax trace, DRC/dialogue-enhancement/downmix
-detail beyond `LoudnessInfo`, substream/presentation configuration lists, `ObjectUpdate` ramps,
-and every `experimental` field.
+decoder output config, presentation selection, concealment, decoded PCM/speakers/objects (with the
+metadata updates within a frame) and loudness metadata; encoder config (the core fields,
+`iframes` and `fragment_starts`, the `experimental` flags that need no nested group, and one
+object substream), `encode`/`flush`, and a minimal `Toc` wrapper for container muxing. Left out on
+both sides: the syntax trace, DRC/dialogue-enhancement/downmix detail beyond `LoudnessInfo`, the
+loudness, DRC, downmix and dialogue configuration groups, substream/presentation configuration
+lists, EMDF payloads, and the `drc_gains` and `three_zero` experimental flags.
 
-The encoder covers channel-based and channel-based-immersive content only (mono, stereo, 5.0,
-5.1, 5.0.4, 5.1.4) — its own scope as of this section; A-JOC and direct-coded objects are a
-separate, in-flight phase
-([`ac3forge#1082`](https://github.com/iainchesworthlabs/ac3forge/pull/1082)). `DecodedFrame.objects`
-reads whatever object audio a stream actually carries regardless, so a stream encoded elsewhere
-with objects decodes here; this project's own encoder cannot yet produce one to round-trip end to
-end.
+The encoder writes channel-based and channel-based-immersive content (mono, stereo, 5.0, 5.1,
+5.0.4, 5.1.4) and one object substream of A-JOC or direct-coded objects ([Encoding
+objects](#encoding-objects) below). `DecodedFrame.objects` reads whatever object audio a stream
+carries.
 
 ```python
 ac4 = ac3.ac4
@@ -360,8 +359,8 @@ for frame in encoder.encode(channels):  # 6 arrays of any equal length
         print(decoded.speakers, decoded.channels[0].shape)
 ```
 
-`Encoder.create` raises `ValueError` with the first rule a configuration breaks
-(`ac4::Encoder::refusal_reason`) — every enumerator here keeps its C++ name verbatim
+`Encoder.create` raises `Ac4EncodeError` with the first rule a configuration breaks
+(`ac4::Encoder::refusal_reason`, also `Encoder.refusal_reason(config)`) — every enumerator here keeps its C++ name verbatim
 (`ac4.DrcMode.kDefault`, not `.Default`), same as the rest of this binding's enums. `encoder.encode`
 takes a 2-D array or a sequence of 1-D arrays, one per `EncoderConfig.channels`, any equal length
 — the encoder buffers input to its own frame length internally, unlike `FrameEncoder.encode_frame`'s
@@ -375,14 +374,72 @@ and otherwise a `DecodedFrame` whose `.channels`/`.objects[].samples` are read-o
 with the same zero-copy convention as [Zero-copy numpy](#zero-copy-numpy-and-buffer-reuse) above;
 both `encoder.encode()` and `decoder.decode()` release the GIL for the underlying call.
 `decoder.presentations` reads the last frame's table of contents, and `decoder.metadata_loudness`
-reads the selected presentation's loudness fields. **Every AC-4 failure raises a plain
-`ValueError`**, not `ac3.Ac3EncodeError`/`Ac3DecodeError` — `Decoder.decode()`'s message is
-`ac4::describe()` of the C++ `DecodeError`, unless `DecoderConfig.concealment` supplies a frame in
-its place.
+reads the selected presentation's loudness fields.
 
-Full test coverage: `python/tests/test_ac4_roundtrip.py` (stereo and 5.1 round trips checked by
+### Encoding objects
+
+`EncoderConfig.objects` takes an `ObjectsConfig`: a list of `ObjectConfig` (one input channel
+each: a bed object from a loudspeaker, a dynamic object, or the LFE, with an `ObjectProperties` in
+force from the first sample), how they are coded (`coding`: A-JOC, the default, or direct-coded;
+`downmix`, `downmix_signals`, `decorrelation`, `parameter_bands` and the rest of
+`ac4::ObjectsConfig`), and the object substream is experimental, so `experimental.objects` has to
+be set as well. `ObjectProperties` is the class `DecodedObject.properties` returns, and the
+Encoder takes the same fields: `x`, `y`, `z`, `gain_db`, `priority`, `width_x`/`width_y`/`width_z`,
+`zone_mask`, `screen_factor`, `depth_exponent`, `distance`, `divergence`, `headphone_render_mode`
+and the rest, each with the range and step its docstring gives. A new one starts from the C++
+struct's defaults: priority 1, depth exponent 1, the room's centre.
+
+```python
+objects = ac4.ObjectsConfig(
+    objects=[
+        ac4.ObjectConfig(properties=ac4.ObjectProperties(x=0.1, y=0.2, gain_db=-3.0)),
+        ac4.ObjectConfig(lfe=True),
+        ac4.ObjectConfig(bed=ac4.BedChannel.kLeft),
+    ],
+)
+config = ac4.EncoderConfig(
+    bitrate_kbps=256, experimental=ac4.Experimental(objects=True), objects=objects
+)
+encoder = ac4.Encoder.create(config)
+
+# One channel of PCM per object, and the changes to the objects' metadata with the input they
+# belong to: from input sample 5000 of this call, object 0 moves over 1024 samples.
+move = ac4.ObjectMetadataUpdate(
+    object=0, sample=5000, ramp_samples=1024, properties=ac4.ObjectProperties(x=0.75, gain_db=-12.0)
+)
+frames = encoder.encode(pcm, updates=[move])
+```
+
+The limits are the encoder's: 1 to 64 objects, at most one the LFE and at least one that is not;
+`frame_rate_index` 13 (the 2 048-sample frame) only; an A-JOC downmix of 1 to 11 signals, no more
+than there are full-band objects, or a static 5.0 or 5.1 bed; direct-coded objects are dynamic
+objects and the LFE with no bed objects. `Encoder.refusal_reason(config)` names the rule a
+configuration breaks. With `objects` set, `codec_mode` is the object substream's, `channels` is
+ignored, and `config.objects` gives a copy of the `ObjectsConfig`: assign a whole list to change
+it. The decoder reports the objects in its own order, not the encoder's: the LFE first, then the
+bed objects, then the dynamic objects, each group in the order the configuration lists it, and
+`DecodedObject.updates` lists the block updates within the frame (`ObjectUpdate`: the output
+sample each takes effect at, `ramp_samples` and `properties`).
+
+### Exceptions
+
+Every AC-4 failure raises a subclass of `ac3.Ac4Error`, which derives from `ValueError`: AC-4's
+failures were plain `ValueError`s before they had types, and `except ValueError` still catches
+every one. `Decoder.decode()` raises `Ac4DecodeError` for a frame that will not decode, unless
+`DecoderConfig.concealment` supplies a frame in its place; `Encoder.create()`, `encode()` and
+`flush()` raise `Ac4EncodeError` for a configuration or input the encoder refuses. Each carries the
+C++ enumerator as `.error` (`ac4.DecodeError`, `ac4.EncodeError`) and `ac4::describe()` of it, or
+for `create()` the refusal reason, as its message. They sit beside `Ac3Error` and are not under
+it, since `Ac3Error` derives from `RuntimeError`. An argument the binding cannot read (a channel
+that is not a 1-D array) stays a plain `ValueError`.
+
+Test coverage: `python/tests/test_ac4_roundtrip.py` (stereo and 5.1 round trips checked by
 correlation, presentation/delay agreement with the encoder, the channel-count refusal above, and
-`ac4.sync_frame`'s sync word).
+`ac4.sync_frame`'s sync word); `test_ac4_objects.py` (an A-JOC scene and a direct-coded one, each
+configured by keywords and by attributes with the two streams the same bytes, and read back within
+what each field's code can hold, with its own tone and a metadata update at the sample its input
+sample comes out; the limits, the I-frame lists and the experimental flags); `test_ac4_errors.py`
+(the hierarchy, the exports, and each exception's `.error`).
 
 ## What isn't exposed
 

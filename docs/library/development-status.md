@@ -266,8 +266,8 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | **API** | C++23 `ac3::forge` | 🟢 | High | Essential | Encode / decode / inspect / measure |
 | | Minimum-footprint decoder (`ac3::forge_minimal`) | 🟢 | Medium | Important | Bare-metal / ESP32 profile |
 | | Minimum-footprint AC-4 decoder (`ac4::decoder` in `float`) | 🟡 | Medium | Important | The decode profile carries the decoder, its inspector and core, static and without exceptions (`AC3FORGE_MINIMAL_AC4` with `AC3FORGE_MINIMAL_DECODER`); the Cortex-M3 probe decodes five committed streams (2.0, 5.1 and 5.1.4) with the PCM bit-identical to the x86-64 host's, 432 KB to 1.93 MB of heap and 54.5 M to 205.8 M instructions a frame. No board runs it yet (D14b, D14c) |
-| | C API (`ac3::forge_c`) | 🟢 | Medium | Important | Stable minimal surface; AC-4 added (phase I4) |
-| | Python / Rust / WASM bindings | 🟢 | Medium | Important | AC-4 added to the C API, Python, Rust and WASM (phase I4); WASM decode package not yet on npm |
+| | C API (`ac3::forge_c`) | 🟢 | Medium | Important | Stable minimal surface; AC-4 added (phase I4), with the encoder's objects (phase I4b) |
+| | Python / Rust / WASM bindings | 🟢 | Medium | Important | AC-4 added to the C API, Python, Rust and WASM (phase I4), with the encoder's objects and the decoder's update ramps (phase I4b) and typed AC-4 exceptions in Python; WASM decode package not yet on npm |
 | **Verify** | Encoder/decoder mirror traces | 🟢 | High | Essential | AC-3 and E-AC-3 |
 | | Research trace export (CSV / JSONL) | 🟢 | Low | Optional | `ac3::verify` |
 | | Conformance / fuzz / quality gates | 🟢 | High | Essential | See [Validation](../verification.md) |

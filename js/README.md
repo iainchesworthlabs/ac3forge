@@ -109,6 +109,35 @@ and point directly at those files.
 unavailable otherwise, and `Ac3ForgeDecoderNode.create()` throws a clear error rather than
 failing silently when it's missing.
 
+## AC-4
+
+The `ac3forge-wasm-decoder/ac4` subpath exports `Ac4Decoder` and `Ac4Encoder`, typed wrappers over
+the AC-4 Embind module `apps/wasm/` builds as `ac3forge_ac4.js` (`loadAc4Module(glueUrl)` loads
+it). The encoder writes channel-based content or one object substream of A-JOC or direct-coded
+objects, with each object's metadata and the changes to it given beside the PCM; the decoder
+returns each object's properties and the block updates within a frame. Every field an options
+object leaves out keeps the C++ default.
+
+```ts
+import { Ac4Encoder, Ac4Decoder, loadAc4Module } from "ac3forge-wasm-decoder/ac4";
+
+const module = await loadAc4Module("/wasm/ac3forge_ac4.js");
+const encoder = new Ac4Encoder(module, {
+  bitrateKbps: 256,
+  experimental: { objects: true },
+  objects: { objects: [{ properties: { position: [0.1, 0.2, 0], gainDb: -3 } }, { lfe: true }] },
+});
+if (encoder.constructionError) throw new Error(encoder.constructionError);
+// One Float32Array per object; from sample 5000 of this call, object 0 moves over 1024 samples.
+const frames = encoder.encode(pcm, [
+  { object: 0, sample: 5000, rampSamples: 1024, properties: { position: [0.75, 0.25, 0.4] } },
+]);
+const decoder = new Ac4Decoder(module);
+const decoded = decoder.decodeFrame(frames[0].data); // null until a frame has output
+```
+
+The module builds in CI only where an Emscripten SDK is installed, and no demo page serves it yet.
+
 ## hls.js/MSE bridge
 
 hls.js's own `BufferController` drops the audio track entirely the moment

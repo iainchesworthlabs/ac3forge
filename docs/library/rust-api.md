@@ -108,21 +108,86 @@ it came from — `samples_per_channel()` is a real per-frame method rather than 
 constant, since AC-4's frame length varies by frame rate. `Decoder::presentations()` reads the last
 frame's table of contents; `Decoder::metadata_loudness()` reads the selected presentation's
 loudness fields. `DecodedFrame::objects()` reads whatever object audio a presentation carries —
-empty for the channel-based and channel-based-immersive content (mono, stereo, 5.0, 5.1, 5.0.4,
-5.1.4) this crate's own `Encoder` writes exclusively, since A-JOC and direct-coded objects on the
-encoder side are a separate, in-flight phase
-([`ac3forge#1082`](https://github.com/iainchesworthlabs/ac3forge/pull/1082)); a stream encoded
-elsewhere with objects still decodes here.
+empty for channel-based and channel-based-immersive content (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4)
+— each `DecodedObject` with its `properties` in force at the frame's first sample and its
+`updates` within the frame (`ObjectUpdate`: the output sample it takes effect at, `ramp_samples`
+and `properties`).
 
 Every `AC3FORGE_ERROR_AC4_*` status gets its own `Error` variant (`Ac4DecodeTruncated`,
 `Ac4DecodeInvalidToc`, `Ac4DecodeInvalidStream`, `Ac4DecodeUnsupported`,
 `Ac4DecodeMissingIFrame`, `Ac4EncodeInvalidConfig`, `Ac4EncodeInvalidInput`) rather than folding
-into `Error::Other` — unlike the scan errors below, which do not.
+into `Error::Other` — unlike the scan errors below, which do not. `Encoder::refusal_reason(&config)`
+says which rule an `Ac4EncodeInvalidConfig` breaks.
 
-Tests are in [`rust/ac3forge/tests/ac4_roundtrip.rs`](https://github.com/iainchesworthlabs/ac3forge/blob/main/rust/ac3forge/tests/ac4_roundtrip.rs):
+### Encoding objects
+
+`EncoderConfig::objects` takes an `ObjectsConfig` — a `Vec<ObjectConfig>` (one input channel each:
+a bed object from a `BedChannel`, a dynamic object, or the LFE, with the `ObjectProperties` in
+force from the first sample) and how they are coded (`ObjectCoding`, `AjocDownmix`,
+`downmix_signals`, `decorrelation`, `parameter_bands` and the rest of `ac4::ObjectsConfig`) — and
+the object substream is experimental, so `experimental.objects` has to be set beside it.
+`ObjectProperties` is the struct `DecodedObject::properties` returns and the encoder takes the same
+fields (`position`, `gain_db`, `priority`, `width`, `zone_mask`, `screen_factor`,
+`depth_exponent`, `distance`, `divergence`, `headphone_render_mode` and the rest, each with its
+range and step in its doc comment); `ObjectProperties::default()` calls the raw
+`ac3forge_ac4_object_properties_init()`, so it has the C++ defaults (priority 1, depth exponent 1,
+the room's centre). `EncoderConfig` owns vectors now (`iframes`, `fragment_starts`, the objects),
+so it is `Clone` and no longer `Copy`.
+
+```rust
+use ac3forge::ac4::{
+    BedChannel, Encoder, EncoderConfig, Experimental, ObjectConfig, ObjectMetadataUpdate,
+    ObjectProperties, ObjectsConfig,
+};
+
+let config = EncoderConfig {
+    bitrate_kbps: 256,
+    experimental: Experimental { objects: true, ..Default::default() },
+    objects: Some(ObjectsConfig {
+        objects: vec![
+            ObjectConfig {
+                properties: ObjectProperties { position: [0.1, 0.2, 0.0], gain_db: -3.0, ..Default::default() },
+                ..Default::default()
+            },
+            ObjectConfig { lfe: true, ..Default::default() },
+            ObjectConfig { bed: Some(BedChannel::Left), ..Default::default() },
+        ],
+        ..Default::default()
+    }),
+    ..Default::default()
+};
+let mut encoder = Encoder::new(&config)
+    .unwrap_or_else(|_| panic!("{}", Encoder::refusal_reason(&config)));
+
+// One slice of PCM per object, and the changes to the objects' metadata with the input they
+// belong to: from input sample 5000 of this call, object 0 moves over 1024 samples.
+let moves = [ObjectMetadataUpdate {
+    object: 0,
+    sample: 5000,
+    ramp_samples: 1024,
+    properties: ObjectProperties { position: [0.75, 0.25, 0.4], gain_db: -12.0, ..Default::default() },
+}];
+let frames = encoder.encode_objects(&pcm, &moves).unwrap();
+```
+
+The limits are the encoder's: 1 to `AC3FORGE_AC4_MAX_OBJECTS` (64) objects, at most one the LFE and at
+least one that is not; `frame_rate_index` 13 only; an A-JOC downmix of 1 to
+`AC3FORGE_AC4_MAX_DOWNMIX_SIGNALS` (11) signals, no more than there are full-band objects, or a
+static 5.0 or 5.1 bed; direct-coded objects are dynamic objects and the LFE with no bed objects. An
+update for an object the configuration lacks, before the input's first sample, or with a property
+off its range is `Ac4EncodeInvalidInput`. The decoder reports the objects in its own order, not the
+encoder's: the LFE first, then the bed objects, then the dynamic objects, each group in the order
+the configuration lists it.
+
+Tests are in [`rust/ac3forge/tests/ac4_roundtrip.rs`](https://github.com/iainchesworthlabs/ac3forge/blob/main/rust/ac3forge/tests/ac4_roundtrip.rs)
+and [`ac4_objects.rs`](https://github.com/iainchesworthlabs/ac3forge/blob/main/rust/ac3forge/tests/ac4_objects.rs):
 stereo and 5.1 round trips against real synthesized tones (checked for signal level, not silence),
 the 5.1 speaker order, a corrupted frame's decode failure, `Toc`/`build_dac4`/`media_timing`,
-`sync_frame`'s sync word and CRC byte, and the channel-count refusal above.
+`sync_frame`'s sync word and CRC byte, and the channel-count refusal above; and an A-JOC scene and
+a direct-coded one encoded through the crate and through the raw `ac3forge_sys` calls with structs
+built by hand (the same bytes), read back within what each field's code can hold, with its own tone
+and a metadata update at the sample its input sample comes out, with the limits, the I-frame lists
+and the experimental flags held to the encoder.
 
 ## What is covered
 
@@ -131,7 +196,7 @@ the 5.1 speaker order, a corrupted frame's decode failure, `Toc`/`build_dac4`/`m
 | `ac3forge::ac3` | `Encoder`, `EncoderConfig` (including dual mono, DRC, heavy compression and the mix levels), `Decoder`, `DecodedFrame` |
 | `ac3forge::eac3` | `Eac3Encoder`, `Eac3FrameConfig` (the Annex E tools through `auto_tools` or the individual flags; substream identity and `chanmap`), `Eac3FrameMetadata`, `AccessUnitEncoder` and `AccessUnit` for wide layouts built from several substreams, `Eac3Decoder` with `decode_substream`, `decode_access_unit` and `flush`, `DecodedSubstream`, `DecodedAccessUnit` |
 | `ac3forge::atmos` | `AtmosEncoder`, `AtmosConfig`, `ObjectPlacement`; the OAMD and JOC accessors (`has_object_metadata`, `dynamic_object`, `object_audio` and their counts) on `DecodedSubstream` and `DecodedAccessUnit` |
-| `ac3forge::ac4` | `Encoder`, `EncoderConfig`, `Decoder`, `DecoderConfig`, `OutputConfig`, `PresentationChoice`, `DecodedFrame` (channels, speakers, concealment, objects), `PresentationInfo`, `LoudnessInfo`, `Toc` and `sync_frame` — see [AC-4](#ac-4) above |
+| `ac3forge::ac4` | `Encoder`, `EncoderConfig` (with `ObjectsConfig`, `ObjectConfig`, `Experimental`, `iframes` and `fragment_starts`), `ObjectMetadataUpdate`, `ObjectProperties`, `Decoder`, `DecoderConfig`, `OutputConfig`, `PresentationChoice`, `DecodedFrame` (channels, speakers, concealment, objects and their `ObjectUpdate`s), `PresentationInfo`, `LoudnessInfo`, `Toc` and `sync_frame` — see [AC-4](#ac-4) above |
 | `ac3forge::stream` | `split_frames`, `split_access_units`, `stream_bsid`, `scan` and `ScannedStream` (kind, sample rate, layout, rendered channel count, each access unit's slice and sample count, `bsid`, the Atmos complexity index). The slices borrow the input buffer |
 | `ac3forge::meter` | `LoudnessMeter` (the `acmod`/`lfe` constructor and the BS.1770-5 `chanmap` constructor) and `dialnorm_from_lkfs` |
 | `ac3forge` | `Bytes` (an owned encoded buffer that derefs to `[u8]`), `Error`, `Latency` and the latency accessors on the encoders and decoders, `version()`, `SAMPLES_PER_FRAME` |

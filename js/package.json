@@ -39,6 +39,10 @@
     "./decoder-worker": {
       "types": "./dist/decoder-worker.d.ts",
       "default": "./dist/decoder-worker.js"
+    },
+    "./ac4": {
+      "types": "./dist/ac4.d.ts",
+      "default": "./dist/ac4.js"
     }
   },
   "scripts": {
