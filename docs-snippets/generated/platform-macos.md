@@ -8,7 +8,7 @@
 | Forge CLI | **Source**<br>required CI<br>native arm64 | **Source**<br>required CI<br>native x86_64 | **Published**<br>required CI<br>DMG |
 | Forge GUI | **Source**<br>required CI<br>native arm64 | **Source**<br>required CI<br>native x86_64 | **Published**<br>required CI<br>DMG; never used on a Mac |
 | Crucible | **In development**<br>required CI<br>builds and tests | **In development**<br>required CI<br>builds and tests | **Unavailable**<br>no package |
-| Hearth desktop player | **In development**<br>required CI<br>Qt/QML shell builds; Play page implemented, other tabs are placeholders | **In development**<br>required CI<br>Qt/QML shell builds; Play page implemented, other tabs are placeholders | **Unavailable**<br>no package |
+| Hearth desktop player | **In development**<br>required CI<br>Qt/QML shell builds; six pages implemented | **In development**<br>required CI<br>Qt/QML shell builds; six pages implemented | **Unavailable**<br>no package |
 | Live capture and PCM monitor | **Source**<br>build only<br>Core Audio; no audio run | **Source**<br>build only<br>Core Audio; no audio run | **Unavailable** |
 | IEC 61937 output | **Source**<br>build only<br>no receiver run | **Source**<br>build only<br>no receiver run | **Unavailable** |
 | AC-4 IEC 61937 output | **Unavailable**<br>Core Audio has no AC-4 format | **Unavailable**<br>Core Audio has no AC-4 format | **Unavailable** |

@@ -69,10 +69,10 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | **Encoder** | Independent + dependent substreams | 🟢 | High | Essential | `AccessUnitEncoder` for wide layouts |
 | | Layouts through 7.1.4 (`chanmap`) | 🟢 | High | Essential | 7.1.4 = two dependents |
 | | Multi-programme authoring (I0–I7) | 🟢 | Medium | Important | All eight programmes; each with own layout, dialnorm and full `mixmdate`/`bsmod` metadata — sample rate and block count shared across the stream (§E2.3.1.2 requires it) |
-| | Associated-service `bsmod` / `mainid` labelling | 🟡 | Medium | Important | Written, read back and validated against the stream's own `bsmod` (`mpegts::parse_service_descriptor`); consumed by Hearth's container facts, not yet surfaced in `ac3cli probe` |
+| | Associated-service `bsmod` / `mainid` labelling | 🟢 | Medium | Important | Written, read back and validated against the stream's own `bsmod` (`mpegts::parse_service_descriptor`); `ac3cli probe json=1` reports the PMT's service descriptor (`bsmod`, `mainid`, `asvc`) and a `dec3` box's `asvc` bit, and Hearth's container facts show them |
 | | Sample rates + `fscod2` half rates | 🟢 | Medium | Important | Enc/dec complete; no external PCM oracle for half rates |
 | | CBR and VBR (per substream) | 🟢 | High | Essential | VBR E-AC-3 only; ABR mode shipped |
-| | Short syncframes (`numblkscod` 0–2) + `convsync` | 🟢 | Medium | Important | Including object layer scaling; `eac3_latency()` still ignores short frames |
+| | Short syncframes (`numblkscod` 0–2) + `convsync` | 🟢 | Medium | Important | Including object layer scaling; `eac3_latency()` follows the syncframe length |
 | | Exponent strategies (`expstre` 0/1) | 🟢 | High | Essential | Table E2.10 or per-block |
 | | Standard coupling (§E3.3) | 🟢 | High | Essential | In `auto` |
 | | Spectral extension (§E3.6) | 🟢 | High | Essential | In `auto` |
@@ -102,11 +102,11 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | **EMDF** | Container parse / write (Annex H) | 🟢 | High | Essential | Skip-field placement verified vs DEE |
 | | Reserved / unsupported EMDF variants (§H.2.2) | 🔴 | Low | Optional | e.g. `protection_length_primary` = 00, `emdf_version` ≠ 0 — refused rather than guessed |
 | **OAMD** | Payload encode (project subset) | 🟢 | High | Essential | `AtmosEncoder` |
-| | Payload parse (broader than encode) | 🟡 | Medium | Important | Most §5.5; commercial shapes like `sample_offset_code`, `b_object_not_active`, multi-block updates still refused by the encoder — PR #801 (open) widens it |
-| | Channel-based immersive (OAMD bed, no dynamic objects) | 🟡 | Medium | Optional | Decode path exists; not a separate encode product surface |
+| | Payload parse (broader than encode) | 🟡 | Medium | Important | The parser reads most of §5.5: several update blocks, inactive objects, several bed instances, ISF programs, the `trim_element`. The encoder writes one bed or dynamic objects, with `b_object_not_active`, a real `sample_offset_code` and multi-block updates since #801; it writes no ISF programs, extra bed instances or `trim_element` |
+| | Channel-based immersive (OAMD bed, no dynamic objects) | 🟡 | Medium | Optional | `AtmosEncoder`'s `BedProgram` constructor and `ac3cli atmos-cbi` encode 5.1.4, 7.1.4 and 9.1.6 beds; only 5.1.4's channel order is checked against a DEE stream |
 | **JOC** | Matrix encode (5.X downmix) | 🟢 | High | Essential | 7.X configs decode-only |
 | | Object reconstruction (QMF + MDCT, §6.6.6) | 🟢 | High | Essential | Default QMF domain; self-check > −20 dB |
-| | `joc_clipgain` application (§6.3.3.2) | 🟡 | Medium | Important | Parsed onto `FrameParameters`; not applied in the reconstruction chain |
+| | `joc_clipgain` application (§6.3.3.2) | 🟢 | Medium | Important | Applied to the reconstructed object PCM, once, in `reconstruct()`, never to the bed; where it applies was confirmed against the Dolby Reference Player (2026-09-22) |
 | | Phase-shift downmix undo (`phsflg`, Table 47 configs 2/4) | 🟡 | Low | Optional | Configs parse; reconstructed like unshifted siblings (no Hilbert undo) |
 | | 7.X downmix needing dependent Lb/Rb | 🟡 | Medium | Important | Metadata/JOC parse; `object_audio` empty when bed lacks the dependent |
 | **Atmos encode** | Bed + objects in E-AC-3 | 🟢 | High | Essential | `oba::AtmosEncoder` |
@@ -134,14 +134,14 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | TOC / presentations v0–v2 | 🟢 | High | Essential | Channel-based immersive through 7.1.4 |
 | | `bitstream_version` 0/1 legacy TOC | 🟡 | Low | Optional | Transcribed; no real DEE stream exercises it (all observed v2); version 0 presentations of several substreams decode and mix on the test multiplexer's streams |
 | | Channel-coded substream groups | 🟢 | High | Essential | Probe / JSON contract |
-| | A-JOC / object / OAMD substream info | 🟡 | Medium | Important | Parsed; real A-JOC fixtures scarce |
-| | `oamd_common_data()` (TOC level, §6.2.8.1) | 🟡 | Medium | Optional | Transcribed |
-| | OAMD substream DATA body (`oamd_substream()`) | 🔴 | Medium | Important | Byte-range only — not field-parsed |
+| | A-JOC / object / OAMD substream info | 🟡 | Medium | Important | Parsed; read on constructed streams and on Chromium's A-JOC file, which is kept out of the tree |
+| | `oamd_common_data()` (TOC level, §6.2.8.1) | 🟡 | Medium | Optional | Transcribed twice; Chromium's A-JOC file, which sets it in every frame, reads to the end of every substream in both |
+| | OAMD substream DATA body (`oamd_substream()`) | 🔴 | Medium | Important | The inspector leaves it a byte range, by design; `ac4::decoder` parses it (the Object audio row below) |
 | | EMDF-only presentations (config 6) | 🟢 | Low | Optional | Synthetic + dual transcription |
 | | `dac4` / RFC 6381 codec string | 🟢 | Medium | Important | MP4 / TS / HLS / DASH wiring |
 | | Audio PCM decode (inspector) | 🔴 | High | Essential | By design — content is byte ranges only; see **Decoder** below for `ac4::decoder` PCM output |
-| **Decoder (`ac4::decoder`)** | Presentation + channel-coded syntax | 🟡 | High | Essential | Full syntax trace |
-| | ASF / ASPX / A-CPL / metadata() | 🟡 | High | Essential | DEE digest CI; dual transcription vs Python |
+| **Decoder (`ac4::decoder`)** | Presentation + channel-coded syntax | 🟢 | High | Essential | Every syntax element of the presentation substream, the channel elements and the EMDF substreams, in two transcriptions (C++ and `tools/references/ac4_syntax.py`) whose traces agree record for record on every committed stream, in CI |
+| | ASF / ASPX / A-CPL / metadata() | 🟢 | High | Essential | DEE's digests pinned in CI; the same dual transcription against Python |
 | | Channel-coded paths without fixtures | 🟡 | Medium | Optional | Noise fill, VARVAR ASPX, time-interleaved ASPX, the mono element, alt presentations, transmitted DRC gains — transcribed, oracle-poor; 3.0, 7.X and every A-CPL mode read on constructed streams |
 | | EMDF payload substreams (syntax) | 🟡 | Medium | Important | Syntax only |
 | | Dialogue enhancement PCM apply | 🟢 | Medium | Important | Part 1 5.7.8's four methods in the QMF domain, from 0 dB to the stream's cap; 0 dB is the tool bypassed, sample for sample, and the parsed gains apply to 0.01 dB; the channel-independent method on DEE's streams, the others on constructed data; the hybrid methods take their waveform from the presentation's dialogue enhancement substream; `ac3cli decode dialogue-enhancement=` |
@@ -149,7 +149,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Immersive channel element (7.0.4, 7.1.4) | 🟢 | High | Essential | Part 2 6.2.4 to 6.2.6 in both transcriptions; SCPL, ASPX_SCPL, ASPX_ACPL_1, ASPX_ACPL_2 and ASPX_AJCC: 5.2's track assignment, S-CPL, A-SPX's pairing and gains, A-CPL's four modules and A-JCC, in full and core decoding (`ac4::DecoderConfig::decoding`); DEE's 5.1.4 in its three modes with each tone on its own channel, the rest on constructed streams; `ac3cli decode decoding=` |
 | | 9.X.4 and 22.2 channel elements | 🔴 | Low | Nice-to-have | Refused `kUnsupported` by name |
 | | Object audio: A-JOC and direct-coded objects | 🟢 | Medium | Important | Part 2 6.2.3 to 6.2.8 in both transcriptions, the OAMD substream included; A-JOC's reconstruction (5.7) in full decoding and its downmix or static bed in core decoding, dialogue enhancement for objects (5.8.2.3 to 5.8.2.5), each object's Annex F properties at its update sample, and the ISF renderer (5.10.3); Chromium's `ac4-ajoc.ac4` in both modes, eight constructed streams scored tone by tone. No reference decode to compare with: librempeg refuses object coding, and DEE writes no A-JOC from this project's masters |
-| | HSF / 96–192 kHz | 🟡 | Low | Nice-to-have | Extension substream content read when it resolves to its owning channel substream; an unresolved link is refused `kUnsupported` — synthetic frames only, no real HSF stream available |
+| | HSF / 96–192 kHz | 🟡 | Low | Nice-to-have | The extension substream's content is read when it resolves to its owning channel substream (an unresolved link is refused `kUnsupported`), on synthetic frames only, no real HSF stream being available; `decode()` refuses a 96 or 192 kHz substream, so there is no PCM at those rates |
 | | PCM: SIMPLE mono and stereo | 🟢 | High | Essential | ASF, stereo processing, block switching, frame alignment and the QMF banks at `frame_rate_index` 13; DEE's 2.0 streams at unity gain and pinned SNR floors in CI; librempeg agrees to 83 dB or better |
 | | PCM: ASPX mono and stereo | 🟢 | High | Essential | Companding and A-SPX in the QMF domain; DEE's 2.0 streams from 48 to 144 kbps at unity gain and its immersive stereo against Lo/Ro, with SNR below the crossover, A-SPX tile energies, LSD and ViSQOL pinned; interleaved waveform coding, balance and VARVAR tested on constructed data |
 | | PCM: 3.0, 5.X and 7.X | 🟢 | High | Essential | SIMPLE and ASPX: the LFE, Tables 178 to 183's matrices and routing, A-SPX pairing and companding over Tables 212 and 213; DEE's 5.1 streams from 192 to 768 kbps with every channel scored and pinned, each tone on its own channel, librempeg agreeing to 83 dB; every coding_config, 2ch_mode, chel_matsel, the 3.0 element and the three 7.X modes on constructed streams |
@@ -211,7 +211,7 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | Category | Feature | Status | Priority | Criticality | Notes |
 |---|---|---|---|---|---|
 | **Reader** | BW64/RF64 container | 🟢 | High | Essential | Opt-in (`AC3FORGE_BUILD_ADM`); Boost |
-| | ADM XML — DirectSpeakers + Objects | 🟡 | High | Essential | Phase-1 scope |
+| | ADM XML — DirectSpeakers + Objects | 🟡 | High | Essential | Those two pack types only; the rest is refused (next row) |
 | | ADM Matrix / HOA / Binaural / `zoneExclusion` / `objectDivergence` / `screenRef` | 🔴 | Low | Nice-to-have | Refused `kUnsupportedType` |
 | | Common definitions (Annex A) | 🟢 | Medium | Important | Predefined formats merged |
 | **Writer** | BW64 write | 🟡 | Medium | Important | 24-bit PCM; shapes matching the bridge |
@@ -224,12 +224,12 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 
 | Category | Feature | Status | Priority | Criticality | Notes |
 |---|---|---|---|---|---|
-| **Writer** | Channel-based 7.1.4 LPCM (v1.1.0) | 🟢 | Medium | Important | Phase 1; ISO-BMFF encapsulation |
+| **Writer** | Channel-based 7.1.4 LPCM (v1.1.0) | 🟢 | Medium | Important | ISO-BMFF encapsulation |
 | | IA Sequence / Codec Config / Audio Element / Mix Presentation | 🟢 | Medium | Important | Simple Profile |
 | | E-AC-3 decode → IAMF round trip | 🟢 | Medium | Important | `examples/mux_iamf.cpp` |
-| | Parameter Block / Temporal Delimiter / trimming OBUs | 🔴 | Low | Nice-to-have | Not required for static 7.1.4; omitted in phase 1 |
+| | Parameter Block / Temporal Delimiter / trimming OBUs | 🔴 | Low | Nice-to-have | Not required for static 7.1.4; not written |
 | | Object-based audio elements | 🔴 | Low | Nice-to-have | Waits on IAMF v2.0 final |
-| | OBU / file reader | 🔴 | Low | Nice-to-have | Phase 3 |
+| | OBU / file reader | 🔴 | Low | Nice-to-have | Nothing reads an IAMF file back |
 | | Raw OBU stream (§5) | 🔴 | Low | Nice-to-have | §6 ISO-BMFF only today |
 | | Fragmented / live writer | 🔴 | Low | Nice-to-have | Batch `iamf::mux()` only |
 
@@ -245,8 +245,9 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | MPEG-TS AC-4 ATSC profile (A/342-2) | 🔴 | Low | Optional | Explicitly refused; DVB path only |
 | **Mux** | MP4 / ISOBMFF | 🟢 | High | Essential | Mux + demux; AC-3 / E-AC-3 / AC-4 |
 | | MP4 `moov`-after-`mdat` streaming demux | 🔴 | Low | Optional | Refused with explanation |
-| | Fragmented MP4 / CMAF | 🟢 | High | Essential | Init + media segments |
-| | Matroska | 🟢 | Medium | Important | Mux + demux |
+| | Fragmented MP4 / CMAF | 🟢 | High | Essential | Init + media segments; AC-4 by TS 103 190-2 Annex H (fragments start at I-frames, `ca4m`/`ca4s` brands, Annex G's descriptors) |
+| | Matroska | 🟢 | Medium | Important | Mux + demux for AC-3 and E-AC-3 |
+| | Matroska AC-4 | 🔴 | Low | Out-of-scope | Refused: Matroska registers no codec ID for AC-4 |
 | | MPEG-TS (DVB + ATSC for AC-3/E-AC-3) | 🟢 | High | Essential | Mux + demux; descriptors from `scan` |
 | | Multi-programme container mux | 🟡 | Medium | Optional | CLI muxers warn and carry the first programme only |
 | **Streaming** | HLS playlists | 🟡 | Medium | Important | Atmos `CHANNELS="N/JOC"` + 5.1 fallback; manifest semantics not player-validated |
@@ -268,8 +269,8 @@ the carriage specs wired in-tree). Open gaps against those texts are collected a
 | | Minimum-footprint decoder (`ac3::forge_minimal`) | 🟢 | Medium | Important | Bare-metal / ESP32 profile |
 | | Minimum-footprint AC-4 decoder (`ac4::decoder` in `float`) | 🟡 | Medium | Important | The decode profile carries the decoder, its inspector and core, static and without exceptions (`AC3FORGE_MINIMAL_AC4` with `AC3FORGE_MINIMAL_DECODER`); the Cortex-M3 probe decodes five committed streams (2.0, 5.1 and 5.1.4) with the PCM bit-identical to the x86-64 host's, 432 KB to 1.93 MB of heap and 54.5 M to 205.8 M instructions a frame. The ESP32-P4 runs it on a board (D14b, the row of that name under the decoder); the S3 and the C6 follow (D14c, D14d) |
 | | C API (`ac3::forge_c`) | 🟢 | Medium | Important | Stable minimal surface; AC-4 added (phase I4), with the encoder's objects (phase I4b) |
-| | Python / Rust / WASM bindings | 🟢 | Medium | Important | AC-4 added to the C API, Python, Rust and WASM (phase I4), with the encoder's objects and the decoder's update ramps (phase I4b) and typed AC-4 exceptions in Python; WASM decode package not yet on npm |
-| **Verify** | Encoder/decoder mirror traces | 🟢 | High | Essential | AC-3 and E-AC-3 |
+| | Python / Rust / WASM bindings | 🟢 | Medium | Important | AC-4 added to the C API, Python, Rust and WASM (phase I4), with the encoder's objects and the decoder's update ramps (phase I4b) and typed AC-4 exceptions in Python. The wheels on PyPI (0.10.0b1 and earlier) predate the AC-4 module, and the WASM package is not on npm |
+| **Verify** | Encoder/decoder mirror traces | 🟢 | High | Essential | AC-3 and E-AC-3 (`ac3::verify`); AC-4 has a syntax trace of both directions (`ac4/syntax.hpp`) |
 | | Research trace export (CSV / JSONL) | 🟢 | Low | Optional | `ac3::verify` |
 | | Conformance / fuzz / quality gates | 🟢 | High | Essential | See [Validation](../verification.md) |
 | | Cross-toolchain encoder bit-identical output | 🟡 | Medium | Important | Audit + `ilogb` fix done; FP thresholds / cross-leg gate still open (VX12) |
@@ -307,7 +308,6 @@ this register is the checklist that those bounds appear here too.
 |---|---|---|
 | §5.5 / §5.6 | Commercial OAMD field shapes | 🟡 |
 | §5.x renderer behaviour | Extent / spread / zone / snap apply | 🟡 |
-| §6.3.3.2 | `joc_clipgain` apply | 🟡 |
 | Table 47 | `phsflg` Hilbert undo; 7.X+dependent Lb/Rb | 🟡 |
 | Protection / authenticity | Project key + Dolby unlock | 🟡 |
 
@@ -316,12 +316,12 @@ this register is the checklist that those bounds appear here too.
 | Clause | Open item | Status |
 |---|---|---|
 | Part 1 / 2 TOC legacy | `bitstream_version` 0/1 | 🟡 |
-| §6.2.2.4 | OAMD substream DATA body | 🟢 |
 | Channel-coded syntax without fixtures | Noise fill, VARVAR, … | 🟡 |
 | SSF | Decode | 🔴 |
-| §4.2.4.3 | HSF extension substream content (syntax only; synthetic frames only) | 🟡 |
+| §4.2.4.3 | HSF extension substream content: syntax read on synthetic frames, PCM at 96 and 192 kHz refused | 🟡 |
 | Whole codec | PCM reconstruction of the 9.X.4 and 22.2 elements | 🔴 |
-| Whole codec | Encoding beyond SIMPLE, ASPX and A-CPL mono to 5.1 | 🔴 |
+| Whole codec | Encoding the speech frontend, the 9.X.4 and 22.2 elements and 96 or 192 kHz | 🔴 |
+| Whole codec | Encoder options no reader outside the project has checked: the `experimental=` tools, the 7.X layouts, 7.X.4 with the back pair, ASPX_AJCC, objects | 🟡 |
 | §5.1.4 | Spectral noise fill: decoded, but no stream here sets it | 🟡 |
 
 ### SMPTE ST 2098-2 / ST 2067-201 (IAB)
@@ -343,7 +343,7 @@ this register is the checklist that those bounds appear here too.
 
 | Clause | Open item | Status |
 |---|---|---|
-| §3 Parameter / trim / delimiter OBUs | Phase-1 omission | 🔴 |
+| §3 Parameter / trim / delimiter OBUs | Not written | 🔴 |
 | Object elements | Waits on v2.0 | 🔴 |
 | §5 raw OBU; reader; fragmented writer | Not started | 🔴 |
 
