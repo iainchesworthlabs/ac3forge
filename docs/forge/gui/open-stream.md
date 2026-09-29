@@ -3,7 +3,7 @@
 The GUI player/monitor for an existing file — the same shape [QC a stream](qc.md) and
 [Inspect objects](inspect-objects.md) use, for the same reason: everything else in this guide
 configures and runs an **encode**, while this dialog opens an **already-encoded** `.ac3`/`.ec3`
-file and decodes it, with no source, no plan and no encoder involved. It lives as its own dialog,
+file (or an [`.ac4` one](#ac-4)) and decodes it, with no source, no plan and no encoder involved. It lives as its own dialog,
 opened from an **Open stream…** button in the header beside **QC a stream…**, **Inspect
 objects…** and **Preferences**.
 
@@ -15,8 +15,8 @@ it: the GUI twin of `ac3cli monitor`, plus `ac3cli decode`'s WAV and object expo
 **Open stream…**, in the header beside **QC a stream…**, **Inspect objects…** and
 **Preferences**. It opens regardless of what (if anything) is loaded in the main workbench.
 
-**Choose file…** opens a standard file picker filtered to `*.ac3`/`*.ec3` (plus **All files**).
-Picking one starts the decode immediately, off the window's own event loop so the dialog stays
+**Choose file…** opens a standard file picker with three filters: `*.ac3`/`*.ec3`, `*.ac4` and
+**All files**. Picking one starts the decode immediately, off the window's own event loop so the dialog stays
 responsive while a long file decodes — the whole file is held in memory once decoded, the same
 trade QC and Inspect objects already make, because a real seek needs the samples already
 resident rather than re-decoded on demand.

@@ -18,12 +18,21 @@ on the spot) and a one-sentence tour of the window:
 
 Any of those, plus dragging a file onto the window or launching `ac3gui path/to/file` from a
 shell, works from the first-run screen or the workbench alike — a WAV becomes a source, an
-already-encoded `.ac3`/`.ec3` opens in the [stream player](open-stream.md) instead. An installed
-`ac3gui` also claims `.ac3`/`.ec3` as a file association on Linux (`ac3gui.desktop`'s
-`MimeType=audio/ac3;audio/eac3` plus the `ac3gui-mime.xml` shared-mime-info fragment that declares
-them) and on macOS (`Info.plist`'s `CFBundleDocumentTypes`/`UTExportedTypeDeclarations`,
-UX2), so opening one from the file manager arrives here the same way the command line does; there
-is no Windows leg. See [Loading a source](loading-a-source.md#01-input).
+already-encoded `.ac3`/`.ec3` opens in the [stream player](open-stream.md) instead. An `.ac4` file
+is not recognised there: dropped or named on the command line it is read as a source and refused,
+so open one with **Open stream…**, whose file picker has an AC-4 filter. `ac3gui` claims no file
+type with the desktop, so a double-click in the file manager does not reach it:
+
+- On Linux `ac3gui.desktop` has no `MimeType=` line, and the `ac3gui-mime.xml` fragment the package
+  installs only declares the `audio/ac3` and `audio/eac3` types with their `*.ac3` and `*.ec3`
+  globs.
+- On macOS `Info.plist` carries no document types.
+- The Windows installer points `.ac3` and `.ec3` at [Hearth](../hearth/index.md), the desktop
+  player, and at `ac3gui.exe` only in a package built without Hearth (the one case where a
+  double-click does start `ac3gui`).
+- Hearth is the registered opener for `.ac3` and `.ec3` on all three; no platform registers `.ac4`.
+
+See [Loading a source](loading-a-source.md#01-input).
 
 ## The window
 
@@ -66,7 +75,10 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
       section uses (see [Format & channels](format-and-channels.md#loudness-and-passthrough)),
       greyed out when nothing here can bitstream what that run actually produced. A run from
       Guided's **Play it on my receiver** destination (step 5) carries its auto-picked device
-      along, so Play needs no fresh pick.
+      along, so Play needs no fresh pick. Play is an AC-3 and E-AC-3 action: no receiver takes
+      AC-4 over IEC 61937 and the GUI has no path for it, so on a finished AC-4 run the button is
+      enabled by the device's AC-3 support and pressing it ends in an error status, the file being
+      no AC-3 or E-AC-3 stream.
     - Clicking a chip's summary text (the text is the click target, not the status square or
       padding) opens that run's details popover: status, rate, duration, size, frame count, the
       failure text if it failed, and the exact `ac3cli` command line as it stood *when that run
@@ -123,7 +135,9 @@ Minimum size 1280×900. Two panes, divided by a vertical rule:
   channel picker, routing, the assignment table, a Loudness section) and
   [Objects](objects-and-motion.md).
 - **Expert** adds the [Coding tools](coding-tools.md) and [Metadata](metadata.md) tabs (Metadata
-  absorbs the Loudness section, so it appears exactly once). [Live session](live-session.md)
+  absorbs the Loudness section, so it appears exactly once). With AC-4 chosen as the codec, an
+  [AC-4](format-and-channels.md#ac-4) tab takes their place, in Advanced as well as Expert; Guided
+  has no AC-4 tab. [Live session](live-session.md)
   joins the tab bar in Advanced and Expert whenever the live source is selected in the rail —
   sessions running or not — and carries a `live` badge while one runs.
 
