@@ -165,6 +165,10 @@ PROSE_PATHS_UNCHECKED = {
     "planning/ac4.md": (
         "plan; proposes decoder, encoder and core libraries and sources that do not exist yet"
     ),
+    "planning/layout.md": "study; proposes a layout, paths and names that do not exist yet",
+    "planning/layout-inventory.md": (
+        "inventory; a dated snapshot of the tree, naming the paths the proposed layout moves"
+    ),
     "planning/roadmap-inventory.md": (
         "inventory; a dated snapshot (tree as of 2026-09-17) that names gaps against the "
         "tree, which go stale as work lands"

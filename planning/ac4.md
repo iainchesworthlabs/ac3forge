@@ -2443,6 +2443,21 @@ AC-3 and E-AC-3 alone, and a few pages describe `ac4dec::` and `ac4enc::` namesp
 not have. The user found a program called `ac3cli` doing AC-4 wrong in itself, and took renaming the
 programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's scheme S3 costed.
 
+On 2026-09-29 the user extended the ask from the programs to the whole tree: "while this started out
+as an AC3 or an EAC3 based application, it now supports AC4 and it's kind of weird to say it's an AC3
+XYZW ... Hearth should be Hearth, not AC3 Hearth. Forge should be Forge ... it may do other things in
+the future if there was like an AC5 or DTS or whatever", and to where the code sits: "the old stuff is
+over here in forge and the new AC4 stuff's over here which is two folders higher, not as a sibling,
+it's all kind of weirdly structured". N1 is now two tasks that share one quiet window after the
+current wave of phase branches has merged, N1B first:
+
+- **N1A** names the programs and what they register with the system (below).
+- **N1B** names and lays out the libraries. It is studied in [The layout of `src/`](layout.md), with
+  the inventory it reads from in [layout-inventory.md](layout-inventory.md); the recommendation and
+  the decisions it puts to the user are there.
+
+**N1A: the programs.**
+
 - The programs take their members' names, which the user chose on 2026-09-26 ("I like option b for
   program names"): `ac3cli` becomes `forge`, `ac3gui` `forge-gui`, `ac3hearth` `hearth` and
   `ac3crucible` `crucible`, and Hearth's test sink and server `hearth-testsink` and
@@ -2453,19 +2468,42 @@ programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's s
   four shells, the man page, the Homebrew formula and cask, winget's aliases, the desktop entries
   and bundle identifiers, the Windows file-type command lines, the firewall rules' names and the
   translation catalogues named after the programs; `ac3forge <version>` as the version line, as
-  now.
+  now. Nothing is published, so the decisions of 2026-09-29 drop the kept-working period: the old
+  names are not kept, and no launcher is written.
 - Wording that names the formats the family handles, AC-4 among them, wherever it says AC-3 and
   E-AC-3 alone.
-- The family's name, the library's identifiers, the packages' names and the C API stay.
 
 At a point where few phase branches are open, since every branch touches the programs' names.
 
-**Exit:** the programs build and install under their new names, the old names still run and say the
-new one, every test and document uses the new names, and no page or package description names AC-3
-and E-AC-3 as the family's only formats; the documentation gates pass.
+**Exit (N1A):** the programs build and install under their new names, every test and document uses
+the new names, and no page or package description names AC-3 and E-AC-3 as the family's only
+formats; the documentation gates pass.
 
-**Verified by:** `ac3tests` and the CLI tests under the new names; the package checks; a search for
-the old names and the stale phrases; `mkdocs build --strict` and `tools/checks/check_doc_paths.py`.
+**Verified by (N1A):** `ac3tests` and the CLI tests under the new names; the package checks; a search
+for the old names and the stale phrases; `mkdocs build --strict` and
+`tools/checks/check_doc_paths.py`.
+
+**N1B: the libraries.**
+
+- The family is named "ICL Forge" (organisation `iainchesworthlabs`; identifiers `iclforge`,
+  `ICLFORGE_`) in place of `ac3forge`: plain `forge` is taken on PyPI, npm, crates.io and Homebrew core,
+  and `iclforge` and `icl-forge` are free. The programs keep the plain names above.
+- Nothing is published: no package is on a registry, and Sendspin and the ESP32 firmware have not left
+  this repository. The C API prefix, the CMake package, the Kconfig prefix, the environment variables
+  and the wire strings are therefore renamed outright, with no shim. The costs are GitHub's: the
+  repository's name, the Pages address, existing release tags and asset names, and the packaging files.
+- N1B is layout and naming only: no algorithm changes and every output byte stays the same. It covers
+  where the code sits, the C++ namespaces, the header roots and the CMake target names. The duplicated
+  DSP (FFT, MDCT, QMF and resampler in `src/forge` and `src/ac4core`) is a later phase.
+- The study recommends AC-3 and E-AC-3 as `src/ac3` beside the AC-4 libraries, over five codec-blind
+  libraries cut out of `src/forge`, in stages S0 to S6 with N1A in the same freeze.
+
+**Exit (N1B):** the tree has the layout the user chose, in the stages the study sets out, each proven by
+the builds, the whole `ac3tests`, the pinned bitstream hashes and the bytes of a fixed CLI corpus;
+a check states the dependency direction between libraries and passes; the documentation gates pass.
+
+**Verified by (N1B):** the prototype in [the study](layout.md#what-the-prototype-found) for the design;
+for the execution, each stage's proof in [its section](layout.md#h-proof-per-stage).
 
 ## Decisions
 
