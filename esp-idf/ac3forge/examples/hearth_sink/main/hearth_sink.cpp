@@ -437,8 +437,15 @@ bool begin_play(Session& session, const std::function<void()>& on_source_open = 
     config.volume = g_volume.load();
     config.sample_rate_hz = kSampleRate;
 #if CONFIG_AC3FORGE_AC4
-    config.ac4.core = CONFIG_AC3FORGE_EXAMPLE_AC4_CORE != 0;
-    config.ac4.pcm_hash = CONFIG_AC3FORGE_EXAMPLE_AC4_PCM_HASH != 0;
+    // The location can ask for what the Kconfig does not: a query of decoding=core
+    // is core decoding for this play, and hash=off is no hash, so that one image
+    // measures both modes and a run with the hash off is the control for the time
+    // the hash is taken to have cost. Read from the location the source was given.
+    const std::string_view location{player::source_location()};
+    config.ac4.core = CONFIG_AC3FORGE_EXAMPLE_AC4_CORE != 0 ||
+                      location.find("decoding=core") != std::string_view::npos;
+    config.ac4.pcm_hash = CONFIG_AC3FORGE_EXAMPLE_AC4_PCM_HASH != 0 &&
+                          location.find("hash=off") == std::string_view::npos;
     // The play's own demand on the heap, which report_end prints: what was free
     // as it began, and the least that was free from there to its end, read with
     // the heap monitor rather than sampled (planning/esp32-stream-set.md has why
@@ -810,7 +817,11 @@ extern "C" void app_main() {
         return;
     }
     g_layout = *layout;
+#if CONFIG_AC3FORGE_AC4
+    std::printf("ac3forge hearth_sink: AC-3, E-AC-3 or AC-4 onto %s\n", g_layout.text().data());
+#else
     std::printf("ac3forge hearth_sink: AC-3 or E-AC-3 onto %s\n", g_layout.text().data());
+#endif
 
     g_commands = xQueueCreate(4, sizeof(Command));
     g_player_mutex = xSemaphoreCreateMutex();

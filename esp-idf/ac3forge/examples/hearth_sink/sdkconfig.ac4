@@ -15,3 +15,8 @@
 # and in practice for one with PSRAM: a decoder needs more than internal RAM has
 # (docs/platforms/bare-metal/esp32-p4.md, AC-4).
 CONFIG_AC3FORGE_AC4=y
+
+# The decode task's stack: today's decoder uses about 50 KB of it (the parser holds a
+# stream's element tables as locals), and at the default 32 KB the first play of a
+# stream ends in a stack overflow. stream.decode_stack_free says what a play left.
+CONFIG_AC3FORGE_EXAMPLE_DECODE_STACK_BYTES=65536

@@ -43,11 +43,12 @@ config AC3FORGE_AC4
         Only parts with a floating-point unit offer it: the fixed-point
         tier of the AC-4 decoder is a later phase of planning/ac4.md.
 
-        The decoder holds about half a megabyte at 2.0 and more at 5.1 and
-        wider: PSRAM territory (CONFIG_SPIRAM_USE_MALLOC), and more than the
-        internal RAM of any part this component supports. See
-        docs/platforms/bare-metal/esp32-p4.md for what an ESP32-P4 does with
-        it.
+        The decoder holds about a megabyte at 2.0 and more at 5.1 and wider,
+        which is more than the internal RAM of any part this component
+        supports: a part that offers it has PSRAM, and hands its heap to it
+        (CONFIG_SPIRAM_USE_MALLOC). Its decode task wants a stack of about
+        50 KB. docs/platforms/bare-metal/esp32-p4.md has what a stream of each
+        kind held on an ESP32-P4, and how fast it decoded.
 
 # An int rather than a choice, so it reaches C++ as a plain constant: the
 # component reads no configuration through the preprocessor.

@@ -181,8 +181,8 @@ struct PlayerConfig {
         // FNV-1a over the bit pattern of every sample the decoder hands over,
         // in delivery order (PlayerStats::ac4_pcm_hash), which is what says
         // whether the float output is the same on the host and on this part
-        // (decision 26). Costs about a microsecond a sample and is timed, so
-        // that PlayerStats::ac4_hash_us can be taken back out of decode_us.
+        // (decision 26). It takes time, which is measured, so that
+        // PlayerStats::ac4_hash_us can be taken back out of decode_us.
         bool pcm_hash = false;
     };
     Ac4Options ac4;
