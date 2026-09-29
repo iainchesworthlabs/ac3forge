@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -249,6 +250,16 @@ TEST_CASE("pairing store: sessions look keys up while the window pairs and forge
                 lookups.fetch_add(1);
             }
         });
+    }
+    // The sessions have to be looking keys up before the window starts writing, or
+    // nothing here is concurrent. The 200 rounds below take a few milliseconds, and on a
+    // busy machine (ctest -j on a four-core runner) a thread that is still starting
+    // when they end has looked nothing up: on hosted Windows this case failed on
+    // `lookups > 0` at the end, with lookups at 0, in every parallel run. The wait is
+    // bounded, so a machine that never schedules them fails that check and does not hang.
+    const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (lookups.load() == 0 && std::chrono::steady_clock::now() < give_up) {
+        std::this_thread::yield();
     }
     for (int round = 0; round < 200; ++round) {
         const auto client = key(static_cast<std::uint8_t>(round % 4));

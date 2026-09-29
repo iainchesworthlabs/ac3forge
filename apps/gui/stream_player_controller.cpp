@@ -2,8 +2,6 @@
 
 #include "ac3/internal/profiling.hpp"
 
-#include <QtConcurrent/QtConcurrentRun>
-
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
@@ -368,10 +366,16 @@ DecodeOutcome decode_stream_to_memory(const QString& path,
 
 StreamPlayerController::StreamPlayerController(QObject* parent) : QObject(parent) {}
 
-// Out-of-line even though it is just = default: sink_ is a
-// unique_ptr<ac3::audio::MonitorSink>, forward-declared in the header - see
-// ObjectDecodeController's own identical ~ObjectDecodeController() comment.
-StreamPlayerController::~StreamPlayerController() = default;
+// Out-of-line: sink_ is a unique_ptr<ac3::audio::MonitorSink>, forward-declared
+// in the header - see ObjectDecodeController's own identical
+// ~ObjectDecodeController() comment. It also ends the workers before anything
+// they read goes away: the playback loop runs until should_play_ goes false,
+// and a decode or export still going posts its result back to `this` when it
+// finishes (see background_jobs.hpp).
+StreamPlayerController::~StreamPlayerController() {
+    should_play_.store(false, std::memory_order_relaxed);
+    jobs_.wait();
+}
 
 QString StreamPlayerController::summaryLine() const {
     if (!result_) {
@@ -499,7 +503,7 @@ void StreamPlayerController::decodePath(const QString& path) {
         presentation_index_ >= 0
             ? std::optional<std::size_t>{static_cast<std::size_t>(presentation_index_)}
             : std::nullopt;
-    std::ignore = QtConcurrent::run([this, path, presentation] {
+    jobs_.run([this, path, presentation] {
         auto outcome = decode_stream_to_memory(path, presentation);
         QMetaObject::invokeMethod(this, [this, outcome = std::move(outcome)]() mutable {
             busy_ = false;
@@ -543,7 +547,7 @@ void StreamPlayerController::play() {
     // see splayer_detail::RawResult's own header comment on why a raw
     // reference into result_ here would be a dangling-reference hazard if
     // openFile() loaded a second file while this worker is still mid-flight.
-    std::ignore = QtConcurrent::run([this, result = result_] {
+    jobs_.run([this, result = result_] {
         std::uint64_t at = read_frame_.load(std::memory_order_relaxed);
         const std::size_t channels = result->channels.size();
         ac3::analysis::LevelMeter meter{result->acmod, result->lfe, result->sample_rate_hz,
@@ -702,7 +706,7 @@ void StreamPlayerController::exportDecodedWav(const QUrl& url) {
     export_error_.clear();
     emit exportingChanged();
 
-    std::ignore = QtConcurrent::run([this, path, result = result_] {
+    jobs_.run([this, path, result = result_] {
         const auto written = ac3::io::write_wav_f32(path.toStdString(), result->channels,
                                                      result->sample_rate_hz);
         QString error;
@@ -736,7 +740,7 @@ void StreamPlayerController::exportObjects(const QUrl& url) {
     export_error_.clear();
     emit exportingChanged();
 
-    std::ignore = QtConcurrent::run([this, dir, result = result_] {
+    jobs_.run([this, dir, result = result_] {
         QString error;
         std::filesystem::create_directories(dir.toStdString());
         for (std::size_t i = 0; i < result->object_audio.size(); ++i) {

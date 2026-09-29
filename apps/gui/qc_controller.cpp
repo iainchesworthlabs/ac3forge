@@ -1,7 +1,6 @@
 #include "qc_controller.hpp"
 
 #include <QVariantMap>
-#include <QtConcurrent/QtConcurrentRun>
 
 #include <algorithm>
 #include <array>
@@ -419,6 +418,8 @@ MeasureOutcome measure_file(const QString& path, std::optional<std::size_t> pres
 
 QcController::QcController(QObject* parent) : QObject(parent) {}
 
+QcController::~QcController() { jobs_.wait(); }
+
 QString QcController::summaryLine() const {
     if (!result_) {
         return QString();
@@ -585,7 +586,7 @@ void QcController::measurePath(const QString& path) {
         presentation_index_ >= 0
             ? std::optional<std::size_t>{static_cast<std::size_t>(presentation_index_)}
             : std::nullopt;
-    std::ignore = QtConcurrent::run([this, path, presentation] {
+    jobs_.run([this, path, presentation] {
         auto outcome = measure_file(path, presentation);
         QMetaObject::invokeMethod(this, [this, outcome = std::move(outcome)]() mutable {
             busy_ = false;
