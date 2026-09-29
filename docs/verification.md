@@ -25,8 +25,9 @@ In rough order of strength:
    the encoder-space searches produce are strict-decoded with
    `-err_detect crccheck+bitstream+buffer+explode` (and `-xerror`, where the script reads the
    exit code), which fails on a CRC error, a bitstream violation or a buffer problem rather than
-   concealing it. The gate runs in the pull-request gate, the matrix and the searches nightly in
-   FFmpeg Validate. FFmpeg has no AC-4 decoder, so for AC-4 it checks framing only.
+   concealing it. The gold-reference gate does this in the pull-request gate; the matrix and the
+   searches do it nightly in FFmpeg Validate. FFmpeg has no AC-4 decoder, so for AC-4 it checks
+   framing only.
 3. **Independent Python transcriptions.** `tools/` holds second implementations of the spec
    pseudocode, written from the standard separately from the C++: the §7.2.2 bit allocation, the
    Tables 7.29/7.30 DRC lookups, MDCT goldens. Agreement between two transcriptions of the same
@@ -143,9 +144,11 @@ flags and the CI jobs that run them — is in [Oracles](https://github.com/iainc
 
 CI has three stages ([CI for many agents](ci-agentic.md)): the pull-request gate, which builds
 Linux GCC and runs every `ctest` case and the gold-reference gate (the merge queue adds Windows
-MSVC and the Qt GUI); the run after each merge to `main`, which covers the compilers, operating
-systems and architectures the gate does not; and the nightly run, which adds the sanitizers,
-coverage and FFmpeg Validate. Fuzzing and the other scheduled workflows are separate.
+MSVC, the Qt GUI, and for a change under `src/` the
+[performance and memory comparisons](performance-trend.md)); the run after each merge to `main`,
+which covers the compilers, operating systems and architectures the gate does not; and the
+nightly run, which adds the sanitizers, coverage and FFmpeg Validate. Fuzzing and the other
+scheduled workflows are separate.
 
 | Check | Codecs | Runs |
 |---|---|---|
