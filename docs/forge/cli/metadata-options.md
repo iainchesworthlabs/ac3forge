@@ -16,7 +16,9 @@ and the object-signing flags below, and `dialnorm=auto` is silently inert on `at
 (an assembled object set has no single fixed layout to measure a whole-programme loudness
 against). The two ingest commands `atmos-adm` and `atmos-iab` build the same `AtmosEncoder`
 config, so they take `dialnorm=<n>`, `fast-mdct=off`, `joc-domain=` and `numblkscod=` as well, but
-not the object-signing flags. Every command honors `quiet`, `verbose` and `--help`:
+not the object-signing flags. With `codec=ac4` the three object commands write AC-4 instead and read
+`coding=`, `dialnorm=<1..31>` and, on `atmos-encode`, `crc=`; AC-4's options have their own section,
+[AC-4 options](#ac-4-options), below. Every command honors `quiet`, `verbose` and `--help`:
 
 ```text
 metadata options (any order, after the positional arguments):
@@ -86,16 +88,19 @@ metadata options (any order, after the positional arguments):
   couple            enable channel coupling - honored by 'encode' and 'sine' ('sine' can also
                     spell it as a 'c' layout suffix); E-AC-3 coupling is the tools argument's
                     cpl token instead
-  keep-partial      encode/eac3-encode/atmos-encode: if the run fails partway, keep whatever
-                    frames were already encoded (named beside the intended output as
+  keep-partial      encode/eac3-encode/atmos-encode/atmos-cbi: if the run fails partway, keep
+                    whatever frames were already encoded (named beside the intended output as
                     <name>.partial.<ext>) instead of discarding them - off by default, matching
                     the GUI's own keep-partial-output preference
   fast-mdct=off     force the direct §8.2.3.2 forward MDCT instead of the default §7.9.4 fast
-                    path (identical streams to within ~3e-12 max relative coefficient error;
-                    the direct form is the validation oracle) - applies wherever this command
-                    encodes, incl. atmos/record/live/eac3-sine/eac3-encode; eac3-encode's
-                    [tools] positional can also reach this field via a bare nofastmdct token,
-                    which wins if both are given; bare fast-mdct (the old opt-in) is a no-op
+                    path (coefficients within ~3e-12 max relative error of the direct form, so
+                    a stream differs only where that tips a quantisation decision; the direct
+                    form is the validation oracle) - applies wherever this command
+                    encodes, incl. atmos/record/live/eac3-sine/eac3-encode, and wherever
+                    decode/monitor/live reconstruct JOC objects under joc-domain=mdct;
+                    eac3-encode's [tools] positional can also reach this field via a bare
+                    nofastmdct token, which wins if both are given; bare fast-mdct (the old
+                    opt-in) is a no-op
   fast-imdct=off    decode: force the direct §7.9.4 step-3 inverse instead of the default
                     radix-4 FFT evaluation - the decode-side mirror of fast-mdct=off above,
                     with the same relationship to its oracle (both codecs; bare fast-imdct,
@@ -131,9 +136,39 @@ metadata options (any order, after the positional arguments):
   delta=off         skip §7.2.2.6 delta bit allocation wherever this command encodes.
                     For eac3-encode, the equivalent spelling inside the fourth positional
                     [tools] argument is nodelta; it is not a tools=nodelta key/value option
+  fgaincod=<code>   pin §7.2.2.4's fast gain (Table 7.11) for the whole encode instead of
+                    letting the encoder choose it - auto (the default) or 0..7, where a higher
+                    code leaks more of the fast masking curve. auto is each codec's own
+                    behaviour and they differ: AC-3 follows a measured rate curve, because
+                    fgaincod rides an element it already sends every block; E-AC-3 leaves
+                    Table E1.4's implied 0x4 and writes nothing, because there any other code
+                    opens a per-block fgaincode element in all six blocks (1 + 3*(nchans +
+                    cplinu) bits each). Pinning it on eac3-encode pays that cost and takes the
+                    code out of search='s candidate set
+  numblkscod=<N>    atmos* encode: 0-3 (default 3), the short syncframes of §E2.3.1.4 - see
+                    the tools token below, whose numblkscod:N this is for the commands that
+                    have no [tools] positional
+  bed-only          decode: render an Atmos stream's 5.1 bed and skip §6 JOC object
+                    reconstruction. The bed is bit-identical either way - this is a memory
+                    option, not a quality one: reconstruction needs an
+                    oba::joc::ReconstructionState (147,504 bytes in one block) plus a QMF
+                    pair, ~233 KB together, which does not fit on every target the library
+                    builds for (see docs/platforms/bare-metal/esp32-s3.md). Harmless on a
+                    stream with no object layer
+  sign-objects      atmos/atmos-path/atmos-encode/atmos-cbi: write a keyed EMDF object
+                    signature (needs signing-key=); see docs/concepts/object-signing.md
+  verify-objects    decode/monitor: check each frame's EMDF object signature against
+                    signing-key= instead of just playing it - a mismatch refuses the command;
+                    omitted (the default) decodes signed and unsigned streams alike, unchecked
+  signing-key=<path>  the key file sign-objects/verify-objects use (or
+                    AC3FORGE_SIGNING_KEY_FILE / AC3FORGE_SIGNING_KEY)
   verify            eac3-encode: decode every access unit as it is encoded and diff the
                     decoder's model against the encoder's own, refusing the run at the first
                     disagreement - off by default, since it roughly doubles the work
+  bap-census=<path> decode (AC-3 and E-AC-3): write a JSON census of the decode, per coded
+                    stream, of how many (block, bin) pairs the allocator gave zero bits - the
+                    evidence tools/checks/compare_wav.py's masked comparison rests on; a
+                    verification aid, refused for AC-4 and by every other command
 
 qc options (qc; any order, after the positional arguments):
   preset=<name>     gate the measurement against a named delivery spec
@@ -161,7 +196,10 @@ for no make-up. Both apply to
 E-AC-3 decode too, matching the legacy AC-3 decoder — `.ec3` input no longer accepts and silently
 ignores them. `fast-imdct=off` and `mode=` select the inverse transform's evaluation and apply to
 both codecs' decode alike. `monitor` and `spatial` take the same four: all three commands build
-one `ac3::DecoderConfig` from these options and hand it to the same decoder.
+one `ac3::DecoderConfig` from these options and hand it to the same decoder. AC-4 has neither
+`drc=` nor `heavy`: its decoder takes an `output-level=` and its own `drcmode=` names (see
+[AC-4 options](#ac-4-options)), and `decode` given `drc=` or `heavy` with an AC-4 stream names
+them in a warning and ignores them.
 
 See [Metadata](../../library/metadata.md) for what each of these fields actually is at the library
 level (`dynrng`, `compr`, `dialnorm`, downmix levels) — the CLI tokens above map directly onto
@@ -724,6 +762,10 @@ for a script that wants a hard failure rather than an automatic re-encode. The d
 (no `device_index` given) is unaffected either way: its capabilities were never probed before
 this option existed either, and it is taken at its word exactly as before.
 
+AC-4 is the exception to both paths: no receiver found takes it over IEC 61937, so `play` decodes
+an AC-4 stream to PCM on an ordinary output whatever the sink accepts, and `follow=off`, which
+asks for passthrough alone, refuses it (exit `4`).
+
 ```bash
 ac3cli play programme.ec3 2                # follows the sink (the default)
 ac3cli play programme.ec3 2 follow=off     # the old plain refusal instead
@@ -766,7 +808,7 @@ only *that* it did. `ac3cli help exit-codes` prints the same table.
 |---|---|
 | `0` | Success. |
 | `1` | Usage — a bad or missing argument, an unknown command or option, or a configuration the encoder cannot express (an illegal bitrate for a layout, more objects than a stream can carry). Retrying the same command line cannot help. |
-| `2` | Input — unreadable, absent, or not a valid AC-3/E-AC-3/WAV/ADM file, or a stream that stopped decoding part-way. |
+| `2` | Input — unreadable, absent, or not a valid AC-3/E-AC-3/AC-4/WAV/ADM file, or a stream that stopped decoding part-way. |
 | `3` | Output — the destination could not be created, written or finalized. |
 | `4` | Unavailable here — this build or this machine cannot run the command at all (no audio backend, no capture/render endpoint, an endpoint that refuses the format, a library this build was not configured with). The same command line may well succeed elsewhere. |
 | `5` | Runtime — the run started and then failed for none of the above reasons: a capture device that stopped delivering audio (the `record`/`live` watchdog), an output device that went away mid-playback (`play`, `monitor`, `identify`, `live`'s output legs), a loudness measurement with nothing above the gate, a signing pass that could not complete. |
@@ -775,6 +817,11 @@ only *that* it did. `ac3cli help exit-codes` prints the same table.
 
 `qc`'s long-standing contract is unchanged: exit `0` only when the file decodes cleanly **and**
 every requested gate passes. What is new is the non-zero half being named.
+
+Two paths return `1` where the table gives an input problem `2`: every failure of `probe`, and
+`decode` of an AC-3 or E-AC-3 stream whose independent substreams cannot be framed (`stream
+framing failed`, `no programmes in stream`). A script that gates on `2` for a bad input should
+test for `1` there as well.
 
 ```bash
 ac3cli qc out.ec3 preset=ebu-r128-s2
@@ -877,6 +924,64 @@ Omitting it takes the first programme the stream carries. When there is more tha
 command says which it picked and what else was there (`programme 0 of 2 (0, 1)`), so a
 multi-programme stream is never handled silently. Asking for a programme the stream does not
 carry is an error that lists the ones it does. Ignored for AC-3, which has no substream layer.
+AC-4 has no programmes: it chooses a presentation instead (below), and `decode` given `programme=`
+with an AC-4 stream names it in a warning and ignores it.
+
+## AC-4 options
+
+AC-4's options are described where the commands are ([`ac4-encode`](commands.md#ac4-encode),
+[presentations](commands.md#ac-4-presentations-presentation-language-associated),
+[immersive layouts](commands.md#ac-4-immersive-speakers-and-decoding),
+[objects](commands.md#ac-4-objects), [output level and DRC](commands.md#the-output-stage-channels-downmix-drcmode)).
+This section lists every key, the commands that read it and what it takes.
+
+**Reading AC-4.** `decode`, `monitor`, `play`, `qc`, `levels`, `loudness` and `transcode` choose a
+presentation the same way; the rest belong to the three that play or write the decoded audio.
+
+| Key | Commands | Takes |
+|---|---|---|
+| `presentation=<n>` | all seven | The presentation at position `n` of the table of contents, 0 to 1023 |
+| `presentation-id=<id>` | all seven | The presentation with that `presentation_id`, 0 to 1023 |
+| `language=<tag>` | all seven | A BCP 47 tag: the presentation that best meets it, ahead of `associated=` |
+| `associated=<service>` | all seven | `visually-impaired`, `audio-description`, `audio-description-subtitles`, `spoken-subtitles`, `emergency-information`, `hearing-impaired` or `commentary` |
+| `dialogue-gain=<dB>` | all seven | The dialogue against the music and effects, up to 12 dB and the stream's own maximum |
+| `associated-gain=<dB>` | all seven | The associated audio's gain, 0 dB or less |
+| `md-compat=<0..7>` | all seven | The `md_compat` level the decoder claims; 3 by default |
+| `conceal=repeat\|mute\|off` | `decode`, `monitor` | What stands in for a frame that will not decode; `off` by default |
+| `output-level=<dBFS>` | `decode`, `monitor`, `play` | The level the stream's dialnorm is taken to, -60 to 0; unset leaves the coded level |
+| `drcmode=<mode>` | `decode`, `monitor`, `play` | `default`, `home-theatre`, `flat-panel-tv`, `portable-speakers`, `portable-headphones` or `off`; every one but `off` needs `output-level=` |
+| `dialogue-enhancement=<dB>` | `decode`, `monitor`, `play` | 0 to 12 dB, no more than the stream's cap |
+| `headphones` | `decode`, `monitor`, `play` | The listener is on headphones |
+| `decoding=full\|core` | `decode`, `monitor`, `play` | The immersive element in full, or its 5.X.2 core |
+| `speakers=<layout>` | `decode`, `monitor`, `play` | `5.1`, `5.1.2`, `5.1.4`, `7.1`, `7.1.2` or `7.1.4` |
+| `channels=2\|1\|5.1\|as-coded`, `downmix=loro\|ltrt\|mono\|auto`, `mix-lfe`, `mix-lfe=on\|off` | `decode`, `monitor`, `play` | The fold of clause 6.2.17; `channels=5.1` folds a 7.X stream's last pair and is `transcode`'s too |
+| `syntax-trace=<file>` | `decode` | Every syntax element read, one a line |
+
+`decode` also takes AC-4's objects out as `objects_dir` and `adm_out`. The options only AC-3 and
+E-AC-3 read (`drc=`, `heavy`, `ltrt-phase=`, `fast-imdct`, `mode=`, `programme=`, `bed-only`,
+`joc-domain=`) are named and ignored by `decode` for an AC-4 stream, and `bap-census=` and
+`verify-objects` refuse it; AC-4's own are named and ignored for AC-3 and E-AC-3, and
+`channels=5.1` and `syntax-trace=` refuse them.
+
+**Writing AC-4.** `ac4-encode` takes every key below; the other commands that write AC-4 take the
+few noted in the last rows.
+
+| Keys | Takes |
+|---|---|
+| `frame-rate=`, `rate-mode=`, `codec-mode=`, `iframe-interval=`, `iframes=`, `fragment=`, `crc=` | The frame rate, how frames share the rate, the codec mode, and where I-frames fall; `crc=off` leaves a raw stream's sync frames without their CRC |
+| `experimental=<tools>`, `objects=<scene file>` | The tools no outside reader has checked, and the scene an object stream is written from |
+| `dialnorm=`, `loudness=`, `drc=`, `drc-home-theatre=`, `drc-flat-panel-tv=`, `drc-portable-speakers=`, `drc-portable-headphones=` | The dialogue level, the measured loudness values, and the DRC profile for all four decoder modes or for one |
+| `cmixlev=`, `lorocmixlev=`, `ltrtcmixlev=`, `surmixlev=`, `lorosurmixlev=`, `ltrtsurmixlev=`, `lfemix=`, `dmixmod=`, `loro-correction=`, `ltrt-correction=` | The stereo downmix's gains, its preferred method and its loudness corrections |
+| `height-downmix=`, `height-gain=` | The immersive layouts' downmix to 5.X |
+| `dialogue-channels=`, `dialogue-stem=`, `dialogue-method=`, `dialogue-max-gain=`, `dialogue-hybrid=` | Dialogue enhancement |
+| `substreamN=`, `substreamN-<option>=`, `presentationN=`, `presentationN-<option>=` | Further substreams (N from 1 to 32) and the presentations that play them (N from 1 to 64) |
+| `syntax-trace=<file>` | Every syntax element written, one a line |
+| `atmos-encode`, `atmos-adm`, `atmos-iab` with `codec=ac4` | `coding=ajoc\|direct`, `dialnorm=1..31`, and on `atmos-encode` `crc=` |
+| `transcode` to `.ac4` or with `codec=ac4` | `drc=<profile>` and `dialnorm=`; the AC-3 and E-AC-3 options with no AC-4 counterpart are refused |
+| `record`, `live` with `codec=ac4` | `layout=` (mono, stereo, 5.0 or 5.1), `container=` (not `mkv`), `dialnorm=<1..31>` and `drc=`'s profile |
+
+`ac4-encode` refuses `heavy`, `heavy2`, `drc2=`, `dialnorm2=`, `mixmeta`, `infomdat` and `annexd`,
+which describe AC-3 and E-AC-3 metadata AC-4 has no counterpart for.
 
 ## Stream-tool options (`transcode`, `metadata`)
 
@@ -1116,8 +1221,12 @@ Optional positional arguments, when omitted:
   1000 Hz at 50% amplitude, and the three that take `[layout]` default to `stereo`.
 - `orbit` — 8 s at 448 kbps, 4 s per orbit.
 - `atmos` — 8 s at 448 kbps, 4 objects, 6 s per orbit.
+- `encode`, `eac3-encode`, `ac4-encode` — 192 kbps; `atmos-encode`, `atmos-cbi`, `atmos-adm`,
+  `atmos-iab` — 448 kbps; `atmos-path` — 8 s at 448 kbps, with as many objects as its scene file
+  describes.
 - `record` — 5 s at 192 kbps from device 0.
 - `live` — 10 s at 192 kbps.
+- `fmp4` — 48 frames per fragment.
 - `play`, `monitor`, `spatial` — device `-1`, the default output.
 - `transcode` — 448 kbps (192 for AC-4), and the source's own layout (folded to 5.1 when the
   target cannot code it).
@@ -1126,14 +1235,19 @@ Optional positional arguments, when omitted:
 ## What the encoder accepts
 
 - WAV sample rates: AC-3 takes 32, 44.1 or 48 kHz (Table 5.6); E-AC-3 additionally takes the
-  Annex E `fscod2` half rates 16, 22.05 and 24 kHz.
-- The bit rate must be one of the 19 nominal AC-3 rates (Table 5.18), 32 through 640 kbps.
+  Annex E `fscod2` half rates 16, 22.05 and 24 kHz; AC-4 takes 48 or 44.1 kHz.
+- AC-3's bit rate must be one of the 19 nominal rates (Table 5.18), 32 through 640 kbps. E-AC-3
+  signals its frame size directly, so `eac3-encode` takes rates off that table, up to what an
+  11-bit `frmsiz` can signal (1024 kbps a substream at 48 kHz) and down to what holds the coded
+  channels; the encoder says which limit a rate broke. AC-4 takes 8 to 3 000 kbps, and refuses a
+  rate that cannot hold a substream's least frame.
 - `record` (and `live mode=channels`) encodes onto `layout=` — `stereo` by default, anything up
   to 7.1.4 — and places the endpoint's channels onto it by direction, not by index: a device
   narrower than the layout leaves the rest silent, a wider one folds down per §7.8. See
   [`layout=` and `codec=`](#layout-and-codec).
-- The Atmos commands take 1 to 15 objects — the bed's LFE is the 16th, and TS 103 420 §8.3.2.2
-  caps the total at 16.
+- The E-AC-3 Atmos commands take 1 to 15 objects — the bed's LFE is the 16th, and TS 103 420
+  §8.3.2.2 caps the total at 16. With `codec=ac4` an object stream holds 64 objects at most, one
+  of them an LFE object, at 2 048 samples a frame.
 
 ## Command-specific notes
 
@@ -1145,11 +1259,12 @@ Optional positional arguments, when omitted:
 - **`mkv`** reads format, packet boundaries, sample rate and channel count from the bitstream
   itself, so it cannot be told the wrong ones. E-AC-3 dependent substreams are grouped into their
   access unit and counted as the channels they render.
-- **`spdif`** wraps an already-encoded AC-3 or E-AC-3 file's IEC 61937 bursts as a 2-channel
-  16-bit PCM WAV, playable bit-exactly (100% volume, no mixing) into an S/PDIF or HDMI output to
-  light up a receiver's Dolby Digital indicator. Detects AC-3 vs. E-AC-3 from the stream itself
-  (`bsid`); E-AC-3's carrier runs at four times the content sample rate (WASAPI's own
-  `make_eac3_format` convention), which is legal though unusual for a plain PCM16 file. The GUI's
+- **`spdif`** wraps an already-encoded AC-3, E-AC-3 or AC-4 file's IEC 61937 bursts as a 16-bit
+  PCM WAV, playable bit-exactly (100% volume, no mixing) into an S/PDIF or HDMI output to light up
+  a receiver's Dolby Digital indicator. It detects the codec from the stream itself (`bsid`, or
+  AC-4's sync word); E-AC-3's carrier runs at four times the content sample rate (WASAPI's own
+  `make_eac3_format` convention), which is legal though unusual for a plain PCM16 file. The WAV is
+  two channels, except that an AC-4 stream needing the HBR16 burst goes out as eight. The GUI's
   S/PDIF container option is this same command, run automatically as the second half of a
   two-command encode — see [GUI → Format & channels](../gui/format-and-channels.md).
 - **`atmos`** encodes objects orbiting the room at different heights and rates as a 5.1 E-AC-3 bed
@@ -1157,7 +1272,9 @@ Optional positional arguments, when omitted:
   Atmos". **`atmos-encode`** does the same but makes each channel of a real source file an object
   instead of synthesizing motion. Its optional `[paths.txt]` (same format `atmos-path` reads)
   authors that motion instead of the default static, fanned-out placement — keyed by WAV channel
-  index, so an object index the file doesn't mention keeps its default placement unchanged.
+  index, so an object index the file doesn't mention keeps its default placement unchanged. With
+  `codec=ac4`, `atmos-encode` writes the objects as AC-4 objects instead (see
+  [AC-4 objects from a WAV](commands.md#ac-4-objects-from-a-wav)).
 - **`atmos` mode**: `objects` (default) writes the JOC+OAMD container; `bed51` omits it so the
   5.1 bed still plays on a decoder that would otherwise refuse an object container it can't
   validate, instead of falling back to the bed on its own. `bed51` drops the TS 103 420 §8.3.1
@@ -1167,8 +1284,9 @@ Optional positional arguments, when omitted:
   [Atmos & JOC](../../concepts/atmos-joc.md) for why a decoder can tell the difference at all.
 - **`sign-objects`** (with **`signing-key=<path>`**): signs the object container's EMDF protection
   tag so a validating decoder reconstructs the objects instead of playing the bed. Honored by
-  `atmos`, `atmos-path` and `atmos-encode`; `atmos-adm` and `atmos-iab` do not take it. Off
-  unless you pass both — `sign-objects` alone with no key is an error. The key may also come from
+  `atmos`, `atmos-path`, `atmos-encode` and `atmos-cbi`; `atmos-adm` and `atmos-iab` do not take
+  it, and an AC-4 object stream (`codec=ac4`) has no such container to sign, so it is refused
+  there. Off unless you pass both — `sign-objects` alone with no key is an error. The key may also come from
   `AC3FORGE_SIGNING_KEY_FILE` / `AC3FORGE_SIGNING_KEY` instead of `signing-key=`. The key is never
   stored by the tool; the algorithm is in-tree but the key is yours to provision. Full details in
   [Object signing](../../concepts/object-signing.md).
@@ -1196,7 +1314,7 @@ Optional positional arguments, when omitted:
   284.7 dB for E-AC-3, with decodes 4.5–4.7× faster. `fast-imdct=off` forces the pseudocode's
   own direct sum — the reference form, and the oracle the fast path's tests validate against.
   Applies to both codecs; the `qc`, `levels` and playback decoders stay on the library default,
-  where a ~1e-12 difference cannot move a reported figure. Encoded output never depends on this
+  where a difference that small cannot move a reported figure. Encoded output never depends on this
   switch: the encoder's own internal inverse-transform uses are pinned to the direct form
   regardless. The bare `fast-imdct` word — the opt-in spelling from when this defaulted off —
   still parses and now names what already happens.
@@ -1207,8 +1325,9 @@ Optional positional arguments, when omitted:
   to reach for when two runs must agree bit-for-bit with the spec's stated arithmetic (comparing
   against an external reference decoder sample-for-sample, regenerating validation fixtures,
   chasing a suspected transform defect). `mode=performance` — the default state, so passing it
-  changes nothing — names the fast paths: same streams to within ~1e-12, encodes measurably
-  faster and decodes 4.5–4.7× faster. Tokens apply in order, so
+  changes nothing — names the fast paths: coefficients within ~3e-12 of the direct forward
+  transform and 7.8e-14 of the direct inverse, encodes measurably faster and decodes 4.5–4.7×
+  faster. Tokens apply in order, so
   `mode=reference fast-mdct=off` is redundant but harmless, and `mode=performance fast-imdct=off`
   runs a fast encode with a reference decode. `eac3-encode`'s `[tools]` positional still wins
   the forward-MDCT half if both are given, exactly as it does against `fast-mdct=off`.
@@ -1221,7 +1340,7 @@ Optional positional arguments, when omitted:
   moving objects), and correct only against a decoder given the same token. Use it to reproduce
   output from before 0.9.0, not for new material. Unlike `fast-mdct=off` / `fast-imdct=off` this
   is **not** part of `mode=` in either direction: those two are the same answer computed two
-  ways, agreeing to ~1e-12, while these are different answers — see
+  ways, agreeing to ~3e-12 or better, while these are different answers — see
   [Atmos & JOC](../../concepts/atmos-joc.md#which-domain-the-matrix-lives-in). Note that the two
   domains do not have the same latency, so a `decode` writing objects with `objects_dir=` gets
   them 576 samples behind the bed under `qmf` and 256 behind under `mdct`.

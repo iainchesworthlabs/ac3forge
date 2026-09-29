@@ -8,6 +8,13 @@ each sound does** list (the same rows in plain language), and the **Assign** jum
 [Input block](loading-a-source.md#01-input) — all writing the same state, so there is nothing to
 reconcile.
 
+That is the model for AC-3 and E-AC-3. With AC-4 as the codec and object mode off, `ac4-encode`'s
+rule holds instead: one source, in its own layout. A second source or an assigned channel is
+refused with *"AC-4 encodes one source in its own layout, as ac3cli ac4-encode takes a WAV file;
+remove the other sources and the assignment."*, and a start offset above 0 with *"AC-4 encodes the
+source as it is; set its start offset to 0."* In object mode the table decides the objects for
+AC-4 as it does for E-AC-3 (see [Objects & motion](objects-and-motion.md#ac-4-objects)).
+
 **+ Add files…** loads a second, third, … WAV alongside the primary rather than replacing it. A
 source whose rate doesn't match the primary's is resampled to it at load (see [Loading a
 source](loading-a-source.md#01-input)) rather than refused, so every source `plan::render`

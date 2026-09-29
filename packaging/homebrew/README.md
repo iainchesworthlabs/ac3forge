@@ -2,8 +2,20 @@
 
 `Formula/ac3forge.rb` packages `ac3cli` — the CLI only, built from the release source
 tarball. `Casks/ac3gui.rb` packages `ac3gui` — the GUI, as the prebuilt `.app` bundle from a
-release's DragNDrop `.dmg`. Both are staged here for local validation against this repo before
-being copied into a personal tap, **not** submitted to `homebrew-core`.
+release's DragNDrop `.dmg`. Both live here first and are copied into the personal tap
+[`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge),
+which is public and carries both at `v0.10.0-beta.1`. Neither is submitted to `homebrew-core`.
+
+```bash
+brew install iainchesworthlabs/ac3forge/ac3forge          # ac3cli, built from source
+brew install --cask iainchesworthlabs/ac3forge/ac3gui     # ac3gui.app, prebuilt
+```
+
+After a release, [`manifest-bump.yml`](../../.github/workflows/manifest-bump.yml) rewrites both
+files for the new tag and, when `HOMEBREW_TAP_TOKEN` is set, opens a pull request on the tap. The
+tap's `main` accepts only pull requests, and a person merges each one after validating on a macOS
+machine; the tap's pull requests #1 to #3 are the bumps to `v0.8.0-beta.2`, `v0.9.0-beta.1` and
+`v0.10.0-beta.1`. See [docs/releasing.md](../../docs/releasing.md#homebrew-formula-and-cask).
 
 ## Why a personal tap, not `homebrew-core`
 
@@ -29,12 +41,12 @@ staying library-only but pointed the other way: Homebrew formulae are for end-us
 `ac3forge-*-Darwin.dmg` (`cmake/Packaging.cmake`). A Cask, not a Formula, is the right shape
 for a bundled `.app` — Homebrew formulae build from source, and a Qt6 GUI app is idiomatically
 distributed prebuilt and signed (or, here, prebuilt and *not* Apple-signed — see the cask's own
-`caveats` block). `Casks/ac3gui.rb` now points at a real release: `v0.8.0-beta.2` is the first
-tag whose `macos-llvm` CI leg builds `AC3FORGE_BUILD_GUI=ON` (see
+`caveats` block). `Casks/ac3gui.rb` points at a real release, `v0.10.0-beta.1` today:
+`v0.8.0-beta.2` is the first tag whose `macos-llvm` CI leg builds `AC3FORGE_BUILD_GUI=ON` (see
 [docs/platforms/macos.md](../../docs/platforms/macos.md#gui-on-macos)), so it's the first
-`ac3forge-*-Darwin.dmg` that actually contains `ac3gui.app` — `version`/`sha256` are pinned from
-that release, not placeholders. Every release after this one still needs the same per-release
-bump the sibling Formula gets; see the cask file's own header comment.
+`ac3forge-*-Darwin.dmg` that actually contains `ac3gui.app`. Every release needs the same
+per-release bump the sibling Formula gets, which `manifest-bump.yml` makes; see the cask file's
+own header comment.
 
 ## Validating locally
 
@@ -53,7 +65,7 @@ tooling in this repo's CI, so this validation is manual, macOS-only, and not aut
 see [docs/releasing.md](../../docs/releasing.md#homebrew-formula-and-cask) for the per-release update
 flow.
 
-The cask now points at a real, downloadable `.dmg` (v0.8.0-beta.2), so it can be validated the
+The cask points at a real, downloadable `.dmg` (v0.10.0-beta.1), so it can be validated the
 same way, from a macOS machine with Homebrew installed:
 
 ```bash
@@ -62,5 +74,5 @@ brew install --cask ./packaging/homebrew/Casks/ac3gui.rb
 brew uninstall --cask ac3gui
 ```
 
-Not yet run for real — this repo's CI has no Homebrew, same as the Formula above, so this is
-manual and macOS-only too. Run it before copying the cask into the tap.
+This repo's CI has no Homebrew, same as the Formula above, so this is manual and macOS-only too.
+Run it before merging the tap's pull request.

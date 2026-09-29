@@ -191,19 +191,23 @@ Two things worth knowing before you start:
 
 ## macOS
 
-Builds, and is not packaged. The library's Core Audio process tap and device watcher, and
-Crucible's macOS platform half, are in the tree and build: on 2026-09-06 both macOS CI legs
-compiled, linked and ran the test suites — every test passed on Intel, and three of the window's
-eleven Qt Quick suites timed out on Apple Silicon. Nothing beyond that: a hosted runner has no
-audio device and no desktop session, so nothing has been captured, played, or launched on a Mac.
-There's no macOS package either — CPack's Crucible component is gated to Windows and Linux — so
-the only route is a source build with `-DAC3FORGE_BUILD_CRUCIBLE=ON`, the same those two CI legs
-use.
+Builds, and no release publishes it. The library's Core Audio process tap and device watcher, and
+Crucible's macOS platform half, are in the tree and build. Both macOS CI legs compile and link
+them, run the test suites, the window's Qt Quick suites among them, and package the application
+as `ac3forge-crucible-<version>-Darwin.zip`, whose contents `tools/ci/check_crucible_package.py`
+checks. That archive is a CI artifact and no release asset: a release's macOS package is the
+universal disk image of the runtime component. Beyond that nothing has run on a Mac. A hosted
+runner has a virtual sound device and a window session, and on the Apple Silicon one the first
+process tap never returned from `AudioDeviceCreateIOProcID`. The backend now refuses the tap
+unless `AC3FORGE_MACOS_PROCESS_TAP` is set in the environment, so on macOS Crucible lists the
+applications using sound and taps none of them. Nothing has been captured, played or launched on a
+desktop Mac. The route is a source build with `-DAC3FORGE_BUILD_CRUCIBLE=ON`, the same as those
+two CI legs use, or that CI archive.
 
 It needs no driver when it runs: macOS process taps mute an application where they capture it, so
 there's no silent device to install and no default output to move. What's still needed: a Mac
-with a desktop and an audio device, and a Developer ID certificate — the consent prompt doesn't
-fire for an unsigned binary.
+with a desktop and an audio device, and a run to find out whether the consent prompt needs a
+Developer ID certificate. On a hosted runner an unsigned binary was given a tap with no prompt.
 
 [The plan](design/promotion.md) has the detail.
 
@@ -231,9 +235,9 @@ dialog is shown once per user; closing it by any route, Escape included, counts 
 machine whose settings were carried over from the Desktop Atmos demo sees it once too, and the
 dialog says so, because the demo never explained this.
 
-The header then shows the path as a single line — `apps → stereo · Your Receiver`, or
-`⚠ apps heard direct → …` while the default output is still a device you can hear — and the
-Room rail carries the one button that fixes it.
+The header then shows the path as a single line, in capitals — `APPS → STEREO · YOUR RECEIVER ·
+5.1 BED ONLY`, or `⚠ APPS HEARD DIRECT → …` while the default output is still a device you can
+hear — and the Room rail carries the one button that fixes it.
 
 Quitting restores the previous default output when Crucible moved it; a default you moved by
 hand is left where you put it. Quitting means quitting from the tray, or closing the window with

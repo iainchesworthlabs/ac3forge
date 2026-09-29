@@ -53,7 +53,7 @@ with `Space` or `Return`:
 | Header | The Guided / Advanced / Expert switch, and the QC, Inspect, Open stream, Preferences and About buttons. |
 | Input rail | The File / Live capture switch, Choose WAV, Assign, and per source its own Remove and Start offset. |
 | Format tab | The presets, the codec, rate and container controls, the bed chips, the low-frequency chips and the extras. |
-| The tab bar | Format, Routing, Objects, Live session, Coding tools, Metadata — whichever the current tier shows. |
+| The tab bar | Format, AC-4, Objects, Live session, Coding tools, Metadata — whichever the current tier and codec show. |
 | Command bar | The `ac3cli` chip (which opens its popover, `Esc` closes it) and the Encode button. |
 | Runs strip | Each run's own chip, which opens that run's details, and its Cancel, Play, Show in folder, Details and More… buttons. |
 
@@ -161,7 +161,7 @@ Reachable by mouse, and not yet by keyboard:
 - **the CLIP box** on a channel meter, which clears that channel's clip latch;
 - **the first-run screen's** three cards;
 - **the "Coding tools and broadcast metadata →" link** that switches to Expert, below the
-  loudness block on the Routing tab.
+  loudness block on the Format tab in Advanced.
 
 Everything in that list already reports a role and a name, so a screen reader describes it
 correctly; what is missing is the tab stop and the key handling. Adding them is the same four lines
@@ -199,6 +199,17 @@ What they hold, in full:
 - `tst_localisation_pipeline.qml` runs with `AC3GUI_LOCALE=xx`, the pseudo-locale that decorates
   every string `lupdate` found, and asserts that the Guided segment's accessible name carries that
   decoration — so that name is the translated label rather than an English copy typed beside it.
+  `tst_e2e_settings.qml` makes the same point from the other side: it picks another language in
+  Preferences and asserts that the same segment's accessible name changes at once and comes back
+  when English is chosen again.
+- `tst_e2e_inspect.qml` asserts that the accessible description of the first object row in the
+  Inspect objects list begins with that object's decoded `x`, `y` and `z`.
+
+Six suites — `tst_e2e_encode.qml`, `tst_e2e_ac4.qml`, `tst_e2e_ac4_objects.qml`,
+`tst_ac4_encode.qml`, `tst_ac4_objects.qml` and `tst_e2e_settings.qml` — also look the Codec,
+Container, Channel coupling begin band and DRC profile controls and the per-object LFE send up by
+their accessible name to drive them, so renaming one of those controls fails a suite. None of the
+six asserts a role, a description or a tab stop.
 
 That is the whole of it. Nothing asserts the tab chain for the rest of the table under **What can be
 done without a mouse** — the header buttons, the input rail, the presets, the codec, rate and

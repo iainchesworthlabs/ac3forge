@@ -7,10 +7,9 @@ where the protocol lives. This directory is the machinery; that page is the
 method and the results.
 
 It exists because every quality number this project publishes is a waveform
-or model metric. `README.md` and `docs/verification.md` have carried "no
-listening test has been run" through nine releases, and ViSQOL's MOS-LQO —
-the closest thing here to a perceptual score — is a *prediction* of what a
-panel would say, not a panel.
+or model metric. `docs/verification.md` says no subjective listening test has
+been run, and ViSQOL's MOS-LQO — the closest thing here to a perceptual score
+— is a *prediction* of what a panel would say, not a panel.
 
 | | |
 |---|---|
@@ -37,9 +36,8 @@ read at all, and both are true of the material committed today:
   removing the band above the cutoff is audible. `reference_51.wav` carries
   0.059% of its energy above 3.5 kHz, so **both anchors are inaudible on both
   5.1 legs** and a MUSHRA session there cannot be scaled against any other
-  panel's. The stereo leg's anchors are fine. legacy item VX7 (real programme
-  material) is what fixes this; until then, run MUSHRA on the stereo leg and
-  ABX on the 5.1 legs.
+  panel's. The stereo leg's anchors are fine. Real programme material would
+  fix this; until then, run MUSHRA on the stereo leg and ABX on the 5.1 legs.
 - **Decoder complaints.** FFmpeg reports two out-of-range exponents decoding
   DEE's own committed stereo stream. That is audible, and it is that decoder
   reading that stream rather than DEE's encoder being worse — the flag rides
@@ -74,9 +72,10 @@ with their numbers, not quietly). ABX output carries an exact one-sided
 binomial p-value against the 0.5 guessing rate.
 
 **4. Land the results** in `docs/landscape.md`'s listening-test section,
-commit the response CSVs under `responses/`, and update the "no listening
-test has been run" sentences in `README.md` and `docs/verification.md` — they
-stop being true at that point and not before.
+commit the response CSVs under `responses/`, and update the sentences that
+say no listening test has been run, in `docs/verification.md` and at the top
+of `docs/landscape.md`'s listening-test section — they stop being true at
+that point and not before.
 
 ## What a session needs from a person
 

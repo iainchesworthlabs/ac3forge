@@ -4,11 +4,13 @@
 by phase — for using the application today, see [What it is](../index.md) and
 [Install and first run](../install.md) instead.
 
-!!! success "Status as of 2026-09-08: largely a record of work done"
-    Written 2026-09-04 as a plan; twenty-one of its phases now carry a completion record and
-    five remain open. Crucible exists, runs on Windows and Linux, and reached a real receiver
-    over PipeWire on 2026-09-05. What is still open is on macOS, where the platform half
-    compiles and has never been launched, and at the driver, which is test-signed only.
+!!! success "Where this stands: built and run on Windows and Linux; written but not run on macOS"
+    Written 2026-09-04 as a plan, and kept as the record of the work. Crucible exists, runs on
+    Windows and Linux, and reached a real receiver over PipeWire on 2026-09-05. What is open is
+    on macOS, where the platform half compiles, runs its test suites in CI and has never been
+    launched on a Mac, and at the driver, which is test-signed only.
+    [Where each phase stands](#where-each-phase-stands) says which parts are built and which are
+    only designed.
 
     The page plans the promotion of the Windows Desktop Atmos Demo
     ([`docs/platforms/windows-demo.md`](../../platforms/windows-demo.md)) into **AC3Forge
@@ -22,6 +24,26 @@ position in a room, and streams the result as live E-AC-3 JOC to a receiver. Fou
 short of being a product: it is named after a trademark it does not own, it exists only on
 Windows, it is documented as a footnote under Platform notes, and half its engine is welded to
 `platform/windows/` headers. This page is the work that closes each of those.
+
+## Where each phase stands
+
+The phase records further down are dated and stay as they were written. This table says what is
+built and what is not, against the tree today.
+
+| Phase | Built | Designed, or not settled |
+|---|---|---|
+| 1. Identity | The rename to `apps/crucible`, `ac3crucible`, `ac3::crucible` and `AC3FORGE_BUILD_CRUCIBLE`, and the settings migration from the demo | The driver keeps its "Desktop Atmos" device name until attestation signing ([Coordination](#coordination-with-the-driver-signing-session)) |
+| 2. The seams | `AudioDevices`, `SessionMonitor`, `Foreground`, `DefaultDevice` and `VirtualDevice`, with one `platform/<os>/` definition each | |
+| 3. Library, Linux | `Capture::start_process_loopback` and `DeviceWatcher` over PipeWire | |
+| 4. Linux platform half | All four seams, the silent device as a PipeWire node, X11 full-screen detection, icons from the theme and `.desktop` entries, the window, and a run on a Raspberry Pi 4B | X11 full-screen detection has been tested over a fake reader only; XRes pid validation is named and not taken; the upstream report for the Qt tray bug is not recorded |
+| 5. macOS | Both halves are written and compile, and the window's Qt Quick suites drive the seams on both macOS CI legs | The process tap is refused unless `AC3FORGE_MACOS_PROCESS_TAP` is set, since its first run hung; nothing has been launched, captured or played on a Mac; the full-screen check (`CGWindowListCopyWindowInfo`) is not written; the signal path's first station is still drawn where no silent device is needed |
+| 6. Product qualities | The first-run dialog, restore on quit, the diagnostics file, licence notices per platform, the accessibility pass, right-to-left layout, and six filled catalogues | A review of the six machine-made languages by a reader of each; a screen-reader pass (none has been run); keys for the 3D camera and for one side of a split pair |
+| 7. Docs | This guide | |
+| 8. CI and packaging | The Windows zip, the Linux tarball and `.deb` on x86_64 and aarch64, and a macOS archive as a CI artifact | No release has carried a Crucible package: the one release, `v0.10.0-beta.1`, is older than the rename. The Windows driver is in no package |
+| 9. Verification | On the Pi: the Linux tap, the silent device, and a bitstream over PipeWire that a receiver decoded | A Windows bitstream to a receiver; the driver on a normal machine; macOS at runtime |
+
+The window's Qt Quick suites are 16 files and 141 cases today
+([feature coverage](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/crucible/ui/tests/FEATURE_COVERAGE.md)).
 
 ## The name
 
@@ -49,7 +71,10 @@ What the rename touches is [Phase 1](#phase-1-identity).
 
 ## What promotion requires
 
-The gap between what exists and a product, in the order the phases take them.
+The gap between what exists and a product, in the order the phases take them. This section and
+the three after it ([What is already portable](#what-is-already-portable), [The silent device, per
+platform](#the-silent-device-per-platform) and [Library additions](#library-additions)) describe
+the code as it stood on 2026-09-04, before Phase 1. The phase records say what changed.
 
 | Area | Where it stands | What promotion needs |
 |---|---|---|
@@ -214,7 +239,9 @@ ALSA. Forcing PipeWire trades that for a path this project has never once seen w
 hardware, and which additionally needs a WirePlumber codec rule the user has to supply. So
 DR9's PipeWire row sits **on Crucible's critical path on
 Linux**, and the first hardware run has to answer it. Until it does, the position is that
-Crucible can tap applications on Linux and may have nowhere to send the result.
+Crucible can tap applications on Linux and may have nowhere to send the result. The first hardware
+run answered it on 2026-09-05 ([Phase 4](#phase-4-linux-platform-half)): a receiver read "5.1 DD+"
+from a bitstream sent over PipeWire, and "Atmos/DD+" from Crucible's own engine with a key loaded.
 
 `spatial` is the one capability with no cross-platform answer. `SpatialObjectSink` wraps
 Windows' `ISpatialAudioObjectRenderStream`; neither Linux nor macOS exposes an OS object
@@ -225,8 +252,8 @@ rules an in-repo binaural renderer out of scope and this plan does not reopen it
 ## Phases
 
 Each ends with something that runs and a written exit criterion, in the order they unblock each
-other. Phases 1 to 4 are the overnight tranche; 5 onward are recorded here so the shape is
-complete.
+other. Phases 1 to 4 were the first, overnight tranche; 5 onward were recorded so that the shape
+was complete.
 
 ### Phase 1: identity
 
@@ -493,16 +520,15 @@ places one, and encodes; the signal path renders with the null sink as the defau
     note has a Qt Quick case that takes the available branch on Windows and the no-display
     reason on the Linux leg.
 
-    [Hardware, to be recorded by the integrator after the Pi run: the Xephyr recipe
-    (`Xephyr :2`, `openbox`, `mpv --fs`; `DISPLAY=:2 XDG_SESSION_TYPE=x11 WAYLAND_DISPLAY=
-    /tmp/probe 20`) - the WM, the `full-screen pid -> session pid (mpv)` line, `none` after
-    `wmctrl -r mpv -b remove,fullscreen`, and `none` for a full-screen xterm running
-    pw-play; the unchanged Wayland refusal on the normal session; optionally the window in a
-    real X11 session.]
+    Not run in a real X11 session: the detection is tested over a fake reader, and no run of it
+    on the Pi is recorded here. The recipe that would settle it is a nested Xephyr on the Pi's
+    Wayland seat (`Xephyr :2`, `openbox`, `mpv --fs`, then the probe with
+    `DISPLAY=:2 XDG_SESSION_TYPE=x11 WAYLAND_DISPLAY=/tmp/probe 20`): it should print the
+    `full-screen pid -> session pid (mpv)` line, then `none` after
+    `wmctrl -r mpv -b remove,fullscreen` and `none` for a full-screen xterm running pw-play, and
+    the normal Wayland session should still refuse.
 
-Table under "What this plan cannot verify" (keep the Wayland row; add):
-
-| X11 full-screen detection | yes, in an X11 session or a nested Xephyr on the Pi | none |
+!!! success "Done 2026-09-05: the silent device is ephemeral, and the run on the Pi"
 
     **The silent device is ephemeral, and better for it.** It is a `libpipewire-module-adapter`
     node loaded on the application's own connection with `object.linger=false`, so it exists
@@ -726,8 +752,9 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     only place they run on PipeWire — then the Qt Quick suite headless with `--no-tests=error`,
     packages the component, runs `check_crucible_package.py` on the tarball and checks the
     `.deb`'s name, and uploads both as `packages-crucible-<preset>` — the `packages-*` pattern
-    `release.yml` downloads (`release.yml:275-279`) and attaches file by file (`:538-549`), so
-    both files are release assets, checksummed, signed and attested with every other package.
+    that `release.yml`'s "Download package artifacts" step downloads and its "Upload release
+    assets" step attaches file by file, so both files are release assets, checksummed, signed
+    and attested with every other package.
     No tag has been cut since that landed, so that is what CI is wired to do rather than
     something a published release has been seen to carry. One qualification stays true of the
     route: the leg carries no `release_package`, so the package rides on the artifact glob
@@ -882,7 +909,7 @@ Table under "What this plan cannot verify" (keep the Wayland row; add):
     running in the tray" setting is still the platform's own, and `onClosing` still quits rather
     than hiding a window with no way back to it.
 
-    **Not reported upstream yet.** The report is the two blocks above: `QDBusPlatformMenu` has
+    **No upstream report is recorded.** The report would be the two blocks above: `QDBusPlatformMenu` has
     no `createSubMenu()`, and `QDBusPlatformMenuItem::setMenu()` `static_cast`s whatever it is
     handed. Either half alone would be enough to fix it — a `createSubMenu()` that returns a new
     `QDBusPlatformMenu`, or a `qobject_cast` in `setMenu()` that refuses what it cannot use.
@@ -1078,13 +1105,14 @@ run by anyone here**; see below.
     rather than a refusal: the eight-channel width that keeps a surround application's bed intact
     on Windows cannot be had here at all.
 
-    **Not done.** `cmake/Packaging.cmake` still gates the Crucible component on
-    `WIN32 OR LINUX`, so there is no macOS package. `cmake/StripQtTestDeployment.cmake` now runs
-    on macOS — `apps/crucible`'s call sits in a `WIN32 OR APPLE` block whose APPLE arm a configure
-    can reach — and does nothing there, because every path it checks is the Windows package
-    layout, so a `.app` would keep its deployed Qt Test the way `ac3gui`'s `.dmg` does.
-    `SettingsPage.qml`'s two-stage note is not gated on `silentDeviceNeeded` the way the block
-    below it is and would print an empty pair of quotes where the device has no name.
+    **Not done when this was written.** `cmake/Packaging.cmake` gated the Crucible component on
+    `WIN32 OR LINUX`, so there was no macOS package, and `cmake/StripQtTestDeployment.cmake` did
+    nothing on macOS, so a `.app` would have kept its deployed Qt Test. Both were done on
+    2026-09-16: the gate is `WIN32 OR LINUX OR APPLE`, the script strips Qt's test module from the
+    bundle, and CI packages the archive on the macOS legs and checks it
+    (`tools/ci/check_crucible_package.py`), without publishing it.
+    `SettingsPage.qml`'s two-stage note is still not gated on `silentDeviceNeeded` the way the
+    block below it is, and would print an empty pair of quotes where the device has no name.
 
     And the signal path's first station is still drawn where it should not be. `moves_default()`
     is the first seam answer to come back false, and `default_device.hpp` has said since the
@@ -1276,10 +1304,10 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     the application makes the silent device itself, so the seam's "Crucible creates it when you
     send applications to it" is what happens and the three Send buttons are enabled while
     `silentDeviceCanCreate`. Tests: `tst_firstrun.qml` (nine cases, none presses Send),
-    additions to `tst_settings.qml`, `tst_shell.qml` and `test_platform_seams.cpp`. Not done:
-    the six `.ts` files still need the central lupdate pass for the FirstRunDialog context, and
-    the Linux create-on-send wait needs a Pi run to confirm the node is found within its
-    bounded 500 ms.
+    additions to `tst_settings.qml`, `tst_shell.qml` and `test_platform_seams.cpp`. Not done then:
+    the six `.ts` files needed the central lupdate pass for the FirstRunDialog context (done on
+    2026-09-06: [Languages](../localisation.md)), and the Linux create-on-send wait needs a Pi run
+    to confirm the node is found within its bounded 500 ms.
 !!! success "Done 2026-09-05"
     The log export. A Qt-free module, `apps/crucible/engine/diagnostics.{hpp,cpp}`, holds a
     thread-safe ring of the last 512 one-line notes and a renderer over named fields. The
@@ -1344,9 +1372,10 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     platform's required and forbidden phrases, a filled Qt version, and on Windows the Qt Quick
     3D section present exactly when `qml/QtQuick3D/` shipped; `tools/ci/test_check_crucible_package.py`
     pins those rules, and `tst_about.qml` holds the embedded text to `silentDeviceFromPackage`
-    and `has3D` and opens the dialog from About. Not done here: the Windows zip still carries
-    Qt6Test, Qt6QuickTest and `qml/QtTest`, which the deploy picked up from the test QML; the
-    notices list them until the deploy is narrowed.
+    and `has3D` and opens the dialog from About. Not done then: the Windows zip still carried
+    Qt6Test, Qt6QuickTest and `qml/QtTest`, which the deploy picked up from the test QML. Since
+    then `cmake/StripQtTestDeployment.cmake` deletes them at install time, and
+    `tools/ci/check_crucible_package.py` fails if they return.
 
 !!! success "Measured 2026-09-05: what the tests reach"
 
@@ -1546,14 +1575,15 @@ AudioCodec ACX sample; the window is the one place that still says otherwise.
     still names a platform in three sentences a reader now hears out loud ("the Windows default
     output", "Headphones (Windows Spatial Sound)", "System follows Windows"), which wants the
     same controller-property treatment `fullscreenRuleReason` and `silentDeviceAdvice` already
-    have.
+    have. Since then the catalogues carry the strings and the three sentences no longer name
+    Windows; the camera and the split pair's sides are still mouse-only.
 
 !!! note "Still open in Phase 6"
     One of the five items is not done. The **review of the six mechanically translated
-    languages** is a pass of its own: the catalogues are stale against the source, fifteen
-    current strings have no entry and sixty-five rename-era entries sit as vanished. It lands
-    last, after every item that adds a string - and the accessibility pass above added a good
-    many.
+    languages** is a pass of its own. When this note was written the catalogues were stale
+    against the source, with fifteen current strings missing and sixty-five rename-era entries
+    left as vanished; they were regenerated and filled on 2026-09-06 (385 messages each, none
+    unfinished), so what remains is the review by a reader of each language, not extraction.
 
     The right-to-left half of that item is done, and this note said otherwise until 2026-09-06:
     `ui/qml/Main.qml` took a `LayoutMirroring` root on 2026-09-05, two cases in
@@ -1625,9 +1655,9 @@ Linux gets AppImage and `.deb` alongside the GUI's.
     running a single case.** What replaced it is an assertion on the binary, checked both ways:
     against a real build, and against the binary moved aside.
 
-    Not done: Windows packaging is unchanged (the driver is still test-signed, so the archive
-    stays separate), there is no Linux package or installer for Crucible yet, and macOS has
-    nothing to build.
+    Not done then: Windows packaging is unchanged (the driver is still test-signed, so the
+    archive stays separate). The Linux package followed later the same day (the CI paragraph of
+    the Phase 4 record), and macOS has had a CI archive since 2026-09-16.
 
 !!! success "Done 2026-09-06: the same pass on aarch64"
     That pass, and the packaging the DR9 record above added to it, ran on x86_64 alone — and
@@ -1657,8 +1687,9 @@ Linux gets AppImage and `.deb` alongside the GUI's.
     globs for is computed from `CMAKE_SYSTEM_PROCESSOR`, so a package built for another target
     would match them all.
 
-    Not done: the leg has not run with the flag on yet, so this is what CI is wired to do
-    rather than something a green run has shown.
+    Not done then: the leg had not run with the flag on, so this was what CI was wired to do
+    rather than something a green run had shown. It has run since: CI runs uploaded
+    `packages-crucible-linux-llvm-arm64` on 2026-09-29.
 
 ### Phase 9: verification
 
@@ -1682,7 +1713,7 @@ not.
 | macOS process tap end to end | **no, and now for a measured reason** | the tap, its aggregate device and its format all come back on a runner; `AudioDeviceCreateIOProcID` on that aggregate does not return, so the path is refused by default (Phase 5 record) |
 | macOS tap consent prompt | **untested, and not what blocks** | it never fired: an unsigned binary declaring no `NSAudioCaptureUsageDescription` got a tap anyway. Still keyed to a signing identity these binaries lack; DR6 |
 | Wayland full-screen foreground detection | **no**, by design | Wayland does not let a client ask about another's windows |
-| X11 full-screen foreground detection | yes, in an X11 session or a nested Xephyr on the Pi | none |
+| X11 full-screen foreground detection | **not yet run**: tested over a fake reader only; an X11 session or a nested Xephyr on the Pi would settle it | none |
 | Linux application icons, per application | yes, on a desktop with applications playing | needs the Pi; which rung each hits is machine-dependent |
 
 Compiling on a second platform pays for itself before any of it runs. Phase 3 was written on
@@ -1723,11 +1754,12 @@ run there and what has not.
 
 ## Coordination with the driver-signing session
 
-Driver signing is being worked in a separate session against `apps/windows/driver/`. Two
-consequences for this plan, and neither is optional:
+Driver signing was worked in a separate session against `apps/windows/driver/`, and the driver is
+still test-signed with its old device name. Two consequences for this plan, and neither is
+optional:
 
-**The driver subtree's naming is not renamed tonight.** The application rename in Phase 1 stops
-at the driver's door. `apps/windows/driver/` keeps its paths, its INF and its
+**The driver subtree's naming is not renamed in Phase 1.** The application rename stops at the
+driver's door. `apps/windows/driver/` keeps its paths, its INF and its
 `Ac3ForgeNullSink` identity so that work in flight does not collide with a rename underneath it.
 
 **The device name should change before attestation is paid for, not after.** The endpoint
