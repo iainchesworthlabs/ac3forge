@@ -47,6 +47,13 @@ on:
         description: "needs.toolchain-versions.outputs.llvm_version - display-only, in two step names below (abi-gate, ffmpeg-validate)."
         type: string
         required: true
+      tier:
+        description: >-
+          `t2` is the run on main after a merge, which skips the jobs marked "nightly only" below
+          (coverage, the ABI gate, FFmpeg Validate and the two trend publishers that read it).
+          `all`, the default, runs every job. Set by ci.yml.
+        type: string
+        default: all
     outputs:
       # Threaded individually, not folded into one aggregate result, so
       # ci-status's own summary keeps naming which of these failed - the same
@@ -114,6 +121,9 @@ jobs:
   # margin proves generous.
   coverage:
     name: Coverage (Linux, GCC)
+    # Nightly only (docs/ci-agentic.md): 34 minutes on a hosted runner for a number
+    # that moves slowly, and its floors are per component, not per merge.
+    if: inputs.tier != 't2'
     # Stays GitHub-hosted for now - the one leg of the #460 revert that is
     # NOT re-enabled with the rest. Its self-hosted failure ("The runner has
     # received a shutdown signal" 34s in) was a runner-lifecycle kill, not
@@ -1126,7 +1136,11 @@ jobs:
     # entry for a result with no audience. Revisit with AP1: when ABI_ENFORCE
     # flips, decide whether the queue needs its own check or can keep trusting
     # the PR run.
-    if: github.event_name != 'merge_group'
+    #
+    # Nightly only, too: while it is advisory it cannot fail a run for a code
+    # reason, and it rebuilds the last release tag every time, which is 8 of its
+    # 16 minutes.
+    if: github.event_name != 'merge_group' && inputs.tier != 't2'
     runs-on: ${{ fromJSON(inputs.runner) }}
     # Newest main commit only on the hosted fallback (adm-validate's comment).
     concurrency:
@@ -1410,6 +1424,9 @@ jobs:
   # to the vcpkg commit and the LLVM/GCC versions.
   ffmpeg-validate:
     name: FFmpeg Validate
+    # Nightly only, with the two trend publishers below that read its artifacts:
+    # the quality series are then one point a day (docs/ci-agentic.md).
+    if: inputs.tier != 't2'
     runs-on: ${{ fromJSON(inputs.runner) }}
     # Newest main commit only on the hosted fallback (adm-validate's comment).
     # The two persist-*-trend jobs need this one, so they skip when it gives
@@ -1812,7 +1829,8 @@ jobs:
   persist-external-comparison-trend:
     name: Publish external-encoder landscape trend
     needs: ffmpeg-validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A push to main, or the nightly run, which is where FFmpeg Validate runs now.
+    if: (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -2001,7 +2019,8 @@ jobs:
   persist-object-quality-trend:
     name: Publish object-reconstruction quality trend
     needs: ffmpeg-validate
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # A push to main, or the nightly run, which is where FFmpeg Validate runs now.
+    if: (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write

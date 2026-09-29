@@ -166,6 +166,54 @@ class NpmAndWasmSplitTest(unittest.TestCase):
         self.assertEqual(lit(hits, *ALL_LANES), {"npm", "wasm"})
 
 
+class SatellitesDirectTest(unittest.TestCase):
+    """The run after a merge: a satellite lane runs only for a path in its own tree."""
+
+    def classify(self, *paths):
+        return gate.classify(list(paths), satellites_direct=True)
+
+    def test_a_core_change_reaches_the_platforms_and_no_satellite(self):
+        hits = self.classify("src/coder/eac3_encoder.cpp")
+        self.assertEqual(lit(hits, *ALL_LANES), {"core", "windows", "linux", "macos"})
+
+    def test_the_nightly_still_fans_a_core_change_out_to_every_satellite(self):
+        hits = gate.classify(["src/coder/eac3_encoder.cpp"])
+        self.assertTrue(all(hits[lane] for lane in gate.SATELLITES if lane != "npm"))
+
+    def test_a_satellites_own_tree_still_lights_it(self):
+        for path, lane in (
+            ("apps/android/app/build.gradle.kts", "android"),
+            ("esp-idf/ac3forge/CMakeLists.txt", "esp"),
+            ("rust/ac3forge/src/lib.rs", "rust"),
+            ("python/ac3forge/__init__.py", "python"),
+            ("apps/wasm/src/main.cpp", "wasm"),
+        ):
+            with self.subTest(path=path):
+                self.assertEqual(lit(self.classify(path), *ALL_LANES), {lane})
+
+    def test_a_core_change_and_a_satellite_change_together_light_both(self):
+        hits = self.classify("src/coder/x.cpp", "rust/ac3forge/src/lib.rs")
+        self.assertEqual(lit(hits, *ALL_LANES), {"core", "windows", "linux", "macos", "rust"})
+
+    def test_a_path_only_a_platform_owns_is_unchanged(self):
+        hits = self.classify("apps/cli/commands/audio_io.cpp")
+        self.assertEqual(lit(hits, *ALL_LANES), {"windows", "linux", "macos"})
+
+    def test_the_conservative_cases_still_light_everything(self):
+        for paths in ([], ["planning/notes.txt"], [".github/workflows/ci.yml"]):
+            with self.subTest(paths=paths):
+                self.assertEqual(self.classify(*paths), dict.fromkeys(gate.LANES, True))
+
+    def test_force_all_still_wins(self):
+        hits = gate.classify(["docs/a.md"], force_all=True, satellites_direct=True)
+        self.assertEqual(hits, dict.fromkeys(gate.LANES, True))
+
+    def test_the_satellites_are_lanes_and_only_they_are_held_back(self):
+        self.assertTrue(set(gate.SATELLITES) <= set(gate.LANES))
+        held = set(gate.CORE_FANOUT) & set(gate.SATELLITES)
+        self.assertEqual(held, {"android", "wasm", "esp", "rust", "python"})
+
+
 class MainTest(unittest.TestCase):
     """main() reads paths from stdin and writes lane=true|false lines that the
     workflow feeds to $GITHUB_OUTPUT."""
@@ -189,6 +237,13 @@ class MainTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(lanes["android"], "true")
         self.assertIn("false", lanes.values())
+
+    def test_satellites_direct_flag_holds_the_fanout_back(self):
+        _, lanes = self.run_main(["x", "--satellites-direct"], stdin="src/coder/x.cpp\n")
+        self.assertEqual((lanes["core"], lanes["linux"]), ("true", "true"))
+        self.assertEqual(
+            {lanes[s] for s in ("android", "wasm", "esp", "rust", "python", "npm")}, {"false"}
+        )
 
     def test_empty_stdin_runs_everything(self):
         """No paths is not 'nothing changed' - fail open, run every lane."""

@@ -109,6 +109,18 @@ class Problems(unittest.TestCase):
                 cat = catalogue(macos=[leg("M", "m", runner=bad)])
                 self.assertTrue(any("`runner` must be" in p for p in pl.problems(cat)))
 
+    def test_deep_only_names_flags_of_the_same_leg(self):
+        ok = catalogue(linux=[leg("L", "l", gcc=True, deep_only=["gcc"])])
+        self.assertEqual(pl.problems(ok), [])
+        for bad in (["missing"], ["name"], ["tier"], ["runner"], "gcc", [1]):
+            with self.subTest(deep_only=bad):
+                cat = catalogue(linux=[leg("L", "l", gcc=True, deep_only=bad)])
+                self.assertTrue(any("`deep_only`" in p for p in pl.problems(cat)), bad)
+
+    def test_a_deep_leg_has_no_use_for_deep_only(self):
+        cat = catalogue(linux=[leg("L", "l", tier="deep", gcc=True, deep_only=["gcc"])])
+        self.assertTrue(any("does nothing" in p for p in pl.problems(cat)))
+
 
 class Select(unittest.TestCase):
     def setUp(self):
@@ -166,6 +178,16 @@ class Resolve(unittest.TestCase):
         got = pl.resolve(entry, {})
         self.assertEqual((got["gui"], got["timeout_minutes"], got["mac_arch"]), (True, 150, "x64"))
 
+    def test_deep_only_flags_are_dropped_only_when_asked_and_never_leak_into_the_matrix(self):
+        entry = leg("L", "l", gcc=True, alsa_fallback=True, deep_only=["alsa_fallback"])
+        kept = pl.resolve(entry, {})
+        self.assertTrue(kept["alsa_fallback"])
+        self.assertNotIn("deep_only", kept)
+        dropped = pl.resolve(entry, {}, drop_deep=True)
+        self.assertNotIn("alsa_fallback", dropped)
+        self.assertTrue(dropped["gcc"])
+        self.assertNotIn("deep_only", dropped)
+
     def test_a_missing_slot_variable_is_an_error_not_a_guess(self):
         entry = leg("L", "l", runner_slot="linux_runner_3")
         with self.assertRaises(pl.CatalogueError) as ctx:
@@ -211,6 +233,31 @@ class Plan(unittest.TestCase):
             (only["linux_any"], only["windows_any"], only["macos_any"]),
             ("true", "false", "false"),
         )
+
+    def test_the_run_after_a_merge_drops_deep_only_flags_and_the_others_keep_them(self):
+        cat = catalogue(
+            linux=[
+                leg("L", "l", runner_slot="linux_runner_1", extra=True, deep_only=["extra"]),
+            ]
+        )
+
+        def linux_leg(env):
+            return json.loads(pl.plan(cat, {**ENV, **env})["linux_matrix"])["include"][0]
+
+        self.assertNotIn("extra", linux_leg({"TIER": "t2"}))
+        self.assertIn("extra", linux_leg({"TIER": "all"}))
+        self.assertIn("extra", linux_leg({}))
+        # Naming the leg asks for it whole, unless the tier is t2: then it is the leg as the
+        # run after a merge runs it, which is how to preview that run on one leg.
+        self.assertIn("extra", linux_leg({"LEGS": "l"}))
+        self.assertNotIn("extra", linux_leg({"TIER": "t2", "LEGS": "l"}))
+
+    def test_describe_says_what_the_run_after_a_merge_leaves_out_of_a_leg(self):
+        cat = catalogue(
+            linux=[leg("L", "l", runner_slot="linux_runner_1", extra=True, deep_only=["extra"])]
+        )
+        self.assertIn("L (without extra)", pl.describe(cat, {"TIER": "t2"}))
+        self.assertNotIn("without", pl.describe(cat, {"TIER": "all"}))
 
     def test_describe_lists_what_runs_and_what_does_not(self):
         cat = catalogue(macos=[leg("Mac A", "mac-a", tier="deep", runner=["macos-latest"])])
@@ -265,6 +312,51 @@ class RealCatalogue(unittest.TestCase):
             with self.subTest(platform=platform):
                 merged = sorted(x["preset"] for x in t2[platform] + deep[platform])
                 self.assertEqual(merged, sorted(x["preset"] for x in everything[platform]))
+
+    def test_which_legs_are_in_the_run_after_a_merge(self):
+        # Pins the policy in docs/ci-agentic.md. Moving a leg between the run after a
+        # merge and the nightly run is a decision, so it should change this list too.
+        t2 = pl.select(self.cat, "t2")
+        deep = pl.select(self.cat, "deep")
+        self.assertEqual(
+            {p: sorted(x["preset"] for x in legs) for p, legs in t2.items()},
+            {
+                "linux": ["linux-gcc", "linux-gcc-arm64", "linux-llvm"],
+                "windows": ["windows-llvm", "windows-msvc"],
+                "macos": ["macos-llvm"],
+            },
+        )
+        self.assertEqual(
+            {p: sorted(x["preset"] for x in legs) for p, legs in deep.items()},
+            {
+                "linux": ["linux-llvm-arm64", "linux-llvm-asan-ubsan", "linux-llvm-tsan"],
+                "windows": ["windows-msvc-arm64"],
+                "macos": ["macos-llvm-x64"],
+            },
+        )
+
+    def test_the_run_after_a_merge_leaves_out_the_slow_extra_passes(self):
+        env = {
+            **{f"LINUX_RUNNER_{n}": '["ubuntu-latest"]' for n in range(1, 5)},
+            "WINDOWS_RUNNER_1": '["windows-latest"]',
+            "WINDOWS_RUNNER_2": '["windows-latest"]',
+        }
+        after_merge = pl.plan(self.cat, {**env, "TIER": "t2"})
+        nightly = pl.plan(self.cat, {**env, "TIER": "all"})
+
+        def legs(out, platform):
+            return {x["preset"]: x for x in json.loads(out[f"{platform}_matrix"])["include"]}
+
+        gcc = legs(after_merge, "linux")["linux-gcc"]
+        self.assertNotIn("alsa_fallback", gcc)
+        self.assertNotIn("scalar_variants", gcc)
+        self.assertTrue(gcc["gold_reference"])
+        self.assertNotIn("shared_libs", legs(after_merge, "linux")["linux-llvm"])
+        self.assertNotIn("packageable", legs(after_merge, "macos")["macos-llvm"])
+        full = legs(nightly, "linux")["linux-gcc"]
+        self.assertTrue(full["alsa_fallback"])
+        self.assertTrue(full["scalar_variants"])
+        self.assertTrue(legs(nightly, "macos")["macos-llvm"]["packageable"])
 
     def test_every_platform_keeps_a_leg_in_t2(self):
         # The run after a merge is the only place Windows and macOS are built at all.

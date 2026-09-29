@@ -58,9 +58,9 @@ on:
         description: >-
           After the gold-reference gate passes on every leg, append this run's SNR results to the
           quality-history branch (see docs/quality-trend.md). Computed and set by ci.yml only for
-          direct pushes to main - never for a PR, so unmerged work never pollutes the
-          trend - and left false by release.yml's call, which is tag-triggered, not a push at
-          all. A plain boolean input rather than this job re-deriving
+          direct pushes to main and the nightly run of main - never for a PR, so unmerged work
+          never pollutes the trend - and left false by release.yml's call, which is tag-triggered,
+          not a push at all. A plain boolean input rather than this job re-deriving
           github.event_name/github.ref itself: those reflect the reusable workflow's own call
           context, and computing the condition once at the unambiguous caller site is simpler
           than relying on exactly how that context propagates through workflow_call.
@@ -778,8 +778,10 @@ jobs:
     # Not on a pull_request run: GitHub-hosted, so it waits for the merge
     # queue instead (ci.yml's run_android comment). run_linux itself stays on
     # for PRs, since it also gates the Linux build matrix. Not when the run named
-    # exact legs (`legs`): those are the only builds it asked for.
-    if: inputs.run_linux && github.event_name != 'pull_request' && inputs.legs == ''
+    # exact legs (`legs`): those are the only builds it asked for. Nightly only
+    # (docs/ci-agentic.md): 24 minutes on a hosted runner for a packaging path
+    # that changes rarely.
+    if: inputs.run_linux && github.event_name != 'pull_request' && inputs.legs == '' && inputs.tier != 't2'
     runs-on: ubuntu-latest
     # GitHub-hosted, so on a push to main only the newest main commit's run
     # waits for a runner - docs/ci-lanes.md, "Only the newest main commit runs
@@ -3618,13 +3620,13 @@ jobs:
   # the pattern's namespace exist, not every leg specifically.
   #
   # `needs: [build-windows, build-linux, build-macos]` rather than a narrower
-  # list looks like it could be defeated by a lane skip (docs/ci-lanes.md):
-  # `if: inputs.persist_quality_trend` is only ever true for a direct push to
-  # `main` (see that input's own description), and ci.yml's classify_changes
-  # wiring forces every `run_<lane>` true on that exact same trigger - so on
-  # the one trigger where this job can run at all, none of the three
-  # job-calls below is ever skipped for a lane reason. A skip here would
-  # still mean what it always has: something upstream did not run clean.
+  # list: `if: inputs.persist_quality_trend` is only true for a direct push to
+  # `main` and for the nightly run (see that input's own description). The
+  # nightly run lights every lane, but the run after a merge lights only the
+  # lanes the merges touched, so a platform's job-call can be skipped, and
+  # that is accepted below as long as one of the three ran and passed: with
+  # none, there is no artifact to record. A skip that is not for a lane reason
+  # still means what it always has: something upstream did not run clean.
   #
   # The one exception: on a push to main a GitHub-hosted leg (both macOS
   # legs, the arm64 legs, any leg on its hosted fallback) can give way to a
@@ -3645,9 +3647,11 @@ jobs:
     needs: [build-windows, build-linux, build-macos]
     if: >-
       ${{ !cancelled() && inputs.persist_quality_trend
-      && (needs.build-windows.result == 'success' || needs.build-windows.result == 'cancelled')
-      && (needs.build-linux.result == 'success' || needs.build-linux.result == 'cancelled')
-      && (needs.build-macos.result == 'success' || needs.build-macos.result == 'cancelled') }}
+      && contains(fromJSON('["success","cancelled","skipped"]'), needs.build-windows.result)
+      && contains(fromJSON('["success","cancelled","skipped"]'), needs.build-linux.result)
+      && contains(fromJSON('["success","cancelled","skipped"]'), needs.build-macos.result)
+      && (needs.build-windows.result == 'success' || needs.build-linux.result == 'success'
+          || needs.build-macos.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
