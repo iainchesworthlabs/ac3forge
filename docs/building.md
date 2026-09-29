@@ -546,7 +546,9 @@ zero-heap gap [above](#gaps) records for the decode side, wider here, and it is 
 before this profile is fit for a real-time encode.
 
 The measured numbers are in [the footprint table](performance-trend.md#minimum-footprint-decoder).
-CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`).
+CI runs this in the `esp` lane (`build-footprint` in `.github/workflows/_build.yml`): after a merge
+that changes the probe, the ESP-IDF component or a tree the component ships, and in the nightly run
+([CI lane partitions](ci-lanes.md)).
 
 ### The AC-4 decoder in the profile
 
