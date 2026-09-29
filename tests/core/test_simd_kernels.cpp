@@ -24,9 +24,9 @@
 // SIMD kernels's correctness gate.
 //
 // The vector kernels in the codec core are written once, against the two
-// 128-bit types src/forge/src/internal/arch/<arch>/ac3/internal/arch/simd.hpp
+// 128-bit types src/arithmetic/arch/<arch>/ac3/internal/arch/simd.hpp
 // defines, and CMake chooses which of the three directories supplies them
-// (see src/forge/CMakeLists.txt). The claim that makes that safe is not
+// (see src/arithmetic/CMakeLists.txt). The claim that makes that safe is not
 // "close enough": it is that every seam operation is exactly one IEEE-754
 // add, subtract or multiply per lane, so a kernel written against f64x2
 // performs precisely the operations, in precisely the order, that the scalar

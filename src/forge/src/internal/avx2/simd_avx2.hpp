@@ -4,7 +4,7 @@
 
 // ---------------------------------------------------------------------------
 // The AVX2 tier's own tiny SIMD type, same shape as
-// src/forge/src/internal/arch/x86_64/ac3/internal/arch/simd.hpp's f64x2 -
+// src/arithmetic/arch/x86_64/ac3/internal/arch/simd.hpp's f64x2 -
 // only ever included by a .cpp file compiled into forge_simd_avx2 (the one
 // AVX2-flagged object library, see src/forge/CMakeLists.txt), never by
 // forge_objects. That split is why this lives in src/internal/avx2/ rather
