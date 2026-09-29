@@ -14,7 +14,7 @@ Status:
 
 ## How the suites stand in for hardware
 
-- **Audio device**: `TestServices.useFakeRoom()` (`tests/test_room.cpp`) hands `HearthController` a fake room of three endpoints ("Test speakers" 6 ch default, "Test headphones" 2 ch, "Test receiver" 8 ch with AC-3/E-AC-3 passthrough) through `HearthController::set_test_outputs()` - a seam of the same shape as `CrucibleController::set_test_services()`. The REAL engine decodes real golden streams (`tests/golden/external-baseline/...`, `esp-idf/.../objects-mdct.ec3`) into it; the fake device has its own clock and records frames heard, peak level, the endpoint opened and how many times. So "it plays" is asserted on what the device received.
+- **Audio device**: `TestServices.useFakeRoom()` (`tests/test_room.cpp`) hands `HearthController` a fake room of three endpoints ("Test speakers" 6 ch default, "Test headphones" 2 ch, "Test receiver" 8 ch with AC-3/E-AC-3 passthrough) through `HearthController::set_test_outputs()` - a seam of the same shape as `CrucibleController::set_test_services()`. The REAL engine decodes real golden streams (`tests/golden/external-baseline/...`, `esp-idf/.../objects-mdct.ec3`) into it, and the AC-4 page's suite plays tones that `TestServices.writeAc4Stream()` encodes with `ac4::Encoder`; the fake device has its own clock and records frames heard, peak level, the endpoint opened and how many times. So "it plays" is asserted on what the device received.
 - **Network sink**: `TestServices.startTestSink()` runs `apps/hearth/testsink`'s real `Sink` in-process on loopback and hands it to `NetworkController`'s own `NetworkSinks` as a found service (`NetworkController::sinks_for_test()` + `NetworkSinks::on_found()`), which is the one step mDNS multicast would otherwise do. After that it is real: WebSocket dial, pairing with the code the sink prints, groups, player commands.
 - **File dialogs**: under `-platform offscreen`, QtQuick.Dialogs shows its non-native dialog. The suites click the page's own button, which opens it, and then `accept()` it. The file is set as the dialog's selection before it opens, because the non-native dialog drops a selection made after it has opened.
 - **Drag and drop**: `TestServices.dropFiles()` sends real DragEnter/DragMove/Drop events that carry file URLs to the window, so the page's own DropArea receives them.
@@ -43,7 +43,7 @@ Status:
 | 17 | Play | Levels meters at play time | none | UI | Playback::test_playButton... (one meter per slot, off the floor) |
 | 18 | Play | Loudness card | none | UI | Playback::test_playButton... (momentary LUFS present while playing) |
 | 19 | Play | This frame card | none | UI | Playback::test_playButton... ("access unit" shown) |
-| 20 | Play | Objects card | none | UI | MediaPage::test_objectMetadataShowsOnTheMediaPageAndWhilePlaying |
+| 20 | Play | Objects card (E-AC-3 objects; an AC-4 item's objects are rendered but not listed) | none | UI | MediaPage::test_objectMetadataShowsOnTheMediaPageAndWhilePlaying (skips when `objects-mdct.ec3` carries no object metadata in this build's reading) |
 | 21 | Play | Signal path card (you hear it on: the device) | none | UI | Playback::test_playButton... |
 | 22 | Play | Signal path "Choose..." opens the output picker | none | UI | OutputPicker::test_signalPathChooseOpensThePicker |
 | 23 | Transport | Play / Pause | none | UI | Playback::test_playButton..., Playback::test_pauseButtonPausesTheDeviceAndPlayResumesIt |
@@ -95,7 +95,7 @@ Status:
 | 69 | Network | Select a sink: pairing view; "Pair with this computer" starts the attempt (selecting alone does not) | none | UI | NetworkPairing::test_discoveredSink..., NetworkPairing::test_cancelEndsThePairingAttempt |
 | 70 | Network | Type the sink's code, Pair: sink becomes paired | none | UI | NetworkPairing::test_discoveredSink... (the sink logs "paired with server") |
 | 71 | Network | Cancel pairing | none | UI | NetworkPairing::test_cancelEndsThePairingAttempt |
-| 72 | Network | Paired Hearth sink settings view (its outputs, crossover range) | logic | UI | NetworkPairing::test_pairedSinkSpeakersTabShowsTheSinkAndEditsReachIt |
+| 72 | Network | Paired Hearth sink settings view (its outputs, crossover range) | logic | UI | NetworkPairing::test_pairedSinkSpeakersTabIsDisabledWhenTheSinkTakesNoSettings (the test sink's six outputs and its 40 to 250 Hz crossover range) |
 | 73 | Network | Sink Speakers tab: disabled with the reason when the sink takes no settings; an edit reaches a sink that does | logic | UI | NetworkPairing::test_pairedSinkSpeakersTabIsDisabledWhenTheSinkTakesNoSettings, NetworkPairing::test_sinkThatTakesSettingsAppliesAnEditFromTheSpeakersTab (report shows "revision N · applied") |
 | 74 | Network | Sink Decoder tab offers only what the sink lists | logic | UI | NetworkPairing::test_pairedSinkDecoderTabFollowsWhatTheSinkAccepts (test sink lists none, so all disabled) |
 | 75 | Network | Sink report panel | logic | UI | NetworkPairing::test_pairedSinkDecoderTab... ("Nothing playing.", "0 bursts") |
@@ -117,7 +117,7 @@ Status:
 | 91 | Output | Play to a network group (`selectOutputGroup`) | none | UI | OutputPicker::test_groupRowPinsPlaybackToTheGroup (the picker's group row, Play here, then a device row moves it back) |
 | 92 | Network | Sink Firmware tab: asks the sink's own web server only while open, says when it does not answer, and offers nothing it could not do | none | UI | NetworkPairing::test_pairedSinkFirmwareTabAsksTheSinksOwnServerWhileOpen |
 | 93 | Network | Firmware tab with no sink: renders and asks nothing; every firmware action is a safe no-op; an unreadable file is refused with why | none | logic | NetworkSinkSettings::test_firmwareTabAsksNothingWithNoSinkSelected, NetworkSinkSettings::test_everyFirmwareActionIsASafeNoOpWithNoSinkSelected |
-| 94 | Decoder | AC-4 presentation picker and table (the one playing in bold) | none | UI | DecoderAc4::test_presentationDialogueAndDescriptionAreHeard (picked by keyboard; the description goes with presentation 1) |
+| 94 | Decoder | AC-4 presentation picker and table (the one playing in bold) | none | UI | DecoderAc4::test_presentationDialogueAndDescriptionAreHeard (picked by keyboard: Down from Automatic chooses presentation 1, which has no description, and presentation 2 carries it; the table's content text is read, the bold row is not asserted) |
 | 95 | Decoder | AC-4 dialogue enhancement slider | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_levelAndEnhancementAreHeardAsTheirFormulasSay (C up by the gain, to the stream's 9 dB cap, measured at the device) |
 | 96 | Decoder | AC-4 dialogue level slider | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_presentationDialogue... (the dialogue alone, to the stream's 6 dB maximum) |
 | 97 | Decoder | AC-4 audio description checkbox and its level | none | UI | DecoderAc4::test_eachControlWritesItsSetting, DecoderAc4::test_presentationDialogue... (the presentation carrying it plays; its level heard) |
@@ -128,19 +128,45 @@ Status:
 | 102 | Media | AC-4 item: Stream, Presentations and Metadata cards, and it plays | none | UI | MediaPage::test_ac4ItemIsDescribedAndPlays |
 | 103 | Play | Signal-path hint when a sink is paired but no group is chosen as the output (with or without a group existing yet) | none | UI | NetworkPairing::test_playPageHintsAboutAPairedSinkNotInThePlayingGroup |
 | 104 | Network | Post-pairing group prompt: create a group (named after the sink) or add to an existing one, gone once the sink is actually a member, "Not now" dismisses it | none | UI | NetworkPairing::test_networkPageOffersToGroupAJustPairedSink |
+| 105 | Decoder | AC-4 Immersive and objects card: Layout (As coded, 5.1, 5.1.2, 5.1.4, 7.1, 7.1.2, 7.1.4) and Core decoding | none | none | No QML case drives the card. The settings reach the decoder in `[hearth][decoder-settings]` (`tests/hearth/test_decoder_settings.cpp`) and the layout fold in `[hearth][ac4]` (`tests/hearth/test_ac4_engine.cpp`), and neither goes through the page. `HearthController`'s map round-trip case does not carry these two keys, and its name mapping has none for the 5.1 segment |
+| 106 | Settings | Diagnostics "View live…" dialog (the report, refreshed every 500 ms while open) | none | none | Not opened by any case. The report it shows is the one the Copy case reads back |
+| 107 | Settings | Diagnostics HTTP endpoint (`AC3FORGE_HEARTH_DIAGNOSTICS_PORT`) | none | none | Not a window feature, so no QML case. `DiagnosticsHttpServer` is tested over a real loopback socket by `tests/hearth/test_diagnostics_server.cpp` (`[hearth][diagnostics]`, in `ac3tests_diagnostics_server`); the controller reading the variable is not tested |
 
 ### Totals
 
-| | Before (4 suites, 18 cases) | After (15 suites, 82 cases) |
+| | Before (4 suites, 18 cases) | After (15 suites, 88 cases) |
 |---|---|---|
 | UI | 5 | 102 |
 | logic only | 15 | 2 (row 15: no UI control exists; row 93: nothing to select) |
-| none | 71 | 0 |
+| none | 87 | 3 (rows 105 to 107) |
+
+### Cases without a feature row of their own
+
+These cases call a controller surface directly, or guard a regression, and belong to no single row
+above.
+
+| Case | What it checks |
+|---|---|
+| DecoderAc4::test_twoChangesInOneTurnBothLand | Two AC-4 page controls changed in one turn of the event loop both land. Each page write used to copy the settings it last read, so the second put the first back |
+| DecoderSettings::test_emptyMapChangesNothing | `setDecoderSettings({})` leaves every setting as it was, and does not reset them to their defaults |
+| DecoderSettings::test_twoWritesInOneTurnBothLand | Two keys written in one turn, each alone, both show at once and still show once the engine's status has caught up |
+| DecoderSettings::test_slidersCheckboxesAndTextFieldsRoundTripThroughTheController | Cut, boost, heavy compression, dialogue normalisation, RF ceiling, phase shift, LFE and fast inverse transform each read back what was written |
+| NetworkPairing::test_codeTypedWrongSaysSoAndTheRightOnePairs | A wrong code is reported and empties the boxes, and the right one then pairs the sink |
+| NetworkSinkSettings::test_nothingSelectedLeavesEveryPropertyAtItsEmptyDefault | Every sink property is empty while no sink is selected |
+| NetworkSinkSettings::test_everySetterIsASafeNoOpWithNoSinkSelected | Every sink setter and identify call does nothing, without an error, while no sink is selected |
+| NetworkSinkSettings::test_everyPageRendersSafelyWithNoSinkSelected | The sink's Speakers, Decoder, Report and Only-on-sink pages render against empty data |
+| PlayQueue::test_urlToLocalFileConvertsAUrlWithoutThrowing | `urlToLocalFile` converts a `url` value as a file dialog hands it over. Its failure was the crash the Add files and Add folder dialogs and the drop area hit |
+| PlayQueue::test_addFilesAppendsRowsWithTitleFromTheFileName | `addFiles` appends rows titled by file name |
+| PlayQueue::test_addFilesReflectedInThePageQueueList | The page's queue list follows additions and removals |
+| PlayQueue::test_playItemChangesCurrentIndex | `playItem` moves the current index and marks that row current |
+| SpeakersRouting::test_setRoutingAssignmentRoundTripsThroughTheController | `setRoutingAssignment` patches one slot and unassigns it again |
+| SpeakersRouting::test_clearRoutingAndUseDeviceOrderRoundTripThroughTheController | `clearRouting` unassigns every slot and `useDeviceOrder` patches them in the device's order |
 
 Gaps that remain inside covered rows:
 
 - The sink's own trim, delay, routing and identify edits are not driven: even the accept-settings test sink manages none of them (`management.routing` false, trim range 0..0, `identify` false), so only the layout edit is shown reaching a sink.
-- The group mute and group volume sliders are not driven.
+- The group volume slider and each member's mute checkbox are not driven. Only a member's volume slider is (row 77).
+- A stream whose object metadata is not read makes row 20's case skip, and no case plays an AC-4 item with objects through the window.
 - The Only-on-sink panel is rendered but its text is not read.
 - The Firmware tab's Update, Roll back and Restart are not driven: the test sink serves no firmware routes. The client behind them (`apps/hearth/engine/sink_firmware.hpp`) is tested in `ac3tests` against a stand-in board on loopback (`[sink-firmware]`), and against a real board by the hidden live case in `tests/hearth/test_sink_firmware_board.cpp`.
 
@@ -178,11 +204,13 @@ Not bugs, but worth knowing:
 
 ## C++ coverage (secondary measure)
 
-These are line figures from `build/gui-cov`, with the Hearth `.gcda` files cleared before each run:
+These are line figures from `build/gui-cov`, with the Hearth `.gcda` files cleared before each run.
+They were measured with fourteen suites, before the AC-4 engine, the diagnostics endpoint and the
+present fifteenth suite, and have not been measured again:
 
 | | Before | After |
 |---|---|---|
-| `apps/hearth/engine` | 835 / 5184 lines, 16.1% (4 original suites) | 3105 / 5184 lines, 59.9% (all 14 suites) |
+| `apps/hearth/engine` | 835 / 5184 lines, 16.1% (4 original suites) | 3105 / 5184 lines, 59.9% (14 suites) |
 
 - `apps/hearth/ui/*.cpp` (the controllers) is not instrumented in this tree, because `ac3::coverage` is not applied to the Qt app or test targets. So the controllers have no gcov figure.
 - `/opt/gui-cov.sh` searches the whole repository for `.gcda` files, including other build trees. Its figure for `apps/hearth` (80%+) mostly comes from `ac3tests` runs elsewhere. To count only these suites, add `build/gui-cov/apps/hearth` as gcovr's search path.
@@ -190,8 +218,10 @@ These are line figures from `build/gui-cov`, with the Hearth `.gcda` files clear
 ## Running
 
 ```
-/opt/gui-build.sh ac3hearth_qmltests
-ctest --test-dir build/gui-cov -R ac3hearth_qml_tests_ -j2 --output-on-failure
+cmake --build <build dir> --target ac3hearth_qmltests
+ctest --test-dir <build dir> -L hearth-ui --output-on-failure
 ```
 
-All 14 suites take about 11 s wall-clock at `-j2`. The slowest is Playback, at about 6 s.
+`ctest` runs each `tst_*.qml` file as its own process (`ac3hearth_qml_tests_<suite>`, with a 300 s
+limit), under `QT_QPA_PLATFORM=offscreen` and `QT_QUICK_BACKEND=software`. `-R
+ac3hearth_qml_tests_` selects the same set by name, and `-j2` runs two suites at a time.

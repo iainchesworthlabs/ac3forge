@@ -14,12 +14,13 @@ Decided on 2026-09-15. Hearth has two forms that talk to each other:
   and E-AC-3 JOC media with every decoder setting the library has, renders to a chosen speaker
   layout, routes each channel to an output with trim, delay and bass management, and shows the
   per-channel levels and the bitstream information. It plays to a local device, passes the
-  bitstream through to a receiver, or streams to sinks on the network. AC-4 is designed in and
-  waits for a decoder.
+  bitstream through to a receiver, or streams to sinks on the network. The plan designed AC-4 in
+  and left its decoder to a later chip (decision 7); the player has since gained it, as
+  [What's built](#whats-built) records.
 - **`hearth_sink`**, firmware for ESP32-S3 (up to sixteen TDM outputs) and ESP32-C6 (up to
   eight) boards. A sink is a Sendspin player: Music Assistant can play to it, and `ac3hearth`
   sends it the undecoded bitstream through an extension role, which the board decodes and
-  renders to its own layout.
+  renders to its own layout. The ESP32-P4 joined the sink family after the plan was written.
 
 Between them is Sendspin, with `ac3hearth` as a conformant server and the boards as conformant
 players, so groups, clock synchronisation, encryption and pairing come from that protocol.
@@ -30,13 +31,30 @@ place as the family's fourth member, and its build identity carried over.
 
 ## What's built
 
-As of 2026-09-16. Detail: [Hearth overview](../index.md).
+Detail: [Hearth overview](../index.md).
 
-- **ESP32-S3 `hearth_sink`.** Network player (Sendspin). Two boards played one programme as a group. Setup: [An ESP32-S3 sink](../sink-esp32-s3.md). No DAC wired yet.
-- **`apps/hearth`.** `ac3hearth` engine and window (Qt Quick; builds on Windows, Linux and macOS when Qt6 6.8+ is found, but still cannot play to a sink), `ac3hearth-testsink`, `ac3hearth-testserver`. CI runs the engine tests and plays to an emulated S3 from the test server.
-- **AC-4 in `ac3hearth`** (2026-09-26, phase I2 of [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md)). The engine plays channel-based AC-4 through the decoder's public API, decoded for every output, with the Decoder page's AC-4 controls and the Media page's AC-4 information; a network group's members on the extension role that list AC-4 are sent the stream as bursts.
+- **ESP32 `hearth_sink`.** A Sendspin player with Improv Wi-Fi setup, pairing, groups and updates
+  over the network, on the ESP32-S3, the ESP32-C6 (stereo only) and the ESP32-P4 (silicon
+  revision v1.x, with Wi-Fi through the board's onboard C6). Two S3 boards played one programme as
+  a group, and a C6 and an S3 played a stereo group. No DAC is wired to any board yet. Setup: [An
+  ESP32-S3 sink](../sink-esp32-s3.md).
+- **`apps/hearth`.** The `ac3hearth` engine and window (Qt Quick, with Play, Media, Speakers,
+  Decoder, Network and Settings pages; it builds and packages on Windows, Linux and macOS when Qt6
+  6.8+ is found), `ac3hearth-testsink`, `ac3hearth-testserver` and `ac3hearth-render`. The player
+  reads raw `.ac3`, `.ec3` and `.ac4` streams and plays to a local device, to a receiver as a
+  bitstream, or to a group of network sinks. CI runs the engine tests and plays to an emulated S3
+  from the test server.
+- **AC-4 in `ac3hearth`** (phases I2 and I5 of
+  [`planning/ac4.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/ac4.md)).
+  The engine plays channel-based, immersive and object AC-4 through the decoder's public API,
+  decoded for every local output, with the Decoder page's AC-4 controls and the Media page's AC-4
+  information. A network group's members on the extension role that list AC-4 are sent the stream
+  as bursts, and its PCM members get the decoded audio. No ESP32 sink lists AC-4 yet (phase I6).
 - **`src/sendspin`.** Shared by the desktop tools and the board.
-- **ESP32-C6.** Decode probe timed on a board. `hearth_sink`'s Sendspin player runs on this board, stereo only: a ten-minute group run with an ESP32-S3 had no underruns on either board. Setup: [README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6). Still no C6 Sendspin CI job.
+- **ESP32-C6.** Decode probe timed on a board. `hearth_sink`'s Sendspin player runs on this board,
+  stereo only: a ten-minute group run with an ESP32-S3 had no underruns on either board. Setup:
+  [README, "On the ESP32-C6"](https://github.com/iainchesworthlabs/ac3forge/blob/main/esp-idf/ac3forge/examples/hearth_sink/README.md#on-the-esp32-c6).
+  CI builds the Sendspin player for this part; nothing shorter than a board runs it.
 
 ## The full record
 
