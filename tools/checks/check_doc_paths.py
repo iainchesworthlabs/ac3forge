@@ -62,7 +62,8 @@ runnable the same way locally:
         project's source tree or into a subdirectory of this one, and are
         listed one by one with their reason rather than guessed at;
       - test_*.py under tools/, whose path literals are fixtures for a
-        temporary tree and not references into this one.
+        temporary tree and not references into this one;
+      - the trees in UNCHECKED_LITERAL_TREES below, each with its reason.
 
 Exit 1 with one ::error:: line per missing target, naming file:line.
 """
@@ -135,6 +136,14 @@ PLANNED_PATHS = {
     "src/forge/src/decoder/associated_service.cpp": (
         "proposed by the programme-mixing-metadata plan's Phase 5, not created yet"
     ),
+}
+
+# Script trees whose literals are not references into this tree. tools/n1b holds the rewrite rules
+# of the re-layout in planning/layout.md: every rule names a path of the tree it reads and a path
+# of the tree it writes, and the second exists only once the scripts have run. Printed on every
+# run, like the two tables above; it goes when the scripts do.
+UNCHECKED_LITERAL_TREES = {
+    "tools/n1b/": "the layout scripts name the paths of the tree they write, not yet there",
 }
 
 # Markdown pages whose prose deliberately names paths that do not exist: a plan
@@ -336,7 +345,12 @@ def markdown_files(root: Path) -> list[Path]:
 
 def literal_files(root: Path) -> list[Path]:
     files = [p for pattern in LITERAL_GLOBS for p in root.glob(pattern) if p.is_file()]
-    return sorted(p for p in set(files) if not p.name.startswith("test_"))
+    unchecked = tuple(UNCHECKED_LITERAL_TREES)
+    return sorted(
+        p
+        for p in set(files)
+        if not p.name.startswith("test_") and not _display(p, root).startswith(unchecked)
+    )
 
 
 def scrubbed_lines(lines: list[str]) -> list[str]:
@@ -724,6 +738,9 @@ def check_tree(root: Path) -> Report:
         check_markdown_prose(path, root, patterns, report)
     for path in literal_files(root):
         check_literals(path, root, patterns, report)
+    for tree, reason in UNCHECKED_LITERAL_TREES.items():
+        if (root / tree).is_dir():
+            report.skipped.append(f"{tree} ({reason})")
     return report
 
 

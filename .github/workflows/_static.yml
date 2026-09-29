@@ -153,12 +153,15 @@ jobs:
       # links to is what put a suite in tools/ci in the first place.
       # tools/hearth holds ota.py, which updates boards over the network
       # (planning/esp32-ota.md): its suite runs it against a stand-in board.
+      # tools/n1b holds the scripts that rewrite most of the tree when the
+      # libraries are re-laid out (planning/layout.md): their suite runs each
+      # rewrite over a miniature tree and pins where every kind of path goes.
       - name: Oracle unit tests
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           set -euo pipefail
-          for suite in tools/checks tools/ci tools/hearth; do
+          for suite in tools/checks tools/ci tools/hearth tools/n1b; do
             printf '\n=== %s ===\n' "$suite"
             python3 -m unittest discover --start-directory "$suite" --pattern 'test_*.py' --verbose
           done

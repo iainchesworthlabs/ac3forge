@@ -185,7 +185,7 @@ def main(argv: list[str]) -> int:
         )
 
     if args.unit:
-        for suite in ("tools/checks", "tools/ci", "tools/hearth"):
+        for suite in ("tools/checks", "tools/ci", "tools/hearth", "tools/n1b"):
             results.append(
                 run(
                     [
