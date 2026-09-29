@@ -968,9 +968,10 @@ allocation candidates, not about arithmetic; or the second core. The next
 section is what that question was worth.
 
 The same float encoder is a full build with `-DAC3FORGE_ENCODE_SCALAR=float`,
-which CI's `linux-gcc` leg builds beside the float decoder to run its streams
-through the gold-reference gate and hold its worst channel to within 0.5 dB
-of the double encoder's (`tools/checks/check_encode_scalar_quality.py`); on
+which CI's `linux-gcc` leg builds beside the float decoder, in the nightly run's
+extra passes, to run its streams through the gold-reference gate and hold its
+worst channel to within 0.5 dB of the double encoder's
+(`tools/checks/check_encode_scalar_quality.py`); on
 the five gold streams the two encoders' worst channels are identical to the
 hundredth of a decibel.
 
