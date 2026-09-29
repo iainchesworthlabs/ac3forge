@@ -7,8 +7,8 @@
 # vcpkg deliberately does not, and skips find_package(ac3forge) dev files
 # vcpkg already covers. The Qt6 GUI (ac3gui) is not packaged here - a Homebrew
 # Cask, not a Formula, is the right shape for a bundled .app. That cask
-# (../Casks/ac3gui.rb) now points at a real release, v0.8.0-beta.2, the
-# first tag whose macOS build actually contains ac3gui.app.
+# (../Casks/ac3gui.rb) installs the prebuilt ac3gui.app from each release's
+# .dmg.
 #
 # Staged here (packaging/homebrew/Formula/ac3forge.rb) for local
 # `brew install --build-from-source` validation against this repo, and
