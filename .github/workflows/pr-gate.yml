@@ -8,7 +8,9 @@
 #
 #   pull request   static checks + Linux GCC (build, every ctest case, gold
 #                  reference; the Qt GUI too when the change touches it)
-#   merge queue    the same on the merged tree, with Qt always, plus Windows MSVC
+#   merge queue    the same on the merged tree, with Qt always, plus Windows MSVC,
+#                  plus the performance and memory comparisons for an entry that
+#                  changes src/ (_compare.yml)
 #   push to main   the same jobs again, only to save the compiler caches every
 #                  other run restores from (cache entries are only visible to
 #                  runs on the branch that saved them, and to pull requests
@@ -24,8 +26,10 @@
 # does not wait behind the self-hosted fleet. Set the repository variable
 # GATE_RUNNER_JSON (e.g. ["self-hosted","Linux","X64"]) to move the Linux and
 # control jobs onto the fleet if the hosted pool is queueing, and
-# GATE_WINDOWS_RUNNER_JSON for the Windows job. Fork pull requests are pinned to
-# hosted regardless: untrusted code does not belong on the fleet.
+# GATE_WINDOWS_RUNNER_JSON for the Windows job, and GATE_COMPARE_RUNNER_JSON for the
+# comparisons (else GATE_RUNNER_JSON; they time two builds against each other, which a
+# dedicated machine does with less noise). Fork pull requests are pinned to hosted
+# regardless: untrusted code does not belong on the fleet.
 name: PR Gate
 
 on:
@@ -45,6 +49,18 @@ on:
         description: "Save the compiler cache entries this run builds (main-branch runs do this by themselves)."
         type: boolean
         default: false
+      compare:
+        description: "Also run the performance and memory comparisons (they run for a merge queue entry that changes src/)."
+        type: boolean
+        default: false
+      compare_base:
+        description: "For the comparisons: the commit to compare with. Empty means main."
+        type: string
+        default: ""
+      compare_pr:
+        description: "For the comparisons: the pull request whose labels approve a regression. Empty means none does."
+        type: string
+        default: ""
 
 concurrency:
   # A newer push to a pull request supersedes the run in flight. Queue entries
@@ -69,6 +85,9 @@ jobs:
       gui: ${{ steps.plan.outputs.gui }}
       docs_only: ${{ steps.plan.outputs.docs_only }}
       windows: ${{ steps.plan.outputs.windows }}
+      compare: ${{ steps.plan.outputs.compare }}
+      compare_base: ${{ steps.plan.outputs.compare_base }}
+      compare_pr: ${{ steps.plan.outputs.compare_pr }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,7 +109,11 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           MG_BASE: ${{ github.event.merge_group.base_sha }}
           MG_HEAD: ${{ github.event.merge_group.head_sha }}
+          MG_REF: ${{ github.ref_name }}
           WANT_WINDOWS: ${{ inputs.windows }}
+          WANT_COMPARE: ${{ inputs.compare }}
+          INPUT_COMPARE_BASE: ${{ inputs.compare_base }}
+          INPUT_COMPARE_PR: ${{ inputs.compare_pr }}
         run: |
           set -euo pipefail
           files=""
@@ -105,7 +128,9 @@ jobs:
               args=(--force-all) ;;
           esac
           printf '%s\n' "$files" | python3 tools/ci/plan_gate.py "${args[@]}" > plan.out
-          cat plan.out >> "$GITHUB_OUTPUT"
+          # The planner's `compare` is only half the answer (whether the change touches
+          # the library); the event decides the rest, below.
+          sed '/^compare=/d' plan.out >> "$GITHUB_OUTPUT"
           build="$(sed -n 's/^build=//p' plan.out)"
           gui="$(sed -n 's/^gui=//p' plan.out)"
           docs_only="$(sed -n 's/^docs_only=//p' plan.out)"
@@ -126,6 +151,31 @@ jobs:
             if [ "$WANT_WINDOWS" = true ] || [ "$machinery" = true ]; then windows=true; fi
           fi
           echo "windows=$windows" >> "$GITHUB_OUTPUT"
+          # The comparisons: a queue entry that changes src/, or on request. Their base is
+          # what the merge group was built on (main, or the entry queued ahead), and the
+          # pull request whose labels approve a regression is the entry's own, named in
+          # the merge group's ref: gh-readonly-queue/main/pr-<number>-<sha>.
+          compare=false
+          compare_base=""
+          compare_pr=""
+          case "$EVENT_NAME" in
+            merge_group)
+              if [ "$(sed -n 's/^compare=//p' plan.out)" = true ]; then compare=true; fi
+              compare_base="$MG_BASE"
+              if [[ "$MG_REF" =~ ^gh-readonly-queue/[^/]+/pr-([0-9]+)- ]]; then
+                compare_pr="${BASH_REMATCH[1]}"
+              fi ;;
+            *)
+              if [ "$WANT_COMPARE" = true ]; then compare=true; fi
+              compare_base="$INPUT_COMPARE_BASE"
+              compare_pr="$INPUT_COMPARE_PR" ;;
+          esac
+          if [ "$build" != true ]; then compare=false; fi
+          {
+            echo "compare=$compare"
+            echo "compare_base=$compare_base"
+            echo "compare_pr=$compare_pr"
+          } >> "$GITHUB_OUTPUT"
           {
             echo "### Gate plan"
             echo
@@ -134,6 +184,7 @@ jobs:
             echo "| Linux GCC build and tests | ${build} (${reason}) |"
             echo "| Qt GUI | ${gui} (${gui_reason:-not needed}) |"
             echo "| Windows MSVC | ${windows} |"
+            echo "| Performance and memory comparisons | ${compare}${compare_pr:+ (pull request ${compare_pr})} |"
             echo "| Documentation only | ${docs_only} |"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -430,13 +481,33 @@ jobs:
             exit 1
           }
 
+  # The queue's third check, for an entry that changes src/: does the change make the
+  # encoder at least twice as slow, or double its heap churn, against the commit the entry
+  # is queued on? The measuring jobs are advisory, so a flaky build blocks nothing; only a
+  # measured doubling fails the entry, unless its pull request carries the approval label.
+  # See _compare.yml, and docs/ci-agentic.md for where this sits. It runs in parallel with
+  # the jobs above, and takes less time than the Windows one.
+  compare:
+    name: Compare
+    needs: [plan, toolchain-versions]
+    if: needs.plan.outputs.compare == 'true'
+    uses: ./.github/workflows/_compare.yml
+    permissions:
+      contents: read
+      pull-requests: read
+    with:
+      runner: ${{ vars.GATE_COMPARE_RUNNER_JSON || vars.GATE_RUNNER_JSON || '["ubuntu-latest"]' }}
+      vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
+      base_sha: ${{ needs.plan.outputs.compare_base }}
+      pr_number: ${{ needs.plan.outputs.compare_pr }}
+
   # The one check branch protection points at. It fails closed: a job that was
   # meant to run and was skipped is a failure here, not a pass. Skipped is only
   # a pass for a job the plan did not ask for.
   ci-status:
     name: CI Status
     if: ${{ !cancelled() }}
-    needs: [plan, branch-name, static, toolchain-versions, linux-gcc, windows-msvc]
+    needs: [plan, branch-name, static, toolchain-versions, linux-gcc, windows-msvc, compare]
     runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.GATE_RUNNER_JSON || '["ubuntu-latest"]') }}
     timeout-minutes: 5
     steps:
@@ -449,8 +520,10 @@ jobs:
           R_TOOLCHAIN: ${{ needs.toolchain-versions.result }}
           R_LINUX: ${{ needs.linux-gcc.result }}
           R_WINDOWS: ${{ needs.windows-msvc.result }}
+          R_COMPARE: ${{ needs.compare.result }}
           WANT_BUILD: ${{ needs.plan.outputs.build }}
           WANT_WINDOWS: ${{ needs.plan.outputs.windows }}
+          WANT_COMPARE: ${{ needs.plan.outputs.compare }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
@@ -476,6 +549,7 @@ jobs:
           check toolchain-versions "$R_TOOLCHAIN" "$([ "$WANT_BUILD" = true ] && echo true || echo false)"
           check linux-gcc "$R_LINUX" "$([ "$WANT_BUILD" = true ] && echo true || echo false)"
           check windows-msvc "$R_WINDOWS" "$([ "$WANT_WINDOWS" = true ] && echo true || echo false)"
+          check compare "$R_COMPARE" "$([ "$WANT_COMPARE" = true ] && echo true || echo false)"
           if [ "$fail" -ne 0 ]; then
             echo "The gate failed - see the failing job(s) above."
             exit 1

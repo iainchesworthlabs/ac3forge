@@ -89,10 +89,12 @@ platform-specific, so this is the intended behaviour, not an accident of the lan
 each job's own header comment in `_ci-core.yml` for why.
 
 Three of them are nightly only (`inputs.tier != 't2'`): `coverage`, `abi-gate` and
-`ffmpeg-validate`, and the two persisters read `ffmpeg-validate`'s artifacts. `performance-compare`
-and `memory-compare`, and the `performance-gate` and `memory-gate` that read them, run only on
-`pull_request`. Since `ci.yml` stopped running on pull requests they have not run; the absolute
-guards that still do are named under [The tiers](ci-agentic.md#the-tiers).
+`ffmpeg-validate`, and the two persisters read `ffmpeg-validate`'s artifacts. The performance and
+memory comparisons and their two gates have left `_ci-core.yml`: they ran on pull requests until the
+gate replaced `ci.yml` there, and now `_compare.yml`, called by `pr-gate.yml`, runs them for a
+merge-queue entry that changes `src/` ([The merge queue](ci-agentic.md#the-merge-queue)). `ci.yml`'s
+`Verify Status` no longer reads them; the absolute guards that still run after a merge are named
+under [The tiers](ci-agentic.md#the-tiers).
 
 The main gold-reference quality persister did not move. `quality-trend` remains in `_build.yml`
 because it needs the Windows, Linux and macOS build calls and their gold-reference artifacts. Its
@@ -115,9 +117,9 @@ dependency for a two-job, push-only edge case.
 required check: branch protection points at `pr-gate.yml`'s `CI Status`, and this job has a
 different name so the two cannot be mistaken for each other on a commit both ran on.
 
-`_ci-core.yml` threads each of the eight jobs `ci-status` needs (`coverage`, `adm-validate`,
-`hearth-validate`, `ffmpeg-validate`, `performance-gate`, `memory-gate`,
-`persist-external-comparison-trend`, `persist-object-quality-trend`) out through its own
+`_ci-core.yml` threads each of the six jobs `ci-status` needs (`coverage`, `adm-validate`,
+`hearth-validate`, `ffmpeg-validate`, `persist-external-comparison-trend`,
+`persist-object-quality-trend`) out through its own
 `workflow_call.outputs`, rather than folding them into one aggregate result the way
 `build-and-test` folds together its build jobs. `ci-status`'s script still prints `coverage:
 success`, `adm-validate: failure`, etc. individually, by reading `needs.core.outputs.<x>` instead
@@ -126,12 +128,11 @@ of `needs.<job>.result`.
 `${{ jobs.<job_id>.result }}` is **not** valid inside `workflow_call.outputs.<name>.value` -
 `actionlint` rejects it ("property 'result' is not defined in object type {outputs: {}}"), because
 that context only exposes a job's own declared `outputs`, not its pass/fail status. Each of the
-eight jobs instead ends with a "Record result" step - `if: always()`, so it still runs after an
+six jobs instead ends with a "Record result" step - `if: always()`, so it still runs after an
 earlier step failed - that captures `job.status` (a documented context: "the current status of
 the job... success, failure, or cancelled") into its own `outputs: result: ...`, and
 `_ci-core.yml`'s own `workflow_call.outputs` reads `jobs.<job_id>.outputs.result` from there.
-`performance-compare`, `memory-compare` and `abi-gate` do not carry the extra step: their results
-were never surfaced to `ci-status`.
+`abi-gate` does not carry the extra step: its result was never surfaced to `ci-status`.
 
 ### What `_ci-core.yml` needs from `ci.yml`
 
@@ -161,7 +162,7 @@ comes from.
 | `macos` | `apps/notices/platform/macos/`, `packaging/homebrew/`, `packaging/conan/`, `packaging/vcpkg-port/` | `core`; shared desktop apps below |
 | `android` | `apps/android/` | `core` (not after a merge) |
 | `wasm` | `apps/wasm/`, `js/` (its E2E demo) | `core` (not after a merge) |
-| `esp` | `esp-idf/`, `esphome/`, `apps/baremetal/`, `tools/packaging/` | `core` (not after a merge) |
+| `esp` | `esp-idf/`, `esphome/`, `apps/baremetal/`, `tools/packaging/`, and the trees its component ships: `src/forge/`, `src/arithmetic/`, `cmake/`, root `CMakeLists.txt` | `core` (not after a merge) |
 | `rust` | `rust/` | `core` (not after a merge) |
 | `python` | `python/`, `examples/python/` | `core` (not after a merge) |
 | `npm` | `js/` (the package's own unit tests) | nothing - see below |
@@ -214,6 +215,13 @@ silent and wrong while a false build only costs a few minutes:
 A `push` to `main` is classified with `--satellites-direct`, from the files merged since the
 `verified` ref.
 
+The ESP-IDF lane has one more way to light: the trees its component ships. They are the ones
+`tools/packaging/pack_esp_component.py` stages (`STAGED_TREES` and `STAGED_FILES`): `src/forge/`,
+`src/arithmetic/`, `cmake/` and the root `CMakeLists.txt`. A change there is what breaks the package
+and the QEMU images, so it does not wait for the nightly run. The AC-4 trees, staged only for
+`--with-ac4`, do wait. `test_classify_changes.py` reads the packer's list, so a tree added to it
+without the lane learning about it fails a test.
+
 ## Scarce hosted legs
 
 GitHub Free runs 20 GitHub-hosted jobs at a time, org-wide, and 5 for macOS. A pull-request push
@@ -226,7 +234,7 @@ The hosted legs of `ci.yml` run after the merge instead: `macos` (`build-macos`)
 them macOS), `android`, `wasm` (`build-wasm` and `device-ui`, the device web page), the `linux`
 lane's `linux-appimage`, `npm` and `esp` (the `esp-component` call only; the ESP32 QEMU legs run on
 the self-hosted fleet). The satellite lanes among them run only when a path in their own tree
-changed, and the nightly run runs them all. `ci.yml` still carries `github.event_name !=
+changed (for `esp`, or in a tree its component ships), and the nightly run runs them all. `ci.yml` still carries `github.event_name !=
 'pull_request'` conditions on several of them from the time it ran on pull requests; they change
 nothing now.
 
@@ -429,7 +437,7 @@ either hit the conservative "unknown path" fallback - safe, but wider than neede
 prefixes now (`esp` and `python`, see the lane table).
 
 **`wheels`/`npm`/`esp-component` are each ONE entry in `Verify Status`**, not threaded per-sub-job
-the way `_ci-core.yml`'s eight are. Unlike coverage/ADM/ABI/FFmpeg-validate/perf-gate/memory-gate -
+the way `_ci-core.yml`'s six are. Unlike coverage/ADM/ABI/FFmpeg-validate -
 independent concerns a reviewer benefits from telling apart at a glance - each of these three
 workflows is one coherent "does this package still build and pass its own tests" concern, the same
 shape `build-and-test` folds `_build.yml`'s dozen-plus jobs into. `needs.wheels.result` answering

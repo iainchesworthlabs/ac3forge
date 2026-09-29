@@ -15,15 +15,16 @@
 <component type="desktop-application">
   <id>ac3gui.desktop</id>
   <name>ac3gui</name>
-  <summary>Forge — the AC3Forge encoder tools: clean-room AC-3 / E-AC-3 encoder, decoder and Dolby Atmos object-layer toolkit</summary>
+  <summary>Encode, decode, play and check AC-3, E-AC-3 and AC-4 streams</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
   <description>
     <p>
-      ac3gui is the Qt6 front end for ac3forge, a clean-room implementation of the AC-3 and
-      E-AC-3 (Dolby Digital / Dolby Digital Plus) audio codecs. It encodes and decodes both
-      formats, including Dolby Atmos object-layer (OAMD/JOC) metadata and audio, and plays
-      back an already-encoded stream directly.
+      ac3gui is the Qt6 front end for ac3forge, a clean-room implementation of the AC-3
+      (Dolby Digital), E-AC-3 (Dolby Digital Plus) and AC-4 audio codecs. It encodes and
+      decodes all three, including Dolby Atmos object audio and metadata (OAMD and JOC in
+      E-AC-3, object content in AC-4), plays an already-encoded stream, and checks a stream's
+      levels and loudness. Live capture encodes to AC-3 and E-AC-3.
     </p>
   </description>
   <launchable type="desktop-id">ac3gui.desktop</launchable>
