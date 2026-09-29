@@ -138,6 +138,7 @@ Rectangle {
         // error or a note still needs somewhere to land, so this keeps those
         // and drops only the idle state.
         Text {
+            id: stateText
             objectName: "transportState"
             visible: text.length > 0
             Layout.preferredWidth: visible ? 180 : 0
@@ -147,6 +148,14 @@ Rectangle {
             font.pixelSize: Theme.fontSmall
             horizontalAlignment: Text.AlignHCenter
             elide: Text.ElideRight
+
+            // Hover reveals the rest only when elide actually cut it off -
+            // otherwise the only way to read an error past this 180px slot
+            // is Settings > Diagnostics.
+            HoverHandler { id: stateHover }
+            ToolTip.visible: stateHover.hovered && stateText.truncated
+            ToolTip.text: stateText.text
+            ToolTip.delay: 400
         }
 
         // The design draws gapless as a small outlined chip, not a ticked

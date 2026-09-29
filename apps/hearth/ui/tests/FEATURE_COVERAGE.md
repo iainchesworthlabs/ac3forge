@@ -109,7 +109,7 @@ Status:
 | 83 | Settings | Pairing records list and Forget | none | UI | NetworkPairing::test_pairingRecordShowsInSettingsAndForgetRemovesIt (after a real pairing) |
 | 84 | Settings | Theme / palette / text size | none | UI | SettingsPage::test_appearanceThemePaletteAndTextSize |
 | 85 | Settings | Language | none | UI | SettingsPage::test_languageChoice |
-| 86 | Settings | Save diagnostics... | none | UI | SettingsPage::test_saveDiagnosticsWritesTheReport (file read back) |
+| 86 | Settings | Save diagnostics.../Copy diagnostics | none | UI | SettingsPage::test_saveDiagnosticsWritesTheReport (file read back), SettingsPage::test_copyDiagnosticsPutsTheReportOnTheClipboard |
 | 87 | Dialogs | Keyboard shortcuts dialog, About... chain, Close | none | UI | Dialogs::test_shortcutsAboutLicencesChain |
 | 88 | Dialogs | About: version, Licences... chain, Close | none | UI | Dialogs::test_shortcutsAboutLicencesChain |
 | 89 | Dialogs | Licences: notices text, Close | none | UI | Dialogs::test_shortcutsAboutLicencesChain |
