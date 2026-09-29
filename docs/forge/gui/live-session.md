@@ -53,6 +53,18 @@ run entry a real session opens says so too — its rate text is always the fixed
     transport, the chain strip mid-run, the reconnection banner, and the Live room's live-only
     controls are described from the implementation rather than photographed.
 
+### AC-4
+
+A live session encodes AC-3 or E-AC-3. With AC-4 chosen as the codec on the
+[Format tab](format-and-channels.md#ac-4), **Start session** and the rail's **Monitor** both refuse,
+with a status line saying a live session encodes AC-3 or E-AC-3, and nothing starts; pick one of
+those codecs first. The command line goes further here: `ac3cli live` takes `codec=ac4` (mono,
+stereo, 5.0 or 5.1), monitors the AC-4 it encodes and hands a receiver the parallel 5.1 AC-3 leg,
+since no receiver found takes AC-4 over IEC 61937 — see
+[CLI → Commands → Live & hardware](../cli/commands.md#live-hardware). The GUI has no AC-4 live
+path, and the rail's **Record…** has no AC-4 encoder behind it either (it builds the AC-3 and
+E-AC-3 encoders only); record an AC-4 take with `ac3cli record … codec=ac4`.
+
 ## Two-device capture: clock-master model
 
 A session is capped at **two** capture devices. The rail's live branch is a per-device list,
@@ -437,6 +449,9 @@ passthrough endpoint mid-session), the live latency readout, and every interacti
 page describes — the soundfield view, the chips, the banners. A command line has no mid-session
 input, so a hot-swap has nothing to be triggered by; `ac3cli live` resolves its receiver once, at
 session start, including whether the downmix leg runs.
+
+**What is CLI-only**: an AC-4 take. `ac3cli record` and `ac3cli live` take `codec=ac4`; the GUI's
+live session and Monitor refuse it, and its Record has no AC-4 encoder (see [AC-4](#ac-4) above).
 
 ## Next
 

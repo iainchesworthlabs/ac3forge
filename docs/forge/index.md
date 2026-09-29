@@ -2,12 +2,14 @@
 
 Forge contains two applications built on the [ac3forge library](../library/index.md):
 
-- `ac3cli` covers synthesis, file encoding and decoding, container wrapping, inspection, QC, and
-  live capture and playback. See the [CLI reference](cli/index.md).
-- `ac3gui` is a two-pane workbench over the same work: loading a source, choosing format and
-  channels, placing and moving objects in a plan view, live capture, metadata, QC, and
-  channel-level metering. It shows the equivalent `ac3cli` command at the bottom of the window.
-  See the [GUI guide](gui/index.md).
+- `ac3cli` covers synthesis, encoding and decoding of AC-3, E-AC-3 (with its Atmos object layer)
+  and AC-4, container wrapping, inspection, QC, and live capture and playback. See the
+  [CLI reference](cli/index.md).
+- `ac3gui` is a two-pane workbench over the same work: loading a source, choosing the codec
+  (AC-3, E-AC-3 or AC-4), format and channels, placing and moving objects in a plan view, live
+  capture (AC-3 and E-AC-3), metadata, QC, and channel-level metering, and it plays back and
+  inspects a finished stream. It shows the equivalent `ac3cli` command at the bottom of the
+  window. See the [GUI guide](gui/index.md).
 
 The CLI and GUI ship together where both are available.
 
@@ -18,9 +20,8 @@ Choose an installation method:
 - **A prebuilt archive** — every
   [release](https://github.com/iainchesworthlabs/ac3forge/releases) publishes a
   `.zip`/`.tar.gz`/`.dmg` per platform with `ac3cli` (and `ac3gui` where the leg builds it)
-  inside. From the next release tag on, Windows
-  also carries an NSIS `ac3forge-<version>-win64.exe` installer; `0.9.0-beta.1` and earlier
-  ship the `.zip` only.
+  inside. Windows also carries an NSIS `ac3forge-<version>-win64.exe` installer from
+  `0.10.0-beta.1` on; `0.9.0-beta.1` and earlier ship the `.zip` only.
 - **Homebrew** (macOS/Linux) — the formula and cask are published to
   [`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge).
   `brew install iainchesworthlabs/ac3forge/ac3forge` builds and installs `ac3cli`;

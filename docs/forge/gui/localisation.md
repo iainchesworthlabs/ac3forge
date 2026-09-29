@@ -29,16 +29,17 @@ language and applies right-to-left layout mirroring for Arabic, Hebrew and Yiddi
 scripts need — Latin has no glyph coverage for either).
 
 Preferences → Appearance → **Language** switches it live, no restart needed
-(`languageManager.setLanguage(code)`, a plain context property `main.cpp` installs the same way
-`EncoderController` is installed — not a `QML_SINGLETON`, since `LanguageManager` takes
-constructor arguments a singleton factory cannot supply).
+(`languageManager.setLanguage(code)`, a plain context property `main.cpp` installs — not a
+`QML_SINGLETON` the way `EncoderController` is, since `LanguageManager` takes the application and
+the engine as constructor arguments, which a singleton factory cannot supply).
 
 ## What's translated today
 
-Every catalogue is complete. The six files carry 795 messages each — the window chrome, the header
-buttons, the tab names, the Guided wizard, the whole Preferences dialog, the longer explanatory
-`PrefsNote` paragraphs through the Format/Objects/Coding tools/Metadata tabs, and the
-`Accessible.*` names and descriptions — and none of them is left `type="unfinished"`. That
+Every catalogue is complete. The six files carry 837 messages each, the count the pseudo-locale
+`xx` below has too — the window chrome, the header buttons, the tab names, the Guided wizard, the
+whole Preferences dialog, the longer explanatory `PrefsNote` paragraphs through the
+Format/AC-4/Objects/Coding tools/Metadata tabs, the QC, Inspect objects and Open stream dialogs,
+and the `Accessible.*` names and descriptions — and none of them is left `type="unfinished"`. That
 includes the strings the keyboard and text-size pass of 2026-09-06 added
 ([Keyboard & text size](accessibility.md)): the text-size setting, the diagnostics section, and
 the two `tr()` calls in `encoder_controller.cpp`. Nothing in the app falls back to English for
@@ -50,17 +51,16 @@ for one thing. [Crucible's languages page](../../crucible/localisation.md) carri
 shared six are held to and what an audit of the mechanical output found; the review that confirms
 or replaces each rendering has not run for either app.
 
-Crucible's window says that in its own note under the language chooser. `ac3gui`'s Preferences note
-has not caught up: it still describes the six as partially translated and untranslated text as
-staying in English, which the refill made wrong. Correcting it edits a `qsTr()` string, so it lands
-together with a catalogue regeneration.
+Both windows say that in their own note under the language chooser, in the same words: `ac3gui`'s
+Preferences → Appearance note reads "The translations are machine-made and have not been read by a
+speaker."
 
-Searching an `apps/gui` `.ts` file for `type="unfinished"` finds nothing today, and nothing in the
-suite holds it that way: `tests/crucible/test_translations.cpp` reads Crucible's six files only, so
-its no-unfinished and no-dead-entry rules do not cover these. What CI does check for `ac3gui` is
-drift — that the committed catalogues match what `lupdate` extracts. Extending that Crucible gate
-over `apps/gui/translations` is the step that would keep the completeness above from quietly
-lapsing.
+Two checks hold the completeness above. The `[gui][translations]` case in
+`tests/crucible/test_translations.cpp` reads the seven `apps/gui` catalogues — the six languages
+and `xx` — and fails on any `unfinished`, `vanished` or `obsolete` entry, naming it; it runs on
+every platform. The other check is drift: that the committed catalogues match what `lupdate`
+extracts. It reruns `ac3gui_lupdate` and fails on a diff, in the pull-request gate
+(`pr-gate.yml`, when the change touches the GUI) and on the Linux GCC leg of `_ci-linux.yml`.
 
 ## Crucible shares this pipeline
 
@@ -85,10 +85,10 @@ right-to-left half, and the gate over its catalogues — is on
 
    Any new or changed `qsTr()` string shows up as a `<translation type="unfinished">` entry
    (empty, or holding the last-known text) in the relevant `.ts` file(s). CI's own "Check
-   translations are up to date" step (`.github/workflows/_build.yml`, on the Linux GCC leg) reruns
-   this same target and fails the build if it produces a diff nobody committed. Extraction does not
-   depend on the compiler, so one leg is enough; Crucible's six get the same check on the
-   `windows-msvc` leg.
+   translations are up to date" step (`.github/workflows/pr-gate.yml` on a pull request that
+   touches the GUI, `_ci-linux.yml` on the Linux GCC leg) reruns this same target and fails the
+   build if it produces a diff nobody committed. Extraction does not depend on the compiler, so one
+   leg is enough; Crucible's six get the same check on the `windows-msvc` leg (`_ci-windows.yml`).
 2. Open the `.ts` file in **Qt Linguist** (ships with Qt), or edit the `<translation>` elements
    directly, and fill in the unfinished entries. Editing by hand, remove the `type="unfinished"`
    attribute yourself once an entry has a rendering you are willing to ship.
@@ -97,11 +97,11 @@ right-to-left half, and the gate over its catalogues — is on
 ### Finding a string
 
 `lupdate` groups each `.ts` file's messages into a `<context><name>` block named after the
-component it came from — `AboutDialog`, `AssignmentPanel`, `ChannelMeter`, `EncoderController`
-(the `tr()` calls in the C++), `FirstRunScreen`, `GuidedWizard`, `LoudnessGroup`, `Main`,
-`ObjectInspectorDialog`, `PreferencesDialog`, `QcDialog`, `QcGateMeter`, `SoundfieldView`,
-`StreamPlayerDialog` and `VbrPanel` — which is how to jump straight to the right area of a large
-`.ts` file.
+component it came from — `AboutDialog`, `Ac4Panel`, `AssignmentPanel`, `ChannelMeter`,
+`EncoderController` (the `tr()` calls in the C++), `FirstRunScreen`, `GuidedWizard`,
+`LoudnessGroup`, `Main`, `ObjectInspectorDialog`, `PreferencesDialog`, `QcDialog`, `QcGateMeter`,
+`SoundfieldView`, `StreamPlayerDialog` and `VbrPanel` — which is how to jump straight to the right
+area of a large `.ts` file.
 
 ## Adding a new language
 
@@ -134,9 +134,9 @@ pseudo-locale either never went through `qsTr()`, or was added after the fixture
 generated.
 
 The fixture is not in `AC3_TS_FILES`, so `ac3gui_lupdate` does not touch it and CI's drift check
-cannot see it going stale. It is stale now: 766 messages against the six languages' 795, missing
-the keyboard and text-size pass. Regenerate it after `ac3gui_lupdate` picks up new source
-strings:
+cannot see it going stale. It matches the six languages today, at 837 messages, and the
+`[gui][translations]` case above holds it to the same no-unfinished rule. Regenerate it after
+`ac3gui_lupdate` picks up new source strings:
 
 ```sh
 cmake --build --preset <preset> --target ac3gui_lupdate

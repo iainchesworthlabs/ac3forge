@@ -2,11 +2,14 @@
 
 What every user-facing feature of the Forge GUI (`apps/gui/qml`, driven by
 `EncoderController`, `QcController`, `ObjectDecodeController`,
-`StreamPlayerController`, `LanguageManager`) is exercised by, in
-`apps/gui/tests/qml/tst_*.qml`. All suites run the real controllers, not mocks.
+`StreamPlayerController`, `LanguageManager`) is exercised by. Two sets of tests
+hold it: the Qt Quick suites in `apps/gui/tests/qml/tst_*.qml` (36 suites, 215
+test functions), and the Qt-free C++ cases in `tests/gui/*.cpp` (four files, 45
+cases, tagged `[gui]` and built into `ac3tests`). All the QML suites run the
+real controllers, not mocks.
 
-Columns: **Before** is the status before the tst_e2e_* suites were added.
-**Now** is the current status. Status key:
+Columns: **Before** is the status before the tst_e2e_* suites were added
+(commit `8ee7eb7f2`, 2026-09-24). **Now** is the current status. Status key:
 
 - **UI**: a test drives the feature through the window. That means a mouse
   click, a key press, or a picker the real button opened and the test then
@@ -37,10 +40,12 @@ reach without a device.
 | First-run "Capture live" | UI | UI | TiersAndFlows::test_firstRunCaptureSwitchesToTheLiveBranch |
 | Rail "+ Add files…" → add picker → second source | logic | UI | E2eEncode::test_playerExportsDecodedWavThatLoadsBackAsASource |
 | Rail per-source remove | logic | UI | E2eEncode::test_playerExportsDecodedWavThatLoadsBackAsASource |
+| A loaded WAV sets `sourceReady` and the window's source label | logic | logic | SourceLoading::test_loadingAFileUpdatesSourceReadyAndTheDisplayedName |
 | Mismatched-rate source resampled and labelled | logic | logic | SourceLoading::test_addingAMismatchedRateSourceResamplesAndLabelsTheRow |
 | Per-source level pips (sourceLevels) | logic | logic | SourceLoading::test_sourceLevelsIsAPerSourceLookupSeparateFromSourceModel |
 | Source offset spin box / timeline length | logic | logic | TimelineTimeModel::test_timelineLengthDerivesFromSourcesAndOffsets, test_encodeWithASourceOffsetProducesADoneRun |
-| Drag-and-drop / `ac3gui <file>` dispatch | logic | logic | DesktopIntegration::* (calls `openDroppedFile`, since an OS drag cannot be synthesised) |
+| Drag-and-drop / `ac3gui <file>` dispatch: a WAV becomes a source, a second WAV adds one, an `.ec3` opens the player, the window has a drop area for file URLs | logic | logic | DesktopIntegration::* (calls `openDroppedFile`, since an OS drag cannot be synthesised) |
+| A dropped or launched `.ac4` | new | none | No case. `openDroppedFile` routes on the `.ac3`/`.ec3` suffix alone, so an `.ac4` goes to the WAV source loader. |
 | Session restore of sources and assignments | logic | logic | TiersAndFlows::test_sessionSaveAndRestoreRoundTripsSourcesAndAssignments |
 
 ## Multi-source assignment
@@ -57,16 +62,18 @@ reach without a device.
 
 | Feature | Before | Now | Test case(s) |
 |---|---|---|---|
-| Codec combo (AC-3 ↔ E-AC-3) | logic | UI | E2eEncode::test_expertCodecComboSwitchesToEac3AndEncodesAccessUnits |
+| Codec combo (AC-3 ↔ E-AC-3; AC-4 is under its own heading below) | logic | UI | E2eEncode::test_expertCodecComboSwitchesToEac3AndEncodesAccessUnits |
 | Container combo → .mkv written, QC reads it back | logic | UI | E2eSettings::test_containerComboWritesAMatroskaFileQcCanReadBack |
-| Other containers (S/PDIF, MP4, fMP4 folder, TS) CLI line | logic | logic | SweepConformance::test_*IsHonestlyTwoCommands |
+| Other containers (Matroska, S/PDIF, MP4, fMP4 folder, TS) CLI line | logic | logic | SweepConformance::test_matroskaIsHonestlyTwoCommands, test_spdifIsHonestlyTwoCommandsToo, test_mp4IsHonestlyTwoCommands, test_fmp4IsHonestlyTwoCommandsAndNeedsAFolder, test_mpegTsIsHonestlyTwoCommands |
 | Channel presets 5.1/7.1/5.1.4/7.1.4/7.2.4 | logic | logic | ChannelCounts::test_presetsProduceTheExpectedChannelCounts; the buttons' disabled-under-Atmos state: E2eObjects |
 | Bed chips / LFE count / extras checkboxes | logic | logic | Keyboard::test_theBedChipsNameFollowsTheChoiceItDraws, test_theExtrasCheckboxTakesItsNameFromTheModel, ChannelCounts::* |
+| Extras rows carry their channel tokens (`wide`: Lw Rw) | logic | logic | SweepConformance::test_extrasRowsCarryChannelTokens |
 | Extra promotes AC-3 → E-AC-3 | UI | UI | FormatChannels::test_tickingAnExtraUnderAc3PromotesTheCodec |
 | Codec-change warning dialog | UI | UI | TiersAndFlows::test_codecChangeWarningGatesThePromotion |
 | Bit-rate floor advisory | logic | logic | SweepConformance::test_bitrateFloorAdvisoryTracksCodedChannelsAndFloor, GuidedWizard::test_wizardBitrateFloorAdvisoryShowsForAWideRoomOnGood |
 | Bit-rate ladder (E-AC-3 768, low-rate rungs) | logic | logic | SweepConformance::test_eac3Gains768AndAc3ClampsBack, test_lowRateSourceDropsUnframableEac3Rungs |
-| Dual mono (LFE clear, extras lock, DRC2, dialnorm per programme) | logic | logic | DualMono::* |
+| Dual mono (LFE clear, extras lock with the reason "not part of dual mono", DRC2, dialnorm per programme) | logic | logic | DualMono::*, SweepConformance::test_dualMonoLockReasonIsNotPartOfDualMono |
+| Guided hides the tab bar and shows the wizard; choosing Advanced hides the wizard | UI | UI | FormatChannels::test_guidedHidesTheTabBarAndShowsTheWizard |
 
 ## Bitrate / VBR
 
@@ -85,6 +92,8 @@ reach without a device.
 | Coupling begin-band spin box | none | UI | E2eEncode::test_codingToolsTabDrivesTheToolsTokenAndTheEncode |
 | AHT / GAQ / SPX begin band / SPX attenuation | none | none | Same pattern as coupling. No separate case. |
 | Leaving Expert on an Expert-only tab | logic | logic | TiersAndFlows::test_leavingExpertOnAnExpertOnlyTabFallsBackToFormat |
+| Live session tab appears for a live source and goes with it | logic | logic | SweepConformance::test_liveSessionTabExistsForALiveSource |
+| The tab pages follow the current page's height | logic | logic | SweepConformance::test_tabPagesFollowTheCurrentPagesHeight |
 
 ## Metadata and loudness
 
@@ -104,6 +113,8 @@ reach without a device.
 |---|---|---|---|
 | Encode button → save picker with planned name → AC-3 file; frames, KB, rate, duration on status and chip; file decodes to the right shape | logic | UI | E2eEncode::test_firstRunChooseFileEncodeAc3AndDecodeWhatWasWritten |
 | Same for E-AC-3 (access units) | logic | UI | E2eEncode::test_expertCodecComboSwitchesToEac3AndEncodesAccessUnits |
+| A finished encode adds a done run to the strip | logic | logic | RunHistory::test_encodingAddsADoneRunToTheStrip |
+| A run snapshots its CLI line, codec and play device, and the next run starts clean | logic | logic | RunHistory::test_startingARunSnapshotsCliLineEac3AndPlayDeviceIndex |
 | Name pattern preference → planned name | logic | logic | TiersAndFlows::test_fileNamePatternDrivesThePlannedName |
 | Run chip → details popover with snapshotted CLI line | UI | UI | RunHistory::test_clickingARunChipOpensItsDetailsPopoverWithTheSnapshottedCliLine |
 | Failed-run details, pre-run refusal banner | logic | logic | RunHistory::test_detailsPopoverShowsTheFailureTextForAFailedRun, SweepConformance::test_preRunRefusalRaisesTheBanner |
@@ -111,7 +122,8 @@ reach without a device.
 | Run history persisted / restored | logic | logic | RunHistory::test_restoreRuns*, test_saveSession* |
 | Cancel a running encode (run-chip Cancel) | none | none | Needs a run long enough to press Cancel mid-flight without a fixed wait. Not deterministic on the small fixtures. |
 | Keep partial output on failure | none | none | Needs a mid-run failure or cancel |
-| Run chip Play to receiver / Show in folder | logic | logic | RunHistory::test_playFileToReceiverIsANoOpForAnInvalidDeviceOrEmptyPath. Needs a bitstream-capable endpoint. |
+| Run chip Play to receiver / Show in folder | logic | logic | RunHistory::test_playFileToReceiverIsANoOpForAnInvalidDeviceOrEmptyPath, test_outputDeviceSupportsFormatIsFalseOutOfRange. Needs a bitstream-capable endpoint. |
+| Run chip Play on a finished AC-4 run | new | none | No case. The chip reports the run as AC-3, so the button follows the device's AC-3 passthrough, and `playFileToReceiver` finds no AC-3 or E-AC-3 stream in the file. |
 | Command bar CLI chip → popover, Copy | UI | UI | SweepConformance::test_cliChipOpensThePopoverWithTheLiveLine |
 | CLI line content (src map, meta tokens, containers) | logic | logic | SweepConformance::test_cliLine*, test_*IsHonestlyTwoCommands |
 
@@ -144,6 +156,7 @@ suites, so **Before** reads "new".
 | QC of AC-4: dialnorm and stated loudness, raw and in MP4 | new | UI | E2eAc4::test_rawStream…, test_mp4File… |
 | QC: presentation picker | new | UI | Ac4Decode::test_qcMeasuresThePresentationItsPickerChooses |
 | Object page: presentations, bed and dynamic objects, the note that it exports nothing | new | UI | Ac4Decode::test_objectPageListsWhatTheDecoderReports, E2eAc4::test_rawStream… |
+| The AC-4 name filter of the QC, Inspect objects and Open stream file pickers | new | none | No case. The tests set the picker's `selectedFile` and accept it, so a name filter is not exercised. |
 | AC-4 page settings → ac4-encode tokens and ac4::EncoderConfig; presentation labels | new | logic | ac3tests [gui]: tests/gui/test_ac4_encode_settings.cpp (Qt-free) |
 
 ## AC-4 objects
@@ -175,12 +188,15 @@ objects `ac3cli atmos-encode … codec=ac4` writes, so **Before** reads "new".
 |---|---|---|---|
 | "Open stream…" → Choose file → decode summary, meters, soundfield | logic | UI | E2eInspect::test_playerPlayScrubAndPauseFromItsOwnControls, E2eEncode::decodeInPlayer (every encode case) |
 | Scrub slider / position label | logic | UI | E2eInspect::test_playerPlayScrubAndPauseFromItsOwnControls |
+| An Atmos stream decodes asynchronously and reports its objects | logic | logic | StreamPlayer::test_openingRealAtmosStreamDecodesAsyncAndReportsObjects |
+| The dialog draws one meter row per channel and offers Export objects | logic | logic | StreamPlayer::test_dialogRendersOneMeterRowPerChannelAndOffersObjectExport |
+| Seeking while paused moves the position at once, clamped to the stream | logic | logic | StreamPlayer::test_seekWhilePausedMovesPositionImmediately |
 | Play / Pause button | none | UI (hardware) | E2eInspect::test_playerPlayScrubAndPauseFromItsOwnControls. With no output: error line shown. With an output: plays, then pauses. |
 | Export decoded WAV (loads back as a source) | none | UI | E2eEncode::test_playerExportsDecodedWavThatLoadsBackAsASource |
 | Export objects (one WAV per object) | none | UI | E2eInspect::test_playerExportsOneWavPerObjectFromAnAtmosStream |
-| Export objects, AC-4 (A-JOC or direct-coded) | none | UI | E2eInspect::test_playerExportsOneWavPerObjectFromAnAc4Stream |
+| Export objects, AC-4 (A-JOC or direct-coded) | new | UI | E2eInspect::test_playerExportsOneWavPerObjectFromAnAc4Stream |
 | Closing the dialog stops playback | none | UI | E2eInspect::test_playerPlayScrubAndPauseFromItsOwnControls |
-| Quitting while a decode, QC measurement, object inspection or encode is running | none | logic | Ac4Decode::cleanupTestCase (the first three) and Teardown::test_anEncodeStartedAsTheSuiteEnds leave the work running as the suite ends; the process must exit with code 0 |
+| Quitting while a decode, QC measurement, object inspection or encode is running | new | logic | Ac4Decode::cleanupTestCase (the first three) and Teardown::test_anEncodeStartedAsTheSuiteEnds leave the work running as the suite ends; the process must exit with code 0 |
 
 ## QC panel and gate meters
 
@@ -190,6 +206,7 @@ objects `ac3cli atmos-encode … codec=ac4` writes, so **Before** reads "new".
 | Delivery-preset segmented control narrows rows, meter band | logic | UI | E2eInspect::test_qcFromTheHeaderButton… ; QcPanel::test_presetControlOffersEveryPresetAndSelectsWhatItNames |
 | QC of a non-stream shows the error | none | UI | E2eInspect::test_qcOnAFileThatIsNotAStreamSaysSoInTheDialog |
 | QC report data / preset constants | logic | logic | QcPanel::test_measuringRealFileIsAsyncAndReportsRealData, test_presetSelectionNarrowsToTheChosenPresetsRealNumbers |
+| The dialog shows the measurement: the summary line and one programme card | logic | logic | QcPanel::test_dialogRendersTheRealMeasurement |
 | Gate meter pass/fail visuals and accessibility | logic | logic | QcPanel::test_gateMeter*, Accessibility::test_qcGateMeter* |
 
 ## Objects (authoring) and object inspector
@@ -197,7 +214,9 @@ objects `ac3cli atmos-encode … codec=ac4` writes, so **Before** reads "new".
 | Feature | Before | Now | Test case(s) |
 |---|---|---|---|
 | Object-mode switch → objects, codec forced, presets locked | logic | UI | E2eObjects::test_objectSwitchAuthoringAndEncodeRoundTripThroughTheInspector |
+| Turning object mode on raises the rate to 384 kbps and keeps the codec | logic | logic | SweepConformance::test_atmosEnableFloorsTheRate |
 | Add key / Delete key buttons | logic | UI | E2eObjects::test_objectSwitchAuthoring…, test_deleteKeyButtonRemovesTheSelectedKey. The key selection is set on the tab, because the diamonds are drag targets. |
+| A hand-added key seeds the 0.7/√n gain | logic | logic | SweepConformance::test_handAddedKeySeedsTheInverseRootGain |
 | Zoom in / Fit / readout | logic | UI | E2eObjects::test_objectSwitchAuthoring… |
 | Motion preview start/stop | none | UI | E2eObjects::test_objectSwitchAuthoring… |
 | Export paths… picker → file, CLI line quotes it | logic | UI | E2eObjects::test_objectSwitchAuthoring… |
@@ -208,7 +227,8 @@ objects `ac3cli atmos-encode … codec=ac4` writes, so **Before** reads "new".
 | Timeline drag/double-click/right-click on keys, pan strip, clip band shift-drag | none | none | Pointer-gesture authoring on a Canvas-like timeline. Only the controller calls behind it are covered (logic). |
 | Inspector: Choose file → object rows, scrub to last frame updates rows | logic | UI | E2eInspect::test_inspectorChosenFromItsButtonListsObjectsAndScrubsFrames |
 | Inspector plan/elevation markers | logic | logic | ObjectInspector::test_dialogRendersOneMarkerPerObject |
-| Inspector audition | none | UI (hardware) | E2eInspect::test_inspectorChosenFromItsButton… (error line, or a real audition that the button stops) |
+| Inspector: the decode is asynchronous and reports every frame's motion; scrubbing moves to another frame | logic | logic | ObjectInspector::test_inspectingRealObjectStreamIsAsyncAndReportsRealMotion, test_scrubbingMovesToADifferentDecodedFrame |
+| Inspector audition | none | UI (hardware) | E2eInspect::test_inspectorChosenFromItsButton… (error line, or a real audition that the button stops); test_auditionButtonsFitInsideTheInspectorDialog (each row's Audition button lies inside the dialog at the window's 1280x900 minimum, and a mouse click on it reaches it) |
 | Soundfield view | logic | UI | E2eInspect (spSoundfield shown for a decode); DualMono::test_dualMonoHasNoSoundstage (logic) |
 
 ## Live capture (multi-device)
@@ -216,17 +236,21 @@ objects `ac3cli atmos-encode … codec=ac4` writes, so **Before** reads "new".
 | Feature | Before | Now | Test case(s) |
 |---|---|---|---|
 | Input mode File / Live | UI | UI | TiersAndFlows::test_firstRunCaptureSwitchesToTheLiveBranch |
-| Device rows, add/remove, cap, totals, channel labels | logic (hardware) | logic (hardware) | LiveMultidevice::* (with whatever devices the machine has; `addCaptureDeviceButton` clicked) |
+| Device rows, add/remove, cap, totals, channel labels | logic (hardware) | logic (hardware) | LiveMultiDevice::* (with whatever devices the machine has; `addCaptureDeviceButton` clicked) |
 | Start/Stop session gating, safety copy, OSC toggle, receiver combo | UI/logic (hardware) | UI/logic (hardware) | LiveSession::* (checkboxes clicked; no session actually started) |
-| Running a live session, recording, reconnect banner, layout switch mid-session, live objects | none (hardware) | none (hardware) | Needs a real capture device. The no-op paths are covered in LiveSession/LiveMultidevice. |
+| Running a live session, recording, reconnect banner, layout switch mid-session, live objects | none (hardware) | none (hardware) | Needs a real capture device. The no-op paths are covered in LiveSession/LiveMultiDevice. |
+| A live session or the rail's Monitor with AC-4 as the codec is refused with a status line | new | none | No case. `startLiveSession` refuses before it looks at the capture device, so no device is needed to reach it. |
+| The take a live session or Record… writes: raw stream, MPEG-TS, IEC 61937 WAV, Matroska, fragmented-MP4 folder, and each one's reporting of a bad destination, a full disk and an empty take | logic | logic | ac3tests [gui]: tests/gui/test_recording_sink.cpp (19 cases, Qt-free; `RecordingSink` is shared with the CLI's `record`) |
+| The same take with AC-4 frames: raw, MPEG-TS, IEC 61937-14 bursts, fragments at I-frames; Matroska refused | new | logic | ac3tests [gui]: tests/gui/test_recording_sink.cpp (4 cases) |
 | Receiver passthrough (Play to receiver) | none (hardware) | none (hardware) | Needs an S/PDIF/HDMI endpoint |
 
 ## Guided wizard
 
 | Feature | Before | Now | Test case(s) |
 |---|---|---|---|
-| Step navigation, setup/room/quality/movement/destination cards | UI | UI | GuidedWizard::* (19 cases) |
+| Step navigation, setup/room/quality/movement/destination cards | UI | UI | GuidedWizard::* (20 cases) |
 | Amp destination encodes directly | UI | UI | GuidedWizard::test_ampDestinationEncodesDirectlyAndThreadsItsDevicePick |
+| The wizard's Next button stays on screen and its scroll area exists | logic | logic | SweepConformance::test_guidedFooterStaysOnScreen |
 
 ## Preferences, about, first run, shell
 
@@ -240,7 +264,7 @@ objects `ac3cli atmos-encode … codec=ac4` writes, so **Before** reads "new".
 | Language manager (available, persist, RTL) | logic | logic | LanguageManager::* |
 | Pseudo-locale pipeline | logic | logic | LocalisationPipeline::* |
 | Save diagnostics… → file written, message shown | logic | UI | E2eSettings::test_preferencesSaveDiagnosticsWritesTheSupportFile |
-| Diagnostics report content | logic | logic | Diagnostics::* |
+| Diagnostics report content | logic | logic | Diagnostics::*; ac3tests [gui]: tests/gui/test_gui_diagnostics.cpp (5 cases, Qt-free: the message ring, notes, the named facts, no signing value, the scrub) |
 | Output folder chooser / Reset | none | none | FolderDialog. Same seam would work, but no case. |
 | Meters show (mode), monitor button, clip latch | UI/logic | UI/logic | ClipLatch::test_clipLatchStaysLitUntilClickedOrANewTransportStarts (UI); meter mode: none |
 | About dialog shows version, closes | none | UI | E2eSettings::test_aboutDialogShowsTheBuildsVersionAndCloses |
@@ -252,18 +276,22 @@ objects `ac3cli atmos-encode … codec=ac4` writes, so **Before** reads "new".
 
 | | Before | Now |
 |---|---|---|
-| Rows (features) | 99 | 122 |
-| Driven from the UI | 15 | 72 |
-| Logic only (controller or QML function called directly) | 65 | 41 |
-| Not covered | 19 | 9 |
+| Rows (features) | 115 | 160 |
+| Driven from the UI | 16 | 85 |
+| Logic only (controller or QML function called directly) | 80 | 62 |
+| Not covered | 19 | 13 |
 
-"UI (hardware)" and "UI/logic" rows count as UI. The 23 AC-4 rows are new,
-so **Before** counts only the 99 rows that existed then.
+"UI (hardware)" and "UI/logic" rows count as UI. The 45 rows whose **Before**
+reads "new" arrived after the tst_e2e_* suites, so **Before** counts only the
+115 rows that existed then.
 
-C++ line coverage of `apps/gui/*.cpp|hpp`, from the QML suites plus the
-C++ unit tests that also compile `gui_diagnostics.cpp`. It was measured with
-`/opt/gui-cov.sh`. Before this change `ac3gui_qmltests` was not instrumented
-at all; `ac3::coverage` is now linked into it.
+C++ line coverage of `apps/gui/*.cpp|hpp` as it stood on 2026-09-24 (commit
+`8ee7eb7f2`), from the QML suites plus the C++ unit tests that also compile
+`gui_diagnostics.cpp`. It was measured with `/opt/gui-cov.sh`, a script kept
+outside this repository. Before that change `ac3gui_qmltests` was not
+instrumented at all; `ac3::coverage` is now linked into it. The figures have
+not been measured again. The six suites added since (the AC-4 ones and
+`Teardown`) and the AC-4 code they reach are not in them.
 
 | File | Before (26 suites) | After (30 suites) |
 |---|---|---|
@@ -273,14 +301,3 @@ at all; `ac3::coverage` is now linked into it.
 | qc_controller.cpp | 76% (222/290) | 77% (226/290) |
 | channel_geometry.cpp | 34% (22/63) | 49% (31/63) |
 | Total | 56% (3261/5751) | 60% (3502/5751) |
-
-## Known UI bug (exposed, test skipped)
-
-`ObjectInspectorDialog.qml`: the dialog is 900 px wide. Its content needs
-about 1300 px: the 340 px room plan, beside object rows of fixed-width
-columns and an Audition button. At the window's 1280x900 minimum, each
-row's Audition button runs about 60 px past the dialog's right edge. The
-centre of the button is on the modal dimmer, so a mouse click there does
-nothing. The keyboard still works. The check is
-`E2eInspect::test_auditionButtonsFitInsideTheInspectorDialog`, which calls
-`skip()` while the bug stands.

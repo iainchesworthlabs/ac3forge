@@ -1,7 +1,9 @@
 # Coding tools
 
-Expert tier. The tab is always in Expert's tab bar, but the tools themselves exist in the E-AC-3
-syntax only: with AC-3 selected, the controls give way to an explainer card — *"AC-3 has no
+Expert tier. The tab is in Expert's tab bar whenever the codec is AC-3 or E-AC-3 (with AC-4 chosen,
+the [AC-4 tab](format-and-channels.md#ac-4) takes its place, and this one is not shown), but the
+tools themselves exist in the E-AC-3 syntax only: with AC-3 selected, the controls give way to an
+explainer card — *"AC-3 has no
 Annex E tools — coupling bands, spectral extension and AHT exist in the E-AC-3 syntax only.
 Switch the codec to Dolby Digital Plus on the Format tab and they appear here."* — and object
 mode shows its own equivalent (the JOC bed is coded with the encoder's own fixed tool choices;
