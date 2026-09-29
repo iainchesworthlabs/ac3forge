@@ -1,6 +1,6 @@
 [package]
 name = "ac3forge"
-description = "Safe, idiomatic Rust bindings for ac3forge's C API - AC-3/E-AC-3 encode and decode"
+description = "Safe, idiomatic Rust bindings for ac3forge's C API - AC-3, E-AC-3 and AC-4 encode and decode"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

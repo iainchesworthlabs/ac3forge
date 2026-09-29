@@ -16,6 +16,9 @@ ready for `$GITHUB_OUTPUT`:
     docs_only  true when every path is documentation
     machinery  true when the change touches the gate itself (see GATE_MACHINERY), so the
                workflow also runs the Windows job, which a pull request otherwise skips
+    compare    true when the change touches the library (COMPARE_PREFIXES), so a queue entry
+               also runs the performance and memory comparisons (_compare.yml); the
+               workflow decides whether the event is one that runs them
     reason     the first path that forced `build`, for the run's summary
     gui_reason the first path that pulled Qt in
 
@@ -46,12 +49,18 @@ DOCS_SUFFIX = ".md"
 # GUI included, so it never takes the skip paths below.
 GATE_MACHINERY = (
     ".github/workflows/pr-gate.yml",
+    ".github/workflows/_compare.yml",
     ".github/workflows/_static.yml",
     ".github/workflows/_toolchain-versions.yml",
     ".github/actions/",
     ".github/toolchain/",
     ".github/toolchain-versions.json",
 )
+
+# The trees whose change can alter how fast the encoder runs or how much it allocates:
+# the library. Tests, apps and build files are not here on purpose, since the comparison
+# measures the library's own benchmarks, at two builds a job.
+COMPARE_PREFIXES = ("src/",)
 
 # Trees a Linux C++ build has nothing to say about. Their own lanes run in the
 # post-merge verification (docs/ci-agentic.md), and the static checks already
@@ -144,6 +153,7 @@ def plan(
             "gui": "true",
             "docs_only": "false",
             "machinery": "false",
+            "compare": "false",
             "reason": "full run (queue entry, push to main or dispatch)",
             "gui_reason": "full run (queue entry, push to main or dispatch)",
         }
@@ -151,6 +161,7 @@ def plan(
     seen = False
     all_docs = True
     machinery = False
+    compare = False
     build_reason = ""
     gui_reason = ""
 
@@ -173,6 +184,7 @@ def plan(
             continue
 
         build_reason = build_reason or path
+        compare = compare or path.startswith(COMPARE_PREFIXES)
         if path.startswith(GUI_PREFIXES) or ("/" not in path and path in GUI_ROOT_FILES):
             gui_reason = gui_reason or path
         elif not path.startswith(KNOWN_NON_GUI):
@@ -184,6 +196,7 @@ def plan(
             "gui": "true",
             "docs_only": "false",
             "machinery": "false",
+            "compare": "false",
             "reason": "no file list; building everything",
             "gui_reason": "no file list; building everything",
         }
@@ -194,6 +207,7 @@ def plan(
             "gui": "false",
             "docs_only": "true",
             "machinery": "false",
+            "compare": "false",
             "reason": "documentation only",
             "gui_reason": "",
         }
@@ -206,6 +220,7 @@ def plan(
         "gui": "true" if gui_reason else "false",
         "docs_only": "false",
         "machinery": "true" if machinery else "false",
+        "compare": "true" if compare else "false",
         "reason": build_reason or "nothing a Linux C++ build reads (lint only)",
         "gui_reason": gui_reason,
     }
@@ -230,7 +245,7 @@ def main(argv: list[str]) -> int:
     paths = [] if args.force_all else sys.stdin.read().splitlines()
     result = plan(paths, force_all=args.force_all, gui_on_build=args.gui_on_build)
 
-    for key in ("build", "gui", "docs_only", "machinery", "reason", "gui_reason"):
+    for key in ("build", "gui", "docs_only", "machinery", "compare", "reason", "gui_reason"):
         print(f"{key}={result[key]}")
     print(
         f"plan: build={result['build']} gui={result['gui']} "
