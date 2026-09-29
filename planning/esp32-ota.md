@@ -1,8 +1,12 @@
 # Firmware over the network for Hearth sinks
 
-**Status, 2026-09-25:** O1 is built and merged, and all four boards are on the two-slot layout
-and have passed O2's checks. O3, O4, O5, O8 and O9 are built and in review, O6 is studied, and O7
-waits for the boards to leave development ([Phases](#phases)).
+**Status, 2026-09-30:** O1 to O5, O8 and O9 are built and merged, with the fixes that followed
+them. O1 merged as #1019 and #1026 on 2026-09-25. #1034, #1035, #1038 and #1056 followed on
+2026-09-25 and #1036, #1039 to #1042, #1048 and #1053 on 2026-09-26 (UTC). All four boards are
+on the two-slot layout and passed O2's checks on 2026-09-25. O6, the P4's co-processor
+firmware, is a study: nothing that updates the co-processor exists. O7, signed images, is not
+built, by the user's decision. The exits of O8 and O9 wait for a release that carries sink
+firmware, and none has been cut since v0.10.0-beta.1 on 2026-09-01 ([Phases](#phases)).
 
 This plan was written on 2026-09-24, when every `hearth_sink` layout on `main` (`b49a966c`) was a
 single `factory` app and nothing in the tree called `esp_ota_*`. The ESP-IDF facts below were read
@@ -20,16 +24,17 @@ On 2026-09-25 the user added two final phases. CI builds the firmware for every 
 publishes it, as it does the desktop packages ([Published images](#published-images), O8). A
 guide then tells a user how to use those images ([The user guide](#the-user-guide), O9).
 
-Today a `hearth_sink` board is updated over its USB connector:
+Before this plan a `hearth_sink` board was updated over its USB connector:
 
 - a build on the PC;
 - `esptool write-flash @flash_args` on the board's COM port;
 - sometimes a BOOT or RESET press, or `--after watchdog-reset` on the board that needs it;
 - and nothing at all while the cable or the port is being used for something else.
 
-This plan adds updates over the network the board is already on, usually Wi-Fi, or Ethernet
-under QEMU. It also adds a remote restart, and a way back to the previous firmware. Five rules
-keep it safe:
+USB is still how a board moves to the two-slot layout, gets a new partition table or bootloader,
+and is recovered when it will not boot. The plan added updates over the network the board is
+already on, usually Wi-Fi, or Ethernet under QEMU. It also added a remote restart, and a way back
+to the previous firmware. Five rules keep it safe:
 
 - The new image goes into the slot that is not running.
 - The board keeps running its current image until the new one has been checked in full: for
@@ -43,7 +48,13 @@ keep it safe:
 
 It covers every board the project runs on: the ESP32-S3, the ESP32-C6 and the ESP32-P4.
 
-## What exists
+## What existed on 2026-09-24
+
+This section and its table are the tree before O1. Since O1 (#1019) every board uses a two-slot
+table: `partitions.csv` for the S3, the P4 and a C6 with 16 MB of flash, and `partitions_c6.csv`
+for a C6 with 4 MB. `partitions_p4.csv` no longer exists. The C6 on COM9 has 16 MB of flash and
+runs the 16 MB table. The control surface has the firmware routes and `GET /log` now, and
+`GET /firmware` reports what a board runs.
 
 | | ESP32-S3 | ESP32-C6 | ESP32-P4 |
 |---|---|---|---|
@@ -104,18 +115,24 @@ Six pieces:
    trial, and a reset before it is accepted boots the previous one.
 3. **Integrity checks at every step.** A SHA-256 goes from the build to the flash with each
    image, and the bootloader checks the image before every boot. No eFuses are burned. Signed
-   images come later ([Signing, later](#signing-later)).
+   images would come later ([Signing, later](#signing-later)); that is O7, and it is not built.
 4. **Flash mode, and the routes around it.** Flash mode is the state the board is in while it
    takes an update. The routes are `GET /firmware`, `PUT /firmware`, `PUT /firmware/mode`,
    `PUT /firmware/rollback` and `POST /restart`.
 5. **A host tool.** `tools/hearth/ota.py` pushes a build to one board or to all of them, waits for
    each one to accept the new image, and reports what happened. `idf.py ota` wraps it. The web
-   page and `ac3hearth` come later and use the same routes.
+   page (O3) and `ac3hearth` (O5) came later and use the same routes.
 6. **Published images and a guide.** CI builds each board's firmware and publishes it with the
    desktop packages, and a user guide covers installing and updating from those images (O8 and
    O9, the last phases).
 
+All six are built except the signing in piece 3.
+
 ## Flash layout
+
+**Status, 2026-09-30: built** in O1a (#1019). `partitions.csv` and `partitions_c6.csv` in the
+example have the offsets and sizes below, `partitions_p4.csv` is gone, `sdkconfig.flash16mb`
+exists, and `tools/checks/check_esp_efuse_free.py` runs in CI.
 
 `nvs` and `phy_init` stay where they are. `otadata` goes where the app started, and the first
 slot at `0x20000`.
@@ -134,9 +151,9 @@ slot at `0x20000`.
 | `storage` | data | fat | `0x870000` | `0x40000` | moved, same size |
 | `reserve` | data | `0x41` | `0x8B0000` | `0x400000` | new; empty ([decision 8](#decisions)) |
 
-That ends at 12.7 MiB. A 4 MiB slot is 2.6 to 3 times the size of each chip's image today. The
-P4 already had a 4 MiB app partition for this reason. The P4 and the C6 on COM9 then use this table,
-so `partitions_p4.csv` goes. A 16 MB C6 selects it with a new overlay, `sdkconfig.flash16mb`
+That ends at 12.7 MiB. A 4 MiB slot is 2.6 to 3 times the size of each chip's image on
+2026-09-24. The P4 already had a 4 MiB app partition for this reason. The P4 and the C6 on COM9
+then use this table, so `partitions_p4.csv` goes. A 16 MB C6 selects it with a new overlay, `sdkconfig.flash16mb`
 (`CONFIG_ESPTOOLPY_FLASHSIZE_16MB` and this table), placed after `sdkconfig.c6` in the list
 ([decision 7](#decisions)).
 
@@ -151,9 +168,10 @@ so `partitions_p4.csv` goes. A 16 MB C6 selects it with a new overlay, `sdkconfi
 | `audio` | `0x3B0000` | `0x10000` | 64 KiB, from 256; the sample is 10,752 bytes |
 | `storage` | `0x3C0000` | `0x40000` | ends at `0x400000` |
 
-The C6 image is 86% of a 1.75 MiB slot today. When it outgrows that, 4 MB C6 modules need
-something else: a smaller image, or no `audio`/`storage` partitions in the C6's Sendspin build. The
-limit is written here so that it does not arrive as a surprise.
+The C6 image was 86% of a 1.75 MiB slot on 2026-09-24, and 91% on 2026-09-25 with O4's core dump
+code in it ([Diagnostics](#diagnostics-without-a-cable-o4)). When it outgrows that, 4 MB C6
+modules need something else: a smaller image, or no `audio`/`storage` partitions in the C6's
+Sendspin build. The limit is written here so that it does not arrive as a surprise.
 
 **Moving a board to the new layout** is one USB flash of the usual `write-flash @flash_args`. The
 build's `flash_args` then writes:
@@ -177,7 +195,9 @@ published image has no network built in (O8). A board whose network comes only f
 would boot a published image with no network, fail its trial and roll back. That is safe, but it
 would be confusing. So from O1 an image stores its built-in network in NVS the first time it
 boots and finds none stored. `GET /firmware` reports where the network came from, and `ota.py`
-refuses to push an image with no network to a board whose only network is built in.
+refuses to push an image with no network to a board whose only network is built in. Built in O1b
+(#1026): the console prints "stored the network this image was built with", and `network` in
+`GET /firmware` is `stored`, `built-in`, `wired` or `none`.
 
 **The P4's bootloader.** It sits at `0x2000`, below the partition table at `0x8000`: a
 24,576-byte window. The "ESP32P4 firmware flash" session measured it on 2026-09-24 with
@@ -185,7 +205,7 @@ bootloader-only builds from `b49a966c` and the board's overlays:
 
 | P4 bootloader | Bytes | Spare |
 |---|---|---|
-| As flashed today: log level Info, no rollback | 23,296 | 1,280 |
+| As flashed on 2026-09-24: log level Info, no rollback | 23,296 | 1,280 |
 | Rollback, Info | 23,424 | 1,152 |
 | Rollback, Warning | 20,896 | 3,680 |
 | Rollback, Error | 20,608 | 3,968 |
@@ -196,13 +216,20 @@ level, because O2's board tests read the bootloader's lines about which slot it 
 A board's bootloader changes only with a USB flash, so this margin matters only at build time. If
 a later ESP-IDF grows the bootloader past the window, the build fails and says so, and
 `CONFIG_BOOTLOADER_LOG_LEVEL_WARN` is the one-line fix. The S3 and C6 bootloaders start at `0x0`
-in a 32,768-byte window, with 11,600 and 9,616 bytes spare.
+in a 32,768-byte window, with 11,600 and 9,616 bytes spare. As built, `sdkconfig.p4` records the
+rollback figure (23,424 bytes at Info, 1,152 spare, 20,896 at Warning), and CI builds the P4's
+`hearth_sink` in the `build-esp32c3` job of `_build.yml`, so that a bootloader grown past the
+window fails the build. The table's other figures are the 2026-09-24 measurement's, from
+bootloader-only builds, and were not taken again.
 
 Anything else that might one day need a partition has to be in this table before the boards
 migrate, because a table change is a USB flash. That is why `coredump` and `reserve` are there
 already.
 
 ## Flash mode
+
+**Status, 2026-09-30: built** in O1b (#1026), with the changes of #1053 (the upload's task made
+after the teardown, a 15 s limit on the example's hook).
 
 The user's direction: flashing is a mode of its own, in which nothing else runs. The board enters
 flash mode on `PUT /firmware/mode` with body `flash`, or on the first `PUT /firmware`. Entering
@@ -225,10 +252,11 @@ co-processor, or Ethernet), the HTTP server and mDNS's name.
 Routes that would start playback or change a setting answer `409`, with a reply that says the
 board is in flash mode:
 
-- `POST /play` and `POST /pairing`;
+- `POST /play`, `POST /volume` and `POST /pairing`;
 - `PUT /layout`, `/slot-width`, `/wiring`, `/name` and `/network`.
 
-Every `GET` still answers.
+Every `GET` still answers. (The list is `refused_in_flash_mode` in `control.cpp`. `POST /stop` is
+not in it.)
 
 **Every way out is a restart.**
 
@@ -253,8 +281,9 @@ printed it ([Diagnostics](#diagnostics-without-a-cable-o4)).
 The S3 board is tighter. Playing JOC over Sendspin has left it 723 bytes of internal RAM (the
 example's README), so the upload's task could not have been made before the teardown. Flash mode
 therefore comes first. A board that still cannot make the task answers `503` with the largest
-block it has, and records it. Whether the teardown frees 8 KiB in one piece on that board, which
-only holds its burst player rather than freeing it, is not measured yet.
+block it has, and records it. On the S3 board the largest internal block is 31,744 bytes as flash
+mode starts, and 89,415 bytes is the least free during an upload (the table under
+[Diagnostics](#diagnostics-without-a-cable-o4)), so the task fits.
 
 **Flash writes and the cache.** An erase or a write disables the flash cache, in windows of up to
 one 64 KiB block erase. Nothing time-critical is left running by then. On the C6, Wi-Fi's own code
@@ -262,6 +291,9 @@ runs from flash (its IRAM options are off), so Wi-Fi also pauses in those window
 whatever those windows delay.
 
 ## An update, on the board
+
+**Status, 2026-09-30: built** in O1b (#1026), with the interrupted-upload record, erase-as-you-go
+and the ten-minute limit from #1053. The steps below are what `firmware.cpp` does.
 
 1. `PUT /firmware` arrives on the HTTP server's task. It is refused at once, before any of the
    body is read, when:
@@ -309,8 +341,8 @@ whatever those windows delay.
    - the SHA-256 of the bytes read back from the slot has to equal the SHA-256 of the body.
 
    Only then does `esp_ota_set_boot_partition` make the new slot the next boot.
-8. The board replies `200` with the version written, waits about a second for the reply to leave,
-   and calls `esp_restart()`.
+8. The board replies `200` with the version written, waits 500 ms for the reply to leave, and
+   calls `esp_restart()`.
 
 Any failure calls `esp_ota_abort`, replies with the reason, records it for `GET /firmware`, and
 leaves the board in flash mode. The slot is left with a partial image that nothing boots, because
@@ -319,6 +351,9 @@ upload the running image carries on with nothing to roll back to. `PUT /firmware
 answers `409` until an update succeeds.
 
 ## The trial
+
+**Status, 2026-09-30: built** in O1b (#1026). The timer that reads it came in #1034 and the
+acceptance from `esp_timer`'s task in #1053.
 
 The rollback bootloader marks a newly written slot `PENDING_VERIFY` the first time it boots it. If
 the board resets while the slot is still in that state, the bootloader marks it `ABORTED` and
@@ -378,7 +413,7 @@ panic, task watchdog, brownout, power-on).
   previous image stays in the other slot until the next update, so `PUT /firmware/rollback` (or
   `ota.py rollback`) brings it back, as long as the network and the HTTP server still work. A
   later option is a crash-loop guard, which would roll back by itself after repeated panics
-  shortly after boot. It is not in O1: it must never swap back and forth between two images that
+  shortly after boot. It is not built: it must never swap back and forth between two images that
   both fail.
 - An image that runs well but cannot take the next update. Roll back to the previous image, which
   can; failing that, USB.
@@ -393,13 +428,18 @@ changed that blob's layout, a rollback would silently lose every pairing.
 
 The rule from O1 on: a new image never changes the meaning or the layout of a key it did not add.
 A new layout goes under a new key, and the old key stays readable. O1 adds a host test that loads
-blobs written by the previous layout of each store.
+blobs written by the previous layout of each store; for the pairing records it is in
+`tests/io/test_pairing_records.cpp`.
 
 ## Integrity
 
 The user's requirement: anyone on the network may flash a board, as anyone with a USB cable can,
 but a damaged image must never run, whether it was damaged on disk, on the way to the board, on
 the way into flash or while it sat in flash.
+
+**Status, 2026-09-30: built** in O1b (#1026), with the background check of the other slot reworked
+in the same PR's later commits (it runs from `esp_timer` in slices, after the trial, and stops
+before an update writes).
 
 Every ESP-IDF app image carries a SHA-256 of itself, which the build appends: `hash_appended` is 1
 in the S3, C6 and P4 images of 2026-09-24. The checks build on that:
@@ -414,9 +454,11 @@ in the S3, C6 and P4 images of 2026-09-24. The checks build on that:
 
 Two build settings would switch the boot-time check off: `CONFIG_BOOTLOADER_SKIP_VALIDATE_ON_POWER_ON`
 and `_ALWAYS`. Both default to off. A new check, `tools/checks/check_esp_efuse_free.py`, fails CI
-if any `sdkconfig` fragment under `esp-idf/` turns either on. The same check refuses the options
-that burn eFuses: hardware secure boot, flash encryption, anti-rollback, and a disabled or secure
-ROM download mode. Each of those would take away some way of recovering a board over USB.
+if any `sdkconfig` fragment under `esp-idf/` or `apps/baremetal/` turns either on (the
+script-lint job's step "ESP-IDF settings that would stop USB recovery"). The same check refuses
+the options that burn eFuses: hardware secure boot, flash encryption, anti-rollback, and a
+disabled or secure ROM download mode. Each of those would take away some way of recovering a
+board over USB.
 
 `GET /firmware` reports each slot's SHA-256 as the board has it. After an update, `ota.py`
 compares the running slot's digest with the file it sent. That proves the board runs exactly that
@@ -432,6 +474,11 @@ chip, as they could with a USB cable. They can also restart it, or put it in fla
 ends in a restart), as they can stop it today.
 
 ### Signing, later
+
+**Status, 2026-09-30: not built** (O7). No sdkconfig fragment sets
+`CONFIG_SECURE_SIGNED_APPS_NO_SECURE_BOOT`, the tree holds no signing key and no key-path guard,
+and the CI job has no throwaway key. The user put signing off until the boards leave development.
+What follows is the design, and its ESP-IDF facts were read from the v6.1 tree on 2026-09-24.
 
 When the boards move out of development, signed images are a phase of their own (O7). Everything
 it needs is in ESP-IDF v6.1:
@@ -466,9 +513,12 @@ signed with its key. That includes one sent by a hostile web page ([Routes](#rou
 
 ## Routes
 
+**Status, 2026-09-30: built.** `control.cpp` registers each route below, and
+`tests/io/test_firmware_status.cpp` pins `GET /firmware`'s body.
+
 | Route | What it does | Replies |
 |---|---|---|
-| `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended; an upload's progress; slot size, flash size and the partition table as the board has it; the bootloader's version; whether the board's network is stored or built into its image; why the board last started (`reset_reason`) and how long ago (`uptime_ms`) | `200`, JSON |
+| `GET /firmware` | Mode; each slot's version, ELF SHA-256, image SHA-256, state, and whether its image is intact; the trial's progress; the last update and how it ended (`on trial`, `accepted`, `rolled back`, `rollback requested`, `refused`, `failed` or `interrupted`); an upload's progress; the last crash's core dump, when one is kept (O4); slot size, flash size and the partition table as the board has it; the bootloader's version; whether the board's network is stored or built into its image; why the board last started (`reset_reason`) and how long ago (`uptime_ms`) | `200`, JSON |
 | `PUT /firmware` | Body: an app image (`ac3forge_hearth_sink.bin`, not the merged image), with an optional `Content-Digest`. Enters flash mode, writes the other slot, checks it, restarts into it | `200` then a restart; `400` not an app image, the wrong chip, a revision this chip does not meet, cut short, more than ten minutes arriving, or damaged (a SHA-256 does not match, and the reply says which); `503` no internal RAM left for the upload's task (the reply says how much there is); `403` the `Host` is not one of the board's own names ([decision 13](#decisions)); `409` on trial, or an update already running; `411` no length; `413` larger than the slot; `415` a `Content-Type` other than `application/octet-stream` (none at all is fine: `curl -T` sends none) |
 | `PUT /firmware/mode` | Body: `flash` enters flash mode; `normal` leaves it with a restart into the running image, and outside flash mode does nothing | `200`; `409` on trial |
 | `PUT /firmware/rollback` | Makes the other slot's image, if it is valid, the next to boot, and restarts into it, on trial as an update's image is. On trial, gives up the trial instead | `200`; `409` nothing valid to roll back to |
@@ -505,15 +555,24 @@ to update from outside the house, use a VPN into the network.
 
 ## The host tool
 
+**Status, 2026-09-30: built** in O1d (#1026), with `coredump` and `log` from O4 (#1036) and
+`--release` and `--run` from O8 (#1040). `python tools/hearth/ota.py --help` prints the usage
+below; its exit status is 0 when every board was updated or already ran the image, 1 for a
+refusal, a failure or a usage error, 2 when a board rolled back and 3 when a board did not come
+back. `tools/hearth/test_ota.py` tests it against a stand-in board, and CI runs that suite.
+
 `tools/hearth/ota.py`, Python 3 standard library only. `zeroconf` is optional and used only by
 `--all`.
 
 ```
-ota.py push   (--build-dir DIR | IMAGE) (--host H [--host H ...] | --all) [--yes] [--force]
+ota.py push   (--host H [--host H ...] | --all) [--yes] [--force] [--timeout SECONDS]
+              [--download-dir DIR] (--build-dir DIR | --release TAG | --run RUN_ID | IMAGE)
 ota.py status [--host H ... | --all]
 ota.py restart  --host H
 ota.py rollback --host H
 ota.py cancel   --host H          # leave flash mode: restart into the running image
+ota.py coredump --host H [--out FILE] [--elf ELF] [--erase]
+ota.py log      --host H [--follow]
 ```
 
 **`push`**, for each board in turn:
@@ -563,9 +622,13 @@ boards have to be named with `--host`.
 
 **`idf.py ota`.** An `idf_ext.py` in the example adds an `ota` action (ESP-IDF v6.1 loads a
 project's `idf_ext.py`). `idf.py -C <example> -B <build dir> ... build ota --host hearth-eb2c64.local`
-builds and then pushes, as `build flash` does today with a port.
+builds and then pushes, as `build flash` does with a port. It takes `--host` (required, repeatable),
+`--yes` and `--force`, and no `--all`. Built in O1d (#1026); it did not load until #1038 added the
+`"version"` key that ESP-IDF v6.1 asks of an extension.
 
 ## The web page (O3)
+
+**Status, 2026-09-30: built and merged** as #1035.
 
 The page's firmware tiles already show `/hardware`'s version. A Firmware section adds:
 
@@ -596,6 +659,8 @@ three changes to the sketch:
 The budget is 57,344 bytes, against 55,454 used.
 
 ## Diagnostics without a cable (O4)
+
+**Status, 2026-09-30: built and merged** as #1036.
 
 A board updated over its network is usually a board with no cable on it. When one panics, or
 does something odd, its console is where the cause is written, and nobody is reading it. O4 keeps
@@ -659,8 +724,8 @@ bytes at the least). A JOC stream has left the S3 board 43 bytes of internal SRA
 README). A crash there still says it panicked, in `GET /firmware`'s last update, and the ring
 keeps what the console said before it.
 
-The core dump's code adds 16 to 17 KB to an image. The C6's on the 4 MB table, the tightest, is
-now 1,665,856 bytes, which leaves 169,152 (9%) of its 1.75 MiB slot.
+The core dump's code adds 16 to 17 KB to an image. The C6's on the 4 MB table, the tightest, was
+1,665,856 bytes on 2026-09-25, which left 169,152 (9%) of its 1.75 MiB slot.
 
 **The upload's least free heap.** O2 asks for the C6's internal heap low-water mark during an
 upload. The upload now measures it from the moment flash mode has stopped the player to the
@@ -678,6 +743,9 @@ Neither comes near running out during an upload. The S3 board is the tighter of 
 still keeps 89 KB free.
 
 ## ac3hearth (O5)
+
+**Status, 2026-09-30: built and merged** as #1039, with fixes from #1053 (the sink is kept while
+an update runs and while the tab shows how it ended, and one broken upload is sent again).
 
 The desktop app finds sinks by mDNS, and has a settings page for each paired Hearth sink with
 Speakers and Decoder tabs. O5 adds a third tab, **Firmware** ([decision 19](#decisions)):
@@ -740,14 +808,19 @@ taken when it comes up.
 
 ## Published images
 
+**Status, 2026-09-30: built and merged** as #1040. CI packages the four images on every run of
+the ESP lane and uploads `esp32-firmware`. No release has carried them yet: the last release,
+v0.10.0-beta.1, is from before O8.
+
 CI builds the desktop packages for each platform, and `release.yml` publishes them. If boards are
 to be updated over the network, their firmware should come the same way, so that updating a board
 does not need an ESP-IDF install. That is O8.
 
-**What CI builds today.** In `_build.yml`, the S3's Sendspin board configuration and the C6's are
-compiled, then thrown away: the S3's with `rm -rf build`, and the C6's in `$RUNNER_TEMP`. Neither
-is uploaded. CI builds the P4's bare-metal probe, not `hearth_sink` for the P4. Every image CI
-runs under QEMU is a CI shape (`sdkconfig.ci-*`), not a board's.
+**What CI built on 2026-09-24.** In `_build.yml`, the S3's Sendspin board configuration and the
+C6's were compiled, then thrown away: the S3's with `rm -rf build`, and the C6's in
+`$RUNNER_TEMP`. Neither was uploaded. CI built the P4's bare-metal probe, not `hearth_sink` for
+the P4; O1a (#1019) added that build. Every image CI runs under QEMU is a CI shape
+(`sdkconfig.ci-*`), not a board's.
 
 **What O8 builds.** One image for each board configuration the guides describe, from the same
 overlay lists the board recipes use:
@@ -841,13 +914,17 @@ machine before upload. O7 decides which.
   and `SHA512SUMS` first, and then only the image each board takes. `--run` uses `gh run
   download`, since workflow artifacts need a token.
 
-Checked on 2026-09-25 against this PR's own CI run (36130182488):
+Checked on 2026-09-25 against #1040's own CI run (36130182488):
 - **Packaging.** `package-esp32-firmware` published the four images.
 - **Onto a board.** `ota.py push --run` chose the 16 MB C6's image for the C6 on COM9 and sent it
   over Wi-Fi. The board checked it and accepted it after its trial, in 67 s.
 - **What it found.** The image called itself "1", which led to the version fix above.
 
 ## The user guide
+
+**Status, 2026-09-30: built and merged** as #1041. The exit, someone taking a blank board to one
+that plays and then updating it to a newer release with only the guide, has not been run: it
+waits for a release that carries sink firmware.
 
 O9 writes `docs/hearth/sink-firmware.md`, for someone who has a board and a release, and no
 ESP-IDF install:
@@ -1011,7 +1088,9 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
 - The co-processor's own firmware (boot log: "Version mismatch: Host [2.12.0] > Co-proc [0.0.0]")
   is a separate flash target: [The P4's co-processor](#the-p4s-co-processor-o6) has O6's study.
 - **A restart once left the P4 unable to reach its co-processor** until its power was cycled (O2,
-  2026-09-25). Every update ends in a restart; the next section says what is known.
+  2026-09-25). Every update ends in a restart; the next section says what is known. The soak of
+  2026-09-26 ran the P4 through dozens of restarts without a repeat
+  ([Robustness](#robustness-2026-09-26)).
 - One upload to the P4 broke off 64 KiB in, about 10 s after the board had restarted: the board
   restarted again, with nothing recorded, and the same push passed a few minutes later. Its
   console was not attached, so the cause is not known.
@@ -1019,6 +1098,13 @@ staging partition and a final copy (`esp_ota_set_final_partition`). This plan do
   2026-09-25.
 
 ## The P4's co-processor (O6)
+
+**Status, 2026-09-30: studied, and not built** (#1042 is the study). Nothing here was tried on a
+board, and nothing that updates the co-processor exists: no route, no staging in `reserve`, no
+`esp_hosted` update call. The example's manifest still asks for `espressif/esp_hosted` "~2" and
+`espressif/esp_wifi_remote` ">=0.10,<2.0" (`main/idf_component.yml`), so decision 22 is not
+taken. The steps under "What O6 would do next" wait for someone at the desk with a USB-UART
+adapter.
 
 The P4 has no radio of its own. Its Wi-Fi goes over SDIO to the FireBeetle 2's onboard ESP32-C6,
 which runs Espressif's `esp_hosted` co-processor firmware. That firmware is separate from
@@ -1134,28 +1220,42 @@ the way `hardware_info.hpp` is kept free of it:
 - `GET /firmware`'s JSON.
 
 `tests/io/test_firmware_image.cpp` checks all of it from synthetic headers, including a P4 image
-that needs v3.1 on a v1.3 chip. The settings rule has its test of old blobs.
+that needs v3.1 on a v1.3 chip, and `test_firmware_trial.cpp` and `test_firmware_status.cpp` cover
+the trial and the status body. The settings rule has its test of old blobs.
 `tools/hearth/test_ota.py` runs the tool against a stand-in board built on `http.server`: the
 pre-flight refusals, a damaged file refused before sending, an update that is accepted, one that
-rolls back, one that does not come back, and `--all` stopping at the first failure.
+rolls back, one that does not come back, and `--all` stopping at the first failure. Status,
+2026-09-30: all built; the tool's suite runs in the "Oracle unit tests" step.
 
-**Under QEMU** (S3, in the ESP32 job). The job builds image A and image B from the same tree with
-different versions. It boots A, then:
+**Under QEMU** (S3, in the ESP32 job). Built as the step "Update the Sendspin player over the
+network under QEMU" in `_build.yml`, which runs `tools/checks/run_ota_qemu.py`. The job builds
+image A (`sdkconfig.ci-ota`, which shortens the trial to a 5 s hold and a 40 s deadline) and
+image B from the same tree with different versions, and two more from the same directory with
+`AC3FORGE_FIRMWARE_TEST` set. As built, the script's ten steps are:
 
-1. pushes B with `ota.py`: B restarts, is accepted, A is in the other slot, and `GET /firmware`
-   reports both images intact;
-2. pushes B with one byte changed: `400` (its SHA-256), and A keeps running;
-3. pushes B with a `Content-Digest` that does not match: `400`, and A keeps running;
-4. pushes a C6 image: `400` before anything is written;
-5. cuts an upload short: refused, and the next full upload is accepted;
-6. pushes an image built with `AC3FORGE_FIRMWARE_TEST=unhealthy`, which never reports healthy:
-   it rolls back at the (shortened) deadline, and `last_update` says why;
-7. pushes one built with `AC3FORGE_FIRMWARE_TEST=panic`, which panics as its trial starts: the
-   bootloader rolls it back;
-8. damages the running slot's image in the flash file between two boots: the bootloader boots
+1. the board boots A from `ota_0`, valid, with the other slot empty, and `GET /log` has the
+   boot's lines without the Sendspin pairing token;
+2. `ota.py` pushes B: B restarts, is accepted, and A is the image to go back to;
+3. refusals, each leaving B running: a byte of the image changed (`400`), a `Content-Digest`
+   that does not match (`400`), another chip's image (`400`, before anything is written), an
+   upload cut short (`400`), a `Host` that is not the board's (`403`), and a play in flash mode
+   (`409`);
+4. `ota.py` pushes A back, and it is accepted;
+5. an image built with `AC3FORGE_FIRMWARE_TEST=unhealthy`, which never reports healthy, rolls
+   back at the deadline, and `last_update` says why;
+6. one built with `AC3FORGE_FIRMWARE_TEST=panic`, which panics as its trial starts, is rolled
+   back by the bootloader, and the panic's core dump is reported, fetched whole, read with
+   `esp_coredump` where the ESP-IDF environment is there, and erased;
+7. `PUT /firmware/rollback` with nothing to go back to answers `409`; then B is pushed, and
+   `PUT /firmware/rollback` takes the board back to A;
+8. `POST /restart` restarts into the image that ran;
+9. the running slot's image damaged in the flash file between two boots: the bootloader boots
    the other slot;
-9. sends `PUT /firmware/rollback`, then `POST /restart`;
-10. sends a firmware PUT with a `Host` that is not the board's: `403`.
+10. `PUT /firmware/mode` `flash` and then `normal`: the board restarts.
+
+The design's list had the same checks in another order and without the log, the core dump and
+the flash-mode exit. `run_ota_qemu.py` starts QEMU again, twice, if it dies before the board
+prints anything (#1056).
 
 `AC3FORGE_FIRMWARE_TEST` is a CMake variable, not a Kconfig option, and so is `PROJECT_VER` for
 image B. Each variant is then a rebuild of A's build directory that recompiles a file or two, so
@@ -1172,10 +1272,14 @@ and `POST /restart` stay in one QEMU, which keeps the reset reason a panic leave
 
 ## Phases
 
+Status, 2026-09-30, at a glance: O1 to O5, O8 and O9 built and merged; O2 passed on all four
+boards; O6 studied only; O7 not built. The robustness fixes of 2026-09-26 (#1053) are merged.
+
 Nothing reaches a board until O1 has merged in full, because each board gets one USB flash and
 that image has to be able to take the next update.
 
-- **O1, in the repository only.** Split into PRs that merge before any board migrates:
+- **O1, in the repository only.** **Status: built and merged**, (a) as #1019 and (b) to (d) as
+  #1026, both on 2026-09-25. Split into PRs that merge before any board migrates:
   - (a) the layouts, the rollback bootloader, `sdkconfig.flash16mb` and
     `check_esp_efuse_free.py`, with CI's QEMU shapes passing on the new table and the README's
     offsets updated;
@@ -1186,8 +1290,8 @@ that image has to be able to take the next update.
   - (d) `ota.py`, its tests and `idf.py ota`.
 
   **Exit:** CI green, the QEMU job included; no board touched.
-- **O2, boards.** One USB migration flash each: S3 COM15 and COM16, C6 COM9, and P4 COM10.
-  **Exit, on each chip:**
+- **O2, boards.** **Status: done, on 2026-09-25.** One USB migration flash each: S3 COM15 and
+  COM16, C6 COM9, and P4 COM10. **Exit, on each chip:**
   - name, network and pairings survive the migration (for example "1 pairing record(s)" at boot,
     and the name in `/status`);
   - a build pushed over Wi-Fi is accepted, and a Sendspin server reconnects by itself;
@@ -1205,17 +1309,19 @@ that image has to be able to take the next update.
   pull the plug, lost its power 15 s into its trial. The board was back 8 s later on the image
   before it, with the reason "the power went off before it had proved itself". The P4's run
   needed its power cycled part-way ([The P4's co-processor](#the-p4s-co-processor-o6)).
-- **O3.** The page's Firmware section ([built](#the-web-page-o3)).
+- **O3.** The page's Firmware section ([built](#the-web-page-o3)). **Status: built and merged**
+  as #1035.
 - **O4, diagnostics without a cable.** Core dumps to the `coredump` partition, fetched with
   `GET /firmware/coredump` and read with `idf.py coredump-info`. Also a ring of recent console
   lines at `GET /log`, since flashing without a cable also means reading the console without one.
-  [Built](#diagnostics-without-a-cable-o4).
-- **O5.** The firmware panel in `ac3hearth`. [Built](#ac3hearth-o5).
+  [Built](#diagnostics-without-a-cable-o4). **Status: built and merged** as #1036.
+- **O5.** The firmware panel in `ac3hearth`. [Built](#ac3hearth-o5). **Status: built and merged**
+  as #1039.
 - **O6.** The P4's co-processor firmware, as a study first ([decision 9](#decisions)).
   [Studied](#the-p4s-co-processor-o6); what comes next needs someone at the desk with a USB-UART
-  adapter on the C6's pads.
+  adapter on the C6's pads. **Status: studied only**, in #1042; nothing after the study is built.
 - **O7, when the boards leave development.** Signed images, switched on over the network
-  ([Signing, later](#signing-later)).
+  ([Signing, later](#signing-later)). **Status: not built.**
 
 The last two phases come once the ones above are done. O7 has no fixed place: it happens when the
 boards leave development, and if that is before O8, O8's images are published signed.
@@ -1227,7 +1333,7 @@ boards leave development, and if that is before O8, O8's images are published si
   - `ota.py push --run` and `--release`.
 
   [Built](#published-images); its exits wait for a release (or `release.yml`'s dry run) and for a
-  blank board.
+  blank board. **Status: built and merged** as #1040; no release has published the images yet.
 
   **Exit:**
   - `ota.py push --release` puts a release's images on each board on the desk over the network,
@@ -1238,8 +1344,13 @@ boards leave development, and if that is before O8, O8's images are published si
   takes it, and the other pages brought into line. **Exit:** someone with only the guide takes a
   blank board to one that plays, then updates it over the network to a newer release.
   [Built](#the-user-guide); its exit waits for a release that publishes sink firmware.
+  **Status: built and merged** as #1041.
 
 ## Robustness (2026-09-26)
+
+**Status, 2026-09-30: built and merged** as #1053, with #1048 (a sink given its network over
+Improv restarts to start its player) and #1056 (QEMU started again when it dies before the board
+prints). The fixes named below are in the tree; the one item under "Still open" is still open.
 
 **A soak on the boards.** Each board was updated over and over through the night. Each cycle
 was a push with `ota.py`, as a user makes one, then one fault injected by hand:
@@ -1337,6 +1448,11 @@ buffers in PSRAM (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`).
 
 ## Decisions
 
+Outcomes, 2026-09-30. Decisions 1 and 3 to 21 were built as recommended, the recommended (a) each
+time; decision 6 is a decision not to build something, and it stands. Decision 2 was taken as (c)
+while the boards are in development, and its (a) is O7, which is not built. Decision 9 was taken
+as (a), and the study is all of it that exists. Decision 22 is open: nothing pins `esp_hosted`.
+
 1. **Update scheme.** (a) **two slots and a rollback bootloader**; (b) a small factory recovery
    app plus one update slot; (c) one slot and a staging area. **Recommend (a).** It is the only
    one of the three that always leaves a whole, working image on the board. (b) needs a second
@@ -1373,8 +1489,8 @@ buffers in PSRAM (`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP`).
    ESP-IDF's staging copy. **Recommend (a).** Neither has a second copy, so a power cut during
    the copy leaves nothing that boots. Cost: those changes need one USB flash per board.
 7. **Which table the 16 MB C6 uses.** (a) **the 16 MB table through `sdkconfig.flash16mb`**; (b)
-   the 4 MB table on every C6. **Recommend (a).** Slots of 4 MiB, against a 1.75 MiB slot that is
-   86% full today. Cost: one more overlay line in the C6's board recipe.
+   the 4 MB table on every C6. **Recommend (a).** Slots of 4 MiB, against a 1.75 MiB slot that was
+   86% full on 2026-09-24. Cost: one more overlay line in the C6's board recipe.
 8. **Partitions reserved before migrating.** (a) **`coredump` (64 KiB) on both tables, and a
    4 MiB `reserve` on the 16 MB table**; (b) only what O1 uses. **Recommend (a).** The table is
    USB-only after the migration. Cost: flash nothing uses yet, on boards with room to spare.
