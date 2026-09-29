@@ -161,12 +161,23 @@ TestCase {
     }
 
     // Copy diagnostics puts the same report straight on the clipboard, with
-    // no dialog - tst_media_page.qml's own Copy JSON case reads it back the
-    // identical way, through TestServices.clipboardText().
+    // no dialog - read back through TestServices.clipboardText(), the same
+    // hook tst_media_page.qml's own Copy JSON case uses. Unlike that case
+    // (which compares against inspectedMedia.json, a cached property),
+    // diagnosticsReport() re-stamps "written: ..." with the current time on
+    // every call, so comparing a second call against what the click already
+    // put on the clipboard would race the clock down to the millisecond.
+    // Drop just that line, the same reason test_saveDiagnosticsWritesTheReport
+    // above steers around it by checking only the title line.
+    function withoutWrittenLine(report) {
+        return report.split("\n").filter(function(line) { return !line.startsWith("written: "); }).join("\n");
+    }
+
     function test_copyDiagnosticsPutsTheReportOnTheClipboard() {
         const page = makePage();
         click(findChild(page, "settingsDiagnosticsCopyButton"), "Copy diagnostics");
-        tryVerify(function() { return TestServices.clipboardText() === HearthController.diagnosticsReport(); }, 5000,
-                  "Copy diagnostics did not put the report on the clipboard");
+        tryVerify(function() {
+            return withoutWrittenLine(TestServices.clipboardText()) === withoutWrittenLine(HearthController.diagnosticsReport());
+        }, 5000, "Copy diagnostics did not put the report on the clipboard");
     }
 }
