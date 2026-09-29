@@ -1,5 +1,5 @@
 //! Safe, idiomatic Rust bindings for [`ac3forge_c`](https://docs.rs/ac3forge-sys), ac3forge's C
-//! API — AC-3 and E-AC-3 encode and decode. See `rust/README.md` for build prerequisites, what
+//! API — AC-3, E-AC-3 and AC-4 encode and decode. See `rust/README.md` for build prerequisites, what
 //! this crate covers versus what's explicitly deferred, and the real header defects found while
 //! building it.
 //!

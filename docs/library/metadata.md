@@ -4,6 +4,13 @@
 one from before the metadata layer existed. An AV receiver reads exactly these bits to set
 level, compress dynamics and fold down to fewer speakers than the stream carries.
 
+This page is the AC-3 and E-AC-3 metadata. AC-4 carries the same kinds of information in syntax of
+its own: dialogue normalisation and further loudness values, DRC decoder modes, downmix values,
+dialogue enhancement and presentations. Its configuration types are in `ac4::EncoderConfig` and
+its reading is `ac4::Decoder::metadata()`: see [AC-4](ac4.md#what-the-decoder-reports) and
+[Encoding a stream](ac4.md#encoding-a-stream). `ac3::meta::LoudnessMeter`, below, is what
+`ac3cli ac4-encode loudness=` measures with as well.
+
 `dialnorm` cannot be derived from the frame being encoded — BS.1770 gating is defined over the
 whole programme — so measure first and configure second:
 

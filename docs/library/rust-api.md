@@ -9,8 +9,8 @@ Two crates over [the C API](c-api.md), both in-tree under
 - `ac3forge`: a safe wrapper with `Result` and `Option` in place of status codes and
   out-parameters, owned handles that free themselves on drop, and slices in place of raw pointers.
 
-The crates cover the C API's scope: AC-3, E-AC-3, Atmos (OAMD + JOC) and, as of `ac3forge::ac4`,
-AC-4 (below) — see [AC-4 decoding](ac4.md) for the wider C++ library both mirror a subset of.
+The crates cover the C API's scope: AC-3, E-AC-3, Atmos (OAMD + JOC) and AC-4 (`ac3forge::ac4`,
+below) — see [AC-4](ac4.md) for the wider C++ library both mirror a subset of.
 
 Cargo is not part of the root CMake build, the same arrangement as `apps/android` and Gradle. CI
 builds and tests the workspace on Linux, Windows and macOS (`build-rust` in
@@ -74,10 +74,10 @@ That excerpt is from `encode_decode_eac3.rs`.
 TS 103 190-2 V1.3.1) the same way `ac3forge::ac3` wraps the AC-3 C API — `Decoder`/`Encoder` with
 `Result`/`Option` in place of status codes and out-parameters, `DecoderConfig`/`EncoderConfig`
 built through `Default::default()` (which calls the raw `ac3forge_ac4_*_config_init()` first, same
-"never restate a C++ default" rule as every other config type in this crate). Unlike the rest of
-this crate, there is no Cargo feature gating it: the C library has no matching build option of its
-own to mirror, so this module is unconditionally available once `ac3forge-sys`'s bindgen output
-carries the `ac3forge_ac4_*` symbols — the same footing `ac3forge::atmos` already stood on.
+"never restate a C++ default" rule as every other config type in this crate). No Cargo feature
+gates it. The C library has `AC3FORGE_BUILD_AC4`, but `ac3forge-sys`'s build script leaves it at its
+default, on, so the module is always there; a C library built without AC-4 answers every AC-4 call
+with `AC3FORGE_ERROR_UNSUPPORTED`, which `ac3forge::Error` reports as `Error::Other(4)`.
 
 ```rust
 use ac3forge::ac4::{Decoder, DecoderConfig, Encoder, EncoderConfig};
@@ -93,13 +93,15 @@ for frame in encoder.encode(&channels).unwrap() {  // any equal-length spans, on
 }
 ```
 
-That shape is [`rust/ac3forge/tests/ac4_roundtrip.rs`](https://github.com/iainchesworthlabs/ac3forge/blob/main/rust/ac3forge/tests/ac4_roundtrip.rs)'s,
-not yet a `rust/ac3forge/examples/` program. `Encoder::encode` takes any equal-length slices (the
+That shape is [`rust/ac3forge/tests/ac4_roundtrip.rs`](https://github.com/iainchesworthlabs/ac3forge/blob/main/rust/ac3forge/tests/ac4_roundtrip.rs)'s; no
+`rust/ac3forge/examples/` program covers AC-4. `Encoder::encode` takes any equal-length slices (the
 encoder buffers input to its own frame length internally, unlike `ac3::Encoder::encode`'s fixed
 frame), and `Encoder::flush` pads to the end of the last frame and returns whatever the delay still
 held. `Encoder::toc()` returns a `Toc` — `build_dac4()`, `dac4_refusal()`, `media_timing()` and
 `samples_per_frame()` for a container muxer, mirroring `ac3forge_ac4_toc_t` — and the free function
 `ac3forge::ac4::sync_frame()` wraps a raw frame with Annex G.3.1's sync word and an optional CRC.
+`Encoder::codec_mode()` is what `kAuto` chose, and `delay_samples()` and `decoder_delay_samples()`
+say where an input sample lands in the decoded output.
 
 `Decoder::decode` returns `Result<Option<DecodedFrame>, Error>`: `None` means the frame has no
 output yet, not an error, the same convention `Eac3Decoder::decode_substream` uses above.
@@ -107,7 +109,9 @@ output yet, not an error, the same convention `Eac3Decoder::decode_substream` us
 it came from — `samples_per_channel()` is a real per-frame method rather than a crate-wide
 constant, since AC-4's frame length varies by frame rate. `Decoder::presentations()` reads the last
 frame's table of contents; `Decoder::metadata_loudness()` reads the selected presentation's
-loudness fields. `DecodedFrame::objects()` reads whatever object audio a presentation carries —
+loudness fields; `set_output()` and `set_presentation()` change the output processing and the
+chosen presentation from the next frame, and `refusal_reason()`, `latency_samples()` and `reset()`
+are the C++ decoder's own. `DecodedFrame::objects()` reads whatever object audio a presentation carries —
 empty for channel-based and channel-based-immersive content (mono, stereo, 5.0, 5.1, 5.0.4, 5.1.4)
 — each `DecodedObject` with its `properties` in force at the frame's first sample and its
 `updates` within the frame (`ObjectUpdate`: the output sample it takes effect at, `ramp_samples`
@@ -132,7 +136,7 @@ fields (`position`, `gain_db`, `priority`, `width`, `zone_mask`, `screen_factor`
 range and step in its doc comment); `ObjectProperties::default()` calls the raw
 `ac3forge_ac4_object_properties_init()`, so it has the C++ defaults (priority 1, depth exponent 1,
 the room's centre). `EncoderConfig` owns vectors now (`iframes`, `fragment_starts`, the objects),
-so it is `Clone` and no longer `Copy`.
+so it is `Clone` and not `Copy`.
 
 ```rust
 use ac3forge::ac4::{
