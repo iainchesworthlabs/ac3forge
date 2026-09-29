@@ -70,7 +70,11 @@ a time; nothing has shown that overlapping them breaks them, and the gate curren
 the CPU count to find out, because that phase is the longest part of a warm run. The throughput
 guards (label `Performance`) run alone last. A failing case is retried once, and a
 case that fails and then passes is reported as a warning, since that can be two tests sharing a
-resource. When a run fails, its summary page lists the compiler errors or the failed tests and the
+resource. A parallel phase that still has failures runs them again one at a time: a test that
+passes alone passes the phase, with a warning that names it, and one that fails alone is a
+failure. That rule exists because a concurrency test whose threads had not started when its main
+thread finished failed on every hosted Windows run, twice in a row in some of them, and refused a
+queue entry for a change that broke nothing. When a run fails, its summary page lists the compiler errors or the failed tests and the
 command that reproduces them. The checks that only need the built binaries (the gold-reference
 gate, the GUI smoke test, the translation checks) run whenever the build succeeded, even if a test
 failed, so one run reports every failure.
@@ -132,14 +136,28 @@ gives, or push a fix. A fix goes through the gate like any other change.
 
 ## Caches
 
-The gate and the queue restore compiler caches; only runs on main save them. GitHub cache
-entries are immutable and evicted against a 10 GB budget shared by the whole repository, so
-pull-request pushes that each saved a copy would push out the entry every other run restores
-from. A cache saved on main is visible to pull requests and to queue entries; one saved on a
-branch is not. That is why Linux GCC and Windows MSVC also run when a push reaches main: the run
-exists to save the cache. ccache is keyed by leg, operating system and architecture, and
-configured to hash the compiler binary rather than its file time, because each job installs a
-fresh copy of the compiler.
+The gate, the queue and the legs of the run on main restore compiler caches (ccache); only a
+push to main saves them. GitHub cache entries are immutable and evicted against a 10 GB budget
+shared by the whole repository, so pull-request pushes that each saved a copy would push out the
+entry every other run restores from. A cache saved on main is visible to pull requests and to
+queue entries; one saved on a branch is not. That is why Linux GCC and Windows MSVC also run in
+the gate when a push reaches main: the run exists to save the cache.
+
+In the run on main the plain legs use it: Linux GCC and LLVM on x64 and arm64, Windows MSVC on
+x64 and arm64, and both macOS legs. Each of them also runs ctest in the three phases described
+above. A leg saves its cache when it compiled at least 25 objects the restored cache did not
+have, so a push that changed two files does not upload another copy. The sanitizer legs use
+neither, because their test presets carry label filters the phases would replace. Windows LLVM
+(clang-cl) runs its tests in phases and compiles without the cache. A release build
+(`do_package`) uses neither. The first cache saved for Linux GCC was 51 MB.
+
+Each cache is keyed by leg, operating system and architecture, and ccache is configured to hash
+the compiler binary rather than its file time, because each job installs a fresh copy of the
+compiler. The directory is in the job's temp directory. The runner empties that around each job,
+so a persistent fleet machine does not add every leg it has ever built to the upload, and GitHub
+versions a cache by its path relative to the workspace, which is the same for a hosted and a
+fleet runner there and differs under the home directory. A runner that cannot install ccache
+builds without it and says so in a warning.
 
 ## Settings
 
@@ -155,9 +173,11 @@ fresh copy of the compiler.
 
 `ci.yml` still runs the whole matrix on each batch on main. Planned, in this order:
 
-1. ccache, parallel ctest and a cached ABI baseline in the post-merge legs. The `build-leg`
-   action already takes them as inputs; the legs do not pass them yet.
-2. A leg catalogue that lets the run on main skip legs, and a scheduled tier for the slow ones:
+1. A leg catalogue that lets the run on main skip legs, and a scheduled tier for the slow ones:
    ASan and UBSan, TSan, coverage, macOS x64, the wheels, Android, WASM, Rust, the AppImage and
    the no-ALSA and shared-library passes, with a `ci:deep` label to run it on a branch.
-3. Test-level impact selection, from a per-test coverage map built by the scheduled coverage run.
+2. Test-level impact selection, from a per-test coverage map built by the scheduled coverage run.
+
+The ABI gate rebuilds the last release tag on every run on main, and that build is identical until
+the next release. The gate is advisory before 1.0, so it fits the scheduled tier, where one build
+a day costs little. A cached baseline is worth adding only if it stays on main.

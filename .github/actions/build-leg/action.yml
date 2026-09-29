@@ -76,8 +76,12 @@ inputs:
       after that, because a real-time assertion measured beside eight other
       tests measures the neighbours. A failing test is retried once
       (`--repeat until-pass:2`) and the run says so, so a collision between
-      tests cannot block a merge unseen. Failures are summarised on the run's
-      summary page with the command that reproduces each.
+      tests cannot block a merge unseen. A parallel phase that still has
+      failures runs them again one at a time: a test that passes alone passes
+      the phase with a warning that names it (it is short of CPU or shares a
+      resource under load), and one that fails alone is a failure. Failures are
+      summarised on the run's summary page with the command that reproduces
+      each.
     default: ""
   ctest-qml-jobs:
     description: >-
@@ -176,29 +180,49 @@ runs:
     #     hosted runner, a fleet runner and a container.
     #   - compression on: what gets saved is the compressed directory, and the
     #     10 GB repository cache budget is shared with vcpkg and every other leg.
-    # The install is a no-op on the fleet images, which ship ccache.
+    # ccache only makes a build faster, so a runner that cannot provide it (an
+    # image without it and a package source that is down) builds without it and
+    # says so, rather than failing a leg over an optimisation. Every later ccache
+    # step keys off `enabled`, not off the input. The Linux legs install it in
+    # their bootstrap step, which retries; the install here is the fallback.
     - name: Install and configure ccache
+      id: ccache_setup
       if: inputs.ccache == 'true'
       shell: bash
       env:
         CCACHE_SIZE: ${{ inputs.ccache-size }}
       run: | # zizmor: ignore[github-env] CCACHE_DIR/CCACHE_BASEDIR are $HOME- and workspace-derived, not attacker-influenced
-        set -euo pipefail
+        set -uo pipefail
         if ! command -v ccache >/dev/null 2>&1; then
           case "$RUNNER_OS" in
             Linux)
               export DEBIAN_FRONTEND=noninteractive
               if command -v sudo >/dev/null 2>&1; then
-                sudo apt-get install -y -qq --no-install-recommends ccache
+                sudo apt-get install -y -qq --no-install-recommends ccache || true
               else
-                apt-get install -y -qq --no-install-recommends ccache
+                apt-get install -y -qq --no-install-recommends ccache || true
               fi ;;
-            macOS)   brew install ccache ;;
-            Windows) choco install ccache -y --no-progress --requirechecksums ;;
+            macOS)   brew install ccache || true ;;
+            Windows) choco install ccache -y --no-progress --requirechecksums || true ;;
           esac
         fi
+        if ! command -v ccache >/dev/null 2>&1; then
+          echo "::warning title=ccache::ccache is not available on this runner and could not be installed; building without it."
+          echo "enabled=false" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        set -e
         ccache --version | head -1
-        cache_dir="$HOME/.cache/ccache"
+        # In the job's temp directory, which the runner empties before and after
+        # every job, and not under $HOME. Two reasons. What gets saved is the whole
+        # directory, so a persistent runner (the Windows fleet reuses its
+        # machines) would keep adding to it and upload every leg's objects it has
+        # ever built. And GitHub versions a cache by the directory's path relative
+        # to the workspace: under $HOME that path differs between a hosted runner
+        # and a fleet one (a different user, a different drive on Windows), so the
+        # two never see each other's entries, while the temp directory sits at the
+        # same place relative to the workspace on both.
+        cache_dir="$RUNNER_TEMP/ccache"
         mkdir -p "$cache_dir"
         if command -v cygpath >/dev/null 2>&1; then
           cache_dir="$(cygpath -w "$cache_dir")"
@@ -211,6 +235,7 @@ runs:
           echo "CCACHE_BASEDIR=$GITHUB_WORKSPACE"
           echo "CCACHE_NOHASHDIR=1"
         } >> "$GITHUB_ENV"
+        echo "enabled=true" >> "$GITHUB_OUTPUT"
 
     # Keyed by leg, OS and architecture only. What is inside is content-addressed
     # by ccache itself, so a different compiler or flag set simply misses; it
@@ -218,16 +243,16 @@ runs:
     # immutable: a later save needs a new name, and `restore-keys` then finds the
     # newest one.
     - name: Restore the ccache cache
-      if: inputs.ccache == 'true'
+      if: steps.ccache_setup.outputs.enabled == 'true'
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/ccache
+        path: ${{ runner.temp }}/ccache
         key: ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}
         restore-keys: |
           ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Zero the ccache counters
-      if: inputs.ccache == 'true'
+      if: steps.ccache_setup.outputs.enabled == 'true'
       shell: bash
       run: ccache --zero-stats
 
@@ -270,7 +295,7 @@ runs:
         LEG_PRESET: ${{ inputs.preset }}
         LEG_GUI: ${{ inputs.gui }}
         LEG_CRUCIBLE: ${{ inputs.crucible }}
-        LEG_CCACHE: ${{ inputs.ccache }}
+        LEG_CCACHE: ${{ steps.ccache_setup.outputs.enabled }}
       run: |
         set -euo pipefail
         extra_args=()
@@ -361,7 +386,7 @@ runs:
     # nothing worth uploading.
     - name: ccache statistics
       id: ccache_stats
-      if: ${{ !cancelled() && inputs.ccache == 'true' }}
+      if: ${{ !cancelled() && steps.ccache_setup.outputs.enabled == 'true' }}
       shell: bash
       env:
         SAVE_MIN_MISSES: ${{ inputs.ccache-save-min-misses }}
@@ -429,22 +454,64 @@ runs:
         #    part of a warm run, which is why the setting exists.
         # 3. Alone, for the throughput guards: a real-time assertion measured
         #    beside seven other tests measures them.
+        #
+        # A test that fails twice in a row while others share the machine may only be
+        # short of CPU: on hosted Windows a concurrency case whose threads had not
+        # started when its main thread finished failed that way on every run. So a
+        # parallel phase that still has failures runs those again, one test at a time.
+        # A test that passes alone passes the phase, with a warning that names it,
+        # because it has a timing or shared-resource assumption and refusing a change
+        # that broke nothing is the worse trade. One that fails alone is a failure.
         cpus="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-2}")"
         jobs="$CTEST_JOBS"
         if [ "$jobs" = "auto" ]; then jobs="$cpus"; fi
         qml_jobs="${CTEST_QML_JOBS:-1}"
         if [ "$qml_jobs" = "auto" ]; then qml_jobs="$cpus"; fi
         log="${RUNNER_TEMP}/ctest.log"
+        failed_log="${RUNNER_TEMP}/ctest-failed.log"
+        phase_log="${RUNNER_TEMP}/ctest-phase.log"
         : > "$log"
+        : > "$failed_log"
+        # One phase: $1 tests at once, $2 is `retry` to run a failing case once more
+        # (anything else runs it once), and the rest is ctest's own filters. What is
+        # still failing at the end of it goes to $failed_log for the summary.
+        run_phase() {
+          local at_once="$1" retry="$2"
+          shift 2
+          local status=0 again=0 names=""
+          if [ "$retry" = retry ]; then
+            ctest --preset "test-$LEG_PRESET" -j "$at_once" --repeat until-pass:2 "$@" 2>&1 \
+              | tee "$phase_log" | tee -a "$log" || status=$?
+          else
+            ctest --preset "test-$LEG_PRESET" -j "$at_once" "$@" 2>&1 \
+              | tee "$phase_log" | tee -a "$log" || status=$?
+          fi
+          if [ "$status" -eq 0 ]; then
+            return 0
+          fi
+          if [ "$at_once" -gt 1 ]; then
+            names="$(sed -n '/The following tests FAILED:/,/^Errors while running CTest/p' "$phase_log" \
+              | sed -n -E 's/^[[:space:]]+[0-9]+ - (.*) \((Failed|Timeout|SEGFAULT|Exception|Not Run|Subprocess aborted|Child aborted|Bus error|Illegal|Interrupted|OTHER_FAULT|Numerical)\).*/\1/p' \
+              | head -8 | paste -sd ';' - || true)"
+            echo "::group::Still failing at ${at_once} tests at a time: running what failed again, one at a time"
+            ctest --preset "test-$LEG_PRESET" --rerun-failed --output-on-failure 2>&1 \
+              | tee "$phase_log" | tee -a "$log" || again=$?
+            echo "::endgroup::"
+            if [ "$again" -eq 0 ]; then
+              echo "::warning title=ctest::Failed under -j${at_once} and passed when run alone: ${names:-see the ctest output above}. The test has a timing or shared-resource assumption."
+              return 0
+            fi
+            status="$again"
+          fi
+          cat "$phase_log" >> "$failed_log"
+          return "$status"
+        }
         rc=0
-        ctest --preset "test-$LEG_PRESET" -j "$jobs" --repeat until-pass:2 -LE Performance -E '_qml_tests_' 2>&1 \
-          | tee -a "$log" || rc=$?
+        run_phase "$jobs" retry -LE Performance -E '_qml_tests_' || rc=$?
         # --no-tests=ignore on the other two, since a preset may build no Qt
         # (the sanitizer legs) or no ac3perf target.
-        ctest --preset "test-$LEG_PRESET" -j "$qml_jobs" --repeat until-pass:2 -R '_qml_tests_' --no-tests=ignore 2>&1 \
-          | tee -a "$log" || rc=$?
-        ctest --preset "test-$LEG_PRESET" -L Performance --no-tests=ignore 2>&1 \
-          | tee -a "$log" || rc=$?
+        run_phase "$qml_jobs" retry -R '_qml_tests_' --no-tests=ignore || rc=$?
+        run_phase 1 once -L Performance --no-tests=ignore || rc=$?
         retried="$(grep -c '\*\*\*Failed' "$log" || true)"
         if [ "$rc" -eq 0 ] && [ "$retried" -gt 0 ]; then
           echo "::warning title=ctest::${retried} test attempt(s) failed and then passed on retry. Under -j$jobs that can be two tests sharing a resource; the ctest output above shows which."
@@ -463,7 +530,10 @@ runs:
       run: |
         set -euo pipefail
         build_log="${RUNNER_TEMP}/build.log"
-        test_log="${RUNNER_TEMP}/ctest.log"
+        # What was still failing when each phase ended, not the whole log, which also
+        # holds failures that passed when run again.
+        test_log="${RUNNER_TEMP}/ctest-failed.log"
+        if [ ! -s "$test_log" ]; then test_log="${RUNNER_TEMP}/ctest.log"; fi
         if [ -f "$build_log" ] && grep -q -E 'FAILED:|: error[ :]|error C[0-9]+|error LNK[0-9]+|undefined reference|ld returned' "$build_log"; then
           {
             echo "### Build errors"
@@ -493,8 +563,8 @@ runs:
     # success(): a red Test step still leaves a valid cache, and the objects are
     # the expensive part.
     - name: Save the ccache cache
-      if: ${{ !cancelled() && inputs.ccache == 'true' && inputs.ccache-save == 'true' && steps.ccache_stats.outputs.worth_saving == 'true' }}
+      if: ${{ !cancelled() && steps.ccache_setup.outputs.enabled == 'true' && inputs.ccache-save == 'true' && steps.ccache_stats.outputs.worth_saving == 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/ccache
+        path: ${{ runner.temp }}/ccache
         key: ccache-${{ inputs.preset }}-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}

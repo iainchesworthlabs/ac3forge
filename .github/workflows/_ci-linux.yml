@@ -106,10 +106,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `ccache` and `parallel_tests` turn on build-leg's compiler cache and
+          # ctest's parallel phases for a leg (docs/ci-agentic.md). The four plain
+          # legs set them. The two sanitizer legs do not: their test presets carry
+          # label filters that the parallel phases' own filters would replace, and
+          # what makes them slow is the sanitizers' cost at run time, which a
+          # compiler cache does not touch.
           - name: "Linux GCC"
             runner: ${{ inputs.linux_runner_1 }}
             container: ubuntu:26.04
             preset: linux-gcc
+            ccache: true
+            parallel_tests: true
             # Hearth (planning/hearth-reference-player.md, A7): src/sendspin and apps/hearth,
             # with the [sendspin] and [hearth] cases ctest runs below. AC3FORGE_BUILD_HEARTH
             # defaults ON (root CMakeLists.txt) and CMakePresets.json's "core" fragment selects
@@ -128,6 +136,8 @@ jobs:
             runner: ${{ inputs.linux_runner_2 }}
             container: ubuntu:26.04
             preset: linux-llvm
+            ccache: true
+            parallel_tests: true
             llvm: true
             gui: true
             packageable: true
@@ -152,6 +162,8 @@ jobs:
             runner: '["ubuntu-24.04-arm"]'
             container: ubuntu:26.04
             preset: linux-gcc-arm64
+            ccache: true
+            parallel_tests: true
             gcc: true
             gui: true
             packageable: true
@@ -163,6 +175,8 @@ jobs:
             runner: '["ubuntu-24.04-arm"]'
             container: ubuntu:26.04
             preset: linux-llvm-arm64
+            ccache: true
+            parallel_tests: true
             llvm: true
             gui: true
             packageable: true
@@ -294,7 +308,7 @@ jobs:
           export DEBIAN_FRONTEND=noninteractive
           attempt=1
           until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
-            build-essential ca-certificates cmake curl file git gnupg libasound2-dev lsb-release \
+            build-essential ca-certificates ccache cmake curl file git gnupg libasound2-dev lsb-release \
             ninja-build pkg-config rpm software-properties-common tar unzip wget zip
           do
             echo "::warning title=apt-get::attempt $attempt of 3 failed"
@@ -450,6 +464,13 @@ jobs:
           msvc-toolset: ""  # no Linux leg needs an MSVC toolset assert
           cmake-min: ${{ inputs.cmake_min }}
           vcpkg-commit: ${{ inputs.vcpkg_commit }}
+          # A release build (do_package, from release.yml) compiles everything and
+          # runs ctest as it always did. The cache is saved only by a push to main,
+          # so that pushes and dispatches on branches restore it and never add to it
+          # (build-leg's ccache-save description says why).
+          ccache: ${{ matrix.ccache && !inputs.do_package && 'true' || 'false' }}
+          ccache-save: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'true' || 'false' }}
+          ctest-jobs: ${{ matrix.parallel_tests && !inputs.do_package && 'auto' || '' }}
 
       # The gold-reference correctness gate (the L3 FFmpeg-oracle + a
       # lightweight L4 SNR check from the project's original validation-
