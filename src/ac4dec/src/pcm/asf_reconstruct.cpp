@@ -23,26 +23,27 @@ constexpr std::size_t kMaxQuant = 8191;
 // table is not constexpr (std::pow has no such guarantee), which a later
 // phase's own constexpr power routine could change without moving a value
 // here (this table's numbers are unaffected either way).
-const std::array<double, kMaxQuant + 1> kPow43 = [] {
-    std::array<double, kMaxQuant + 1> table{};
+const std::array<Real, kMaxQuant + 1> kPow43 = [] {
+    std::array<Real, kMaxQuant + 1> table{};
     for (std::size_t m = 0; m < table.size(); ++m) {
-        table[m] = std::pow(static_cast<double>(m), 4.0 / 3.0);
+        table[m] = static_cast<Real>(std::pow(static_cast<double>(m), 4.0 / 3.0));
     }
     return table;
 }();
 
-[[nodiscard]] double reconstruct_line(std::int32_t q) noexcept {
+[[nodiscard]] Real reconstruct_line(std::int32_t q) noexcept {
     const std::int64_t wide = q;
     const auto magnitude = static_cast<std::uint64_t>(wide < 0 ? -wide : wide);
-    const double value = magnitude < kPow43.size() ? kPow43[static_cast<std::size_t>(magnitude)]
-                                                   : std::pow(static_cast<double>(magnitude), 4.0 / 3.0);
+    const Real value = magnitude < kPow43.size()
+                           ? kPow43[static_cast<std::size_t>(magnitude)]
+                           : static_cast<Real>(std::pow(static_cast<double>(magnitude), 4.0 / 3.0));
     return q < 0 ? -value : value;
 }
 
 // The sum of squares Pseudocodes 22 and 23 call band_rms before dividing it
 // by the band's line count over every window of its group.
-[[nodiscard]] double band_energy(std::span<const double> scaled, std::size_t begin, std::size_t end) noexcept {
-    double sum = 0.0;
+[[nodiscard]] Real band_energy(std::span<const Real> scaled, std::size_t begin, std::size_t end) noexcept {
+    Real sum{};
     for (std::size_t k = begin; k < end; ++k) {
         sum += scaled[k] * scaled[k];
     }
@@ -52,9 +53,9 @@ const std::array<double, kMaxQuant + 1> kPow43 = [] {
 }  // namespace
 
 ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenState& noise,
-                              std::vector<double>& scaled) {
+                              std::vector<Real>& scaled) {
     const AsfPsyInfo& psy = info.psy;
-    scaled.assign(data.quant_spec.size(), 0.0);
+    scaled.assign(data.quant_spec.size(), Real{});
 
     // Pseudocode 21: the first band with a scale factor takes
     // reference_scale_factor; each later one adds its codeword's index less 60.
@@ -75,7 +76,8 @@ ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenSta
             if (scale_factor < 0 || scale_factor > 255) {
                 return fail(DecodeError::kInvalidStream, "a scale factor outside 0 to 255");
             }
-            const double sf_gain = std::pow(2.0, 0.25 * static_cast<double>(scale_factor - 100));
+            const auto sf_gain =
+                static_cast<Real>(std::pow(2.0, 0.25 * static_cast<double>(scale_factor - 100)));
             const std::size_t begin = data.sect_sfb_offset[gi][si];
             const std::size_t end = data.sect_sfb_offset[gi][si + 1];
             for (std::size_t k = begin; k < end; ++k) {
@@ -89,6 +91,11 @@ ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenSta
     }
     // Pseudocode 22: the reference level is that of the first band with any
     // energy. 1.44269504 is the text's own rounding of 1/ln 2.
+    // The noise floor's tracking (previous_rms, band_rms and amplitude) stays
+    // double regardless of Real: it is a once-per-band control value, not a
+    // per-sample one, in the same "computed in double, narrowed once" shape
+    // as a downmix or DRC gain (band_energy's own sum of squares is Real, the
+    // actual per-sample precision, then widened once for std::log).
     constexpr double kLog2E = 1.44269504;
     double previous_rms = -1000.0;
     for (int g = 0; g < psy.num_window_groups && previous_rms == -1000.0; ++g) {
@@ -97,7 +104,7 @@ ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenSta
             const auto si = static_cast<std::size_t>(sfb);
             const std::size_t begin = data.sect_sfb_offset[gi][si];
             const std::size_t end = data.sect_sfb_offset[gi][si + 1];
-            const double band_rms = band_energy(scaled, begin, end);
+            const auto band_rms = static_cast<double>(band_energy(scaled, begin, end));
             if (band_rms > 0.0) {
                 previous_rms = kLog2E * std::log(band_rms / static_cast<double>(end - begin));
                 break;
@@ -111,7 +118,7 @@ ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenSta
             const auto si = static_cast<std::size_t>(sfb);
             const std::size_t begin = data.sect_sfb_offset[gi][si];
             const std::size_t end = data.sect_sfb_offset[gi][si + 1];
-            const double band_rms = band_energy(scaled, begin, end);
+            const auto band_rms = static_cast<double>(band_energy(scaled, begin, end));
             if (band_rms > 0.0) {
                 previous_rms = kLog2E * std::log(band_rms / static_cast<double>(end - begin));
                 continue;
@@ -129,7 +136,7 @@ ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenSta
             previous_rms = noise_rms;
             const double amplitude = std::pow(2.0, 0.5 * noise_rms);
             for (std::size_t k = begin; k < end; ++k) {
-                scaled[k] = static_cast<double>(get_random_noise_value(noise)) * amplitude;
+                scaled[k] = static_cast<Real>(static_cast<double>(get_random_noise_value(noise)) * amplitude);
             }
         }
     }
@@ -159,7 +166,7 @@ ParseResult window_lengths(const SubstreamContext& ctx, const AsfPsyInfo& psy, s
 }
 
 void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data, std::span<const int> lengths,
-             std::span<const double> scaled, std::vector<double>& spec_reord) {
+             std::span<const Real> scaled, std::vector<Real>& spec_reord) {
     std::size_t total = 0;
     std::vector<std::size_t> win_offset;
     win_offset.reserve(lengths.size());
@@ -167,7 +174,7 @@ void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& d
         win_offset.push_back(total);
         total += static_cast<std::size_t>(length);
     }
-    spec_reord.assign(total, 0.0);
+    spec_reord.assign(total, Real{});
     std::size_t k = 0;
     std::size_t win = 0;
     for (int g = 0; g < psy.num_window_groups; ++g) {

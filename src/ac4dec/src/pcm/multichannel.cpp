@@ -27,15 +27,15 @@ template <std::size_t Sets>
 }
 
 template <std::size_t N>
-void multiply(const Matrix<N>& m, std::span<std::vector<double>* const> tracks, std::size_t begin,
+void multiply(const Matrix<N>& m, std::span<std::vector<Real>* const> tracks, std::size_t begin,
               std::size_t end) {
-    std::array<double, N> in{};
+    std::array<Real, N> in{};
     for (std::size_t k = begin; k < end; ++k) {
         for (std::size_t i = 0; i < N; ++i) {
             in[i] = (*tracks[i])[k];
         }
         for (std::size_t o = 0; o < N; ++o) {
-            double sum = 0.0;
+            Real sum{};
             for (std::size_t i = 0; i < N; ++i) {
                 sum += m[o][i] * in[i];
             }
@@ -58,7 +58,7 @@ template <std::size_t N>
 template <std::size_t N>
 [[nodiscard]] ParseResult apply(const SfInfo& info, const SfData& layout, int chel_matsel,
                                 std::span<const StereoParameters> parameters,
-                                std::span<std::vector<double>* const> tracks) {
+                                std::span<std::vector<Real>* const> tracks) {
     for (int g = 0; g < info.psy.num_window_groups; ++g) {
         const auto gi = static_cast<std::size_t>(g);
         for (int sfb = 0; sfb < layout.max_sfb[gi]; ++sfb) {
@@ -137,7 +137,7 @@ std::optional<Matrix<5>> five_channel_matrix(int chel_matsel, std::span<const Ab
 
 ParseResult apply_channel_data(const SfInfo& info, const SfData& layout, int chel_matsel,
                                std::span<const StereoParameters> parameters,
-                               std::span<std::vector<double>* const> tracks) {
+                               std::span<std::vector<Real>* const> tracks) {
     switch (tracks.size()) {
         case 3:
             if (parameters.size() != 2) {
@@ -168,8 +168,8 @@ ParseResult apply_channel_data(const SfInfo& info, const SfData& layout, int che
 
 ParseResult apply_additional_pair(const SubstreamContext& ctx, const AsfPsyInfo& base,
                                   const StereoParameters& parameters, std::span<const int> base_lengths,
-                                  std::span<const int> other_lengths, std::span<double> base_lines,
-                                  std::span<double> other_lines) {
+                                  std::span<const int> other_lengths, std::span<Real> base_lines,
+                                  std::span<Real> other_lines) {
     if (!std::ranges::equal(base_lengths, other_lengths)) {
         return fail(DecodeError::kInvalidStream,
                     "a step between channel data elements whose channels are transformed unlike "
@@ -191,8 +191,8 @@ ParseResult apply_additional_pair(const SubstreamContext& ctx, const AsfPsyInfo&
                 const auto [a, b, c, d] = parameters.abcd[gi][si];
                 for (std::size_t l = offsets[si]; l < offsets[si + 1]; ++l) {
                     const std::size_t k = window_start + l;
-                    const double i0 = base_lines[k];
-                    const double i1 = other_lines[k];
+                    const Real i0 = base_lines[k];
+                    const Real i1 = other_lines[k];
                     base_lines[k] = a * i0 + b * i1;
                     other_lines[k] = c * i0 + d * i1;
                 }

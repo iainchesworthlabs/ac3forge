@@ -222,9 +222,13 @@ void DeStage::process(double gain_db, const DeFrameValues& values,
                     if (where[i] == nullptr) {
                         continue;
                     }
+                    // h and hw stay double (this frame's slot-by-slot
+                    // interpolation of a handful of 3x3 matrices, not a
+                    // per-sample QMF value): narrowed once per multiply, as a
+                    // downmix or DRC gain matrix is.
                     QmfValue y{};
                     for (std::size_t j = 0; j < kDeFront; ++j) {
-                        y += h[i][j] * m[j] + hw[i][j] * d[j];
+                        y += static_cast<Real>(h[i][j]) * m[j] + static_cast<Real>(hw[i][j]) * d[j];
                     }
                     *where[i] = y;
                 }

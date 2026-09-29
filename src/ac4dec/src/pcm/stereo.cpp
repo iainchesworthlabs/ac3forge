@@ -10,18 +10,22 @@
 namespace ac4::detail {
 namespace {
 
-constexpr std::array<double, 4> kIdentity = {1.0, 0.0, 0.0, 1.0};
-constexpr std::array<double, 4> kMidSide = {1.0, 1.0, 1.0, -1.0};
+constexpr std::array<Real, 4> kIdentity = {1, 0, 0, 1};
+constexpr std::array<Real, 4> kMidSide = {1, 1, 1, -1};
 
 // Pseudocode 59's inverse quantisation of alpha_q, with the float the text's
-// 0.1f makes of it.
+// 0.1f makes of it. This one conversion stays double-then-float-then-double
+// (not Real) regardless of the decoder's own scalar: it is what the text's
+// own arithmetic prints, a fixed reading already taken at double
+// (src/ac4dec/ERRATA.md has no entry for it because it does not depend on the
+// decoder's scalar), narrowed to Real only in the value prediction() returns.
 [[nodiscard]] double sap_gain(int alpha_q) noexcept {
     return static_cast<double>(static_cast<float>(alpha_q) * 0.1f);
 }
 
-[[nodiscard]] std::array<double, 4> prediction(int alpha_q) noexcept {
-    const double gain = sap_gain(alpha_q);
-    return {1.0 + gain, 1.0, 1.0 - gain, -1.0};
+[[nodiscard]] std::array<Real, 4> prediction(int alpha_q) noexcept {
+    const auto gain = static_cast<Real>(sap_gain(alpha_q));
+    return {Real{1} + gain, Real{1}, Real{1} - gain, Real{-1}};
 }
 
 }  // namespace
@@ -39,7 +43,7 @@ void stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const Ch
         const int max_sfb_g = std::min(get_max_sfb(ctx, psy, g, false), kMaxSfb);
         for (int sfb = 0; sfb < max_sfb_g; ++sfb) {
             const auto si = static_cast<std::size_t>(sfb);
-            std::array<double, 4>& abcd = out.abcd[gi][si];
+            std::array<Real, 4>& abcd = out.abcd[gi][si];
             switch (chparam.sap_mode) {
                 case 0:
                     abcd = kIdentity;
@@ -70,7 +74,8 @@ void stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const Ch
                         }
                     }
                     abcd = pair ? prediction(value)
-                                : std::array<double, 4>{1.0, 0.0, sap_gain(value), 1.0};
+                                : std::array<Real, 4>{Real{1}, Real{},
+                                                      static_cast<Real>(sap_gain(value)), Real{1}};
                     break;
                 }
             }
@@ -83,7 +88,7 @@ void stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const Ch
 }
 
 void apply_stereo(const SfInfo& info, const SfData& layout, const StereoParameters& parameters,
-                  std::span<double> track0, std::span<double> track1) {
+                  std::span<Real> track0, std::span<Real> track1) {
     for (int g = 0; g < info.psy.num_window_groups; ++g) {
         const auto gi = static_cast<std::size_t>(g);
         for (int sfb = 0; sfb < layout.max_sfb[gi]; ++sfb) {
@@ -92,8 +97,8 @@ void apply_stereo(const SfInfo& info, const SfData& layout, const StereoParamete
             const std::size_t begin = layout.sect_sfb_offset[gi][si];
             const std::size_t end = layout.sect_sfb_offset[gi][si + 1];
             for (std::size_t k = begin; k < end; ++k) {
-                const double i0 = track0[k];
-                const double i1 = track1[k];
+                const Real i0 = track0[k];
+                const Real i1 = track1[k];
                 track0[k] = a * i0 + b * i1;
                 track1[k] = c * i0 + d * i1;
             }
@@ -102,18 +107,18 @@ void apply_stereo(const SfInfo& info, const SfData& layout, const StereoParamete
 }
 
 void align_tracks(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& first,
-                  const SfData& second, std::vector<double>& track0, std::vector<double>& track1,
+                  const SfData& second, std::vector<Real>& track0, std::vector<Real>& track1,
                   SfData& common) {
-    std::vector<double> out0;
-    std::vector<double> out1;
+    std::vector<Real> out0;
+    std::vector<Real> out1;
     std::size_t k0 = 0;
     std::size_t k1 = 0;
     std::size_t line = 0;
     // A band's lines from a track that sends it, or zeros.
-    const auto take = [](const std::vector<double>& from, std::size_t& k, bool sent,
-                         std::size_t lines, std::vector<double>& to) {
+    const auto take = [](const std::vector<Real>& from, std::size_t& k, bool sent,
+                         std::size_t lines, std::vector<Real>& to) {
         for (std::size_t i = 0; i < lines; ++i) {
-            to.push_back(sent && k < from.size() ? from[k++] : 0.0);
+            to.push_back(sent && k < from.size() ? from[k++] : Real{});
         }
     };
     common.max_sfb = {};

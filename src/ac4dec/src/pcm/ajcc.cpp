@@ -14,6 +14,8 @@ constexpr double kSqrt2 = std::numbers::sqrt2;
 
 // Pseudocodes 8 and 12: every input times 2 + 1/sqrt(2).
 constexpr double kInputGain = 2.0 + 1.0 / std::numbers::sqrt2;
+constexpr Real kSqrt2Real = static_cast<Real>(kSqrt2);
+constexpr Real kInputGainReal = static_cast<Real>(kInputGain);
 
 // AjccFrameValues::q's parameters, in syntax order.
 enum Param : std::uint8_t {
@@ -127,9 +129,9 @@ ParseResult ajcc_values(const AjccData& data, AjccQuantHistory& history, AjccFra
 }
 
 AjccStage::AjccStage()
-    : decorrelators_{acpl::Decorrelator<double>(0), acpl::Decorrelator<double>(2),
-                     acpl::Decorrelator<double>(1), acpl::Decorrelator<double>(0),
-                     acpl::Decorrelator<double>(2), acpl::Decorrelator<double>(1)} {}
+    : decorrelators_{acpl::Decorrelator<Real>(0), acpl::Decorrelator<Real>(2),
+                     acpl::Decorrelator<Real>(1), acpl::Decorrelator<Real>(0),
+                     acpl::Decorrelator<Real>(2), acpl::Decorrelator<Real>(1)} {}
 
 void AjccStage::reset() {
     for (auto& decorrelator : decorrelators_) {
@@ -199,7 +201,13 @@ void AjccStage::module(DecodingMode decoding, std::size_t side, const AjccFrameV
             acpl::interpolate(framing, values.num_bands, coefficients[k], prev[k], num_ts, interp_);
             const ajcc::Term term = ajcc::module_term(k, outputs);
             const std::vector<QmfValue>& in = term.decorrelated ? *y[term.input] : *x[term.input];
-            ajcc::accumulate<double>(interp_, in, *z[term.output], num_ts);
+            // ajcc::accumulate is templated on Real, unlike acpl::interpolate
+            // above (double, unconditionally): narrow once, explicitly - the
+            // identity conversion at Real = double.
+            interp_real_.resize(interp_.size());
+            std::ranges::transform(interp_, interp_real_.begin(),
+                                   [](double v) { return static_cast<Real>(v); });
+            ajcc::accumulate<Real>(interp_real_, in, *z[term.output], num_ts);
         }
         acpl::end_frame(framing, values.num_bands, coefficients[k], prev[k]);
     }
@@ -244,7 +252,7 @@ void AjccStage::apply(DecodingMode decoding, const AjccFrameValues& values, int 
         const std::vector<QmfValue>& source = *matrix_of(kInputs[i]);
         x_in_[i].resize(n);
         for (std::size_t k = 0; k < n; ++k) {
-            x_in_[i][k] = kInputGain * source[k];
+            x_in_[i][k] = kInputGainReal * source[k];
         }
     }
     const std::vector<QmfValue>& x0 = x_in_[0];
@@ -271,7 +279,7 @@ void AjccStage::apply(DecodingMode decoding, const AjccFrameValues& values, int 
         for (std::size_t side = 0; side < 2; ++side) {
             for (std::size_t o = 1; o < ajcc::kModule2Outputs; ++o) {
                 for (QmfValue& v : *z[side][o]) {
-                    v *= kSqrt2;
+                    v *= kSqrt2Real;
                 }
             }
         }
@@ -287,7 +295,7 @@ void AjccStage::apply(DecodingMode decoding, const AjccFrameValues& values, int 
     }
     // z2 = x2in.
     for (std::size_t k = 0; k < n; ++k) {
-        (*centre)[k] *= kInputGain;
+        (*centre)[k] *= kInputGainReal;
     }
 }
 

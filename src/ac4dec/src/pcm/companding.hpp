@@ -29,7 +29,7 @@ struct CompandingChannel {
 // Clause 5.7.5.2 over subbands [sb0, sb1) of each channel's interval. sb0 is
 // acpl_qmf_band in ASPX_ACPL_1 and 0 otherwise. `full_scale` is the QMF
 // domain's value of full scale, which levels are divided by.
-void apply_companding(const CompandingControl& control, int sb0, double full_scale,
+void apply_companding(const CompandingControl& control, int sb0, Real full_scale,
                       std::span<const CompandingChannel> channels);
 
 }  // namespace ac4::detail

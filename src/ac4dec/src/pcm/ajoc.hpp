@@ -85,7 +85,11 @@ class AjocStage {
                       std::span<std::vector<QmfValue>* const> inputs);
 
    private:
-    std::unique_ptr<ajoc::Reconstruction<double>> reconstruction_;
+    // ajoc::Reconstruction<Real>: its QMF-domain state and computation take
+    // Real; its de_gain parameter and AjocFrameValues::coeff stay double,
+    // ac4core's own fixed signature for a value computed once per frame, not
+    // per QMF sample (ajoc/ajoc.hpp).
+    std::unique_ptr<ajoc::Reconstruction<Real>> reconstruction_;
     std::vector<std::vector<QmfValue>*> outputs_;
 };
 
