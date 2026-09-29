@@ -63,7 +63,9 @@ std::string read_log(const fs::path& log) {
     return {std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
 }
 
-std::string quoted(const fs::path& path) { return "\"" + path.string() + "\""; }
+std::string quoted(const fs::path& path) {
+    return "\"" + path.string() + "\"";
+}
 
 std::vector<std::byte> file_bytes(const fs::path& path) {
     std::ifstream in{path, std::ios::binary};
@@ -108,7 +110,9 @@ ac3::io::WavData read(const fs::path& path) {
 Destination obj(double trim_db = 0.0) {
     return {.kind = DestinationKind::kObject, .trim_db = trim_db};
 }
-Destination objm() { return {.kind = DestinationKind::kObjectMono}; }
+Destination objm() {
+    return {.kind = DestinationKind::kObjectMono};
+}
 Destination at(Location location) {
     return {.kind = DestinationKind::kLocation, .location = location};
 }
@@ -121,8 +125,9 @@ ac3::oba::ObjectScene moving_scene(std::size_t count) {
         const double x = 0.15 + 0.7 * static_cast<double>(i) / static_cast<double>(count);
         ac3::oba::SceneObject o;
         o.name = "object " + std::to_string(i);
-        o.automation = {{.time_s = 0.0, .position = {.x = x, .y = 0.2, .z = 0.0}, .gain = 0.5},
-                        {.time_s = 0.09, .position = {.x = 1.0 - x, .y = 0.8, .z = 0.5}, .gain = 0.5}};
+        o.automation = {
+            {.time_s = 0.0, .position = {.x = x, .y = 0.2, .z = 0.0}, .gain = 0.5},
+            {.time_s = 0.09, .position = {.x = 1.0 - x, .y = 0.8, .z = 0.5}, .gain = 0.5}};
         objects.push_back(std::move(o));
     }
     auto scene = ac3::oba::ObjectScene::create(std::move(objects));
@@ -215,9 +220,9 @@ TEST_CASE("atmos-encode codec=ac4 writes a raw stream of the shared steps' bytes
         CHECK(text.find("the decoder's output lags the input by 4385 samples") !=
               std::string::npos);
 
-        const auto want = shared_bytes({&wav}, {0}, every_channel_an_object(3), scene, 256,
-                                       direct ? ac4::ObjectCoding::kDirect : ac4::ObjectCoding::kAjoc,
-                                       false, true);
+        const auto want = shared_bytes(
+            {&wav}, {0}, every_channel_an_object(3), scene, 256,
+            direct ? ac4::ObjectCoding::kDirect : ac4::ObjectCoding::kAjoc, false, true);
         const auto got = file_bytes(out);
         REQUIRE_FALSE(got.empty());
         CHECK(got == want);
@@ -228,8 +233,9 @@ TEST_CASE("atmos-encode codec=ac4 writes a raw stream of the shared steps' bytes
     }
 }
 
-TEST_CASE("atmos-encode codec=ac4 crc=off drops the sync frames' CRC and names an MP4 file by its suffix",
-          "[cli][atmos][ac4]") {
+TEST_CASE(
+    "atmos-encode codec=ac4 crc=off drops the sync frames' CRC and names an MP4 file by its suffix",
+    "[cli][atmos][ac4]") {
     const auto dir = scratch_dir();
     const auto in = tone_wav(dir / "mp4_in.wav", 2);
     const auto scene = moving_scene(2);
@@ -241,9 +247,8 @@ TEST_CASE("atmos-encode codec=ac4 crc=off drops the sync frames' CRC and names a
     REQUIRE(run_cli("atmos-encode " + quoted(in) + " " + quoted(no_crc) + " 192 2 " +
                         quoted(paths) + " codec=ac4 crc=off",
                     log) == 0);
-    CHECK(file_bytes(no_crc) ==
-          shared_bytes({&wav}, {0}, every_channel_an_object(2), scene, 192,
-                       ac4::ObjectCoding::kAjoc, false, false));
+    CHECK(file_bytes(no_crc) == shared_bytes({&wav}, {0}, every_channel_an_object(2), scene, 192,
+                                             ac4::ObjectCoding::kAjoc, false, false));
 
     const auto mp4 = dir / "objects.mp4";
     REQUIRE(run_cli("atmos-encode " + quoted(in) + " " + quoted(mp4) + " 192 2 " + quoted(paths) +
@@ -310,11 +315,13 @@ TEST_CASE("atmos-encode codec=ac4 without a scene file places each channel where
     CHECK(decoded_objects(file_bytes(out)) == 6);
     // objects=2 takes the first two channels alone.
     const auto two = dir / "default_two.ac4";
-    REQUIRE(run_cli("atmos-encode " + quoted(in) + " " + quoted(two) + " 256 2 codec=ac4", log) == 0);
+    REQUIRE(run_cli("atmos-encode " + quoted(in) + " " + quoted(two) + " 256 2 codec=ac4", log) ==
+            0);
     CHECK(decoded_objects(file_bytes(two)) == 2);
 }
 
-TEST_CASE("atmos-encode codec=ac4 refuses what an object stream cannot carry", "[cli][atmos][ac4]") {
+TEST_CASE("atmos-encode codec=ac4 refuses what an object stream cannot carry",
+          "[cli][atmos][ac4]") {
     const auto dir = scratch_dir();
     const auto stereo = tone_wav(dir / "refuse_stereo.wav", 2);
     const auto wide = tone_wav(dir / "refuse_65.wav", 65, 2048);
@@ -328,14 +335,16 @@ TEST_CASE("atmos-encode codec=ac4 refuses what an object stream cannot carry", "
               "sign-objects signs E-AC-3's EMDF object container"},
              {run(stereo, "codec=ac4 dialnorm=auto"), 1, "dialnorm=auto measures a bed's loudness"},
              {run(wide, "codec=ac4"), 1, "65 objects: an AC-4 object stream holds 64 at most"},
-             {run(stereo, "0 codec=ac4 src=" + quoted(stereo) +
-                              " map=0.0:none,0.1:none,1.0:none,1.1:none"),
+             {run(stereo,
+                  "0 codec=ac4 src=" + quoted(stereo) + " map=0.0:none,0.1:none,1.0:none,1.1:none"),
               1, "an AC-4 object stream needs at least one object that is not the LFE"},
-             {run(stereo, "2 codec=ac4 src=" + quoted(stereo) + " map=0.0:obj,0.1:obj,1.0:none,1.1:none"),
-              1, "[objects] counts the source channels to turn into objects, which map= states "
-                 "instead"},
-             {run(stereo, "0 codec=ac4 src=" + quoted(stereo) +
-                              " map=0.0:obj,0.1:LFE,1.0:LFE,1.1:none"),
+             {run(stereo,
+                  "2 codec=ac4 src=" + quoted(stereo) + " map=0.0:obj,0.1:obj,1.0:none,1.1:none"),
+              1,
+              "[objects] counts the source channels to turn into objects, which map= states "
+              "instead"},
+             {run(stereo,
+                  "0 codec=ac4 src=" + quoted(stereo) + " map=0.0:obj,0.1:LFE,1.0:LFE,1.1:none"),
               1, "2 channels are assigned to an LFE: an AC-4 object stream has one LFE object"},
              {run(stereo, "codec=ac4 coding=surround"), 1, "coding must be ajoc or direct"},
              {run(stereo, "codec=ac4 crc=maybe"), 1, "crc is on"},
@@ -376,6 +385,7 @@ TEST_CASE("atmos-encode without codec=ac4 is still E-AC-3", "[cli][atmos][ac4]")
     CHECK(got[1] == std::byte{0x77});
     // codec=eac3 says the same.
     const auto named = dir / "eac3_named.ec3";
-    REQUIRE(run_cli("atmos-encode " + quoted(in) + " " + quoted(named) + " 448 codec=eac3", log) == 0);
+    REQUIRE(run_cli("atmos-encode " + quoted(in) + " " + quoted(named) + " 448 codec=eac3", log) ==
+            0);
     CHECK(file_bytes(named) == got);
 }

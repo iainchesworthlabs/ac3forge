@@ -37,6 +37,7 @@
 #include "ac3/audio/passthrough.hpp"
 
 #include "ac4_encode_settings.hpp"
+#include "ac4_objects_core.hpp"
 #include "gui_diagnostics.hpp"
 
 // The QObject facade the QML layer talks to. All codec and capture work
@@ -332,8 +333,38 @@ class EncoderController : public QObject {
                    planChanged)
     Q_PROPERTY(bool ac4Crc READ ac4Crc WRITE setAc4Crc NOTIFY planChanged)
     // The trailing tokens of the `ac3cli ac4-encode` line these choices echo,
-    // space-joined; empty at every default.
+    // space-joined; empty at every default. In AC-4 object mode, the trailing
+    // tokens of the `ac3cli atmos-encode ... codec=ac4` line instead (without
+    // the codec=ac4): coding=direct, a dialnorm off 31, crc=off.
     Q_PROPERTY(QString ac4Tokens READ ac4Tokens NOTIFY planChanged)
+
+    // ---- AC-4 objects -------------------------------------------------------
+    // Object mode under the AC-4 codec: the objects the assignments make, written
+    // as AC-4 objects (ac3cli atmos-encode codec=ac4) in place of E-AC-3's JOC
+    // over a 5.1 bed. ac4Objects says that is the plan; the coding, A-JOC or
+    // direct-coded, is the one choice it adds, and its dialnorm and CRC the
+    // AC-4 tab's own. The stream is written at 2 048 samples a frame, one
+    // metadata update a frame (ac3::apps::kAc4ObjectFrameRateIndex), and holds
+    // 64 objects at most - what ac4ObjectsLimits says in the page's words.
+    Q_PROPERTY(bool ac4Objects READ ac4Objects NOTIFY planChanged)
+    Q_PROPERTY(int ac4ObjectCodingIndex READ ac4ObjectCodingIndex WRITE setAc4ObjectCodingIndex
+                   NOTIFY planChanged)
+    Q_PROPERTY(QStringList ac4ObjectCodingNames READ ac4ObjectCodingNames CONSTANT)
+    // How many objects the codec takes: the sixteen-object programme cap less
+    // the bed's LFE for E-AC-3, 64 for AC-4.
+    Q_PROPERTY(int objectLimit READ objectLimit NOTIFY planChanged)
+    // Why an AC-4 object encode of what is loaded cannot be written, from what
+    // the sources, the assignments and the container say alone (the counts, the
+    // LFE, the rate, the dialnorm): the words Encode would refuse it with, and
+    // what the page shows beside its controls; empty where it can, or outside AC-4
+    // object mode. The values a keyframe holds and the encoder's own refusals
+    // (a rate too low for the frame) cost more to find and are Encode's alone.
+    // Read from the sources and the assignments, so a binding also depends on
+    // objectsChanged and sourceChanged.
+    Q_PROPERTY(QString ac4ObjectsRefusal READ ac4ObjectsRefusal NOTIFY planChanged)
+    // The scene file the echoed command reads, which an AC-4 object encode
+    // writes beside its output: <first source's name>-paths.json.
+    Q_PROPERTY(QString ac4PathsName READ ac4PathsName NOTIFY sourceChanged)
 
     // ---- the channel model --------------------------------------------------
     // Tier 1: exactly one bed, always - one of Table 5.8's seven speaker
@@ -793,6 +824,14 @@ public:
     [[nodiscard]] int ac4IframeInterval() const { return ac4_.iframe_interval; }
     [[nodiscard]] bool ac4Crc() const { return ac4_.crc; }
     [[nodiscard]] QString ac4Tokens() const;
+    [[nodiscard]] bool ac4Objects() const {
+        return atmos_enabled_ && codec_ == ac3::plan::Codec::kAc4;
+    }
+    [[nodiscard]] int ac4ObjectCodingIndex() const { return static_cast<int>(ac4_.object_coding); }
+    [[nodiscard]] QStringList ac4ObjectCodingNames() const;
+    [[nodiscard]] int objectLimit() const;
+    [[nodiscard]] QString ac4ObjectsRefusal() const;
+    [[nodiscard]] QString ac4PathsName() const;
 
     [[nodiscard]] int bedIndex() const;
     [[nodiscard]] QVariantList bedChoices() const;
@@ -973,6 +1012,7 @@ public:
     void setAc4DialogueMaxGainIndex(int index);
     void setAc4IframeInterval(int frames);
     void setAc4Crc(bool on);
+    void setAc4ObjectCodingIndex(int index);
     void setCoupling(bool on);
     void setSpx(bool on);
     void setAht(bool on);
@@ -1484,6 +1524,36 @@ private:
         return value ? static_cast<int>(*value) + 1 : 0;
     }
     void setAc4Choice(std::optional<std::size_t>& choice, int index, std::size_t size);
+    // AC-4 object mode (ac4Objects()): what the assignments make of the loaded
+    // channels as AC-4 objects, the scene that moves them, and the encode, all
+    // the steps `ac3cli atmos-encode ... codec=ac4` takes (apps/common/
+    // ac4_objects_core.hpp), so that the command line the page echoes writes
+    // these bytes.
+    //
+    // The assignment those steps read: the explicit one, else every channel of
+    // every source an object.
+    [[nodiscard]] ac3::plan::Assignment ac4ObjectAssignment() const;
+    // The dynamic objects' automation, in the stream's order (the slots' kDynamic
+    // ones): each object's authored keyframes where it has them, else its
+    // static position, under the inverse-root gain law E-AC-3's fallback uses.
+    // Nothing where a scene cannot be built from them (two keys at one instant).
+    [[nodiscard]] std::optional<ac3::oba::ObjectScene> ac4ObjectScene(
+        const std::vector<ac3::apps::Ac4ObjectSlot>& stream_objects) const;
+    // What ac4ObjectsRefusal() leaves to Encode, found the way the encoder finds
+    // it: an object's keyframe outside the gain and the room AC-4 codes, and the
+    // configuration the writer refuses for this many objects at this rate.
+    [[nodiscard]] QString ac4ObjectsDeepRefusal(
+        const std::vector<ac3::apps::Ac4ObjectSlot>& stream_objects,
+        const ac3::oba::ObjectScene& scene) const;
+    // Encodes them to `path` and writes ac4PathsName() beside it.
+    void encodeAc4Objects(const QString& path);
+    // Whether what a run writes is an E-AC-3 stream, which the Play button and
+    // the containers key on: E-AC-3 itself, or object mode under any codec but
+    // AC-4.
+    [[nodiscard]] bool eac3Stream() const {
+        return codec_ == ac3::plan::Codec::kEac3 ||
+               (atmos_enabled_ && codec_ != ac3::plan::Codec::kAc4);
+    }
     // The bed that is the loaded source's own layout, where AC-4 encodes it:
     // mono, stereo, 5.0 or 5.1. Other channel counts leave the bed alone, and
     // ac4Refusal() says why.

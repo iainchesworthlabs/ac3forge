@@ -17,7 +17,7 @@ Usage:
   ac3cli orbit         <out.ac3> [seconds] [bitrate_kbps] [orbit_seconds]
   ac3cli atmos         <out.ec3> [seconds] [bitrate_kbps] [objects] [orbit_seconds] [mode]
   ac3cli atmos-path    <out.ec3> <paths.txt> [seconds] [bitrate_kbps] [objects] (objects driven by an authored scene file instead of the built-in orbit)
-  ac3cli atmos-encode  <in.wav> <out.ec3> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement)
+  ac3cli atmos-encode  <in.wav> <out.ec3|out.ac4|out.mp4> [bitrate_kbps] [objects] [paths.txt] (every source channel as an object; optional: authored per-object motion from a scene file (same formats as atmos-path), objects it doesn't mention keep their default placement; with codec=ac4, AC-4 objects (A-JOC, or coding=direct) in a raw stream or an MP4 file)
   ac3cli atmos-adm     <in.adm.wav> <out.ec3|out.ac4> [bitrate_kbps] [programme_id] (UNAVAILABLE HERE)
   ac3cli atmos-iab     <in.iab|in.mxf> <out.ec3|out.ac4> [bitrate_kbps] (UNAVAILABLE HERE)
   ac3cli atmos-cbi     <in.wav> <out.ec3> [bitrate_kbps] [layout] (a channel-based-immersive bed (Dolby's dee_ddpjoc_encoder --input-format cbi_wav shape) straight to DD+ JOC E-AC-3 with program.bed != 0 and 0 dynamic objects; layout is one of 5.1.4, 7.1.4, 9.1.6 (default: inferred from the file's channel count))
@@ -111,7 +111,7 @@ so a misrouted channel is identifiable by ear.)
 |---|---|
 | `encode` | WAV → AC-3. Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1); a wider source is refused, since no AC-3 coding mode is wider than 3/2 + LFE. |
 | `eac3-encode` | WAV → E-AC-3, with the Annex E `tools:` token and an optional `vbr:` token available (see [Options & grammars](metadata-options.md)). Without `[layout]`, follows the source channel count (1→mono, 2→stereo, 3–6→5.1, 8→7.1, 10→5.1.4, 12→7.1.4). |
-| `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement |
+| `atmos-encode` | WAV → E-AC-3 Atmos, every source channel becomes its own object; optional `[paths.txt]` drives per-object motion from an authored scene file the same way `atmos-path` does, keyed by WAV channel index — an object it doesn't mention keeps its default (fanned-out) placement. With `codec=ac4` it writes AC-4 objects instead: see [AC-4 objects from a WAV](#ac-4-objects-from-a-wav) below |
 | `atmos-cbi` | WAV already mixed into a fixed channel-based-immersive (CBI) bed layout → E-AC-3 Atmos with `program.bed != 0` and 0 dynamic objects — Dolby's `dee_ddpjoc_encoder --input-format cbi_wav` shape, not free-floating objects |
 | `ac4-encode` | WAV → AC-4: mono, stereo, 5.0 or 5.1 (7.0, 7.1 and 3.0 experimental), at 48 kHz at every frame rate of Part 1 Table 83 or at 44.1 kHz at the native one, as raw sync frames with their CRC (or without, `crc=off`) or, for `.mp4`, `.m4a` or `.mov`, an MP4 file with the `ac-4` sample entry and its `dac4`. The codec mode follows the rate: SIMPLE from 96 kbps a channel (76.8 in 5.X), the ASPX mode below, and in 5.X the A-CPL modes lower still. The frame rate, the rate mode, the I-frames, the metadata, and further substreams and the presentations that play them are options: see [`ac4-encode`](#ac4-encode) below |
 
@@ -348,6 +348,41 @@ ac3cli decode out.ac4 out.wav objects_dir adm_out.wav
 That `decode` line closes the round trip: `objects_dir` writes each object's own PCM, and
 `adm_out.wav` (needs `-DAC3FORGE_BUILD_ADM=ON`) writes a fresh ADM BWF master back out, its
 objects' positions, gains and timing read from what the AC-4 stream's own Annex F metadata says.
+
+#### AC-4 objects from a WAV
+
+`atmos-encode` takes `codec=ac4` too (planning/ac4.md, I5b), and writes the objects it makes of a
+WAV file's channels, or of `src=`, `map=` and `offset=`, as AC-4 objects: A-JOC-coded unless
+`coding=direct` asks for direct-coded object substreams, a raw stream (with Part 2 Annex G's CRC
+unless `crc=off`) or, for an `.mp4`, `.m4a` or `.mov` output name, an MP4 file.
+[GUI → Objects & motion](../gui/objects-and-motion.md#ac-4-objects) echoes this command, and the
+two write the same bytes.
+
+```bash
+ac3cli atmos-encode stems.wav out.ac4 256 codec=ac4
+ac3cli atmos-encode stems.wav out.mp4 256 0 scene.json src=vo.wav \
+    map=0.0:obj,0.1:obj@-3,1.0:L,1.1:LFE offset=1:0.02 codec=ac4 coding=direct dialnorm=27
+```
+
+- **Which channels are objects** follows `src=`/`map=` as it does for E-AC-3: each `obj` row its
+  own object, an `objm` range folded to one, in that order. A channel mapped to a speaker is a
+  dynamic object held at the speaker's place on the ring of radius 0.5 about the room's centre
+  at its azimuth, the place ADM's polar coordinates give a bed channel, at unity; one mapped to
+  an LFE is the stream's LFE object. These follow the `obj`/`objm` objects in `map=` order, the
+  speakers' in source-then-channel order, the LFE last. `[objects]` is the E-AC-3 command's count
+  of channels and stays 0 with `map=`.
+- **Motion** comes from the scene file (`[paths.txt]`), addressed by the dynamic objects' order
+  above; an object it does not mention keeps the default placement `atmos-encode` gives it for
+  E-AC-3. The stream takes one position update per object per frame, evaluated at the frame's
+  end, at 2 048 samples a frame (frame_rate_index 13, the only rate an object substream is
+  written at). A key's gain must be 0 or lie from +15 to -49 dB, and its place inside the room.
+- **The limits** are E9's writer's: 64 objects at most, one of them an LFE object, at 48 or
+  44.1 kHz, and at least one object that is not the LFE. A source shorter than the longest
+  is silent past its end, where `atmos-encode`'s E-AC-3 runs with `src=` hold each short
+  source's last sample.
+- **Options.** `dialnorm=1..31` sets the stream's dialnorm; `dialnorm=auto` and `sign-objects`
+  are refused (an object stream has no bed to measure and no EMDF container to sign), and
+  `coding=` and `crc=` without `codec=ac4` are refused rather than dropped.
 
 `dialnorm=` works the same as every other encoding command (see
 [Options & grammars](metadata-options.md)); `dialnorm=auto` does not — an ADM document's bed/object

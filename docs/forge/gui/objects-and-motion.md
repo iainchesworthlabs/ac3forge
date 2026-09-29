@@ -8,12 +8,15 @@ it takes over the format choice:
 
 ![Objects mode on: room plan and elevation, object list, motion timeline](screenshots/objects-tab.png)
 
-Turning it on fixes the codec and layout — objects always ride as JOC + OAMD side data over a
-plain 5.1 E-AC-3 bed, so the Format tab's codec field reads *Codec — fixed by object mode*, the
-bed picker freezes, and the plan strip reads `E-AC-3 · 5.1 bed + <n> objects · … · .ec3`. If the
-bit rate is under 384 kbps, a warning chip appears (`Objects over a 5.1 bed want 384 kbps or
-better` — the metadata competes with the audio for the same frame) with a one-click **Set it**
-fix, right here rather than on the tab the bit-rate control lives on.
+Turning it on fixes the layout, and the codec to one of two. Under E-AC-3, the default, objects
+ride as JOC + OAMD side data over a plain 5.1 E-AC-3 bed: the bed picker freezes and the plan
+strip reads `E-AC-3 · 5.1 bed + <n> objects · … · .ec3`. If the bit rate is under 384 kbps, a
+warning chip appears (`Objects over a 5.1 bed want 384 kbps or better` — the metadata competes
+with the audio for the same frame) with a one-click **Set it** fix, right here rather than on
+the tab the bit-rate control lives on. The Format tab's codec field reads *Codec — object mode:
+E-AC-3 or AC-4*: it takes Dolby Digital Plus or AC-4, and its AC-3 entry is greyed out, since AC-3
+has no place for objects. With AC-4 chosen the switch writes [AC-4 objects](#ac-4-objects)
+instead.
 
 If any of "5.1 bed", "JOC", or "OAMD" aren't already clear, read
 [Concepts → Atmos & JOC](../../concepts/atmos-joc.md) first — this page assumes that vocabulary.
@@ -181,6 +184,73 @@ keyframed.
 See [Spatial & Atmos objects](../../library/spatial-and-atmos.md) for the library API this timeline
 is a UI over — `Keyframe`/`KeyframePath` per object, and `ObjectScene` for the scene the export
 writes.
+
+## AC-4 objects
+
+With AC-4 as the codec the switch writes AC-4 objects (ETSI TS 103 190-2) in place of E-AC-3's
+JOC over a bed. Choose AC-4 on the Format tab, then turn the switch on: the codec stays AC-4, the
+plan strip reads `AC-4 · <n> objects · … · .ac4`, and the bit rate is left where it was. The
+assignments, the room plan, the timeline, the trajectory presets and **Export paths…** work as
+they do for E-AC-3, with what follows different.
+
+The **AC-4** tab keeps its place in the tab bar, in place of Coding tools and Metadata, and
+carries what an object stream takes:
+
+| Control | `ac3cli atmos-encode … codec=ac4` option | Default |
+|---|---|---|
+| Coding: A-JOC, or direct-coded object substreams | `coding=ajoc\|direct` | A-JOC |
+| dialnorm, in whole dB from 1 to 31 | `dialnorm=` | 31 |
+| CRC on each raw sync frame | `crc=off` (a raw stream only) | on |
+
+A-JOC codes a downmix and the matrices that rebuild the objects from it; direct coding sends
+each object as a channel of its own. The frame rate is fixed at the native one, 2 048 samples,
+and the rate is constant, so those controls are shown and off; so are the loudness values and
+DRC, which describe channels, and the stereo downmix and dialogue enhancement cards are hidden.
+Measured dialnorm is refused, since an object stream has no bed to measure it on.
+
+**The writer's limits are on the page.** An AC-4 object stream is written at 2 048 samples a
+frame with one position update per object per frame, taken from the timeline at each frame's
+end as the E-AC-3 encoders take it; it holds 64 objects at most, one of them the LFE; and it is
+a raw stream or an MP4 file, so Container's other choices are refused. The Objects tab says so
+under its header, its count line reads `<n> of 64 objects`, and what cannot be written now is
+named there and at the top of the AC-4 tab, in the words Encode would refuse it with, before
+anything starts:
+
+- a container that is not a raw stream or an MP4 file;
+- more than 64 objects, more than one channel assigned to an LFE, or no object that is not the
+  LFE;
+- a dialnorm that is measured, or not a whole number of dB from 1 to 31;
+- sources that were resampled to the first one's rate, which no command line reproduces.
+
+Encode also refuses a key whose gain is outside the +15 to -49 dB AC-4 codes (or silence), or
+whose place is outside the room, and a bit rate the writer refuses for that many objects, quoting
+the writer's own reason.
+
+**What an object is.** Channels assigned to **an object** are dynamic objects, an `objm` range
+folds to one, and a trim applies as it does for E-AC-3. A channel assigned to a speaker is an
+object held at that speaker's place on the ring ADM's polar coordinates give a bed channel
+(the left speaker at 0.25, 0.067), at unity; one assigned to an LFE is the stream's LFE object.
+The LFE send has no AC-4 counterpart, so its slider is off, and there is no bed: the room plan
+and the meters show the objects as a 5.1 monitor sees them. An object with no path keeps the
+inverse-root gain E-AC-3 gives it, which AC-4 codes in whole dB.
+
+**The command.** The command bar echoes one command,
+`ac3cli atmos-encode <source> out.ac4 <kbps> <objects> <name>-paths.json [src=… map=… offset=…]
+codec=ac4 [coding=direct] [dialnorm=…] [crc=off]`, with `out.mp4` for MP4, since `atmos-encode`
+writes the MP4 file itself. Encoding writes `<name>-paths.json` beside the stream, the scene the
+command reads (the file **Export paths…** writes when the name ends in `.json`, listing the
+dynamic objects in the stream's order); copy it with the sources to where the command runs and
+it writes the same bytes the page writes. The Qt Quick Tests hold a raw stream, an MP4 file and a
+run of two sources with an assignment, an offset, a trim, a fold, a speaker and an LFE to that.
+The page and the command share which channels become which objects and where a pinned channel
+sits, the audio each object carries, the metadata updates and the call into the writer
+(`apps/common/ac4_objects_core.hpp`).
+
+**What it leaves out.** A live session encodes AC-3 or E-AC-3 only, so a live session is refused
+under AC-4, and Guided's Movement step writes E-AC-3 objects. **Preview** plays the objects
+through the E-AC-3 object encoder's 5.1 bed, the first fifteen of them, whichever codec is
+chosen: it shows the motion, not the AC-4 stream's own rendering. The page reads audio, not ADM
+BWF or IAB files; `ac3cli atmos-adm` and `atmos-iab` write those to AC-4 with `codec=ac4`.
 
 ## Next
 

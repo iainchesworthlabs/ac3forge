@@ -20,11 +20,9 @@ std::vector<ObjectSlot> object_slots_from_assignment(
         return base + channel;
     };
     std::vector<ObjectSlot> slots;
-    for (const auto& [source, channel] :
-         assignment.rows_of(ac3::plan::DestinationKind::kObject)) {
+    for (const auto& [source, channel] : assignment.rows_of(ac3::plan::DestinationKind::kObject)) {
         const auto dest = assignment.at(source, channel);
-        slots.push_back(
-            {.taps = {{flat(source, channel), std::pow(10.0, dest.trim_db / 20.0)}}});
+        slots.push_back({.taps = {{flat(source, channel), std::pow(10.0, dest.trim_db / 20.0)}}});
     }
     // rows_of() hands them back in (source, then channel) order, which is what
     // makes "the maximal contiguous run within one source" a well-defined
@@ -52,6 +50,7 @@ std::vector<ObjectSlot> object_slots_from_assignment(
 
 std::optional<double> location_azimuth_deg(ac3::eac3::chanmap::Location location) {
     using ac3::eac3::chanmap::Location;
+    // clang-format off
     switch (location) {
         case Location::kLeft: return 30.0;
         case Location::kCentre: return 0.0;
@@ -77,6 +76,7 @@ std::optional<double> location_azimuth_deg(ac3::eac3::chanmap::Location location
         case Location::kLfe:
             return std::nullopt;
     }
+    // clang-format on
     return std::nullopt;
 }
 
@@ -167,8 +167,8 @@ std::vector<std::vector<float>> ac4_object_planes(std::span<const Ac4ObjectSlot>
 ac4::ObjectProperties ac4_object_properties(const ac3::oba::ObjectPlacement& p) {
     ac4::ObjectProperties out;
     out.position = {p.position.x, p.position.y, p.position.z};
-    out.gain_db = p.gain > 0.0 ? 20.0 * std::log10(p.gain)
-                               : -std::numeric_limits<double>::infinity();
+    out.gain_db =
+        p.gain > 0.0 ? 20.0 * std::log10(p.gain) : -std::numeric_limits<double>::infinity();
     return out;
 }
 
@@ -197,12 +197,12 @@ std::optional<std::string> ac4_objects_refusal(std::span<const Ac4ObjectSlot> sl
                                                const Ac4ObjectsParams& params) {
     if (!ac4_objects_take_rate(params.sample_rate_hz)) {
         return fmt::format(
-            "AC-4 objects are written at 48 or 44.1 kHz, in 2 048-sample frames; the source is {} Hz",
+            "AC-4 objects are written at 48 or 44.1 kHz, in 2 048-sample frames; the source is {} "
+            "Hz",
             params.sample_rate_hz);
     }
-    const auto lfes = static_cast<std::size_t>(std::ranges::count_if(slots, [](const auto& slot) {
-        return slot.kind == Ac4ObjectSlot::Kind::kLfe;
-    }));
+    const auto lfes = static_cast<std::size_t>(std::ranges::count_if(
+        slots, [](const auto& slot) { return slot.kind == Ac4ObjectSlot::Kind::kLfe; }));
     if (slots.size() == lfes) {
         return std::string{
             "an AC-4 object stream needs at least one object that is not the LFE: send a channel "
@@ -213,8 +213,8 @@ std::optional<std::string> ac4_objects_refusal(std::span<const Ac4ObjectSlot> sl
                            kAc4MaxObjects);
     }
     if (lfes > 1) {
-        return fmt::format("{} channels are assigned to an LFE: an AC-4 object stream has one LFE object",
-                           lfes);
+        return fmt::format(
+            "{} channels are assigned to an LFE: an AC-4 object stream has one LFE object", lfes);
     }
     return std::nullopt;
 }
@@ -257,7 +257,8 @@ std::expected<Ac4ObjectsEncoded, Ac4ObjectsError> encode_ac4_objects(
          start += kAc4ObjectFrameSamples) {
         const auto ramp = std::min<std::int64_t>(kAc4ObjectFrameSamples,
                                                  static_cast<std::int64_t>(total) - start);
-        const double t = static_cast<double>(start + ramp) / static_cast<double>(params.sample_rate_hz);
+        const double t =
+            static_cast<double>(start + ramp) / static_cast<double>(params.sample_rate_hz);
         const std::vector<ac3::oba::ObjectPlacement> placed = placements(t);
         for (std::size_t i = 0; i < count; ++i) {
             updates.push_back({.object = static_cast<int>(i),
@@ -271,19 +272,21 @@ std::expected<Ac4ObjectsEncoded, Ac4ObjectsError> encode_ac4_objects(
     const ac4::EncoderConfig config = ac4_objects_config(params, lfe, initial);
     auto encoder = ac4::Encoder::create(config);
     if (!encoder.has_value()) {
-        return std::unexpected(Ac4ObjectsError{
-            .kind = Ac4ObjectsError::Kind::kRefused,
-            .message = std::string{ac4::Encoder::refusal_reason(config)}});
+        return std::unexpected(
+            Ac4ObjectsError{.kind = Ac4ObjectsError::Kind::kRefused,
+                            .message = std::string{ac4::Encoder::refusal_reason(config)}});
     }
     auto frames = encoder->encode(pcm, updates);
     if (!frames.has_value()) {
-        return std::unexpected(Ac4ObjectsError{.kind = Ac4ObjectsError::Kind::kEncode,
-                                               .message = std::string{ac4::describe(frames.error())}});
+        return std::unexpected(
+            Ac4ObjectsError{.kind = Ac4ObjectsError::Kind::kEncode,
+                            .message = std::string{ac4::describe(frames.error())}});
     }
     auto rest = encoder->flush();
     if (!rest.has_value()) {
-        return std::unexpected(Ac4ObjectsError{.kind = Ac4ObjectsError::Kind::kFlush,
-                                               .message = std::string{ac4::describe(rest.error())}});
+        return std::unexpected(
+            Ac4ObjectsError{.kind = Ac4ObjectsError::Kind::kFlush,
+                            .message = std::string{ac4::describe(rest.error())}});
     }
     frames->insert(frames->end(), rest->begin(), rest->end());
     Ac4ObjectsEncoded out;

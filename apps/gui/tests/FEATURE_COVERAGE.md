@@ -143,8 +143,30 @@ suites, so **Before** reads "new".
 | Player: presentation picker | new | UI | Ac4Decode::test_playerPlaysThePresentationItsPickerChooses |
 | QC of AC-4: dialnorm and stated loudness, raw and in MP4 | new | UI | E2eAc4::test_rawStream…, test_mp4File… |
 | QC: presentation picker | new | UI | Ac4Decode::test_qcMeasuresThePresentationItsPickerChooses |
-| Object page: presentations, bed and dynamic objects, the note that export comes later | new | UI | Ac4Decode::test_objectPageListsWhatTheDecoderReports, E2eAc4::test_rawStream… |
+| Object page: presentations, bed and dynamic objects, the note that it exports nothing | new | UI | Ac4Decode::test_objectPageListsWhatTheDecoderReports, E2eAc4::test_rawStream… |
 | AC-4 page settings → ac4-encode tokens and ac4::EncoderConfig; presentation labels | new | logic | ac3tests [gui]: tests/gui/test_ac4_encode_settings.cpp (Qt-free) |
+
+## AC-4 objects
+
+The Objects tab's switch under the AC-4 codec (planning/ac4.md, I5b), which writes the
+objects `ac3cli atmos-encode … codec=ac4` writes, so **Before** reads "new".
+
+| Feature | Before | Now | Test case(s) |
+|---|---|---|---|
+| Object mode keeps AC-4 as the codec; the AC-4 tab, the plan strip, the summary and the Encode button say AC-4 objects; the bit rate is left alone | new | UI | Ac4Objects::test_objectModeKeepsAc4AndOffersItsTabBesideTheObjectsTab |
+| Codec combo in object mode: E-AC-3 and AC-4, never AC-3 (its entry is greyed out; the setter refuses it) | new | UI | Ac4Objects::test_codecPickerInObjectModeTakesEac3AndAc4ButNotAc3 |
+| AC-4 tab in object mode: coding, dialnorm and CRC are controls; frame rate (shown native), rate mode, codec mode, I-frame interval, loudness and DRC are off; downmix and dialogue cards hidden | new | UI | Ac4Objects::test_ac4TabCarriesTheObjectControlsAndSwitchesOffWhatDescribesChannels |
+| Object coding combo (A-JOC or direct-coded), dialnorm in whole dB and CRC reach the echoed line; the CRC token goes for MP4 | new | UI | Ac4Objects::test_codingDialnormAndCrcReachTheEchoedLine |
+| The writer's limits in the Objects tab's text (2 048 samples a frame, 64 objects, the scene file's name); the count line reads of 64; the LFE send is off | new | UI | Ac4Objects::test_theWritersLimitsAreOnTheObjectsTabAndTheLfeSendIsOff |
+| A container that is not raw or MP4 is refused beside the controls and before Encode | new | UI | Ac4Objects::test_aContainerAnObjectStreamCannotBeIsRefusedBesideTheControlsAndBeforeEncode |
+| One LFE object is taken, two are refused, an LFE alone is no object stream | new | logic | Ac4Objects::test_oneLfeObjectIsTakenAndTwoAreRefused |
+| A dialnorm off the whole-dB grid, and a measured one, are refused | new | logic | Ac4Objects::test_aDialnormOffTheWholeDbGridIsRefusedAndMeasuringIsToo |
+| Export paths… suggests `<source>-paths.json`, the scene the echoed command reads | new | UI | Ac4Objects::test_exportPathsSuggestsTheNameTheEchoedCommandReads |
+| Guided's Movement card writes E-AC-3 objects even where AC-4 was the codec | new | UI | GuidedWizard::test_movementCardKeepsGuidedsObjectsEac3WhenAc4WasTheCodec |
+| The echoed `ac3cli atmos-encode … codec=ac4` line, run through ac3cli, writes the page's bytes (raw A-JOC; MP4 direct-coded of two sources with an assignment, an offset, a trim, a fold, a speaker and an LFE) | new | UI | E2eAc4Objects::test_rawStreamOfOneSource…, test_mp4OfSeveralSources… (qml_test_main.cpp's cliRunner) |
+| The object page reads the page's AC-4 objects: their count, movement and gain | new | UI | E2eAc4Objects::test_rawStreamOfOneSource…, test_mp4OfSeveralSources… |
+| An ADM master's scene (two bed channels, one object that jumps) authored on the page decodes with its objects within 0.06 per axis and 2 dB | new | logic | E2eAc4Objects::test_anAdmMasterAuthoredOnThePageDecodesWithItsObjectsInTolerance (controller-level; the page reads audio, not ADM) |
+| Object slots, pinned places, flat planes, object planes, the encode; AC-4 object settings → tokens and parameters | new | logic | ac3tests [gui]: tests/gui/test_ac4_objects_core.cpp, test_ac4_encode_settings.cpp (Qt-free); [cli][atmos][ac4]: tests/cli/test_cli_atmos_encode_ac4.cpp |
 
 ## Stream player (decode)
 

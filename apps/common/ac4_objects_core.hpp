@@ -121,7 +121,8 @@ struct Ac4SourceView {
 // Every source's channels concatenated in load order, each with its source's
 // offset ahead of it and zeros after its end, all the length of the longest
 // (offset and samples together). Empty for no sources.
-[[nodiscard]] std::vector<std::vector<float>> ac4_flat_planes(std::span<const Ac4SourceView> sources);
+[[nodiscard]] std::vector<std::vector<float>> ac4_flat_planes(
+    std::span<const Ac4SourceView> sources);
 
 // The audio each slot carries: its taps' channels summed, each scaled by its
 // gain, in the order the slot lists them, in float as the encoders' own mixes

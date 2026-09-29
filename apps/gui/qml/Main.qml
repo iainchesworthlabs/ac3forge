@@ -448,9 +448,9 @@ ApplicationWindow {
 
     readonly property var tabOrder: ["format", "coding", "meta", "objects", "session", "ac4"]
     // AC-4 has options of its own and none of the other two codecs' coding
-    // tools or metadata, so its tab takes the place of those two.
+    // tools or metadata, so its tab takes the place of those two - in object
+    // mode too, where the tab carries what an object stream takes.
     readonly property bool ac4Selected: EncoderController.codecIndex === 2
-                                        && !EncoderController.atmosEnabled
     readonly property var visibleTabs: {
         const tabs = [{ key: "format", label: qsTr("Format"), badge: "" }];
         if (ac4Selected && tier !== "guided") {
@@ -571,6 +571,16 @@ ApplicationWindow {
     // describe something that does not exist.
     readonly property string planLineCore: {
         const codec = EncoderController.codecNames[EncoderController.codecIndex] || "";
+        if (EncoderController.ac4Objects) {
+            // No bed: every object, the ones held at speakers and the LFE's among them, is
+            // written as an object.
+            void window.objectsRevision;
+            const total = EncoderController.codedChannelCount;
+            return qsTr("%1 · %2 · %3")
+                .arg(codec)
+                .arg(total > 0 ? qsTr("%1 objects").arg(total) : qsTr("objects"))
+                .arg(window.planRateText);
+        }
         if (EncoderController.atmosEnabled) {
             const objects = EncoderController.objectCount;
             const shape = objects > 0 ? qsTr("5.1 bed + %1 objects").arg(objects)
@@ -671,7 +681,9 @@ ApplicationWindow {
     // `ac3cli live` has no token for them, so the command bar cannot claim
     // one it would refuse.
     readonly property string cliLine: {
-        const eac3Stream = EncoderController.atmosEnabled || EncoderController.codecIndex === 1;
+        // Object mode is E-AC-3's, or AC-4's where that is the codec.
+        const eac3Stream = (EncoderController.atmosEnabled && !EncoderController.ac4Objects)
+                           || EncoderController.codecIndex === 1;
         if (window.inputMode === "live") {
             const liveMkv = EncoderController.containerIndex === 1;
             // fMP4/CMAF names a FOLDER, not a file — the same
@@ -711,6 +723,37 @@ ApplicationWindow {
         const mpegTs = EncoderController.containerIndex === 5;
         const streamOut = "out." + (eac3Stream ? "ec3" : "ac3");
         const rate = String(EncoderController.bitrateKbps);
+        // AC-4's objects are one command too: atmos-encode with codec=ac4 takes the sources,
+        // the assignment and the offsets the way it does for E-AC-3's objects, and the scene
+        // file an AC-4 object encode writes beside its output (ac4PathsName), and writes the
+        // MP4 file itself when the output is named .mp4.
+        if (EncoderController.ac4Objects) {
+            const routed = EncoderController.sourceModel.length > 1
+                           || EncoderController.mapToken.length > 0;
+            const objectParts = ["ac3cli", "atmos-encode", source, mp4 ? "out.mp4" : "out.ac4", rate,
+                                 // [objects] counts the channels of one file with no map=;
+                                 // src= and map= state them themselves.
+                                 routed ? "0" : String(EncoderController.objectCount),
+                                 window.cliQuote(EncoderController.ac4PathsName)];
+            for (const row of EncoderController.sourceModel) {
+                if (!row.primary) {
+                    objectParts.push("src=" + window.cliQuote(window.baseName(row.path)));
+                }
+            }
+            if (EncoderController.mapToken.length > 0) {
+                objectParts.push(EncoderController.mapToken);
+            }
+            for (const row of EncoderController.sourceModel) {
+                if (row.offsetSeconds > 0) {
+                    objectParts.push("offset=" + row.index + ":" + row.offsetSeconds);
+                }
+            }
+            objectParts.push("codec=ac4");
+            if (EncoderController.ac4Tokens.length > 0) {
+                objectParts.push(EncoderController.ac4Tokens);
+            }
+            return objectParts.join(" ");
+        }
         // AC-4 is one command: ac4-encode writes the MP4 file itself when the
         // output is named .mp4, and takes one WAV file in its own layout.
         if (window.ac4Selected) {
@@ -907,7 +950,7 @@ ApplicationWindow {
         // is what a name typed WITHOUT an extension gets, so a fixed "txt"
         // would hand someone who picked "Object scene" a .txt file and, by the
         // suffix rule below, the column format they did not ask for.
-        defaultSuffix: selectedNameFilter.index === 1 ? "json" : "txt"
+        defaultSuffix: EncoderController.ac4Objects || selectedNameFilter.index === 1 ? "json" : "txt"
         currentFolder: window.outputFolderUrl()
         selectedFile: window.outputFolderUrl() + "/" + window.exportedPathsName()
         onAccepted: {
@@ -942,6 +985,11 @@ ApplicationWindow {
     // exact filename cliLine then quotes back once one has actually been
     // exported (see exportedPathsPath).
     function exportedPathsName() {
+        // An AC-4 object encode writes this scene beside the stream, and the echoed command reads
+        // it: the same name here.
+        if (EncoderController.ac4Objects) {
+            return EncoderController.ac4PathsName;
+        }
         const stem = EncoderController.sourcePath.length > 0
                      ? baseName(EncoderController.sourcePath).replace(/\.[^.]*$/, "")
                      : "objects";
@@ -2876,13 +2924,15 @@ ApplicationWindow {
                                     rowSpacing: 4
 
                                     // Whether anything is currently FORCING the
-                                    // codec: extras and object mode both need
-                                    // Dolby Digital Plus, and while they do the
-                                    // field is a readout, not a control. A plain
-                                    // bed genuinely encodes as either, so there
-                                    // the choice is real and stays offered.
+                                    // codec: extras need Dolby Digital Plus, and
+                                    // while they do the field is a readout, not a
+                                    // control. A plain bed genuinely encodes as
+                                    // either, so there the choice is real and stays
+                                    // offered. Object mode leaves two: Dolby Digital
+                                    // Plus, or AC-4 (never AC-3, whose entry the
+                                    // list below greys out).
                                     readonly property bool codecForced: {
-                                        if (EncoderController.atmosEnabled) return true;
+                                        if (EncoderController.atmosEnabled) return false;
                                         const extras = EncoderController.extrasModel;
                                         for (let i = 0; i < extras.length; i++) {
                                             if (extras[i].checked) return true;
@@ -2893,7 +2943,7 @@ ApplicationWindow {
 
                                     Text {
                                         text: EncoderController.atmosEnabled
-                                              ? qsTr("Codec — fixed by object mode")
+                                              ? qsTr("Codec — object mode: E-AC-3 or AC-4")
                                               : formatGrid.codecForced
                                                 ? qsTr("Codec — follows the channels")
                                                 : qsTr("Codec")
@@ -2922,11 +2972,22 @@ ApplicationWindow {
                                     // to the derived value. With nothing forcing
                                     // it, a plain bed is a real either/or.
                                     ComboBox {
+                                        id: codecBox
                                         Accessible.name: qsTr("Codec")
                                         Layout.fillWidth: true
                                         enabled: !formatGrid.codecForced && !EncoderController.busy
                                         model: EncoderController.codecNames
                                         currentIndex: EncoderController.codecIndex
+                                        // Objects have no place in AC-3: its entry is greyed out
+                                        // while object mode is on, not left to be refused.
+                                        delegate: ItemDelegate {
+                                            required property var modelData
+                                            required property int index
+                                            width: codecBox.width
+                                            text: modelData
+                                            enabled: !(EncoderController.atmosEnabled && index === 0)
+                                            highlighted: codecBox.highlightedIndex === index
+                                        }
                                         onActivated: EncoderController.codecIndex = currentIndex
                                     }
                                     ComboBox {
@@ -3453,6 +3514,9 @@ ApplicationWindow {
                                     text: {
                                         if (EncoderController.dualMono && !EncoderController.atmosEnabled) {
                                             return qsTr("Dual mono is not a layout — it is two programmes. Extras, the LFE and objects do not apply, and the assignments below choose which sound is which programme.");
+                                        }
+                                        if (EncoderController.ac4Objects) {
+                                            return qsTr("AC-4 objects have no bed: the objects are written as objects, and the positions above are not used.");
                                         }
                                         if (EncoderController.atmosEnabled) {
                                             return qsTr("Object mode fixes the bed at 5.1. The positions above describe the bed, not the objects.");
@@ -4560,11 +4624,15 @@ ApplicationWindow {
                                             color: Theme.text
                                         }
                                         Text {
+                                            objectName: "objectsSummary"
                                             Layout.fillWidth: true
-                                            text: EncoderController.atmosEnabled
+                                            text: EncoderController.ac4Objects
+                                                  ? qsTr("%1 objects from the assignments · AC-4 objects · positions ride as object audio metadata")
+                                                    .arg(EncoderController.objectCount)
+                                                  : EncoderController.atmosEnabled
                                                   ? qsTr("%1 objects from the assignments · E-AC-3 over a 5.1 bed · positions ride as OAMD")
                                                     .arg(EncoderController.objectCount)
-                                                  : qsTr("Off — the stream is a plain channel bed. Turning this on fixes the codec to E-AC-3 over 5.1.")
+                                                  : qsTr("Off — the stream is a plain channel bed. Turning this on writes E-AC-3 over 5.1, or AC-4 objects where AC-4 is the codec.")
                                             elide: Text.ElideRight
                                             color: Theme.textMuted
                                             font.pixelSize: Theme.fontSmall
@@ -4576,6 +4644,7 @@ ApplicationWindow {
                                     // objects actually exist to starve.
                                     RowLayout {
                                         visible: EncoderController.atmosEnabled
+                                                 && !EncoderController.ac4Objects
                                                  && EncoderController.objectCount > 0
                                                  && EncoderController.bitrateKbps < 384
                                         spacing: Theme.space2
@@ -4616,6 +4685,41 @@ ApplicationWindow {
                                                 EncoderController.formatDefaultsTouched = true;
                                             }
                                         }
+                                    }
+                                }
+
+                                // ---- what an AC-4 object stream takes ---------
+                                // The writer's limits in the page's own words, and what cannot
+                                // be written now - the text Encode would refuse with.
+                                ColumnLayout {
+                                    visible: EncoderController.ac4Objects
+                                    Layout.fillWidth: true
+                                    spacing: Theme.space2
+
+                                    Text {
+                                        objectName: "ac4ObjectsLimits"
+                                        Layout.fillWidth: true
+                                        text: qsTr("AC-4 objects are written at 2 048 samples a frame with one position update per object a frame, %1 objects at most, the LFE one of them, to a raw stream or an MP4 file. Encoding also writes %2 beside the stream, the scene the command below reads. The coding and the dialnorm are on the AC-4 tab, the codec on the Format tab.")
+                                              .arg(EncoderController.objectLimit)
+                                              .arg(EncoderController.ac4PathsName)
+                                        wrapMode: Text.WordWrap
+                                        color: Theme.textMuted
+                                        font.pixelSize: Theme.fontSmall
+                                    }
+                                    Text {
+                                        objectName: "ac4ObjectsRefusal"
+                                        Layout.fillWidth: true
+                                        // Read from the sources and the assignments, which
+                                        // planChanged does not announce.
+                                        text: {
+                                            void window.objectsRevision;
+                                            void EncoderController.sourceModel;
+                                            return EncoderController.ac4ObjectsRefusal;
+                                        }
+                                        visible: text.length > 0
+                                        wrapMode: Text.WordWrap
+                                        color: Theme.accent700
+                                        font.pixelSize: Theme.fontSmall
                                     }
                                 }
 
@@ -5349,10 +5453,11 @@ ApplicationWindow {
                                                 // The bed's LFE is the sixteenth object,
                                                 // and every bed-pinned channel spends a
                                                 // dynamic slot - the denominator says
-                                                // what is genuinely left, not "16".
+                                                // what is genuinely left, not "16". AC-4
+                                                // holds 64 objects, an LFE object among them.
                                                 text: {
                                                     const pinned = EncoderController.pinnedObjectCount;
-                                                    const cap = 15 - pinned;
+                                                    const cap = EncoderController.objectLimit - pinned;
                                                     if (pinned > 0) {
                                                         return qsTr("%1 of %2 objects · %3 pinned to the bed")
                                                             .arg(EncoderController.objectCount).arg(cap).arg(pinned);
@@ -5394,7 +5499,10 @@ ApplicationWindow {
                                                 Layout.fillWidth: true
                                                 from: 0.0
                                                 to: 1.0
+                                                // AC-4 objects have no LFE send: the LFE is an
+                                                // object of its own, a channel assigned to an LFE.
                                                 enabled: !EncoderController.busy
+                                                         && !EncoderController.ac4Objects
                                                          && objectsTab.driveMode === "author"
                                                          && objectsTab.selectedObj !== null
                                                 value: objectsTab.selectedObj ? objectsTab.selectedObj.lfeSend : 0
@@ -5417,7 +5525,9 @@ ApplicationWindow {
                                         Text {
                                             visible: window.showExplanations
                                             Layout.fillWidth: true
-                                            text: qsTr("Height changes the metadata, not the bed — a 5.1 ring has no speakers above it. The LFE send is the only route to that channel: no direction points at it, so panning never reaches it.")
+                                            text: EncoderController.ac4Objects
+                                                  ? qsTr("An AC-4 object stream has no LFE send, and no bed: send a channel to an LFE for the stream's one LFE object.")
+                                                  : qsTr("Height changes the metadata, not the bed — a 5.1 ring has no speakers above it. The LFE send is the only route to that channel: no direction points at it, so panning never reaches it.")
                                             color: Theme.textMuted
                                             font.pixelSize: Theme.fontSmall
                                             wrapMode: Text.WordWrap

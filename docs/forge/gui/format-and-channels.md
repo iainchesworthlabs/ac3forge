@@ -210,7 +210,8 @@ no assignment and no start offset. Choosing AC-4 sets the bed to the source's la
 extras, and leaves **Container** at Elementary stream (a raw `.ac4` of sync frames) or MP4; the
 other containers are refused when Encode is pressed, as is a bed that is not the source's. A
 preset or an extra that needs a dependent substream moves the codec to E-AC-3, as it does from
-AC-3. A live session encodes AC-3 or E-AC-3 only.
+AC-3. Object mode leaves the codec at AC-4 or E-AC-3 and greys out AC-3's entry. A live session
+encodes AC-3 or E-AC-3 only.
 
 The **AC-4** tab takes the place of Coding tools and Metadata, which belong to the other two
 codecs, and its badge counts the options it adds to the command line:
@@ -239,8 +240,9 @@ What the tab leaves to the command line: several substreams and presentations, d
 and hybrid dialogue enhancement, a DRC profile per decoder mode, Lt/Rt's own mix levels, the LFE
 mix and the downmix corrections, I-frames at named frames or fragment starts, the syntax trace,
 and the 3.0, 7.X and immersive layouts. None of these fits one source in one layout, and each is
-an option of [`ac3cli ac4-encode`](../cli/commands.md#ac4-encode). Encoding objects arrives with
-plan phase I5.
+an option of [`ac3cli ac4-encode`](../cli/commands.md#ac4-encode). Objects are the Objects tab's:
+with its switch on and AC-4 the codec, the page writes AC-4 objects, and the AC-4 tab carries what
+an object stream takes; see [Objects & motion](objects-and-motion.md#ac-4-objects).
 
 ## Next
 

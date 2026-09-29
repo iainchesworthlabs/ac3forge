@@ -65,8 +65,10 @@ fills the room view and the object list frame by frame from the decoder's Annex 
 bed object labelled with its loudspeaker; a channel-based presentation, which is what this
 project's encoder writes today, has its beds as channels and no objects to place.
 
-Exporting AC-4 objects arrives with plan phase I5, and the dialog says so in its own text rather
-than offering an export that would fail.
+This page exports nothing, and says so in its own text: an AC-4 stream's objects are exported from
+[Open stream](open-stream.md) (**Export objects…**), one WAV file a decoded object. An AC-4 file
+the encoder page wrote from its Objects tab is read here too, each object at the place and the
+gain it was given.
 
 ## What it does not do
 

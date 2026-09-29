@@ -1,35 +1,13 @@
 #include "channel_geometry.hpp"
 
+#include "ac4_objects_core.hpp"
+
 namespace ac3gui {
 
 std::optional<double> location_azimuth_deg(ac3::eac3::chanmap::Location location) {
-    using ac3::eac3::chanmap::Location;
-    switch (location) {
-        case Location::kLeft: return 30.0;
-        case Location::kCentre: return 0.0;
-        case Location::kRight: return -30.0;
-        case Location::kLeftSurround: return 110.0;
-        case Location::kRightSurround: return -110.0;
-        case Location::kLc: return 15.0;
-        case Location::kRc: return -15.0;
-        case Location::kLrs: return 135.0;
-        case Location::kRrs: return -135.0;
-        case Location::kCs: return 180.0;
-        case Location::kTs: return 180.0;    // ceiling: overhead-rear
-        case Location::kLsd: return 90.0;
-        case Location::kRsd: return -90.0;
-        case Location::kLw: return 60.0;
-        case Location::kRw: return -60.0;
-        case Location::kVhl: return 45.0;    // ceiling: front height
-        case Location::kVhr: return -45.0;   // ceiling: front height
-        case Location::kVhc: return 0.0;     // ceiling: centre height
-        case Location::kLts: return 110.0;   // ceiling: rear height
-        case Location::kRts: return -110.0;  // ceiling: rear height
-        case Location::kLfe2:
-        case Location::kLfe:
-            return std::nullopt;
-    }
-    return std::nullopt;
+    // The one table the soundfield ring and the AC-4 pins read, in apps/common so that
+    // ac3cli's atmos-encode reads it too.
+    return ac3::apps::location_azimuth_deg(location);
 }
 
 bool is_ceiling_location(ac3::eac3::chanmap::Location location) {

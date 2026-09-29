@@ -419,7 +419,9 @@ object; a contiguous `objm` range folds to a single mono object (equal-weight su
 then each `objm` group. `atmos-encode` honours `src=`/`map=` the same way `encode`/`eac3-encode`
 do, so a GUI assignment is reproducible headlessly, which is the point of the two front ends
 sharing one grammar (see
-[GUI → Multi-source & assignment](../gui/source-assignment.md)).
+[GUI → Multi-source & assignment](../gui/source-assignment.md)). With `codec=ac4` a location row
+is not dropped but becomes an object held at that speaker, and an LFE row the LFE object: see
+[AC-4 objects from a WAV](commands.md#ac-4-objects-from-a-wav).
 
 ```bash
 ac3cli atmos-encode stems.wav out.ec3 448 src=vo.wav \

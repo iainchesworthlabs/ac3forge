@@ -1207,8 +1207,8 @@ class TakeEncoder {
 // and by the GUI, so that the objects a given map= produces are the same
 // objects every way - a GUI assignment reproduced headlessly has to reproduce.
 // They live in apps/common/ac4_objects_core.hpp, where the GUI reaches them.
-using ac3::apps::ObjectSlot;
 using ac3::apps::object_slots_from_assignment;
+using ac3::apps::ObjectSlot;
 
 // What a "wrote N frames to <path>" line says about the container it went
 // into - " (Matroska)", " (MPEG-TS)", " (IEC 61937 WAV carrier)", or nothing

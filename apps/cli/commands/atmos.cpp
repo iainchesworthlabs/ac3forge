@@ -186,18 +186,20 @@ constexpr std::array<CbiLayout, 3> kCbiLayouts{{
 // project's E-AC-3/Atmos object model) and ac4::ObjectProperties (TS 103 190-2 Annex F) share one
 // room coordinate system - X 0 (left wall) to 1 (right), Y 0 (front) to 1 (back), Z -1 (floor) to 1
 // (ceiling), confirmed against apps/common/ac4_object_render.hpp's own header comment - so position
-// carries over unconverted; gain does not, since oba's is linear and AC-4's is dB (Table 108-adjacent
-// range +15 to -49, or -infinity for silence). ac3::apps::ac4_object_properties does both.
+// carries over unconverted; gain does not, since oba's is linear and AC-4's is dB (Table
+// 108-adjacent range +15 to -49, or -infinity for silence). ac3::apps::ac4_object_properties does
+// both.
 //
 // The AC-4 branch of run_atmos_adm/run_atmos_iab (codec=ac4): every bed/object channel the source
 // names becomes a dynamic AC-4 object driven by its own ObjectPath, the same treatment the E-AC-3
 // branches beside this function give a bed channel (panned by position, no speaker-anchored
 // ac4::BedChannel assigned) - is_bed is reported in the summary line and nothing else, exactly as
 // it already is for E-AC-3 above. AC-4's object substream is frame_rate_index 13 only
-// (ac4enc/encoder.hpp, SubstreamConfig::objects), so metadata updates land on that fixed 2048-sample
-// grid: one update per object per frame, ramped over the whole frame from the previous one, evaluated
-// at the frame's END time - the convention every Atmos-encode command in this file uses. The steps
-// themselves are apps/common/ac4_objects_core.cpp's, which ac3gui's AC-4 objects take too.
+// (ac4enc/encoder.hpp, SubstreamConfig::objects), so metadata updates land on that fixed
+// 2048-sample grid: one update per object per frame, ramped over the whole frame from the previous
+// one, evaluated at the frame's END time - the convention every Atmos-encode command in this file
+// uses. The steps themselves are apps/common/ac4_objects_core.cpp's, which ac3gui's AC-4 objects
+// take too.
 int run_atmos_objects_to_ac4(std::string_view source_kind, std::uint32_t sample_rate,
                              const std::vector<bool>& is_bed,
                              const std::vector<ac3::oba::ObjectPath>& paths,
@@ -223,9 +225,8 @@ int run_atmos_objects_to_ac4(std::string_view source_kind, std::uint32_t sample_
         .dialnorm_db = static_cast<double>(meta.p.dialnorm),
         .coding = meta.ac4_atmos_coding.value_or(ac4::ObjectCoding::kAjoc)};
     const auto encoded = ac3::apps::encode_ac4_objects(
-        params, std::vector<bool>{}, pcm, [&paths](double time_s) {
-            return ac3::oba::evaluate_placements(paths, time_s);
-        });
+        params, std::vector<bool>{}, pcm,
+        [&paths](double time_s) { return ac3::oba::evaluate_placements(paths, time_s); });
     if (!encoded.has_value()) {
         switch (encoded.error().kind) {
             case ac3::apps::Ac4ObjectsError::Kind::kRefused:
@@ -256,8 +257,7 @@ int run_atmos_objects_to_ac4(std::string_view source_kind, std::uint32_t sample_
     const auto status = status_stream(out_path);
     status_println(status, "encoded {} AC-4 frames ({} kbps, {} Hz) from {} to {}",
                    encoded->frames.size(), bitrate, sample_rate, in_path, out_path);
-    status_println(status,
-                   "  {} bed speaker feed(s) + {} dynamic object(s) = {} objects, {}-coded",
+    status_println(status, "  {} bed speaker feed(s) + {} dynamic object(s) = {} objects, {}-coded",
                    bed_count, count - bed_count, count,
                    params.coding == ac4::ObjectCoding::kAjoc ? "A-JOC" : "direct");
     status_println(status, "  the decoder's output lags the input by {} samples",
@@ -784,9 +784,8 @@ namespace {
 // default placement. The steps from there are apps/common/ac4_objects_core.cpp's and
 // ac4_encode_core.cpp's, which ac3gui's AC-4 objects take too, so the line the GUI echoes writes
 // the bytes the GUI does.
-int run_atmos_encode_ac4(std::string_view in_path, std::string_view out_path,
-                         std::uint32_t bitrate, std::uint32_t objects, const Options& meta,
-                         std::string_view paths_path) {
+int run_atmos_encode_ac4(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
+                         std::uint32_t objects, const Options& meta, std::string_view paths_path) {
     if (meta.sign_objects) {
         fmt::println(stderr,
                      "error: sign-objects signs E-AC-3's EMDF object container; an AC-4 object "

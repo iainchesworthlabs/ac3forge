@@ -51,8 +51,8 @@ constexpr std::uint32_t kRate = 48000;
 std::vector<float> tone(double hz, std::size_t count, double amplitude) {
     std::vector<float> x(count);
     for (std::size_t n = 0; n < count; ++n) {
-        x[n] = static_cast<float>(amplitude * std::sin(2.0 * std::numbers::pi * hz *
-                                                       static_cast<double>(n) / kRate));
+        x[n] = static_cast<float>(
+            amplitude * std::sin(2.0 * std::numbers::pi * hz * static_cast<double>(n) / kRate));
     }
     return x;
 }
@@ -206,9 +206,8 @@ TEST_CASE("a scene of slots encodes to a stream that decodes to its objects, one
     // speakers' places and one dynamic object held at the rear right for 0.096 s, then at the
     // front. Three tones, 0.192 s.
     constexpr std::size_t kSamples = 6 * 1536;
-    const std::vector<std::vector<float>> flat{tone(300.0, kSamples, 0.3),
-                                               tone(500.0, kSamples, 0.3),
-                                               tone(800.0, kSamples, 0.3)};
+    const std::vector<std::vector<float>> flat{
+        tone(300.0, kSamples, 0.3), tone(500.0, kSamples, 0.3), tone(800.0, kSamples, 0.3)};
     const std::vector<SourceShape> shapes{{.channels = 3, .label = "fixture"}};
     Assignment assignment;
     assignment.set(0, 0, at(Location::kLeft));
@@ -220,12 +219,15 @@ TEST_CASE("a scene of slots encodes to a stream that decodes to its objects, one
     const auto rear = ac3::apps::ac4_pin_position(-110.0);
     const auto front = ac3::apps::ac4_pin_position(0.0);
     const auto scene = ac3::oba::ObjectScene::create(
-        {ac3::oba::SceneObject{
-            .name = "moving",
-            .automation = {{.time_s = 0.0, .position = rear, .gain = 1.0,
-                            .interp = ac3::oba::Interpolation::kHold},
-                           {.time_s = 0.096, .position = front, .gain = 1.0,
-                            .interp = ac3::oba::Interpolation::kHold}}}});
+        {ac3::oba::SceneObject{.name = "moving",
+                               .automation = {{.time_s = 0.0,
+                                               .position = rear,
+                                               .gain = 1.0,
+                                               .interp = ac3::oba::Interpolation::kHold},
+                                              {.time_s = 0.096,
+                                               .position = front,
+                                               .gain = 1.0,
+                                               .interp = ac3::oba::Interpolation::kHold}}}});
     REQUIRE(scene.has_value());
 
     ac3::apps::Ac4ObjectsParams params;

@@ -72,6 +72,16 @@ public:
         return QFile::copy(from, dir.filePath(QFileInfo(from).fileName()));
     }
 
+    // `file` copied into `folder`, which prepare() made, under its own name: a
+    // further input an echoed line names beside the first (a second source, the
+    // scene file an AC-4 object encode writes).
+    [[nodiscard]] Q_INVOKABLE bool copyInto(const QUrl& folder, const QUrl& file) {
+        const QString from = file.toLocalFile();
+        const QString to = QDir(folder.toLocalFile()).filePath(QFileInfo(from).fileName());
+        QFile::remove(to);
+        return QFile::copy(from, to);
+    }
+
     // Whether the two files hold the same bytes, both present and non-empty.
     [[nodiscard]] Q_INVOKABLE bool sameBytes(const QUrl& a, const QUrl& b) const {
         QFile first(a.toLocalFile());
