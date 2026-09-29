@@ -1,4 +1,4 @@
-// How a layout is served (ac3/render/serving.hpp): the decoder's fold or the
+// How a layout is served (ac3/decoder/serving.hpp): the decoder's fold or the
 // renderer, and whether objects are reconstructed - the ESP32 player's policy,
 // now shared with every player that renders.
 
@@ -7,8 +7,8 @@
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
+#include "ac3/decoder/serving.hpp"
 #include "ac3/render/layout.hpp"
-#include "ac3/render/serving.hpp"
 
 namespace {
 

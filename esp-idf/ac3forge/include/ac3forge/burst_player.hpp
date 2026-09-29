@@ -14,8 +14,8 @@
 
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
+#include "ac3/decoder/serving.hpp"
 #include "ac3/render/layout.hpp"
-#include "ac3/render/serving.hpp"
 #include "ac3/sendspin/ac3forge_player.hpp"
 #include "ac3/sendspin/chunks.hpp"
 #include "ac3/sendspin/messages.hpp"
