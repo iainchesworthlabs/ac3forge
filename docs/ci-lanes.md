@@ -109,9 +109,8 @@ workflow - to know the whole matrix passed before recording a trend point.
 `needs:` cannot cross a `workflow_call` boundary the way it crosses between
 two jobs in the same file, so this dependency can only be expressed by
 gating the *entire* `core` call on `build-and-test`'s result - which would
-serialise coverage/ADM/FFmpeg-validate/performance-compare/memory-compare/
-ABI-gate behind the full build matrix on *every* PR, when they run in
-parallel with it today. Both jobs only ever fire on a direct push to `main`
+serialise coverage/ADM/FFmpeg-validate/ABI-gate behind the full build matrix
+on *every* PR, when they run in parallel with it today. Both jobs only ever fire on a direct push to `main`
 anyway, where the extra wait costs nothing, so leaving them in `ci.yml`
 (unchanged, still `needs: [build-and-test, toolchain-versions, ...]`) keeps
 today's parallelism and avoids plumbing a cross-file dependency for a
@@ -120,19 +119,22 @@ two-job, push-only edge case.
 **Every job's own `if:` that checked `needs.changes.outputs.code` lost that
 check entirely**, rather than gaining an `inputs.run_core` equivalent: since
 the *whole file* only runs when `core` is already true, an internal check
-would be redundant. `performance-gate`/`memory-gate`/
-`persist-external-comparison-trend`/`persist-object-quality-trend` never
-checked `code` in the first place (see each one's own `if:` in
-`_ci-core.yml`) and are byte-for-byte unchanged - including the two gates
-running unconditionally on every `pull_request` and quietly passing when
-their upstream compare job didn't produce a verdict, exactly as before.
+would be redundant. `persist-external-comparison-trend`/
+`persist-object-quality-trend` never checked `code` in the first place (see
+each one's own `if:` in `_ci-core.yml`) and are byte-for-byte unchanged.
+
+The performance and memory comparisons and their two gates, which this move
+had left in `_ci-core.yml` on pull requests, have since left it: they run for
+merge queue entries that change `src/`, from `_compare.yml`, called by
+`pr-gate.yml` (docs/ci-agentic.md, "The merge queue"). `ci.yml`'s `CI Status`
+no longer reads them.
 
 ### Keeping `CI Status`'s per-job breakdown
 
-`_ci-core.yml` threads each of the eight jobs `ci-status` needs
+`_ci-core.yml` threads each of the six jobs `ci-status` needs
 (`coverage`, `adm-validate`, `hearth-validate`, `ffmpeg-validate`,
-`performance-gate`, `memory-gate`, `persist-external-comparison-trend`,
-`persist-object-quality-trend`) out through its own `workflow_call.outputs`,
+`persist-external-comparison-trend`, `persist-object-quality-trend`) out
+through its own `workflow_call.outputs`,
 rather than folding them into one aggregate result the way `build-and-test`
 already folds together ten-plus build jobs. `ci-status`'s script still
 prints `coverage: success`, `adm-validate: failure`, etc. individually -
@@ -143,16 +145,14 @@ Getting there needed one more piece than expected: `${{ jobs.<job_id>.result
 }}` is **not** valid inside `workflow_call.outputs.<name>.value` -
 `actionlint` rejects it ("property 'result' is not defined in object type
 {outputs: {}}"), because that context only exposes a job's own declared
-`outputs`, not its pass/fail status. Each of the eight jobs instead ends
+`outputs`, not its pass/fail status. Each of the six jobs instead ends
 with a "Record result" step - `if: always()`, so it still runs after an
 earlier step failed - that captures `job.status` (a real, documented
 context: "the current status of the job... success, failure, or cancelled")
 into its own `outputs: result: ...`, and `_ci-core.yml`'s own
-`workflow_call.outputs` reads `jobs.<job_id>.outputs.result` from there. Four
-jobs (`performance-compare`, `memory-compare`, `abi-gate`, and the `core`
-call itself needing none of this for anything not in the list above) don't
-carry the extra step - their results were never surfaced to `ci-status`
-before the move either.
+`workflow_call.outputs` reads `jobs.<job_id>.outputs.result` from there.
+`abi-gate` doesn't carry the extra step - its result was never surfaced to
+`ci-status` before the move either.
 
 ### What `_ci-core.yml` needs from `ci.yml`
 
@@ -174,7 +174,7 @@ workflow never runs at all on a filtered-out change, so a required check it
 produces - `CI Status` - would sit pending forever and block the PR. Path
 skipping has to live *inside* an always-on workflow, with a skipped job
 counted as a pass, the same way `CI Status`'s `needs` already treats
-`coverage` and `memory-gate`. See `.github/branch-protection.md` for the
+`coverage`. See `.github/branch-protection.md` for the
 CodeQL incident this constraint comes from.
 
 ## Lane table
@@ -187,7 +187,7 @@ CodeQL incident this constraint comes from.
 | `macos` | `apps/notices/platform/macos/`, `packaging/homebrew/`, `packaging/conan/`, `packaging/vcpkg-port/` | `core`; shared desktop apps below |
 | `android` | `apps/android/` | `core` |
 | `wasm` | `apps/wasm/`, `js/` (its E2E demo) | `core` |
-| `esp` | `esp-idf/`, `esphome/`, `apps/baremetal/` | `core` |
+| `esp` | `esp-idf/`, `esphome/`, `apps/baremetal/`, `tools/packaging/`, and the trees its component ships: `src/forge/`, `src/arithmetic/`, `cmake/`, root `CMakeLists.txt` | `core` (in the nightly run; see below) |
 | `rust` | `rust/` | `core` |
 | `python` | `python/` | `core` |
 | `npm` | `js/` (the package's own unit tests) | nothing - see below |
@@ -245,6 +245,14 @@ few minutes:
   their own tree. With no `verified` ref, or a range GitHub will not list in full,
   the list is empty and every lane is true.
 
+  The ESP-IDF lane has one more way to light: the trees its component ships. They are
+  the ones `tools/packaging/pack_esp_component.py` stages (`STAGED_TREES` and
+  `STAGED_FILES`): `src/forge/`, `src/arithmetic/`, `cmake/` and the root
+  `CMakeLists.txt`. A change there is what breaks the package and the QEMU images, so it
+  does not wait for the nightly run. The AC-4 trees, staged only for `--with-ac4`, do.
+  `test_classify_changes.py` reads the packer's list, so a tree added to it without the
+  lane learning about it fails a test.
+
 ## Scarce hosted legs wait for the merge queue
 
 On a `pull_request` run, these GitHub-hosted legs are skipped, even when their
@@ -263,7 +271,8 @@ They run in the `merge_group` run, on a push to `main` (for the newest `main`
 commit only, see the next section) and on a dispatch. `CI Status` reads their
 `skipped` as a pass, as it does for any lane-skipped job. After a merge, the
 satellite lanes among them (`rust`, `python`, `android`, `wasm`, `npm`, `esp`)
-run only when a path in their own tree changed; the nightly run runs them all.
+run only when a path in their own tree changed (for `esp`, or in a tree its component
+ships); the nightly run runs them all.
 
 **Why:** GitHub Free runs 20 GitHub-hosted jobs at a time, org-wide. A PR push with
 every lane set used to ask for about 25. On 2026-09-25 about 400 were queued, some
@@ -526,8 +535,8 @@ needed. Both are now `esp`/`python` prefixes respectively; see
 `tools/ci/classify_changes.py`'s own comments.
 
 **`wheels`/`npm`/`esp-component` are each ONE required entry in `CI
-Status`**, not threaded per-sub-job the way `_ci-core.yml`'s eight are.
-Unlike coverage/ADM/ABI/FFmpeg-validate/perf-gate/memory-gate - genuinely
+Status`**, not threaded per-sub-job the way `_ci-core.yml`'s six are.
+Unlike coverage/ADM/ABI/FFmpeg-validate - genuinely
 independent concerns a reviewer benefits from telling apart at a glance -
 each of these three workflows is already one coherent "does this package
 still build and pass its own tests" concern, the same shape `build-and-test`

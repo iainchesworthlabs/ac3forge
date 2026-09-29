@@ -1040,7 +1040,7 @@ jobs:
         env:
           R_CHANGES: ${{ needs.changes.result }}
           # CI lane partitions (docs/ci-lanes.md): coverage/adm-validate/
-          # ffmpeg-validate/performance-gate/memory-gate/both persist-*-trend
+          # ffmpeg-validate/both persist-*-trend
           # jobs now live inside _ci-core.yml, called as the `core` job
           # above - each one's own result comes back through that reusable
           # workflow's own
@@ -1056,14 +1056,6 @@ jobs:
           R_HEARTH: ${{ needs.core.outputs.hearth_result }}
           R_BUILD: ${{ needs.build-and-test.result }}
           R_FFMPEG: ${{ needs.core.outputs.ffmpeg_result }}
-          # 'skipped' on a push and on a docs-only PR (performance-compare
-          # itself is gated on the `core` lane), which is a pass.
-          R_PERF_GATE: ${{ needs.core.outputs.performance_gate_result }}
-          # Same, for heap churn (memory-compare is gated on the `core` lane
-          # too). Being named here is what makes the gate required: a job
-          # this aggregate does not list can go red while blocking nothing,
-          # which is precisely the state the memory series was in before it.
-          R_MEM_GATE: ${{ needs.core.outputs.memory_gate_result }}
           # 'skipped' on every PR and every push off main (its own
           # `if`) - a pass, not a failure, same as R_COVERAGE above.
           R_PERF_TREND: ${{ needs.persist-performance-trend.result }}
@@ -1103,8 +1095,6 @@ jobs:
                       "adm-validate:$R_ADM" \
                       "hearth-validate:$R_HEARTH" \
                       "build-and-test:$R_BUILD" "ffmpeg-validate:$R_FFMPEG" \
-                      "performance-gate:$R_PERF_GATE" \
-                      "memory-gate:$R_MEM_GATE" \
                       "persist-performance-trend:$R_PERF_TREND" \
                       "persist-external-comparison-trend:$R_EXT_TREND" \
                       "persist-object-quality-trend:$R_OBJ_TREND" \

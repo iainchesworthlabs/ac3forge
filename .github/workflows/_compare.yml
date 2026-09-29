@@ -1,0 +1,488 @@
+# The comparisons of a change's speed and heap churn against the commit it is queued
+# on. The merge queue's gate calls this for an entry that changes src/ (pr-gate.yml's
+# `compare` job; docs/ci-agentic.md, "The merge queue"). They moved here from
+# _ci-core.yml, where they ran on pull requests until the gate replaced ci.yml there.
+#
+# Four jobs, two measurements. performance-compare and memory-compare build the
+# benchmarks at the entry's head and at its base and write the tables to the job
+# summary. performance-gate and memory-gate turn a HARD regression (twice as slow, or
+# twice the heap churn) into a failing job, unless the pull request carries the
+# matching approval label. The base is `base_sha`: the commit the merge group was
+# built on, which is main, or the entry queued ahead of this one.
+name: Reusable Comparisons
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: "Runner labels, as a JSON array, for every job here: pr-gate.yml's GATE_COMPARE_RUNNER_JSON, else its GATE_RUNNER_JSON, else ubuntu-latest."
+        type: string
+        required: true
+      vcpkg_commit:
+        description: "needs.toolchain-versions.outputs.vcpkg_commit, at the pr-gate.yml call site."
+        type: string
+        required: true
+      base_sha:
+        description: "The commit the comparison starts from: the merge group's parent commit. Empty compares with origin/main."
+        type: string
+        default: ""
+      pr_number:
+        description: "The pull request whose labels approve a regression: the queue entry's own. Empty means none does."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  # Encoder throughput, this entry against the commit it is queued on, on one runner.
+  #
+  # The gap this closes: persist-performance-trend (in ci.yml) only runs on pushes to
+  # main, so the relative "is this slower than it was" question is not
+  # asked until after a PR has merged. The absolute question IS asked on every
+  # PR - tests/performance/test_performance.cpp's ac3perf, in every
+  # build-and-test leg - but its real-time budget carries enough headroom that
+  # a change could double ms/frame and still pass it comfortably. A PR that
+  # halved the encoder's speed would therefore go green everywhere and only
+  # surface on the trend chart afterwards.
+  #
+  # Its INFRASTRUCTURE is non-blocking; its HARD VERDICT is not. The split
+  # matters, so it is worth being precise about which is which:
+  #
+  #   - continue-on-error stays. This job builds twice, and a container
+  #     bootstrap flake or a vcpkg hiccup in a job nobody asked for must not
+  #     block a PR. Everything mechanical here stays advisory.
+  #   - The hard tier (100% - the workload takes at least twice as long) now
+  #     fails a check, via the hard_regression output and the one-step
+  #     performance-gate job below. continue-on-error would swallow an exit
+  #     code, which is exactly why the verdict travels as an output instead.
+  #   - The soft tier (20%) is unchanged and still advisory. That is where the
+  #     runner-noise argument genuinely bites.
+  #
+  # Why the hard tier is safe to block on, when the soft tier is not: this
+  # comparison is PAIRED - same runner, same job, both sides built from the
+  # same checkout, timed interleaved with the order alternating, each side
+  # reduced by minimum-of-N. Measured run-to-run spread is single-digit
+  # percent. A doubling is an order of magnitude outside that.
+  #
+  # And it already blocked, just later and worse: the identical 100% threshold
+  # fails append_performance_history.py on the push to main. The old behaviour
+  # was not "a doubling does not fail CI", it was "a doubling fails CI on main
+  # after it has merged, for whoever pushes next".
+  #
+  # Escape hatch is a label, not an admin merge - see performance-gate.
+  #
+  # Runner budget. This is a new job rather than an addition to an existing
+  # leg, and it builds twice, so it is kept as narrow as it can be and still
+  # answer the question:
+  #   - `--target ac3bench ac3kernelbench` only. Not the library's tests, not
+  #     the CLI, not the GUI - the same two binaries persist-performance-trend
+  #     builds, and nothing else.
+  #   - One container, one GCC install, one vcpkg setup, two builds inside
+  #     them. The second configure reuses the first's vcpkg binary cache, so
+  #     it costs a compile of this repository's own sources and not of its
+  #     dependencies.
+  #   - The caller runs it only for a queue entry that changes src/, so a
+  #     documentation-only entry never starts it.
+  #   - PERF_RUNS repetitions per side. Three is the smallest number that
+  #     gives compare_performance.py a spread to report alongside each delta,
+  #     which is what lets a reader tell a real 25% move from a noisy one;
+  #     ac3bench is 200 frames per workload and takes seconds, so the
+  #     repetitions are a rounding error next to the two builds.
+  performance-compare:
+    name: Performance vs base
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    # Two Release builds of two targets and about ten seconds of timing: the fleet took 5 to
+    # 10 minutes for it. A backstop against a hang, not a budget.
+    timeout-minutes: 45
+    continue-on-error: true
+    outputs:
+      # Read by performance-gate below. Empty when this job was skipped or died
+      # before the compare step, both of which that job treats as "no verdict".
+      hard_regression: ${{ steps.compare.outputs.hard_regression }}
+    env:
+      PERF_RUNS: 3
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
+
+      # fetch-depth: 0 so the base commit and its history are in the object
+      # store for `git merge-base` and the worktree below - the default shallow
+      # clone has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      - name: Resolve the base
+        id: base
+        shell: bash
+        env:
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          # In the merge queue the checked-out HEAD is the merge group's commit and
+          # BASE_SHA is its parent, so this returns BASE_SHA itself: main, or the
+          # entry queued ahead. Asking git rather than trusting that keeps the answer
+          # right if GitHub ever hands over a base that is not an ancestor. A
+          # dispatch passes none and compares with main.
+          merge_base="$(git merge-base "${BASE_SHA:-origin/main}" HEAD)"
+          echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
+          echo "Base: $merge_base"
+
+      - name: Build the benchmarks at this entry's head
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+
+      # A worktree rather than `git checkout <sha>`: it leaves this checkout
+      # (and its build tree, and tools/ci/compare_performance.py, which the
+      # base commit may not even have) exactly where they are, and gives the
+      # base its own source dir - so CMakePresets.json's
+      # ${sourceDir}/build/${presetName} puts the two builds in separate
+      # directories with no cache to invalidate between them.
+      - name: Build the benchmarks at the base
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../base-perf "$BASE_SHA"
+          pushd ../base-perf >/dev/null
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3bench ac3kernelbench -- -k 0
+          popd >/dev/null
+
+      # BOTH builds finish before EITHER is timed, and the two are then
+      # INTERLEAVED rather than run one block each. That ordering IS the
+      # measurement, not a detail:
+      #
+      #   - Timed-right-after-built meant head was timed on a machine still
+      #     warm from compiling head, and base on one warm from compiling
+      #     base. Building both first puts each binary in the same state.
+      #   - A shared runner drifts (thermal, co-tenants, page cache). Run in
+      #     blocks, ALL of any drift between the blocks lands on the delta,
+      #     indistinguishable from the code change. Alternating spreads it
+      #     over both sides instead, where compare_performance.py's
+      #     minimum-of-N can reject it.
+      #   - The order within a round alternates too, so neither side is
+      #     permanently the one running first and paying for whatever the
+      #     other left in cache.
+      #
+      # Same shape as the manual A/B measurements docs/performance-trend.md
+      # describes, for the same reason.
+      - name: Run both benchmark sets, interleaved
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p perf-results/head perf-results/base
+          head_bin=build/config-linux-gcc/bin
+          base_bin=../base-perf/build/config-linux-gcc/bin
+          for i in $(seq 1 "$PERF_RUNS"); do
+            if [ $((i % 2)) -eq 1 ]; then order="head base"; else order="base head"; fi
+            for side in $order; do
+              if [ "$side" = head ]; then bin="$head_bin"; else bin="$base_bin"; fi
+              "$bin/ac3bench" --json-out "perf-results/$side/bench$i.json"
+              "$bin/ac3kernelbench" --json-out "perf-results/$side/kernels$i.json"
+            done
+          done
+
+      - name: Compare and publish the job summary
+        id: compare
+        shell: bash
+        env:
+          BASE_SHORT: ${{ steps.base.outputs.short }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/compare_performance.py \
+            --base-dir perf-results/base \
+            --head-dir perf-results/head \
+            --base-ref "queue base $BASE_SHORT"
+
+  # The blocking half of performance-compare, split out so that job can keep
+  # continue-on-error for its builds while its VERDICT still fails the entry.
+  # It builds nothing and runs one script (tools/ci/compare_gate.py, which reads
+  # the pull request's labels), so there is next to no infrastructure here to
+  # flake and produce a false red.
+  #
+  # `always()` so a verdict is still enforced when some unrelated job failed;
+  # the script is what decides, and it passes on anything that is not an
+  # explicit `true`. That covers a cancelled performance-compare and one that
+  # died before the compare step ran - a job that produced no measurement must
+  # not fail an entry on a measurement it does not have.
+  #
+  # The label escape hatch is checked HERE rather than in
+  # compare_performance.py so the summary table keeps saying what it measured
+  # either way: with the label the hard row is still rendered, still annotated
+  # and still visible to a reviewer, it just stops failing the check. The label
+  # is read when this job runs: add it before the entry reaches the gate, or
+  # after a failure and queue the pull request again.
+  performance-gate:
+    name: Performance gate
+    needs: [performance-compare]
+    if: always()
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/ci/compare_gate.py
+          sparse-checkout-cone-mode: false
+
+      - name: Gate on the hard-tier verdict
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          VERDICT: ${{ needs.performance-compare.outputs.hard_regression }}
+        run: |
+          python3 tools/ci/compare_gate.py --kind performance \
+            --verdict "${VERDICT:-}" --repo "$REPO" --pr "${PR_NUMBER:-}"
+  # Heap churn, this entry against the commit it is queued on, on one runner. The
+  # memory counterpart to performance-compare above, closing the identical hole one
+  # resource over.
+  #
+  # The gap this closes: persist-performance-trend is the ONLY job that builds
+  # or runs ac3membench, and it is gated to pushes on main. So the relative
+  # "does this allocate more than it did" question was not asked until after a
+  # PR had merged - and unlike throughput, there is no absolute per-PR gate
+  # underneath it at all. tests/performance/test_performance.cpp's ac3perf
+  # keeps a real-time budget on every PR; nothing anywhere kept an allocation
+  # budget.
+  #
+  # That has already cost this repository a regression. E-AC-3 encode churn
+  # stepped 67 -> 199 allocs/frame and Atmos 106 -> 219 at PR #352's
+  # per-channel exponent-run planner. The trend gate fired correctly, and late:
+  #
+  #   ##[error] linux-gcc/eac3_51_encode: 199.1 allocs/frame is 197% above the
+  #            trailing 10-run mean (67.0)
+  #
+  # on run 32823518403, event `push`, branch `main`, 2026-08-25 - a red check
+  # on a commit that had already merged, blocking nothing and belonging to
+  # whoever pushed next. The regression is still in the tree as issue #544.
+  #
+  # WHY MEMORY MAKES AN EASIER PRE-MERGE GATE THAN SPEED. performance-compare
+  # needs PERF_RUNS repetitions per side, an interleaved run order and a
+  # minimum-of-N reduction, all of it to see past a shared runner's timing
+  # noise. ac3membench's counts carry no such noise: for a fixed workload and a
+  # fixed binary they are the same every run. One run per side is the whole
+  # measurement, which makes this job cheaper than the speed comparison at the
+  # same two builds, and leaves its hard tier with no noise argument to answer.
+  #
+  # Its INFRASTRUCTURE is non-blocking; its HARD VERDICT is not. Same split as
+  # performance-compare, for the same reasons: continue-on-error stays, because
+  # this builds twice and a container or vcpkg flake in a job nobody asked for
+  # must not block a PR; and because continue-on-error swallows exit codes, the
+  # hard verdict travels as an output to the one-step memory-gate job below.
+  #
+  # Runner budget. Kept as narrow as it can be and still answer the question:
+  #   - `--target ac3membench` only. Not the tests, not the CLI, not the other
+  #     two benchmarks.
+  #   - One container, one GCC install, one vcpkg setup, two builds inside
+  #     them. The second configure reuses the first's vcpkg binary cache, so it
+  #     costs a compile of this repository's own sources and not of its
+  #     dependencies.
+  #   - One benchmark run per side, for the determinism reason above.
+  #   - The caller runs it only for a queue entry that changes src/, so a
+  #     documentation-only entry never starts it.
+  # This is deliberately a separate job from performance-compare rather than
+  # two more steps inside it, matching how every other gate here is shaped: the
+  # two verdicts stay independent, so a flake while timing the speed benches
+  # cannot take the memory verdict with it. The cost of that independence is a
+  # second container bootstrap and vcpkg setup on each entry that changes src/.
+  memory-compare:
+    name: Memory vs base
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    container: ubuntu:26.04
+    # Two builds of one target and one run of each; the fleet took 5 to 8 minutes.
+    # A backstop against a hang, not a budget.
+    timeout-minutes: 45
+    continue-on-error: true
+    outputs:
+      # Read by memory-gate below. Empty when this job was skipped or died
+      # before the compare step, both of which that job treats as "no verdict".
+      hard_regression: ${{ steps.compare.outputs.hard_regression }}
+    steps:
+      - name: Bootstrap container
+        run: |
+          set -eu
+          export DEBIAN_FRONTEND=noninteractive
+          attempt=1
+          until apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+            build-essential ca-certificates cmake curl git gnupg lsb-release \
+            ninja-build pkg-config software-properties-common tar unzip wget zip
+          do
+            echo "::warning title=apt-get::attempt $attempt of 3 failed"
+            [ "$attempt" -lt 3 ] || exit 1
+            attempt=$((attempt + 1))
+            sleep 30
+          done
+
+      # fetch-depth: 0 so the base commit and its history are in the object
+      # store for `git merge-base` and the worktree below - the default shallow
+      # clone has neither.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Install GCC 16
+        run: bash .github/toolchain/02-gcc-toolchain.sh
+
+      - uses: ./.github/actions/setup-vcpkg
+        with:
+          vcpkg-commit: ${{ inputs.vcpkg_commit }}
+
+      # Same step as performance-compare's: see the comment there.
+      - name: Resolve the base
+        id: base
+        shell: bash
+        env:
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory '*'
+          merge_base="$(git merge-base "${BASE_SHA:-origin/main}" HEAD)"
+          echo "sha=$merge_base" >> "$GITHUB_OUTPUT"
+          echo "short=$(git rev-parse --short "$merge_base")" >> "$GITHUB_OUTPUT"
+          echo "Base: $merge_base"
+
+      - name: Build ac3membench at this entry's head
+        shell: bash
+        run: |
+          set -euo pipefail
+          cmake --preset config-linux-gcc
+          cmake --build --preset build-linux-gcc --target ac3membench -- -k 0
+
+      # A worktree rather than `git checkout <sha>`: it leaves this checkout
+      # (and its build tree, and tools/ci/compare_memory.py, which the base
+      # commit may not even have) exactly where they are, and gives the base
+      # its own source dir - so CMakePresets.json's
+      # ${sourceDir}/build/${presetName} puts the two builds in separate
+      # directories with no cache to invalidate between them.
+      #
+      # A base that cannot build the target is reported rather than fatal. A
+      # base predating ac3membench has no such target to build, and that is a
+      # comparison with nothing to say, not a broken job - compare_memory.py
+      # sees one empty side and prints its skip warning.
+      - name: Build ac3membench at the base
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.base.outputs.sha }}
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../base-mem "$BASE_SHA"
+          pushd ../base-mem >/dev/null
+          cmake --preset config-linux-gcc
+          if ! cmake --build --preset build-linux-gcc --target ac3membench -- -k 0; then
+            echo "::warning title=Memory comparison baseline unavailable::the base does not build ac3membench; the comparison will report a skip."
+          fi
+          popd >/dev/null
+
+      # One run per side, no interleaving and no repetitions - the whole point
+      # of gating on this metric rather than on time. See compare_memory.py's
+      # module docstring.
+      #
+      # The memory-<leg> subdirectory layout, and the leg name `linux-gcc`, are
+      # append_memory_history.py's - the two gates share that reader, so the
+      # workload names in this entry's table read identically to the ones on
+      # docs/performance-trend.md's memory tables.
+      - name: Run ac3membench on both sides
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p mem-results/head/memory-linux-gcc mem-results/base/memory-linux-gcc
+          build/config-linux-gcc/bin/ac3membench \
+            --json-out mem-results/head/memory-linux-gcc/membench.json
+          base_bin=../base-mem/build/config-linux-gcc/bin/ac3membench
+          if [ -x "$base_bin" ]; then
+            "$base_bin" --json-out mem-results/base/memory-linux-gcc/membench.json
+          fi
+
+      - name: Compare and publish the job summary
+        id: compare
+        shell: bash
+        env:
+          BASE_SHORT: ${{ steps.base.outputs.short }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/compare_memory.py \
+            --base-dir mem-results/base \
+            --head-dir mem-results/head \
+            --base-ref "queue base $BASE_SHORT"
+
+  # The blocking half of memory-compare, split out so that job can keep
+  # continue-on-error for its builds while its VERDICT still fails the entry.
+  # Same shape as performance-gate above: it builds nothing and runs one script
+  # (tools/ci/compare_gate.py).
+  #
+  # `always()` so a verdict is still enforced when some unrelated job failed;
+  # the script is what decides, and it passes on anything that is not an
+  # explicit `true`. That covers a cancelled memory-compare and one that died
+  # before the compare step ran - a job that produced no measurement must not
+  # fail an entry on a measurement it does not have.
+  #
+  # The label escape hatch is checked HERE rather than in compare_memory.py so
+  # the summary tables keep saying what they measured either way: with the
+  # label the hard row is still rendered, still annotated and still visible to
+  # a reviewer, it just stops failing the check. A deliberate doubling of heap
+  # churn is a legitimate thing to merge - a buffer sized for the worst case, a
+  # cache that buys back real work - and this is the same escape hatch, with
+  # its own label, that perf-regression-approved gives the speed gate. The label
+  # is read when this job runs: add it before the entry reaches the gate, or
+  # after a failure and queue the pull request again.
+  memory-gate:
+    name: Memory gate
+    needs: [memory-compare]
+    if: always()
+    runs-on: ${{ fromJSON(inputs.runner) }}
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: tools/ci/compare_gate.py
+          sparse-checkout-cone-mode: false
+
+      - name: Gate on the hard-tier verdict
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          VERDICT: ${{ needs.memory-compare.outputs.hard_regression }}
+        run: |
+          python3 tools/ci/compare_gate.py --kind memory \
+            --verdict "${VERDICT:-}" --repo "$REPO" --pr "${PR_NUMBER:-}"

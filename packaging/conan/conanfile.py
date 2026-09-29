@@ -38,7 +38,7 @@ class Ac3forgeConan(ConanFile):
     license = "GPL-3.0-or-later"
     homepage = "https://github.com/iainchesworthlabs/ac3forge"
     url = "https://github.com/iainchesworthlabs/ac3forge"
-    topics = ("audio", "codec", "ac3", "dolby-digital", "atmos", "eac3")
+    topics = ("audio", "codec", "ac3", "dolby-digital", "atmos", "eac3", "ac4")
     package_type = "library"
 
     settings = "os", "arch", "compiler", "build_type"
