@@ -10,8 +10,8 @@
 #include <span>
 #include <string_view>
 
+#include "ac3/core/downmix_target.hpp"
 #include "ac3/core/layout.hpp"
-#include "ac3/decoder/output.hpp"
 #include "ac3/spatial/spatial.hpp"
 
 // The speakers a player has, one per output slot.
@@ -371,12 +371,13 @@ class OutputLayout {
     // the caller's choice), one is kMono. Anything wider, or anything with an
     // LFE or a height, is rendered as coded through ac3/render/render.hpp,
     // because §7.8 has no fold that keeps an LFE or places a height.
-    [[nodiscard]] std::optional<ac3::DownmixTarget> fold(ac3::DownmixTarget stereo) const {
+    [[nodiscard]] std::optional<ac3::base::DownmixTarget> fold(
+        ac3::base::DownmixTarget stereo) const {
         if (lfe_count() != 0 || has_height()) {
             return std::nullopt;
         }
         switch (speaker_count()) {
-            case 1: return ac3::DownmixTarget::kMono;
+            case 1: return ac3::base::DownmixTarget::kMono;
             case 2: return stereo;
             default: return std::nullopt;
         }
