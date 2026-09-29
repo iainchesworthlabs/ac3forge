@@ -124,6 +124,19 @@ on:
         description: "Build/test build-rust."
         type: boolean
         default: true
+      tier:
+        description: >-
+          Which of .github/ci/legs.jsonc's legs the platform builds run: `all` (every leg, the
+          default, so release.yml's call is unchanged), `t2` (the legs of the run on main after a
+          merge) or `deep` (the legs only the scheduled run has). See tools/ci/plan_legs.py.
+        type: string
+        default: all
+      legs:
+        description: >-
+          Optional, comma-separated presets (`linux-gcc,windows-msvc`). Only those legs run,
+          whatever their tier. Empty means the tier decides.
+        type: string
+        default: ""
     secrets:
       ATMOS_SIGNING_KEY:
         description: "EMDF object-signing key, base64-encoded. When set (passed by BOTH ci.yml and release.yml), build-android decodes it into the app's bundled signing.key asset so the DEBUG APK - which is a never-uploaded smoke test - signs Atmos objects at runtime. The asset is deleted again before any release step, and the staged release APK is asserted key-free, so a published .apk is always the safe unsigned bed51 app. Unset -> no asset is written at all. An APK that does carry the asset IS the key and must never be distributed."
@@ -217,8 +230,9 @@ jobs:
           # ASan+UBSan, LLVM TSan) and two Windows (MSVC, LLVM) - plus, as legs 5-7,
           # the standalone containerised build-footprint, build-esp32s3 and
           # build-esp32c3 jobs below the matrix. Bump these, and add a
-          # matching numbered output above and matrix.runner (or job runs-on)
-          # reference below, if a leg is added or removed.
+          # matching numbered output above and a `runner_slot` in
+          # .github/ci/legs.jsonc (or a job runs-on reference below), if a leg
+          # is added or removed.
           #
           # Legs 6 and 7 (S3 and C3) used to be one job, combined specifically
           # to avoid spending a queued runner on the C3 leg's few extra
@@ -336,12 +350,55 @@ jobs:
   # happening in the previous phase. Each call forwards check-runners' and
   # toolchain-versions' outputs as plain inputs, since `needs:` cannot cross
   # a workflow_call boundary the way it can between two jobs in this file.
+  # Picks the legs of the platform matrices this run needs from
+  # .github/ci/legs.jsonc (tools/ci/plan_legs.py), with the runner labels
+  # check-runners chose for the legs that may run on the fleet. The platform
+  # calls below take their matrix from here, and a platform with nothing to run
+  # is skipped rather than handed an empty matrix, which Actions rejects.
+  plan-legs:
+    name: Plan the build legs
+    needs: check-runners
+    # Control-plane job, routed like check-runners (same reasoning, same fork-PR pin).
+    runs-on: ${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository) && fromJSON('["ubuntu-latest"]') || fromJSON(vars.CONTROL_RUNNER_JSON || '["ubuntu-latest"]') }}
+    permissions:
+      contents: read
+    outputs:
+      linux_matrix: ${{ steps.plan.outputs.linux_matrix }}
+      linux_any: ${{ steps.plan.outputs.linux_any }}
+      windows_matrix: ${{ steps.plan.outputs.windows_matrix }}
+      windows_any: ${{ steps.plan.outputs.windows_any }}
+      macos_matrix: ${{ steps.plan.outputs.macos_matrix }}
+      macos_any: ${{ steps.plan.outputs.macos_any }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Plan
+        id: plan
+        shell: bash
+        env:
+          TIER: ${{ inputs.tier }}
+          LEGS: ${{ inputs.legs }}
+          LINUX_RUNNER_1: ${{ needs.check-runners.outputs.linux_runner_1 }}
+          LINUX_RUNNER_2: ${{ needs.check-runners.outputs.linux_runner_2 }}
+          LINUX_RUNNER_3: ${{ needs.check-runners.outputs.linux_runner_3 }}
+          LINUX_RUNNER_4: ${{ needs.check-runners.outputs.linux_runner_4 }}
+          WINDOWS_RUNNER_1: ${{ needs.check-runners.outputs.windows_runner_1 }}
+          WINDOWS_RUNNER_2: ${{ needs.check-runners.outputs.windows_runner_2 }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/plan_legs.py 2> "$RUNNER_TEMP/plan-legs.log" >> "$GITHUB_OUTPUT" \
+            || { cat "$RUNNER_TEMP/plan-legs.log"; exit 1; }
+          cat "$RUNNER_TEMP/plan-legs.log"
+          { echo '### Build legs'; echo; echo '```'; grep -v '^::' "$RUNNER_TEMP/plan-legs.log"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
   build-windows:
     name: Build (Windows)
-    needs: [check-runners, toolchain-versions]
-    if: inputs.run_windows
+    needs: [toolchain-versions, plan-legs]
+    if: inputs.run_windows && needs.plan-legs.outputs.windows_any == 'true'
     uses: ./.github/workflows/_ci-windows.yml
     with:
+      matrix: ${{ needs.plan-legs.outputs.windows_matrix }}
       do_package: ${{ inputs.do_package }}
       version_tag: ${{ inputs.version_tag }}
       fetch_depth: ${{ inputs.fetch_depth }}
@@ -352,15 +409,14 @@ jobs:
       cmake_min: ${{ needs.toolchain-versions.outputs.cmake_min }}
       qt_version: ${{ needs.toolchain-versions.outputs.qt_version }}
       vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
-      windows_runner_1: ${{ needs.check-runners.outputs.windows_runner_1 }}
-      windows_runner_2: ${{ needs.check-runners.outputs.windows_runner_2 }}
 
   build-linux:
     name: Build (Linux)
-    needs: [check-runners, toolchain-versions]
-    if: inputs.run_linux
+    needs: [toolchain-versions, plan-legs]
+    if: inputs.run_linux && needs.plan-legs.outputs.linux_any == 'true'
     uses: ./.github/workflows/_ci-linux.yml
     with:
+      matrix: ${{ needs.plan-legs.outputs.linux_matrix }}
       do_package: ${{ inputs.do_package }}
       version_tag: ${{ inputs.version_tag }}
       fetch_depth: ${{ inputs.fetch_depth }}
@@ -370,17 +426,14 @@ jobs:
       llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
       cmake_min: ${{ needs.toolchain-versions.outputs.cmake_min }}
       vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
-      linux_runner_1: ${{ needs.check-runners.outputs.linux_runner_1 }}
-      linux_runner_2: ${{ needs.check-runners.outputs.linux_runner_2 }}
-      linux_runner_3: ${{ needs.check-runners.outputs.linux_runner_3 }}
-      linux_runner_4: ${{ needs.check-runners.outputs.linux_runner_4 }}
 
   build-macos:
     name: Build (macOS)
-    needs: [check-runners, toolchain-versions]
-    if: inputs.run_macos
+    needs: [toolchain-versions, plan-legs]
+    if: inputs.run_macos && needs.plan-legs.outputs.macos_any == 'true'
     uses: ./.github/workflows/_ci-macos.yml
     with:
+      matrix: ${{ needs.plan-legs.outputs.macos_matrix }}
       do_package: ${{ inputs.do_package }}
       version_tag: ${{ inputs.version_tag }}
       fetch_depth: ${{ inputs.fetch_depth }}
@@ -724,8 +777,9 @@ jobs:
     needs: [toolchain-versions]
     # Not on a pull_request run: GitHub-hosted, so it waits for the merge
     # queue instead (ci.yml's run_android comment). run_linux itself stays on
-    # for PRs, since it also gates the Linux build matrix.
-    if: inputs.run_linux && github.event_name != 'pull_request'
+    # for PRs, since it also gates the Linux build matrix. Not when the run named
+    # exact legs (`legs`): those are the only builds it asked for.
+    if: inputs.run_linux && github.event_name != 'pull_request' && inputs.legs == ''
     runs-on: ubuntu-latest
     # GitHub-hosted, so on a push to main only the newest main commit's run
     # waits for a runner - docs/ci-lanes.md, "Only the newest main commit runs
@@ -1802,7 +1856,8 @@ jobs:
   # signing on, and shipping it waits on the EV certificate (Phase 6).
   windows-driver:
     name: Windows null-sink driver (WDK NuGet)
-    if: inputs.run_windows
+    # Not when the run named exact legs (`legs`): those are the only builds it asked for.
+    if: inputs.run_windows && inputs.legs == ''
     runs-on: windows-latest
     # Newest main commit only (linux-appimage's concurrency comment).
     concurrency:
