@@ -132,7 +132,9 @@ the throughput guards are not meant to run under a sanitizer. With any `AC3FORGE
 `tests/CMakeLists.txt` defines `AC3FORGE_TEST_SANITIZED=1` for `ac3tests` (0 otherwise), and
 `tests/sanitized.hpp` gives it to the tests as `ac3::test::kSanitized`.
 The heaviest AC-4 tests take less under it: fewer frames, shorter signals, a stride through their
-cases, one leg per frame rate or one committed stream of each kind, each still running every code
+cases, one leg per frame rate, one committed stream of each kind (`tests/ac4_stream_kinds.hpp`,
+which the decoder's engine test and Hearth's share), the first frames of a stream, one frame of
+input for a CLI run that reads its first frame's syntax alone, each still running every code
 path it covers, to the same tolerances. A debug build under ASan and UBSan runs the codecs many
 times slower, and CI's sanitizer leg runs ctest serially; a new test that takes minutes there takes
 the flag the same way.
