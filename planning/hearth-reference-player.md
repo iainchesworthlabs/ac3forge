@@ -556,9 +556,10 @@ speaker; the Pi for ALSA and PipeWire; macOS compiled and unit-tested in CI only
 `mp4::Reader`, the decoder settings model with the separate boost scale, a pure output decision
 and selector, meters released at play time, media information and diagnostics. The six
 sink-following gaps were closed in the engine (`output_decision.cpp`, `output_selector.cpp`,
-`Player::refollow()`), and the PipeWire capability read exists in `src/audio`. `ac3cli play` was
-not changed with them: it still takes the default endpoint at its word and transcodes through a
-temp file (see [Coordination](#coordination)).
+`Player::refollow()`), and the PipeWire capability read exists in `src/audio`. `ac3cli play` has
+two of the six, that read and a note saying why a descriptor could not be read; it still takes the
+default endpoint at its word, reads a sink's capabilities once and never re-follows, and
+transcodes through a temp file (see [Coordination](#coordination)).
 
 `apps/hearth/engine/` (`ac3hearth_engine`, no Qt):
 
@@ -963,9 +964,11 @@ burst types.*
   `docs/threat-model.md`, and `tools/checks/check_doc_paths.py`, where every new planning page
   joins `PROSE_PATHS_UNCHECKED`.
 - The appliance plan's Phase 1, the sink-following gaps in `ac3cli play`, is done inside A3.
-  *As built, A3 closed the gaps in the engine's output decision and selector, not in the CLI:
-  `ac3cli play` still takes the default endpoint at its word (`apps/cli/commands/audio_io.cpp`,
-  "play/monitor follow mode"), so gap 1 stays open there.*
+  *As built, A3 closed the gaps in the engine's output decision and selector, and the CLI got only
+  the two that live in `src/audio`: `ac3cli play` still takes the default endpoint at its word
+  (`apps/cli/commands/audio_io.cpp`, "play/monitor follow mode"), reads capabilities once and
+  never re-follows, and its transcode leg goes through a temp file, so gaps 1, 3, 4 and 5 stay
+  open there.*
 - Unaffected: driver signing under `apps/windows/`, Crucible, the ESPHome component.
 
 ## Deliberately not in scope
