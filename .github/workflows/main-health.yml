@@ -1,7 +1,8 @@
-# After each post-merge run of ci.yml: advance the `verified` ref if it passed,
-# rerun a known flake once if that is all that failed, and otherwise name the
-# merges it could be blamed on. tools/ci/main_health.py holds the logic and its
-# header explains each case; docs/ci-agentic.md has the design.
+# After each post-merge run of ci.yml (the run after a merge, and the nightly
+# run): advance the `verified` ref if it passed, rerun a known flake once if that
+# is all that failed, and otherwise name the merges it could be blamed on.
+# tools/ci/main_health.py holds the logic and its header explains each case;
+# docs/ci-agentic.md has the design.
 #
 # Post-merge verification is batched (see ci.yml's `concurrency`), so a red run
 # means "one of the merges since the last green run", and this is what turns that
@@ -71,6 +72,9 @@ jobs:
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
           RUN_URL: ${{ github.event.workflow_run.html_url }}
+          # `schedule` is the nightly run: the whole matrix, judged against its own
+          # last green commit and reported in its own issue.
+          EVENT: ${{ github.event.workflow_run.event }}
         run: |
           set -euo pipefail
           python3 tools/ci/main_health.py \
@@ -79,4 +83,5 @@ jobs:
             --head-sha "$HEAD_SHA" \
             --conclusion "$CONCLUSION" \
             --attempt "$ATTEMPT" \
-            --run-url "$RUN_URL"
+            --run-url "$RUN_URL" \
+            --event "$EVENT"
