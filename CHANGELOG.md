@@ -1115,7 +1115,7 @@ The sections below contain the complete change list and fixes.
   `tools/generators/gen_ac4_baseline.py --gold-set DIR` makes a larger local set for
   `planning/ac4.md`'s phases: every layout and rate DEE writes, immersive stereo at every frame
   rate, and DRC, downmix, loudness and I-frame settings, each with MediaInfo's frame-by-frame trace.
-- **Golden masters for the AC-4 phases still to come** (phase G1 of `planning/ac4.md`). DEE's
+- **Golden masters for the AC-4 phases after the first** (phase G1 of `planning/ac4.md`). DEE's
   licence ends on 2026-11-06 and is not renewed, so the gold set gains 439 legs beside G0's, each
   made from committed material by `gen_ac4_baseline.py` and grouped by the phases it serves: sweeps,
   noise and transients at every 2.0, 5.1 and 5.1.4 rate; film and speech at 5.1.4, with the
@@ -1628,7 +1628,7 @@ The sections below contain the complete change list and fixes.
   `tests/golden/ac4dec/scalar-agreement.json`; the same to 0.1 dB on MSVC, GCC 16 and Clang 22).
   The `double` output moves in float ulps of near-silent samples (61 of the 66 streams under
   `tests/golden`, by at most 2.3e-10); the encoder's output does not move. The ESP-IDF component
-  builds without AC-4 until D14b's switch sets the same option.
+  builds without AC-4 unless D14b's switch, in the next entry, sets the same option.
 - **AC-4 plays on the ESP32-P4, behind `CONFIG_AC3FORGE_AC4` (phase D14b).** The ESP-IDF component's
   new switch, off by default and offered only on a part with a floating-point unit, builds
   `src/ac4`, `src/ac4core` and `src/ac4dec` in `float` in the minimum-footprint profile
@@ -2225,8 +2225,9 @@ The sections below contain the complete change list and fixes.
   ESP32-P4 has its row, and its page is in the navigation.
 - The front page, the README and the site description name AC-4 and say where it is and is not
   supported.
-- The performance and quality pages say which codecs their series cover: AC-4 has no speed, memory
-  or quality history, and its scoring scripts and the local race against DEE are named.
+- The performance and quality pages say which codecs their series cover, and name AC-4's scoring
+  scripts and the local race against DEE. AC-4 joined the series afterwards (see Verification and
+  CI), decode quality first.
 - CONTRIBUTING.md lists the four AC-4 directories and their header layout. The file I/O, Rust API
   and signing pages were checked against their headers and corrected.
 - ROADMAP.md lists the Hearth work as it stands and the gaps found in the documentation.
