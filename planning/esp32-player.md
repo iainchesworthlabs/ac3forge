@@ -21,6 +21,8 @@
       fourth codec in the Sendspin specification.
     - **The hand-over to the decoder core:** item 1 is fixed, item 5 partly, and items 2, 3, 4 and
       6 are not; [the list](#hand-over-to-the-decoder-core) has each.
+    - **AC-4:** not part of this plan. The player decodes it behind `CONFIG_AC3FORGE_AC4` (phase
+      D14b of [`ac4.md`](ac4.md)), on the P4 so far; the S3 and C6 parts are not built.
 
     Written 2026-09-10 for a second `ESP32-S3-DevKitC-1-N16R8`, and run on it the same day - see
     [What the board showed](#what-the-board-showed). Phase 0: both examples measured on silicon,
@@ -148,7 +150,10 @@ and 5 are in the component too, not the library: `ac3forge/interleave.hpp` is th
 over layers 1 to 4 is the player's own, with no `StreamDecoder` in the library
 ([hand-over](#hand-over-to-the-decoder-core), items 2 and 3). Layer 7's slot width and slave role
 are Kconfig options, `CONFIG_AC3FORGE_EXAMPLE_I2S_SLOT_BITS` (32 by default) and
-`CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE`; the slot width is also a setting on the board's page.
+`CONFIG_AC3FORGE_EXAMPLE_I2S_SLAVE`; the slot width is also a setting on the board's page. Layer 2
+has a third codec behind `CONFIG_AC3FORGE_AC4` (off by default, and only on a part with an FPU):
+the player decodes AC-4 through `ac4::Decoder`, from any source, and the P4 is the one part
+measured ([ESP32-P4 → AC-4](../docs/platforms/bare-metal/esp32-p4.md#ac-4), phase D14b).
 
 ## Where each layer belongs
 

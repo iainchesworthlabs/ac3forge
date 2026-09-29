@@ -10,9 +10,13 @@
 
     The set is 38 streams and `streams.json` in
     `esp-idf/ac3forge/examples/hearth_sink/www/`, and the table under [The set](#the-set) matches
-    that manifest. Since Hearth B3 (2026-09-16) servers play to a board over Sendspin; the `http`
-    source this set is served to remains for `POST /play`, for the checks in CI and for board
-    measurements, the P4's among them
+    that manifest. It holds AC-3 and E-AC-3 streams and no AC-4: the P4's AC-4 plays used Dolby
+    Encoding Engine streams served from a desktop
+    ([ESP32-P4 → AC-4](../docs/platforms/bare-metal/esp32-p4.md#ac-4)).
+
+    Since Hearth B3 (2026-09-16) servers play to a board over Sendspin; the `http` source this
+    set is served to remains for `POST /play`, for the checks in CI and for board measurements,
+    the P4's among them
     ([ESP32-P4 → Stream set](../docs/platforms/bare-metal/esp32-p4.md#stream-set)). Two things
     the set found are still open: a stream using transient pre-noise processing ends one access
     unit short, and `714-ecpl` and `714-tpn` need PSRAM ([What the set
