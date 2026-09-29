@@ -112,12 +112,18 @@ void member_matrix(const MixMember& member, std::span<const Speaker> from, std::
             scale *= member.scale_centre;
         }
         const double gain = member.gain * scale;
-        std::optional<double> pan = j < member.pan.size() ? member.pan[j] : std::nullopt;
-        if (!pan && columns == 1) {
-            pan = 0.0;
+        // The angle this column is panned to: its own, or 0 degrees where it is the only one.
+        // Held as a value and a flag, not an std::optional: GCC 14's -Os build for the
+        // Cortex-M3 reports the copy of one as maybe uninitialised, and -Werror makes that
+        // this file's problem.
+        double pan = 0.0;
+        bool panned = columns == 1;
+        if (j < member.pan.size() && member.pan[j].has_value()) {
+            pan = *member.pan[j];
+            panned = true;
         }
-        if (pan) {
-            pan_gains(*pan, into, gains);
+        if (panned) {
+            pan_gains(pan, into, gains);
             for (std::size_t c = 0; c < into.size(); ++c) {
                 matrix[c * columns + j] = gain * gains[c];
             }

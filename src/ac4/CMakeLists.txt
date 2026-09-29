@@ -16,14 +16,23 @@
 # ---------------------------------------------------------------------------
 add_library(ac4_objects OBJECT)
 add_library(ac4_static STATIC)
-add_library(ac4_shared SHARED)
+# Static only under the minimum-footprint profile (AC3FORGE_MINIMAL_DECODER): the parts
+# it builds for have no dynamic loader, and CMake refuses add_library(SHARED) for a
+# platform that has none (src/forge/minimal.cmake says the same of ac3::forge).
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    add_library(ac4_shared SHARED)
+endif()
 
 target_link_libraries(ac4_static PUBLIC ac4_objects)
-target_link_libraries(ac4_shared PUBLIC ac4_objects)
+if(TARGET ac4_shared)
+    target_link_libraries(ac4_shared PUBLIC ac4_objects)
+endif()
 
 add_library(ac4::ac4_static ALIAS ac4_static)
-add_library(ac4::ac4_shared ALIAS ac4_shared)
-if(BUILD_SHARED_LIBS)
+if(TARGET ac4_shared)
+    add_library(ac4::ac4_shared ALIAS ac4_shared)
+endif()
+if(BUILD_SHARED_LIBS AND TARGET ac4_shared)
     add_library(ac4::ac4 ALIAS ac4_shared)
 else()
     add_library(ac4::ac4 ALIAS ac4_static)
@@ -49,8 +58,16 @@ target_link_libraries(ac4_objects PRIVATE
     "$<BUILD_INTERFACE:ac3::warnings>"
     "$<BUILD_INTERFACE:ac3::coverage>")
 
+# Position-independent for the shared library's sake, which the minimum-footprint
+# profile has none of: there the objects go into a static image at a fixed address,
+# and -fPIC would only add a table of addresses to every access to a global.
+if(AC3FORGE_MINIMAL_DECODER)
+    set(_ac4_pic OFF)
+else()
+    set(_ac4_pic ON)
+endif()
 set_target_properties(ac4_objects PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
+    POSITION_INDEPENDENT_CODE ${_ac4_pic}
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON)
 
@@ -61,8 +78,15 @@ set_target_properties(ac4_objects PROPERTIES
 target_compile_options(ac4_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-set_target_properties(ac4_shared PROPERTIES DEFINE_SYMBOL "AC4_BUILDING_SHARED")
-generate_export_header(ac4_shared
+# The header is the same whichever target it is generated from; the static library
+# generates it where there is no shared one.
+if(TARGET ac4_shared)
+    set_target_properties(ac4_shared PROPERTIES DEFINE_SYMBOL "AC4_BUILDING_SHARED")
+    set(_ac4_export_target ac4_shared)
+else()
+    set(_ac4_export_target ac4_static)
+endif()
+generate_export_header(${_ac4_export_target}
     BASE_NAME AC4
     EXPORT_MACRO_NAME AC4_EXPORT
     EXPORT_FILE_NAME "${CMAKE_CURRENT_BINARY_DIR}/generated/ac4/export.hpp"
@@ -71,9 +95,10 @@ generate_export_header(ac4_shared
 target_compile_definitions(ac4_objects PRIVATE AC4_BUILDING_SHARED)
 target_compile_definitions(ac4_static PUBLIC AC4_STATIC_DEFINE)
 
-set_target_properties(ac4_shared PROPERTIES
-    VERSION "${PROJECT_VERSION}"
-    SOVERSION "${PROJECT_VERSION}")
-
-set_target_properties(ac4_shared PROPERTIES OUTPUT_NAME "ac4")
+if(TARGET ac4_shared)
+    set_target_properties(ac4_shared PROPERTIES
+        VERSION "${PROJECT_VERSION}"
+        SOVERSION "${PROJECT_VERSION}")
+    set_target_properties(ac4_shared PROPERTIES OUTPUT_NAME "ac4")
+endif()
 set_target_properties(ac4_static PROPERTIES OUTPUT_NAME "ac4_static")

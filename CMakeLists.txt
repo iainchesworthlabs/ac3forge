@@ -300,11 +300,18 @@ if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
                           AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
                           AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_IAB AC3FORGE_BUILD_IAMF
                           AC3FORGE_BUILD_CAPI AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON
-                          AC3FORGE_BUILD_FUZZERS AC3FORGE_BUILD_AC4)
+                          AC3FORGE_BUILD_FUZZERS)
         if(${_opt})
             list(APPEND _ac3_minimal_conflicts "${_opt}")
         endif()
     endforeach()
+    # The AC-4 libraries the decode profile may carry - the inspector, the core and the
+    # decoder, static and without exceptions (apps/baremetal/ac4_probe.cpp is the probe
+    # that links them, planning/ac4.md D14a) - and the encode profile may not. The AC-4
+    # encoder is built for none of the parts (decision 34), whichever way this is set.
+    if(AC3FORGE_MINIMAL_ENCODER AND AC3FORGE_BUILD_AC4)
+        list(APPEND _ac3_minimal_conflicts "AC3FORGE_BUILD_AC4")
+    endif()
     # Hearth's applications link the full ac3::forge; a board's Sendspin player half does not.
     if(_ac3_hearth_apps)
         list(APPEND _ac3_minimal_conflicts "AC3FORGE_BUILD_HEARTH")
@@ -491,7 +498,24 @@ if(AC3FORGE_BUILD_AC4)
     add_subdirectory(src/ac4)
     add_subdirectory(src/ac4core)
     add_subdirectory(src/ac4dec)
-    add_subdirectory(src/ac4enc)
+    if(AC3FORGE_MINIMAL_DECODER)
+        # The minimum-footprint profile's compile options on what the AC-4 libraries
+        # build, PUBLIC as ac3::forge_minimal has them: -fno-exceptions is a property a
+        # consumer has to share, or the two disagree about whether a call can throw.
+        # The AC-4 encoder is not built at all (planning/ac4.md, decision 34).
+        #
+        # -Wno-psabi: GCC's arm-none-eabi says, once a translation unit and for every
+        # std::span passed by value, that its passing changed in GCC 7.1. A note about an
+        # ABI nothing here links against, hundreds of them in the log of a leg whose
+        # output is the numbers.
+        foreach(_ac3_ac4_target IN ITEMS ac4_objects ac4core ac4dec_objects)
+            target_link_libraries(${_ac3_ac4_target} PUBLIC ac3::minimal_profile)
+            target_compile_options(${_ac3_ac4_target} PRIVATE "$<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>")
+        endforeach()
+        unset(_ac3_ac4_target)
+    else()
+        add_subdirectory(src/ac4enc)
+    endif()
 endif()
 
 # A standalone reader, not a writer like the three container modules above - roadmap item IM1

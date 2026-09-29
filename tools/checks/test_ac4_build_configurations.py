@@ -14,8 +14,13 @@ wheel. Phase I4 binds AC-4 into the C API, Python, Rust and WebAssembly:
   app's own CMake wrapper links none of them: giving the Shield app an AC-4 feature is
   later application work, not this phase's.
 
-D14 (the ESP32 minimal/bare-metal presets) is untouched: it still turns the option off
-and links nothing, same as D8 left it.
+D14a gives the minimum-footprint decode profile the AC-4 decoder, for the bare-metal
+probe's AC-4 rows (apps/baremetal/ac4_probe.cpp, tools/checks/run_baremetal_probe.sh --ac4): the
+hidden minimal-decoder and minimal-encoder presets still turn the option off, and the three
+config-*-minimal-ac4 presets turn it back on, in float, and link the decoder, the inspector and
+the core statically and without exceptions. The AC-4 encoder is built for none of the parts, and
+the ESP-IDF component (esp-idf/ac3forge/CMakeLists.txt, D14b's) still forces the option off until
+its own switch turns it on.
 """
 
 import json
@@ -26,6 +31,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 ANDROID = ROOT / "apps" / "android" / "app" / "src" / "main" / "cpp" / "CMakeLists.txt"
+ROOT_CMAKE = ROOT / "CMakeLists.txt"
+BAREMETAL_CMAKE = ROOT / "apps" / "baremetal" / "CMakeLists.txt"
+ESP_IDF_COMPONENT = ROOT / "esp-idf" / "ac3forge" / "CMakeLists.txt"
 WASM_CMAKE = ROOT / "apps" / "wasm" / "CMakeLists.txt"
 PYTHON_CMAKE = ROOT / "python" / "CMakeLists.txt"
 PRESETS = ROOT / "CMakePresets.json"
@@ -34,6 +42,18 @@ PYPROJECT = ROOT / "python" / "pyproject.toml"
 
 def _ac4_referenced(path: Path) -> bool:
     return re.search(r"\bac4::", path.read_text(encoding="utf-8")) is not None
+
+
+def _resolved_cache_variables(presets: dict, name: str) -> dict:
+    """A configure preset's cacheVariables with what it inherits, as CMake resolves them: its own
+    over those of the presets it inherits, the earlier of those over the later."""
+    by_name = {p["name"]: p for p in presets["configurePresets"]}
+    preset = by_name[name]
+    resolved: dict = {}
+    for parent in reversed(preset.get("inherits", [])):
+        resolved.update(_resolved_cache_variables(presets, parent))
+    resolved.update(preset.get("cacheVariables", {}))
+    return resolved
 
 
 class Ac4BuildConfigurations(unittest.TestCase):
@@ -66,14 +86,63 @@ class Ac4BuildConfigurations(unittest.TestCase):
     def test_python_links_ac4(self):
         self.assertTrue(_ac4_referenced(PYTHON_CMAKE))
 
-    def test_minimal_esp32_presets_still_turn_ac4_off(self):
-        # D14's territory, untouched by this phase - minimal-decoder/minimal-encoder,
-        # not wasm-emscripten.
+    def test_minimal_base_presets_still_turn_ac4_off(self):
+        # The hidden bases the ordinary minimal presets and the encode probe's inherit,
+        # not wasm-emscripten: the AC-4 presets below override them.
         presets = json.loads(PRESETS.read_text(encoding="utf-8"))
         for name in ("minimal-decoder", "minimal-encoder"):
             with self.subTest(preset=name):
                 preset = next(p for p in presets["configurePresets"] if p["name"] == name)
                 self.assertEqual(preset["cacheVariables"].get("AC3FORGE_BUILD_AC4"), "OFF")
+
+    def test_ordinary_minimal_and_encoder_presets_have_no_ac4(self):
+        presets = json.loads(PRESETS.read_text(encoding="utf-8"))
+        for name in ("config-linux-gcc-minimal", "config-linux-llvm-minimal",
+                     "config-arm-none-eabi-minimal", "config-arm-none-eabi-minimal-icount",
+                     "config-linux-gcc-minimal-encoder", "config-arm-none-eabi-minimal-encoder",
+                     "config-arm-none-eabi-minimal-encoder-icount"):
+            with self.subTest(preset=name):
+                resolved = _resolved_cache_variables(presets, name)
+                self.assertEqual(resolved.get("AC3FORGE_BUILD_AC4"), "OFF")
+
+    def test_minimal_ac4_presets_carry_the_decoder_in_float(self):
+        presets = json.loads(PRESETS.read_text(encoding="utf-8"))
+        names = ("config-linux-gcc-minimal-ac4", "config-arm-none-eabi-minimal-ac4",
+                 "config-arm-none-eabi-minimal-ac4-icount")
+        for name in names:
+            with self.subTest(preset=name):
+                resolved = _resolved_cache_variables(presets, name)
+                self.assertEqual(resolved.get("AC3FORGE_BUILD_AC4"), "ON")
+                self.assertEqual(resolved.get("AC3FORGE_DECODE_SCALAR"), "float")
+                self.assertEqual(resolved.get("AC3FORGE_MINIMAL_DECODER"), "ON")
+        # The instruction-counting leg is the same build with the timer clock.
+        icount = _resolved_cache_variables(presets, "config-arm-none-eabi-minimal-ac4-icount")
+        self.assertEqual(icount.get("AC3FORGE_BAREMETAL_CLOCK"), "timer")
+        build_presets = {p["configurePreset"] for p in presets["buildPresets"]}
+        for name in names:
+            self.assertIn(name, build_presets)
+
+    def test_root_keeps_ac4_out_of_the_encode_profile_and_its_encoder_out_of_the_decode_one(self):
+        text = ROOT_CMAKE.read_text(encoding="utf-8")
+        self.assertIn("if(AC3FORGE_MINIMAL_ENCODER AND AC3FORGE_BUILD_AC4)", text)
+        # add_subdirectory(src/ac4enc) sits in the branch the decode profile does not take.
+        decode_branch = text.index(
+            "if(AC3FORGE_MINIMAL_DECODER)\n        # The minimum-footprint profile's compile"
+        )
+        self.assertLess(decode_branch, text.index("add_subdirectory(src/ac4enc)"))
+        self.assertIn("    else()\n        add_subdirectory(src/ac4enc)", text)
+
+    def test_baremetal_ac4_probe_links_the_decoder_and_nothing_of_the_encoder(self):
+        text = BAREMETAL_CMAKE.read_text(encoding="utf-8")
+        self.assertIn("ac4_probe.cpp", text)
+        self.assertIn("ac4::decoder_static", text)
+        self.assertNotIn("ac4enc", text)
+
+    def test_esp_idf_component_still_forces_ac4_off(self):
+        # D14b's file: the AC-4 build of the component is its switch, off by default. D14a leaves
+        # the option forced off there.
+        text = ESP_IDF_COMPONENT.read_text(encoding="utf-8")
+        self.assertIn('set(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE)', text)
 
 
 if __name__ == "__main__":
