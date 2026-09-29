@@ -107,6 +107,15 @@ pull-request performance gates for AC-4 legs (the speed and memory series carry 
 encode and decode rows already), Pro Logic II from Hearth's Decoder page, an AC-4 live session in the
 Forge GUI, and AC-4 in Matroska, which registers no codec ID for it.
 
+Left to the user, each with its options in the pull request named: N1's 14 decisions
+([the study](layout.md#i-decisions)); D14b's four, which are the libm change that would make
+decision 26 hold on every stream, the frame-rate converter, the allocation policy and what comes
+next on the P4 (#1118); I5's two, whether to spend a check on the `zone_mask` reading and a native
+check of the Arabic, Hebrew and Yiddish strings (#1100); I5b's four, which are an ADM or IAB master
+as a source on the encoder page, static beds for channels assigned to speakers, a Preview from a
+decode of the AC-4 stream and AC-4 in Guided's Movement step (#1117); and the listening for D10 and
+E9.
+
 ## What is asked
 
 The Hearth desktop application was designed with AC-4 pages that stay disabled until a decoder
@@ -2497,8 +2506,9 @@ metadata; the encoder's trace, the decoder's and the Python parser's agree on th
 `ac3cli ac4-encode objects=` takes a scene file of the library's terms for the harness and the listening
 streams; the applications' scene readers are I5's. DEE writes no A-JOC from this project's masters, so
 there is no race, and librempeg refuses object coding, so there is no second decode; MediaInfo's reading
-(`tools/checks/check_ac4_encode_readers.py --only objects`) needs DEE's install. Bed objects in
-direct-coded substreams, objects beside channel-coded substreams, frame rates other than index 13 and
+(`tools/checks/check_ac4_encode_readers.py --only objects`) needs DEE's install, and was run
+afterwards (#1103): it counts the objects and names a static bed, and cannot tell a bed object from
+a dynamic one. Bed objects in direct-coded substreams, objects beside channel-coded substreams, frame rates other than index 13 and
 the intermediate spatial format are refused.
 
 #### E10: A-SPX noise floors on sweeps
