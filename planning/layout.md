@@ -12,8 +12,10 @@
 
     N1 is two tasks now. **N1A** names the programs and what they register with the system; **N1B**,
     this page, names and lays out the libraries. Decisions already taken: the family is "ICL Forge"
-    (identifiers `iclforge`, `ICLFORGE_`), nothing is published so nothing needs a shim, N1B is layout
-    and naming only (every output byte stays the same), and the duplicated DSP is a later phase.
+    (identifiers `iclforge`, `ICLFORGE_`), the old names are dropped outright with no shim
+    ([decision 38](ac4.md#decisions-of-2026-09-29), taken on the belief that nothing is published,
+    which holds in part: [the naming map](#e-the-naming-map) lists what is), N1B is layout and naming
+    only (every output byte stays the same), and the duplicated DSP is a later phase.
 
 ## In brief
 
@@ -304,8 +306,9 @@ a consumer's tree share one flat space. Codecs nest beneath as peers: `iclforge:
 |---|---|---|---|
 | repository | `iainchesworthlabs/ac3forge` (130 files, 458 hits; 50 files outside docs) | `iainchesworthlabs/iclforge` | old URLs redirect, including clones, until the name is reused |
 | docs site | `iainchesworthlabs.github.io/ac3forge` (14 files) | `…/iclforge` | Pages URLs are not redirected: the old address ends |
-| release tags, assets | `v0.2.0-beta.1` to `v0.10.0-beta.1`; 127 assets on the latest, all `ac3forge-*` | tags stay; new assets `iclforge-*` | old assets stay as published; `SHA512SUMS` and the signing key file name change from the next release |
-| in-repo packaging | Homebrew formula, cask, winget (4 versions), vcpkg port, Conan | `iclforge` identifiers; the four historic winget versions stay | nothing is on a registry |
+| release tags, assets | ten pre-releases, `v0.2.0-beta.1` to `v0.10.0-beta.1`; 127 assets on the latest: 121 `ac3forge-*`, four `ac3gui-*`, `SHA512SUMS` and its signature | tags stay; new assets `iclforge-*` | old assets stay as published; `SHA512SUMS` and the signing key file name change from the next release |
+| in-repo packaging | Homebrew formula, cask, winget (4 versions), vcpkg port, Conan | `iclforge` identifiers; the four historic winget versions stay | the formula and cask are live in the tap (next row); the vcpkg pull request is open under `ac3forge` (microsoft/vcpkg #53470), the winget one was closed unmerged and ConanCenter has none |
+| Homebrew tap | `iainchesworthlabs/homebrew-ac3forge` (public): formula `ac3forge`, cask `ac3gui` | formula and cask `iclforge`, the old names mapped by a `tap_migrations.json`; tap repository `homebrew-iclforge` (decided 2026-09-30, [decision 41](ac4.md#decisions-of-2026-09-30)) | the `brew tap` path and the install names change; GitHub redirects a renamed repository |
 | C++ namespace | `ac3::` (14,205 uses, 933 files); `namespace ac3` in 534 files; `ac4::` 4,318; `mp4::` and kin 1,125 | `iclforge::`, codecs nested | see [stage S3](#f-the-migration-plan) |
 | header root | `ac3/` (2,501 includes, 673 files) and ten more roots | `iclforge/<lib>/`; C API `iclforge_c/iclforge.h` | every consumer and example |
 | C API | 472 `ac3forge_*` names, 248 `AC3FORGE_*` macros in C and C++, `libac3forge_c` | `iclforge_*`, `ICLFORGE_*`, `libiclforge_c` | Rust bindgen allowlist, Python, WASM exports |
@@ -314,9 +317,14 @@ a consumer's tree share one flat space. Codecs nest beneath as peers: `iclforge:
 | options | 31 `option()`, 67 cache variables, 166 distinct `AC3FORGE_*` names in build files | `ICLFORGE_BUILD_<LIB>`, `ICLFORGE_<X>` | CI, presets, docs, every packaging file |
 | Kconfig | 69 distinct `CONFIG_AC3FORGE_*` (47 files) | `CONFIG_ICLFORGE_*` | ESP-IDF sdkconfig defaults |
 | library files | `ac3forge`, `ac3signing`, `mp4`, `matroska`, `ac4` … | `iclforge_<lib>`, `iclforge_<lib>_static` | pkg-config names `iclforge-<lib>` |
-| Python, Rust, npm | `ac3forge` (23 files); crates `ac3forge`, `ac3forge-sys`; `ac3forge-wasm-decoder` | `iclforge`, `iclforge-sys`, `iclforge-wasm-decoder` | none: unpublished |
+| Python, Rust, npm | `ac3forge` (23 files); crates `ac3forge`, `ac3forge-sys`; `ac3forge-wasm-decoder` | `iclforge`, `iclforge-sys`, `iclforge-wasm-decoder` | PyPI has `ac3forge` 0.9.0b1 and 0.10.0b1: it stays untouched, and `iclforge` is published as a new project after the repository rename, its description saying "formerly ac3forge" (decided 2026-09-30, [decision 40](ac4.md#decisions-of-2026-09-30)); the crates and the npm package were never published |
 | environment | 14 variables (`AC3FORGE_SIMD_TIER`, `_SIGNING_KEY`, …) | `ICLFORGE_*` | scripts and docs |
 | wire and format strings | `_ac3forge_player@v1` (65 files), `ac3forge_hearth_sink` (25), `ac3forge.probe/1`, `ac3forge.hearth.media/1`, `ac3forge_scene` | `_iclforge_player@v1` and so on | both ends of Sendspin and the OTA check change in one stage; Hearth's stored settings are N1A |
+
+The rows about what is published were checked on 2026-09-30. The decision to write no shim
+([decision 38](ac4.md#decisions-of-2026-09-29)) stands. [The AC-4 plan's N1 section](ac4.md#n1-the-names)
+says what follows from the pre-releases, the PyPI project, the tap and the open vcpkg pull request,
+and decisions [40 and 41](ac4.md#decisions-of-2026-09-30) settle the PyPI project and the tap.
 
 Two hazards the scripts must respect. A nested `iclforge` namespace inside `iclforge::sendspin` would
 shadow the root, so `sendspin::ac3forge` becomes `sendspin::player`. And a partially qualified name

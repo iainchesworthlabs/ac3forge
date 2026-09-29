@@ -59,7 +59,7 @@
 Each phase with its pull request and where it stands. Dates are UTC, as GitHub records a merge.
 "Exit met" is as the phase's pull request reports it, and any exit criterion not met in the pull
 request is named in the last column; the phase's own section below says what it built and how it was
-checked. The table is of `main` at `b23c8eb63`.
+checked. The table is of `main` at `5ef9eeafc`.
 
 | Phase | Builds | Pull request | State |
 |---|---|---|---|
@@ -99,18 +99,22 @@ checked. The table is of `main` at `b23c8eb63`.
 | I5 | immersive and object content in the applications | #1100, 2026-09-29 | merged; exit met, apart from two failures in suites it did not touch (fixed since) |
 | I5b | the encoder page's AC-4 objects | #1117, 2026-09-29 | merged; exit met, with the ADM master's audio as the page's source and its scene authored there: the page has no ADM or IAB reader |
 | I6 | the ESP32 sinks | | not built |
-| N1 | the program names and the layout of `src/` | study #1122, 2026-09-29 | not built; N1A and N1B are studied and the study's 14 decisions await the user |
+| N1 | the program names and the layout of `src/` | study #1122, 2026-09-29 | not built; N1A and N1B are studied and the study's 14 decisions await the user; the PyPI project and the Homebrew names are decided (40, 41) and the open vcpkg pull request is not |
 
 Not built, beside those: a quality series for the encoder (the decoder's has one, `ac4-quality-main.jsonl`;
-the encoder's scores and the race against DEE are held to pinned floors and keep no history) and
-pull-request performance gates for AC-4 legs (the speed and memory series carry AC-4's stereo and 5.1
-encode and decode rows already), Pro Logic II from Hearth's Decoder page, an AC-4 live session in the
-Forge GUI, and AC-4 in Matroska, which registers no codec ID for it.
+the encoder's scores and the race against DEE are held to pinned floors and keep no history), Pro
+Logic II from Hearth's Decoder page, an AC-4 live session in the Forge GUI, and AC-4 in Matroska,
+which registers no codec ID for it. AC-4's speed and memory are measured and gated: `ac3perf` holds
+AC-4's stereo and 5.1 encode and decode to real time in the gate's build legs, the speed, kernel and
+memory benchmarks carry AC-4's rows (and the transforms of `src/ac4core`), and since #1132
+(2026-09-29) a merge queue entry that changes `src/` fails if any workload, AC-4's included, takes
+twice as long as at the commit it is queued on, or doubles its heap churn.
 
-Left to the user, each with its options in the pull request named: N1's 14 decisions
-([the study](layout.md#i-decisions)); D14b's four, which are the libm change that would make
-decision 26 hold on every stream, the frame-rate converter, the allocation policy and what comes
-next on the P4 (#1118); I5's two, whether to spend a check on the `zone_mask` reading and a native
+Left to the user, each with its options in the pull request or section named: N1's 14 decisions
+([the study](layout.md#i-decisions)) and what to do with the open vcpkg pull request
+([N1B](#n1-the-names)); D14b's four, which are the libm change that would make decision 26 hold on
+every stream, the frame-rate converter, the allocation policy and what comes next on the P4 (#1118);
+I5's two, whether to spend a check on the `zone_mask` reading and a native
 check of the Arabic, Hebrew and Yiddish strings (#1100); I5b's four, which are an ADM or IAB master
 as a source on the encoder page, static beds for channels assigned to speakers, a Preview from a
 decode of the AC-4 stream and AC-4 in Guided's Movement step (#1117); and the listening for D10 and
@@ -1239,10 +1243,13 @@ that proves most to the one that proves least:
    with its audio-altering defaults off, and by the encoder; both are decoded by the decoder and by
    librempeg, and scored against the source as in item 4. The encoder's scores and its gap to DEE's
    are recorded per leg and pinned against regression
-   ([decision 19](#decisions-for-the-encoder-and-the-applications)). As built, `score_ac4_encode.py
-   --gold` runs the race locally, with DEE's streams and ViSQOL, and `quality_race.py` has no AC-4
-   legs. The decoder's scores have a trend series ([Quality trend](../docs/quality-trend.md#ac-4-decode-quality));
-   the encoder's have none yet.
+   ([decision 19](#decisions-for-the-encoder-and-the-applications)). As built, `score_ac4_encode.py`
+   holds the encoder's scores to pinned floors in FFmpeg Validate, which runs nightly, and its
+   `--gold` race against DEE runs locally, with DEE's streams and ViSQOL; `quality_race.py` has no
+   AC-4 legs. The decoder's scores have a trend series of 10 legs, which the nightly run writes
+   ([Quality trend](../docs/quality-trend.md#ac-4-decode-quality)); the encoder's scores, a
+   comparison with other tools and AC-4's objects have none. AC-4 does have speed, allocation and
+   kernel series ([Performance trend](../docs/performance-trend.md)).
 6. **Metadata gains match their formulas.** Through the decoder's output processing (D6), the
    encoder's streams give the dialogue enhancement, output level, downmix and mixing gains their
    configuration asks for, to 0.01 dB, with one tone per channel.
@@ -3100,11 +3107,12 @@ the identifiers until the 1.0 freeze and the program names through 0.x
 the CMake project's description (which reaches pkg-config and the Debian packages), README, the
 site's description, the Homebrew formula, the desktop entries and the Windows file-type label said
 AC-3 and E-AC-3 alone, and a few pages described `ac4dec::` and `ac4enc::` namespaces the code does
-not have. #1076, #1077 and #1078 corrected most of that; on 2026-09-30 the man page's name and
-description lines (`apps/cli/usage.cpp`), the GUI's desktop entry and metainfo, the Homebrew cask
-and the Windows file-type label (`cmake/Packaging.cmake`) still name AC-3 and E-AC-3 alone. The user
-found a program called `ac3cli` doing AC-4 wrong in itself, and took renaming the programs
-([decision 35](#decisions-of-2026-09-25)), which the recasting plan's scheme S3 costed.
+not have. #1076, #1077, #1078 and #1133 corrected most of that. On 2026-09-30 the man page's name
+and description lines (`apps/cli/usage.cpp`) and some of the GUI's own strings (#1133 lists them)
+still name AC-3 and E-AC-3 alone. The Windows file-type label (`cmake/Packaging.cmake`) names the
+two extensions the installer registers, `.ac3` and `.ec3`, and is wrong only once `.ac4` is
+registered. The user found a program called `ac3cli` doing AC-4 wrong in itself, and took renaming
+the programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's scheme S3 costed.
 
 On 2026-09-29 the user extended the ask from the programs to the whole tree: "while this started out
 as an AC3 or an EAC3 based application, it now supports AC4 and it's kind of weird to say it's an AC3
@@ -3129,12 +3137,15 @@ wave of phase branches has merged (it has), N1B first:
   programs (`ac3tests`, the benchmarks, the probe) keep their names unless the user takes decision
   13 of [the study](layout.md#i-decisions), which recommends renaming them in N1A.
 - What the programs register with the system follows their names: the completions for four shells,
-  the man page, the Homebrew formula and cask, winget's aliases, the desktop entries and bundle
-  identifiers, the Windows file-type command lines, the firewall rules' names and the translation
-  catalogues named after the programs, and the version line, which names the family as N1B names
-  it (`ac3forge <version>` today). The old plan kept the old names working through a stated period,
-  printing the new name. Nothing is published, so the decisions of 2026-09-29 drop that: the old
-  names are not kept, and no launcher is written.
+  the man page, winget's aliases, the desktop entries and bundle identifiers, the Windows file-type
+  command lines, the firewall rules' names and the translation catalogues named after the programs,
+  and the version line, which names the family as N1B names it (`ac3forge <version>` today). The
+  Homebrew formula and cask take the family's name instead ([decision 41](#decisions-of-2026-09-30)).
+  The old plan kept the old names working through a stated period, printing the new name. The
+  decisions of 2026-09-29 drop that: the old names are not kept, and no
+  launcher is written ([decision 38](#decisions-of-2026-09-29)). The pre-releases and the Homebrew
+  tap ship `ac3cli` and `ac3gui` (see N1B below), so someone who installed one keeps those names at
+  that version, and a release made after N1 carries the new names only.
 - Wording that names the formats the family handles, AC-4 among them, wherever it says AC-3 and
   E-AC-3 alone.
 
@@ -3153,10 +3164,37 @@ for the old names and the stale phrases; `mkdocs build --strict` and
 - The family is named "ICL Forge" (organisation `iainchesworthlabs`; identifiers `iclforge`,
   `ICLFORGE_`) in place of `ac3forge`: plain `forge` is taken on PyPI, npm, crates.io and Homebrew core,
   and `iclforge` and `icl-forge` are free. The programs keep the plain names above.
-- Nothing is published: no package is on a registry, and Sendspin and the ESP32 firmware have not left
-  this repository. The C API prefix, the CMake package, the Kconfig prefix, the environment variables
-  and the wire strings are therefore renamed outright, with no shim. The costs are GitHub's: the
-  repository's name, the Pages address, existing release tags and asset names, and the packaging files.
+- The C API prefix, the CMake package, the Kconfig prefix, the environment variables and the wire
+  strings are renamed outright, with no shim ([decision 38](#decisions-of-2026-09-29)). That decision
+  was taken on the statement that nothing is published, which holds in part. Checked on 2026-09-30:
+  - **Published.** On GitHub, the repository, the Pages address and ten pre-releases, `v0.2.0-beta.1`
+    (2026-08-10) to `v0.10.0-beta.1` (2026-09-01), whose assets carry the old names: `ac3forge-*` and
+    `ac3gui-*` files, and Debian and RPM packages named `ac3forge`, `libac3forge0` and
+    `libac3forge-dev` (RPM: `ac3forge-devel`). On PyPI, the project `ac3forge`, at 0.9.0b1
+    (2026-08-22) and 0.10.0b1 (2026-09-01); `docs/releasing.md` says its publishing is live. In
+    Homebrew, the public tap `iainchesworthlabs/homebrew-ac3forge`, with the formula `ac3forge` and
+    the cask `ac3gui`.
+  - **Submitted, not merged.** A vcpkg port named `ac3forge` (microsoft/vcpkg #53470, open and a
+    draft since 2026-08-18) and a winget package `iainchesworthlabs.ac3forge` (microsoft/winget-pkgs
+    #419594, which winget-pkgs' policy bot closed on 2026-09-29 for want of author feedback). No
+    ConanCenter submission was found.
+  - **Not published.** Nothing under the family's names is on npm or crates.io, and the ESP Component
+    Registry has never had the component (`.github/workflows/esp-component.yml`; the registry itself
+    was not queried). Sendspin and the ESP32 firmware have not left this repository, on the user's
+    word.
+  - **Free.** `iclforge` and `icl-forge` on PyPI, npm and crates.io.
+- What that means for N1: the rename can still be outright in the repository, with no shim, and the
+  stages do not change. What happens outside the repository was decided on 2026-09-30
+  ([decisions 40 and 41](#decisions-of-2026-09-30)), in the study's stages S4 and S5, the publishing
+  steps being the user's. `ac3forge` stays on PyPI as an old project, untouched, and `iclforge` is
+  published as a new one after the repository is renamed; the old project's trusted publisher names
+  the repository `ac3forge` (`docs/releasing.md`), so the new project gets its own. The Homebrew
+  formula, cask and tap take the new name, with the old names mapped to it, and the `brew tap` path
+  changes. Someone who installed a pre-release keeps the old program names, C API, CMake package and
+  pkg-config names at that version, and meets the new ones, without a shim, when moving to a release
+  made after N1.
+- Open on 2026-09-30, and the user's: whether the open vcpkg pull request, which names the port
+  `ac3forge`, is replaced by a port `iclforge` (the winget submission was closed unmerged).
 - N1B is layout and naming only: no algorithm changes and every output byte stays the same. It covers
   where the code sits, the C++ namespaces, the header roots and the CMake target names. The duplicated
   DSP (FFT, MDCT, QMF and resampler in `src/forge` and `src/ac4core`) is a later phase.
@@ -3494,9 +3532,10 @@ stand. Each lists its options, the recommendation, what each costs, and what was
     and the gap shows what to work on, as it does for the E-AC-3 legs. Cost: a phase can merge
     behind DEE. (b) can hold phases on tuning.
 
-    **Taken: (a)**, as recommended; the user raised no objection. As built, each pull request
-    records the gap to DEE and `score_ac4_encode.py` pins it; the encoder's scores have no trend
-    series yet.
+    **Taken: (a)**, as recommended; the user raised no objection. As built, each phase's pull
+    request recorded the gap to DEE, `score_ac4_encode.py` pins the scores as floors that fail
+    FFmpeg Validate's nightly run, the race against DEE runs locally, and the encoder's scores have
+    no trend series.
 
 20. **The applications, and their order.**
     - (a) **`ac3cli` with each library phase; once the channel-based library is complete, the rest
@@ -3730,7 +3769,7 @@ period, and that the family's name, the library's identifiers and the C API stay
     `iainchesworthlabs`, identifiers `iclforge` and `ICLFORGE_`, in place of `ac3forge`, for the
     family and its packages. The programs keep the plain names of decision 35. Plain `forge` is taken
     on PyPI, npm, crates.io and Homebrew core, and `iclforge` and `icl-forge` were free when checked
-    on 2026-09-29.
+    on 2026-09-29, and on PyPI, npm and crates.io still were on 2026-09-30.
 
 37. **What N1 covers, and when.** **Taken, the defaults offered.** N1 is two tasks: N1A names the
     programs and what they register with the system, and N1B lays out and names the libraries,
@@ -3739,12 +3778,21 @@ period, and that the family's name, the library's identifiers and the C API stay
     ([the layout study](layout.md), #1122), and the execution is one quiet window after the wave of
     phase branches has merged, N1B first.
 
-38. **Nothing is published.** **Taken, in the user's words**: no package has been published, and
-    Sendspin and the ESP32 firmware have not been published outside this repository. Package names,
-    the C API prefix, the CMake package, the Kconfig prefix, the environment variables and the wire
-    strings are renamed outright, with no shim, and no launcher is written for an old program name.
-    The costs outside the repository are GitHub's: its name, the Pages address, existing release
+38. **Shims for the old names.** **Taken: none.** The user's premise was that "no package has been
+    published nor has the sendspin/esp32 been published outside this repo". Package names, the C API
+    prefix, the CMake package, the Kconfig prefix, the environment variables and the wire strings are
+    renamed outright, with no shim, and no launcher is written for an old program name. The costs
+    outside the repository were taken to be GitHub's: its name, the Pages address, existing release
     tags and asset names.
+
+    **The premise held in part** when checked on 2026-09-30. Nothing is on npm, crates.io or the ESP
+    Component Registry, and Sendspin and the ESP32 firmware are unpublished, but ten pre-releases are
+    on GitHub, the project `ac3forge` is on PyPI (0.9.0b1 and 0.10.0b1), a public Homebrew tap holds a
+    formula and a cask, and a vcpkg port is open upstream. The decision is unchanged, since it asks for
+    no shim and the rename can still be outright. What follows was decided the next day
+    ([decisions 40 and 41](#decisions-of-2026-09-30)): `ac3forge` stays on PyPI as an old project and
+    `iclforge` is published as a new one, the tap's names and its `brew tap` path change, and someone
+    on a pre-release meets the new names without a shim.
 
 39. **What I2 left open.** **Taken:** a sink on the extension role that does not list `"ac4"` is sent
     nothing for an AC-4 item until a part decodes AC-4 in a group, and I6 settles what it is sent;
@@ -3755,8 +3803,30 @@ period, and that the family's name, the library's identifiers and the C API stay
 |---|---|---|
 | 36 | The family's name | **ICL Forge (`iclforge`), on the user's proposal** |
 | 37 | What N1 covers, and when | **N1A the programs and N1B the libraries; a study, then one quiet window, N1B first** |
-| 38 | Nothing is published | **Renames outright: no shims, no launchers; only GitHub's names are external** |
+| 38 | Shims for the old names | **None: renamed outright, no launchers.** The premise, that nothing is published, held in part |
 | 39 | What I2 left open | **I6 settles the unlisted sink and trims the latency; Pro Logic II after I6** |
+
+### Decisions of 2026-09-30
+
+Made once the names outside the repository had been checked ([N1B](#n1-the-names)), and like those
+of the day before given as directions. Both are carried out in the study's stages S4 and S5, and the
+publishing steps are the user's. Neither changes decision 38: the rename inside the repository stays
+outright, with no compatibility shim.
+
+40. **The PyPI project.** **Taken:** `ac3forge` stays as it is, untouched, at 0.9.0b1 and 0.10.0b1,
+    and the new project's description says "formerly ac3forge". `iclforge` is published as a new
+    project after the repository is renamed. The user creates its pending trusted publisher: owner
+    `iainchesworthlabs`, repository `iclforge`, workflow `wheels.yml`, environment `pypi`. The
+    repository name is the one the study recommends ([its decision 11](layout.md#i-decisions)).
+
+41. **The Homebrew names.** **Taken:** the formula and the cask are renamed to `iclforge`, a
+    `tap_migrations.json` in the tap maps the old names to the new, and the tap repository is renamed
+    to `homebrew-iclforge`, which GitHub redirects from the old path.
+
+| # | Question | **Taken** |
+|---|---|---|
+| 40 | The PyPI project | **`ac3forge` untouched; `iclforge` a new project, published after the repository rename** |
+| 41 | The Homebrew names | **Formula and cask `iclforge`, the old names mapped in the tap; the tap becomes `homebrew-iclforge`** |
 
 ## What cannot be verified, and why
 
@@ -3783,6 +3853,7 @@ period, and that the family's name, the library's identifiers and the C API stay
 | AC-4 in Matroska | **no** | Matroska registers no `A_AC4` codec ID (issue 176 and pull request 874 of its specification are open, checked 2026-09-29); `ac3cli mkv` refuses AC-4 until the registry has an ID and a mapping |
 | The WebAssembly module's C++ side and the Android build of the AC-4 libraries | **by CI only** | No Emscripten or NDK on the machine that made I4; I4b compiled `ac4_bindings.cpp` natively against a host model of `emscripten::val` |
 | Any DEE stream after 2026-11-06 | **no** | The licence is not renewed; G0, G1 and G2 made the sets before then (decision 23) |
+| What is published under the family's names | **partly** | Checked by hand on 2026-09-30 on GitHub, PyPI, npm, crates.io, the Homebrew tap and the two upstream pull requests. Not checked: the ESP Component Registry (its site was not queried), ConanCenter beyond a search of its pull requests, and the user's statement that Sendspin and the ESP32 firmware are unpublished |
 
 ## Coordination
 
