@@ -133,9 +133,10 @@ Beyond that:
    network up, AC-3 and E-AC-3 5.1 decode in real time; E-AC-3 7.1 does not. QEMU does not
    emulate the part. [ESP32-C6](docs/platforms/bare-metal/esp32-c6.md).
 10. Every fixture decodes in real time on a board at 360 MHz, the ceiling of the revision 1.3
-    silicon it carries, with no network. AC-4 with Wi-Fi up: 2.0 in SIMPLE mode decodes at 0.53 of
-    a frame's time and in A-SPX mode at 0.74, 5.1 takes 1.4 to 4.1 and 5.1.4 2.8 to 3.7. QEMU does
-    not emulate the part. [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md).
+    silicon it carries, with no network. AC-4 from an HTTP source with Wi-Fi up: 2.0 in SIMPLE mode
+    decodes at 0.53 of a frame's time and in A-SPX mode at 0.74, 5.1 takes 1.4 to 4.1 and 5.1.4
+    2.8 to 3.7; no ESP32 sink takes AC-4 in a Sendspin group. QEMU does not emulate the part.
+    [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md).
 11. Correct under QEMU's `mps2-an385`; no real silicon.
 
 AC-4 has been run on the ESP32-P4 and on the Cortex-M3 leg. The S3 and the C6 have no AC-4 build
