@@ -9,6 +9,7 @@
 
 #include "ac3/audio/pcm_output.hpp"
 #include "ac3/audio/speakers.hpp"
+#include "ac3/core/layout.hpp"
 
 // ac3::audio::PcmOutput's two decisions, against fake device records
 // (src/audio/src/pcm_output.cpp): how wide to open the stream, and which
@@ -27,7 +28,7 @@ namespace {
 using ac3::audio::PcmOutput;
 using ac3::audio::RenderDeviceInfo;
 using ac3::audio::speaker_routing;
-using ac3::eac3::chanmap::Location;
+using ac3::base::Location;
 using ac3::render::OutputLayout;
 using ac3::render::Routing;
 

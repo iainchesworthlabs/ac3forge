@@ -8,7 +8,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/layout.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/oba/joc.hpp"
 #include "ac3/oba/oamd.hpp"
@@ -87,7 +87,7 @@ namespace ac3::render {
 
 class LayoutRenderer {
    public:
-    using Location = ac3::eac3::chanmap::Location;
+    using Location = ac3::base::Location;
     static constexpr std::size_t kMaxSlots = OutputLayout::kMaxSlots;
     // JOC carries at most sixteen objects (TS 103 420); a rendered programme
     // has at most sixteen slots (§E3.8.2).
@@ -189,7 +189,7 @@ class LayoutRenderer {
     // announces the same layout again: the LFE's delay line, when there is
     // one, is only emptied if the coded LFE channels themselves actually
     // move or change count, not on every call.
-    void set_bed(const ac3::eac3::chanmap::Layout& coded) {
+    void set_bed(const ac3::base::Layout& coded) {
         coded_ = coded;
         bed_channels_ = std::min(static_cast<std::size_t>(coded.count), kMaxCoded);
         for (auto& row : bed_gains_) {
@@ -631,7 +631,7 @@ class LayoutRenderer {
     std::array<ac3::spatial::Direction, kMaxSlots> target_directions_{};
     std::array<std::size_t, kMaxSlots> target_slots_{};
     std::size_t targets_ = 0;
-    ac3::eac3::chanmap::Layout coded_{};
+    ac3::base::Layout coded_{};
     std::size_t bed_channels_ = 0;
     std::array<std::array<float, kMaxSlots>, kMaxCoded> bed_gains_{};
     std::array<std::array<float, kMaxSlots>, kMaxObjects> object_gains_{};

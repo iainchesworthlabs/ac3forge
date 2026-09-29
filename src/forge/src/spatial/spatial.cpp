@@ -9,7 +9,7 @@
 #include <span>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/layout.hpp"
 
 namespace ac3::spatial {
 
@@ -130,7 +130,7 @@ PanGains pan_azimuth(double azimuth_deg) {
 // Stack storage in pan_ring/pan_direction is sized by it, so that placing an
 // object costs no allocation - a part rendering objects calls both once per
 // object per frame.
-constexpr auto kMaxRing = static_cast<std::size_t>(eac3::chanmap::kMaxChannels);
+constexpr auto kMaxRing = static_cast<std::size_t>(base::kMaxChannels);
 
 void pan_ring(double azimuth_deg, std::span<const double> ring_azimuth_deg,
               std::span<double> gains) {
@@ -181,8 +181,8 @@ PanGains pan_room(double x, double y) {
     return pan_azimuth(std::atan2(left, forward) / kDegToRad);
 }
 
-Direction direction_of(eac3::chanmap::Location location, bool has_rears, bool has_side_discrete) {
-    using Location = eac3::chanmap::Location;
+Direction direction_of(base::Location location, bool has_rears, bool has_side_discrete) {
+    using Location = base::Location;
     switch (location) {
         case Location::kLeft: return {30.0, 0.0};
         case Location::kCentre: return {0.0, 0.0};
@@ -212,8 +212,8 @@ Direction direction_of(eac3::chanmap::Location location, bool has_rears, bool ha
     return {};
 }
 
-PanTargets pan_targets(std::span<const eac3::chanmap::Location> locations) {
-    using Location = eac3::chanmap::Location;
+PanTargets pan_targets(std::span<const base::Location> locations) {
+    using Location = base::Location;
     const auto is_lfe = [](Location location) {
         return location == Location::kLfe || location == Location::kLfe2;
     };

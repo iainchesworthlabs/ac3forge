@@ -6,10 +6,10 @@
 #include <string>
 #include <vector>
 
-#include "ac3/core/eac3_tables.hpp"
+#include "ac3/core/layout.hpp"
 
 // The channel mask WAVEFORMATEXTENSIBLE defines, and how its speaker positions
-// relate to the locations the renderer places (ac3::eac3::chanmap::Location,
+// relate to the locations the renderer places (ac3::base::Location,
 // Table E2.5).
 //
 // Every output backend here already speaks some version of this vocabulary:
@@ -29,7 +29,7 @@
 
 namespace ac3::audio {
 
-using Location = ac3::eac3::chanmap::Location;
+using Location = ac3::base::Location;
 
 inline constexpr std::uint32_t kSpeakerFrontLeft = 0x1;
 inline constexpr std::uint32_t kSpeakerFrontRight = 0x2;
@@ -117,14 +117,14 @@ inline constexpr std::uint32_t kSpeakers7_1_4 = kSpeakers7_1_2 | kSpeakerTopBack
 [[nodiscard]] std::uint32_t default_speakers(std::uint16_t channels);
 
 // The locations a mask names, by the names the bitstream gives them
-// (ac3::eac3::chanmap::name): "L R C LFE Ls Rs". Empty for an empty mask, and
+// (ac3::base::name): "L R C LFE Ls Rs". Empty for an empty mask, and
 // a trailing count of the positions with no location of their own.
 [[nodiscard]] std::string describe_speakers(std::uint32_t mask);
 
 // The abbreviation WAVEFORMATEXTENSIBLE's own convention gives one speaker
 // bit - "FL", "LFE", "SL" and so on for the rest of kSpeakerAllPositions - for
 // the Speakers page's routing grid to name a device OUTPUT by. A different
-// vocabulary from chanmap::name(), which names the RENDERER's locations in
+// vocabulary from base::name(), which names the RENDERER's locations in
 // the bitstream's own terms ("L", "Ls") and folds SPEAKER_BACK_LEFT/RIGHT into
 // the rear surrounds when the mask also names the sides (locations_of()'s own
 // comment); an output's own name does not depend on the company its mask
