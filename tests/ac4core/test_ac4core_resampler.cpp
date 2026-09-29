@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -19,6 +20,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include "dsp/resampler.hpp"
+#include "dsp/resampler_vector.hpp"
 
 namespace {
 
@@ -337,6 +339,40 @@ TEST_CASE("the converter's table is the double design rounded once to the scalar
         CHECK(rounded_once);
         // A phase still sums to 1 to the scalar's precision: a constant passes unchanged.
         CHECK(worst_sum < epsilon * design.taps());
+    }
+}
+
+TEST_CASE("the converter's float dot product is four lanes' sums, added in the order it states",
+          "[ac4core][dsp][src]") {
+    std::uint32_t state = 7U;
+    const auto next = [&state] {
+        state = state * 1664525U + 1013904223U;
+        return static_cast<float>(static_cast<double>(state >> 8U) / 16777216.0 - 0.5);
+    };
+    constexpr std::array<std::size_t, 13> kCounts{0, 1, 2, 3, 4, 5, 7, 8, 9, 94, 100, 101, 1001};
+    for (const std::size_t n : kCounts) {
+        CAPTURE(n);
+        std::vector<float> c(n);
+        std::vector<float> x(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            c[i] = next();
+            x[i] = next() * 30000.0F;
+        }
+        // Written out: lane j takes taps j, j + 4, j + 8 and so on, a product and an add at a time;
+        // the lanes are added as (0 + 1) + (2 + 3); the taps left over are added in order.
+        std::array<float, 4> lane{};
+        std::size_t k = 0;
+        for (; k + 4 <= n; k += 4) {
+            for (std::size_t j = 0; j < 4; ++j) {
+                lane[j] += c[k + j] * x[k + j];
+            }
+        }
+        float want = (lane[0] + lane[1]) + (lane[2] + lane[3]);
+        for (; k < n; ++k) {
+            want += c[k] * x[k];
+        }
+        const float got = dsp::dot_four_lanes(c.data(), x.data(), n);
+        CHECK(std::bit_cast<std::uint32_t>(got) == std::bit_cast<std::uint32_t>(want));
     }
 }
 

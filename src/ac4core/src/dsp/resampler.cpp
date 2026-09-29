@@ -4,10 +4,12 @@
 #include <cmath>
 #include <numbers>
 #include <numeric>
+#include <type_traits>
 #include <utility>
 
 #include "ac4/detail/profiling.hpp"
 #include "dsp/kbd.hpp"
+#include "dsp/resampler_vector.hpp"
 
 namespace ac4::detail::dsp {
 
@@ -136,14 +138,19 @@ void Resampler<Real>::process(std::span<const Real> in, std::vector<Real>& out) 
         const std::int64_t position = (outputs_ + 1) * down;
         const std::int64_t whole = floor_div(position, up);
         const auto p = static_cast<int>(position - whole * up);
-        // The dot product in Real, the taps in order: a float multiply and add a
-        // tap at float, which is the whole of the converter's cost on a part
-        // whose FPU is single precision.
+        // The dot product in Real: at double the taps in order, as it always
+        // was; at float over four lanes (dsp/resampler_vector.hpp), a float
+        // multiply and add a tap, which is the whole of the converter's cost on
+        // a part whose FPU is single precision.
         const std::span<const Real> coefficients = filter_->phase(p);
         const Real* samples = history_.data() + (whole - taps - first_);
         Real sum{};
-        for (std::size_t k = 0; k < coefficients.size(); ++k) {
-            sum += coefficients[k] * samples[k];
+        if constexpr (std::is_same_v<Real, float>) {
+            sum = dot_four_lanes(coefficients.data(), samples, coefficients.size());
+        } else {
+            for (std::size_t k = 0; k < coefficients.size(); ++k) {
+                sum += coefficients[k] * samples[k];
+            }
         }
         out.push_back(sum);
         ++outputs_;
