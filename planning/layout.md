@@ -1,12 +1,14 @@
 # The layout of `src/` (N1B): a study
 
-!!! note "Status as of 2026-09-30: a proposal; the pull request that adds it moves no source file"
+!!! note "Status as of 2026-09-30: a proposal, merged as #1122, which moved no source file; the decisions await the user"
     Asked for by the user on 2026-09-29 ("it's kind of weird ... the old stuff is over here in forge and
     the new AC4 stuff's over here which is two folders higher, not as a sibling"). This page and its
-    appendix, [layout-inventory.md](layout-inventory.md), read the tree as it stands on `main` at
+    appendix, [layout-inventory.md](layout-inventory.md), read the tree as it stood on `main` at
     `4ca84d66d` and propose a layout that puts the codecs side by side over a base that knows none of
-    them. The user reads it, picks a layout and answers [the decisions](#i-decisions); a later phase
-    runs the moves with the scripts written for this study.
+    them. The user reads it, picks a layout and answers [the decisions](#i-decisions), which they have
+    not yet done; a later phase runs the moves with the scripts written for this study. `main` has
+    moved since: every count here is of `4ca84d66d`, and [what changed
+    since](#what-changed-on-main-since-the-study) lists what the later commits touch.
 
     N1 is two tasks now. **N1A** names the programs and what they register with the system; **N1B**,
     this page, names and lays out the libraries. Decisions already taken: the family is "ICL Forge"
@@ -539,9 +541,9 @@ What a reader might not expect:
 
 To find what the scripts and the plan get wrong before anyone runs them on `main`, L2 was applied to a
 scratch worktree (`proto/n1b-layout`, branched from `b07dec6f3`, never pushed) and built with MSVC
-14.51, `/W4 /WX`, Ninja, `-j 6`. Since then `main` has changed nothing under `src/`, `tests/`, `cmake/`
-or `esp-idf/`. The same worktree served for the branch measurements below. The commits, each made by a
-script unless marked:
+14.51, `/W4 /WX`, Ninja, `-j 6`. Up to `4ca84d66d`, the commit the study reads, `main` had changed
+nothing under `src/`, `tests/`, `cmake/` or `esp-idf/` since. The same worktree served for the branch
+measurements below. The commits, each made by a script unless marked:
 
 | commit | what | files | lines |
 |---|---|---:|---:|
@@ -623,3 +625,26 @@ trees were not built.
   WASM bindings, and clang-cl, GCC 16 and Clang 22 were not built; the pinned-hash gate
   (`check_cross_platform_hash.py`, which needs the gold-reference script's outputs) was not run, and the
   CLI corpus stands in for it; the CI matrix was not dispatched.
+
+## What changed on `main` since the study
+
+The study reads `main` at `4ca84d66d`. By `d490ab1aa` (2026-09-30) 119 commits had merged after it: the
+rest of D14a (#1123), D14b (#1118), E10 (#1113), I4b (#1119), I5b (#1117) and others, #1109 and #1112
+among them. They changed 102 files under `src/`, `tests/`, `cmake/` and `esp-idf/`, and `main`
+has 2,955 tracked files against 2,916 (`src` 598 against 590, `tests` 488 against 483). Every count on
+this page and in [the inventory](layout-inventory.md) is of `4ca84d66d`, and a later `main` regenerates
+them. Three statements are affected:
+
+- **The SIMD variants moved.** #1123 moved `arch/{aarch64,generic,x86_64}/ac3/internal/arch/simd.hpp`
+  from `src/forge/src/internal/arch` to `src/arithmetic/arch`, so `arithmetic` carries them and the
+  study's `base` need not. The `internal` row of
+  [appendix A.1](layout-inventory.md#a1-what-srcforge-holds) and
+  [appendix B.5](layout-inventory.md#b5-private-headers-reached-across-a-boundary) name the old place.
+- **The ESP-IDF pack has an AC-4 switch.** `tools/packaging/pack_esp_component.py --with-ac4` stages
+  `src/ac4`, `src/ac4core` and `src/ac4dec` beside the trees of `STAGED_TREES`, and the root
+  `CMakeLists.txt`'s `AC3FORGE_MINIMAL_AC4` builds the same three as static archives with the
+  minimum-footprint profile's options (D14b). Stage S2's ESP-IDF pack and its `--verify` cover them.
+- **The open branches have merged.** Seven of the branches in the table under
+  [the migration plan](#f-the-migration-plan) merged (#1123, #1118, #1119, #1117, #1113, #1112 and
+  #1109). Of the branches the study measured, `feature/truehd-atmos-support` is the one still
+  unmerged: 23 commits ahead of `main` and 1,280 behind it on 2026-09-30.
