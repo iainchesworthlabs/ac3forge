@@ -116,7 +116,7 @@ Thresholds separate expected run-to-run variation from regressions:
 | --- | --- | --- |
 | Noise | Under ~3%, or inside the run-to-run spread | Reported as unchanged |
 | Soft | 20% slower, or 0.5 dB of quality lost | Warning on the run; merge proceeds |
-| Hard | **Twice** as slow, or a gate floor breached | **Fails the build** |
+| Hard | **Twice** as slow, quality 10 dB below its trailing average (3 dB for AC-4), or a gate floor breached | **Fails the build** |
 
 Quality is gated **per channel**, not once per file. Each channel of each
 fixture has its own floor, derived from that channel's own lowest measurement
