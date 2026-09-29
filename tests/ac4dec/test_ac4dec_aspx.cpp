@@ -13,16 +13,19 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <complex>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <span>
+#include <type_traits>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
 
+#include "ac3/internal/scalar_math.hpp"
 #include "pcm/aspx.hpp"
 #include "pcm/companding.hpp"
 #include "tables/qmf_tables.hpp"
@@ -323,4 +326,65 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
     CHECK(std::abs(static_cast<double>(slot(10, 0).real()) - 1100.0 * average) <
           kRelativeTolerance * 1100.0 * average);
     CHECK(slot(35, 0) == before[static_cast<std::size_t>(35 + aspx::kTsOffsetHfadj) * 64]);
+}
+
+TEST_CASE("companding's gains are libm's at double and the project's own functions at float",
+          "[ac4dec][aspx]") {
+    // The same slots as above, whose level is exact in Real (a sum of 36 equal integers), so that
+    // the gain is the only inexact step. At double the gain is std::pow and G is std::exp2, as
+    // they always were; at float they are 2^(e log2 L) and 2^(1 / alpha) through
+    // ac3::internal::scalar_exp2 and scalar_log2, plain float multiplies and adds, and the
+    // samples that come out are pinned to the bit: the C libraries' powf and exp2f differ in
+    // the last bit on some inputs, and a Cortex-M3 or an ESP32 must give the host's samples
+    // (planning/ac4.md, D14a4).
+    constexpr Real kFullScaleReal = 32768;
+    std::vector<QmfValue> ext(static_cast<std::size_t>(kExtSlots) * 64);
+    const auto slot = [&](int ts, int sb) -> QmfValue& {
+        return ext[static_cast<std::size_t>(ts + aspx::kTsOffsetHfadj) * 64 +
+                   static_cast<std::size_t>(sb)];
+    };
+    for (int ts = 0; ts < kSlots + 6; ++ts) {
+        for (int sb = 0; sb < 64; ++sb) {
+            slot(ts, sb) = QmfValue(static_cast<Real>(100 * (ts + 1)), Real{});
+        }
+    }
+    ac4::detail::CompandingControl control;
+    control.num_chan = 1;
+    control.b_compand_on[0] = true;
+    const std::array<ac4::detail::CompandingChannel, 1> channels{ac4::detail::CompandingChannel{
+        .ext = ext, .sb1 = 36, .interval = {.first = 2, .last = 34}}};
+    ac4::detail::apply_companding(control, 0, kFullScaleReal, channels);
+
+    constexpr Real kAlpha = Real(0.65);
+    constexpr Real kExponent = (Real{1} - kAlpha) / kAlpha;
+    const auto expected = [&](int ts) {
+        const auto sample = static_cast<Real>(100 * (ts + 1));
+        const Real level = Real(0.9105) * (Real(36) * sample) / Real(36) / kFullScaleReal;
+        Real gain{};
+        Real big_g{};
+        if constexpr (std::is_same_v<Real, double>) {
+            gain = std::pow(level, kExponent);
+            big_g = std::exp2(Real{1} / kAlpha);
+        } else {
+            gain = ac3::internal::scalar_exp2(kExponent * ac3::internal::scalar_log2(level));
+            big_g = ac3::internal::scalar_exp2(Real{1} / kAlpha);
+        }
+        return sample * (gain * big_g);
+    };
+    for (int ts = 2; ts < 34; ++ts) {
+        CAPTURE(ts);
+        CHECK(slot(ts, 0).real() == expected(ts));
+        CHECK(slot(ts, 35).real() == expected(ts));
+    }
+    if constexpr (std::is_same_v<Real, float>) {
+        // Outside a template a discarded branch is still compiled: the cast keeps it valid at
+        // double.
+        const auto bits = [&](int ts) {
+            return std::bit_cast<std::uint32_t>(static_cast<float>(slot(ts, 0).real()));
+        };
+        CHECK(bits(2) == 0x42845e7cU);
+        CHECK(bits(9) == 0x43d2f033U);
+        CHECK(bits(17) == 0x4482436dU);
+        CHECK(bits(33) == 0x452d4551U);
+    }
 }

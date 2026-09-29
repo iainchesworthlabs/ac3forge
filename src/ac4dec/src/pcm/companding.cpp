@@ -4,7 +4,10 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <type_traits>
 #include <vector>
+
+#include "ac3/internal/scalar_math.hpp"
 
 namespace ac4::detail {
 namespace {
@@ -40,8 +43,24 @@ constexpr int kMaxSlots = 64;
 // L^((1 - alpha) / alpha). The text prints the average gain's exponent as
 // "1alpha / alpha"; it is read as the per-slot gain's (src/ac4dec/ERRATA.md,
 // "The companding average").
+//
+// At double this is std::pow, as it always was. At float it is
+// 2^(e log2 L) through ac3::internal's scalar_exp2 and scalar_log2, which are
+// plain float multiplies and adds: the C libraries' powf differ in the last
+// bit on some inputs, a gain that differs in its last bit scales every slot of
+// the interval, and the synthesis bank spreads the difference over the frame,
+// so that the host, the Cortex-M3 leg and the ESP32s each gave a PCM of their
+// own for a companded stream (planning/ac4.md, D14a4). A slot with no level
+// gets no gain, as pow gives it.
 [[nodiscard]] Real gain_of(Real level) noexcept {
-    return std::pow(level, (Real{1} - kAlpha) / kAlpha);
+    if constexpr (std::is_same_v<Real, double>) {
+        return std::pow(level, (Real{1} - kAlpha) / kAlpha);
+    } else {
+        constexpr Real kExponent = (Real{1} - kAlpha) / kAlpha;
+        return level > Real{}
+                   ? ac3::internal::scalar_exp2(kExponent * ac3::internal::scalar_log2(level))
+                   : Real{};
+    }
 }
 
 void scale(const CompandingChannel& channel, int sb0, int ts, Real factor) noexcept {
@@ -60,7 +79,7 @@ void scale(const CompandingChannel& channel, int sb0, int ts, Real factor) noexc
 
 void apply_companding(const CompandingControl& control, int sb0, Real full_scale,
                       std::span<const CompandingChannel> channels) {
-    const Real big_g = std::exp2(Real{1} / kAlpha);
+    const Real big_g = ac3::internal::scalar_exp2(Real{1} / kAlpha);
     std::vector<std::array<Real, kMaxSlots>> level(channels.size());
     std::vector<std::array<Real, kMaxSlots>> gain(channels.size());
     for (std::size_t c = 0; c < channels.size(); ++c) {

@@ -36,14 +36,26 @@
 // Output m stands for the input at (m + 1) * down / up - 1 - taps() / 2 input
 // samples, so the converter delays by taps() / 2 + 1 - down / up input
 // samples, a fraction of a sample included (delay()).
+//
+// The scalar. The table is designed in double, whatever it is kept in: the
+// window, the sinc and each phase's normalisation are computed at double, and
+// a filter whose Coefficient is float rounds each phase to float once, as it
+// is built. A converter that runs at float (the decoder in the float tier, on
+// the ESP32-P4, whose FPU is single precision and where a double multiply and
+// add is a call to a software routine) then sums float products of float
+// history, in the order of the taps, so its output is the same float on every
+// platform; a converter at double, the encoder's and the decoder's in the
+// default build, sums double products of the double table as it always did
+// (planning/ac4.md, D14a4).
 
 namespace ac4::detail::dsp {
 
-class ResamplerFilter {
+template <typename Coefficient>
+class BasicResamplerFilter {
    public:
     // A converter from one rate to that rate times up / down; up and down need
     // not be reduced, and a ratio of 1 gives a filter of one tap that copies.
-    ResamplerFilter(int up, int down);
+    BasicResamplerFilter(int up, int down);
 
     [[nodiscard]] int up() const noexcept { return up_; }
     [[nodiscard]] int down() const noexcept { return down_; }
@@ -58,7 +70,7 @@ class ResamplerFilter {
     // The taps() coefficients for an output that falls p / up() of an input
     // sample past its taps' centre, 0 <= p < up(): coefficient k weights input
     // sample start + k, where the output's taps start (see the header comment).
-    [[nodiscard]] std::span<const double> phase(int p) const noexcept;
+    [[nodiscard]] std::span<const Coefficient> phase(int p) const noexcept;
 
     // The converter's delay, in input samples.
     [[nodiscard]] double delay() const noexcept;
@@ -69,13 +81,19 @@ class ResamplerFilter {
     int taps_ = 1;
     double passband_ = 0.5;
     double stopband_ = 0.5;
-    std::vector<double> table_;  // up_ phases of taps_ coefficients
+    std::vector<Coefficient> table_;  // up_ phases of taps_ coefficients
 };
+
+// The filter at double: the design itself, as the encoder's converters and the
+// tests take it.
+using ResamplerFilter = BasicResamplerFilter<double>;
+
+extern template class BasicResamplerFilter<Real>;
 
 template <typename Real>
 class Resampler {
    public:
-    explicit Resampler(std::shared_ptr<const ResamplerFilter> filter);
+    explicit Resampler(std::shared_ptr<const BasicResamplerFilter<Real>> filter);
 
     // Forgets the input: silence before the next input sample, which is taken
     // to be input sample `inputs_before` of the grid, so that the outputs
@@ -93,14 +111,14 @@ class Resampler {
     // How many outputs the next `count` input samples will complete.
     [[nodiscard]] std::size_t outputs_for(std::size_t count) const noexcept;
 
-    [[nodiscard]] const ResamplerFilter& filter() const noexcept { return *filter_; }
+    [[nodiscard]] const BasicResamplerFilter<Real>& filter() const noexcept { return *filter_; }
 
    private:
-    std::shared_ptr<const ResamplerFilter> filter_;
+    std::shared_ptr<const BasicResamplerFilter<Real>> filter_;
     std::int64_t inputs_ = 0;   // input samples taken, on the grid
     std::int64_t outputs_ = 0;  // output samples given, on the grid
     std::int64_t first_ = 0;    // the grid number of history_[0]
-    std::vector<double> history_;
+    std::vector<Real> history_;
 };
 
 extern template class Resampler<Real>;

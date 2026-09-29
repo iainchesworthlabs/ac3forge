@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <span>
@@ -22,6 +23,11 @@
 namespace {
 
 namespace dsp = ac4::detail::dsp;
+
+// The decoder's scalar: float in a float build, where the converter's table is
+// kept and its dot product run at float, and double otherwise.
+using Real = ac4::detail::Real;
+using RealFilter = dsp::BasicResamplerFilter<Real>;
 
 struct Rate {
     int index;
@@ -301,6 +307,80 @@ TEST_CASE("the converter delays by the delay() it states", "[ac4core][dsp][src]"
         const double start = static_cast<double>(skip) * to_out;
         const double delay = start + tone.phase / (2.0 * std::numbers::pi * f);
         CHECK(std::abs(delay - filter->delay()) < 1e-4);
+    }
+}
+
+TEST_CASE("the converter's table is the double design rounded once to the scalar it runs at",
+          "[ac4core][dsp][src]") {
+    const auto epsilon = static_cast<double>(std::numeric_limits<Real>::epsilon());
+    for (const Rate& rate : {kRates[1], kRates[2], kRates[0]}) {
+        CAPTURE(rate.index);
+        const dsp::ResamplerFilter design(rate.up, rate.down);
+        const RealFilter kept(rate.up, rate.down);
+        REQUIRE(kept.up() == design.up());
+        REQUIRE(kept.down() == design.down());
+        REQUIRE(kept.taps() == design.taps());
+        CHECK(kept.delay() == design.delay());
+        bool rounded_once = true;
+        double worst_sum = 0.0;
+        for (int p = 0; p < design.up(); ++p) {
+            const std::span<const double> exact = design.phase(p);
+            const std::span<const Real> stored = kept.phase(p);
+            REQUIRE(stored.size() == exact.size());
+            double sum = 0.0;
+            for (std::size_t k = 0; k < exact.size(); ++k) {
+                rounded_once = rounded_once && stored[k] == static_cast<Real>(exact[k]);
+                sum += static_cast<double>(stored[k]);
+            }
+            worst_sum = std::max(worst_sum, std::abs(sum - 1.0));
+        }
+        CHECK(rounded_once);
+        // A phase still sums to 1 to the scalar's precision: a constant passes unchanged.
+        CHECK(worst_sum < epsilon * design.taps());
+    }
+}
+
+TEST_CASE("the converter at the decoder's scalar follows the double converter to that scalar",
+          "[ac4core][dsp][src]") {
+    const auto epsilon = static_cast<double>(std::numeric_limits<Real>::epsilon());
+    for (const Rate& rate : {kRates[1], kRates[2], kRates[0]}) {
+        CAPTURE(rate.index);
+        const auto design = std::make_shared<const dsp::ResamplerFilter>(rate.up, rate.down);
+        const auto kept = std::make_shared<const RealFilter>(rate.up, rate.down);
+        dsp::Resampler<double> reference(design);
+        dsp::Resampler<Real> converter(kept);
+        // A broadband signal at the QMF domain's full scale, 2^15: two tones and noise,
+        // handed to both as the same numbers.
+        std::uint32_t state = 20260930U;
+        double peak = 0.0;
+        double worst = 0.0;
+        std::size_t count = 0;
+        std::size_t n = 0;
+        for (int t = 0; t < 6; ++t) {
+            std::vector<Real> in(static_cast<std::size_t>(rate.frame));
+            std::vector<double> in_double(in.size());
+            for (std::size_t i = 0; i < in.size(); ++i, ++n) {
+                state = state * 1664525U + 1013904223U;
+                const double noise = (static_cast<double>(state >> 8U) / 16777216.0 - 0.5) * 6000.0;
+                const double value = 16000.0 * std::sin(0.11 * static_cast<double>(n)) +
+                                     9000.0 * std::cos(1.7 * static_cast<double>(n)) + noise;
+                in[i] = static_cast<Real>(value);
+                in_double[i] = static_cast<double>(in[i]);
+            }
+            std::vector<double> want;
+            std::vector<Real> got;
+            reference.process(in_double, want);
+            converter.process(in, got);
+            REQUIRE(got.size() == want.size());
+            for (std::size_t i = 0; i < want.size(); ++i) {
+                peak = std::max(peak, std::abs(want[i]));
+                worst = std::max(worst, std::abs(want[i] - static_cast<double>(got[i])));
+            }
+            count += want.size();
+        }
+        CAPTURE(peak, worst, count);
+        CHECK(count > 10'000);
+        CHECK(worst <= 32.0 * epsilon * peak);
     }
 }
 
