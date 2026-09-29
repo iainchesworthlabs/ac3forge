@@ -1461,8 +1461,9 @@ and no fixed-point tier exists for AC-4 yet. What is checked:
   encoder's output is byte-identical on the five encodes checked, so nothing of the encoder's was
   re-pinned.
 - **The bare-metal probe** (`tools/checks/run_baremetal_probe.sh --ac4`, in the ESP lane's
-  `build-footprint` job, which runs after a merge that changes the lane's own tree and nightly):
-  five committed streams (2.0 from DEE with A-SPX, 2.0 constructed in A-CPL, 5.1 from DEE, 5.1
+  `build-footprint` job, which the run after a merge lights for a change to the lane's trees
+  ([CI lane partitions](ci-lanes.md)) and the nightly run lights always): five committed streams
+  (2.0 from DEE with A-SPX, 2.0 constructed in A-CPL, 5.1 from DEE, 5.1
   constructed in A-CPL and DEE's 5.1.4 tones; `apps/baremetal/ac4_fixture.hpp`, made by
   `tools/generators/gen_baremetal_ac4_fixture.py`) decode in float on the Cortex-M3 leg under QEMU
   with each channel's level checked, and the image, the peak heap, the allocations a frame, the
@@ -1470,8 +1471,9 @@ and no fixed-point tier exists for AC-4 yet. What is checked:
   figures; `--icount` counts instructions a frame the same way. The PCM of every fixture is
   bit-identical between the x86-64 host (GCC 16, SSE) and the Cortex-M3 (soft float, the generic
   seam), and the hashes are pinned in `tests/golden/ac4-probe-pcm-hashes.json`
-  (`tools/checks/check_probe_hashes.py`). The rows are in
-  [Performance trend](performance-trend.md#the-ac-4-decoder).
+  (`tools/checks/check_probe_hashes.py`). The `linux-gcc` leg also runs the probe natively on
+  x86-64 after a merge and in the nightly run, and holds its hashes to the same pins. The rows are
+  in [Performance trend](performance-trend.md#the-ac-4-decoder).
 - **On the ESP32-P4** (phase D14b, `CONFIG_AC3FORGE_AC4`): no QEMU runs the P4, so CI builds
   `hearth_sink` with AC-4 in it and does not run it, and the checks are on a board. Twenty plays
   of DEE's streams (2.0, 5.1 and 5.1.4 in full decoding, the three 5.1.4 modes in core decoding and
