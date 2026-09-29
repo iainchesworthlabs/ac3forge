@@ -13,7 +13,8 @@ phases are not built.
   streams it names; the P4 page's AC-4 section has one E-AC-3 7.1.4 play, `714-walk`, at 0.38 of
   a frame.
 - **P2** does not apply to that board, which has no Ethernet PHY.
-- **C61** is not started: there is no C61 board and no C61 code in the tree.
+- **C61** is not started: there is no C61 board, and the tree has no C61 probe or sink shape. The
+  chip appears only in the chip-name tables of `ota.py` and the firmware code.
 - **AC-4** decodes on the P4 behind `CONFIG_AC3FORGE_AC4` (D14b of [`ac4.md`](ac4.md)), in real
   time for 2.0 in the SIMPLE and A-SPX modes and for nothing wider. The S3 and C6 parts of that
   phase (D14c, D14d) and AC-4 in a Sendspin group (I6) are not built.
@@ -31,7 +32,7 @@ die has no PSRAM controller; see [ESP32-C6 → Status](../docs/platforms/bare-me
 and "Why C61 is proposed" below). C6 drops from **good** to **OK**: its ceiling is relabelled,
 not its capability — nothing about the shipped C6 sink changed. **Good** now names C61, a
 shipping, PSRAM-capable chip, proposed the same way P4 was: unmeasured, gated, exit criteria
-written down before hardware is on order. Nothing for the C61 has been added to the tree since.
+written down before hardware is on order. No C61 probe or sink shape has been added since.
 
 ## Product shape
 

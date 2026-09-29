@@ -46,7 +46,7 @@ both DACs @ 16-bit) · **best** P4 (9.1.6 + full tools desired, both DACs @ 32-b
 Study:
 [`planning/esp32-sink-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-sink-tiers.md).
 
-**Not built:** the C61 tier (no board, no code); TDM on the P4, which this board's revision v1.3
+**Not built:** the C61 tier (no board, no probe, no sink shape); TDM on the P4, which this board's revision v1.3
 chip cannot open above two channels; the ES9080 pair and its PCB.
 
 **Done:** ESP32-P4 probe and board timing table, no network (tier study P1) — real time on every
