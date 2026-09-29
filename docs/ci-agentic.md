@@ -64,12 +64,16 @@ packaging consistency, the fixture corpus, the quarantine check and patch attrib
 check runs even when an earlier one failed, so one run lists every failure.
 
 The build goes through ccache and runs ctest in three phases. The Catch2 cases run in parallel.
-The Qt Quick suites (`*_qml_tests_*`) then run one at a time, as a precaution: they drive a
-software-rendered window with mouse clicks and timed waits. Nothing has shown that running them
-beside other tests breaks them. The throughput guards (label `Performance`) run alone last. A failing case is retried once, and a
+The Qt Quick suites (`*_qml_tests_*`) then run in a phase of their own, `ctest-qml-jobs` at a time.
+They drive a software-rendered window with mouse clicks and timed waits, so the default is one at
+a time; nothing has shown that overlapping them breaks them, and the gate currently runs them at
+the CPU count to find out, because that phase is the longest part of a warm run. The throughput
+guards (label `Performance`) run alone last. A failing case is retried once, and a
 case that fails and then passes is reported as a warning, since that can be two tests sharing a
 resource. When a run fails, its summary page lists the compiler errors or the failed tests and the
-command that reproduces them.
+command that reproduces them. The checks that only need the built binaries (the gold-reference
+gate, the GUI smoke test, the translation checks) run whenever the build succeeded, even if a test
+failed, so one run reports every failure.
 
 To get more than the gate before merging (an ESP-IDF, Android or WASM change, a sanitizer
 question), dispatch the full matrix on the branch: `gh workflow run ci.yml --ref <branch>`.

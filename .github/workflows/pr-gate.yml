@@ -281,8 +281,14 @@ jobs:
       # post-merge leg uses. Two things differ from those legs, both opt-in:
       # the compiler goes through ccache (saved only by a run on main or a
       # dispatch that asks), and ctest runs in parallel with one retry for a
-      # failing case.
-      - uses: ./.github/actions/build-leg
+      # failing case. The Qt Quick suites run at the CPU count too, which is a
+      # measurement: they took 4 to 7 minutes one at a time, the longest part of
+      # a warm run. If they prove flaky side by side, set ctest-qml-jobs to 1.
+      #
+      # The steps after it run whenever the build succeeded, tests red or not
+      # (`built`), so one run reports every failure.
+      - id: leg
+        uses: ./.github/actions/build-leg
         with:
           preset: linux-gcc
           gui: ${{ needs.plan.outputs.gui }}
@@ -296,8 +302,10 @@ jobs:
           ccache: "true"
           ccache-save: ${{ (github.event_name == 'push' || inputs.save_cache) && 'true' || 'false' }}
           ctest-jobs: auto
+          ctest-qml-jobs: auto
 
       - name: Gold reference gate
+        if: ${{ !cancelled() && steps.leg.outputs.built == 'true' }}
         uses: ./.github/actions/gold-reference-gate
         with:
           preset: linux-gcc
@@ -306,7 +314,7 @@ jobs:
       # ac3gui starts, loads its QML and drives a real encode through the Qt
       # event loop. offscreen needs no display.
       - name: Smoke test ac3gui (headless)
-        if: needs.plan.outputs.gui == 'true'
+        if: ${{ !cancelled() && steps.leg.outputs.built == 'true' && needs.plan.outputs.gui == 'true' }}
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
@@ -322,7 +330,7 @@ jobs:
       # a catalogue. Here rather than only after the merge because a Hearth or
       # GUI pull request is where it happens.
       - name: Check translations are up to date
-        if: needs.plan.outputs.gui == 'true'
+        if: ${{ !cancelled() && steps.leg.outputs.built == 'true' && needs.plan.outputs.gui == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -378,7 +386,11 @@ jobs:
           cache: true
           setup-python: false
 
-      - uses: ./.github/actions/build-leg
+      # Same shape as the Linux job's: the steps after it run whenever the build
+      # succeeded, and the Qt Quick suites run at the CPU count as a measurement
+      # (a cold run took 401 s for them one at a time on Windows).
+      - id: leg
+        uses: ./.github/actions/build-leg
         with:
           preset: windows-msvc
           # AC3FORGE_BUILD_GUI is already ON in both Windows presets.
@@ -393,8 +405,10 @@ jobs:
           ccache: "true"
           ccache-save: ${{ (github.event_name == 'push' || inputs.save_cache) && 'true' || 'false' }}
           ctest-jobs: auto
+          ctest-qml-jobs: auto
 
       - name: Gold reference gate
+        if: ${{ !cancelled() && steps.leg.outputs.built == 'true' }}
         uses: ./.github/actions/gold-reference-gate
         with:
           preset: windows-msvc
@@ -405,6 +419,7 @@ jobs:
       # this repository moves its pin). -I drops the hunks made only of line
       # numbers: those change whenever a line is added above a qsTr().
       - name: Check the Hearth translations are up to date
+        if: ${{ !cancelled() && steps.leg.outputs.built == 'true' }}
         shell: bash
         run: |
           set -euo pipefail

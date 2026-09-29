@@ -71,14 +71,32 @@ inputs:
     description: >-
       Empty (the default) runs ctest serially, exactly as before. A number, or
       'auto' for the runner's CPU count, runs the Catch2 cases in parallel. The
-      Qt Quick suites (`_qml_tests_`) then run one at a time, as a precaution
-      (they are timing-sensitive UI tests), and the throughput guards (label
-      Performance) run alone after that, because a real-time assertion measured
-      beside eight other tests measures the neighbours. A failing test is retried
-      once (`--repeat until-pass:2`) and the run says so, so a collision between
+      Qt Quick suites (`_qml_tests_`) then run in a phase of their own (see
+      ctest-qml-jobs), and the throughput guards (label Performance) run alone
+      after that, because a real-time assertion measured beside eight other
+      tests measures the neighbours. A failing test is retried once
+      (`--repeat until-pass:2`) and the run says so, so a collision between
       tests cannot block a merge unseen. Failures are summarised on the run's
       summary page with the command that reproduces each.
     default: ""
+  ctest-qml-jobs:
+    description: >-
+      How many Qt Quick suites run at once in their own phase, when ctest-jobs is
+      set. The default, 1, runs them one at a time as a precaution: they drive a
+      software-rendered window with mouse clicks and timed waits. A number, or
+      'auto' for the runner's CPU count, lets them overlap. The phase is the
+      longest part of a warm run, so whether they can is worth measuring.
+    default: "1"
+
+outputs:
+  built:
+    description: >-
+      'true' once the Build step has succeeded, even if a later step (the
+      tests) failed. A caller uses it to run the checks that only need the built
+      binaries (the gold-reference gate, the GUI smoke test, the translation
+      check) when the tests are red, so one run reports every failure and a red
+      test does not hide a second problem behind it.
+    value: ${{ steps.built.outputs.done }}
 
 runs:
   using: composite
@@ -332,6 +350,12 @@ runs:
         # agent to find the one compiler error in a thousand lines of ninja.
         cmake --build --preset "build-$LEG_PRESET" -- -k 0 2>&1 | tee "${RUNNER_TEMP}/build.log"
 
+    # Runs only if Build succeeded; see the `built` output above.
+    - name: Record that the build succeeded
+      id: built
+      shell: bash
+      run: echo "done=true" >> "$GITHUB_OUTPUT"
+
     # What the cache bought this run, on the run's summary page, and the miss
     # count the save step below keys off: a run that compiled nothing new has
     # nothing worth uploading.
@@ -377,6 +401,7 @@ runs:
       env:
         LEG_PRESET: ${{ inputs.preset }}
         CTEST_JOBS: ${{ inputs.ctest-jobs }}
+        CTEST_QML_JOBS: ${{ inputs.ctest-qml-jobs }}
         AC3FORGE_REQUIRE_AVX2: ${{ inputs.preset == 'linux-llvm-asan-ubsan' && '1' || '' }}
       run: |
         set -euo pipefail
@@ -392,21 +417,23 @@ runs:
         #    running them side by side safe. A failing case is retried once and
         #    the retry is reported, so a collision that slipped through shows up
         #    as a warning instead of an unexplained red.
-        # 2. One at a time, for the Qt Quick suites (ac3gui_, ac3hearth_ and
-        #    ac3crucible_qml_tests_*), as a precaution. They drive a
-        #    software-rendered window with mouse clicks and 5 to 10 second
-        #    tryVerify windows, and a suite's own comments say a click can be
-        #    lost while a delegate is rebuilt. Nothing has shown that running
-        #    them beside other tests breaks them: the two Hearth suites that
-        #    failed in this gate's first runs (settings_page and network_pairing)
-        #    fail the same way on the fleet with serial ctest, on main itself.
-        #    If a later run shows they are safe in parallel, drop this phase.
+        # 2. The Qt Quick suites (ac3gui_, ac3hearth_ and ac3crucible_qml_tests_*),
+        #    in a phase of their own, at ctest-qml-jobs at a time (default one).
+        #    They drive a software-rendered window with mouse clicks and 5 to 10
+        #    second tryVerify windows, and a suite's own comments say a click
+        #    can be lost while a delegate is rebuilt, so one at a time is the
+        #    precaution. Nothing has shown that running them beside other tests
+        #    breaks them: the two Hearth suites that failed in this gate's first
+        #    runs (settings_page and network_pairing) fail the same way on the
+        #    fleet with serial ctest, on main itself. The phase is the longest
+        #    part of a warm run, which is why the setting exists.
         # 3. Alone, for the throughput guards: a real-time assertion measured
         #    beside seven other tests measures them.
+        cpus="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-2}")"
         jobs="$CTEST_JOBS"
-        if [ "$jobs" = "auto" ]; then
-          jobs="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo "${NUMBER_OF_PROCESSORS:-2}")"
-        fi
+        if [ "$jobs" = "auto" ]; then jobs="$cpus"; fi
+        qml_jobs="${CTEST_QML_JOBS:-1}"
+        if [ "$qml_jobs" = "auto" ]; then qml_jobs="$cpus"; fi
         log="${RUNNER_TEMP}/ctest.log"
         : > "$log"
         rc=0
@@ -414,7 +441,7 @@ runs:
           | tee -a "$log" || rc=$?
         # --no-tests=ignore on the other two, since a preset may build no Qt
         # (the sanitizer legs) or no ac3perf target.
-        ctest --preset "test-$LEG_PRESET" --repeat until-pass:2 -R '_qml_tests_' --no-tests=ignore 2>&1 \
+        ctest --preset "test-$LEG_PRESET" -j "$qml_jobs" --repeat until-pass:2 -R '_qml_tests_' --no-tests=ignore 2>&1 \
           | tee -a "$log" || rc=$?
         ctest --preset "test-$LEG_PRESET" -L Performance --no-tests=ignore 2>&1 \
           | tee -a "$log" || rc=$?
