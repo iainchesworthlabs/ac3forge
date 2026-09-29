@@ -32,12 +32,13 @@ Measured over 3.5 days in September 2026, across 300 runs of `ci.yml` and about 
 | Before a push | by hand | `python tools/ci/precheck.py`: the static checks that need no build, and the gate's plan for the diff | your machine |
 | Pull request | every push to the branch | [`pr-gate.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/pr-gate.yml): static checks, then Linux GCC build, every ctest case and the gold-reference gate | GitHub-hosted |
 | Merge queue | each queue entry | the same on the merged tree, with the Qt GUI always built, plus Windows MSVC | GitHub-hosted |
-| main | every push to main, one at a time | [`ci.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/ci.yml): the full matrix, then [`main-health.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/main-health.yml) | the fleet, plus hosted for macOS, arm64 and the satellites |
+| After a merge | every push to main, one at a time | [`ci.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/ci.yml), tier `t2`: the legs and lanes a merge can break (see [The tiers](#the-tiers)), then [`main-health.yml`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/workflows/main-health.yml) | the fleet, plus hosted for macOS, arm64 and the satellites |
+| Nightly | 19:47 UTC (05:47 in Sydney), and on request | `ci.yml`, tier `all`: every leg with every extra pass, every lane | the same |
 
 A Linux gate cannot see another compiler, another operating system, an architecture, the
-sanitizers or a QEMU board. Those are covered by the run on main. The trade is deliberate: the
-gate finishes in minutes and stays cheap, and a failure only the full matrix finds is
-attributed to the merges that could have caused it.
+sanitizers or a QEMU board. The run after a merge covers the first three and the nightly run the
+rest. The trade is deliberate: the gate finishes in minutes and stays cheap, and a failure only a
+later stage finds is attributed to the merges that could have caused it.
 
 ## The pull-request gate
 
@@ -80,7 +81,11 @@ gate, the GUI smoke test, the translation checks) run whenever the build succeed
 failed, so one run reports every failure.
 
 To get more than the gate before merging (an ESP-IDF, Android or WASM change, a sanitizer
-question), dispatch the full matrix on the branch: `gh workflow run ci.yml --ref <branch>`.
+question), dispatch the full matrix on the branch: `gh workflow run ci.yml --ref <branch>`. A full
+run holds a dozen or more hosted runners for most of an hour, and the gate of every other pull
+request waits behind them, so when a change touches only how some builds are made, name the
+legs instead: `gh workflow run ci.yml --ref <branch> -f legs=linux-llvm,macos-llvm`. Only those
+builds run. The names are the presets in `.github/ci/legs.jsonc`.
 `gh workflow run pr-gate.yml --ref <branch> -f windows=true` adds Windows MSVC to a gate run.
 
 A pull request that was open when this arrived still shows the old `CI Status`. The merge queue
@@ -134,6 +139,65 @@ token that can start workflows, which the built-in one cannot.
 If a comment names your pull request, read the issue and decide: revert with the command it
 gives, or push a fix. A fix goes through the gate like any other change.
 
+## The tiers
+
+`ci.yml` has two tiers. The run after a merge (`t2`) has to be cheap enough to run for every batch
+of merges, so it keeps what a merge can break on the platforms and compilers the project ships,
+and leaves out what is slow or rarely changes. The nightly run (`all`) runs everything, so what
+the first leaves out is found within a day.
+
+| | After a merge | Nightly only |
+|---|---|---|
+| Build legs | Linux GCC and LLVM (x64), Linux GCC (arm64), Windows MSVC and LLVM, macOS arm64 | Linux LLVM (arm64), ASan+UBSan, TSan, Windows MSVC (arm64), macOS x64 |
+| Extra passes inside a leg | | Linux GCC's no-ALSA pass and its float32 and fixed-point variants, Linux LLVM's shared-library pass, macOS packaging |
+| Core jobs | ADM module, Hearth Sendspin, the performance trend | coverage, ABI gate, FFmpeg Validate and the two trend publishers that read it |
+| Other jobs | the lane's own build, when the lane's own tree changed | Linux AppImage, and each satellite (Android, WASM, ESP-IDF, Rust, wheels, npm) whatever changed |
+
+The run after a merge also picks its lanes from what changed. It lists the files merged since
+`verified` (the range a failure is blamed on) and runs the lanes they touch, so a batch of
+documentation or a Python-only change builds little or nothing. A satellite lane runs only when a
+path in its own tree changed: a change to the core library lights the desktop platforms and reaches
+the satellites in the nightly run. Anything the classifier does not recognise, and any change to
+the workflows themselves, lights every lane. With no `verified` ref yet, every lane runs.
+
+To get the nightly tier on a branch before it merges, label the pull request `ci:deep`, or run
+`gh workflow run ci.yml --ref <branch>` (the default tier is `all`). `-f tier=t2` runs the legs the
+run after a merge uses. To run a few legs, name them: `-f legs=linux-llvm-asan-ubsan`. Naming legs
+with `-f tier=t2` runs each as the run after a merge would, without its nightly-only passes, which
+is a cheap way to see what that run will cost a change.
+
+The leg and job placement is a decision, and it is in three places: `tier` and `deep_only` in
+`.github/ci/legs.jsonc`, the `inputs.tier` conditions in `_ci-core.yml` and `_build.yml`, and the
+satellite rule in `classify_changes.py`. Moving something between tiers is a change to one of them.
+
+Two comparisons made only on pull requests, `performance-compare` and `memory-compare` in
+`_ci-core.yml` with their `perf-regression-approved` and `memory-regression-approved` labels, have
+not run since the gate replaced `ci.yml` on pull requests. Their absolute guards still do: `ac3perf`
+runs in the gate, and the performance and memory trend jobs after a merge fail at the same +100%
+thresholds, after the fact. Bringing the comparisons back before the merge would cost two Release
+builds per pull request that touches `src/`, and the compiler cache makes the base build cheap.
+
+## The legs
+
+The build matrix is data. [`.github/ci/legs.jsonc`](https://github.com/iainchesworthlabs/ac3forge/blob/main/.github/ci/legs.jsonc)
+lists every leg of the Linux, Windows and macOS builds, with the flags its steps read and the
+comments that used to sit beside the matrices. [`tools/ci/plan_legs.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/plan_legs.py)
+picks the legs a run needs. The `plan-legs` job in `_build.yml` runs it and passes each platform's
+list to `_ci-linux.yml`, `_ci-windows.yml` or `_ci-macos.yml`, which run it as their matrix. A
+platform with no leg in the run is skipped, because Actions rejects an empty matrix.
+
+Each leg has a `tier`: `t2` for the legs of the run on main after a merge, `deep` for the legs only
+the nightly run has. A `t2` leg can list `deep_only` flags, the slow extra passes its steps test,
+and the run after a merge drops them from the leg. The planner's inputs are `TIER` (`all`, `t2` or
+`deep`) and `LEGS`, a comma-separated list of presets such as `linux-gcc,windows-msvc` that runs
+exactly those legs whatever their tier, with all their passes unless `TIER` is `t2`.
+
+To add a leg, add it to the catalogue with either `runner` (labels as written) or `runner_slot` (a
+`check-runners` output, for a leg that may run on the fleet). `python3 tools/ci/plan_legs.py
+--check` validates the file. The unit tests also check that the platform workflows read no field the
+catalogue lacks and that no leg sets a field the workflows never read, which `actionlint` can no
+longer check now that the matrix arrives at run time.
+
 ## Caches
 
 The gate, the queue and the legs of the run on main restore compiler caches (ccache); only a
@@ -168,16 +232,15 @@ builds without it and says so in a warning.
 | repository variable `CONTROL_RUNNER_JSON` | Control jobs of `ci.yml`, as before. |
 | `pr-gate.yml` input `windows` | Adds Windows MSVC to a dispatched run. |
 | `pr-gate.yml` input `save_cache` | Saves the compiler caches from a dispatched run. |
+| `ci.yml` input `legs` | Comma-separated presets. A dispatch runs exactly those build legs and nothing else. |
+| `ci.yml` input `tier` | `all` (the default) or `t2`: the legs of the run after a merge, without their nightly-only passes. With `legs`, `t2` runs those legs that way. |
+| label `ci:deep` on a pull request | Runs `ci.yml` (tier `all`) on the pull request's branch. Add it again to run it again. The label has to exist in the repository. |
 
 ## Not built yet
 
-`ci.yml` still runs the whole matrix on each batch on main. Planned, in this order:
+Test-level impact selection, from a per-test coverage map built by the nightly coverage run. It
+needs the map first, and the nightly run now produces the coverage it would be built from.
 
-1. A leg catalogue that lets the run on main skip legs, and a scheduled tier for the slow ones:
-   ASan and UBSan, TSan, coverage, macOS x64, the wheels, Android, WASM, Rust, the AppImage and
-   the no-ALSA and shared-library passes, with a `ci:deep` label to run it on a branch.
-2. Test-level impact selection, from a per-test coverage map built by the scheduled coverage run.
-
-The ABI gate rebuilds the last release tag on every run on main, and that build is identical until
-the next release. The gate is advisory before 1.0, so it fits the scheduled tier, where one build
-a day costs little. A cached baseline is worth adding only if it stays on main.
+The ABI gate rebuilds the last release tag on every run, and that build is identical until the
+next release. It runs nightly, where one build a day costs little; a cached baseline is worth
+adding only if the gate moves back to the run after a merge.

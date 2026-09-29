@@ -152,12 +152,40 @@ on:
   # for every push to every pull request, then again in the queue, then again
   # on main, was three validations of the same change - 51% of the compute in
   # the four days before this changed went into runs that were cancelled.
+  #
+  # This run is the "t2" tier (docs/ci-agentic.md, "The tiers"): the build legs
+  # and lanes a merge can break, and none of the slow ones. What it leaves out
+  # runs in the nightly run below.
   push:
     branches: [ main ]
+  # The nightly run: every build leg with every extra pass, and every lane,
+  # including the ones the run after a merge leaves out (the sanitizers,
+  # coverage, the ABI gate, FFmpeg Validate, the wheels, Android, WASM, Rust,
+  # the AppImage, macOS x64). 19:47 UTC is 05:47 in Sydney and Melbourne, when
+  # merges are rare. main-health.yml judges it against its own last green run.
+  schedule:
+    - cron: '47 19 * * *'
   # A branch that wants the full matrix before it merges (a change to ESP-IDF,
   # Android, WASM, the sanitizers) asks for it: `gh workflow run ci.yml --ref
   # <branch>`. A dispatch forces every lane on (see the `changes` job).
+  #
+  # `legs` narrows a dispatch to exactly the build legs it names, by preset:
+  # `gh workflow run ci.yml --ref <branch> -f legs=linux-gcc,windows-msvc` runs
+  # those two builds and nothing else, which is what to ask for when a change
+  # touches only how those legs are built. The presets are in
+  # .github/ci/legs.jsonc. A full run holds a dozen or more hosted runners for
+  # the better part of an hour, and the pull-request gate waits behind them.
   workflow_dispatch:
+    inputs:
+      tier:
+        description: "Which legs of the build matrix run: all (the default) or t2, the ones the run on main runs after a merge, without their nightly-only passes. With `legs`, t2 runs those legs as the run after a merge would."
+        type: choice
+        options: [ all, t2 ]
+        default: all
+      legs:
+        description: "Only these build legs, comma-separated presets (linux-gcc,windows-msvc). Nothing else runs. Empty runs the full matrix."
+        type: string
+        default: ""
 
 concurrency:
   # Main is verified single-flight. One run executes and at most one waits, and
@@ -268,6 +296,9 @@ jobs:
       npm: ${{ steps.detect.outputs.npm }}
       ci_self: ${{ steps.detect.outputs.ci_self }}
       docs: ${{ steps.detect.outputs.docs }}
+      # t2 for the run after a merge, all for the nightly run and a dispatch (or the
+      # tier the dispatch asked for). Passed to _build.yml and _ci-core.yml.
+      tier: ${{ steps.detect.outputs.tier }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -284,14 +315,43 @@ jobs:
           # reasoning as VERSION_TAG_INPUT in
           # .github/actions/build-leg/action.yml's Configure step.
           REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          LEGS: ${{ inputs.legs }}
+          INPUT_TIER: ${{ inputs.tier }}
         shell: bash
         run: |
           set -euo pipefail
           docs_re='^(docs/|LICENSE$|mkdocs\.yml$|requirements/requirements-docs\.(in|txt)$|\.github/workflows/docs\.yml$|.*\.md$)'
 
+          # Which legs of the build matrix run. The run after a merge runs the ones a
+          # merge can break; the nightly run and a dispatch run all of them unless the
+          # dispatch asked for less (docs/ci-agentic.md, "The tiers").
+          tier=all
+          if [ "$EVENT_NAME" = "push" ]; then
+            tier=t2
+          elif [ -n "${INPUT_TIER:-}" ]; then
+            tier="$INPUT_TIER"
+          fi
+          echo "tier=$tier" >> "$GITHUB_OUTPUT"
+          echo "tier=$tier"
+
           if [ "$EVENT_NAME" = "pull_request" ]; then
             files=$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')
+          elif [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; then
+            # Everything merged since the last commit a full run proved. This run is
+            # batched, so it can stand for several merges, and this is the range
+            # main-health.yml blames a failure on. With no `verified` ref yet, or a
+            # range GitHub lists only in part, the list stays empty and every lane runs.
+            files=""
+            verified="$(gh api "repos/$REPO/git/ref/heads/verified" --jq .object.sha 2>/dev/null || true)"
+            if [ -n "$verified" ]; then
+              files="$(gh api --paginate "repos/$REPO/compare/$verified...$SHA" --jq '.files[].filename' 2>/dev/null || true)"
+              if [ "$(printf '%s\n' "$files" | grep -c .)" -ge 3000 ]; then files=""; fi
+              echo "Range since verified ${verified:0:8}: $(printf '%s\n' "$files" | grep -c .) file(s)"
+            else
+              echo "No verified ref yet."
+            fi
           else
             before='${{ github.event.before }}'
             if [ -z "$before" ] || [ "$before" = "0000000000000000000000000000000000000000" ]; then
@@ -316,21 +376,24 @@ jobs:
                 code=true
               fi
             done <<< "$files"
+            # Someone asked for this run, or it is the nightly run. A head commit that
+            # only touched docs is no reason to build nothing.
+            if [ "$EVENT_NAME" = "workflow_dispatch" ] || [ "$EVENT_NAME" = "schedule" ]; then code=true; fi
             echo "code=$code" >> "$GITHUB_OUTPUT"
             echo "code=$code"
           fi
 
-          # A queued or direct-to-main run has no single PR diff to read lanes
-          # from, and the merge queue exists to catch what one PR's own lane
-          # subset could not see - so both force every lane on, same as an
-          # empty file list above. See classify_changes.py's own header.
-          # A manual dispatch forces them too: it is how a branch asks for the
-          # legs a pull_request run defers to the merge queue (see
-          # build-and-test's run_macos below), and a dispatch does not arrive
-          # with an empty file list - it gets its head commit's files, which
-          # would otherwise pick lanes from one commit's diff.
+          # A queue entry has no single PR diff to read lanes from, and the queue
+          # exists to catch what one PR's own lane subset could not see, so it forces
+          # every lane on, same as an empty file list above. See classify_changes.py's
+          # own header. So do the nightly run, which exists to run everything the run
+          # after a merge did not, and a manual dispatch, which is how a branch asks
+          # for the legs a pull_request run defers to the merge queue (see
+          # build-and-test's run_macos below): it gets its head commit's files, which
+          # would otherwise pick lanes from one commit's diff. The run after a merge
+          # does not force: it runs the lanes the merges since `verified` touched.
           if [ "$EVENT_NAME" = "merge_group" ] || [ "$EVENT_NAME" = "workflow_dispatch" ] || \
-             { [ "$EVENT_NAME" = "push" ] && [ "$REF" = "refs/heads/main" ]; }; then
+             [ "$EVENT_NAME" = "schedule" ]; then
             force_lanes=true
           fi
 
@@ -338,7 +401,20 @@ jobs:
           if [ "$force_lanes" = true ]; then
             classify_args+=(--force-all)
           fi
-          echo "$files" | python3 tools/ci/classify_changes.py "${classify_args[@]}" >> "$GITHUB_OUTPUT"
+          # The run after a merge runs a satellite lane (Android, WASM, ESP-IDF, Rust,
+          # wheels, npm) only for a change in its own tree; a core change reaches them
+          # in the nightly run.
+          if [ "$tier" = t2 ]; then
+            classify_args+=(--satellites-direct)
+          fi
+          if [ -n "${LEGS:-}" ]; then
+            # A dispatch that names exact build legs runs those and nothing else:
+            # every lane is off but the platforms the legs are on. A preset that
+            # is not in .github/ci/legs.jsonc stops the run here, with the list.
+            python3 tools/ci/plan_legs.py --lanes >> "$GITHUB_OUTPUT"
+          else
+            echo "$files" | python3 tools/ci/classify_changes.py "${classify_args[@]}" >> "$GITHUB_OUTPUT"
+          fi
 
   # CI lane partitions plan (docs/ci-lanes.md): coverage, the ADM module
   # build, the PR-time performance/memory comparisons and gates, the ABI
@@ -364,6 +440,7 @@ jobs:
       runner: ${{ needs.check-runner.outputs.runner }}
       vcpkg_commit: ${{ needs.toolchain-versions.outputs.vcpkg_commit }}
       llvm_version: ${{ needs.toolchain-versions.outputs.llvm_version }}
+      tier: ${{ needs.changes.outputs.tier }}
 
   # CI lane partitions plan (docs/ci-lanes.md), fold-satellites phase:
   # wheels.yml/npm.yml/esp-component.yml were each triggered independently
@@ -450,7 +527,7 @@ jobs:
       # this caller site is the unambiguous place to ask "is this a direct
       # push to main" - see persist_quality_trend's own
       # description in _build.yml.
-      persist_quality_trend: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+      persist_quality_trend: ${{ (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == 'refs/heads/main' }}
       quality_trend_branch: ${{ github.ref_name }}
       # CI lane partitions (docs/ci-lanes.md): the `changes` job's own
       # per-lane outputs, `== 'true'` the same way every other job in this
@@ -483,6 +560,11 @@ jobs:
       run_wasm: ${{ needs.changes.outputs.wasm == 'true' && github.event_name != 'pull_request' }}
       run_esp: ${{ needs.changes.outputs.esp == 'true' }}
       run_rust: ${{ needs.changes.outputs.rust == 'true' && github.event_name != 'pull_request' }}
+      # Which legs of .github/ci/legs.jsonc the platform builds run: the `changes`
+      # job's tier (t2 after a merge, all otherwise unless a dispatch asked for less),
+      # or exactly the legs a dispatch named.
+      tier: ${{ needs.changes.outputs.tier }}
+      legs: ${{ inputs.legs }}
     secrets:
       # Forward the Atmos object-signing key so build-android bundles it and the
       # Shield app signs whenever the secret is set - on ordinary CI builds too,

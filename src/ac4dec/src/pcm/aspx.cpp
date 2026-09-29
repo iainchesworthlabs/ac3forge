@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <memory>
 
 #include "ac4/detail/profiling.hpp"
 #include "tables/qmf_tables.hpp"
@@ -215,14 +216,15 @@ void dequantise_balance(const AspxChannel& c, const aspx::SubbandGroups& g, Enve
 }
 
 // Per envelope and A-SPX subband (sb counted from sbx).
-using EnvelopeMatrix = std::array<std::array<Real, kSubbands>, kMaxEnv>;
+using EnvelopeMatrix = AspxScratch::EnvelopeMatrix;
 
 // Pseudocodes 90 to 108 and clause 5.7.6.5.3 for one channel whose
 // envelopes are decoded.
 class ChannelAssembly {
    public:
     ChannelAssembly(const AspxFrame& frame, const aspx::SubbandGroups& groups,
-                    const aspx::PatchTables& patches, AspxChannelIo& io, const Envelopes& envelopes)
+                    const aspx::PatchTables& patches, AspxChannelIo& io, const Envelopes& envelopes,
+                    AspxScratch& scratch)
         : frame_(frame),
           g_(groups),
           p_(patches),
@@ -230,7 +232,25 @@ class ChannelAssembly {
           c_(*io.data),
           f_(io.data->framing),
           st_(*io.state),
-          e_(envelopes) {}
+          e_(envelopes),
+          est_sig_(scratch.est_sig),
+          scf_sig_(scratch.scf_sig),
+          scf_noise_(scratch.scf_noise),
+          sine_idx_(scratch.sine_idx),
+          sine_area_(scratch.sine_area),
+          sine_lev_(scratch.sine_lev),
+          noise_lev_(scratch.noise_lev),
+          sig_gain_(scratch.sig_gain) {
+        // Each channel starts from zeros.
+        est_sig_ = {};
+        scf_sig_ = {};
+        scf_noise_ = {};
+        sine_idx_ = {};
+        sine_area_ = {};
+        sine_lev_ = {};
+        noise_lev_ = {};
+        sig_gain_ = {};
+    }
 
     void run(std::vector<QmfValue>& q_high, std::vector<QmfValue>& y);
 
@@ -262,14 +282,15 @@ class ChannelAssembly {
     const Envelopes& e_;
 
     int p_sine_at_end_ = -1;
-    EnvelopeMatrix est_sig_{};
-    EnvelopeMatrix scf_sig_{};
-    EnvelopeMatrix scf_noise_{};
-    std::array<std::array<bool, kSubbands>, kMaxEnv> sine_idx_{};
-    std::array<std::array<bool, kSubbands>, kMaxEnv> sine_area_{};
-    EnvelopeMatrix sine_lev_{};
-    EnvelopeMatrix noise_lev_{};
-    EnvelopeMatrix sig_gain_{};
+    // The caller's scratch (AspxScratch), by the names the assembly uses.
+    EnvelopeMatrix& est_sig_;
+    EnvelopeMatrix& scf_sig_;
+    EnvelopeMatrix& scf_noise_;
+    AspxScratch::FlagMatrix& sine_idx_;
+    AspxScratch::FlagMatrix& sine_area_;
+    EnvelopeMatrix& sine_lev_;
+    EnvelopeMatrix& noise_lev_;
+    EnvelopeMatrix& sig_gain_;
 };
 
 void ChannelAssembly::run(std::vector<QmfValue>& q_high, std::vector<QmfValue>& y) {
@@ -650,6 +671,12 @@ ParseResult check_aspx(const AspxFrame& frame, std::span<const AspxChannel* cons
 }
 
 ParseResult decode_aspx(const AspxFrame& frame, std::span<AspxChannelIo> channels) {
+    const auto scratch = std::make_unique<AspxScratch>();
+    return decode_aspx(frame, channels, *scratch);
+}
+
+ParseResult decode_aspx(const AspxFrame& frame, std::span<AspxChannelIo> channels,
+                        AspxScratch& scratch) {
     std::array<const AspxChannel*, 2> parsed{};
     for (std::size_t c = 0; c < channels.size() && c < parsed.size(); ++c) {
         parsed[c] = channels[c].data;
@@ -681,7 +708,7 @@ ParseResult decode_aspx(const AspxFrame& frame, std::span<AspxChannelIo> channel
     std::vector<QmfValue> q_high;
     std::vector<QmfValue> y;
     for (std::size_t c = 0; c < channels.size(); ++c) {
-        ChannelAssembly(frame, groups, patches, channels[c], envelopes[c]).run(q_high, y);
+        ChannelAssembly(frame, groups, patches, channels[c], envelopes[c], scratch).run(q_high, y);
         keep_envelopes(*channels[c].data, groups, envelopes[c], *channels[c].state);
     }
     return {};

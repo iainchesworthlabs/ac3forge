@@ -3,6 +3,8 @@
 #include <cstddef>
 #include <utility>
 
+#include "syntax/reset.hpp"
+
 namespace ac4::detail {
 
 namespace {
@@ -152,7 +154,7 @@ namespace {
 ParseResult parse_audio_substream(BitReader& r, const SubstreamContext& ctx,
                                   AudioSubstreamState& state, AudioSubstream& out,
                                   BitReader* hsf_reader, const ObjectAudioContext* objects) {
-    out = AudioSubstream{};
+    reset_in_place(out);
 
     // Part 2 6.2.2.2. The header is always a whole number of bytes: 16 bits,
     // plus 8 for each group of variable_bits(7).

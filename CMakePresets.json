@@ -402,6 +402,16 @@
       "displayName": "Linux GCC minimum-footprint decoder"
     },
     {
+      "name": "config-linux-gcc-minimal-ac4",
+      "inherits": [ "config-linux-gcc-minimal" ],
+      "displayName": "Linux GCC minimum-footprint AC-4 decoder",
+      "description": "The decode profile carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: ac4::decoder, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4 --host. AC-4 shares nothing with ac3::forge, so the two probes are two builds. The AC-4 encoder is built for none of the parts.",
+      "cacheVariables": {
+        "AC3FORGE_MINIMAL_AC4": "ON",
+        "AC3FORGE_DECODE_SCALAR": "float"
+      }
+    },
+    {
       "name": "config-linux-gcc-minimal-encoder",
       "inherits": [ "minimal-encoder", "release", "linux-gcc", "core" ],
       "displayName": "Linux GCC minimum-footprint encoder"
@@ -428,6 +438,25 @@
       "inherits": [ "config-arm-none-eabi-minimal" ],
       "displayName": "arm-none-eabi minimum-footprint decoder, instruction-counting clock",
       "description": "The decoder preset above with the probe's clock on the mps2-an385's CMSDK timer instead of semihosting, for tools/checks/run_baremetal_probe.sh --icount: under QEMU -icount that timer counts instructions, deterministically, where semihosting's clock reports host time. Its own build directory so a plain run and an --icount run never share a cache.",
+      "cacheVariables": {
+        "AC3FORGE_BAREMETAL_CLOCK": "timer"
+      }
+    },
+    {
+      "name": "config-arm-none-eabi-minimal-ac4",
+      "inherits": [ "config-arm-none-eabi-minimal" ],
+      "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint AC-4 decoder",
+      "description": "The decoder preset above carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: ac4::decoder, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4. Its own build directory, since it is a different probe.",
+      "cacheVariables": {
+        "AC3FORGE_MINIMAL_AC4": "ON",
+        "AC3FORGE_DECODE_SCALAR": "float"
+      }
+    },
+    {
+      "name": "config-arm-none-eabi-minimal-ac4-icount",
+      "inherits": [ "config-arm-none-eabi-minimal-ac4" ],
+      "displayName": "arm-none-eabi minimum-footprint AC-4 decoder, instruction-counting clock",
+      "description": "The AC-4 preset above with the probe's clock on the mps2-an385's CMSDK timer, for tools/checks/run_baremetal_probe.sh --ac4 --icount: instructions per frame, deterministically.",
       "cacheVariables": {
         "AC3FORGE_BAREMETAL_CLOCK": "timer"
       }
@@ -585,6 +614,21 @@
       "name": "build-linux-gcc-minimal-encoder",
       "configurePreset": "config-linux-gcc-minimal-encoder",
       "displayName": "Linux GCC minimum-footprint decoder"
+    },
+    {
+      "name": "build-linux-gcc-minimal-ac4",
+      "configurePreset": "config-linux-gcc-minimal-ac4",
+      "displayName": "Linux GCC minimum-footprint AC-4 decoder"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal-ac4",
+      "configurePreset": "config-arm-none-eabi-minimal-ac4",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint AC-4 decoder"
+    },
+    {
+      "name": "build-arm-none-eabi-minimal-ac4-icount",
+      "configurePreset": "config-arm-none-eabi-minimal-ac4-icount",
+      "displayName": "arm-none-eabi bare-metal minimum-footprint AC-4 decoder, instruction-counting clock"
     },
     {
       "name": "build-linux-llvm-minimal",

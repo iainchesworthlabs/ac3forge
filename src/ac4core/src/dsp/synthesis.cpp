@@ -45,6 +45,10 @@ TransformSet<Real>::TransformSet(int full_length, int rate_multiplier) : full_le
         windows_.push_back(std::move(narrowed));
     }
     valid_ = !imdct_.empty();
+    if (valid_) {
+        block_.assign(2 * static_cast<std::size_t>(full_length), Real{});
+        transform_.assign(static_cast<std::size_t>(full_length), Complex{});
+    }
 }
 
 template <typename Real>
@@ -98,15 +102,15 @@ bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<con
     AC4_ZONE_SCOPED_N("ac4_imdct");
     const auto full = static_cast<std::size_t>(full_length_);
 
-    // Steps 1 to 4 and Pseudocode 63's unfolding.
-    x_.resize(2 * n);
-    imdct->inverse(spectrum, x_);
+    // Steps 1 to 4 and Pseudocode 63's unfolding, into the set's block scratch.
+    const std::span<Real> x = transforms.block_scratch().first(2 * n);
+    imdct->inverse(spectrum, x, transforms.transform_scratch().first(n));
 
     // Pseudocode 63's window over the first half.
     const std::size_t skip_left = (n - nw) / 2;
-    std::fill_n(x_.begin(), skip_left, Real(0));
+    std::fill_n(x.begin(), skip_left, Real(0));
     for (std::size_t i = 0; i < nw; ++i) {
-        x_[skip_left + i] *= kbd[i];
+        x[skip_left + i] *= kbd[i];
     }
 
     // Pseudocode 64. The previous block's second half, at nskip_prev, takes
@@ -120,13 +124,13 @@ bool ChannelSynthesis<Real>::block(TransformSet<Real>& transforms, std::span<con
     }
     std::fill(previous + skip_right + nw, previous + n_prev, Real(0));
     for (std::size_t i = 0; i < n; ++i) {
-        overlap_[nskip + i] += x_[i];
+        overlap_[nskip + i] += x[i];
     }
     std::copy_n(overlap_.begin(), n, pcm.begin());
     for (std::size_t i = 0; i < nskip; ++i) {
         overlap_[i] = overlap_[n + i];
     }
-    std::copy_n(x_.begin() + static_cast<std::ptrdiff_t>(n), n,
+    std::copy_n(x.begin() + static_cast<std::ptrdiff_t>(n), n,
                 overlap_.begin() + static_cast<std::ptrdiff_t>(nskip));
     previous_length_ = n_int;
     return true;

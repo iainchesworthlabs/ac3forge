@@ -14,7 +14,7 @@
 // Real what the operators below use.
 //
 // An aggregate of two named scalars, not a class with invariants to keep -
-// the same shape src/forge/src/internal/arch/*/ac3/internal/arch/simd.hpp's
+// the same shape src/arithmetic/arch/*/ac3/internal/arch/simd.hpp's
 // f64x2/f32x4 use, and for the same reason: the operations below should read
 // as plainly the arithmetic a caller would otherwise have written by hand.
 // C++20's parenthesised aggregate initialisation makes `Complex(a, b)`

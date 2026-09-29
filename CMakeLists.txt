@@ -93,7 +93,7 @@ add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 #  - It is invisible. Nothing in the source says a contraction happened, so
 #    the difference cannot be reviewed, only measured after the fact.
 #  - It would break the SIMD seam's correctness argument outright.
-#    src/forge/src/internal/arch/*/ac3/internal/arch/simd.hpp maps every
+#    src/arithmetic/arch/*/ac3/internal/arch/simd.hpp maps every
 #    operation to exactly one IEEE-754 add/subtract/multiply so that a
 #    vectorised kernel is bit-identical to the scalar loop it replaced. That
 #    holds only if the scalar loop is not silently getting a fused form the
@@ -518,6 +518,14 @@ elseif(AC3FORGE_MINIMAL_AC4)
     add_subdirectory(src/ac4)
     add_subdirectory(src/ac4core)
     add_subdirectory(src/ac4dec)
+    # -Wno-psabi: GCC's arm-none-eabi says, once a translation unit and for every
+    # std::span passed by value, that its passing changed in GCC 7.1. A note about an
+    # ABI nothing here links against, hundreds of them in the log of a leg whose
+    # output is the numbers.
+    foreach(_ac3_ac4_target IN ITEMS ac4_objects ac4core ac4dec_objects)
+        target_compile_options(${_ac3_ac4_target} PRIVATE "$<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>")
+    endforeach()
+    unset(_ac3_ac4_target)
 endif()
 
 # A standalone reader, not a writer like the three container modules above - roadmap item IM1
@@ -718,7 +726,7 @@ message(STATUS "  Audio backend  : ${AC3FORGE_AUDIO_BACKEND}")
 if(AC3FORGE_BUILD_CRUCIBLE AND LINUX)
     message(STATUS "  Crucible X11   : ${AC3FORGE_CRUCIBLE_X11_BACKEND}")
 endif()
-# Which src/forge/src/internal/arch/ directory the codec's vector kernels
+# Which src/arithmetic/arch/ directory the codec's vector kernels
 # were compiled from (SIMD kernels). 'generic' is the portable scalar
 # reference; -DAC3FORGE_SIMD=generic forces it anywhere.
 message(STATUS "  SIMD kernels   : ${AC3FORGE_SIMD_RESOLVED}")

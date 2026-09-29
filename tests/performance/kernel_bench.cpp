@@ -32,6 +32,7 @@
 #include <fstream>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -560,17 +561,34 @@ int main(int argc, char** argv) {
             g_sink += fft_buf[64].real();
         }));
 
+        // One 64-subband slot through the QMF pair (Pseudocodes 65 and 66) behind
+        // A-SPX and A-CPL, at the scalar named. The unsuffixed names keep their
+        // double series; where the decoder's scalar is not double (a float
+        // build) the same two are timed again at it, with the suffix _real.
         constexpr auto kSubbands = static_cast<std::size_t>(dsp::kQmfSubbands);
-        std::vector<double> slot(kSubbands);
-        for (std::size_t i = 0; i < slot.size(); ++i) {
-            slot[i] = static_cast<double>(ch0[i]);
+        const auto bench_qmf = [&]<typename R>(std::type_identity<R>, const std::string& suffix) {
+            std::vector<R> slot(kSubbands);
+            for (std::size_t i = 0; i < slot.size(); ++i) {
+                slot[i] = static_cast<R>(ch0[i]);
+            }
+            std::vector<dsp::Complex<R>> subbands(kSubbands);
+            dsp::QmfAnalysis<R> analysis;
+            results.push_back(time_kernel("ac4_qmf_analysis64" + suffix, [&] {
+                analysis.process(slot, subbands);
+                g_sink += static_cast<double>(subbands[32].real());
+            }));
+            // The pair's other half: the last slot the analysis wrote, synthesised.
+            dsp::QmfSynthesis<R> synthesis;
+            std::vector<R> synthesised(kSubbands);
+            results.push_back(time_kernel("ac4_qmf_synthesis64" + suffix, [&] {
+                synthesis.process(subbands, synthesised);
+                g_sink += static_cast<double>(synthesised[32]);
+            }));
+        };
+        bench_qmf(std::type_identity<double>{}, "");
+        if constexpr (!std::is_same_v<ac4::detail::Real, double>) {
+            bench_qmf(std::type_identity<ac4::detail::Real>{}, "_real");
         }
-        std::vector<dsp::Complex<double>> subbands(kSubbands);
-        dsp::QmfAnalysis<double> analysis;
-        results.push_back(time_kernel("ac4_qmf_analysis64", [&] {
-            analysis.process(slot, subbands);
-            g_sink += subbands[32].real();
-        }));
     }
 
     // --- one full bits_at evaluation ------------------------------------------

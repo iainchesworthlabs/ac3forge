@@ -186,7 +186,6 @@ if(AC3FORGE_MINIMAL_DECODER)
 else()
     set(_ac4core_pic ON)
 endif()
-
 set_target_properties(ac4core PROPERTIES
     POSITION_INDEPENDENT_CODE ${_ac4core_pic}
     CXX_VISIBILITY_PRESET hidden

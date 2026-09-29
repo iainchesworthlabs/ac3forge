@@ -1010,7 +1010,12 @@ def emit_huffman_header(codebooks):
                 f"extern const std::array<bool, {SPECTRUM_CODEBOOKS + 1}> kUnsignedCb;",
             ]
         out.append("")
-    out.append("}  // namespace ac4::detail::tables")
+    out += [
+        "// Every codebook above, for a test that walks them all.",
+        f"extern const std::array<const Codebook*, {len(codebooks)}> kAllCodebooks;",
+        "",
+        "}  // namespace ac4::detail::tables",
+    ]
     return out
 
 
@@ -1076,7 +1081,8 @@ def emit_huffman_source(codebooks, cb_dim, unsigned_cb):
            "// the index huff_decode() returns - the entry's position in the attachment's",
            "// _LEN and _CW arrays - beside each one. length_start[L] is the first entry",
            "// of length L. Where Annex A prints no cb_off, cb_mod, cb_mod2 or cb_mod3 for",
-           "// a codebook, the value is 0.",
+           "// a codebook, the value is 0. Each codebook's Fast table is built from its",
+           "// entries at compile time (make_fast_table in huffman_codebook.hpp).",
            "", "namespace ac4::detail::tables {", "", "namespace {", ""]
     for cb in codebooks:
         entries = sorted((bits, code, index)
@@ -1093,6 +1099,7 @@ def emit_huffman_source(codebooks, cb_dim, unsigned_cb):
             out += wrap([f"{{0x{code:0{digits}x}, {index}, {bits}}}"
                          for bits, code, index in group], "    ")
         out.append("}};")
+        out.append(f"constexpr auto {cb.cxx}Fast = make_fast_table({cb.cxx}Entries);")
         out.append("")
     out += ["}  // namespace", ""]
 
@@ -1111,6 +1118,7 @@ def emit_huffman_source(codebooks, cb_dim, unsigned_cb):
             f"    .cb_mod = {cb.value('cb_mod')},",
             f"    .cb_mod2 = {cb.value('cb_mod2')},",
             f"    .cb_mod3 = {cb.value('cb_mod3')},",
+            f"    .fast = {cb.cxx}Fast,",
             "};",
             "",
         ]
@@ -1120,6 +1128,10 @@ def emit_huffman_source(codebooks, cb_dim, unsigned_cb):
                              for n in range(1, SPECTRUM_CODEBOOKS + 1))]
     size = SPECTRUM_CODEBOOKS + 1
     out += [
+        f"constinit const std::array<const Codebook*, {len(codebooks)}> kAllCodebooks = {{{{",
+        *wrap([f"&{cb.cxx}" for cb in codebooks], "    "),
+        "}};",
+        "",
         f"constinit const std::array<const Codebook*, {size}> kAsfSpectrumCodebooks = {{{{",
         *wrap(spectrum, "    "),
         "}};",

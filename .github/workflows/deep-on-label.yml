@@ -1,0 +1,40 @@
+# Runs the nightly tier of ci.yml on a pull request's branch when the pull request
+# gets the `ci:deep` label: every build leg with every extra pass and every lane,
+# the same run the nightly schedule makes (docs/ci-agentic.md, "The tiers"). It is
+# how a change that needs the sanitizers, coverage, Android, WASM, ESP-IDF or the
+# wheels asks for them before it merges.
+#
+# ci.yml has no pull_request trigger, so this workflow starts it with a dispatch. The
+# dispatch goes through the repository's own token, which is allowed to start a
+# workflow_dispatch run. Adding the label again runs it again; removing it does nothing.
+#
+# A run starts only for a pull request from this repository. A fork's token is
+# read-only, and a fork's branch is not something to run the full matrix on from here.
+name: Deep CI on label
+
+on:
+  pull_request:
+    types: [ labeled ]
+
+permissions: {}
+
+jobs:
+  dispatch:
+    name: Run the full CI on this branch
+    if: github.event.label.name == 'ci:deep' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Dispatch ci.yml on the pull request's branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          gh workflow run ci.yml --repo "$REPO" --ref="$HEAD_REF" -f tier=all
+          echo "Started ci.yml (tier all) on \`$HEAD_REF\` for #$PR." >> "$GITHUB_STEP_SUMMARY"

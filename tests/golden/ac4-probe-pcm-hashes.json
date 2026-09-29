@@ -1,0 +1,10 @@
+{
+  "_comment": "The AC-4 decoder's float PCM hashes (planning/ac4.md, D14a, decision 26): FNV-1a over every sample the bare-metal AC-4 probe delivers for each fixture, as <fixture>.pcm_hash prints them. Measured 2026-09-30 on the x86-64 host (GCC 16, the SSE seam) and on the Cortex-M3 under QEMU (GCC 14.2.1, soft float, the generic seam), identical: the decode is IEEE single arithmetic without fused multiply-add, and the tables the transforms build from libm came out the same to the bit. D14b holds the P4 to the same values. Re-pin when the decoder's float output changes on purpose (tools/checks/check_probe_hashes.py --expected).",
+  "hashes": {
+    "ac4_20_acpl": "e8b8cfa716dd0e1c",
+    "ac4_20_music": "f860e51f602ae753",
+    "ac4_514_tones": "e3c8eeec6565b940",
+    "ac4_51_acpl": "dc9687f3f1be5f67",
+    "ac4_51_music": "6d36d7d2e8a070e9"
+  }
+}

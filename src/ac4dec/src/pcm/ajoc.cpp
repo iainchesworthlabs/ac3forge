@@ -159,10 +159,19 @@ ParseResult ajoc_values(const AjocData& data, const AjocDmxDeData& de, AjocQuant
     return {};
 }
 
-AjocStage::AjocStage() : reconstruction_(std::make_unique<ajoc::Reconstruction<Real>>()) {}
+AjocStage::AjocStage() = default;
+
+ajoc::Reconstruction<Real>& AjocStage::reconstruction() {
+    if (!reconstruction_) {
+        reconstruction_ = std::make_unique<ajoc::Reconstruction<Real>>();
+    }
+    return *reconstruction_;
+}
 
 void AjocStage::reset() {
-    reconstruction_->reset();
+    if (reconstruction_) {
+        reconstruction_->reset();
+    }
 }
 
 void AjocStage::reconstruct(const AjocFrameValues& values, double dialogue_db, int num_ts,
@@ -179,7 +188,7 @@ void AjocStage::reconstruct(const AjocFrameValues& values, double dialogue_db, i
     if (values.de && dialogue_db > 0.0) {
         de_gain = std::pow(10.0, std::min(dialogue_db, values.gmax_db) / 20.0);
     }
-    reconstruction_->reconstruct(values.params, num_ts, inputs, outputs_, de_gain, values.dialogue);
+    reconstruction().reconstruct(values.params, num_ts, inputs, outputs_, de_gain, values.dialogue);
 }
 
 void AjocStage::enhance_core(const AjocFrameValues& values, double dialogue_db, int num_ts,
@@ -192,7 +201,7 @@ void AjocStage::enhance_core(const AjocFrameValues& values, double dialogue_db, 
     // for, so that it is ready when the stream names dialogue objects.
     const double de_gain =
         values.de ? std::pow(10.0, std::min(dialogue_db, values.gmax_db) / 20.0) - 1.0 : 0.0;
-    reconstruction_->enhance_core(values.params, num_ts, inputs, de_gain, values.dialogue,
+    reconstruction().enhance_core(values.params, num_ts, inputs, de_gain, values.dialogue,
                                   values.coeff);
 }
 

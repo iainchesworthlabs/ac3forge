@@ -7,6 +7,7 @@
 #include <span>
 
 #include "huffman.hpp"
+#include "syntax/reset.hpp"
 #include "tables/huffman_tables.hpp"
 #include "tables/sfb_tables.hpp"
 
@@ -369,7 +370,7 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
         return fail(DecodeError::kUnsupported, "the speech spectral frontend (SSF) is not decoded");
     }
     const AsfPsyInfo& psy = info.psy;
-    out = SfData{};
+    reset_in_place(out);
     const bool hsf_active = hsf != nullptr && ctx.sf_multiplier.has_value();
     if (hsf_active) {
         hsf_out = HsfSfData{};
@@ -581,7 +582,8 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
             for (int k = out.sect_sfb_offset[at(g)][at(sfb)]; k < out.sect_sfb_offset[at(g)][at(sfb + 1)]; ++k) {
                 peak = std::max(peak, std::abs(out.quant_spec[at(k)]));
             }
-            out.max_quant_idx[at(g)][at(sfb)] = static_cast<std::uint16_t>(std::min<std::int32_t>(peak, 65535));
+            out.max_quant_idx[at(g)][at(sfb)] =
+                static_cast<std::uint16_t>(std::min<std::int32_t>(peak, 65535));
         }
     }
 
@@ -714,7 +716,8 @@ ParseResult parse_sf_hsf_data(BitReader& r, int num_window_groups, const SfData&
                  k < static_cast<int>(hsf_out.sect_sfb_offset[at(g)][at(i + 1)]); ++k) {
                 peak = std::max(peak, std::abs(hsf_out.quant_spec[at(k)]));
             }
-            hsf_out.max_quant_idx[at(g)][at(i)] = static_cast<std::uint16_t>(std::min<std::int32_t>(peak, 65535));
+            hsf_out.max_quant_idx[at(g)][at(i)] =
+                static_cast<std::uint16_t>(std::min<std::int32_t>(peak, 65535));
         }
     }
 
@@ -777,7 +780,7 @@ ParseResult parse_sf_hsf_data(BitReader& r, int num_window_groups, const SfData&
 }
 
 ParseResult parse_chparam_info(BitReader& r, const SubstreamContext& ctx, const SfInfo& info, ChparamInfo& out) {
-    out = ChparamInfo{};
+    reset_in_place(out);
     const AsfPsyInfo& psy = info.psy;
     out.sap_mode = static_cast<int>(r.read(2, "sap_mode"));
     if (out.sap_mode == 1) {

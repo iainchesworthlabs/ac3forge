@@ -38,9 +38,14 @@ class Fft {
     [[nodiscard]] bool valid() const noexcept { return valid_; }
     [[nodiscard]] std::size_t length() const noexcept { return length_; }
 
-    // In place. `data` must hold length() values.
-    void forward(std::span<Complex> data) { run(data, false); }
-    void inverse(std::span<Complex> data) { run(data, true); }
+    // In place. `data` must hold length() values. The first two forms work in a
+    // buffer of the plan's own, made by the first call; the others work in
+    // `scratch`, which must hold length() values and which the caller can share
+    // among plans that never run at once, so the plan holds none.
+    void forward(std::span<Complex> data) { run(data, own_work(), false); }
+    void inverse(std::span<Complex> data) { run(data, own_work(), true); }
+    void forward(std::span<Complex> data, std::span<Complex> scratch) { run(data, scratch, false); }
+    void inverse(std::span<Complex> data, std::span<Complex> scratch) { run(data, scratch, true); }
 
    private:
     struct Stage {
@@ -50,7 +55,13 @@ class Fft {
         std::size_t twiddle = 0; // offset of this pass's factors in twiddles_
     };
 
-    void run(std::span<Complex> data, bool inverse);
+    [[nodiscard]] std::span<Complex> own_work() {
+        if (work_.size() != length_) {
+            work_.resize(length_);
+        }
+        return work_;
+    }
+    void run(std::span<Complex> data, std::span<Complex> work, bool inverse);
 
     std::size_t length_ = 0;
     bool valid_ = false;

@@ -7,9 +7,9 @@ repository variables `GATE_RUNNER_JSON` and `GATE_WINDOWS_RUNNER_JSON` move the 
 fleet if the hosted pool is queueing. Everything below describes how the run on main chooses
 between the fleet and GitHub-hosted runners.
 
-The six plain Windows/Linux legs in the split `_ci-windows.yml` and
-`_ci-linux.yml` matrices (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM,
-Linux LLVM ASan+UBSan, Linux LLVM TSan) can each run on a
+The six plain Windows/Linux legs in `.github/ci/legs.jsonc`, the matrices of the split
+`_ci-windows.yml` and `_ci-linux.yml` (Windows MSVC, Windows LLVM, Linux GCC, Linux LLVM,
+Linux LLVM ASan+UBSan, Linux LLVM TSan; each has a `runner_slot`) can each run on a
 self-hosted runner instead of a GitHub-hosted one - whenever the fleet is *online* at all,
 and up to however many runners are online: with the fleet at its normal size (13 Linux, 7
 Windows) that means every leg, and the per-leg fan-out only reappears as graceful
