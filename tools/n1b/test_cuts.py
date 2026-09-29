@@ -334,6 +334,11 @@ int packer(int numblkscod) {
     "docs/library/header-map.md": "| `ac3/render/serving.hpp` | `serve` |\n",
     "planning/layout.md": "record: ac3/render/serving.hpp -> ac3/decoder/decoder.hpp\n",
     "CHANGELOG.md": "- moved ac3/render/serving.hpp\n",
+    "tools/checks/layering_debt/c7-serving.txt": (
+        "src/forge/include/ac3/render/serving.hpp ac3/decoder/decoder.hpp\n"
+    ),
+    "tools/n1b/baselines/headers.json": '{"src/forge/include/ac3/render/serving.hpp": "abc"}\n',
+    "tools/n1b/rules.py": 'OLD = "ac3/render/serving.hpp"\n',
 }
 
 
@@ -468,7 +473,14 @@ class Cuts(unittest.TestCase):
         includes = re.findall(r'^#include "([^"]+)"$', player, re.MULTILINE)
         self.assertEqual(includes, sorted(includes))
         self.assertIn("ac3/decoder/serving.hpp", includes)
-        for rel in ("docs/library/header-map.md", "planning/layout.md", "CHANGELOG.md"):
+        for rel in (
+            "docs/library/header-map.md",
+            "planning/layout.md",
+            "CHANGELOG.md",
+            "tools/checks/layering_debt/c7-serving.txt",
+            "tools/n1b/baselines/headers.json",
+            "tools/n1b/rules.py",
+        ):
             self.assertEqual(self.text(rel), FILES[rel], rel)
 
     def test_a_second_run_changes_nothing(self) -> None:
