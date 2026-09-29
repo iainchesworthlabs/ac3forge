@@ -907,7 +907,7 @@ endif()
 # both are checked together here, after both blocks above have already run.
 if(AC3FORGE_BUILD_ADM AND TARGET ac3cli)
     target_sources(ac3tests PRIVATE cli/test_cli_atmos_adm.cpp cli/test_cli_atmos_iab.cpp
-                                    cli/test_cli_decode_adm.cpp)
+                                    cli/test_cli_decode_adm.cpp cli/test_cli_atmos_adm_ac4.cpp)
 endif()
 
 # ac3iab::ac3iab (IAB reader phase 1, src/ac3iab) is gated by its own AC3FORGE_BUILD_IAB

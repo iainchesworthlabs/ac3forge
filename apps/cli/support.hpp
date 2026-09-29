@@ -150,6 +150,10 @@ struct Options {
     // (commands/ac4_encode_objects.cpp), empty for none.
     bool ac4_experimental_objects = false;
     std::string ac4_objects_path;
+    // 'atmos-adm'/'atmos-iab' with codec=ac4 only: coding=, "ajoc" (default) or "direct"
+    // (ac4::ObjectCoding) - the same choice 'ac4-encode objects=<scene>' makes with the scene
+    // file's own "coding" directive.
+    std::optional<ac4::ObjectCoding> ac4_atmos_coding;
     // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
     // dialnorm is taken to (ac4::OutputConfig::output_level_dbfs), unset to
     // leave the coded level; and the DRC decoder mode drcmode= names there,

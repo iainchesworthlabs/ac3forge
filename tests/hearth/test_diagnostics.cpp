@@ -340,7 +340,8 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "objects reconstructed in the QMF domain, concealment: repeat and fade, "
           "fast inverse transform, AC-4: the stream's presentation, dialogue to -31 dBFS, "
           "the DRC mode for the output level, dialogue enhancement 0 dB, dialogue +0.0 dB, "
-          "no audio description, the stereo fold's downmix");
+          "no audio description, the stereo fold's downmix, the source's own immersive layout, "
+          "full decoding");
     DecoderSettings custom;
     custom.mode = ac3::OperatingMode::kCustom;
     custom.drc_cut = 0.5;
@@ -374,7 +375,8 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "objects reconstructed in the QMF domain, no concealment, "
           "reference inverse transform, AC-4: presentation_id 7, dialogue to -20 dBFS, "
           "portable headphones DRC, dialogue enhancement 6 dB, dialogue -3.0 dB, "
-          "audio description at -9.5 dB, the stream's preferred downmix");
+          "audio description at -9.5 dB, the stream's preferred downmix, "
+          "the source's own immersive layout, full decoding");
     DecoderSettings rf;
     rf.mode = ac3::OperatingMode::kRf;
     rf.mix_levels.loro_slev = 0.0;
@@ -392,7 +394,7 @@ TEST_CASE("diagnostics: decoder settings and items read as the pages name them",
           "objects reconstructed in the QMF domain, concealment: mute, "
           "fast inverse transform, AC-4: a presentation in fr, the coded level, no compression, "
           "dialogue enhancement 0 dB, dialogue +0.0 dB, no audio description, the stereo fold's "
-          "downmix");
+          "downmix, the source's own immersive layout, full decoding");
 
     CHECK(ac3::hearth::describe_item(0, "First") == "item 1 \"First\"");
     CHECK(ac3::hearth::describe_item(ac3::hearth::Queue::kNone, "Gone") ==

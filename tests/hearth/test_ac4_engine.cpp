@@ -176,7 +176,11 @@ Played play_item(const std::vector<std::byte>& bytes, const ac3::render::OutputL
 
 // ac4::Decoder's own decode() of `bytes` with `config`, each channel on the
 // slot of `layout` at its speaker's location, and a frame that waits for an
-// I-frame as silence of its length.
+// I-frame as silence of its length. A presentation with objects (planning/
+// ac4.md, I5) renders them the same way place_ac4_frame() (stream_decoder.cpp)
+// does - through Ac4ObjectRenderer, at config.output.downmix - so this stays a
+// meaningful, independently-computed check of what the engine now does with
+// them, not just of the channels beside them.
 std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
                                           const ac3::render::OutputLayout& layout,
                                           const ac4::DecoderConfig& config) {
@@ -184,6 +188,8 @@ std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
     REQUIRE(units.has_value());
     std::vector<std::vector<float>> out(layout.slots());
     ac4::Decoder decoder(config);
+    std::optional<ac3::apps::Ac4ObjectRenderer> objects;
+    std::vector<std::vector<float>> rendered;
     for (std::size_t i = 0; i < units->frames.size(); ++i) {
         const auto decoded = decoder.decode(ac3::hearth::raw_frame_of(units->frames[i]));
         INFO("frame " << i << ": " << decoder.refusal_reason());
@@ -199,6 +205,23 @@ std::vector<std::vector<float>> reference(const std::vector<std::byte>& bytes,
         const std::size_t start = out.front().size();
         for (std::vector<float>& slot : out) {
             slot.resize(start + frame.samples, 0.0F);
+        }
+        if (!frame.objects.empty()) {
+            if (!objects) {
+                objects.emplace(config.output.downmix,
+                                static_cast<std::uint32_t>(frame.sample_rate_hz));
+            }
+            objects->render(frame, rendered);
+            const std::span<const ac4::Speaker> speakers = objects->speakers();
+            for (std::size_t c = 0; c < rendered.size(); ++c) {
+                const int slot =
+                    layout.index_of(ac3::hearth::ac4_bed(speakers.subspan(c, 1))[0]);
+                REQUIRE(slot >= 0);
+                std::copy(rendered[c].begin(), rendered[c].end(),
+                          out[static_cast<std::size_t>(slot)].begin() +
+                              static_cast<std::ptrdiff_t>(start));
+            }
+            continue;
         }
         for (std::size_t c = 0; c < frame.channels.size(); ++c) {
             const ac3::eac3::chanmap::Layout bed =
@@ -957,4 +980,119 @@ TEST_CASE("hearth ac4: an AC-4 item joins an E-AC-3 one in the same output", "[h
         CHECK(item.output_opens == 1U);
     }
     CHECK(player.history()[1].first_frame == player.history()[0].frames);
+}
+
+// --- Objects (planning/ac4.md, I5) ----------------------------------------------------
+
+TEST_CASE("hearth ac4: a presentation with objects is rendered through Ac4ObjectRenderer",
+          "[hearth][ac4]") {
+    // frame_rate_index 13 is the only rate an object substream takes
+    // (ac4enc/encoder.hpp), which kFrame (2 048 samples) already assumes.
+    ac4::EncoderConfig config;
+    config.sample_rate_hz = kRate;
+    config.frame_rate_index = 13;
+    config.bitrate_kbps = 128;
+    config.experimental.objects = true;
+    ac4::ObjectsConfig objects_config;
+    objects_config.objects.resize(1);
+    // Hard left (x 0), front wall (y 0, not mid-depth - that would pan towards a side speaker
+    // instead), ear height - Ac4ObjectRenderer's own header comment gives this room (TS 103 420's),
+    // the one ac3::spatial::position_direction reads.
+    objects_config.objects[0].properties.position = {0.0, 0.0, 0.0};
+    ac4::SubstreamConfig substream;
+    substream.objects = objects_config;
+    config.substreams = {substream};
+    auto encoder = ac4::Encoder::create(config);
+    INFO(ac4::Encoder::refusal_reason(config));
+    REQUIRE(encoder.has_value());
+
+    constexpr double kObjectHz = 700.0;
+    std::vector<float> object_pcm(kToneFrames * kFrame);
+    for (std::size_t n = 0; n < object_pcm.size(); ++n) {
+        object_pcm[n] = static_cast<float>(kAmplitude *
+                                           std::sin(2.0 * std::numbers::pi * kObjectHz *
+                                                    static_cast<double>(n) / kRate));
+    }
+    const std::vector<std::span<const float>> views{object_pcm};
+    auto frames = encoder->encode(views, std::span<const ac4::ObjectMetadataUpdate>{});
+    REQUIRE(frames.has_value());
+    auto rest = encoder->flush();
+    REQUIRE(rest.has_value());
+    std::vector<std::byte> bytes;
+    const auto append = [&bytes](const std::vector<ac4::EncodedFrame>& fs) {
+        for (const ac4::EncodedFrame& f : fs) {
+            const std::vector<std::byte> wrapped = ac4::sync_frame(f.raw_ac4_frame, false);
+            bytes.insert(bytes.end(), wrapped.begin(), wrapped.end());
+        }
+    };
+    append(*frames);
+    append(*rest);
+
+    // kAsCoded (as_coded()'s settings ask for nothing else, and kEverySpeaker
+    // does not fold): the object renders to the full 7.1.4 speaker set
+    // Ac4ObjectRenderer gives that target, silent but for where it is panned.
+    const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
+    const Played played = play_item(bytes, layout, as_coded());
+
+    const auto left = tone_in(played, layout, ac3::eac3::chanmap::Location::kLeft, kObjectHz);
+    const auto right = tone_in(played, layout, ac3::eac3::chanmap::Location::kRight, kObjectHz);
+    CHECK(std::abs(left) > 0.01);
+    CHECK(std::abs(left) > std::abs(right) * 3.0);
+}
+
+TEST_CASE("hearth ac4: the immersive layout control folds an object presentation the same way "
+          "as a channel one",
+          "[hearth][ac4]") {
+    ac4::EncoderConfig config;
+    config.sample_rate_hz = kRate;
+    config.frame_rate_index = 13;
+    config.bitrate_kbps = 128;
+    config.experimental.objects = true;
+    ac4::ObjectsConfig objects_config;
+    objects_config.objects.resize(1);
+    objects_config.objects[0].properties.position = {0.5, 0.0, 0.0};  // dead centre, front wall
+    ac4::SubstreamConfig substream;
+    substream.objects = objects_config;
+    config.substreams = {substream};
+    auto encoder = ac4::Encoder::create(config);
+    INFO(ac4::Encoder::refusal_reason(config));
+    REQUIRE(encoder.has_value());
+
+    constexpr double kObjectHz = 900.0;
+    std::vector<float> object_pcm(kToneFrames * kFrame);
+    for (std::size_t n = 0; n < object_pcm.size(); ++n) {
+        object_pcm[n] = static_cast<float>(kAmplitude *
+                                           std::sin(2.0 * std::numbers::pi * kObjectHz *
+                                                    static_cast<double>(n) / kRate));
+    }
+    const std::vector<std::span<const float>> views{object_pcm};
+    auto frames = encoder->encode(views, std::span<const ac4::ObjectMetadataUpdate>{});
+    REQUIRE(frames.has_value());
+    auto rest = encoder->flush();
+    REQUIRE(rest.has_value());
+    std::vector<std::byte> bytes;
+    for (const ac4::EncodedFrame& f : *frames) {
+        const std::vector<std::byte> wrapped = ac4::sync_frame(f.raw_ac4_frame, false);
+        bytes.insert(bytes.end(), wrapped.begin(), wrapped.end());
+    }
+    for (const ac4::EncodedFrame& f : *rest) {
+        const std::vector<std::byte> wrapped = ac4::sync_frame(f.raw_ac4_frame, false);
+        bytes.insert(bytes.end(), wrapped.begin(), wrapped.end());
+    }
+
+    // Asked for 5.1 (no top pair), the same centre-front object still renders
+    // - Ac4ObjectRenderer::speakers() then names a narrower set, and
+    // place_ac4_frame() rebuilds the renderer's bed for it (decoder_settings.cpp's
+    // own ac4_setup(), the "does not itself fold" branch this control uses).
+    DecoderSettings settings = as_coded();
+    settings.ac4.immersive_layout = ac4::DownmixTarget::k5X2;
+    const ac3::render::OutputLayout layout = layout_of(kEverySpeaker);
+    const Played played = play_item(bytes, layout, settings);
+
+    const auto centre = tone_in(played, layout, ac3::eac3::chanmap::Location::kCentre, kObjectHz);
+    CHECK(std::abs(centre) > 0.01);
+    // Table 44's 5.X.2 core/output layout has no top back pair; a centre-front,
+    // ear-height object should not need one either.
+    const auto top_back = tone_in(played, layout, ac3::eac3::chanmap::Location::kVhl, kObjectHz);
+    CHECK(std::abs(top_back) < std::abs(centre));
 }

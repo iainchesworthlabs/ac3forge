@@ -761,6 +761,15 @@ else
     run atmos-adm atmos_adm_fixture.wav atmos_adm.ec3 256
     run decode atmos_adm.ec3 atmos_adm.wav
     run_ffmpeg_check atmos_adm.ec3
+    # codec=ac4 (planning/ac4.md, I5): the same ADM master to an AC-4 A-JOC object substream
+    # (coding=, default ajoc), then back out through decode's own objects_dir/adm_out - the round
+    # trip the phase's exit criterion names. Neither ffprobe (no AC-4 decoder) nor
+    # run_ac4_frames_check (defined later in this file, in the plain-AC-4 section below) is
+    # available this early, so 'decode' reading the file back to PCM and to an ADM master without
+    # error is this leg's own coverage; tests/cli/test_cli_atmos_adm.cpp pins the numbers
+    # (positions, gains, timing) this smoke coverage does not.
+    run atmos-adm atmos_adm_fixture.wav atmos_adm.ac4 256 "" codec=ac4
+    run decode atmos_adm.ac4 atmos_adm_ac4.wav atmos_adm_ac4_objects atmos_adm_ac4_roundtrip.wav
 fi
 
 # atmos-iab (IAB reader phase 3): the identical conditional-command shape atmos-adm above uses,
@@ -781,6 +790,11 @@ else
     run atmos-iab atmos_iab_fixture.iab atmos_iab.ec3 256
     run decode atmos_iab.ec3 atmos_iab.wav
     run_ffmpeg_check atmos_iab.ec3
+    # codec=ac4, coding=direct (planning/ac4.md, I5): the direct-coded option atmos-adm's own AC-4
+    # leg above does not take, over an IAB source instead of ADM - see that leg's own comment for
+    # why there is no run_ac4_frames_check/run_ffmpeg_check this early in the file.
+    run atmos-iab atmos_iab_fixture.iab atmos_iab.ac4 256 codec=ac4 coding=direct
+    run decode atmos_iab.ac4 atmos_iab_ac4.wav atmos_iab_ac4_objects atmos_iab_ac4_roundtrip.wav
 fi
 
 # atmos-cbi: a channel-based-immersive (CBI) bed already mixed into a fixed
@@ -1170,6 +1184,35 @@ for kbps in 192 384; do
 done
 run ac4-encode "$FIXTURES/reference_51.wav" ac4_51_256.mp4 256 dialnorm=auto
 run_ac4_frames_check ac4_51_256.mp4
+# 5.1.4 (planning/ac4.md, phase E8/I5): the immersive element, ASPX_ACPL_2 below 480 kbps as DEE's
+# own streams are. eac3_514.wav (the eac3-sine/decode loop's own "514" leg) is reused as a real
+# 10-channel source the same way atmos-cbi's own leg below does - a channel COUNT match is all
+# this smoke-coverage script needs; tools/checks/score_ac4_encode.py scores the actual audio.
+run ac4-encode eac3_514.wav ac4_514_256.ac4 256
+run_ac4_frames_check ac4_514_256.ac4 -f ac4
+run decode ac4_514_256.ac4 i5_ac4_514.wav
+run probe ac4_514_256.ac4
+# Objects (planning/ac4.md, phase I5): experimental=objects/objects=<scene>, E9's own CLI surface
+# (apps/cli/commands/ac4_encode_objects.cpp), A-JOC by default and direct-coded as the explicit
+# second leg - then back through decode's objects_dir, unconditionally available (unlike adm_out,
+# which needs -DAC3FORGE_BUILD_ADM=ON and is covered by the atmos-adm/atmos-iab AC-4 legs above).
+cat > ac4_objects_scene.txt <<'SCENE'
+object 0 dynamic 0.2 0.3 0.0 -3
+object 1 dynamic 0.8 0.3 0.0 -3
+SCENE
+run ac4-encode "$FIXTURES/reference_stereo.wav" ac4_objects_ajoc.ac4 128 experimental=objects \
+    objects=ac4_objects_scene.txt
+run_ac4_frames_check ac4_objects_ajoc.ac4 -f ac4
+run decode ac4_objects_ajoc.ac4 ac4_objects_ajoc.wav ac4_objects_ajoc_dir
+cat > ac4_objects_scene_direct.txt <<'SCENE'
+coding direct
+object 0 dynamic 0.2 0.3 0.0 -3
+object 1 dynamic 0.8 0.3 0.0 -3
+SCENE
+run ac4-encode "$FIXTURES/reference_stereo.wav" ac4_objects_direct.ac4 128 experimental=objects \
+    objects=ac4_objects_scene_direct.txt
+run_ac4_frames_check ac4_objects_direct.ac4 -f ac4
+run decode ac4_objects_direct.ac4 ac4_objects_direct.wav ac4_objects_direct_dir
 # Phase E5: frame rates other than the native one, the average and variable
 # rates, I-frames at an interval, and the metadata options, raw and in MP4,
 # where 29.97 fps counts at 240 000 Hz (TS 103 190-2 Table E.1) and the

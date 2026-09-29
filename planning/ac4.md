@@ -2332,6 +2332,66 @@ After D9, E8, D10 and E9.
 
 **Exit and verified by:** as I1 to I3, for this content.
 
+**Built (phase I5):** `atmos-adm` and `atmos-iab` take `codec=ac4`: every bed/object channel the ADM
+or IAB source resolves becomes an AC-4 dynamic object (A-JOC by default, `coding=direct` for
+direct-coded object substreams), its position sampled once a frame - the object substream is
+frame_rate_index 13 only (ac4enc/encoder.hpp) - and fed to E9's own writer; the ADM/IAB readers
+themselves needed no change. 5.1.4 and 7.1.4 channel-based-immersive encoding already existed by E8
+(`ac4-encode` takes any channel count E8 writes); this phase's own new coverage is the objects path
+and the matrix legs exercising 5.1.4 and 7.1.4 through the rest of `ac3cli`. `decode`'s `objects_dir`
+and `adm_out` now read D10's own decoded objects the way they already read E-AC-3 JOC's:
+`objects_dir` streams each object's PCM to its own WAV, and `adm_out` (needs
+`-DAC3FORGE_BUILD_ADM=ON`) accumulates every bed and dynamic object's decoded Annex F properties
+into the same ADM BWF writer E-AC-3's own IM2 item built, through a new conversion onto
+`ac3::oba::DynamicObject` (position and gain carry over directly, TS 103 190-2 Annex F and TS 103
+420 §5.6.1 sharing one room and one dB convention). `probe`'s JSON gains an `oamd_common_data`
+object on an A-JOC substream's own entry, additive, the schema unchanged.
+
+The round trip the exit criterion names - an ADM master from the fixture `tests/cli/
+test_cli_atmos_adm.cpp` already commits (two bed channels and one dynamic object jumping position at
+a known time), encoded to AC-4 by `atmos-adm`, decoded with `objects_dir` and `adm_out`, and the
+written master re-parsed through `ac3adm`/`ac3::admbridge` - matches the original's own automation,
+object for object (matched by which tone each carries, not by index), to within AC-4's own
+quantization once the encoder's and the decoder's combined delay (reported on `atmos-adm`'s own
+status line, and pinned in the test rather than hardcoded) is accounted for: position within 0.06 in
+each axis, gain within 2 dB, and the moving object's jump is still there rather than the whole
+reading being flat (`tests/cli/test_cli_atmos_adm_ac4.cpp`).
+
+Hearth's engine now reads a whole AC-4 frame through `ac4::Decoder::decode()` in place of
+`decode_by_block()`, so a presentation with objects renders through `Ac4ObjectRenderer` (the same
+class `ac3cli decode` plays them with) beside its channels, delivered a 256-sample block at a time as
+before; the only rate an object substream can carry (frame_rate_index 13, 2 048 samples, an exact
+multiple of 256) makes this change in delivery mechanism invisible to every existing, committed
+channel-only stream - confirmed by extending the existing full-committed-stream comparison test's own
+independently-computed reference to render objects too, rather than dropping them as it silently did
+before. `DecoderSettings::Ac4Settings` gains `immersive_layout` (the same six layouts `decode`'s
+`speakers=` takes, reached once the configured output layout does not itself ask for a stereo or mono
+fold - that always wins) and `core_decoding`, both reachable from a new "Immersive and objects" card
+on `DecoderAc4.qml` and `HearthController`'s JSON bridge. The support catalogue's Hearth row for AC-4
+decode no longer says "objects not yet".
+
+Forge GUI's `StreamPlayerController` now fills `has_objects`/`object_count`/`object_audio` for an
+AC-4 stream from D10's own `DecodedFrame::objects`, the way it already does for E-AC-3 JOC - the
+existing "Export objects…" button and its one-WAV-a-decoded-object export function are already
+codec-agnostic and needed no change. Doing so found a bug that predates this phase: the same
+function's `order.empty()` doubled as its "has the first frame been read" flag, and a presentation
+of objects alone has no channels or speakers to make `order` non-empty with, so it reported "no
+frame decoded" for every such stream despite decoding it correctly; fixed with an explicit flag,
+the pattern `ObjectDecodeController::measure_ac4_objects()` already used. The object inspector's
+own read-only listing already covered AC-4 before this phase. The encoder page's Atmos/object
+authoring UI is real but E-AC-3-only (`EncoderController::setAtmosEnabled` forces `codec_` away
+from `kAc4`); giving it an AC-4 path is left open - see the phase's own report for the options.
+
+Checks: `tests/cli/test_cli_atmos_adm_ac4.cpp` (new), the extended `tests/cli/test_cli_ac4_decode.cpp`,
+`tests/hearth/test_ac4_engine.cpp` and `tests/hearth/test_decoder_settings.cpp` (new cases), the
+extended `tests/hearth/test_diagnostics.cpp`, `apps/gui/tests/qml/tst_e2e_inspect.qml` (new case),
+`tools/ci/run_codec_matrix.sh`'s new AC-4 legs (5.1.4, objects both codings, both Atmos-ingest
+commands' `codec=ac4`), and the whole of `ac3tests` once, at the end (a full run's own numbers are in
+the phase's report rather than repeated here, since a later merge would make them stale immediately).
+Not done: a direct-coded group's own separate `oamd_substream` in `probe`'s JSON; the GUI's
+encoder-page AC-4 object path; `zone_mask`'s mapping onto `ac3::oba::ZoneConstraint` is a reading, not
+independently checked against the spec text (neither library's syntax, so not an ERRATA entry).
+
 #### I6: the ESP32 sinks
 
 On each part after its D14 figures: the P4 first, then the S3 and the C6.
