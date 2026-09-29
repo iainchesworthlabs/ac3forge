@@ -6,7 +6,7 @@ Choose the path that matches what you want to run:
 |---|---|
 | Install the `ac3cli` and `ac3gui` applications | [Install Forge](forge/index.md#installing) |
 | Build the library, CLI, and tests from source | Continue below |
-| Build and flash an ESP32-S3 network player | [Set up a Hearth sink](hearth/sink-esp32-s3.md) |
+| Install or build an ESP32 network player | [Sink firmware](hearth/sink-firmware.md) for a published image, or [an ESP32-S3 sink](hearth/sink-esp32-s3.md) or [an ESP32-C6 sink](hearth/sink-esp32-c6.md) to build one |
 | Use another platform or interface | [Choose a platform](platforms/index.md) |
 
 ## Build from source
@@ -21,8 +21,8 @@ This path builds the library, CLI, and tests on Windows or Linux. See
 | A compiler | MSVC (VS 2026), clang-cl 22, GCC 16, or Clang 22 | C++23. One preset per compiler. |
 | CMake | ≥ 3.28 | |
 | Ninja | any recent | The presets hard-code the Ninja generator. |
-| [vcpkg](https://github.com/microsoft/vcpkg) | any recent, with `VCPKG_ROOT` set | Supplies Catch2 (plus Boost/Tracy only for the opt-in `adm`/`profiling` features — see [building.md](building.md)). |
-| Qt | 6.5+ prebuilt | **GUI only.** Never from vcpkg — see [building.md](building.md). |
+| [vcpkg](https://github.com/microsoft/vcpkg) | any recent, with `VCPKG_ROOT` set | The presets read it. Supplies fmt, Catch2 and the libraries of the default Hearth build (plus Boost/Tracy only for the opt-in `adm`/`profiling` features — see [building.md](building.md)). |
+| Qt | 6.5+ prebuilt for the GUI; 6.8+ for Hearth's window and Crucible, which are skipped without it | Not needed for the library and CLI. The Windows x64 presets build the GUI, so they need it or `-DAC3FORGE_BUILD_GUI=OFF`. Never from vcpkg — see [building.md](building.md). |
 
 ### Configure, build, and test
 
@@ -51,9 +51,25 @@ This path builds the library, CLI, and tests on Windows or Linux. See
     Swap `gcc` for `llvm` to build with Clang. The GUI defaults off on Linux; enable it with
     `-DAC3FORGE_BUILD_GUI=ON`.
 
-The vcpkg toolchain supplies Catch2, the preset selects the compiler, and `ctest` runs the test
-suite and compiled examples. [Building from source](building.md) covers release presets,
-workflow presets, and compiler-detection errors.
+The vcpkg toolchain supplies fmt, Catch2 and Hearth's libraries, the preset selects the compiler,
+and `ctest` runs the test suite and compiled examples. The tools are written to
+`build/<preset>/bin/`. [Building from source](building.md) covers release presets, workflow
+presets, and compiler-detection errors.
+
+## Encode and decode from the command line
+
+`ac3cli` reads the format from the stream, so one `decode` command takes AC-3, E-AC-3 or AC-4.
+With a 48 kHz stereo `in.wav`:
+
+```bash
+ac3cli encode in.wav out.ac3 448 couple
+ac3cli ac4-encode in.wav out.ac4 192
+ac3cli probe out.ac4
+ac3cli decode out.ac4 out.wav
+```
+
+`ac3cli help` lists every command and `ac3cli help <command>` gives one command's options; the
+[CLI reference](forge/cli/index.md) has the grammars.
 
 ## Call the library from C++
 

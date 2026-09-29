@@ -33,9 +33,9 @@ on screen:
 | `Ctrl` + an arrow | The coarse step, 0.25 — a quarter of the room. |
 | `Page Up` / `Page Down` | Raise and lower it. Height needs objects, so it does nothing while the stream is the 5.1 bed only, and the announcement says so. |
 | `Home` | Put it back in the centre. |
-| `Enter` | Place an application that is still in the bed; for one already in the room, say where it is. |
+| `Enter` or `Space` | Place an application that is still in the bed; for one already in the room, say where it is. |
 | `Delete` or `Backspace` | Send it back to the bed. |
-| `Plus` / `Minus` | Grow and shrink the object's size. |
+| `Plus` / `Minus` | Grow and shrink the object's size, 5% a press. `=` counts as `Plus`. |
 
 An application that is still in the bed starts from the centre of the room: one arrow press both
 places it and moves it. A full-screen application does not move at all — it is the bed, by the

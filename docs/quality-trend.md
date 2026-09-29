@@ -1,13 +1,22 @@
 # Quality trend
 
-Every push to `main` that gets through the [gold-reference
-gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)
+This page has two series. The first, from here to "Where the data lives", is the
+[gold-reference
+gate](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/verify_gold_reference.sh)'s
 (encode the checked-in golden 5.1 WAV, strict-decode with FFmpeg and with
-`ac3cli`'s own decoder, delay-compensated SNR between the two) has its
-per-channel numbers appended to history instead of only living in that run's
-CI log. It turns the gate's own FFmpeg-oracle SNR check into a lightweight,
-trended quality signal — the gate itself has run on every commit since it
-landed; what's below is what makes the *numbers*, not just the pass/fail,
+`ac3cli`'s own decoder, delay-compensated SNR between the two), which covers
+AC-3 and E-AC-3, and its measure is Decode accuracy: how closely this decoder agrees with
+FFmpeg's. [AC-4 decode quality](#ac-4-decode-quality) is the second, scored
+against the source instead.
+
+Each run on `main` that gets through the gold-reference gate, the run after a merge
+and the nightly run, has its per-channel numbers appended to history
+instead of only living in that run's CI log, under the commit it ran on. A run after a
+merge covers every merge since the last one finished when they come faster than it does
+([CI for many agents](ci-agentic.md#after-the-merge)), so a commit in the
+middle of a burst has no point of its own. It turns the gate's own FFmpeg-oracle SNR check into a
+lightweight, trended quality signal — the gate itself runs on every pull request and every
+queue entry; what's below is what makes the *numbers*, not just the pass/fail,
 outlive the run that produced them.
 
 The gate's own thresholds are fixed floors that always fail CI outright, and
@@ -28,9 +37,9 @@ trend` job in `_build.yml`, surfaced through `ci.yml`'s `build-and-test` call;
 it is not one of `_ci-core.yml`'s trend jobs. See `REGRESSION_DROP_DB` and
 `HARD_REGRESSION_DROP_DB` in `tools/ci/append_quality_history.py`.
 
-Every point below is measured against `tests/golden/audio/reference_51.wav`,
+Every point the chart plots is measured against `tests/golden/audio/reference_51.wav`,
 which is **synthesized** — `sin()`, pseudo-random noise and FIR smoothing,
-2.5 s long. That is the right choice for this page, which asks "did the
+2.5 s long (the table also lists checks on other fixtures, marked below). That is the right choice for this page, which asks "did the
 round trip change" and needs the material to be identical across years of
 commits for the answer to mean anything. It is the wrong material for
 deciding an encoder policy: it carries a flat noise plateau across its whole
@@ -94,17 +103,22 @@ that question — see [Landscape](landscape.md) and
   // different channel count) falls back to a plain index label rather than
   // guessing at a mapping.
   const CHANNEL_LABELS_51 = ["L", "R", "C", "LFE", "Ls", "Rs"];
-  // Mirrors _build.yml's gold_reference matrix - the same 5 legs
+  // Mirrors the gold_reference legs of .github/ci/legs.jsonc - the same 9 legs
   // tools/ci/append_quality_history.py strips the "gold-reference-" artifact
-  // prefix down to. Fixed order/colors so a leg's line keeps the same color
-  // across renders instead of shuffling with whichever legs happen to have
-  // data in the current view.
+  // prefix down to. The run after a merge covers the first six; the nightly
+  // run adds the last three (the deep-tier arm64 and macOS x64 legs). Fixed
+  // order/colors so a leg's line keeps the same color across renders instead
+  // of shuffling with whichever legs happen to have data in the current view.
   const LEGS = [
     { leg: "windows-msvc", color: "#7c4dff" },
     { leg: "windows-llvm", color: "#00acc1" },
     { leg: "linux-gcc", color: "#43a047" },
     { leg: "linux-llvm", color: "#fb8c00" },
     { leg: "macos-llvm", color: "#e53935" },
+    { leg: "linux-gcc-arm64", color: "#1e88e5" },
+    { leg: "windows-msvc-arm64", color: "#8e24aa" },
+    { leg: "linux-llvm-arm64", color: "#6d4c41" },
+    { leg: "macos-llvm-x64", color: "#d81b60" },
   ];
 
   const root = document.getElementById("quality-trend-app");
@@ -114,13 +128,13 @@ that question — see [Landscape](landscape.md) and
   // thread its way back in as a parameter.
   const state = {
     codec: "ac3",
-    // "branch": one line for main, worst-of-5-legs per commit (the
+    // "branch": one line for main, worst-of-legs per commit (the
     // original view - good for "did anything regress"), plus an optional
     // second line for develop's frozen history. "leg": one line per CI leg
     // for a single track, un-folded (good for "is one platform drifting
     // relative to the others over time") - see LEGS above. Never both
-    // branch and leg as line dimensions at once: up to 5 legs x 2 tracks =
-    // 10 lines was exactly the "unreadable" case worstPerCommit was written
+    // branch and leg as line dimensions at once: up to 9 legs x 2 tracks =
+    // 18 lines was exactly the "unreadable" case worstPerCommit was written
     // to avoid, so leg view picks one track instead of folding it away.
     view: "branch",
     // develop stopped moving on 2026-08-25's move to trunk-based
@@ -299,7 +313,7 @@ that question — see [Landscape](landscape.md) and
   }
 
   // One point per commit per branch: the worst worst_db across every leg for
-  // the selected codec, since a per-leg-and-codec chart (up to 5 legs x 2
+  // the selected codec, since a per-leg-and-codec chart (up to 9 legs x 2
   // codecs x 2 branches) would be unreadable as lines. Leg-level detail is
   // still in the table below, just not the chart.
   function worstPerCommit(records, codec) {
@@ -589,7 +603,7 @@ that question — see [Landscape](landscape.md) and
   Promise.all([fetchTrack("main"), fetchTrack("develop"), fetchReleaseShaMap()]).then(([mainRecords, developRecords, releasesBySha]) => {
     const allRecords = [...mainRecords, ...developRecords];
     if (allRecords.length === 0) {
-      root.innerHTML = '<p class="quality-trend-status">No quality-trend history yet - it is written by CI on the first push to main after this page landed.</p>';
+      root.innerHTML = '<p class="quality-trend-status">No quality-trend history yet - the first run on main after this page landed writes it.</p>';
       return;
     }
     render(allRecords, releasesBySha);
@@ -601,19 +615,23 @@ that question — see [Landscape](landscape.md) and
 
 Each row is one (commit, CI leg, codec) result — the gate runs on every
 `gold_reference` leg (`windows-msvc`, `windows-llvm`, `linux-gcc`,
-`linux-llvm`, `macos-llvm`; not the ASan+UBSan leg, which stays
-diagnostic-only), so a single commit contributes up to five rows per codec.
+`linux-gcc-arm64`, `linux-llvm`, `macos-llvm` after a merge, and in the
+nightly run also `windows-msvc-arm64`, `linux-llvm-arm64` and
+`macos-llvm-x64`; not the ASan+UBSan leg, which stays
+diagnostic-only), so a single run contributes up to six rows per check after a
+merge and up to nine in the nightly run.
 
 The **Chart** control picks what the lines represent. "Worst of legs, by
-branch" (the default) plots the worst of the five legs per commit, one line
+branch" (the default) plots the worst of the legs that ran per commit, one line
 per branch, against a shared calendar x-axis — a cross-leg floating-point
-difference (a ~62 dB vs. ~68 dB macOS/Linux split is a known, expected
-effect of platform floating-point differences) is expected and not itself a
+difference (a ~62 dB vs. ~68 dB split, the arm64 legs below the x86-64 ones,
+is a known, expected effect of platform floating-point differences, explained
+in [Validation](verification.md#why-arm64-and-x86-64-disagree)) is expected and not itself a
 regression, so folding it away is deliberate here: this view answers "did
 *anything* regress," not "which platform." "By platform leg" answers that
 second question instead — it un-folds a single branch (picked with the
 **Branch** control that replaces the branch checkboxes in this view) into
-one line per leg, so a leg drifting relative to the other four, or trending
+one line per leg, so a leg drifting relative to the others, or trending
 down over many commits while the rest hold steady, is visible as a shape in
 the chart rather than something you'd only catch by scanning the table leg
 by leg. Both views read the same underlying rows; nothing about which view
@@ -690,10 +708,12 @@ commit SHA already in quality-history, not a separate data source.
 exponent, the tier for a part with no FPU
 ([`planning/arithmetic-tiers.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/arithmetic-tiers.md)).
 It differs from the double decode at 121 dB and above on the gold streams
-(`tools/checks/check_decode_scalar_snr.py`, held to 110 in CI), which is as
+(`tools/checks/check_decode_scalar_snr.py`, held to 110 in the same pass), which is as
 far below this gate's coding noise as the float32 decode's 139, so the same
 reading applies: the series exists to show the arithmetic contributes nothing
-this gate can see, and would show a lost bit the day it did.
+this gate can see, and would show a lost bit the day it did. The pass is one of the
+`linux-gcc` leg's `scalar_variants` in `.github/ci/legs.jsonc`, which only the nightly run
+makes, so the series has a point a night rather than one for each run after a merge.
 
 ## The float32 decode has its own series
 
@@ -715,7 +735,21 @@ nothing measurable to the error budget the quality gate actually measures.
 The chart shows one line per codec (`check === codec`), so these sit in the
 history data rather than on it — the point of trending them is that a future
 change to the float32 path shows up as a divergence from the double series,
-which is a comparison no single figure in a document can make.
+which is a comparison no single figure in a document can make. This pass is also one
+of the nightly run's `scalar_variants`.
+
+## The direct-form transforms and the float32 encoder have series too
+
+`_reference`-suffixed checks are the gate run with `mode=reference`: the spec's own
+direct-form transforms in place of the fast paths
+([Validation](verification.md#performance-and-reference-modes)). The `linux-gcc` leg makes
+this pass in the run after a merge as well as in the nightly run. `_encfloat`-suffixed
+checks are the gate run against an encoder built with `-DAC3FORGE_ENCODE_SCALAR=float`, the
+arithmetic the ESP32-S3's minimum-footprint profile encodes in. A float encoder makes its
+own decisions and produces a different, equally valid stream, so these rows are held to the
+same floors as the double encoder's and `tools/checks/check_encode_scalar_quality.py` holds
+its worst channel to half a dB of the double encoder's. That pass is a nightly one too.
+Neither has a line on the chart.
 
 ## Where the data lives
 
@@ -738,29 +772,34 @@ to it now targets `main` only (`.github/workflows/ci.yml`'s and
 `tools/ci/append_quality_history.py` is called with, both narrowed to `main`
 in the same migration).
 
-History is written by a job in `_build.yml` that runs after every
-`gold_reference` leg passes, on direct pushes to `main` only —
-never on a pull request, so unmerged work never pollutes the trend. It reuses
-numbers the gate already computed rather than re-running the encode/decode
-pass, so — unlike a from-scratch perceptual pass, which would need a nightly
-cadence to bound cost — doing this on every push costs nothing extra to
-compute; only a JSON append and a git push are new.
+History is written by the `Publish quality trend` job in `_build.yml`, which
+runs once the build legs of a run on `main` have passed, in the run after a
+merge and in the nightly run —
+never on a pull request or a queue entry, so unmerged work never pollutes the
+trend. A leg that a newer run on `main` gave way to leaves a gap in its own
+series and does not stop the rest being published; a leg that failed skips the
+publish. It reuses numbers the gate already computed rather than re-running the
+encode/decode pass, so — unlike a from-scratch perceptual pass, which would
+need a nightly cadence to bound cost — publishing after each run costs nothing
+extra to compute; only a JSON append and a git push are new.
 
 `main`'s history has a real gap before 2026-08-10: `ci.yml`'s concurrency
 group used to key push runs on branch name alone with `cancel-in-progress`
 on, so a burst of merges landing within a build's runtime cancelled every
 run but the last, silently dropping the gold-reference gate — and this
-page's append step with it — before either finished. Push runs are now keyed
-per-commit so this can't happen going forward; the specific commits already
-lost to it were backfilled by hand rather than left blank.
+page's append step with it — before either finished. The specific commits
+lost to it were backfilled by hand rather than left blank. Since 2026-09-29
+the gap is by design instead: pushes to `main` are verified one at a time and a
+burst of merges is one run on the newest commit ([CI for many
+agents](ci-agentic.md#after-the-merge)), so a commit in the middle of a burst has no point of
+its own, and nothing was dropped.
 
-Per-commit runs mean two of them can write here at once, which is what
-happens when several pull requests merge within a build's runtime. The run
-that pushes second is rejected, rebases onto the first, and meets a conflict:
-both runs added records to the end of the same file.
+Two runs can still write here at once, for example the nightly run and a run
+after a merge. The run that pushes second is rejected, rebases onto the first,
+and meets a conflict: both runs added records to the end of the same file.
 [`tools/ci/resolve_history_conflict.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/resolve_history_conflict.py)
 settles it by keeping both runs' records and writing the `.recent.jsonl`
-window again from the result, so what this page reads carries every commit's
+window again from the result, so what this page reads carries every run's
 numbers whichever run finishes first. Anything it cannot account for fails the
 publishing job rather than being guessed at, which is what happened to
 `main@681a083a` on 2026-09-18 before the script existed.
@@ -768,14 +807,18 @@ publishing job rather than being guessed at, which is what happened to
 ## AC-4 decode quality
 
 Everything above is AC-3 and E-AC-3. AC-4 has its own series, because its oracle is different:
+FFmpeg does not decode AC-4, so
 [`tools/checks/score_ac4_decode.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/checks/score_ac4_decode.py)
 decodes the Dolby Encoding Engine's AC-4 streams and scores each against the source it was encoded
-from ([Validation](verification.md#ac-4) describes how). Its pinned floors fail CI on every
-push. On a push to `main`, the `linux-llvm` leg's scores are also appended to
-`ac4-quality-main.jsonl` on the same `quality-history` branch, one row per stream, by
-[`tools/ci/append_ac4_quality_history.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/append_ac4_quality_history.py).
-The AC-4 encoder's own scores (`score_ac4_encode.py`) are held to pinned floors only and have no
-series yet.
+from ([Validation](verification.md#ac-4) describes how). Its measure is Decode accuracy against
+that source, not against another decoder. It runs in FFmpeg Validate, a nightly job, on the
+`linux-llvm` build, and its pinned floors fail that run. The same run writes the scores as a JSON
+artifact, and the `Publish quality trend` job appends one row per stream to
+`ac4-quality-main.jsonl` on the same `quality-history` branch, by
+[`tools/ci/append_ac4_quality_history.py`](https://github.com/iainchesworthlabs/ac3forge/blob/main/tools/ci/append_ac4_quality_history.py):
+one set of rows per nightly run. It covers 10 of the 15 committed legs, described below the
+chart. The AC-4 encoder's own scores (`score_ac4_encode.py`) are held to pinned floors only, and
+its race against the Dolby encoder runs locally, so neither has a series; nor do AC-4's objects.
 
 <div id="ac4-quality-trend-app">
   <p class="quality-trend-status">Loading AC-4 decode quality…</p>
@@ -939,7 +982,7 @@ series yet.
 
   fetchHistory().then((records) => {
     if (!records.length) {
-      root.innerHTML = '<p class="quality-trend-status">No AC-4 decode quality history yet - it is written by CI on the first push to main after this section landed.</p>';
+      root.innerHTML = '<p class="quality-trend-status">No AC-4 decode quality history yet - the nightly run writes it.</p>';
       return;
     }
     render(records);
@@ -948,8 +991,9 @@ series yet.
 </script>
 
 Each row is one DEE stream on one commit: the streams scored channel by channel against their
-source. The A-CPL streams, scored through their downmixes, and the immersive streams, scored
-with their routing, are held to their floors in CI but have no series. **Minimum SNR** is the
+source, 10 of the 15 committed legs (SIMPLE and A-SPX at 2.0 and 5.1, and immersive stereo). The
+A-CPL streams, scored through their downmixes, and the 5.1.4 streams, scored with their routing,
+are held to their floors in FFmpeg Validate but have no series. **Minimum SNR** is the
 stream's lowest full-band channel SNR against its source; the LFE is left out, since its SNR
 against the full-band source is about −2.3 dB on every 5.1 stream and its own floor holds it.
 **LSD** is the log-spectral distance and **MOS-LQO** ViSQOL's predicted listening score, all

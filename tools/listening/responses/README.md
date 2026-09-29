@@ -1,9 +1,9 @@
 # Listening test responses
 
 **No listening session has been run yet.** This directory is where the
-answers land when one is, and it holds no data until then — `README.md`
-and `docs/verification.md` still say no listening test has been run because
-that is still true. See
+answers land when one is, and it is empty of data on purpose rather than by
+oversight — `docs/verification.md` still says no listening test has been
+run because that is still true. See
 [`../README.md`](../README.md) for the operator's sequence and
 [`docs/landscape.md`](../../../docs/landscape.md#listening-test) for the
 protocol.

@@ -27,12 +27,16 @@ without `tst_`).
 | | Before | After |
 |---|---|---|
 | Features in the inventory | 89 | 89 |
-| Covered from the UI | 28 | 86 |
+| Covered from the UI | 28 | 85 |
 | Logic only | 24 | 1 |
 | Not covered | 37 | 3 |
 | `crucible_controller.cpp` line coverage (gcov, Qt Quick suites only) | 72.7 % (588/809) | 93.0 % (752/809) |
-| Qt Quick suites / cases | 11 / 93 | 16 / 140 |
+| Qt Quick suites / cases | 11 / 93 | 16 / 141 |
 | Suite wall time (`ctest -j2`) | about 11 s | about 15 s |
+
+The line-coverage and wall-time rows date from when the suites were added
+(2026-09-24). `crucible_controller.cpp` and the suites have not changed since,
+and the two figures have not been measured again.
 
 ## Window, header and status strip (`Main.qml`)
 
@@ -156,6 +160,55 @@ A headless session never shows the menu, so each entry is fired through its
 | 88 | Save diagnostics… → dialog → file written or reason shown | Logic (`exportDiagnostics`) | UI | settingsdialogs::test_saveDiagnosticsWritesTheFileThePageSuggests; settings::test_exportWritesAFile, settings::test_diagnosticsReportWithholdsTheKeyPath |
 | 89 | Settings persist to the store a relaunch reads | Logic (controller getters) | UI | every `settingsworkflow`/`signalpath`/`roomworkflow` case that reads `TestServices.storedSetting` |
 
+## Cases without a feature row of their own
+
+36 of the 141 cases are not named in a row above. They check a property that
+sits under a feature (an accessible role, a default, a lookup rung, one
+platform's answer) rather than a feature of its own. The `about` and `language`
+suites are covered by their wildcards in rows 10 and 85. Cases that start the
+engine skip when it does not start, and the ones that need an application
+skip when the machine has no application with an audio session. A case that
+belongs to one platform skips on the others.
+
+| Case | What it checks |
+|---|---|
+| accessibility::test_bedChipIsAButtonNamedForItsApplication | A bed chip has the Button role and its name holds the application's name. Its description changes when the application is full-screen. |
+| accessibility::test_stationsAreNamedGroupsAndCarryTheirWarning | Signal-path stations have the Grouping role. The name holds the station's kicker and title, the warning comes before the detail in the description, and the first station's warning follows where applications play. |
+| accessibility::test_listAndControlsCarryNames | The applications list has the List role and a name. The pin, bitrate and language boxes are named. The driver folder field is named by its row's label, and the Advanced toggle is a Button whose description changes with its state. |
+| accessibility::test_sizeSliderReportsARange | The size track has the Slider role, runs 0 to 1 in steps of 0.05, and with nothing selected is out of the tab chain and has no description. |
+| accessibility::test_announceKeepsTheLastMessageAndTicksItsSerial | An empty announcement says nothing. Each announcement keeps the last message and moves the serial, including the same text twice. It is polite unless it is asked to interrupt. |
+| accessibility::test_themePalettesMeetTheContrastFloors | For each of the three palettes in light and dark, text on the background is at least 7:1. Muted text, accent ink, the focus ring and control borders are at least 4.5:1, 4.5:1, 3:1 and 3:1 on both the background and the surface. The label on an accent fill is at least 3:1 and is the better of the palette's two ends. |
+| accessibility::test_contrastCompositesTheAlphaItIsGiven | The contrast function composites a colour's alpha before it measures, so muted text scores lower than solid text. |
+| icons::test_iconNameResolvesThroughTheTheme | An icon name resolves through the fixture theme (Linux only). |
+| icons::test_desktopEntryByExec | With no icon name and no application id, the .desktop entry whose Exec names the binary supplies the icon, ahead of a NoDisplay entry with the same Exec (Linux only). |
+| icons::test_desktopEntryByWmClass | A .desktop entry whose StartupWMClass equals the application's name supplies the icon (Linux only). |
+| icons::test_desktopEntryByAppId | An application with only an application id finds the .desktop file of that name (Linux only). |
+| icons::test_themeByBinaryName | With no entry naming the application, an icon in the theme under the binary's name is used (Linux only). |
+| icons::test_unknownApplicationKeepsTheMonogram | An application that no lookup matches shows a two-letter monogram ("No" for "Nothing") and no icon. Runs on every platform. |
+| icons::test_oneIdentityAtTwoSizes | One icon identity at 28 and 160 pixels reaches an image at both sizes, and each item keeps its size (Linux only). |
+| keyboard::test_buttonsAndChecksActivateFromTheKeyboard | A button is in the tab chain and Space and Return each activate it. Disabled, it leaves the tab chain and ignores Space. Space toggles a check. |
+| keyboard::test_segmentedControlMovesWithArrowHomeAndEnd | Left, Right, Home and End move the chosen segment, and both arrows wrap at the ends. |
+| keyboard::test_focusRingShowsOnlyWithActiveFocus | Of two buttons, only the one holding the focus shows its ring. |
+| keyboard::test_focusRingIsOnEveryKindOfControl | A check, a bed chip and the room's key scope each carry a ring that shows only while they hold the focus. |
+| output::test_pinnedModeRoundTrips | The controller reads back each of the seven pin values (`atmos`, `ddplus`, `dd`, `pcm`, `headphones`, `stereo`, `auto`) as written. |
+| output::test_endpointTableIsAListEvenWithNoEngine | Before the engine starts, the endpoint table is an empty list, the mode key is empty and the engine is not running. |
+| output::test_pageRendersWithTheEngineStopped | The Signal path page renders at a non-zero size with the engine stopped. |
+| platform::test_windowsFollowsTheNotificationArea | Windows only. The controller's tray answer matches Qt's, and where there is no tray the reason names the notification area. |
+| platform::test_macosFollowsTheMenuBar | macOS only. The tray answer matches Qt's, and where there is none the reason names the menu bar and says that closing the window quits. |
+| platform::test_macosNeedsNoSilentDeviceAndMovesNothing | macOS only. No silent device is needed, none comes from a package, none can be created, and the default output is not moved. The advice says there is nothing to install, mentions the tap, and never mentions a driver. |
+| platform::test_macosCannotAnswerTheFullScreenQuestion | macOS only. The diagnostics report's "full-screen rule" row starts with "unavailable" and gives a reason. |
+| platform::test_thePlatformSaysWhetherItsDeviceComesFromAPackage | A silent device is needed on every platform except macOS. On Linux it is not from a package and the application can create it. On Windows it is from a package and cannot be created. No driver action is in progress. |
+| room::test_emptyRoomWithTheEngineStopped | With the engine stopped there are no applications, none placed and none in the bed, and the Room page renders. |
+| room::test_runningRoomCountsAddUp | Placed plus bed equals the number of applications, and each has an id, a name and a slot of -1 or 0 to 9. Commands for an unknown application are ignored. |
+| room::test_splitTakesTwoSlotsAndMonoGivesOneBack | Split gives an application a width of 2 and a slot, mono gives it a width of 1, and the placed count stays the same. An object's size reads back as set and is clamped to 1. |
+| room::test_placementRoundTripsForALiveApplication | Placing an application at (0.25, 0.75) reads back within 0.02, and returning it puts it back in the bed. |
+| room::test_pairSidesPlaceOnTheirOwnAndResetToTheSpread | A split pair starts at the standard spread. Placing one side makes the pair custom, and resetting the pair returns it to the standard spread. |
+| settings::test_defaults | A fresh store gives pin `auto`, low latency off, codec bypass off, bitrate 0, theme `system`, palette `signal`, silent-device name "Desktop Atmos", keep running on, move on launch off, no key path and the first-run dialog not yet seen. |
+| settings::test_settingsRoundTripAndNotify | Written settings read back and each write emits `settingsChanged`. Writing the same value again does not. |
+| settings::test_signingKeyPathIsRememberedNotTheKey | Loading a key file stores a local path (not a `file:` URL), and clearing the key empties it. |
+| settings::test_driverBlockReadsTheMachine | The silent-device facts the page shows are the right types. Where no silent device is needed, none is packaged or creatable. A driver folder is set and no driver action is in progress. |
+| settings::test_pageCarriesTheDiagnosticsButton | The "Save diagnostics…" button exists and is enabled. The outcome note is visible only once an export has run. |
+
 ## Still not covered, and why
 
 1. **Close without a tray quits, and the tray's Quit** (rows 16 and 27).
@@ -170,10 +223,10 @@ A headless session never shows the menu, so each entry is fired through its
 3. **Windows driver-folder install and remove** (row 80). The folder row is
    hidden on Linux, and a real install needs elevation. The Linux
    create/remove path is covered.
-4. **The engine-dependent halves of `room.qml` on this host**. This host has
-   no PipeWire daemon, so `start()` over the machine refuses and those cases
-   skip, as designed. The same flows now run over the scripted machine in
-   `roomworkflow`.
+4. **The engine-dependent halves of `room.qml` on a host with no audio
+   server**. The host the suites were written on had no PipeWire daemon, so
+   `start()` over the machine refuses and those cases skip, as designed. The
+   same flows run over the scripted machine in `roomworkflow`.
 5. **`ui/main.cpp`** (0 %). This is the application entry point
    (`--shot`/`--page`, demo-store migration, tray wiring). It is not linked
    into the Qt Quick test binary.

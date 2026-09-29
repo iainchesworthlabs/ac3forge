@@ -7,10 +7,9 @@ where the protocol lives. This directory is the machinery; that page is the
 method and the results.
 
 It exists because every quality number this project publishes is a waveform
-or model metric. `README.md` and `docs/verification.md` still say that no
-listening test has been run, and ViSQOL's MOS-LQO —
-the closest thing here to a perceptual score — is a *prediction* of what a
-panel would say, not a panel.
+or model metric. `docs/verification.md` says no subjective listening test has
+been run, and ViSQOL's MOS-LQO — the closest thing here to a perceptual score
+— is a *prediction* of what a panel would say, not a panel.
 
 | | |
 |---|---|
@@ -77,9 +76,10 @@ with their numbers, not quietly). ABX output carries an exact one-sided
 binomial p-value against the 0.5 guessing rate.
 
 **4. Land the results** in `docs/landscape.md`'s listening-test section,
-commit the response CSVs under `responses/`, and update the "no listening
-test has been run" sentences in `README.md` and `docs/verification.md` — they
-stop being true at that point and not before.
+commit the response CSVs under `responses/`, and update the sentences that
+say no listening test has been run, in `docs/verification.md` and at the top
+of `docs/landscape.md`'s listening-test section — they stop being true at
+that point and not before.
 
 ## What a session needs from a person
 

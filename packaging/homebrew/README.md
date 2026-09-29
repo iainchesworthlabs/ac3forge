@@ -2,8 +2,20 @@
 
 `Formula/ac3forge.rb` packages `ac3cli` — the CLI only, built from the release source
 tarball. `Casks/ac3gui.rb` packages `ac3gui` — the GUI, as the prebuilt `.app` bundle from a
-release's DragNDrop `.dmg`. Both are staged here for local validation against this repo before
-being copied into a personal tap, **not** submitted to `homebrew-core`.
+release's DragNDrop `.dmg`. Both live here first and are copied into the personal tap
+[`iainchesworthlabs/homebrew-ac3forge`](https://github.com/iainchesworthlabs/homebrew-ac3forge),
+which is public and carries both at `v0.10.0-beta.1`. Neither is submitted to `homebrew-core`.
+
+```bash
+brew install iainchesworthlabs/ac3forge/ac3forge          # ac3cli, built from source
+brew install --cask iainchesworthlabs/ac3forge/ac3gui     # ac3gui.app, prebuilt
+```
+
+After a release, [`manifest-bump.yml`](../../.github/workflows/manifest-bump.yml) rewrites both
+files for the new tag and, when `HOMEBREW_TAP_TOKEN` is set, opens a pull request on the tap. The
+tap's `main` accepts only pull requests, and a person merges each one after validating on a macOS
+machine; the tap's pull requests #1 to #3 are the bumps to `v0.8.0-beta.2`, `v0.9.0-beta.1` and
+`v0.10.0-beta.1`. See [docs/releasing.md](../../docs/releasing.md#homebrew-formula-and-cask).
 
 ## Why a personal tap, not `homebrew-core`
 
@@ -69,5 +81,5 @@ brew install --cask ./packaging/homebrew/Casks/ac3gui.rb
 brew uninstall --cask ac3gui
 ```
 
-Not yet run for real — no CI job runs it, same as the Formula above, so this is manual and
-macOS-only too. Run it before merging the bump PR on the tap.
+No CI job runs it, same as the Formula above, so this is manual and macOS-only too. Run it
+before merging the bump PR on the tap.
