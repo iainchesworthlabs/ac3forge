@@ -198,7 +198,7 @@ carries what an object stream takes:
 
 | Control | `ac3cli atmos-encode … codec=ac4` option | Default |
 |---|---|---|
-| Coding: A-JOC, or direct-coded object substreams | `coding=ajoc\|direct` | A-JOC |
+| Coding: A-JOC, or direct-coded object substreams | `coding=ajoc`, `coding=direct` | A-JOC |
 | dialnorm, in whole dB from 1 to 31 | `dialnorm=` | 31 |
 | CRC on each raw sync frame | `crc=off` (a raw stream only) | on |
 

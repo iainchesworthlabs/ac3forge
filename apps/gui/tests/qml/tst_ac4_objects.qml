@@ -277,6 +277,7 @@ TestCase {
         // A channel assigned to a speaker is an object held there. It spends one of the 64, and
         // there is no bed for it to be pinned to.
         EncoderController.setAssignment(0, 0, "L");
+        EncoderController.setAssignment(0, 1, "obj");
         tryVerify(() => line.text.indexOf("1 of 63 objects") >= 0);
         verify(line.text.indexOf("1 assigned to speakers") >= 0, line.text);
         verify(line.text.indexOf("bed") < 0, line.text);
