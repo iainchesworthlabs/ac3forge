@@ -34,11 +34,12 @@ it) rather than the finished 16.1 release, which lands in a later Ubuntu series 
 Ubuntu's packaging timing, not a project choice, and the pin tracks whatever `apt` resolves for
 `gcc-16` without further action needed here once 26.04 backports the stable release. The pin
 itself is a CI reproducibility choice, not a hard floor of the code:
-`cmake/toolchains/linux.{gcc,llvm}.toolchain.cmake` already `find_program` a fallback list
-(`gcc-16, gcc, gcc-15, gcc-14, gcc-13` / `clang-22, clang, clang-21, clang-20`), so an older distro
-compiler is picked up automatically — the [Raspberry Pi
+`cmake/toolchains/linux.{gcc,llvm}.toolchain.cmake` `find_program` a fallback list
+(`gcc-16 gcc-15 gcc-14 gcc-13 gcc` / `clang-22 clang clang-21 clang-20`, in that order), so an older
+distro compiler is picked up automatically when it is one of those names — the [Raspberry Pi
 validation](raspberry-pi.md#verified-configuration) built and passed the full suite with
-GCC 14.2 and Clang 19.1.7.
+GCC 14.2 and Clang 19.1.7, when the Clang list still named `clang-19` (it no longer does; see
+[Raspberry Pi → Requirements](raspberry-pi.md#requirements)).
 
 `config-linux-gcc` and `config-linux-llvm` (each with a `-debug` variant) find the compiler by
 that same known-name `find_program` walk, the same way the Windows presets pin MSVC/clang-cl,
@@ -86,7 +87,7 @@ which is what a packaging build wants.
 ### Why ALSA still comes first
 
 Capture and monitor playback are ordinary PCM, which every Linux audio API can do, and both
-backends implement them for real. Passthrough is the discriminator, and it's what the whole
+backends implement them. Passthrough is the discriminator, and it's what the whole
 project is for. On Linux, a bitstream isn't a distinct "format" the way it is on Windows: it's
 opened as plain 16-bit stereo PCM, and what tells the receiver these bytes are Dolby Digital
 rather than music is the IEC 60958 **channel status** travelling beside them (the non-audio bit,
@@ -94,10 +95,10 @@ AES0 bit 1). ALSA is the layer where that bit is expressed, as arguments on the 
 (`iec958:CARD=PCH,DEV=0,AES0=0x06,…`), and it works unconditionally the moment compatible
 hardware exists.
 
-PipeWire has its own real, current, native mechanism for the same bit — `SPA_MEDIA_SUBTYPE_
-iec958`, confirmed against a real shipped client (Kodi's own PipeWire passthrough support), not
-assumed from memory, and since 2026-09-05 against this project's own Raspberry Pi and its
-receiver. What it lacks is ALSA's "just works": a PipeWire sink only offers a compressed codec
+PipeWire has its own current, native mechanism for the same bit —
+`SPA_MEDIA_SUBTYPE_iec958`, confirmed against a shipped client (Kodi's own PipeWire passthrough
+support), not assumed from memory, and since 2026-09-05 against this project's own Raspberry Pi
+and its receiver. What it lacks is ALSA's "just works": a PipeWire sink only offers a compressed codec
 once its `iec958.codecs` property has been populated by the session manager. WirePlumber does
 populate it, from the display's own EDID, so on a receiver that advertises its codecs nothing
 needs configuring by hand — the Pi's Atmos receiver came up with
@@ -138,15 +139,15 @@ stream; that is tested on synthetic carriers, and no capture device or receiver 
     halves (device-name construction, channel-status derivation, negotiation, the render/capture
     threads, start/stop, error mapping) were additionally driven end to end against ALSA's
     software `null` PCM device. WSL2 has no sound devices, no kernel sound modules, and no
-    PipeWire session running at all, so nothing built there has ever been bitstreamed to a real
+    PipeWire session running at all, so nothing built there has ever been bitstreamed to an
     S/PDIF or HDMI output from that environment, and PipeWire's own enumeration has only ever
-    seen "no session" (`pw_context_connect()` failing fast, not a real graph with real nodes)
-    rather than a real node to negotiate a compressed format against.
+    seen "no session" (`pw_context_connect()` failing fast, with no graph and no nodes) and never
+    a node to negotiate a compressed format against.
 
-    Both backends have met real hardware elsewhere, on one Pi 4B and one receiver. ALSA, on
+    Both backends have met hardware elsewhere, on one Pi 4B and one receiver. ALSA, on
     2026-08-20: see [Raspberry Pi → Live HDMI passthrough to a real
     receiver](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) for every
-    AC-3/E-AC-3/Atmos shape tried, bitstreamed to a real Atmos-capable AVR over HDMI and correctly
+    AC-3/E-AC-3/Atmos shape tried, bitstreamed to an Atmos-capable AVR over HDMI and correctly
     identified every time. PipeWire, on 2026-09-05: the backend enumerated the receiver's HDMI sink
     with its compressed codecs set by WirePlumber from the EDID, and streamed E-AC-3 bursts to it.
     The receiver's own front panel was read the same evening: "5.1 DD+" from a pre-encoded
@@ -164,7 +165,7 @@ per-application capture. Its build rejects ALSA configurations.
 
 That trade has a cost: forcing PipeWire gives up ALSA's `iec958` route, which works whenever
 compatible hardware exists, for PipeWire's, which needs the session manager to have populated
-`iec958.codecs` (see above) and has met a real receiver once, on the Pi. See
+`iec958.codecs` (see above) and has met a receiver once, on the Pi. See
 [the plan](../crucible/design/promotion.md#alsa-or-pipewire).
 
 ## Reading a sink's own EDID/ELD
@@ -186,15 +187,15 @@ the `/proc/asound` file is not attempted, since no property name for it was foun
 stable across PipeWire versions and session managers. `play` falls back to the live probe
 `outputs` already uses wherever no descriptor can be read.
 
-**Not verified against real hardware.** Like the passthrough gap above, the parser
+**Not verified on hardware.** Like the passthrough gap above, the parser
 (`parse_eld_proc_text`, `tests/backend/alsa/test_alsa_eld_parsing.cpp`) is unit-tested against
-synthesized fixture text matching real-world `/proc/asound` output found in the wild, but this
-development loop has no Linux box with a real HDMI/DisplayPort sink attached to confirm the file
+synthesized fixture text matching `/proc/asound` output found in the wild, but this
+development loop has no Linux box with an HDMI/DisplayPort sink attached to confirm the file
 path resolution and field parsing against. It is also not yet taught to disambiguate multiple
 HDMI ports on one card beyond the raw hardware device index embedded in the ALSA device name —
 the same numbering [Raspberry Pi](raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver)
-found one real classifier bug in already (vc4-hdmi's identically-named PCMs), worth a second
-look once real multi-port hardware is available to test against.
+found a classifier bug in already (vc4-hdmi's identically-named PCMs), worth a second
+look once multi-port hardware is available to test against.
 
 ## GUI: opt-in, not on by default
 
@@ -247,8 +248,8 @@ cpack --preset pack-linux-gcc
 (or `pack-linux-llvm` for the Clang build; append `-arm64` for the arm64 presets). Produces a
 plain tarball, plus DEB/RPM on top when the corresponding packaging tool is on `PATH`. A local
 run packages whatever the tree was configured with — the GUI only if you opted in. Tagged
-releases run `pack-linux-gcc` and `pack-linux-gcc-arm64` for real, and CI configures those legs
-with `-DAC3FORGE_BUILD_GUI=ON`, so released Linux packages include `ac3gui`; a real arm64 `.deb`
+releases run `pack-linux-gcc` and `pack-linux-gcc-arm64`, and CI configures those legs
+with `-DAC3FORGE_BUILD_GUI=ON`, so released Linux packages include `ac3gui`; an arm64 `.deb`
 has also been produced and inspected on Raspberry Pi hardware (see
 [Raspberry Pi](raspberry-pi.md#verified-configuration)). The packages split by component:
 `ac3forge` (`ac3cli` and `ac3gui`), `libac3forge0`, `libac3forge-dev` (`ac3forge-devel` as an
@@ -264,25 +265,25 @@ behind `if(LINUX)` in `apps/gui/CMakeLists.txt`. `ac3gui.desktop` claims no medi
 Hearth is the default handler: `ac3hearth.desktop` in the `ac3forge-hearth` package
 (`apps/hearth/ui/packaging/linux/`) carries `MimeType=audio/ac3;audio/eac3;`. Nothing declares or
 claims AC-4. Configure/build-verified only: nobody has installed the resulting `.deb`/`.rpm` on a
-real desktop and double-clicked an `.ac3` file to confirm the launcher fires.
+desktop and double-clicked an `.ac3` file to confirm the launcher fires.
 
 ## AppImage
 
 The `.deb`/`.rpm` above are only as portable as the host distro's own Qt 6 packaging: a distro
 whose Qt is too old for this project's `find_package(Qt6 6.5 REQUIRED ...)` floor, or whose
-`qml6-module-*` split doesn't match what `qt6-declarative-dev`/`qt6-declarative-dev-tools` expect
-, simply cannot install one of them. `ac3gui` also ships as a self-contained
+`qml6-module-*` split doesn't match what `qt6-declarative-dev`/`qt6-declarative-dev-tools` expect,
+cannot install one of them. `ac3gui` also ships as a self-contained
 AppImage that carries its own Qt 6 and QML modules, so that gap doesn't apply — the two package
 kinds are complementary, not a replacement for each other.
 
-**AppImage, not Flatpak, and this is a settled decision, not an open question.** `ac3gui`'s whole
+**AppImage, not Flatpak: the decision is settled.** `ac3gui`'s whole
 reason to exist is `ac3::audio`'s IEC 61937 passthrough — locking a device in exclusive/hog mode
 and writing a raw compressed bitstream straight to an AVR, over ALSA's `iec958:...,AES0=0x06`
 device arguments or PipeWire's native `SPA_MEDIA_SUBTYPE_iec958` (see [Why ALSA still comes
 first](#why-alsa-still-comes-first) above). That is exactly the kind of raw device access
 Flatpak's sandbox exists to take away by default; getting it back would mean either a portal that
 doesn't speak this vocabulary or blanket `--device=all`/`--filesystem=host` opt-outs that defeat
-the sandbox for no real benefit here, on top of a Flathub review process and a second (KDE) Qt 6
+the sandbox for no benefit here, on top of a Flathub review process and a second (KDE) Qt 6
 runtime to track alongside this project's own pinned Qt version. AppImage carries no sandbox at
 all, so ALSA/PipeWire device access from inside one works exactly like it does from a normally
 installed binary — no portal, no opt-out flags, nothing to maintain going forward.
@@ -327,7 +328,7 @@ assume present the same way it treats glibc itself (they're on the standard AppI
 its own tooling generates from) — a reasonable default for the AppImage ecosystem's usual case of
 building with an *old* toolchain for backwards compatibility, but wrong here, where the toolchain
 is deliberately the newest one this project pins. `linux-appimage` force-bundles both with
-`linuxdeploy --library` (confirmed necessary against a real run's own `usr/lib/`, not assumed) so
+`linuxdeploy --library` (confirmed necessary against a run's own `usr/lib/`, not assumed) so
 the AppImage doesn't quietly trade the glibc floor above for a `libstdc++`/`GLIBCXX` one just as
 narrow.
 
@@ -335,12 +336,12 @@ narrow.
 
 Configure/build/package-verified in CI (the `linux-appimage` job in `.github/workflows/_build.yml`,
 which runs in the nightly run and in a release, never in a pull request or the run after a merge)
-— and, one step further than a plain `.deb`/`.rpm` gets, actually run: the same job then launches
+— and, one step further than a plain `.deb`/`.rpm` gets, run: the same job then launches
 the built AppImage headlessly (`ac3gui --smoke`, `QT_QPA_PLATFORM=offscreen`) inside a **second, separate
 container that never had Qt or a single build tool installed** — `debian:12-slim`, reached via
 Docker against the GitHub-hosted runner's own Docker daemon — and asserts it exits 0. That is the
 concrete answer to "does this actually run on a distro whose own Qt packages were never
-installed". No real desktop has installed the produced
+installed". No desktop has installed the produced
 `.AppImage` and double-clicked an `.ac3` file, the same caveat the `.deb`/`.rpm` packaging above
 carries.
 
@@ -349,11 +350,11 @@ library, which `debian:12-slim` doesn't ship at all. This is deliberate, not a g
 — it draws the exact same boundary the `.deb`/`.rpm` already draw (`CPACK_DEBIAN_PACKAGE_SHLIBDEPS`/
 `CPACK_RPM_PACKAGE_AUTOREQPROV` in `cmake/Packaging.cmake` declare `libasound2` as a runtime
 package dependency rather than bundling it), because ALSA is part of the base multimedia stack on
-effectively every real desktop Linux install, unlike Qt6, which is exactly the piece this AppImage
+effectively every desktop Linux install, unlike Qt6, which is exactly the piece this AppImage
 exists to stop depending on the host for. Bundling `libasound.so.2` instead would also risk a
 worse failure than not bundling it: ALSA's plugin/config ecosystem
 (`/usr/lib/*/alsa-lib/`, `/etc/asound.conf`) is tied to the *host* system, so a bundled `.so` with
-none of that around it could load and then simply fail to enumerate any real device — the opposite
+none of that around it could load and then fail to enumerate any device — the opposite
 of the point made above for why AppImage was chosen over Flatpak in the first place ("ALSA/PipeWire
 access works exactly like a normal installed binary").
 
@@ -372,7 +373,7 @@ no-ALSA pass and the float32 and fixed-point variants on `linux-gcc`, the no-ALS
 `linux-gcc-arm64`, and the shared-library pass on `linux-llvm` (`deep_only` in
 `.github/ci/legs.jsonc`).
 
-Two arm64 legs, `linux-gcc-arm64` and `linux-llvm-arm64`, run the same matrix on real ARM hardware
+Two arm64 legs, `linux-gcc-arm64` and `linux-llvm-arm64`, run the same matrix on ARM hardware
 (GitHub's `ubuntu-24.04-arm` hosted runner, not QEMU emulation), the first after each merge and
 the second nightly — see [Raspberry Pi](raspberry-pi.md), which is the hardware this arch target
 is validated against. `linux-llvm-arm64` also carries the Crucible pass, so the window, its Qt
