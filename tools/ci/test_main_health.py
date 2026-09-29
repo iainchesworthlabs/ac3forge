@@ -522,5 +522,22 @@ class Cli(unittest.TestCase):
         self.assertTrue(re.fullmatch(r"<!-- main-health run:77 -->", mh.run_marker(77)))
 
 
+class Workflow(unittest.TestCase):
+    """main-health.yml only runs from main, so what it passes to the script is pinned here."""
+
+    TEXT = (Path(__file__).resolve().parents[2] / ".github/workflows/main-health.yml").read_text(
+        encoding="utf-8"
+    )
+
+    def test_it_tells_the_script_which_event_ended_the_run(self):
+        self.assertIn("EVENT: ${{ github.event.workflow_run.event }}", self.TEXT)
+        self.assertIn('--event "$EVENT"', self.TEXT)
+
+    def test_it_takes_every_value_from_the_run_through_env(self):
+        # The script's own arguments carry `$NAME`, never a `${{ }}` expansion.
+        run = self.TEXT.split("        run: |", maxsplit=1)[1]
+        self.assertNotIn("${{", run)
+
+
 if __name__ == "__main__":
     unittest.main()
