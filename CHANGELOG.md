@@ -405,10 +405,10 @@ The sections below contain the complete change list and fixes.
   `media_container_to_map()` already computed but nothing read; AC-4's new "Immersive" card says
   whether an A-JOC substream is present. Card numbers on both sides of the page now run as one
   sequence over whichever optional card actually renders, rather than the AC-4 cards' own fixed
-  03-05 that skipped 04/05 on every non-AC4 file. Lt/Rt mix levels join the existing Lo/Ro pair, EMDF payload ids show their own
-  name ("OAMD (11)"), dynamic range and heavy compression show their real dB range rather than a
-  bare carried/not-carried boolean, and the Container row no longer reads an item not yet probed
-  as a confirmed elementary stream.
+  03-05 that skipped 04/05 on every non-AC4 file. Lt/Rt mix levels join the existing Lo/Ro pair,
+  EMDF payload ids show their own name ("OAMD (11)"), dynamic range and heavy compression show
+  their real dB range rather than a bare carried/not-carried boolean, and the Container row no
+  longer reads an item not yet probed as a confirmed elementary stream.
 - **`ac3hearth` gets an About dialog and a Licences view of the generated notices.** About
   states what the player does, its version and build provenance, and the GPL/Dolby-trademark
   line, with a Licences… button that opens the full third-party `NOTICES.txt` this build

@@ -153,9 +153,11 @@ evidence behind each claim, are in
 Requires CMake ≥ 3.28, Ninja, and — for the GUI, Hearth and Crucible — a prebuilt Qt kit, never
 from vcpkg: 6.5+ for the GUI, 6.8+ for Hearth and Crucible. Windows needs Visual Studio 2026
 (MSVC) or clang-cl 22; Linux needs GCC 16 or Clang 22. A
-[vcpkg](https://github.com/microsoft/vcpkg) checkout with `VCPKG_ROOT` set supplies fmt and
-Catch2, plus Boost and Tracy for the opt-in `adm` and `profiling` features; without one, fmt and
-Catch2 fall back to a `FetchContent` build from source.
+[vcpkg](https://github.com/microsoft/vcpkg) checkout with `VCPKG_ROOT` set, which the desktop
+presets read, supplies fmt and Catch2, the libraries of the default Hearth build, and Boost and Tracy
+for the opt-in `adm` and `profiling` features. Configured without a preset, fmt and Catch2 fall
+back to a `FetchContent` build from source, and Hearth needs `-DAC3FORGE_BUILD_HEARTH=OFF`
+unless its libraries are installed another way.
 
 ```bash
 cmake --preset config-windows-msvc-debug
