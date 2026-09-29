@@ -109,9 +109,10 @@ bed's.
 
 The probe's 5.1 fixture folds in 3,180 µs (`eac3_fold`). Both folds work out at about 18 cycles
 for each sample the output stage zeroes, multiplies and adds, or copies. The stage makes six
-passes over the frame, and `src/forge/src/decoder/output.cpp` is compiled at `-Os`: it is not on
-`src/forge/minimal.cmake`'s `AC3FORGE_MINIMAL_HOT_O2` list. Folding the whole frame at once is
-also what raises the peak by 49 KB: six seats and two outputs of 1,536 samples each.
+passes over the frame, and `src/forge/src/decoder/output.cpp` was compiled at `-Os`: it was not on
+`src/forge/minimal.cmake`'s `AC3FORGE_MINIMAL_HOT_O2` list (#654 put it there). Folding the whole
+frame at once is also what raised the peak by 49 KB: six seats and two outputs of 1,536 samples
+each; the stage works a block at a time now.
 
 ### In the player over WiFi, folded to 2.0
 
@@ -268,6 +269,12 @@ sources at `-O2`:
 The application image grew by 4,400 bytes of flash, and SRAM is unchanged.
 
 ## What the profile says
+
+This is the reading of 2026-09-11, before #654 and #657. Once #654 folded a block at a time the
+7.1.4 fold took 1.12 ms in the probe where it took 4.06, and a `714-walk` frame at 2.0 over WiFi
+took 30.0 ms where it took 35.3. The output task of the third cause was built and withdrawn, and
+the instruction cache of the fourth is in `sdkconfig.psram`
+([the decisions on the board](#the-decisions-on-the-board)).
 
 Three things push a 7.1.4 frame past 32 ms in the network shape, and their costs add:
 
