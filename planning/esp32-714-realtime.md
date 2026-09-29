@@ -1,24 +1,49 @@
 # 7.1.4 in real time on the ESP32-S3 player
 
-**Status, 2026-09-11:** profiled on a board, then the component's side built and measured on
-the same board. The user took the decisions the same day: the component's side (decisions 1, 2, 6,
-9 and 11) to be built, F and G to be proposed for the decoder core now, and the probe row
-(decision 10) left to PR #654, which profiles the fold. Decision 1 was built as (c) rather than (a),
-because of #654 (see decision 1). On the board, decision 1's output task did not
-pay, and two things the profile had not tried did: a 32 KB instruction cache, and holding a play's
-first unit until its second is decoded. With both, and #654, `714-walk.ec3` and `714-tones.ec3` play
-at 2.0 over WiFi with no block reaching an empty queue ([the decisions on the
-board](#the-decisions-on-the-board)). Decisions 12 to 15 follow from that, and the user took the
-recommendation on each the same day: the output task withdrawn, the 32 KB instruction cache in
-`sdkconfig.psram`, the first unit held by the player, and the local shape's queue documented.
-Nothing in `src/forge` has changed.
+**Status, 2026-09-30:** built and merged in PRs #654 and #657 (2026-09-11 and 2026-09-12), with
+two later changes to the decoder that touch it (decision 4). `714-walk.ec3` and `714-tones.ec3`
+play at 2.0 over WiFi on the ESP32-S3 with no block reaching an empty queue. Streams using AHT or
+enhanced coupling stay over the frame on this part ([What stays out of
+reach](#what-stays-out-of-reach)). The figures below were taken on 2026-09-11 on a board, and
+have not been taken again since F and G reached `main` or since #717 changed AHT's buffers.
 
-The player decodes a 7.1.4 E-AC-3 stream on the ESP32-S3 with every slot at the host decoder's
-level, and over WiFi it does so too slowly. Folded to 2.0, a frame of `714-walk.ec3` took 36 ms of
-its 32, and 149 of the stream's 900 blocks reached an empty DMA queue ([the stream set on a
-board](esp32-stream-set.md#on-a-board)). This page records where that frame's time goes, stage by
-stage, measured on the board. It then lists the options with what each is expected to save, and
-the decisions, each with a recommendation and a cost.
+What each decision came to:
+
+| # | Decision | Outcome |
+|---|---|---|
+| 1 | Where the fold, the render and the sink run | An output task on core 0 was built and measured, and withdrawn (12): it did not pay. The fold stays in the decoder, and the render and the sink stay in the decode task |
+| 2 | The ring's and the DMA queue's depth | Not built, since it belonged to the output task. `sdkconfig.psram` keeps a 64 ms queue, twelve descriptors of 256 frames |
+| 3 | The data cache | Not changed: it stays at the default 32 KB, and `sdkconfig.psram` has no line for it |
+| 4 | F and G in the decoder | Built. #656 was closed, and its two commits reached `main` by a direct merge (`cd11374d0`, 2026-09-12). #717 (2026-09-16) later decoded AHT straight into the block store, which removed G's per-stream buffers |
+| 5 | Two cores inside the decode (B) | Not built; recorded with the stage shares |
+| 6 | Twelve 32-bit slots on the S3 | (a) built in #657. The `tdm` sink is gone since #666 (2026-09-12): the `i2s` sink plans standard I2S or TDM for each layout, refuses a layout wider than its ceiling, and takes a second line for sixteen 16-bit slots, which has run into no DAC |
+| 7 | The output stage's own speed (C) | #654 (2026-09-11) |
+| 8 | The local-source shape | Measured, as decision 15 records |
+| 9 | Stage timers in the example | Built in #657: `AC3FORGE_STAGE_TIMERS` |
+| 10 | A 7.1.4 fold row in the probe | Built in #654: `eac3_714_fold` |
+| 11 | The component's sources at `-O2` | Built in #657 |
+| 12 | Withdraw the output task | Taken and built in #657. The block ring stays, inside `UnitHold` |
+| 13 | A 32 KB instruction cache | Built: `sdkconfig.psram` |
+| 14 | Hold a play's first unit | Built: `PlayerConfig::hold_first_unit`, on in `sdkconfig.psram` and `sdkconfig.ci` |
+| 15 | The local shape's DMA queue | Built: the Kconfig help and the README say twelve descriptors, and the default stays four |
+
+The user took the decisions on 2026-09-11: the component's side (decisions 1, 2, 6, 9 and 11) to
+be built, F and G to be proposed for the decoder core now, and the probe row (decision 10) left
+to PR #654, which profiles the fold. Decision 1 was built as (c) rather than (a), because of #654
+(see decision 1). On the board, decision 1's output task did not pay, and two things the profile
+had not tried did: a 32 KB instruction cache, and holding a play's first unit until its second is
+decoded. With both, and #654, `714-walk.ec3` and `714-tones.ec3` play at 2.0 over WiFi with no
+block reaching an empty queue ([the decisions on the board](#the-decisions-on-the-board)).
+Decisions 12 to 15 follow from that, and the user took the recommendation on each the same day:
+the output task withdrawn, the 32 KB instruction cache in `sdkconfig.psram`, the first unit held
+by the player, and the local shape's queue documented.
+
+When this page was written the player decoded a 7.1.4 E-AC-3 stream on the ESP32-S3 with every
+slot at the host decoder's level, and over WiFi it did so too slowly. Folded to 2.0, a frame of
+`714-walk.ec3` took 36 ms of its 32, and 149 of the stream's 900 blocks reached an empty DMA
+queue ([the stream set on a board](esp32-stream-set.md#on-a-board)). This page records where that
+frame's time goes, stage by stage, measured on the board. It then lists the options with what
+each is expected to save, and the decisions, each with a recommendation and a cost.
 
 ## What was asked
 
@@ -84,9 +109,10 @@ bed's.
 
 The probe's 5.1 fixture folds in 3,180 µs (`eac3_fold`). Both folds work out at about 18 cycles
 for each sample the output stage zeroes, multiplies and adds, or copies. The stage makes six
-passes over the frame, and `src/forge/src/decoder/output.cpp` is compiled at `-Os`: it is not on
-`src/forge/minimal.cmake`'s `AC3FORGE_MINIMAL_HOT_O2` list. Folding the whole frame at once is
-also what raises the peak by 49 KB: six seats and two outputs of 1,536 samples each.
+passes over the frame, and `src/forge/src/decoder/output.cpp` was compiled at `-Os`: it was not on
+`src/forge/minimal.cmake`'s `AC3FORGE_MINIMAL_HOT_O2` list (#654 put it there). Folding the whole
+frame at once is also what raised the peak by 49 KB: six seats and two outputs of 1,536 samples
+each; the stage works a block at a time now.
 
 ### In the player over WiFi, folded to 2.0
 
@@ -200,6 +226,13 @@ frame and handing them to a sink that can take them. That sink could be sixteen 
 across both I2S controllers, or a TDM device that accepts several I2S lines. The example has
 neither today.
 
+**As built.** The first of the two exists since PR #666 (2026-09-12). The `tdm` sink is gone: the
+`i2s` sink opens standard I2S for one or two channels and TDM from three, sized by
+`sink_plan.hpp`, and with `CONFIG_AC3FORGE_EXAMPLE_I2S_SECOND_LINE` it drives the second I2S
+controller as a slave of the first, for eight 32-bit or sixteen 16-bit slots. A layout wider than
+that ceiling is refused when it is set (`accept_layout` in `hearth_sink.cpp`), which is decision 6's
+check. Nothing has run the two lines into DACs.
+
 ### The data cache
 
 The 2.0 image, again, with a 64 KB data cache and 64-byte lines (`ESP32S3_DATA_CACHE_64KB`,
@@ -236,6 +269,12 @@ sources at `-O2`:
 The application image grew by 4,400 bytes of flash, and SRAM is unchanged.
 
 ## What the profile says
+
+This is the reading of 2026-09-11, before #654 and #657. Once #654 folded a block at a time the
+7.1.4 fold took 1.12 ms in the probe where it took 4.06, and a `714-walk` frame at 2.0 over WiFi
+took 30.0 ms where it took 35.3. The output task of the third cause was built and withdrawn, and
+the instruction cache of the fourth is in `sdkconfig.psram`
+([the decisions on the board](#the-decisions-on-the-board)).
 
 Three things push a 7.1.4 frame past 32 ms in the network shape, and their costs add:
 
@@ -389,6 +428,14 @@ decode's, and the levels would stop matching the host's to the digit. J would al
      twelve slots. WiFi was unaffected in ten plays, but the least free internal heap during a
      7.1.4 play at 2.0 fell to 703 to 895 bytes, against 975 to 2,419 without it.
 
+   **As built.** #656 was closed without merging, and its two commits, G (`a627732a1`) and F
+   (`07699f2f7`), reached `main` by a direct merge of their branch, `cd11374d0`, on 2026-09-12. F
+   is still in the decoder as `pcm_pool_`, a pooled set of channel buffers for each substream
+   identity. G's per-stream AHT buffer is not: #717 (2026-09-16) has block 0 decode an AHT stream
+   straight into the per-block coefficient store, so no AHT frame buffer exists. The times on
+   this page are from before both changes; #717's description leaves it open whether it recovers
+   the 1.7 ms G cost at 2.0 over WiFi.
+
 5. **Two cores inside the decode (B).**
    - (a) **Record it with the stage shares, as the next step if 7.1.4 streams with AHT must
      play.**
@@ -415,6 +462,9 @@ decode's, and the levels would stop matching the host's to the digit. J would al
    every board as soon as it is asked for more than four 32-bit slots. Cost of (a): a check in
    `sink_open`, a narrower Kconfig range, and the sink's comment and README section rewritten.
    Cost of (b): two controllers kept in step on one clock, which cannot be verified without a DAC.
+
+   **Built:** (a) in #657 and (b) in #666, as [Twelve slots on this part](#twelve-slots-on-this-part)
+   says. (b) is still unverified against a DAC.
 
 7. **The output stage's own speed (C).** This is not decided here. It is PR #654's, which
    profiles the fold, DRC and dialnorm.
@@ -642,6 +692,10 @@ after them ran. Through the null sink, which has no I2S DMA queue, 150 KB was fr
 and the data cache took another 0.8 to 2 ms off each twelve-slot frame.
 
 ## What stays out of reach
+
+Open on the S3, on the figures of 2026-09-11, which are from before F, G and #717 reached `main`.
+The P4 decodes the same streams inside a frame in its probe: `714-aht` in 0.37, `714-all` in 0.40
+and `714-ecpl` in 0.70 ([the sink tiers plan](esp32-sink-tiers.md#why-the-s3-is-better-but-not-best)).
 
 - **Enhanced coupling at 7.1.4.** With decisions 13 and 14 it decodes in 60.1 ms at 2.0 and
   takes 55.9 ms onto twelve slots. Split across two cores (B) it would still be about half that
