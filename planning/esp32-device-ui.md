@@ -1,6 +1,16 @@
 # The ESP32 player's web UI
 
-!!! note "Status as of 2026-09-11: built, tested on the host and under QEMU, and its requests measured on a board"
+!!! note "Status as of 2026-09-30: built and merged, with every decision taken as recommended"
+    The page was built in ten pull requests between 2026-09-11 and 2026-09-26: #637 (the page,
+    2026-09-11), #649 (the output layout, 2026-09-12), #726 (Hearth B2, the board's own settings,
+    2026-09-16), #737 (B3, the Sendspin section and pairing, 2026-09-16), #974 and #982 (the
+    hardware report, 2026-09-23 and 2026-09-24), #997 (the redesign, 2026-09-24), #1020 (several
+    servers, 2026-09-25), #1035 (the firmware section, 2026-09-25) and #1036 (the links to a
+    crash's core dump and the console, 2026-09-26). The dated paragraphs below say what each
+    added. Decisions 1 to 29 were taken as recommended and are built; 8 and 9 were left as they
+    were on purpose, and are still open as separate changes. Nothing on the page waits on a later
+    phase.
+
     The first pages the ESP32 player serves from its own firmware: one page that shows what the
     player is doing and drives it, served by `ac3forge::Control` beside the REST routes it
     already has, and calling only those routes. The design below was committed before the code;
@@ -91,7 +101,7 @@ play ended - and play a URL, stop, change the volume and change the layout witho
 is one request to a route that exists today, so the device has one control path and the page
 adds no state of its own to the firmware.
 
-## What exists
+## What existed on 2026-09-11
 
 | Part | What it is |
 |---|---|
@@ -103,6 +113,10 @@ adds no state of its own to the firmware.
 | CI | `_build.yml`'s ESP32 job boots `sdkconfig.ci-http` in QEMU with `-nic user,model=open_eth,hostfwd=tcp::8080-:80`, lets the boot play finish, and drives `/status`, `/volume`, `/play` and `/stop` with `curl`. |
 
 Nothing in the component embedded a file in firmware before this work.
+
+**As built, 2026-09-30.** Control has 27 route registrations now, the server's task stack is
+6,144 bytes ([What the measurements found](#what-the-measurements-found)), and `/status` has the
+fields the sections below add. The rest of this section is what the design started from.
 
 **The constraint is internal RAM.** Measured on an ESP32-S3-DevKitC-1 on 2026-09-10 in the network
 shape (`sdkconfig.defaults;sdkconfig.hw;sdkconfig.psram` plus an http overlay): with WiFi up and a
@@ -125,7 +139,9 @@ thing that can be changed, the same verbs as the API, and everything in the firm
 board may have no internet. What it leaves: pushed updates ([How the page updates](#how-the-page-updates)
 says why), a log view (the example's console is the USB serial port and nothing captures it),
 firmware upload (the partition table has one application slot), and an entity model (the player
-is one object with one status).
+is one object with one status). The log view and the firmware upload were left out of the first
+page and added later: [Firmware](#firmware) is the upload, on the two-slot tables of
+[the update plan](esp32-ota.md), and `GET /log` keeps the console's recent output (O4).
 
 ## What the page shows
 
@@ -144,6 +160,10 @@ Everything comes from one `GET /status`. A field the firmware does not report is
 | Progress | `frames` | Audio played (`frames` x 32 ms), and the frame count |
 | Errors | `failed`, `why`, `error`, and the page's own requests | An error line; a refused request's reply text |
 | The rest | `held`, `passes`, `fetched_bytes`, `resync_bytes`, `layout_mismatches` | Counters in a section that starts closed |
+
+**As built, 2026-09-30.** The Volume row is gone: since Hearth B2 (#726) the page has no volume
+slider, and `volume` is not shown. The other rows are on the page, arranged by [the
+redesign](#the-redesign).
 
 Four of these need more than a label.
 
@@ -179,6 +199,13 @@ shows the older mix: the stopped play's location beside an earlier play's figure
 
 ## What the page does
 
+**Superseded in part, 2026-09-30.** Since Hearth B2 (#726, 2026-09-16) the page does not play: Play,
+Stop and Volume went with the location field and the slider, because a server owns playback.
+`POST /play`, `/stop` and `/volume` stay in the REST surface for a person with `curl`. What the
+page sends now is `PUT /layout`, `/slot-width`, `/wiring`, `/name` and `/network`, `POST
+/pairing`, and the requests of [Firmware](#firmware). The rest of this section is the first
+design.
+
 Four actions, each one request to an existing route. Nothing else writes to the device.
 
 | Action | Request | Answered with |
@@ -201,6 +228,8 @@ latest value when it returns, and leaves at least 200 ms between sends. While a 
 pending, `/status` does not move the slider under the user's hand.
 
 ## The output layout
+
+**Status, 2026-09-30: built** on 2026-09-11 and merged in #649 on 2026-09-12.
 
 Seen on a board on 2026-09-11, playing a looped demo stream at `2.0`, the Layout field left
 three things unsaid that a person using it needs: that it sets the speakers the player drives,
@@ -296,6 +325,8 @@ which is parsed from the caller's full string before any truncation happens.)
 
 ### What `/hardware` adds
 
+**Status, 2026-09-30: built** in #974 (2026-09-23), with the CPU clock added in #982 (2026-09-24).
+
 A route of its own (decision 19), not a `/status` field: `GET /hardware`, JSON, fetched once when
 the page loads rather than polled every second, since nothing in it changes while the board runs.
 
@@ -367,10 +398,13 @@ as two facts where there is one.
 **What it costs**: measured at 25,594 to 28,103 bytes (2,509 more) when this route first shipped,
 within decision 18's 28,672-byte budget with 569 to spare - `sink_max_slots_bits` and the second
 notice pair add a small, unmeasured amount on top (a handful of struct fields, one more JSON
-number, one more notice sentence); re-measure against decision 18's budget before relying on the
-old figure as still current.
+number, one more notice sentence). The figure is not current: the later budgets are derived from
+the whole page (decisions 22 and 29), and the page and its script are 55,926 bytes now against a
+budget of 57,344.
 
 ## The redesign
+
+**Status, 2026-09-30: built** in #997 (2026-09-24).
 
 What the page is since 2026-09-24. The polling, the one live region, the text-only rendering and
 the one-request-per-action rule are as the sections around this one say; the REST contract
@@ -420,6 +454,8 @@ under 300 bytes to it, against 3,856 spare at the last measurement (decision 12)
 
 ### Several servers
 
+**Status, 2026-09-30: built** in #1020 (2026-09-25).
+
 Sendspin lets a player keep a pairing record for each server it pairs with (pairing.md, Pairing
 Records; `SendspinStore::kRecordCapacity` is eight) and admit one connection at a time: a server
 that starts playing displaces the one playing (connection.md, Multiple servers;
@@ -454,6 +490,9 @@ none.
 
 ## Firmware
 
+**Status, 2026-09-30: built** in #1035 (2026-09-25), with the crash and console links from #1036
+(O4), merged 2026-09-26.
+
 Phase O3 of [the update plan](esp32-ota.md): a section after Hardware for a board that answers
 `GET /firmware` ([decision 29](#decisions)). A firmware without the route answers 404, and the
 page then has no section.
@@ -473,14 +512,15 @@ page then has no section.
   dump's size, with a link that saves the dump (`GET /firmware/coredump`). A link beside it
   shows the console's recent output (`GET /log`) as the browser shows any text.
 - In flash mode, a line saying that nothing plays until the board restarts, and Now's state
-  reads Flash mode (`/status`'s `flash`).
+  reads Flash mode (`/status`'s `state` is `flash`).
 
 **What it does.** Each action asks first, in the dialog that asks before forgetting servers,
 which now asks before anything that cannot be taken back:
 
-- **Update firmware…** opens a file chooser. The page reads the image's first 112 bytes, as
-  `parse_image_head` does, and names the version in the dialog. It does not send a file that
-  the board would refuse on those bytes alone:
+- **Update firmware…** opens a file chooser. The page reads the image's first 112 bytes, which
+  hold its magic number, chip, version and project (the board's `parse_image_head` reads the
+  first 288), and names the version in the dialog. It does not send a file that the board would
+  refuse on those bytes alone:
   - not an application image;
   - an image for another chip than `/hardware`'s target;
   - an image of another project.
@@ -573,8 +613,12 @@ twice after a lost reply would restart. The design is for one or two viewers at 
 | `GET /api` | - | The list of routes, `text/plain`, with `/` and `/api` added to it |
 | `GET /status`, `POST /play`, `POST /stop`, `POST /volume`, `GET /layout`, `PUT /layout` | Unchanged | Unchanged, byte for byte |
 
-`max_uri_handlers` is the size of Control's route table, 9, so a route added without a slot
-cannot go missing, and a registration that fails says so on the console. The page and its script
+`max_uri_handlers` is the size of Control's route table, 9 when the page was built and 27 now
+(`std::size(routes)` in `control.cpp`), so a route added without a slot cannot go missing, and a
+registration that fails says so on the console. Since then `/hardware`, `/slot-width`, `/name`,
+`/wiring`, `/network`, `/pairing`, `/firmware`, `/firmware/mode`, `/firmware/rollback`,
+`/firmware/coredump`, `/restart` and `/log` have joined the table, and `curl http://<board>/api`
+lists them all. The page and its script
 are sent with `Cache-Control: no-cache`, so a browser does not keep a script from before a
 firmware update, and a `Content-Security-Policy` that allows scripts from the device only. The
 page declares an empty icon (`<link rel="icon" href="data:,">`), because a browser otherwise asks
@@ -732,7 +776,11 @@ WCAG 2.2 AA is the target.
 - The page requests relative URLs on its own origin only, and Control sends no CORS headers.
 - A page on another site can already send `POST /play` with a text body to a device on the
   viewer's network, because a cross-origin request of that kind needs no preflight. The web UI
-  neither adds that nor closes it ([decision 9](#decisions)).
+  neither adds that nor closes it ([decision 9](#decisions)). The firmware routes are the
+  exception: `PUT /firmware`, `PUT /firmware/mode`, `PUT /firmware/rollback` and `DELETE
+  /firmware/coredump` answer `403` unless the request's `Host` is an IP address or the board's own
+  name, which stops a page that reaches the board by DNS rebinding. `POST /restart` is a POST
+  like `POST /play` and needs no preflight ([the update plan](esp32-ota.md#routes)).
 - Strings from `/status` - a location anyone could have sent, a layout, a reason - go into the
   page as text (`textContent`), never as markup, and a test sends markup to prove it. The
   content security policy allows scripts from the device only.
@@ -746,8 +794,9 @@ server stands in for the device (`device-ui/stub.js`), one per test: it serves t
 script with the headers Control sends, and implements the REST contract - routes, methods, status
 codes, reply texts, content types, and the state a play goes through. `contract.spec.js` compares
 its reply texts, headers and routes with the literals in `control.cpp`, and checks that every
-request the script makes is to a route the firmware registers. The host suite's 145 tests drive every action
-through the page and assert on the requests the stand-in received; every error path (`400` and
+request the script makes is to a route the firmware registers. The host suite (nine spec files
+under `apps/wasm/tests/device-ui/`) drives every action
+through the page and asserts on the requests the stand-in received; every error path (`400` and
 `409` replies, a connection closed unanswered, a device that does not answer, a malformed or
 partial `/status`); the polling rules on Playwright's clock (one request in flight, none while
 hidden, the retry interval, a poll after an action); a layout's confirmation after the state change
@@ -790,9 +839,9 @@ to `firmware_status.hpp`'s order. The tests cover:
 
 **Coverage.** Chromium's V8 coverage of the script, collected by Playwright per test, written in
 the form Node's own coverage takes, and reported by c8 (`npm run coverage:device-ui`), which fails
-below 98% of statements, lines and functions and 90% of branches. The suite reaches 100, 100, 100
-and 94.8. The branch that loads the page again is run by the tests but not counted: a page's
-coverage is what its last load ran.
+below 98% of statements, lines and functions and 90% of branches. The suite reached 100, 100, 100
+and 94.8 when the page was first built, on 2026-09-11. The branch that loads the page again is
+run by the tests but not counted: a page's coverage is what its last load ran.
 
 **Budget.** A host test sums the two files, fails above 57,344 bytes, and fails on a carriage
 return.
@@ -831,8 +880,8 @@ run as root, so Playwright can install Chromium's system libraries).
   fields for every stream in the set, at `2.0` on its I2S sink and at `7.1.4` on the null sink,
   and its page showed a 7.1.4 stream folded to 2.0. The twelve-slot page itself was read on the
   emulated board only, and what it says of objects placed over the network is from host tests
-  and recorded bodies. No S3 sink sends 7.1.4 to a DAC: one TDM line carries at most four 32-bit
-  slots.
+  and recorded bodies. No S3 sink has sent 7.1.4 to a DAC: one TDM line carries at most four
+  32-bit slots, and the `i2s` sink's second line (#666) has run into no DAC.
 
 ## Decisions
 
