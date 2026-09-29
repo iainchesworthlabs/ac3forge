@@ -480,7 +480,7 @@ converter takes 22.4 ms a frame at 23.976 fps, three times the small tables' tim
 sample, and 98.5 ms in the 29.97 fps play, where the default policy's sporadic slow stage
 ([Allocation policy](#allocation-policy)) falls on it: the same play with allocations over 512
 bytes sent to PSRAM first takes 17.5 ms (1.26 times real time) and the 23.976 fps play 21.0. The
-first frame at 1001/960 still takes 5.9 s more than an ordinary one, since the table is designed in
+first frame at 1001/960 still takes 5.9 s, 5.5 s more than an ordinary one, since the table is designed in
 `double`: 94,094 evaluations of the Kaiser window and the sinc on the compiler's soft-float
 routines. At 25/24 and 15/16 it takes no longer than any other.
 

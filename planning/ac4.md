@@ -2198,8 +2198,8 @@ The converter on the P4, per frame of two channels, before and after: 204,951 to
 fps, where the default policy's sporadic slow stage falls on it (17,454 under the 512-byte policy). The
 frame is 0.92 and 0.82 of its duration at 24 and 25 fps, from 5.64 and 5.92, and 1.25 and 3.65 (1.21 and
 1.26) at the 1001/960 rates. On the host, in one channel's frame, the `double` sum takes 119 to 143 us
-and the `float` lanes 41 to 54 (2.6 to 3.1 times, MSVC). The first frame at 1001/960 still takes 5.9 s
-more than an ordinary one, the table being designed in `double`.
+and the `float` lanes 41 to 54 (2.6 to 3.1 times, MSVC). The first frame at 1001/960 still takes 5.9 s,
+5.5 s more than an ordinary one, the table being designed in `double`.
 [ESP32-P4](../docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables.
 
 **Exit:** the `float` PCM equal on the host, the Cortex-M3 leg and the P4 for D14b's twenty plays, where
