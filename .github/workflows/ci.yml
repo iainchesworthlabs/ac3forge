@@ -157,7 +157,24 @@ on:
   # A branch that wants the full matrix before it merges (a change to ESP-IDF,
   # Android, WASM, the sanitizers) asks for it: `gh workflow run ci.yml --ref
   # <branch>`. A dispatch forces every lane on (see the `changes` job).
+  #
+  # `legs` narrows a dispatch to exactly the build legs it names, by preset:
+  # `gh workflow run ci.yml --ref <branch> -f legs=linux-gcc,windows-msvc` runs
+  # those two builds and nothing else, which is what to ask for when a change
+  # touches only how those legs are built. The presets are in
+  # .github/ci/legs.jsonc. A full run holds a dozen or more hosted runners for
+  # the better part of an hour, and the pull-request gate waits behind them.
   workflow_dispatch:
+    inputs:
+      tier:
+        description: "Which legs of the build matrix run: all (the default) or t2, the ones the run on main runs after a merge. Ignored when `legs` is set."
+        type: choice
+        options: [ all, t2 ]
+        default: all
+      legs:
+        description: "Only these build legs, comma-separated presets (linux-gcc,windows-msvc). Nothing else runs. Empty runs the full matrix."
+        type: string
+        default: ""
 
 concurrency:
   # Main is verified single-flight. One run executes and at most one waits, and
@@ -285,6 +302,7 @@ jobs:
           # .github/actions/build-leg/action.yml's Configure step.
           REF: ${{ github.ref }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          LEGS: ${{ inputs.legs }}
         shell: bash
         run: |
           set -euo pipefail
@@ -316,6 +334,9 @@ jobs:
                 code=true
               fi
             done <<< "$files"
+            # Someone asked for this run. A head commit that only touched docs is
+            # no reason to build nothing.
+            if [ "$EVENT_NAME" = "workflow_dispatch" ]; then code=true; fi
             echo "code=$code" >> "$GITHUB_OUTPUT"
             echo "code=$code"
           fi
@@ -338,7 +359,14 @@ jobs:
           if [ "$force_lanes" = true ]; then
             classify_args+=(--force-all)
           fi
-          echo "$files" | python3 tools/ci/classify_changes.py "${classify_args[@]}" >> "$GITHUB_OUTPUT"
+          if [ -n "${LEGS:-}" ]; then
+            # A dispatch that names exact build legs runs those and nothing else:
+            # every lane is off but the platforms the legs are on. A preset that
+            # is not in .github/ci/legs.jsonc stops the run here, with the list.
+            python3 tools/ci/plan_legs.py --lanes >> "$GITHUB_OUTPUT"
+          else
+            echo "$files" | python3 tools/ci/classify_changes.py "${classify_args[@]}" >> "$GITHUB_OUTPUT"
+          fi
 
   # CI lane partitions plan (docs/ci-lanes.md): coverage, the ADM module
   # build, the PR-time performance/memory comparisons and gates, the ABI
@@ -483,6 +511,10 @@ jobs:
       run_wasm: ${{ needs.changes.outputs.wasm == 'true' && github.event_name != 'pull_request' }}
       run_esp: ${{ needs.changes.outputs.esp == 'true' }}
       run_rust: ${{ needs.changes.outputs.rust == 'true' && github.event_name != 'pull_request' }}
+      # Which legs of .github/ci/legs.jsonc the platform builds run. Every event but
+      # a dispatch that asks otherwise runs all of them.
+      tier: ${{ inputs.tier || 'all' }}
+      legs: ${{ inputs.legs }}
     secrets:
       # Forward the Atmos object-signing key so build-android bundles it and the
       # Shield app signs whenever the secret is set - on ordinary CI builds too,

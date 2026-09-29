@@ -269,12 +269,18 @@ template void prediction_coefficients<Real>(std::span<const dsp::Complex<Real>>,
 // The A-SPX encoder (src/ac4enc/src/aspx/aspx_encoder.cpp) calls
 // generate_high_band at double regardless of the decoder's scalar, to choose
 // its interleaving as a decoder will reconstruct it (see this target's
-// CMakeLists.txt, AC4CORE_ALSO_AT_DOUBLE); nothing outside this file calls the
-// other two directly, so only generate_high_band is also instantiated.
-AC4CORE_ALSO_AT_DOUBLE(template void generate_high_band<double>(const SubbandGroups&,
-                                                                const PatchTables&,
-                                                                const HfGeneratorInput<double>&,
-                                                                HfGeneratorState<double>&,
-                                                                std::span<dsp::Complex<double>>);)
+// CMakeLists.txt, AC4CORE_ALSO_AT_DOUBLE), and tests/ac4core/test_ac4core_aspx.cpp
+// calls the other two at double: a call inlined into generate_high_band<double>
+// leaves no symbol for GCC to link a test against, where MSVC emits one anyway.
+AC4CORE_ALSO_AT_DOUBLE(
+    template void generate_high_band<double>(const SubbandGroups&, const PatchTables&,
+                                             const HfGeneratorInput<double>&,
+                                             HfGeneratorState<double>&,
+                                             std::span<dsp::Complex<double>>);
+    template void preflattening_gains<double>(std::span<const dsp::Complex<double>>, int, int, int,
+                                              std::span<double>);
+    template void prediction_coefficients<double>(std::span<const dsp::Complex<double>>, int, int,
+                                                  std::span<dsp::Complex<double>>,
+                                                  std::span<dsp::Complex<double>>);)
 
 }  // namespace ac4::detail::aspx

@@ -93,7 +93,7 @@ add_compile_options("$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
 #  - It is invisible. Nothing in the source says a contraction happened, so
 #    the difference cannot be reviewed, only measured after the fact.
 #  - It would break the SIMD seam's correctness argument outright.
-#    src/forge/src/internal/arch/*/ac3/internal/arch/simd.hpp maps every
+#    src/arithmetic/arch/*/ac3/internal/arch/simd.hpp maps every
 #    operation to exactly one IEEE-754 add/subtract/multiply so that a
 #    vectorised kernel is bit-identical to the scalar loop it replaced. That
 #    holds only if the scalar loop is not silently getting a fused form the
@@ -223,6 +223,23 @@ if(AC3FORGE_MINIMAL_DECODER AND AC3FORGE_MINIMAL_ENCODER)
         "the measured peaks beside the option above. Pick one; a target that needs both in "
         "sequence can build one library and rebuild, but neither part this profile serves can "
         "hold both at once.")
+endif()
+
+# The AC-4 decoder inside the same profile (planning/ac4.md, D14b): the
+# inspector (src/ac4), the core (src/ac4core) and the decoder (src/ac4dec) as
+# static archives built with the profile's own compile options, and no encoder -
+# the encoder is built for no ESP32 part (decision 34). It is an option of its
+# own rather than a use of AC3FORGE_BUILD_AC4, which the guard below refuses in
+# the profile because it also builds src/ac4enc, the applications and the
+# tests. Off by default, and when off the profile builds exactly what it did
+# before: esp-idf/ac3forge/CMakeLists.txt sets it from CONFIG_AC3FORGE_AC4.
+option(AC3FORGE_MINIMAL_AC4
+    "Minimum-footprint decoder profile only: also build the AC-4 inspector, core and decoder (no encoder)"
+    OFF)
+if(AC3FORGE_MINIMAL_AC4 AND NOT AC3FORGE_MINIMAL_DECODER)
+    message(FATAL_ERROR
+        "AC3FORGE_MINIMAL_AC4 adds the AC-4 decoder to the minimum-footprint decoder profile, "
+        "and needs AC3FORGE_MINIMAL_DECODER=ON (a full build has AC3FORGE_BUILD_AC4).")
 endif()
 
 # Where a frame's time goes, on a target that cannot run Tracy. Routes the
@@ -492,6 +509,23 @@ if(AC3FORGE_BUILD_AC4)
     add_subdirectory(src/ac4core)
     add_subdirectory(src/ac4dec)
     add_subdirectory(src/ac4enc)
+elseif(AC3FORGE_MINIMAL_AC4)
+    # The minimum-footprint profile's share of the above: what a decode reads
+    # and no encoder (AC3FORGE_MINIMAL_AC4, beside the profile's options). The
+    # three directories check AC3FORGE_MINIMAL_DECODER themselves for what a
+    # bare-metal archive cannot have: a shared library, position-independent
+    # code, and exceptions.
+    add_subdirectory(src/ac4)
+    add_subdirectory(src/ac4core)
+    add_subdirectory(src/ac4dec)
+    # -Wno-psabi: GCC's arm-none-eabi says, once a translation unit and for every
+    # std::span passed by value, that its passing changed in GCC 7.1. A note about an
+    # ABI nothing here links against, hundreds of them in the log of a leg whose
+    # output is the numbers.
+    foreach(_ac3_ac4_target IN ITEMS ac4_objects ac4core ac4dec_objects)
+        target_compile_options(${_ac3_ac4_target} PRIVATE "$<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>")
+    endforeach()
+    unset(_ac3_ac4_target)
 endif()
 
 # A standalone reader, not a writer like the three container modules above - roadmap item IM1
@@ -692,7 +726,7 @@ message(STATUS "  Audio backend  : ${AC3FORGE_AUDIO_BACKEND}")
 if(AC3FORGE_BUILD_CRUCIBLE AND LINUX)
     message(STATUS "  Crucible X11   : ${AC3FORGE_CRUCIBLE_X11_BACKEND}")
 endif()
-# Which src/forge/src/internal/arch/ directory the codec's vector kernels
+# Which src/arithmetic/arch/ directory the codec's vector kernels
 # were compiled from (SIMD kernels). 'generic' is the portable scalar
 # reference; -DAC3FORGE_SIMD=generic forces it anywhere.
 message(STATUS "  SIMD kernels   : ${AC3FORGE_SIMD_RESOLVED}")

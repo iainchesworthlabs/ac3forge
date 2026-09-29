@@ -412,7 +412,10 @@ been refactoring for its own sake, not preventing duplication.
 
 `_build.yml`'s single `build` job (name: `${{ matrix.name }}`, an 11-entry
 `strategy.matrix` spanning three OSes) became three files, each an ordinary
-`workflow_call` reusable workflow with its own small matrix:
+`workflow_call` reusable workflow with its own matrix. The matrices are no longer written in
+those files: the legs are listed in `.github/ci/legs.jsonc`, `_build.yml`'s `plan-legs` job picks
+the ones a run needs, and each file takes its list as `inputs.matrix` (see
+[CI for many agents](ci-agentic.md#the-legs)):
 
 | File | Legs | Windows/Linux/macOS-only steps it carries |
 |---|---|---|

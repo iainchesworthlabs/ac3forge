@@ -155,7 +155,8 @@ reading taken.
   `substream_index_table()` in index order, what it turned out to be, how many bits the syntax
   took of it, and, for one not read to its end, the error and the reason. A substream that no
   element of the table of contents this decoder reads names, an HSF extension substream that
-  nothing claims among them, is reported as refused and unread.
+  nothing claims among them, is reported as refused and unread. An OAMD substream that sends an
+  `oamd_common_data()` (Part 2 clause 6.2.8.1) reports it as `oamd_common_data`.
 - `latency_samples()`: the decoder's delay at the output rate, 1 313 samples at
   `frame_rate_index` 13 and at the other indices the same at the internal rate plus the sample rate
   converter's delay. `decode_by_block()` holds back up to 255 samples more.

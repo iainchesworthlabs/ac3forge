@@ -47,14 +47,19 @@ class Imdct {
     [[nodiscard]] bool valid() const noexcept { return fft_.valid() && length_ % 4 == 0; }
     [[nodiscard]] std::size_t length() const noexcept { return length_; }
 
-    // `spectrum` holds length() lines and `out` 2 * length() samples.
+    // `spectrum` holds length() lines and `out` 2 * length() samples. The first
+    // form works in a buffer of the transform's own, made by the first call; the
+    // second in `scratch`, which must hold length() values (N/2 for Pseudocode
+    // 60's z[k] and N/2 for the transform's work) and which a caller with several
+    // transforms that never run at once can share among them.
     void inverse(std::span<const Real> spectrum, std::span<Real> out);
+    void inverse(std::span<const Real> spectrum, std::span<Real> out, std::span<Complex> scratch);
 
    private:
     std::size_t length_ = 0;
     Fft<Real> fft_;
     std::vector<Complex> twiddle_;  // xcos1[k] + j xsin1[k], k < N/2
-    std::vector<Complex> z_;
+    std::vector<Complex> scratch_;
 };
 
 template <typename Real>

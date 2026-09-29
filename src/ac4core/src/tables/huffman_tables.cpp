@@ -11,7 +11,8 @@
 // the index huff_decode() returns - the entry's position in the attachment's
 // _LEN and _CW arrays - beside each one. length_start[L] is the first entry
 // of length L. Where Annex A prints no cb_off, cb_mod, cb_mod2 or cb_mod3 for
-// a codebook, the value is 0.
+// a codebook, the value is 0. Each codebook's Fast table is built from its
+// entries at compile time (make_fast_table in huffman_codebook.hpp).
 
 namespace ac4::detail::tables {
 
@@ -69,6 +70,7 @@ constexpr std::array<HuffEntry, 121> kAsfHcbScalefacEntries = {{
     // 17 bits
     {0x00000, 0, 17}, {0x00001, 120, 17},
 }};
+constexpr auto kAsfHcbScalefacFast = make_fast_table(kAsfHcbScalefacEntries);
 
 // Table A.2, ASF_HCB_1: 81 codewords of 1 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAsfHcb1Entries = {{
@@ -99,6 +101,7 @@ constexpr std::array<HuffEntry, 81> kAsfHcb1Entries = {{
     {0x000, 2, 12}, {0x001, 6, 12}, {0x002, 26, 12}, {0x003, 54, 12}, {0x004, 62, 12},
     {0x005, 72, 12}, {0x006, 74, 12}, {0x007, 78, 12},
 }};
+constexpr auto kAsfHcb1Fast = make_fast_table(kAsfHcb1Entries);
 
 // Table A.3, ASF_HCB_2: 81 codewords of 3 to 9 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAsfHcb2Entries = {{
@@ -127,6 +130,7 @@ constexpr std::array<HuffEntry, 81> kAsfHcb2Entries = {{
     {0x000, 2, 9}, {0x001, 6, 9}, {0x002, 8, 9}, {0x003, 18, 9}, {0x004, 24, 9}, {0x005, 26, 9},
     {0x006, 54, 9}, {0x007, 56, 9}, {0x008, 62, 9}, {0x009, 72, 9}, {0x00a, 74, 9}, {0x00b, 78, 9},
 }};
+constexpr auto kAsfHcb2Fast = make_fast_table(kAsfHcb2Entries);
 
 // Table A.4, ASF_HCB_3: 81 codewords of 1 to 15 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAsfHcb3Entries = {{
@@ -166,6 +170,7 @@ constexpr std::array<HuffEntry, 81> kAsfHcb3Entries = {{
     // 15 bits
     {0x0000, 56, 15}, {0x0001, 59, 15}, {0x0002, 62, 15}, {0x0003, 74, 15},
 }};
+constexpr auto kAsfHcb3Fast = make_fast_table(kAsfHcb3Entries);
 
 // Table A.5, ASF_HCB_4: 81 codewords of 4 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAsfHcb4Entries = {{
@@ -195,6 +200,7 @@ constexpr std::array<HuffEntry, 81> kAsfHcb4Entries = {{
     // 12 bits
     {0x000, 26, 12}, {0x001, 62, 12}, {0x002, 74, 12}, {0x003, 78, 12},
 }};
+constexpr auto kAsfHcb4Fast = make_fast_table(kAsfHcb4Entries);
 
 // Table A.6, ASF_HCB_5: 81 codewords of 1 to 14 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAsfHcb5Entries = {{
@@ -230,6 +236,7 @@ constexpr std::array<HuffEntry, 81> kAsfHcb5Entries = {{
     // 14 bits
     {0x0000, 0, 14}, {0x0001, 8, 14}, {0x0002, 72, 14}, {0x0003, 80, 14},
 }};
+constexpr auto kAsfHcb5Fast = make_fast_table(kAsfHcb5Entries);
 
 // Table A.7, ASF_HCB_6: 81 codewords of 4 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAsfHcb6Entries = {{
@@ -259,6 +266,7 @@ constexpr std::array<HuffEntry, 81> kAsfHcb6Entries = {{
     // 12 bits
     {0x000, 0, 12}, {0x001, 8, 12}, {0x002, 72, 12}, {0x003, 80, 12},
 }};
+constexpr auto kAsfHcb6Fast = make_fast_table(kAsfHcb6Entries);
 
 // Table A.8, ASF_HCB_7: 64 codewords of 1 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 64> kAsfHcb7Entries = {{
@@ -291,6 +299,7 @@ constexpr std::array<HuffEntry, 64> kAsfHcb7Entries = {{
     {0x000, 47, 12}, {0x001, 54, 12}, {0x002, 55, 12}, {0x003, 56, 12}, {0x004, 60, 12},
     {0x005, 61, 12}, {0x006, 62, 12}, {0x007, 63, 12},
 }};
+constexpr auto kAsfHcb7Fast = make_fast_table(kAsfHcb7Entries);
 
 // Table A.9, ASF_HCB_8: 64 codewords of 3 to 11 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 64> kAsfHcb8Entries = {{
@@ -319,6 +328,7 @@ constexpr std::array<HuffEntry, 64> kAsfHcb8Entries = {{
     // 11 bits
     {0x000, 56, 11}, {0x001, 63, 11},
 }};
+constexpr auto kAsfHcb8Fast = make_fast_table(kAsfHcb8Entries);
 
 // Table A.10, ASF_HCB_9: 169 codewords of 1 to 14 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 169> kAsfHcb9Entries = {{
@@ -375,6 +385,7 @@ constexpr std::array<HuffEntry, 169> kAsfHcb9Entries = {{
     {0x0005, 154, 14}, {0x0006, 155, 14}, {0x0007, 164, 14}, {0x0008, 165, 14}, {0x0009, 166, 14},
     {0x000a, 167, 14}, {0x000b, 168, 14},
 }};
+constexpr auto kAsfHcb9Fast = make_fast_table(kAsfHcb9Entries);
 
 // Table A.11, ASF_HCB_10: 169 codewords of 4 to 13 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 169> kAsfHcb10Entries = {{
@@ -427,6 +438,7 @@ constexpr std::array<HuffEntry, 169> kAsfHcb10Entries = {{
     // 13 bits
     {0x0000, 129, 13}, {0x0001, 142, 13}, {0x0002, 166, 13}, {0x0003, 168, 13},
 }};
+constexpr auto kAsfHcb10Fast = make_fast_table(kAsfHcb10Entries);
 
 // Table A.12, ASF_HCB_11: 289 codewords of 3 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 289> kAsfHcb11Entries = {{
@@ -502,6 +514,7 @@ constexpr std::array<HuffEntry, 289> kAsfHcb11Entries = {{
     {0x014, 265, 12}, {0x015, 266, 12}, {0x016, 267, 12}, {0x017, 268, 12}, {0x018, 269, 12},
     {0x019, 270, 12},
 }};
+constexpr auto kAsfHcb11Fast = make_fast_table(kAsfHcb11Entries);
 
 // Table A.13, ASF_HCB_SNF: 22 codewords of 3 to 8 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 22> kAsfHcbSnfEntries = {{
@@ -518,6 +531,7 @@ constexpr std::array<HuffEntry, 22> kAsfHcbSnfEntries = {{
     // 8 bits
     {0x00, 2, 8}, {0x01, 3, 8},
 }};
+constexpr auto kAsfHcbSnfFast = make_fast_table(kAsfHcbSnfEntries);
 
 // Table A.16, ASPX_HCB_ENV_LEVEL_15_F0: 71 codewords of 4 to 18 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 71> kAspxHcbEnvLevel15F0Entries = {{
@@ -556,6 +570,7 @@ constexpr std::array<HuffEntry, 71> kAspxHcbEnvLevel15F0Entries = {{
     {0x2fff8, 58, 18}, {0x2fff9, 59, 18}, {0x2fffa, 60, 18}, {0x2fffb, 61, 18}, {0x2fffc, 62, 18},
     {0x2fffd, 63, 18}, {0x2fffe, 64, 18}, {0x2ffff, 65, 18},
 }};
+constexpr auto kAspxHcbEnvLevel15F0Fast = make_fast_table(kAspxHcbEnvLevel15F0Entries);
 
 // Table A.17, ASPX_HCB_ENV_LEVEL_15_DF: 141 codewords of 2 to 21 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 141> kAspxHcbEnvLevel15DfEntries = {{
@@ -623,6 +638,7 @@ constexpr std::array<HuffEntry, 141> kAspxHcbEnvLevel15DfEntries = {{
     {0x0ff7ac, 134, 21}, {0x0ff7ad, 135, 21}, {0x0ff7ae, 136, 21}, {0x0ff7af, 137, 21},
     {0x0ff7b4, 138, 21}, {0x0ff7b5, 139, 21}, {0x0ff7b6, 22, 21}, {0x0ff7b7, 140, 21},
 }};
+constexpr auto kAspxHcbEnvLevel15DfFast = make_fast_table(kAspxHcbEnvLevel15DfEntries);
 
 // Table A.18, ASPX_HCB_ENV_LEVEL_15_DT: 141 codewords of 1 to 19 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 141> kAspxHcbEnvLevel15DtEntries = {{
@@ -686,6 +702,7 @@ constexpr std::array<HuffEntry, 141> kAspxHcbEnvLevel15DtEntries = {{
     {0x7fff9, 134, 19}, {0x7fffa, 135, 19}, {0x7fffb, 136, 19}, {0x7fffc, 137, 19},
     {0x7fffd, 138, 19}, {0x7fffe, 139, 19}, {0x7ffff, 140, 19},
 }};
+constexpr auto kAspxHcbEnvLevel15DtFast = make_fast_table(kAspxHcbEnvLevel15DtEntries);
 
 // Table A.19, ASPX_HCB_ENV_BALANCE_15_F0: 25 codewords of 1 to 16 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 25> kAspxHcbEnvBalance15F0Entries = {{
@@ -718,6 +735,7 @@ constexpr std::array<HuffEntry, 25> kAspxHcbEnvBalance15F0Entries = {{
     // 16 bits
     {0xffea, 1, 16}, {0xffeb, 24, 16},
 }};
+constexpr auto kAspxHcbEnvBalance15F0Fast = make_fast_table(kAspxHcbEnvBalance15F0Entries);
 
 // Table A.20, ASPX_HCB_ENV_BALANCE_15_DF: 49 codewords of 1 to 19 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 49> kAspxHcbEnvBalance15DfEntries = {{
@@ -760,6 +778,7 @@ constexpr std::array<HuffEntry, 49> kAspxHcbEnvBalance15DfEntries = {{
     {0x7def6, 0, 19}, {0x7def7, 1, 19}, {0x7defa, 2, 19}, {0x7defb, 3, 19}, {0x7dffc, 45, 19},
     {0x7dffd, 46, 19}, {0x7dffe, 4, 19}, {0x7dfff, 48, 19},
 }};
+constexpr auto kAspxHcbEnvBalance15DfFast = make_fast_table(kAspxHcbEnvBalance15DfEntries);
 
 // Table A.21, ASPX_HCB_ENV_BALANCE_15_DT: 49 codewords of 1 to 15 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 49> kAspxHcbEnvBalance15DtEntries = {{
@@ -796,6 +815,7 @@ constexpr std::array<HuffEntry, 49> kAspxHcbEnvBalance15DtEntries = {{
     {0x7df8, 10, 15}, {0x7df9, 38, 15}, {0x7dfa, 40, 15}, {0x7dfb, 42, 15}, {0x7dfc, 43, 15},
     {0x7dfd, 44, 15}, {0x7dfe, 47, 15}, {0x7dff, 48, 15},
 }};
+constexpr auto kAspxHcbEnvBalance15DtFast = make_fast_table(kAspxHcbEnvBalance15DtEntries);
 
 // Table A.22, ASPX_HCB_ENV_LEVEL_30_F0: 36 codewords of 3 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 36> kAspxHcbEnvLevel30F0Entries = {{
@@ -828,6 +848,7 @@ constexpr std::array<HuffEntry, 36> kAspxHcbEnvLevel30F0Entries = {{
     // 17 bits
     {0x1fffe, 32, 17}, {0x1ffff, 34, 17},
 }};
+constexpr auto kAspxHcbEnvLevel30F0Fast = make_fast_table(kAspxHcbEnvLevel30F0Entries);
 
 // Table A.23, ASPX_HCB_ENV_LEVEL_30_DF: 71 codewords of 1 to 23 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 71> kAspxHcbEnvLevel30DfEntries = {{
@@ -883,6 +904,7 @@ constexpr std::array<HuffEntry, 71> kAspxHcbEnvLevel30DfEntries = {{
     // 23 bits
     {0x7ffbfc, 0, 23}, {0x7ffbfd, 1, 23}, {0x7ffbfe, 2, 23}, {0x7ffbff, 3, 23},
 }};
+constexpr auto kAspxHcbEnvLevel30DfFast = make_fast_table(kAspxHcbEnvLevel30DfEntries);
 
 // Table A.24, ASPX_HCB_ENV_LEVEL_30_DT: 71 codewords of 1 to 20 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 71> kAspxHcbEnvLevel30DtEntries = {{
@@ -931,6 +953,7 @@ constexpr std::array<HuffEntry, 71> kAspxHcbEnvLevel30DtEntries = {{
     {0xff7f7, 63, 20}, {0xff7f8, 64, 20}, {0xff7f9, 65, 20}, {0xff7fa, 66, 20}, {0xff7fb, 67, 20},
     {0xff7fe, 68, 20}, {0xff7ff, 69, 20},
 }};
+constexpr auto kAspxHcbEnvLevel30DtFast = make_fast_table(kAspxHcbEnvLevel30DtEntries);
 
 // Table A.25, ASPX_HCB_ENV_BALANCE_30_F0: 13 codewords of 1 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 13> kAspxHcbEnvBalance30F0Entries = {{
@@ -959,6 +982,7 @@ constexpr std::array<HuffEntry, 13> kAspxHcbEnvBalance30F0Entries = {{
     // 12 bits
     {0xffe, 0, 12}, {0xfff, 12, 12},
 }};
+constexpr auto kAspxHcbEnvBalance30F0Fast = make_fast_table(kAspxHcbEnvBalance30F0Entries);
 
 // Table A.26, ASPX_HCB_ENV_BALANCE_30_DF: 25 codewords of 1 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 25> kAspxHcbEnvBalance30DfEntries = {{
@@ -993,6 +1017,7 @@ constexpr std::array<HuffEntry, 25> kAspxHcbEnvBalance30DfEntries = {{
     // 17 bits
     {0x1fffc, 0, 17}, {0x1fffd, 1, 17}, {0x1fffe, 2, 17}, {0x1ffff, 24, 17},
 }};
+constexpr auto kAspxHcbEnvBalance30DfFast = make_fast_table(kAspxHcbEnvBalance30DfEntries);
 
 // Table A.27, ASPX_HCB_ENV_BALANCE_30_DT: 25 codewords of 1 to 15 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 25> kAspxHcbEnvBalance30DtEntries = {{
@@ -1023,6 +1048,7 @@ constexpr std::array<HuffEntry, 25> kAspxHcbEnvBalance30DtEntries = {{
     // 15 bits
     {0x7ff2, 0, 15}, {0x7ff3, 1, 15}, {0x7ff6, 2, 15}, {0x7ff7, 23, 15},
 }};
+constexpr auto kAspxHcbEnvBalance30DtFast = make_fast_table(kAspxHcbEnvBalance30DtEntries);
 
 // Table A.28, ASPX_HCB_NOISE_LEVEL_F0: 30 codewords of 1 to 16 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 30> kAspxHcbNoiseLevelF0Entries = {{
@@ -1058,6 +1084,7 @@ constexpr std::array<HuffEntry, 30> kAspxHcbNoiseLevelF0Entries = {{
     // 16 bits
     {0xef7e, 27, 16}, {0xef7f, 28, 16},
 }};
+constexpr auto kAspxHcbNoiseLevelF0Fast = make_fast_table(kAspxHcbNoiseLevelF0Entries);
 
 // Table A.29, ASPX_HCB_NOISE_LEVEL_DF: 59 codewords of 1 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 59> kAspxHcbNoiseLevelDfEntries = {{
@@ -1100,6 +1127,7 @@ constexpr std::array<HuffEntry, 59> kAspxHcbNoiseLevelDfEntries = {{
     {0x1f3f8, 54, 17}, {0x1f3f9, 55, 17}, {0x1f3fa, 56, 17}, {0x1f3fb, 57, 17}, {0x1f3fe, 42, 17},
     {0x1f3ff, 58, 17},
 }};
+constexpr auto kAspxHcbNoiseLevelDfFast = make_fast_table(kAspxHcbNoiseLevelDfEntries);
 
 // Table A.30, ASPX_HCB_NOISE_LEVEL_DT: 59 codewords of 1 to 16 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 59> kAspxHcbNoiseLevelDtEntries = {{
@@ -1141,6 +1169,7 @@ constexpr std::array<HuffEntry, 59> kAspxHcbNoiseLevelDtEntries = {{
     {0xfff8, 51, 16}, {0xfff9, 52, 16}, {0xfffa, 53, 16}, {0xfffb, 54, 16}, {0xfffc, 55, 16},
     {0xfffd, 56, 16}, {0xfffe, 57, 16}, {0xffff, 58, 16},
 }};
+constexpr auto kAspxHcbNoiseLevelDtFast = make_fast_table(kAspxHcbNoiseLevelDtEntries);
 
 // Table A.31, ASPX_HCB_NOISE_BALANCE_F0: 13 codewords of 1 to 10 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 13> kAspxHcbNoiseBalanceF0Entries = {{
@@ -1163,6 +1192,7 @@ constexpr std::array<HuffEntry, 13> kAspxHcbNoiseBalanceF0Entries = {{
     // 10 bits
     {0x3fa, 0, 10}, {0x3fb, 12, 10}, {0x3fe, 1, 10}, {0x3ff, 11, 10},
 }};
+constexpr auto kAspxHcbNoiseBalanceF0Fast = make_fast_table(kAspxHcbNoiseBalanceF0Entries);
 
 // Table A.32, ASPX_HCB_NOISE_BALANCE_DF: 25 codewords of 1 to 13 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 25> kAspxHcbNoiseBalanceDfEntries = {{
@@ -1193,6 +1223,7 @@ constexpr std::array<HuffEntry, 25> kAspxHcbNoiseBalanceDfEntries = {{
     {0x1fd8, 0, 13}, {0x1fd9, 1, 13}, {0x1fda, 2, 13}, {0x1fdb, 3, 13}, {0x1fdc, 4, 13},
     {0x1fdd, 6, 13}, {0x1fde, 18, 13}, {0x1fdf, 19, 13},
 }};
+constexpr auto kAspxHcbNoiseBalanceDfFast = make_fast_table(kAspxHcbNoiseBalanceDfEntries);
 
 // Table A.33, ASPX_HCB_NOISE_BALANCE_DT: 25 codewords of 1 to 11 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 25> kAspxHcbNoiseBalanceDtEntries = {{
@@ -1219,6 +1250,7 @@ constexpr std::array<HuffEntry, 25> kAspxHcbNoiseBalanceDtEntries = {{
     {0x7ec, 6, 11}, {0x7ed, 17, 11}, {0x7ee, 19, 11}, {0x7ef, 20, 11}, {0x7f8, 21, 11},
     {0x7f9, 22, 11}, {0x7fa, 23, 11}, {0x7fb, 24, 11},
 }};
+constexpr auto kAspxHcbNoiseBalanceDtFast = make_fast_table(kAspxHcbNoiseBalanceDtEntries);
 
 // Table A.34, ACPL_HCB_ALPHA_COARSE_F0: 17 codewords of 1 to 10 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 17> kAcplHcbAlphaCoarseF0Entries = {{
@@ -1241,6 +1273,7 @@ constexpr std::array<HuffEntry, 17> kAcplHcbAlphaCoarseF0Entries = {{
     // 10 bits
     {0x3be, 0, 10}, {0x3bf, 16, 10}, {0x3fe, 1, 10}, {0x3ff, 15, 10},
 }};
+constexpr auto kAcplHcbAlphaCoarseF0Fast = make_fast_table(kAcplHcbAlphaCoarseF0Entries);
 
 // Table A.35, ACPL_HCB_ALPHA_FINE_F0: 33 codewords of 1 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 33> kAcplHcbAlphaFineF0Entries = {{
@@ -1266,6 +1299,7 @@ constexpr std::array<HuffEntry, 33> kAcplHcbAlphaFineF0Entries = {{
     // 12 bits
     {0xb5e, 1, 12}, {0xb5f, 31, 12},
 }};
+constexpr auto kAcplHcbAlphaFineF0Fast = make_fast_table(kAcplHcbAlphaFineF0Entries);
 
 // Table A.36, ACPL_HCB_ALPHA_COARSE_DF: 33 codewords of 1 to 18 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 33> kAcplHcbAlphaCoarseDfEntries = {{
@@ -1302,6 +1336,7 @@ constexpr std::array<HuffEntry, 33> kAcplHcbAlphaCoarseDfEntries = {{
     // 18 bits
     {0x3e3fe, 1, 18}, {0x3e3ff, 31, 18},
 }};
+constexpr auto kAcplHcbAlphaCoarseDfFast = make_fast_table(kAcplHcbAlphaCoarseDfEntries);
 
 // Table A.37, ACPL_HCB_ALPHA_FINE_DF: 65 codewords of 1 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 65> kAcplHcbAlphaFineDfEntries = {{
@@ -1342,6 +1377,7 @@ constexpr std::array<HuffEntry, 65> kAcplHcbAlphaFineDfEntries = {{
     {0x13ded, 62, 17}, {0x13dee, 6, 17}, {0x13def, 63, 17}, {0x13df6, 3, 17}, {0x13df7, 5, 17},
     {0x13dfe, 55, 17}, {0x13dff, 58, 17},
 }};
+constexpr auto kAcplHcbAlphaFineDfFast = make_fast_table(kAcplHcbAlphaFineDfEntries);
 
 // Table A.38, ACPL_HCB_ALPHA_COARSE_DT: 33 codewords of 1 to 16 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 33> kAcplHcbAlphaCoarseDtEntries = {{
@@ -1377,6 +1413,7 @@ constexpr std::array<HuffEntry, 33> kAcplHcbAlphaCoarseDtEntries = {{
     // 16 bits
     {0xfbfa, 1, 16}, {0xfbfb, 31, 16}, {0xfbfe, 3, 16}, {0xfbff, 29, 16},
 }};
+constexpr auto kAcplHcbAlphaCoarseDtFast = make_fast_table(kAcplHcbAlphaCoarseDtEntries);
 
 // Table A.39, ACPL_HCB_ALPHA_FINE_DT: 65 codewords of 1 to 18 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 65> kAcplHcbAlphaFineDtEntries = {{
@@ -1417,6 +1454,7 @@ constexpr std::array<HuffEntry, 65> kAcplHcbAlphaFineDtEntries = {{
     {0x3b3ee, 1, 18}, {0x3b3ef, 62, 18}, {0x3b3f6, 2, 18}, {0x3b3f7, 63, 18}, {0x3b3fc, 3, 18},
     {0x3b3fd, 59, 18}, {0x3b3fe, 7, 18}, {0x3b3ff, 61, 18},
 }};
+constexpr auto kAcplHcbAlphaFineDtFast = make_fast_table(kAcplHcbAlphaFineDtEntries);
 
 // Table A.40, ACPL_HCB_BETA_COARSE_F0: 5 codewords of 1 to 4 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 5> kAcplHcbBetaCoarseF0Entries = {{
@@ -1429,6 +1467,7 @@ constexpr std::array<HuffEntry, 5> kAcplHcbBetaCoarseF0Entries = {{
     // 4 bits
     {0xe, 3, 4}, {0xf, 4, 4},
 }};
+constexpr auto kAcplHcbBetaCoarseF0Fast = make_fast_table(kAcplHcbBetaCoarseF0Entries);
 
 // Table A.41, ACPL_HCB_BETA_FINE_F0: 9 codewords of 1 to 8 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 9> kAcplHcbBetaFineF0Entries = {{
@@ -1449,6 +1488,7 @@ constexpr std::array<HuffEntry, 9> kAcplHcbBetaFineF0Entries = {{
     // 8 bits
     {0xfe, 7, 8}, {0xff, 8, 8},
 }};
+constexpr auto kAcplHcbBetaFineF0Fast = make_fast_table(kAcplHcbBetaFineF0Entries);
 
 // Table A.42, ACPL_HCB_BETA_COARSE_DF: 9 codewords of 1 to 8 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 9> kAcplHcbBetaCoarseDfEntries = {{
@@ -1469,6 +1509,7 @@ constexpr std::array<HuffEntry, 9> kAcplHcbBetaCoarseDfEntries = {{
     // 8 bits
     {0xfe, 0, 8}, {0xff, 8, 8},
 }};
+constexpr auto kAcplHcbBetaCoarseDfFast = make_fast_table(kAcplHcbBetaCoarseDfEntries);
 
 // Table A.43, ACPL_HCB_BETA_FINE_DF: 17 codewords of 1 to 13 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 17> kAcplHcbBetaFineDfEntries = {{
@@ -1497,6 +1538,7 @@ constexpr std::array<HuffEntry, 17> kAcplHcbBetaFineDfEntries = {{
     // 13 bits
     {0x1f1e, 0, 13}, {0x1f1f, 16, 13},
 }};
+constexpr auto kAcplHcbBetaFineDfFast = make_fast_table(kAcplHcbBetaFineDfEntries);
 
 // Table A.44, ACPL_HCB_BETA_COARSE_DT: 9 codewords of 1 to 8 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 9> kAcplHcbBetaCoarseDtEntries = {{
@@ -1517,6 +1559,7 @@ constexpr std::array<HuffEntry, 9> kAcplHcbBetaCoarseDtEntries = {{
     // 8 bits
     {0xfe, 0, 8}, {0xff, 8, 8},
 }};
+constexpr auto kAcplHcbBetaCoarseDtFast = make_fast_table(kAcplHcbBetaCoarseDtEntries);
 
 // Table A.45, ACPL_HCB_BETA_FINE_DT: 17 codewords of 1 to 15 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 17> kAcplHcbBetaFineDtEntries = {{
@@ -1549,6 +1592,7 @@ constexpr std::array<HuffEntry, 17> kAcplHcbBetaFineDtEntries = {{
     // 15 bits
     {0x7dfe, 0, 15}, {0x7dff, 16, 15},
 }};
+constexpr auto kAcplHcbBetaFineDtFast = make_fast_table(kAcplHcbBetaFineDtEntries);
 
 // Table A.46, ACPL_HCB_BETA3_COARSE_F0: 9 codewords of 2 to 6 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 9> kAcplHcbBeta3CoarseF0Entries = {{
@@ -1563,6 +1607,7 @@ constexpr std::array<HuffEntry, 9> kAcplHcbBeta3CoarseF0Entries = {{
     // 6 bits
     {0x00, 8, 6}, {0x01, 7, 6},
 }};
+constexpr auto kAcplHcbBeta3CoarseF0Fast = make_fast_table(kAcplHcbBeta3CoarseF0Entries);
 
 // Table A.47, ACPL_HCB_BETA3_FINE_F0: 17 codewords of 3 to 7 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 17> kAcplHcbBeta3FineF0Entries = {{
@@ -1577,6 +1622,7 @@ constexpr std::array<HuffEntry, 17> kAcplHcbBeta3FineF0Entries = {{
     // 7 bits
     {0x0c, 15, 7}, {0x0d, 0, 7}, {0x78, 14, 7}, {0x79, 16, 7},
 }};
+constexpr auto kAcplHcbBeta3FineF0Fast = make_fast_table(kAcplHcbBeta3FineF0Entries);
 
 // Table A.48, ACPL_HCB_BETA3_COARSE_DF: 17 codewords of 1 to 13 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 17> kAcplHcbBeta3CoarseDfEntries = {{
@@ -1603,6 +1649,7 @@ constexpr std::array<HuffEntry, 17> kAcplHcbBeta3CoarseDfEntries = {{
     // 13 bits
     {0x0a92, 15, 13}, {0x0a93, 0, 13},
 }};
+constexpr auto kAcplHcbBeta3CoarseDfFast = make_fast_table(kAcplHcbBeta3CoarseDfEntries);
 
 // Table A.49, ACPL_HCB_BETA3_FINE_DF: 33 codewords of 2 to 15 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 33> kAcplHcbBeta3FineDfEntries = {{
@@ -1635,6 +1682,7 @@ constexpr std::array<HuffEntry, 33> kAcplHcbBeta3FineDfEntries = {{
     // 15 bits
     {0x33f6, 32, 15}, {0x33f7, 1, 15},
 }};
+constexpr auto kAcplHcbBeta3FineDfFast = make_fast_table(kAcplHcbBeta3FineDfEntries);
 
 // Table A.50, ACPL_HCB_BETA3_COARSE_DT: 17 codewords of 1 to 15 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 17> kAcplHcbBeta3CoarseDtEntries = {{
@@ -1667,6 +1715,7 @@ constexpr std::array<HuffEntry, 17> kAcplHcbBeta3CoarseDtEntries = {{
     // 15 bits
     {0x0adc, 0, 15}, {0x0add, 1, 15},
 }};
+constexpr auto kAcplHcbBeta3CoarseDtFast = make_fast_table(kAcplHcbBeta3CoarseDtEntries);
 
 // Table A.51, ACPL_HCB_BETA3_FINE_DT: 33 codewords of 1 to 16 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 33> kAcplHcbBeta3FineDtEntries = {{
@@ -1702,6 +1751,7 @@ constexpr std::array<HuffEntry, 33> kAcplHcbBeta3FineDtEntries = {{
     {0x501a, 32, 16}, {0x501b, 3, 16}, {0x501c, 2, 16}, {0x501d, 1, 16}, {0x501e, 0, 16},
     {0x501f, 31, 16}, {0x510c, 30, 16}, {0x510d, 5, 16}, {0x510e, 4, 16}, {0x510f, 29, 16},
 }};
+constexpr auto kAcplHcbBeta3FineDtFast = make_fast_table(kAcplHcbBeta3FineDtEntries);
 
 // Table A.52, ACPL_HCB_GAMMA_COARSE_F0: 21 codewords of 2 to 13 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 21> kAcplHcbGammaCoarseF0Entries = {{
@@ -1729,6 +1779,7 @@ constexpr std::array<HuffEntry, 21> kAcplHcbGammaCoarseF0Entries = {{
     {0x0af4, 0, 13}, {0x0af5, 19, 13}, {0x0af8, 1, 13}, {0x0af9, 2, 13}, {0x0afa, 20, 13},
     {0x0afb, 3, 13},
 }};
+constexpr auto kAcplHcbGammaCoarseF0Fast = make_fast_table(kAcplHcbGammaCoarseF0Entries);
 
 // Table A.53, ACPL_HCB_GAMMA_FINE_F0: 41 codewords of 3 to 13 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAcplHcbGammaFineF0Entries = {{
@@ -1758,6 +1809,7 @@ constexpr std::array<HuffEntry, 41> kAcplHcbGammaFineF0Entries = {{
     // 13 bits
     {0x1c6c, 2, 13}, {0x1c6d, 1, 13},
 }};
+constexpr auto kAcplHcbGammaFineF0Fast = make_fast_table(kAcplHcbGammaFineF0Entries);
 
 // Table A.54, ACPL_HCB_GAMMA_COARSE_DF: 41 codewords of 1 to 16 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAcplHcbGammaCoarseDfEntries = {{
@@ -1791,6 +1843,7 @@ constexpr std::array<HuffEntry, 41> kAcplHcbGammaCoarseDfEntries = {{
     {0x53e4, 6, 16}, {0x53e5, 36, 16}, {0x53e6, 34, 16}, {0x53e7, 33, 16}, {0x53ea, 7, 16},
     {0x53eb, 8, 16}, {0x53ee, 32, 16}, {0x53ef, 31, 16},
 }};
+constexpr auto kAcplHcbGammaCoarseDfFast = make_fast_table(kAcplHcbGammaCoarseDfEntries);
 
 // Table A.55, ACPL_HCB_GAMMA_FINE_DF: 81 codewords of 1 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAcplHcbGammaFineDfEntries = {{
@@ -1836,6 +1889,7 @@ constexpr std::array<HuffEntry, 81> kAcplHcbGammaFineDfEntries = {{
     {0x13ece, 13, 17}, {0x13ecf, 66, 17}, {0x13edc, 64, 17}, {0x13edd, 17, 17}, {0x13ede, 16, 17},
     {0x13edf, 14, 17},
 }};
+constexpr auto kAcplHcbGammaFineDfFast = make_fast_table(kAcplHcbGammaFineDfEntries);
 
 // Table A.56, ACPL_HCB_GAMMA_COARSE_DT: 41 codewords of 1 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAcplHcbGammaCoarseDtEntries = {{
@@ -1874,6 +1928,7 @@ constexpr std::array<HuffEntry, 41> kAcplHcbGammaCoarseDtEntries = {{
     {0x0a7f0, 39, 17}, {0x0a7f1, 1, 17}, {0x0a7f2, 38, 17}, {0x0a7f3, 0, 17}, {0x0a7f8, 3, 17},
     {0x0a7f9, 2, 17}, {0x0a7fa, 37, 17}, {0x0a7fb, 36, 17}, {0x0a7fe, 5, 17}, {0x0a7ff, 35, 17},
 }};
+constexpr auto kAcplHcbGammaCoarseDtFast = make_fast_table(kAcplHcbGammaCoarseDtEntries);
 
 // Table A.57, ACPL_HCB_GAMMA_FINE_DT: 81 codewords of 1 to 18 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAcplHcbGammaFineDtEntries = {{
@@ -1920,6 +1975,7 @@ constexpr std::array<HuffEntry, 81> kAcplHcbGammaFineDtEntries = {{
     {0x31e5e, 71, 18}, {0x31e5f, 66, 18}, {0x31e70, 11, 18}, {0x31e71, 69, 18}, {0x31e72, 9, 18},
     {0x31e73, 8, 18}, {0x31e74, 67, 18}, {0x31e75, 12, 18}, {0x31e7e, 14, 18}, {0x31e7f, 13, 18},
 }};
+constexpr auto kAcplHcbGammaFineDtFast = make_fast_table(kAcplHcbGammaFineDtEntries);
 
 // Table A.58, DE_HCB_ABS_0: 32 codewords of 3 to 8 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 32> kDeHcbAbs0Entries = {{
@@ -1938,6 +1994,7 @@ constexpr std::array<HuffEntry, 32> kDeHcbAbs0Entries = {{
     // 8 bits
     {0x28, 31, 8}, {0x29, 14, 8},
 }};
+constexpr auto kDeHcbAbs0Fast = make_fast_table(kDeHcbAbs0Entries);
 
 // Table A.59, DE_HCB_DIFF_0: 63 codewords of 1 to 14 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 63> kDeHcbDiff0Entries = {{
@@ -1974,6 +2031,7 @@ constexpr std::array<HuffEntry, 63> kDeHcbDiff0Entries = {{
     {0x14b0, 55, 14}, {0x14b1, 11, 14}, {0x14b4, 16, 14}, {0x14b5, 17, 14}, {0x14b6, 15, 14},
     {0x14b7, 54, 14},
 }};
+constexpr auto kDeHcbDiff0Fast = make_fast_table(kDeHcbDiff0Entries);
 
 // Table A.60, DE_HCB_ABS_1: 61 codewords of 1 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 61> kDeHcbAbs1Entries = {{
@@ -2005,6 +2063,7 @@ constexpr std::array<HuffEntry, 61> kDeHcbAbs1Entries = {{
     {0xaea, 1, 12}, {0xaeb, 2, 12}, {0xc56, 3, 12}, {0xc57, 59, 12}, {0xc78, 4, 12},
     {0xc79, 5, 12}, {0xe50, 58, 12}, {0xe51, 6, 12},
 }};
+constexpr auto kDeHcbAbs1Fast = make_fast_table(kDeHcbAbs1Entries);
 
 // Table A.61, DE_HCB_DIFF_1: 121 codewords of 1 to 13 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 121> kDeHcbDiff1Entries = {{
@@ -2051,6 +2110,7 @@ constexpr std::array<HuffEntry, 121> kDeHcbDiff1Entries = {{
     {0x1cf4, 25, 13}, {0x1cf5, 93, 13}, {0x1cf6, 24, 13}, {0x1cf7, 26, 13}, {0x1cfc, 21, 13},
     {0x1cfd, 91, 13},
 }};
+constexpr auto kDeHcbDiff1Fast = make_fast_table(kDeHcbDiff1Entries);
 
 // Table A.62, DRC_HCB: 255 codewords of 2 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 255> kDrcHcbEntries = {{
@@ -2121,6 +2181,7 @@ constexpr std::array<HuffEntry, 255> kDrcHcbEntries = {{
     {0xe0a, 8, 12}, {0xe0b, 7, 12}, {0xe0c, 6, 12}, {0xe0d, 5, 12}, {0xe0e, 4, 12}, {0xe0f, 3, 12},
     {0xe10, 2, 12}, {0xe11, 1, 12}, {0xe12, 0, 12}, {0xe13, 107, 12},
 }};
+constexpr auto kDrcHcbFast = make_fast_table(kDrcHcbEntries);
 
 // Part 2 Table A.13, AJCC_HCB_DRY_COARSE_F0: 12 codewords of 2 to 10 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 12> kAjccHcbDryCoarseF0Entries = {{
@@ -2143,6 +2204,7 @@ constexpr std::array<HuffEntry, 12> kAjccHcbDryCoarseF0Entries = {{
     // 10 bits
     {0x064, 10, 10}, {0x065, 11, 10},
 }};
+constexpr auto kAjccHcbDryCoarseF0Fast = make_fast_table(kAjccHcbDryCoarseF0Entries);
 
 // Part 2 Table A.14, AJCC_HCB_DRY_FINE_F0: 23 codewords of 3 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 23> kAjccHcbDryFineF0Entries = {{
@@ -2165,6 +2227,7 @@ constexpr std::array<HuffEntry, 23> kAjccHcbDryFineF0Entries = {{
     // 12 bits
     {0x5a6, 20, 12}, {0x5a7, 21, 12},
 }};
+constexpr auto kAjccHcbDryFineF0Fast = make_fast_table(kAjccHcbDryFineF0Entries);
 
 // Part 2 Table A.15, AJCC_HCB_DRY_COARSE_DF: 23 codewords of 1 to 19 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 23> kAjccHcbDryCoarseDfEntries = {{
@@ -2203,6 +2266,7 @@ constexpr std::array<HuffEntry, 23> kAjccHcbDryCoarseDfEntries = {{
     // 19 bits
     {0x554fa, 0, 19}, {0x554fb, 22, 19},
 }};
+constexpr auto kAjccHcbDryCoarseDfFast = make_fast_table(kAjccHcbDryCoarseDfEntries);
 
 // Part 2 Table A.16, AJCC_HCB_DRY_FINE_DF: 45 codewords of 1 to 20 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 45> kAjccHcbDryFineDfEntries = {{
@@ -2245,6 +2309,7 @@ constexpr std::array<HuffEntry, 45> kAjccHcbDryFineDfEntries = {{
     // 20 bits
     {0x60158, 43, 20}, {0x60159, 44, 20}, {0x6015a, 0, 20}, {0x6015b, 1, 20},
 }};
+constexpr auto kAjccHcbDryFineDfFast = make_fast_table(kAjccHcbDryFineDfEntries);
 
 // Part 2 Table A.17, AJCC_HCB_DRY_COARSE_DT: 23 codewords of 1 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 23> kAjccHcbDryCoarseDtEntries = {{
@@ -2281,6 +2346,7 @@ constexpr std::array<HuffEntry, 23> kAjccHcbDryCoarseDtEntries = {{
     // 17 bits
     {0x1554c, 1, 17}, {0x1554d, 20, 17}, {0x15574, 22, 17}, {0x15575, 2, 17},
 }};
+constexpr auto kAjccHcbDryCoarseDtFast = make_fast_table(kAjccHcbDryCoarseDtEntries);
 
 // Part 2 Table A.18, AJCC_HCB_DRY_FINE_DT: 45 codewords of 1 to 21 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 45> kAjccHcbDryFineDtEntries = {{
@@ -2325,6 +2391,7 @@ constexpr std::array<HuffEntry, 45> kAjccHcbDryFineDtEntries = {{
     // 21 bits
     {0x16018c, 3, 21}, {0x16018d, 43, 21},
 }};
+constexpr auto kAjccHcbDryFineDtFast = make_fast_table(kAjccHcbDryFineDtEntries);
 
 // Part 2 Table A.19, AJCC_HCB_WET_COARSE_F0: 21 codewords of 1 to 16 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 21> kAjccHcbWetCoarseF0Entries = {{
@@ -2357,6 +2424,7 @@ constexpr std::array<HuffEntry, 21> kAjccHcbWetCoarseF0Entries = {{
     // 16 bits
     {0x2ae4, 1, 16}, {0x2ae5, 2, 16},
 }};
+constexpr auto kAjccHcbWetCoarseF0Fast = make_fast_table(kAjccHcbWetCoarseF0Entries);
 
 // Part 2 Table A.20, AJCC_HCB_WET_FINE_F0: 41 codewords of 2 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAjccHcbWetFineF0Entries = {{
@@ -2394,6 +2462,7 @@ constexpr std::array<HuffEntry, 41> kAjccHcbWetFineF0Entries = {{
     // 17 bits
     {0x1c6b0, 3, 17}, {0x1c6b1, 4, 17},
 }};
+constexpr auto kAjccHcbWetFineF0Fast = make_fast_table(kAjccHcbWetFineF0Entries);
 
 // Part 2 Table A.21, AJCC_HCB_WET_COARSE_DF: 41 codewords of 1 to 19 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAjccHcbWetCoarseDfEntries = {{
@@ -2432,6 +2501,7 @@ constexpr std::array<HuffEntry, 41> kAjccHcbWetCoarseDfEntries = {{
     {0x57ba0, 5, 19}, {0x57ba1, 6, 19}, {0x57ba2, 3, 19}, {0x57ba3, 4, 19}, {0x57ba4, 31, 19},
     {0x57ba5, 32, 19}, {0x57ba6, 7, 19}, {0x57ba7, 8, 19}, {0x57ba8, 1, 19}, {0x57ba9, 2, 19},
 }};
+constexpr auto kAjccHcbWetCoarseDfFast = make_fast_table(kAjccHcbWetCoarseDfEntries);
 
 // Part 2 Table A.22, AJCC_HCB_WET_FINE_DF: 81 codewords of 1 to 20 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAjccHcbWetFineDfEntries = {{
@@ -2480,6 +2550,7 @@ constexpr std::array<HuffEntry, 81> kAjccHcbWetFineDfEntries = {{
     // 20 bits
     {0xe2ba2, 79, 20}, {0xe2ba3, 80, 20},
 }};
+constexpr auto kAjccHcbWetFineDfFast = make_fast_table(kAjccHcbWetFineDfEntries);
 
 // Part 2 Table A.23, AJCC_HCB_WET_COARSE_DT: 41 codewords of 1 to 17 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAjccHcbWetCoarseDtEntries = {{
@@ -2517,6 +2588,7 @@ constexpr std::array<HuffEntry, 41> kAjccHcbWetCoarseDtEntries = {{
     {0x157ea, 0, 17}, {0x157eb, 1, 17}, {0x157ec, 6, 17}, {0x157ed, 7, 17}, {0x157ee, 4, 17},
     {0x157ef, 5, 17}, {0x157f0, 39, 17}, {0x157f1, 40, 17}, {0x157f2, 37, 17}, {0x157f3, 38, 17},
 }};
+constexpr auto kAjccHcbWetCoarseDtFast = make_fast_table(kAjccHcbWetCoarseDtEntries);
 
 // Part 2 Table A.24, AJCC_HCB_WET_FINE_DT: 81 codewords of 1 to 20 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAjccHcbWetFineDtEntries = {{
@@ -2566,6 +2638,7 @@ constexpr std::array<HuffEntry, 81> kAjccHcbWetFineDtEntries = {{
     // 20 bits
     {0xbc424, 1, 20}, {0xbc425, 2, 20},
 }};
+constexpr auto kAjccHcbWetFineDtFast = make_fast_table(kAjccHcbWetFineDtEntries);
 
 // Part 2 Table A.1, AJOC_HCB_DRY_COARSE_F0: 51 codewords of 1 to 18 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 51> kAjocHcbDryCoarseF0Entries = {{
@@ -2604,6 +2677,7 @@ constexpr std::array<HuffEntry, 51> kAjocHcbDryCoarseF0Entries = {{
     // 18 bits
     {0x2b474, 2, 18}, {0x2b475, 49, 18},
 }};
+constexpr auto kAjocHcbDryCoarseF0Fast = make_fast_table(kAjocHcbDryCoarseF0Entries);
 
 // Part 2 Table A.2, AJOC_HCB_DRY_FINE_F0: 101 codewords of 1 to 21 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 101> kAjocHcbDryFineF0Entries = {{
@@ -2657,6 +2731,7 @@ constexpr std::array<HuffEntry, 101> kAjocHcbDryFineF0Entries = {{
     // 21 bits
     {0x1a82d4, 5, 21}, {0x1a82d5, 98, 21}, {0x1a82d6, 1, 21}, {0x1a82d7, 2, 21},
 }};
+constexpr auto kAjocHcbDryFineF0Fast = make_fast_table(kAjocHcbDryFineF0Entries);
 
 // Part 2 Table A.3, AJOC_HCB_DRY_COARSE_DF: 51 codewords of 1 to 19 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 51> kAjocHcbDryCoarseDfEntries = {{
@@ -2698,6 +2773,7 @@ constexpr std::array<HuffEntry, 51> kAjocHcbDryCoarseDfEntries = {{
     // 19 bits
     {0x58ae4, 24, 19}, {0x58ae5, 25, 19}, {0x5d5a8, 28, 19}, {0x5d5a9, 26, 19},
 }};
+constexpr auto kAjocHcbDryCoarseDfFast = make_fast_table(kAjocHcbDryCoarseDfEntries);
 
 // Part 2 Table A.4, AJOC_HCB_DRY_FINE_DF: 101 codewords of 1 to 21 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 101> kAjocHcbDryFineDfEntries = {{
@@ -2755,6 +2831,7 @@ constexpr std::array<HuffEntry, 101> kAjocHcbDryFineDfEntries = {{
     {0x18a1a4, 56, 21}, {0x18a1a5, 59, 21}, {0x18a1a6, 52, 21}, {0x18a1a7, 53, 21},
     {0x19de7c, 48, 21}, {0x19de7d, 49, 21},
 }};
+constexpr auto kAjocHcbDryFineDfFast = make_fast_table(kAjocHcbDryFineDfEntries);
 
 // Part 2 Table A.5, AJOC_HCB_DRY_COARSE_DT: 101 codewords of 1 to 28 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 101> kAjocHcbDryCoarseDtEntries = {{
@@ -2820,6 +2897,7 @@ constexpr std::array<HuffEntry, 101> kAjocHcbDryCoarseDtEntries = {{
     // 28 bits
     {0xa488f40, 97, 28}, {0xa488f41, 98, 28}, {0xa488f42, 95, 28}, {0xa488f43, 96, 28},
 }};
+constexpr auto kAjocHcbDryCoarseDtFast = make_fast_table(kAjocHcbDryCoarseDtEntries);
 
 // Part 2 Table A.6, AJOC_HCB_DRY_FINE_DT: 201 codewords of 1 to 29 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 201> kAjocHcbDryFineDtEntries = {{
@@ -2905,6 +2983,7 @@ constexpr std::array<HuffEntry, 201> kAjocHcbDryFineDtEntries = {{
     {0x197f9894, 10, 29}, {0x197f9895, 11, 29}, {0x197f9896, 8, 29}, {0x197f9897, 9, 29},
     {0x197f9898, 1, 29}, {0x197f9899, 2, 29},
 }};
+constexpr auto kAjocHcbDryFineDtFast = make_fast_table(kAjocHcbDryFineDtEntries);
 
 // Part 2 Table A.7, AJOC_HCB_WET_COARSE_F0: 21 codewords of 1 to 14 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 21> kAjocHcbWetCoarseF0Entries = {{
@@ -2933,6 +3012,7 @@ constexpr std::array<HuffEntry, 21> kAjocHcbWetCoarseF0Entries = {{
     // 14 bits
     {0x356a, 1, 14}, {0x356b, 2, 14},
 }};
+constexpr auto kAjocHcbWetCoarseF0Fast = make_fast_table(kAjocHcbWetCoarseF0Entries);
 
 // Part 2 Table A.8, AJOC_HCB_WET_FINE_F0: 41 codewords of 1 to 19 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAjocHcbWetFineF0Entries = {{
@@ -2973,6 +3053,7 @@ constexpr std::array<HuffEntry, 41> kAjocHcbWetFineF0Entries = {{
     // 19 bits
     {0x454c6, 1, 19}, {0x454c7, 37, 19},
 }};
+constexpr auto kAjocHcbWetFineF0Fast = make_fast_table(kAjocHcbWetFineF0Entries);
 
 // Part 2 Table A.9, AJOC_HCB_WET_COARSE_DF: 21 codewords of 1 to 12 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 21> kAjocHcbWetCoarseDfEntries = {{
@@ -2997,6 +3078,7 @@ constexpr std::array<HuffEntry, 21> kAjocHcbWetCoarseDfEntries = {{
     // 12 bits
     {0xf9c, 11, 12}, {0xf9d, 9, 12}, {0xf9e, 12, 12}, {0xf9f, 10, 12},
 }};
+constexpr auto kAjocHcbWetCoarseDfFast = make_fast_table(kAjocHcbWetCoarseDfEntries);
 
 // Part 2 Table A.10, AJOC_HCB_WET_FINE_DF: 41 codewords of 1 to 14 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAjocHcbWetFineDfEntries = {{
@@ -3028,6 +3110,7 @@ constexpr std::array<HuffEntry, 41> kAjocHcbWetFineDfEntries = {{
     // 14 bits
     {0x37b0, 23, 14}, {0x37b1, 22, 14}, {0x37b8, 18, 14}, {0x37b9, 19, 14},
 }};
+constexpr auto kAjocHcbWetFineDfFast = make_fast_table(kAjocHcbWetFineDfEntries);
 
 // Part 2 Table A.11, AJOC_HCB_WET_COARSE_DT: 41 codewords of 1 to 22 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 41> kAjocHcbWetCoarseDtEntries = {{
@@ -3067,6 +3150,7 @@ constexpr std::array<HuffEntry, 41> kAjocHcbWetCoarseDtEntries = {{
     // 22 bits
     {0x296fd0, 2, 22}, {0x296fd1, 3, 22},
 }};
+constexpr auto kAjocHcbWetCoarseDtFast = make_fast_table(kAjocHcbWetCoarseDtEntries);
 
 // Part 2 Table A.12, AJOC_HCB_WET_FINE_DT: 81 codewords of 1 to 26 bits, Kraft sum 1.
 constexpr std::array<HuffEntry, 81> kAjocHcbWetFineDtEntries = {{
@@ -3120,6 +3204,7 @@ constexpr std::array<HuffEntry, 81> kAjocHcbWetFineDtEntries = {{
     {0x30968e4, 7, 26}, {0x30968e5, 8, 26}, {0x30968e6, 5, 26}, {0x30968e7, 6, 26},
     {0x30968e8, 77, 26}, {0x30968e9, 78, 26}, {0x30968ea, 75, 26}, {0x30968eb, 76, 26},
 }};
+constexpr auto kAjocHcbWetFineDtFast = make_fast_table(kAjocHcbWetFineDtEntries);
 
 }  // namespace
 
@@ -3136,6 +3221,7 @@ constinit const Codebook kAsfHcbScalefac{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcbScalefacFast,
 };
 
 constinit const Codebook kAsfHcb1{
@@ -3151,6 +3237,7 @@ constinit const Codebook kAsfHcb1{
     .cb_mod = 3,
     .cb_mod2 = 9,
     .cb_mod3 = 27,
+    .fast = kAsfHcb1Fast,
 };
 
 constinit const Codebook kAsfHcb2{
@@ -3166,6 +3253,7 @@ constinit const Codebook kAsfHcb2{
     .cb_mod = 3,
     .cb_mod2 = 9,
     .cb_mod3 = 27,
+    .fast = kAsfHcb2Fast,
 };
 
 constinit const Codebook kAsfHcb3{
@@ -3181,6 +3269,7 @@ constinit const Codebook kAsfHcb3{
     .cb_mod = 3,
     .cb_mod2 = 9,
     .cb_mod3 = 27,
+    .fast = kAsfHcb3Fast,
 };
 
 constinit const Codebook kAsfHcb4{
@@ -3196,6 +3285,7 @@ constinit const Codebook kAsfHcb4{
     .cb_mod = 3,
     .cb_mod2 = 9,
     .cb_mod3 = 27,
+    .fast = kAsfHcb4Fast,
 };
 
 constinit const Codebook kAsfHcb5{
@@ -3211,6 +3301,7 @@ constinit const Codebook kAsfHcb5{
     .cb_mod = 9,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcb5Fast,
 };
 
 constinit const Codebook kAsfHcb6{
@@ -3226,6 +3317,7 @@ constinit const Codebook kAsfHcb6{
     .cb_mod = 9,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcb6Fast,
 };
 
 constinit const Codebook kAsfHcb7{
@@ -3241,6 +3333,7 @@ constinit const Codebook kAsfHcb7{
     .cb_mod = 8,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcb7Fast,
 };
 
 constinit const Codebook kAsfHcb8{
@@ -3256,6 +3349,7 @@ constinit const Codebook kAsfHcb8{
     .cb_mod = 8,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcb8Fast,
 };
 
 constinit const Codebook kAsfHcb9{
@@ -3271,6 +3365,7 @@ constinit const Codebook kAsfHcb9{
     .cb_mod = 13,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcb9Fast,
 };
 
 constinit const Codebook kAsfHcb10{
@@ -3286,6 +3381,7 @@ constinit const Codebook kAsfHcb10{
     .cb_mod = 13,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcb10Fast,
 };
 
 constinit const Codebook kAsfHcb11{
@@ -3301,6 +3397,7 @@ constinit const Codebook kAsfHcb11{
     .cb_mod = 17,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcb11Fast,
 };
 
 constinit const Codebook kAsfHcbSnf{
@@ -3316,6 +3413,7 @@ constinit const Codebook kAsfHcbSnf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAsfHcbSnfFast,
 };
 
 constinit const Codebook kAspxHcbEnvLevel15F0{
@@ -3331,6 +3429,7 @@ constinit const Codebook kAspxHcbEnvLevel15F0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvLevel15F0Fast,
 };
 
 constinit const Codebook kAspxHcbEnvLevel15Df{
@@ -3346,6 +3445,7 @@ constinit const Codebook kAspxHcbEnvLevel15Df{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvLevel15DfFast,
 };
 
 constinit const Codebook kAspxHcbEnvLevel15Dt{
@@ -3361,6 +3461,7 @@ constinit const Codebook kAspxHcbEnvLevel15Dt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvLevel15DtFast,
 };
 
 constinit const Codebook kAspxHcbEnvBalance15F0{
@@ -3376,6 +3477,7 @@ constinit const Codebook kAspxHcbEnvBalance15F0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvBalance15F0Fast,
 };
 
 constinit const Codebook kAspxHcbEnvBalance15Df{
@@ -3391,6 +3493,7 @@ constinit const Codebook kAspxHcbEnvBalance15Df{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvBalance15DfFast,
 };
 
 constinit const Codebook kAspxHcbEnvBalance15Dt{
@@ -3406,6 +3509,7 @@ constinit const Codebook kAspxHcbEnvBalance15Dt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvBalance15DtFast,
 };
 
 constinit const Codebook kAspxHcbEnvLevel30F0{
@@ -3421,6 +3525,7 @@ constinit const Codebook kAspxHcbEnvLevel30F0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvLevel30F0Fast,
 };
 
 constinit const Codebook kAspxHcbEnvLevel30Df{
@@ -3436,6 +3541,7 @@ constinit const Codebook kAspxHcbEnvLevel30Df{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvLevel30DfFast,
 };
 
 constinit const Codebook kAspxHcbEnvLevel30Dt{
@@ -3451,6 +3557,7 @@ constinit const Codebook kAspxHcbEnvLevel30Dt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvLevel30DtFast,
 };
 
 constinit const Codebook kAspxHcbEnvBalance30F0{
@@ -3466,6 +3573,7 @@ constinit const Codebook kAspxHcbEnvBalance30F0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvBalance30F0Fast,
 };
 
 constinit const Codebook kAspxHcbEnvBalance30Df{
@@ -3481,6 +3589,7 @@ constinit const Codebook kAspxHcbEnvBalance30Df{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvBalance30DfFast,
 };
 
 constinit const Codebook kAspxHcbEnvBalance30Dt{
@@ -3496,6 +3605,7 @@ constinit const Codebook kAspxHcbEnvBalance30Dt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbEnvBalance30DtFast,
 };
 
 constinit const Codebook kAspxHcbNoiseLevelF0{
@@ -3511,6 +3621,7 @@ constinit const Codebook kAspxHcbNoiseLevelF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbNoiseLevelF0Fast,
 };
 
 constinit const Codebook kAspxHcbNoiseLevelDf{
@@ -3526,6 +3637,7 @@ constinit const Codebook kAspxHcbNoiseLevelDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbNoiseLevelDfFast,
 };
 
 constinit const Codebook kAspxHcbNoiseLevelDt{
@@ -3541,6 +3653,7 @@ constinit const Codebook kAspxHcbNoiseLevelDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbNoiseLevelDtFast,
 };
 
 constinit const Codebook kAspxHcbNoiseBalanceF0{
@@ -3556,6 +3669,7 @@ constinit const Codebook kAspxHcbNoiseBalanceF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbNoiseBalanceF0Fast,
 };
 
 constinit const Codebook kAspxHcbNoiseBalanceDf{
@@ -3571,6 +3685,7 @@ constinit const Codebook kAspxHcbNoiseBalanceDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbNoiseBalanceDfFast,
 };
 
 constinit const Codebook kAspxHcbNoiseBalanceDt{
@@ -3586,6 +3701,7 @@ constinit const Codebook kAspxHcbNoiseBalanceDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAspxHcbNoiseBalanceDtFast,
 };
 
 constinit const Codebook kAcplHcbAlphaCoarseF0{
@@ -3601,6 +3717,7 @@ constinit const Codebook kAcplHcbAlphaCoarseF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbAlphaCoarseF0Fast,
 };
 
 constinit const Codebook kAcplHcbAlphaFineF0{
@@ -3616,6 +3733,7 @@ constinit const Codebook kAcplHcbAlphaFineF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbAlphaFineF0Fast,
 };
 
 constinit const Codebook kAcplHcbAlphaCoarseDf{
@@ -3631,6 +3749,7 @@ constinit const Codebook kAcplHcbAlphaCoarseDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbAlphaCoarseDfFast,
 };
 
 constinit const Codebook kAcplHcbAlphaFineDf{
@@ -3646,6 +3765,7 @@ constinit const Codebook kAcplHcbAlphaFineDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbAlphaFineDfFast,
 };
 
 constinit const Codebook kAcplHcbAlphaCoarseDt{
@@ -3661,6 +3781,7 @@ constinit const Codebook kAcplHcbAlphaCoarseDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbAlphaCoarseDtFast,
 };
 
 constinit const Codebook kAcplHcbAlphaFineDt{
@@ -3676,6 +3797,7 @@ constinit const Codebook kAcplHcbAlphaFineDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbAlphaFineDtFast,
 };
 
 constinit const Codebook kAcplHcbBetaCoarseF0{
@@ -3691,6 +3813,7 @@ constinit const Codebook kAcplHcbBetaCoarseF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBetaCoarseF0Fast,
 };
 
 constinit const Codebook kAcplHcbBetaFineF0{
@@ -3706,6 +3829,7 @@ constinit const Codebook kAcplHcbBetaFineF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBetaFineF0Fast,
 };
 
 constinit const Codebook kAcplHcbBetaCoarseDf{
@@ -3721,6 +3845,7 @@ constinit const Codebook kAcplHcbBetaCoarseDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBetaCoarseDfFast,
 };
 
 constinit const Codebook kAcplHcbBetaFineDf{
@@ -3736,6 +3861,7 @@ constinit const Codebook kAcplHcbBetaFineDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBetaFineDfFast,
 };
 
 constinit const Codebook kAcplHcbBetaCoarseDt{
@@ -3751,6 +3877,7 @@ constinit const Codebook kAcplHcbBetaCoarseDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBetaCoarseDtFast,
 };
 
 constinit const Codebook kAcplHcbBetaFineDt{
@@ -3766,6 +3893,7 @@ constinit const Codebook kAcplHcbBetaFineDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBetaFineDtFast,
 };
 
 constinit const Codebook kAcplHcbBeta3CoarseF0{
@@ -3781,6 +3909,7 @@ constinit const Codebook kAcplHcbBeta3CoarseF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBeta3CoarseF0Fast,
 };
 
 constinit const Codebook kAcplHcbBeta3FineF0{
@@ -3796,6 +3925,7 @@ constinit const Codebook kAcplHcbBeta3FineF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBeta3FineF0Fast,
 };
 
 constinit const Codebook kAcplHcbBeta3CoarseDf{
@@ -3811,6 +3941,7 @@ constinit const Codebook kAcplHcbBeta3CoarseDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBeta3CoarseDfFast,
 };
 
 constinit const Codebook kAcplHcbBeta3FineDf{
@@ -3826,6 +3957,7 @@ constinit const Codebook kAcplHcbBeta3FineDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBeta3FineDfFast,
 };
 
 constinit const Codebook kAcplHcbBeta3CoarseDt{
@@ -3841,6 +3973,7 @@ constinit const Codebook kAcplHcbBeta3CoarseDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBeta3CoarseDtFast,
 };
 
 constinit const Codebook kAcplHcbBeta3FineDt{
@@ -3856,6 +3989,7 @@ constinit const Codebook kAcplHcbBeta3FineDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbBeta3FineDtFast,
 };
 
 constinit const Codebook kAcplHcbGammaCoarseF0{
@@ -3871,6 +4005,7 @@ constinit const Codebook kAcplHcbGammaCoarseF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbGammaCoarseF0Fast,
 };
 
 constinit const Codebook kAcplHcbGammaFineF0{
@@ -3886,6 +4021,7 @@ constinit const Codebook kAcplHcbGammaFineF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbGammaFineF0Fast,
 };
 
 constinit const Codebook kAcplHcbGammaCoarseDf{
@@ -3901,6 +4037,7 @@ constinit const Codebook kAcplHcbGammaCoarseDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbGammaCoarseDfFast,
 };
 
 constinit const Codebook kAcplHcbGammaFineDf{
@@ -3916,6 +4053,7 @@ constinit const Codebook kAcplHcbGammaFineDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbGammaFineDfFast,
 };
 
 constinit const Codebook kAcplHcbGammaCoarseDt{
@@ -3931,6 +4069,7 @@ constinit const Codebook kAcplHcbGammaCoarseDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbGammaCoarseDtFast,
 };
 
 constinit const Codebook kAcplHcbGammaFineDt{
@@ -3946,6 +4085,7 @@ constinit const Codebook kAcplHcbGammaFineDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAcplHcbGammaFineDtFast,
 };
 
 constinit const Codebook kDeHcbAbs0{
@@ -3961,6 +4101,7 @@ constinit const Codebook kDeHcbAbs0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kDeHcbAbs0Fast,
 };
 
 constinit const Codebook kDeHcbDiff0{
@@ -3976,6 +4117,7 @@ constinit const Codebook kDeHcbDiff0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kDeHcbDiff0Fast,
 };
 
 constinit const Codebook kDeHcbAbs1{
@@ -3991,6 +4133,7 @@ constinit const Codebook kDeHcbAbs1{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kDeHcbAbs1Fast,
 };
 
 constinit const Codebook kDeHcbDiff1{
@@ -4006,6 +4149,7 @@ constinit const Codebook kDeHcbDiff1{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kDeHcbDiff1Fast,
 };
 
 constinit const Codebook kDrcHcb{
@@ -4021,6 +4165,7 @@ constinit const Codebook kDrcHcb{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kDrcHcbFast,
 };
 
 constinit const Codebook kAjccHcbDryCoarseF0{
@@ -4036,6 +4181,7 @@ constinit const Codebook kAjccHcbDryCoarseF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbDryCoarseF0Fast,
 };
 
 constinit const Codebook kAjccHcbDryFineF0{
@@ -4051,6 +4197,7 @@ constinit const Codebook kAjccHcbDryFineF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbDryFineF0Fast,
 };
 
 constinit const Codebook kAjccHcbDryCoarseDf{
@@ -4066,6 +4213,7 @@ constinit const Codebook kAjccHcbDryCoarseDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbDryCoarseDfFast,
 };
 
 constinit const Codebook kAjccHcbDryFineDf{
@@ -4081,6 +4229,7 @@ constinit const Codebook kAjccHcbDryFineDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbDryFineDfFast,
 };
 
 constinit const Codebook kAjccHcbDryCoarseDt{
@@ -4096,6 +4245,7 @@ constinit const Codebook kAjccHcbDryCoarseDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbDryCoarseDtFast,
 };
 
 constinit const Codebook kAjccHcbDryFineDt{
@@ -4111,6 +4261,7 @@ constinit const Codebook kAjccHcbDryFineDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbDryFineDtFast,
 };
 
 constinit const Codebook kAjccHcbWetCoarseF0{
@@ -4126,6 +4277,7 @@ constinit const Codebook kAjccHcbWetCoarseF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbWetCoarseF0Fast,
 };
 
 constinit const Codebook kAjccHcbWetFineF0{
@@ -4141,6 +4293,7 @@ constinit const Codebook kAjccHcbWetFineF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbWetFineF0Fast,
 };
 
 constinit const Codebook kAjccHcbWetCoarseDf{
@@ -4156,6 +4309,7 @@ constinit const Codebook kAjccHcbWetCoarseDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbWetCoarseDfFast,
 };
 
 constinit const Codebook kAjccHcbWetFineDf{
@@ -4171,6 +4325,7 @@ constinit const Codebook kAjccHcbWetFineDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbWetFineDfFast,
 };
 
 constinit const Codebook kAjccHcbWetCoarseDt{
@@ -4186,6 +4341,7 @@ constinit const Codebook kAjccHcbWetCoarseDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbWetCoarseDtFast,
 };
 
 constinit const Codebook kAjccHcbWetFineDt{
@@ -4201,6 +4357,7 @@ constinit const Codebook kAjccHcbWetFineDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjccHcbWetFineDtFast,
 };
 
 constinit const Codebook kAjocHcbDryCoarseF0{
@@ -4216,6 +4373,7 @@ constinit const Codebook kAjocHcbDryCoarseF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbDryCoarseF0Fast,
 };
 
 constinit const Codebook kAjocHcbDryFineF0{
@@ -4231,6 +4389,7 @@ constinit const Codebook kAjocHcbDryFineF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbDryFineF0Fast,
 };
 
 constinit const Codebook kAjocHcbDryCoarseDf{
@@ -4246,6 +4405,7 @@ constinit const Codebook kAjocHcbDryCoarseDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbDryCoarseDfFast,
 };
 
 constinit const Codebook kAjocHcbDryFineDf{
@@ -4261,6 +4421,7 @@ constinit const Codebook kAjocHcbDryFineDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbDryFineDfFast,
 };
 
 constinit const Codebook kAjocHcbDryCoarseDt{
@@ -4276,6 +4437,7 @@ constinit const Codebook kAjocHcbDryCoarseDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbDryCoarseDtFast,
 };
 
 constinit const Codebook kAjocHcbDryFineDt{
@@ -4291,6 +4453,7 @@ constinit const Codebook kAjocHcbDryFineDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbDryFineDtFast,
 };
 
 constinit const Codebook kAjocHcbWetCoarseF0{
@@ -4306,6 +4469,7 @@ constinit const Codebook kAjocHcbWetCoarseF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbWetCoarseF0Fast,
 };
 
 constinit const Codebook kAjocHcbWetFineF0{
@@ -4321,6 +4485,7 @@ constinit const Codebook kAjocHcbWetFineF0{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbWetFineF0Fast,
 };
 
 constinit const Codebook kAjocHcbWetCoarseDf{
@@ -4336,6 +4501,7 @@ constinit const Codebook kAjocHcbWetCoarseDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbWetCoarseDfFast,
 };
 
 constinit const Codebook kAjocHcbWetFineDf{
@@ -4351,6 +4517,7 @@ constinit const Codebook kAjocHcbWetFineDf{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbWetFineDfFast,
 };
 
 constinit const Codebook kAjocHcbWetCoarseDt{
@@ -4366,6 +4533,7 @@ constinit const Codebook kAjocHcbWetCoarseDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbWetCoarseDtFast,
 };
 
 constinit const Codebook kAjocHcbWetFineDt{
@@ -4381,7 +4549,31 @@ constinit const Codebook kAjocHcbWetFineDt{
     .cb_mod = 0,
     .cb_mod2 = 0,
     .cb_mod3 = 0,
+    .fast = kAjocHcbWetFineDtFast,
 };
+
+constinit const std::array<const Codebook*, 84> kAllCodebooks = {{
+    &kAsfHcbScalefac, &kAsfHcb1, &kAsfHcb2, &kAsfHcb3, &kAsfHcb4, &kAsfHcb5, &kAsfHcb6, &kAsfHcb7,
+    &kAsfHcb8, &kAsfHcb9, &kAsfHcb10, &kAsfHcb11, &kAsfHcbSnf, &kAspxHcbEnvLevel15F0,
+    &kAspxHcbEnvLevel15Df, &kAspxHcbEnvLevel15Dt, &kAspxHcbEnvBalance15F0, &kAspxHcbEnvBalance15Df,
+    &kAspxHcbEnvBalance15Dt, &kAspxHcbEnvLevel30F0, &kAspxHcbEnvLevel30Df, &kAspxHcbEnvLevel30Dt,
+    &kAspxHcbEnvBalance30F0, &kAspxHcbEnvBalance30Df, &kAspxHcbEnvBalance30Dt,
+    &kAspxHcbNoiseLevelF0, &kAspxHcbNoiseLevelDf, &kAspxHcbNoiseLevelDt, &kAspxHcbNoiseBalanceF0,
+    &kAspxHcbNoiseBalanceDf, &kAspxHcbNoiseBalanceDt, &kAcplHcbAlphaCoarseF0, &kAcplHcbAlphaFineF0,
+    &kAcplHcbAlphaCoarseDf, &kAcplHcbAlphaFineDf, &kAcplHcbAlphaCoarseDt, &kAcplHcbAlphaFineDt,
+    &kAcplHcbBetaCoarseF0, &kAcplHcbBetaFineF0, &kAcplHcbBetaCoarseDf, &kAcplHcbBetaFineDf,
+    &kAcplHcbBetaCoarseDt, &kAcplHcbBetaFineDt, &kAcplHcbBeta3CoarseF0, &kAcplHcbBeta3FineF0,
+    &kAcplHcbBeta3CoarseDf, &kAcplHcbBeta3FineDf, &kAcplHcbBeta3CoarseDt, &kAcplHcbBeta3FineDt,
+    &kAcplHcbGammaCoarseF0, &kAcplHcbGammaFineF0, &kAcplHcbGammaCoarseDf, &kAcplHcbGammaFineDf,
+    &kAcplHcbGammaCoarseDt, &kAcplHcbGammaFineDt, &kDeHcbAbs0, &kDeHcbDiff0, &kDeHcbAbs1,
+    &kDeHcbDiff1, &kDrcHcb, &kAjccHcbDryCoarseF0, &kAjccHcbDryFineF0, &kAjccHcbDryCoarseDf,
+    &kAjccHcbDryFineDf, &kAjccHcbDryCoarseDt, &kAjccHcbDryFineDt, &kAjccHcbWetCoarseF0,
+    &kAjccHcbWetFineF0, &kAjccHcbWetCoarseDf, &kAjccHcbWetFineDf, &kAjccHcbWetCoarseDt,
+    &kAjccHcbWetFineDt, &kAjocHcbDryCoarseF0, &kAjocHcbDryFineF0, &kAjocHcbDryCoarseDf,
+    &kAjocHcbDryFineDf, &kAjocHcbDryCoarseDt, &kAjocHcbDryFineDt, &kAjocHcbWetCoarseF0,
+    &kAjocHcbWetFineF0, &kAjocHcbWetCoarseDf, &kAjocHcbWetFineDf, &kAjocHcbWetCoarseDt,
+    &kAjocHcbWetFineDt,
+}};
 
 constinit const std::array<const Codebook*, 12> kAsfSpectrumCodebooks = {{
     nullptr, &kAsfHcb1, &kAsfHcb2, &kAsfHcb3, &kAsfHcb4, &kAsfHcb5, &kAsfHcb6, &kAsfHcb7,

@@ -192,7 +192,8 @@ TEST_CASE("at its cap, dialogue enhancement applies the gains its parameters giv
                 } else if (band >= 0 && c == 2) {
                     expected = 1.0 + g * values.p[1][static_cast<std::size_t>(band)];
                 }
-                const double got = abs(channels.data[c][at]) / abs(before[c][at]);
+                const auto got =
+                    static_cast<double>(abs(channels.data[c][at]) / abs(before[c][at]));
                 if (std::abs(20.0 * std::log10(got / expected)) >= 0.01) {
                     FAIL("channel " << c << " slot " << slot << " subband " << k << ": " << got
                                     << ", expected " << expected);
@@ -229,8 +230,10 @@ TEST_CASE("with de_ms_proc_flag, dialogue enhancement raises the Mid and leaves 
             const int band = band_of(k);
             const double expected =
                 (k < 32 && band >= 0) ? 1.0 + g * values.p[0][static_cast<std::size_t>(band)] : 1.0;
-            CHECK(std::abs(abs(left[i]) / abs(QmfValue{1.0, 0.5}) - expected) < kTolerance);
-            CHECK(std::abs(abs(right[i]) / abs(QmfValue{1.0, 0.5}) - expected) < kTolerance);
+            CHECK(std::abs(static_cast<double>(abs(left[i]) / abs(QmfValue{1.0, 0.5})) - expected) <
+                  kTolerance);
+            CHECK(std::abs(static_cast<double>(abs(right[i]) / abs(QmfValue{1.0, 0.5})) -
+                           expected) < kTolerance);
         }
     }
 }
@@ -292,8 +295,8 @@ TEST_CASE("dialogue enhancement moves from one frame's matrix to the next slot b
     for (int slot = 0; slot < kSlots; ++slot) {
         const double w = (slot + 0.5) / kSlots;
         const double expected = 1.0 + w * g * values.p[0][3];
-        CHECK(std::abs(centre[static_cast<std::size_t>(slot * 64 + 5)].real() - expected) <
-              kTolerance);  // band 3
+        CHECK(std::abs(static_cast<double>(centre[static_cast<std::size_t>(slot * 64 + 5)].real()) -
+                       expected) < kTolerance);  // band 3
     }
 }
 

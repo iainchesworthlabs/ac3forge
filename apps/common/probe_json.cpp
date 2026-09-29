@@ -355,7 +355,8 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
     const auto scanned = ac4::scan(data);
     summary.sync_frames = scanned.frames.size();
     // The decoder reads every substream of every frame, for the names that
-    // arrive in chunks and the metadata the I-frames send.
+    // arrive in chunks, the metadata the I-frames send and the common data of
+    // the OAMD substreams.
     ac4::Decoder decoder;
     std::uint64_t raw_bytes = 0;
     std::optional<int> previous_counter;
@@ -399,7 +400,14 @@ Ac4Summary summarize_ac4(std::span<const std::byte> data) {
         if (parsed && !summary.first_frame.has_value()) {
             summary.first_frame = std::move(*parsed);
         }
-        (void)decoder.parse(frame.raw_ac4_frame);
+        if (const auto report = decoder.parse(frame.raw_ac4_frame)) {
+            for (const ac4::SubstreamReport& substream : report->substreams) {
+                if (substream.oamd_common_data) {
+                    summary.oamd_common_data.try_emplace(substream.index,
+                                                         *substream.oamd_common_data);
+                }
+            }
+        }
     }
     if (scanned.stopped_at.has_value() && !summary.parse_error.has_value()) {
         summary.parse_error = scanned.stopped_at;
@@ -516,11 +524,10 @@ void write_ac4_object_entries(JsonSink& json, const std::vector<ac4::ObjectEntry
     json.end_array();
 }
 
-// oamd_common_data() (§6.2.8.1), as an ac4_substream_info_ajoc() embeds it - additive to the probe
-// schema (planning/ac4.md, I5): the top-level fields in full, and a presence flag for each of the
-// three optional nested groups (trim, bed_render_info, headphone), whose own many sub-fields stay
-// text-only for now (a direct-coded group's separate oamd_substream is a further gap this phase
-// leaves - see the final report).
+// oamd_common_data() (§6.2.8.1), as an ac4_substream_info_ajoc() embeds it and as an
+// oamd_substream() carries it - additive to the probe schema (planning/ac4.md, I5): the top-level
+// fields in full, and a presence flag for each of the three optional nested groups (trim,
+// bed_render_info, headphone), whose own many sub-fields stay text-only for now.
 void write_ac4_oamd_common(JsonSink& json, const ac4::OamdCommonData& common) {
     json.begin_object();
     json.member("b_default_screen_size_ratio", common.b_default_screen_size_ratio);
@@ -889,6 +896,17 @@ void write_ac4_stream(JsonSink& json, const Ac4Summary& summary) {
                 json.member("substream_index", static_cast<std::int64_t>(*group.oamd->substream_index));
             } else {
                 json.member_null("substream_index");
+            }
+            // The OAMD substream's own oamd_common_data(), from the first frame
+            // that sent one.
+            const auto common = group.oamd->substream_index.has_value()
+                                    ? summary.oamd_common_data.find(*group.oamd->substream_index)
+                                    : summary.oamd_common_data.end();
+            if (common != summary.oamd_common_data.end()) {
+                json.key("oamd_common_data");
+                write_ac4_oamd_common(json, common->second);
+            } else {
+                json.member_null("oamd_common_data");
             }
             json.end_object();
         } else {

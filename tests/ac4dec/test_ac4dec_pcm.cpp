@@ -26,8 +26,10 @@
 #include "ac4/ac4.hpp"
 #include "ac4dec/decoder.hpp"
 #include "dsp/qmf.hpp"
+#include "pcm/pow43.hpp"
 #include "pcm/snf_random.hpp"
 #include "pcm/stereo.hpp"
+#include "pcm/substream_pcm.hpp"
 #include "sanitized.hpp"
 #include "syntax/asf.hpp"
 #include "syntax/context.hpp"
@@ -759,4 +761,43 @@ TEST_CASE("decode reports a table of contents it cannot read", "[ac4dec][pcm]") 
     REQUIRE_FALSE(decoded.has_value());
     CHECK(decoded.error() == ac4::DecodeError::kInvalidToc);
     CHECK_FALSE(decoder.refusal_reason().empty());
+}
+
+TEST_CASE("the |q|^(4/3) table holds the double nearest every power", "[ac4dec][pcm]") {
+    namespace pd = ac4::detail::pow43_detail;
+    const auto& table = ac4::detail::kPow43<double>;
+    const auto& narrow = ac4::detail::kPow43<float>;
+    CHECK(table[0] == 0.0);
+    CHECK(table[1] == 1.0);
+    for (std::size_t m = 1; m <= ac4::detail::kMaxQuant; ++m) {
+        const double v = table[m];
+        const auto x = static_cast<double>(m);
+        const double a = x * x * x * x;  // m^4, exact below 2^52
+        // The exact residual v^3 - m^4, and from it how far v is from the root: the
+        // nearest double is at most half an ulp away.
+        const pd::DoubleDouble v2 = pd::two_prod(v, v);
+        const pd::DoubleDouble v3 = pd::two_prod(v2.hi, v);
+        const double residual = ((v3.hi - a) + v3.lo) + v2.lo * v;
+        const double distance = std::abs(residual / (3.0 * v * v));
+        const double ulp = std::nextafter(v, std::numeric_limits<double>::infinity()) - v;
+        CHECK(distance <= 0.5000001 * ulp);
+        CHECK(v > table[m - 1]);
+        // The float table is the double one, rounded.
+        CHECK(narrow[m] == static_cast<float>(v));
+        // pow(m, 4.0 / 3.0) has an exponent 7.4e-17 short of 4/3: up to 6.7e-16
+        // relative at 8 191, and each side's rounding on top.
+        CHECK(std::abs(v - std::pow(x, 4.0 / 3.0)) <= 1.1e-15 * v);
+    }
+    // The 4/3 power of a cube k^3 is k^4, an integer, and the table has it exactly.
+    for (std::size_t k = 1; k * k * k <= ac4::detail::kMaxQuant; ++k) {
+        CHECK(table[k * k * k] == static_cast<double>(k * k * k * k));
+    }
+}
+
+TEST_CASE(
+    "a substream's decoder state holds no A-CPL, A-JCC or A-JOC stage its stream does not use",
+    "[ac4dec][pcm]") {
+    // The three stages hold their decorrelators' history, 100 to 170 KiB each at double;
+    // the first frame that applies one makes it, so SubstreamPcm itself is a few KiB.
+    CHECK(sizeof(ac4::detail::SubstreamPcm) <= 16 * 1024);
 }

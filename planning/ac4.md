@@ -913,8 +913,9 @@ properties. `ac3cli probe json=1` writes the same fields.
 
 D14, after D10: the P4 first, in `float`, since it has the most CPU and memory of the family's
 parts; then the S3 in `float` and the C6 in fixed point, as the decoder's optimisation lets them
-([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component and the minimal profile build
-without AC-4 today. The parts decode only; the encoder is built for none of them
+([decision 24](#decisions-of-2026-09-25)). The ESP-IDF component builds without AC-4 today; the
+minimal profile carries the decoder for the Cortex-M3 probe (D14a). The parts decode only; the
+encoder is built for none of them
 ([decision 34](#decisions-of-2026-09-25)).
 
 - **What they face.** Every AC-4 codec mode, SIMPLE included, runs QMF analysis and synthesis on
@@ -1144,6 +1145,7 @@ the channel-based library.
 | 24 | [N1](#n1-the-names) | the names | I5 |
 | | [G1](#g0-the-gold-set) | the golden masters, extending G0's set | any time before DEE's licence ends on 2026-11-06 |
 | | [D11](#d11-ac-4-over-iec-61937) | AC-4 over IEC 61937 | D1; any time |
+| | [E10](#e10-a-spx-noise-floors-on-sweeps) | A-SPX noise floors on sweeps: the gap E8 left to DEE | E2, E8 |
 
 Hearth's AC-4 pages activate for channel-based content in I2, for immersive content and objects in
 I5.
@@ -1718,7 +1720,7 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   - Vector kernels on the host (`f32x4`, `f64x2`) on the split planes, each identical bit for bit
     to the loop it replaces.
 
-  **Built in D14a, in part.** Decision 31's header-only target (`src/arithmetic`) moved `Fixed32`
+  **Built in D14a.** Decision 31's header-only target (`src/arithmetic`) moved `Fixed32`
   and the float scalar functions out of `ac3::forge`'s own tree with no copy; both `ac3::forge` and
   `src/ac4core` link it. `src/ac4core`'s own QMF-domain kernels - the analysis/synthesis pair, the
   FFT and MDCT, A-SPX's high-frequency generator, A-CPL's decorrelators and ducker, A-JOC's
@@ -1754,21 +1756,102 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   the per-scalar `real.hpp`), adding nothing to a `double`-configured build - the encoder's own tests, part of the unmoved whole suite above,
   hold on that path unchanged.
 
-  The QMF bank rewrite (real and imaginary planes, an index-moving delay line), the memory audit
-  beyond the three findings the first part of this phase fixed, the cached bit reader and Huffman
-  table, and the host's vector kernels were not reached, and neither was the probe's AC-4 rows. **Of
-  the exit criteria below: the float build's agreement with the double build holds, and the scorers
-  hold their pins with a float CLI. The double output does not move - decision 25's anticipated cost
-  does not fall due here - so its re-score confirms the same pins rather than requalifying moved
-  ones. The probe's AC-4 rows do not hold**, the probe not reached this phase. D14b (the P4) does
-  not start until the rewrite, the memory work, the bit reader and the vector kernels land too. The
-  options, a recommendation and their cost are in the pull request's report.
+  **The rest of D14a** (the third pull request) does what the first two left: the QMF banks, the
+  memory of the decoder, the bit reader and the Huffman decoder, the host's vector kernels, and the
+  probe's AC-4 rows.
+
+  The QMF banks are each one 64-point complex transform between a rotation that packs pairs of
+  samples into complex values and a butterfly that pairs subband k with 63 - k, which is
+  Pseudocode 65 and 66 reduced algebraically (the derivation is in `src/ac4core/src/dsp/qmf.hpp`),
+  on separate real and imaginary planes, with ten-block delay lines that move an index. Every
+  twiddle factor is a `constexpr` array built by integer angle arithmetic from one generated
+  quarter-wave cosine table, the `Real` nearest its exact value, and the banks share them. They are
+  held to Pseudocodes 65 and 66 as printed, to the 78 dB reconstruction and to a direct 128-point
+  sum, at both scalars. A slot takes 0.77 us in analysis and 0.83 us in synthesis at `double`, from
+  3.15 and 3.3. The vector kernels (`qmf_vector.hpp`) put the seven steps of a slot on `f32x4` and
+  `f64x2`, each tested equal bit for bit to the scalar loop it replaces, at both scalars, and the
+  banks to those loops composed. The SIMD seam moved from `src/forge` to `src/arithmetic` for them
+  (`ac3::arithmetic` now carries the architecture directory): on the x86-64 seam a slot is 2.2 to
+  3.9 times faster at `float` and 0.9 to 1.6 times at `double`. On the Cortex-M3 leg the seam is the
+  generic directory, and the same kernels run 0.2 to 0.3% fewer instructions and add 4.2 KB to the image
+  against the scalar loops, so they are used on every part; a part whose measurement says otherwise
+  can take the scalar kernels, which stay as the reference.
+
+  What the decoder holds: `SubstreamPcm` is 10.9 KB at `double` (9.3 KB at `float`), from 299 KB
+  (177 KB), because A-CPL, A-JCC and A-JOC make their decorrelators when the first frame that
+  applies them arrives (A-JOC's reconstruction alone was 150 KB) and one transform scratch per
+  substream serves every channel's transforms. The |q|^(4/3) table is `constexpr` and in flash,
+  exact to the `double` nearest each power in place of 8 192 calls filling 64 KB of RAM before
+  `main` (`std::pow(m, 4.0 / 3.0)` is up to 6.7e-16 relative off it, since 4.0 / 3.0 is short of
+  4/3 by 7.4e-17). No guarded function-local static remains in `src/ac4core`, `src/ac4dec` or
+  `src/ac4`, and every object the decode path built on the stack to reset or return is built in
+  place, a member, or handed a scratch: `SubstreamPcm::decode`'s frame fell from 15.1 KB to
+  3.4 KB and `decode_aspx`'s from 11.7 KB to 3.4 KB. Seven frames are still over 4 KiB in the
+  `float` build, each a sum of smaller locals: the A-CPL coupling parameters' (12.4 KB),
+  `Decoder::Impl::read`'s (11.6 KB), `decode_into`'s (7.1 KB), `conceal_or`'s (4.6 KB),
+  `acpl_values`' (4.4 KB), `stereo_parameters`' (4.2 KB) and `parse_sf_data`'s (4.2 KB); a decode's
+  stack read by painting is 18.3 to 19.5 KB on the Cortex-M3 and 24.7 to 26.0 KB on x86-64. Two
+  costs are left open: the syntax layer builds its element vectors afresh each frame, so a frame
+  allocates 50 to 191 times in the steady state and 69 to 673 KB in bytes, and the transforms'
+  and windows' tables are built by the first frame from `libm` (their values are the same on the
+  host and on the Cortex-M3 to the bit, as the hashes below show, but nothing but that
+  measurement says they must be).
+
+  The bit reader reads through a 64-bit cache, so a peek of up to 32 bits is a shift, and every
+  Huffman codebook carries a 256-entry table of its codewords of 8 bits or fewer, built at compile
+  time (2 bytes an entry, 43 KB of flash over the 84 codebooks); a longer codeword takes the search
+  by length as before. Every syntax digest is unchanged, and the two transcriptions agree over
+  600 streams.
+
+  The probe (`apps/baremetal/ac4_probe.cpp`) is a third probe beside the AC-3 and E-AC-3 decoder's
+  and the encoders': the AC-4 libraries build in the decode profile (static, without exceptions,
+  the encoder not built), and `run_baremetal_probe.sh --ac4` decodes five committed streams (2.0
+  and 5.1, with and without A-CPL, and DEE's 5.1.4 tones) through `Decoder::decode_by_block`,
+  checking each channel's level against `apps/baremetal/ac4_fixture.hpp`. On the Cortex-M3 leg,
+  in `float`, with GCC 14.2.1 at `-Os`:
+
+  | Fixture | Frames | Instructions a frame | Peak heap | Allocations a frame, steady | Stack |
+  |---|---:|---:|---:|---:|---:|
+  | `ac4_20_music`, 2.0 | 3 | 54,530,000 | 431,805 | 52 | 18,288 |
+  | `ac4_20_acpl`, 2.0 A-CPL | 4 | 57,883,000 | 626,008 | 50 | 19,456 |
+  | `ac4_51_music`, 5.1 | 3 | 117,580,000 | 996,954 | 153 | 19,456 |
+  | `ac4_51_acpl`, 5.1 A-CPL | 4 | 124,489,000 | 1,205,460 | 90 | 19,456 |
+  | `ac4_514_tones`, 5.1.4 | 2 | 205,781,000 | 1,931,680 | 191 | 19,456 |
+
+  The image is 486,192 bytes and nothing is retained after the decoders are destroyed. The PCM of
+  each fixture is bit-identical between the x86-64 host (GCC 16, SSE seam) and the Cortex-M3
+  (soft float, generic seam), so decision 26's claim holds for these five, and the hashes are pinned
+  (`tests/golden/ac4-probe-pcm-hashes.json`). The peak is what D14c meets: 2.0 needs 432 KB where the
+  S3's probe allows 245,000, so 2.0 in internal RAM on the S3 needs the decoder's allocations halved
+  again, or PSRAM.
+
+  **Exit, as measured.** (a) The `float` decode against the `double` one on every committed
+  stream (67 of them, `tools/checks/check_ac4_decode_scalar_snr.py`), the worst channel's SNR in
+  half-overlapped Hann frames of 2 048 samples: below the lowest crossover 109.4 to 136.0 dB (132.1
+  to 136.0 on DEE's), and above the highest 37.5 to 102.1 dB where a stream has A-SPX (47.2 to
+  102.1 on DEE's; the constructed streams, whose payloads are random, and the A-SPX object streams
+  are the low end, 37.5 to 46.8). The high
+  band is where `float` and `double` part, and the cause is open. Accumulating Pseudocode 86's
+  covariances and solving Pseudocode 87 in `double` in a `float` build moved no figure by 0.1 dB on
+  eight of the streams, so the prediction is not it; the worst frames of a channel are far below
+  its aggregate (39 dB in a frame of a channel whose figure is 75), which points at a few decisions
+  or gains that flip or move and not at a general loss of precision. In absolute terms, against
+  the energy of a full-scale sine, the loudest channel's difference is no louder than -149.1 dBFS
+  on DEE's streams, -143.9 on the object streams and -96.8 on the loudest constructed one.
+  MSVC, GCC 16 and Clang 22 agree to 0.1 dB;
+  the floors are pinned in `tests/golden/ac4dec/scalar-agreement.json`, 3 dB under the figures.
+  (b) `score_ac4_decode.py` and `score_ac4_encode.py` hold their pins with a `float` CLI and with a
+  `double` one, on the committed legs and, with `--gold`, on the local gold set. (c) The probe's rows above are pinned in
+  `run_baremetal_probe.sh`, each about a tenth over its figure. (d) The `double` output moves:
+  61 of the 66 streams under `tests/golden` decode with a few samples different in the float32
+  output, by at most 2.3e-10 (about -193 dBFS); the encoder's output is byte-identical on the five
+  encodes checked, so nothing of the encoder's is re-pinned, and both scorers hold at `double`.
 
   **Exit:** on every committed stream, the `float` build's agreement with the `double` build
   stated below and above the crossover and pinned; the scorers at their pins with a `float` CLI;
   the probe's AC-4 rows with peak heap, allocations per frame, stack and the Cortex-M3 leg's
   instruction counts pinned. The `double` output moves in its last bits, and the encoder's with it:
-  both are scored again.
+  both are scored again. Met; the figures are above.
 
   **Verified by:** `ac3tests`; the `float` gate and the scorers in CI; `run_baremetal_probe.sh`.
 - **D14b, the P4.** The component builds the inspector, the core and the decoder in `float`,
@@ -2108,8 +2191,9 @@ mode. Measured locally against DEE's 5.1.4 legs from 192 to 768 kbps, in full an
 (`tools/checks/score_ac4_encode.py --gold`, pinned): ViSQOL within 0.035 of DEE's or over it on music, film
 and speech, the SNR below the crossover up to 10.5 dB under DEE's from 192 to 320 kbps and within 1.4 dB
 of it or over it from 384;
-on sweeps above 16.5 kHz the shared A-SPX encoder leaves the band emptier than DEE's does, 0.03 to 0.18
-under DEE's ViSQOL from 256 to 512 kbps. librempeg does not decode the immersive element.
+on sweeps the shared A-SPX encoder left the band above the crossover emptier than DEE's did, 0.03 to 0.18
+under DEE's ViSQOL from 256 to 512 kbps, which [E10](#e10-a-spx-noise-floors-on-sweeps) closed.
+librempeg does not decode the immersive element.
 
 #### E9: A-JOC objects
 
@@ -2150,6 +2234,71 @@ there is no race, and librempeg refuses object coding, so there is no second dec
 (`tools/checks/check_ac4_encode_readers.py --only objects`) needs DEE's install. Bed objects in
 direct-coded substreams, objects beside channel-coded substreams, frame rates other than index 13 and
 the intermediate spatial format are refused.
+
+#### E10: A-SPX noise floors on sweeps
+
+- E8's race left the shared A-SPX encoder 0.03 to 0.18 under DEE's ViSQOL on 5.1.4's sweeps from 256 to
+  512 kbps, the band above the crossover emptier than DEE's. Which layouts and rates show it, the two
+  streams' A-SPX side information and decoded band compared frame by frame, and the fix in
+  `src/ac4enc`'s A-SPX analysis.
+
+**Exit:** on the sweep legs ViSQOL within 0.035 of DEE's or over it at every layout and rate where the
+gap was measured, and no other pinned leg regressing beyond its own tolerance; a synthetic sweep through
+the encoder and the decoder keeps each band above 16.5 kHz within a stated number of dB of the source's
+energy.
+
+**Verified by:** `tools/checks/score_ac4_encode.py --gold` over G1's sweeps at 2.0, 5.1 and 5.1.4 and
+over the music, film and speech legs as controls; `ac3tests`; the WSL GCC and Clang gates. ViSQOL and DEE
+are local only.
+
+**Built** (phase E10): E8's gap is at 5.1.4 alone. Scored as `score_ac4_encode.py --gold` scores it (ViSQOL
+of the channels' mean over the middle four seconds), G1's sweeps stood, this encoder's less DEE's: at 2.0,
+from 0.00 to 0.10 over from 64 to 144 kbps and 0.04 under at 48; at 5.1, from 0.03 to 0.21 over from 96
+to 320, though its A-SPX tiles were 2 to 11 dB further from the source's energy than DEE's (27.7 dB
+against 16.7 at 192 kbps); at 5.1.4, 0.03 over at 192 kbps and 0.145, 0.154, 0.107, 0.071, 0.034 and 0.183
+under at 256, 288, 320, 384, 448 and 512, in core decoding 0.02 to 0.04 nearer DEE's; 5.1.4's music leg at
+256 kbps, the control, 0.03 over. E8 put the gap above 16.5 kHz. Taking DEE's decoded band from 10.5 kHz
+up in place of this encoder's, at 256 kbps, gives DEE's ViSQOL (4.262 against DEE's 4.260 and this
+encoder's 4.115), and from 16.5 kHz up alone 4.174, two fifths of the way: the gap is the whole A-SPX
+band, three fifths of it below 16.5 kHz. What the decoder does with a group explains it (Pseudocodes 94
+and 95): its noise is Q / (1 + Q) of the envelope whatever the patch holds, and its patch gain divides by
+1 plus the patch's own energy, so a patch with nothing in it delivers nothing of the envelope. A sweep
+above the crossover has nothing in the low band to copy. The two streams' A-SPX configurations are the
+same (start, stop and master scale, noise groups, interpolation, pre-flattening, limiter), so are the
+framing class (FIXFIX), the high frequency resolution of every envelope, the quantisation step (1.5 dB in
+a frame of one envelope, 3 dB in two) and the delta direction (along time but in I-frames), and frame by
+frame on the 5.1.4 sweep at 256 kbps (`tools/references/ac4_syntax.py`'s reader, on DEE's streams as
+output only) what differs is these: DEE's noise floors are `qscf_noise` 7 to 17, 2^-1 to 2^-11, and this
+encoder's 29, the least, in 95 to 99 % of its values (on music DEE's are 7 in nine of ten, this
+encoder's 29 in 80 to 96 %); DEE inverse-filters at mode 0 in 96 to 98 % of the core channels' values,
+this encoder at 0 or 3; DEE frames one frame in ten as two envelopes (one in five in the top pairs); and
+this encoder adds a sinusoid to a group in one frame in twenty at most. Decoded, the tone above 16.5 kHz lands 15 to 17 dB under the
+source's energy in DEE's stream, which is its noise floor's share (2^-5 of the envelope in the tone's
+group is -15 dB), and 32 to 61 dB under it in this encoder's at 5.1 and 48 to 61 at 5.1.4, in every
+channel A-SPX codes.
+
+`AspxChannelEncoder::fill_undelivered` sends the floor the patch needs. Per noise group and interval it
+measures the share of the input's energy that the decoder's generator, run on the input's low band at
+the inverse filtering chosen, delivers (est / (1 + est) of each subband, a subband with a sinusoid or
+coded by the spectral frontend counting as delivered whole), and where that is under three quarters
+sends the floor at which (share + Q) / (1 + Q) reaches three quarters, when it is louder than the one
+the tonality rule chose: `qscf_noise` 4 for an empty patch. Music, film, speech, noise, transients and
+tones at 2.0 from 48 to 144 kbps, 5.1 from 96 to 320 and 5.1.4 from 192 to 512 encode to the same bytes
+as before (91 streams); only the sweeps change, and the SIMPLE and SCPL rates have no A-SPX. The test
+(`tests/ac4enc/test_ac4enc_encoder.cpp`) encodes a sweep from 11 to 21 kHz in one channel of a stereo and
+a 5.1.4 stream and holds the energy of each band from 16.5 to 20.5 kHz to 6 dB of the source's: before,
+seven of the eight came back 8 to 13 dB under it, and after all eight 2 to 4 dB under. Against DEE's
+streams ViSQOL is now over DEE's on every sweep leg: 0.15 to 0.28 at 2.0, 0.05 to 0.48 at 5.1 and 0.13 to
+0.66 at 5.1.4 (core decoding 0.05 to 0.65), the A-SPX tiles 3.5 to 5.7 dB nearer the source's energy than
+DEE's at 5.1.4 and 4 to 7 at 2.0 and 5.1. What it costs is log-spectral distance, which the noise
+raises by 0.2 to 0.9 dB on sweeps, to 0.55, 0.79 and 1.14 dB over DEE's at 2.0 and 48, 64 and 96 kbps
+and 0.55 to 2.7 dB under it everywhere else. The pins moved for that reason alone: the 5.1.4 sweeps' LSD
+ceilings up 0.4 to 0.7 dB, their ViSQOL floors up 0.17 to 0.63, their tile ceilings down by 7 to 19 dB, and
+their SNR floors unchanged but for 0.1 dB in a channel or two at 256 to 320 kbps; the 2.0 and 5.1 sweeps
+and the three A-CPL ones are pinned for the first time. `src/ac4enc/ERRATA.md` records the reading. Not
+done: `choose_sinusoids` holds a group's tone to twice the group's mean energy, which no group of two
+subbands can show, so sinusoids reach only the three-subband groups above 16.5 kHz and the single
+subbands; changing it would change music's streams, and E10 leaves it.
 
 ### Application phases
 
@@ -2519,9 +2668,12 @@ extended `tests/hearth/test_diagnostics.cpp`, `apps/gui/tests/qml/tst_e2e_inspec
 `tools/ci/run_codec_matrix.sh`'s new AC-4 legs (5.1.4, objects both codings, both Atmos-ingest
 commands' `codec=ac4`), and the whole of `ac3tests` once, at the end (a full run's own numbers are in
 the phase's report rather than repeated here, since a later merge would make them stale immediately).
-Not done: a direct-coded group's own separate `oamd_substream` in `probe`'s JSON; the GUI's
-encoder-page AC-4 object path; `zone_mask`'s mapping onto `ac3::oba::ZoneConstraint` is a reading, not
-independently checked against the spec text (neither library's syntax, so not an ERRATA entry).
+Not done: the GUI's encoder-page AC-4 object path; `zone_mask`'s mapping onto
+`ac3::oba::ZoneConstraint` is a reading, not independently checked against the spec text (neither
+library's syntax, so not an ERRATA entry). A direct-coded group's own separate `oamd_substream`,
+which this phase left out of `probe`'s JSON, landed afterwards: `ac4::SubstreamReport` holds the
+substream's `oamd_common_data()`, and `probe` writes the first one as `oamd_common_data` on the
+group's `oamd` member, in the shape of the A-JOC substream's.
 
 #### I6: the ESP32 sinks
 
@@ -2557,6 +2709,21 @@ AC-3 and E-AC-3 alone, and a few pages describe `ac4dec::` and `ac4enc::` namesp
 not have. The user found a program called `ac3cli` doing AC-4 wrong in itself, and took renaming the
 programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's scheme S3 costed.
 
+On 2026-09-29 the user extended the ask from the programs to the whole tree: "while this started out
+as an AC3 or an EAC3 based application, it now supports AC4 and it's kind of weird to say it's an AC3
+XYZW ... Hearth should be Hearth, not AC3 Hearth. Forge should be Forge ... it may do other things in
+the future if there was like an AC5 or DTS or whatever", and to where the code sits: "the old stuff is
+over here in forge and the new AC4 stuff's over here which is two folders higher, not as a sibling,
+it's all kind of weirdly structured". N1 is now two tasks that share one quiet window after the
+current wave of phase branches has merged, N1B first:
+
+- **N1A** names the programs and what they register with the system (below).
+- **N1B** names and lays out the libraries. It is studied in [The layout of `src/`](layout.md), with
+  the inventory it reads from in [layout-inventory.md](layout-inventory.md); the recommendation and
+  the decisions it puts to the user are there.
+
+**N1A: the programs.**
+
 - The programs take their members' names, which the user chose on 2026-09-26 ("I like option b for
   program names"): `ac3cli` becomes `forge`, `ac3gui` `forge-gui`, `ac3hearth` `hearth` and
   `ac3crucible` `crucible`, and Hearth's test sink and server `hearth-testsink` and
@@ -2567,19 +2734,42 @@ programs ([decision 35](#decisions-of-2026-09-25)), which the recasting plan's s
   four shells, the man page, the Homebrew formula and cask, winget's aliases, the desktop entries
   and bundle identifiers, the Windows file-type command lines, the firewall rules' names and the
   translation catalogues named after the programs; `ac3forge <version>` as the version line, as
-  now.
+  now. Nothing is published, so the decisions of 2026-09-29 drop the kept-working period: the old
+  names are not kept, and no launcher is written.
 - Wording that names the formats the family handles, AC-4 among them, wherever it says AC-3 and
   E-AC-3 alone.
-- The family's name, the library's identifiers, the packages' names and the C API stay.
 
 At a point where few phase branches are open, since every branch touches the programs' names.
 
-**Exit:** the programs build and install under their new names, the old names still run and say the
-new one, every test and document uses the new names, and no page or package description names AC-3
-and E-AC-3 as the family's only formats; the documentation gates pass.
+**Exit (N1A):** the programs build and install under their new names, every test and document uses
+the new names, and no page or package description names AC-3 and E-AC-3 as the family's only
+formats; the documentation gates pass.
 
-**Verified by:** `ac3tests` and the CLI tests under the new names; the package checks; a search for
-the old names and the stale phrases; `mkdocs build --strict` and `tools/checks/check_doc_paths.py`.
+**Verified by (N1A):** `ac3tests` and the CLI tests under the new names; the package checks; a search
+for the old names and the stale phrases; `mkdocs build --strict` and
+`tools/checks/check_doc_paths.py`.
+
+**N1B: the libraries.**
+
+- The family is named "ICL Forge" (organisation `iainchesworthlabs`; identifiers `iclforge`,
+  `ICLFORGE_`) in place of `ac3forge`: plain `forge` is taken on PyPI, npm, crates.io and Homebrew core,
+  and `iclforge` and `icl-forge` are free. The programs keep the plain names above.
+- Nothing is published: no package is on a registry, and Sendspin and the ESP32 firmware have not left
+  this repository. The C API prefix, the CMake package, the Kconfig prefix, the environment variables
+  and the wire strings are therefore renamed outright, with no shim. The costs are GitHub's: the
+  repository's name, the Pages address, existing release tags and asset names, and the packaging files.
+- N1B is layout and naming only: no algorithm changes and every output byte stays the same. It covers
+  where the code sits, the C++ namespaces, the header roots and the CMake target names. The duplicated
+  DSP (FFT, MDCT, QMF and resampler in `src/forge` and `src/ac4core`) is a later phase.
+- The study recommends AC-3 and E-AC-3 as `src/ac3` beside the AC-4 libraries, over five codec-blind
+  libraries cut out of `src/forge`, in stages S0 to S6 with N1A in the same freeze.
+
+**Exit (N1B):** the tree has the layout the user chose, in the stages the study sets out, each proven by
+the builds, the whole `ac3tests`, the pinned bitstream hashes and the bytes of a fixed CLI corpus;
+a check states the dependency direction between libraries and passes; the documentation gates pass.
+
+**Verified by (N1B):** the prototype in [the study](layout.md#what-the-prototype-found) for the design;
+for the execution, each stage's proof in [its section](layout.md#h-proof-per-stage).
 
 ## Decisions
 

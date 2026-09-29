@@ -597,14 +597,14 @@ std::vector<double> through(detail::DownmixStage& stage, const detail::DownmixVa
     if (stage.passes_through()) {
         std::vector<double> same;
         for (const auto& m : matrices) {
-            same.push_back(m[0].real());
+            same.push_back(static_cast<double>(m[0].real()));
         }
         return same;
     }
     stage.process(values, pointers, out);
     std::vector<double> result;
     for (const auto& o : out) {
-        result.push_back(o.at(0).real());
+        result.push_back(static_cast<double>(o.at(0).real()));
     }
     return result;
 }

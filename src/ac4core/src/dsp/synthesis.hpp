@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "ac4/detail/real.hpp"
+#include "dsp/complex.hpp"
 #include "dsp/mdct.hpp"
 
 // The inverse transform's windowing and overlap-add with block switching:
@@ -39,10 +40,15 @@ namespace ac4::detail::dsp {
 // The transforms and windows for one full block length at one sampling
 // frequency: an inverse MDCT and a KBD_LEFT half window, with Table 186's
 // alpha, for each block length from the full one down by halves to a
-// sixteenth, or to the shortest Table 186 lists.
+// sixteenth, or to the shortest Table 186 lists. The set also owns the working
+// space of every transform it holds, one block's worth, since the channels of a
+// substream inverse transform one block after another: ChannelSynthesis::block()
+// takes it from here, so no channel and no transform holds any of its own.
 template <typename Real>
 class TransformSet {
    public:
+    using Complex = ac4::detail::dsp::Complex<Real>;
+
     // `rate_multiplier` is 1 at 44.1 and 48 kHz, 2 at 96 kHz and 4 at 192 kHz.
     TransformSet(int full_length, int rate_multiplier);
 
@@ -55,6 +61,12 @@ class TransformSet {
     [[nodiscard]] Imdct<Real>* imdct(int length) noexcept;
     [[nodiscard]] std::span<const Real> kbd_left(int length) const noexcept;
 
+    // The working space, valid() or not empty: the 2 * full_length() samples of
+    // the block being windowed, and the full_length() values any of the set's
+    // transforms takes as its scratch.
+    [[nodiscard]] std::span<Real> block_scratch() noexcept { return block_; }
+    [[nodiscard]] std::span<Complex> transform_scratch() noexcept { return transform_; }
+
    private:
     [[nodiscard]] int slot(int length) const noexcept;
 
@@ -62,6 +74,8 @@ class TransformSet {
     bool valid_ = false;
     std::vector<Imdct<Real>> imdct_;
     std::vector<std::vector<Real>> windows_;
+    std::vector<Real> block_;
+    std::vector<Complex> transform_;
 };
 
 // One channel's overlap buffer and the length of its last block.
@@ -85,7 +99,6 @@ class ChannelSynthesis {
     int full_length_ = 0;
     int previous_length_ = 0;
     std::vector<Real> overlap_;  // Nfull values, Pseudocode 64's overlap[]
-    std::vector<Real> x_;        // 2N samples of the block being added
 };
 
 extern template class TransformSet<Real>;
