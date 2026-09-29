@@ -14,9 +14,9 @@ const std::size_t object = renderer.add_object({.azimuth_deg = 0.0, .gain = 0.7}
 
 Rendering is clocked at the 256-sample block, because that is the rate automation runs at;
 gains ramp linearly within a block, so moving an object does not click. The render path itself
-does not allocate. Neither do `pan_ring` and `pan_direction` since 2026-09-10: their working
-storage is on the stack, sized to Table E2.5's widest ring, because a part rendering objects calls
-them once per object per frame and the minimum-footprint probe counts every allocation.
+does not allocate. Neither do `pan_ring` and `pan_direction`: their working storage is on the
+stack, sized to Table E2.5's widest ring, because a part rendering objects calls them once per
+object per frame and the minimum-footprint probe counts every allocation.
 
 ```cpp
 // One full turn every two seconds.
@@ -297,10 +297,9 @@ scene.set_orientation(ac3::oba::orientation_from_degrees(90, 0, 0));  // front w
 ### The live half: `SceneCursor`
 
 `SceneCursor` is the same timeline with per-object overrides an external source pushes in as
-they arrive — the seam a live position source and the GUI's live room plug into, and the reason
-the scene type is not just a static table. That seam exists: OSC (below) is a live
-source today; MIDI and a game controller are follow-ons under the same `positions=` token, not
-implemented yet.
+they arrive — the seam a live position source and the GUI's live room plug into. OSC (below) is
+the one live source; the `positions=` token takes nothing else, and no MIDI or game-controller
+source exists.
 
 ```cpp
 ac3::oba::SceneCursor cursor{std::move(scene)};
@@ -440,18 +439,27 @@ that channel's existing static placement. That is why `read_scene()` returns raw
 
 ### Not in the C API or the Python bindings
 
-Both expose `AtmosEncoder`, and `ObjectScene` deliberately does not follow it there yet. The
-shape of the type is expected to move when `UX4`'s live source lands — `SceneCursor` exists
-precisely because that seam is not finished — and both of those surfaces are candidates for the
-coming API freeze, where an experimental type would be a lasting commitment. Exposing half of
-it (say, the serialisation free functions but not the type) would be worse than exposing none:
-a C caller would get a scene it could load and not evaluate. Load and save the JSON form from
-either language and hand the resulting placements to the existing encoder bindings until the
-type settles.
+Both expose `AtmosEncoder`, and `ObjectScene` does not follow it there. Its shape has settled:
+`SceneCursor` is the seam a live position source plugs into (OSC, above, is one), and both of those
+surfaces are candidates for the coming API freeze, where an experimental type would be a lasting
+commitment. Exposing half of it (say, the serialisation free functions but not the type) would be
+worse than exposing none: a C caller would get a scene it could load and not evaluate. Load and
+save the JSON form from either language and hand the resulting placements to the existing encoder
+bindings.
 
 This layer backs `ac3cli atmos-path` and `atmos-encode`'s optional scene argument, the GUI's
 object-path export, and the [station broadcast](station-broadcast.md) scene's ten authored
 objects.
+
+### The same authoring for AC-4 objects
+
+The AC-4 object encoder ([AC-4 § Encoding objects](ac4.md#encoding-objects)) takes each object's
+PCM and its metadata over time in `ac4::ObjectProperties`, and reads no scene format. The
+applications feed it the layers on this page and the ADM and IAB bridges: `ac3cli atmos-encode`,
+`atmos-adm` and `atmos-iab` with `codec=ac4`, and the Forge GUI's encoder page, turn each object's
+authored position and gain into one metadata update a frame
+(`apps/common/ac4_objects_core.hpp`). `ObjectScene`, `motion.hpp` and `AtmosEncoder` know nothing
+of AC-4.
 
 ## Objects-or-nothing: `AtmosConfig::emit_object_metadata`
 

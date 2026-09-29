@@ -76,6 +76,24 @@ class Headers(unittest.TestCase):
             ["src/a/include/a/version.hpp.in", "src/a/include/a/x.hpp"],
         )
 
+    def test_headers_are_recorded_from_git_without_a_build(self) -> None:
+        made = baseline.record(None, "none", ("headers",), self.root, root=self.root)
+        self.assertEqual(
+            sorted(made["headers"]["headers"]),
+            ["src/a/include/a/version.hpp.in", "src/a/include/a/x.hpp"],
+        )
+        self.assertEqual(
+            made["headers"]["measured_at"], git(self.root, "rev-parse", "HEAD").strip()
+        )
+        self.assertEqual(made["headers"]["label"], "")
+
+    def test_every_other_kind_needs_a_build(self) -> None:
+        for kinds in (("cli",), ("headers", "symbols")):
+            with self.subTest(kinds=kinds), self.assertRaises(SystemExit):
+                baseline.record(None, "none", kinds, self.root, root=self.root)
+        with self.assertRaises(SystemExit):
+            baseline.record(None, "none", ("headers",), self.root)
+
     def test_a_pure_move_keeps_every_header_with_its_bytes(self) -> None:
         directory = self.baseline_dir()
         self.move_header()
@@ -127,9 +145,13 @@ class Records(unittest.TestCase):
 
 
 class Exports(unittest.TestCase):
-    def compare(self, old: dict, new: dict, mapping: str, kinds: set[str]) -> int:
+    def compare(
+        self, old: dict, new: dict, mapping: str, kinds: set[str], copies: bool = False
+    ) -> int:
         with contextlib.redirect_stdout(io.StringIO()):
-            return export_diff.compare({"libraries": old}, {"libraries": new}, mapping, kinds, 5)
+            return export_diff.compare(
+                {"libraries": old}, {"libraries": new}, mapping, kinds, 5, copies
+            )
 
     def test_the_same_libraries_with_the_same_names_agree(self) -> None:
         libs = {"a.dll": ["ac3::f()", "ac3::g()"]}
@@ -163,6 +185,30 @@ class Exports(unittest.TestCase):
         old = {"a.dll": ["ac3::f()", "mp4::m()"]}
         new = {"a.dll": ["iclforge::f()", "iclforge::mp4::m()"]}
         self.assertEqual(self.compare(old, new, "identity", {"names"}), 0)
+
+    def test_a_library_that_stops_re_exporting_a_copy_passes_only_with_copies(self) -> None:
+        # admbridge.dll links the codec statically and carried 278 of its names; a change to what
+        # its headers include changed which members it pulls in.
+        old = {"core.dll": ["ac3::f()", "ac3::g()"], "bridge.dll": ["ac3::f()", "ac3::own()"]}
+        new = {"core.dll": ["ac3::f()", "ac3::g()"], "bridge.dll": ["ac3::own()"]}
+        self.assertEqual(self.compare(old, new, "identity", set()), 1)
+        self.assertEqual(self.compare(old, new, "identity", set(), copies=True), 0)
+
+    def test_copies_do_not_excuse_a_name_no_library_exports_any_more(self) -> None:
+        old = {"core.dll": ["ac3::f()", "ac3::g()"], "bridge.dll": ["ac3::f()"]}
+        new = {"core.dll": ["ac3::f()"], "bridge.dll": []}
+        self.assertEqual(self.compare(old, new, "identity", set(), copies=True), 1)
+
+    def test_copies_do_not_excuse_a_name_a_library_gained(self) -> None:
+        old = {"core.dll": ["ac3::f()"], "bridge.dll": ["ac3::f()"]}
+        new = {"core.dll": ["ac3::f()"], "bridge.dll": ["ac3::f()", "ac3::new()"]}
+        self.assertEqual(self.compare(old, new, "identity", set(), copies=True), 1)
+
+    def test_a_name_that_moves_between_libraries_is_still_a_difference(self) -> None:
+        old = {"a.dll": ["ac3::f()"], "b.dll": []}
+        new = {"a.dll": [], "b.dll": ["ac3::f()"]}
+        self.assertEqual(self.compare(old, new, "identity", set()), 1)
+        self.assertEqual(self.compare(old, new, "identity", set(), copies=True), 1)
 
 
 if __name__ == "__main__":

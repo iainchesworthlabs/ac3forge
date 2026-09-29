@@ -64,8 +64,8 @@
 // contents this decoder reads names (an HSF extension substream no
 // ac4_hsf_ext_substream_info() names among them). Refusing is per substream
 // and per frame; the next frame is attempted afresh. decode() refuses, the
-// same way, everything above that it does not turn into PCM yet: 96/192 kHz,
-// which it reads.
+// same way, what it reads and does not turn into PCM: a substream at 96 or
+// 192 kHz.
 //
 // ERRATA.md beside this library records where the two standards are
 // ambiguous or defective and the reading taken for each.
@@ -76,7 +76,7 @@ enum class DecodeError : std::uint8_t {
     kTruncated,        // a syntax element ran past the end of its substream
     kInvalidToc,       // ac4::parse_raw_frame refused the table of contents
     kInvalidStream,    // a value the syntax cannot follow (a reserved code, an impossible count)
-    kUnsupported,      // legal AC-4 this decoder does not read yet - see the header comment
+    kUnsupported,      // legal AC-4 this decoder does not decode - see the header comment
     kMissingIFrame,    // a non-I-frame that needs configuration no I-frame has supplied
 };
 
@@ -138,10 +138,8 @@ enum class DrcMode : std::uint8_t {
 
 // The controls of planning/ac4.md's "One control for both formats" that act on
 // the decoded channels. Decoder::set_output() changes them from the next frame.
-// A later version adds the immersive output layouts (Part 2 clause 5.10.2) as
-// fields after these. Every field has a default, so a designated initializer
-// names only the fields it sets; the same holds for PresentationChoice and
-// DecoderConfig.
+// Every field has a default, so a designated initializer names only the fields
+// it sets; the same holds for PresentationChoice and DecoderConfig.
 struct OutputConfig {
     // Lout of Part 1 clause 5.7.9.3.3, in dBFS: the level the stream's
     // dialnorm is taken to, by 2^((Lout - dialnorm) / 6), which cuts or

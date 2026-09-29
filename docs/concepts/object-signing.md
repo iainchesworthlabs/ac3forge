@@ -104,7 +104,7 @@ in the library reference for the rest of the API surface.
   the two can't be auto-distinguished). Content that is entirely hex/array-shaped characters (hex
   digits, `x`, comma, brace/bracket punctuation) but still fails to parse as either recognized
   format is refused outright, rather than silently taken as literal ASCII bytes: a mis-copied or
-  truncated array export looks nothing like a genuine random binary key, and signing with the
+  truncated array export looks nothing like a random binary key, and signing with the
   wrong secret this way produces a stream that verifies fine against itself while a real decoder
   rejects it — the exact failure mode this check exists to turn into a clear error instead. So one
   base64 value works everywhere: as the CI secret, as `AC3FORGE_SIGNING_KEY`, or as a
@@ -130,10 +130,11 @@ ac3cli atmos out.ec3 8 448 4 6 objects sign-objects signing-key=/path/to/atmos.k
   (the key inline, base64 or raw) — the same resolver order `load_signing_key()` uses.
 
 `sign-objects` with no key anywhere is a hard error (it won't silently ship an unsigned stream); no
-`sign-objects` leaves the container unsigned, and — because an unsigned-but-present container is a
-hard refusal on a validating decoder rather than a graceful fallback — you'll usually want
-`mode bed51` there so the stream omits the container and plays as 5.1 everywhere. See
-[CLI metadata options](../forge/cli/metadata-options.md).
+`sign-objects` leaves the container unsigned, and — because a decoder that validates the tag can
+refuse an unsigned-but-present container instead of falling back to the bed (the receiver in the
+[Raspberry Pi test](../platforms/raspberry-pi.md#live-hdmi-passthrough-to-a-real-receiver) fell
+back) — you'll usually want `mode bed51` there so the stream omits the container and plays as 5.1
+everywhere. See [CLI metadata options](../forge/cli/metadata-options.md).
 
 `decode`/`monitor` have the mirror-image option, `verify-objects`, to check a stream's tag instead
 of writing one:
@@ -187,6 +188,12 @@ frame). That seam belongs on the TrueHD/MLP branch (`feature/truehd-atmos-suppor
 not in `ac3::signing`. Open tools such as truehdd expose it as an optional `--evo-key`; decode
 without a key stays unchecked. Any future multi-key verify / licensed soft-gate for MLP should
 target Evolution HMAC, parallel to but separate from the EMDF policy on this page.
+
+## Sibling: AC-4
+
+AC-4 objects carry no such tag in this project. The AC-4 encoder writes its EMDF containers with no
+protection bytes (`src/ac4enc/ERRATA.md`), and the decoder reconstructs objects without a key. See
+[AC-4](ac4.md).
 
 ## Planned decode modes
 
