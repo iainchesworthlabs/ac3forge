@@ -86,7 +86,7 @@
         "macos": ["source", "ci", "full codec"],
         "browser": ["live", "ci", "full codec"],
         "android": ["source", "ci", "library builds; demo does not expose decode"],
-        "esp32": ["limited", "hardware", "S3 full; C3/C6 memory limits"],
+        "esp32": ["limited", "hardware", "S3 and P4 full; C3/C6 memory limits"],
         "bare-metal": ["source", "emulated", "minimum-footprint profile"]
       }
     },
@@ -125,7 +125,7 @@
         "macos": ["source", "ci", "decode; audio untested"],
         "browser": ["live", "ci", "decode demo"],
         "android": ["source", "ci", "library builds; demo does not expose decode"],
-        "esp32": ["limited", "hardware", "S3 full; C3/C6 7.1.4 exceeds heap"],
+        "esp32": ["limited", "hardware", "S3 and P4 full; C6 decodes objects at 5.6x to 6.7x real time; C3 under QEMU only"],
         "bare-metal": ["source", "emulated", "fixture coverage"]
       }
     },
@@ -203,7 +203,7 @@
         "macos": ["development", "ci", "Hearth engine and test tools"],
         "browser": ["unavailable", "not-applicable", ""],
         "android": ["unavailable", "not-applicable", ""],
-        "esp32": ["source", "hardware", "S3 network sink"],
+        "esp32": ["source", "hardware", "S3 network sink; C6 and P4 stereo"],
         "bare-metal": ["unavailable", "not-applicable", ""]
       }
     }
@@ -283,7 +283,7 @@
         "macos": ["unavailable", "not-applicable", ""],
         "browser": ["unavailable", "not-applicable", ""],
         "android": ["unavailable", "not-applicable", ""],
-        "esp32": ["source", "hardware", "S3 and C6 group runs, no DAC; C6 sink is stereo-only"],
+        "esp32": ["source", "hardware", "S3 and C6 group runs, no DAC; C6 sink is stereo-only; P4 plays a paired 2.0 stream"],
         "bare-metal": ["unavailable", "not-applicable", ""]
       }
     },
@@ -400,13 +400,14 @@
     },
     "bare-metal": {
       "title": "Bare-metal and ESP32 support by variant",
-      "variants": ["Cortex-M3", "ESP32-S3", "ESP32-C3", "ESP32-C6", "ESPHome/S3"],
+      "variants": ["Cortex-M3", "ESP32-S3", "ESP32-P4", "ESP32-C3", "ESP32-C6", "ESPHome/S3"],
       "rows": [
-        ["AC-3 and E-AC-3 decode", ["source", "emulated", "all fixtures"], ["source", "hardware", "all fixtures in real time"], ["limited", "emulated", "12 of 14; 7.1.4 exceeds heap"], ["limited", "hardware", "all except 7.1.4 fit; most real time with Wi-Fi"], ["source", "ci", "wraps the S3 decoder"]],
-        ["AC-3 and E-AC-3 encode", ["source", "emulated", "six fixture rows"], ["limited", "hardware", "correct; widest layouts miss real time"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", ""]],
-        ["Atmos object reconstruction", ["source", "emulated", "fixture coverage"], ["source", "hardware", "placed onto 7.1.4"], ["unavailable", "not-applicable", "7.1.4 fixtures exceed heap"], ["unavailable", "not-applicable", "7.1.4 exceeds heap"], ["source", "ci", "inherits S3 component"]],
-        ["Hearth Sendspin sink", ["unavailable", "not-applicable", ""], ["source", "hardware", "two-board group run; no DAC connected"], ["unavailable", "not-applicable", ""], ["limited", "hardware", "two-board group run with S3; stereo only; no DAC; no Sendspin CI"], ["unavailable", "not-applicable", "not yet a media_player or speaker"]],
-        ["Downloadable firmware", ["unavailable", "not-applicable", "build from source"], ["unavailable", "not-applicable", "build and flash from source"], ["unavailable", "not-applicable", "probe target only"], ["unavailable", "not-applicable", "probe/overlay only"], ["unavailable", "not-applicable", "external component source"]]
+        ["AC-3 and E-AC-3 decode", ["source", "emulated", "all fixtures"], ["source", "hardware", "all fixtures in real time"], ["source", "hardware", "all fixtures and the stream set in real time; no network in the probe"], ["limited", "emulated", "12 of 14; the two 7.1.4 rows are skipped on a heap budget"], ["limited", "hardware", "all except 7.1.4 fit; most real time with Wi-Fi"], ["limited", "ci", "AC-3 only; the configuration is checked, the firmware is not compiled"]],
+        ["AC-4 decode", ["source", "emulated", "five streams in float; PCM hashes pinned"], ["unavailable", "not-applicable", "not built yet"], ["limited", "hardware", "behind CONFIG_AC3FORGE_AC4; 2.0 in real time, wider layouts slower"], ["unavailable", "not-applicable", "not built; no FPU"], ["unavailable", "not-applicable", "not built yet; no fixed-point tier"], ["unavailable", "not-applicable", ""]],
+        ["AC-3 and E-AC-3 encode", ["source", "emulated", "six fixture rows"], ["limited", "hardware", "correct; widest layouts miss real time"], ["unavailable", "not-applicable", "not measured"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", "not validated"], ["unavailable", "not-applicable", ""]],
+        ["Atmos object reconstruction", ["source", "emulated", "fixture coverage"], ["source", "hardware", "placed onto 7.1.4"], ["source", "hardware", "placed onto 7.1.4 in real time"], ["limited", "emulated", "correct under QEMU; speed unmeasured"], ["limited", "hardware", "correct; 5.6x to 6.7x real time"], ["unavailable", "not-applicable", "AC-3 only"]],
+        ["Hearth Sendspin sink", ["unavailable", "not-applicable", ""], ["source", "hardware", "two-board group run; no DAC connected; AC-3 and E-AC-3 only"], ["limited", "hardware", "paired 2.0 stream over Wi-Fi through the onboard C6; TDM not opened on v1.3 silicon; no DAC"], ["unavailable", "not-applicable", ""], ["limited", "hardware", "two-board group run with S3; stereo only; no DAC; CI builds it and cannot run it"], ["unavailable", "not-applicable", "not yet a media_player or speaker"]],
+        ["Downloadable firmware", ["unavailable", "not-applicable", "build from source"], ["configured", "ci", "packaged by CI; no release carries it yet"], ["configured", "ci", "packaged by CI for silicon v1.x; no release carries it yet"], ["unavailable", "not-applicable", "probe target only"], ["configured", "ci", "4 MB and 16 MB images packaged by CI; no release carries them yet"], ["unavailable", "not-applicable", "external component source"]]
       ]
     }
   },
@@ -563,21 +564,31 @@
       "product": "Hearth",
       "platform": "ESP32",
       "variant": "ESP32-S3 with 8 MB PSRAM",
-      "state": "source",
-      "artifact": "Source project to build and flash",
-      "action": "Open the sink setup guide",
-      "url": "hearth/sink-esp32-s3/",
-      "note": "No firmware image is published; the network build requires 8 MB PSRAM and no DAC has been connected yet."
+      "state": "configured",
+      "artifact": "Factory and app images (hearth-sink-esp32s3), or the source project to build and flash",
+      "action": "Open the sink firmware guide",
+      "url": "hearth/sink-firmware/",
+      "note": "CI packages the image and the release workflow is wired to attach it, but no release has carried it yet; build from source until one does. The network build requires 8 MB PSRAM and no DAC has been connected yet."
     },
     {
       "product": "Hearth",
       "platform": "ESP32",
       "variant": "ESP32-C6",
-      "state": "development",
-      "artifact": "Build overlay only",
-      "action": "Read Hearth status",
-      "url": "hearth/",
-      "note": "The example's README documents a two-board Sendspin group run confirmed on hardware; the sink is stereo only, and there is still no Sendspin CI job for the C6."
+      "state": "configured",
+      "artifact": "Factory and app images for 4 MB and 16 MB flash (hearth-sink-esp32c6, hearth-sink-esp32c6-16mb)",
+      "action": "Open the sink firmware guide",
+      "url": "hearth/sink-firmware/",
+      "note": "CI packages the images and the release workflow is wired to attach them, but no release has carried them yet. A two-board Sendspin group run is confirmed on hardware; the sink is stereo only, and CI builds it but cannot run it."
+    },
+    {
+      "product": "Hearth",
+      "platform": "ESP32",
+      "variant": "ESP32-P4, silicon v1.x",
+      "state": "configured",
+      "artifact": "Factory and app images (hearth-sink-esp32p4-rev1)",
+      "action": "Open the sink firmware guide",
+      "url": "hearth/sink-firmware/",
+      "note": "CI packages the image and the release workflow is wired to attach it, but no release has carried it yet. Wi-Fi is through the board's onboard ESP32-C6; the sink has played a paired 2.0 stream, and TDM has not opened on v1.3 silicon. A P4 of revision v3.x needs another build."
     },
     {
       "product": "C++ library",
