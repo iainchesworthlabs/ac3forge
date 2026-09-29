@@ -5,6 +5,7 @@
 #include <deque>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 #include "ac4enc/encoder.hpp"
@@ -23,8 +24,17 @@
 
 namespace ac4::detail {
 
-// Whether each of `p`'s values is in the range encoder.hpp gives it.
-[[nodiscard]] bool properties_valid(const ObjectProperties& p) noexcept;
+// Why `p` cannot be sent, or an empty view where it can: a value off the range
+// encoder.hpp gives it, or a depth exponent other than 1 with a screen factor
+// of 0. The two are one group of fields (Part 2 clause 6.2.8.7's
+// group_other_mask 0b0010), and the factor has no code for 0 (src/ac4enc/
+// ERRATA.md, "The screen factor and the depth exponent").
+[[nodiscard]] std::string_view properties_refusal(const ObjectProperties& p) noexcept;
+
+// Whether `p` can be sent.
+[[nodiscard]] inline bool properties_valid(const ObjectProperties& p) noexcept {
+    return properties_refusal(p).empty();
+}
 
 // What one object_info_block() sends of an object, in full: whether it is
 // active, its object_basic_info(), and for a dynamic object its
