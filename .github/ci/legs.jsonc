@@ -173,8 +173,9 @@
       // and there should not be one - a sanitizer-instrumented debug build
       // is a diagnostic tool, not something to ship.
       "name": "Linux LLVM ASan+UBSan",
-      // Nightly only: the slowest leg (81 minutes on average on the fleet), and its cost
-      // is in running the tests under the sanitizers, which a compiler cache does not help.
+      // Nightly only: the slowest leg (over 100 minutes on the fleet in the last few days),
+      // and its cost is in running the tests under the sanitizers, which a compiler cache
+      // does not help.
       "tier": "deep",
       "runner_slot": "linux_runner_3",
       "container": "ubuntu:26.04",
