@@ -163,9 +163,9 @@ class SubstreamPcm {
 
    private:
     struct Channel {
-        dsp::ChannelSynthesis<double> synthesis;
-        std::vector<double> delay;  // the last d_pcm samples of the previous frame
-        dsp::QmfAnalysis<double> analysis;
+        dsp::ChannelSynthesis<Real> synthesis;
+        std::vector<Real> delay;  // the last d_pcm samples of the previous frame
+        dsp::QmfAnalysis<Real> analysis;
         // Q_low_ext (pcm/aspx.hpp): kTsOffsetHfadj + ts_offset_hfgen slots of
         // the previous frames' processed QMF matrix, then this frame's.
         std::vector<QmfValue> ext;
@@ -176,8 +176,8 @@ class SubstreamPcm {
     // A channel that comes out, after the downmix: its synthesis bank and, at
     // every frame_rate_index but 13, its sample rate converter.
     struct Output {
-        dsp::QmfSynthesis<double> synthesis;
-        std::optional<dsp::Resampler<double>> converter;
+        dsp::QmfSynthesis<Real> synthesis;
+        std::optional<dsp::Resampler<Real>> converter;
     };
 
     // The QMF-domain control data of one frame, held d_ctrl frames until the
@@ -270,7 +270,7 @@ class SubstreamPcm {
     int slots_ = 0;          // num_qmf_timeslots
     int ts_in_ats_ = 1;      // num_ts_in_ats
     int hfgen_ = 0;          // ts_offset_hfgen
-    std::optional<dsp::TransformSet<double>> transforms_;
+    std::optional<dsp::TransformSet<Real>> transforms_;
     std::span<const Speaker> speakers_;  // the channel mode's, speakers_of()
     std::vector<Channel> channels_;      // in speakers_'s order
     // Core decoding's ASPX_SCPL, by aspx_data_2ch() index; empty otherwise.
@@ -328,7 +328,7 @@ class SubstreamPcm {
     std::vector<Output> outputs_;               // in downmix_.speakers()'s order
     // The last good frame, which concealment repeats, and the frames lost
     // since it.
-    std::vector<std::vector<double>> last_spectra_;
+    std::vector<std::vector<Real>> last_spectra_;
     std::vector<std::vector<int>> last_lengths_;
     ElementKind last_kind_ = ElementKind::kPair;
     DrcFrameValues last_drc_;
@@ -345,18 +345,18 @@ class SubstreamPcm {
 
     // Scratch, kept to save an allocation per frame.
     ElementRoute route_;
-    std::vector<StereoParameters> parameters_;  // one channel data element's, 32 KiB each
-    std::vector<std::vector<double>> scaled_;   // per track, in bitstream order
+    std::vector<StereoParameters> parameters_;  // one channel data element's, 16 or 32 KiB each
+    std::vector<std::vector<Real>> scaled_;     // per track, in bitstream order
     // The layouts align_tracks() gives a pair with b_dual_maxsfb, and per
     // track the one it takes, or -1 for its own.
     std::vector<SfData> dual_layouts_;
     std::vector<int> dual_layout_of_;
-    std::vector<std::vector<double>> spectra_;  // per channel, in window order
-    std::vector<int> track_of_;                 // per channel, the track its lines are in
-    std::vector<double> pcm_;
-    std::vector<std::vector<double>> time_;  // per channel, the inverse transform's frame
-    std::vector<double> converted_;
-    std::vector<double> aligned_;
+    std::vector<std::vector<Real>> spectra_;  // per channel, in window order
+    std::vector<int> track_of_;               // per channel, the track its lines are in
+    std::vector<Real> pcm_;
+    std::vector<std::vector<Real>> time_;  // per channel, the inverse transform's frame
+    std::vector<Real> converted_;
+    std::vector<Real> aligned_;
     std::vector<std::vector<int>> lengths_;  // per channel, its blocks' lengths
     std::vector<std::vector<QmfValue>*> matrices_;  // per channel, its `out`, for A-CPL
 };

@@ -10,12 +10,18 @@ namespace {
 // Pseudocode 60, for k < N/2.
 template <typename Complex>
 std::vector<Complex> pre_twiddles(std::size_t length) {
-    using Real = typename Complex::value_type;
+    // Named Scalar, not Real: AC4CORE_ALSO_AT_DOUBLE (this target's CMakeLists.txt)
+    // explicitly instantiates Mdct/Imdct<double> alongside <Real> in a float
+    // build, and MSVC's /W4 flags a local alias named Real that resolves to a
+    // different type than the enclosing ac4::detail::Real as hiding it
+    // (C4459), which -WX then makes an error.
+    using Scalar = typename Complex::value_type;
     std::vector<Complex> twiddle(length / 2);
     const double n16 = 16.0 * static_cast<double>(length);
     for (std::size_t k = 0; k < twiddle.size(); ++k) {
         const double angle = 2.0 * std::numbers::pi * static_cast<double>(8 * k + 1) / n16;
-        twiddle[k] = Complex(static_cast<Real>(-std::cos(angle)), static_cast<Real>(-std::sin(angle)));
+        twiddle[k] =
+            Complex(static_cast<Scalar>(-std::cos(angle)), static_cast<Scalar>(-std::sin(angle)));
     }
     return twiddle;
 }
@@ -100,5 +106,14 @@ void Mdct<Real>::forward(std::span<const Real> in, std::span<Real> spectrum) {
 
 template class Imdct<Real>;
 template class Mdct<Real>;
+// The encoder's forward transform (src/ac4enc/src/frame/analysis.cpp,
+// psycho.cpp) calls Mdct at double regardless of the decoder's scalar, and
+// ac4core's own tests (tests/ac4core/test_ac4core_dsp.cpp) exercise both
+// Mdct and Imdct at double directly, alongside Real, to check the pseudocode
+// at the scalar the double build's own reference always uses (see this
+// target's CMakeLists.txt, AC4CORE_ALSO_AT_DOUBLE).
+AC4CORE_ALSO_AT_DOUBLE(
+    template class Imdct<double>;
+    template class Mdct<double>;)
 
 }  // namespace ac4::detail::dsp

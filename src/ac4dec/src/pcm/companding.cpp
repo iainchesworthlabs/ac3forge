@@ -9,7 +9,7 @@
 namespace ac4::detail {
 namespace {
 
-constexpr double kAlpha = 0.65;
+constexpr Real kAlpha = Real(0.65);
 constexpr std::size_t kSubbands = 64;
 // Q_low's slots: num_qmf_timeslots + ts_offset_hfgen, at most 32 + 6.
 constexpr int kMaxSlots = 64;
@@ -24,27 +24,27 @@ constexpr int kMaxSlots = 64;
 
 // L(ts): 0.9105 times the mean over [sb0, sb1) of max(|Re|, |Im|) + min(|Re|,
 // |Im|) / 2.
-[[nodiscard]] double slot_level(std::span<const QmfValue> slot, int sb0, int sb1) noexcept {
+[[nodiscard]] Real slot_level(std::span<const QmfValue> slot, int sb0, int sb1) noexcept {
     if (sb1 <= sb0) {
-        return 0.0;
+        return Real{};
     }
-    double sum = 0.0;
+    Real sum{};
     for (int sb = sb0; sb < sb1; ++sb) {
-        const double re = std::abs(slot[at(sb)].real());
-        const double im = std::abs(slot[at(sb)].imag());
-        sum += std::max(re, im) + 0.5 * std::min(re, im);
+        const Real re = std::abs(slot[at(sb)].real());
+        const Real im = std::abs(slot[at(sb)].imag());
+        sum += std::max(re, im) + Real(0.5) * std::min(re, im);
     }
-    return 0.9105 * sum / static_cast<double>(sb1 - sb0);
+    return Real(0.9105) * sum / static_cast<Real>(sb1 - sb0);
 }
 
 // L^((1 - alpha) / alpha). The text prints the average gain's exponent as
 // "1alpha / alpha"; it is read as the per-slot gain's (src/ac4dec/ERRATA.md,
 // "The companding average").
-[[nodiscard]] double gain_of(double level) noexcept {
-    return std::pow(level, (1.0 - kAlpha) / kAlpha);
+[[nodiscard]] Real gain_of(Real level) noexcept {
+    return std::pow(level, (Real{1} - kAlpha) / kAlpha);
 }
 
-void scale(const CompandingChannel& channel, int sb0, int ts, double factor) noexcept {
+void scale(const CompandingChannel& channel, int sb0, int ts, Real factor) noexcept {
     const std::span<QmfValue> slot = q_low_slot(channel, ts);
     for (int sb = sb0; sb < channel.sb1; ++sb) {
         slot[at(sb)] *= factor;
@@ -58,11 +58,11 @@ void scale(const CompandingChannel& channel, int sb0, int ts, double factor) noe
 
 }  // namespace
 
-void apply_companding(const CompandingControl& control, int sb0, double full_scale,
+void apply_companding(const CompandingControl& control, int sb0, Real full_scale,
                       std::span<const CompandingChannel> channels) {
-    const double big_g = std::exp2(1.0 / kAlpha);
-    std::vector<std::array<double, kMaxSlots>> level(channels.size());
-    std::vector<std::array<double, kMaxSlots>> gain(channels.size());
+    const Real big_g = std::exp2(Real{1} / kAlpha);
+    std::vector<std::array<Real, kMaxSlots>> level(channels.size());
+    std::vector<std::array<Real, kMaxSlots>> gain(channels.size());
     for (std::size_t c = 0; c < channels.size(); ++c) {
         const CompandingChannel& channel = channels[c];
         if (!fits(channel)) {
@@ -89,11 +89,11 @@ void apply_companding(const CompandingControl& control, int sb0, double full_sca
             } else if (control.b_compand_avg) {
                 // L_avg over the interval's slots [ts0, ts1), the range 5.7.5.2
                 // defines, where the sum prints ts1 as its upper bound.
-                double sum = 0.0;
+                Real sum{};
                 for (int ts = first; ts < last; ++ts) {
                     sum += level[c][at(ts)];
                 }
-                const double average = gain_of(sum / static_cast<double>(last - first));
+                const Real average = gain_of(sum / static_cast<Real>(last - first));
                 for (int ts = first; ts < last; ++ts) {
                     scale(channel, sb0, ts, average * big_g);
                 }
@@ -105,7 +105,7 @@ void apply_companding(const CompandingControl& control, int sb0, double full_sca
     // sync_flag: g_sync(ts) is the channels' mean gain. Where the channels'
     // intervals differ, each slot averages the channels whose interval holds
     // it (src/ac4dec/ERRATA.md, "The companding average").
-    std::array<double, kMaxSlots> sync{};
+    std::array<Real, kMaxSlots> sync{};
     std::array<int, kMaxSlots> count{};
     int first = kMaxSlots;
     int last = 0;
@@ -123,7 +123,7 @@ void apply_companding(const CompandingControl& control, int sb0, double full_sca
     if (first >= last) {
         return;
     }
-    double sum = 0.0;
+    Real sum{};
     int held = 0;
     for (int ts = first; ts < last; ++ts) {
         if (count[at(ts)] > 0) {
@@ -136,7 +136,7 @@ void apply_companding(const CompandingControl& control, int sb0, double full_sca
     if (!on && !control.b_compand_avg) {
         return;
     }
-    const double average = held > 0 ? sum / held : 0.0;
+    const Real average = held > 0 ? sum / static_cast<Real>(held) : Real{};
     for (const CompandingChannel& channel : channels) {
         if (!fits(channel)) {
             continue;

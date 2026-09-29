@@ -35,10 +35,10 @@
 
 namespace ac4::detail {
 
-using Abcd = std::array<double, 4>;
+using Abcd = std::array<Real, 4>;
 
 template <std::size_t N>
-using Matrix = std::array<std::array<double, N>, N>;
+using Matrix = std::array<std::array<Real, N>, N>;
 
 // Table 178. Nothing for chel_matsel 12 to 15, which the table does not define.
 [[nodiscard]] std::optional<Matrix<3>> three_channel_matrix(int chel_matsel, const Abcd& p0, const Abcd& p1);
@@ -57,7 +57,7 @@ using Matrix = std::array<std::array<double, N>, N>;
 // are left as they are.
 [[nodiscard]] ParseResult apply_channel_data(const SfInfo& info, const SfData& layout, int chel_matsel,
                                              std::span<const StereoParameters> parameters,
-                                             std::span<std::vector<double>* const> tracks);
+                                             std::span<std::vector<Real>* const> tracks);
 
 // One of Table 183's two 2 x 2 steps, which make the 7.X element's last two
 // channels of the tracks of two different channel data elements: O0 = a I0 +
@@ -71,7 +71,7 @@ using Matrix = std::array<std::array<double, N>, N>;
 [[nodiscard]] ParseResult apply_additional_pair(const SubstreamContext& ctx, const AsfPsyInfo& base,
                                                 const StereoParameters& parameters,
                                                 std::span<const int> base_lengths,
-                                                std::span<const int> other_lengths, std::span<double> base_lines,
-                                                std::span<double> other_lines);
+                                                std::span<const int> other_lengths, std::span<Real> base_lines,
+                                                std::span<Real> other_lines);
 
 }  // namespace ac4::detail

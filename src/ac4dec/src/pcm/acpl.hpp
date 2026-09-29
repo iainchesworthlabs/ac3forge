@@ -124,7 +124,13 @@ class AcplStage {
                 std::span<QmfValue> z1, int num_ts);
     void coupling(const AcplCouplingValues& values, std::span<const QmfValue> x0, std::span<const QmfValue> x1,
                   std::span<std::span<QmfValue>, 5> z, int num_ts);
-    // Pseudocode 109 for `param` under `framing`, into `out`.
+    // Pseudocode 109 for `param` under `framing`, into `out`. ac4core's own
+    // acpl::interpolate() (acpl/acpl.hpp) is not retemplated on Real - its
+    // ParamSets/ParamPrev stay double, a handful of interpolated coefficients
+    // per slot rather than per-sample QMF data, in the same "computed in
+    // double, kept small" shape as a downmix or DRC gain matrix - so this
+    // wrapper keeps double too; module() and coupling() narrow to Real only
+    // where an interpolated value multiplies a QmfValue.
     void interpolate(const acpl::Framing& framing, int num_bands, const Param& param, int num_ts,
                      std::vector<double>& out) const;
     void decorrelate(int decorrelator, std::span<const QmfValue> in, std::span<QmfValue> out, int num_ts);
@@ -132,8 +138,8 @@ class AcplStage {
     // D0, D1 and D2, then the second instances of D0 and D1 the immersive
     // element's four modules take (Pseudocode 2): kDecorrelatorSlots.
     static constexpr std::size_t kDecorrelatorSlots = acpl::kDecorrelators + 2;
-    std::array<acpl::Decorrelator<double>, kDecorrelatorSlots> decorrelators_;
-    std::array<acpl::TransientDucker<double>, kDecorrelatorSlots> duckers_{};
+    std::array<acpl::Decorrelator<Real>, kDecorrelatorSlots> decorrelators_;
+    std::array<acpl::TransientDucker<Real>, kDecorrelatorSlots> duckers_{};
     // acpl_param_prev: alpha and beta of each module, and acpl_data_2ch()'s
     // eleven parameters in AcplQuantHistory's order.
     std::array<std::array<acpl::ParamPrev, 2>, kMaxAcplModules> module_prev_{};

@@ -1732,16 +1732,36 @@ first; the S3 and the C6 follow in the phase's later parts. What AC-3 and E-AC-3
   from the scalar work: `bitrate_kbps()`'s guarded hash map, the |q|^(4/3) table's guarded lazy
   init, and `stereo_parameters()`'s 32 KiB return.
 
-  `src/ac4dec/src/pcm`'s and `src/ac4enc`'s own QMF-domain code is not templated on `Real`: it
-  still spells `double` throughout and calls these kernels with a literal `<double>`, which a float
-  build no longer explicitly instantiates, so a full decoder or encoder build at float does not yet
-  link. That retemplating - about seventeen files in `pcm/` alone, each needing the same
-  double-to-Real and std::complex-to-dsp::Complex change this phase made in `src/ac4core`, checked
-  the same way - is D14a's largest remaining piece. The QMF bank rewrite (real and imaginary planes,
-  an index-moving delay line, memory beyond the three fixes above, the cached bit reader and
-  Huffman table, the host's vector kernels, and the probe's AC-4 rows were not reached. **Exit
-  criteria a, b, c and d below are accordingly not met**: each needs a working float decoder, which
-  does not exist yet. The options, a recommendation and their cost are in the pull request's report.
+  `src/ac4dec/src/pcm` is templated on `Real` too, now: the same double-to-`Real` and
+  `std::complex`-to-`dsp::Complex` change this phase's first part made in `src/ac4core`, across all
+  of its modules - A-SPX, A-CPL, A-JCC, A-JOC, companding, dialogue enhancement, DRC, the downmix,
+  S-CPL, stereo and multichannel processing, and the substream orchestrator itself - checked the
+  same way. `ac3cli` and the whole test suite build, link and pass at `float` on the host: 2 389
+  cases, 11 171 235 assertions, identical on both scalars, the `double` build's output not moved by
+  a bit despite decision 25's own cost estimate above. A handful of values set once a frame or a
+  configuration rather than once a QMF sample - a downmix or DRC gain matrix, A-CPL's and A-JCC's
+  own coefficients from `acpl::interpolate()`, deliberately left untouched - keep `double`, narrowed
+  once where they multiply a `Real` or `QmfValue`, in the shape the QMF banks' own twiddle factors
+  already used. `hf_generator.cpp`'s dB gains, which called `std::log10`/`std::pow` directly at
+  every scalar, now go through a new `scalar_exp2` (`src/arithmetic`, beside the existing
+  `scalar_log2`/`scalar_exp`) at `float` only; the `double` path still calls them directly,
+  unchanged. `src/ac4enc` calls several of `src/ac4core`'s kernels at a literal `double`, since the
+  encoder has no `float` tier of its own ([decision 34](#decisions-of-2026-09-25)) and `ac4core` is
+  one shared library rather than `ac3::forge`'s separately-compiled encoder and decoder DSP; those
+  kernels, and a few others `ac4core`'s own tests exercise directly at `double`, now also explicitly
+  instantiate `<double>` when `Real` is not already `double` (`AC4CORE_ALSO_AT_DOUBLE`, defined by
+  the per-scalar `real.hpp`), adding nothing to a `double`-configured build - the encoder's own tests, part of the unmoved whole suite above,
+  hold on that path unchanged.
+
+  The QMF bank rewrite (real and imaginary planes, an index-moving delay line), the memory audit
+  beyond the three findings the first part of this phase fixed, the cached bit reader and Huffman
+  table, and the host's vector kernels were not reached, and neither was the probe's AC-4 rows. **Of
+  the exit criteria below: the float build's agreement with the double build holds, and the scorers
+  hold their pins with a float CLI. The double output does not move - decision 25's anticipated cost
+  does not fall due here - so its re-score confirms the same pins rather than requalifying moved
+  ones. The probe's AC-4 rows do not hold**, the probe not reached this phase. D14b (the P4) does
+  not start until the rewrite, the memory work, the bit reader and the vector kernels land too. The
+  options, a recommendation and their cost are in the pull request's report.
 
   **Exit:** on every committed stream, the `float` build's agreement with the `double` build
   stated below and above the crossover and pinned; the scorers at their pins with a `float` CLI;

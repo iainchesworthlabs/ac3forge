@@ -423,9 +423,14 @@ void DownmixStage::process(const DownmixValues& values, std::span<std::vector<Qm
             if (w == 0.0) {
                 continue;
             }
+            // matrix_ stays double: the downmix rebuilds it only on a
+            // configuration or gain change, not per QMF value, so it is
+            // narrowed once here rather than held at Real precision - the
+            // same shape a DRC gain matrix keeps.
+            const auto weight = static_cast<Real>(w);
             const std::vector<QmfValue>& source = *in[c];
             for (std::size_t i = 0; i < length; ++i) {
-                out[o][i] += w * source[i];
+                out[o][i] += weight * source[i];
             }
         }
     }

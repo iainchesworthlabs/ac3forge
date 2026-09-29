@@ -28,3 +28,13 @@ namespace ac4::detail {
 using Real = double;
 
 }  // namespace ac4::detail
+
+// Explicit instantiations a translation unit adds at double beside its
+// `template class Foo<Real>;` when Real is not double: the encoder (src/ac4enc)
+// always runs at double, decision 34 (planning/ac4.md), and ac4core is one
+// archive both ac4dec and ac4enc link, so each kernel the encoder calls is
+// instantiated at both. Here Real is double, so the line above is already that
+// instantiation and a second one is ill-formed: this expands to nothing. It
+// takes the instantiation as its argument, rather than a preprocessor
+// conditional around it, for tools/checks/check_platform_macros.ps1's rule.
+#define AC4CORE_ALSO_AT_DOUBLE(...)

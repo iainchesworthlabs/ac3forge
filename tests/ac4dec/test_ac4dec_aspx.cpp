@@ -17,6 +17,7 @@
 #include <complex>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <span>
 #include <vector>
 
@@ -34,12 +35,18 @@ using ac4::detail::AspxChannelState;
 using ac4::detail::AspxConfig;
 using ac4::detail::AspxFrame;
 using ac4::detail::QmfValue;
+using ac4::detail::Real;
 namespace aspx = ac4::detail::aspx;
 
 constexpr int kSlots = 32;                                    // num_qmf_timeslots at 2 048
 constexpr int kExtSlots = aspx::kTsOffsetHfadj + 6 + kSlots;  // Q_low_ext
 constexpr int kHighGroups = 8;
 constexpr int kNoiseGroups = 2;
+
+// A relative-tolerance scale, in place of a fixed 1e-9: this file's own hand
+// assembly of a level times a table entry holds to a handful of ulps of Real
+// (possibly float), not of double.
+const double kRelativeTolerance = 1e4 * static_cast<double>(std::numeric_limits<Real>::epsilon());
 
 AspxConfig dee_128k_config() {
     AspxConfig config;
@@ -112,7 +119,7 @@ struct Channel {
 // NoiseTable's entry at `index` (Part 1 Table D.2).
 QmfValue noise_entry(int index) {
     const auto& entry = ac4::detail::tables::kAspxNoise[static_cast<std::size_t>(index % 512)];
-    return {static_cast<double>(entry[0]), static_cast<double>(entry[1])};
+    return {static_cast<ac4::detail::Real>(entry[0]), static_cast<ac4::detail::Real>(entry[1])};
 }
 
 void decode_one(const AspxFrame& frame, const AspxChannel& data, Channel& channel) {
@@ -169,7 +176,7 @@ TEST_CASE("a sinusoid sits in its group's middle subband, a quarter turn further
     // subbands.
     const std::array<QmfValue, 4> unit = {QmfValue(1.0, 0.0), QmfValue(0.0, -1.0),
                                           QmfValue(-1.0, 0.0), QmfValue(0.0, 1.0)};
-    const double level = abs(channel.at(0, 43));
+    const ac4::detail::Real level = abs(channel.at(0, 43));
     REQUIRE(level > 1.0);
     for (int ts = 0; ts < kSlots; ++ts) {
         CAPTURE(ts);
@@ -196,7 +203,8 @@ TEST_CASE("the noise generator's index runs on from one interval into the next",
         for (int ts = 0; ts < kSlots; ++ts) {
             for (int sb = 0; sb < 20; ++sb) {
                 const QmfValue expected = level * noise_entry(base + 20 * ts + sb + 1);
-                CHECK(abs(channel.at(ts, 36 + sb) - expected) < 1e-9 * abs(level));
+                CHECK(abs(channel.at(ts, 36 + sb) - expected) <
+                      static_cast<Real>(kRelativeTolerance) * abs(level));
             }
         }
     };
@@ -224,12 +232,12 @@ TEST_CASE("an interval past its frame's end reaches the output in the next frame
     for (int ts = 0; ts < 4; ++ts) {
         for (int sb = 0; sb < 20; ++sb) {
             CHECK(abs(channel.at(ts, 36 + sb) - level * noise_entry(20 * (ts + 32) + sb + 1)) <
-                  1e-9 * abs(level));
+                  static_cast<Real>(kRelativeTolerance) * abs(level));
         }
     }
     // The second interval starts at QMF slot 4, one index past the first's last.
     CHECK(abs(channel.at(4, 36) - level * noise_entry(20 * 35 + 19 + 1 + 1)) <
-          1e-9 * abs(level));
+          static_cast<Real>(kRelativeTolerance) * abs(level));
 }
 
 TEST_CASE("a balanced pair shares the sum's scale factors as the balance says", "[ac4dec][aspx]") {
@@ -279,7 +287,7 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
     };
     for (int ts = 0; ts < kSlots + 6; ++ts) {
         for (int sb = 0; sb < 64; ++sb) {
-            slot(ts, sb) = QmfValue(100.0 * (ts + 1), 0.0);
+            slot(ts, sb) = QmfValue(static_cast<Real>(100.0 * (ts + 1)), Real{});
         }
     }
     const std::vector<QmfValue> before = ext;
@@ -295,9 +303,9 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
         const double level = 0.9105 * 100.0 * (ts + 1) / kFullScale;  // E = |Re| for real values
         const double gain = ts >= 2 && ts < 34 ? std::pow(level, 0.35 / 0.65) * big_g : 1.0;
         CHECK(std::abs(slot(ts, 0).real() - 100.0 * (ts + 1) * gain) <
-              1e-9 * 100.0 * (ts + 1) * gain);
+              kRelativeTolerance * 100.0 * (ts + 1) * gain);
         CHECK(std::abs(slot(ts, 35).real() - 100.0 * (ts + 1) * gain) <
-              1e-9 * 100.0 * (ts + 1) * gain);
+              kRelativeTolerance * 100.0 * (ts + 1) * gain);
         CHECK(slot(ts, 36) ==
               before[static_cast<std::size_t>(ts + aspx::kTsOffsetHfadj) * 64 + 36]);
     }
@@ -312,6 +320,6 @@ TEST_CASE("companding scales each slot by its level against full scale 1.0", "[a
         mean += 0.9105 * 100.0 * (ts + 1) / kFullScale / 32.0;
     }
     const double average = std::pow(mean, 0.35 / 0.65) * big_g;
-    CHECK(std::abs(slot(10, 0).real() - 1100.0 * average) < 1e-9 * 1100.0 * average);
+    CHECK(std::abs(slot(10, 0).real() - 1100.0 * average) < kRelativeTolerance * 1100.0 * average);
     CHECK(slot(35, 0) == before[static_cast<std::size_t>(35 + aspx::kTsOffsetHfadj) * 64]);
 }

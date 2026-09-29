@@ -33,14 +33,14 @@ constexpr std::array<int, 14> kControlDelay = {1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 4, 
 // DEE's streams of a -20 dBFS tone decode to 0.1 * 32 768 within 0.01 dB. The
 // QMF domain works at that scale, and the output is scaled to full scale 1.0.
 // See src/ac4dec/ERRATA.md, "Full scale, and the overlap-add's factor of two".
-constexpr double kFullScale = 32768.0;
+constexpr Real kFullScale = 32768;
 
 // The QMF analysis and synthesis banks together (tests/ac4core).
 constexpr int kQmfPairDelay = 577;
 
 // Output far beyond full scale comes only from streams that are not audio;
 // this bound keeps the conversion to float defined.
-constexpr double kOutputLimit = 1e9;
+constexpr Real kOutputLimit = Real(1e9);
 
 constexpr std::size_t kSubbands = dsp::kQmfSubbands;
 
@@ -112,7 +112,7 @@ MixSource SubstreamPcm::qmf_output(int key) const noexcept {
 void SubstreamPcm::reset() {
     for (Channel& channel : channels_) {
         channel.synthesis.reset();
-        std::ranges::fill(channel.delay, 0.0);
+        std::ranges::fill(channel.delay, Real{});
         channel.analysis.reset();
         std::ranges::fill(channel.ext, QmfValue{});
         channel.aspx = AspxChannelState{};
@@ -239,15 +239,15 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, DecodingMode de
     }
     channels_.clear();
     for (std::size_t c = 0; c < speakers_.size(); ++c) {
-        Channel channel{.synthesis = dsp::ChannelSynthesis<double>(full_length_),
-                        .delay = std::vector<double>(static_cast<std::size_t>(delay_), 0.0),
+        Channel channel{.synthesis = dsp::ChannelSynthesis<Real>(full_length_),
+                        .delay = std::vector<Real>(static_cast<std::size_t>(delay_), Real{}),
                         .analysis = {},
                         .ext = std::vector<QmfValue>(at(ext_slots) * kSubbands),
                         .out = std::vector<QmfValue>(at(slots_) * kSubbands),
                         .aspx = {}};
         channels_.push_back(std::move(channel));
     }
-    time_.assign(speakers_.size(), std::vector<double>(at(full_length_), 0.0));
+    time_.assign(speakers_.size(), std::vector<Real>(at(full_length_), Real{}));
     // Core decoding's ASPX_SCPL takes the first channel of four of its six
     // aspx_data elements; the second's state and matrices are kept here.
     ghosts_.clear();
@@ -591,6 +591,7 @@ void SubstreamPcm::synthesise_objects(const FrameInputs& frame_inputs, const Drc
     if (frame_inputs.output.output_level_dbfs && drc.dialnorm) {
         gain = std::pow(2.0, (*frame_inputs.output.output_level_dbfs - *drc.dialnorm) / 6.0);
     }
+    const auto gain_real = static_cast<Real>(gain);
     const int converter_phase = frame_inputs.converter_phase;
     const auto grid = static_cast<std::int64_t>(converter_phase) * full_length_;
     const bool jumped = converter_phase_ && converter_phase != (*converter_phase_ + 1) % 5;
@@ -599,7 +600,7 @@ void SubstreamPcm::synthesise_objects(const FrameInputs& frame_inputs, const Drc
     for (std::size_t o = 0; o < count; ++o) {
         Output& output = object_outputs_[o];
         output.synthesis.process(*object_matrices_[o], pcm_);
-        std::span<const double> produced = pcm_;
+        std::span<const Real> produced = pcm_;
         if (output.converter) {
             if (!converter_phase_) {
                 output.converter->reset(grid);
@@ -614,7 +615,7 @@ void SubstreamPcm::synthesise_objects(const FrameInputs& frame_inputs, const Drc
         out.resize(produced.size());
         for (std::size_t n = 0; n < produced.size(); ++n) {
             out[n] = static_cast<float>(
-                std::clamp(gain * produced[n] / kFullScale, -kOutputLimit, kOutputLimit));
+                std::clamp(gain_real * produced[n] / kFullScale, -kOutputLimit, kOutputLimit));
         }
     }
     converter_phase_ = converter_phase;
@@ -677,13 +678,13 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
             apply_stereo(info, layout, parameters_[0], scaled_[t0], scaled_[t0 + 1]);
             continue;
         }
-        std::array<std::vector<double>*, 5> tracks{};
+        std::array<std::vector<Real>*, 5> tracks{};
         for (int k = 0; k < part.count; ++k) {
             tracks[at(k)] = &scaled_[at(part.first_track + k)];
         }
         if (auto ok = apply_channel_data(info, first.data, part.chel_matsel,
                                          std::span<const StereoParameters>(parameters_).first(needed),
-                                         std::span<std::vector<double>* const>(tracks).first(at(part.count)));
+                                         std::span<std::vector<Real>* const>(tracks).first(at(part.count)));
             !ok) {
             return ok;
         }
@@ -692,7 +693,7 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
     spectra_.resize(channels_.size());
     for (std::size_t c = 0; c < channels_.size(); ++c) {
         if (track_of_[c] < 0) {  // silent in this codec mode
-            spectra_[c].assign(at(full_length_), 0.0);
+            spectra_[c].assign(at(full_length_), Real{});
             continue;
         }
         const Track& track = element.tracks[at(track_of_[c])];
@@ -893,11 +894,11 @@ ParseResult SubstreamPcm::conceal(ConcealmentPolicy policy, const FrameInputs& f
     constexpr double kSecondsPer20Db = 0.032;
     const double lost =
         static_cast<double>(losses_) * static_cast<double>(full_length_) / internal_rate_;
-    const double gain =
-        policy == ConcealmentPolicy::kRepeatFade ? std::pow(10.0, -lost / kSecondsPer20Db) : 0.0;
+    const auto gain = static_cast<Real>(
+        policy == ConcealmentPolicy::kRepeatFade ? std::pow(10.0, -lost / kSecondsPer20Db) : 0.0);
     spectra_ = last_spectra_;
-    for (std::vector<double>& spectrum : spectra_) {
-        for (double& v : spectrum) {
+    for (std::vector<Real>& spectrum : spectra_) {
+        for (Real& v : spectrum) {
             v *= gain;
         }
     }
@@ -934,14 +935,14 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
     pcm_.resize(frame);
     aligned_.resize(frame);
     for (std::size_t c = 0; c < channel_count; ++c) {
-        std::vector<double>& samples = time_[c];
+        std::vector<Real>& samples = time_[c];
         std::size_t offset = 0;
         for (const int length : lengths_[c]) {
             const auto n = static_cast<std::size_t>(length);
             // window_lengths() allows only lengths the transform set has.
             (void)channels_[c].synthesis.block(
-                *transforms_, std::span<const double>(spectra_[c]).subspan(offset, n),
-                std::span<double>(samples).subspan(offset, n));
+                *transforms_, std::span<const Real>(spectra_[c]).subspan(offset, n),
+                std::span<Real>(samples).subspan(offset, n));
             offset += n;
         }
     }
@@ -951,11 +952,11 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
         apply_scpl(*scpl_mode_, decoding_, speakers_, time_);
     }
     for (std::size_t c = 0; c < channel_count; ++c) {
-        const std::vector<double>& samples = time_[c];
+        const std::vector<Real>& samples = time_[c];
         // Clause 5.6.2: out[n] = in[n - d_pcm]. d_pcm exceeds the frame at
         // some rates (1 312 at 100 fps, whose frame is 512), so the held
         // samples and the new ones are one queue.
-        std::vector<double>& held = channels_[c].delay;
+        std::vector<Real>& held = channels_[c].delay;
         held.insert(held.end(), samples.begin(), samples.end());
         std::copy_n(held.begin(), frame, aligned_.begin());
         held.erase(held.begin(), held.begin() + static_cast<std::ptrdiff_t>(frame));
@@ -1063,7 +1064,7 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
     for (std::size_t o = 0; o < outputs_.size(); ++o) {
         Output& output = outputs_[o];
         output.synthesis.process(*rendered[o], pcm_);
-        std::span<const double> produced = pcm_;
+        std::span<const Real> produced = pcm_;
         if (output.converter) {
             if (!converter_phase_) {
                 output.converter->reset(grid);

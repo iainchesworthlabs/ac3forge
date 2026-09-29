@@ -145,19 +145,23 @@ void MixStage::mix(const MixValues& values, std::span<const Speaker> speakers,
         if (gain == 1.0) {
             continue;
         }
+        const auto g = static_cast<Real>(gain);
         for (QmfValue& v : *matrices[c]) {
-            v *= gain;
+            v *= g;
         }
         if (side_separate && c < side.size()) {
             for (QmfValue& v : *side[c]) {
-                v *= gain;
+                v *= g;
             }
         }
     }
+    // weight stays double (one member's gain per frame, not per QMF value):
+    // narrowed once per multiply, as a downmix or DRC gain is.
     const auto add = [](std::vector<QmfValue>& into, const std::vector<QmfValue>& from, double weight) {
         const std::size_t n = std::min(into.size(), from.size());
+        const auto w = static_cast<Real>(weight);
         for (std::size_t i = 0; i < n; ++i) {
-            into[i] += weight * from[i];
+            into[i] += w * from[i];
         }
     };
     gains_.resize(speakers.size());

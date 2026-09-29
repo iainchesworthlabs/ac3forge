@@ -13,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <random>
 #include <span>
 #include <string>
@@ -34,6 +35,12 @@ constexpr std::size_t kValues = kSlots * 64;
 // Table 173's first subband of each band, and one past the last.
 constexpr std::array<int, 9> kBandStart = {0, 1, 2, 4, 7, 11, 17, 27, 41};
 
+// A ratio or difference of a handful of QMF values (Real, possibly float)
+// holds this closely to the matrix Pseudocode 111 and this file's own hand
+// worked sums print; double-only comparisons (de_parameter, de_rendering,
+// both fixed at double regardless of the decoder's scalar) keep 1e-12.
+const double kTolerance = 1e4 * static_cast<double>(std::numeric_limits<ac4::detail::Real>::epsilon());
+
 int band_of(int subband) {
     for (int band = 0; band < 8; ++band) {
         if (subband < kBandStart[static_cast<std::size_t>(band + 1)]) {
@@ -48,7 +55,8 @@ std::vector<QmfValue> random_matrix(unsigned seed) {
     std::normal_distribution<double> normal;
     std::vector<QmfValue> m(kValues);
     for (QmfValue& v : m) {
-        v = {normal(rng), normal(rng)};
+        v = QmfValue(static_cast<ac4::detail::Real>(normal(rng)),
+                    static_cast<ac4::detail::Real>(normal(rng)));
     }
     return m;
 }
@@ -221,8 +229,8 @@ TEST_CASE("with de_ms_proc_flag, dialogue enhancement raises the Mid and leaves 
             const int band = band_of(k);
             const double expected =
                 (k < 32 && band >= 0) ? 1.0 + g * values.p[0][static_cast<std::size_t>(band)] : 1.0;
-            CHECK(std::abs(abs(left[i]) / abs(QmfValue{1.0, 0.5}) - expected) < 1e-12);
-            CHECK(std::abs(abs(right[i]) / abs(QmfValue{1.0, 0.5}) - expected) < 1e-12);
+            CHECK(std::abs(abs(left[i]) / abs(QmfValue{1.0, 0.5}) - expected) < kTolerance);
+            CHECK(std::abs(abs(right[i]) / abs(QmfValue{1.0, 0.5}) - expected) < kTolerance);
         }
     }
 }
@@ -242,7 +250,7 @@ TEST_CASE("cross-channel dialogue enhancement adds g r p^T m to the processed ch
         values.p[1][band] = -0.2;
         values.p[2][band] = 0.1 * static_cast<double>(band);
     }
-    const double g = std::pow(10.0, 12.0 / 20.0) - 1.0;
+    const auto g = static_cast<ac4::detail::Real>(std::pow(10.0, 12.0 / 20.0) - 1.0);
     Channels first(kFiveOne.size(), 3);
     stage.process(12.0, values, first.pointers);
     Channels channels(kFiveOne.size(), 5);
@@ -256,11 +264,13 @@ TEST_CASE("cross-channel dialogue enhancement adds g r p^T m to the processed ch
             if (band >= 0) {
                 QmfValue dialogue{};
                 for (std::size_t j = 0; j < 3; ++j) {
-                    dialogue += values.p[j][static_cast<std::size_t>(band)] * m[j][at];
+                    const auto p = static_cast<ac4::detail::Real>(values.p[j][static_cast<std::size_t>(band)]);
+                    dialogue += p * m[j][at];
                 }
-                expected += g * values.r[i] * dialogue;
+                expected += g * static_cast<ac4::detail::Real>(values.r[i]) * dialogue;
             }
-            CHECK(abs(channels.data[i][at] - expected) < 1e-12);
+            CHECK(std::abs(static_cast<double>(abs(channels.data[i][at] - expected))) <
+                  1e4 * static_cast<double>(std::numeric_limits<ac4::detail::Real>::epsilon()));
         }
         // The LFE and the surrounds take no part.
         CHECK(channels.data[3][at] == m[3][at]);
@@ -283,7 +293,7 @@ TEST_CASE("dialogue enhancement moves from one frame's matrix to the next slot b
         const double w = (slot + 0.5) / kSlots;
         const double expected = 1.0 + w * g * values.p[0][3];
         CHECK(std::abs(centre[static_cast<std::size_t>(slot * 64 + 5)].real() - expected) <
-              1e-12);  // band 3
+              kTolerance);  // band 3
     }
 }
 

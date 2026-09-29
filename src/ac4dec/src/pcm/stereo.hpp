@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 
+#include "ac4/detail/real.hpp"
 #include "syntax/asf.hpp"
 #include "syntax/context.hpp"
 
@@ -26,7 +27,7 @@ namespace ac4::detail {
 struct StereoParameters {
     // a, b, c, d per group and band, as Pseudocode 59 sets them; 1, 0, 0, 1
     // in a band the chparam_info() does not cover, which it leaves as it is.
-    std::array<std::array<std::array<double, 4>, kMaxSfb>, kMaxWindows> abcd{};
+    std::array<std::array<std::array<Real, 4>, kMaxSfb>, kMaxWindows> abcd{};
 };
 
 // What a chparam_info() parameterises: a 2 x 2 step (Pseudocode 59), or one of
@@ -52,7 +53,7 @@ void stereo_parameters(const SubstreamContext& ctx, const SfInfo& info, const Ch
 // align_tracks() gives them. Bands at or above a group's max_sfb hold no lines
 // of either track and are left as they are.
 void apply_stereo(const SfInfo& info, const SfData& layout, const StereoParameters& parameters,
-                  std::span<double> track0, std::span<double> track1);
+                  std::span<Real> track0, std::span<Real> track1);
 
 // b_dual_maxsfb, which the channel pair's ASPX_ACPL_1 sends (Table 22): the
 // second track has max_sfb_side bands in a group where the first has max_sfb,
@@ -63,7 +64,7 @@ void apply_stereo(const SfInfo& info, const SfData& layout, const StereoParamete
 // and ungroup(). chparam_info() covers the first track's bands (get_max_sfb(),
 // clause 4.3.6.2), and leaves the rest as they are.
 void align_tracks(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& first,
-                  const SfData& second, std::vector<double>& track0, std::vector<double>& track1,
+                  const SfData& second, std::vector<Real>& track0, std::vector<Real>& track1,
                   SfData& common);
 
 }  // namespace ac4::detail

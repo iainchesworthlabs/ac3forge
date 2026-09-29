@@ -87,21 +87,26 @@ class AjccStage {
 
     // Pseudocode 8's decorrelators, D0, D2, D1, D0, D2 and D1, each its own
     // instance; core decoding takes the first two and the fourth and fifth.
-    std::array<acpl::Decorrelator<double>, 6> decorrelators_;
-    std::array<acpl::TransientDucker<double>, 6> duckers_{};
-    ajcc::PreModification<double> pre_;
+    std::array<acpl::Decorrelator<Real>, 6> decorrelators_;
+    std::array<acpl::TransientDucker<Real>, 6> duckers_{};
+    ajcc::PreModification<Real> pre_;
     // ajcc_param_prev and this frame's values of each module's coefficients,
     // [side][coefficient]: Pseudocode 11's 25 in full decoding, 14's 12 in core.
+    // ac4core's acpl::ParamPrev/ParamSets stay double (see pcm/acpl.hpp's own
+    // comment on acpl::interpolate() not being retemplated); ajcc::accumulate,
+    // unlike acpl::interpolate, is templated on Real, so interp_ (its double
+    // output) is narrowed once into interp_real_ before that call.
     std::array<std::array<acpl::ParamPrev, ajcc::kModule2Coefficients>, 2> prev_{};
     std::array<std::array<acpl::ParamSets, ajcc::kModule2Coefficients>, 2> coefficients_{};
 
     // Scratch, sized once: the five inputs times (2 + 1/sqrt 2) but C's, the
     // two pre-modified ones, a module's decorrelated inputs, and one
-    // interpolated coefficient.
+    // interpolated coefficient in ac4core's double and narrowed to Real.
     std::array<std::vector<QmfValue>, 4> x_in_{};
     std::array<std::vector<QmfValue>, 2> w_in_{};
     std::array<std::vector<QmfValue>, 3> y_{};
     std::vector<double> interp_;
+    std::vector<Real> interp_real_;
 };
 
 }  // namespace ac4::detail

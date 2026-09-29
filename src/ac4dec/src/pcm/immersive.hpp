@@ -26,7 +26,7 @@ namespace ac4::detail {
 // channel but the LFE is c_gain times its signal. c_gain is 2 in SCPL and 1 in
 // ASPX_SCPL, m_gain the square root of 2 and 1. Nothing in the other modes.
 void apply_scpl(int codec_mode, DecodingMode decoding, std::span<const Speaker> speakers,
-                std::span<std::vector<double>> time);
+                std::span<std::vector<Real>> time);
 
 // The gains the immersive element's QMF domain applies to one channel after
 // A-SPX, in its subbands below the sbx of the A-SPX data that carried it and

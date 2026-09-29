@@ -3,6 +3,7 @@
 #include <span>
 #include <vector>
 
+#include "ac4/detail/real.hpp"
 #include "pcm/snf_random.hpp"
 #include "syntax/asf.hpp"
 #include "syntax/context.hpp"
@@ -26,7 +27,7 @@ namespace ac4::detail {
 // Fails for a scale factor outside 0 to 255, which the note under Table A.1's
 // formula says is not a valid one.
 [[nodiscard]] ParseResult reconstruct_track(const SfInfo& info, const SfData& data, RandGenState& noise,
-                                            std::vector<double>& scaled);
+                                            std::vector<Real>& scaled);
 
 // The length in lines of each window of the frame, in order: one full block
 // for a long frame, otherwise num_windows blocks, each of its group's
@@ -38,6 +39,6 @@ namespace ac4::detail {
 // ascending, zero above max_sfb. `lengths` is window_lengths()'s result and
 // `spec_reord` receives their sum.
 void ungroup(const SubstreamContext& ctx, const AsfPsyInfo& psy, const SfData& data, std::span<const int> lengths,
-             std::span<const double> scaled, std::vector<double>& spec_reord);
+             std::span<const Real> scaled, std::vector<Real>& spec_reord);
 
 }  // namespace ac4::detail

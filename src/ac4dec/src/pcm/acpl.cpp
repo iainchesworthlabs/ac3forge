@@ -136,8 +136,9 @@ struct AcplMapping {
 }
 
 void scale(std::span<QmfValue> values, double gain) {
+    const auto g = static_cast<Real>(gain);
     for (QmfValue& v : values) {
-        v *= gain;
+        v *= g;
     }
 }
 
@@ -217,9 +218,9 @@ ParseResult acpl_values(const ChannelElement& element, AcplQuantHistory& history
 }
 
 AcplStage::AcplStage()
-    : decorrelators_{acpl::Decorrelator<double>(0), acpl::Decorrelator<double>(1),
-                     acpl::Decorrelator<double>(2), acpl::Decorrelator<double>(0),
-                     acpl::Decorrelator<double>(1)} {}
+    : decorrelators_{acpl::Decorrelator<Real>(0), acpl::Decorrelator<Real>(1),
+                     acpl::Decorrelator<Real>(2), acpl::Decorrelator<Real>(0),
+                     acpl::Decorrelator<Real>(1)} {}
 
 void AcplStage::reset() {
     for (auto& decorrelator : decorrelators_) {
@@ -254,7 +255,7 @@ void AcplStage::module(const AcplModuleValues& values, int index, int decorrelat
     const std::size_t n = at(num_ts) * kSubbands;
     work_.resize(n);
     for (std::size_t i = 0; i < n; ++i) {
-        work_[i] = 2.0 * x0[i];
+        work_[i] = Real{2} * x0[i];
     }
     std::vector<QmfValue>& y = decorrelated_[at(decorrelator)];
     y.resize(n);
@@ -269,15 +270,18 @@ void AcplStage::module(const AcplModuleValues& values, int index, int decorrelat
         for (std::size_t sb = 0; sb < kSubbands; ++sb) {
             const std::size_t i = ts * kSubbands + sb;
             const QmfValue x0in = work_[i];
-            const QmfValue x1in = x1.empty() ? QmfValue{} : 2.0 * x1[i];
+            const QmfValue x1in = x1.empty() ? QmfValue{} : Real{2} * x1[i];
             if (static_cast<int>(sb) < values.qmf_band) {
-                z0[i] = 0.5 * (x0in + x1in);
-                z1[i] = 0.5 * (x0in - x1in);
+                z0[i] = Real(0.5) * (x0in + x1in);
+                z1[i] = Real(0.5) * (x0in - x1in);
             } else {
-                const double a = interp_[0][i];
-                const double b = interp_[1][i];
-                z0[i] = 0.5 * (x0in * (1.0 + a) + y[i] * b);
-                z1[i] = 0.5 * (x0in * (1.0 - a) - y[i] * b);
+                // interp_[0]/[1] are ac4core's own double-precision
+                // interpolation (acpl::interpolate() is not retemplated on
+                // Real; see this class's declaration), narrowed once here.
+                const auto a = static_cast<Real>(interp_[0][i]);
+                const auto b = static_cast<Real>(interp_[1][i]);
+                z0[i] = Real(0.5) * (x0in * (Real{1} + a) + y[i] * b);
+                z1[i] = Real(0.5) * (x0in * (Real{1} - a) - y[i] * b);
             }
         }
     }
@@ -290,7 +294,7 @@ void AcplStage::module(const AcplModuleValues& values, int index, int decorrelat
 void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfValue> x0,
                          std::span<const QmfValue> x1, std::span<std::span<QmfValue>, 5> z, int num_ts) {
     const std::size_t n = at(num_ts) * kSubbands;
-    const double input_gain = 1.0 + 2.0 * std::sqrt(0.5);
+    const auto input_gain = static_cast<Real>(1.0 + 2.0 * std::sqrt(0.5));
     std::vector<QmfValue>& x0in = in_[0];
     std::vector<QmfValue>& x1in = in_[1];
     x0in.resize(n);
@@ -356,14 +360,19 @@ void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfVa
     const std::vector<double>& ib3a2 = interp(times(b3, a2));
 
     // Transform() into the three decorrelators' inputs, then their outputs.
+    // ig1..ib3a2 are ac4core's own double-precision interpolation (see this
+    // class's declaration); each sum below is formed in that double
+    // precision, as the original single-scalar code computed it, and narrowed
+    // to Real once, at the multiply into a QmfValue - the double build stays
+    // bit-for-bit since narrowing a double to double is the identity.
     std::array<std::vector<QmfValue>, 3>& v = transformed_;
     for (auto& matrix : v) {
         matrix.resize(n);
     }
     for (std::size_t i = 0; i < n; ++i) {
-        v[0][i] = x0in[i] * ig1[i] + x1in[i] * ig2[i];
-        v[1][i] = x0in[i] * ig3[i] + x1in[i] * ig4[i];
-        v[2][i] = x0in[i] * ig135[i] + x1in[i] * ig246[i];
+        v[0][i] = x0in[i] * static_cast<Real>(ig1[i]) + x1in[i] * static_cast<Real>(ig2[i]);
+        v[1][i] = x0in[i] * static_cast<Real>(ig3[i]) + x1in[i] * static_cast<Real>(ig4[i]);
+        v[2][i] = x0in[i] * static_cast<Real>(ig135[i]) + x1in[i] * static_cast<Real>(ig246[i]);
     }
     for (int d = 0; d < acpl::kDecorrelators; ++d) {
         decorrelated_[at(d)].resize(n);
@@ -377,23 +386,28 @@ void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfVa
         const QmfValue l = x0in[i];
         const QmfValue r = x1in[i];
         // ACplModule2() for (z0, z1), (z2, z3) and (z4, z5), whose z5 is 0.
-        QmfValue z0 = 0.5 * (l * (ig1[i] + ig1a1[i]) + r * (ig2[i] + ig2a1[i]) + y0[i] * ib1[i]);
-        QmfValue z1 = 0.5 * (l * (ig1[i] - ig1a1[i]) + r * (ig2[i] - ig2a1[i]) - y0[i] * ib1[i]);
-        QmfValue z2 = 0.5 * (l * (ig3[i] + ig3a2[i]) + r * (ig4[i] + ig4a2[i]) + y1[i] * ib2[i]);
-        QmfValue z3 = 0.5 * (l * (ig3[i] - ig3a2[i]) + r * (ig4[i] - ig4a2[i]) - y1[i] * ib2[i]);
-        QmfValue z4 = l * ig5[i] + r * ig6[i];
+        QmfValue z0 = Real(0.5) * (l * static_cast<Real>(ig1[i] + ig1a1[i]) +
+                                   r * static_cast<Real>(ig2[i] + ig2a1[i]) + y0[i] * static_cast<Real>(ib1[i]));
+        QmfValue z1 = Real(0.5) * (l * static_cast<Real>(ig1[i] - ig1a1[i]) +
+                                   r * static_cast<Real>(ig2[i] - ig2a1[i]) - y0[i] * static_cast<Real>(ib1[i]));
+        QmfValue z2 = Real(0.5) * (l * static_cast<Real>(ig3[i] + ig3a2[i]) +
+                                   r * static_cast<Real>(ig4[i] + ig4a2[i]) + y1[i] * static_cast<Real>(ib2[i]));
+        QmfValue z3 = Real(0.5) * (l * static_cast<Real>(ig3[i] - ig3a2[i]) +
+                                   r * static_cast<Real>(ig4[i] - ig4a2[i]) - y1[i] * static_cast<Real>(ib2[i]));
+        QmfValue z4 = l * static_cast<Real>(ig5[i]) + r * static_cast<Real>(ig6[i]);
         // ACplModule3() with beta3: (b3, a1), (b3, a2), and (-b3, 1), whose
         // interp_b3 and interp_b3_a are both -interp(b3).
-        z0 += 0.25 * y2[i] * (ib3[i] + ib3a1[i]);
-        z1 += 0.25 * y2[i] * (ib3[i] - ib3a1[i]);
-        z2 += 0.25 * y2[i] * (ib3[i] + ib3a2[i]);
-        z3 += 0.25 * y2[i] * (ib3[i] - ib3a2[i]);
-        z4 -= 0.5 * y2[i] * ib3[i];
+        z0 += Real(0.25) * y2[i] * static_cast<Real>(ib3[i] + ib3a1[i]);
+        z1 += Real(0.25) * y2[i] * static_cast<Real>(ib3[i] - ib3a1[i]);
+        z2 += Real(0.25) * y2[i] * static_cast<Real>(ib3[i] + ib3a2[i]);
+        z3 += Real(0.25) * y2[i] * static_cast<Real>(ib3[i] - ib3a2[i]);
+        z4 -= Real(0.5) * y2[i] * static_cast<Real>(ib3[i]);
+        const auto sqrt2 = static_cast<Real>(kSqrt2);
         z[0][i] = z0;
-        z[1][i] = kSqrt2 * z1;
+        z[1][i] = sqrt2 * z1;
         z[2][i] = z2;
-        z[3][i] = kSqrt2 * z3;
-        z[4][i] = kSqrt2 * z4;
+        z[3][i] = sqrt2 * z3;
+        z[4][i] = sqrt2 * z4;
     }
 
     const std::array<const acpl::ParamSets*, 11> sets = {
