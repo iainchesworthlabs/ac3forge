@@ -502,7 +502,11 @@ struct Control::Impl {
             if (const auto info = h.stream()) {
                 out += '{';
                 append_key(out, "codec");
+#if CONFIG_AC3FORGE_AC4
+                append_json_string(out, info->ac4 ? "AC-4" : (info->eac3 ? "E-AC-3" : "AC-3"));
+#else
                 append_json_string(out, info->eac3 ? "E-AC-3" : "AC-3");
+#endif
                 append_number(out, "acmod", static_cast<unsigned long long>(info->acmod));
                 append_number(out, "channels", static_cast<unsigned long long>(info->channels));
                 append_number(out, "substreams", static_cast<unsigned long long>(info->substreams));

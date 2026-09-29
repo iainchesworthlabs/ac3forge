@@ -439,6 +439,32 @@ config AC3FORGE_EXAMPLE_JOC_DOMAIN
         renders the height fixture (sdkconfig.ci-render). Not a choice for a
         board playing real content.
 
+# AC-4, WHERE THE COMPONENT HAS IT (CONFIG_AC3FORGE_AC4, its Kconfig): a stream
+# that opens with an AC-4 sync word is read by the AC-4 decoder in place of the
+# AC-3 and E-AC-3 ones, whatever the source, and these say how. planning/ac4.md,
+# D14b.
+config AC3FORGE_EXAMPLE_AC4_CORE
+    int "AC-4: core decoding (1) or full decoding (0)"
+    depends on AC3FORGE_AC4
+    default 0
+    range 0 1
+    help
+        Core decoding (ETSI TS 103 190-2 clause 4.7) gives an immersive
+        element's 5.X.2 core with A-CPL and A-JCC replaced or reduced, for
+        low-complexity platforms. The Part 1 channel elements - 2.0 and 5.1 -
+        decode alike in both.
+
+config AC3FORGE_EXAMPLE_AC4_PCM_HASH
+    int "AC-4: hash every decoded sample (1) or not (0)"
+    depends on AC3FORGE_AC4
+    default 0
+    range 0 1
+    help
+        The play's end line then carries a hash of the bit pattern of every
+        sample the decoder handed over (ac4.pcm_hash), the probe's own FNV-1a,
+        which is what says whether the float output equals the host's. The
+        time it takes is measured and taken back out of the decoder's.
+
 # THE PLAYER'S TWO TASKS - see esp-idf/ac3forge/include/ac3forge/player.hpp. The
 # fetch task reads the source into a ring; the decode task drains the ring,
 # decodes and writes to the sink. WiFi and TCP/IP run on core 0, so the fetch
