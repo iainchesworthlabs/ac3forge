@@ -21,7 +21,23 @@ workflow publishes and where:
 What has been published so far, from each registry's own listing and from GitHub:
 
 - **GitHub Releases:** ten prereleases, `v0.2.0-beta.1` through `v0.10.0-beta.1`
-  (`v0.8.0-beta.2` is the second one for 0.8.0). No stable release has been tagged.
+  (`v0.8.0-beta.2` is the second one for 0.8.0). No stable release has been tagged. What each
+  carried, counting every asset including signatures and attestations:
+
+    - `v0.2.0-beta.1`, 25 assets: the Windows zip, one Linux set (`.deb`, `.rpm`, `.tar.gz`,
+      `.zip`), the macOS `.dmg` and `.zip`, the SPDX SBOM, `SHA512SUMS` and GPG signatures. No
+      provenance attestations yet.
+    - `v0.3.0-beta.1` and `v0.4.0-beta.1`, 52 each: the `ac3forge-dev-*` library archives, the
+      Shield APK and the `.intoto.jsonl` provenance attestations are added.
+    - `v0.5.0-beta.1`, 68: the Linux `.deb` and `.rpm` split into `runtime`, `library` and
+      `libruntime` packages.
+    - `v0.6.0-beta.1` to `v0.9.0-beta.1`, 108 each: the Linux packages, named by architecture,
+      for x86_64 and aarch64.
+    - `v0.10.0-beta.1`, 127: adds the Windows NSIS installer (`ac3forge-0.10.0-win64.exe`), the
+      Windows ARM64 `.exe` and `.zip`, the `ac3gui` AppImage and the conformance vector bundle.
+      It has no macOS runtime `.zip` beside the `.dmg`.
+
+  No release has carried an AC3Forge Crucible package.
 - **PyPI:** [`ac3forge`](https://pypi.org/project/ac3forge/) 0.9.0b1, uploaded on 2026-08-22, and
   0.10.0b1, uploaded on 2026-09-01. Each has fifteen wheels (CPython 3.10 to 3.14 on Windows
   x64, macOS arm64 and Linux x86-64) and no sdist. The Linux aarch64 and Intel macOS rows were
