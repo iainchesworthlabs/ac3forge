@@ -423,6 +423,10 @@ RACE_ACPL = {
 # The G0 legs the race runs, by rate: 2.0 in ASPX where DEE writes it and in SIMPLE from 192 kbps,
 # and 5.1 from 96 kbps, in A-CPL below 192.
 RACE_RATES = (48, 64, 96, 128, 144, 192, 256, 288, 320, 384, 448, 512, 768)
+# G1's legs the 2.0 and 5.1 race takes beside G0's, by content, in the codec modes that carry A-SPX
+# (phase E10): the sweeps, whose tone passes through the band above A-SPX's crossover, where the
+# patch holds nothing to copy while it is there.
+RACE_G1_CONTENT = ("sweep",)
 # The codec modes a 5_X_codec_mode or stereo_codec_mode names, where A-CPL is on (Part 1 Tables 95
 # and 97).
 ACPL_MODES = {2: "ASPX_ACPL_1", 3: "ASPX_ACPL_2", 4: "ASPX_ACPL_3"}
@@ -1498,18 +1502,29 @@ def acpl_gaps(ours, dee):
     return text
 
 
+def race_legs(args, manifest):
+    """The race's 2.0 and 5.1 legs at RACE_RATES: G0's, in every codec mode, and G1's
+    RACE_G1_CONTENT where A-SPX codes them."""
+    legs = []
+    for key in ("legs", "g1_legs"):
+        modes = ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
+        if key == "g1_legs":
+            modes = modes[1:]
+        for name, leg in sorted(manifest.get(key, {}).items()):
+            parts = name.split("-")
+            if (len(parts) == 3 and parts[0] in ("20", "51")
+                    and (key == "legs" or parts[1] in RACE_G1_CONTENT)
+                    and leg.get("codec_mode") in modes
+                    and leg.get("frame_rate_index") == 13
+                    and leg.get("bitrate_kbps") in RACE_RATES
+                    and (args.only is None or args.only in name)):
+                legs.append((name, leg))
+    return legs
+
+
 def gold_run(args, work):
     manifest = json.loads((args.gold / "gold-manifest.json").read_text(encoding="utf-8"))
-    legs = [
-        (name, leg)
-        for name, leg in sorted(manifest["legs"].items())
-        if name.split("-")[0] in ("20", "51")
-        and len(name.split("-")) == 3
-        and leg.get("codec_mode") in ("SIMPLE", "ASPX", "ASPX_ACPL_2", "ASPX_ACPL_3")
-        and leg.get("frame_rate_index") == 13
-        and leg.get("bitrate_kbps") in RACE_RATES
-        and (args.only is None or args.only in name)
-    ]
+    legs = race_legs(args, manifest)
     immersive = immersive_race_legs(args, manifest)
     if not legs and not immersive:
         raise SystemExit(f"no 2.0, 5.1 or 5.1.4 leg at the race's rates in {args.gold}")

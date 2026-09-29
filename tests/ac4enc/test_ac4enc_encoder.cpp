@@ -478,6 +478,58 @@ std::size_t count_records(const Encoded& encoded, std::string_view name, std::ui
                                                   [&](const ac4::SyntaxRecord& r) { return r.name == name && r.value == value; }));
 }
 
+// A logarithmic sweep from `from_hz` to `to_hz` over `count` samples, then `tail` samples of
+// silence.
+std::vector<float> sweep(double from_hz, double to_hz, std::size_t count, std::size_t tail,
+                         double amplitude, int rate) {
+    std::vector<float> x(count + tail, 0.0F);
+    const double seconds_long = static_cast<double>(count) / rate;
+    const double k = std::log(to_hz / from_hz) / seconds_long;
+    for (std::size_t n = 0; n < count; ++n) {
+        const double t = static_cast<double>(n) / rate;
+        const double phase = 2.0 * std::numbers::pi * from_hz * (std::exp(k * t) - 1.0) / k;
+        x[n] = static_cast<float>(amplitude * std::sin(phase));
+    }
+    return x;
+}
+
+// The energy of x in each band [edges_hz[b], edges_hz[b + 1]), over `blocks` Hann-windowed blocks
+// of 2 048 samples from `first`, by a direct DFT of the bins there.
+std::vector<double> band_energies(std::span<const float> x, std::size_t first, std::size_t blocks,
+                                  std::span<const double> edges_hz, int rate) {
+    constexpr std::size_t kBlock = 2048;
+    std::vector<double> cosine(kBlock);
+    std::vector<double> sine(kBlock);
+    std::vector<double> window(kBlock);
+    for (std::size_t n = 0; n < kBlock; ++n) {
+        const double phase = 2.0 * std::numbers::pi * static_cast<double>(n) / kBlock;
+        cosine[n] = std::cos(phase);
+        sine[n] = std::sin(phase);
+        window[n] = 0.5 - 0.5 * cosine[n];
+    }
+    const double bin_hz = static_cast<double>(rate) / kBlock;
+    std::vector<double> energy(edges_hz.size() - 1, 0.0);
+    for (std::size_t band = 0; band + 1 < edges_hz.size(); ++band) {
+        const auto lo = static_cast<std::size_t>(edges_hz[band] / bin_hz);
+        const auto hi = static_cast<std::size_t>(edges_hz[band + 1] / bin_hz);
+        for (std::size_t b = 0; b < blocks; ++b) {
+            const std::size_t at = first + b * kBlock;
+            for (std::size_t k = lo; k < hi; ++k) {
+                double re = 0.0;
+                double im = 0.0;
+                for (std::size_t n = 0; n < kBlock && at + n < x.size(); ++n) {
+                    const std::size_t phase = (k * n) & (kBlock - 1);
+                    const double v = window[n] * static_cast<double>(x[at + n]);
+                    re += v * cosine[phase];
+                    im -= v * sine[phase];
+                }
+                energy[band] += re * re + im * im;
+            }
+        }
+    }
+    return energy;
+}
+
 // Two tones under every crossover, noise over 14 to 16 kHz, and castanet-like
 // bursts now and then.
 std::vector<std::vector<float>> mixed(std::size_t count, int rate, int channels) {
@@ -573,6 +625,48 @@ TEST_CASE("ASPX recreates the band above the crossover at its energy", "[ac4enc]
         CHECK(std::abs(10.0 * std::log10(output / source)) < 3.0);
         const Score s = score(tone(1000.0, 0.1, count, 48000), decoded[0], lag);
         CHECK(std::abs(s.gain_db) < 0.5);
+    }
+}
+
+TEST_CASE("a sweep above the crossover keeps the source's energy in every band above 16.5 kHz",
+          "[ac4enc][encoder][aspx]") {
+    // A logarithmic sweep from 11 to 21 kHz in the first channel, silence in the rest: while it is
+    // above the crossover (13.5 kHz in stereo at 96 kbps, 12.75 in 5.1 at 256, 10.5 in 5.1.4 at
+    // 256) the low band holds nothing for the patch to copy, and a patch without energy delivers
+    // none of the envelope's (Part 1 Pseudocode 95's epsilon of 1 under its energy). Only the noise
+    // floors, and the sinusoids a steady tone earns, bring the band back: before the encoder sent
+    // them for a group its patch could not fill, the bands above 16.5 kHz came back 20 to 60 dB
+    // under the source's, in every layout. Each band's energy over the whole sweep is held to 6 dB
+    // of the source's, which the noise the floors send is well within (the rest, the envelopes'
+    // 1.5 and 3 dB steps and the frames' smearing of a moving tone).
+    struct Layout {
+        int channels;
+        int kbps;
+    };
+    const std::size_t length = seconds(1.5, 1.0);
+    const std::size_t tail = 8192;
+    constexpr std::array<double, 5> kEdges = {16500.0, 17500.0, 18500.0, 19500.0, 20500.0};
+    const std::size_t lag = 3072 + kDecoderDelay;
+    for (const Layout layout : {Layout{2, 96}, Layout{10, 256}}) {
+        CAPTURE(layout.channels, layout.kbps);
+        std::vector<std::vector<float>> input(static_cast<std::size_t>(layout.channels),
+                                              std::vector<float>(length + tail, 0.0F));
+        input[0] = sweep(11000.0, 21000.0, length, tail, 0.1, 48000);
+        ac4::EncoderConfig config;
+        config.channels = layout.channels;
+        config.bitrate_kbps = layout.kbps;
+        const Encoded encoded = encode(config, input, 4096);
+        const auto decoded = decode(encoded.frames);
+        REQUIRE(decoded.size() == static_cast<std::size_t>(layout.channels));
+        REQUIRE(decoded[0].size() >= lag + length);
+        const std::size_t blocks = length / 2048;
+        const std::vector<double> source = band_energies(input[0], 0, blocks, kEdges, 48000);
+        const std::vector<double> output = band_energies(decoded[0], lag, blocks, kEdges, 48000);
+        for (std::size_t band = 0; band < source.size(); ++band) {
+            const double db = 10.0 * std::log10(std::max(output[band], 1e-30) / source[band]);
+            CAPTURE(kEdges[band], db);
+            CHECK(std::abs(db) < 6.0);
+        }
     }
 }
 
