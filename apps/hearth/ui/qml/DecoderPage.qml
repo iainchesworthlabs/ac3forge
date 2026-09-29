@@ -5,15 +5,26 @@ import QtQuick.Layouts
 import Ac3ForgeHearth
 
 // The Decoder tab (planning/hearth-design.md, "Speakers and decoder"): a
-// sub-switch between the AC-3/E-AC-3 decoder, which this build actually
-// runs, and the AC-4 decoder, shown inactive until chip D exists. Defaults
-// to AC-3/E-AC-3, the common case and the one with live controls; nothing
-// here reads the queue's own stream kind yet to choose for itself - the
-// same gap DecoderEac3.qml's own comment notes for "this stream".
+// sub-switch between the AC-3/E-AC-3 decoder and the AC-4 decoder
+// (planning/ac4.md, I2). It defaults to AC-3/E-AC-3, and turns to whichever
+// the playing item needs when that item changes, so the page open is the one
+// whose settings are being heard; the switch still shows either at any time.
 Item {
     id: root
 
     property string format: "eac3"
+
+    // The playing item's format, once its media information has been read:
+    // "ac4", or "eac3" for AC-3 and E-AC-3; "" while nothing is known.
+    readonly property string playingFormat: {
+        const codec = HearthController.currentMedia.codec;
+        return codec === undefined ? "" : (codec === "ac4" ? "ac4" : "eac3");
+    }
+    onPlayingFormatChanged: {
+        if (root.playingFormat.length > 0) {
+            root.format = root.playingFormat;
+        }
+    }
 
     ColumnLayout {
         anchors.fill: parent
@@ -34,11 +45,9 @@ Item {
                 onSelected: function(value) { root.format = value; }
             }
             Text {
-                // Nothing on the AC-4 tab reaches a playing item, and the
-                // design drops this line there (decoder-ac4-inactive.png's
-                // tab row is empty beside the switch).
-                visible: root.format !== "ac4"
-                text: qsTr("Changes reach the playing item at its next access unit.")
+                text: root.format === "ac4"
+                      ? qsTr("Changes reach the playing item at its next frame.")
+                      : qsTr("Changes reach the playing item at its next access unit.")
                 color: Theme.textMuted
                 font.pixelSize: Theme.fontSmall
             }

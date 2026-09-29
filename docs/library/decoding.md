@@ -445,17 +445,25 @@ pre-noise processing (§3.7) — individually or stacked together, at every chan
 structure of its own falls back to Table E2.12 (standard coupling) or Table E2.13 (enhanced
 coupling) and decodes normally. Enhanced coupling's `ecplangleintrp` (§3.5.5.3's linear
 interpolation between band-centre angles) decodes too — the encoder decides per frame whether it
-reconstructs closer to the real content than direct per-band application. One syntax corner is
-still recognised and refused rather than mis-decoded: a transient pre-noise correction reaching
-further back or forward than the one frame of history/lookahead this decoder buffers, because no
-stream this project's own encoder produces exercises it.
+reconstructs closer to the real content than direct per-band application.
+
+A transient pre-noise correction is counted from the first sample of the frame's PCM as A/52
+counts it — block 0's new samples, one block (256 samples) into the frame's decoded output — and
+reaches up to 1528 samples back from its transient, which a frame may place in a later frame: up
+to 4092 samples past that origin. The Dolby Encoding Engine does exactly that at its lower stereo
+and 5.1 rates, putting most of its transients in the next frame; Dolby's own decoder corrects
+them on the same origin, which is how the origin was settled (see
+`ac3/decoder/transient_prenoise.hpp`). This decoder applies each correction once the frame its
+transient falls in has decoded, so every reach the syntax can express decodes.
 
 Transient pre-noise processing has one API consequence worth knowing: once a stream turns it on,
-`Eac3Decoder::decode_substream` holds one frame back at a time (a correction can reach into the
-previous frame's already-decoded audio), returning `std::nullopt` until the next frame confirms
-it. Call `Eac3Decoder::flush()` once at end-of-stream to collect whichever frame is still held
-back — a stream that never uses the tool is completely unaffected, every call returns immediately
-as before.
+`Eac3Decoder::decode_substream` holds 1536 samples back — one frame at six blocks a syncframe, six
+at one block — and returns each frame once no correction still to come can reach it, returning
+`std::nullopt` while that first 1536 samples builds up. Call `Eac3Decoder::flush()` once at
+end-of-stream to collect whatever is still held back; the corrections whose transient the stream
+ended before are applied to what did arrive, and an identity holding several short syncframes gets
+them back as one substream. A stream that never uses the tool is completely unaffected: every call
+returns immediately as before.
 
 `Eac3Decoder::decode_access_unit` builds on the same convention rather than refusing it: an
 access unit needs every one of its substreams ready in the same call, and the tool is a
@@ -464,9 +472,9 @@ substreams already released this call are queued (per substream identity, oldest
 lagging one catches up, so nothing already-decoded is discarded or, worse, silently paired with
 the wrong instant in time — a dependent that never uses the tool can keep releasing every call
 while an independent that does falls one frame behind, and each call still assembles the correct
-pairing once every identity has something waiting. `flush()` drains both caches: whichever frame
-`decode_substream` itself is still holding, and whichever substream results are still queued
-waiting for a sibling.
+pairing once every identity has something waiting. `flush()` drains both caches, one substream per
+identity: whatever `decode_substream` itself is still holding, and whatever substream results are
+still queued waiting for a sibling.
 
 Block switching (§8.2.2/§7.9) decodes on both, and is reported back: `DecodedFrame::blksw` /
 `DecodedSubstream::blksw` gives, per full-bandwidth channel per block, whether that block used the
@@ -711,7 +719,7 @@ here is the part a decoder controls, which is smaller than it looks:
 | | Adds |
 |---|---|
 | `ac3::FrameDecoder::latency_samples()` | **0**, always. |
-| `ac3::Eac3Decoder::latency_samples()` | **0**, or one frame (1536) once §3.7 engages. |
+| `ac3::Eac3Decoder::latency_samples()` | **0**, or 1536 once §3.7 engages, whatever the syncframe length. |
 
 `FrameDecoder`'s zero is structural rather than lucky: `decode_frame` returns a frame's full
 1536 samples per channel from the same call that supplies that frame's bytes. The IMDCT overlap
@@ -719,13 +727,15 @@ those samples came out of is real, but it is already charged as the chain's tran
 samples the decoder hands back are simply 256 samples *older* than the newest input the encoder
 had consumed, not samples it is still waiting for.
 
-`Eac3Decoder`'s exception is transient pre-noise processing. A §3.7 correction reaches backwards
-across a frame boundary, so the decoder returns frame N−1 from the call that supplies frame N;
-`decode_substream`/`decode_access_unit` return `std::nullopt` on the one call where nothing is
-ready yet, and `flush()` collects whatever is still pending at end of stream. That is a *release*
-delay, not a sample-domain shift — the audio comes out in the same place in the stream, one call
-later — so a caller that honours the `std::nullopt` convention and calls `flush()` gets exactly
-the same samples in exactly the same order either way.
+`Eac3Decoder`'s exception is transient pre-noise processing. A §3.7 correction reaches across
+frame boundaries — back up to 1528 samples from a transient that may lie in a later frame — so the
+decoder holds 1536 samples back: at six blocks a syncframe it returns frame N−1 from the call that
+supplies frame N, at one block it returns six syncframes late. `decode_substream`/
+`decode_access_unit` return `std::nullopt` on the calls where nothing is ready yet, and `flush()`
+collects whatever is still pending at end of stream. That is a *release* delay, not a
+sample-domain shift — the audio comes out in the same place in the stream, later — so a caller that
+honours the `std::nullopt` convention and calls `flush()` gets exactly the same samples in exactly
+the same order either way.
 
 `latency_samples()` reports what has actually happened so far, so it reads 0 until some
 substream's frame sets `transproce`. To size buffers *before* a stream starts, ask the encoder

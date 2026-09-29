@@ -107,8 +107,9 @@ pseudo-random noise blend the standard requires but leaves the exact generator u
 adaptive hybrid transform with GAQ (§E3.4), and transient pre-noise processing (§3.7) —
 individually or all stacked together, at every channel layout including 7.1.4.
 
-Transient pre-noise processing holds a frame back per substream that uses it (see [What it does
-not do](#what-it-does-not-do)), and that holding-back is not just a `decode_substream` detail:
+Transient pre-noise processing holds 1536 samples back per substream that uses it - one frame at
+six blocks a syncframe (see [What it does not do](#what-it-does-not-do)) - and that holding-back
+is not just a `decode_substream` detail:
 `Eac3Decoder::decode_access_unit` assembles a whole access unit correctly even when only some of
 its substreams set the flag, queuing whichever substreams release early rather than losing or
 misaligning them against the one still catching up.
@@ -181,8 +182,9 @@ this library does not carry its own Parquet writer for one research-only export 
 |---|---|
 | `ac3::io::scan` | Finds access-unit boundaries in a raw elementary stream and reports what it renders, without being told — grouped by programme, so a stream with two independent substreams describes both rather than one at twice the frame rate. `ac3::io::read_frame_header` is the same per-syncframe walk exposed on its own. |
 | `ac3::io::probe` | The stream description above (`ac3cli probe`), as a human table or a versioned JSON contract. |
-| `ac4::ac4` | An AC-4 (ETSI TS 103 190-1/-2) sync-frame/TOC/presentation/substream-group bitstream inspector — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike — the same probe/JSON contract extended to a second codec (`ac3cli probe` auto-detects it). It splits sync frames from a whole buffer or from a stream that arrives in pieces (`SyncFrameSplitter`), and gives the frame rate, the `dac4` box and the RFC 6381 codec string. Audio content it reports by byte range, for `ac4::decoder` to decode. Installed and exported. An A-JOC substream's `oamd_common_data()` is parsed with the TOC; an OAMD substream's payload, which can carry a second `oamd_common_data()`, is reported by byte range like audio content. Links nothing from `ac3::forge` and knows nothing about AC-3 — a peer codec, not an extension. See [Validation](../verification.md#ac-4). |
-| `ac4::decoder` | An AC-4 decoder (`src/ac4dec`, `ac4::Decoder`), written from ETSI TS 103 190-1 and -2 with a second transcription of the syntax in Python: channel-coded substreams from mono to 7.1 in the SIMPLE, ASPX and A-CPL codec modes at every frame rate, with the output level, DRC, dialogue enhancement, the downmix and concealment, streams of several presentations, the presentation chosen as Part 2 4.8.2 has it and its substreams mixed, and the immersive element of 7.0.4 and 7.1.4 in every immersive codec mode, in full or core decoding, rendered to the layout asked for by Part 2's channel renderer, and object audio: A-JOC substreams in full and core decoding and direct-coded objects, each object handed over with its PCM and the Annex F properties its metadata sets for the application to render, and the intermediate spatial format rendered by Part 2's ISF renderer. It reports each presentation and the metadata of the one decoded, and hands its output over a frame or 256 samples at a time. The 9.X.4 and 22.2 modes are refused. Installed and exported with `ac4::ac4`; see [AC-4 decoding](ac4.md) and [Validation](../verification.md#ac-4). |
+| `ac4::ac4` | An AC-4 (ETSI TS 103 190-1/-2) sync-frame/TOC/presentation/substream-group bitstream inspector — channel-coded, A-JOC-coded, direct-coded-object and OAMD substream groups alike — the same probe/JSON contract extended to a second codec (`ac3cli probe` auto-detects it). It splits sync frames from a whole buffer or from a stream that arrives in pieces (`SyncFrameSplitter`), and gives the frame rate, the `dac4` box describing every presentation (or what it cannot describe), the rule of CMAF's a stream breaks, and the RFC 6381 codec string. Audio content it reports by byte range, for `ac4::decoder` to decode. Installed and exported. An A-JOC substream's `oamd_common_data()` is parsed with the TOC; an OAMD substream's payload, which can carry a second `oamd_common_data()`, is reported by byte range like audio content. Links nothing from `ac3::forge` and knows nothing about AC-3 — a peer codec, not an extension. See [Validation](../verification.md#ac-4). |
+| `ac4::decoder` | An AC-4 decoder (`src/ac4dec`, `ac4::Decoder`), written from ETSI TS 103 190-1 and -2 with a second transcription of the syntax in Python: channel-coded substreams from mono to 7.1 in the SIMPLE, ASPX and A-CPL codec modes at every frame rate, with the output level, DRC, dialogue enhancement, the downmix and concealment, streams of several presentations, the presentation chosen as Part 2 4.8.2 has it and its substreams mixed, and the immersive element of 7.0.4 and 7.1.4 in every immersive codec mode, in full or core decoding, rendered to the layout asked for by Part 2's channel renderer, and object audio: A-JOC substreams in full and core decoding and direct-coded objects, each object handed over with its PCM and the Annex F properties its metadata sets for the application to render, and the intermediate spatial format rendered by Part 2's ISF renderer. It reports each presentation and the metadata of the one decoded, and hands its output over a frame or 256 samples at a time. The 9.X.4 and 22.2 modes are refused. Installed and exported with `ac4::ac4`; see [AC-4](ac4.md) and [Validation](../verification.md#ac-4). |
+| `ac4::encoder` | An AC-4 encoder (`src/ac4enc`, `ac4::Encoder`), written from the same two standards: mono, stereo, 5.0 and 5.1 (7.0, 7.1 and 3.0 experimental) in the SIMPLE, ASPX and A-CPL codec modes, at 48 kHz at every frame rate or at 44.1 kHz, at a constant, average or variable rate, with I-frames where a container needs them, the loudness, DRC, downmix and dialogue enhancement metadata, and several substreams and the presentations of Part 2 Table 53 made of them. `Encoder::refusal_reason()` names the rule a configuration it refuses breaks; each frame comes out as an MP4 sample, and `sync_frame()` wraps it for a raw file or MPEG-2 TS. Immersive layouts and objects are refused. Installed and exported with `ac4::ac4`; see [AC-4](ac4.md#encoding-a-stream) and [Validation](../verification.md#the-encoder). |
 | `matroska::matroska` | A standalone MKV muxer. Links nothing from `ac3::forge` and knows nothing about AC-3. |
 | `mp4::mp4` | A standalone MP4/ISOBMFF muxer, same shape as `matroska::matroska`. `ac3::io::build_codec_config_box` builds a spec-correct `dac3`/`dec3` sample-entry box (ETSI TS 102 366 Annex F), Dolby Atmos extension included, straight off the bitstream. |
 | `mpegts::mpegts` | A standalone MPEG-2 Transport Stream muxer (PAT + PMT + one PES-wrapped elementary stream — see [Out of scope](https://github.com/iainchesworthlabs/ac3forge/blob/main/ROADMAP.md#out-of-scope) for the multi-service multiplex this deliberately does not build), identifying AC-3/E-AC-3 per either broadcast profile: DVB's ETSI EN 300 468 Annex D descriptors, or ATSC's `stream_type` 0x81/0x87 with A/52 Annex A and Annex G's own. Both descriptors' identification fields are filled in from what `ac3::io::scan` reads off the bitstream, `mainid`/`asvc` from the operator (`ac3cli ts ... mainid=3`, `asvc=0,2`) and checked against the stream's own `bsmod` for consistency. `mpegts::parse_service_descriptor` (`mpegts::demux`/`Reader`'s own `ReadStream::service`) is the read side: a real transport stream's PMT descriptor decodes back into the same field values, not just the codec identification alone. Links nothing from `ac3::forge` beyond the A/52 field values it is handed. |
@@ -231,18 +233,18 @@ load-bearing enough to flag up front:
     receiver's EDID. No other Linux machine, sound card or receiver has been tried: treat this as
     two confirmed configurations on one box, not as Linux generally.
 
-Enhanced coupling and transient pre-noise processing have no external decode oracle at all —
-not even the FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own
-Annex E parser has never read either tool's syntax — so `tools/ci/quality_race.py`'s CI gate scores
-both through this project's own decoder instead (see
-[Validation](../verification.md#where-the-oracles-dont-reach)). That same gap is why neither is in
-the `auto` tool set, though only one of them earned its way out: enhanced coupling measures
-*better* than standard coupling on real programme material at every bitrate and layout tried and
-is kept out purely so `auto` produces streams FFmpeg can read, while transient pre-noise
-processing measured 6.5–24 dB worse than leaving the audio alone over exactly the samples it
-touches, at every bitrate, with no perceptual movement either way — a reference-correctness tool
-rather than a quality one. [Encoding E-AC-3](encoding-eac3.md#what-auto-will-not-choose)
-carries both measurements. Transient pre-noise processing's
-one-frame decoder buffering is an API characteristic, not a gap; [Decoding](decoding.md)
-covers it. Variable bit rate is E-AC-3 only — AC-3's frame size indexes Table 5.18 rather than
+Enhanced coupling has no external decode oracle at all — not even the
+FFmpeg-can't-but-the-in-repo-decoder-can situation 7.1.4 is in, since FFmpeg's own Annex E parser
+has never read its syntax — so `tools/ci/quality_race.py`'s CI gate scores it through this
+project's own decoder instead (see [Validation](../verification.md#where-the-oracles-dont-reach)).
+Transient pre-noise processing has a partial one: FFmpeg reads its streams but does not apply the
+correction, and a Dolby Encoding Engine stream that uses the tool is scored in the gold-reference
+gate. Neither tool is in the `auto` tool set: enhanced coupling measures *better* than standard
+coupling on real programme material at every bitrate and layout tried and is kept out purely so
+`auto` produces streams FFmpeg can read, while transient pre-noise processing measured 6.5–24 dB
+worse than leaving the audio alone over exactly the samples it touches, at every bitrate, with no
+perceptual movement either way — a reference-correctness tool rather than a quality one.
+[Encoding E-AC-3](encoding-eac3.md#what-auto-will-not-choose) carries both measurements, and says
+what the second predates. Transient pre-noise processing's 1536-sample decoder hold-back is an API
+characteristic, not a gap; [Decoding](decoding.md) covers it. Variable bit rate is E-AC-3 only — AC-3's frame size indexes Table 5.18 rather than
 stating a word count directly, so it has no equivalent and stays CBR.

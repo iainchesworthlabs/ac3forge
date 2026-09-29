@@ -11,8 +11,10 @@ import Ac3ForgeHearth
 // itself, read once for the whole file (HearthController.inspectedMedia,
 // backed by apps/hearth/engine/media_info.hpp's MediaInfo off a thread of
 // its own). Defaults to the item playing now; the "Showing" picker can ask
-// about any other queue item instead, including an AC-4 one, which never
-// plays in this build but still has a table of contents to read.
+// about any other queue item instead. An AC-4 item's presentations and
+// metadata are what ac4::Decoder reads of the whole stream
+// (apps/common/probe_json.hpp's Ac4Summary; planning/ac4.md, "Media
+// information").
 Item {
     id: root
 
@@ -21,6 +23,7 @@ Item {
     readonly property var bitstream: root.media.bitstream ?? ({})
     readonly property var container: root.media.container ?? ({})
     readonly property var ac4: root.media.ac4
+    readonly property var ac4Metadata: root.ac4?.metadata ?? ({})
     readonly property int effectiveIndex: HearthController.inspectedIndex >= 0
                                           ? HearthController.inspectedIndex : HearthController.currentIndex
     readonly property var showingLabels: HearthController.queue.map(function(item) { return item.title; })
@@ -92,6 +95,76 @@ Item {
         const ss = total % 60;
         return mm + ":" + (ss < 10 ? "0" : "") + ss;
     }
+    // An AC-4 presentation's members, as hearth_controller.cpp's
+    // ac4_member_token() names them.
+    function ac4ContentLabel(tokens) {
+        const names = {
+            "main": qsTr("main"),
+            "musicAndEffects": qsTr("music and effects"),
+            "dialogue": qsTr("dialogue"),
+            "audioDescription": qsTr("audio description"),
+            "hearingImpaired": qsTr("hearing impaired"),
+            "commentary": qsTr("commentary"),
+            "emergency": qsTr("emergency"),
+            "voiceOver": qsTr("voice over"),
+            "associated": qsTr("associated audio")
+        };
+        return (tokens ?? []).map(function(token) { return names[token] ?? token; }).join(" + ");
+    }
+    // What else a presentation's row says: its id and name, and what makes it
+    // unusual.
+    function ac4PresentationNotes(p) {
+        const notes = [];
+        if (p.id !== undefined) {
+            notes.push(qsTr("presentation_id %1").arg(p.id));
+        }
+        if (p.name.length > 0) {
+            notes.push(qsTr("\"%1\"").arg(p.name));
+        }
+        if (p.alternative) {
+            notes.push(qsTr("alternative"));
+        }
+        if (p.preVirtualized) {
+            notes.push(qsTr("made for headphones"));
+        }
+        if (!p.enabled) {
+            notes.push(qsTr("disabled"));
+        }
+        if (!p.decodable) {
+            notes.push(qsTr("not decoded in this build"));
+        }
+        return notes.join(" · ");
+    }
+    function ac4DrcModeName(id) {
+        switch (id) {
+            case 0: return qsTr("home theatre");
+            case 1: return qsTr("flat panel TV");
+            case 2: return qsTr("portable speakers");
+            case 3: return qsTr("portable headphones");
+            default: return qsTr("mode %1").arg(id);
+        }
+    }
+    function ac4CompressionName(token) {
+        switch (token) {
+            case "defaultProfile": return qsTr("default profile");
+            case "curve": return qsTr("its own curve");
+            case "gains": return qsTr("transmitted gains");
+            default: return token;
+        }
+    }
+    function ac4PreferredName(token) {
+        switch (token) {
+            case "loro": return qsTr("Lo/Ro");
+            case "ltrt": return qsTr("Lt/Rt");
+            case "pl2": return qsTr("Lt/Rt, Pro Logic II");
+            default: return qsTr("not indicated");
+        }
+    }
+    // A gain the decoder reports as null where it is 0.
+    function ac4Gain(value) {
+        return value === null ? qsTr("off") : root.formatDb(value);
+    }
+
     // Shared between the Stream card's "Objects" row and the Objects · OAMD
     // card's own summary line, so the two never drift apart.
     function objectsSummary() {
@@ -198,51 +271,8 @@ Item {
 
             Rectangle {
                 Layout.fillWidth: true
-                // Every AC-4 item, whether or not its table of contents
-                // parsed cleanly: this build has no AC-4 decoder regardless,
-                // the same fact apps/hearth/ui/item_loader.cpp's own
-                // unplayable reason states for the queue row.
-                visible: root.showingLabels.length > 0 && root.ac4 !== undefined
-                color: Theme.neutral100
-                border.color: Theme.accentInk
-                border.width: 1
-                radius: Theme.radius
-                implicitHeight: notPlayableBanner.implicitHeight + Theme.pad * 2
-
-                ColumnLayout {
-                    id: notPlayableBanner
-                    anchors.fill: parent
-                    anchors.margins: Theme.pad
-                    spacing: Theme.gap / 2
-                    Text {
-                        text: qsTr("NOT PLAYABLE IN THIS BUILD")
-                        color: Theme.accentInk
-                        font.pixelSize: Theme.fontSmall
-                        font.bold: true
-                        font.letterSpacing: Theme.trackingWide
-                        font.capitalization: Font.AllUppercase
-                    }
-                    Text {
-                        text: qsTr("This build has no AC-4 decoder")
-                        color: Theme.text
-                        font.bold: true
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: qsTr("What follows is read from the stream's table of contents. The item "
-                                  + "stays in the queue and is skipped when it comes up.")
-                        color: Theme.textMuted
-                        wrapMode: Text.WordWrap
-                    }
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
                 // A genuine read failure - nothing below has real data for
-                // this item - as opposed to the AC-4 banner above, which is
-                // about playability rather than about whether the read
-                // itself succeeded.
+                // this item.
                 visible: root.showingLabels.length > 0 && (root.media.error ?? "").length > 0
                 color: Theme.neutral100
                 border.color: Theme.accentInk
@@ -510,17 +540,65 @@ Item {
                             rowSpacing: 4
                             Layout.fillWidth: true
 
-                            Text { text: qsTr("Bitstream version"); color: Theme.textMuted }
-                            Text { text: root.ac4 ? root.ac4.bitstreamVersion : ""; color: Theme.text }
+                            Text { text: qsTr("Codec"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4 ? qsTr("AC-4 · bitstream version %1").arg(root.ac4.bitstreamVersion) : ""
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Sample rate"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.media.sampleRate ? qsTr("%1 kHz").arg(root.media.sampleRate / 1000)
+                                                             : qsTr("unknown")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Frame rate"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4?.framesPerSecond !== undefined
+                                      ? qsTr("%1 fps · %2 samples a frame")
+                                            .arg(Number(root.ac4.framesPerSecond).toLocaleString(Qt.locale(), "f", 3))
+                                            .arg(root.ac4.frameLength)
+                                      : qsTr("unknown")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Frames"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4
+                                      ? qsTr("%1 · %2").arg(Number(root.ac4.syncFrames).toLocaleString(Qt.locale(), "f", 0))
+                                                       .arg(root.formatDuration(root.media.durationSeconds))
+                                      : ""
+                                color: Theme.text
+                            }
                             Text { text: qsTr("Sync frames"); color: Theme.textMuted }
                             Text {
+                                Layout.fillWidth: true
                                 text: root.ac4
                                       ? qsTr("%1 · CRC %2 failed").arg(root.ac4.syncFrames).arg(root.ac4.crcFailures)
                                       : ""
                                 color: Theme.text
                             }
-                            Text { text: qsTr("Presentations"); color: Theme.textMuted }
-                            Text { text: root.ac4 ? root.ac4.presentationCount : ""; color: Theme.text }
+                            Text { text: qsTr("Bitrate"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4?.bitrateKbps !== undefined
+                                      ? qsTr("%1 kbit/s").arg(Number(root.ac4.bitrateKbps).toFixed(1))
+                                      : qsTr("unknown")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("I-frames"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4?.minIframeInterval !== undefined
+                                      ? qsTr("%1, every %2 to %3 frames").arg(root.ac4.iframes)
+                                            .arg(root.ac4.minIframeInterval).arg(root.ac4.maxIframeInterval)
+                                      : (root.ac4 ? qsTr("%1").arg(root.ac4.iframes) : "")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Splices"); color: Theme.textMuted }
+                            Text { text: root.ac4 ? qsTr("%1").arg(root.ac4.splices) : ""; color: Theme.text }
                             Text { text: qsTr("Substreams"); color: Theme.textMuted }
                             Text { text: root.ac4 ? root.ac4.substreamCount : ""; color: Theme.text }
                         }
@@ -531,30 +609,49 @@ Item {
                         framed: true
                         visible: root.ac4 !== undefined && (root.ac4?.presentations ?? []).length > 0
 
+                        // The design's table, as the decoder reads each
+                        // presentation (planning/ac4.md, Media information).
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Theme.gap
+                            Text { text: qsTr("#"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.preferredWidth: 24 }
+                            Text { text: qsTr("Language"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.preferredWidth: 72 }
+                            Text { text: qsTr("Channels"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.preferredWidth: 64 }
+                            Text { text: qsTr("Content"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.fillWidth: true }
+                            Text { text: qsTr("Groups"); color: Theme.textMuted; font.pixelSize: Theme.fontMicro
+                                   font.capitalization: Font.AllUppercase; Layout.preferredWidth: 56 }
+                        }
                         Repeater {
                             model: root.ac4 ? root.ac4.presentations : []
                             delegate: ColumnLayout {
                                 required property var modelData
                                 Layout.fillWidth: true
                                 spacing: 0
-                                Text {
+                                RowLayout {
                                     Layout.fillWidth: true
-                                    text: qsTr("%1%2").arg(modelData.index + 1)
-                                          .arg(modelData.id !== undefined ? qsTr(" · id %1").arg(modelData.id) : "")
-                                    color: Theme.text
-                                    font.bold: true
+                                    spacing: Theme.gap
+                                    Text { text: modelData.index + 1; color: Theme.text; Layout.preferredWidth: 24 }
+                                    Text { text: modelData.language.length > 0 ? modelData.language : "—"
+                                           color: Theme.text; font.family: Theme.monoFamily
+                                           Layout.preferredWidth: 72; elide: Text.ElideRight }
+                                    Text { text: modelData.channels; color: Theme.text; Layout.preferredWidth: 64 }
+                                    Text { text: root.ac4ContentLabel(modelData.contents)
+                                           color: Theme.text; Layout.fillWidth: true; elide: Text.ElideRight }
+                                    Text { text: (modelData.groups ?? []).join(", "); color: Theme.text
+                                           Layout.preferredWidth: 56 }
                                 }
-                                Repeater {
-                                    model: modelData.substreams ?? modelData.groupRefs ?? []
-                                    delegate: Text {
-                                        required property var modelData
-                                        Layout.leftMargin: 16
-                                        text: modelData.channelMode !== undefined
-                                              ? qsTr("%1 · %2").arg(modelData.role).arg(modelData.channelMode)
-                                              : qsTr("group %1").arg(modelData)
-                                        color: Theme.textMuted
-                                        font.pixelSize: Theme.fontSmall
-                                    }
+                                Text {
+                                    Layout.leftMargin: 24 + Theme.gap
+                                    Layout.fillWidth: true
+                                    visible: text.length > 0
+                                    text: root.ac4PresentationNotes(modelData)
+                                    color: Theme.textMuted
+                                    font.pixelSize: Theme.fontSmall
+                                    wrapMode: Text.WordWrap
                                 }
                             }
                         }
@@ -654,6 +751,85 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 text: qsTr("present · not read by this build's inspector")
+                                color: Theme.text
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    // The metadata of the presentation a decoder selects with
+                    // no preferences, as the stream's frames sent it
+                    // (planning/ac4.md, Media information).
+                    Card {
+                        ordinal: root.cardOrdinal(root.ac4?.hasAjoc === true ? 5 : 4)
+                        title: qsTr("Metadata")
+                        framed: true
+                        summary: root.ac4Metadata.presentation !== undefined
+                                 ? qsTr("presentation %1").arg(root.ac4Metadata.presentation + 1) : ""
+                        visible: root.ac4 !== undefined && Object.keys(root.ac4Metadata).length > 0
+
+                        GridLayout {
+                            columns: 2
+                            columnSpacing: Theme.gap
+                            rowSpacing: 4
+                            Layout.fillWidth: true
+
+                            Text { text: qsTr("Dialogue level"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4Metadata.dialnormDbfs !== undefined
+                                      ? qsTr("dialnorm %1 dBFS").arg(Number(root.ac4Metadata.dialnormDbfs).toFixed(2))
+                                      : qsTr("not carried")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Loudness"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4Metadata.integratedLkfs !== undefined
+                                      ? qsTr("%1 LKFS integrated").arg(Number(root.ac4Metadata.integratedLkfs).toFixed(1))
+                                        + (root.ac4Metadata.truePeakDbtp !== undefined
+                                           ? qsTr(" · true peak %1 dBTP").arg(Number(root.ac4Metadata.truePeakDbtp).toFixed(1))
+                                           : "")
+                                      : qsTr("not carried")
+                                color: Theme.text
+                                wrapMode: Text.WordWrap
+                            }
+                            Text { text: qsTr("Dynamic range"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4Metadata.drcModes !== undefined
+                                      ? root.ac4Metadata.drcModes.map(function(m) {
+                                            return qsTr("%1 (%2)").arg(root.ac4DrcModeName(m.id))
+                                                                   .arg(root.ac4CompressionName(m.compression));
+                                        }).join(", ")
+                                      : qsTr("not carried")
+                                color: Theme.text
+                                wrapMode: Text.WordWrap
+                            }
+                            Text { text: qsTr("Dialogue enhancement"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4Metadata.dialogueEnhancement !== undefined
+                                      ? qsTr("up to %1 dB · method %2")
+                                            .arg(Number(root.ac4Metadata.dialogueEnhancement.maxGainDb).toFixed(0))
+                                            .arg(root.ac4Metadata.dialogueEnhancement.method)
+                                      : qsTr("not carried")
+                                color: Theme.text
+                            }
+                            Text { text: qsTr("Downmix"); color: Theme.textMuted }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.ac4Metadata.downmix !== undefined
+                                      ? qsTr("Lo/Ro centre %1 · surround %2; Lt/Rt centre %3 · surround %4%5 · prefers %6")
+                                            .arg(root.ac4Gain(root.ac4Metadata.downmix.loroCentreDb))
+                                            .arg(root.ac4Gain(root.ac4Metadata.downmix.loroSurroundDb))
+                                            .arg(root.ac4Gain(root.ac4Metadata.downmix.ltrtCentreDb))
+                                            .arg(root.ac4Gain(root.ac4Metadata.downmix.ltrtSurroundDb))
+                                            .arg(root.ac4Metadata.downmix.lfeDb !== undefined
+                                                 ? qsTr(" · LFE %1").arg(root.ac4Gain(root.ac4Metadata.downmix.lfeDb))
+                                                 : "")
+                                            .arg(root.ac4PreferredName(root.ac4Metadata.downmix.preferred))
+                                      : qsTr("not carried")
                                 color: Theme.text
                                 wrapMode: Text.WordWrap
                             }

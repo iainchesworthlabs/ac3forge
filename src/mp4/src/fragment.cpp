@@ -56,8 +56,21 @@ std::vector<std::string_view> compatible_brands(const FragmentOptions& options) 
     if (options.object_audio_brand) {
         brands.push_back(kObjectAudioBrand);
     }
+    // A CMAF media profile's brand the caller says its track keeps
+    // (FragmentOptions::brands), after the structural ones, as 'ceao' is.
+    for (const std::string& brand : options.brands) {
+        brands.emplace_back(brand);
+    }
     return brands;
 }
+
+// ISO/IEC 14496-12 §8.8.3.1's sample flags: a sync sample's, sample_depends_on
+// 2 ("this sample does not depend on others") and sample_is_non_sync_sample
+// clear, which is trex's default below; and a sample that is not a sync
+// sample, sample_depends_on 1 ("this sample does depend on others") and
+// sample_is_non_sync_sample set.
+constexpr std::uint32_t kSyncSampleFlags = 0x02000000;
+constexpr std::uint32_t kNonSyncSampleFlags = 0x01010000;
 
 Bytes build_init_ftyp(const FragmentOptions& options) {
     return detail::build_brand_box("ftyp", "iso5", 0, compatible_brands(options));
@@ -83,14 +96,15 @@ Bytes build_media_styp(const FragmentOptions& options) {
 // ac3::io::scan groups into the one opaque frame mp4:: ever sees (the
 // independent substream plus any dependents - see mp4.hpp's own header
 // comment) - so every sample is both independently decodable and a valid
-// fragment/segment start point.
+// fragment/segment start point. An AC-4 frame between I-frames is neither;
+// the trun that holds one lists every sample's flags (build_trun).
 Bytes build_trex(std::uint32_t default_sample_duration) {
     Bytes body;
     put_u32(body, 1);  // track_ID
     put_u32(body, 1);  // default_sample_description_index
     put_u32(body, default_sample_duration);
-    put_u32(body, 0);           // default_sample_size: none, see above
-    put_u32(body, 0x02000000);  // default_sample_flags, see above
+    put_u32(body, 0);                 // default_sample_size: none, see above
+    put_u32(body, kSyncSampleFlags);  // default_sample_flags, see above
     Bytes out;
     put_fullbox(out, "trex", 0, 0, body);
     return out;
@@ -126,8 +140,13 @@ Bytes build_init_segment(const AudioTrack& track, const FragmentOptions& options
     Bytes minf;
     put_box(minf, "minf", minf_body);
 
+    // The track's timescale, which trex's default duration, every tfdt and the
+    // durations here count in: the sample rate, or AudioTrack::timescale where
+    // a frame is no whole number of samples (an AC-4 track at 29.97 fps
+    // counts at 240 000, ETSI TS 103 190-2 Table E.1).
+    const std::uint32_t timescale = timescale_of(track);
     Bytes mdia_body;
-    put_bytes(mdia_body, detail::build_mdhd(track.sample_rate, total_samples, track.language));
+    put_bytes(mdia_body, detail::build_mdhd(timescale, total_samples, track.language));
     put_bytes(mdia_body, detail::build_hdlr(options.writing_app));
     put_bytes(mdia_body, minf);
     Bytes mdia;
@@ -147,7 +166,7 @@ Bytes build_init_segment(const AudioTrack& track, const FragmentOptions& options
     // difference between the two init segments (see FragmentWriter's own
     // comment in mp4.hpp).
     Bytes moov_body;
-    put_bytes(moov_body, detail::build_mvhd(track.sample_rate, total_samples));
+    put_bytes(moov_body, detail::build_mvhd(timescale, total_samples));
     put_bytes(moov_body, trak);
     put_bytes(moov_body, build_mvex(track.samples_per_frame));
     Bytes moov;
@@ -191,21 +210,32 @@ Bytes build_tfdt(std::uint64_t base_media_decode_time) {
 
 // ISO/IEC 14496-12 §8.8.8's Track Run Box. flags 0x000201 is
 // data-offset-present (0x000001) | sample-size-present (0x000200): every
-// sample's duration and flags come from trex's defaults (build_trex above -
-// true for every access unit alike), but sizes do not (frames vary), so
-// sizes alone are listed explicitly per sample.
-Bytes build_trun(std::span<const std::span<const std::byte>> frames, std::int32_t data_offset) {
+// sample's duration comes from trex's default (build_trex above - true for
+// every access unit alike), but sizes do not (frames vary), so sizes are
+// listed explicitly per sample. So are flags (sample-flags-present, 0x000400)
+// where `sample_flags` holds a sample that is not a sync sample - an AC-4
+// frame between I-frames; otherwise every sample takes trex's sync-sample
+// default, and the run is byte for byte what it always was.
+Bytes build_trun(std::span<const std::span<const std::byte>> frames, std::int32_t data_offset,
+                 std::span<const std::uint32_t> sample_flags) {
+    const bool flags = std::ranges::any_of(sample_flags, [](std::uint32_t f) { return f != 0; });
     Bytes body;
     put_u32(body, static_cast<std::uint32_t>(frames.size()));
     // data_offset is a SIGNED field (§8.8.8.1); the cast below preserves its
     // bit pattern exactly the way put_u32 already treats every other field
     // here as "32 bits to write", not "an unsigned quantity".
     put_u32(body, static_cast<std::uint32_t>(data_offset));
-    for (const auto& frame : frames) {
-        put_u32(body, static_cast<std::uint32_t>(frame.size()));
+    for (std::size_t i = 0; i < frames.size(); ++i) {
+        put_u32(body, static_cast<std::uint32_t>(frames[i].size()));
+        if (flags) {
+            // 0 marks a sync sample (see pending_flags_); its flags are
+            // trex's default, written out here since the run lists them all.
+            const std::uint32_t own = i < sample_flags.size() ? sample_flags[i] : 0U;
+            put_u32(body, own != 0 ? own : kSyncSampleFlags);
+        }
     }
     Bytes out;
-    put_fullbox(out, "trun", 0, 0x000201, body);
+    put_fullbox(out, "trun", 0, flags ? 0x000601U : 0x000201U, body);
     return out;
 }
 
@@ -215,7 +245,8 @@ Bytes build_trun(std::span<const std::span<const std::byte>> frames, std::int32_
 // silently truncating a bad value would be worse than refusing.
 std::expected<Bytes, MuxError> build_moof(std::uint32_t sequence_number,
                                           std::uint64_t base_media_decode_time,
-                                          std::span<const std::span<const std::byte>> frames) {
+                                          std::span<const std::span<const std::byte>> frames,
+                                          std::span<const std::uint32_t> sample_flags) {
     Bytes mfhd_body;
     put_u32(mfhd_body, sequence_number);
     Bytes mfhd;
@@ -231,7 +262,7 @@ std::expected<Bytes, MuxError> build_moof(std::uint32_t sequence_number,
     // either way), so this is the same two-pass shape mux() uses for stco:
     // build once with a placeholder purely to measure, then again for real,
     // rather than patching already-serialized bytes in place.
-    const Bytes trun_measured = build_trun(frames, 0);
+    const Bytes trun_measured = build_trun(frames, 0, sample_flags);
     Bytes traf_body_measured;
     put_bytes(traf_body_measured, tfhd);
     put_bytes(traf_body_measured, tfdt);
@@ -251,7 +282,7 @@ std::expected<Bytes, MuxError> build_moof(std::uint32_t sequence_number,
         return std::unexpected(MuxError::kFileTooLarge);
     }
 
-    const Bytes trun = build_trun(frames, static_cast<std::int32_t>(data_offset));
+    const Bytes trun = build_trun(frames, static_cast<std::int32_t>(data_offset), sample_flags);
     Bytes traf_body;
     put_bytes(traf_body, tfhd);
     put_bytes(traf_body, tfdt);
@@ -277,8 +308,9 @@ std::expected<Bytes, MuxError> build_moof(std::uint32_t sequence_number,
 // `base_media_decode_time`, and both arrive here as arguments.
 std::expected<MediaSegment, MuxError> build_media_segment(
     const AudioTrack& track, const FragmentOptions& options, std::uint32_t sequence_number,
-    std::uint64_t base_media_decode_time, std::span<const std::span<const std::byte>> frames) {
-    auto moof = build_moof(sequence_number, base_media_decode_time, frames);
+    std::uint64_t base_media_decode_time, std::span<const std::span<const std::byte>> frames,
+    std::span<const std::uint32_t> sample_flags) {
+    auto moof = build_moof(sequence_number, base_media_decode_time, frames, sample_flags);
     if (!moof) {
         return std::unexpected(moof.error());
     }
@@ -321,13 +353,35 @@ std::optional<MuxError> validate(const AudioTrack& track, const FragmentOptions&
     if (track.channels <= 0 || track.sample_rate == 0 ||
         track.sample_rate > std::numeric_limits<std::uint16_t>::max() ||
         track.samples_per_frame == 0 || track.codec_config.empty() ||
-        (track.codec_id != kCodecAc3 && track.codec_id != kCodecEac3)) {
+        (track.codec_id != kCodecAc3 && track.codec_id != kCodecEac3 &&
+         track.codec_id != kCodecAc4)) {
         return MuxError::kInvalidTrack;
     }
-    if (options.frames_per_fragment == 0) {
+    if (options.frames_per_fragment == 0 ||
+        std::ranges::any_of(options.brands,
+                            [](const std::string& brand) { return brand.size() != 4; })) {
         return MuxError::kInvalidOptions;
     }
     return std::nullopt;
+}
+
+// Where each fragment of `count` frames ends, one past its last frame:
+// frames_per_fragment frames each without sync flags, and with them the first
+// sync sample at or after that many (FragmentOptions::sync_samples).
+std::vector<std::size_t> fragment_ends(std::size_t count, std::size_t step,
+                                       const std::vector<bool>& sync) {
+    std::vector<std::size_t> ends;
+    for (std::size_t start = 0; start < count;) {
+        std::size_t end = std::min(count, start + step);
+        if (!sync.empty()) {
+            while (end < count && !sync[end]) {
+                ++end;
+            }
+        }
+        ends.push_back(end);
+        start = end;
+    }
+    return ends;
 }
 
 }  // namespace
@@ -351,6 +405,10 @@ std::expected<FragmentedOutput, MuxError> fragment(
     if (const auto invalid = validate(track, options)) {
         return std::unexpected(*invalid);
     }
+    const std::vector<bool>& sync = options.sync_samples;
+    if (!sync.empty() && (sync.size() != frames.size() || !sync.front())) {
+        return std::unexpected(MuxError::kInvalidOptions);
+    }
 
     const std::uint64_t total_samples =
         static_cast<std::uint64_t>(frames.size()) * track.samples_per_frame;
@@ -361,19 +419,29 @@ std::expected<FragmentedOutput, MuxError> fragment(
     FragmentedOutput out;
     out.init_segment = build_init_segment(track, options, total_samples);
 
+    // Each frame's sample flags, 0 for a sync sample, which is every frame
+    // without sync flags; build_trun lists them only for a run that holds one
+    // that is not 0.
+    std::vector<std::uint32_t> flags(frames.size(), 0U);
+    for (std::size_t i = 0; i < sync.size(); ++i) {
+        flags[i] = sync[i] ? 0U : kNonSyncSampleFlags;
+    }
     const auto step = static_cast<std::size_t>(options.frames_per_fragment);
     std::uint64_t samples_emitted = 0;
     std::uint32_t sequence_number = 1;
-    for (std::size_t start = 0; start < frames.size(); start += step) {
-        const std::size_t count = std::min(step, frames.size() - start);
+    std::size_t start = 0;
+    for (const std::size_t end : fragment_ends(frames.size(), step, sync)) {
+        const std::size_t count = end - start;
         auto segment = build_media_segment(track, options, sequence_number, samples_emitted,
-                                           frames.subspan(start, count));
+                                           frames.subspan(start, count),
+                                           std::span{flags}.subspan(start, count));
         if (!segment) {
             return std::unexpected(segment.error());
         }
         samples_emitted += segment->duration_samples;
         ++sequence_number;
         out.media_segments.push_back(std::move(*segment));
+        start = end;
     }
 
     return out;
@@ -405,11 +473,13 @@ std::expected<FragmentWriter, MuxError> FragmentWriter::create(const AudioTrack&
 
 std::expected<MediaSegment, MuxError> FragmentWriter::close_fragment() {
     const std::vector<std::span<const std::byte>> views(pending_.begin(), pending_.end());
-    auto segment = build_media_segment(track_, options_, sequence_number_, decode_time_, views);
+    auto segment = build_media_segment(track_, options_, sequence_number_, decode_time_, views,
+                                       pending_flags_);
     if (!segment) {
         return std::unexpected(segment.error());
     }
     pending_.clear();
+    pending_flags_.clear();
     decode_time_ += segment->duration_samples;
     ++sequence_number_;
 
@@ -431,6 +501,7 @@ std::expected<std::optional<MediaSegment>, MuxError> FragmentWriter::push(
     // session's length, which is the whole point of this class over
     // fragment().
     pending_.emplace_back(frame.begin(), frame.end());
+    pending_flags_.push_back(0U);
     ++frames_written_;
     if (pending_.size() < options_.frames_per_fragment) {
         return std::optional<MediaSegment>{};
@@ -440,6 +511,30 @@ std::expected<std::optional<MediaSegment>, MuxError> FragmentWriter::push(
         return std::unexpected(segment.error());
     }
     return std::optional<MediaSegment>{std::move(*segment)};
+}
+
+std::expected<std::optional<MediaSegment>, MuxError> FragmentWriter::push(
+    std::span<const std::byte> frame, bool sync) {
+    // A fragment starts at a sync sample (ETSI TS 103 190-2 E.3), so the one
+    // being filled closes only when the next sync sample arrives, and not
+    // before it holds frames_per_fragment frames: fragment()'s rule, for which
+    // the writer cannot know a frame is the one to end on until the next
+    // arrives.
+    if (frames_written_ == 0 && !sync) {
+        return std::unexpected(MuxError::kInvalidOptions);
+    }
+    std::optional<MediaSegment> closed;
+    if (sync && pending_.size() >= options_.frames_per_fragment) {
+        auto segment = close_fragment();
+        if (!segment) {
+            return std::unexpected(segment.error());
+        }
+        closed = std::move(*segment);
+    }
+    pending_.emplace_back(frame.begin(), frame.end());
+    pending_flags_.push_back(sync ? 0U : kNonSyncSampleFlags);
+    ++frames_written_;
+    return closed;
 }
 
 std::expected<std::optional<MediaSegment>, MuxError> FragmentWriter::finalize() {

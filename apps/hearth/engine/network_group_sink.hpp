@@ -84,11 +84,14 @@ public:
     // One burst: `pc`/`pd` as ac3::iec61937 writes them, `payload` the
     // elementary-stream bytes they describe (not the IEC 61937 carrier
     // bytes - a group's members are not S/PDIF, so there is nothing to
-    // word-swizzle or zero-pad here), and `frame` the programme frame that
-    // is its first decoded sample (Group::Burst::frame). False, taking
-    // nothing, on the same terms as submit_pcm(); the caller retries.
+    // word-swizzle or zero-pad here), `frame` the programme frame that is
+    // its first decoded sample (Group::Burst::frame) and `frames` the
+    // samples it decodes to: 1,536 for AC-3 and E-AC-3, and an AC-4 frame's
+    // own length (Group::Burst::frames). False, taking nothing, on the same
+    // terms as submit_pcm(); the caller retries.
     [[nodiscard]] virtual bool submit_burst(std::uint16_t pc, std::uint16_t pd,
-                                            std::span<const std::byte> payload, std::int64_t frame) = 0;
+                                            std::span<const std::byte> payload, std::int64_t frame,
+                                            std::int64_t frames) = 0;
 
     // Where the group has got to. A group plays frame n at a fixed time on its
     // own timeline (ac3::sendspin::Group::start_time() plus n at the sample

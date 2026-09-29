@@ -165,4 +165,14 @@ bool ajcc_codable(std::size_t param, int quant_mode, int diff_type, bool first_b
     return index >= 0 && static_cast<std::size_t>(index) < cb.codes.size();
 }
 
+std::size_t ajcc_set_bits(std::size_t param, int quant_mode, bool no_dt,
+                          const AjccSetFields& set) noexcept {
+    std::size_t bits = no_dt ? 0 : 1;  // diff_type
+    for (std::size_t i = 0; i < set.values.size(); ++i) {
+        const CodebookRef cb = codebook(kind_of(param), quant_mode, type_of(set.diff_type, i == 0));
+        bits += cb.codes[static_cast<std::size_t>(set.values[i] + cb.cb_off)].bits;
+    }
+    return bits;
+}
+
 }  // namespace ac4::detail

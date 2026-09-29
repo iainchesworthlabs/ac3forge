@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 
+#include "../support.hpp"
 #include "ac3/encoder/plan.hpp"
 
 // The measurement/transform commands that need no audio hardware: qc, levels, loudness, and
@@ -42,24 +43,33 @@ struct StreamLoudness {
 
 std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte> stream);
 
-// `rendered_layout` is layout=bed (false, the default) or layout=rendered
-// (true) - see Options::qc_rendered_layout.
-//
-// `want_programme` is the §E2.3.1.2 substreamid of the independent substream
-// whose programme to measure - std::nullopt takes the first the stream
-// carries, which for a single-programme stream (all of them, before a second
-// independent substream is authored in) is the only one there is. Ignored for
-// AC-3, which has no substream layer.
-//
-// `objects_layout` is objects=<name> (legacy item IO12, see
-// Options::qc_objects_layout) - when set, dynamic objects are additionally
-// re-rendered by their own position onto that layout and metered through
-// BS.1770-5 Annex 4, independently of `rendered_layout` above.
-int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
-           bool rendered_layout, std::optional<int> want_programme = std::nullopt,
-           std::optional<ac3::plan::LayoutId> objects_layout = std::nullopt);
-int run_levels(std::string_view in_path, std::optional<int> want_programme = std::nullopt);
-int run_loudness(std::string_view in_path);
+// The same figure for an AC-4 stream: the integrated loudness of the
+// presentation decode's options choose, as the stream codes it
+// (ac4_coded_config()), over its 1/0, 2/0, 3/0 or 3/2 bed as `loudness`
+// measures it. What transcode's dialnorm=auto takes from an AC-4 source.
+std::optional<StreamLoudness> measure_ac4_loudness(std::span<const std::byte> stream,
+                                                   std::string_view in_path, const Options& meta);
+
+// qc reads its own options off `meta`: preset= (Options::qc_preset); layout=bed,
+// the default, or layout=rendered (Options::qc_rendered_layout); programme=,
+// the §E2.3.1.2 substreamid of the independent substream whose programme to
+// measure, the first the stream carries where it is unset - which for a
+// single-programme stream is the only one there is - and ignored for AC-3,
+// which has no substream layer; and objects=<name> (legacy item IO12,
+// Options::qc_objects_layout), which re-renders dynamic objects by their own
+// position onto that layout and meters them through BS.1770-5 Annex 4,
+// independently of layout=. An AC-4 stream's presentation is the one decode's
+// options choose (ac4_coded_config()), and programme= and objects= are refused
+// for it.
+int run_qc(std::string_view in_path, const Options& meta);
+// Per-channel levels of a WAV file or a stream: an E-AC-3 stream's programme=,
+// and an AC-4 stream's presentation as decode's options choose it.
+int run_levels(std::string_view in_path, const Options& meta);
+// BS.1770-4 loudness, and the dialnorm it implies, of a WAV file or of a
+// stream's audio as coded - an AC-3 or E-AC-3 stream's first programme, and an
+// AC-4 stream's presentation as decode's options choose it - beside the
+// dialnorm the stream carries.
+int run_loudness(std::string_view in_path, const Options& meta);
 int run_spdif(std::string_view in_path, std::string_view out_path);
 int run_unspdif(std::string_view in_path, std::string_view out_path, bool keep_partial);
 

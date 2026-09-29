@@ -8,6 +8,7 @@
 #include "ac3/decoder/output.hpp"
 #include "ac3/render/layout.hpp"
 #include "ac3/render/serving.hpp"
+#include "ac4dec/decoder.hpp"
 
 // The decoder configuration model (planning/hearth-reference-player.md,
 // "Decoder configuration"): what the app's decoder controls hold, and the
@@ -21,8 +22,59 @@
 // fold. Dual mono is the one control no library setting holds - the output
 // stage leaves the choice of programme to its caller - so StreamDecoder
 // applies it after decoding.
+//
+// AC-4 (planning/ac4.md, I2, and its "One control for both formats") shares
+// the stereo fold, the LFE in a fold, the concealment and the layout with
+// AC-3 and E-AC-3, and has controls of its own in Ac4Settings: the
+// presentation, its DRC decoder mode and output level, which decision 12
+// keeps apart from E-AC-3's operating mode, dialogue enhancement, and the
+// dialogue and associated audio levels.
 
 namespace ac3::hearth {
+
+// AC-4's own controls, each a field of ac4::DecoderConfig (ac4dec/decoder.hpp)
+// once decoder_setup() has made one of them.
+struct Ac4Settings {
+    // The presentation to play: the one that carries this presentation_id,
+    // else the one at this position of the table of contents, else the
+    // decoder's choice by the preferences below (ETSI TS 103 190-2 clause
+    // 4.8.2). A choice the stream cannot meet falls to the next.
+    std::optional<int> presentation_id = std::nullopt;
+    std::optional<int> presentation_index = std::nullopt;
+    // The listener's language, a BCP 47 tag: a presentation in it plays
+    // first. The window sets it from its own language.
+    std::string language{};
+    // Audio description. On, a presentation that carries it plays first and
+    // its associated audio is mixed in at associated_db; off, a presentation
+    // without associated audio plays first, and the associated audio of one
+    // chosen by hand is not heard.
+    bool audio_description = false;
+    // g_assoc (ETSI TS 103 190-1 clause 6.2.16.2), 0 dB or less.
+    double associated_db = 0.0;
+    // g_dialog (6.2.16.1): a presentation's dialogue against its music and
+    // effects, up to the maximum the stream allows.
+    double dialogue_db = 0.0;
+    // G_DE (5.7.8), 0 to 12 dB, up to the stream's own cap.
+    double dialogue_enhancement_db = 0.0;
+    // Dialogue normalisation to the output level Lout (5.7.9.3.3), which cuts
+    // or boosts; off, the stream plays at its coded level and the DRC
+    // compresses nothing.
+    bool normalise = true;
+    double output_level_dbfs = -31.0;
+    // Table 161's DRC decoder mode. kDefault takes the mode the output level
+    // falls in; kPortableHeadphones also prefers a presentation made for
+    // headphones (b_pre_virtualized).
+    ac4::DrcMode drc = ac4::DrcMode::kDefault;
+    // A stereo fold by the stream's preferred_dmx_method (Table 150), Lo/Ro
+    // where it names none, rather than by DecoderSettings::stereo_fold.
+    bool preferred_downmix = false;
+
+    friend bool operator==(const Ac4Settings&, const Ac4Settings&) = default;
+};
+
+// The output levels Table 161's modes cover, which the page's control spans.
+inline constexpr double kAc4MinOutputLevelDbfs = -31.0;
+inline constexpr double kAc4MaxOutputLevelDbfs = 0.0;
 
 // Which of dual mono's (acmod 1+1) two unrelated programmes is heard.
 enum class DualMonoChoice : std::uint8_t {
@@ -53,8 +105,12 @@ struct DecoderSettings {
     // The fold for a two-speaker layout: kLtRt, or kLoRo for anything else.
     DownmixTarget stereo_fold = DownmixTarget::kLoRo;
     bool ltrt_phase_shift = true;
-    // Whether the LFE joins a fold (where the stream allows it).
-    bool mix_lfe = false;
+    // Whether the LFE joins a fold (where the stream allows it). One control
+    // for both formats with a default for each until the listener sets it:
+    // off for AC-3 and E-AC-3, whose §7.8 fold leaves it out unless asked,
+    // and on for AC-4, whose downmix takes it at lfe_mixgain (ETSI TS 103
+    // 190-1 clause 6.2.17).
+    std::optional<bool> mix_lfe = std::nullopt;
     // Levels to fold with in place of the stream's.
     MixLevelOverride mix_levels{};
     DualMonoChoice dual_mono = DualMonoChoice::kBoth;
@@ -74,20 +130,27 @@ struct DecoderSettings {
     // Passed straight to DecoderConfig::fast_imdct: the FFT evaluation of
     // §7.9.4 step 3's inverse transform, against its reference direct form.
     bool fast_inverse_transform = true;
+    Ac4Settings ac4{};
 
     friend bool operator==(const DecoderSettings&, const DecoderSettings&) = default;
 };
 
 // What `settings` make of the decoders that serve `layout`: which fold the
 // decoder does and whether it reconstructs objects, and the configuration to
-// build them with.
+// build them with - AC-3's and E-AC-3's, and AC-4's, whose downmix is the
+// same fold.
 struct DecoderSetup {
     render::Serving serving{};
     DecoderConfig config{};
+    ac4::DecoderConfig ac4{};
 };
 
 [[nodiscard]] DecoderSetup decoder_setup(const DecoderSettings& settings,
                                          const render::OutputLayout& layout);
+
+// The presentation an AC-4 decoder is asked for: DecoderSetup::ac4's
+// presentation, which does not depend on the layout.
+[[nodiscard]] ac4::PresentationChoice presentation_choice(const DecoderSettings& settings);
 
 // Every control's value on one line, for the diagnostics file: "line mode,
 // stereo fold Lo/Ro, no LFE in folds, the stream's mix levels, ...".

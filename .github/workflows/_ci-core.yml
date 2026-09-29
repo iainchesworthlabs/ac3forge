@@ -497,9 +497,12 @@ jobs:
           -DAC3FORGE_BUILD_HEARTH=ON
           -DAC3FORGE_BUILD_EXAMPLES=OFF
 
+      # ac3cli and ac3hearth-render for the AC-4 gains through the engine, the last step.
       - name: Build
         shell: bash
-        run: cmake --build --preset build-linux-gcc --target ac3tests ac3hearth-testsink -- -k 0
+        run: >-
+          cmake --build --preset build-linux-gcc
+          --target ac3tests ac3hearth-testsink ac3cli ac3hearth-render -- -k 0
 
       - name: Test
         shell: bash
@@ -541,6 +544,22 @@ jobs:
             /tmp/aiosendspin-venv/bin/python tools/sendspin/aiosendspin_server.py \
               --testsink ./build/config-linux-gcc/bin/ac3hearth-testsink --pair "$pair"
           done
+
+      # planning/ac4.md, phase I2: AC-4's output level, downmixes and dialogue enhancement held to
+      # Part 1's formulas through Hearth's engine - the player, session and stream decoder the
+      # window plays with (apps/hearth/render) - with each of ac3cli's options as the Decoder
+      # page's setting for it, on the committed streams and on the encoder's. The stream's values
+      # come from ac3cli's syntax trace; numpy from the venv above.
+      - name: AC-4 output gains through Hearth's engine
+        shell: bash
+        run: |
+          set -eu
+          /tmp/aiosendspin-venv/bin/python tools/checks/gain_ac4_decode.py \
+            --cli ./build/config-linux-gcc/bin/ac3cli \
+            --engine ./build/config-linux-gcc/bin/ac3hearth-render
+          /tmp/aiosendspin-venv/bin/python tools/checks/gain_ac4_decode.py \
+            --cli ./build/config-linux-gcc/bin/ac3cli \
+            --engine ./build/config-linux-gcc/bin/ac3hearth-render --encoder
 
       # See adm-validate's identical step for why the result is recorded this way.
       - name: Record result
@@ -1509,8 +1528,20 @@ jobs:
       # committed FLAC fixtures (which is what needs this job's ffmpeg and
       # numpy): the lag, the level, per-channel SNR floors and tone routing.
       # planning/ac4.md, the decoder's ladder, item 3.
+      # Workspace-relative, not runner.temp: this job runs in a container, and
+      # runner.temp names the host's path, which a step inside the container
+      # writes somewhere upload-artifact never looks.
       - name: AC-4 decode against DEE's sources (level, SNR floors, lag)
-        run: python3 tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli
+        run: |
+          python3 tools/checks/score_ac4_decode.py --cli build/config-linux-llvm/bin/ac3cli \
+            --json-out ac4-quality/ac4-decode-quality.json
+
+      - name: Upload AC-4 decode quality results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ac4-quality-decode-linux-llvm
+          path: ac4-quality/ac4-decode-quality.json
+          if-no-files-found: error
 
       # planning/ac4.md, phase D6: the output level and each downmix held to
       # Part 1's formulas with each committed stream's own dialnorm and mix

@@ -6,8 +6,14 @@
 #include <QVariantMap>
 
 #include <cmath>
+#include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 // apps/hearth/ui/hearth_controller.cpp's own QML-translation layer (issue
 // #886, part 2): queue_row(), media_info_to_map() and its field-by-field
@@ -60,7 +66,10 @@
 #include "ac3/io/probe.hpp"
 #include "ac3/oba/oamd.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
 #include "container_input.hpp"
+#include "probe_json.hpp"
 #include "decoder_settings.hpp"
 #include "media_info.hpp"
 #include "queue.hpp"
@@ -131,9 +140,8 @@ TEST_CASE("queue_row: an unplayable item reports why, and bitrateKbps is absent,
     CHECK_FALSE(row.contains(QStringLiteral("bitrateKbps")));
     CHECK(row.value(QStringLiteral("durationMs")).toLongLong() == 0);
     CHECK_FALSE(row.value(QStringLiteral("current")).toBool());
-    // AC-3 (not E-AC-3), no objects: codec_badge()/stream_kind_name() read
-    // "" until item.facts.stream is set at all (an AC-4 item never sets it,
-    // and this item's facts here are the same "not yet probed" shape).
+    // codec_badge()/stream_kind_name() read "" until item.facts.stream is
+    // set at all, and this item's facts are the "not yet probed" shape.
     CHECK(row.value(QStringLiteral("streamKind")).toString().isEmpty());
     CHECK(row.value(QStringLiteral("codecBadge")).toString().isEmpty());
 }
@@ -149,6 +157,22 @@ TEST_CASE("queue_row: a plain AC-3 item's badge is A3, not E3", "[hearth][hearth
     // combined "AC-3/E-AC-3" this test's own name already distinguishes
     // codecBadge for.
     CHECK(row.value(QStringLiteral("streamKind")).toString().toStdString() == "AC-3");
+}
+
+TEST_CASE("queue_row: an AC-4 item's badge is A4 and its kind AC-4, whatever its IEC 61937 rate",
+          "[hearth][hearth-controller]") {
+    for (const auto format :
+         {ac3::audio::BitstreamFormat::kAc4, ac3::audio::BitstreamFormat::kAc4Hbr4,
+          ac3::audio::BitstreamFormat::kAc4Hbr16}) {
+        QueueItem item = queue_item("a.ac4", "a.ac4");
+        item.facts.stream = format;
+        // Objects never make an AC-4 item "E-AC-3 JOC".
+        item.facts.has_objects = true;
+        const QVariantMap row = ac3::hearth::ui::queue_row(item, false);
+        CAPTURE(static_cast<int>(format));
+        CHECK(row.value(QStringLiteral("codecBadge")).toString().toStdString() == "A4");
+        CHECK(row.value(QStringLiteral("streamKind")).toString().toStdString() == "AC-4");
+    }
 }
 
 // --- media_container_to_map() ------------------------------------------
@@ -519,6 +543,168 @@ TEST_CASE("decoder settings: mode/downmix/dual-mono/objects/joc-domain/concealme
     }
     CHECK(ac3::hearth::ui::decoder_settings_to_map(DecoderSettings{}).value(QStringLiteral("mode"))
               .toString().toStdString() == "line");
+}
+
+// --- AC-4's own decoder settings (planning/ac4.md, I2; DecoderAc4.qml) -------
+
+TEST_CASE("decoder settings: AC-4's own controls round-trip through the map",
+          "[hearth][hearth-controller]") {
+    DecoderSettings settings;
+    settings.ac4.presentation_id = 7;
+    settings.ac4.presentation_index = 2;
+    settings.ac4.language = "de";
+    settings.ac4.audio_description = true;
+    settings.ac4.associated_db = -9.0;
+    settings.ac4.dialogue_db = 4.0;
+    settings.ac4.dialogue_enhancement_db = 6.0;
+    settings.ac4.normalise = false;
+    settings.ac4.output_level_dbfs = -17.0;
+    settings.ac4.drc = ac4::DrcMode::kPortableSpeakers;
+    settings.ac4.preferred_downmix = true;
+
+    const QVariantMap map = ac3::hearth::ui::decoder_settings_to_map(settings);
+    CHECK(map.value(QStringLiteral("ac4PresentationId")).toInt() == 7);
+    CHECK(map.value(QStringLiteral("ac4PresentationIndex")).toInt() == 2);
+    CHECK(map.value(QStringLiteral("ac4Language")).toString().toStdString() == "de");
+    CHECK(map.value(QStringLiteral("ac4AudioDescription")).toBool());
+    CHECK(map.value(QStringLiteral("ac4AssociatedDb")).toDouble() == Catch::Approx(-9.0));
+    CHECK(map.value(QStringLiteral("ac4DialogueDb")).toDouble() == Catch::Approx(4.0));
+    CHECK(map.value(QStringLiteral("ac4DialogueEnhancementDb")).toDouble() == Catch::Approx(6.0));
+    CHECK_FALSE(map.value(QStringLiteral("ac4Normalise")).toBool());
+    CHECK(map.value(QStringLiteral("ac4OutputLevelDbfs")).toDouble() == Catch::Approx(-17.0));
+    CHECK(map.value(QStringLiteral("ac4Drc")).toString().toStdString() == "portableSpeakers");
+    CHECK(map.value(QStringLiteral("ac4PreferredDownmix")).toBool());
+
+    const DecoderSettings round_tripped =
+        ac3::hearth::ui::decoder_settings_from_map(map, DecoderSettings{});
+    CHECK(round_tripped == settings);
+}
+
+TEST_CASE("decoder settings: no presentation chosen reads -1, and -1 or null chooses none",
+          "[hearth][hearth-controller]") {
+    const QVariantMap map = ac3::hearth::ui::decoder_settings_to_map(DecoderSettings{});
+    CHECK(map.value(QStringLiteral("ac4PresentationId")).toInt() == -1);
+    CHECK(map.value(QStringLiteral("ac4PresentationIndex")).toInt() == -1);
+
+    DecoderSettings chosen;
+    chosen.ac4.presentation_id = 3;
+    chosen.ac4.presentation_index = 1;
+    for (const QVariant& none : {QVariant(-1), QVariant(), QVariant::fromValue(nullptr)}) {
+        const DecoderSettings cleared = ac3::hearth::ui::decoder_settings_from_map(
+            QVariantMap{{QStringLiteral("ac4PresentationId"), none},
+                        {QStringLiteral("ac4PresentationIndex"), none}},
+            chosen);
+        CHECK_FALSE(cleared.ac4.presentation_id.has_value());
+        CHECK_FALSE(cleared.ac4.presentation_index.has_value());
+    }
+    const DecoderSettings index_zero = ac3::hearth::ui::decoder_settings_from_map(
+        QVariantMap{{QStringLiteral("ac4PresentationIndex"), 0}}, DecoderSettings{});
+    REQUIRE(index_zero.ac4.presentation_index.has_value());
+    CHECK(*index_zero.ac4.presentation_index == 0);
+}
+
+TEST_CASE("decoder settings: the LFE in a fold is absent from the map until it is set",
+          "[hearth][hearth-controller]") {
+    // Absent, each page shows its own format's default (DecoderSettings::mix_lfe).
+    CHECK_FALSE(ac3::hearth::ui::decoder_settings_to_map(DecoderSettings{})
+                    .contains(QStringLiteral("mixLfe")));
+    const DecoderSettings unset =
+        ac3::hearth::ui::decoder_settings_from_map(QVariantMap{}, DecoderSettings{});
+    CHECK_FALSE(unset.mix_lfe.has_value());
+    const DecoderSettings off = ac3::hearth::ui::decoder_settings_from_map(
+        QVariantMap{{QStringLiteral("mixLfe"), false}}, DecoderSettings{});
+    REQUIRE(off.mix_lfe.has_value());
+    CHECK_FALSE(*off.mix_lfe);
+    CHECK(ac3::hearth::ui::decoder_settings_to_map(off).value(QStringLiteral("mixLfe")) ==
+          QVariant(false));
+}
+
+TEST_CASE("decoder settings: the AC-4 device names are stable", "[hearth][hearth-controller]") {
+    // DecoderAc4.qml's drcValues, in its list's order.
+    const std::vector<std::pair<std::string, ac4::DrcMode>> names = {
+        {"auto", ac4::DrcMode::kDefault},
+        {"homeTheatre", ac4::DrcMode::kHomeTheatre},
+        {"flatPanelTv", ac4::DrcMode::kFlatPanelTv},
+        {"portableSpeakers", ac4::DrcMode::kPortableSpeakers},
+        {"portableHeadphones", ac4::DrcMode::kPortableHeadphones},
+        {"off", ac4::DrcMode::kOff}};
+    for (const auto& [name, mode] : names) {
+        CAPTURE(name);
+        DecoderSettings settings;
+        settings.ac4.drc = mode;
+        CHECK(ac3::hearth::ui::decoder_settings_to_map(settings)
+                  .value(QStringLiteral("ac4Drc"))
+                  .toString()
+                  .toStdString() == name);
+        const DecoderSettings back = ac3::hearth::ui::decoder_settings_from_map(
+            QVariantMap{{QStringLiteral("ac4Drc"), QString::fromStdString(name)}},
+            DecoderSettings{});
+        CHECK(back.ac4.drc == mode);
+    }
+    // A name the page does not know is Automatic.
+    CHECK(ac3::hearth::ui::decoder_settings_from_map(
+              QVariantMap{{QStringLiteral("ac4Drc"), QStringLiteral("loud")}}, DecoderSettings{})
+              .ac4.drc == ac4::DrcMode::kDefault);
+}
+
+// --- media_ac4_to_map(): what the decoder reads of an AC-4 stream -------------
+
+namespace {
+
+std::vector<std::byte> read_bytes(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    REQUIRE(in.good());
+    const std::vector<char> chars((std::istreambuf_iterator<char>(in)),
+                                  std::istreambuf_iterator<char>());
+    std::vector<std::byte> bytes(chars.size());
+    for (std::size_t i = 0; i < chars.size(); ++i) {
+        bytes[i] = static_cast<std::byte>(chars[i]);
+    }
+    return bytes;
+}
+
+}  // namespace
+
+TEST_CASE("media_ac4_to_map: a DEE stream's frame rate, I-frames, presentation and metadata",
+          "[hearth][hearth-controller]") {
+    // Its manifest entry (tests/golden/external-baseline/ac4-manifest.json):
+    // 5.1 at 192 kbit/s, 120 frames at frame_rate_index 13, Lt/Rt preferred.
+    const std::vector<std::byte> bytes =
+        read_bytes(std::filesystem::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} /
+                   "ac4-51-drc-ltrt-192" / "dee.ac4");
+    const ac3::apps::probe_json::Ac4Summary summary = ac3::apps::probe_json::summarize_ac4(bytes);
+    const QVariantMap map = ac3::hearth::ui::media_ac4_to_map(summary);
+
+    CHECK(map.value(QStringLiteral("syncFrames")).toLongLong() == 120);
+    CHECK(map.value(QStringLiteral("frameLength")).toInt() == 2048);
+    CHECK(map.value(QStringLiteral("framesPerSecond")).toDouble() ==
+          Catch::Approx(48000.0 / 2048.0));
+    CHECK(map.value(QStringLiteral("bitrateKbps")).toDouble() ==
+          Catch::Approx(192.0).epsilon(0.05));
+    CHECK(map.value(QStringLiteral("iframes")).toLongLong() >= 1);
+    CHECK(map.value(QStringLiteral("splices")).toLongLong() == 0);
+
+    const QVariantList presentations = map.value(QStringLiteral("presentations")).toList();
+    REQUIRE(presentations.size() == 1);
+    const QVariantMap presentation = presentations.front().toMap();
+    CHECK(presentation.value(QStringLiteral("index")).toInt() == 0);
+    CHECK(presentation.value(QStringLiteral("channels")).toString().toStdString() == "5.1");
+    CHECK(presentation.value(QStringLiteral("contents")).toStringList() ==
+          QStringList{QStringLiteral("main")});
+    CHECK(presentation.value(QStringLiteral("decodable")).toBool());
+
+    REQUIRE(map.contains(QStringLiteral("metadata")));
+    const QVariantMap metadata = map.value(QStringLiteral("metadata")).toMap();
+    CHECK(metadata.value(QStringLiteral("presentation")).toInt() == 0);
+    REQUIRE(metadata.contains(QStringLiteral("dialnormDbfs")));
+    CHECK(metadata.value(QStringLiteral("dialnormDbfs")).toDouble() < 0.0);
+    REQUIRE(metadata.contains(QStringLiteral("downmix")));
+    CHECK(metadata.value(QStringLiteral("downmix"))
+              .toMap()
+              .value(QStringLiteral("preferred"))
+              .toString()
+              .toStdString() == "ltrt");
+    CHECK(metadata.contains(QStringLiteral("drcModes")));
 }
 
 // --- output_format_to_map() -----------------------------------------------

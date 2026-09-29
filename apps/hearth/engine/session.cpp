@@ -8,13 +8,76 @@
 #include <utility>
 
 #include "ac3/core/tables.hpp"
+#include "ac3/iec61937/iec61937.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac4_stream.hpp"
 
 // See session.hpp.
 
 namespace ac3::hearth {
 
 namespace {
+
+// The link an AC-4 stream's bursts need: the smallest of IEC 61937-14's burst
+// types its largest frame fits at its frame rate, which the extension role
+// carries whichever it is. Nothing when not even HBR16's does.
+[[nodiscard]] std::optional<audio::BitstreamFormat> ac4_link(const Ac4Units& units) {
+    std::size_t largest = 0;
+    for (const std::span<const std::byte> frame : units.frames) {
+        largest = std::max(largest, frame.size());
+    }
+    const ac4::Toc& toc = units.first.toc;
+    const std::optional<iec61937::BurstDataType> type = iec61937::ac4_burst_type_for(
+        largest, toc.sample_rate_hz == 44100 ? 0 : 1, toc.frame_rate_index);
+    if (!type) {
+        return std::nullopt;
+    }
+    switch (*type) {
+        case iec61937::BurstDataType::kAc4Hbr4:
+            return audio::BitstreamFormat::kAc4Hbr4;
+        case iec61937::BurstDataType::kAc4Hbr16:
+            return audio::BitstreamFormat::kAc4Hbr16;
+        case iec61937::BurstDataType::kAc4:
+        case iec61937::BurstDataType::kAc4Ld:
+        case iec61937::BurstDataType::kAc3:
+        case iec61937::BurstDataType::kEac3:
+            break;
+    }
+    return audio::BitstreamFormat::kAc4;
+}
+
+// What an AC-4 decoder reads of the stream's first frames: its presentations,
+// and why none of them decodes where that is so - a substream this build
+// refuses by name, such as an immersive element or objects.
+struct Ac4Reading {
+    std::vector<ac4::PresentationInfo> presentations;
+    std::string refusal;
+};
+
+[[nodiscard]] Ac4Reading read_presentations(const Ac4Units& units) {
+    Ac4Reading out;
+    ac4::Decoder reader;
+    // The first frames whose tables of contents read; a few, since the first
+    // may be damaged.
+    constexpr std::size_t kFramesRead = 4;
+    for (std::size_t i = 0; i < units.frames.size() && i < kFramesRead; ++i) {
+        const auto report = reader.parse(raw_frame_of(units.frames[i]));
+        if (!report) {
+            continue;
+        }
+        for (const ac4::SubstreamReport& substream : report->substreams) {
+            if (substream.refused == ac4::DecodeError::kUnsupported && out.refusal.empty()) {
+                out.refusal = std::string{substream.refused_reason};
+            }
+        }
+        const std::span<const ac4::PresentationInfo> presentations = reader.presentations();
+        if (!presentations.empty()) {
+            out.presentations.assign(presentations.begin(), presentations.end());
+            break;
+        }
+    }
+    return out;
+}
 
 // Passthrough's question about the stream, which is a different question
 // from what the bytes are: an AC-3 core carrying E-AC-3 dependents only
@@ -39,9 +102,9 @@ namespace {
 
 }  // namespace
 
-std::expected<Session, std::string> Session::open(const std::string& path,
-                                                  const ItemLoader& loader,
-                                                  std::optional<int> programme) {
+std::expected<Session, std::string> Session::open(const std::string& path, const ItemLoader& loader,
+                                                  std::optional<int> programme,
+                                                  const ac4::PresentationChoice& presentation) {
     if (!loader) {
         return std::unexpected(std::string{"Nothing is set up to read items."});
     }
@@ -52,48 +115,81 @@ std::expected<Session, std::string> Session::open(const std::string& path,
 
     Session session;
     session.bytes_ = std::move(loaded->bytes);
-    auto scanned = io::scan(session.bytes_);
-    if (!scanned) {
-        return std::unexpected(fmt::format(
-            "\"{}\" is not an AC-3 or E-AC-3 stream this player can read.", path));
-    }
-    if (scanned->access_units.empty()) {
-        return std::unexpected(fmt::format("\"{}\" holds no audio.", path));
-    }
-    session.scanned_ = std::move(*scanned);
     std::string note = std::move(loaded->note);
-
-    // The programme's units, and how long each is: scan() has already read
-    // the first programme's lengths; another's are read from its units.
-    const io::ScannedProgramme* chosen = nullptr;
-    if (programme) {
-        const auto found =
-            std::ranges::find(session.scanned_.programmes, *programme, &io::ScannedProgramme::substreamid);
-        if (found != session.scanned_.programmes.end()) {
-            chosen = &*found;
-        } else {
-            note += fmt::format("{}The stream has no programme {}, so its first one plays.",
-                                note.empty() ? "" : " ", *programme);
-        }
-    }
     std::vector<std::uint32_t> lengths;
-    if (chosen != nullptr && chosen != &session.scanned_.programmes.front()) {
-        session.units_ = chosen->access_units;
-        session.programme_ = chosen->substreamid;
-        session.first_programme_ = false;
-        session.facts_.channels = static_cast<std::uint16_t>(std::max(chosen->channels, 0));
-        lengths.reserve(session.units_.size());
-        for (const auto unit : session.units_) {
-            lengths.push_back(unit_samples(unit));
+    std::uint32_t rate = 0;
+    if (starts_ac4(session.bytes_)) {
+        auto units = read_ac4_units(session.bytes_);
+        if (!units) {
+            return std::unexpected(fmt::format("\"{}\" cannot be played: {}", path, units.error()));
+        }
+        const Ac4Reading reading = read_presentations(*units);
+        if (std::ranges::none_of(reading.presentations, &ac4::PresentationInfo::selectable)) {
+            return std::unexpected(fmt::format(
+                "\"{}\" has no presentation this build decodes{}.", path,
+                reading.refusal.empty() ? std::string{} : fmt::format(": {}", reading.refusal)));
+        }
+        session.ac4_ = true;
+        session.ac4_toc_ = units->first.toc;
+        session.units_ = std::move(units->frames);
+        session.iframes_ = std::move(units->iframes);
+        lengths = std::move(units->samples);
+        rate = units->sample_rate;
+        session.facts_.stream = ac4_link(*units);
+        const std::optional<std::size_t> chosen = session.ac4_presentation(presentation);
+        if (chosen && *chosen < reading.presentations.size()) {
+            session.facts_.channels =
+                static_cast<std::uint16_t>(reading.presentations[*chosen].speakers.size());
+        }
+        if (units->unread > 0) {
+            note += fmt::format("{}{} of its frames did not read, and are concealed.",
+                                note.empty() ? "" : " ", units->unread);
         }
     } else {
-        session.units_ = session.scanned_.access_units;
-        session.programme_ = session.scanned_.programmes.empty()
-                                 ? 0
-                                 : session.scanned_.programmes.front().substreamid;
-        session.facts_.channels =
-            static_cast<std::uint16_t>(std::max(session.scanned_.channels, 0));
-        lengths = session.scanned_.access_unit_samples;
+        auto scanned = io::scan(session.bytes_);
+        if (!scanned) {
+            return std::unexpected(fmt::format(
+                "\"{}\" is not an AC-3, E-AC-3 or AC-4 stream this player can read.", path));
+        }
+        if (scanned->access_units.empty()) {
+            return std::unexpected(fmt::format("\"{}\" holds no audio.", path));
+        }
+        session.scanned_ = std::move(*scanned);
+
+        // The programme's units, and how long each is: scan() has already
+        // read the first programme's lengths; another's are read from its
+        // units.
+        const io::ScannedProgramme* chosen = nullptr;
+        if (programme) {
+            const auto found = std::ranges::find(session.scanned_.programmes, *programme,
+                                                 &io::ScannedProgramme::substreamid);
+            if (found != session.scanned_.programmes.end()) {
+                chosen = &*found;
+            } else {
+                note += fmt::format("{}The stream has no programme {}, so its first one plays.",
+                                    note.empty() ? "" : " ", *programme);
+            }
+        }
+        if (chosen != nullptr && chosen != &session.scanned_.programmes.front()) {
+            session.units_ = chosen->access_units;
+            session.programme_ = chosen->substreamid;
+            session.first_programme_ = false;
+            session.facts_.channels = static_cast<std::uint16_t>(std::max(chosen->channels, 0));
+            lengths.reserve(session.units_.size());
+            for (const auto unit : session.units_) {
+                lengths.push_back(unit_samples(unit));
+            }
+        } else {
+            session.units_ = session.scanned_.access_units;
+            session.programme_ = session.scanned_.programmes.empty()
+                                     ? 0
+                                     : session.scanned_.programmes.front().substreamid;
+            session.facts_.channels =
+                static_cast<std::uint16_t>(std::max(session.scanned_.channels, 0));
+            lengths = session.scanned_.access_unit_samples;
+        }
+        session.facts_.stream = format_of(session.scanned_.kind);
+        rate = sample_rate_hz(session.scanned_.sample_rate);
     }
     if (session.units_.empty()) {
         return std::unexpected(fmt::format("\"{}\" holds no audio.", path));
@@ -123,8 +219,6 @@ std::expected<Session, std::string> Session::open(const std::string& path,
     session.next_frame_ = 0;
     session.skip_until_ = 0;
 
-    const std::uint32_t rate = sample_rate_hz(session.scanned_.sample_rate);
-    session.facts_.stream = format_of(session.scanned_.kind);
     session.facts_.sample_rate = rate;
     if (rate != 0) {
         session.facts_.duration =
@@ -231,10 +325,13 @@ std::expected<std::size_t, std::string> Session::render(StreamDecoder& decoder,
             // unit a part-way start decodes first and drops.
             const std::uint64_t played_from = std::max(window_start_, skip_until_);
             if (starts_[next_ + 1] > played_from && starts_[next_] < window_end_) {
-                sent(units_[next_], static_cast<std::uint32_t>(starts_[next_ + 1] - starts_[next_]));
+                sent(units_[next_], static_cast<std::uint32_t>(starts_[next_ + 1] - starts_[next_]),
+                     starts_[next_] > window_start_ ? starts_[next_] - window_start_ : 0);
             }
         }
-        const auto got = decoder.decode(units_[next_], window, units_reported);
+        const auto got =
+            decoder.decode(units_[next_], window, units_reported,
+                           static_cast<std::uint32_t>(starts_[next_ + 1] - starts_[next_]));
         ++next_;
         if (!got) {
             // The unit's samples never arrive, and the decoder has let go of
@@ -256,12 +353,45 @@ std::expected<std::size_t, std::string> Session::render(StreamDecoder& decoder,
     return frames;
 }
 
+std::optional<std::size_t> Session::ac4_presentation(const ac4::PresentationChoice& choice) const {
+    if (!ac4_) {
+        return std::nullopt;
+    }
+    return ac4::select_presentation(ac4_toc_, choice, ac4::DecoderConfig{}.level);
+}
+
+std::size_t Session::first_decoded(std::size_t unit) const {
+    if (unit == 0) {
+        return 0;
+    }
+    if (!ac4_) {
+        return unit - 1;
+    }
+    // The last I-frame at or before `unit`, and of those, the last with the
+    // pre-roll before `unit`; a stream with no I-frame there starts at
+    // `unit`, and waits for one.
+    std::optional<std::size_t> nearest;
+    const std::size_t last = std::min(unit, units_.size() - 1);
+    for (std::size_t i = last + 1; i-- > 0;) {
+        if (!iframes_[i]) {
+            continue;
+        }
+        if (!nearest) {
+            nearest = i;
+        }
+        if (starts_[i] + kAc4PreRollSamples <= starts_[unit]) {
+            return i;
+        }
+    }
+    return nearest.value_or(unit);
+}
+
 void Session::start_at(std::size_t unit, StreamDecoder& decoder) {
     decoder.reset();
     finished_ = false;
     const std::size_t target = std::min(unit, units_.size());
     skip_until_ = starts_[target];
-    next_ = target > 0 ? target - 1 : 0;
+    next_ = std::min(first_decoded(target), units_.size() - 1);
     next_frame_ = starts_[next_];
 }
 

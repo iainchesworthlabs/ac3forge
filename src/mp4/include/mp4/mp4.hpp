@@ -99,12 +99,17 @@ struct AudioTrack {
     // string", which stays true for AC-3/E-AC-3. Kept here rather than
     // parsed out of codec_config so this module stays codec-blind.
     std::string rfc6381{};
-    // mux() only: the media's and the movie's timescale, which
-    // samples_per_frame and an edit then count in; 0 is sample_rate. AC-4 at
+    // The media's and the movie's timescale, which samples_per_frame, an edit
+    // and a fragment's decode times then count in; 0 is sample_rate. AC-4 at
     // 29.97, 59.94 and 119.88 fps, whose frames are no whole number of
     // samples, takes 240 000 (ETSI TS 103 190-2 Table E.1).
     std::uint32_t timescale = 0;
 };
+
+// The timescale a track counts in: AudioTrack::timescale, or its sample rate.
+[[nodiscard]] constexpr std::uint32_t timescale_of(const AudioTrack& track) {
+    return track.timescale != 0 ? track.timescale : track.sample_rate;
+}
 
 struct MuxOptions {
     std::string writing_app{"ac3forge"};
@@ -175,7 +180,9 @@ struct FragmentOptions {
     // already groups a whole access unit - independent substream plus any
     // dependents - into the one opaque frame mp4:: ever sees), so any
     // grouping is valid; this only trades segment count for
-    // segment-switch/start-up latency.
+    // segment-switch/start-up latency. An AC-4 fragment starts at a sync
+    // sample (sync_samples below), so there this is the least a fragment
+    // holds.
     std::uint32_t frames_per_fragment = 48;
     // Adds 'ceao' to the ftyp/styp compatible-brands list. ETSI TS 103 420
     // §E.5 ("Core object-based audio media profile"): "The FileTypeBox
@@ -200,6 +207,26 @@ struct FragmentOptions {
     // at least three target durations of media, so a window below 3 is
     // accepted here but is not something a player will enjoy.
     std::uint32_t playlist_window_segments = 0;
+    // fragment() only: whether each frame is a sync sample, one flag a frame,
+    // for a codec whose frames are not all independently decodable. An AC-4
+    // sample is a sync sample where its table of contents sets
+    // b_iframe_global, and a fragment's first sample must be one (ETSI TS 103
+    // 190-2 E.2 and E.3). Set, a fragment closes once it holds
+    // frames_per_fragment frames and the next frame is a sync sample, so a
+    // fragment holds at least that many frames (the last one excepted), and
+    // each trun that holds a sample that is not a sync sample lists every
+    // sample's flags (ISO/IEC 14496-12 §8.8.3.1's sample_is_non_sync_sample,
+    // and sample_depends_on 1 for such a sample). Empty: every frame is a sync
+    // sample, as every AC-3 and E-AC-3 access unit is. A list of another length
+    // than the frames, or whose first frame is not a sync sample, is
+    // kInvalidOptions. FragmentWriter takes the same flags frame by frame
+    // (push() with a flag).
+    std::vector<bool> sync_samples{};
+    // Compatible brands the ftyp and every styp list after 'iso6' and 'cmfc'
+    // (and 'ceao'): a CMAF media profile's brand, which only the caller knows
+    // its track keeps - ETSI TS 103 190-2 Table H.1's 'ca4m' and 'ca4s' for an
+    // AC-4 track. Four characters each; any other length is kInvalidOptions.
+    std::vector<std::string> brands{};
 };
 
 // One media segment: styp + moof + mdat, ready to write out as-is (e.g.
@@ -210,9 +237,12 @@ struct MediaSegment {
     std::vector<std::byte> bytes;
     std::uint32_t sequence_number = 0;   // this fragment's mfhd sequence_number (1-based)
     std::uint32_t sample_count = 0;      // frames carried in this fragment
-    std::uint64_t duration_samples = 0;  // sample_count * AudioTrack::samples_per_frame
+    // sample_count * AudioTrack::samples_per_frame, in the track's timescale
+    // (timescale_of()), which is the sample rate unless AudioTrack::timescale
+    // says otherwise.
+    std::uint64_t duration_samples = 0;
     // This fragment's own tfdt baseMediaDecodeTime: where it starts on the
-    // track's timeline, in AudioTrack::sample_rate units. Zero for the first
+    // track's timeline, in the track's timescale. Zero for the first
     // segment, and the running sum of every earlier segment's duration_samples
     // after that. A DASH SegmentTimeline's first <S t="..."> needs it whenever
     // the manifest describes a WINDOW of segments rather than the whole track
@@ -307,6 +337,15 @@ class MP4_EXPORT FragmentWriter {
     // nullopt otherwise. Write whatever comes back, in order, as it comes back.
     [[nodiscard]] std::expected<std::optional<MediaSegment>, MuxError> push(
         std::span<const std::byte> frame);
+    // The same for a frame that is, or is not, a sync sample
+    // (FragmentOptions::sync_samples): a fragment closes when a sync sample
+    // arrives and it already holds options.frames_per_fragment frames, so the
+    // segment comes back from the push of the sync sample that starts the next
+    // one. For the same frames and flags, the segments are fragment()'s with
+    // those flags as sync_samples. A first frame that is not a sync sample is
+    // kInvalidOptions.
+    [[nodiscard]] std::expected<std::optional<MediaSegment>, MuxError> push(
+        std::span<const std::byte> frame, bool sync);
 
     // Flushes the trailing partial fragment - call exactly once, when the
     // session ends. nullopt when the last push() happened to land on a
@@ -334,6 +373,8 @@ class MP4_EXPORT FragmentWriter {
     FragmentOptions options_;
     std::vector<std::byte> init_segment_;
     std::vector<std::vector<std::byte>> pending_;
+    // Each pending frame's sample flags (build_trun's), 0 for a sync sample.
+    std::vector<std::uint32_t> pending_flags_;
     std::uint64_t decode_time_ = 0;
     std::uint32_t sequence_number_ = 1;
     std::size_t frames_written_ = 0;

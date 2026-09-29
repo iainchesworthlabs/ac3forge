@@ -241,7 +241,7 @@ TEST_CASE("fmp4 refuses an unreadable input, a non-stream one and a directory it
     const auto blocker = dir / "fmp4_blocker";
     std::ofstream{blocker} << "x";
     check_rows({{"fmp4 " + quoted(missing) + " " + quoted(dir / "fmp4_a"), 2,
-                 "error: cannot open " + missing.string()},
+                 "error: cannot read " + missing.string()},
                 {"fmp4 " + quoted(text_file) + " " + quoted(dir / "fmp4_b"), 2,
                  "error: lost sync: expected 0x0B77"},
                 {"fmp4 " + quoted(in.stereo) + " " + quoted(blocker / "out"), 3,

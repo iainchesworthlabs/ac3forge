@@ -1348,7 +1348,11 @@ reading below rests on it.
   I, J and K.
 - **Why:** full SAP's matrix is Part 1's prediction of the second channel from the first, (1 + g, 1; 1 - g,
   -1); its gain is the one value per band the step can take.
-- **Evidence:** Text. DEE sends these four `chparam_info()` with `sap_mode` 0 in every frame.
+- **Evidence:** Streams. DEE's SCPL and ASPX_SCPL streams send these four `chparam_info()` with `sap_mode`
+  3 in nearly every frame and `sap_mode` 2 in the rest (the 237 frames of G0's `514-music-768`: 236 for
+  each surround pair, 216 and 220 for the top pairs), and the ten tones of its 5.1.4 legs decode with this
+  reading each on its own channel (`tools/checks/score_ac4_decode.py`).
+  Phase E8's encoder writes them the same way (`src/ac4enc/ERRATA.md`, "Table 20's prediction").
 
 ### ASPX_ACPL_2 and step 4
 
@@ -1622,6 +1626,24 @@ output level and DRC (5.7.9) and the downmix (6.2.17), and after it, the sample 
   output sample.
 - **Evidence:** Text; `tests/ac4dec/test_ac4dec_decoder.cpp` holds the counts across a jump and a 0 at
   29.97 fps.
+
+### The profile a transcoder to AC-3 or E-AC-3 takes
+
+- **Where:** Part 1 5.7.9.4, p. 258; 4.3.13.2.2 and Table 160, p. 123.
+- **Text:** the clause has a transcoder apply no DRC and configure the AC-3 or E-AC-3 encoder with the
+  curve of a field it calls `drc_eac3_transcode_curve`, "in table 160". Part 1 has no field of that
+  name; Table 160 is `drc_eac3_profile`'s, which 4.3.13.2.2 describes as the (E-)AC-3 profile to use
+  when transcoding.
+- **Reading:** the field is `drc_eac3_profile`, the one of the presentation transcoded. `ac3cli
+  transcode` (`apps/cli/commands/stream_tools.cpp`) decodes that presentation with no output level, and
+  so no DRC, and the AC-3 or E-AC-3 encoder computes its `dynrng` with the profile the field names: 1 to
+  5 the five of Table 162, and 0 ("None") and the reserved 6 and 7 none, the re-encode then writing no
+  `dynrng`. The clause names one curve, so it shapes the line mode's gains; the RF mode's `compr` stays
+  the encoder's own option (`heavy`).
+- **Evidence:** Text. The value reaches the transcoder as the decoder reports it
+  (`DrcInfo::eac3_profile`), not through the syntax the two transcriptions read, so neither has a
+  reading to take; `tests/cli/test_cli_ac4.cpp` transcodes streams whose profile is film light and one
+  that sends no DRC.
 
 ## Presentations
 

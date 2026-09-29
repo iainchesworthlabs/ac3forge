@@ -73,8 +73,11 @@ inline constexpr std::uint32_t kProgramme = 1U << 18;
 inline constexpr std::uint32_t kPlay = 1U << 19;
 // ac4-encode's frame rate, rate mode, I-frame and metadata options.
 inline constexpr std::uint32_t kAc4Encode = 1U << 20;
+// What reads an AC-4 stream: which presentation (presentation=, language=,
+// ...), its mix, and decode/monitor/play's output processing.
+inline constexpr std::uint32_t kAc4Decode = 1U << 21;
 
-inline constexpr std::uint32_t kAll = 0x1FFFFFU;
+inline constexpr std::uint32_t kAll = 0x3FFFFFU;
 
 }  // namespace topic
 

@@ -1,8 +1,8 @@
 # Sink firmware: install, update, go back
 
-Each release of this project publishes `hearth_sink` built for four boards, so a board can be set
-up and kept up to date without ESP-IDF. This guide is for someone with a board and a release. It
-covers:
+Every tagged release publishes `hearth_sink` built for four boards, so a board can be set up and
+kept up to date without ESP-IDF. CI packages the images on every run; the release workflow attaches
+them to the GitHub release. This guide is for someone with a board and a release. It covers:
 
 - which image a board takes, and checking a download;
 - installing a new board, and moving a board that runs an older build;
@@ -13,11 +13,13 @@ To build the firmware yourself instead, see [An ESP32-S3 sink](sink-esp32-s3.md#
 [planning/esp32-ota.md](https://github.com/iainchesworthlabs/ac3forge/blob/main/planning/esp32-ota.md)
 has the design and the reasons for it.
 
-!!! note "Status as of 2026-09-25: unsigned development images"
+!!! note "Status as of 2026-09-26: unsigned development images"
     The images are checked for damage at every step, but not signed: while the boards are in
     development, anyone on a board's network can update it, as anyone with a USB cable can.
-    Signed images come when the boards leave development. No release has published sink
-    firmware yet; the first one to do so will carry the files this guide names.
+    Signed images come when the boards leave development. Until the first tagged release that
+    carries sink firmware, build from source ([An ESP32-S3 sink](sink-esp32-s3.md#build-and-flash))
+    or take the `esp32-firmware` artifact from a recent CI run; the release workflow and
+    [Sink installer](sink-installer.md) are already wired for when that release lands.
 
 ## Which image
 

@@ -1,5 +1,5 @@
 site_name: ac3forge
-site_description: A clean-room AC-3 / E-AC-3 / Dolby Atmos codec library in C++23, the Forge CLI and GUI over it, Crucible, a desktop per-application Atmos mixer, and Hearth, the playback member
+site_description: A clean-room AC-3 / E-AC-3 / AC-4 / Dolby Atmos codec library in C++23, the Forge CLI and GUI over it, Crucible, a desktop per-application Atmos mixer, and Hearth, the playback member
 site_url: https://iainchesworthlabs.github.io/ac3forge/
 repo_url: https://github.com/iainchesworthlabs/ac3forge
 repo_name: iainchesworthlabs/ac3forge
@@ -101,7 +101,7 @@ nav:
           - ADM / BW64 reading: library/adm.md
           - ADM → Atmos bridging: library/adm-bridge.md
           - IAMF writing: library/iamf.md
-          - AC-4 decoding: library/ac4.md
+          - AC-4 decoding and encoding: library/ac4.md
           - Measuring quality: library/quality.md
           - Object signing: library/signing.md
           - Header map: library/header-map.md
@@ -156,6 +156,7 @@ nav:
   - Hearth:
       - Overview: hearth/index.md
       - An ESP32-S3 sink: hearth/sink-esp32-s3.md
+      - An ESP32-C6 sink: hearth/sink-esp32-c6.md
       - Sink firmware: hearth/sink-firmware.md
       - Install from the browser: hearth/sink-installer.md
       - Design record: hearth/design/player-appliance.md
@@ -174,6 +175,7 @@ nav:
           - Overview: platforms/bare-metal/index.md
           - Cortex-M3 (QEMU reference): platforms/bare-metal/cortex-m3.md
           - ESP32-S3: platforms/bare-metal/esp32-s3.md
+          - ESP32-P4: platforms/bare-metal/esp32-p4.md
           - ESP32-C3: platforms/bare-metal/esp32-c3.md
           - ESP32-C6: platforms/bare-metal/esp32-c6.md
           - ESPHome: platforms/bare-metal/esphome.md

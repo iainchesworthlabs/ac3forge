@@ -21,7 +21,8 @@
 // on whole access units, so the bytes they keep are byte-for-byte the bytes
 // that went in. 'transcode' is the one that does re-encode, because DD+ and
 // DD are different codecs and nothing else can bridge them - it carries the
-// metadata across rather than resetting it.
+// metadata across rather than resetting it. It alone also reads and writes
+// AC-4.
 //
 // Split into its own file rather than added to decode.hpp/containers.hpp for
 // the reason the H4 monolith split gives generally: these five share a
@@ -59,7 +60,8 @@ struct DecodeRenderStats {
 // Decodes the whole of `loaded` and renders it through `routing` into
 // complete ac3::kSamplesPerFrame blocks (the last one held-sample-padded, not
 // silence-dropped - see SampleQueue::take in the .cpp), calling `on_frame`
-// for each one. `coded_channels` sizes the buffers `on_frame` receives -
+// for each one with how many of its samples are the programme's: all of them
+// but in the last. `coded_channels` sizes the buffers `on_frame` receives -
 // independent of the SOURCE's own channel count, which this reads off
 // `loaded.scan` itself.
 //
@@ -75,15 +77,22 @@ struct DecodeRenderStats {
 //
 // Returns nullopt on any failure (already reported to stderr, from here or
 // from `on_frame`/`on_abort`'s own caller).
+using RenderedFrame = std::function<bool(std::span<const std::span<const float>>, std::size_t)>;
+
 [[nodiscard]] std::optional<DecodeRenderStats> decode_and_render(
     std::string_view in_path, const LoadedStream& loaded, const ac3::plan::Routing& routing,
-    std::size_t coded_channels,
-    const std::function<bool(std::span<const std::span<const float>>)>& on_frame,
+    std::size_t coded_channels, const RenderedFrame& on_frame,
     const std::function<void()>& on_abort = [] { /* default: nothing to clean up */ });
 
 // Decode and re-encode, preserving dialnorm, DRC and the mix metadata the
 // target codec has room for. The output codec comes from out_path's suffix
-// (.ac3/.ec3), or from codec= when the suffix cannot say (stdout, "-").
+// (.ac3/.ec3/.ac4), or from codec= when the suffix cannot say (stdout, "-").
+// Between AC-4 and AC-3 or E-AC-3 in either direction: an AC-4 source's
+// presentation, the one decode's options choose, decoded without DRC and
+// re-encoded with its drc_eac3_profile as the DRC profile (ETSI TS 103 190-1
+// clause 5.7.9.4), its dialnorm and its downmix values; an AC-3 or E-AC-3
+// source's dialnorm and downmix values sent as AC-4's. A bitrate of 0 takes
+// the default, 448 kbps for AC-3 and E-AC-3 and 192 for AC-4.
 int run_transcode(std::string_view in_path, std::string_view out_path, std::uint32_t bitrate,
                   std::string_view layout, const ac3cli::Options& meta);
 

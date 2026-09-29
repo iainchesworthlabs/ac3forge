@@ -6,6 +6,7 @@
 # with no display and no sound card.
 add_library(ac3hearth_engine STATIC
     ac3_transcoder.cpp
+    ac4_stream.cpp
     decoder_settings.cpp
     device_sink.cpp
     diagnostic_log.cpp

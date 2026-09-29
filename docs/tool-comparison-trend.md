@@ -1,5 +1,9 @@
 # Tool comparison trend
 
+This page compares AC-3 and E-AC-3 encoders. AC-4 is not compared here. Its encoder is raced
+against Dolby's DEE encoder by `tools/checks/score_ac4_encode.py --gold`, which runs locally
+because DEE is not available in CI; see [Validation](verification.md#ac-4).
+
 The commit-level half of the external-encoder landscape comparison — see
 [Landscape](landscape.md) for the release-facing headline number. Every push
 to `main` encodes the same three fixed legs

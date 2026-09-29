@@ -1,0 +1,16 @@
+ac4::Encoder::Encoder(ac4::Encoder&&)
+ac4::Encoder::Encoder(std::unique_ptr<ac4::Encoder::Impl, std::default_delete<ac4::Encoder::Impl> >)
+ac4::Encoder::codec_mode() const
+ac4::Encoder::create(ac4::EncoderConfig const&)
+ac4::Encoder::decoder_delay_samples() const
+ac4::Encoder::delay_samples() const
+ac4::Encoder::encode(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
+ac4::Encoder::encode(std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>, std::span<std::span<float const, 18446744073709551615ul> const, 18446744073709551615ul>)
+ac4::Encoder::flush()
+ac4::Encoder::operator=(ac4::Encoder&&)
+ac4::Encoder::refusal_reason(ac4::EncoderConfig const&)
+ac4::Encoder::toc() const
+ac4::Encoder::~Encoder()
+ac4::describe(ac4::EncodeError)
+ac4::sync_frame(std::span<std::byte const, 18446744073709551615ul>, bool)
+std::_Sp_make_shared_tag::_S_ti()::__tag

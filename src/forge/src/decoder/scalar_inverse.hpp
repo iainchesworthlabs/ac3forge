@@ -25,7 +25,7 @@
 // The two arms differ only in the `fast` argument, which the float32 inverses
 // do not take: the direct form is the spec's own evaluation and stays double,
 // and a profile carrying float32 coefficients has already refused
-// fast_imdct=false with kUnsupported long before reaching here.
+// fast_imdct=false with kNoReferenceTransform long before reaching here.
 
 namespace ac3::internal {
 

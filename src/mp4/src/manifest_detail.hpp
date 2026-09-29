@@ -16,9 +16,10 @@
 
 namespace mp4::manifest_detail {
 
-[[nodiscard]] inline double segment_seconds(const SegmentInfo& segment,
-                                            std::uint32_t sample_rate) {
-    return static_cast<double>(segment.duration_samples) / static_cast<double>(sample_rate);
+// A segment's duration counts in the track's timescale (mp4::timescale_of()),
+// which is its sample rate unless AudioTrack::timescale says otherwise.
+[[nodiscard]] inline double segment_seconds(const SegmentInfo& segment, std::uint32_t timescale) {
+    return static_cast<double>(segment.duration_samples) / static_cast<double>(timescale);
 }
 
 // mp4::segment_info over a whole batch list, for both modules' MediaSegment
@@ -43,12 +44,12 @@ namespace mp4::manifest_detail {
 // measured peak instead, out of this module's single-representation scope
 // (mp4.hpp's own header comment on mp4:: staying single-track).
 [[nodiscard]] inline std::uint64_t estimate_bandwidth_bps(std::span<const SegmentInfo> segments,
-                                                          std::uint32_t sample_rate) {
+                                                          std::uint32_t timescale) {
     std::uint64_t total_bytes = 0;
     double total_seconds = 0.0;
     for (const auto& segment : segments) {
         total_bytes += segment.byte_size;
-        total_seconds += segment_seconds(segment, sample_rate);
+        total_seconds += segment_seconds(segment, timescale);
     }
     if (total_seconds <= 0.0) {
         return 0;

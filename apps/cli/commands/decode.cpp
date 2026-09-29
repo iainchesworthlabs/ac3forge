@@ -367,39 +367,6 @@ void print_mix_summary(FILE* status, const ac3::meta::MixMetadata& mix) {
     }
 }
 
-// The level meter's order, A/52's: L C R Ls Rs, the LFE, then any other.
-[[nodiscard]] int ac4_meter_rank(ac4::Speaker speaker) {
-    switch (speaker) {
-        case ac4::Speaker::kLeft:
-            return 0;
-        case ac4::Speaker::kCentre:
-            return 1;
-        case ac4::Speaker::kRight:
-            return 2;
-        case ac4::Speaker::kLeftSurround:
-            return 3;
-        case ac4::Speaker::kRightSurround:
-            return 4;
-        case ac4::Speaker::kLfe:
-            return 5;
-        default:
-            return 99;
-    }
-}
-
-// The coding mode that names an AC-4 layout's bed for the meter: 1/0, 2/0,
-// 3/0 or 3/2; a 7.X layout's last pair is metered past it.
-[[nodiscard]] ac3::Acmod ac4_bed_acmod(std::span<const ac4::Speaker> speakers) {
-    const auto has = [&](ac4::Speaker s) { return std::ranges::find(speakers, s) != speakers.end(); };
-    if (has(ac4::Speaker::kLeftSurround)) {
-        return ac3::Acmod::k3_2;
-    }
-    if (has(ac4::Speaker::kLeft)) {
-        return has(ac4::Speaker::kCentre) ? ac3::Acmod::k3_0 : ac3::Acmod::k2_0;
-    }
-    return ac3::Acmod::k1_0;
-}
-
 // Options for a warning, space-separated.
 std::string joined(const std::vector<std::string>& tokens) {
     std::string out;
@@ -408,133 +375,6 @@ std::string joined(const std::vector<std::string>& tokens) {
         out += token;
     }
     return out;
-}
-
-// AC-4's DRC decoder mode by drcmode='s name (parse_options checked it).
-ac4::DrcMode ac4_drc_mode(std::string_view name) {
-    if (name == "off") {
-        return ac4::DrcMode::kOff;
-    }
-    if (name == "home-theatre") {
-        return ac4::DrcMode::kHomeTheatre;
-    }
-    if (name == "flat-panel-tv") {
-        return ac4::DrcMode::kFlatPanelTv;
-    }
-    if (name == "portable-speakers") {
-        return ac4::DrcMode::kPortableSpeakers;
-    }
-    if (name == "portable-headphones") {
-        return ac4::DrcMode::kPortableHeadphones;
-    }
-    return ac4::DrcMode::kDefault;
-}
-
-// speakers='s layout for an immersive element (ETSI TS 103 190-2 clause
-// 5.10.2); without one, as coded.
-ac4::DownmixTarget ac4_layout(std::string_view speakers) {
-    if (speakers == "5.1") {
-        return ac4::DownmixTarget::k5X;
-    }
-    if (speakers == "5.1.2") {
-        return ac4::DownmixTarget::k5X2;
-    }
-    if (speakers == "5.1.4") {
-        return ac4::DownmixTarget::k5X4;
-    }
-    if (speakers == "7.1") {
-        return ac4::DownmixTarget::k7X0;
-    }
-    if (speakers == "7.1.2") {
-        return ac4::DownmixTarget::k7X2;
-    }
-    if (speakers == "7.1.4") {
-        return ac4::DownmixTarget::k7X4;
-    }
-    return ac4::DownmixTarget::kAsCoded;
-}
-
-// AC-4's downmix for channels=, downmix= and speakers=: downmix=loro, ltrt and
-// mono as named, downmix=auto or channels=2 alone the stream's preferred
-// method (ETSI TS 103 190-1 clause 6.2.17), which AC-4 streams send, and
-// without a fold speakers='s layout.
-ac4::DownmixTarget ac4_downmix(const ac3cli::Options& meta) {
-    if (meta.ac4_fold_5x) {
-        return ac4::DownmixTarget::k5X;
-    }
-    if (meta.downmix_auto) {
-        return ac4::DownmixTarget::kStereo;
-    }
-    switch (meta.output.target) {
-        case ac3::DownmixTarget::kAsCoded:
-            return ac4_layout(meta.ac4_speakers);
-        case ac3::DownmixTarget::kLoRo:
-            return meta.downmix_named ? ac4::DownmixTarget::kLoRo : ac4::DownmixTarget::kStereo;
-        case ac3::DownmixTarget::kLtRt:
-            return ac4::DownmixTarget::kLtRt;
-        case ac3::DownmixTarget::kMono:
-            return ac4::DownmixTarget::kMono;
-    }
-    return ac4::DownmixTarget::kAsCoded;
-}
-
-// conceal='s policy, which AC-4's decoder offers as AC-3's and E-AC-3's do.
-ac4::ConcealmentPolicy ac4_concealment(ac3::ConcealmentPolicy policy) {
-    switch (policy) {
-        case ac3::ConcealmentPolicy::kNone:
-            return ac4::ConcealmentPolicy::kNone;
-        case ac3::ConcealmentPolicy::kRepeatFade:
-            return ac4::ConcealmentPolicy::kRepeatFade;
-        case ac3::ConcealmentPolicy::kMute:
-            return ac4::ConcealmentPolicy::kMute;
-    }
-    return ac4::ConcealmentPolicy::kNone;
-}
-
-// What an AC-4 decode did to the decoded channels, for its status line.
-std::string ac4_processing(const ac4::OutputConfig& output) {
-    std::string done;
-    const auto add = [&done](const std::string& part) {
-        done += (done.empty() ? "" : "; ") + part;
-    };
-    if (output.output_level_dbfs.has_value()) {
-        add(fmt::format("dialnorm to {:g} dBFS, DRC {}", *output.output_level_dbfs,
-                        ac4::describe(output.drc)));
-    }
-    if (output.dialogue_enhancement_db > 0.0) {
-        add(fmt::format("dialogue raised {:g} dB where the stream allows",
-                        output.dialogue_enhancement_db));
-    }
-    switch (output.downmix) {
-        case ac4::DownmixTarget::kAsCoded:
-            break;
-        case ac4::DownmixTarget::k7X4:
-        case ac4::DownmixTarget::k7X2:
-        case ac4::DownmixTarget::k7X0:
-        case ac4::DownmixTarget::k5X4:
-        case ac4::DownmixTarget::k5X2:
-            // Only the immersive element takes these; the rest come out as coded.
-            add(fmt::format("an immersive element rendered to {}", ac4::describe(output.downmix)));
-            break;
-        case ac4::DownmixTarget::k5X:
-        case ac4::DownmixTarget::kStereo:
-        case ac4::DownmixTarget::kLoRo:
-        case ac4::DownmixTarget::kLtRt:
-        case ac4::DownmixTarget::kMono:
-            add(fmt::format("downmixed to {}{}", ac4::describe(output.downmix),
-                            output.mix_lfe ? "" : " without the LFE"));
-            break;
-    }
-    if (output.headphones) {
-        add("for headphones");
-    }
-    if (output.dialogue_gain_db != 0.0) {
-        add(fmt::format("dialogue substreams at {:+g} dB where the stream allows", output.dialogue_gain_db));
-    }
-    if (output.associated_gain_db != 0.0) {
-        add(fmt::format("associated audio at {:+g} dB", output.associated_gain_db));
-    }
-    return done.empty() ? "the coded channels, with no DRC, downmix or dialogue processing" : done;
 }
 
 // The decoding mode, for the status line where it is not the default.
@@ -611,24 +451,7 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         trace_file << trace_frame << '\t' << r.substream << '\t' << r.bit_offset << '\t' << r.bits << '\t'
                    << r.value << '\t' << r.name << '\n';
     };
-    ac4::DecoderConfig config;
-    config.output.output_level_dbfs = meta.ac4_output_level;
-    config.output.drc = ac4_drc_mode(meta.ac4_drc_mode);
-    config.output.dialogue_enhancement_db = meta.ac4_dialogue_enhancement;
-    config.output.downmix = ac4_downmix(meta);
-    config.output.dialogue_gain_db = meta.ac4_dialogue_gain;
-    config.output.associated_gain_db = meta.ac4_associated_gain;
-    config.output.mix_lfe = meta.ac4_mix_lfe;
-    config.output.headphones = meta.ac4_headphones;
-    config.concealment = ac4_concealment(meta.concealment);
-    config.decoding = meta.ac4_core_decoding ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
-    config.presentation.index = meta.ac4_presentation;
-    config.presentation.presentation_id = meta.ac4_presentation_id;
-    config.presentation.language = meta.ac4_language;
-    config.presentation.associated = meta.ac4_associated;
-    config.presentation.associated_type = meta.ac4_associated_type;
-    config.presentation.headphones = meta.ac4_headphones;
-    config.level = meta.ac4_level;
+    ac4::DecoderConfig config = ac4_decoder_config(meta);
     if (!meta.syntax_trace_path.empty()) {
         trace_file.open(std::filesystem::path{meta.syntax_trace_path}, std::ios::binary);
         if (!trace_file) {
@@ -1239,8 +1062,7 @@ int run_decode(std::string_view in_path, std::string_view out_path,
     // AC-4's sync words are 0xAC40 and 0xAC41 (TS 103 190-2 Annex G), where
     // AC-3's and E-AC-3's is 0x0B77; the first two bytes decide which decoder
     // reads the stream, before anything below reads it as AC-3.
-    if (stream.size() >= 2 && std::to_integer<unsigned>(stream[0]) == 0xACU &&
-        (std::to_integer<unsigned>(stream[1]) & 0xFEU) == 0x40U) {
+    if (is_ac4_stream(stream)) {
         return run_decode_ac4(stream, in_path, out_path, requested, objects_dir, adm_out);
     }
     if (!requested.syntax_trace_path.empty()) {

@@ -15,7 +15,7 @@
 # copied into the live personal tap (iainchesworthlabs/homebrew-ac3forge) as
 # Formula/ac3forge.rb after each bump - see docs/releasing.md.
 class Ac3forge < Formula
-  desc "Clean-room AC-3/E-AC-3 encoder, decoder and Atmos object-layer CLI"
+  desc "Clean-room AC-3/E-AC-3/AC-4 encoder, decoder and Atmos object-layer CLI"
   homepage "https://github.com/iainchesworthlabs/ac3forge"
   url "https://github.com/iainchesworthlabs/ac3forge/archive/refs/tags/v0.10.0-beta.1.tar.gz"
   # Computed directly (sha256sum) from the same release tarball the vcpkg

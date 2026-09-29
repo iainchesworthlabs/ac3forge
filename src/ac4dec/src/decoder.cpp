@@ -1866,9 +1866,11 @@ void Decoder::Impl::report_presentations(const Toc& toc) {
         info.pre_virtualized = plan.pre_virtualized;
         info.alternative = plan.v1 && toc.presentations_v1[i].b_alternative;
         info.name.clear();
+        info.targets.clear();
         if (info.alternative && plan.presentation_substream) {
             if (const auto it = names.find(*plan.presentation_substream); it != names.end()) {
                 info.name = it->second.name();
+                info.targets = it->second.targets();
             }
         }
         info.language = detail::presentation_language(plan);
@@ -2487,6 +2489,7 @@ std::expected<FrameReport, DecodeError> Decoder::Impl::read(
                         } else {
                             name.none();
                         }
+                        name.set_targets(parsed.targets);
                     }
                     if (result && capture->plan != nullptr &&
                         capture->plan->presentation_substream == index) {

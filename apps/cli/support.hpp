@@ -11,6 +11,7 @@
 #include <fmt/base.h>
 #include <fmt/format.h>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -23,6 +24,8 @@
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/decoder/output.hpp"
 #include "ac3/encoder/assignment.hpp"
+#include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/encoder/encoder.hpp"
 #include "ac3/encoder/plan.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/loudness.hpp"
@@ -127,9 +130,9 @@ struct Options {
     // (planning/ac4.md, the encoder's ladder, item 1).
     std::string syntax_trace_path;
     // 'ac4-encode' only: codec-mode=, "auto" (or empty), "simple", "aspx",
-    // "aspx-acpl-1", "aspx-acpl-2" or "aspx-acpl-3" (ac4::CodecMode), and
-    // experimental=, the experimental tools asked for,
-    // with the 7.X element's additional pair as "back", "wide" or
+    // "aspx-acpl-1", "aspx-acpl-2", "aspx-acpl-3", "scpl", "aspx-scpl" or
+    // "aspx-ajcc" (ac4::CodecMode), and experimental=, the experimental tools
+    // asked for, with the 7.X element's additional pair as "back", "wide" or
     // "top-front" (ac4::AdditionalPair), or empty.
     std::string ac4_codec_mode;
     bool ac4_experimental_balance = false;
@@ -137,6 +140,9 @@ struct Options {
     bool ac4_experimental_interleave = false;
     bool ac4_experimental_coding_configs = false;
     bool ac4_experimental_acpl = false;
+    bool ac4_experimental_three_zero = false;
+    bool ac4_experimental_back_pair = false;
+    bool ac4_experimental_ajcc = false;
     std::string ac4_experimental_seven_x;
     // 'decode' of AC-4 only: output-level=, the level in dBFS the stream's
     // dialnorm is taken to (ac4::OutputConfig::output_level_dbfs), unset to
@@ -219,12 +225,70 @@ struct Options {
         std::optional<ac4::PreferredDownmix> preferred_downmix;  // dmixmod=
         std::optional<double> loro_correction_db;                // loro-correction=
         std::optional<double> ltrt_correction_db;                // ltrt-correction=
-        // Dialogue enhancement: dialogue-channels= (any of l, r and c),
-        // dialogue-stem=, dialogue-method= and dialogue-max-gain=.
-        std::optional<std::string> dialogue_channels;
-        std::string dialogue_stem;
-        ac4::DialogueMethod dialogue_method = ac4::DialogueMethod::kChannelIndependent;
-        int dialogue_max_gain_db = 9;
+        // An immersive layout's downmix to 5.X: height-downmix= (front,
+        // surround or front-and-surround, where the top pairs go) and
+        // height-gain= (0, -1.5, -3, -4.5, -6, -9, -12 dB or off).
+        std::optional<ac4::HeightDownmix> height_downmix;
+        std::optional<double> height_db;
+        // crc=on|off: whether a raw stream's sync frames carry Part 2 Annex
+        // G's CRC (sync word 0xAC41), which they do unless crc=off.
+        std::optional<bool> crc;
+        // A substream's dialogue enhancement (ac4::DialogueConfig):
+        // dialogue-channels= (any of l, r and c), dialogue-stem=,
+        // dialogue-method=, dialogue-max-gain= and dialogue-hybrid= (the
+        // waveform's share, 0 to 1, which a dialogue enhancement substream
+        // carries), for the positional input, and as substreamN-dialogue-...=
+        // for substream N.
+        struct Dialogue {
+            std::optional<std::string> channels{};
+            std::string stem{};
+            ac4::DialogueMethod method = ac4::DialogueMethod::kChannelIndependent;
+            int max_gain_db = 9;
+            std::optional<double> hybrid_share{};
+        };
+        // Substreams, from 1, the first being the positional input:
+        // substreamN= (N from 2) names another input WAV, whose channel count
+        // is its layout, and substreamN-<key>= sets what ac4::SubstreamConfig
+        // takes of substream N. Substream 1's dialogue enhancement and codec
+        // mode are the bare dialogue-...= and codec-mode= keys, which its
+        // substream1-... spellings set too.
+        struct Substream {
+            std::string path{};                               // substreamN=
+            std::optional<int> bitrate_kbps{};                // -bitrate=
+            std::string codec_mode{};                         // -codec-mode=, as codec-mode=
+            std::optional<ac4::ContentClassifier> content{};  // -content=
+            std::string language{};                           // -language=
+            std::optional<int> enhances{};                    // -enhances=, a substream from 1
+            Dialogue dialogue{};                              // -dialogue-...=
+            std::optional<int> max_dialogue_gain_db{};        // -max-dialogue-gain=
+            std::vector<double> pan_degrees{};                // -pan=
+            std::vector<ac4::EmdfPayload> emdf{};             // -emdf=, one a token
+            bool named = false;                               // any substreamN token
+        };
+        std::vector<Substream> substreams{Substream{}};  // [N - 1]
+        // Presentations, from 1: presentationN= lists the substreams it plays,
+        // from 1, in Table 53's order, and presentationN-<key>= sets what
+        // ac4::PresentationConfig takes of presentation N.
+        struct Presentation {
+            std::vector<int> substreams{};        // presentationN=
+            std::optional<int> config{};          // -config=, Table 53
+            std::optional<int> id{};              // -id=
+            std::optional<int> md_compat{};       // -md-compat=
+            std::optional<bool> enabled{};        // -enabled=
+            bool pre_virtualized = false;         // -pre-virtualized=
+            std::string name{};                   // -name=
+            std::optional<double> dialnorm_db{};  // -dialnorm=
+            std::vector<double> gains_db{};       // -gains=
+            // -main-gain=, -main-centre-gain=, -main-front-gain= and
+            // -associated-pan=: the associated audio's mixing values.
+            std::optional<double> main_db{};
+            std::optional<double> main_centre_db{};
+            std::optional<double> main_front_db{};
+            std::optional<double> associated_pan{};
+            std::vector<ac4::EmdfPayload> emdf{};  // -emdf=, one a token
+            bool named = false;                    // any presentationN token
+        };
+        std::vector<Presentation> presentations{};  // [N - 1]
     };
     Ac4Encode ac4enc{};
     // 'decode'/'monitor' only: the §7.8 output stage (ac3/decoder/output.hpp).
@@ -1043,10 +1107,89 @@ struct TakePlan {
 std::optional<TakePlan> resolve_take_plan(const Options& meta, std::uint32_t bitrate,
                                           ac3::SampleRate rate);
 
+class TakeEncoder;
+
 // The RecordingSink::Config a resolved take implies, so 'record' and 'live'
-// cannot describe the same take differently to the container.
+// cannot describe the same take differently to the container. An AC-4 take's
+// container is described from its encoder's table of contents (`encoder`,
+// opened on the take's plan): the MPEG-TS frame length, the IEC 61937-14
+// burst type the rate needs, and the fragmented MP4 track of TS 103 190-2
+// Annexes E, G and H.
 RecordingSink::Config take_sink_config(const Options& meta, const TakePlan& take,
-                                       std::uint32_t sample_rate_hz);
+                                       std::uint32_t sample_rate_hz,
+                                       const TakeEncoder* encoder = nullptr);
+
+// Which of Table 162's profiles a drc= curve is: plan::Metadata keeps the
+// curve (meta::profile()), where AC-4 names the profile (drc_eac3_profile).
+[[nodiscard]] std::optional<ac3::meta::ProfileId> profile_id_of(const ac3::meta::Profile& profile);
+[[nodiscard]] ac4::DrcProfile ac4_profile_of(ac3::meta::ProfileId id);
+
+// The AC-4 encoder configuration a plan asks for: its coded channels, rate
+// and bitrate, its dialnorm in whole dB, and the DRC profile drc= names as
+// drc_eac3_profile; AC-4's defaults for the rest (frame rate index 13, an
+// I-frame every 24 frames, the codec mode the rate selects).
+[[nodiscard]] ac4::EncoderConfig ac4_config_for(const ac3::plan::Plan& plan);
+
+// The encode half of a record or live take, and of a transcode: the plan's
+// encoder, AC-3, E-AC-3 or AC-4, a frame of its coded channels in, what that
+// frame completes out. AC-4's encoder takes the channels in its own order (L
+// R C, the LFE, Ls Rs) and holds frames back for its delay, so a frame in can
+// complete none or two, and flush() ends the stream; its frames leave as sync
+// frames with TS 103 190-2 Annex G's CRC.
+class TakeEncoder {
+   public:
+    struct Unit {
+        // An AC-3 frame, an E-AC-3 access unit or an AC-4 sync frame.
+        std::vector<std::byte> bytes{};
+        // AC-4: whether it is an I-frame (b_iframe_global); every AC-3 and
+        // E-AC-3 unit starts afresh.
+        bool sync = true;
+    };
+
+    TakeEncoder();
+    ~TakeEncoder();
+    TakeEncoder(const TakeEncoder&) = delete;
+    TakeEncoder& operator=(const TakeEncoder&) = delete;
+    TakeEncoder(TakeEncoder&&) noexcept;
+    TakeEncoder& operator=(TakeEncoder&&) noexcept;
+
+    // The encoder `plan` asks for, and for AC-4 `ac4` in place of
+    // ac4_config_for(plan) where given (its channels, rate and bitrate taken
+    // from the plan all the same). Empty where it opens, else why not.
+    [[nodiscard]] std::string open(const ac3::plan::Plan& plan,
+                                   std::optional<ac4::EncoderConfig> ac4 = std::nullopt);
+    [[nodiscard]] std::size_t coded_channels() const { return coded_channels_; }
+
+    // A frame of the plan's coded channels (plan::coded_channels' order),
+    // each ac3::kSamplesPerFrame long, `samples` of them the programme's: AC-4
+    // codes those alone, AC-3 and E-AC-3 the frame whole. The units it
+    // completes, or why the encoder refused it.
+    [[nodiscard]] std::expected<std::vector<Unit>, std::string> encode(
+        std::span<const std::span<const float>> coded, std::size_t samples = 1536);
+    // What AC-4's encoder still holds, to the end of its last frame; nothing
+    // for AC-3 and E-AC-3.
+    [[nodiscard]] std::expected<std::vector<Unit>, std::string> flush();
+
+    // AC-4's table of contents, which describes the stream to a container;
+    // null for AC-3 and E-AC-3.
+    [[nodiscard]] const ac4::Toc* ac4_toc() const;
+    // The largest sync frame the AC-4 encoder writes at its rate, 0 for AC-3
+    // and E-AC-3.
+    [[nodiscard]] std::size_t ac4_max_frame_bytes() const { return ac4_max_frame_bytes_; }
+
+   private:
+    [[nodiscard]] std::vector<Unit> ac4_units(const std::vector<ac4::EncodedFrame>& frames) const;
+
+    std::unique_ptr<ac3::FrameEncoder> ac3_;
+    std::unique_ptr<ac3::eac3::AccessUnitEncoder> eac3_;
+    std::unique_ptr<ac4::Encoder> ac4_;
+    // The coded channel each of the AC-4 encoder's inputs takes, and the
+    // views handed to it.
+    std::vector<std::size_t> ac4_order_{};
+    std::vector<std::span<const float>> ac4_views_{};
+    std::size_t ac4_max_frame_bytes_ = 0;
+    std::size_t coded_channels_ = 0;
+};
 
 // One dynamic object's source taps: (flattened source channel, linear gain).
 // The flattened space concatenates every source's channels in load order -
@@ -1090,6 +1233,40 @@ std::optional<ac3::SampleRate> wav_sample_rate(std::uint32_t hz, std::string_vie
 
 // A source's channels routed onto a plan's coded channels, or a diagnosis.
 std::optional<ac3::plan::Routing> routing_or_error(const ac3::plan::Plan& p, std::size_t channels);
+
+// --- AC-4 ----------------------------------------------------------------------
+
+// Whether `bytes` opens with an AC-4 sync word, 0xAC40 or 0xAC41 (ETSI TS 103
+// 190-2 Annex G), where AC-3's and E-AC-3's is 0x0B77: how every command that
+// reads a stream decides which decoder reads it, before anything reads it as
+// AC-3.
+[[nodiscard]] bool is_ac4_stream(std::span<const std::byte> bytes);
+
+// The ac4::DecoderConfig AC-4's decode options ask for, which decode, monitor
+// and play read alike: the presentation presentation=, presentation-id=,
+// language=, associated= and headphones choose at the level md-compat= claims,
+// mixed at dialogue-gain= and associated-gain=; the output level and DRC decoder
+// mode of output-level= and drcmode=, dialogue-enhancement=, the layout
+// channels= and downmix= ask for and mix-lfe=; and conceal='s policy.
+[[nodiscard]] ac4::DecoderConfig ac4_decoder_config(const Options& meta);
+
+// The same presentation, mixed the same way, as the stream codes it: no output
+// level and so no DRC, no dialogue enhancement and no downmix. What qc, levels
+// and loudness measure, and what transcode re-encodes, since a transcoder to
+// AC-3 or E-AC-3 applies no DRC (ETSI TS 103 190-1 clause 5.7.9.4).
+[[nodiscard]] ac4::DecoderConfig ac4_coded_config(const Options& meta);
+
+// What an AC-4 decode's output processing does to the decoded channels, in
+// words, for a status line.
+[[nodiscard]] std::string ac4_processing(const ac4::OutputConfig& output);
+
+// The channels the presentation `config` selects comes out in as coded, read
+// off the first of `frames` that selects one, without decoding any audio: what
+// a command sizes an output for, or decides a fold by, before the first frame
+// decodes. Nothing where no frame selects a presentation, or the decoder does
+// not turn the one selected into PCM.
+[[nodiscard]] std::optional<std::vector<ac4::Speaker>> ac4_presentation_speakers(
+    std::span<const ac4::SyncFrame> frames, const ac4::DecoderConfig& config);
 
 // Checks EMDF object signatures on a stream about to be decoded/monitored,
 // when the operator asked for it (verify-objects) and supplied a key. Reads

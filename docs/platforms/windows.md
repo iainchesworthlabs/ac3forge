@@ -3,6 +3,9 @@
 ac3forge is built and tested on Windows today — both toolchains, CLI and GUI alike, are
 required, green CI legs. This page covers what is specific to Windows; for the full preset
 reference, options list and troubleshooting, see [Building from source](../building.md).
+Crucible's kernel driver and driver VM live under
+[`apps/windows/README.md`](https://github.com/iainchesworthlabs/ac3forge/blob/main/apps/windows/README.md),
+separate from the application in `apps/crucible/`.
 
 ## Status
 

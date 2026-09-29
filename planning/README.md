@@ -21,13 +21,13 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 
 ## Active plans
 
-| Page | What it is | State as of 2026-09-17 |
+| Page | What it is | State as of 2026-09-26 |
 |---|---|---|
-| [hearth-reference-player.md](hearth-reference-player.md) | Hearth desktop app (`ac3hearth`) and ESP32 Sendspin sinks (`hearth_sink`) | Being built. Engine + S3 sink merged; **window (A5) not started**; Sendspin server not wired into engine yet. See [ROADMAP.md](../ROADMAP.md) Hearth section. |
-| [hearth-sendspin-extension.md](hearth-sendspin-extension.md) | Sendspin conformance, Music Assistant compatibility, `_ac3forge_player@v1` | Draft for review |
-| [esp32-ota.md](esp32-ota.md) | Firmware updates over the network for `hearth_sink` boards (S3, C6, P4): A/B slots, rollback, integrity checks, flash mode; firmware published by CI, and a user guide | Proposed 2026-09-24; nothing built |
+| [hearth-reference-player.md](hearth-reference-player.md) | Hearth desktop app (`ac3hearth`) and ESP32 Sendspin sinks (`hearth_sink`) | Desktop window, engine, Network page and packages shipped; S3, C6 and P4 rev1 sinks with OTA; user guide and Music Assistant exit still open. See [ROADMAP.md](../ROADMAP.md) Hearth section. |
+| [hearth-sendspin-extension.md](hearth-sendspin-extension.md) | Sendspin conformance, Music Assistant compatibility, `_ac3forge_player@v1` | Server in app and aiosendspin CI exit merged; Music Assistant on real hardware not verified |
+| [esp32-ota.md](esp32-ota.md) | Firmware updates over the network for `hearth_sink` boards (S3, C6, P4): A/B slots, rollback, integrity checks, flash mode; firmware published by CI, and a user guide | Built: network update, rollback, CI packaging, [Sink firmware](../docs/hearth/sink-firmware.md) |
 | [recasting.md](recasting.md) | Library / Forge / Crucible family naming and docs | Phases 1–5 in; Phase 6 partly; Phase 7 waits on driver signing |
-| [ac4.md](ac4.md) | AC-4 in full: a decoder beside the inspector, an encoder, and both in the applications; the oracles, the phases and the decisions | 2026-09-25: D1 to D5 and E1 to E4 merged, D6 and E5 open; the rest built in parallel; G1 adds the DEE streams still needed before the licence ends on 2026-11-06; D14 takes AC-4 to the ESP32s, the P4 first; N1 renames the programs named `ac3` |
+| [ac4.md](ac4.md) | AC-4 in full: a decoder beside the inspector, an encoder, and both in the applications; the oracles, the phases and the decisions | D2–D11 and E1–E8 merged on `main`; I1 (`ac3cli`) and I2 (Hearth channel-based) shipped; I3–I6 and D14 (ESP32) open; G1 adds DEE streams before 2026-11-06 |
 
 ---
 
@@ -40,6 +40,14 @@ a record or mark it superseded — see [SUPERSEDED.md](SUPERSEDED.md).
 | [qc-report.md](qc-report.md) | Delivery-shaped QC report file | [Proposed — QC delivery report file](../ROADMAP.md#proposed) |
 | [eac3-programme-mixing-metadata.md](eac3-programme-mixing-metadata.md) | `mixmdate` reporting/API completeness and decode-time associated-service mixing | [Partial tails — Multi-programme E-AC-3 encode](../ROADMAP.md#partial-tails-on-shipped-work); scoped alongside two sibling efforts (CLI `programmeN=` authoring, MPEG-TS `mainid`/`asvc`) |
 | [esp32-sink-tiers.md](esp32-sink-tiers.md) | C6 / S3 / P4 good·better·best modules on one dual-ES9080 PCB | [Proposed — ESP32 sink tiers](../ROADMAP.md#proposed) |
+
+---
+
+## Design records (Hearth UI)
+
+| Page | What it is | State |
+|---|---|---|
+| [hearth-design.md](hearth-design.md) | Signed UI design mockups (A0); palette, page layout, Sendspin extension page | Signed off 2026-09-22; superseded for capability claims by [docs/hearth/index.md](../docs/hearth/index.md) |
 
 ---
 

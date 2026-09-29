@@ -34,6 +34,9 @@
 #include "ac3/encoder/eac3_frame.hpp"
 #include "ac3/encoder/encoder.hpp"
 #include "ac3/oba/atmos.hpp"
+#include "ac4_bench.hpp"
+#include "ac4dec/decoder.hpp"
+#include "ac4enc/encoder.hpp"
 #include "mem_probe.hpp"
 
 namespace {
@@ -470,6 +473,94 @@ Result bench_eac3_decode(std::string name, std::span<const std::byte> stream) {
     return r;
 }
 
+// AC-4 reads the real-audio fixture through ac4_bench.hpp rather than
+// signal_frame(), so its counts describe the same material as the AC-4 time
+// series in ac3bench. One encode() call is one frame of input; the first
+// returns no frame while the encoder's delay fills, and is counted as the
+// first frame all the same.
+Result bench_ac4_encode(std::string name, perf::ac4_bench::FrameSource& source,
+                        const ac4::EncoderConfig& config) {
+    Result r{.name = std::move(name), .frames = kFrames};
+
+    const Snap before = snap();
+    auto encoder = ac4::Encoder::create(config);
+    const Snap after = snap();
+    if (!encoder) {
+        std::fprintf(stderr, "%s: ac4::Encoder::create failed\n", r.name.c_str());
+        std::exit(1);
+    }
+    r.setup_allocs = after.allocs - before.allocs;
+    r.setup_bytes = after.bytes - before.bytes;
+
+    const Snap before_first = snap();
+    reset_peak();
+    if (!encoder->encode(source.frame(0))) {
+        std::fprintf(stderr, "%s: ac4::Encoder::encode failed\n", r.name.c_str());
+        std::exit(1);
+    }
+    const Snap after_first = snap();
+    r.first_allocs = after_first.allocs - before_first.allocs;
+    r.first_bytes = after_first.bytes - before_first.bytes;
+
+    const Snap steady_start = snap();
+    reset_peak();
+    for (int frame = 1; frame < kFrames; ++frame) {
+        if (!encoder->encode(source.frame(static_cast<std::size_t>(frame)))) {
+            std::fprintf(stderr, "%s: ac4::Encoder::encode failed\n", r.name.c_str());
+            std::exit(1);
+        }
+    }
+    const Snap steady_end = snap();
+    r.allocs_per_frame =
+        static_cast<double>(steady_end.allocs - steady_start.allocs) / (kFrames - 1);
+    r.bytes_per_frame = static_cast<double>(steady_end.bytes - steady_start.bytes) / (kFrames - 1);
+    r.steady_live_growth = steady_end.live - steady_start.live;
+    r.peak_live_delta = steady_end.peak - steady_start.live;
+    return r;
+}
+
+Result bench_ac4_decode(std::string name, const std::vector<std::vector<std::byte>>& frames) {
+    if (frames.size() < 2) {
+        std::fprintf(stderr, "%s: encoding the AC-4 source stream failed\n", name.c_str());
+        std::exit(1);
+    }
+
+    Result r{.name = std::move(name), .frames = static_cast<int>(frames.size())};
+
+    const Snap before = snap();
+    ac4::Decoder decoder;
+    const Snap after = snap();
+    r.setup_allocs = after.allocs - before.allocs;
+    r.setup_bytes = after.bytes - before.bytes;
+
+    const Snap before_first = snap();
+    reset_peak();
+    if (!decoder.decode(frames[0])) {
+        std::fprintf(stderr, "%s: ac4::Decoder::decode failed\n", r.name.c_str());
+        std::exit(1);
+    }
+    const Snap after_first = snap();
+    r.first_allocs = after_first.allocs - before_first.allocs;
+    r.first_bytes = after_first.bytes - before_first.bytes;
+
+    const Snap steady_start = snap();
+    reset_peak();
+    for (std::size_t i = 1; i < frames.size(); ++i) {
+        if (!decoder.decode(frames[i])) {
+            std::fprintf(stderr, "%s: ac4::Decoder::decode failed\n", r.name.c_str());
+            std::exit(1);
+        }
+    }
+    const Snap steady_end = snap();
+    const auto steady_frames = static_cast<double>(frames.size() - 1);
+    r.allocs_per_frame =
+        static_cast<double>(steady_end.allocs - steady_start.allocs) / steady_frames;
+    r.bytes_per_frame = static_cast<double>(steady_end.bytes - steady_start.bytes) / steady_frames;
+    r.steady_live_growth = steady_end.live - steady_start.live;
+    r.peak_live_delta = steady_end.peak - steady_start.live;
+    return r;
+}
+
 void write_json(const std::vector<Result>& results, const std::string& path,
                 const membench::ProcessMemory& pm) {
     std::ofstream out(path);
@@ -512,6 +603,21 @@ int main(int argc, char** argv) {
     results.push_back(bench_ecpl_51_encode());
     results.push_back(bench_atmos_4obj_encode(atmos_stream));
     results.push_back(bench_eac3_decode("atmos_4obj_decode", atmos_stream));
+
+    const ac3::io::WavData audio =
+        perf::load_real_audio(perf::kReference51Wav, 6, perf::ac4_bench::kSamplesPerFrame);
+    perf::ac4_bench::FrameSource ac4_stereo{audio, perf::ac4_bench::kStereoChannels};
+    perf::ac4_bench::FrameSource ac4_five_one{audio, perf::ac4_bench::kFiveOneChannels};
+    results.push_back(
+        bench_ac4_encode("ac4_stereo_encode", ac4_stereo, perf::ac4_bench::stereo_config()));
+    results.push_back(bench_ac4_decode(
+        "ac4_stereo_decode",
+        perf::ac4_bench::encode_frames(ac4_stereo, perf::ac4_bench::stereo_config(), kFrames)));
+    results.push_back(
+        bench_ac4_encode("ac4_51_encode", ac4_five_one, perf::ac4_bench::five_one_config()));
+    results.push_back(bench_ac4_decode(
+        "ac4_51_decode", perf::ac4_bench::encode_frames(
+                             ac4_five_one, perf::ac4_bench::five_one_config(), kFrames)));
 
     fmt::printf(
         "%-18s %7s | %9s %12s | %9s %12s | %11s %13s | %12s %11s\n", "workload", "frames",

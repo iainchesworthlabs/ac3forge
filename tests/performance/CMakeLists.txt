@@ -9,9 +9,14 @@
 # ---------------------------------------------------------------------------
 add_executable(ac3perf test_performance.cpp)
 
+# The AC-4 cases need no guard: the root CMakeLists.txt refuses
+# AC3FORGE_BUILD_TESTS without AC3FORGE_BUILD_AC4, so the AC-4 libraries exist
+# wherever this directory is built. The same holds for the three targets below.
 target_link_libraries(ac3perf
     PRIVATE
         ac3::forge
+        ac4::encoder
+        ac4::decoder
         ac3::warnings
         ac3::fmt
         Catch2::Catch2WithMain)
@@ -45,7 +50,7 @@ catch_discover_tests(ac3perf
 # ---------------------------------------------------------------------------
 add_executable(ac3bench bench_encoder.cpp)
 
-target_link_libraries(ac3bench PRIVATE ac3::forge ac3::warnings ac3::fmt)
+target_link_libraries(ac3bench PRIVATE ac3::forge ac4::encoder ac4::decoder ac3::warnings ac3::fmt)
 
 target_include_directories(ac3bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -97,7 +102,14 @@ if((WIN32 OR LINUX) AND NOT AC3FORGE_SANITIZERS MATCHES "thread")
 
     target_include_directories(ac3membench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-    target_link_libraries(ac3membench PRIVATE ac3::forge_static ac3::warnings ac3::fmt)
+    # The AC-4 libraries' static builds, for the same reason as
+    # ac3::forge_static: a DLL's allocations would not reach the counters.
+    target_link_libraries(ac3membench PRIVATE
+        ac3::forge_static ac4::encoder_static ac4::decoder_static ac3::warnings ac3::fmt)
+
+    # The AC-4 workloads read the real-audio fixture (real_audio.hpp).
+    target_compile_definitions(ac3membench PRIVATE
+        "AC3FORGE_SOURCE_DIR=\"${CMAKE_SOURCE_DIR}\"")
 endif()
 
 # ---------------------------------------------------------------------------
@@ -114,7 +126,9 @@ endif()
 # ---------------------------------------------------------------------------
 add_executable(ac3kernelbench kernel_bench.cpp)
 
-target_link_libraries(ac3kernelbench PRIVATE ac3::forge ac3::warnings ac3::fmt)
+# ac4::core (static in every build) brings src/ac4core/src's transform headers,
+# as it does for tests/ac4core.
+target_link_libraries(ac3kernelbench PRIVATE ac3::forge ac4::core ac3::warnings ac3::fmt)
 
 target_include_directories(ac3kernelbench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 

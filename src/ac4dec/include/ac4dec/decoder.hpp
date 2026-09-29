@@ -568,6 +568,12 @@ struct PresentationInfo {
     // it whole (Part 2 clause 6.3.3.1.4, a name in chunks over several frames
     // included); empty until then, and without one.
     std::string name;
+    // An alternative presentation's targets as its presentation substream
+    // last sent them (Part 2 clauses 6.3.3.1.5 to 6.3.3.1.8): each
+    // target_level and target_device_category, as ac4::AlternativeTarget
+    // holds them, which is what Annex E.12's alternative_info() repeats;
+    // empty for a presentation that is not an alternative one.
+    std::vector<AlternativeTarget> targets;
     // Its dialogue substream's language, else its main or music and effects
     // substream's (Part 1 clause 4.3.3.8.8), as selection compares it.
     std::string language;

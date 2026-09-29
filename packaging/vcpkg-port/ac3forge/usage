@@ -3,20 +3,23 @@ ac3forge provides CMake targets via find_package(ac3forge):
     find_package(ac3forge CONFIG REQUIRED)
     target_link_libraries(main PRIVATE ac3::forge)
 
-Three container writers are separate, opt-in features - none installed by default, since each
-adds its own public API, CMake target and binary. When present, their own targets are also
-available:
+Every other library is a separate, opt-in feature - none installed by default, since each adds its
+own public API, CMake targets and binaries. When present, their own targets are also available:
 
     matroska  ->  matroska::matroska  (Matroska/.mkv)
     mp4       ->  mp4::mp4            (MP4/ISOBMFF, plus fMP4/CMAF + HLS/DASH)
     mpegts    ->  mpegts::mpegts      (MPEG-2 Transport Stream)
+    capi      ->  ac3::forge_c        (C11 API over the codec)
+    ac4       ->  ac4::decoder, ac4::encoder, ac4::ac4  (AC-4 decoding, encoding and reading)
+    iab       ->  ac3iab::ac3iab      (SMPTE ST 2098-2 Immersive Audio Bitstream reading)
+    iamf      ->  iamf::iamf          (IAMF writing)
 
     target_link_libraries(main PRIVATE matroska::matroska mp4::mp4 mpegts::mpegts)
 
-To install all three alongside the codec:
+To install the three container writers alongside the codec:
 
     vcpkg install ac3forge[matroska,mp4,mpegts]
 
-Or pick a subset, e.g. matroska only:
+Or pick any subset, e.g. AC-4 only:
 
-    vcpkg install ac3forge[matroska]
+    vcpkg install ac3forge[ac4]

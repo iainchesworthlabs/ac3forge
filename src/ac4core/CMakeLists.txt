@@ -14,14 +14,14 @@
 # The syntax is not here: the decoder's reader and the encoder's writer are
 # separate transcriptions of the syntax tables, in opposite directions.
 #
-# Installed and exported as ac4::core wherever the static decoder is
-# (cmake/InstallLibrary.cmake): libac4dec_static.a calls into it and does not
-# contain it, as no archive contains what it links, so the decoder's exported
-# target names it as a link-only dependency and a consumer links both. The
-# archive is libac4core_static.a, with the suffix every static archive the
-# package installs has, by which tools/checks/check_install_consumer.sh and
-# ac3forge_install_pkgconfig() (cmake/PkgConfig.cmake) tell an archive. It has
-# no headers to install.
+# Installed and exported as ac4::core wherever the static decoder and encoder
+# are (cmake/InstallLibrary.cmake): libac4dec_static.a and libac4enc_static.a
+# call into it and do not contain it, as no archive contains what it links, so
+# their exported targets name it as a link-only dependency and a consumer links
+# it with them. The archive is libac4core_static.a, with the suffix every
+# static archive the package installs has, by which
+# tools/checks/check_install_consumer.sh and ac3forge_install_pkgconfig()
+# (cmake/PkgConfig.cmake) tell an archive. It has no headers to install.
 # ---------------------------------------------------------------------------
 add_library(ac4core STATIC)
 add_library(ac4::core ALIAS ac4core)

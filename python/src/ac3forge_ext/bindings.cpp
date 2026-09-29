@@ -530,7 +530,8 @@ PYBIND11_MODULE(_ac3forge, m) {
         .value("kBadCrc", ac3::DecodeError::kBadCrc)
         .value("kReservedValue", ac3::DecodeError::kReservedValue)
         .value("kUnsupported", ac3::DecodeError::kUnsupported)
-        .value("kInvalidStream", ac3::DecodeError::kInvalidStream);
+        .value("kInvalidStream", ac3::DecodeError::kInvalidStream)
+        .value("kNoReferenceTransform", ac3::DecodeError::kNoReferenceTransform);
 
     py::enum_<ac3::FrameError>(m, "FrameError")
         .value("kInvalidBitrate", ac3::FrameError::kInvalidBitrate)

@@ -275,7 +275,8 @@ Two of the tools are not in that automatic set, and the reasons are worth statin
   widening as the bitrate rises — and listeners' predicted scores do not move at all. The reason
   is that block switching already handles the problem: the encoder shortens its transform around
   a transient, which confines the noise, and the correction then substitutes for audio that was
-  not damaged in the first place. It remains implemented and correct, as a demonstration of the
+  not damaged in the first place. (Those measurements predate a decoder fix that moved each
+  correction one block later, onto the pre-noise itself; they have not been repeated since.) It remains implemented and correct, as a demonstration of the
   syntax rather than as a quality tool.
 
 !!! example "See it in code"

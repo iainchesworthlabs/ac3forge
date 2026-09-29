@@ -8,6 +8,7 @@
 #include <fmt/base.h>
 #include <fmt/format.h>
 #include <fstream>
+#include <functional>
 #include <ios>
 #include <iostream>
 #include <istream>
@@ -18,6 +19,7 @@
 #include <string_view>
 #include <vector>
 
+#include "../ac4_channels.hpp"
 #include "../exit_codes.hpp"
 #include "../platform/stdio_binary.hpp"
 #include "../support.hpp"
@@ -26,6 +28,7 @@
 #include "ac3/core/tables.hpp"
 #include "ac3/decoder/decoder.hpp"
 #include "ac3/encoder/plan.hpp"
+#include "ac3/io/metadata_edit.hpp"
 #include "ac3/io/wav.hpp"
 #include "ac3/meta/drc.hpp"
 #include "ac3/meta/loudness.hpp"
@@ -34,6 +37,8 @@
 #include "ac3/oba/oamd.hpp"
 #include "ac3/iec61937/iec61937.hpp"
 #include "ac3/spatial/spatial.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
 
 namespace ac3cli::commands {
 
@@ -66,6 +71,13 @@ struct QcProgrammeResult {
     std::optional<double> true_peak_dbtp = std::nullopt;
     int dialnorm = 31;
     std::optional<std::uint8_t> compr = std::nullopt;
+    // AC-4: its dialnorm, 0 to -31.75 dBFS in steps of 0.25 (ETSI TS 103 190-1
+    // clause 4.3.12.2.1), in place of `dialnorm` and `compr`, which have no
+    // AC-4 counterpart; and the integrated loudness the stream states
+    // (further_loudness_info's loudrelgat, clause 4.3.12.3), where it sends one.
+    bool ac4 = false;
+    std::optional<double> dialnorm_db = std::nullopt;
+    std::optional<double> stated_lkfs = std::nullopt;
 };
 
 struct QcResult {
@@ -86,6 +98,9 @@ struct QcResult {
     // hint that layout=rendered has more to measure - silence about it would
     // read as "5.1 is all there is".
     bool bed_hid_dependents = false;
+    // AC-4, layout=bed only: the presentation is a 7.X element, whose last
+    // pair is not in its 3/2 bed; the same hint.
+    bool bed_hid_pair = false;
     std::vector<QcProgrammeResult> programmes;
 };
 
@@ -690,6 +705,154 @@ std::optional<QcProgrammeResult> measure_qc_eac3_objects(std::span<const std::by
     return result;
 }
 
+// AC-4 (ETSI TS 103 190), for the commands that measure a stream: every frame
+// of the presentation decode's options choose, decoded as the stream codes it
+// (ac4_coded_config(): no output level, and so no DRC, no dialogue enhancement
+// and no downmix), handed to `on_frame` in order. The layout and the rate are
+// the first frame's, and a frame that changes them is refused. The frames it
+// decoded, with `decoder` holding the metadata the stream sent; nothing, the
+// reason printed, where a frame does not decode or none does.
+std::optional<std::size_t> decode_ac4_as_coded(
+    std::span<const std::byte> stream, std::string_view in_path, ac4::Decoder& decoder,
+    const std::function<void(const ac4::DecodedFrame&)>& on_frame) {
+    const ac4::ScanResult scan = ac4::scan(stream);
+    if (scan.frames.empty()) {
+        fmt::println(stderr, "error: {} holds no AC-4 sync frame", in_path);
+        return std::nullopt;
+    }
+    if (scan.stopped_at.has_value()) {
+        fmt::println(
+            stderr, "warning: {}: the sync frames stop at byte {} ({}); measuring the {} before it",
+            in_path, scan.stopped_at_offset, ac4::describe(*scan.stopped_at), scan.frames.size());
+    }
+    std::size_t decoded_frames = 0;
+    std::vector<ac4::Speaker> layout;
+    int rate = 0;
+    std::size_t number = 0;
+    for (const ac4::SyncFrame& frame : scan.frames) {
+        ++number;
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        if (!decoded.has_value()) {
+            fmt::println(stderr, "error: {}: frame {}: {}", in_path, number,
+                         decoder.refusal_reason());
+            return std::nullopt;
+        }
+        if (!decoded->has_value()) {
+            continue;  // waiting for an I-frame
+        }
+        const ac4::DecodedFrame& pcm = **decoded;
+        if (decoded_frames == 0) {
+            layout = pcm.speakers;
+            rate = pcm.sample_rate_hz;
+        } else if (pcm.speakers != layout || pcm.sample_rate_hz != rate) {
+            fmt::println(stderr,
+                         "error: {}: frame {}: the channel layout or sample rate changes "
+                         "mid-stream",
+                         in_path, number);
+            return std::nullopt;
+        }
+        on_frame(pcm);
+        ++decoded_frames;
+    }
+    if (decoded_frames == 0) {
+        fmt::println(stderr, "error: {}: no frame decoded; the stream sent no I-frame", in_path);
+        return std::nullopt;
+    }
+    return decoded_frames;
+}
+
+// The meter a decoded AC-4 presentation's channels are measured with, and the
+// decoded channel at each of its places: layout=bed's BS.1770 Annex 1 over the
+// 1/0, 2/0, 3/0 or 3/2 bed, a 7.X element's last pair left out of it, or
+// layout=rendered's Annex 3 over every channel by where it is (ac4_location()).
+struct Ac4Meter {
+    ac3::meta::LoudnessMeter meter;
+    std::vector<std::size_t> order;
+    std::string label;
+    bool pair_left_out = false;
+};
+
+Ac4Meter ac4_loudness_meter(const ac4::DecodedFrame& pcm, bool rendered) {
+    const ac3::SampleRate rate =
+        pcm.sample_rate_hz == 44100 ? ac3::SampleRate::k44100 : ac3::SampleRate::k48000;
+    const std::span<const ac4::Speaker> speakers{pcm.speakers};
+    if (rendered) {
+        std::vector<std::size_t> order =
+            ac4_order(speakers, [](ac4::Speaker s) { return static_cast<int>(ac4_location(s)); });
+        ac3::eac3::chanmap::Layout layout{};
+        for (const std::size_t c : order) {
+            layout.items[static_cast<std::size_t>(layout.count++)] = ac4_location(speakers[c]);
+        }
+        return Ac4Meter{.meter = ac3::meta::LoudnessMeter{rate, layout},
+                        .order = std::move(order),
+                        .label = rendered_layout_label(layout),
+                        .pair_left_out = false};
+    }
+    std::vector<std::size_t> order = ac4_order(speakers, ac4_meter_rank);
+    const auto bed_end = std::ranges::find_if(
+        order, [&](std::size_t c) { return ac4_meter_rank(speakers[c]) >= 99; });
+    const bool left_out = bed_end != order.end();
+    order.erase(bed_end, order.end());
+    const bool lfe = std::ranges::find(speakers, ac4::Speaker::kLfe) != speakers.end();
+    const ac3::Acmod acmod = ac4_bed_acmod(speakers);
+    return Ac4Meter{.meter = ac3::meta::LoudnessMeter{rate, acmod, lfe},
+                    .order = std::move(order),
+                    .label = std::string{ac3::analysis::layout_name(acmod, lfe)},
+                    .pair_left_out = left_out};
+}
+
+// qc of AC-4: the presentation as coded, metered as E-AC-3's programme is, and
+// compared with its dialnorm, which AC-4 sends in steps of 0.25 dB (ETSI TS 103
+// 190-1 clause 4.3.12.2.1) where A/52 sends whole dB, and with the loudness the
+// stream states where it sends one.
+std::optional<QcResult> measure_qc_ac4(std::span<const std::byte> stream, std::string_view in_path,
+                                       const Options& meta, bool rendered) {
+    ac4::Decoder decoder(ac4_coded_config(meta));
+    QcResult result;
+    result.codec_label = "AC-4";
+    result.unit_label = "frame(s)";
+    result.rendered = rendered;
+    std::optional<Ac4Meter> meter;
+    std::uint64_t samples = 0;
+    std::vector<std::span<const float>> views;
+    const auto frames =
+        decode_ac4_as_coded(stream, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+            if (!meter.has_value()) {
+                meter.emplace(ac4_loudness_meter(pcm, rendered));
+                result.sample_rate_hz = static_cast<std::uint32_t>(pcm.sample_rate_hz);
+                result.layout_label = meter->label;
+                result.bed_hid_pair = meter->pair_left_out;
+            }
+            views.clear();
+            for (const std::size_t c : meter->order) {
+                views.emplace_back(pcm.channels[c]);
+            }
+            meter->meter.push(views);
+            samples += pcm.samples;
+        });
+    if (!frames.has_value() || !meter.has_value()) {
+        return std::nullopt;
+    }
+    const ac4::PresentationMetadata& metadata = decoder.metadata();
+    QcProgrammeResult programme{.integrated_lkfs = meter->meter.integrated_lkfs(),
+                                .lra_lu = meter->meter.loudness_range(),
+                                .true_peak_dbtp = meter->meter.true_peak_dbtp(),
+                                .ac4 = true,
+                                .dialnorm_db = metadata.loudness.dialnorm_dbfs,
+                                .stated_lkfs = metadata.loudness.integrated_lkfs};
+    result.programmes.push_back(programme);
+    result.unit_count = *frames;
+    result.seconds = static_cast<double>(samples) / static_cast<double>(result.sample_rate_hz);
+    return result;
+}
+
+// The dialnorm AC-4 would send for a measured loudness, in its steps of 0.25
+// dB between 0 and -31.75 dBFS.
+double ac4_dialnorm_from_lkfs(double lkfs) {
+    // 0.0 - x rather than -x, so that 0 dB prints as 0 and not as -0.
+    return 0.0 - std::clamp(std::round(-lkfs * 4.0) / 4.0, 0.0, 31.75);
+}
+
 // Prints one programme's measurement (the empty-label whole-programme case,
 // or "Ch1"/"Ch2" for 1+1 dual mono) and, if `preset_arg` names one (or
 // "all"), checks it against the requested preset(s). Returns true iff every
@@ -710,15 +873,46 @@ bool report_qc_programme(const QcProgrammeResult& p, const std::optional<std::st
                  p.true_peak_dbtp ? fmt::format("{:>+8.2f} dBTP", *p.true_peak_dbtp)
                                    : std::string{"n/a"});
     fmt::println("{}embedded metadata:", heading);
-    fmt::println("  dialnorm             {:>3}  (claims dialogue at {:.2f} LKFS)", p.dialnorm,
-                 -static_cast<double>(p.dialnorm));
-    if (p.compr.has_value()) {
-        fmt::println("  compr                present, {:+.2f} dB",
-                     ac3::meta::to_db(ac3::meta::compr_gain(*p.compr)));
+    if (p.ac4) {
+        // AC-4 carries no compr word: its DRC is the decoder's, by decoder
+        // mode (ETSI TS 103 190-1 clause 5.7.9).
+        if (p.dialnorm_db.has_value()) {
+            fmt::println("  dialnorm         {:>+7.2f} dBFS  (claims dialogue at {:.2f} LKFS)",
+                         *p.dialnorm_db, *p.dialnorm_db);
+        } else {
+            fmt::println("  dialnorm             absent");
+        }
+        if (p.stated_lkfs.has_value()) {
+            fmt::println("  stated loudness  {:>+8.2f} LKFS  (further_loudness_info, integrated)",
+                         *p.stated_lkfs);
+        }
     } else {
-        fmt::println("  compr                absent");
+        fmt::println("  dialnorm             {:>3}  (claims dialogue at {:.2f} LKFS)", p.dialnorm,
+                     -static_cast<double>(p.dialnorm));
+        if (p.compr.has_value()) {
+            fmt::println("  compr                present, {:+.2f} dB",
+                         ac3::meta::to_db(ac3::meta::compr_gain(*p.compr)));
+        } else {
+            fmt::println("  compr                absent");
+        }
     }
-    if (p.integrated_lkfs.has_value()) {
+    if (p.ac4 && p.integrated_lkfs.has_value() && p.dialnorm_db.has_value()) {
+        // The same check in AC-4's own terms: its dialnorm is a level in dBFS,
+        // which is the dialogue loudness it claims, in steps of 0.25 dB.
+        const double claimed_lkfs = *p.dialnorm_db;
+        const double delta = *p.integrated_lkfs - claimed_lkfs;
+        const double implied = ac4_dialnorm_from_lkfs(*p.integrated_lkfs);
+        fmt::println("{}dialnorm check:", heading);
+        fmt::println("  claimed              {:>+8.2f} LKFS  (from dialnorm {:g} dBFS)",
+                     claimed_lkfs, *p.dialnorm_db);
+        fmt::println(
+            "  delta                {:>+8.2f} dB    (measured - claimed; positive = "
+            "measured is louder)",
+            delta);
+        fmt::println("  measurement-derived dialnorm would be {:g} dBFS{}", implied,
+                     implied == *p.dialnorm_db ? std::string{" (matches)"}
+                                               : fmt::format(", not {:g}", *p.dialnorm_db));
+    } else if (!p.ac4 && p.integrated_lkfs.has_value()) {
         // §5.4.2.8: dialnorm states how far dialogue sits below digital
         // 100%, so the stream's own claimed programme level is simply its
         // negation - delta is measured minus that claim, positive meaning
@@ -982,21 +1176,60 @@ std::optional<StreamLoudness> measure_stream_loudness(std::span<const std::byte>
     return out;
 }
 
-int run_qc(std::string_view in_path, const std::optional<std::string>& preset_arg,
-           bool rendered_layout, std::optional<int> want_programme,
-           std::optional<ac3::plan::LayoutId> objects_layout) {
+std::optional<StreamLoudness> measure_ac4_loudness(std::span<const std::byte> stream,
+                                                   std::string_view in_path, const Options& meta) {
+    ac4::Decoder decoder(ac4_coded_config(meta));
+    std::optional<Ac4Meter> meter;
+    std::vector<std::span<const float>> views;
+    const auto frames =
+        decode_ac4_as_coded(stream, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+            if (!meter.has_value()) {
+                meter.emplace(ac4_loudness_meter(pcm, false));
+            }
+            views.clear();
+            for (const std::size_t c : meter->order) {
+                views.emplace_back(pcm.channels[c]);
+            }
+            meter->meter.push(views);
+        });
+    if (!frames.has_value() || !meter.has_value()) {
+        return std::nullopt;
+    }
+    return StreamLoudness{.integrated_lkfs = meter->meter.integrated_lkfs()};
+}
+
+int run_qc(std::string_view in_path, const Options& meta) {
+    const std::optional<std::string>& preset_arg = meta.qc_preset;
+    const bool rendered_layout = meta.qc_rendered_layout;
+    const std::optional<int> want_programme = meta.programme;
+    const std::optional<ac3::plan::LayoutId> objects_layout = meta.qc_objects_layout;
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
         return kExitInput;
     }
-    const auto bsid = ac3::stream_bsid(stream);
-    if (!bsid.has_value()) {
-        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
-        return kExitInput;
-    }
     std::optional<QcResult> result;
     std::optional<QcProgrammeResult> object_result;
-    if (*bsid > 8) {
+    if (is_ac4_stream(stream)) {
+        if (want_programme.has_value()) {
+            fmt::println(stderr,
+                         "error: {} is AC-4: programme= chooses an E-AC-3 programme, and an AC-4 "
+                         "presentation is chosen by presentation=, presentation-id=, language= or "
+                         "associated=",
+                         in_path);
+            return kExitUsage;
+        }
+        if (objects_layout.has_value()) {
+            fmt::println(stderr,
+                         "error: {} is AC-4: objects= re-renders E-AC-3's JOC objects, and AC-4's "
+                         "objects are not decoded yet",
+                         in_path);
+            return kExitUsage;
+        }
+        result = measure_qc_ac4(stream, in_path, meta, rendered_layout);
+    } else if (const auto bsid = ac3::stream_bsid(stream); !bsid.has_value()) {
+        fmt::println(stderr, "error: {} is too short to hold a syncframe", in_path);
+        return kExitInput;
+    } else if (*bsid > 8) {
         // §E2.3.1.2: one programme is measured - see measure_qc_eac3_bed's own
         // ingest() for why folding two into one meter reports a loudness
         // neither of them has.
@@ -1048,6 +1281,12 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
         fmt::println("        are NOT in the figures above - layout=rendered measures them "
                      "as well");
     }
+    if (result->bed_hid_pair) {
+        fmt::println(
+            "  note: this presentation is 7.X, whose last pair is NOT in the figures "
+            "above -");
+        fmt::println("        layout=rendered measures it as well");
+    }
     bool all_pass = true;
     for (const auto& programme : result->programmes) {
         if (!report_qc_programme(programme, preset_arg)) {
@@ -1073,7 +1312,8 @@ int run_qc(std::string_view in_path, const std::optional<std::string>& preset_ar
 
 // What is actually in a file, channel by channel — the answer both front ends
 // are built to show, without having to encode anything to get it.
-int run_levels(std::string_view in_path, std::optional<int> want_programme) {
+int run_levels(std::string_view in_path, const Options& meta) {
+    const std::optional<int> want_programme = meta.programme;
     // read_elementary_stream leaves a WAV's own bytes untouched - its RIFF
     // header sniffs as none of the three containers this build demuxes - so
     // the syncframe-vs-WAV branch below still decides between exactly those
@@ -1082,6 +1322,53 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
     const auto bytes = read_elementary_stream(in_path);
     if (bytes.empty()) {
         return kExitInput;
+    }
+    // AC-4: the presentation decode's options choose, as the stream codes it,
+    // each channel under its own name in the order the level meter reports A/52
+    // in (L C R Ls Rs, the LFE, then a 7.X element's last pair).
+    if (is_ac4_stream(bytes)) {
+        if (want_programme.has_value()) {
+            fmt::println(stderr,
+                         "error: {} is AC-4: programme= chooses an E-AC-3 programme, and an AC-4 "
+                         "presentation is chosen by presentation=, presentation-id=, language= or "
+                         "associated=",
+                         in_path);
+            return kExitUsage;
+        }
+        ac4::Decoder decoder(ac4_coded_config(meta));
+        std::optional<ac3::analysis::LevelMeter> meter;
+        std::vector<std::size_t> order;
+        std::vector<std::span<const float>> views;
+        std::size_t presentation = 0;
+        std::uint64_t samples = 0;
+        int rate = 0;
+        const auto frames =
+            decode_ac4_as_coded(bytes, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+                if (!meter.has_value()) {
+                    order = ac4_order(pcm.speakers, ac4_meter_rank);
+                    const bool lfe =
+                        std::ranges::find(pcm.speakers, ac4::Speaker::kLfe) != pcm.speakers.end();
+                    meter.emplace(ac4_bed_acmod(pcm.speakers), lfe,
+                                  static_cast<std::uint32_t>(pcm.sample_rate_hz),
+                                  static_cast<int>(pcm.channels.size()));
+                    presentation = pcm.presentation;
+                    rate = pcm.sample_rate_hz;
+                }
+                views.clear();
+                for (const std::size_t c : order) {
+                    views.emplace_back(pcm.channels[c]);
+                }
+                meter->process(views);
+                samples += pcm.samples;
+            });
+        if (!frames.has_value() || !meter.has_value()) {
+            return kExitInput;
+        }
+        fmt::println("{}: {} AC-4 frames, presentation {}, {} channels, {} Hz, {:.2f} s", in_path,
+                     *frames, presentation, order.size(), rate,
+                     static_cast<double>(samples) / static_cast<double>(rate));
+        print_channel_summary(*meter);
+        return kExitOk;
     }
     // A syncframe opens with 0x0B77 (§5.4.1.1); anything else is treated as a
     // WAV, whose reader reports its own diagnosis if it is neither.
@@ -1168,8 +1455,70 @@ int run_levels(std::string_view in_path, std::optional<int> want_programme) {
 // Measure a WAV and report what dialnorm it implies. §5.4.2.8 wants dialogue
 // level below full scale and A/52 predates any standard way to measure it;
 // BS.1770 gated loudness is the modern answer, so this is the number the
-// encoder would put on the stream for dialnorm=auto.
-int run_loudness(std::string_view in_path) {
+// encoder would put on the stream for dialnorm=auto. A stream is measured as
+// its audio is coded - AC-3's and E-AC-3's first programme's bed, as qc
+// layout=bed measures it, and an AC-4 presentation's - and reported beside
+// the dialnorm it carries.
+int run_loudness(std::string_view in_path, const Options& meta) {
+    const auto bytes = read_elementary_stream(in_path);
+    if (bytes.empty()) {
+        return kExitInput;
+    }
+    if (is_ac4_stream(bytes)) {
+        ac4::Decoder decoder(ac4_coded_config(meta));
+        std::optional<Ac4Meter> meter;
+        std::vector<std::span<const float>> views;
+        std::size_t presentation = 0;
+        int rate = 0;
+        const auto frames =
+            decode_ac4_as_coded(bytes, in_path, decoder, [&](const ac4::DecodedFrame& pcm) {
+                if (!meter.has_value()) {
+                    meter.emplace(ac4_loudness_meter(pcm, false));
+                    presentation = pcm.presentation;
+                    rate = pcm.sample_rate_hz;
+                }
+                views.clear();
+                for (const std::size_t c : meter->order) {
+                    views.emplace_back(pcm.channels[c]);
+                }
+                meter->meter.push(views);
+            });
+        if (!frames.has_value() || !meter.has_value()) {
+            return kExitInput;
+        }
+        fmt::println("{}: AC-4, presentation {}, {}, {} Hz", in_path, presentation, meter->label,
+                     rate);
+        const std::optional<double> lkfs = meter->meter.integrated_lkfs();
+        if (!lkfs.has_value()) {
+            fmt::println("no audio above the -70 LKFS absolute gate: loudness undefined");
+            return kExitRuntime;
+        }
+        fmt::println("  dialogue level {:.2f} LKFS -> dialnorm {:g} dBFS (AC-4's steps of 0.25 dB)",
+                     *lkfs, ac4_dialnorm_from_lkfs(*lkfs));
+        if (const std::optional<double> dialnorm = decoder.metadata().loudness.dialnorm_dbfs) {
+            fmt::println("  the stream's dialnorm {:g} dBFS", *dialnorm);
+        }
+        return kExitOk;
+    }
+    if (bytes.size() >= 6 && std::to_integer<int>(bytes[0]) == 0x0B &&
+        std::to_integer<int>(bytes[1]) == 0x77) {
+        const auto bsid = ac3::stream_bsid(bytes);
+        const auto measured = measure_stream_loudness(bytes);
+        if (!bsid.has_value() || !measured.has_value()) {
+            return kExitInput;
+        }
+        fmt::println("{}: {}", in_path, *bsid > 8 ? "E-AC-3, the first programme" : "AC-3");
+        if (!measured->integrated_lkfs.has_value()) {
+            fmt::println("no audio above the -70 LKFS absolute gate: loudness undefined");
+            return kExitRuntime;
+        }
+        fmt::println("  dialogue level {:.2f} LKFS -> dialnorm {}", *measured->integrated_lkfs,
+                     ac3::meta::dialnorm_from_lkfs(*measured->integrated_lkfs));
+        if (const auto carried = ac3::io::read_frame_metadata(bytes); carried.has_value()) {
+            fmt::println("  the stream's dialnorm {}", carried->dialnorm);
+        }
+        return kExitOk;
+    }
     const auto wav = ac3::io::read_wav(std::string{in_path});
     if (!wav) {
         fmt::println(stderr, "error: {}: {}", in_path, ac3::io::describe(wav.error()));
@@ -1206,11 +1555,97 @@ int run_loudness(std::string_view in_path) {
     return kExitOk;
 }
 
+namespace {
+
+// spdif for AC-4 (IEC 61937-14): each sync frame in a data-burst of its own,
+// in the smallest of the AC-4, HBR4 and HBR16 burst types the stream's largest
+// frame fits at its frame rate, which decides the link's rate. The carrier is a
+// PCM16 WAV: two channels at the link's rate, or for HBR16's link, sixteen
+// times the base rate, eight channels at a quarter of it, as an HDMI
+// high-bit-rate link carries it.
+int run_spdif_ac4(std::span<const std::byte> stream, std::string_view in_path,
+                  std::string_view out_path) {
+    const ac4::ScanResult scan = ac4::scan(stream);
+    if (scan.frames.empty()) {
+        fmt::println(stderr, "error: {} holds no AC-4 sync frame", in_path);
+        return kExitInput;
+    }
+    // The whole sync frames, as a burst carries them: from each frame's
+    // offset to the next's.
+    std::vector<std::span<const std::byte>> frames;
+    frames.reserve(scan.frames.size());
+    std::size_t largest = 0;
+    for (std::size_t i = 0; i < scan.frames.size(); ++i) {
+        const std::size_t end =
+            i + 1 < scan.frames.size()
+                ? scan.frames[i + 1].offset
+                : (scan.stopped_at.has_value() ? scan.stopped_at_offset : stream.size());
+        frames.push_back(stream.subspan(scan.frames[i].offset, end - scan.frames[i].offset));
+        largest = std::max(largest, frames.back().size());
+    }
+    const auto head = ac3::iec61937::read_ac4_sync_frame(frames.front());
+    if (!head.has_value()) {
+        fmt::println(stderr, "error: {}: the first sync frame's table of contents does not read",
+                     in_path);
+        return kExitInput;
+    }
+    const auto type =
+        ac3::iec61937::ac4_burst_type_for(largest, head->fs_index, head->frame_rate_index);
+    const auto timing = type.has_value() ? ac3::iec61937::ac4_burst_timing(*type, head->fs_index,
+                                                                           head->frame_rate_index)
+                                         : std::nullopt;
+    if (!type.has_value() || !timing.has_value()) {
+        fmt::println(stderr,
+                     "error: {}: no IEC 61937-14 burst type carries frames of {} bytes at this "
+                     "frame rate (frame_rate_index {})",
+                     in_path, largest, head->frame_rate_index);
+        return kExitInput;
+    }
+    const bool hbr16 = *type == ac3::iec61937::BurstDataType::kAc4Hbr16;
+    const std::uint32_t carrier_rate = hbr16 ? timing->link_rate_hz / 4 : timing->link_rate_hz;
+    const std::uint16_t carrier_channels = hbr16 ? 8 : 2;
+    Pcm16RawWavSink sink;
+    if (!sink.open(out_path, carrier_rate, carrier_channels)) {
+        return kExitOutput;
+    }
+    ac3::iec61937::Ac4BurstPacker packer{*type};
+    for (const std::span<const std::byte> frame : frames) {
+        const auto burst = packer.push(frame);
+        if (!burst.has_value()) {
+            sink.abort();
+            fmt::println(stderr, "error: {}: a sync frame will not pack into {} bursts", in_path,
+                         ac3::iec61937::data_type_name(*type));
+            return kExitInput;
+        }
+        if (!sink.push(*burst)) {
+            sink.abort();
+            return kExitOutput;
+        }
+    }
+    if (!sink.close()) {
+        return kExitOutput;
+    }
+    const auto status = status_stream();
+    status_println(status,
+                   "wrapped {} AC-4 sync frames into IEC 61937-14 {} bursts -> {} ({} Hz{})",
+                   frames.size(), ac3::iec61937::data_type_name(*type), out_path, carrier_rate,
+                   hbr16 ? ", eight channels" : " carrier");
+    status_println(status,
+                   "no receiver found takes AC-4 over IEC 61937 yet; 'unspdif' reads the frames "
+                   "back unchanged.");
+    return kExitOk;
+}
+
+}  // namespace
+
 int run_spdif(std::string_view in_path, std::string_view out_path) {
     const auto stream = read_all(in_path);
     if (stream.empty()) {
         fmt::println(stderr, "error: cannot read {}", in_path);
         return kExitInput;
+    }
+    if (is_ac4_stream(stream)) {
+        return run_spdif_ac4(stream, in_path, out_path);
     }
     const auto bsid = ac3::stream_bsid(stream);
     if (!bsid.has_value()) {

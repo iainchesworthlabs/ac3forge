@@ -566,7 +566,7 @@ TEST_CASE("each output takes the loudness correction clause 4.8.5.3 gives it",
 namespace {
 
 // `rows` [output][input] times `channels` [input], one QMF value each.
-std::vector<double> apply(const std::vector<std::vector<double>>& rows,
+std::vector<double> apply_rows(const std::vector<std::vector<double>>& rows,
                           const std::vector<double>& in) {
     std::vector<double> out(rows.size(), 0.0);
     for (std::size_t o = 0; o < rows.size(); ++o) {
@@ -627,7 +627,7 @@ TEST_CASE(
     const detail::RenderPlan plan = detail::render_plan(layout, ac4::DownmixTarget::k5X);
     const auto defaults =
         detail::render_matrix(layout, decoded, plan, detail::render_gains(nullptr, 0));
-    CHECK(through(stage, {}, in) == apply(defaults, in));
+    CHECK(through(stage, {}, in) == apply_rows(defaults, in));
 
     detail::DownmixValues sent;
     sent.cdmx.emplace();
@@ -643,7 +643,7 @@ TEST_CASE(
     sent.loud_corr_7x = 3;                 // another output's: no effect here
     const auto custom =
         detail::render_matrix(layout, decoded, plan, detail::render_gains(&*sent.cdmx, 0));
-    std::vector<double> expected = apply(custom, in);
+    std::vector<double> expected = apply_rows(custom, in);
     for (double& v : expected) {
         v *= std::exp2(-3.0 / 6.0);
     }
@@ -660,10 +660,10 @@ TEST_CASE(
     // One that sends a correction of 31 reads 0 dB, and keeps the custom data.
     detail::DownmixValues zero;
     zero.loud_corr_5x = 31;
-    check_near(through(stage, zero, in), apply(custom, in));
+    check_near(through(stage, zero, in), apply_rows(custom, in));
     // A reset forgets both.
     stage.reset();
-    check_near(through(stage, {}, in), apply(defaults, in));
+    check_near(through(stage, {}, in), apply_rows(defaults, in));
 }
 
 TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X.0 by Table 218",
@@ -688,7 +688,7 @@ TEST_CASE("an immersive element's two channels and one follow the renderer's 5.X
         const std::vector<double> x(in.begin(),
                                     in.begin() + static_cast<std::ptrdiff_t>(channels.size()));
         const detail::RenderPlan plan = detail::render_plan(layout, ac4::DownmixTarget::k5X);
-        const auto rows = apply(
+        const auto rows = apply_rows(
             detail::render_matrix(layout, channels, plan, detail::render_gains(nullptr, 0)), x);
         // L R C LFE Ls Rs of the 5.X.0 render.
         REQUIRE(plan.speakers == std::vector<S>{S::kLeft, S::kRight, S::kCentre, S::kLfe,

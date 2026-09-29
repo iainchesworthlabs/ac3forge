@@ -5,10 +5,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <memory>
 #include <numbers>
 #include <optional>
 #include <fmt/base.h>
+#include <fmt/format.h>
 #include <span>
 #include <string>
 #include <string_view>
@@ -17,8 +19,11 @@
 #include <utility>
 #include <vector>
 
+#include "../ac4_channels.hpp"
 #include "../exit_codes.hpp"
 #include "../support.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
 #include "ac3/analysis/levels.hpp"
 #include "ac3/audio/capture.hpp"
 #include "ac3/audio/live_positions.hpp"
@@ -50,10 +55,185 @@ namespace ac3cli::commands {
 
 namespace plan = ac3::plan;
 
+namespace {
+
+// The render endpoint 'monitor' plays on: an index from 'outputs', or the
+// default endpoint for a negative one.
+struct MonitorTarget {
+    std::string id;
+    std::string name = "default endpoint";
+    // 0 means the backend cannot say - see RenderDeviceInfo::channels, and
+    // the fold decisions, which treat unknown as "leave it alone".
+    std::uint16_t channels = 0;
+};
+
+// The endpoint, or the exit code with the reason printed.
+std::expected<MonitorTarget, int> monitor_target(int device_index) {
+    MonitorTarget target;
+    if (device_index >= 0) {
+        const auto devices = ac3::audio::enumerate_render_devices();
+        if (!devices.has_value()) {
+            fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
+            return std::unexpected(kExitUnavailable);
+        }
+        if (static_cast<std::size_t>(device_index) >= devices->size()) {
+            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
+                         device_index);
+            return std::unexpected(kExitUsage);
+        }
+        const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
+        target.id = chosen.id;
+        target.name = chosen.name;
+        target.channels = chosen.channels;
+        return target;
+    }
+    // The default endpoint has no index to look up, so it is found by the
+    // is_default flag the enumeration already sets - the same endpoint an
+    // empty device_id opens. A failed enumeration is not an error here: it
+    // only costs the fold decision its input.
+    if (const auto devices = ac3::audio::enumerate_render_devices()) {
+        for (const auto& candidate : *devices) {
+            if (candidate.is_default) {
+                target.channels = candidate.channels;
+                break;
+            }
+        }
+    }
+    return target;
+}
+
+// 'monitor' for AC-4 (ETSI TS 103 190): ac4::Decoder with decode's options -
+// the presentation they choose, its mix, the output level, DRC decoder mode,
+// dialogue enhancement and layout - played on `target`. Where the options leave
+// the layout as coded and the endpoint renders fewer channels than the
+// presentation, the stream's own downmix folds it to the endpoint's width (ETSI
+// TS 103 190-1 clause 6.2.17): stereo as the stream prefers, mono, or a 7.X
+// element's 5.X.
+int monitor_ac4(std::span<const std::byte> stream, std::string_view in_path,
+                const MonitorTarget& target, const Options& meta) {
+    if (meta.verify_objects) {
+        fmt::println(stderr,
+                     "error: {} is AC-4: verify-objects checks the EMDF object signatures of AC-3 "
+                     "and E-AC-3",
+                     in_path);
+        return kExitUsage;
+    }
+    if (!meta.ac4_drc_mode.empty() && meta.ac4_drc_mode != "off" &&
+        !meta.ac4_output_level.has_value()) {
+        fmt::println(
+            stderr,
+            "error: AC-4's DRC works at an output level: add output-level=<dBFS> to drcmode={}",
+            meta.ac4_drc_mode);
+        return kExitUsage;
+    }
+    const ac4::ScanResult scan = ac4::scan(stream);
+    if (scan.frames.empty()) {
+        fmt::println(stderr, "error: {} holds no AC-4 sync frame", in_path);
+        return kExitInput;
+    }
+    ac4::DecoderConfig config = ac4_decoder_config(meta);
+    if (config.output.downmix == ac4::DownmixTarget::kAsCoded && target.channels > 0) {
+        const auto speakers = ac4_presentation_speakers(scan.frames, config);
+        if (speakers.has_value() && speakers->size() > target.channels) {
+            config.output.downmix = target.channels == 1   ? ac4::DownmixTarget::kMono
+                                    : target.channels >= 6 ? ac4::DownmixTarget::k5X
+                                                           : ac4::DownmixTarget::kStereo;
+            status_println(status_stream(),
+                           "  {} channels on a {}-channel output: folding to {} (ETSI TS 103 "
+                           "190-1 6.2.17)",
+                           speakers->size(), target.channels, ac4::describe(config.output.downmix));
+        }
+    }
+    ac4::Decoder decoder(config);
+    ac3::audio::MonitorSink sink;
+    std::vector<std::size_t> order;
+    std::vector<ac4::Speaker> layout;
+    std::size_t played = 0;
+    std::size_t waiting = 0;
+    std::size_t frame_number = 0;
+    for (const ac4::SyncFrame& frame : scan.frames) {
+        ++frame_number;
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        if (!decoded.has_value()) {
+            fmt::println(stderr, "error: {}: frame {}: {}", in_path, frame_number,
+                         decoder.refusal_reason());
+            return kExitInput;
+        }
+        if (!decoded->has_value()) {
+            // Waiting for an I-frame, at the start or after a change of
+            // source: nothing to play yet.
+            ++waiting;
+            continue;
+        }
+        const ac4::DecodedFrame& pcm = **decoded;
+        if (order.empty()) {
+            order = ac4_order(pcm.speakers, ac4_wav_rank);
+            layout = pcm.speakers;
+            const auto started =
+                sink.start(target.id, static_cast<std::uint32_t>(pcm.sample_rate_hz),
+                           static_cast<std::uint16_t>(order.size()));
+            if (!started.has_value()) {
+                fmt::println(stderr, "error: {}", ac3::audio::describe(started.error()));
+                return kExitUnavailable;
+            }
+            status_println(status_stream(),
+                           "monitoring {} (AC-4, presentation {}, {} channels, {} Hz) on \"{}\"…",
+                           in_path, pcm.presentation, order.size(), pcm.sample_rate_hz,
+                           target.name);
+            status_println(status_stream(), "  {}", ac4_processing(config.output));
+        }
+        if (pcm.speakers != layout) {
+            fmt::println(stderr, "error: {}: frame {}: the channel layout changes mid-stream",
+                         in_path, frame_number);
+            sink.stop();
+            return kExitInput;
+        }
+        if (!ac3::apps::submit_while_running(sink, std::chrono::milliseconds(4),
+                                             interleave_reordered(pcm.channels, order))) {
+            fmt::println(stderr, "error: \"{}\" went away ({}); playback stopped", target.name,
+                         kOutputGoneReasons);
+            return kExitRuntime;
+        }
+        ++played;
+    }
+    if (order.empty()) {
+        fmt::println(stderr, "error: {}: no frame decoded; the stream sent no I-frame", in_path);
+        return kExitInput;
+    }
+    const bool played_out =
+        ac3::apps::wait_while_running(sink, std::chrono::milliseconds(10), [&sink] {
+            const auto counts = sink.stats();
+            return counts.frames_rendered >= counts.frames_submitted;
+        });
+    const auto stats = sink.stats();
+    sink.stop();
+    if (!played_out) {
+        fmt::println(stderr, "error: \"{}\" went away ({}) before the last frames played",
+                     target.name, kOutputGoneReasons);
+        return kExitRuntime;
+    }
+    status_println(status_stream(), "played {} AC-4 frames, {} underruns{}", played,
+                   stats.underruns,
+                   waiting > 0 ? fmt::format("; {} waiting for an I-frame played nothing", waiting)
+                               : std::string{});
+    return kExitOk;
+}
+
+}  // namespace
+
 int run_monitor(std::string_view in_path, int device_index, const Options& meta) {
     const auto stream = read_elementary_stream(in_path);
     if (stream.empty()) {
         return kExitInput;
+    }
+    // AC-4's sync word, 0xAC40 or 0xAC41, where A/52's is 0x0B77: its own
+    // decoder, and none of the A/52 checks below.
+    if (is_ac4_stream(stream)) {
+        const auto target = monitor_target(device_index);
+        if (!target.has_value()) {
+            return target.error();
+        }
+        return monitor_ac4(stream, in_path, *target, meta);
     }
     if (!apply_object_verification(stream, meta, status_stream())) {
         return kExitInput;
@@ -70,40 +250,13 @@ int run_monitor(std::string_view in_path, int device_index, const Options& meta)
     // Eac3Decoder has folded a core correctly since #690.
     const bool access_units = ac3::apps::reads_as_access_units(stream);
 
-    std::string device_id;
-    std::string device_name = "default endpoint";
-    // 0 means the backend cannot say - see RenderDeviceInfo::channels, and
-    // the fold decision below, which treats unknown as "leave it alone".
-    std::uint16_t device_channels = 0;
-    if (device_index >= 0) {
-        const auto devices = ac3::audio::enumerate_render_devices();
-        if (!devices.has_value()) {
-            fmt::println(stderr, "error: {}", ac3::audio::describe(devices.error()));
-            return kExitUnavailable;
-        }
-        if (static_cast<std::size_t>(device_index) >= devices->size()) {
-            fmt::println(stderr, "error: device index {} out of range (see 'ac3cli outputs')",
-                         device_index);
-            return kExitUsage;
-        }
-        const auto& chosen = (*devices)[static_cast<std::size_t>(device_index)];
-        device_id = chosen.id;
-        device_name = chosen.name;
-        device_channels = chosen.channels;
-    } else {
-        // The default endpoint has no index to look up, so it is found by the
-        // is_default flag the enumeration already sets - the same endpoint an
-        // empty device_id opens below. A failed enumeration is not an error
-        // here: it only costs the fold decision its input.
-        if (const auto devices = ac3::audio::enumerate_render_devices()) {
-            for (const auto& candidate : *devices) {
-                if (candidate.is_default) {
-                    device_channels = candidate.channels;
-                    break;
-                }
-            }
-        }
+    const auto target = monitor_target(device_index);
+    if (!target.has_value()) {
+        return target.error();
     }
+    const std::string& device_id = target->id;
+    const std::string& device_name = target->name;
+    const std::uint16_t device_channels = target->channels;
 
     // §7.8: what the decoders should fold to before anything is played. An
     // explicit channels=/downmix= always wins; otherwise a device that renders
@@ -729,13 +882,23 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         return kExitUsage;
     }
     std::optional<TakePlan> take;
+    // A channel session's encoder, AC-3, E-AC-3 or AC-4 (codec=ac4), built
+    // before any device opens so that a configuration it refuses touches none.
+    TakeEncoder take_encoder;
     if (!atmos) {
         take = resolve_take_plan(meta, bitrate, sr);
         if (!take.has_value()) {
             return kExitUsage;
         }
+        if (const std::string why = take_encoder.open(take->plan); !why.empty()) {
+            fmt::println(stderr, "error: {}", why);
+            return kExitUsage;
+        }
     }
     const bool eac3 = atmos || take->eac3;
+    // AC-4 (ETSI TS 103 190): its monitor decodes AC-4, and a receiver, none
+    // of which takes AC-4 over IEC 61937 yet, gets the AC-3 leg below.
+    const bool ac4 = !atmos && take->plan.codec == plan::Codec::kAc4;
 
     ac3::audio::Capture capture;
     const auto started = capture.start(device.id, device.kind);
@@ -933,14 +1096,17 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             const bool known = !target->id.empty();
             const bool takes_eac3 = !known || target->supports_eac3_passthrough;
             const bool takes_ac3 = !known || target->supports_ac3_passthrough;
-            downmix_leg = eac3 && !takes_eac3 && takes_ac3 && meta.downmix_leg;
+            // An AC-4 session always reaches a receiver as the AC-3 leg: no
+            // receiver takes AC-4 over IEC 61937 yet.
+            downmix_leg = (ac4 || (eac3 && !takes_eac3)) && takes_ac3 && meta.downmix_leg;
             const bool leg_eac3 = eac3 && !downmix_leg;
-            if (!(leg_eac3 ? takes_eac3 : takes_ac3)) {
+            const bool leg_ok = ac4 ? downmix_leg : (leg_eac3 ? takes_eac3 : takes_ac3);
+            if (!leg_ok) {
                 fmt::println(stderr,
                              "warning: \"{}\" does not accept {} over IEC 61937; passthrough "
                              "off{}",
-                             target->name, leg_eac3 ? "E-AC-3" : "AC-3",
-                             eac3 && takes_ac3 && !meta.downmix_leg
+                             target->name, ac4 ? "AC-4" : (leg_eac3 ? "E-AC-3" : "AC-3"),
+                             (eac3 || ac4) && takes_ac3 && !meta.downmix_leg
                                  ? " (drop downmix=off to send it a capped 5.1 AC-3 leg)"
                                  : "");
             } else {
@@ -968,8 +1134,6 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // and this function only constructs them once, at session start, not per
     // audio frame (PREfast's C6262) - same pattern as EncoderController's
     // runLiveSession, the GUI's equivalent of this function.
-    std::unique_ptr<ac3::FrameEncoder> ac3_encoder;
-    std::unique_ptr<ac3::eac3::AccessUnitEncoder> eac3_encoder;
     std::unique_ptr<ac3::oba::AtmosEncoder> atmos_encoder;
     if (atmos) {
         atmos_encoder = std::make_unique<ac3::oba::AtmosEncoder>(
@@ -977,11 +1141,6 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                                   .dialnorm = meta.p.dialnorm, .num_bands_idx = 4,
                                   .fast_mdct = meta.fast_mdct, .joc_domain = meta.joc_domain},
             static_cast<int>(nobjects));
-    } else if (take->eac3) {
-        eac3_encoder =
-            std::make_unique<ac3::eac3::AccessUnitEncoder>(plan::eac3_config(take->plan));
-    } else {
-        ac3_encoder = std::make_unique<ac3::FrameEncoder>(plan::ac3_config(take->plan));
     }
     // The receiver leg's own encoder, fed the bed the main plan already
     // computed - which IS a self-sufficient fold-down of the whole programme
@@ -1007,6 +1166,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
     // as the two decoders just above - same pattern as
     // examples/atmos_objects.cpp (PR #295).
     auto eac3_monitor_decoder = std::make_unique<ac3::Eac3Decoder>();
+    // AC-4's, as decode reads a stream without asking anything of it.
+    std::optional<ac4::Decoder> ac4_monitor_decoder;
+    if (ac4) {
+        ac4_monitor_decoder.emplace();
+    }
     ac3::iec61937::Eac3BurstPacker eac3_packer;
 
     // Object mode meters the 5.1 bed (matching encodeObjects/run_atmos_encode
@@ -1021,12 +1185,11 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
 
     RecordingSink sink;
     {
-        const auto config =
-            atmos ? RecordingSink::Config{.container = meta.container,
-                                          .eac3 = true,
-                                          .sample_rate = rate_hz,
-                                          .channels = 6}
-                  : take_sink_config(meta, *take, rate_hz);
+        const auto config = atmos ? RecordingSink::Config{.container = meta.container,
+                                                          .eac3 = true,
+                                                          .sample_rate = rate_hz,
+                                                          .channels = 6}
+                                  : take_sink_config(meta, *take, rate_hz, &take_encoder);
         if (const auto why = sink.open(std::string{out_path}, config); !why.empty()) {
             fmt::println(stderr, "error: {}: {}", out_path, why);
             return kExitOutput;
@@ -1212,7 +1375,10 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
         n0 += ac3::kSamplesPerFrame;
 
-        std::vector<std::byte> unit_bytes;
+        // What this frame completes: one AC-3 frame or E-AC-3 access unit,
+        // or the AC-4 frames it completes, none while its encoder's delay
+        // fills.
+        std::vector<TakeEncoder::Unit> units;
         if (atmos) {
             // Objects orbit at their own rate and start spread around the
             // ring, matching run_atmos exactly - the position is recomputed
@@ -1255,7 +1421,7 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
                 bed_views[ch] = std::span{atmos_encoder->bed()[ch]};
             }
             meter.process(bed_views);
-            unit_bytes = unit->bytes;
+            units.push_back(TakeEncoder::Unit{.bytes = unit->bytes, .sync = true});
         } else {
             plan::render(*routing, views, coded_out, ac3::kSamplesPerFrame);
             meter.process(coded_views);
@@ -1265,28 +1431,35 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             for (std::size_t ch = 0; ch < bed_channels; ++ch) {
                 bed_views[ch] = coded_views[ch];
             }
-            if (take->eac3) {
-                const auto unit = eac3_encoder->encode_access_unit(coded_views);
-                if (!unit.has_value()) {
-                    fmt::println(stderr, "error: the encoder cannot express this configuration");
-                    encode_failed = true;
-                    break;
-                }
-                unit_bytes = unit->bytes;
-            } else {
-                auto frame = ac3_encoder->encode_frame(coded_views);
-                if (!frame.has_value()) {
-                    fmt::println(stderr, "error: bitrate must be a legal AC-3 rate");
-                    encode_failed = true;
-                    break;
-                }
-                unit_bytes = std::move(*frame);
+            auto encoded = take_encoder.encode(coded_views);
+            if (!encoded.has_value()) {
+                fmt::println(stderr, "error: {}", encoded.error());
+                encode_failed = true;
+                break;
             }
+            units = std::move(*encoded);
         }
 
-        if (monitoring) {
+        for (const TakeEncoder::Unit& unit : units) {
+            if (!monitoring) {
+                break;
+            }
+            const std::span<const std::byte> unit_bytes = unit.bytes;
             std::optional<std::vector<float>> to_play;
-            if (eac3) {
+            if (ac4) {
+                // The decoded channels in the WAV order MonitorSink takes,
+                // as decode writes them.
+                const ac4::ScanResult scanned = ac4::scan(unit_bytes);
+                if (!scanned.frames.empty()) {
+                    const auto decoded =
+                        ac4_monitor_decoder->decode(scanned.frames.front().raw_ac4_frame);
+                    if (decoded.has_value() && decoded->has_value()) {
+                        const ac4::DecodedFrame& pcm = **decoded;
+                        to_play = interleave_reordered(
+                            pcm.channels, ac4_order(std::span{pcm.speakers}, ac4_wav_rank));
+                    }
+                }
+            } else if (eac3) {
                 const auto decoded = eac3_monitor_decoder->decode_access_unit(unit_bytes);
                 // 3.7: decoded->has_value() is false exactly when this
                 // access unit is being held back pending transient
@@ -1320,30 +1493,38 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         }
 
         if (passing_through) {
-            std::optional<std::vector<std::byte>> burst;
+            // The bursts this frame gives the receiver: the AC-3 leg's one,
+            // or one a unit of the main encode.
+            std::vector<std::vector<std::byte>> bursts;
             if (downmix_leg) {
                 // The capped receiver leg: an independent AC-3 encode of the
                 // bed the main plan has already computed. The main encode
-                // above (unit_bytes) is untouched and still reaches the
-                // meters, the monitor and the file exactly as it always has.
+                // above (units) is untouched and still reaches the meters,
+                // the monitor and the file exactly as it always has.
                 const auto leg_frame = downmix_encoder->encode_frame(bed_views);
                 if (leg_frame.has_value()) {
                     if (const auto wrapped = ac3::iec61937::wrap_frame(*leg_frame)) {
-                        burst = *wrapped;
+                        bursts.push_back(*wrapped);
                     }
                 }
-            } else if (eac3) {
-                auto packed = eac3_packer.push(unit_bytes);
-                if (packed && *packed) {
-                    burst = std::move(**packed);
-                }
             } else {
-                if (const auto wrapped = ac3::iec61937::wrap_frame(unit_bytes)) {
-                    burst = *wrapped;
+                for (const TakeEncoder::Unit& unit : units) {
+                    if (eac3) {
+                        auto packed = eac3_packer.push(unit.bytes);
+                        if (packed && *packed) {
+                            bursts.push_back(std::move(**packed));
+                        }
+                    } else if (const auto wrapped = ac3::iec61937::wrap_frame(unit.bytes)) {
+                        bursts.push_back(*wrapped);
+                    }
                 }
             }
-            if (burst.has_value() && !ac3::apps::submit_while_running(
-                                         passthrough_sink, std::chrono::milliseconds(4), *burst)) {
+            const bool delivered =
+                std::ranges::all_of(bursts, [&](const std::vector<std::byte>& burst) {
+                    return ac3::apps::submit_while_running(passthrough_sink,
+                                                           std::chrono::milliseconds(4), burst);
+                });
+            if (!delivered) {
                 passing_through = false;
                 passthrough_sink.stop();
                 passthrough_lost_at = take_seconds();
@@ -1355,16 +1536,36 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
             }
         }
 
-        if (const auto why = sink.push(unit_bytes); !why.empty()) {
-            fmt::println(stderr, "error: {}: {}", out_path, why);
-            std::ignore = sink.close();
-            return kExitOutput;
+        for (const TakeEncoder::Unit& unit : units) {
+            if (const auto why = sink.push(unit.bytes, unit.sync); !why.empty()) {
+                fmt::println(stderr, "error: {}: {}", out_path, why);
+                std::ignore = sink.close();
+                return kExitOutput;
+            }
         }
         ++frames_written;
         print_live_meter(meter, static_cast<double>(frames_written * ac3::kSamplesPerFrame) /
                                     rate_hz);
     }
     status_println(status);
+
+    // AC-4's encoder hands over the frames its delay still holds, to the
+    // file; the session's legs have stopped with the capture.
+    if (ac4 && !device_lost && !encode_failed) {
+        auto rest = take_encoder.flush();
+        if (!rest.has_value()) {
+            fmt::println(stderr, "error: {}", rest.error());
+            encode_failed = true;
+        } else {
+            for (const TakeEncoder::Unit& unit : *rest) {
+                if (const auto why = sink.push(unit.bytes, unit.sync); !why.empty()) {
+                    fmt::println(stderr, "error: {}: {}", out_path, why);
+                    std::ignore = sink.close();
+                    return kExitOutput;
+                }
+            }
+        }
+    }
 
     capture.stop();
     if (device2) {
@@ -1435,8 +1636,9 @@ int run_live(std::string_view out_path, int capture_device, std::uint32_t second
         report_lost_outputs();
         return kExitRuntime;
     }
-    status_println(status, "wrote {} {} ({} kbps, {}) to {}{}", frames_written,
-                   eac3 ? "E-AC-3 access units" : "AC-3 frames", bitrate,
+    status_println(status, "wrote {} {} ({} kbps, {}) to {}{}",
+                   ac4 ? static_cast<std::uint64_t>(sink.frames()) : frames_written,
+                   ac4 ? "AC-4 frames" : (eac3 ? "E-AC-3 access units" : "AC-3 frames"), bitrate,
                    atmos ? std::string{"5.1 bed + objects"} : take->label, out_path,
                    container_note(meta.container));
     if (atmos) {

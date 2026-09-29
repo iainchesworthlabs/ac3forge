@@ -24,8 +24,11 @@
 #include "ac4/syntax.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
+#include "sanitized.hpp"
 
 namespace {
+
+using ac3::test::kSanitized;
 
 struct Encoded {
     std::vector<ac4::EncodedFrame> frames;
@@ -180,13 +183,16 @@ double db_of_power(double ratio) {
     return 10.0 * std::log10(ratio);
 }
 
-// L R C LFE Ls Rs, each its own tone at -20 dBFS, for three seconds.
+// L R C LFE Ls Rs, each its own tone at -20 dBFS, for three seconds, or one
+// and a quarter under the sanitizers: tone_power() measures past the first,
+// and its window holds the closest two, 126 Hz apart, 80 dB apart over what
+// is left.
 constexpr std::array<double, 6> kTone = {331.0, 457.0, 613.0, 47.0, 787.0, 953.0};
 
 std::vector<std::vector<float>> tones_51() {
     std::vector<std::vector<float>> input;
     for (const double hz : kTone) {
-        input.push_back(tone(hz, 0.1, 3 * 48000));
+        input.push_back(tone(hz, 0.1, kSanitized ? 60000 : 3 * 48000));
     }
     return input;
 }
@@ -363,7 +369,10 @@ TEST_CASE("the decoder applies the encoder's metadata with the gains its formula
         }
     }
     SECTION("dialogue enhancement: the marked centre raised by the gain asked for, up to the cap") {
-        for (const double asked : {6.0, 12.0, 15.0}) {
+        // Under the sanitizers, below the cap and past it.
+        const std::vector<double> asks =
+            kSanitized ? std::vector<double>{6.0, 15.0} : std::vector<double>{6.0, 12.0, 15.0};
+        for (const double asked : asks) {
             CAPTURE(asked);
             const std::vector<std::vector<float>> out = decode(
                 encoded.frames,
@@ -414,8 +423,9 @@ TEST_CASE("dialogue enhancement from a stem raises the dialogue and leaves the r
     // Stereo: a 1 kHz tone, the dialogue, in L and R under noise-like music
     // of three far tones; the stem is the dialogue alone. Centred for the
     // channel-independent method and the Mid, and panned for the
-    // cross-channel method, which follows the panning.
-    const std::size_t count = 3 * 48000;
+    // cross-channel method, which follows the panning. One and a half seconds
+    // under the sanitizers: tone_power() measures past the first.
+    const std::size_t count = kSanitized ? 72000 : 3 * 48000;
     const std::vector<float> dialogue_tone = tone(1000.0, 0.1, count);
     const std::vector<float> music_low = tone(90.0, 0.1, count);
     const std::vector<float> music_high = tone(9000.0, 0.05, count);
@@ -507,15 +517,22 @@ TEST_CASE("dialogue enhancement from a stem raises the dialogue and leaves the r
 TEST_CASE("DRC gains sent from a profile read back and compress as the profile's curve does",
           "[ac4enc][metadata]") {
     // Two seconds at -40 dBFS, which the profile boosts, then two at -12,
-    // which it cuts, and back: 1 kHz in every channel but the LFE.
+    // which it cuts, and back: 1 kHz in every channel but the LFE. Under the
+    // sanitizers a second, a second and a second and three quarters: film
+    // standard's curve boosts by 6 dB from the first frames, cuts to -3.4 dB
+    // within 0.6 s of the loud part, and has released to +3.8 dB 1.5 s after
+    // it, as with two seconds of each.
     const std::size_t second = 48000;
+    const std::size_t quiet_part = kSanitized ? second : 2 * second;
+    const std::size_t loud_part = kSanitized ? second : 2 * second;
+    const std::size_t length = quiet_part + loud_part + (kSanitized ? 7 * second / 4 : 2 * second);
     const auto programme = [&](int channels) {
         std::vector<std::vector<float>> out;
-        const std::vector<float> quiet = tone(1000.0, 0.01, 6 * second);
+        const std::vector<float> quiet = tone(1000.0, 0.01, length);
         for (int c = 0; c < channels; ++c) {
-            std::vector<float> x(6 * second);
+            std::vector<float> x(length);
             for (std::size_t n = 0; n < x.size(); ++n) {
-                const bool loud = n >= 2 * second && n < 4 * second;
+                const bool loud = n >= quiet_part && n < quiet_part + loud_part;
                 x[n] = (channels == 6 && c == 3) ? 0.0F : quiet[n] * (loud ? 25.0F : 1.0F);
             }
             out.push_back(std::move(x));
@@ -524,6 +541,12 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
     };
     for (const int channels : {2, 6}) {
         for (const int gains_config : {0, 1, 2, 3}) {
+            // Under the sanitizers 5.1 takes gains_config 3 alone and stereo
+            // the other three: each configuration once, and 5.1's three
+            // channel groups with every band and subframe.
+            if (kSanitized && (channels == 6) != (gains_config == 3)) {
+                continue;
+            }
             CAPTURE(channels, gains_config);
             ac4::EncoderConfig config;
             config.channels = channels;
@@ -573,8 +596,10 @@ TEST_CASE("DRC gains sent from a profile read back and compress as the profile's
                 return 10.0 * std::log10(sum / static_cast<double>(count) + 1e-30);
             };
             const std::size_t lag = 3072 + 1313;
-            for (const std::size_t at :
-                 {second + second / 2, 3 * second + second / 2, 5 * second + second / 2}) {
+            // Three quarters into the quiet part and into the loud one, and a
+            // second and a half after the loud one.
+            for (const std::size_t at : {quiet_part * 3 / 4, quiet_part + loud_part * 3 / 4,
+                                         quiet_part + loud_part + 3 * second / 2}) {
                 CAPTURE(at);
                 const double gains_db =
                     rms_db(by_gains[0], lag + at, 4800) - rms_db(plain[0], lag + at, 4800);

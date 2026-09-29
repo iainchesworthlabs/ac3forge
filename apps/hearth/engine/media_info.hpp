@@ -31,9 +31,10 @@
 //   objects, authenticity tags, CRCs, coding tools); and what the lead
 //   programme's first access unit says in its bitstream information, with the
 //   fold levels that follows from it.
-// - For AC-4, which this build cannot play: the sync frames, and the first
-//   frame's table of contents - presentations, substream groups, channel
-//   modes, bitrates and A-JOC.
+// - For AC-4: the sync frames, the first frame's table of contents -
+//   presentations, substream groups, channel modes, bitrates and A-JOC - and
+//   what ac4::Decoder reads of the whole stream (apps/common/probe_json.hpp's
+//   Ac4Summary).
 //
 // Reading a whole stream takes a noticeable part of a second for a long item,
 // so describe_media() runs on MediaInspector's thread (media_inspector.hpp),

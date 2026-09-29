@@ -13,10 +13,10 @@
 // The table of contents of a raw_ac4_frame() at bitstream_version 2 (ETSI TS
 // 103 190-2 V1.3.1 clause 6.2.1), for any number of version 1 presentations
 // over any number of substream groups of channel-coded substreams or of object
-// audio substreams, and the frame it heads. The encoder's own frame (frame_writer.hpp) is the case
-// of one presentation over one group of one substream; the decoder's tests build presentations of
-// several substreams with it (tests/ac4dec/ac4dec_mux.hpp), and phase E6 of planning/ac4.md writes
-// the encoder's own.
+// audio substreams, with their EMDF payload substreams, and the frame it heads.
+// The encoder writes its presentations with it (frame_writer.hpp), and the
+// decoder's tests build presentations of other encoders' substreams, and of
+// object audio substreams, with it (tests/ac4dec/ac4dec_mux.hpp).
 
 namespace ac4::detail {
 
@@ -103,21 +103,28 @@ struct TocGroup {
     std::string language;
 };
 
-// One ac4_presentation_v1_info() (clause 6.2.1.3), with its presentation
-// substream and no EMDF substreams.
+// One ac4_presentation_v1_info() (clause 6.2.1.3): with its presentation
+// substream, or for presentation_config 6 its EMDF payload substreams alone.
 struct TocPresentation {
-    // Table 53's presentation_config, 0 to 5; unset for
+    // Table 53's presentation_config, 0 to 6; unset for
     // b_single_substream_group.
     std::optional<int> presentation_config;
-    std::vector<int> groups;  // each ac4_sgi_specifier()'s group_index
+    std::vector<int> groups;  // each ac4_sgi_specifier()'s group_index; none for 6
     int presentation_version = 1;
     int md_compat = 0;
     std::optional<int> presentation_id;
     // b_presentation_filter, and b_enable_presentation where it is set.
     std::optional<bool> enable;
     bool pre_virtualized = false;
-    bool pres_ndot = true;  // ac4_presentation_substream_info()'s b_pres_ndot
+    bool alternative = false;  // ac4_presentation_substream_info()'s b_alternative
+    bool pres_ndot = true;     // and its b_pres_ndot
     int presentation_substream = 0;
+    // The EMDF payloads substream the presentation's emdf_info() names
+    // (b_emdf_payloads_substream_info), and those of the additional
+    // emdf_info()s (b_add_emdf_substreams), which presentation_config 6 has
+    // alone. Part 1 Tables 8 and 13, with emdf_version and key_id 0.
+    std::optional<int> emdf_substream{};
+    std::vector<int> add_emdf{};
 };
 
 struct TocLayout {
@@ -146,11 +153,16 @@ void write_toc(BitWriter& w, const TocLayout& layout, std::size_t payload_base,
                                     std::span<const std::size_t> sizes);
 
 // The whole raw_ac4_frame(): the table of contents and `substreams`, in index
-// order, each as long as its bytes, with no payload_base. Nothing when the
-// layout names a group, a substream or a presentation substream that is not
-// there, or one the syntax cannot send (a channel mode above 12, a
-// presentation_config above 5, a language tag longer than 63 bytes).
+// order, each as long as its bytes, with `payload_base` zero bytes between
+// them. Nothing when the layout names a group, a substream or a presentation
+// substream that is not there, or one the syntax cannot send (a channel mode
+// above 12, a presentation_config above 6, a language tag longer than 63
+// bytes).
 [[nodiscard]] std::optional<std::vector<std::byte>> assemble_frame(
-    const TocLayout& layout, std::span<const std::vector<std::byte>> substreams);
+    const TocLayout& layout, std::span<const std::vector<std::byte>> substreams,
+    std::size_t payload_base = 0);
+
+// Whether assemble_frame() can write the layout over `substreams` substreams.
+[[nodiscard]] bool writable(const TocLayout& layout, std::size_t substreams);
 
 }  // namespace ac4::detail

@@ -40,6 +40,7 @@
 #include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <catch2/catch_test_macros.hpp>
@@ -49,10 +50,12 @@
 #include "ac4dec/decoder.hpp"
 #include "ac4dec_mux.hpp"
 #include "pcm/mixer.hpp"
+#include "sanitized.hpp"
 
 namespace {
 
 namespace fs = std::filesystem;
+using ac3::test::kSanitized;
 using ac4::Speaker;
 using ac4dec_test::MuxGroup;
 using ac4dec_test::MuxLayout;
@@ -345,6 +348,21 @@ const std::vector<std::byte>& committed(std::string_view name) {
         return five_one;
     }
     return name == "hybrid" ? hybrid : v0;
+}
+
+// The 5.1 or version 0 stream as the mixing tests decode it: whole, or under
+// the sanitizers its first 14 frames, nine of them past kSkippedSamples. Over
+// those, tone_amplitude()'s window holds the closest two tones of either
+// stream, 84 Hz apart, 90 dB apart. (The hybrid stream's dialogue
+// enhancement tone is 24 Hz from Rs's, and its test decodes it whole.)
+std::span<const std::byte> mixing(std::string_view name) {
+    const std::vector<std::byte>& file = committed(name);
+    if (!kSanitized) {
+        return file;
+    }
+    const ac4::ScanResult scan = ac4::scan(file);
+    REQUIRE(scan.frames.size() > 14);
+    return std::span<const std::byte>(file).first(scan.frames[14].offset);
 }
 
 // --- Decoding and measuring ------------------------------------------------------
@@ -842,7 +860,7 @@ TEST_CASE("the pan law meets Table 216 at its three angles", "[ac4dec][presentat
 }
 
 TEST_CASE("music and effects with dialogue mixes as Part 1 clause 6.2.16.1 gives", "[ac4dec][presentations]") {
-    const std::vector<std::byte>& file = committed("5_1");
+    const std::span<const std::byte> file = mixing("5_1");
     const Decoded me = decode_id(file, 20);
     const Decoded english = decode_id(file, 21);
     const Decoded german = decode_id(file, 22);
@@ -873,7 +891,7 @@ TEST_CASE("music and effects with dialogue mixes as Part 1 clause 6.2.16.1 gives
 }
 
 TEST_CASE("main with associated audio mixes as Part 1 clause 6.2.16.2 gives", "[ac4dec][presentations]") {
-    const std::vector<std::byte>& file = committed("5_1");
+    const std::span<const std::byte> file = mixing("5_1");
     const Decoded main = decode_id(file, 20);
     const Decoded ad = decode_id(file, 23);
     const Decoded commentary = decode_id(file, 24);
@@ -905,7 +923,7 @@ TEST_CASE("main with associated audio mixes as Part 1 clause 6.2.16.2 gives", "[
 
 TEST_CASE("music and effects, dialogue and associated audio mix as Part 1 clause 6.2.16.3 gives",
           "[ac4dec][presentations]") {
-    const std::vector<std::byte>& file = committed("5_1");
+    const std::span<const std::byte> file = mixing("5_1");
     const Decoded me = decode_id(file, 20);
     const Decoded english = decode_id(file, 21);
     const Decoded ad = decode_id(file, 23);
@@ -1020,7 +1038,7 @@ TEST_CASE("a hybrid dialogue enhancement method takes its waveform from the dial
 }
 
 TEST_CASE("version 0 presentations mix by their substreams' own metadata and dialnorms", "[ac4dec][presentations]") {
-    const std::vector<std::byte>& file = committed("v0");
+    const std::span<const std::byte> file = mixing("v0");
     const Decoded me = decode_id(file, 10);
     const Decoded english = decode_id(file, 11);
     const Decoded ad = decode_id(file, 12);
@@ -1127,7 +1145,7 @@ TEST_CASE("a stream with no presentation the decoder decodes names the substream
 }
 
 TEST_CASE("the decoder selects by its configuration and reports what it decoded", "[ac4dec][presentations]") {
-    const std::vector<std::byte>& file = committed("5_1");
+    const std::span<const std::byte> file = mixing("5_1");
     ac4::DecoderConfig config;
     config.presentation.language = "de";
     const Decoded german = decode(file, config);

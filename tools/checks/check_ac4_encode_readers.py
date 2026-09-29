@@ -1,6 +1,6 @@
 """Readers outside this project against ac3cli's AC-4 encoder: MediaInfo and DEE's muxer.
 
-planning/ac4.md, the encoder's ladder, item 3, as phases E1 to E5 need it. For each configuration
+planning/ac4.md, the encoder's ladder, item 3, as phases E1 to E6 need it. For each configuration
 below, mono to 5.1, the A-CPL modes, the experimental options of 5.X and 7.X and of A-CPL, and
 phase E5's frame rates, rate modes, I-frames and metadata, `ac3cli ac4-encode` writes a raw stream
 and an MP4 file, and:
@@ -25,14 +25,30 @@ and an MP4 file, and:
              the encoder's MP4 file carries; for the 3/2/2 layout, but for channel group 4, which
              the muxer leaves out (src/ac4enc/ERRATA.md, "The 3/2/2 layout's top front pair").
 
+Phase E6's presentations: the encoder's streams of several substreams and presentations under
+tests/golden/ac4dec/presentations/ (encoder-*.ac4, which tests/ac4enc/test_ac4enc_presentations.cpp
+writes with AC4ENC_WRITE_PRESENTATIONS, beside the configuration each was made from as JSON), whose
+MediaInfo reading (`--Output=JSON`) lists every presentation with the configured
+presentation_config, presentation_id, md_compat (MediaInfo's "PresentationLevel"), groups,
+dialnorm and language (its dialogue substream's, else its main substream's; MediaInfo names a Part 1
+Table 92 code rather than printing it), and every group with its content classifier and language;
+whose trace (`--Details=1`) frames each alternative presentation's name as written, name_len its
+bytes and the 0 after them, and holds at MediaInfo's offset the name's bytes; and whose every
+substream field MediaInfo details in the first frame holds the value the decoder's syntax trace
+reads there, which tests/ac4enc/test_ac4enc_presentations.cpp holds equal to the encoder's own.
+MediaInfo reads no substream after a presentation_config 6 (EMDF-only) presentation, so the
+encoder's streams list that presentation last.
+
 MediaInfo and DEE's muxer come from DEE's install, so this runs locally, never in CI
 (tools/generators/gen_ac4_baseline.py's DEE_DIR).
 
 Usage:
     python tools/checks/check_ac4_encode_readers.py --cli ac3cli.exe [--dee-dir DIR] [--work DIR]
+        [--only presentations]
 """
 
 import argparse
+import json
 import random
 import re
 import struct
@@ -241,8 +257,17 @@ CODE = re.compile(r"^[0-9A-F]{4,}\s+(de_par_code) \(\d+ bytes\)$")
 FRAME = re.compile(r"^([0-9A-F]{4,}) ac4_syncframe - (\d+) ")
 
 
-def run(command):
-    result = subprocess.run([str(c) for c in command], capture_output=True, text=True, check=False)
+def run(command, timeout=600):
+    # A timeout for every tool: DEE's muxer can hang on a stream (src/ac4enc/ERRATA.md, "An
+    # alternative presentation's dac4").
+    try:
+        result = subprocess.run(
+            [str(c) for c in command], capture_output=True, text=True, check=False, timeout=timeout
+        )
+    except subprocess.TimeoutExpired:
+        raise SystemExit(
+            f"{' '.join(str(c) for c in command)} did not finish in {timeout} s"
+        ) from None
     if result.returncode != 0:
         raise SystemExit(f"{' '.join(str(c) for c in command)} failed ({result.returncode}):\n"
                          f"{result.stdout}{result.stderr}")
@@ -397,11 +422,180 @@ def dac4(path):
     return data[at + 4:at - 4 + size]
 
 
+# --- Phase E6: the encoder's presentations ------------------------------------------------
+
+PRESENTATION_STREAMS = REPO / "tests" / "golden" / "ac4dec" / "presentations"
+# MediaInfo's names for Part 2 Table 53's presentation_config and Part 1 Table 91's
+# content_classifier.
+CONFIG_NAMES = {0: "Music and Effects + Dialogue", 1: "Main + Dialogue Enhancement",
+                2: "Main + Associate", 3: "Music and Effects + Dialogue + Associate",
+                4: "Main + Dialogue Enhancement + Associate", 5: "Arbitrary Substream Groups",
+                6: "EMDF Only"}
+CLASSIFIERS = ("Main", "Music and Effects", "Visually Impaired", "Hearing Impaired", "Dialogue",
+               "Commentary", "Emergency", "Voice Over")
+# Table 54's content classifiers of associated audio.
+ASSOCIATED = (2, 3, 5)
+# Part 1 Table 92's codes, which MediaInfo names instead of printing them as a language.
+TABLE_92 = ("qad", "qax", "qas", "qtx", "qss", "qsx", "qei", "qex")
+# Table 53's roles by position, for the presentation's language.
+DIALOGUE_POSITION = {0: 1, 3: 1}
+
+
+def presentation_language(presentation, substreams):
+    """The language MediaInfo gives a presentation (Part 1 clause 4.3.3.8.8's NOTE): its dialogue
+    substream's, else its main or music and effects substream's; '' for none. MediaInfo gives
+    none to a presentation of one group classified as associated audio, a commentary alone, which
+    Part 2 clause 6.3.2.2.1 makes a main substream and the decoder takes the language of."""
+    members = presentation["substreams"]
+    config = presentation["presentation_config"]
+    if config is None and substreams[members[0]]["content_classifier"] in ASSOCIATED:
+        return ""
+    dialogue = None
+    if config in DIALOGUE_POSITION:
+        dialogue = members[DIALOGUE_POSITION[config]]
+    elif config == 5:
+        dialogue = next((m for m in members if substreams[m]["content_classifier"] == 4), None)
+    for index in ([dialogue] if dialogue is not None else []) + [members[0]]:
+        language = substreams[index]["language"]
+        if language and language.lower() not in TABLE_92:
+            return language
+    return ""
+
+
+def name_bytes(path, offset, length):
+    """The bytes of the file at the name MediaInfo frames, from `offset`, where one alternative
+    presentation's b_name_present is, the first bit of its presentation substream, and `length`
+    bytes of it, name_len; the name starts 7 bits on (b_name_present, b_length, name_len)."""
+    data = Path(path).read_bytes()
+    bits = "".join(f"{b:08b}" for b in data[offset:offset + length + 2])
+    return bytes(int(bits[7 + 8 * i:15 + 8 * i], 2) for i in range(length))
+
+
+def mediainfo_names(mediainfo, stream):
+    """(offset of b_name_present, name_len) for each alternative presentation MediaInfo details
+    in the first frame, in order."""
+    out = []
+    lines = run([mediainfo, "--Details=1", "--ParseSpeed=1", stream]).splitlines()
+    frames = 0
+    present = None
+    for line in lines:
+        if FRAME.match(line):
+            frames += 1
+            if frames > 1:
+                break
+            continue
+        match = LINE.match(line)
+        if not match:
+            continue
+        name, value = match.group(2).strip(), match.group(3).strip()
+        if name == "b_name_present" and value.startswith("Yes"):
+            present = int(match.group(1), 16)
+        elif name == "name_len" and present is not None:
+            out.append((present, number(value)))
+            present = None
+    return out
+
+
+def check_presentation_stream(mediainfo, cli, stream, work):
+    """What MediaInfo reads of one of the encoder's presentation streams against the
+    configuration it was made from, as a list of messages; and a summary."""
+    config = json.loads(stream.with_suffix(".json").read_text(encoding="utf-8"))
+    substreams = config["substreams"]
+    presentations = config["presentations"]
+    wrong = []
+    info = json.loads(run([mediainfo, "--Output=JSON", stream]))
+    audio = next(t for t in info["media"]["track"] if t["@type"] == "Audio")
+    extra = audio.get("extra", {})
+    shown = extra.get("Presentation", [])
+    if len(shown) != len(presentations):
+        wrong.append(f"MediaInfo lists {len(shown)} presentations, the stream has "
+                     f"{len(presentations)}")
+    checked = 0
+    for pos, (want, got) in enumerate(zip(presentations, shown, strict=False)):
+        def expect(field, value, got=got, pos=pos):
+            if got.get(field) != value:
+                wrong.append(f"presentation {pos}: MediaInfo's {field} is {got.get(field)!r}, "
+                             f"the configuration's {value!r}")
+        config_value = want["presentation_config"]
+        if config_value == 6:
+            expect("PresentationConfig", CONFIG_NAMES[6])
+            continue
+        expect("PresentationID", str(want["presentation_id"]))
+        expect("PresentationLevel", str(want["md_compat"]))
+        expect("LinkedTo_Group_Pos", " + ".join(str(s) for s in want["substreams"]))
+        if config_value is not None:
+            expect("PresentationConfig", CONFIG_NAMES[config_value])
+        if "DialogueNormalization" in got:
+            expect("DialogueNormalization", f"{want['dialnorm_db']:.2f}")
+        else:
+            wrong.append(f"presentation {pos}: MediaInfo shows no dialnorm")
+        language = presentation_language(want, substreams)
+        if language:
+            expect("Language", language)
+        elif "Language" in got:
+            wrong.append(f"presentation {pos}: MediaInfo's Language is {got['Language']!r}, the "
+                         "configuration has none")
+        checked += 1
+    groups = extra.get("Group", [])
+    if len(groups) != len(substreams):
+        wrong.append(f"MediaInfo lists {len(groups)} groups, the stream has {len(substreams)}")
+    for pos, (want, got) in enumerate(zip(substreams, groups, strict=False)):
+        classifier = want["content_classifier"]
+        if classifier is not None and got.get("Classifier") != CLASSIFIERS[classifier]:
+            wrong.append(f"group {pos}: MediaInfo's classifier is {got.get('Classifier')!r}, the "
+                         f"configuration's {CLASSIFIERS[classifier]!r}")
+        language = want["language"]
+        if language and language.lower() not in TABLE_92 and got.get("Language") != language:
+            wrong.append(f"group {pos}: MediaInfo's language is {got.get('Language')!r}, the "
+                         f"configuration's {language!r}")
+    # The alternative presentations' names, as MediaInfo frames them.
+    named = [p["name"] for p in presentations if p["name"]]
+    framed = mediainfo_names(mediainfo, stream)
+    if len(framed) != len(named):
+        wrong.append(f"MediaInfo frames {len(framed)} names, the configuration has {len(named)}")
+    for name, (offset, length) in zip(named, framed, strict=False):
+        text = name.encode("utf-8")
+        if length != len(text) + 1:
+            wrong.append(f"MediaInfo's name_len for {name!r} is {length}, the name's bytes and "
+                         f"its 0 are {len(text) + 1}")
+        elif name_bytes(stream, offset, length) != text + b"\0":
+            wrong.append(f"the bytes where MediaInfo reads {name!r}'s name are "
+                         f"{name_bytes(stream, offset, length)!r}")
+    # Every substream field MediaInfo details, against the decoder's trace of the same frame.
+    trace = work / f"{stream.stem}.trace.tsv"
+    run([cli, "decode", stream, work / f"{stream.stem}.wav", f"syntax-trace={trace}"])
+    frames = mediainfo_frames(mediainfo, stream)
+    records = trace_frames(trace)
+    differ, names = against_trace(substream_fields(frames[0]), records.get(0, []))
+    wrong += [f"frame 0: {d}" for d in differ]
+    raw_frames, _ = space.sync_frames(stream.read_bytes())
+    if len(frames) != len(raw_frames):
+        wrong.append(f"MediaInfo found {len(frames)} sync frames, the stream has {len(raw_frames)}")
+    summary = (f"{stream.name}: MediaInfo lists {len(shown)} presentations and {len(groups)} "
+               f"groups as configured ({checked} with audio), frames {len(framed)} names, and "
+               f"reads {len(names)} substream fields as the decoder's trace does")
+    return wrong, summary
+
+
+def check_presentations(mediainfo, cli, work):
+    failures = []
+    streams = sorted(PRESENTATION_STREAMS.glob("encoder-*.ac4"))
+    if not streams:
+        failures.append(f"no encoder presentation streams under {PRESENTATION_STREAMS}")
+    for stream in streams:
+        wrong, summary = check_presentation_stream(mediainfo, cli, stream, work)
+        print(summary)
+        failures += [f"{stream.name}: {w}" for w in wrong]
+    return failures
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cli", required=True, type=Path)
     parser.add_argument("--dee-dir", type=Path, default=DEE_DIR)
     parser.add_argument("--work", type=Path)
+    parser.add_argument("--only", choices=("presentations",),
+                        help="run phase E6's presentation checks alone")
     args = parser.parse_args()
     mediainfo = args.dee_dir / "MediaInfo.exe"
     muxer = args.dee_dir / "dee_mp4muxer.exe"
@@ -413,7 +607,8 @@ def main():
     with tempfile.TemporaryDirectory() as temporary:
         work = args.work or Path(temporary)
         work.mkdir(parents=True, exist_ok=True)
-        for config in CONFIGURATIONS:
+        failures += check_presentations(mediainfo, args.cli, work)
+        for config in CONFIGURATIONS if args.only is None else ():
             channels, rate, kbps = config.channels, config.rate, config.kbps
             options = config.options
             name = f"{channels}ch-{rate}-{kbps}-dn{config.dialnorm:g}" + "".join(
@@ -505,8 +700,9 @@ def main():
         for failure in failures:
             print(f"  {failure}")
         return 1
-    print(f"\n{len(CONFIGURATIONS)} configurations: MediaInfo reads each as configured and as "
-          "the encoder wrote it, and DEE's muxer writes the encoder's dac4")
+    print(f"\n{len(CONFIGURATIONS) if args.only is None else 0} configurations: MediaInfo reads "
+          "each as configured and as the encoder wrote it, and DEE's muxer writes the encoder's "
+          "dac4; and the encoder's presentation streams as configured")
     return 0
 
 

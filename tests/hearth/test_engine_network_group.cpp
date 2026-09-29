@@ -21,13 +21,19 @@
 
 #include "platform/process.hpp"
 
+#include "ac3/core/tables.hpp"
 #include "ac3/encoder/eac3_frame.hpp"
+#include "ac3/io/wav.hpp"
 #include "ac3/render/layout.hpp"
+#include "ac3/render/render.hpp"
 #include "ac3/sendspin/messages.hpp"
 #include "ac3/sendspin/noise.hpp"
 #include "ac3/sendspin/pairing_messages.hpp"
 #include "ac3/sendspin/server_host.hpp"
 #include "ac3/sendspin/server_store.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4dec/decoder.hpp"
+#include "burst_output.hpp"
 #include "engine_thread.hpp"
 #include "network_group_sink.hpp"
 #include "sink.hpp"
@@ -150,6 +156,148 @@ bool eventually(const std::function<bool()>& done) {
     return done();
 }
 
+std::vector<std::byte> read_bytes(const fs::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    REQUIRE(in.good());
+    const std::string bytes{std::istreambuf_iterator<char>{in}, std::istreambuf_iterator<char>{}};
+    std::vector<std::byte> out(bytes.size());
+    std::transform(bytes.begin(), bytes.end(), out.begin(),
+                   [](char c) { return static_cast<std::byte>(c); });
+    return out;
+}
+
+// The first `count` sync frames of `path`, whose first is an I-frame, as an
+// elementary stream of their own.
+std::vector<std::byte> ac4_frames(const fs::path& path, std::size_t count) {
+    const std::vector<std::byte> file = read_bytes(path);
+    const ac4::ScanResult scanned = ac4::scan(file);
+    REQUIRE(scanned.frames.size() > count);
+    return {file.begin(), file.begin() + static_cast<std::ptrdiff_t>(scanned.frames[count].offset)};
+}
+
+// The only file in `directory` whose name starts with `prefix` and ends with `extension`.
+fs::path only_file(const fs::path& directory, std::string_view prefix, std::string_view extension) {
+    std::vector<fs::path> found;
+    for (const fs::directory_entry& entry : fs::directory_iterator(directory)) {
+        const std::string name = entry.path().filename().string();
+        if (name.starts_with(prefix) && name.ends_with(extension)) {
+            found.push_back(entry.path());
+        }
+    }
+    REQUIRE(found.size() == 1);
+    return found.front();
+}
+
+// The local time each logged burst puts the stream's first frame at
+// (test_group.cpp's own).
+std::vector<double> first_frame_times(const fs::path& log) {
+    std::vector<double> times;
+    std::ifstream in(log);
+    std::string line;
+    std::getline(in, line);
+    while (std::getline(in, line)) {
+        std::istringstream fields(line);
+        std::string local;
+        std::string first;
+        if (!std::getline(fields, local, ',') || !std::getline(fields, first, ',') ||
+            local == "clear") {
+            continue;
+        }
+        times.push_back(std::stod(local) - (std::stod(first) * 1'000'000.0 / 48000.0));
+    }
+    return times;
+}
+
+// A host with a PCM sink (player@v1, approved unpaired) and a burst sink
+// (_ac3forge_player@v1, paired) both playing, and a group of the two.
+struct TwoSinkGroup {
+    QuietLog log;
+    std::unique_ptr<testsink::Sink> pcm_sink;
+    std::unique_ptr<testsink::Sink> burst_sink;
+    ac3::sendspin::MemoryServerStore store;
+    HostEvents events;
+    std::unique_ptr<ac3::sendspin::ServerHost> host;
+    std::shared_ptr<ac3::sendspin::Group> group;
+
+    explicit TwoSinkGroup(const fs::path& scratch) {
+        pcm_sink = start_sink(scratch / "pcm", "PCM sink", /*extension_role=*/false,
+                              /*unpaired_access=*/true, log);
+        burst_sink = start_sink(scratch / "burst", "Burst sink", /*extension_role=*/true,
+                                /*unpaired_access=*/false, log);
+        std::optional<ac3::sendspin::noise::KeyPair> identity =
+            ac3::sendspin::noise::KeyPair::generate();
+        REQUIRE(identity.has_value());
+        auto started = ac3::sendspin::ServerHost::start({.identity = *identity,
+                                                         .name = "Test host",
+                                                         .languages = {"en"},
+                                                         .address = "127.0.0.1",
+                                                         .port = std::nullopt,
+                                                         .advertise = false,
+                                                         .browse = false,
+                                                         .mdns_interfaces = {}},
+                                                        store, events);
+        REQUIRE(started.has_value());
+        host = std::move(*started);
+        REQUIRE(host->enter_pairing_token(burst_sink->pairing_token()));
+        host->dial("ws://127.0.0.1:" + std::to_string(pcm_sink->port()) + "/sendspin");
+        host->dial("ws://127.0.0.1:" + std::to_string(burst_sink->port()) + "/sendspin");
+        REQUIRE(events.wait([](const auto& clients) { return clients.size() == 2; }, 15s));
+        REQUIRE(host->approve(pcm_sink->client_id(), true));
+        REQUIRE(events.wait(
+            [](const auto& clients) {
+                return clients.size() == 2 &&
+                       std::all_of(clients.begin(), clients.end(), [](const auto& entry) {
+                           return entry.second.playing && entry.second.available;
+                       });
+            },
+            20s));
+        group = host->make_group("Living room");
+        for (const ac3::sendspin::ClientView& client : host->clients()) {
+            group->add(client.client_id);
+        }
+    }
+    TwoSinkGroup(const TwoSinkGroup&) = delete;
+    TwoSinkGroup& operator=(const TwoSinkGroup&) = delete;
+
+    ~TwoSinkGroup() {
+        // A group must not outlive its host.
+        group.reset();
+        host.reset();
+    }
+};
+
+// Plays `programme` from an Engine whose only output is `group`, with
+// `settings`, to its end.
+EngineStatus play_to_group(const std::shared_ptr<ac3::sendspin::Group>& group,
+                           std::vector<std::byte> programme,
+                           const ac3::hearth::DecoderSettings& settings) {
+    const ItemLoader loader =
+        [programme = std::move(programme)](
+            const std::string& path) -> std::expected<LoadedItem, std::string> {
+        if (path != "programme") {
+            return std::unexpected("no such file: " + path);
+        }
+        return LoadedItem{.bytes = programme};
+    };
+    const auto layout = ac3::render::OutputLayout::parse("2.0");
+    REQUIRE(layout.has_value());
+    EngineOutputs outputs{
+        .group = ac3::hearth::make_group_sink([group](const std::string&) { return group; })};
+    Engine engine(std::move(outputs), loader, *layout, settings,
+                  EngineTiming{.period = 5ms, .budget = 4800});
+    engine.set_output_preferences(OutputPreferences{.pinned = OutputMode::kNetworkGroup,
+                                                    .follow_sink = true,
+                                                    .group_name = group->id(),
+                                                    .group_ready = true});
+    engine.add({QueueItem{.path = "programme", .title = "Test programme"}});
+    engine.play();
+    REQUIRE(eventually([&] {
+        const EngineStatus status = engine.status();
+        return status.state == TransportState::kStopped && !status.history.empty();
+    }));
+    return engine.status();
+}
+
 }  // namespace
 
 TEST_CASE("engine: from the app, a group of two test sinks plays one programme",
@@ -246,4 +394,125 @@ TEST_CASE("engine: from the app, a group of two test sinks plays one programme",
     // exit makes for the library alone.
     CHECK(pcm_sink->totals().connections == 1);
     CHECK(burst_sink->totals().connections == 1);
+}
+
+// planning/ac4.md, I2: "AC-4 decodes to PCM for every output, and is sent as a
+// bitstream only over the extension role ... to sinks that decode it." One
+// AC-4 item from the Engine to a group of a player@v1 sink and an
+// _ac3forge_player@v1 sink that lists AC-4 (D11's test sink): the first takes
+// the Engine's decode as PCM, and the second the item's own sync frames, a
+// burst each, which it decodes itself - to what ac4::Decoder makes of them,
+// sample for sample, every burst's frame placed on the group's one timeline.
+TEST_CASE(
+    "engine: an AC-4 item reaches a group as PCM, and as a bitstream for the sink that decodes it",
+    "[hearth][group][websocket][ac4]") {
+    constexpr std::size_t kFrames = 24;  // DEE's 2.0 tones at frame_rate_index 13: 1.05 s
+    const fs::path scratch =
+        fs::path{AC3FORGE_TEST_SCRATCH_DIR} / ("hearth_engine_group_ac4_" + scratch_pid_suffix());
+    fs::remove_all(scratch);
+    const std::vector<std::byte> programme = ac4_frames(
+        fs::path{AC3FORGE_GOLDEN_EXTERNAL_BASELINE_DIR} / "ac4-20-tones-192" / "dee.ac4", kFrames);
+    TwoSinkGroup sinks(scratch);
+    const EngineStatus finished =
+        play_to_group(sinks.group, programme, ac3::hearth::DecoderSettings{});
+    INFO("output_reason: " << finished.output_reason << " / note: " << finished.note
+                           << " / error: " << finished.error);
+    REQUIRE(finished.history.size() == 1);
+    const std::uint64_t expected = static_cast<std::uint64_t>(kFrames) * 2048;
+    CHECK(finished.history.front().frames == expected);
+
+    const auto played_pcm = [&] { return sinks.pcm_sink->totals().frames; };
+    const auto played_bursts = [&] { return sinks.burst_sink->totals().bursts; };
+    REQUIRE(eventually([&] { return played_pcm() >= expected && played_bursts() >= kFrames; }));
+    CHECK(played_pcm() == expected);
+    CHECK(played_bursts() == kFrames);
+    CHECK(sinks.burst_sink->totals().burst_frames == expected);
+
+    // The burst sink's WAV: the frames as ac4::Decoder decodes them, placed
+    // on its layout - the test sink's own, 7.1.4 - by the bed of their
+    // speakers, as BurstOutput places them.
+    const std::optional<ac3::render::OutputLayout> layout =
+        ac3::render::OutputLayout::parse(testsink::SinkOptions{}.layout);
+    REQUIRE(layout.has_value());
+    ac3::io::WavStreamReader wav;
+    REQUIRE(wav.open(only_file(scratch / "burst" / "out", "bursts-", ".wav").string()).has_value());
+    REQUIRE(static_cast<std::size_t>(wav.channels()) == layout->slots());
+    std::vector<std::vector<float>> heard(layout->slots(),
+                                          std::vector<float>(ac3::kSamplesPerBlock));
+    std::vector<std::span<float>> heard_spans(heard.begin(), heard.end());
+    std::vector<std::array<float, ac3::kSamplesPerBlock>> rendered(layout->slots());
+    std::vector<std::span<float>> rendered_spans;
+    for (std::array<float, ac3::kSamplesPerBlock>& slot : rendered) {
+        rendered_spans.emplace_back(slot);
+    }
+    ac4::Decoder decoder;
+    ac3::render::LayoutRenderer renderer(*layout);
+    std::uint64_t compared = 0;
+    std::uint64_t different = 0;
+    for (const ac4::SyncFrame& frame : ac4::scan(programme).frames) {
+        const auto decoded = decoder.decode(frame.raw_ac4_frame);
+        REQUIRE(decoded.has_value());
+        REQUIRE(decoded->has_value());
+        const ac4::DecodedFrame& pcm = **decoded;
+        renderer.set_bed(testsink::ac4_bed(pcm.speakers));
+        std::vector<std::span<const float>> channels(pcm.channels.size());
+        for (std::size_t at = 0; at < pcm.samples; at += ac3::kSamplesPerBlock) {
+            const std::size_t m = std::min<std::size_t>(ac3::kSamplesPerBlock, pcm.samples - at);
+            for (std::size_t c = 0; c < pcm.channels.size(); ++c) {
+                channels[c] = std::span<const float>(pcm.channels[c]).subspan(at, m);
+            }
+            renderer.render(ac3::PcmBlock{.index = 0,
+                                          .blocks = 1,
+                                          .channels = channels,
+                                          .objects = {},
+                                          .object_indices = {},
+                                          .object_metadata = nullptr},
+                            false, 1.0F, rendered_spans);
+            const auto got = wav.read_planar(heard_spans, m);
+            REQUIRE(got.has_value());
+            REQUIRE(*got == m);
+            for (std::size_t slot = 0; slot < layout->slots(); ++slot) {
+                for (std::size_t t = 0; t < m; ++t) {
+                    different += rendered[slot][t] == heard[slot][t] ? 0U : 1U;
+                }
+            }
+            compared += m;
+        }
+    }
+    CHECK(compared == expected);
+    CHECK(different == 0);
+    // Every burst puts the stream's first frame at the same local time, within
+    // 1 ms: each is placed at its own frame's start.
+    const std::vector<double> times =
+        first_frame_times(only_file(scratch / "burst" / "out", "bursts-", ".times.csv"));
+    REQUIRE(times.size() == kFrames);
+    const auto [earliest, latest] = std::minmax_element(times.begin(), times.end());
+    CHECK(*latest - *earliest < 1000.0);
+}
+
+// A sink decodes the presentation it would choose with no preferences, so a
+// presentation the listener has chosen that it would not reaches the group as
+// PCM alone: the _ac3forge_player@v1 sink is sent nothing.
+TEST_CASE("engine: an AC-4 presentation a sink would not choose reaches a group as PCM alone",
+          "[hearth][group][websocket][ac4]") {
+    const fs::path scratch = fs::path{AC3FORGE_TEST_SCRATCH_DIR} /
+                             ("hearth_engine_group_ac4_choice_" + scratch_pid_suffix());
+    fs::remove_all(scratch);
+    // E6's broadcast stream: presentation 2 is music and effects with the
+    // German dialogue, not the one a decoder with no preferences selects.
+    const std::vector<std::byte> programme =
+        read_bytes(fs::path{AC4DEC_GOLDEN_DIR} / "presentations" / "encoder-broadcast.ac4");
+    TwoSinkGroup sinks(scratch);
+    ac3::hearth::DecoderSettings settings;
+    settings.ac4.presentation_id = 2;
+    const EngineStatus finished = play_to_group(sinks.group, programme, settings);
+    INFO("output_reason: " << finished.output_reason << " / note: " << finished.note
+                           << " / error: " << finished.error);
+    REQUIRE(finished.history.size() == 1);
+    const std::uint64_t expected = finished.history.front().expected_frames;
+    CHECK(finished.history.front().frames == expected);
+    REQUIRE(eventually([&] { return sinks.pcm_sink->totals().frames >= expected; }));
+    CHECK(sinks.pcm_sink->totals().frames == expected);
+    CHECK(sinks.burst_sink->totals().burst_streams == 0U);
+    CHECK(sinks.burst_sink->totals().bursts == 0U);
 }

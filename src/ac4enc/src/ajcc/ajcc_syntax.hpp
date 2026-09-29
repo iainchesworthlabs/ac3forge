@@ -57,4 +57,10 @@ void write_ajcc_data(BitWriter& w, const AjccDataFields& data);
 [[nodiscard]] bool ajcc_codable(std::size_t param, int quant_mode, int diff_type, bool first_band,
                                 int value) noexcept;
 
+// The bits one ajcc_huff_data() of parameter `param` takes at `quant_mode`:
+// its diff_type where b_no_dt is 0, and its codewords. Every value must be
+// codable (ajcc_codable()).
+[[nodiscard]] std::size_t ajcc_set_bits(std::size_t param, int quant_mode, bool no_dt,
+                                        const AjccSetFields& set) noexcept;
+
 }  // namespace ac4::detail

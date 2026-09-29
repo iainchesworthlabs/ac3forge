@@ -17,7 +17,7 @@
 // None of these bodies can run. ac3::internal::kReferenceTransformAvailable
 // is false in this profile, every call site checks it before dispatching, and
 // the public API refuses the configuration that would need the direct form
-// (DecoderConfig::fast_imdct == false yields DecodeError::kUnsupported) rather
+// (DecoderConfig::fast_imdct == false yields DecodeError::kNoReferenceTransform) rather
 // than silently running the fast path in its place - substituting a different
 // arithmetic for the one the caller asked to validate against would defeat the
 // only reason that switch exists. The asserts are the backstop for a future

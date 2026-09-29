@@ -40,9 +40,11 @@
 
 namespace ac3 {
 
-// Each case says what is wrong with the stream, except kUnsupported, which
-// says what is wrong with this decoder — the difference decides whether the
-// caller should reach for another file or another tool.
+// Each case says what is wrong with the stream, except kUnsupported and
+// kNoReferenceTransform, which say what this decoder or this build does not
+// do — the difference decides whether the caller should reach for another
+// file or another tool. Each names its one cause: a single sentence standing
+// for several sends a reader after the wrong one.
 std::string_view describe(DecodeError error) {
     switch (error) {
         case DecodeError::kTruncated: return "the stream ends part-way through a frame";
@@ -51,9 +53,12 @@ std::string_view describe(DecodeError error) {
         case DecodeError::kBadCrc: return "the frame's CRC does not check out";
         case DecodeError::kReservedValue: return "a header field holds a value A/52 reserves";
         case DecodeError::kUnsupported:
-            return "valid AC-3 this decoder does not implement (bsid > 8)";
+            return "a bitstream version (bsid) this decoder does not read";
         case DecodeError::kInvalidStream:
             return "the frame contradicts a constraint A/52 requires of it";
+        case DecodeError::kNoReferenceTransform:
+            return "fast_imdct = false asks for the direct-form transform, which this build "
+                   "leaves out";
     }
     return "unknown decode error";
 }
@@ -596,7 +601,7 @@ std::expected<DecodedFrame, DecodeError> FrameDecoder::decode_frame_core(
     // defeat the only reason to set it. Constant-folded away in every ordinary
     // build, where kReferenceTransformAvailable is true.
     if (!impl_->config_.fast_imdct && !internal::kReferenceTransformAvailable) {
-        return std::unexpected(DecodeError::kUnsupported);
+        return std::unexpected(DecodeError::kNoReferenceTransform);
     }
     if (frame.size() < 6) {
         return std::unexpected(DecodeError::kTruncated);

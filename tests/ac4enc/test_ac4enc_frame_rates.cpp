@@ -21,8 +21,11 @@
 #include "ac4/syntax.hpp"
 #include "ac4dec/decoder.hpp"
 #include "ac4enc/encoder.hpp"
+#include "sanitized.hpp"
 
 namespace {
+
+using ac3::test::kSanitized;
 
 constexpr double kRate = 48000.0;
 
@@ -77,9 +80,17 @@ TEST_CASE(
         {.channels = 2, .kbps = 128, .expected = ac4::CodecMode::kAspx, .tolerance_db = 0.3},
         {.channels = 6, .kbps = 128, .expected = ac4::CodecMode::kAspxAcpl2, .tolerance_db = 1.0},
     };
-    const std::size_t count = static_cast<std::size_t>(kRate);  // a second
+    // A second, or under the sanitizers three quarters of one: each level is
+    // measured from 12 000 samples in to 12 000 from the end.
+    const std::size_t count = static_cast<std::size_t>(kSanitized ? 0.75 * kRate : kRate);
     for (int index = 0; index <= 12; ++index) {
-        for (const Leg& leg : legs) {
+        for (std::size_t l = 0; l < legs.size(); ++l) {
+            // Under the sanitizers each frame rate takes one leg, in turn, so
+            // that each leg meets long frames and short, and mono 120 fps.
+            if (kSanitized && l != static_cast<std::size_t>(index + 1) % legs.size()) {
+                continue;
+            }
+            const Leg& leg = legs[l];
             CAPTURE(index, leg.channels, leg.kbps);
             // Each channel its own tone below any crossover.
             std::vector<double> hz;
@@ -184,14 +195,23 @@ TEST_CASE("every frame rate frames attacks within its block and A-SPX limits",
         {.channels = 6, .kbps = 96, .expected = ac4::CodecMode::kAspxAcpl3},
         {.channels = 6, .kbps = 256, .expected = ac4::CodecMode::kAspx},
     };
-    const std::size_t count = static_cast<std::size_t>(kRate);
+    // Under the sanitizers a quarter of a second, which still holds two
+    // bursts or three in each channel.
+    const std::size_t count = static_cast<std::size_t>(kSanitized ? kRate / 4.0 : kRate);
     std::uint32_t seed = 12345;
     const auto noise = [&seed]() {
         seed = seed * 1664525U + 1013904223U;
         return static_cast<float>(static_cast<double>(seed >> 8) / 16777216.0 - 0.5);
     };
     for (int index = 0; index <= 12; ++index) {
-        for (const Burst& leg : legs) {
+        for (std::size_t l = 0; l < legs.size(); ++l) {
+            // Under the sanitizers each frame rate takes one leg, in turn: the
+            // A-SPX legs meet 10, 11 and 12, whose A-SPX intervals are 8
+            // slots or fewer.
+            if (kSanitized && l != static_cast<std::size_t>(index) % legs.size()) {
+                continue;
+            }
+            const Burst& leg = legs[l];
             CAPTURE(index, leg.channels, leg.kbps);
             std::vector<std::vector<float>> input(static_cast<std::size_t>(leg.channels),
                                                   std::vector<float>(count));
