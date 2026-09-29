@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <expected>
 #include <optional>
 #include <vector>
@@ -27,6 +29,10 @@
 #include "ac3/render/serving.hpp"
 
 #include "ac3forge/unit_hold.hpp"
+
+#if CONFIG_AC3FORGE_AC4
+#include "ac4_bridge.hpp"
+#endif
 
 namespace ac3forge {
 namespace {
@@ -181,6 +187,19 @@ struct Player::Impl {
     std::optional<ac3::FrameDecoder> ac3_decoder;
     std::optional<ac3::Eac3Decoder> eac3_decoder;
 
+#if CONFIG_AC3FORGE_AC4
+    // The AC-4 decoder, constructed when the play's first bytes say the stream
+    // is AC-4 (decode_loop), and what its blocks are placed by. A play is one
+    // codec throughout.
+    std::optional<ac4::Decoder> ac4_decoder;
+    std::array<ac4::Speaker, ac3::eac3::chanmap::kMaxChannels> ac4_speakers{};
+    std::size_t ac4_speaker_count = 0;
+    ac4bridge::PcmHash ac4_hash;
+    // The rate of a block the sink does not run at: the play is refused once
+    // the frame that carried it returns.
+    std::uint32_t ac4_refused_rate_hz = 0;
+#endif
+
     // The renderer's bed as last set. A block carries the bed it was decoded
     // against - a held block its own unit's, which the next unit's headers may
     // since have changed - and the renderer is set up again when that changes.
@@ -222,6 +241,11 @@ struct Player::Impl {
     std::atomic<int> error{0};
     std::atomic<float> volume{1.0F};
     std::atomic<std::size_t> decode_stack_free{0};
+#if CONFIG_AC3FORGE_AC4
+    std::atomic<std::uint64_t> ac4_samples{0};
+    std::atomic<std::uint64_t> ac4_hash_us{0};
+    std::atomic<std::uint64_t> ac4_pcm_hash{0};
+#endif
     // The slots this play has sent something to, bit n for slot n - what
     // StreamInfo::silent names the rest of. Or-ed in by the decode task once
     // per unit.
@@ -301,6 +325,11 @@ struct Player::Impl {
         s.decode_stack_free = decode_stack_free.load();
         s.finished = finished.load();
         s.failed = failed.load();
+#if CONFIG_AC3FORGE_AC4
+        s.ac4_samples = ac4_samples.load();
+        s.ac4_hash_us = ac4_hash_us.load();
+        s.ac4_pcm_hash = ac4_pcm_hash.load();
+#endif
         s.failure = failure.load();
         s.error = error.load();
         return s;
@@ -658,12 +687,234 @@ struct Player::Impl {
         return delivered;
     }
 
+#if CONFIG_AC3FORGE_AC4
+    // --- AC-4 ------------------------------------------------------------------
+
+    // One block from the AC-4 decoder onto the layout and into the sink: the
+    // bed its channels are in, for the renderer, and then deliver(), which is
+    // what an AC-3 block goes through. `index` counts the blocks of the frame
+    // being decoded, as an E-AC-3 unit's block index does.
+    void ac4_deliver(const ac4::PcmBlock& block, int index) {
+        if (static_cast<std::uint32_t>(block.sample_rate_hz) != config.sample_rate_hz) {
+            ac4_refused_rate_hz = static_cast<std::uint32_t>(block.sample_rate_hz);
+            return;
+        }
+        const std::size_t count = std::min(block.speakers.size(), ac4_speakers.size());
+        if (count != ac4_speaker_count ||
+            !std::equal(block.speakers.begin(),
+                        block.speakers.begin() + static_cast<std::ptrdiff_t>(count),
+                        ac4_speakers.begin())) {
+            std::copy_n(block.speakers.begin(), count, ac4_speakers.begin());
+            ac4_speaker_count = count;
+            bed = ac4bridge::bed(block.speakers);
+            have_bed = true;
+        }
+        if (config.ac4.pcm_hash) {
+            const std::int64_t entered = esp_timer_get_time();
+            for (const std::span<const float> channel : block.channels) {
+                ac4_hash.add(channel);
+            }
+            ac4_hash_us.fetch_add(static_cast<std::uint64_t>(esp_timer_get_time() - entered));
+        }
+        ac4_samples.fetch_add(block.samples);
+        deliver(ac3::PcmBlock{.index = index,
+                              .blocks = 0,
+                              .channels = block.channels,
+                              .objects = {},
+                              .object_indices = {},
+                              .object_metadata = nullptr});
+    }
+
+    // True when the frame produced audio, false when it gave nothing (a frame
+    // that waits for an I-frame the stream has not sent yet).
+    std::expected<bool, ac4::DecodeError> decode_ac4_frame(std::span<const std::byte> frame) {
+        int index = 0;
+        const auto deliver_block = [&](const ac4::PcmBlock& block) { ac4_deliver(block, index++); };
+        const auto decoded = ac4_decoder->decode_by_block(frame, deliver_block);
+        if (!decoded) {
+            return std::unexpected(decoded.error());
+        }
+        if (!decoded->has_value()) {
+            return false;
+        }
+        if (!have_stream.load() && have_bed) {
+            const auto& loudness = ac4_decoder->metadata().loudness;
+            stream = {.eac3 = false,
+                      .acmod = 0,
+                      .channels = static_cast<int>((*decoded)->speakers.size()),
+                      .substreams = 1,
+                      .dialnorm = loudness.dialnorm_dbfs.has_value()
+                                      ? static_cast<int>(std::lround(-*loudness.dialnorm_dbfs))
+                                      : 0,
+                      .objects = false,
+                      .objects_rendered = false,
+                      .slots = static_cast<int>(config.layout.slots())};
+            stream.ac4 = true;
+            describe_stream(bed, false);
+            have_stream.store(true);
+        }
+        return true;
+    }
+
+    // The decode task for an AC-4 play: the ring, the passes and the finish of
+    // decode_loop, over ac4::SyncFrameSplitter and ac4::Decoder. `lead` is what
+    // decode_loop took from the ring to tell the codec, which is the first bytes
+    // of the stream and goes to the splitter first.
+    void decode_loop_ac4(std::span<const std::byte> lead) {
+        using Status = ac4::SyncFrameSplitter::Status;
+        ac4::DecoderConfig decoder_config;
+        decoder_config.output.downmix = ac4bridge::target(fold);
+        decoder_config.decoding = config.ac4.core ? ac4::DecodingMode::kCore : ac4::DecodingMode::kFull;
+        ac4_decoder.emplace(decoder_config);
+        ac4::SyncFrameSplitter splitter{std::span<std::byte>(framing)};
+        std::uint64_t resync_before = 0;
+        std::span<const std::byte> pending = lead;
+
+        while (!stopping()) {
+            const auto next = splitter.next();
+
+            if (next.status == Status::kNeedMoreInput) {
+                const auto dst = splitter.writable();
+                if (!pending.empty()) {
+                    const std::size_t taken = std::min(pending.size(), dst.size());
+                    std::copy_n(pending.begin(), taken, dst.begin());
+                    pending = pending.subspan(taken);
+                    splitter.commit(taken);
+                    continue;
+                }
+                // The ring's low water, as decode_loop measures it.
+                if (frames_played.load() > 0 && (xEventGroupGetBits(events) & kSourceEnded) == 0) {
+                    const std::size_t banked = xStreamBufferBytesAvailable(ring);
+                    std::size_t low = ring_low_water.load();
+                    while (banked < low && !ring_low_water.compare_exchange_weak(low, banked)) {
+                    }
+                }
+                const bool source_ended = (xEventGroupGetBits(events) & kSourceEnded) != 0;
+                const std::size_t got = xStreamBufferReceive(
+                    ring, dst.data(), dst.size(), source_ended ? 0 : pdMS_TO_TICKS(100));
+                if (got > 0) {
+                    splitter.commit(got);
+                    continue;
+                }
+                if ((xEventGroupGetBits(events) & kSourceEnded) != 0 &&
+                    xStreamBufferIsEmpty(ring) == pdTRUE) {
+                    splitter.finish();
+                }
+                continue;
+            }
+
+            if (next.status == Status::kTruncated) {
+                continue;  // a frame the stream ended in the middle of; kEndOfStream follows
+            }
+
+            if (next.status == Status::kEndOfStream) {
+                // What the decoder holds back is this pass's to hand over: a
+                // block short of 256 samples, at the end.
+                int index = 0;
+                (void)ac4_decoder->flush([&](const ac4::PcmBlock& block) { ac4_deliver(block, index++); });
+                resync_bytes.store(resync_before + splitter.resynchronised_bytes());
+                sample_decode_stack();
+                ac4_pcm_hash.store(ac4_hash.state);
+                const std::uint32_t done = passes.fetch_add(1) + 1;
+                {
+                    PlayerStats snap = snapshot();
+                    snap.passes = done;
+                    taskENTER_CRITICAL(&snapshot_lock);
+                    pass_snapshot = snap;
+                    taskEXIT_CRITICAL(&snapshot_lock);
+                }
+                if (config.max_passes != 0 && done >= config.max_passes) {
+                    finish("passes", false, 0);
+                    break;
+                }
+                xEventGroupClearBits(events, kRewound | kRewindFailed);
+                xEventGroupSetBits(events, kRewindRequest);
+                const EventBits_t bits = xEventGroupWaitBits(
+                    events, kRewound | kRewindFailed | kStop, pdFALSE, pdFALSE, portMAX_DELAY);
+                if ((bits & kRewound) == 0) {
+                    finish("end of stream", false, 0);
+                    break;
+                }
+                resync_before += splitter.resynchronised_bytes();
+                splitter = ac4::SyncFrameSplitter{std::span<std::byte>(framing)};
+                // The next pass is the stream again from its start: a decoder
+                // that carried its history over would decode its first frames
+                // differently, and the hash is of one pass.
+                ac4_decoder->reset();
+                ac4_hash = ac4bridge::PcmHash{};
+                continue;
+            }
+
+            if (next.status != Status::kFrame) {
+                finish("framing", true, static_cast<int>(next.status));
+                break;
+            }
+
+            const std::int64_t started = esp_timer_get_time();
+            const auto decoded = decode_ac4_frame(next.frame.raw_ac4_frame);
+            const auto elapsed = static_cast<std::uint64_t>(esp_timer_get_time() - started);
+            if (ac4_refused_rate_hz != 0) {
+                finish("sample rate", true, static_cast<int>(ac4_refused_rate_hz));
+                break;
+            }
+            if (!decoded) {
+                const std::string_view why = ac4_decoder->refusal_reason();
+                std::printf("player: AC-4 frame %llu: %.*s\n",
+                            static_cast<unsigned long long>(frames_played.load() + frames_held.load()),
+                            static_cast<int>(why.size()), why.data());
+                finish("decode", true, static_cast<int>(decoded.error()));
+                break;
+            }
+            decode_us.fetch_add(elapsed);
+            std::uint64_t worst = worst_frame_us.load();
+            while (elapsed > worst && !worst_frame_us.compare_exchange_weak(worst, elapsed)) {
+            }
+            if (!*decoded) {
+                frames_held.fetch_add(1);
+                continue;
+            }
+            frames_played.fetch_add(1);
+            resync_bytes.store(resync_before + splitter.resynchronised_bytes());
+        }
+    }
+#endif  // CONFIG_AC3FORGE_AC4
+
     void decode_loop() {
         using Status = ac3::io::AccessUnitAccumulator::Status;
         ac3::io::AccessUnitAccumulator accumulator{framing};
         // resynchronised_bytes() is per accumulator; the running total
         // survives the re-arm at each pass.
         std::uint64_t resync_before = 0;
+
+#if CONFIG_AC3FORGE_AC4
+        // AC-4's sync word tells its streams from AC-3's and E-AC-3's, and a play
+        // is one codec throughout: the first two bytes of the stream decide which
+        // framer and decoder read it. They are taken from the ring to be looked
+        // at and go on to whichever it is, ahead of the rest.
+        std::array<std::byte, 2> lead{};
+        std::size_t lead_bytes = 0;
+        while (lead_bytes < lead.size() && !stopping()) {
+            const bool ended = (xEventGroupGetBits(events) & kSourceEnded) != 0;
+            const std::size_t got = xStreamBufferReceive(ring, lead.data() + lead_bytes,
+                                                         lead.size() - lead_bytes,
+                                                         ended ? 0 : pdMS_TO_TICKS(100));
+            lead_bytes += got;
+            if (got == 0 && ended && xStreamBufferIsEmpty(ring) == pdTRUE) {
+                break;  // shorter than that: the AC-3 framer says what it makes of it
+            }
+        }
+        if (ac4bridge::is_ac4(std::span<const std::byte>(lead.data(), lead_bytes))) {
+            decode_loop_ac4(std::span<const std::byte>(lead.data(), lead_bytes));
+            xEventGroupSetBits(events, kDecodeExited);
+            vTaskDelete(nullptr);
+            return;
+        }
+        if (lead_bytes > 0) {
+            const auto dst = accumulator.writable();
+            std::memcpy(dst.data(), lead.data(), lead_bytes);
+            accumulator.commit(lead_bytes);
+        }
+#endif
 
         while (!stopping()) {
             const auto unit = accumulator.next();
