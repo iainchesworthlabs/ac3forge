@@ -3043,6 +3043,16 @@ struct Ac4RoundTrip {
     int sample_rate_hz = 0;
 };
 
+// ac3forge_ac4_decoder_decode() hands the caller a frame to destroy. This frees
+// it on every way out of the loop that reads it, a failed REQUIRE included.
+struct DecodedFrameGuard {
+    explicit DecodedFrameGuard(ac3forge_ac4_decoded_frame_t* f) : frame(f) {}
+    DecodedFrameGuard(const DecodedFrameGuard&) = delete;
+    DecodedFrameGuard& operator=(const DecodedFrameGuard&) = delete;
+    ~DecodedFrameGuard() { ac3forge_ac4_decoded_frame_destroy(frame); }
+    ac3forge_ac4_decoded_frame_t* frame;
+};
+
 Ac4RoundTrip round_trip_ac4(const ac3forge_ac4_encoder_config_t& encoder_config,
                             const std::vector<double>& tones, int frames) {
     ac3forge_ac4_encoder_t* encoder = nullptr;
@@ -3071,6 +3081,7 @@ Ac4RoundTrip round_trip_ac4(const ac3forge_ac4_encoder_config_t& encoder_config,
             const auto status =
                 ac3forge_ac4_decoder_decode(decoder, ac3forge_ac4_encoded_frame_data(encoded[i]),
                                             ac3forge_ac4_encoded_frame_size(encoded[i]), &decoded);
+            const DecodedFrameGuard guard(decoded);
             REQUIRE(status == AC3FORGE_OK);
             if (decoded == nullptr) {
                 continue;  // held back pending configuration - not an error
