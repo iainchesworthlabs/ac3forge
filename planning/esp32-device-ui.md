@@ -163,7 +163,10 @@ Everything comes from one `GET /status`. A field the firmware does not report is
 
 **As built, 2026-09-30.** The Volume row is gone: since Hearth B2 (#726) the page has no volume
 slider, and `volume` is not shown. The other rows are on the page, arranged by [the
-redesign](#the-redesign).
+redesign](#the-redesign). The paragraph below on an accepted play describes the page's own Play
+and its six-second watch, which B2 removed; what `/status` reports after a `curl` play or stop is
+as it says. On a build with `CONFIG_AC3FORGE_AC4` (the P4's, D14b) `stream.codec` reads `AC-4`
+for an AC-4 stream, and its `acmod` and `substreams` mean nothing there (`player.hpp`).
 
 Four of these need more than a label.
 
