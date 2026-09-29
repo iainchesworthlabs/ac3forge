@@ -7,6 +7,7 @@
 #include <span>
 
 #include "huffman.hpp"
+#include "syntax/reset.hpp"
 #include "tables/huffman_tables.hpp"
 #include "tables/sfb_tables.hpp"
 
@@ -369,7 +370,7 @@ ParseResult parse_sf_data(BitReader& r, const SubstreamContext& ctx, const SfInf
         return fail(DecodeError::kUnsupported, "the speech spectral frontend (SSF) is not decoded");
     }
     const AsfPsyInfo& psy = info.psy;
-    out = SfData{};
+    reset_in_place(out);
     const bool hsf_active = hsf != nullptr && ctx.sf_multiplier.has_value();
     if (hsf_active) {
         hsf_out = HsfSfData{};
@@ -777,7 +778,7 @@ ParseResult parse_sf_hsf_data(BitReader& r, int num_window_groups, const SfData&
 }
 
 ParseResult parse_chparam_info(BitReader& r, const SubstreamContext& ctx, const SfInfo& info, ChparamInfo& out) {
-    out = ChparamInfo{};
+    reset_in_place(out);
     const AsfPsyInfo& psy = info.psy;
     out.sap_mode = static_cast<int>(r.read(2, "sap_mode"));
     if (out.sap_mode == 1) {

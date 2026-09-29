@@ -7,6 +7,7 @@
 #include <numbers>
 
 #include "syntax/acpl.hpp"
+#include "syntax/reset.hpp"
 
 namespace ac4::detail {
 namespace {
@@ -145,7 +146,7 @@ void scale(std::span<QmfValue> values, double gain) {
 }  // namespace
 
 ParseResult acpl_values(const ChannelElement& element, AcplQuantHistory& history, AcplFrameValues& out) {
-    out = AcplFrameValues{};
+    reset_in_place(out);
     if (element.codec_mode == codec_mode::kAspxAcpl3) {
         if (!element.acpl_2ch) {
             return fail(DecodeError::kInvalidStream, "an ASPX_ACPL_3 element without its acpl_data_2ch()");
@@ -313,7 +314,7 @@ void AcplStage::coupling(const AcplCouplingValues& values, std::span<const QmfVa
     const Param b1 = base(2, values.beta[0]);
     const Param b2 = base(3, values.beta[1]);
     const Param b3 = base(4, values.beta3);
-    std::array<Param, 6> g{};
+    std::array<Param, 6>& g = coupling_g_;
     for (std::size_t k = 0; k < 6; ++k) {
         g[k] = base(5 + k, values.gamma[k]);
     }

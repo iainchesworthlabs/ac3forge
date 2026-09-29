@@ -148,7 +148,8 @@ ParseResult ElementParser::add_info(int spec_frontend, bool dual_maxsfb, bool si
 }
 
 ParseResult ElementParser::add_track(int info, bool side_channel, bool lfe) {
-    Track track;
+    // The track is built where it will stay: a Track is 15 KB, too much for the stack.
+    Track& track = out_.tracks.emplace_back();
     track.info = info;
     track.side_channel = side_channel;
     track.lfe = lfe;
@@ -159,6 +160,7 @@ ParseResult ElementParser::add_track(int info, bool side_channel, bool lfe) {
         // parse_audio_data_chan's doc comment).
         const SfInfo& first = out_.infos[static_cast<size_t>(info)];
         if (auto ok = parse_hsf_ext_header(*hsf_reader_, first.psy.b_different_framing, hsf_header_); !ok) {
+            out_.tracks.pop_back();
             return ok;
         }
         hsf_peeked_ = true;
@@ -167,19 +169,20 @@ ParseResult ElementParser::add_track(int info, bool side_channel, bool lfe) {
     if (auto ok = parse_sf_data(r_, ctx_, out_.infos[static_cast<size_t>(info)], side_channel, hsf, track.data,
                                 track.hsf);
         !ok) {
+        out_.tracks.pop_back();
         return ok;
     }
-    out_.tracks.push_back(std::move(track));
     return {};
 }
 
 ParseResult ElementParser::chparam_infos(int count, int info) {
     for (int i = 0; i < count; ++i) {
-        ChparamInfo chparam;
+        // In place, as add_track's: a ChparamInfo is 4 KB.
+        ChparamInfo& chparam = out_.chparams.emplace_back();
         if (auto ok = parse_chparam_info(r_, ctx_, out_.infos[static_cast<size_t>(info)], chparam); !ok) {
+            out_.chparams.pop_back();
             return ok;
         }
-        out_.chparams.push_back(std::move(chparam));
     }
     return {};
 }

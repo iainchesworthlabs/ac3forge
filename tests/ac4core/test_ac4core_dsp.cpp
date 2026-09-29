@@ -918,3 +918,87 @@ TEST_CASE("the QMF's 64-point transform equals the DFT", "[ac4core][dsp][qmf]") 
     // Float's rounding through three passes: a few times its epsilon.
     CHECK(run(float{}) <= 16.0 * static_cast<double>(std::numeric_limits<float>::epsilon()));
 }
+
+TEST_CASE("the transforms take a scratch of the caller's and give the same values",
+          "[ac4core][dsp]") {
+    // The FFT and the inverse MDCT work in buffers of their own, made by the first
+    // call, or in one the caller lends; the values do not depend on which.
+    for (const std::size_t n :
+         {std::size_t{48}, std::size_t{120}, std::size_t{512}, std::size_t{960}}) {
+        const std::vector<double> re = random_values(n, static_cast<unsigned>(n) + 1);
+        const std::vector<double> im = random_values(n, static_cast<unsigned>(n) + 2);
+        std::vector<Complex> input(n);
+        for (std::size_t i = 0; i < n; ++i) {
+            input[i] = Complex(re[i], im[i]);
+        }
+        dsp::Fft<double> own(n);
+        dsp::Fft<double> lent(n);
+        std::vector<Complex> scratch(n);
+        std::vector<Complex> a = input;
+        std::vector<Complex> b = input;
+        own.forward(a);
+        lent.forward(b, scratch);
+        CHECK(a == b);
+        own.inverse(a);
+        lent.inverse(b, scratch);
+        CHECK(a == b);
+        // A scratch too short for the plan leaves the data alone.
+        std::vector<Complex> short_scratch(n - 1);
+        b = input;
+        lent.forward(b, short_scratch);
+        CHECK(b == input);
+    }
+    for (const std::size_t n :
+         {std::size_t{128}, std::size_t{480}, std::size_t{512}, std::size_t{2048}}) {
+        const std::vector<double> spectrum = random_values(n, static_cast<unsigned>(n) + 3);
+        dsp::Imdct<double> own(n);
+        dsp::Imdct<double> lent(n);
+        std::vector<double> out_own(2 * n);
+        std::vector<double> out_lent(2 * n);
+        std::vector<Complex> scratch(n);
+        own.inverse(spectrum, out_own);
+        lent.inverse(spectrum, out_lent, scratch);
+        CHECK(out_own == out_lent);
+        std::vector<Complex> short_scratch(n - 1);
+        std::vector<double> untouched(2 * n, -1.0);
+        lent.inverse(spectrum, untouched, short_scratch);
+        CHECK(untouched == std::vector<double>(2 * n, -1.0));
+    }
+}
+
+TEST_CASE("channels that share one transform set give what channels with their own give",
+          "[ac4core][dsp]") {
+    // A substream's channels inverse transform one block after another in the set's
+    // scratch, at block lengths that change from one block to the next.
+    constexpr int kFull = 2048;
+    const std::array<int, 12> lengths = {2048, 1024, 1024, 256, 256,  256,
+                                         256,  512,  512,  128, 2048, 2048};
+    dsp::TransformSet<double> shared(kFull, 1);
+    dsp::TransformSet<double> set_a(kFull, 1);
+    dsp::TransformSet<double> set_b(kFull, 1);
+    REQUIRE(shared.valid());
+    dsp::ChannelSynthesis<double> a_shared(kFull);
+    dsp::ChannelSynthesis<double> b_shared(kFull);
+    dsp::ChannelSynthesis<double> a_alone(kFull);
+    dsp::ChannelSynthesis<double> b_alone(kFull);
+    unsigned seed = 900;
+    for (const int length : lengths) {
+        const auto n = static_cast<std::size_t>(length);
+        const std::vector<double> spectrum_a = random_values(n, seed++);
+        const std::vector<double> spectrum_b = random_values(n, seed++);
+        std::vector<double> pcm_a_shared(n);
+        std::vector<double> pcm_b_shared(n);
+        std::vector<double> pcm_a_alone(n);
+        std::vector<double> pcm_b_alone(n);
+        REQUIRE(a_shared.block(shared, spectrum_a, pcm_a_shared));
+        REQUIRE(b_shared.block(shared, spectrum_b, pcm_b_shared));
+        REQUIRE(a_alone.block(set_a, spectrum_a, pcm_a_alone));
+        REQUIRE(b_alone.block(set_b, spectrum_b, pcm_b_alone));
+        CHECK(pcm_a_shared == pcm_a_alone);
+        CHECK(pcm_b_shared == pcm_b_alone);
+    }
+    // The set owns the working space: a block of the full length, and the values
+    // the longest transform takes.
+    CHECK(shared.block_scratch().size() == 2 * static_cast<std::size_t>(kFull));
+    CHECK(shared.transform_scratch().size() == static_cast<std::size_t>(kFull));
+}

@@ -49,9 +49,6 @@ constexpr std::size_t kSubbands = dsp::kQmfSubbands;
 constexpr std::size_t kMaxChannels = 12;
 constexpr std::size_t kMaxUnits = kMaxAspxElements;
 
-// The chparam_info()s one channel data element holds: five_channel_data()'s.
-constexpr std::size_t kMaxChparams = 5;
-
 [[nodiscard]] std::size_t at(int index) noexcept {
     return static_cast<std::size_t>(index);
 }
@@ -129,9 +126,13 @@ void SubstreamPcm::reset() {
     }
     held_.clear();
     master_.reset();
-    acpl_.reset();
+    if (acpl_) {
+        acpl_->reset();
+    }
     acpl_history_ = {};
-    ajcc_.reset();
+    if (ajcc_) {
+        ajcc_->reset();
+    }
     ajcc_history_ = {};
     ajoc_.reset();
     ajoc_history_ = {};
@@ -183,11 +184,11 @@ void SubstreamPcm::configure_outputs(const SubstreamContext& ctx, const OutputCo
     downmix_.configure(speakers_, add_ch_base_, downmix_target_, mix_lfe_, layout_);
     outputs_.clear();
     for (std::size_t o = 0; o < downmix_.speakers().size(); ++o) {
-        Output out{.synthesis = {}, .converter = {}};
+        // In place: an Output is 10 KB at double.
+        Output& out = outputs_.emplace_back();
         if (converter_filter_) {
             out.converter.emplace(converter_filter_);
         }
-        outputs_.push_back(std::move(out));
     }
     // New converters start their grid at the next frame's phase.
     converter_phase_.reset();
@@ -239,13 +240,8 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, DecodingMode de
     }
     channels_.clear();
     for (std::size_t c = 0; c < speakers_.size(); ++c) {
-        Channel channel{.synthesis = dsp::ChannelSynthesis<Real>(full_length_),
-                        .delay = std::vector<Real>(static_cast<std::size_t>(delay_), Real{}),
-                        .analysis = {},
-                        .ext = std::vector<QmfValue>(at(ext_slots) * kSubbands),
-                        .out = std::vector<QmfValue>(at(slots_) * kSubbands),
-                        .aspx = {}};
-        channels_.push_back(std::move(channel));
+        channels_.emplace_back(full_length_, static_cast<std::size_t>(delay_),
+                               at(ext_slots) * kSubbands, at(slots_) * kSubbands);
     }
     time_.assign(speakers_.size(), std::vector<Real>(at(full_length_), Real{}));
     // Core decoding's ASPX_SCPL takes the first channel of four of its six
@@ -264,6 +260,8 @@ ParseResult SubstreamPcm::configure(const SubstreamContext& ctx, DecodingMode de
     scpl_mode_.reset();
     held_.clear();
     master_.reset();
+    // A new configuration starts A-CPL and A-JCC afresh: the stages go, and the
+    // first frame that applies one makes it.
     acpl_.reset();
     acpl_history_ = {};
     ajcc_.reset();
@@ -462,7 +460,11 @@ void SubstreamPcm::apply(const Control& control) {
     std::array<bool, kMaxChannels> carried{};
     for (std::size_t u = 0; u < units_.size(); ++u) {
         UnitIo& unit = units[u];
-        const bool decoded = static_cast<bool>(decode_aspx(unit.frame, std::span<AspxChannelIo>(unit.io).first(unit.count)));
+        if (!aspx_scratch_) {
+            aspx_scratch_ = std::make_unique<AspxScratch>();
+        }
+        const bool decoded = static_cast<bool>(decode_aspx(
+            unit.frame, std::span<AspxChannelIo>(unit.io).first(unit.count), *aspx_scratch_));
         for (std::size_t c = 0; c < unit.count; ++c) {
             if (unit.channels[c] < 0) {
                 continue;  // a ghost
@@ -485,15 +487,17 @@ void SubstreamPcm::apply(const Control& control) {
 
     // A-CPL on what A-SPX made (Figure 6, Table 214; Part 2 Table 12).
     if (uses_acpl(control.kind, control.codec_mode, decoding_) && control.acpl) {
-        if (applied_mode_ != control.codec_mode) {
-            acpl_.reset();
+        if (!acpl_) {
+            acpl_ = std::make_unique<AcplStage>();
+        } else if (applied_mode_ != control.codec_mode) {
+            acpl_->reset();
         }
         matrices_.clear();
         for (Channel& channel : channels_) {
             matrices_.push_back(&channel.out);
         }
-        acpl_.apply(ch_mode_, control.add_ch_base, control.kind, control.codec_mode, *control.acpl, slots_,
-                    AcplChannels{.speakers = speakers_, .matrices = matrices_});
+        acpl_->apply(ch_mode_, control.add_ch_base, control.kind, control.codec_mode, *control.acpl,
+                     slots_, AcplChannels{.speakers = speakers_, .matrices = matrices_});
     }
     // A-JOC on what A-SPX made (Part 2 clause 4.8.3.13).
     if (control.ajoc) {
@@ -502,15 +506,17 @@ void SubstreamPcm::apply(const Control& control) {
     // A-JCC on what A-SPX made (Part 2 clause 4.8.3.12).
     if (control.kind == ElementKind::kImmersive &&
         control.codec_mode == immersive_mode::kAspxAjcc && control.ajcc) {
-        if (applied_mode_ != control.codec_mode) {
-            ajcc_.reset();
+        if (!ajcc_) {
+            ajcc_ = std::make_unique<AjccStage>();
+        } else if (applied_mode_ != control.codec_mode) {
+            ajcc_->reset();
         }
         matrices_.clear();
         for (Channel& channel : channels_) {
             matrices_.push_back(&channel.out);
         }
-        ajcc_.apply(decoding_, *control.ajcc, slots_,
-                    AcplChannels{.speakers = speakers_, .matrices = matrices_});
+        ajcc_->apply(decoding_, *control.ajcc, slots_,
+                     AcplChannels{.speakers = speakers_, .matrices = matrices_});
     }
     applied_mode_ = control.codec_mode;
 }
@@ -577,11 +583,10 @@ void SubstreamPcm::synthesise_objects(const FrameInputs& frame_inputs, const Drc
     if (object_outputs_.size() != count) {
         object_outputs_.clear();
         for (std::size_t o = 0; o < count; ++o) {
-            Output out{.synthesis = {}, .converter = {}};
+            Output& out = object_outputs_.emplace_back();
             if (converter_filter_) {
                 out.converter.emplace(converter_filter_);
             }
-            object_outputs_.push_back(std::move(out));
         }
     }
     // Clause 5.7.9.3.3's output level gain, 2^((Lout - dialnorm) / 6), where
@@ -644,7 +649,12 @@ void SubstreamPcm::apply_immersive_gains(const Control& control, std::span<const
 // order; then every channel's lines in window order (Pseudocode 25); then the
 // 7.X element's Table 183 steps, which pair channels of different elements.
 ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelElement& element) {
-    parameters_.resize(kMaxChparams);
+    // A StereoParameters is 32 KiB at double, so parameters_ grows to the most
+    // chparam_info()s a part of this stream's elements holds, not to the five of a
+    // five_channel_data() that a stereo stream never has.
+    if (parameters_.empty()) {
+        parameters_.resize(1);
+    }
     dual_layouts_.clear();
     dual_layout_of_.assign(element.tracks.size(), -1);
     for (const DataElementRoute& part : route_.data) {
@@ -659,6 +669,9 @@ ParseResult SubstreamPcm::matrix(const SubstreamContext& ctx, const ChannelEleme
             }
         }
         const std::size_t needed = chparams_of(part.count);
+        if (parameters_.size() < needed) {
+            parameters_.resize(needed);
+        }
         for (std::size_t i = 0; i < needed; ++i) {
             stereo_parameters(ctx, info, element.chparams[at(part.first_chparam) + i], parameters_[i]);
         }
@@ -784,15 +797,16 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     }
     // Clause 5.7.7.7 now, so that a value outside its table refuses the
     // frame; the history DIFF_TIME refers to moves on once the frame is kept.
-    std::optional<AcplFrameValues> acpl;
+    const bool acpl_used = uses_acpl(element.kind, element.codec_mode, decoding_);
     const bool fresh = frame_inputs.new_source || decoded_mode_ != element.codec_mode;
     AcplQuantHistory acpl_history = fresh ? AcplQuantHistory{} : acpl_history_;
-    if (uses_acpl(element.kind, element.codec_mode, decoding_)) {
-        AcplFrameValues values;
-        if (auto ok = acpl_values(element, acpl_history, values); !ok) {
+    if (acpl_used) {
+        if (!acpl_next_) {
+            acpl_next_ = std::make_unique<AcplFrameValues>();
+        }
+        if (auto ok = acpl_values(element, acpl_history, *acpl_next_); !ok) {
             return ok;
         }
-        acpl = values;
     }
     // Part 2 clause 5.6.3.2 alike, for A-JCC.
     std::optional<AjccFrameValues> ajcc;
@@ -860,23 +874,27 @@ ParseResult SubstreamPcm::decode(const SubstreamContext& ctx, const AudioSubstre
     last_mix_ = frame_inputs.mix;
     losses_ = 0;
 
-    return render(Control{.codec_mode = element.codec_mode,
-                          .kind = element.kind,
-                          .add_ch_base = ctx.add_ch_base,
-                          .new_source = frame_inputs.new_source,
-                          .aspx_config = element.aspx_config,
-                          .companding = element.companding,
-                          .aspx_1ch = element.aspx_1ch,
-                          .aspx_2ch = element.aspx_2ch,
-                          .acpl = acpl,
-                          .ajcc = ajcc,
-                          .ajoc = std::move(ajoc),
-                          .dialogue_db = frame_inputs.output.dialogue_enhancement_db,
-                          .drc = frame_inputs.drc,
-                          .de = frame_inputs.de,
-                          .downmix = frame_inputs.downmix,
-                          .mix = frame_inputs.mix},
-                  frame_inputs, channels, speakers);
+    // The frame's control data waits in the d_ctrl queue; it is built there.
+    Control& control = held_.emplace_back();
+    control.codec_mode = element.codec_mode;
+    control.kind = element.kind;
+    control.add_ch_base = ctx.add_ch_base;
+    control.new_source = frame_inputs.new_source;
+    control.aspx_config = element.aspx_config;
+    control.companding = element.companding;
+    control.aspx_1ch = element.aspx_1ch;
+    control.aspx_2ch = element.aspx_2ch;
+    if (acpl_used) {
+        control.acpl.emplace(*acpl_next_);
+    }
+    control.ajcc = ajcc;
+    control.ajoc = std::move(ajoc);
+    control.dialogue_db = frame_inputs.output.dialogue_enhancement_db;
+    control.drc = frame_inputs.drc;
+    control.de = frame_inputs.de;
+    control.downmix = frame_inputs.downmix;
+    control.mix = frame_inputs.mix;
+    return render(frame_inputs, channels, speakers);
 }
 
 ParseResult SubstreamPcm::conceal(ConcealmentPolicy policy, const FrameInputs& frame_inputs,
@@ -906,26 +924,18 @@ ParseResult SubstreamPcm::conceal(ConcealmentPolicy policy, const FrameInputs& f
     // No control data came with the frame: the QMF domain passes it through,
     // the d_ctrl queue keeps its place, and the output stages hold the last
     // good frame's values.
-    return render(Control{.codec_mode = codec_mode::kSimple,
-                          .kind = last_kind_,
-                          .add_ch_base = add_ch_base_,
-                          .new_source = false,
-                          .aspx_config = std::nullopt,
-                          .companding = std::nullopt,
-                          .aspx_1ch = {},
-                          .aspx_2ch = {},
-                          .acpl = std::nullopt,
-                          .ajcc = std::nullopt,
-                          .ajoc = std::nullopt,
-                          .dialogue_db = 0.0,
-                          .drc = last_drc_,
-                          .de = last_de_,
-                          .downmix = last_downmix_,
-                          .mix = last_mix_},
-                  frame_inputs, channels, speakers);
+    Control& control = held_.emplace_back();
+    control.codec_mode = codec_mode::kSimple;
+    control.kind = last_kind_;
+    control.add_ch_base = add_ch_base_;
+    control.drc = last_drc_;
+    control.de = last_de_;
+    control.downmix = last_downmix_;
+    control.mix = last_mix_;
+    return render(frame_inputs, channels, speakers);
 }
 
-ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_inputs,
+ParseResult SubstreamPcm::render(const FrameInputs& frame_inputs,
                                  std::vector<std::vector<float>>& channels,
                                  std::vector<Speaker>& speakers) {
     const int converter_phase = frame_inputs.converter_phase;
@@ -966,8 +976,8 @@ ParseResult SubstreamPcm::render(Control control, const FrameInputs& frame_input
     }
 
     // Clause 5.7.2: this frame's control data waits d_ctrl frames; the
-    // signal now in the QMF domain is the frame's d_ctrl frames back.
-    held_.push_back(std::move(control));
+    // signal now in the QMF domain is the frame's d_ctrl frames back; this frame's
+    // is at the back of held_.
     // The DRC, dialnorm, dialogue enhancement and downmix gains of the frame
     // whose signal this is; none before the first one's arrives.
     DrcFrameValues drc;
