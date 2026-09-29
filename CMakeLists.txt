@@ -225,6 +225,23 @@ if(AC3FORGE_MINIMAL_DECODER AND AC3FORGE_MINIMAL_ENCODER)
         "hold both at once.")
 endif()
 
+# The AC-4 decoder inside the same profile (planning/ac4.md, D14b): the
+# inspector (src/ac4), the core (src/ac4core) and the decoder (src/ac4dec) as
+# static archives built with the profile's own compile options, and no encoder -
+# the encoder is built for no ESP32 part (decision 34). It is an option of its
+# own rather than a use of AC3FORGE_BUILD_AC4, which the guard below refuses in
+# the profile because it also builds src/ac4enc, the applications and the
+# tests. Off by default, and when off the profile builds exactly what it did
+# before: esp-idf/ac3forge/CMakeLists.txt sets it from CONFIG_AC3FORGE_AC4.
+option(AC3FORGE_MINIMAL_AC4
+    "Minimum-footprint decoder profile only: also build the AC-4 inspector, core and decoder (no encoder)"
+    OFF)
+if(AC3FORGE_MINIMAL_AC4 AND NOT AC3FORGE_MINIMAL_DECODER)
+    message(FATAL_ERROR
+        "AC3FORGE_MINIMAL_AC4 adds the AC-4 decoder to the minimum-footprint decoder profile, "
+        "and needs AC3FORGE_MINIMAL_DECODER=ON (a full build has AC3FORGE_BUILD_AC4).")
+endif()
+
 # Where a frame's time goes, on a target that cannot run Tracy. Routes the
 # library's AC3_ZONE_SCOPED_N() markers - the same ones AC3FORGE_ENABLE_TRACY
 # turns into Tracy zones - to two functions the APPLICATION supplies (see
@@ -300,18 +317,11 @@ if(AC3FORGE_MINIMAL_DECODER OR AC3FORGE_MINIMAL_ENCODER)
                           AC3FORGE_BUILD_EXAMPLES AC3FORGE_BUILD_MATROSKA AC3FORGE_BUILD_MP4
                           AC3FORGE_BUILD_MPEGTS AC3FORGE_BUILD_IAB AC3FORGE_BUILD_IAMF
                           AC3FORGE_BUILD_CAPI AC3FORGE_BUILD_ADM AC3FORGE_BUILD_PYTHON
-                          AC3FORGE_BUILD_FUZZERS)
+                          AC3FORGE_BUILD_FUZZERS AC3FORGE_BUILD_AC4)
         if(${_opt})
             list(APPEND _ac3_minimal_conflicts "${_opt}")
         endif()
     endforeach()
-    # The AC-4 libraries the decode profile may carry - the inspector, the core and the
-    # decoder, static and without exceptions (apps/baremetal/ac4_probe.cpp is the probe
-    # that links them, planning/ac4.md D14a) - and the encode profile may not. The AC-4
-    # encoder is built for none of the parts (decision 34), whichever way this is set.
-    if(AC3FORGE_MINIMAL_ENCODER AND AC3FORGE_BUILD_AC4)
-        list(APPEND _ac3_minimal_conflicts "AC3FORGE_BUILD_AC4")
-    endif()
     # Hearth's applications link the full ac3::forge; a board's Sendspin player half does not.
     if(_ac3_hearth_apps)
         list(APPEND _ac3_minimal_conflicts "AC3FORGE_BUILD_HEARTH")
@@ -498,24 +508,24 @@ if(AC3FORGE_BUILD_AC4)
     add_subdirectory(src/ac4)
     add_subdirectory(src/ac4core)
     add_subdirectory(src/ac4dec)
-    if(AC3FORGE_MINIMAL_DECODER)
-        # The minimum-footprint profile's compile options on what the AC-4 libraries
-        # build, PUBLIC as ac3::forge_minimal has them: -fno-exceptions is a property a
-        # consumer has to share, or the two disagree about whether a call can throw.
-        # The AC-4 encoder is not built at all (planning/ac4.md, decision 34).
-        #
-        # -Wno-psabi: GCC's arm-none-eabi says, once a translation unit and for every
-        # std::span passed by value, that its passing changed in GCC 7.1. A note about an
-        # ABI nothing here links against, hundreds of them in the log of a leg whose
-        # output is the numbers.
-        foreach(_ac3_ac4_target IN ITEMS ac4_objects ac4core ac4dec_objects)
-            target_link_libraries(${_ac3_ac4_target} PUBLIC ac3::minimal_profile)
-            target_compile_options(${_ac3_ac4_target} PRIVATE "$<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>")
-        endforeach()
-        unset(_ac3_ac4_target)
-    else()
-        add_subdirectory(src/ac4enc)
-    endif()
+    add_subdirectory(src/ac4enc)
+elseif(AC3FORGE_MINIMAL_AC4)
+    # The minimum-footprint profile's share of the above: what a decode reads
+    # and no encoder (AC3FORGE_MINIMAL_AC4, beside the profile's options). The
+    # three directories check AC3FORGE_MINIMAL_DECODER themselves for what a
+    # bare-metal archive cannot have: a shared library, position-independent
+    # code, and exceptions.
+    add_subdirectory(src/ac4)
+    add_subdirectory(src/ac4core)
+    add_subdirectory(src/ac4dec)
+    # -Wno-psabi: GCC's arm-none-eabi says, once a translation unit and for every
+    # std::span passed by value, that its passing changed in GCC 7.1. A note about an
+    # ABI nothing here links against, hundreds of them in the log of a leg whose
+    # output is the numbers.
+    foreach(_ac3_ac4_target IN ITEMS ac4_objects ac4core ac4dec_objects)
+        target_compile_options(${_ac3_ac4_target} PRIVATE "$<$<CXX_COMPILER_ID:GNU>:-Wno-psabi>")
+    endforeach()
+    unset(_ac3_ac4_target)
 endif()
 
 # A standalone reader, not a writer like the three container modules above - roadmap item IM1

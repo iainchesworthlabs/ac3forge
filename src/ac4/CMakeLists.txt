@@ -15,24 +15,32 @@
 # wrapper targets, rather than one add_library().
 # ---------------------------------------------------------------------------
 add_library(ac4_objects OBJECT)
-add_library(ac4_static STATIC)
-# Static only under the minimum-footprint profile (AC3FORGE_MINIMAL_DECODER): the parts
-# it builds for have no dynamic loader, and CMake refuses add_library(SHARED) for a
-# platform that has none (src/forge/minimal.cmake says the same of ac3::forge).
-if(NOT AC3FORGE_MINIMAL_DECODER)
-    add_library(ac4_shared SHARED)
-endif()
-
-target_link_libraries(ac4_static PUBLIC ac4_objects)
-if(TARGET ac4_shared)
-    target_link_libraries(ac4_shared PUBLIC ac4_objects)
+# The minimum-footprint profile (AC3FORGE_MINIMAL_AC4, planning/ac4.md, D14b)
+# takes the objects into the archive as sources and passes on only the OBJECT
+# library's compile-time requirements. ESP-IDF's linker-script generator asks
+# every library in an executable's link graph for its file, which an OBJECT
+# library has none of; a static archive that links it hands it that graph.
+if(AC3FORGE_MINIMAL_DECODER)
+    add_library(ac4_static STATIC $<TARGET_OBJECTS:ac4_objects>)
+    target_link_libraries(ac4_static PUBLIC $<COMPILE_ONLY:ac4_objects>)
+else()
+    add_library(ac4_static STATIC)
+    target_link_libraries(ac4_static PUBLIC ac4_objects)
 endif()
 
 add_library(ac4::ac4_static ALIAS ac4_static)
-if(TARGET ac4_shared)
+
+# The shared library is what a bare-metal build has no use for and cannot have:
+# no dynamic loader, and CMake refuses add_library(SHARED) for a target that has
+# none (policy CMP0164). The minimum-footprint profile (AC3FORGE_MINIMAL_AC4,
+# planning/ac4.md, D14b) builds the static archive alone; the same test guards
+# each line below that names ac4_shared.
+if(NOT AC3FORGE_MINIMAL_DECODER)
+    add_library(ac4_shared SHARED)
+    target_link_libraries(ac4_shared PUBLIC ac4_objects)
     add_library(ac4::ac4_shared ALIAS ac4_shared)
 endif()
-if(BUILD_SHARED_LIBS AND TARGET ac4_shared)
+if(BUILD_SHARED_LIBS AND NOT AC3FORGE_MINIMAL_DECODER)
     add_library(ac4::ac4 ALIAS ac4_shared)
 else()
     add_library(ac4::ac4 ALIAS ac4_static)
@@ -58,14 +66,16 @@ target_link_libraries(ac4_objects PRIVATE
     "$<BUILD_INTERFACE:ac3::warnings>"
     "$<BUILD_INTERFACE:ac3::coverage>")
 
-# Position-independent for the shared library's sake, which the minimum-footprint
-# profile has none of: there the objects go into a static image at a fixed address,
-# and -fPIC would only add a table of addresses to every access to a global.
+# In the minimum-footprint profile: its compile options (no exceptions, no RTTI,
+# a section for each function and datum), PUBLIC for a consumer to share, and
+# code that is not position-independent - see src/ac4core/CMakeLists.txt.
 if(AC3FORGE_MINIMAL_DECODER)
+    target_link_libraries(ac4_objects PUBLIC ac3::minimal_profile)
     set(_ac4_pic OFF)
 else()
     set(_ac4_pic ON)
 endif()
+
 set_target_properties(ac4_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ${_ac4_pic}
     CXX_VISIBILITY_PRESET hidden
@@ -78,12 +88,12 @@ set_target_properties(ac4_objects PROPERTIES
 target_compile_options(ac4_objects PUBLIC "$<$<CXX_COMPILER_ID:MSVC>:/wd4251>")
 
 include(GenerateExportHeader)
-# The header is the same whichever target it is generated from; the static library
-# generates it where there is no shared one.
-if(TARGET ac4_shared)
+if(NOT AC3FORGE_MINIMAL_DECODER)
     set_target_properties(ac4_shared PROPERTIES DEFINE_SYMBOL "AC4_BUILDING_SHARED")
     set(_ac4_export_target ac4_shared)
 else()
+    # The header is the same either way: the profile's consumers define
+    # AC4_STATIC_DEFINE (below), and it asks nothing of the target it is made from.
     set(_ac4_export_target ac4_static)
 endif()
 generate_export_header(${_ac4_export_target}
@@ -95,10 +105,11 @@ generate_export_header(${_ac4_export_target}
 target_compile_definitions(ac4_objects PRIVATE AC4_BUILDING_SHARED)
 target_compile_definitions(ac4_static PUBLIC AC4_STATIC_DEFINE)
 
-if(TARGET ac4_shared)
+if(NOT AC3FORGE_MINIMAL_DECODER)
     set_target_properties(ac4_shared PROPERTIES
         VERSION "${PROJECT_VERSION}"
         SOVERSION "${PROJECT_VERSION}")
+
     set_target_properties(ac4_shared PROPERTIES OUTPUT_NAME "ac4")
 endif()
 set_target_properties(ac4_static PROPERTIES OUTPUT_NAME "ac4_static")

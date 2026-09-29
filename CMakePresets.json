@@ -405,9 +405,9 @@
       "name": "config-linux-gcc-minimal-ac4",
       "inherits": [ "config-linux-gcc-minimal" ],
       "displayName": "Linux GCC minimum-footprint AC-4 decoder",
-      "description": "The decode profile carrying the AC-4 decoder (ac4::decoder, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4 --host. AC-4 shares nothing with ac3::forge, so the two probes are two builds. The AC-4 encoder is built for none of the parts.",
+      "description": "The decode profile carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: ac4::decoder, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4 --host. AC-4 shares nothing with ac3::forge, so the two probes are two builds. The AC-4 encoder is built for none of the parts.",
       "cacheVariables": {
-        "AC3FORGE_BUILD_AC4": "ON",
+        "AC3FORGE_MINIMAL_AC4": "ON",
         "AC3FORGE_DECODE_SCALAR": "float"
       }
     },
@@ -446,9 +446,9 @@
       "name": "config-arm-none-eabi-minimal-ac4",
       "inherits": [ "config-arm-none-eabi-minimal" ],
       "displayName": "arm-none-eabi (Cortex-M3, bare metal) minimum-footprint AC-4 decoder",
-      "description": "The decoder preset above carrying the AC-4 decoder (ac4::decoder, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4. Its own build directory, since it is a different probe.",
+      "description": "The decoder preset above carrying the AC-4 decoder (AC3FORGE_MINIMAL_AC4: ac4::decoder, its inspector and its core, static and without exceptions) in float, and apps/baremetal's AC-4 probe in place of the AC-3 and E-AC-3 one: tools/checks/run_baremetal_probe.sh --ac4. Its own build directory, since it is a different probe.",
       "cacheVariables": {
-        "AC3FORGE_BUILD_AC4": "ON",
+        "AC3FORGE_MINIMAL_AC4": "ON",
         "AC3FORGE_DECODE_SCALAR": "float"
       }
     },

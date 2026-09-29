@@ -136,9 +136,15 @@ target_link_libraries(ac4core
         "$<BUILD_INTERFACE:ac3::coverage>"
         "$<BUILD_INTERFACE:ac3::arithmetic>")
 
-# Position-independent for the shared libraries that carry a part of it, which the
-# minimum-footprint profile has none of (src/ac4/CMakeLists.txt gives the reason).
+# In the minimum-footprint profile (AC3FORGE_MINIMAL_AC4, planning/ac4.md, D14b):
+# the profile's own compile options - no exceptions, no RTTI, a section for each
+# function and datum - PUBLIC, as ac3::forge_minimal links them, since a
+# consumer has to share whether a call can throw; and code that is not
+# position-independent, which a static archive linked into one firmware image
+# has no use for and which costs a RISC-V part an indirection to each global.
+# The archive is nothing an install or an export sees in that profile.
 if(AC3FORGE_MINIMAL_DECODER)
+    target_link_libraries(ac4core PUBLIC ac3::minimal_profile)
     set(_ac4core_pic OFF)
 else()
     set(_ac4core_pic ON)

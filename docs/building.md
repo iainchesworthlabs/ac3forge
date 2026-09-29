@@ -476,11 +476,12 @@ CI runs this on every push (`build-footprint` in `.github/workflows/_build.yml`)
 ### The AC-4 decoder in the profile
 
 AC-4 shares no bitstream syntax with AC-3 and E-AC-3, so the profile carries it as a build of its
-own, with a probe of its own. `AC3FORGE_BUILD_AC4=ON` under
-`AC3FORGE_MINIMAL_DECODER` builds `ac4::decoder`, its inspector `ac4::ac4` and the core
+own, with a probe of its own. `AC3FORGE_MINIMAL_AC4=ON`, which needs
+`AC3FORGE_MINIMAL_DECODER`, builds `ac4::decoder`, its inspector `ac4::ac4` and the core
 `ac4::core` as static libraries without exceptions or RTTI, in `float` (`AC3FORGE_DECODE_SCALAR`),
 and `apps/baremetal/ac4_probe.cpp` in place of the AC-3 and E-AC-3 probe. The AC-4 encoder is not
-built, and the encode profile refuses `AC3FORGE_BUILD_AC4`.
+built, and `AC3FORGE_BUILD_AC4` stays off in every minimal preset (it also builds the encoder, the
+applications and the tests).
 
 ```bash
 tools/checks/run_baremetal_probe.sh --ac4              # arm-none-eabi under QEMU
@@ -493,8 +494,8 @@ streams, gates each channel's level, the image, the peak heap (each fixture's ow
 stack a decode used (read by painting a window of it before the decode and looking for what changed
 after), the allocations per frame and, under `--icount`, the instructions per frame; the
 measured rows and their ceilings are in [the AC-4 table](performance-trend.md#the-ac-4-decoder).
-The ESP-IDF component leaves AC-4 off (`esp-idf/ac3forge/CMakeLists.txt` forces
-`AC3FORGE_BUILD_AC4` off until its own switch turns it on), so a board build does not carry it yet.
+The ESP-IDF component leaves the option off until its own switch sets it, so a board build does
+not carry AC-4 by default.
 
 ### Gaps
 

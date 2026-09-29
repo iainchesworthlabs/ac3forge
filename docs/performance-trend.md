@@ -1119,7 +1119,7 @@ has what the encode direction cannot fit on an ESP32-S3, with the host profile's
 ### The AC-4 decoder
 
 `tools/checks/run_baremetal_probe.sh --ac4` builds the decode profile with the AC-4 decoder in it
-(`AC3FORGE_BUILD_AC4=ON`, `AC3FORGE_DECODE_SCALAR=float`; the presets `config-arm-none-eabi-minimal-ac4`
+(`AC3FORGE_MINIMAL_AC4=ON`, `AC3FORGE_DECODE_SCALAR=float`; the presets `config-arm-none-eabi-minimal-ac4`
 and its `-icount` and `config-linux-gcc-minimal-ac4`) and the AC-4 probe in place of the AC-3 and
 E-AC-3 one: AC-4 shares nothing with `ac3::forge`, so it is a build of its own. It decodes five
 committed streams (`apps/baremetal/ac4_fixture.hpp`, made by

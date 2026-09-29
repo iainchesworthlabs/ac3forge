@@ -70,7 +70,7 @@ endif()
 # knowing which it is.
 if(AC3FORGE_MINIMAL_ENCODER)
     add_executable(ac3probe encode_probe.cpp main.cpp)
-elseif(AC3FORGE_BUILD_AC4)
+elseif(AC3FORGE_MINIMAL_AC4)
     add_executable(ac3probe ac4_probe.cpp main.cpp)
 else()
     add_executable(ac3probe probe.cpp main.cpp)
@@ -124,7 +124,7 @@ target_compile_definitions(ac3probe PRIVATE
 
 # What the AC-4 probe decodes with is ac4::decoder, whose archives bring the inspector
 # and the core; it links nothing of ac3::forge, and has no use for its decoders.
-if(AC3FORGE_BUILD_AC4 AND NOT AC3FORGE_MINIMAL_ENCODER)
+if(AC3FORGE_MINIMAL_AC4)
     target_link_libraries(ac3probe PRIVATE ac4::decoder_static ac3::minimal_profile
                                            ac3::warnings)
 else()

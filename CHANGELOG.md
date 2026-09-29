@@ -1643,7 +1643,7 @@ The sections below contain the complete change list and fixes.
   syntax digest is unchanged. The `float` build compiles clean with `-Werror` on GCC 16 and
   Clang 22, which it did not: two int-to-`Real` conversions had left the CI's float32 decoder leg
   unbuildable, and the test suite had not built for `float` on Linux at all. The decode profile
-  can now carry the AC-4 decoder (`AC3FORGE_BUILD_AC4` with `AC3FORGE_MINIMAL_DECODER`, static, no
+  can now carry the AC-4 decoder (`AC3FORGE_MINIMAL_AC4` with `AC3FORGE_MINIMAL_DECODER`, static, no
   exceptions, the encoder not built; `config-*-minimal-ac4` presets), with a probe of its own,
   `tools/checks/run_baremetal_probe.sh --ac4`: five committed streams on the Cortex-M3 leg
   decode with their levels exact and their PCM bit-identical to the x86-64 host's, in an image of
@@ -1654,7 +1654,7 @@ The sections below contain the complete change list and fixes.
   `tests/golden/ac4dec/scalar-agreement.json`; the same to 0.1 dB on MSVC, GCC 16 and Clang 22).
   The `double` output moves in float ulps of near-silent samples (61 of the 66 streams under
   `tests/golden`, by at most 2.3e-10); the encoder's output does not move. The ESP-IDF component
-  still forces AC-4 off, which D14b turns on.
+  builds without AC-4 until D14b's switch sets the same option.
 
 **Browser (WASM)**
 

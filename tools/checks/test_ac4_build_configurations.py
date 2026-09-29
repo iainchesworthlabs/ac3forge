@@ -14,13 +14,14 @@ wheel. Phase I4 binds AC-4 into the C API, Python, Rust and WebAssembly:
   app's own CMake wrapper links none of them: giving the Shield app an AC-4 feature is
   later application work, not this phase's.
 
-D14a gives the minimum-footprint decode profile the AC-4 decoder, for the bare-metal
-probe's AC-4 rows (apps/baremetal/ac4_probe.cpp, tools/checks/run_baremetal_probe.sh --ac4): the
-hidden minimal-decoder and minimal-encoder presets still turn the option off, and the three
-config-*-minimal-ac4 presets turn it back on, in float, and link the decoder, the inspector and
-the core statically and without exceptions. The AC-4 encoder is built for none of the parts, and
-the ESP-IDF component (esp-idf/ac3forge/CMakeLists.txt, D14b's) still forces the option off until
-its own switch turns it on.
+D14 gives the minimum-footprint decode profile the AC-4 decoder, through an option of its own,
+AC3FORGE_MINIMAL_AC4: the ESP-IDF component's Kconfig sets it, and so do the bare-metal probe's
+AC-4 presets (apps/baremetal/ac4_probe.cpp, tools/checks/run_baremetal_probe.sh --ac4).
+AC3FORGE_BUILD_AC4 stays off in every minimal preset, since it also builds the encoder, the
+applications and the tests. The hidden minimal-decoder and minimal-encoder presets and the ordinary
+minimal ones leave AC3FORGE_MINIMAL_AC4 off, and the three config-*-minimal-ac4 presets turn it
+on, in float. The option builds the decoder, the inspector and the core statically and without
+exceptions, and the AC-4 encoder is built for none of the parts.
 """
 
 import json
@@ -33,7 +34,6 @@ ROOT = Path(__file__).resolve().parents[2]
 ANDROID = ROOT / "apps" / "android" / "app" / "src" / "main" / "cpp" / "CMakeLists.txt"
 ROOT_CMAKE = ROOT / "CMakeLists.txt"
 BAREMETAL_CMAKE = ROOT / "apps" / "baremetal" / "CMakeLists.txt"
-ESP_IDF_COMPONENT = ROOT / "esp-idf" / "ac3forge" / "CMakeLists.txt"
 WASM_CMAKE = ROOT / "apps" / "wasm" / "CMakeLists.txt"
 PYTHON_CMAKE = ROOT / "python" / "CMakeLists.txt"
 PRESETS = ROOT / "CMakePresets.json"
@@ -104,6 +104,7 @@ class Ac4BuildConfigurations(unittest.TestCase):
             with self.subTest(preset=name):
                 resolved = _resolved_cache_variables(presets, name)
                 self.assertEqual(resolved.get("AC3FORGE_BUILD_AC4"), "OFF")
+                self.assertNotEqual(resolved.get("AC3FORGE_MINIMAL_AC4"), "ON")
 
     def test_minimal_ac4_presets_carry_the_decoder_in_float(self):
         presets = json.loads(PRESETS.read_text(encoding="utf-8"))
@@ -112,7 +113,8 @@ class Ac4BuildConfigurations(unittest.TestCase):
         for name in names:
             with self.subTest(preset=name):
                 resolved = _resolved_cache_variables(presets, name)
-                self.assertEqual(resolved.get("AC3FORGE_BUILD_AC4"), "ON")
+                self.assertEqual(resolved.get("AC3FORGE_MINIMAL_AC4"), "ON")
+                self.assertEqual(resolved.get("AC3FORGE_BUILD_AC4"), "OFF")
                 self.assertEqual(resolved.get("AC3FORGE_DECODE_SCALAR"), "float")
                 self.assertEqual(resolved.get("AC3FORGE_MINIMAL_DECODER"), "ON")
         # The instruction-counting leg is the same build with the timer clock.
@@ -122,27 +124,22 @@ class Ac4BuildConfigurations(unittest.TestCase):
         for name in names:
             self.assertIn(name, build_presets)
 
-    def test_root_keeps_ac4_out_of_the_encode_profile_and_its_encoder_out_of_the_decode_one(self):
+    def test_root_adds_the_ac4_decoder_to_the_decode_profile_and_never_its_encoder(self):
         text = ROOT_CMAKE.read_text(encoding="utf-8")
-        self.assertIn("if(AC3FORGE_MINIMAL_ENCODER AND AC3FORGE_BUILD_AC4)", text)
-        # add_subdirectory(src/ac4enc) sits in the branch the decode profile does not take.
-        decode_branch = text.index(
-            "if(AC3FORGE_MINIMAL_DECODER)\n        # The minimum-footprint profile's compile"
-        )
-        self.assertLess(decode_branch, text.index("add_subdirectory(src/ac4enc)"))
-        self.assertIn("    else()\n        add_subdirectory(src/ac4enc)", text)
+        self.assertIn("option(AC3FORGE_MINIMAL_AC4", text)
+        self.assertIn("if(AC3FORGE_MINIMAL_AC4 AND NOT AC3FORGE_MINIMAL_DECODER)", text)
+        # The profile's branch builds the inspector, the core and the decoder, and no encoder.
+        branch = text.split("elseif(AC3FORGE_MINIMAL_AC4)", 1)[1].split("\nendif()", 1)[0]
+        for directory in ("src/ac4", "src/ac4core", "src/ac4dec"):
+            self.assertIn(f"add_subdirectory({directory})", branch)
+        self.assertNotIn("src/ac4enc", branch)
 
     def test_baremetal_ac4_probe_links_the_decoder_and_nothing_of_the_encoder(self):
         text = BAREMETAL_CMAKE.read_text(encoding="utf-8")
         self.assertIn("ac4_probe.cpp", text)
+        self.assertIn("elseif(AC3FORGE_MINIMAL_AC4)", text)
         self.assertIn("ac4::decoder_static", text)
         self.assertNotIn("ac4enc", text)
-
-    def test_esp_idf_component_still_forces_ac4_off(self):
-        # D14b's file: the AC-4 build of the component is its switch, off by default. D14a leaves
-        # the option forced off there.
-        text = ESP_IDF_COMPONENT.read_text(encoding="utf-8")
-        self.assertIn('set(AC3FORGE_BUILD_AC4 OFF CACHE BOOL "" FORCE)', text)
 
 
 if __name__ == "__main__":
