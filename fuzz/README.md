@@ -671,7 +671,8 @@ failure, so a random run stays fully reproducible after the fact. Failing
 inputs are kept under `fuzz-encoder-artifacts/` (gitignored, and regenerable
 from the seed).
 
-Scope: AC-3 `encode` only.
+Scope of this script: AC-3 `encode` only. The E-AC-3 and AC-4 encoders have the two scripts
+described next.
 
 ### The E-AC-3 half
 
