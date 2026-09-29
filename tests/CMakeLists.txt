@@ -1134,6 +1134,12 @@ if(AC3FORGE_BUILD_HEARTH)
         target_link_libraries(ac3tests_sink_firmware_board
             PRIVATE ac3hearth_engine ac3::sendspin ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
         target_link_libraries(ac3tests PRIVATE ac3tests_sink_firmware_board)
+        # The opt-in diagnostics endpoint (diagnostics_server.hpp) against a real bound server -
+        # same reason, same isolation as ac3tests_sink_firmware_board just above.
+        add_library(ac3tests_diagnostics_server OBJECT hearth/test_diagnostics_server.cpp)
+        target_link_libraries(ac3tests_diagnostics_server
+            PRIVATE ac3hearth_engine ac3sendspin_httplib ac3::warnings ac3::coverage Catch2::Catch2)
+        target_link_libraries(ac3tests PRIVATE ac3tests_diagnostics_server)
         target_link_libraries(ac3tests PRIVATE ac3hearth_testsink)
         # test_aiosendspin.cpp takes the player's address from std::getenv - same C4996 reasoning
         # as core/test_simd_kernels.cpp's. test_aiosendspin_group.cpp's own environment() helper

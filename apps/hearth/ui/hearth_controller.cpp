@@ -22,9 +22,11 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <optional>
 #include <span>
+#include <string_view>
 #include <vector>
 
 // hearth_controller.hpp's Qt headers define `slots` as a macro for the
@@ -50,6 +52,7 @@
 #include "ac3/sendspin/crypto.hpp"
 #include "decoder_settings.hpp"
 #include "diagnostics_report.hpp"
+#include "diagnostics_server.hpp"
 #include "engine_thread.hpp"
 #include "item_loader.hpp"
 #include "media_inspector.hpp"
@@ -1084,7 +1087,16 @@ HearthController::HearthController(QObject* parent)
     }
 }
 
-HearthController::~HearthController() = default;
+HearthController::~HearthController() {
+    // First, before any member starts unwinding: diagnostics_server_ owns a
+    // thread that calls the report lambda below, which this destructor is
+    // about to make unsafe to call - stopping it any later would race that
+    // thread against our own teardown. (engine_ needs no matching care: its
+    // own destructor already request_stop()s and join()s the engine thread
+    // before returning, and nothing else here is torn down while that
+    // thread could still be running.)
+    diagnostics_server_.reset();
+}
 
 QString HearthController::versionDetails() const {
     return QString::fromStdString(ac3::version_details());
@@ -1187,6 +1199,27 @@ void HearthController::start() {
     }
     poll_timer_.start();
     poll();
+
+    // Off by default, deliberately not a Settings toggle: set
+    // AC3FORGE_HEARTH_DIAGNOSTICS_PORT to a port number to `curl` the same
+    // report Save/Copy/View live already produce from a second terminal.
+    // Unset, empty, or not a plain port number leaves this null - the same
+    // "refused silently" shape an out-of-range trim or delay already has
+    // elsewhere on this controller. Qt's own qEnvironmentVariableIntValue()
+    // rather than std::getenv() + std::from_chars(): main.cpp's own
+    // QSG_RENDER_LOOP check already reads the environment the Qt way
+    // elsewhere in this app, and doing it here too means nothing here
+    // triggers the platform CRT's "getenv is deprecated" warning under
+    // clang-cl's stricter defaults.
+    bool port_ok = false;
+    const int port_value = qEnvironmentVariableIntValue("AC3FORGE_HEARTH_DIAGNOSTICS_PORT", &port_ok);
+    if (port_ok && port_value > 0 && port_value <= std::numeric_limits<std::uint16_t>::max()) {
+        diagnostics_server_ = std::make_unique<ac3::hearth::DiagnosticsHttpServer>(
+            [this] { return diagnosticsReport().toStdString(); });
+        if (!diagnostics_server_->start(static_cast<std::uint16_t>(port_value))) {
+            diagnostics_server_.reset();
+        }
+    }
 }
 
 void HearthController::setGapless(bool on) {

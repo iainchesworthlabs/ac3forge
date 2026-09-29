@@ -58,6 +58,10 @@ if(NOT AC3FORGE_SENDSPIN_CORE_ONLY)
     # holds it to.
     target_sources(ac3hearth_engine PRIVATE sink_firmware.cpp sink_firmware_view.cpp)
     target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/esp-idf/ac3forge/include")
+    # The opt-in loopback diagnostics endpoint (diagnostics_server.hpp): the
+    # same httplib already linked in for sink_firmware.cpp above, so it adds
+    # nothing new to a core-only build to leave out.
+    target_sources(ac3hearth_engine PRIVATE diagnostics_server.cpp)
     target_link_libraries(ac3hearth_engine PRIVATE ac3sendspin_httplib)
 endif()
 
