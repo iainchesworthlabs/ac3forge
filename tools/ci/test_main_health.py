@@ -318,6 +318,29 @@ class ExcerptCause(unittest.TestCase):
 
 
 class EvidenceDiagnostics(unittest.TestCase):
+    def test_a_log_with_colour_codes_is_read_with_the_flag_a_newer_gh_asks_for(self):
+        asks = mh.CommandError(
+            ["gh", "api", "x"],
+            1,
+            "the response contains terminal escape sequences; "
+            "pass --allow-escape-sequences to output it anyway\n",
+        )
+        log = ("gh", "api", "repos/o/r/actions/jobs/1/logs")
+        sh = FakeSh(
+            {
+                ("gh", "api", "repos/o/r/check-runs/1/annotations"): "exit code 1.",
+                log: asks,
+                (*log, "--allow-escape-sequences"): (
+                    "\x1b[31mFAILED: real.o\x1b[0m\n##[error]Process completed with exit code 1."
+                ),
+            }
+        )
+        failed = job("Build & Test / Linux GCC")
+        mh.gather_evidence(ctx(), sh, [failed], mh.load_flakes())
+        self.assertIn("FAILED: real.o", failed.evidence)
+        self.assertNotIn("\x1b", failed.evidence)
+        self.assertNotIn("could not read", failed.evidence)
+
     def test_an_unreadable_log_is_said_in_the_evidence_and_in_the_run_log(self):
         refused = mh.CommandError(
             ["gh", "api", "x"], 1, "gh: Resource not accessible by integration (HTTP 403)\n"
