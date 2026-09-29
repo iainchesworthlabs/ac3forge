@@ -366,7 +366,11 @@ double DrcStage::slot_level(std::span<std::vector<QmfValue>* const> side, int sl
         const QmfValue* row = side[c]->data() + static_cast<std::size_t>(slot) * kSubbands;
         double channel = 0.0;
         for (std::size_t k = 0; k < kSubbands; ++k) {
-            channel += k_weight_[k] * norm(row[k]);
+            // The level detector's accumulation stays double regardless of
+            // Real, for the same reason a downmix or DRC gain matrix does:
+            // norm(row[k]) is Real, widened once here rather than summed at
+            // Real precision.
+            channel += k_weight_[k] * static_cast<double>(norm(row[k]));
         }
         power += weight * channel;
     }
@@ -438,12 +442,12 @@ void DrcStage::process(const OutputConfig& output, const DrcFrameValues& values,
                 for (int k = 0; k < kSubbands; ++k) {
                     const int band = std::min(band_of(set.drc_gains_config, k),
                                               std::max(1, set.nr_drc_bands) - 1);
-                    row[k] *=
-                        level_gain * db2_to_linear(static_cast<double>(set.gain(group, sf, band)));
+                    row[k] *= static_cast<Real>(
+                        level_gain * db2_to_linear(static_cast<double>(set.gain(group, sf, band))));
                 }
                 continue;
             }
-            const double total = level_gain * gain;
+            const auto total = static_cast<Real>(level_gain * gain);
             for (int k = 0; k < kSubbands; ++k) {
                 row[k] *= total;
             }

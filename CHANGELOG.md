@@ -1597,6 +1597,34 @@ The sections below contain the complete change list and fixes.
   whichever frame decodes first. `stereo_parameters()` returned a 32 KiB `StereoParameters` by value
   at every call, a stack temporary despite every caller already owning a slot to write into; it now
   takes the destination by reference.
+- **`src/ac4dec/src/pcm` is now templated on `Real`, finishing D14a's seam.** The decoder's own
+  QMF-domain and spectral reconstruction (all nineteen modules: A-SPX, A-CPL, A-JCC, A-JOC,
+  companding, dialogue enhancement, DRC, the downmix, S-CPL, stereo and multichannel processing,
+  and the substream orchestrator itself) name their samples through `Real` rather than a hardcoded
+  `double`, following the pattern `src/ac4core`'s kernels already set: `ac3cli`, and the whole test
+  suite, now build, link and pass at `AC3FORGE_DECODE_SCALAR=float` on the host - a working
+  float decoder, where before only the seam existed. A handful of values that are set once
+  per frame or per configuration change rather than once per QMF sample - a downmix or DRC gain
+  matrix, A-CPL's and A-JCC's own interpolated coefficients (`ac4core`'s `acpl::interpolate()` is
+  deliberately not retemplated, the same handful of values every frame regardless of the decoder's
+  scalar) - keep `double`, narrowed once where they multiply a `Real` or `QmfValue`, in the same
+  shape the QMF banks' own twiddle factors already used. `hf_generator.cpp`'s dB gains, flagged by
+  the seam's own PR as not yet cross-platform-safe at `float`, now go through a new `scalar_exp2`
+  (`src/arithmetic`, beside the existing `scalar_log2`/`scalar_exp`) rather than `std::log10`/
+  `std::pow` directly, so two platforms' libm cannot disagree in a decoded sample's last bit; the
+  `double` path is untouched (still `std::log10`/`std::pow`, bit-identical). A second gap the seam
+  did not anticipate: `src/ac4enc` calls several of `src/ac4core`'s kernels (`Mdct`, `QmfAnalysis`,
+  `QmfSynthesis`, `Resampler`, `ajoc::Reconstruction`, `aspx::generate_high_band`) always at
+  `double`, since the encoder has no float tier of its own (decision 34) and `ac4core` is one shared
+  library rather than `ac3::forge`'s separately-compiled encoder and decoder DSP; those kernels (and
+  a few others `ac4core`'s own tests exercise directly at `double`) now also explicitly instantiate
+  `<double>` when `Real` is not already `double`, through a new `AC4CORE_ALSO_AT_DOUBLE` macro the
+  per-scalar `real.hpp` defines, which adds nothing to a `double`-configured build. The `double` build's output is unchanged bit for bit:
+  the whole test suite - 2,389 cases, 11,171,235 assertions - passes identically before and after,
+  on both scalars. The QMF bank rewrite (real and imaginary planes, an index-moving delay line), the
+  wider memory audit beyond the three findings above, the cached bit reader and Huffman table, the
+  host's vector kernels, and the probe's AC-4 rows remain - D14b (the P4 board) does not start until
+  those land.
 
 **Browser (WASM)**
 
@@ -1740,6 +1768,60 @@ The sections below contain the complete change list and fixes.
   5.1, 5.0.4, 5.1.4) — the encoder's own scope as of this phase; A-JOC and direct-coded objects are
   a separate, in-flight phase. Each decoder's object accessors read whatever object audio a stream
   actually carries regardless of what this project's own encoder can produce.
+
+**AC-4 immersive and object content in the applications**
+
+- **`ac3cli atmos-adm`/`atmos-iab` take `codec=ac4`** (phase I5 of `planning/ac4.md`): every
+  bed/object channel the ADM or IAB source resolves becomes an AC-4 A-JOC object (the default) or,
+  with `coding=direct`, a direct-coded one, its position sampled once a frame against
+  frame_rate_index 13 — the object substream's only rate — and fed to E9's own encoder. The ADM/IAB
+  readers themselves are unchanged. A committed-fixture round trip (`atmos-adm` to AC-4, `decode`'s
+  `objects_dir`/`adm_out` back out, re-parsed through `ac3adm::parse_bw64`/`ac3::admbridge::build`)
+  is checked object for object against the original master's own automation, matched by tone rather
+  than by index: positions and gains agree to within AC-4's own quantization (position 0.06, gain
+  2 dB) once the encoder's and decoder's combined delay is accounted for, and the moving object's
+  jump survives the round trip rather than landing on a flat, unmoving reading
+  (`tests/cli/test_cli_atmos_adm_ac4.cpp`, 1 new Catch2 test case).
+- **`decode`'s `objects_dir` and `adm_out` now read AC-4 objects too**, not only E-AC-3 Atmos's:
+  `objects_dir` streams each of D10's decoded objects to its own `object_NN.wav` the same way it
+  already does for JOC-reconstructed ones, and `adm_out` (needs `-DAC3FORGE_BUILD_ADM=ON`)
+  accumulates every bed and dynamic object's own decoded Annex F properties into the same ADM BWF
+  writer E-AC-3's own IM2 item built, through a new `ac4::ObjectProperties` →
+  `ac3::oba::DynamicObject` conversion (position and gain carry over directly — TS 103 190-2 Annex F
+  and TS 103 420 §5.6.1 share one room and one dB convention; `zone_mask` is read against
+  `ac3::oba::ZoneConstraint`'s own numbering, a reading not independently verified against the spec
+  text — see the phase's own report). `probe`'s JSON gains an `oamd_common_data` object on an A-JOC
+  substream's entry (additive; the schema stays compatible) — a direct-coded group's own separate
+  `oamd_substream` is not yet surfaced there.
+- **Hearth's engine renders AC-4 objects**, through the same `Ac4ObjectRenderer`
+  (`apps/common/ac4_object_render.hpp`) `ac3cli decode` plays them with: the AC-4 path now reads a
+  whole frame through `ac4::Decoder::decode()` instead of `decode_by_block()`, so a presentation
+  with objects renders through the layout renderer beside its channels, a 256-sample block at a
+  time; a channel-only stream is unaffected, and for every frame rate an object substream can
+  actually carry (frame_rate_index 13, an exact multiple of 256 samples) delivery timing is
+  unchanged from before this phase. `DecoderSettings::Ac4Settings` gains `immersive_layout` (the
+  six layouts `decode`'s own `speakers=` takes, reached once the output layout does not itself fold
+  to stereo or mono) and `core_decoding`, both wired through `DecoderAc4.qml`'s new "Immersive and
+  objects" card and `HearthController`'s JSON bridge, with two new native tests
+  (`tests/hearth/test_ac4_engine.cpp`, `tests/hearth/test_decoder_settings.cpp`) and the existing
+  full-committed-stream comparison test extended to check what it renders. The support catalogue's
+  Hearth row for AC-4 decode is updated from "channel-based to 7.1.4; objects not yet".
+- **Forge GUI's stream player exports AC-4 objects**, the same "Export objects…" button and
+  `objects_dir`-shaped folder E-AC-3 Atmos already used: `StreamPlayerController`'s AC-4 decode path
+  now fills `has_objects`/`object_count`/`object_audio` from D10's own `DecodedFrame::objects`, so
+  the existing, already codec-agnostic export function needed no change of its own
+  (`apps/gui/tests/qml/tst_e2e_inspect.qml`, 1 new test). The object inspector's own read-only
+  listing already covered AC-4 before this phase and is unchanged; the encoder page's Atmos/object
+  authoring UI stays E-AC-3-only.
+- **Fixed a pre-existing bug this phase's own new test found**: `decode_ac4_to_memory()` used
+  `order.empty()` - the WAV channel order, computed from the frame's speakers - as its "has the
+  first frame been read" flag. A presentation of objects alone has no channels or speakers at all,
+  so `order` never became non-empty for one, and the function reported "no frame decoded; the
+  stream sent no I-frame" for every pure-object AC-4 file, even though every frame had genuinely
+  decoded. Fixed with an explicit `initialized` flag, the pattern
+  `ObjectDecodeController::measure_ac4_objects()` already used correctly. Shipped with I3
+  (channel-based AC-4 only, so nothing exercised the all-objects case until this phase's own
+  export path did).
 
 ### Changed
 

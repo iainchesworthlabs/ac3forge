@@ -212,6 +212,7 @@ void StreamDecoder::reset() {
         ac4_decoder_->reset();
     }
     ac4_speakers_.clear();
+    ac4_objects_.reset();
     programme_.reset();
     beds_.clear();
     renderer_bed_.reset();
@@ -426,8 +427,7 @@ std::expected<std::size_t, std::string> StreamDecoder::decode_ac4(std::span<cons
     if (!ac4_decoder_) {
         ac4_decoder_.emplace(ac4_config_);
     }
-    const auto sink = [this, &deliver](const ac4::PcmBlock& block) { place_ac4(block, deliver); };
-    const auto decoded = ac4_decoder_->decode_by_block(raw, sink);
+    const auto decoded = ac4_decoder_->decode(raw);
     if (!decoded) {
         // No concealment policy covered it. What the decoder holds is from
         // the frames before, and goes out first, so that what has come out
@@ -442,16 +442,19 @@ std::expected<std::size_t, std::string> StreamDecoder::decode_ac4(std::span<cons
         deliver_silence(unit_samples, deliver);
         return delivered_;
     }
-    report_ac4(**decoded, unit.size(), reported);
+    const ac4::DecodedFrame& pcm = **decoded;
+    place_ac4_frame(pcm, deliver);
+    report_ac4(pcm, unit.size(), reported);
     return delivered_;
 }
 
-void StreamDecoder::flush_ac4(const BlockFn& deliver) {
-    if (!ac4_decoder_) {
-        return;
-    }
-    const auto sink = [this, &deliver](const ac4::PcmBlock& block) { place_ac4(block, deliver); };
-    (void)ac4_decoder_->flush(sink);
+void StreamDecoder::flush_ac4(const BlockFn& /*deliver*/) {
+    // decode_ac4() now reads whole frames through ac4::Decoder::decode() and place_ac4_frame()
+    // delivers every one of a frame's samples before returning, so there is never anything left
+    // for ac4::Decoder::decode_by_block()'s own internal buffering to hold - that mechanism is
+    // simply not exercised any more. Kept as a named no-op rather than removed so decode_ac4()'s
+    // and finish()'s call sites, and their comments on what "everything before this frame" means,
+    // do not have to special-case AC-4 for a distinction that no longer exists.
 }
 
 void StreamDecoder::deliver_silence(std::size_t frames, const BlockFn& deliver) {
@@ -468,42 +471,77 @@ void StreamDecoder::deliver_silence(std::size_t frames, const BlockFn& deliver) 
     }
 }
 
-void StreamDecoder::place_ac4(const ac4::PcmBlock& block, const BlockFn& deliver) {
-    const std::size_t slots = layout_.slots();
-    std::array<std::span<float>, render::OutputLayout::kMaxSlots> spans{};
-    for (std::size_t slot = 0; slot < slots; ++slot) {
-        spans[slot] = std::span<float>(block_[slot]);
+void StreamDecoder::place_ac4_frame(const ac4::DecodedFrame& pcm, const BlockFn& deliver) {
+    // A presentation with objects renders both its objects and any channels beside them together,
+    // through the same layout renderer ac3cli's own 'decode' plays AC-4 objects with
+    // (apps/common/ac4_object_render.hpp); one without takes the decoder's own channels as before
+    // this control existed.
+    std::span<const ac4::Speaker> speakers;
+    std::span<const std::vector<float>> channels;
+    if (!pcm.objects.empty()) {
+        const auto rate = static_cast<std::uint32_t>(pcm.sample_rate_hz);
+        if (!ac4_objects_ || ac4_objects_target_ != ac4_config_.output.downmix ||
+            ac4_objects_rate_ != rate) {
+            ac4_objects_.emplace(ac4_config_.output.downmix, rate);
+            ac4_objects_target_ = ac4_config_.output.downmix;
+            ac4_objects_rate_ = rate;
+            // The renderer just rebuilt is a fresh one, so the bed it wants set on it is not
+            // necessarily the one ac4_speakers_ still remembers from before the rebuild.
+            ac4_speakers_.clear();
+        }
+        ac4_objects_->render(pcm, ac4_object_pcm_);
+        speakers = ac4_objects_->speakers();
+        channels = ac4_object_pcm_;
+    } else {
+        speakers = pcm.speakers;
+        channels = pcm.channels;
     }
-    const std::span<const std::span<float>> out(spans.data(), slots);
+
     // A layout that folds takes the decoder's own downmix as it comes; a
     // wider one places the channels by their speakers, as a bed.
-    if (!serving_.fold && !std::ranges::equal(ac4_speakers_, block.speakers)) {
-        renderer_.set_bed(ac4_bed(block.speakers));
-        ac4_speakers_.assign(block.speakers.begin(), block.speakers.end());
+    if (!serving_.fold && !std::ranges::equal(ac4_speakers_, speakers)) {
+        renderer_.set_bed(ac4_bed(speakers));
+        ac4_speakers_.assign(speakers.begin(), speakers.end());
         // The E-AC-3 path's own record of the bed no longer describes it.
         renderer_bed_.reset();
     }
-    const PcmBlock placed{.index = 0,
-                          .blocks = 1,
-                          .channels = block.channels,
-                          .objects = {},
-                          .object_indices = {},
-                          .object_metadata = nullptr};
-    if (serving_.fold) {
-        renderer_.render_folded(placed, 1.0F, out);
-    } else {
-        renderer_.render(placed, false, 1.0F, out);
+
+    const std::size_t slots = layout_.slots();
+    ac4_channel_spans_.resize(channels.size());
+    const std::size_t total =
+        std::min<std::size_t>(pcm.samples, channels.empty() ? 0 : channels[0].size());
+    for (std::size_t offset = 0; offset < total; offset += ac4::kBlockSamples) {
+        const std::size_t n = std::min<std::size_t>(ac4::kBlockSamples, total - offset);
+        for (std::size_t ch = 0; ch < channels.size(); ++ch) {
+            ac4_channel_spans_[ch] = std::span<const float>(channels[ch]).subspan(offset, n);
+        }
+        std::array<std::span<float>, render::OutputLayout::kMaxSlots> spans{};
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            spans[slot] = std::span<float>(block_[slot]).first(n);
+        }
+        const std::span<const std::span<float>> out(spans.data(), slots);
+        const PcmBlock placed{
+            .index = 0,
+            .blocks = 1,
+            .channels = std::span<const std::span<const float>>(ac4_channel_spans_),
+            .objects = {},
+            .object_indices = {},
+            .object_metadata = nullptr};
+        if (serving_.fold) {
+            renderer_.render_folded(placed, 1.0F, out);
+        } else {
+            renderer_.render(placed, false, 1.0F, out);
+        }
+        std::array<std::span<const float>, render::OutputLayout::kMaxSlots> rendered{};
+        for (std::size_t slot = 0; slot < slots; ++slot) {
+            rendered[slot] = std::span<const float>(block_[slot].data(), n);
+        }
+        delivered_ += n;
+        deliver(std::span<const std::span<const float>>(rendered.data(), slots), n);
     }
-    const std::size_t frames = std::min(block.samples, block_[0].size());
-    std::array<std::span<const float>, render::OutputLayout::kMaxSlots> rendered{};
-    for (std::size_t slot = 0; slot < slots; ++slot) {
-        rendered[slot] = std::span<const float>(block_[slot].data(), frames);
-    }
-    delivered_ += frames;
-    deliver(std::span<const std::span<const float>>(rendered.data(), slots), frames);
 }
 
-void StreamDecoder::report_ac4(const ac4::FrameInfo& info, std::size_t unit_bytes,
+void StreamDecoder::report_ac4(const ac4::DecodedFrame& info, std::size_t unit_bytes,
                                const UnitFn& reported) {
     if (!reported) {
         return;

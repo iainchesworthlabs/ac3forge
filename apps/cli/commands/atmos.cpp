@@ -10,6 +10,7 @@
 #include <fstream>
 #include <ios>
 #include <iterator>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <fmt/base.h>
@@ -35,6 +36,8 @@
 #include "ac3/oba/scene.hpp"
 #include "ac3/signing/emdf_atmos_signer.hpp"
 #include "ac3/signing/signing_key.hpp"
+#include "ac4/ac4.hpp"
+#include "ac4enc/encoder.hpp"
 #include "../adm/atmos_adm.hpp"
 #include "../adm/atmos_iab.hpp"
 
@@ -175,6 +178,118 @@ constexpr std::array<CbiLayout, 3> kCbiLayouts{{
         }
     }
     return std::nullopt;
+}
+
+// atmos-adm/atmos-iab with codec=ac4 (planning/ac4.md, I5): ac3::oba::ObjectPlacement (this
+// project's E-AC-3/Atmos object model) and ac4::ObjectProperties (TS 103 190-2 Annex F) share one
+// room coordinate system - X 0 (left wall) to 1 (right), Y 0 (front) to 1 (back), Z -1 (floor) to 1
+// (ceiling), confirmed against apps/common/ac4_object_render.hpp's own header comment - so position
+// carries over unconverted; gain does not, since oba's is linear and AC-4's is dB (Table 108-adjacent
+// range +15 to -49, or -infinity for silence).
+[[nodiscard]] ac4::ObjectProperties to_ac4_properties(const ac3::oba::ObjectPlacement& p) {
+    ac4::ObjectProperties out;
+    out.position = {p.position.x, p.position.y, p.position.z};
+    out.gain_db = p.gain > 0.0 ? 20.0 * std::log10(p.gain)
+                               : -std::numeric_limits<double>::infinity();
+    return out;
+}
+
+// The AC-4 branch of run_atmos_adm/run_atmos_iab (codec=ac4): every bed/object channel the source
+// names becomes a dynamic AC-4 object driven by its own ObjectPath, the same treatment the E-AC-3
+// branches beside this function give a bed channel (panned by position, no speaker-anchored
+// ac4::BedChannel assigned) - is_bed is reported in the summary line and nothing else, exactly as
+// it already is for E-AC-3 above. AC-4's object substream is frame_rate_index 13 only
+// (ac4enc/encoder.hpp, SubstreamConfig::objects), so metadata updates land on that fixed 2048-sample
+// grid: one update per object per frame, ramped over the whole frame from the previous one, evaluated
+// at the frame's END time - the convention every Atmos-encode command in this file uses.
+int run_atmos_objects_to_ac4(std::string_view source_kind, std::uint32_t sample_rate,
+                             const std::vector<bool>& is_bed,
+                             const std::vector<ac3::oba::ObjectPath>& paths,
+                             const std::vector<std::span<const float>>& pcm,
+                             std::string_view in_path, std::string_view out_path,
+                             std::uint32_t bitrate, const Options& meta) {
+    if (sample_rate != 48000 && sample_rate != 44100) {
+        fmt::println(stderr,
+                     "error: {} objects need a 48 or 44.1 kHz source for AC-4 (its object "
+                     "substream is frame_rate_index 13 only); {} is {} Hz",
+                     source_kind, in_path, sample_rate);
+        return kExitInput;
+    }
+    const std::size_t count = paths.size();
+    if (count < 1) {
+        fmt::println(stderr, "error: {} names no bed/object channel", in_path);
+        return kExitInput;
+    }
+    constexpr std::int64_t kFrameSamples = 2048;  // frame_rate_index 13's frame length
+    const std::size_t total = pcm.empty() ? 0 : pcm.front().size();
+
+    ac4::ObjectsConfig objects_config;
+    objects_config.coding = meta.ac4_atmos_coding.value_or(ac4::ObjectCoding::kAjoc);
+    objects_config.objects.resize(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        objects_config.objects[i].properties = to_ac4_properties(paths[i].evaluate(0.0));
+    }
+    std::vector<ac4::ObjectMetadataUpdate> updates;
+    for (std::int64_t start = 0; static_cast<std::uint64_t>(start) < total; start += kFrameSamples) {
+        const auto ramp = std::min<std::int64_t>(kFrameSamples, static_cast<std::int64_t>(total) - start);
+        const double t = static_cast<double>(start + ramp) / static_cast<double>(sample_rate);
+        const auto placements = ac3::oba::evaluate_placements(paths, t);
+        for (std::size_t i = 0; i < count; ++i) {
+            updates.push_back({.object = static_cast<int>(i),
+                               .sample = start,
+                               .ramp_samples = static_cast<int>(ramp),
+                               .properties = to_ac4_properties(placements[i])});
+        }
+    }
+
+    ac4::EncoderConfig config;
+    config.sample_rate_hz = static_cast<int>(sample_rate);
+    config.frame_rate_index = 13;
+    config.bitrate_kbps = static_cast<int>(bitrate);
+    config.dialnorm_db = -static_cast<double>(meta.p.dialnorm);
+    config.experimental.objects = true;
+    ac4::SubstreamConfig substream;
+    substream.objects = objects_config;
+    config.substreams = {substream};
+    auto encoder = ac4::Encoder::create(config);
+    if (!encoder.has_value()) {
+        fmt::println(stderr, "error: the encoder refuses {} objects at {} kbps ({})", source_kind,
+                     bitrate, ac4::Encoder::refusal_reason(config));
+        return kExitUsage;
+    }
+    auto frames = encoder->encode(pcm, updates);
+    if (!frames.has_value()) {
+        fmt::println(stderr, "error: {}: {}", in_path, ac4::describe(frames.error()));
+        return kExitInput;
+    }
+    auto rest = encoder->flush();
+    if (!rest.has_value()) {
+        fmt::println(stderr, "error: {}", ac4::describe(rest.error()));
+        return kExitInput;
+    }
+    frames->insert(frames->end(), rest->begin(), rest->end());
+    std::vector<std::vector<std::byte>> bytes;
+    bytes.reserve(frames->size());
+    for (const ac4::EncodedFrame& frame : *frames) {
+        bytes.push_back(ac4::sync_frame(frame.raw_ac4_frame, /*crc=*/true));
+    }
+    if (!write_frames(out_path, bytes)) {
+        return kExitOutput;
+    }
+    std::size_t bed_count = 0;
+    for (const bool b : is_bed) {
+        bed_count += b ? 1U : 0U;
+    }
+    const auto status = status_stream(out_path);
+    status_println(status, "encoded {} AC-4 frames ({} kbps, {} Hz) from {} to {}", frames->size(),
+                   bitrate, sample_rate, in_path, out_path);
+    status_println(status,
+                   "  {} bed speaker feed(s) + {} dynamic object(s) = {} objects, {}-coded",
+                   bed_count, count - bed_count, count,
+                   objects_config.coding == ac4::ObjectCoding::kAjoc ? "A-JOC" : "direct");
+    status_println(status, "  the decoder's output lags the input by {} samples",
+                   encoder->delay_samples() + encoder->decoder_delay_samples());
+    return kExitOk;
 }
 
 }  // namespace
@@ -904,6 +1019,14 @@ int run_atmos_adm(std::string_view in_path, std::string_view out_path, std::uint
         return kExitInput;
     }
 
+    // codec=ac4 (planning/ac4.md, I5): AC-4 as this command's output codec, the ADM master's
+    // bed/object channels going into E9's object encoder rather than AtmosEncoder below.
+    if (meta.take_codec == ac3::plan::Codec::kAc4) {
+        return run_atmos_objects_to_ac4("ADM BWF", source->sample_rate, source->is_bed,
+                                        source->paths, source->pcm, in_path, out_path, bitrate,
+                                        meta);
+    }
+
     const auto sr = wav_sample_rate(source->sample_rate, "E-AC-3", true);
     if (!sr.has_value()) {
         return kExitInput;
@@ -1022,6 +1145,13 @@ int run_atmos_iab(std::string_view in_path, std::string_view out_path, std::uint
     if (!source.has_value()) {
         fmt::println(stderr, "error: {}: {}", in_path, source.error());
         return kExitInput;
+    }
+
+    // codec=ac4 (planning/ac4.md, I5): AC-4 as this command's output codec, the IAB file's
+    // Bed/Object channels going into E9's object encoder rather than AtmosEncoder below.
+    if (meta.take_codec == ac3::plan::Codec::kAc4) {
+        return run_atmos_objects_to_ac4("IAB", source->sample_rate, source->is_bed, source->paths,
+                                        source->pcm, in_path, out_path, bitrate, meta);
     }
 
     const auto sr = wav_sample_rate(source->sample_rate, "E-AC-3", true);

@@ -1,7 +1,7 @@
-// The float encode path's own log2 / log / exp (src/forge/src/encoder/
-// scalar_math.hpp) against libm's double forms: accuracy bounds sized to what
-// the callers quantise to, exactness at the powers of two the analyses lean
-// on, and the double overloads being libm itself.
+// The float encode path's own log2 / log / exp / exp2 (src/arithmetic's
+// ac3/internal/scalar_math.hpp) against libm's double forms: accuracy bounds
+// sized to what the callers quantise to, exactness at the powers of two the
+// analyses lean on, and the double overloads being libm itself.
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
@@ -13,6 +13,7 @@
 #include "ac3/internal/scalar_math.hpp"
 
 using ac3::internal::scalar_exp;
+using ac3::internal::scalar_exp2;
 using ac3::internal::scalar_log;
 using ac3::internal::scalar_log2;
 
@@ -82,6 +83,38 @@ TEST_CASE("float scalar_exp clamps rather than overflowing", "[encoder][scalar_m
     CHECK_THAT(scalar_exp(-86.0f), Catch::Matchers::WithinRel(std::exp(-86.0), 2e-6));
 }
 
+TEST_CASE("float scalar_exp2 tracks std::exp2 over the arguments hf_generator reaches",
+          "[encoder][scalar_math]") {
+    // hf_generator.cpp's dB conversions (planning/ac4.md, D14a) exponentiate a
+    // mean-of-logs difference in dB, capped by the fitted cubic's own range;
+    // -125 to 128 spans it with margin either side of the clamps.
+    double worst_rel = 0.0;
+    for (int i = -12000; i <= 12700; i += 17) {
+        const auto x = static_cast<float>(i / 100.0);
+        const double reference = std::exp2(static_cast<double>(x));
+        const double got = static_cast<double>(scalar_exp2(x));
+        worst_rel = std::max(worst_rel, std::abs(got - reference) / reference);
+    }
+    CHECK(worst_rel < 2e-6);
+    CHECK(scalar_exp2(0.0f) == 1.0f);
+}
+
+TEST_CASE("float scalar_exp2 is exact at integers", "[encoder][scalar_math]") {
+    for (int k = -124; k <= 127; ++k) {
+        CHECK(scalar_exp2(static_cast<float>(k)) == std::ldexp(1.0f, k));
+    }
+}
+
+TEST_CASE("float scalar_exp2 clamps rather than overflowing", "[encoder][scalar_math]") {
+    CHECK(std::isfinite(scalar_exp2(1000.0f)));
+    CHECK(scalar_exp2(1000.0f) == std::numeric_limits<float>::max());
+    CHECK(scalar_exp2(-1000.0f) > 0.0f);
+    CHECK(scalar_exp2(-1000.0f) == std::numeric_limits<float>::min());
+    // Just inside the clamps the value is still the real one.
+    CHECK_THAT(scalar_exp2(127.0f), Catch::Matchers::WithinRel(std::exp2(127.0), 2e-6));
+    CHECK_THAT(scalar_exp2(-124.0f), Catch::Matchers::WithinRel(std::exp2(-124.0), 2e-6));
+}
+
 TEST_CASE("the double overloads are libm", "[encoder][scalar_math]") {
     for (const double x : {1e-30, 0.001, 0.7, 1.0, 2.5, 1e6}) {
         CHECK(scalar_log2(x) == std::log2(x));
@@ -89,5 +122,8 @@ TEST_CASE("the double overloads are libm", "[encoder][scalar_math]") {
     }
     for (const double x : {-70.0, -3.2, 0.0, 0.5, 4.0}) {
         CHECK(scalar_exp(x) == std::exp(x));
+    }
+    for (const double x : {-70.0, -3.2, 0.0, 0.5, 4.0, 127.0}) {
+        CHECK(scalar_exp2(x) == std::exp2(x));
     }
 }

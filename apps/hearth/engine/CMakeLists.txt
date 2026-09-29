@@ -67,9 +67,14 @@ endif()
 
 # From apps/common, which has no library target: the container facts an item's
 # loader hands over (container_input.hpp, whose functions the application's
-# loader compiles), and probe's JSON stream summary, which the media
-# information writes as ac3cli probe does and so is compiled in here.
-target_sources(ac3hearth_engine PRIVATE "${PROJECT_SOURCE_DIR}/apps/common/probe_json.cpp")
+# loader compiles), probe's JSON stream summary, which the media information
+# writes as ac3cli probe does, and Ac4ObjectRenderer (planning/ac4.md, I5),
+# the same ac3::render::LayoutRenderer-based panner ac3cli's own 'decode'
+# plays AC-4 objects through, compiled in here so the engine's AC-4 path can
+# take it up too.
+target_sources(ac3hearth_engine PRIVATE
+    "${PROJECT_SOURCE_DIR}/apps/common/probe_json.cpp"
+    "${PROJECT_SOURCE_DIR}/apps/common/ac4_object_render.cpp")
 target_include_directories(ac3hearth_engine PUBLIC "${PROJECT_SOURCE_DIR}/apps/common")
 
 # ac3::audio for the output side (PcmOutput, PassthroughSink, the device

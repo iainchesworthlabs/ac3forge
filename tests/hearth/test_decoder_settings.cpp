@@ -100,6 +100,31 @@ TEST_CASE("decoder settings: every control reaches the configuration", "[hearth]
     CHECK_FALSE(config.fast_imdct);
 }
 
+TEST_CASE(
+    "decoder settings: AC-4's immersive layout and core decoding reach ac4::DecoderConfig "
+    "(planning/ac4.md, I5)",
+    "[hearth][decoder-settings]") {
+    DecoderSettings settings;
+    settings.ac4.immersive_layout = ac4::DownmixTarget::k5X4;
+    settings.ac4.core_decoding = true;
+    const auto setup = decoder_setup(settings, layout("7.1.4"));
+    CHECK(setup.ac4.output.downmix == ac4::DownmixTarget::k5X4);
+    CHECK(setup.ac4.decoding == ac4::DecodingMode::kCore);
+
+    // A stereo/mono fold always wins: there is no such output as "fold to
+    // 5.1.4 and also to stereo".
+    DecoderSettings folded = settings;
+    folded.stereo_fold = ac3::DownmixTarget::kLtRt;
+    const auto folded_setup = decoder_setup(folded, layout("2.0"));
+    CHECK(folded_setup.ac4.output.downmix == ac4::DownmixTarget::kLtRt);
+
+    // Unset plays the source's own layout in full, exactly as before this
+    // control existed.
+    const auto default_setup = decoder_setup(DecoderSettings{}, layout("7.1.4"));
+    CHECK(default_setup.ac4.output.downmix == ac4::DownmixTarget::kAsCoded);
+    CHECK(default_setup.ac4.decoding == ac4::DecodingMode::kFull);
+}
+
 TEST_CASE("decoder settings: shares outside 0 to 1 are held to it", "[hearth][decoder-settings]") {
     DecoderSettings settings;
     settings.mode = ac3::OperatingMode::kCustom;

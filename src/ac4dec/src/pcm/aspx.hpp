@@ -5,6 +5,7 @@
 #include <span>
 #include <vector>
 
+#include "ac4/detail/real.hpp"
 #include "aspx/frequency_tables.hpp"
 #include "aspx/hf_generator.hpp"
 #include "dsp/complex.hpp"
@@ -32,11 +33,21 @@ namespace ac4::detail {
 // pcm/) calls straight into src/ac4core's A-SPX, A-CPL and A-JOC kernels,
 // which take this type since D14a (planning/ac4.md), and a std::complex
 // buffer cannot be passed where one of those is asked for even at the same
-// underlying double representation - the two are unrelated types. pcm/'s own
-// classes are not yet templated on Real (that remains D14a's largest
-// unfinished piece, per this PR's report); QmfValue names the concrete
-// double this decoder still always runs at.
-using QmfValue = dsp::Complex<double>;
+// underlying double representation - the two are unrelated types.
+//
+// `Real` (ac4/detail/real.hpp) is the same CMake-selected scalar
+// src/ac4core's kernels are explicitly instantiated at, resolved by
+// AC3FORGE_DECODE_SCALAR (double or float): one concrete type per build,
+// used directly here rather than as a template parameter, the way
+// ac3::forge's own decode path uses ac3::internal::decode_scalar_t (that
+// header's own comment explains the distinction). pcm/'s classes and free
+// functions are not C++ templates - they call the same one Real every other
+// pcm/ file resolves, since a build never needs two at once - so this second
+// D14a phase's retemplating is this alias's definition changing plus each
+// call site that named `double` directly for a QMF-domain or spectral-domain
+// value now naming `Real`, not a cascading template parameter added to every
+// signature.
+using QmfValue = dsp::Complex<Real>;
 
 // What one channel's A-SPX keeps from one interval to the next.
 struct AspxChannelState {
@@ -56,7 +67,7 @@ struct AspxChannelState {
     int noise_index = 0;
     int sine_index = 0;
     bool first_frame = true;
-    aspx::HfGeneratorState<double> hf;
+    aspx::HfGeneratorState<Real> hf;
     // Pseudocode 106: the assembled high band of the previous interval past
     // its frame's end (Y_prev from num_qmf_timeslots on), y_prev_slots slots
     // of 64 subbands.

@@ -159,7 +159,7 @@ ParseResult ajoc_values(const AjocData& data, const AjocDmxDeData& de, AjocQuant
     return {};
 }
 
-AjocStage::AjocStage() : reconstruction_(std::make_unique<ajoc::Reconstruction<double>>()) {}
+AjocStage::AjocStage() : reconstruction_(std::make_unique<ajoc::Reconstruction<Real>>()) {}
 
 void AjocStage::reset() {
     reconstruction_->reset();

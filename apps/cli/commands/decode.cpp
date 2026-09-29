@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -387,6 +388,71 @@ std::string ac4_decoding(ac4::DecodingMode decoding) {
     return decoding == ac4::DecodingMode::kCore ? " in core decoding" : "";
 }
 
+// AC-4 objects into an ADM BWF master (planning/ac4.md, I5), reusing decode_adm.hpp's writer
+// (ac3cli::write_adm_atmos_master) rather than a second one: ac4::Speaker and ac3::oba::BedLabel
+// name the same seventeen loudspeaker positions in the same order (both TS 103 190-2 Annex F.3 and
+// this project's own bed labels descend from the same room layout), so a bed object's speaker
+// carries over by position.
+ac3::oba::BedLabel to_oba_bed_label(ac4::Speaker speaker) {
+    switch (speaker) {
+        case ac4::Speaker::kLeft: return ac3::oba::BedLabel::kL;
+        case ac4::Speaker::kRight: return ac3::oba::BedLabel::kR;
+        case ac4::Speaker::kCentre: return ac3::oba::BedLabel::kC;
+        case ac4::Speaker::kLfe: return ac3::oba::BedLabel::kLfe;
+        case ac4::Speaker::kLeftSurround: return ac3::oba::BedLabel::kLs;
+        case ac4::Speaker::kRightSurround: return ac3::oba::BedLabel::kRs;
+        case ac4::Speaker::kLeftBack: return ac3::oba::BedLabel::kLb;
+        case ac4::Speaker::kRightBack: return ac3::oba::BedLabel::kRb;
+        case ac4::Speaker::kLeftWide: return ac3::oba::BedLabel::kLw;
+        case ac4::Speaker::kRightWide: return ac3::oba::BedLabel::kRw;
+        case ac4::Speaker::kTopFrontLeft: return ac3::oba::BedLabel::kTfl;
+        case ac4::Speaker::kTopFrontRight: return ac3::oba::BedLabel::kTfr;
+        case ac4::Speaker::kTopBackLeft: return ac3::oba::BedLabel::kTbl;
+        case ac4::Speaker::kTopBackRight: return ac3::oba::BedLabel::kTbr;
+        case ac4::Speaker::kTopSideLeft: return ac3::oba::BedLabel::kTsl;
+        case ac4::Speaker::kTopSideRight: return ac3::oba::BedLabel::kTsr;
+        case ac4::Speaker::kLfe2: return ac3::oba::BedLabel::kLfe2;
+    }
+    return ac3::oba::BedLabel::kLfe;
+}
+
+// ac4::ObjectProperties (TS 103 190-2 Annex F) into ac3::oba::DynamicObject (this project's own
+// ADM-facing object model, TS 103 420 §5.6.1): position and gain carry over as
+// run_atmos_objects_to_ac4 (atmos.cpp) documents for the encode direction, and every other Annex F
+// field this decoder reports has a same-shaped §5.6.1 counterpart (size, priority, snap,
+// elevation-enable, screen reference/factor, depth factor, distance, divergence, active) except
+// zone_mask, trim_disabled, headphone_render_mode and head_track_disabled, which have no ADM
+// representation and are dropped here (they reach neither ADM's schema nor this decode's other
+// outputs, objects_dir and the rendered WAV, so nothing this decode already promised is lost).
+// zone_mask (Annex F.8, Table 104) and ac3::oba::ZoneConstraint (TS 103 420 Table 20) number the
+// same six room-zone constraints alike, 0 to 5. Table 104 goes on to 6, "Only proscenium zone
+// enabled", which TS 103 420 has no counterpart for (its 6 and 7 are reserved), and reserves 7: both
+// fall back to kNone rather than carry a code the E-AC-3 side cannot hold into the ADM file. Checked
+// against both tables' text, 2026-09-29.
+ac3::oba::DynamicObject to_oba_dynamic_object(const ac4::ObjectProperties& p) {
+    ac3::oba::DynamicObject out;
+    out.position = {.x = p.position[0], .y = p.position[1], .z = p.position[2]};
+    out.gain_db = p.gain_db;
+    out.size = {.width = p.width[0], .depth = p.width[1], .height = p.width[2]};
+    out.priority = p.priority;
+    out.zone = p.zone_mask >= 0 && p.zone_mask <= 5
+                   ? static_cast<ac3::oba::ZoneConstraint>(p.zone_mask)
+                   : ac3::oba::ZoneConstraint::kNone;
+    out.enable_elevation = p.enable_elevation;
+    out.snap = p.snap;
+    out.screen_reference = p.screen_factor != 0.0;
+    out.screen_factor = p.screen_factor;
+    out.depth_factor = p.depth_exponent;
+    if (p.distance.has_value()) {
+        const bool at_infinity = std::isinf(*p.distance);
+        out.distance = ac3::oba::ObjectDistance{.at_infinity = at_infinity,
+                                                .factor = at_infinity ? 1.1 : *p.distance};
+    }
+    out.active = p.active;
+    out.divergence = p.divergence;
+    return out;
+}
+
 // AC-4 (ETSI TS 103 190), through ac4::Decoder: the presentation presentation=,
 // presentation-id=, language= and associated= choose (ETSI TS 103 190-2 clause
 // 4.8.2), its substreams mixed with the dialogue and associated audio at
@@ -419,12 +485,9 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
             meta.ac4_drc_mode);
         return kExitUsage;
     }
-    if (!objects_dir.empty() || !adm_out.empty()) {
-        fmt::println(stderr,
-                     "warning: {} is AC-4: the object options write E-AC-3's objects, and are "
-                     "ignored; AC-4's "
-                     "objects are rendered to the output's speakers",
-                     in_path);
+    if (!adm_out.empty() && !ac3cli::adm_capability().available) {
+        fmt::println(stderr, "error: {}", ac3cli::adm_capability().reason);
+        return kExitInput;
     }
     // Options AC-3's and E-AC-3's decode reads: said, not silently dropped.
     // The two that promise a result AC-4 cannot give are refused.
@@ -478,6 +541,92 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
     std::size_t decoded_frames = 0;
     std::size_t waiting_frames = 0;
     std::size_t concealed_frames = 0;  // under conceal=, frames made in place of ones that failed
+
+    // objects_dir/adm_out (planning/ac4.md, I5): D10's DecodedFrame::objects and their Annex F
+    // properties, beside the rendering above, which stays - the same two outputs run_decode_eac3
+    // gives E-AC-3's JOC objects, built the same way: objects_dir streams each object's own PCM to
+    // its own mono WAV as it decodes, and adm_out accumulates every object's PCM and metadata
+    // update in memory (an ADM master's own <axml> chunk needs every object's final duration known
+    // first) and writes it once, at the end, through decode_adm.hpp's writer.
+    std::vector<PlanarWavSink> object_sinks;
+    ac3cli::AdmMasterInput adm_input;
+    bool adm_input_ready = false;
+    std::uint64_t adm_samples_emitted = 0;
+    const auto append_ac4_objects = [&](const ac4::DecodedFrame& pcm) -> bool {
+        if (pcm.objects.empty() || objects_dir.empty()) {
+            return true;
+        }
+        if (object_sinks.empty()) {
+            std::error_code ec;
+            const std::filesystem::path dir{std::string{objects_dir}};
+            std::filesystem::create_directories(dir, ec);
+            if (ec) {
+                fmt::println(stderr, "error: cannot create directory {} ({})", objects_dir,
+                             ec.message());
+                return false;
+            }
+            object_sinks.resize(pcm.objects.size());
+            for (std::size_t i = 0; i < object_sinks.size(); ++i) {
+                const auto object_path = dir / fmt::format("object_{:02}.wav", i);
+                if (!object_sinks[i].open(object_path.string(),
+                                          static_cast<std::uint32_t>(pcm.sample_rate_hz), 1, {})) {
+                    fmt::println(stderr, "error: cannot open {} for writing",
+                                 object_path.string());
+                    return false;
+                }
+            }
+        }
+        if (pcm.objects.size() != object_sinks.size()) {
+            return true;  // a mid-stream shape change: skipped, as run_decode_eac3's own does
+        }
+        for (std::size_t i = 0; i < object_sinks.size(); ++i) {
+            if (!object_sinks[i].append(0, pcm.objects[i].samples)) {
+                fmt::println(stderr, "error: cannot write object audio under {}", objects_dir);
+                return false;
+            }
+        }
+        return true;
+    };
+    const auto accumulate_ac4_adm = [&](const ac4::DecodedFrame& pcm) {
+        if (adm_out.empty() || pcm.objects.empty()) {
+            return;
+        }
+        if (!adm_input_ready) {
+            adm_input.sample_rate = static_cast<std::uint32_t>(pcm.sample_rate_hz);
+            adm_input.channels.resize(pcm.objects.size());
+            for (std::size_t i = 0; i < pcm.objects.size(); ++i) {
+                adm_input.channels[i].name =
+                    pcm.objects[i].lfe ? "LFE" : fmt::format("Object {}", i + 1);
+                if (pcm.objects[i].speaker.has_value()) {
+                    adm_input.channels[i].bed_label = to_oba_bed_label(*pcm.objects[i].speaker);
+                }
+            }
+            adm_input_ready = true;
+        }
+        if (pcm.objects.size() != adm_input.channels.size()) {
+            return;  // a mid-stream shape change: skipped, same convention as above
+        }
+        for (std::size_t i = 0; i < pcm.objects.size(); ++i) {
+            const ac4::DecodedObject& object = pcm.objects[i];
+            auto& channel = adm_input.channels[i];
+            channel.pcm.insert(channel.pcm.end(), object.samples.begin(), object.samples.end());
+            // The properties in force at the frame's first sample are a zero-ramp update of their
+            // own, so an object that sends no ObjectUpdate this frame still lands on the timeline
+            // (ObjectUpdate::sample is into ITS OWN frame - decoder.hpp's own doc comment - hence
+            // adm_samples_emitted, bumped below by exactly this frame's sample count, turning it
+            // into an absolute offset from the decode's start, what WriteObjectUpdate wants).
+            channel.updates.push_back({.sample_offset = adm_samples_emitted,
+                                       .ramp_duration_samples = 0,
+                                       .state = to_oba_dynamic_object(object.properties)});
+            for (const ac4::ObjectUpdate& update : object.updates) {
+                channel.updates.push_back(
+                    {.sample_offset = adm_samples_emitted + update.sample,
+                     .ramp_duration_samples = update.ramp_samples,
+                     .state = to_oba_dynamic_object(update.properties)});
+            }
+        }
+        adm_samples_emitted += pcm.samples;
+    };
     Progress progress;
     progress.start("decoding", scan.frames.size());
     std::uint64_t frames_done = 0;
@@ -530,6 +679,11 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
         if (objects) {
             objects->render(pcm, rendered);
         }
+        if (!append_ac4_objects(pcm)) {
+            sink.abort();
+            return kExitOutput;
+        }
+        accumulate_ac4_adm(pcm);
         const std::vector<std::vector<float>>& channels = objects ? rendered : pcm.channels;
         std::vector<std::span<const float>> views;
         views.reserve(channels.size());
@@ -563,6 +717,28 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
             return kExitOutput;
         }
     }
+    std::size_t objects_written = 0;
+    for (auto& object_sink : object_sinks) {
+        if (const auto closed = object_sink.close(); !closed) {
+            fmt::println(stderr, "error: {}", ac3::io::describe(closed.error()));
+            return kExitOutput;
+        }
+        ++objects_written;
+    }
+    if (!adm_out.empty()) {
+        if (!adm_input_ready) {
+            fmt::println(stderr, "warning: {} given but {} carries no object audio", adm_out,
+                         in_path);
+        } else {
+            const auto written_adm = ac3cli::write_adm_atmos_master(adm_out, adm_input);
+            if (!written_adm.has_value()) {
+                fmt::println(stderr, "error: {}", written_adm.error());
+                return kExitOutput;
+            }
+            status_println(status, "  wrote ADM master ({} objects) to {}",
+                           adm_input.channels.size(), adm_out);
+        }
+    }
     // The channels in the order the file holds them.
     std::string layout;
     for (const std::size_t c : ac4_order(speakers, ac4_wav_rank)) {
@@ -580,6 +756,10 @@ int run_decode_ac4(std::span<const std::byte> stream, std::string_view in_path, 
             first.objects.size(),
             first.channels.empty() ? std::string{}
                                    : fmt::format(" and {} channels", first.channels.size()));
+        if (objects_written > 0) {
+            status_println(status, "          {} of them also written to {}", objects_written,
+                           objects_dir);
+        }
     }
     if (waiting_frames > 0) {
         status_println(status, "          {} frames waiting for an I-frame produced no output",

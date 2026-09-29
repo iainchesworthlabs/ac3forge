@@ -119,4 +119,40 @@ inline float scalar_exp(float x) {
     return p * std::bit_cast<float>(scale_bits);
 }
 
+// --- exp2 --------------------------------------------------------------------
+
+inline double scalar_exp2(double x) { return std::exp2(x); }
+
+// 2^x = 2^n * 2^r with n the nearest integer to x and r = x - n in [-0.5,
+// 0.5]; unlike scalar_exp's reduction, no head/tail split of a constant is
+// needed here, since x is already in log2 units and n is an integer float
+// exactly representable at this magnitude, so x - n is exact (Sterbenz's
+// lemma). 2^r = e^(r ln 2) is then the same degree-6 Taylor series scalar_exp
+// evaluates, whose truncation at |r ln 2| = 0.3466 is under 5e-8, well inside
+// a float ulp at this scale; 2^n is built directly as an exponent field, as
+// scalar_exp's is. Added for D14a's hf_generator.cpp
+// (planning/ac4.md, "Arithmetic"): dB conversions in the QMF-domain high-band
+// generator, run at Real, need libm's log10/pow replaced with log2/exp2
+// through this pair, so two platforms' libm cannot disagree in a decoded
+// sample's last bit (src/ac4core/src/aspx/hf_generator.cpp).
+inline float scalar_exp2(float x) {
+    if (x >= 128.0f) {  // 2^128 overflows; the largest float is just under it
+        return 3.4028235e38f;
+    }
+    if (x <= -125.0f) {  // below the smallest normal float's exponent
+        return 1.17549435e-38f;
+    }
+    const float n = std::floor(x + 0.5f);
+    const float r = x - n;
+    constexpr float kLn2 = 0.6931471805599453f;
+    const float rl = r * kLn2;
+    const float p =
+        1.0f + rl * (1.0f + rl * (1.0f / 2.0f +
+                                  rl * (1.0f / 6.0f +
+                                        rl * (1.0f / 24.0f + rl * (1.0f / 120.0f + rl * (1.0f / 720.0f))))));
+    const auto exponent = static_cast<std::int32_t>(n);  // [-125, 127]
+    const auto scale_bits = static_cast<std::uint32_t>(exponent + 127) << 23;
+    return p * std::bit_cast<float>(scale_bits);
+}
+
 }  // namespace ac3::internal

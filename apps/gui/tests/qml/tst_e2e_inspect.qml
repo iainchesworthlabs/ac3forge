@@ -30,6 +30,11 @@ TestCase {
     readonly property url ac3StreamUrl:
         Qt.resolvedUrl("../../../../fuzz/seeds/fuzz_wav_read/roundtrip-stereo.ac3")
     readonly property url atmosStreamUrl: Qt.resolvedUrl("../fixtures/atmos-objects.ec3")
+    // A dedicated fixture (like atmos-objects.ec3 above, rather than a fuzz/robustness corpus
+    // file or one of tests/golden/ac4dec's own short, sparse-I-frame decoder-unit-test streams):
+    // two A-JOC dynamic objects over reference_stereo.wav, `ac4-encode objects=` (E9's own scene
+    // grammar) - planning/ac4.md, I5.
+    readonly property url ac4ObjectStreamUrl: Qt.resolvedUrl("../fixtures/ac4-objects.ac4")
     readonly property url notAStreamUrl:
         Qt.resolvedUrl("../../../../fuzz/seeds/fuzz_wav_read/roundtrip-stereo.wav")
     readonly property url objectsOutUrl: Qt.resolvedUrl("_test_output")
@@ -279,6 +284,30 @@ TestCase {
         compare(StreamPlayerController.hasObjects, true);
         const soundfield = findByName(dialog.contentItem, "spSoundfield");
         compare(soundfield.visible, true);
+
+        const exportObjects = findByName(dialog.contentItem, "spExportObjectsButton");
+        compare(exportObjects.visible, true);
+        click(exportObjects);
+        pickFile(dialog, "spExportObjectsDialog", objectsOutUrl, true);
+        tryCompare(StreamPlayerController, "exporting", false, 30000);
+        compare(StreamPlayerController.exportError, "");
+        dialog.close();
+    }
+
+    // planning/ac4.md, I5: the same export path above, over a direct-coded AC-4 object stream -
+    // exportObjects() itself is codec-agnostic (stream_player_controller.cpp), so this proves
+    // decode_ac4_to_memory() now fills has_objects/object_audio the way its E-AC-3 sibling always
+    // has, not that the export mechanism itself differs.
+    function test_playerExportsOneWavPerObjectFromAnAc4Stream() {
+        const win = createTemporaryObject(mainWindowComponent, testCase);
+        verify(win !== null);
+        const dialog = win.streamPlayerDialogRef;
+        openFromHeader(win, "streamPlayerOpenButton", dialog);
+        click(findByName(dialog.contentItem, "spChooseFileButton"));
+        pickFile(dialog, "spFileDialog", ac4ObjectStreamUrl);
+        tryCompare(StreamPlayerController, "busy", false, 15000);
+        compare(StreamPlayerController.error, "");
+        compare(StreamPlayerController.hasObjects, true);
 
         const exportObjects = findByName(dialog.contentItem, "spExportObjectsButton");
         compare(exportObjects.visible, true);

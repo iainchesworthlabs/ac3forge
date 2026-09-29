@@ -68,6 +68,17 @@ struct Ac4Settings {
     // A stereo fold by the stream's preferred_dmx_method (Table 150), Lo/Ro
     // where it names none, rather than by DecoderSettings::stereo_fold.
     bool preferred_downmix = false;
+    // The immersive element's own output layout (ETSI TS 103 190-2 clause
+    // 5.10.2), independent of the stereo fold above and only reached when the
+    // output layout does not itself fold to stereo or mono (decoder_setup()'s
+    // own comment): unset plays the source's coded layout; k7X4, k7X2, k7X0,
+    // k5X4 or k5X2 fold Part 2's renderer down to a narrower one, the same
+    // six ac3cli decode's own speakers= takes (planning/ac4.md, I5).
+    std::optional<ac4::DownmixTarget> immersive_layout = std::nullopt;
+    // Part 2 clause 4.7: full decoding (the default) reconstructs A-CPL,
+    // A-JCC and A-JOC in full; core decoding replaces or skips them for
+    // low-complexity playback, and renders to the core layout alone.
+    bool core_decoding = false;
 
     friend bool operator==(const Ac4Settings&, const Ac4Settings&) = default;
 };
