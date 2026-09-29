@@ -47,8 +47,12 @@ config AC3FORGE_AC4
         which is more than the internal RAM of any part this component
         supports: a part that offers it has PSRAM, and hands its heap to it
         (CONFIG_SPIRAM_USE_MALLOC). Its decode task wants a stack of about
-        50 KB. docs/platforms/bare-metal/esp32-p4.md has what a stream of each
-        kind held on an ESP32-P4, and how fast it decoded.
+        50 KB. It also decodes up to 1.9 times faster with
+        CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL small (examples/hearth_sink/
+        sdkconfig.ac4 sets 512 bytes) than with ESP-IDF's 16 KB, and the AC-3
+        and E-AC-3 decoders take 1.2 to 1.7 times longer for it.
+        docs/platforms/bare-metal/esp32-p4.md has what a stream of each kind
+        held on an ESP32-P4, and how fast it decoded.
 
 # An int rather than a choice, so it reaches C++ as a plain constant: the
 # component reads no configuration through the preprocessor.
