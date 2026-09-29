@@ -96,7 +96,9 @@ names a key file and `AC3FORGE_SIGNING_KEY` carries the key itself, the same two
 **Normal · 32 ms frames** or **Low · 5.3 ms frames**. Low latency shortens the E-AC-3 frame to one
 block and raises the bitrate to about 1.5 Mb/s, so that fifteen objects' metadata still fits in
 the shorter frame. It shortens Crucible's own cadence and leaves the receiver's decode delay where
-it was. What the whole chain comes to has not been measured end to end;
+it was. AC-3 has no short frame: on a Dolby Digital 5.1 output Crucible gathers the one-block beds
+into whole six-block AC-3 frames, so that output stays at 32 ms. What the whole chain comes to has
+not been measured end to end;
 [Troubleshooting](troubleshooting.md#sound-is-behind-the-picture) carries the estimate. Changing
 it restarts the stream.
 
@@ -160,10 +162,10 @@ the note beside it says which, and closing the window quits.
 [Troubleshooting](troubleshooting.md#there-is-no-tray-icon) says how to check what your session
 has.
 
-Linux published no tray at all before 2026-09-06: a `Menu` nested inside a tray icon's menu hit a
-Qt bug (handed the QWidget fallback, then read as a D-Bus menu) that crashed the window on nine or
-ten launches out of ten. The tray's menu is flat now, which is why the signal path appears there
-as a heading and seven choices rather than a submenu
+The tray's menu is flat on every platform: the signal path appears there as a heading and up to
+seven choices (Headphones only where an OS renderer exists) rather than a submenu. A `Menu` nested
+inside a tray icon's menu hit a Qt bug on Linux (handed the QWidget fallback, then read as a D-Bus
+menu) that crashed the window on nine or ten launches out of ten, and a flat menu cannot reach it
 (`apps/crucible/ui/platform/linux/tray_support.cpp`).
 
 **Show applications with no audio.** On by default. Running applications with a window but no

@@ -1,17 +1,33 @@
 # Programme mixing metadata (mixmdate, Table E1.2)
 
-!!! note "Status as of 2026-09-22: plan, nothing built yet"
+!!! note "Status as of 2026-09-30: Phases 1 and 2 built, Phases 3 to 5 not"
     Written 2026-09-22 after a full review of the current implementation. The headline finding:
     the wire format itself is **already correct and complete**, on both the encoder and the
     decoder, including every `mixdef` variant, pan and per-block mixing configuration. Nothing in
     this plan touches `ac3/meta/mixing.hpp`'s shape, `eac3_frame.cpp`'s encoder, or
     `eac3_decoder.cpp`'s reader — Phase 5 adds one new file that reads what the decoder already
-    produces.
+    produces. (The encoder claim did not survive Phase 2: see the write-up there.)
+
+    **Built.** Phases 1 and 2 landed with this page as #797, on 2026-09-22. `ac3cli decode` prints
+    every field of the mixing group and Hearth's media information JSON carries it, and the five
+    test gaps are closed. Writing the `numblkscod` 0 test found an encoder bug, fixed in the same
+    pull request; on 2026-09-24 a follow-up (a459d5c5f) found the fix had covered one case of the
+    same fault. The encoder wrote six `blkmixcfginfo` flags at every `numblkscod`, where the
+    syntax has one per block of the syncframe, so its streams were also undecodable at
+    `numblkscod` 1 and 2. The loop now runs once per block of the syncframe.
+
+    **Not built.** Phase 3 (the C API and Python bindings: the C header and the Python bindings
+    still say the group is not mirrored), Phase 4 (a decode-side summary in `ac3gui`, which has no
+    reference to the group's fields beyond the encoder page's three controls) and Phase 5
+    (`AssociatedServiceMixer`: there is no `associated_service.hpp`, no
+    `pgm_scale_gain()` and no `tests/decoder/test_associated_service_mixer.cpp`). Phase 6, the CLI
+    wiring, has not started, and nothing in the decoder uses the group's values. `ac3cli probe`
+    stays lightweight, as Decision 2 recommended.
 
     What is missing is everything built *on top of* that correct core: CLI/JSON reporting stops
     partway through the struct, the C API and Python bindings expose none of it (already
     self-documented as a known gap in `docs/library/c-api.md`), the GUI exposes three fields out
-    of roughly thirty, test coverage has specific, named holes, and — the one genuinely new
+    of roughly thirty, test coverage has specific, named holes, and — the one new
     feature here — nothing anywhere *uses* the decoded values to actually combine a main
     programme with an associated service's audio.
 
@@ -27,7 +43,7 @@
 | Layer | State | Evidence |
 |---|---|---|
 | Data model | Complete | `ac3::meta::MixMetadata`/`MixingParameters`/`ExternalScales`/`SpeechEnhancement`/`PanInfo` (`src/forge/include/ac3/meta/mixing.hpp:254-320`) model every field Table E1.2 defines. |
-| Encoder | Complete; one bug found and fixed during Phase 2 | `eac3_frame.cpp:1267-1600` writes every field/variant, including the `strmtyp` gate (`!dependent`, i.e. `kIndependent` **or** `kConvertible` — deliberately, not `kDependent` alone; see below). Writing the Phase 2 `blkmixcfginfo`×`numblkscod==0x0` test (below) surfaced a real one: the encoder always wrote `blkmixcfginfo`'s six-block wire form regardless of `numblkscod`, while the decoder (and the independent Python reference parser, `tools/references/eac3_parse.py`) already correctly implemented §E2.3.1.60's one-block special case — so the two went out of sync whenever a caller combined `numblkscod=0` with `blkmixcfginfo`, and the encoder's own stream failed its own decoder. Fixed in the same phase; see the Phase 2 write-up. |
+| Encoder | Complete; one bug found and fixed during Phase 2 | `eac3_frame.cpp:1267-1600` writes every field/variant, including the `strmtyp` gate (`!dependent`, i.e. `kIndependent` **or** `kConvertible` — deliberately, not `kDependent` alone; see below). Writing the Phase 2 `blkmixcfginfo`×`numblkscod==0x0` test (below) surfaced one: the encoder always wrote `blkmixcfginfo`'s six-block wire form regardless of `numblkscod`, while the decoder (and the independent Python reference parser, `tools/references/eac3_parse.py`) already correctly implemented §E2.3.1.60's one-block special case — so the two went out of sync whenever a caller combined `numblkscod=0` with `blkmixcfginfo`, and the encoder's own stream failed its own decoder. Fixed in the same phase; see the Phase 2 write-up. |
 | Decoder | Complete, correct | `eac3_decoder.cpp:128-286` (`read_mixing_parameters`/`read_mixing_metadata`) reads the full group symmetrically, including `mixdef==3`'s length-prefixed skip-forward for sub-fields this build doesn't otherwise need. |
 | CLI authoring (primary programme) | Complete, under-documented | `apps/cli/support.cpp:1136-1267` implements `pgmscl=`/`pgmscl2=`/`extpgmscl=`/`mixdef=`/`premixcmp=`/`mixdata=`/`extmix=`/`auxmix=`/`speechmix=`/`paninfo=`/`paninfo2=`/`blkmixcfg=` in full, documented in `docs/forge/cli/metadata-options.md:68-85,210-235` — but absent from `ac3cli --help` (`apps/cli/usage.cpp`). |
 | Round-trip tests | Real, but incomplete | `tests/meta/test_bsi.cpp`'s "DC4" section (lines 435-767) round-trips most of the struct through real encode→decode. Specific gaps below. |
@@ -42,6 +58,13 @@ spells out why a third, independent bit-walker treats the two identically, and e
 agree with it. No bug; the loose phrasing in other comments is the only imprecision.
 
 ## What's missing
+
+*The table is the state on 2026-09-22, before Phases 1 and 2. Since #797 the rows for CLI decode
+reporting, the CLI docs claim, Hearth's JSON and the test coverage holes are closed:
+`print_mix_summary()` now sits at `decode.cpp:273` and prints the whole group, `write_mix()` writes
+it, and the named cases exist. The rows for `probe`, the GUI, the C API, Python and "nothing uses
+the decoded values" are as described. The `programme2=` row was resolved outside this plan, as its
+strikethrough says.*
 
 | Gap | Where | Detail |
 |---|---|---|
@@ -64,6 +87,11 @@ Each phase is its own branch off a freshly-fetched `main` and its own PR.
 
 ### Phase 1 — Reporting completeness
 
+**Status: built** (#797). `print_mix_summary()` in `apps/cli/commands/decode.cpp` prints `pgmscl2`, `pan2` and
+`paninfo`, every `mixdef` variant's values, the speech-enhancement tree and `blkmixcfginfo`'s words, and
+`write_mix()` in `apps/hearth/engine/media_info.cpp` writes the same as JSON. The claim in
+`docs/forge/cli/metadata-options.md` that `decode` prints any programme-mixing field the stream carries is now true.
+
 Make every already-decoded field visible somewhere. No new struct fields needed except in probe
 (see Decision 2).
 
@@ -83,6 +111,10 @@ Make every already-decoded field visible somewhere. No new struct fields needed 
 report both show every value that was set, not just presence.
 
 ### Phase 2 — Test coverage completion
+
+**Status: built** (#797), and extended by a459d5c5f on 2026-09-24, which added the `numblkscod` 1 and 2 cases the
+first fix missed. The five gaps are in `tests/meta/test_bsi.cpp`; #797 did not touch `tests/encoder/test_eac3.cpp`,
+`test_plan.cpp` or `tests/decoder/test_eac3_decoder.cpp`, the baseline cases the phase also asked for.
 
 Close the five named holes in `tests/meta/test_bsi.cpp`'s DC4 section:
 
@@ -118,7 +150,17 @@ is the kind of defect real round-trip testing at an unusual `numblkscod` is spec
 catching — the project's own history has one precedent already (a comment in `eac3_parse.py`
 records an earlier, different bug in that same reference parser, found the same way).
 
+**Correction, 2026-09-24** (a459d5c5f): the fix above was one case of a wider fault. The encoder's
+per-block emission wrote six `blkmixcfginfo` flags at every `numblkscod`, and the syntax has one per block of
+the syncframe (`blocks_per_syncframe(numblkscod)`: one, two, three or six), so `numblkscod` 1 and 2 were
+misaligned from that field on as well: the decoder refused the frame, `io::scan` misread `bsmod`, and the EMDF
+walk lost the `addbsi` marker. The loop now runs once per block, and `tests/meta/test_bsi.cpp` and
+`tests/emdf/test_emdf.cpp` hold the two cases. The reading above, that the decoder implemented
+a "one-block special case" the encoder lacked, described `numblkscod` 0 only.
 ### Phase 3 — C API and Python bindings
+
+**Status: not built.** `ac3forge.h` still says the `mixmdate` and `infomdat` groups are not mirrored, and
+`docs/library/c-api.md` lists them under what is deliberately out of scope; the Python bindings carry the same comment.
 
 Mirror the existing pattern used for `ac3forge_centre_mix_level_t`/`surround_mix_level_t`
 (`ac3forge.h:197-207`): new C structs mirroring `MixMetadata`'s shape, accessor functions on
@@ -133,6 +175,9 @@ it back correctly on decode.
 
 ### Phase 4 — GUI exposure
 
+**Status: not built** for `ac3gui`. Hearth's Media page has Copy and Export JSON, and the JSON carries the whole group
+(Phase 1), but no page names the fields.
+
 **Recommended scope, narrower than full parity**: add a read-only decode-side summary (reusing
 Phase 1's text) so a loaded stream's mixing metadata is visible somewhere in `ac3hearth`/`ac3gui`.
 Defer full encode-side authoring widgets (nested editors for `mixdef==kExtended`'s external scales
@@ -146,7 +191,11 @@ encode-side widgets.
 
 ### Phase 5 — Decode-time associated-service mixing
 
-The one genuinely new feature. Full design (produced via a dedicated design pass, included in
+**Status: not built.** `src/forge/include/ac3/decoder/associated_service.hpp`, its source, the two gain helpers in
+`mixing.hpp` and the mixer's tests do not exist. The two readings under "Before writing the pan-law/premix-scale code"
+are unchecked, and Decision 3 is open.
+
+The one new feature. Full design (produced via a dedicated design pass, included in
 full below the phase list) recommends a small, stateful, **post-decode, PCM-domain** component:
 
 ```cpp
@@ -222,6 +271,8 @@ block-boundary click-avoidance check.
 
 ### Phase 6 (not this plan) — CLI wiring for the mixer
 
+**Status: not started**, and it waits on Phase 5.
+
 Once Phase 5 lands, a natural follow-on is `ac3cli decode associated=<id> ...` to actually invoke
 it end to end. Deliberately not built here, per Phase 5's own scope boundary — keeps that PR
 reviewable as one self-contained unit.
@@ -241,7 +292,7 @@ reviewable as one self-contained unit.
   FFmpeg nor the Dolby Reference Player — this project's usual cross-checks — decode more than one
   programme at a time, so there's no reference implementation of "combine two decoded E-AC-3
   programmes" to compare against. Confidence here rests on spec citations and internal consistency,
-  not an external match, which is a genuinely different (weaker) evidence class than most of this
+  not an external match, which is a different (weaker) evidence class than most of this
   codebase's other DSP claims.
 - The two items in Decision 3 stay open until someone reads the primary spec text directly; this
   plan states the assumed readings rather than presenting them as settled.

@@ -41,7 +41,7 @@ SOFT TIER ADVISORY, HARD TIER BLOCKING - the same split, and the same
 mechanism: the hard verdict travels to a separate one-step gate job as a
 $GITHUB_OUTPUT value, because the job that runs this script is
 `continue-on-error: true` and that flag swallows exit codes. See
-report_hard_regression below and ci.yml's memory-gate job.
+report_hard_regression below and _compare.yml's memory-gate job.
 
 The runner-noise argument that keeps compare_performance.py's soft tier
 advisory does not apply here at all, and it is worth being clear that the soft
@@ -88,7 +88,7 @@ HARD = "**HARD REGRESSION**"
 
 
 def report_hard_regression(hard: bool) -> None:
-    """Publish the verdict on $GITHUB_OUTPUT for ci.yml's memory-gate job.
+    """Publish the verdict on $GITHUB_OUTPUT for _compare.yml's memory-gate job.
 
     A step output rather than this script's own exit code, for the reason
     compare_performance.py's identical function spells out: the job that runs
@@ -298,8 +298,8 @@ def main() -> int:
            f"(at least {REGRESSION_GROWTH_FRACTION * 100:.0f}% more) is advisory. A "
            f"{HARD} row - at least "
            f"{HARD_REGRESSION_GROWTH_FRACTION * 100:.0f}% more, i.e. churn that at least "
-           "doubled - fails the `Memory gate` check; label the PR "
-           "`memory-regression-approved` if the increase is intended. See "
+           "doubled - fails the `Memory gate` job, and with it the queue entry; label the PR "
+           "`memory-regression-approved` and queue it again if the increase is intended. See "
            "tools/ci/compare_memory.py.", ""]
 
     annotations = []
