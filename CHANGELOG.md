@@ -1625,6 +1625,30 @@ The sections below contain the complete change list and fixes.
   wider memory audit beyond the three findings above, the cached bit reader and Huffman table, the
   host's vector kernels, and the probe's AC-4 rows remain - D14b (the P4 board) does not start until
   those land.
+- **AC-4 plays on the ESP32-P4, behind `CONFIG_AC3FORGE_AC4` (phase D14b).** The ESP-IDF component's
+  new switch, off by default and offered only on a part with a floating-point unit, builds
+  `src/ac4`, `src/ac4core` and `src/ac4dec` in `float` in the minimum-footprint profile
+  (`AC3FORGE_MINIMAL_AC4`: static archives with the profile's compile options, no encoder, no shared
+  library), and the player reads a stream that opens with an AC-4 sync word through the same ring,
+  renderer and sinks as an AC-3 or E-AC-3 one. `hearth_sink` plays it from its HTTP source with
+  `sdkconfig.ac4` in its defaults and ends a play with the time, heap, stack and PCM hash and, with
+  `AC3FORGE_STAGE_TIMERS`, the time in each part of the decode (`?decoding=core` and `?hash=off` in a
+  play's location). The packer's `--with-ac4` puts the AC-4 sources in the component archive and its
+  `--verify-targets` names the parts its verification builds. Without the switch the component
+  compiles to the same objects as before (35 of 35), and CI builds `hearth_sink` with the decoder for
+  the P4 and a packed archive against it. On a board at 360 MHz with Wi-Fi up, 2.0 in SIMPLE mode
+  decodes in real time, at 0.86 of a frame, and 2.0 in A-SPX mode at 1.04; 5.1 takes 3.5 to 6.7,
+  5.1.4 3.8 to 6.1 and the frame-rate converter's rates 5.9 to 6.5, where E-AC-3 through the same
+  image takes 0.19 for 5.1 and 0.38 for 7.1.4. The decoder holds 0.96 MB at 2.0 to 2.8 MB at 5.1.4,
+  all the internal RAM and the rest in PSRAM, and its decode task uses 50 KB of stack; a QMF bank
+  costs 3.4 ms a channel-frame or up to 17.4 by where its state landed, and the converter, in
+  `double`, 183 to 229 ms a frame. The `float` output equals the host's on 15 of 20 plays and differs
+  where companding runs, since `std::pow` and `std::exp2` at `float` in `pcm/companding.cpp` and
+  `pcm/aspx.cpp` give a different last bit in each C library; the change that makes the host, the
+  Cortex-M3 leg and the board agree is not in this release. Four compile errors that only the RISC-V
+  compiler found are fixed in `src/ac4dec`, and `AC4_ZONE_SCOPED_N` markers (empty without the
+  timers) sit in the QMF banks, the inverse transform, A-SPX, A-CPL, the converter and the decoder.
+  [ESP32-P4](docs/platforms/bare-metal/esp32-p4.md#ac-4) has the tables.
 
 **Browser (WASM)**
 
