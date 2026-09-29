@@ -333,7 +333,8 @@ jobs:
         env:
           TRANSFORM_MODE: reference
           RESULTS_JSON_DIR: ${{ inputs.persist_quality_trend && format('{0}/gold-reference-results', runner.temp) || '' }}
-        run: bash tools/checks/verify_gold_reference.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+          MATRIX_PRESET: ${{ matrix.preset }}
+        run: bash tools/checks/verify_gold_reference.sh "build/config-${MATRIX_PRESET}/bin/ac3cli"
 
       # A third run of the same gate, against a decoder built float32 rather
       # than double (minimum-footprint decoder profile). Unlike mode=reference above this cannot be a
@@ -361,8 +362,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
+          cmake --preset config-${MATRIX_PRESET} -B build/decode-scalar-float                 -DAC3FORGE_DECODE_SCALAR=float
           cmake --build build/decode-scalar-float --target ac3cli
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       - name: Gold reference gate (float32 decode)
         if: matrix.scalar_variants
@@ -386,11 +389,13 @@ jobs:
         run: |
           set -euo pipefail
           workdir="$(mktemp -d)"
-          build/config-${{ matrix.preset }}/bin/ac3cli encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
-          python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${{ matrix.preset }}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
+          build/config-${MATRIX_PRESET}/bin/ac3cli encode               tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode               tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py               --double-cli build/config-${MATRIX_PRESET}/bin/ac3cli               --float-cli build/decode-scalar-float/bin/ac3cli               --workdir "$workdir"
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # The third scalar (planning/arithmetic-tiers.md): the fixed-point
       # decoder, Q7.24 in an int32, for parts with no FPU. The same two
@@ -404,8 +409,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
+          cmake --preset config-${MATRIX_PRESET} -B build/decode-scalar-fixed -DAC3FORGE_DECODE_SCALAR=fixed
           cmake --build build/decode-scalar-fixed --target ac3cli
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       - name: Gold reference gate (fixed-point decode)
         if: matrix.scalar_variants
@@ -421,11 +428,13 @@ jobs:
         run: |
           set -euo pipefail
           workdir="$(mktemp -d)"
-          build/config-${{ matrix.preset }}/bin/ac3cli encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
-          build/config-${{ matrix.preset }}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
-          python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${{ matrix.preset }}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
+          build/config-${MATRIX_PRESET}/bin/ac3cli encode tests/golden/audio/reference_51.wav "$workdir/gold.ac3" 448 51 dither=off >/dev/null
+          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold.ec3" 256 nodither 51 >/dev/null
+          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_cpl.ec3" 256 cpl+nodither 51 >/dev/null
+          build/config-${MATRIX_PRESET}/bin/ac3cli eac3-encode tests/golden/audio/reference_51.wav "$workdir/gold_ecpl.ec3" 384 cpl+ecpl+nodither 51 >/dev/null
+          python3 tools/checks/check_decode_scalar_snr.py --double-cli build/config-${MATRIX_PRESET}/bin/ac3cli --float-cli build/decode-scalar-fixed/bin/ac3cli --workdir "$workdir" --min-snr-db 110
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # The tier's own gate, natively: the same fourteen fixtures the bare-metal
       # leg decodes under QEMU, decoded here on x86, their PCM hashes held to
@@ -456,9 +465,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/encode-scalar-float \
+          cmake --preset config-${MATRIX_PRESET} -B build/encode-scalar-float \
                 -DAC3FORGE_ENCODE_SCALAR=float
           cmake --build build/encode-scalar-float --target ac3cli
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       - name: Gold reference gate (float32 encode)
         if: matrix.scalar_variants
@@ -474,9 +485,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/checks/check_encode_scalar_quality.py \
-              --double-cli build/config-${{ matrix.preset }}/bin/ac3cli \
+              --double-cli build/config-${MATRIX_PRESET}/bin/ac3cli \
               --float-cli build/encode-scalar-float/bin/ac3cli \
               --workdir "$(mktemp -d)"
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # Handed off to the quality-trend job below, which runs once (not once
       # per leg) after every gold_reference leg has passed - see that job's
@@ -502,6 +515,7 @@ jobs:
         shell: bash
         env:
           QT_QPA_PLATFORM: offscreen
+          MATRIX_PRESET: ${{ matrix.preset }}
         # apps/gui/CMakeLists.txt sets MACOSX_BUNDLE ON unconditionally, but it
         # is a no-op everywhere except APPLE, where it moves the built
         # executable to bin/ac3gui.app/Contents/MacOS/ac3gui instead of plain
@@ -521,9 +535,9 @@ jobs:
         # macOS runner image by default.
         run: |
           set -euo pipefail
-          bin="build/config-${{ matrix.preset }}/bin/ac3gui"
+          bin="build/config-${MATRIX_PRESET}/bin/ac3gui"
           if [ "$RUNNER_OS" = "macOS" ]; then
-            bin="build/config-${{ matrix.preset }}/bin/ac3gui.app/Contents/MacOS/ac3gui"
+            bin="build/config-${MATRIX_PRESET}/bin/ac3gui.app/Contents/MacOS/ac3gui"
             export QSG_RENDER_LOOP=basic
           fi
           smoke_args=(--smoke
@@ -560,7 +574,7 @@ jobs:
         if: matrix.gui && matrix.name == 'Linux GCC'
         shell: bash
         run: |
-          cmake --build --preset build-${{ matrix.preset }} --target ac3gui_lupdate -- -k 0
+          cmake --build --preset build-${MATRIX_PRESET} --target ac3gui_lupdate -- -k 0
           echo "::group::translations git diff debug"
           pwd
           echo "GITHUB_WORKSPACE=${GITHUB_WORKSPACE}"
@@ -570,6 +584,8 @@ jobs:
           echo "::endgroup::"
           cd "${GITHUB_WORKSPACE}"
           git diff --exit-code -- apps/gui/translations
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # Sanitizers only catch what actually executes. ctest's cases exercise
       # encoder/decoder logic in isolation; this drives the real CLI across
@@ -591,7 +607,8 @@ jobs:
           ASAN_OPTIONS: detect_leaks=1
           UBSAN_OPTIONS: print_stacktrace=1
           AC3FORGE_CROSS_TIER_CHECK: ${{ matrix.preset == 'linux-llvm-asan-ubsan' && '1' || '0' }}
-        run: bash tools/ci/run_codec_matrix.sh "build/config-${{ matrix.preset }}/bin/ac3cli"
+          MATRIX_PRESET: ${{ matrix.preset }}
+        run: bash tools/ci/run_codec_matrix.sh "build/config-${MATRIX_PRESET}/bin/ac3cli"
 
       # conformance vectors publication: the conformance vector set - one stream per coding tool,
       # layout and sample rate this encoder can produce, each with the PCM it
@@ -674,7 +691,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cmake --preset config-${{ matrix.preset }} -B build/no-alsa \
+          cmake --preset config-${MATRIX_PRESET} -B build/no-alsa \
             -DCMAKE_DISABLE_FIND_PACKAGE_ALSA=TRUE 2>&1 | tee /tmp/no-alsa-configure.log
           grep -q 'Audio backend  : posix' /tmp/no-alsa-configure.log || {
             echo "::error::ALSA was disabled but the build did not fall back to the posix backend"
@@ -682,6 +699,8 @@ jobs:
           }
           cmake --build build/no-alsa -- -k 0
           ctest --test-dir build/no-alsa
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # AC3Forge Crucible on Linux (Crucible cross-platform promotion, docs/crucible/design/promotion.md).
       # One extra pass inside this leg rather than a matrix entry, the same
@@ -732,6 +751,7 @@ jobs:
         # assets.
         env:
           VERSION_TAG_INPUT: ${{ inputs.version_tag }}
+          MATRIX_PRESET: ${{ matrix.preset }}
         run: |
           set -euo pipefail
           if command -v sudo >/dev/null 2>&1; then SUDO=sudo; else SUDO=; fi
@@ -776,7 +796,7 @@ jobs:
           # tests `NOT "${DERIVED_VERSION_OVERRIDE}" STREQUAL ""` and falls
           # through to `git describe` when it is, which is what every ordinary
           # CI run wants.
-          cmake --preset config-${{ matrix.preset }} -B build/crucible \
+          cmake --preset config-${MATRIX_PRESET} -B build/crucible \
             -DAC3FORGE_BUILD_CRUCIBLE=ON -DAC3FORGE_BUILD_TESTS=ON \
             -DAC3FORGE_WITH_ALSA=OFF -DAC3FORGE_WITH_PIPEWIRE=ON \
             -DDERIVED_VERSION_OVERRIDE="$VERSION_TAG_INPUT" \
@@ -1089,7 +1109,9 @@ jobs:
            (inputs.do_package && matrix.release_package) ||
            ((matrix.preset == 'macos-llvm' || matrix.preset == 'macos-llvm-x64') && !inputs.do_package))
         shell: bash
-        run: cpack --preset pack-${{ matrix.preset }}
+        run: cpack --preset pack-${MATRIX_PRESET}
+        env:
+          MATRIX_PRESET: ${{ matrix.preset }}
 
       # The counterpart to the two Windows asserts above, for the files that
       # had no assertion at all: ac3cli's generated man page and its four
