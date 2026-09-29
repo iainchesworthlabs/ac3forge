@@ -390,7 +390,8 @@ a PipeWire node Crucible creates while it runs.")
 Atmos objects) and AC-4, decodes to a chosen speaker layout with each
 format's decoder settings, and plays to a local device or to a group of
 Sendspin network sinks. AC-3 and E-AC-3 streams can also be sent to a
-receiver over HDMI or S/PDIF as a bitstream.")
+receiver over HDMI or S/PDIF as a bitstream. In a group, the ESP32 sinks take
+AC-3 and E-AC-3 only.")
             # The QML modules THIS window's own qml/*.qml files import today
             # (apps/hearth/ui/qml/, plus the shared family components it
             # copies from apps/gui/qml/) - the same shlibdeps gap and the

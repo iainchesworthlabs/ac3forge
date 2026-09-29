@@ -266,7 +266,7 @@ else()
         set(MACOSX_BUNDLE_EXECUTABLE_NAME "ac3hearth")
         set(MACOSX_BUNDLE_BUNDLE_NAME "Hearth")
         set(MACOSX_BUNDLE_INFO_STRING
-            "Play AC-3, E-AC-3 and AC-4 streams on local speakers, a receiver or Sendspin network sinks")
+            "Play AC-3, E-AC-3 and AC-4 streams on speakers, a receiver or a Sendspin network")
         set(MACOSX_BUNDLE_ICON_FILE "ac3forge.icns")
         set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.iainchesworthlabs.ac3hearth")
         set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
