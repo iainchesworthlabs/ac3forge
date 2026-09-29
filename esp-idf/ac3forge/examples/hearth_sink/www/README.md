@@ -21,11 +21,13 @@ from QEMU's user-mode network, `10.0.2.2`, with `POST /play`.
 
 ## What plays where
 
-- A 7.1.4 output needs a sink of twelve slots or more. On the ESP32-S3 only `capture` with
-  `CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1` reaches twelve: it converts and checks with no
-  peripheral behind it. The S3's I2S carries at most 128 bits a TDM frame - four 32-bit slots or
-  eight 16-bit ones on a data line - and ESP-IDF refuses more, so the `tdm` sink cannot carry
-  7.1.4. `sdkconfig.ci-http714` is the capture shape under QEMU, and CI plays the set on it.
+- A 7.1.4 output needs a sink of twelve slots or more. `capture` with
+  `CONFIG_AC3FORGE_EXAMPLE_CAPTURE_TDM=1` reaches twelve with no peripheral behind it: it converts
+  and checks. `sdkconfig.ci-http714` is that shape under QEMU, and CI plays the set on it. The
+  `i2s` sink on an ESP32-S3 reaches twelve only with 16-bit slots and a second I2S line wired: one
+  line's TDM frame holds at most 128 bits - four 32-bit slots or eight 16-bit ones - and ESP-IDF
+  refuses more. The ESP32-P4's `i2s_wide` sink has a 512-bit frame, but has not opened TDM on the
+  pre-production silicon the example was brought up on.
 - On a two-slot sink every stream plays too, folded to 2.0 by the decoder.
 - `streams.json` marks `"psram": true` the streams measured to need more internal RAM than a
   network shape has without PSRAM: 7.1.4 with enhanced coupling or TPN. A board with PSRAM

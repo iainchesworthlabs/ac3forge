@@ -304,7 +304,7 @@ config AC3FORGE_EXAMPLE_SD_D0_GPIO
     default 2
 
 # WHICH NETWORK carries the HTTP source. A directory CMake picks
-# (main/source/http/net/), the same rule as the source and sink seams: the HTTP
+# (main/net/), the same rule as the source and sink seams: the HTTP
 # client never learns which. WiFi is what a board has. The OpenCores Ethernet
 # MAC is what QEMU has - `idf.py qemu` attaches one to the host's network, and
 # the guest reaches the host at 10.0.2.2 - so it is how CI runs this source end

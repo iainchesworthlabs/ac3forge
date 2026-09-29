@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # MinimalDecoder.cmake
 #
-# minimum-footprint decoder profile: the minimum-footprint decoder profile. AC3FORGE_MINIMAL_DECODER
+# The minimum-footprint decoder profile. AC3FORGE_MINIMAL_DECODER
 # turns src/forge into a single decode-only static library
 # (ac3::forge_minimal) built for a target that has a few hundred kilobytes of
 # RAM and no operating system - a set-top box, a receiver, a DSP port.
@@ -18,7 +18,7 @@
 #     see src/forge/src/core/reference_transform.hpp for the per-table
 #     measurements. This is the one change with a visible behavioural
 #     consequence: DecoderConfig::fast_imdct == false is refused
-#     (DecodeError::kUnsupported) rather than silently served by the fast path.
+#     (DecodeError::kNoReferenceTransform) rather than silently served by the fast path.
 #
 #   - -fno-exceptions -fno-rtti. The codec's own error mechanism is
 #     std::expected throughout - it has no throw, no try and no catch of its
@@ -65,5 +65,5 @@ target_compile_options(ac3_minimal_profile INTERFACE
 # deliberately keeps every section would be this file overreaching.
 target_link_options(ac3_minimal_profile INTERFACE "LINKER:--gc-sections")
 
-message(STATUS "Minimum-footprint decoder profile: ON (decode-only, no exceptions/RTTI, "
+message(STATUS "Minimum-footprint profile: ON (no exceptions/RTTI, "
                "no direct-form transform tables)")

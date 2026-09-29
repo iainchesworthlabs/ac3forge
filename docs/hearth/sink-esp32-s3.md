@@ -10,9 +10,12 @@ and the [ESP-IDF component overview](https://github.com/iainchesworthlabs/ac3for
 contain implementation details and measurements. For the stereo ESP32-C6 player, see
 [An ESP32-C6 sink](sink-esp32-c6.md).
 
-!!! note "Status as of 2026-09-26: Hearth plays to sinks; AC-4 not on ESP32"
+!!! note "Status as of 2026-09-30: Hearth plays to sinks; no ESP32 sink takes AC-4 in a group"
     The desktop app discovers sinks, pairs, plays to groups and updates firmware over the network
-    ([Hearth index](index.md)). These boards decode AC-3 and E-AC-3 only — not AC-4. For
+    ([Hearth index](index.md)). These boards decode AC-3 and E-AC-3 only. AC-4 is not built for the
+    ESP32-S3 or the ESP32-C6, and the sink lists `ac3` and `eac3`, not `ac4`, as the streams its
+    Sendspin role takes. An ESP32-P4 built with `CONFIG_AC3FORGE_AC4` decodes AC-4 from an HTTP
+    source, not from a group ([ESP32-P4](../platforms/bare-metal/esp32-p4.md#ac-4)). For
     development without Hearth, `ac3hearth-testserver` still plays E-AC-3 to boards
     ([Play AC-3 and E-AC-3](#play-ac-3-and-e-ac-3)).
 
@@ -74,9 +77,9 @@ and its pairings when you flash a new build. `idf.py -p PORT erase-flash` clears
 ## Join a network
 
 A board that has no network to join listens for [Improv Wi-Fi](https://www.improv-wifi.com/) on
-its console port. A freshly flashed board first tries the network its build names, `my-network`
-unless you set another under *ac3forge hearth sink* in `idf.py menuconfig`, and listens once that
-fails:
+its console port. A freshly flashed board has none, since a build names a network only if you set
+one under *ac3forge hearth sink* in `idf.py menuconfig` (for boards flashed from one image), so it
+listens at once:
 
 1. Close the serial monitor (`Ctrl+]`), so the port is free.
 2. Open [improv-wifi.com](https://www.improv-wifi.com/) in a browser with Web Serial (Chrome or
@@ -173,8 +176,10 @@ AC-3 and E-AC-3, with any Atmos objects, go to the board undecoded through Heart
 `_ac3forge_player@v1`. The board decodes the stream, renders it onto its layout, and applies the
 server's settings: the layout, routing, trims, delays and decoder settings.
 
-`ac3hearth` will send it. Until then, `ac3hearth-testserver` plays one file to one or more boards
-as a group. It is a developer tool, built from this repository with the `hearth` feature:
+`ac3hearth`, the desktop app, sends it: its Network page pairs with the board and makes groups, and
+the output picker plays to a group ([Hearth](index.md)). `ac3hearth-testserver` plays one file to
+one or more boards as a group. It is a developer tool, built from this repository with the
+`hearth` feature:
 
 ```bash
 cmake --preset config-linux-gcc -DVCPKG_MANIFEST_FEATURES=hearth -DAC3FORGE_BUILD_HEARTH=ON -DAC3FORGE_BUILD_EXAMPLES=OFF
@@ -266,7 +271,8 @@ has the grammar and the rules.
 ## Memory
 
 Internal RAM is what this build is short of. Wi-Fi, lwIP, two HTTP servers, the Sendspin session
-and the decoder share about 280 KB of it, and the decoder's allocations of up to 16 KB go there
+and the decoder share what the part has: about 300 KB free before any of them starts (304,680
+bytes in the footprint probe under QEMU), and the decoder's allocations of up to 16 KB go there
 first. In the ten-minute group run, the least internal RAM free while a stream played was
 139 bytes on the 2.0 board and 23 bytes on the 5.1 board. Nothing failed in those runs, but in
 an earlier one-minute run a 108-byte allocation did, with no effect on the stream. The console's
